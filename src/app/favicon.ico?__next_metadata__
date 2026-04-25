@@ -1,0 +1,11 @@
+  import { fillMetadataSegment } from 'next/dist/lib/metadata/get-metadata-route'
+
+  export default async (props) => {
+    const imageData = {"type":"image/x-icon","sizes":"16x16"}
+    const imageUrl = fillMetadataSegment(".", await props.params, "favicon.ico", true)
+
+    return [{
+      ...imageData,
+      url: imageUrl + "?603d046c9a6fdfbb",
+    }]
+  }
