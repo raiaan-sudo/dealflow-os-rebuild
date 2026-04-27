@@ -6,6 +6,7 @@ import {
 } from "@/lib/ai/video-generation-errors";
 import { getAvatarVideoProvider } from "@/lib/integrations/creative/avatar-provider";
 import { getSavedCampaignDocumentFromRow } from "@/lib/services/canonical-campaign";
+import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import type { VideoCreativeAsset } from "@/lib/services/creative-engine";
 import type { Database, Json } from "@/lib/supabase/types";
 import type { CreativeAsset } from "@/lib/types/creative-assets";
@@ -116,14 +117,17 @@ async function persistVideoAdsToCampaignPlan(params: {
     videoAds: params.videoAds,
   } as Json;
 
-  const { error } = await params.supabase
-    .from("campaign_plans")
-    .update({ plan: nextPlan } as never)
-    .eq("id", params.campaignId)
-    .eq("user_id", params.userId);
-
-  if (error) {
-    throw new ApiError(500, error.message, "campaign_video_ads_save_failed");
+  try {
+    await persistCampaignPlanDocumentUpdate({
+      supabase: params.supabase,
+      campaignId: params.campaignId,
+      userId: params.userId,
+      plan: nextPlan,
+      source: "campaign_video_ads_save",
+      existingRow: row,
+    });
+  } catch (error) {
+    throw new ApiError(500, error instanceof Error ? error.message : "Campaign video ads could not be saved.", "campaign_video_ads_save_failed");
   }
 }
 
@@ -152,19 +156,24 @@ async function persistVideoStateToCampaignPlan(params: {
       : video,
   );
 
-  const { error } = await params.supabase
-    .from("campaign_plans")
-    .update({
+  try {
+    await persistCampaignPlanDocumentUpdate({
+      supabase: params.supabase,
+      campaignId: params.campaignId,
+      userId: params.userId,
       plan: {
         ...(savedDocument as Record<string, unknown>),
         videoAds: nextVideoAds,
       } as Json,
-    } as never)
-    .eq("id", params.campaignId)
-    .eq("user_id", params.userId);
-
-  if (error) {
-    throw new ApiError(500, error.message, "campaign_video_ads_save_failed");
+      source: "campaign_video_generation_state_save",
+      existingRow: row,
+    });
+  } catch (error) {
+    throw new ApiError(
+      500,
+      error instanceof Error ? error.message : "Campaign video ads could not be saved.",
+      "campaign_video_ads_save_failed",
+    );
   }
 }
 

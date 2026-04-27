@@ -8,6 +8,40 @@ import type {
   BuiltMetaCampaignPayload,
 } from "@/lib/types/campaign-execution";
 
+function getSelectedPageId(connection: MetaConnectionRecord) {
+  const metadata = connection.connection_metadata;
+  const pageId =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? metadata.selected_page_id
+      : null;
+
+  return typeof pageId === "string" && pageId.trim().length > 0 ? pageId : null;
+}
+
+function getSelectedAdAccountId(connection: MetaConnectionRecord) {
+  const metadata = connection.connection_metadata;
+  const accountId =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? metadata.selected_external_account_id
+      : null;
+
+  if (typeof accountId !== "string" || accountId.trim().length === 0) {
+    return null;
+  }
+
+  return connection.external_account_id === accountId ? accountId : null;
+}
+
+function getSelectedPixelId(connection: MetaConnectionRecord) {
+  const metadata = connection.connection_metadata;
+  const pixelId =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? metadata.pixel_id
+      : null;
+
+  return typeof pixelId === "string" && pixelId.trim().length > 0 ? pixelId : null;
+}
+
 type MetaCreateResult<T> = {
   id: string;
   payload: T;
@@ -62,37 +96,12 @@ async function updateMetaStatus(
   return data;
 }
 
-async function getMetaPageId(accessToken: string) {
-  const url = new URL("https://graph.facebook.com/v19.0/me/accounts");
-  url.searchParams.set("fields", "id,name");
-  url.searchParams.set("limit", "1");
-  url.searchParams.set("access_token", accessToken);
-
-  const response = await fetchWithRetryServer(url.toString());
-  const data = await parseMetaResponse<{ data?: Array<{ id: string; name: string }> }>(
-    response,
-    "meta_page_lookup_failed",
-    "Meta page lookup failed.",
-  );
-  const pageId = data?.data?.[0]?.id;
-
-  if (!pageId) {
-    throw new ApiError(
-      400,
-      "Meta connection does not have an accessible Facebook Page for ad publishing.",
-      "meta_page_missing",
-    );
-  }
-
-  return pageId;
-}
-
 export async function createMetaCampaign(params: {
   connection: MetaConnectionRecord;
   payload: BuiltMetaCampaignPayload;
 }) {
   const accessToken = getMetaAccessToken(params.connection);
-  const accountId = params.connection.external_account_id;
+  const accountId = getSelectedAdAccountId(params.connection);
 
   if (!accountId) {
     throw new ApiError(
@@ -124,7 +133,7 @@ export async function createMetaAdSet(params: {
   payload: BuiltMetaAdSetPayload;
 }) {
   const accessToken = getMetaAccessToken(params.connection);
-  const accountId = params.connection.external_account_id;
+  const accountId = getSelectedAdAccountId(params.connection);
 
   if (!accountId) {
     throw new ApiError(
@@ -132,6 +141,10 @@ export async function createMetaAdSet(params: {
       "Meta account is missing an external ad account ID.",
       "meta_account_missing",
     );
+  }
+
+  if (!getSelectedPixelId(params.connection)) {
+    throw new ApiError(400, "Missing selected Meta assets", "missing_selected_meta_assets");
   }
 
   const data = await postToMeta<{ id?: string }>(
@@ -157,8 +170,7 @@ export async function createMetaCreative(params: {
   connection: MetaConnectionRecord;
   payload: BuiltMetaAdPayload["creativePayload"];
 }) {
-  const accessToken = getMetaAccessToken(params.connection);
-  const accountId = params.connection.external_account_id;
+  const accountId = getSelectedAdAccountId(params.connection);
 
   if (!accountId) {
     throw new ApiError(
@@ -168,11 +180,27 @@ export async function createMetaCreative(params: {
     );
   }
 
-  const pageId = await getMetaPageId(accessToken);
+  const accessToken = getMetaAccessToken(params.connection);
+  const objectStorySpec =
+    params.payload.object_story_spec &&
+    typeof params.payload.object_story_spec === "object" &&
+    !Array.isArray(params.payload.object_story_spec)
+      ? (params.payload.object_story_spec as Record<string, unknown>)
+      : null;
+  const pageId =
+    typeof objectStorySpec?.page_id === "string" &&
+    objectStorySpec.page_id.trim().length > 0
+      ? objectStorySpec.page_id
+      : getSelectedPageId(params.connection);
+
+  if (!pageId) {
+    throw new ApiError(400, "Missing selected Meta assets", "missing_selected_meta_assets");
+  }
+
   const payload = {
     ...params.payload,
     object_story_spec: {
-      ...params.payload.object_story_spec,
+      ...(objectStorySpec ?? {}),
       page_id: pageId,
     },
   };
@@ -199,7 +227,7 @@ export async function createMetaAd(params: {
   payload: BuiltMetaAdPayload["adPayload"];
 }) {
   const accessToken = getMetaAccessToken(params.connection);
-  const accountId = params.connection.external_account_id;
+  const accountId = getSelectedAdAccountId(params.connection);
 
   if (!accountId) {
     throw new ApiError(

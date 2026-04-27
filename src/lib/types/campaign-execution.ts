@@ -1,4 +1,5 @@
-import type { Json } from "@/lib/supabase/types";
+import type { Json, Database } from "@/lib/supabase/types";
+import type { FullCampaignRecord } from "@/lib/types/campaign-records";
 
 export type CampaignExecutionStepStatus =
   | "info"
@@ -27,6 +28,17 @@ export type CampaignLaunchAsset = {
   type?: string;
   url?: string | null;
   name?: string | null;
+  creativeId?: string | null;
+  copyId?: string | null;
+  hook?: string | null;
+  angle?: string | null;
+  format?: string | null;
+  concept?: string | null;
+  visualDirection?: string | null;
+  primaryText?: string | null;
+  script?: string | null;
+  headline?: string | null;
+  cta?: string | null;
   metadata?: Record<string, Json | undefined> | null;
 };
 
@@ -50,19 +62,39 @@ export type CampaignExecutionAdSet = {
 export type CampaignExecution = {
   id: string;
   campaignId?: string | null;
+  campaign_id?: string | null;
   organizationId?: string | null;
+  organization_id?: string | null;
   objective?: CampaignLaunchObjective;
   status?: string;
+  meta_ad_account_id?: string | null;
+  meta_campaign_external_id?: string | null;
+  meta_adset_external_id?: string | null;
+  meta_ad_external_id?: string | null;
+  destination_url?: string | null;
+  budget_type?: "daily" | "lifetime" | string | null;
+  daily_budget?: number | null;
+  lifetime_budget?: number | null;
   adSets?: CampaignExecutionAdSet[];
   logs?: CampaignExecutionLog[];
   metadata?: Record<string, Json | undefined>;
 };
 
 export type CampaignLaunchInput = {
-  campaignId: string;
+  campaignId?: string;
   organizationId?: string | null;
   mode?: string;
   objective?: CampaignLaunchObjective;
+  campaign_id?: string;
+  meta_ad_account_id?: string;
+  destination_url?: string;
+  budget_type?: "daily" | "lifetime" | string;
+  daily_budget?: number;
+  lifetime_budget?: number;
+  start_immediately?: boolean;
+  cta_type?: string;
+  form_type?: "landing_page" | "instant_form" | string;
+  pixel_id?: string | null;
   metadata?: Record<string, Json | undefined>;
 };
 
@@ -83,6 +115,15 @@ export type CampaignLaunchResult = {
 };
 
 export type CampaignStructureBlueprint = {
+  name?: string;
+  objective?: CampaignLaunchObjective;
+  destinationUrl?: string | null;
+  adSetName?: string;
+  marketType?: string | null;
+  audience?: string | null;
+  location?: string | null;
+  offer?: string | null;
+  assets?: CampaignLaunchAsset[];
   campaign?: BuiltMetaCampaignPayload;
   adSets?: BuiltMetaAdSetPayload[];
   ads?: BuiltMetaAdPayload[];
@@ -96,9 +137,13 @@ export type ExecutionDetailRecord = {
 };
 
 export type LaunchValidationResult = {
-  valid: boolean;
-  errors: string[];
+  ok: boolean;
+  errors?: string[];
   warnings?: string[];
+  campaign?: FullCampaignRecord | null;
+  config?: ValidatedLaunchConfig | null;
+  metaAccount?: Database["public"]["Tables"]["marketing_accounts"]["Row"] | null;
+  blueprint?: CampaignStructureBlueprint;
 };
 
 export type LaunchableMetaAdAccount = {
@@ -114,10 +159,19 @@ export type MetaLaunchPayload = {
 };
 
 export type ValidatedLaunchConfig = {
-  account: LaunchableMetaAdAccount;
-  objective: CampaignLaunchObjective;
+  account?: LaunchableMetaAdAccount;
+  campaignId?: string;
+  metaAdAccountId?: string;
+  objective?: CampaignLaunchObjective;
   destinationUrl?: string | null;
+  pixelId?: string | null;
   budget?: number | null;
+  budgetType?: "daily" | "lifetime";
+  dailyBudget?: number | null;
+  lifetimeBudget?: number | null;
+  startImmediately?: boolean;
+  ctaType?: string;
+  formType?: "landing_page" | "instant_form";
   metadata?: Record<string, Json | undefined>;
 };
 
@@ -134,6 +188,8 @@ export type BuiltMetaAdSetPayload = Record<string, Json | undefined> & {
 };
 
 export type BuiltMetaAdPayload = {
+  asset: CampaignLaunchAsset;
+  mediaUrl?: string | null;
   creativePayload: Record<string, Json | undefined>;
   adPayload: Record<string, Json | undefined>;
 };

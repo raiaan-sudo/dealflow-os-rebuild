@@ -1,0 +1,136 @@
+import { redirect } from "next/navigation";
+import { ArtifactRecoveryPanel } from "@/components/app/artifact-recovery-panel";
+import { PageHeader } from "@/components/app/page-header";
+import { WizardSteps } from "@/components/app/wizard-steps";
+import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
+import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
+import { CreativeWizard } from "./creative-wizard";
+
+async function loadStoredCampaignPayload(campaignId: string) {
+  const supabase = await createRouteHandlerClient();
+
+  if (!supabase) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("campaign_plans")
+    .select("plan")
+    .eq("id", campaignId)
+    .maybeSingle();
+
+  if (error) {
+    return null;
+  }
+
+  const row = (data as { plan?: unknown } | null) ?? null;
+
+  return row?.plan && typeof row.plan === "object" && !Array.isArray(row.plan)
+    ? (row.plan as Record<string, unknown>)
+    : null;
+}
+
+export default async function BuildCreativesPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = searchParams ? await searchParams : {};
+  const campaignId =
+    typeof params.campaignId === "string" && params.campaignId.length > 0
+      ? params.campaignId
+      : null;
+
+  if (!campaignId) {
+    redirect("/onboarding");
+  }
+
+  const activeCampaign = await resolveActiveCampaignRecord(campaignId).catch(() => null);
+  const record = activeCampaign?.record ?? null;
+  const storedPlan = await loadStoredCampaignPayload(campaignId);
+  const campaignPayload =
+    storedPlan?.campaign_payload &&
+    typeof storedPlan.campaign_payload === "object" &&
+    !Array.isArray(storedPlan.campaign_payload)
+      ? (storedPlan.campaign_payload as Record<string, unknown>)
+      : null;
+  const missingArtifacts: string[] = [];
+
+  if (!record) {
+    missingArtifacts.push("campaign record");
+  }
+
+  if (!campaignPayload) {
+    missingArtifacts.push("campaign payload");
+  }
+
+  if (!record?.creatives?.staticAds?.length) {
+    missingArtifacts.push("creatives");
+  }
+
+  if (missingArtifacts.length > 0) {
+    return (
+      <div className="mx-auto w-full max-w-[900px] space-y-8 p-6 sm:p-8">
+        <WizardSteps current="creatives" />
+        <PageHeader
+          eyebrow="Build"
+          title="Creative artifacts are missing"
+          description="This step needs saved creative options and a campaign payload before ad selection can continue."
+        />
+        <ArtifactRecoveryPanel
+          campaignId={campaignId}
+          title="Recover the creatives step"
+          description="The required creative data is missing or incomplete. Regenerate the missing artifacts below, or go back to onboarding."
+          missingArtifacts={missingArtifacts}
+          recoverySteps={[
+            ...(missingArtifacts.includes("creatives") ? (["generate-creatives"] as const) : []),
+            ...(missingArtifacts.includes("campaign payload") ? (["build-campaign"] as const) : []),
+          ]}
+        />
+      </div>
+    );
+  }
+
+  if (!record) {
+    redirect("/onboarding");
+  }
+
+  const ensuredRecord = record;
+
+  const creativeOptions = ensuredRecord.creatives.staticAds
+    .slice()
+    .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
+    .slice(0, 3)
+    .map((ad) => {
+      const matchingCopy = ensuredRecord.creatives.copy?.find(
+        (item) => item.headline === ad.headline || item.primary_text === ad.primaryText,
+      );
+
+      return {
+        id: ad.id,
+        headline: ad.headline || "Untitled ad",
+        primaryText: ad.primaryText || matchingCopy?.primary_text || "",
+        cta: ad.cta || matchingCopy?.cta || "Learn More",
+        score: ad.score ?? 0,
+        recommended: ad.recommended ?? false,
+        imageUrl: ad.imageUrl ?? null,
+        breakdown: {
+          hook: ad.hook || matchingCopy?.hook || "",
+          concept: ad.visualConcept || "",
+        },
+      };
+    });
+
+  return (
+    <div className="mx-auto w-full max-w-[900px] space-y-8 p-6 sm:p-8">
+      <WizardSteps current="creatives" />
+      <PageHeader
+        eyebrow="Build"
+        title="Choose your ad"
+        description="Pick one recommended creative and keep the rest hidden unless you need them."
+      />
+
+      <CreativeWizard campaignId={ensuredRecord.campaign.id} creatives={creativeOptions} />
+    </div>
+  );
+}

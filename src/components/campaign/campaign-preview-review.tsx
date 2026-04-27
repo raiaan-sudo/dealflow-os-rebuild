@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getCampaignIntentLabel } from "@/lib/campaign-intent";
 import { FunnelPreview } from "@/components/funnel/funnel-preview";
@@ -241,7 +241,7 @@ export function CampaignPreviewReview({
 
   const canGenerateStaticAds = Boolean(campaignId);
 
-  function subscribeToJob(jobId: string) {
+  const subscribeToJob = useCallback((jobId: string) => {
     if (jobStreamsRef.current.has(jobId)) {
       return;
     }
@@ -280,7 +280,7 @@ export function CampaignPreviewReview({
       source.close();
       jobStreamsRef.current.delete(jobId);
     });
-  }
+  }, [router]);
 
   async function generateStaticAds() {
     if (!campaignId || isGeneratingAds) {
@@ -356,12 +356,14 @@ export function CampaignPreviewReview({
     return () => {
       cancelled = true;
     };
-  }, [campaignId, shouldRefreshForAssets]);
+  }, [campaignId, shouldRefreshForAssets, subscribeToJob]);
 
   useEffect(() => {
+    const jobStreams = jobStreamsRef.current;
+
     return () => {
-      jobStreamsRef.current.forEach((stream) => stream.close());
-      jobStreamsRef.current.clear();
+      jobStreams.forEach((stream) => stream.close());
+      jobStreams.clear();
     };
   }, []);
 

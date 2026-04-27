@@ -24,14 +24,51 @@ export function LoginForm({
 
   function getSafeRedirectPath(value?: string) {
     if (!value) {
-      return "/";
+      return "/dashboard";
     }
 
     if (!value.startsWith("/") || value.startsWith("//")) {
-      return "/";
+      return "/dashboard";
     }
 
     return value;
+  }
+
+  async function handleProviderLogin(provider: "google") {
+    setError(null);
+    setMessage(null);
+
+    const supabase = createClient();
+
+    if (!supabase) {
+      setError("Supabase environment variables are not configured.");
+      return;
+    }
+
+    setIsPending(true);
+
+    try {
+      const nextPath = getSafeRedirectPath(redirectedFrom);
+      const redirectTo = new URL("/", window.location.origin);
+      if (nextPath && nextPath !== "/dashboard") {
+        redirectTo.searchParams.set("next", nextPath);
+      }
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: redirectTo.toString(),
+        },
+      });
+
+      if (oauthError) {
+        throw oauthError;
+      }
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error ? caughtError.message : "Authentication failed.",
+      );
+      setIsPending(false);
+    }
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -221,6 +258,15 @@ export function LoginForm({
           type="submit"
         >
           {actionLabel}
+        </button>
+
+        <button
+          className="h-12 w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={!isConfigured || isPending}
+          onClick={() => handleProviderLogin("google")}
+          type="button"
+        >
+          Continue with Google
         </button>
       </form>
     </div>

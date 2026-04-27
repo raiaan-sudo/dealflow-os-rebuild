@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+
 export default function ResultsPage() {
-  return <div>Meta Connected Successfully</div>;
+  redirect("/dashboard");
 }

@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { ApiError } from "@/lib/api/route";
 import { getMetaEnv } from "@/lib/env";
 import { encryptSecret } from "@/lib/integrations/meta-crypto";
+import { fetchMetaJson as fetchMetaRequestJson } from "@/lib/integrations/meta/request";
 import { normalizeMetaConnectionMetadata } from "@/lib/integrations/meta/service";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { getAppContext } from "@/lib/services/app-context";
@@ -27,8 +28,13 @@ type MetaTokenResponse = {
 };
 
 async function fetchMetaJson<T>(url: string, init?: RequestInit) {
-  const response = await fetch(url, init);
-  const data = (await response.json().catch(() => null)) as T | { error?: { message?: string } } | null;
+  const { response, data } = await fetchMetaRequestJson<T | { error?: { message?: string } } | null>(
+    url,
+    {
+      purpose: "discovery",
+      ...(init ?? {}),
+    },
+  );
 
   if (!response.ok) {
     const message =

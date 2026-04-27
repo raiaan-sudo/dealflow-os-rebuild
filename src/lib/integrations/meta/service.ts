@@ -1,10 +1,14 @@
 import { ApiError } from "@/lib/api/route";
 import { getMetaEnv } from "@/lib/env";
+import { createMetaApiError, mapMetaError } from "@/lib/integrations/meta/error-mapper";
 import { decryptSecret } from "@/lib/integrations/meta-crypto";
+import { fetchMetaJson } from "@/lib/integrations/meta/request";
 import { createClient } from "@/lib/supabase/server";
 import { getAppContext } from "@/lib/services/app-context";
 import type {
   MetaAvailableAdAccount,
+  MetaAvailablePage,
+  MetaAvailablePixel,
   MetaConnectionRecord,
   MetaConnectionState,
   MetaConnectionStatus,
@@ -18,9 +22,35 @@ export type MetaWorkspaceCredentials = {
   workspaceId: string;
   connectionId: string;
   adAccountId: string;
-  pixelId: string | null;
+  pageId: string;
+  pixelId: string;
   accessToken: string;
 };
+
+export type MetaLaunchPreflightState = {
+  checkedAt: string;
+  tokenValid: boolean;
+  accountValid: boolean;
+  pageValid: boolean;
+  pixelValid: boolean;
+  errors: string[];
+  ready: boolean;
+};
+
+function formatMetaSelectionInvalidMessage(detail?: string | null) {
+  const normalizedDetail = detail?.trim();
+
+  if (!normalizedDetail) {
+    return "Your Meta selection is no longer valid. Re-select the ad account, Facebook Page, and pixel before launch.";
+  }
+
+  const diagnostic = mapMetaError({
+    context: "preflight",
+    message: normalizedDetail,
+  });
+
+  return `${diagnostic.userMessage} ${diagnostic.recommendedAction}`;
+}
 
 function mapStatus(value: string | null | undefined): MetaConnectionStatus {
   if (value === "connecting") {
@@ -40,7 +70,7 @@ function mapStatus(value: string | null | undefined): MetaConnectionStatus {
 
 function getReadinessMessage(status: MetaConnectionStatus, accountName?: string | null) {
   if (status === "connected") {
-    return `${accountName ?? "Meta ad account"} is connected and ready for campaign launch.`;
+    return `${accountName ?? "Meta ad account"} is connected. Launch will still re-check the token, ad account, Page, and pixel before anything is sent to Meta.`;
   }
 
   if (status === "connecting") {
@@ -62,6 +92,10 @@ export function getDefaultMetaConnectionState(): MetaConnectionState {
     accountId: null,
     accountName: null,
     availableAccounts: [],
+    pageId: null,
+    pageName: null,
+    availablePages: [],
+    availablePixels: [],
     connectionStatus: "not_connected",
     connectedAt: null,
     lastSyncAt: null,
@@ -117,15 +151,15 @@ async function fetchMetaPixelsForAccount(accessToken: string, externalAccountId:
   url.searchParams.set("fields", "id,name");
   url.searchParams.set("access_token", accessToken);
 
-  const response = await fetch(url.toString(), {
+  const { response, data } = await fetchMetaJson<
+    | { data?: Array<{ id?: string; name?: string }> ; error?: { message?: string } }
+    | null
+  >(url.toString(), {
+    purpose: "preflight",
     headers: {
       "Content-Type": "application/json",
     },
-    signal: AbortSignal.timeout(15_000),
   });
-  const data = (await response.json().catch(() => null)) as
-    | { data?: Array<{ id?: string; name?: string }> ; error?: { message?: string } }
-    | null;
 
   if (!response.ok) {
     throw new ApiError(
@@ -149,6 +183,30 @@ async function fetchMetaPixelsForAccount(accessToken: string, externalAccountId:
         })
         .filter((pixel): pixel is { id: string; name: string } => Boolean(pixel))
     : [];
+}
+
+async function fetchMetaGraphJson<T>(accessToken: string, path: string, params?: Record<string, string>) {
+  const url = new URL(`https://graph.facebook.com/v19.0/${path.replace(/^\//, "")}`);
+  url.searchParams.set("access_token", accessToken);
+
+  for (const [key, value] of Object.entries(params ?? {})) {
+    url.searchParams.set(key, value);
+  }
+
+  const { response, data } = await fetchMetaJson<(T & { error?: { message?: string } }) | null>(
+    url.toString(),
+    {
+      purpose: "preflight",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
+  return {
+    ok: response.ok,
+    data,
+  };
 }
 
 function getTrackingMissingFields(params: {
@@ -313,11 +371,81 @@ function getAvailableAccounts(metadata: MetaConnectionRecord["connection_metadat
   return accounts;
 }
 
+function getAvailablePages(metadata: MetaConnectionRecord["connection_metadata"]): MetaAvailablePage[] {
+  const normalizedMetadata = normalizeMetaConnectionMetadata(metadata);
+  const rawPages = Array.isArray(normalizedMetadata.available_pages)
+    ? normalizedMetadata.available_pages
+    : null;
+
+  if (!rawPages) {
+    return [];
+  }
+
+  return rawPages
+    .map((page) => {
+      if (!page || typeof page !== "object" || Array.isArray(page)) {
+        return null;
+      }
+
+      const id =
+        "id" in page && typeof page.id === "string" && page.id.trim()
+          ? page.id
+          : null;
+      const name =
+        "name" in page && typeof page.name === "string" && page.name.trim()
+          ? page.name
+          : null;
+
+      if (!id || !name) {
+        return null;
+      }
+
+      return { id, name } satisfies MetaAvailablePage;
+    })
+    .filter(Boolean) as MetaAvailablePage[];
+}
+
+function getAvailablePixels(metadata: MetaConnectionRecord["connection_metadata"]): MetaAvailablePixel[] {
+  const normalizedMetadata = normalizeMetaConnectionMetadata(metadata);
+  const rawPixels = Array.isArray(normalizedMetadata.available_pixels)
+    ? normalizedMetadata.available_pixels
+    : null;
+
+  if (!rawPixels) {
+    return [];
+  }
+
+  return rawPixels
+    .map((pixel) => {
+      if (!pixel || typeof pixel !== "object" || Array.isArray(pixel)) {
+        return null;
+      }
+
+      const id =
+        "id" in pixel && typeof pixel.id === "string" && pixel.id.trim()
+          ? pixel.id
+          : null;
+      const name =
+        "name" in pixel && typeof pixel.name === "string" && pixel.name.trim()
+          ? pixel.name
+          : null;
+
+      if (!id || !name) {
+        return null;
+      }
+
+      return { id, name } satisfies MetaAvailablePixel;
+    })
+    .filter(Boolean) as MetaAvailablePixel[];
+}
+
 function toConnectionState(
   row: MetaConnectionRecord | null | undefined,
 ): MetaConnectionState {
   const status = mapStatus(row?.status);
   const availableAccounts = getAvailableAccounts(row?.connection_metadata ?? null);
+  const availablePages = getAvailablePages(row?.connection_metadata ?? null);
+  const availablePixels = getAvailablePixels(row?.connection_metadata ?? null);
   const metadata = normalizeMetaConnectionMetadata(row?.connection_metadata ?? null);
 
   return {
@@ -327,6 +455,10 @@ function toConnectionState(
     accountId: row?.external_account_id ?? null,
     accountName: row?.account_name ?? null,
     availableAccounts,
+    pageId: readMetadataString(metadata, "selected_page_id"),
+    pageName: readMetadataString(metadata, "selected_page_name"),
+    availablePages,
+    availablePixels,
     connectionStatus: status,
     connectedAt: row?.connected_at ?? null,
     lastSyncAt: row?.last_sync_at ?? row?.token_last_synced_at ?? null,
@@ -419,11 +551,43 @@ export async function getMetaWorkspaceCredentials(): Promise<MetaWorkspaceCreden
     );
   }
 
-  if (!row.external_account_id) {
+  const metadata = normalizeMetaConnectionMetadata(row.connection_metadata ?? null);
+  const selectedAccountId = readMetadataString(metadata, "selected_external_account_id");
+
+  if (!selectedAccountId) {
     throw new ApiError(
       400,
       "This workspace is missing a selected Meta ad account.",
       "meta_ad_account_missing",
+    );
+  }
+  const availableAccounts = getAvailableAccounts(row.connection_metadata ?? null);
+  const selectedAccount =
+    availableAccounts.find((account) => account.externalAccountId === selectedAccountId) ?? null;
+
+  if (!selectedAccount?.externalAccountId) {
+    throw new ApiError(
+      400,
+      "This workspace has an invalid selected Meta ad account.",
+      "meta_ad_account_invalid",
+    );
+  }
+
+  const pageId = readMetadataString(metadata, "selected_page_id");
+  if (!pageId) {
+    throw new ApiError(
+      400,
+      "This workspace is missing a selected Facebook Page.",
+      "meta_page_missing",
+    );
+  }
+
+  const pixelId = row.pixel_id ?? readMetadataString(metadata, "pixel_id");
+  if (!pixelId) {
+    throw new ApiError(
+      400,
+      "This workspace is missing a selected Meta pixel.",
+      "meta_pixel_missing",
     );
   }
 
@@ -445,7 +609,7 @@ export async function getMetaWorkspaceCredentials(): Promise<MetaWorkspaceCreden
     );
   }
 
-  if (!row.id || !row.external_account_id || !row.access_token_encrypted) {
+  if (!row.id || !row.access_token_encrypted) {
     throw new ApiError(
       400,
       "Meta workspace credentials are incomplete.",
@@ -456,10 +620,112 @@ export async function getMetaWorkspaceCredentials(): Promise<MetaWorkspaceCreden
   return {
     workspaceId: context.organization.id,
     connectionId: row.id,
-    adAccountId: row.external_account_id,
-    pixelId: row.pixel_id ?? null,
+    adAccountId: selectedAccount.externalAccountId,
+    pageId,
+    pixelId,
     accessToken: decryptSecret(row.access_token_encrypted, env.encryptionKey),
   };
+}
+
+export async function validateMetaLaunchSelections(): Promise<MetaLaunchPreflightState> {
+  const checkedAt = new Date().toISOString();
+
+  try {
+    const credentials = await getMetaWorkspaceCredentials();
+    const tokenCheck = await fetchMetaGraphJson<{ id?: string }>(credentials.accessToken, "me", {
+      fields: "id",
+    });
+
+    if (!tokenCheck.ok || !tokenCheck.data?.id) {
+      return {
+        checkedAt,
+        tokenValid: false,
+        accountValid: false,
+        pageValid: false,
+        pixelValid: false,
+        errors: [
+          formatMetaSelectionInvalidMessage(
+            tokenCheck.data?.error?.message ?? "Meta token is invalid or expired.",
+          ),
+        ],
+        ready: false,
+      };
+    }
+
+    const accountCheck = await fetchMetaGraphJson<{ id?: string; name?: string }>(
+      credentials.accessToken,
+      `act_${credentials.adAccountId.replace(/^act_/, "")}`,
+      {
+        fields: "id,name,account_status",
+      },
+    );
+    const accountValid = Boolean(accountCheck.ok && accountCheck.data?.id);
+
+    const pageCheck = await fetchMetaGraphJson<{ id?: string; name?: string }>(
+      credentials.accessToken,
+      credentials.pageId,
+      {
+        fields: "id,name",
+      },
+    );
+    const pageValid = Boolean(pageCheck.ok && pageCheck.data?.id);
+
+    const availablePixels = await fetchMetaPixelsForAccount(
+      credentials.accessToken,
+      credentials.adAccountId,
+    ).catch(() => []);
+    const pixelValid = availablePixels.some((pixel) => pixel.id === credentials.pixelId);
+
+    const errors: string[] = [];
+
+    if (!accountValid) {
+      errors.push(
+        formatMetaSelectionInvalidMessage(
+          accountCheck.data?.error?.message ?? "Selected Meta ad account is not available.",
+        ),
+      );
+    }
+
+    if (!pageValid) {
+      errors.push(
+        formatMetaSelectionInvalidMessage(
+          pageCheck.data?.error?.message ?? "Selected Facebook Page is not available.",
+        ),
+      );
+    }
+
+    if (!pixelValid) {
+      errors.push(
+        formatMetaSelectionInvalidMessage(
+          "Selected Meta pixel is not available for the chosen ad account.",
+        ),
+      );
+    }
+
+    return {
+      checkedAt,
+      tokenValid: true,
+      accountValid,
+      pageValid,
+      pixelValid,
+      errors,
+      ready: accountValid && pageValid && pixelValid,
+    };
+  } catch (error) {
+    return {
+      checkedAt,
+      tokenValid: false,
+      accountValid: false,
+      pageValid: false,
+      pixelValid: false,
+      errors: [
+        formatMetaSelectionInvalidMessage(
+          error instanceof Error ? error.message : "Meta preflight failed.",
+        ),
+      ],
+      ready: false,
+    };
+  }
 }
 
 export async function selectMetaAdAccount(externalAccountId: string) {
@@ -470,12 +736,19 @@ export async function selectMetaAdAccount(externalAccountId: string) {
     throw new ApiError(404, "No Meta connection exists for this workspace.", "meta_connection_missing");
   }
 
+  if (!existing.id) {
+    throw new ApiError(500, "Meta workspace record is missing an ID.", "meta_connection_invalid");
+  }
+
   const availableAccounts = getAvailableAccounts(existing.connection_metadata ?? null);
   const nextAccount =
     availableAccounts.find((account) => account.externalAccountId === externalAccountId) ?? null;
 
   if (!nextAccount) {
-    throw new ApiError(400, "That Meta ad account is not available for this connection.", "meta_account_invalid");
+    throw createMetaApiError("selection", 400, {
+      code: "meta_account_invalid",
+      message: "That Meta ad account is not available for this connection.",
+    });
   }
 
   const metadata =
@@ -490,10 +763,9 @@ export async function selectMetaAdAccount(externalAccountId: string) {
       : [];
   const currentPixelId = existing.pixel_id ?? readMetadataString(metadata, "pixel_id");
   const nextPixelId =
-    currentPixelId &&
-    availablePixels.some((pixel) => pixel.id === currentPixelId)
+    currentPixelId && availablePixels.some((pixel) => pixel.id === currentPixelId)
       ? currentPixelId
-      : availablePixels[0]?.id ?? currentPixelId ?? null;
+      : null;
   const nextTrackingStatus = deriveTrackingStatus({
     pixelId: nextPixelId,
     launchDomain: readWorkspaceTrackingValue(existing.launch_domain, metadata, "launch_domain"),
@@ -532,9 +804,122 @@ export async function selectMetaAdAccount(externalAccountId: string) {
   return toConnectionState(refreshed);
 }
 
+export async function updateMetaLaunchSelections(input: {
+  externalAccountId?: string | null;
+  pageId?: string | null;
+  pixelId?: string | null;
+}) {
+  const { context, supabase } = await getMetaSupabaseContext();
+  const existing = await getExistingMetaRecord(context.organization.id);
+
+  if (!existing) {
+    throw new ApiError(404, "No Meta connection exists for this workspace.", "meta_connection_missing");
+  }
+
+  if (!existing.id) {
+    throw new ApiError(500, "Meta workspace record is missing an ID.", "meta_connection_invalid");
+  }
+
+  const metadata = normalizeMetaConnectionMetadata(existing.connection_metadata ?? null);
+  let nextExternalAccountId =
+    input.externalAccountId ?? readMetadataString(metadata, "selected_external_account_id");
+  let nextPageId =
+    input.pageId !== undefined
+      ? input.pageId
+      : readMetadataString(metadata, "selected_page_id");
+  let nextPixelId =
+    input.pixelId !== undefined
+      ? input.pixelId
+      : existing.pixel_id ?? readMetadataString(metadata, "pixel_id");
+
+  const availableAccounts = getAvailableAccounts(existing.connection_metadata ?? null);
+  const availablePages = getAvailablePages(existing.connection_metadata ?? null);
+  const nextAccount =
+    nextExternalAccountId
+      ? availableAccounts.find((account) => account.externalAccountId === nextExternalAccountId) ?? null
+      : null;
+
+  if (!nextAccount) {
+    throw createMetaApiError("selection", 400, {
+      code: "meta_account_invalid",
+      message: "Select a valid Meta ad account.",
+    });
+  }
+
+  const nextPage =
+    nextPageId ? availablePages.find((page) => page.id === nextPageId) ?? null : null;
+  if (!nextPage) {
+    throw createMetaApiError("selection", 400, {
+      code: "meta_page_invalid",
+      message: "Select a valid Facebook Page.",
+    });
+  }
+
+  const env = getMetaEnv();
+  const availablePixels =
+    existing.access_token_encrypted && env?.encryptionKey
+      ? await fetchMetaPixelsForAccount(
+          decryptSecret(existing.access_token_encrypted, env.encryptionKey),
+          nextAccount.externalAccountId ?? "",
+        ).catch(() => [])
+      : [];
+
+  if (!nextPixelId || !availablePixels.some((pixel) => pixel.id === nextPixelId)) {
+    throw createMetaApiError("selection", 400, {
+      code: "meta_pixel_invalid",
+      message: "Select a valid Meta pixel.",
+    });
+  }
+
+  const nextTrackingStatus = deriveTrackingStatus({
+    pixelId: nextPixelId,
+    launchDomain: readWorkspaceTrackingValue(existing.launch_domain, metadata, "launch_domain"),
+    verificationToken: readWorkspaceTrackingValue(
+      existing.verification_token,
+      metadata,
+      "verification_token",
+    ),
+    domainVerified: existing.domain_verified ?? readMetadataBoolean(metadata, "domain_verified"),
+  });
+
+  const { error } = await supabase
+    .from("marketing_accounts")
+    .update({
+      external_account_id: nextAccount.externalAccountId,
+      account_name: nextAccount.name,
+      name: nextAccount.name,
+      pixel_id: nextPixelId,
+      tracking_status: nextTrackingStatus,
+      last_sync_at: new Date().toISOString(),
+      connection_metadata: {
+        ...metadata,
+        selected_external_account_id: nextAccount.externalAccountId,
+        selected_account_name: nextAccount.name,
+        selected_page_id: nextPage.id ?? null,
+        selected_page_name: nextPage.name ?? null,
+        pixel_id: nextPixelId,
+        tracking_status: nextTrackingStatus,
+        available_pixels: availablePixels,
+      },
+    } as never)
+    .eq("id", existing.id);
+
+  if (error) {
+    throw new ApiError(500, error.message, "meta_selection_update_failed");
+  }
+
+  const refreshed = await getExistingMetaRecord(context.organization.id);
+  return toConnectionState(refreshed);
+}
+
 export async function updateMetaTrackingConfig(input: MetaWorkspaceTrackingUpdate) {
   const { context, supabase } = await getMetaSupabaseContext();
   const existing = await ensureMetaWorkspaceRecord(context.organization.id);
+
+  if (!existing.id) {
+    throw new ApiError(500, "Meta workspace record is missing an ID.", "meta_connection_invalid");
+  }
+
   const metadata = normalizeMetaConnectionMetadata(existing.connection_metadata ?? null);
 
   const nextPixelId =

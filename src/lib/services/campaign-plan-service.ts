@@ -477,38 +477,33 @@ function normalizeCampaignRuntime(value: unknown): CampaignRuntime {
 }
 
 function buildPlanPayloadFromPlan(plan: CampaignPlan): PersistedPlanPayload {
-  return {
-    client_name: plan.clientName,
-    business_name: plan.businessName,
-    intent: plan.intent,
-    market: plan.market,
-    monthly_budget: plan.monthlyBudget,
-    primary_goal: plan.primaryGoal,
-    timeline: plan.timeline,
-    audience: plan.audience,
-    property_type: plan.propertyType,
-    key_offer: plan.keyOffer,
-    pain_points: plan.painPoints,
-    mechanism: plan.mechanism,
-    campaign_category: plan.creativeStrategy.campaignCategory,
-    trigger_condition: plan.creativeStrategy.triggerCondition,
-    internal_tension: plan.creativeStrategy.internalTension,
-    proof_style: plan.creativeStrategy.proofStyle,
-    cta_style: plan.creativeStrategy.ctaStyle,
-    visual_logic: plan.creativeStrategy.visualLogic,
-    overlay_style: plan.creativeStrategy.overlayStyle,
-    compliance_notes: plan.creativeStrategy.complianceNotes,
-    funnel_type: plan.funnelType,
-    targeting_summary: plan.targetingSummary,
-    offer_summary: plan.offerSummary,
-    summary: plan.summary,
-    funnel_steps: plan.funnelSteps,
-    creative_brief: plan.creativeBrief,
-    creatives: plan.creatives,
-    ads: withAdImageFallback(plan.ads),
-    funnel: plan.funnel,
+  return buildPersistedCampaignPlanPayload({
+    generatedPlan: {
+      clientName: plan.clientName,
+      businessName: plan.businessName,
+      intent: plan.intent,
+      market: plan.market,
+      monthlyBudget: plan.monthlyBudget,
+      primaryGoal: plan.primaryGoal,
+      timeline: plan.timeline,
+      audience: plan.audience,
+      propertyType: plan.propertyType,
+      keyOffer: plan.keyOffer,
+      painPoints: plan.painPoints,
+      mechanism: plan.mechanism,
+      creativeStrategy: plan.creativeStrategy,
+      funnelType: plan.funnelType,
+      targetingSummary: plan.targetingSummary,
+      offerSummary: plan.offerSummary,
+      summary: plan.summary,
+      funnelSteps: plan.funnelSteps,
+      creativeBrief: plan.creativeBrief,
+      creatives: plan.creatives,
+      ads: withAdImageFallback(plan.ads),
+      funnel: plan.funnel,
+    },
     runtime: plan.runtime,
-  };
+  });
 }
 
 function buildPlanFromGenerated(
@@ -713,6 +708,7 @@ function getLegacyPayload(row: Record<string, unknown>): PersistedPlanPayload | 
   });
 
   return {
+    version: 1,
     client_name: String(row.client_name),
     business_name: String(row.business_name),
     intent: legacyIntent,

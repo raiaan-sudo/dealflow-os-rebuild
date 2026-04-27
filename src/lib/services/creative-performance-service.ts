@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import type { MetaCampaignSyncSnapshot } from "@/lib/integrations/meta/types";
+import type { MetaCampaignSyncSnapshot, MetaEntityStatus } from "@/lib/integrations/meta/types";
 import { getAppContext } from "@/lib/services/app-context";
 import { recordCreativeIntelligenceFeedback, type CreativeAngle } from "@/lib/services/creative-intelligence-service";
 import { buildExecutableCampaign } from "@/lib/services/campaign-execution-service";
@@ -46,6 +46,26 @@ export type CreativePatternScore = {
   inconclusiveCount: number;
   lastSeen: string | null;
   confidenceScore: number;
+};
+
+type CreativePerformanceSnapshotInsertRow = {
+  organization_id: string;
+  user_id: string;
+  creative_id: string;
+  campaign_id: string;
+  angle: CreativeAngle;
+  hook: string;
+  headline: string;
+  cta: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  leads: number;
+  cpl: number | null;
+  status: string;
+  classification: CreativeClassification;
+  synced_at: string;
 };
 
 export type CreativePerformanceSummary = {
@@ -169,7 +189,13 @@ function classifyCreative(params: {
 }
 
 function getAdInsights(snapshot: MetaCampaignSyncSnapshot) {
-  const raw = snapshot.syncMetadata?.ad_insights;
+  const syncMetadata =
+    snapshot.syncMetadata &&
+    typeof snapshot.syncMetadata === "object" &&
+    !Array.isArray(snapshot.syncMetadata)
+      ? (snapshot.syncMetadata as Record<string, unknown>)
+      : null;
+  const raw = syncMetadata?.ad_insights;
 
   if (!Array.isArray(raw)) {
     return [];
@@ -192,6 +218,37 @@ function getAdInsights(snapshot: MetaCampaignSyncSnapshot) {
           : clicks / Math.max(impressions, 1),
       leads: Number(row.leads ?? 0),
     };
+  });
+}
+
+function getAdStatuses(snapshot: MetaCampaignSyncSnapshot): MetaEntityStatus[] {
+  const raw = snapshot.adStatuses;
+
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw.flatMap((item) => {
+    if (!item || typeof item !== "object") {
+      return [];
+    }
+
+    const row = item as Record<string, unknown>;
+    const id = typeof row.id === "string" ? row.id : null;
+    const name = typeof row.name === "string" ? row.name : "";
+    const status = typeof row.status === "string" ? row.status : null;
+
+    if (!id || !status) {
+      return [];
+    }
+
+    return [
+      {
+        id,
+        name,
+        status,
+      },
+    ];
   });
 }
 
@@ -344,6 +401,7 @@ export async function recordCreativePerformanceSnapshot(params: {
   const { supabase } = context;
   const campaign = buildExecutableCampaign(params.plan);
   const ads = campaign.adSets.flatMap((adSet) => adSet.ads);
+  const adStatuses = getAdStatuses(params.snapshot);
 
   if (ads.length === 0) {
     return null;
@@ -353,8 +411,8 @@ export async function recordCreativePerformanceSnapshot(params: {
   const provisional =
     liveInsights.length > 0
       ? ads.map((ad, index) => {
-          const status = params.snapshot.adStatuses.find((item) => item.id === ad.id)?.status ??
-            params.snapshot.adStatuses[index]?.status ??
+          const status = adStatuses.find((item) => item.id === ad.id)?.status ??
+            adStatuses[index]?.status ??
             ad.status;
           const insight = liveInsights.find((item) => item.adId === ad.id) ?? liveInsights[index];
           const spend = Number(insight?.spend ?? 0);
@@ -376,8 +434,8 @@ export async function recordCreativePerformanceSnapshot(params: {
           };
         })
       : ads.map((ad, index) => {
-          const status = params.snapshot.adStatuses.find((item) => item.id === ad.id)?.status ??
-            params.snapshot.adStatuses[index]?.status ??
+          const status = adStatuses.find((item) => item.id === ad.id)?.status ??
+            adStatuses[index]?.status ??
             ad.status;
 
           return {
@@ -400,23 +458,28 @@ export async function recordCreativePerformanceSnapshot(params: {
       ? cplValues.reduce((sum, value) => sum + value, 0) / cplValues.length
       : null;
 
-  const rows: Database["public"]["Tables"]["creative_performance_snapshots"]["Insert"][] = provisional.map(
+  const syncedAt = typeof params.snapshot.syncedAt === "string" ? params.snapshot.syncedAt : new Date().toISOString();
+
+  const rows: CreativePerformanceSnapshotInsertRow[] = provisional.map(
     (item) => ({
       organization_id: context.context.organization.id,
       user_id: context.context.user.id,
       creative_id: item.ad.id,
-      campaign_id: params.snapshot.metaCampaignId ?? params.snapshot.campaignName,
+      campaign_id:
+        typeof params.snapshot.metaCampaignId === "string" && params.snapshot.metaCampaignId.length > 0
+          ? params.snapshot.metaCampaignId
+          : String(params.snapshot.campaignName ?? params.plan.id),
       angle: normalizeAngle(item.ad.name.toLowerCase().includes("approval") ? "approval" : item.ad.creativeAsset.overlayText.toLowerCase().includes("before") ? "urgency" : item.ad.creativeAsset.overlayText.toLowerCase().includes("tired") ? "pain" : "speed"),
-      hook: item.ad.creative,
-      headline: item.ad.headline,
-      cta: item.ad.cta,
+      hook: String(item.ad.creative ?? ""),
+      headline: String(item.ad.headline ?? ""),
+      cta: String(item.ad.cta ?? ""),
       spend: item.spend,
       impressions: item.impressions,
       clicks: item.clicks,
       ctr: Number(item.ctr.toFixed(4)),
       leads: item.leads,
       cpl: item.cpl,
-      status: item.status,
+      status: String(item.status),
       classification: classifyCreative({
         spend: item.spend,
         impressions: item.impressions,
@@ -426,7 +489,7 @@ export async function recordCreativePerformanceSnapshot(params: {
         averageCtr,
         averageCpl,
       }),
-      synced_at: params.snapshot.syncedAt,
+      synced_at: syncedAt,
     }),
   );
 
@@ -464,7 +527,7 @@ export async function recordCreativePerformanceSnapshot(params: {
         success_count: successCount,
         failure_count: failureCount,
         inconclusive_count: inconclusiveCount,
-        last_seen: params.snapshot.syncedAt,
+        last_seen: syncedAt,
         confidence_score: calculateConfidenceScore(successCount, failureCount),
       } as never,
       { onConflict: "organization_id,user_id,hook,angle,offer" },

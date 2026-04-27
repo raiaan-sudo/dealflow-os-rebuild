@@ -42,9 +42,9 @@ export function GuidedStepFooter({
   nextHref?: string;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
       <div className="text-sm text-white/55">
-        Keep moving through the guided flow. You can return here and switch to Advanced Control any time.
+        Keep moving through the guided flow. You can return here and switch to detailed editing any time.
       </div>
       <div className="flex flex-wrap items-center gap-3">
         {backLabel && onBack ? (
@@ -82,10 +82,10 @@ export function BuilderNavigation({
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-              Guided build flow
+              Campaign setup flow
             </p>
             <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-white">
-              Stay in the guided path while you shape the campaign
+              Move through the client-ready setup flow
             </h2>
             <p className="mt-3 text-sm leading-7 text-white/65">{stepMicrocopy}</p>
           </div>
@@ -94,10 +94,10 @@ export function BuilderNavigation({
             <div className="flex flex-col items-start gap-3 rounded-[20px] border border-white/8 bg-black/20 p-4 xl:min-w-[240px]">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  Editing mode
+                  Editing options
                 </p>
                 <p className="mt-2 text-sm leading-6 text-white/60">
-                  Guided stays on by default. Advanced control is available only when you want full section editing.
+                  Guided stays on by default. Detailed editing is available only when you want full section-by-section changes.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -115,7 +115,7 @@ export function BuilderNavigation({
                   variant={editingMode === "advanced" ? "default" : "secondary"}
                   onClick={() => setEditingMode("advanced")}
                 >
-                  Advanced Control
+                  Detailed editing
                 </Button>
               </div>
             </div>
@@ -154,7 +154,7 @@ export function BuilderNavigation({
                 </span>
                 <span>{step.label}</span>
                 {isCurrent ? (
-                  <Badge className="border-primary/15 bg-primary/10 text-primary">Current</Badge>
+                  <Badge className="border-primary/15 bg-primary/10 text-primary">Now</Badge>
                 ) : null}
               </>
             );
@@ -189,7 +189,7 @@ export function BuilderNavigation({
         </div>
         {activeTab === "funnel" && editingMode === "advanced" ? (
           <p className="mt-4 text-sm leading-6 text-primary/85">
-            Advanced Control is active. You can now edit the funnel one section at a time.
+            Detailed editing is active. You can now update the page one section at a time.
           </p>
         ) : null}
       </div>

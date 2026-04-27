@@ -193,7 +193,7 @@ export function LaunchActionPanel({
             onClick={canLaunch ? handleLaunch : handleConnectAccount}
             disabled={canLaunch ? !canPushToMeta : blockingRequirements[0] !== "Connect a real Meta ad account"}
           >
-            {canLaunch ? "Go Live Now" : blockingRequirements[0] === "Connect a real Meta ad account" ? "Open Connection Step" : "Requirements Missing"}
+            {canLaunch ? "Launch" : blockingRequirements[0] === "Connect a real Meta ad account" ? "Connect Meta" : "Finish setup"}
           </Button>
         </div>
       </div>
@@ -310,10 +310,10 @@ export function LaunchGuidedFlowPanel({
         {isLive ? (
           <>
             <Button size="lg" onClick={onViewResults}>
-              View Results
+              Dashboard
             </Button>
             <Button size="lg" variant="secondary" onClick={onReviewCampaign}>
-              Open Review
+              Review
             </Button>
           </>
         ) : null}
@@ -356,7 +356,7 @@ export function PostLaunchStatePanel({
       {onViewResults ? (
         <div className="mt-5">
           <Button size="sm" variant="secondary" onClick={onViewResults}>
-            Open Results
+            Dashboard
           </Button>
         </div>
       ) : null}

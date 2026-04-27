@@ -1,15 +1,56 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { getPublicAppUrl, getMetaEnvOrThrow } from "@/lib/env";
+import { logMetaError } from "@/lib/integrations/meta/error-mapper";
 
-export function GET() {
-  const url = new URL("https://www.facebook.com/v18.0/dialog/oauth");
-  const redirectUri =
-    "https://earning-cemetery-pointed-excess.trycloudflare.com/api/integrations/meta/callback";
+const META_STATE_COOKIE = "dealflow_meta_oauth_state";
+const META_RETURN_TO_COOKIE = "dealflow_meta_oauth_return_to";
 
-  url.searchParams.set("client_id", process.env.META_APP_ID || "");
-  url.searchParams.set("redirect_uri", redirectUri);
-  url.searchParams.set("scope", "ads_read,business_management");
-  url.searchParams.set("response_type", "code");
-  console.log("REDIRECT_URI:", redirectUri);
+export async function GET(request: Request) {
+  const requestId = crypto.randomUUID();
 
-  return NextResponse.redirect(url.toString());
+  try {
+    const requestUrl = new URL(request.url);
+    const requestedReturnTo = requestUrl.searchParams.get("returnTo") || "/launch";
+    const returnTo = requestedReturnTo.startsWith("/") ? requestedReturnTo : "/launch";
+    const url = new URL("https://www.facebook.com/v18.0/dialog/oauth");
+    const env = getMetaEnvOrThrow();
+    const redirectUri = env.redirectUri;
+    const state = crypto.randomUUID();
+    const cookieStore = await cookies();
+
+    cookieStore.set(META_STATE_COOKIE, state, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 10,
+    });
+    cookieStore.set(META_RETURN_TO_COOKIE, returnTo, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 10,
+    });
+
+    url.searchParams.set("client_id", env.appId);
+    url.searchParams.set("redirect_uri", redirectUri);
+    url.searchParams.set("scope", "ads_management,ads_read,business_management");
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("state", state);
+
+    return NextResponse.redirect(url.toString());
+  } catch (error) {
+    logMetaError({
+      context: "oauth_start",
+      requestId,
+      error,
+    });
+
+    const fallbackUrl = new URL("/launch", getPublicAppUrl());
+    fallbackUrl.searchParams.set("meta_error", "oauth_start_failed");
+    fallbackUrl.searchParams.set("meta_request_id", requestId);
+    return NextResponse.redirect(fallbackUrl);
+  }
 }

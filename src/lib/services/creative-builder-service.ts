@@ -27,6 +27,7 @@ import type {
   CreativeBuildResult,
   CreativeProductionPlan,
   CreativeRenderJob,
+  ImagePromptConfig,
   LaunchReadyCreativeMedia,
   RenderBlueprint,
 } from "@/lib/types/creative-assets";
@@ -57,8 +58,12 @@ type AssetBuildArtifacts = {
 const MANUAL_MEDIA_BUCKET = "creative-assets";
 type ManualCreativeAssetKind = "video" | "image" | "thumbnail";
 
-function mapFormatDefault(formats?: CreativeAssetFormat[]): CreativeAssetFormat[] {
+function mapFormatDefault(formats?: CreativeAssetFormat[] | null): CreativeAssetFormat[] {
   return formats && formats.length > 0 ? formats : ["9:16"];
+}
+
+function normalizeAspectRatio(format: CreativeAssetFormat): ImagePromptConfig["aspectRatio"] {
+  return format === "1:1" || format === "4:5" || format === "16:9" ? format : "9:16";
 }
 
 async function requireCreativeBuilderContext(expectedUserId?: string) {
@@ -162,7 +167,7 @@ function buildImagePrompt(
       `Modern, realistic, performance-focused, clean composition, social ad ready.`,
     negativePrompt: "surreal, fantasy, distorted architecture, text-heavy poster, blurry, low quality",
     style: creative.format === "ugc" ? "graphic" : "realistic",
-    aspectRatio: format,
+    aspectRatio: normalizeAspectRatio(format),
   } as const;
 }
 

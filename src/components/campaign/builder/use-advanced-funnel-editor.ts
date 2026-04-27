@@ -51,7 +51,10 @@ export function useAdvancedFunnelEditor({
   const imageUploadInputRef = useRef<HTMLInputElement | null>(null);
   const thumbnailUploadInputRef = useRef<HTMLInputElement | null>(null);
 
-  const sections = Array.isArray(campaign.funnel.sections) ? campaign.funnel.sections : [];
+  const sections = useMemo(
+    () => (Array.isArray(campaign.funnel.sections) ? campaign.funnel.sections : []),
+    [campaign.funnel.sections],
+  );
   const selectedSection = sections[selectedSectionIndex] ?? null;
   const visibleCount = sections.filter((section) => section.visible !== false).length;
   const mediaCount = sections.filter(

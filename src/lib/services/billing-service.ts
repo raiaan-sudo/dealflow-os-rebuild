@@ -1,5 +1,7 @@
 import Stripe from "stripe";
 import { ApiError } from "@/lib/api/route";
+import { isInternalAdminEmail } from "@/lib/env";
+import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAppContext } from "@/lib/services/app-context";
@@ -16,10 +18,12 @@ import {
   type BillingFeature,
   type BillingPlanTier,
 } from "@/lib/billing/plans";
-import type { Database } from "@/lib/supabase/types";
+import type { Database, Json } from "@/lib/supabase/types";
 
 type BillingRow = Database["public"]["Tables"]["billing_subscriptions"]["Row"];
 type BillingInsert = Database["public"]["Tables"]["billing_subscriptions"]["Insert"];
+type StripeWebhookEventRow = Database["public"]["Tables"]["stripe_webhook_events"]["Row"];
+type StripeWebhookEventInsert = Database["public"]["Tables"]["stripe_webhook_events"]["Insert"];
 
 export type BillingSummary = {
   planTier: BillingPlanTier;
@@ -28,16 +32,202 @@ export type BillingSummary = {
   stripeSubscriptionId: string | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  launchAllowed: boolean;
+  launchOverride: boolean;
 };
 
-function mapBillingRow(row: BillingRow | null, fallbackPlanTier: string): BillingSummary {
+const BILLING_ACTIVE_STATUSES = new Set(["active", "trialing"]);
+const STRIPE_WEBHOOK_HANDLED_STATUSES = new Set(["processed", "ignored", "processing"]);
+
+type StripeWebhookClaimResult =
+  | {
+      status: "claimed";
+      row: StripeWebhookEventRow | null;
+    }
+  | {
+      status: "duplicate";
+      row: StripeWebhookEventRow | null;
+    };
+
+function isUniqueViolation(error: unknown) {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      typeof (error as { code?: unknown }).code === "string" &&
+      (error as { code: string }).code === "23505",
+  );
+}
+
+function getStripeObjectId(event: Stripe.Event) {
+  const object = event.data.object;
+  return object && typeof object === "object" && "id" in object && typeof object.id === "string"
+    ? object.id
+    : null;
+}
+
+function getStripeSubscriptionId(event: Stripe.Event) {
+  if (event.data.object.object !== "subscription") {
+    return null;
+  }
+
+  return typeof event.data.object.id === "string" ? event.data.object.id : null;
+}
+
+function getStripeWebhookOrganizationId(event: Stripe.Event) {
+  if (event.data.object.object !== "subscription") {
+    return null;
+  }
+
+  const organizationId = event.data.object.metadata?.organization_id;
+  return typeof organizationId === "string" && organizationId.length > 0 ? organizationId : null;
+}
+
+async function readStripeWebhookEvent(eventId: string) {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+  }
+
+  const { data, error } = await admin
+    .from("stripe_webhook_events")
+    .select("*")
+    .eq("stripe_event_id", eventId)
+    .maybeSingle();
+
+  if (error) {
+    throw new ApiError(500, error.message, "stripe_webhook_event_fetch_failed");
+  }
+
+  return (data as StripeWebhookEventRow | null) ?? null;
+}
+
+async function markStripeWebhookEvent(params: {
+  eventId: string;
+  status: "processed" | "ignored" | "failed";
+  errorCode?: string | null;
+  errorMessage?: string | null;
+}) {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+  }
+
+  const update: Database["public"]["Tables"]["stripe_webhook_events"]["Update"] = {
+    status: params.status,
+    processed_at: params.status === "failed" ? null : new Date().toISOString(),
+    error_code: params.errorCode ?? null,
+    error_message: params.errorMessage ?? null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await admin
+    .from("stripe_webhook_events")
+    .update(update as never)
+    .eq("stripe_event_id", params.eventId);
+
+  if (error) {
+    throw new ApiError(500, error.message, "stripe_webhook_event_update_failed");
+  }
+}
+
+async function claimStripeWebhookEvent(event: Stripe.Event): Promise<StripeWebhookClaimResult> {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+  }
+
+  const insertRow: StripeWebhookEventInsert = {
+    stripe_event_id: event.id,
+    stripe_event_type: event.type,
+    stripe_object_id: getStripeObjectId(event),
+    organization_id: getStripeWebhookOrganizationId(event),
+    stripe_subscription_id: getStripeSubscriptionId(event),
+    status: "processing",
+    payload: {
+      api_version: event.api_version ?? null,
+      created: event.created,
+      livemode: event.livemode,
+    } satisfies Json,
+  };
+
+  const { data, error } = await admin
+    .from("stripe_webhook_events")
+    .insert(insertRow as never)
+    .select("*")
+    .maybeSingle();
+
+  if (!error) {
+    return {
+      status: "claimed",
+      row: (data as StripeWebhookEventRow | null) ?? null,
+    };
+  }
+
+  if (!isUniqueViolation(error)) {
+    throw new ApiError(500, error.message, "stripe_webhook_event_claim_failed");
+  }
+
+  const existingRow = await readStripeWebhookEvent(event.id);
+
+  if (!existingRow) {
+    throw new ApiError(500, "Stripe webhook event already exists but could not be read.", "stripe_webhook_event_missing");
+  }
+
+  if (STRIPE_WEBHOOK_HANDLED_STATUSES.has(existingRow.status)) {
+    return {
+      status: "duplicate",
+      row: existingRow,
+    };
+  }
+
+  const { data: reclaimedRow, error: reclaimError } = await admin
+    .from("stripe_webhook_events")
+    .update({
+      status: "processing",
+      error_code: null,
+      error_message: null,
+      updated_at: new Date().toISOString(),
+    } as never)
+    .eq("stripe_event_id", event.id)
+    .eq("status", "failed")
+    .select("*")
+    .maybeSingle();
+
+  if (reclaimError) {
+    throw new ApiError(500, reclaimError.message, "stripe_webhook_event_reclaim_failed");
+  }
+
+  if (reclaimedRow) {
+    return {
+      status: "claimed",
+      row: reclaimedRow as StripeWebhookEventRow,
+    };
+  }
+
   return {
-    planTier: normalizeBillingPlanTier(row?.plan_tier ?? fallbackPlanTier),
-    subscriptionStatus: row?.status ?? "inactive",
+    status: "duplicate",
+    row: existingRow,
+  };
+}
+
+function mapBillingRow(row: BillingRow | null, fallbackPlanTier: string): BillingSummary {
+  const normalizedPlanTier = normalizeBillingPlanTier(row?.plan_tier ?? fallbackPlanTier);
+  const subscriptionStatus = row?.status ?? "inactive";
+
+  return {
+    planTier: normalizedPlanTier,
+    subscriptionStatus,
     stripeCustomerId: row?.stripe_customer_id ?? null,
     stripeSubscriptionId: row?.stripe_subscription_id ?? null,
     currentPeriodEnd: row?.current_period_end ?? null,
     cancelAtPeriodEnd: row?.cancel_at_period_end ?? false,
+    launchAllowed:
+      BILLING_ACTIVE_STATUSES.has(subscriptionStatus) && hasFeatureAccess(normalizedPlanTier, "meta_launch"),
+    launchOverride: false,
   };
 }
 
@@ -71,7 +261,18 @@ export async function getBillingSummary() {
     throw new ApiError(500, error.message, "billing_subscription_fetch_failed");
   }
 
-  return mapBillingRow((data as BillingRow | null) ?? null, context.organization.plan_tier);
+  const summary = mapBillingRow(
+    (data as BillingRow | null) ?? null,
+    context.organization.plan_tier ?? "starter",
+  );
+
+  const launchOverride = isInternalAdminEmail(context.user.email ?? context.profile?.email ?? null);
+
+  return {
+    ...summary,
+    launchAllowed: summary.launchAllowed || launchOverride,
+    launchOverride,
+  };
 }
 
 export async function assertBillingFeatureAccess(feature: BillingFeature) {
@@ -90,6 +291,20 @@ export async function assertBillingFeatureAccess(feature: BillingFeature) {
   }
 
   return summary;
+}
+
+export async function assertMetaLaunchBillingAccess() {
+  const summary = await getBillingSummary();
+
+  if (summary.launchAllowed) {
+    return summary;
+  }
+
+  throw new ApiError(
+    402,
+    "An active Pro subscription is required before this campaign can launch.",
+    "billing_launch_payment_required",
+  );
 }
 
 export async function createBillingCheckoutSession(params: {
@@ -131,7 +346,7 @@ export async function createBillingCheckoutSession(params: {
       action: "create_customer",
       params: {
         email: params.customerEmail || context.user.email || undefined,
-        name: params.customerName || context.organization.name,
+        name: params.customerName || context.organization.name || undefined,
         metadata: {
           organization_id: context.organization.id,
           user_id: context.user.id,
@@ -243,5 +458,83 @@ export async function syncBillingSubscriptionFromStripe(subscription: Stripe.Sub
 
   if (organizationError) {
     throw new ApiError(500, organizationError.message, "organization_plan_update_failed");
+  }
+}
+
+export async function handleStripeBillingEvent(event: Stripe.Event) {
+  const claim = await claimStripeWebhookEvent(event);
+
+  if (claim.status === "duplicate") {
+    logOperationalEvent("stripe_webhook_duplicate_ignored", {
+      eventId: event.id,
+      eventType: event.type,
+      persistedStatus: claim.row?.status ?? null,
+    });
+    return {
+      duplicate: true,
+      processed: false,
+    };
+  }
+
+  try {
+    if (
+      event.type === "customer.subscription.created" ||
+      event.type === "customer.subscription.updated" ||
+      event.type === "customer.subscription.deleted"
+    ) {
+      await syncBillingSubscriptionFromStripe(event.data.object as Stripe.Subscription);
+      await markStripeWebhookEvent({
+        eventId: event.id,
+        status: "processed",
+      });
+
+      logOperationalEvent("stripe_webhook_processed", {
+        eventId: event.id,
+        eventType: event.type,
+        organizationId: getStripeWebhookOrganizationId(event),
+        stripeSubscriptionId: getStripeSubscriptionId(event),
+      });
+
+      return {
+        duplicate: false,
+        processed: true,
+      };
+    }
+
+    await markStripeWebhookEvent({
+      eventId: event.id,
+      status: "ignored",
+    });
+
+    logWarn("stripe_webhook_ignored", {
+      eventId: event.id,
+      eventType: event.type,
+      reason: "unsupported_event_type",
+    });
+
+    return {
+      duplicate: false,
+      processed: false,
+    };
+  } catch (error) {
+    await markStripeWebhookEvent({
+      eventId: event.id,
+      status: "failed",
+      errorCode:
+        error instanceof ApiError
+          ? error.code ?? "stripe_webhook_processing_failed"
+          : "stripe_webhook_processing_failed",
+      errorMessage: error instanceof Error ? error.message : "Unknown Stripe webhook error.",
+    });
+
+    logError("stripe_webhook_processing_failed", {
+      eventId: event.id,
+      eventType: event.type,
+      organizationId: getStripeWebhookOrganizationId(event),
+      stripeSubscriptionId: getStripeSubscriptionId(event),
+      error: error instanceof Error ? error.message : String(error),
+    });
+
+    throw error;
   }
 }

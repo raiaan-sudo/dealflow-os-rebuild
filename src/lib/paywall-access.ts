@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { resolvePreferredCampaignId } from "@/lib/campaign-selection";
+import { getBillingSummary } from "@/lib/services/billing-service";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import {
   getCampaignById,
@@ -76,9 +77,9 @@ export async function resolveActiveCampaignRecord(
 
 export async function getPaywallAccessState(requestedCampaignId?: string | null) {
   const cookieStore = await cookies();
-  const hasActivePlan = cookieStore.get(PAYWALL_ACTIVE_COOKIE)?.value === "true";
   const rawPlan = cookieStore.get(PAYWALL_PLAN_COOKIE)?.value;
   const resolvedCampaign = await resolveActiveCampaignRecord(requestedCampaignId);
+  const billing = await getBillingSummary().catch(() => null);
   const campaignPlan = resolvedCampaign.record
     ? canonicalCampaignToPlan(resolvedCampaign.record)
     : null;
@@ -91,11 +92,17 @@ export async function getPaywallAccessState(requestedCampaignId?: string | null)
     cookieStore.get(PREVIEW_COMPLETE_COOKIE)?.value === "true";
 
   return {
-    hasActivePlan,
+    hasActivePlan: billing?.launchAllowed ?? false,
     hasCompletedPreview,
-    selectedPlan: isValidPlan(rawPlan) ? rawPlan : null,
+    selectedPlan: billing?.launchAllowed
+      ? billing.planTier
+      : isValidPlan(rawPlan)
+        ? rawPlan
+        : null,
     activeCampaignId: resolvedCampaign.campaignId,
     campaignStatus: campaignPlan?.runtime.status ?? null,
+    billingOverride: billing?.launchOverride ?? false,
+    subscriptionStatus: billing?.subscriptionStatus ?? "inactive",
   };
 }
 
@@ -118,10 +125,6 @@ export async function requirePreviewCompletion(campaignId?: string | null) {
 
   if (access.campaignStatus === "built" && !access.hasCompletedPreview) {
     redirect(buildCampaignScopedPath("/campaign-built", access.activeCampaignId ?? campaignId ?? null));
-  }
-
-  if (!access.hasActivePlan || !access.selectedPlan) {
-    redirect(buildCampaignScopedPath("/paywall", access.activeCampaignId ?? campaignId ?? null));
   }
 
   if (!access.hasCompletedPreview) {

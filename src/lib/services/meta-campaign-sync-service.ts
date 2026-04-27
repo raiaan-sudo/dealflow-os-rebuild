@@ -44,16 +44,32 @@ function mapEntityStatuses(value: unknown): MetaEntityStatus[] {
 
 function mapDeliveryMetrics(value: unknown): MetaDeliveryMetrics {
   const row = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const spend = Number(row.spend ?? 0);
+  const impressions = Number(row.impressions ?? 0);
+  const clicks = Number(row.clicks ?? 0);
+  const leads = Number(row.leads ?? 0);
+  const appointments = Number(row.appointments ?? 0);
+  const ctr = row.ctr !== undefined ? Number(row.ctr) : clicks / Math.max(impressions, 1);
+  const cpl = row.cpl !== undefined ? Number(row.cpl) : leads > 0 ? spend / leads : 0;
+  const cpa =
+    row.cpa !== undefined ? Number(row.cpa) : appointments > 0 ? spend / appointments : 0;
+  const cpc = row.cpc !== undefined ? Number(row.cpc) : clicks > 0 ? spend / clicks : 0;
+  const reach = Number(row.reach ?? 0);
+  const frequency =
+    row.frequency !== undefined ? Number(row.frequency) : reach > 0 ? impressions / reach : 0;
 
   return {
-    spend: Number(row.spend ?? 0),
-    impressions: Number(row.impressions ?? 0),
-    clicks: Number(row.clicks ?? 0),
-    ctr:
-      row.ctr !== undefined
-        ? Number(row.ctr)
-        : Number(row.clicks ?? 0) / Math.max(Number(row.impressions ?? 0), 1),
-    leads: Number(row.leads ?? 0),
+    spend,
+    impressions,
+    clicks,
+    leads,
+    appointments,
+    cpl,
+    cpa,
+    ctr,
+    cpc,
+    frequency,
+    reach,
   };
 }
 
@@ -65,26 +81,31 @@ function mapSyncErrors(value: unknown): MetaSyncError[] {
   return value.map((item) => {
     const row = item as Record<string, unknown>;
     const stage = row.stage;
+    const normalizedStage =
+      stage === "campaign" ||
+      stage === "ad_set" ||
+      stage === "ad" ||
+      stage === "insights" ||
+      stage === "connection"
+        ? stage
+        : "campaign";
+    const message = String(row.message ?? "Sync issue");
+    const target = String(row.target ?? "");
 
-    return {
-      stage:
-        stage === "campaign" ||
-        stage === "ad_set" ||
-        stage === "ad" ||
-        stage === "insights" ||
-        stage === "connection"
-          ? stage
-          : "campaign",
-      message: String(row.message ?? "Sync issue"),
-      target: String(row.target ?? ""),
-    };
+    return target ? `[${normalizedStage}] ${message} (${target})` : `[${normalizedStage}] ${message}`;
   });
+}
+
+function formatSyncError(stage: "campaign" | "ad_set" | "ad" | "insights" | "connection", message: string, target: string) {
+  return target ? `[${stage}] ${message} (${target})` : `[${stage}] ${message}`;
 }
 
 function mapSyncSnapshot(row: Record<string, unknown> | null): MetaCampaignSyncSnapshot | null {
   if (!row) {
     return null;
   }
+
+  const deliveryMetrics = mapDeliveryMetrics(row.delivery_metrics);
 
   return {
     id: String(row.id),
@@ -101,11 +122,12 @@ function mapSyncSnapshot(row: Record<string, unknown> | null): MetaCampaignSyncS
     campaignStatus: typeof row.campaign_status === "string" ? row.campaign_status : null,
     adSetStatuses: mapEntityStatuses(row.ad_set_statuses),
     adStatuses: mapEntityStatuses(row.ad_statuses),
-    deliveryMetrics: mapDeliveryMetrics(row.delivery_metrics),
+    metrics: deliveryMetrics,
+    deliveryMetrics,
     syncMetadata:
       row.sync_metadata && typeof row.sync_metadata === "object"
-        ? (row.sync_metadata as Record<string, unknown>)
-        : {},
+        ? (row.sync_metadata as { [key: string]: Json | undefined })
+        : ({} as { [key: string]: Json | undefined }),
     syncErrors: mapSyncErrors(row.sync_errors),
     syncedAt: String(row.synced_at ?? row.created_at ?? new Date().toISOString()),
   };
@@ -233,8 +255,14 @@ export async function syncMetaCampaignStatus() {
     spend: 0,
     impressions: 0,
     clicks: 0,
-    ctr: 0,
     leads: 0,
+    appointments: 0,
+    cpl: 0,
+    cpa: 0,
+    ctr: 0,
+    cpc: 0,
+    frequency: 0,
+    reach: 0,
   };
   let adInsights: ReturnType<typeof fetchAdInsights> extends Promise<infer T> ? T : never = [];
 
@@ -252,19 +280,11 @@ export async function syncMetaCampaignStatus() {
       campaignId: ids.campaignId,
       message,
     });
-    errors.push({
-      stage: "campaign",
-      message,
-      target: ids.campaignId,
-    });
+    errors.push(formatSyncError("campaign", message, ids.campaignId));
   }
 
   if (ids.adSetIds.length === 0) {
-    errors.push({
-      stage: "ad_set",
-      message: "No Meta ad set IDs were stored for this campaign yet.",
-      target: ids.campaignId,
-    });
+    errors.push(formatSyncError("ad_set", "No Meta ad set IDs were stored for this campaign yet.", ids.campaignId));
   } else {
     try {
       adSetStatuses = await fetchAdSetStatuses({
@@ -278,20 +298,12 @@ export async function syncMetaCampaignStatus() {
         campaignId: ids.campaignId,
         message,
       });
-      errors.push({
-        stage: "ad_set",
-        message,
-        target: ids.campaignId,
-      });
+      errors.push(formatSyncError("ad_set", message, ids.campaignId));
     }
   }
 
   if (ids.adIds.length === 0) {
-    errors.push({
-      stage: "ad",
-      message: "No Meta ad IDs were stored for this campaign yet.",
-      target: ids.campaignId,
-    });
+    errors.push(formatSyncError("ad", "No Meta ad IDs were stored for this campaign yet.", ids.campaignId));
   } else {
     try {
       adStatuses = await fetchAdStatuses({
@@ -305,11 +317,7 @@ export async function syncMetaCampaignStatus() {
         campaignId: ids.campaignId,
         message,
       });
-      errors.push({
-        stage: "ad",
-        message,
-        target: ids.campaignId,
-      });
+      errors.push(formatSyncError("ad", message, ids.campaignId));
     }
   }
 
@@ -327,11 +335,7 @@ export async function syncMetaCampaignStatus() {
       campaignId: ids.campaignId,
       message,
     });
-    errors.push({
-      stage: "insights",
-      message,
-      target: ids.campaignId,
-    });
+    errors.push(formatSyncError("insights", message, ids.campaignId));
   }
 
   if (ids.adIds.length > 0) {
@@ -349,11 +353,7 @@ export async function syncMetaCampaignStatus() {
         campaignId: ids.campaignId,
         message,
       });
-      errors.push({
-        stage: "ad",
-        message,
-        target: ids.campaignId,
-      });
+      errors.push(formatSyncError("ad", message, ids.campaignId));
     }
   }
 
@@ -392,6 +392,10 @@ export async function syncMetaCampaignStatus() {
 
   if (insertError) {
     throw new ApiError(500, insertError.message, "campaign_sync_snapshot_insert_failed");
+  }
+
+  if (typeof connection.id !== "string" || connection.id.length === 0) {
+    throw new ApiError(500, "Meta account record is missing its internal ID.", "meta_account_id_missing");
   }
 
   const { error: accountUpdateError } = await supabase

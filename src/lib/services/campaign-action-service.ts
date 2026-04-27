@@ -1,6 +1,6 @@
 import { ApiError } from "@/lib/api/route";
 import { createClient } from "@/lib/supabase/server";
-import type { MetaCampaignSyncSnapshot } from "@/lib/integrations/meta/types";
+import type { MetaCampaignSyncSnapshot, MetaEntityStatus } from "@/lib/integrations/meta/types";
 import { getAppContext } from "@/lib/services/app-context";
 import { buildExecutableCampaign } from "@/lib/services/campaign-execution-service";
 import {
@@ -216,8 +216,29 @@ function buildSuggestions(params: {
       : 0;
   const spend = snapshot.deliveryMetrics.spend;
   const clicks = snapshot.deliveryMetrics.clicks;
-  const status = (snapshot.campaignStatus ?? "").toUpperCase();
-  const activeAds = snapshot.adStatuses.filter((item) => item.status.toUpperCase().includes("ACTIVE")).length;
+  const status =
+    typeof snapshot.campaignStatus === "string" ? snapshot.campaignStatus.toUpperCase() : "";
+  const adStatuses: MetaEntityStatus[] = Array.isArray(snapshot.adStatuses)
+    ? snapshot.adStatuses.flatMap((item, index) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) {
+          return [];
+        }
+
+        const row = item as Record<string, unknown>;
+
+        return [
+          {
+            id: String(row.id ?? `ad-${index}`),
+            name: String(row.name ?? `Ad ${index + 1}`),
+            status: String(row.status ?? "UNKNOWN"),
+          },
+        ];
+      })
+    : [];
+  const metaCampaignId =
+    typeof snapshot.metaCampaignId === "string" ? snapshot.metaCampaignId : "";
+  const syncSnapshotId = typeof snapshot.id === "string" ? snapshot.id : null;
+  const activeAds = adStatuses.filter((item) => item.status.toUpperCase().includes("ACTIVE")).length;
   const suggestions: DraftAction[] = [];
   const topWinner = creativeSummary?.winners[0];
   const topLoser = creativeSummary?.underperformers[0];
@@ -227,13 +248,13 @@ function buildSuggestions(params: {
 
   if (topWinner && topLoser && topWinner.angle !== topLoser.angle) {
     suggestions.push({
-      campaignId: snapshot.metaCampaignId ?? "",
+      campaignId: metaCampaignId,
       type: "pause_low_performing_ad",
       title: "Pause low-performing ad",
       reason: `${capitalize(topWinner.angle)} messaging is clearly ahead of ${topLoser.angle} in this account. "${topWinner.hook}" is winning because it stays closer to ${creativeStrategy.mechanism} and ${creativeStrategy.proofStyle}, while "${topLoser.hook}" is consuming delivery without matching that strategy.`,
       expectedImpact: "Pause the weakest angle, protect the current winner, and keep spend concentrated on the mechanism-led proof path.",
       status: "suggested",
-      syncSnapshotId: snapshot.id,
+      syncSnapshotId,
       context: {
         campaignCategory: creativeStrategy.campaignCategory,
         triggerCondition: creativeStrategy.triggerCondition,
@@ -247,33 +268,33 @@ function buildSuggestions(params: {
     });
   }
 
-  if (spend >= 60 && clicks <= 12 && snapshot.adStatuses.length >= 2) {
+  if (spend >= 60 && clicks <= 12 && adStatuses.length >= 2) {
     suggestions.push({
-      campaignId: snapshot.metaCampaignId ?? "",
+      campaignId: metaCampaignId,
       type: "pause_low_performing_ad",
       title: "Pause low-performing ad",
-      reason: `${snapshot.campaignName} has already spent $${spend.toFixed(2)} for ${clicks} clicks across ${snapshot.adStatuses.length} ads. Delivery is too expensive for ${audience}, and one or more creatives are drifting away from ${creativeStrategy.mechanism} and ${creativeStrategy.proofStyle}.`,
+      reason: `${snapshot.campaignName} has already spent $${spend.toFixed(2)} for ${clicks} clicks across ${adStatuses.length} ads. Delivery is too expensive for ${audience}, and one or more creatives are drifting away from ${creativeStrategy.mechanism} and ${creativeStrategy.proofStyle}.`,
       expectedImpact: "Reduce wasted spend and concentrate delivery on the strongest active ad before testing the next strategy-aligned angle.",
       status: "suggested",
-      syncSnapshotId: snapshot.id,
+      syncSnapshotId,
       context: {
         campaignCategory: creativeStrategy.campaignCategory,
         spend,
         clicks,
-        adStatuses: snapshot.adStatuses,
+        adStatuses,
       },
     });
   }
 
   if (ctr < 0.012 && snapshot.deliveryMetrics.impressions >= 1500) {
     suggestions.push({
-      campaignId: snapshot.metaCampaignId ?? "",
+      campaignId: metaCampaignId,
       type: "refresh_headline",
       title: "Refresh headline",
       reason: `${audience} are only clicking at ${formatPercent(ctr)} after ${snapshot.deliveryMetrics.impressions.toLocaleString()} impressions. The current headline is not surfacing ${creativeStrategy.triggerCondition || keyOffer} fast enough, and the ${creativeStrategy.mechanism} mechanism is getting buried.`,
       expectedImpact: "Improve click-through rate with a sharper situation-led promise tied directly to the mechanism and proof style.",
       status: "suggested",
-      syncSnapshotId: snapshot.id,
+      syncSnapshotId,
       context: {
         campaignCategory: creativeStrategy.campaignCategory,
         triggerCondition: creativeStrategy.triggerCondition,
@@ -289,7 +310,7 @@ function buildSuggestions(params: {
 
   if (status === "LEARNING" || ctr < 0.015) {
     suggestions.push({
-      campaignId: snapshot.metaCampaignId ?? "",
+      campaignId: metaCampaignId,
       type: "adjust_targeting",
       title: "Adjust targeting",
       reason: bestAudience || bestLocation || bestPattern
@@ -297,7 +318,7 @@ function buildSuggestions(params: {
         : `${snapshot.campaignName} is still ${status || "unstable"} and response from ${audience} is soft. Tightening location and audience filters around ${creativeStrategy.triggerCondition || propertyType} should improve signal quality before more spend goes out.`,
       expectedImpact: "Raise lead quality and lower inefficient delivery before more budget is spent on the wrong trigger condition.",
       status: "suggested",
-      syncSnapshotId: snapshot.id,
+      syncSnapshotId,
       context: {
         campaignCategory: creativeStrategy.campaignCategory,
         status,
@@ -314,13 +335,13 @@ function buildSuggestions(params: {
 
   if (ctr >= 0.025 && clicks >= 30 && activeAds > 0) {
     suggestions.push({
-      campaignId: snapshot.metaCampaignId ?? "",
+      campaignId: metaCampaignId,
       type: "increase_budget_on_winner",
       title: "Increase budget on winner",
       reason: `${snapshot.campaignName} is returning ${clicks} clicks at ${formatPercent(ctr)} CTR. The current offer around ${keyOffer} is landing with ${audience}, and the winner is strong because it keeps ${creativeStrategy.mechanism} and ${creativeStrategy.proofStyle} intact.`,
       expectedImpact: "Scale the strongest ad set while momentum is positive and keep the winning mechanism constant during controlled promotion.",
       status: "suggested",
-      syncSnapshotId: snapshot.id,
+      syncSnapshotId,
       context: {
         campaignCategory: creativeStrategy.campaignCategory,
         mechanism: creativeStrategy.mechanism,
@@ -341,7 +362,7 @@ function buildSuggestions(params: {
       rulePack.winningAngles[0] ??
       "proof";
     suggestions.push({
-      campaignId: snapshot.metaCampaignId ?? "",
+      campaignId: metaCampaignId,
       type: "test_new_creative_angle",
       title: "Test new creative angle",
       reason: topWinner
@@ -349,7 +370,7 @@ function buildSuggestions(params: {
         : `${snapshot.deliveryMetrics.clicks.toLocaleString()} clicks have come through, but the creative set can still be stronger for ${audience} looking for ${propertyType}. Test a ${nextAngle} variant that leads harder with ${keyOffer}, names ${creativeStrategy.mechanism}, and proves it through ${creativeStrategy.proofStyle}.`,
       expectedImpact: "Lift response quality by introducing the next strongest angle before the current creative fatigues, without losing the strategy backbone.",
       status: "suggested",
-      syncSnapshotId: snapshot.id,
+      syncSnapshotId,
       context: {
         campaignCategory: creativeStrategy.campaignCategory,
         triggerCondition: creativeStrategy.triggerCondition,
@@ -437,7 +458,7 @@ async function applyApprovedAction(plan: CampaignPlan, action: CampaignActionSug
         ...plan,
         runtime: {
           ...plan.runtime,
-          pausedAdIds: [...new Set([...plan.runtime.pausedAdIds, candidate.id])],
+          pausedAdIds: Array.from(new Set([...plan.runtime.pausedAdIds, candidate.id])),
           lastAction: `Optimization applied: paused ${candidate.name}.`,
           lastOptimizationAction: action.title,
           lastOptimizationAt: new Date().toISOString(),

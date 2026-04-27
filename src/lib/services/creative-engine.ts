@@ -395,8 +395,19 @@ function scoreStaticAd(ad: Pick<StaticCreativeAsset, "hook" | "overlayText" | "p
   if (shortSentence(ad.hook).toLowerCase() !== shortSentence(ad.overlayText).toLowerCase()) score += 1;
   if (combined.length > 80 && combined.length < 260) score += 1;
   if (/timing|mistake|underperform|miss|before|too late|underpricing|sitting in the bank/.test(combined)) score += 1;
+  if (/client|buyer we helped|homeowner we helped|testimonial|story|case study|famil(y|ies)/.test(combined)) score += 1;
+  if (/problem|solution|without|so you can|results|outcome|step-by-step/.test(combined)) score += 1;
 
   return Math.min(10, score);
+}
+
+function buildStructuredPrimaryText(params: {
+  hook: string;
+  problem: string;
+  outcome: string;
+  cta: string;
+}) {
+  return `${shortSentence(params.hook)} ${sentenceCase(params.problem)} ${sentenceCase(params.outcome)} ${params.cta}.`;
 }
 
 function buildStaticCreatives(
@@ -486,13 +497,13 @@ function buildStaticCreatives(
 
   const ads: StaticCreativeAsset[] = [
     {
-      id: "static-guarantee",
+      id: "static-problem-solution",
       angle: "guarantee",
       imageUrl: "",
       imageGenerationState: "unavailable",
       imageGenerationMessage: null,
       imageGenerationModel: null,
-      visualConcept: `${market} guarantee-led ad focused on ${cleanOffer}`,
+      visualConcept: `${market} problem-solution ad focused on ${cleanOffer}`,
       imagePrompt: "",
       imagePromptConfig: null,
       preferredImageModel: "gpt-image-1.5",
@@ -500,10 +511,10 @@ function buildStaticCreatives(
       scoreBreakdown: null,
       hook:
         approvalFocused
-          ? `First-time buyers in ${market}: know what you qualify for first.`
+          ? `Most first-time buyers in ${market} start with listings instead of buying power.`
           : /guarantee|guaranteed/.test(normalizedOffer) && !hookLooksGeneric(cleanOffer, rulePack.forbiddenHookPatterns)
           ? shortSentence(cleanOffer)
-          : baseHook,
+          : `If ${tension.toLowerCase()} is slowing you down in ${market}, there is a simpler next step.`,
       overlayText: buildOverlayText({
         category: strategy.campaignCategory,
         market,
@@ -514,28 +525,38 @@ function buildStaticCreatives(
         proof,
       }),
       primaryText: approvalFocused
-        ? `${audience} in ${market} lose momentum because they tour properties before they know what they can actually qualify for. ${sentenceCase(mechanism)} gives them a clearer approval-first path with ${proof.toLowerCase()} so they can move on the right ${brief.propertyType} with confidence. ${cta}.`
-        : `${audience} in ${market} keep stalling because ${tension.toLowerCase()}. ${sentenceCase(mechanism)} is the mechanism that moves them around ${cleanOffer} with ${proof.toLowerCase()} instead of broad market guesswork. ${cta}.`,
+        ? buildStructuredPrimaryText({
+            hook: `Most ${audience} in ${market} waste time shopping before they understand approval.`,
+            problem: `That creates confusion, delays, and missed-fit homes.`,
+            outcome: `${sentenceCase(mechanism)} gives them a clearer approval-first path with ${proof.toLowerCase()} so they can move faster on the right ${brief.propertyType}.`,
+            cta,
+          })
+        : buildStructuredPrimaryText({
+            hook: `${audience} in ${market} keep losing momentum because ${tension.toLowerCase()}.`,
+            problem: `The usual process creates noise instead of clarity.`,
+            outcome: `${sentenceCase(mechanism)} turns that into a simple path toward ${cleanOffer} with ${proof.toLowerCase()} so the next move feels obvious.`,
+            cta,
+          }),
       headline:
         approvalFocused
           ? `Know what you qualify for before you shop in ${market}`
           : strategy.campaignCategory === "seller"
-          ? `See your pricing gap before you list in ${market}`
+          ? `Fix the pricing problem before you list in ${market}`
           : strategy.campaignCategory === "investor"
-            ? `See the deal breakdown before capital moves in ${market}`
-            : shortSentence(offer) || `See ${cleanOffer} in ${market}`,
+            ? `Solve the deal-selection problem before capital moves`
+            : `A simpler path to ${trimWords(cleanOffer, 6)}`,
       cta,
       score: 0,
       recommended: false,
     },
     {
-      id: "static-urgency",
+      id: "static-offer-driven",
       angle: "urgency",
       imageUrl: "",
       imageGenerationState: "unavailable",
       imageGenerationMessage: null,
       imageGenerationModel: null,
-      visualConcept: `Urgency ad built around speed and ${cleanOffer}`,
+      visualConcept: `Offer-driven ad built around speed and ${cleanOffer}`,
       imagePrompt: "",
       imagePromptConfig: null,
       preferredImageModel: "gpt-image-1.5",
@@ -543,12 +564,12 @@ function buildStaticCreatives(
       scoreBreakdown: null,
       hook:
         approvalFocused
-          ? `Most first-time buyers in ${market} start in the wrong place.`
+          ? `Most first-time buyers in ${market} do not realize how close they are to the right next step.`
           : strategy.campaignCategory === "precon"
           ? fillTemplate(rulePack.approvedHookStructures[2], templateParams)
           : strategy.campaignCategory === "luxury"
             ? fillTemplate(rulePack.approvedHookStructures[2], templateParams)
-            : `Move before the best ${brief.propertyType} in ${market} disappear.`,
+            : `If you want ${trimWords(cleanOffer, 6)}, this is the clearest path we have right now.`,
       overlayText: buildOverlayText({
         category: strategy.campaignCategory,
         market,
@@ -559,28 +580,38 @@ function buildStaticCreatives(
         proof,
       }),
       primaryText: approvalFocused
-        ? `Most ${audience} react too late because they burn time on homes that never fit their approval reality. ${sentenceCase(mechanism)} creates a faster approval-first path so the strongest-fit options show up before the scramble. ${cta}.`
-        : `Most ${audience} react too late once broad market attention shows up. ${sentenceCase(mechanism)} creates a faster path around ${trigger.toLowerCase()} and the tension of ${tension.toLowerCase()} so the strongest fit shows up before the scramble. ${cta}.`,
+        ? buildStructuredPrimaryText({
+            hook: `Most ${audience} wait too long because the path feels unclear.`,
+            problem: `That hesitation turns good-fit options into missed opportunities.`,
+            outcome: `${sentenceCase(mechanism)} makes the offer easier to understand so buyers can act with confidence instead of guessing.`,
+            cta,
+          })
+        : buildStructuredPrimaryText({
+            hook: `If you are trying to secure ${cleanOffer} in ${market}, timing matters.`,
+            problem: `Most ${audience} do not move until broad attention shows up.`,
+            outcome: `${sentenceCase(mechanism)} gives a faster path around ${trigger.toLowerCase()} so you can act on the offer before the crowd catches up.`,
+            cta,
+          }),
       headline:
         approvalFocused
-          ? `Stop touring before you know your number in ${market}`
+          ? `See the offer before you waste time touring`
           : strategy.campaignCategory === "precon"
-          ? `Lock today's entry before the next shift in ${market}`
+          ? `Lock today's entry path before the next shift in ${market}`
           : strategy.campaignCategory === "luxury"
             ? `Rare opportunity in ${market} for the right buyer`
-            : `The best ${brief.propertyType} in ${market} move fast`,
+            : `Get the offer-driven edge before the market reacts`,
       cta,
       score: 0,
       recommended: false,
     },
     {
-      id: "static-contrarian",
-      angle: "contrarian",
+      id: "static-authority",
+      angle: "authority",
       imageUrl: "",
       imageGenerationState: "unavailable",
       imageGenerationMessage: null,
       imageGenerationModel: null,
-      visualConcept: `Contrarian ad that reframes how ${audience} chase ${cleanOffer}`,
+      visualConcept: `Authority ad positioned as an expert path to ${cleanOffer}`,
       imagePrompt: "",
       imagePromptConfig: null,
       preferredImageModel: "gpt-image-1.5",
@@ -588,12 +619,60 @@ function buildStaticCreatives(
       scoreBreakdown: null,
       hook:
         approvalFocused
-          ? `Looking at listings first is what slows most buyers down.`
+          ? `${market} buyers: there is a smarter path than guessing first.`
+        : strategy.campaignCategory === "luxury"
+          ? fillTemplate(rulePack.approvedHookStructures[0], templateParams)
+          : `${market} ${audience}: there is a smarter path to ${trimWords(cleanOffer, 6)}.`,
+      overlayText:
+        approvalFocused
+          ? "Approval-Led Strategy"
+        : strategy.campaignCategory === "luxury"
+          ? "Private Access"
+          : "Expert-Led Advantage",
+      primaryText: approvalFocused
+        ? buildStructuredPrimaryText({
+            hook: `Most ${audience} rely on broad public-market noise and hope the numbers work later.`,
+            problem: `That usually creates confusion before clarity.`,
+            outcome: `${sentenceCase(mechanism)} keeps the decision anchored in approval clarity, realistic buying power, and ${proof.toLowerCase()} so the next move feels clearer.`,
+            cta,
+          })
+        : buildStructuredPrimaryText({
+            hook: `Most ${audience} rely on broad public-market noise.`,
+            problem: `That makes it harder to spot the strongest move early.`,
+            outcome: `${sentenceCase(mechanism)} keeps the decision anchored in ${trigger.toLowerCase()}, ${tension.toLowerCase()}, and ${proof.toLowerCase()} so the next move feels clearer.`,
+            cta,
+          }),
+      headline:
+        approvalFocused
+          ? `A clearer path to buying power in ${market}`
+        : strategy.campaignCategory === "luxury"
+          ? `Private access to rare ${brief.propertyType} in ${market}`
+          : `Expert-led path to ${trimWords(cleanOffer, 6)}`,
+      cta,
+      score: 0,
+      recommended: false,
+    },
+    {
+      id: "static-testimonial",
+      angle: "contrarian",
+      imageUrl: "",
+      imageGenerationState: "unavailable",
+      imageGenerationMessage: null,
+      imageGenerationModel: null,
+      visualConcept: `Testimonial-style ad that reframes how ${audience} achieve ${cleanOffer}`,
+      imagePrompt: "",
+      imagePromptConfig: null,
+      preferredImageModel: "gpt-image-1.5",
+      visualPromptBrief: null,
+      scoreBreakdown: null,
+      hook:
+        approvalFocused
+          ? `One buyer in ${market} stopped guessing and finally bought with confidence.`
           : strategy.campaignCategory === "investor"
-          ? "The way most investors find deals is broken"
+          ? `One investor used this process to stop chasing weak-fit deals.`
           : strategy.campaignCategory === "seller"
-            ? fillTemplate(rulePack.approvedHookStructures[1], templateParams)
-            : `The old way is costing you the right move in ${market}.`,
+            ? `One homeowner fixed the pricing mistake before listing in ${market}.`
+            : `This is the kind of result people talk about after the right move in ${market}.`,
       overlayText: buildOverlayText({
         category: strategy.campaignCategory,
         market,
@@ -604,16 +683,26 @@ function buildStaticCreatives(
         proof,
       }),
       primaryText: approvalFocused
-        ? `Most ${audience} are still reacting to listing noise before they know their approval ceiling. ${sentenceCase(mechanism)} reframes the decision around buying power, next-step clarity, and ${proof.toLowerCase()} instead of guesswork. ${cta}.`
-        : `Most ${audience} are still reacting to surface-level options. ${sentenceCase(mechanism)} reframes the decision around ${cleanOffer} and the tension of ${tension.toLowerCase()} with ${proof.toLowerCase()} instead of generic listing noise. ${cta}.`,
+        ? buildStructuredPrimaryText({
+            hook: `A recent ${audience.slice(0, -1) || "buyer"} in ${market} stopped reacting to listing noise before understanding approval.`,
+            problem: `They were close to making the same mistakes most buyers make.`,
+            outcome: `${sentenceCase(mechanism)} gave them next-step clarity and ${proof.toLowerCase()} so they could move with confidence instead of guesswork.`,
+            cta,
+          })
+        : buildStructuredPrimaryText({
+            hook: `We keep seeing the same story from ${audience} in ${market}.`,
+            problem: `They spend too long reacting to surface-level options and weak-fit opportunities.`,
+            outcome: `${sentenceCase(mechanism)} helps them reach ${cleanOffer} with ${proof.toLowerCase()} and a clearer path to the right outcome.`,
+            cta,
+          }),
       headline:
         approvalFocused
-          ? `The old home-search order is costing buyers time`
+          ? `A better buyer outcome starts with clarity`
           : strategy.campaignCategory === "seller"
-          ? `Most homeowners in ${market} are making this mistake`
+          ? `The seller result most homeowners want in ${market}`
           : strategy.campaignCategory === "investor"
-            ? `Stop chasing weak-fit deals in ${market}`
-            : `Stop chasing the wrong ${brief.propertyType}`,
+            ? `What a stronger investor result looks like in ${market}`
+            : `The result people want from the right ${brief.propertyType}`,
       cta,
       score: 0,
       recommended: false,
@@ -680,44 +769,6 @@ function buildStaticCreatives(
       score: 0,
       recommended: false,
     },
-    {
-      id: "static-authority",
-      angle: "authority",
-      imageUrl: "",
-      imageGenerationState: "unavailable",
-      imageGenerationMessage: null,
-      imageGenerationModel: null,
-      visualConcept: `Authority ad positioned as an expert path to ${cleanOffer}`,
-      imagePrompt: "",
-      imagePromptConfig: null,
-      preferredImageModel: "gpt-image-1.5",
-      visualPromptBrief: null,
-      scoreBreakdown: null,
-      hook:
-        approvalFocused
-          ? `${market} buyers: there is a smarter path than guessing first.`
-        : strategy.campaignCategory === "luxury"
-          ? fillTemplate(rulePack.approvedHookStructures[0], templateParams)
-          : `${market} ${audience}: there is a smarter path to ${trimWords(cleanOffer, 6)}.`,
-      overlayText:
-        approvalFocused
-          ? "Approval-Led Strategy"
-        : strategy.campaignCategory === "luxury"
-          ? "Private Access"
-          : "Expert-Led Advantage",
-      primaryText: approvalFocused
-        ? `Most ${audience} rely on broad public-market noise and hope the numbers work later. ${sentenceCase(mechanism)} keeps the decision anchored in approval clarity, realistic buying power, and ${proof.toLowerCase()} so the next move feels clearer. ${cta}.`
-        : `Most ${audience} rely on broad public-market noise. ${sentenceCase(mechanism)} keeps the decision anchored in ${trigger.toLowerCase()}, the tension of ${tension.toLowerCase()}, and ${proof.toLowerCase()} so the next move feels clearer. ${cta}.`,
-      headline:
-        approvalFocused
-          ? `A clearer path to buying power in ${market}`
-        : strategy.campaignCategory === "luxury"
-          ? `Private access to rare ${brief.propertyType} in ${market}`
-          : `A clearer path to ${trimWords(cleanOffer, 6)}`,
-      cta,
-      score: 0,
-      recommended: false,
-    },
   ] as StaticCreativeAsset[];
 
   return rankStaticCreativeAssets(
@@ -739,7 +790,7 @@ function buildStaticCreatives(
         imageGenerationState: "unavailable",
         imageGenerationMessage: "Image preview has not been generated yet.",
         imageGenerationModel: null,
-        imagePrompt: visualBrief.promptConfig.prompt,
+        imagePrompt: visualBrief.promptConfig.prompt ?? "",
         imagePromptConfig: visualBrief.promptConfig,
         preferredImageModel: visualBrief.preferredModel,
         visualPromptBrief: visualBrief,

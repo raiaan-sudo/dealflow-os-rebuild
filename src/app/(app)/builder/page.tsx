@@ -7,9 +7,7 @@ import {
   requirePreviewCompletion,
   resolveActiveCampaignRecord,
 } from "@/lib/paywall-access";
-import { isAuthBypassEnabled } from "@/lib/env";
 import { getAppContext } from "@/lib/services/app-context";
-import { EmptyState } from "@/components/ui/empty-state";
 import type {
   BuiltCampaign,
   CampaignStrategyInput,
@@ -122,21 +120,6 @@ export default async function BuilderPage({
   const context = await getAppContext();
 
   if (!context) {
-    if (isAuthBypassEnabled()) {
-      return (
-        <div className="space-y-6">
-          <PageHeader
-            eyebrow="Setup"
-            title="Build your campaign"
-            description="Auth bypass is on (BYPASS_AUTH). Sign in to load the builder with a real workspace."
-          />
-          <EmptyState
-            title="No workspace session"
-            description="Turn off BYPASS_AUTH or open /login, then return to the builder."
-          />
-        </div>
-      );
-    }
     redirect("/login?redirectedFrom=%2Fbuilder&reason=expired");
   }
 
@@ -162,12 +145,12 @@ export default async function BuilderPage({
         : "setup";
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-[1200px] space-y-6">
       <PageHeader
-        eyebrow="Setup"
-        title="Build your campaign"
-        description="Enter the essentials, build the campaign, and move to preview when the plan looks right."
-        guidance="Use the left side to shape the campaign. The right side stays in sync so you can see the launch package as it forms."
+        eyebrow="Campaign Setup"
+        title="Campaign Setup"
+        description="Enter the essentials, shape the campaign, and move to review when everything looks right."
+        guidance="Use the left side to shape the campaign. The right side updates live so you can review the customer-facing experience as it comes together."
       />
       <CampaignBuilderWorkspace
         initialStrategy={buildInitialStrategyFromPlan(record?.strategy)}

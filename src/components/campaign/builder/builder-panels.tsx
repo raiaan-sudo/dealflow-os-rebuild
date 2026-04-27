@@ -1,6 +1,7 @@
 // @ts-nocheck
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { memo, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -260,11 +261,15 @@ const FunnelLivePreview = memo(function FunnelLivePreview({
                 className="aspect-video w-full bg-black object-cover"
               />
             ) : section.media?.thumbnailUrl ? (
-              <img
-                src={section.media.thumbnailUrl}
-                alt={section.media.label || section.title}
-                className="aspect-video w-full object-cover"
-              />
+              <div className="relative aspect-video w-full">
+                <Image
+                  src={section.media.thumbnailUrl}
+                  alt={section.media.label || section.title}
+                  fill
+                  unoptimized
+                  className="object-cover"
+                />
+              </div>
             ) : (
               <div className="aspect-video bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.12),transparent_28%),linear-gradient(135deg,#112338,#05080d)]" />
             )}
@@ -283,17 +288,25 @@ const FunnelLivePreview = memo(function FunnelLivePreview({
           <h3 className={`mt-3 text-2xl font-semibold ${typography.displayClass}`}>{section.title}</h3>
           <div className="mt-5 overflow-hidden rounded-[24px] border border-current/10 bg-white/70">
             {section.media?.url ? (
-              <img
-                src={section.media.url}
-                alt={section.media.label || section.title}
-                className="aspect-[16/9] w-full object-cover"
-              />
+              <div className="relative aspect-[16/9] w-full">
+                <Image
+                  src={section.media.url}
+                  alt={section.media.label || section.title}
+                  fill
+                  unoptimized
+                  className="object-cover"
+                />
+              </div>
             ) : section.media?.thumbnailUrl ? (
-              <img
-                src={section.media.thumbnailUrl}
-                alt={section.media.label || section.title}
-                className="aspect-[16/9] w-full object-cover"
-              />
+              <div className="relative aspect-[16/9] w-full">
+                <Image
+                  src={section.media.thumbnailUrl}
+                  alt={section.media.label || section.title}
+                  fill
+                  unoptimized
+                  className="object-cover"
+                />
+              </div>
             ) : (
               <div className="aspect-[16/9] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.22),transparent_30%),linear-gradient(135deg,#77c7ff,#0c1829)]" />
             )}
@@ -468,10 +481,12 @@ const StaticAdPreview = memo(function StaticAdPreview({
       <div className="border-y border-black/6">
         <div className={`${compact ? "aspect-[16/11]" : "aspect-[16/9]"} relative overflow-hidden`}>
           {imageUrl ? (
-            <img
+            <Image
               src={imageUrl}
               alt={headline || overlayText || businessName}
-              className="h-full w-full object-cover"
+              fill
+              unoptimized
+              className="object-cover"
             />
           ) : (
             <div
@@ -911,10 +926,10 @@ export function BuilderSetupPanel({
         <div className="grid gap-4">
           <div className="rounded-[20px] border border-primary/15 bg-primary/[0.05] px-4 py-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary/80">
-              Wizard setup
+              Campaign setup
             </p>
             <p className="mt-2 text-sm leading-6 text-primary">
-              Four inputs in. The system rewrites the funnel and ad copy live on the right.
+              Start with the core details. The funnel and ad copy update live on the right.
             </p>
           </div>
           <div className="space-y-2">
@@ -982,7 +997,7 @@ export function BuilderSetupPanel({
         </div>
         {builderError ? <p className="text-sm text-rose-300">{builderError}</p> : null}
         <Button size="lg" type="button" onClick={onBuildCampaignAction} disabled={builderLoading}>
-          {builderLoading ? "Building Campaign..." : "Build Campaign"}
+          {builderLoading ? "Generating campaign..." : "Generate Campaign"}
         </Button>
         <GuidedStepFooter nextLabel="Next: Funnel" onNext={onBuildCampaignAction} />
       </form>
@@ -1705,11 +1720,15 @@ export function BuilderFunnelPanel({
                                               className="aspect-video w-full rounded-[14px] bg-black object-cover"
                                             />
                                           ) : (
-                                            <img
-                                              src={previewUrl}
-                                              alt={asset.asset_type ?? "asset"}
-                                              className="aspect-video w-full rounded-[14px] object-cover"
-                                            />
+                                            <div className="relative aspect-video w-full overflow-hidden rounded-[14px]">
+                                              <Image
+                                                src={previewUrl}
+                                                alt={asset.asset_type ?? "asset"}
+                                                fill
+                                                unoptimized
+                                                className="object-cover"
+                                              />
+                                            </div>
                                           )
                                         ) : (
                                           <div className="aspect-video rounded-[14px] bg-white/[0.04]" />
@@ -1784,11 +1803,15 @@ export function BuilderFunnelPanel({
                                           ].join(" ")}
                                         >
                                           {previewUrl ? (
-                                            <img
-                                              src={previewUrl}
-                                              alt={asset.asset_type}
-                                              className="aspect-video w-full rounded-[14px] object-cover"
-                                            />
+                                            <div className="relative aspect-video w-full overflow-hidden rounded-[14px]">
+                                              <Image
+                                                src={previewUrl}
+                                                alt={asset.asset_type || "thumbnail"}
+                                                fill
+                                                unoptimized
+                                                className="object-cover"
+                                              />
+                                            </div>
                                           ) : (
                                             <div className="aspect-video rounded-[14px] bg-white/[0.04]" />
                                           )}
@@ -2247,7 +2270,7 @@ export function BuilderCreativesPanel(props: {
               {saveLoading ? "Saving..." : "Save Campaign"}
             </Button>
             <Button asChild variant="secondary">
-              <Link href={savedCampaignId ? `/campaigns/${savedCampaignId}` : "/review"}>
+              <Link href={savedCampaignId ? `/campaigns/${savedCampaignId}` : "/preview"}>
                 {savedCampaignId ? "Open Saved Campaign" : "Open Review"}
               </Link>
             </Button>
@@ -2256,7 +2279,7 @@ export function BuilderCreativesPanel(props: {
             backLabel="Back: Funnel"
             onBack={() => setActiveTab("funnel")}
             nextLabel="Next: Review"
-            nextHref={savedCampaignId ? `/campaigns/${savedCampaignId}` : "/review"}
+            nextHref={savedCampaignId ? `/campaigns/${savedCampaignId}` : "/preview"}
           />
         </div>
         {saveError ? <p className="mt-4 text-sm text-rose-300">{saveError}</p> : null}
@@ -2356,10 +2379,10 @@ export const BuilderPreviewPanel = memo(function BuilderPreviewPanel({
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
                       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                        Creative preview grid
+                        Creative review
                       </p>
                       <p className="mt-2 text-sm leading-6 text-white/62">
-                        Compare the static and video creatives side by side instead of reviewing them one at a time.
+                        Compare the static and video creatives side by side before you move to review.
                       </p>
                     </div>
                     <Badge className="border-white/10 bg-white/[0.05] text-white/72">

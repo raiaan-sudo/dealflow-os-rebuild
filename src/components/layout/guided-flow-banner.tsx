@@ -9,13 +9,13 @@ export function GuidedFlowBanner() {
     pathname.startsWith("/build") ||
     pathname.startsWith("/paywall") ||
     pathname.startsWith("/preview") ||
-    pathname.startsWith("/review") ||
+    pathname.startsWith("/preview") ||
     pathname.startsWith("/integrations") ||
     pathname.startsWith("/launch") ||
-    pathname.startsWith("/go-live") ||
+    pathname.startsWith("/launch") ||
     pathname.startsWith("/campaign") ||
     pathname.startsWith("/dashboard") ||
-    pathname.startsWith("/results");
+    pathname.startsWith("/dashboard");
 
   if (hiddenForPrimaryFlows) {
     return null;

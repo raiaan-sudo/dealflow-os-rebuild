@@ -25,11 +25,24 @@ export type MetaAdSetPayload = {
   targeting: {
     geo_locations: {
       countries: string[];
+      custom_locations?: Array<{
+        address_string: string;
+        radius: number;
+        distance_unit: "mile" | "kilometer";
+      }>;
     };
     age_min: number;
     age_max: number;
     interests: Array<{ id: string; name: string }>;
   };
+  promoted_object?: {
+    pixel_id: string;
+    custom_event_type: "LEAD";
+  };
+  tracking_specs?: Array<{
+    action_type: string[];
+    fb_pixel: string[];
+  }>;
   status: "PAUSED" | "ACTIVE";
 };
 
@@ -70,12 +83,14 @@ export function normalizeObjective(objective: string): MetaCampaignPayload["obje
 }
 
 function getInterestKeywords(adSet: ExecutableAdSet) {
-  return adSet.audience
-    .split(/[\s,]+/)
-    .filter(Boolean)
-    .slice(0, 3)
-    .map((value) => value.trim())
-    .filter(Boolean);
+  return [
+    "real estate",
+    "house hunting",
+    "home ownership",
+    "mortgage loans",
+    "Zillow",
+    "Realtor.com",
+  ];
 }
 
 function getMetaObjectStatus(launchMode: "test" | "live") {
@@ -217,32 +232,6 @@ async function createAdCreative(params: {
   };
 }
 
-async function getMetaPageId(accessToken: string, mode: "sandbox" | "live") {
-  if (mode === "sandbox") {
-    return "sandbox-page-id";
-  }
-
-  const url = new URL("https://graph.facebook.com/v19.0/me/accounts");
-  url.searchParams.set("fields", "id,name");
-  url.searchParams.set("limit", "1");
-  url.searchParams.set("access_token", accessToken);
-
-  const result = await fetchMetaJson<{ data?: Array<{ id: string; name: string }> }>(
-    url.toString(),
-  );
-  const pageId = result.data?.[0]?.id;
-
-  if (!pageId) {
-    throw new ApiError(
-      400,
-      "Meta connection does not have an accessible Facebook Page for ad creative publishing.",
-      "meta_page_missing",
-    );
-  }
-
-  return pageId;
-}
-
 export function mapCampaignToMetaPayload(
   campaign: ExecutableCampaign,
   launchMode: "test" | "live" = "test",
@@ -259,9 +248,14 @@ export async function mapAdSetToMetaPayload(
   adSet: ExecutableAdSet,
   accessToken: string,
   accountId: string,
+  pixelId: string,
   mode: "sandbox" | "live",
   launchMode: "test" | "live" = "test",
 ): Promise<MetaAdSetPayload> {
+  if (!pixelId) {
+    throw new ApiError(400, "Missing selected Meta assets", "missing_selected_meta_assets");
+  }
+
   const numericBudget = Number(adSet.budget.replace(/[^0-9.]/g, ""));
   const computedDailyBudget = Math.max(1000, Math.round((numericBudget / 30) * 100));
   const dailyBudget = launchMode === "test" ? Math.min(computedDailyBudget, 1000) : computedDailyBudget;
@@ -282,11 +276,28 @@ export async function mapAdSetToMetaPayload(
     targeting: {
       geo_locations: {
         countries: [inferCountryCode(adSet.location)],
+        custom_locations: [
+          {
+            address_string: adSet.location,
+            radius: 25,
+            distance_unit: "mile",
+          },
+        ],
       },
       age_min: ageRange.min,
       age_max: ageRange.max,
       interests,
     },
+    promoted_object: {
+      pixel_id: pixelId,
+      custom_event_type: "LEAD",
+    },
+    tracking_specs: [
+      {
+        action_type: ["offsite_conversion"],
+        fb_pixel: [pixelId],
+      },
+    ],
     status: getMetaObjectStatus(launchMode),
   };
 }
@@ -309,11 +320,15 @@ export async function mapAdToMetaPayload(
   ad: ExecutableAd,
   accessToken: string,
   accountId: string,
+  pageId: string,
   mode: "sandbox" | "live",
   launchMode: "test" | "live" = "test",
 ): Promise<{ adPayload: MetaAdPayload; creativeId: string }> {
+  if (!pageId) {
+    throw new ApiError(400, "Missing selected Meta assets", "missing_selected_meta_assets");
+  }
+
   const destinationUrl = toAbsoluteDestinationUrl(ad.destinationUrl);
-  const pageId = await getMetaPageId(accessToken, mode);
   const creative = await createAdCreative({
     accountId,
     accessToken,

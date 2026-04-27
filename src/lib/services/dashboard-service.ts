@@ -77,7 +77,7 @@ export async function getDashboardData(
   const leadsQuery = supabase
     .from("leads")
     .select(
-      "id, first_name, last_name, status, source, estimated_value, created_at",
+      "id, first_name, last_name, email, phone, campaign_id, status, source, estimated_value, created_at",
       { count: "exact" },
     )
     .eq("organization_id", organizationId)

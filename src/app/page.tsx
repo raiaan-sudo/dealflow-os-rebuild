@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { isAuthBypassEnabled } from "@/lib/env";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
@@ -19,12 +18,27 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Pr
   });
 }
 
-export default async function HomePage() {
-  if (isAuthBypassEnabled()) {
-    redirect("/dashboard");
+function getSafeRedirectPath(value?: string | null) {
+  if (!value) {
+    return "/dashboard";
   }
 
+  if (!value.startsWith("/") || value.startsWith("//")) {
+    return "/dashboard";
+  }
+
+  return value;
+}
+
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const supabase = await createRouteHandlerClient();
+  const params = searchParams ? await searchParams : {};
+  const nextPath =
+    typeof params.next === "string" ? getSafeRedirectPath(params.next) : "/dashboard";
 
   if (!supabase) {
     redirect("/login");
@@ -36,5 +50,5 @@ export default async function HomePage() {
     null,
   );
 
-  redirect(user ? "/dashboard" : "/login");
+  redirect(user ? nextPath : "/login");
 }

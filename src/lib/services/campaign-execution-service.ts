@@ -474,6 +474,7 @@ function buildLaunchAssets(record: FullCampaignRecord): CampaignLaunchAsset[] {
     const copy = record.creatives.copy[index] ?? record.creatives.copy[0];
 
     return {
+      id: creative?.id || copy?.id || `launch-asset-${index + 1}`,
       creativeId: creative?.id || "",
       copyId: copy?.id ?? record.creatives.copy[0]?.id ?? "",
       hook: (creative?.hook ?? "").trim(),
@@ -528,8 +529,8 @@ async function getOwnedMetaAdAccount(
 
 function mapLaunchConfigFromExecution(execution: CampaignExecution): CampaignLaunchInput {
   return {
-    campaign_id: execution.campaign_id,
-    meta_ad_account_id: execution.meta_ad_account_id,
+    campaign_id: execution.campaign_id ?? undefined,
+    meta_ad_account_id: execution.meta_ad_account_id ?? undefined,
     objective: (execution.objective as CampaignLaunchObjective | null) ?? "LEADS",
     destination_url: execution.destination_url ?? "",
     budget_type: execution.budget_type === "lifetime" ? "lifetime" : "daily",
@@ -651,11 +652,15 @@ export async function validateCampaignForLaunch(
     errors.push("Campaign must include a funnel blueprint.");
   }
 
-  const metaAccount = await getOwnedMetaAdAccount(
-    supabase,
-    organizationId,
-    launchInput.meta_ad_account_id,
-  );
+  const selectedMetaAdAccountId = launchInput.meta_ad_account_id?.trim() || null;
+
+  if (!selectedMetaAdAccountId) {
+    errors.push("A Meta ad account selection is required.");
+  }
+
+  const metaAccount = selectedMetaAdAccountId
+    ? await getOwnedMetaAdAccount(supabase, organizationId, selectedMetaAdAccountId)
+    : null;
 
   if (!metaAccount) {
     errors.push("Selected Meta ad account could not be found.");
@@ -674,9 +679,10 @@ export async function validateCampaignForLaunch(
   }
 
   let destinationUrl = "";
+  const rawDestinationUrl = launchInput.destination_url?.trim() || "";
 
   try {
-    destinationUrl = toAbsoluteLaunchUrl(launchInput.destination_url);
+    destinationUrl = toAbsoluteLaunchUrl(rawDestinationUrl);
   } catch (error) {
     errors.push(error instanceof Error ? error.message : "Destination URL is invalid.");
   }
@@ -719,7 +725,9 @@ export async function validateCampaignForLaunch(
       errors.push(`${label} is missing a CTA.`);
     }
 
-    if (!RECOGNIZED_CREATIVE_FORMATS.has(asset.format)) {
+    const assetFormat = asset.format ?? "";
+
+    if (!RECOGNIZED_CREATIVE_FORMATS.has(assetFormat)) {
       errors.push(`${label} uses an unsupported creative format.`);
     }
   });
@@ -763,7 +771,7 @@ export function buildMetaCampaignPayload(
 ): BuiltMetaCampaignPayload {
   return {
     name: `${campaignRecord.campaign.name} | ${campaignRecord.strategy.location || "Autopilot"}`.trim(),
-    objective: normalizeObjective(config.objective),
+    objective: normalizeObjective(config.objective ?? "LEADS"),
     status: "PAUSED",
     special_ad_categories: ["HOUSING"],
   };
@@ -774,11 +782,14 @@ export function buildMetaAdSetPayloads(
   config: ValidatedLaunchConfig,
 ): BuiltMetaAdSetPayload[] {
   const ageRange = getAgeRange(campaignRecord.strategy.market_type);
-  const keywords = `${campaignRecord.strategy.audience} ${campaignRecord.strategy.offer}`
-    .split(/[\s,]+/)
-    .map((value) => value.trim())
-    .filter((value) => value.length > 3)
-    .slice(0, 3);
+  const interests = [
+    { id: "seed_interest_real_estate", name: "real estate" },
+    { id: "seed_interest_house_hunting", name: "house hunting" },
+    { id: "seed_interest_home_ownership", name: "home ownership" },
+    { id: "seed_interest_mortgage_loans", name: "mortgage loans" },
+    { id: "seed_interest_zillow", name: "Zillow" },
+    { id: "seed_interest_realtor", name: "Realtor.com" },
+  ];
 
   return [
     {
@@ -792,15 +803,17 @@ export function buildMetaAdSetPayloads(
       targeting: {
         geo_locations: {
           countries: [inferCountryCode(campaignRecord.strategy.location)],
+          custom_locations: [
+            {
+              address_string: campaignRecord.strategy.location,
+              radius: 25,
+              distance_unit: "mile",
+            },
+          ],
         },
         age_min: ageRange.min,
         age_max: ageRange.max,
-        interests: keywords.length > 0
-          ? keywords.map((keyword, index) => ({
-              id: `seed_interest_${index + 1}`,
-              name: keyword,
-            }))
-          : undefined,
+        interests,
       },
       promoted_object: config.pixelId
         ? {
@@ -864,7 +877,13 @@ export async function createCampaignExecutionRecord(
   config: CampaignLaunchInput,
 ) {
   const { supabase, organizationId } = await requireExecutionContext(userId);
-  const metaAccount = await getOwnedMetaAdAccount(supabase, organizationId, config.meta_ad_account_id);
+  const selectedMetaAdAccountId = config.meta_ad_account_id?.trim();
+
+  if (!selectedMetaAdAccountId) {
+    throw new ApiError(400, "A Meta ad account selection is required.", "meta_account_missing");
+  }
+
+  const metaAccount = await getOwnedMetaAdAccount(supabase, organizationId, selectedMetaAdAccountId);
 
   if (!metaAccount) {
     throw new ApiError(400, "Selected Meta ad account could not be found.", "meta_account_missing");
@@ -928,7 +947,12 @@ export async function listExecutionsForCampaign(campaignId: string, userId: stri
   return results;
 }
 
-export async function getExecutionById(executionId: string): Promise<ExecutionDetailRecord | null> {
+export async function getExecutionById(executionId: string): Promise<{
+  execution: CampaignExecution;
+  adSets: CampaignExecutionAdSet[];
+  ads: CampaignExecutionAd[];
+  logs: CampaignExecutionLog[];
+} | null> {
   const { supabase, userId } = await requireExecutionContext();
   const { data: execution, error } = await supabase
     .from("campaign_executions")
@@ -989,6 +1013,10 @@ export async function launchCampaignExecution(executionId: string): Promise<Camp
   }
 
   const execution = detail.execution;
+
+  if (!execution.campaign_id) {
+    throw new ApiError(400, "Execution is missing a campaign ID.", "campaign_id_missing");
+  }
   const launchInput = mapLaunchConfigFromExecution(execution);
 
   await updateExecutionRecord(supabase, executionId, {
@@ -1001,16 +1029,18 @@ export async function launchCampaignExecution(executionId: string): Promise<Camp
   const validation = await validateCampaignForLaunch(execution.campaign_id, userId, launchInput);
 
   if (!validation.ok) {
+    const validationErrors = validation.errors ?? ["Launch validation failed."];
+
     await logExecutionFailure(
       supabase,
       executionId,
       "validation_failed",
       "Launch validation failed.",
-      { errors: validation.errors } as Json,
+      { errors: validationErrors } as Json,
     );
     await updateExecutionRecord(supabase, executionId, {
       execution_status: "failed",
-      error_message: validation.errors.join(" "),
+      error_message: validationErrors.join(" "),
       completed_at: new Date().toISOString(),
     });
 
@@ -1038,28 +1068,34 @@ export async function launchCampaignExecution(executionId: string): Promise<Camp
   );
 
   const blueprint = validation.blueprint;
-  const campaignPayload = buildMetaCampaignPayload(validation.campaign, validation.config);
-  const adSetPayloads = buildMetaAdSetPayloads(validation.campaign, validation.config);
+  const validatedCampaign = validation.campaign;
+  const validatedConfig = validation.config;
+
+  if (!validatedCampaign || !validatedConfig) {
+    throw new ApiError(
+      500,
+      "Validated launch data is incomplete.",
+      "launch_validation_incomplete",
+    );
+  }
+
+  const blueprintName = blueprint?.name ?? validatedCampaign.campaign.name;
+
+  const campaignPayload = buildMetaCampaignPayload(validatedCampaign, validatedConfig);
+  const adSetPayloads = buildMetaAdSetPayloads(validatedCampaign, validatedConfig);
   const launchReadyMedia = await getLaunchReadyCreativeMedia(
-    validation.campaign.campaign.id,
+    validatedCampaign.campaign.id,
     userId,
   ).catch(() => []);
   const adPayloads = buildMetaAdPayloads(
-    validation.campaign,
-    validation.config,
+    validatedCampaign,
+    validatedConfig,
     launchReadyMedia,
   );
   const metaPayload: MetaLaunchPayload = {
     campaign: campaignPayload as unknown as Record<string, Json | string | number | boolean | null>,
     adSets: adSetPayloads as unknown as Array<Record<string, Json | string | number | boolean | null>>,
-    ads: adPayloads.map((entry) => ({
-      name: entry.adPayload.name,
-      status: entry.adPayload.status,
-      creative_name: entry.creativePayload.name,
-      headline: entry.asset.headline,
-      cta: entry.asset.cta,
-      destination_url: validation.config.destinationUrl,
-    })),
+    ads: adPayloads,
   };
 
   await logExecutionInfo(
@@ -1083,17 +1119,25 @@ export async function launchCampaignExecution(executionId: string): Promise<Camp
 
   await updateExecutionRecord(supabase, executionId, {
     execution_status: "launching",
-    objective: validation.config.objective,
-    destination_url: validation.config.destinationUrl,
-    budget_type: validation.config.budgetType,
-    daily_budget: validation.config.dailyBudget,
-    lifetime_budget: validation.config.lifetimeBudget,
+    objective: validatedConfig.objective,
+    destination_url: validatedConfig.destinationUrl,
+    budget_type: validatedConfig.budgetType,
+    daily_budget: validatedConfig.dailyBudget,
+    lifetime_budget: validatedConfig.lifetimeBudget,
   });
+
+  if (!validatedConfig.metaAdAccountId) {
+    throw new ApiError(
+      500,
+      "Validated launch config is missing a Meta ad account ID.",
+      "launch_meta_account_missing",
+    );
+  }
 
   const metaAccount = (await getOwnedMetaAdAccount(
     supabase,
     organizationId,
-    validation.config.metaAdAccountId,
+    validatedConfig.metaAdAccountId,
   )) as MetaConnectionRecord | null;
 
   if (!metaAccount) {
@@ -1121,7 +1165,7 @@ export async function launchCampaignExecution(executionId: string): Promise<Camp
       executionId,
       "meta_campaign_created",
       "Meta campaign created.",
-      { campaignId: createdCampaign.id, campaignName: blueprint.name } as Json,
+      { campaignId: createdCampaign.id, campaignName: blueprintName } as Json,
     );
 
     for (const adSetPayload of adSetPayloads) {
@@ -1132,9 +1176,9 @@ export async function launchCampaignExecution(executionId: string): Promise<Camp
           name: adSetPayload.name,
           audience_payload: adSetPayload.targeting as unknown as Json,
           budget_payload: {
-            budget_type: validation.config.budgetType,
-            daily_budget: validation.config.dailyBudget,
-            lifetime_budget: validation.config.lifetimeBudget,
+            budget_type: validatedConfig.budgetType,
+            daily_budget: validatedConfig.dailyBudget,
+            lifetime_budget: validatedConfig.lifetimeBudget,
           } as unknown as Json,
           status: "creating",
         } as never)
@@ -1175,7 +1219,7 @@ export async function launchCampaignExecution(executionId: string): Promise<Camp
             headline: adPayload.asset.headline,
             primary_text: adPayload.asset.primaryText,
             cta: adPayload.asset.cta,
-            destination_url: validation.config.destinationUrl,
+            destination_url: validatedConfig.destinationUrl,
             format: adPayload.asset.format,
             status: "creating",
             raw_payload: {
@@ -1264,7 +1308,7 @@ export async function launchCampaignExecution(executionId: string): Promise<Camp
 
     const publishResult = await publishMetaCampaignIfNeeded({
       connection: metaAccount,
-      startImmediately: validation.config.startImmediately,
+      startImmediately: validatedConfig.startImmediately ?? true,
       campaignId: createdCampaign.id,
       adSetIds: createdAdSetIds,
       adIds: createdAdIds,

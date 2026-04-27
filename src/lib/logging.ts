@@ -3,7 +3,21 @@ type LogLevel = "info" | "warn" | "error";
 type LogPayload = Record<string, unknown>;
 
 function write(level: LogLevel, message: string, payload?: LogPayload) {
-  if (process.env.NODE_ENV !== "development") {
+  const shouldWriteInfo =
+    process.env.NODE_ENV === "development" ||
+    process.env.ENABLE_STRUCTURED_INFO_LOGS === "true";
+  const shouldWriteWarning = process.env.NODE_ENV === "development" || process.env.NODE_ENV === "production";
+  const shouldWriteError = true;
+
+  if (level === "info" && !shouldWriteInfo) {
+    return;
+  }
+
+  if (level === "warn" && !shouldWriteWarning) {
+    return;
+  }
+
+  if (level === "error" && !shouldWriteError) {
     return;
   }
 
@@ -39,4 +53,15 @@ export function logWarn(message: string, payload?: LogPayload) {
 
 export function logError(message: string, payload?: LogPayload) {
   write("error", message, payload);
+}
+
+export function logOperationalEvent(message: string, payload?: LogPayload) {
+  const entry = {
+    level: "info",
+    message,
+    timestamp: new Date().toISOString(),
+    ...(payload ? { payload } : {}),
+  };
+
+  console.info(JSON.stringify(entry));
 }

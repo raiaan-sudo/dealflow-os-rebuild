@@ -27,9 +27,9 @@ export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps
           : "Results";
   const productNavigation = [
     { href: "/builder", label: "Build", icon: Wand2 },
-    { href: "/review", label: "Review", icon: Eye },
-    { href: "/go-live", label: "Go Live", icon: Rocket },
-    { href: "/results", label: "Results", icon: BarChart3 },
+    { href: "/preview", label: "Review", icon: Eye },
+    { href: "/launch", label: "Go Live", icon: Rocket },
+    { href: "/dashboard", label: "Results", icon: BarChart3 },
   ];
 
   return (
@@ -65,10 +65,10 @@ export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps
               const isActive =
                 item.href === "/builder"
                   ? pathname.startsWith("/builder") || pathname.startsWith("/build")
-                  : item.href === "/go-live"
+                  : item.href === "/launch"
                   ? pathname.startsWith("/launch") || pathname.startsWith("/integrations") || pathname.startsWith("/campaign")
-                  : item.href === "/results"
-                    ? pathname.startsWith("/dashboard") || pathname.startsWith("/results")
+                  : item.href === "/dashboard"
+                    ? pathname.startsWith("/dashboard")
                   : pathname === item.href || pathname.startsWith(item.href);
               const Icon = item.icon;
 

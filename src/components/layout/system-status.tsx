@@ -53,7 +53,7 @@ function getStatusForPath(pathname: string) {
 
   return {
     label: "Workspace status",
-    title: "Campaign workspace ready",
+    title: "Campaign workspace active",
     description: "Use the current step to keep moving through build, review, and launch.",
     tone: "calm" as StatusTone,
   };

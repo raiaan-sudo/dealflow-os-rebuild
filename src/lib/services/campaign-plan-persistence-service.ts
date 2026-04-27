@@ -1,15 +1,34 @@
 import { createClient } from "@/lib/supabase/server";
+import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
 import type { Database, Json } from "@/lib/supabase/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CampaignIntent } from "@/lib/campaign-intent";
 import type { CampaignPlan } from "@/lib/services/campaign-plan-service";
 import { debugLog } from "@/lib/debug";
 import type { PersistedAssetGenerationState } from "@/lib/services/asset-generation-lifecycle";
 import { persistStaticCreativeAssets } from "@/lib/services/static-creative-asset-service";
 import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
+import {
+  buildCampaignPlanCriticalFieldPatch,
+  CURRENT_CAMPAIGN_PLAN_VERSION,
+  getLaunchStatusFromPlan,
+  getLeadLoopVerifiedFromPlan,
+  getPublicSlugFromPlan,
+  readCampaignPlanDocument,
+  toCampaignPlanJson,
+} from "@/lib/services/campaign-plan-document";
 
 type CampaignPlanRow = Database["public"]["Tables"]["campaign_plans"]["Row"];
+type CampaignPlanClient = SupabaseClient<Database>;
+
+export const CAMPAIGN_PLAN_CRITICAL_FIELD_AUTHORITY = {
+  launch_status: "plan_json",
+  lead_loop_verified: "plan_json",
+  public_slug: "plan_json",
+} as const;
 
 export type PersistedCampaignPlanPayload = {
+  version: number;
   client_name: string;
   business_name: string;
   intent: CampaignIntent;
@@ -62,6 +81,342 @@ type MinimalPersistParams = {
   userId: string;
   ownerId?: string;
 };
+
+type CampaignPlanCriticalFieldSnapshot = {
+  launch_status: string | null;
+  lead_loop_verified: boolean;
+  public_slug: string | null;
+};
+
+export type CampaignPlanConsistencyStatus = {
+  fields: CampaignPlanCriticalFieldSnapshot;
+  rowMatchesPlan: boolean;
+  mismatchedFields: Array<keyof CampaignPlanCriticalFieldSnapshot>;
+  missingCriticalFields: string[];
+};
+
+function normalizeNullableString(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function readCriticalFieldsFromRow(row: Partial<CampaignPlanRow> | null | undefined): CampaignPlanCriticalFieldSnapshot {
+  return {
+    launch_status: normalizeNullableString(row?.launch_status),
+    lead_loop_verified: row?.lead_loop_verified === true,
+    public_slug: normalizeNullableString(row?.public_slug),
+  };
+}
+
+function readCriticalFieldsFromPlan(plan: unknown): CampaignPlanCriticalFieldSnapshot {
+  return {
+    launch_status: getLaunchStatusFromPlan(plan),
+    lead_loop_verified: getLeadLoopVerifiedFromPlan(plan),
+    public_slug: getPublicSlugFromPlan(plan),
+  };
+}
+
+function criticalFieldValuesEqual(
+  previous: CampaignPlanCriticalFieldSnapshot,
+  next: CampaignPlanCriticalFieldSnapshot,
+) {
+  return (
+    previous.launch_status === next.launch_status &&
+    previous.lead_loop_verified === next.lead_loop_verified &&
+    previous.public_slug === next.public_slug
+  );
+}
+
+function getMismatchedCriticalFields(
+  rowValues: CampaignPlanCriticalFieldSnapshot,
+  planValues: CampaignPlanCriticalFieldSnapshot,
+) {
+  return (["launch_status", "lead_loop_verified", "public_slug"] as const).filter(
+    (field) => rowValues[field] !== planValues[field],
+  );
+}
+
+function getMissingCriticalFields(values: CampaignPlanCriticalFieldSnapshot) {
+  const missing: string[] = [];
+
+  if (!values.launch_status) {
+    missing.push("launch_status");
+  }
+
+  if (!values.public_slug) {
+    missing.push("public_slug");
+  }
+
+  return missing;
+}
+
+function logCriticalFieldNulls(params: {
+  campaignId: string;
+  source: string;
+  values: CampaignPlanCriticalFieldSnapshot;
+}) {
+  const missingFields = getMissingCriticalFields(params.values);
+
+  if (missingFields.length === 0) {
+    return;
+  }
+
+  logWarn("campaign_plan_critical_field_missing", {
+    campaignId: params.campaignId,
+    source: params.source,
+    missingFields,
+    mismatchCount: 0,
+    correctionCount: 0,
+    values: params.values,
+  });
+}
+
+function logConsistencyMetric(params: {
+  event: "campaign_plan_consistency_mismatch" | "campaign_plan_consistency_correction";
+  campaignId: string;
+  source: string;
+  mismatchedFields: Array<keyof CampaignPlanCriticalFieldSnapshot>;
+  correctionCount: number;
+}) {
+  logOperationalEvent(params.event, {
+    campaignId: params.campaignId,
+    source: params.source,
+    mismatchCount: params.mismatchedFields.length,
+    correctionCount: params.correctionCount,
+    mismatchedFields: params.mismatchedFields,
+  });
+}
+
+function logCriticalFieldDrift(params: {
+  campaignId: string;
+  source: string;
+  rowValues: CampaignPlanCriticalFieldSnapshot;
+  planValues: CampaignPlanCriticalFieldSnapshot;
+}) {
+  if (criticalFieldValuesEqual(params.rowValues, params.planValues)) {
+    logCriticalFieldNulls({
+      campaignId: params.campaignId,
+      source: params.source,
+      values: params.planValues,
+    });
+    return;
+  }
+
+  const mismatchedFields = getMismatchedCriticalFields(params.rowValues, params.planValues);
+
+  logWarn("campaign_plan_critical_field_drift_detected", {
+    campaignId: params.campaignId,
+    source: params.source,
+    authority: CAMPAIGN_PLAN_CRITICAL_FIELD_AUTHORITY,
+    rowValues: params.rowValues,
+    planValues: params.planValues,
+    mismatchedFields,
+    mismatchCount: mismatchedFields.length,
+  });
+
+  logConsistencyMetric({
+    event: "campaign_plan_consistency_mismatch",
+    campaignId: params.campaignId,
+    source: params.source,
+    mismatchedFields,
+    correctionCount: 0,
+  });
+
+  logCriticalFieldNulls({
+    campaignId: params.campaignId,
+    source: params.source,
+    values: params.planValues,
+  });
+}
+
+function logCriticalFieldChanges(params: {
+  campaignId: string;
+  source: string;
+  previousValues: CampaignPlanCriticalFieldSnapshot;
+  nextValues: CampaignPlanCriticalFieldSnapshot;
+}) {
+  for (const field of ["launch_status", "lead_loop_verified", "public_slug"] as const) {
+    if (params.previousValues[field] === params.nextValues[field]) {
+      continue;
+    }
+
+    logOperationalEvent("campaign_plan_critical_field_changed", {
+      campaignId: params.campaignId,
+      source: params.source,
+      field,
+      previousValue: params.previousValues[field],
+      newValue: params.nextValues[field],
+      authority: CAMPAIGN_PLAN_CRITICAL_FIELD_AUTHORITY[field],
+    });
+  }
+}
+
+async function loadCampaignPlanRecordForPersistence(params: {
+  supabase: CampaignPlanClient;
+  campaignId: string;
+  userId?: string | null;
+}) {
+  let query = params.supabase
+    .from("campaign_plans")
+    .select("*")
+    .eq("id", params.campaignId);
+
+  if (params.userId) {
+    query = query.eq("user_id", params.userId);
+  }
+
+  const result = (await query.maybeSingle()) as {
+    data: CampaignPlanRow | null;
+    error: Error | null;
+  };
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  return result.data;
+}
+
+export function readCampaignPlanDocumentWithDriftGuard(
+  row: Partial<CampaignPlanRow> & { id: string; plan?: unknown },
+  source: string,
+) {
+  let normalizedPlan;
+
+  try {
+    normalizedPlan = readCampaignPlanDocument(row.plan);
+  } catch (error) {
+    logError("campaign_plan_validation_patch_failed", {
+      campaignId: row.id,
+      source,
+      stage: "read",
+      error: error instanceof Error ? error.message : "Unknown validation failure",
+    });
+    throw error;
+  }
+
+  logCriticalFieldDrift({
+    campaignId: row.id,
+    source,
+    rowValues: readCriticalFieldsFromRow(row),
+    planValues: readCriticalFieldsFromPlan(normalizedPlan),
+  });
+  return normalizedPlan;
+}
+
+export function getCampaignPlanConsistencyStatus(
+  row: Partial<CampaignPlanRow> & { plan?: unknown },
+): CampaignPlanConsistencyStatus {
+  const fields = readCriticalFieldsFromPlan(row.plan);
+  const rowFields = readCriticalFieldsFromRow(row);
+  const mismatchedFields = getMismatchedCriticalFields(rowFields, fields);
+
+  return {
+    fields,
+    rowMatchesPlan: mismatchedFields.length === 0,
+    mismatchedFields: [...mismatchedFields],
+    missingCriticalFields: getMissingCriticalFields(fields),
+  };
+}
+
+export async function persistCampaignPlanDocumentUpdate(params: {
+  supabase: CampaignPlanClient;
+  campaignId: string;
+  userId?: string | null;
+  plan: unknown;
+  source: string;
+  existingRow?: CampaignPlanRow | null;
+}) {
+  // Authoritative contract:
+  // - campaign_plans.plan is the source of truth
+  // - row-level critical fields are derived projections only
+  // - all campaign plan mutations must flow through this helper
+  let normalizedPlan;
+
+  try {
+    normalizedPlan = readCampaignPlanDocument(params.plan);
+  } catch (error) {
+    logError("campaign_plan_validation_patch_failed", {
+      campaignId: params.campaignId,
+      source: params.source,
+      stage: "write_normalize",
+      error: error instanceof Error ? error.message : "Unknown validation failure",
+    });
+    throw error;
+  }
+
+  let patch;
+
+  try {
+    patch = buildCampaignPlanCriticalFieldPatch(normalizedPlan);
+  } catch (error) {
+    logError("campaign_plan_validation_patch_failed", {
+      campaignId: params.campaignId,
+      source: params.source,
+      stage: "write_patch",
+      error: error instanceof Error ? error.message : "Unknown critical field patch failure",
+    });
+    throw error;
+  }
+  const existingRow =
+    params.existingRow ??
+    (await loadCampaignPlanRecordForPersistence({
+      supabase: params.supabase,
+      campaignId: params.campaignId,
+      userId: params.userId ?? null,
+    }));
+
+  if (!existingRow) {
+    throw new Error("Campaign plan row could not be found for persistence.");
+  }
+
+  const previousValues = readCriticalFieldsFromRow(existingRow);
+  const nextValues = readCriticalFieldsFromPlan(normalizedPlan);
+
+  logCriticalFieldDrift({
+    campaignId: params.campaignId,
+    source: `${params.source}:before_save`,
+    rowValues: previousValues,
+    planValues: readCriticalFieldsFromPlan(existingRow.plan),
+  });
+
+  logCriticalFieldChanges({
+    campaignId: params.campaignId,
+    source: params.source,
+    previousValues,
+    nextValues,
+  });
+
+  const correctedFields = getMismatchedCriticalFields(previousValues, nextValues);
+  if (correctedFields.length > 0) {
+    logConsistencyMetric({
+      event: "campaign_plan_consistency_correction",
+      campaignId: params.campaignId,
+      source: params.source,
+      mismatchedFields: correctedFields,
+      correctionCount: correctedFields.length,
+    });
+  }
+
+  let query = params.supabase
+    .from("campaign_plans")
+    .update(patch as never)
+    .eq("id", params.campaignId);
+
+  if (params.userId) {
+    query = query.eq("user_id", params.userId);
+  }
+
+  const result = (await query.select("*").single()) as {
+    data: CampaignPlanRow | null;
+    error: Error | null;
+  };
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  return result.data as CampaignPlanRow;
+}
 
 function isLegacySingleCampaignConstraintError(error: unknown) {
   if (!error || typeof error !== "object") {
@@ -218,9 +573,11 @@ function normalizePersistedFunnel(params: {
 }
 
 function buildModernCampaignPlanRecord(params: PersistPlanParams) {
+  const normalizedPlan = readCampaignPlanDocument(params.payload);
+
   return {
     ...buildCampaignPlanRecordBase(params),
-    plan: params.payload as unknown as Json,
+    ...buildCampaignPlanCriticalFieldPatch(normalizedPlan),
   };
 }
 
@@ -331,6 +688,7 @@ export function buildPersistedCampaignPlanPayload(params: {
   const { generatedPlan, runtime } = params;
 
   return {
+    version: CURRENT_CAMPAIGN_PLAN_VERSION,
     client_name: generatedPlan.clientName,
     business_name: generatedPlan.businessName,
     intent: generatedPlan.intent,
@@ -402,12 +760,14 @@ export async function insertMinimalCampaignPlan(params: MinimalPersistParams) {
     throw new Error("Supabase client could not be created.");
   }
 
+  const minimalPlan = readCampaignPlanDocument({ test: true });
+
   const result = (await supabase
     .from("campaign_plans")
     .insert(
       {
         ...buildCampaignPlanRecordBase(params),
-        plan: { test: true } as unknown as Json,
+        ...buildCampaignPlanCriticalFieldPatch(minimalPlan),
       } as never,
     )
     .select("*")

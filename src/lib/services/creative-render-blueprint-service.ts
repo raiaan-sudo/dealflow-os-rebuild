@@ -2,6 +2,7 @@ import type {
   CaptionSegment,
   CreativeAssetFormat,
   CreativeProductionPlan,
+  ImagePromptConfig,
   RenderBlueprint,
   RenderBlueprintScene,
 } from "@/lib/types/creative-assets";
@@ -34,6 +35,27 @@ function buildOverlayText(value: string) {
   return value.length > 72 ? `${value.slice(0, 69)}...` : value;
 }
 
+function normalizeAspectRatio(format: CreativeAssetFormat): ImagePromptConfig["aspectRatio"] {
+  switch (format) {
+    case "vertical":
+    case "story":
+    case "reel":
+      return "9:16";
+    case "feed":
+      return "4:5";
+    case "16:9":
+      return "16:9";
+    case "4:5":
+      return "4:5";
+    case "9:16":
+      return "9:16";
+    case "1:1":
+    case "square":
+    default:
+      return "1:1";
+  }
+}
+
 function buildBaseScenes(plan: CreativeProductionPlan, format: CreativeAssetFormat): RenderBlueprintScene[] {
   const captions = segmentCaptions(plan.normalizedScript.script);
 
@@ -59,7 +81,7 @@ function buildBaseScenes(plan: CreativeProductionPlan, format: CreativeAssetForm
               `Audience: ${plan.metadata.audience ?? ""}. Offer: ${plan.metadata.offer ?? ""}.`,
             negativePrompt: "low quality, distorted faces, surreal, text-heavy",
             style: plan.assetType === "montage_video" ? "realistic" : "graphic",
-            aspectRatio: format,
+            aspectRatio: normalizeAspectRatio(format),
           },
   }));
 }

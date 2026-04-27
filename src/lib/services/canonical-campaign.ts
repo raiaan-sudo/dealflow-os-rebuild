@@ -1,5 +1,6 @@
 import { buildCreativeBrief } from "@/lib/ai/creative-brief";
 import { inferCampaignIntent, type CampaignIntent } from "@/lib/campaign-intent";
+import { readCampaignPlanDocumentWithDriftGuard } from "@/lib/services/campaign-plan-persistence-service";
 import { readPersistedAssetGenerationState } from "@/lib/services/asset-generation-lifecycle";
 import { normalizeCreativeStrategy } from "@/lib/services/campaign-creative-strategy";
 import type {
@@ -10,7 +11,7 @@ import type {
 } from "@/lib/services/campaign-plan-service";
 import { buildCampaign, type BuiltCampaign, type CampaignStrategyInput } from "@/lib/services/campaign-orchestrator";
 import type { CanonicalCreativeItem, StaticCreativeAsset, VideoCreativeAsset } from "@/lib/services/creative-engine";
-import type { FunnelBlueprint, FunnelSection } from "@/lib/services/funnel-engine";
+import type { FunnelBlueprint, FunnelSection, FunnelType } from "@/lib/services/funnel-engine";
 import type {
   Campaign,
   CampaignCopy,
@@ -76,6 +77,14 @@ function normalizeStaticCreativeAngle(
     value === "authority"
     ? value
     : "opportunity";
+}
+
+function normalizeFunnelType(value: unknown, fallback: FunnelType): FunnelType {
+  return value === "landing_page_form" ||
+    value === "landing_page_survey" ||
+    value === "landing_page_book_call"
+    ? value
+    : fallback;
 }
 
 function applySavedStaticGenerationLifecycle(
@@ -487,9 +496,7 @@ function normalizeFunnel(
   const source = value ?? {};
 
   return {
-    id: `${campaignId}-funnel`,
-    campaign_id: campaignId,
-    funnel_type: safeText(source.funnel_type) || built.funnel.funnel_type,
+    funnel_type: normalizeFunnelType(source.funnel_type, built.funnel.funnel_type),
     headline: safeText(source.headline) || built.funnel.headline,
     subheadline: safeText(source.subheadline) || built.funnel.subheadline,
     cta: safeText(source.cta) || built.funnel.cta,
@@ -499,7 +506,6 @@ function normalizeFunnel(
     optimization_notes: Array.isArray(source.optimization_notes)
       ? source.optimization_notes.map(String)
       : built.funnel.optimization_notes,
-    created_at: createdAt,
   };
 }
 
@@ -822,5 +828,5 @@ export function getSavedCampaignDocumentFromRow(row: CampaignPlanRow): SavedCamp
     return null;
   }
 
-  return row.plan as unknown as SavedCampaignDocument;
+  return readCampaignPlanDocumentWithDriftGuard(row, "canonical_campaign_read") as unknown as SavedCampaignDocument;
 }

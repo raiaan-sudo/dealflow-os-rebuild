@@ -7,6 +7,7 @@ import {
   normalizeCanonicalCampaign,
   type SavedCampaignDocument,
 } from "@/lib/services/canonical-campaign";
+import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import { getAppContext } from "@/lib/services/app-context";
 import {
   completeAssetGenerationLifecycle,
@@ -148,7 +149,7 @@ function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[
     grouped.set(key, existing);
   }
 
-  return [...grouped.entries()].map(([key, assetRows]) => {
+  return Array.from(grouped.entries()).map(([key, assetRows]) => {
     const preferredRow =
       assetRows.find((row) => {
         const metadata = asObjectRecord(row.metadata);
@@ -254,14 +255,17 @@ async function persistGeneratedStaticAdsToCampaignPlan(params: {
     },
   } as Json;
 
-  const { error } = await params.supabase
-    .from("campaign_plans")
-    .update({ plan: nextPlan } as never)
-    .eq("id", params.campaignId)
-    .eq("user_id", params.userId);
-
-  if (error) {
-    throw new ApiError(500, error.message, "campaign_static_ads_save_failed");
+  try {
+    await persistCampaignPlanDocumentUpdate({
+      supabase: params.supabase,
+      campaignId: params.campaignId,
+      userId: params.userId,
+      plan: nextPlan,
+      source: "campaign_static_ads_save",
+      existingRow: params.row,
+    });
+  } catch (error) {
+    throw new ApiError(500, getErrorMessage(error), "campaign_static_ads_save_failed");
   }
 
   return {
@@ -643,18 +647,17 @@ export async function regenerateStaticCreativeAssetsForUser(
     },
   } as Json;
 
-  const { error: generationStateSaveError } = await supabase
-    .from("campaign_plans")
-    .update({ plan: nextPlan } as never)
-    .eq("id", campaignId)
-    .eq("user_id", userId);
-
-  if (generationStateSaveError) {
-    throw new ApiError(
-      500,
-      generationStateSaveError.message,
-      "campaign_static_generation_state_save_failed",
-    );
+  try {
+    await persistCampaignPlanDocumentUpdate({
+      supabase,
+      campaignId,
+      userId,
+      plan: nextPlan,
+      source: "campaign_static_generation_state_save",
+      existingRow: row,
+    });
+  } catch (error) {
+    throw new ApiError(500, getErrorMessage(error), "campaign_static_generation_state_save_failed");
   }
 
   try {
@@ -704,11 +707,14 @@ export async function regenerateStaticCreativeAssetsForUser(
       },
     } as Json;
 
-    await supabase
-      .from("campaign_plans")
-      .update({ plan: failurePlan } as never)
-      .eq("id", campaignId)
-      .eq("user_id", userId);
+    await persistCampaignPlanDocumentUpdate({
+      supabase,
+      campaignId,
+      userId,
+      plan: failurePlan,
+      source: "campaign_static_generation_failure",
+      existingRow: row,
+    });
 
     throw error;
   }
@@ -847,8 +853,6 @@ export async function saveOptimizationResult(
     publish: mapPublishRecord(row),
   });
   const nextOptimization: CampaignOptimization = {
-    id: crypto.randomUUID(),
-    campaign_id: campaignId,
     ctr: Number(metrics.ctr),
     cpc: Number(metrics.cpc),
     cpl: Number(metrics.cpl),
@@ -869,14 +873,17 @@ export async function saveOptimizationResult(
     },
   } as Json;
 
-  const { error } = await supabase
-    .from("campaign_plans")
-    .update({ plan: nextPlan } as never)
-    .eq("id", campaignId)
-    .eq("user_id", userId);
-
-  if (error) {
-    throw new ApiError(500, error.message, "optimization_save_failed");
+  try {
+    await persistCampaignPlanDocumentUpdate({
+      supabase,
+      campaignId,
+      userId,
+      plan: nextPlan,
+      source: "campaign_optimization_save",
+      existingRow: row,
+    });
+  } catch (error) {
+    throw new ApiError(500, getErrorMessage(error), "optimization_save_failed");
   }
 
   return nextOptimization;

@@ -24,13 +24,18 @@ export type MetaDeployStatus =
   | "failed"
   | "published"
   | (string & {});
-export type MetaEntityStatus =
+export type MetaEntityLifecycleStatus =
   | "draft"
   | "active"
   | "paused"
   | "archived"
   | "failed"
   | (string & {});
+export type MetaEntityStatus = {
+  id: string;
+  name: string;
+  status: MetaEntityLifecycleStatus;
+};
 export type MetaLaunchMode = "draft" | "publish" | "simulate" | (string & {});
 export type MetaCampaignSyncStatus =
   | "idle"
@@ -47,6 +52,18 @@ export type MetaAvailableAdAccount = {
   externalAccountId?: string;
   externalAccountName?: string;
   status?: string | null;
+  [key: string]: any;
+};
+
+export type MetaAvailablePage = {
+  id?: string;
+  name?: string;
+  [key: string]: any;
+};
+
+export type MetaAvailablePixel = {
+  id?: string;
+  name?: string;
   [key: string]: any;
 };
 
@@ -67,12 +84,15 @@ export type MetaDeliveryMetrics = {
 
 export type MetaConnectionMetadata = {
   available_accounts?: MetaAvailableAdAccount[];
+  available_pages?: MetaAvailablePage[];
+  selected_page_id?: string | null;
+  selected_page_name?: string | null;
   available_pixels?: Array<{ id: string; name: string }>;
   pixel_id?: string | null;
   launch_domain?: string | null;
   verification_token?: string | null;
   domain_verified?: boolean;
-  verification_metadata?: Record<string, unknown> | null;
+  verification_metadata?: { [key: string]: Json | undefined } | null;
   sync_status?: MetaCampaignSyncStatus | null;
   [key: string]: Json | undefined;
 };
@@ -93,7 +113,7 @@ export type MetaWorkspaceTrackingUpdate = Partial<{
   launchDomain: string | null;
   verificationToken: string | null;
   domainVerified: boolean;
-  verificationMetadata: Record<string, unknown> | null;
+  verificationMetadata: { [key: string]: Json | undefined } | null;
 }>;
 
 export type MetaConnectionRecord = {
@@ -132,6 +152,10 @@ export type MetaConnectionState = {
   accountId: string | null;
   accountName: string | null;
   availableAccounts: MetaAvailableAdAccount[];
+  pageId: string | null;
+  pageName: string | null;
+  availablePages: MetaAvailablePage[];
+  availablePixels: MetaAvailablePixel[];
   connectionStatus: MetaConnectionStatus;
   connectedAt: string | null;
   lastSyncAt: string | null;

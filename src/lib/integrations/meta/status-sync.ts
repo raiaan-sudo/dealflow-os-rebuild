@@ -198,6 +198,12 @@ export async function fetchDeliveryMetrics(params: {
         ? Number(insight.ctr)
         : Number(insight?.clicks ?? 0) / Math.max(Number(insight?.impressions ?? 0), 1),
     leads: extractLeadsFromActions(insight?.actions),
+    appointments: 0,
+    cpl: 0,
+    cpa: 0,
+    cpc: 0,
+    frequency: 0,
+    reach: 0,
   } satisfies MetaDeliveryMetrics;
 }
 

@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element, jsx-a11y/alt-text */
 'use client'
 
 import React, {
@@ -436,3 +437,4 @@ export const Image = forwardRef<HTMLImageElement | null, ImageProps>(
 )
 
 Image.displayName = 'Image'
+/* eslint-disable @next/next/no-img-element, jsx-a11y/alt-text */

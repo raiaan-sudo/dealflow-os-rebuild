@@ -378,13 +378,6 @@ export function CampaignLaunchSimulator({
     }
 
     try {
-      setDeploying(true);
-      const launchResult = await postRuntimeUpdate({ action: "launch" });
-
-      if (launchResult.runtime) {
-        setRuntime(launchResult.runtime);
-      }
-
       router.push(
         `/launching?mode=${encodeURIComponent(demoMode ? "demo" : launchMode)}&${campaignQuery}`,
       );
@@ -395,7 +388,6 @@ export function CampaignLaunchSimulator({
           : "Campaign launch could not be completed.",
       );
     } finally {
-      setDeploying(false);
       setActiveOperation(null);
     }
   }
@@ -586,8 +578,8 @@ export function CampaignLaunchSimulator({
         launchSteps={launchSteps}
         handleLaunch={() => void handleLaunch()}
         handleConnectAccount={handleConnectAccount}
-        onViewResults={() => router.push(`/results?${campaignQuery}`)}
-        onReviewCampaign={() => router.push(`/review?${campaignQuery}`)}
+        onViewResults={() => router.push(`/dashboard?${campaignQuery}`)}
+        onReviewCampaign={() => router.push(`/preview?${campaignQuery}`)}
       />
 
       <PostLaunchStatePanel
@@ -595,7 +587,7 @@ export function CampaignLaunchSimulator({
         focusMode={focusMode}
         demoMode={demoMode}
         launchMode={launchMode}
-        onViewResults={() => router.push(`/results?${campaignQuery}`)}
+        onViewResults={() => router.push(`/dashboard?${campaignQuery}`)}
       />
 
       <LaunchMetricsCardSet

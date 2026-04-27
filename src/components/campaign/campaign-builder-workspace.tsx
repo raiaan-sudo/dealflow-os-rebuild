@@ -1493,20 +1493,20 @@ export function CampaignBuilderWorkspace({
     label: string;
     href?: string;
   }> = [
-    { key: "setup", label: "Setup" },
+    { key: "setup", label: "Campaign Setup" },
     { key: "funnel", label: "Funnel" },
     { key: "creatives", label: "Creatives" },
-    { key: "review", label: "Review", href: "/review" },
-    { key: "go-live", label: "Go Live", href: "/go-live" },
+    { key: "review", label: "Review", href: "/preview" },
+    { key: "go-live", label: "Launch", href: "/launch" },
   ];
   const currentGuidedIndex =
     activeTab === "setup" ? 0 : activeTab === "funnel" ? 1 : 2;
   const stepMicrocopy =
     activeTab === "setup"
-      ? "Define the campaign inputs. The AI uses these fields to reshape the funnel and ad copy automatically."
+      ? "Define the campaign inputs so the funnel and ad copy stay aligned from the start."
       : activeTab === "funnel"
         ? "Refine the landing-page promise so the offer is clear before you move into creative."
-        : "Tighten the ads and video scripts, then move into review when the campaign looks launch-ready.";
+        : "Tighten the ads and video scripts, then move into review when the campaign looks ready.";
 
   useEffect(() => {
     const nextAssistant = generateCreativeCopyAssistant(toCopyAssistantInput(strategy));
@@ -1529,7 +1529,7 @@ export function CampaignBuilderWorkspace({
         cta: nextAssistant.cta,
       },
     });
-  }, [strategy.audience, strategy.location, strategy.market_type, strategy.offer]);
+  }, [campaign, strategy]);
 
   return (
     <div className="space-y-6">
@@ -1538,18 +1538,18 @@ export function CampaignBuilderWorkspace({
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="max-w-3xl">
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-              Builder controls
+              Campaign Setup
             </p>
             <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
-              Guided build stays on by default
+              Guided setup stays on by default
             </h3>
             <p className="mt-2 text-sm leading-6 text-white/68">
-              Use the guided flow for the normal build path. Switch on Advanced Control only when you want full section-by-section funnel editing.
+              Use the guided flow for the standard setup path. Switch on detailed editing only when you want full section-by-section changes.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Badge className={editingMode === "guided" ? "border-primary/15 bg-primary/10 text-primary" : "border-white/10 bg-white/[0.03] text-white/65"}>
-              {editingMode === "guided" ? "Guided mode active" : "Advanced mode active"}
+              {editingMode === "guided" ? "Guided setup active" : "Detailed editing active"}
             </Badge>
             <Button
               type="button"
@@ -1558,7 +1558,7 @@ export function CampaignBuilderWorkspace({
                 setEditingMode((current) => (current === "advanced" ? "guided" : "advanced"))
               }
             >
-              {editingMode === "advanced" ? "Return to Guided" : "Advanced Control"}
+              {editingMode === "advanced" ? "Return to Guided" : "Detailed editing"}
             </Button>
           </div>
         </div>
@@ -1570,8 +1570,8 @@ export function CampaignBuilderWorkspace({
         title="Campaign direction"
         description={
           editingMode === "advanced"
-            ? "Advanced mode shows the deeper strategy fields that are driving copy and creative decisions."
-            : "Guided mode keeps the strategy concise so you can understand the direction without getting overloaded."
+            ? "Detailed editing shows the deeper strategy fields driving the messaging and creative direction."
+            : "Guided setup keeps the strategy concise so the direction stays clear without extra detail."
         }
         detailed={editingMode === "advanced"}
         compact
@@ -1582,13 +1582,13 @@ export function CampaignBuilderWorkspace({
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
               <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                Strategy controls
+                Campaign details
               </p>
               <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
-                Tune the media-buying variables directly
+                Refine the campaign direction directly
               </h3>
               <p className="mt-2 text-sm leading-6 text-white/68">
-                These controls only affect advanced mode. Guided mode keeps this layer concise and mostly read-only.
+                These controls only affect detailed editing. Guided setup keeps this layer concise and mostly read-only.
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -1598,7 +1598,7 @@ export function CampaignBuilderWorkspace({
                 </Badge>
               ) : (
                 <Badge className="border-white/10 bg-white/[0.03] text-white/65">
-                  Using inferred strategy
+                  Using saved campaign direction
                 </Badge>
               )}
               {creativeStrategyDirty ? (
@@ -1620,7 +1620,7 @@ export function CampaignBuilderWorkspace({
                     setCreativeStrategyDirty(false);
                   }}
                 >
-                  Reset to inferred
+                  Reset direction
                 </Button>
               ) : null}
             </div>
@@ -1742,17 +1742,17 @@ export function CampaignBuilderWorkspace({
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                AI Command
+                Page direction
               </p>
               <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
-                Tell the system how you want this page to feel
+                Describe how you want this page to feel
               </h3>
               <p className="mt-2 text-sm leading-6 text-white/68">
                 Type requests like “make this black and red, cinematic, and more luxury” or “make the funnel feel more investor-grade and editorial.”
               </p>
             </div>
             <div className="rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
-              Mini GPT
+              Guided help
             </div>
           </div>
           <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto]">

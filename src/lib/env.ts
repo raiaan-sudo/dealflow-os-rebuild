@@ -1,8 +1,3 @@
-/** Set `BYPASS_AUTH=true` in `.env.local` to skip login redirects for local testing (e.g. Meta OAuth). Never enable in production. */
-export function isAuthBypassEnabled() {
-  return process.env.BYPASS_AUTH === "true";
-}
-
 export function getSupabaseEnv() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -18,6 +13,16 @@ type EnvValidation = {
   configured: boolean;
   missing: string[];
 };
+
+function requireEnvValue(key: string, value: string | undefined | null) {
+  const normalized = value?.trim();
+
+  if (!normalized) {
+    throw new Error(`Missing required environment variable: ${key}.`);
+  }
+
+  return normalized;
+}
 
 function validateEnv(required: Array<[string, string | undefined | null]>): EnvValidation {
   const missing = required
@@ -63,6 +68,18 @@ export function getAiEnv() {
     model,
     baseUrl,
   };
+}
+
+export function getAiEnvOrThrow() {
+  const env = getAiEnv();
+
+  if (!env) {
+    throw new Error(
+      "Missing AI environment variables. Set AI_API_KEY or OPENAI_API_KEY before using AI features.",
+    );
+  }
+
+  return env;
 }
 
 export function hasAiEnv() {
@@ -144,6 +161,18 @@ export function getMetaEnv() {
   };
 }
 
+export function getMetaEnvOrThrow() {
+  const env = getMetaEnv();
+
+  if (!env) {
+    throw new Error(
+      "Missing Meta environment variables. Set META_APP_ID, META_APP_SECRET, META_REDIRECT_URI, and META_TOKEN_ENCRYPTION_KEY.",
+    );
+  }
+
+  return env;
+}
+
 export function hasMetaEnv() {
   return Boolean(getMetaEnv());
 }
@@ -165,11 +194,10 @@ export function getPublicAppUrl() {
     process.env.APP_URL ??
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
 
-  if (!configured) {
-    return "http://localhost:3000";
-  }
-
-  return configured.replace(/\/$/, "");
+  return requireEnvValue(
+    "NEXT_PUBLIC_APP_URL",
+    configured,
+  ).replace(/\/$/, "");
 }
 
 export function getStripeEnv() {
@@ -226,6 +254,18 @@ export function getVideoGenerationEnv() {
   };
 }
 
+export function getVideoGenerationEnvOrThrow() {
+  const env = getVideoGenerationEnv();
+
+  if (!env) {
+    throw new Error(
+      "Missing video generation environment variables. Set HEYGEN_API_KEY, HEYGEN_AVATAR_ID, and HEYGEN_VOICE_ID.",
+    );
+  }
+
+  return env;
+}
+
 export function validateVideoGenerationEnv() {
   const env = getVideoGenerationEnv();
 
@@ -250,6 +290,18 @@ export function getVoiceGenerationEnv() {
     voiceId,
     modelId,
   };
+}
+
+export function getVoiceGenerationEnvOrThrow() {
+  const env = getVoiceGenerationEnv();
+
+  if (!env) {
+    throw new Error(
+      "Missing voice generation environment variables. Set ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID.",
+    );
+  }
+
+  return env;
 }
 
 export function validateVoiceGenerationEnv() {

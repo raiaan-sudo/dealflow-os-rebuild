@@ -26,7 +26,10 @@ export function useBuilderPreviewModel(
   recommendedOffer: string,
   options?: UseBuilderPreviewModelOptions,
 ) {
-  const savedStaticAds = options?.savedStaticAds ?? [];
+  const savedStaticAds = useMemo(
+    () => options?.savedStaticAds ?? [],
+    [options?.savedStaticAds],
+  );
   const generatedVideos = options?.generatedVideos ?? {};
 
   const staticAdRows = useMemo(() => {

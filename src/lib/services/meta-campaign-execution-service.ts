@@ -14,6 +14,7 @@ import {
 } from "@/lib/integrations/meta/execution";
 import type {
   MetaConnectionRecord,
+  MetaConnectionMetadata,
   MetaDeployStatus,
   MetaLaunchMode,
 } from "@/lib/integrations/meta/types";
@@ -76,9 +77,36 @@ async function getMetaConnectionForExecution() {
     throw new ApiError(400, "Connect a Meta ad account before attempting deployment.", "meta_not_connected");
   }
 
+  const metadata =
+    row.connection_metadata && typeof row.connection_metadata === "object" && !Array.isArray(row.connection_metadata)
+      ? (row.connection_metadata as MetaConnectionMetadata)
+      : null;
+  const selectedAccountId =
+    metadata?.selected_external_account_id && typeof metadata.selected_external_account_id === "string"
+      ? metadata.selected_external_account_id
+      : null;
+  const selectedPageId =
+    metadata?.selected_page_id && typeof metadata.selected_page_id === "string"
+      ? metadata.selected_page_id
+      : null;
+  const selectedPixelId =
+    typeof row.pixel_id === "string" && row.pixel_id.trim().length > 0
+      ? row.pixel_id
+      : metadata?.pixel_id && typeof metadata.pixel_id === "string"
+        ? metadata.pixel_id
+        : null;
+
+  if (!selectedAccountId || !selectedPageId || !selectedPixelId) {
+    throw new ApiError(400, "Missing selected Meta assets", "missing_selected_meta_assets");
+  }
+
+  if (row.external_account_id !== selectedAccountId) {
+    throw new ApiError(400, "Missing selected Meta assets", "missing_selected_meta_assets");
+  }
+
   logInfo("Meta deployment connection resolved", {
     connection_status: row.status,
-    account_id: row.external_account_id,
+    account_id: selectedAccountId,
     account_name: row.account_name,
   });
 
@@ -87,6 +115,9 @@ async function getMetaConnectionForExecution() {
     connection: row,
     accessToken: getMetaAccessToken(row),
     executionMode: getMetaExecutionMode(),
+    selectedPageId,
+    selectedPixelId,
+    selectedAccountId,
   };
 }
 
@@ -124,9 +155,10 @@ export async function prepareCampaignDeployment(params?: {
   }
 
   const executableCampaign = buildExecutableCampaign(plan);
-  const { connection, accessToken, executionMode } = await getMetaConnectionForExecution();
-  const launchMode = params?.launchMode ?? "test";
-  const accountId = connection.external_account_id;
+  const { connection, accessToken, executionMode, selectedAccountId, selectedPageId, selectedPixelId } =
+    await getMetaConnectionForExecution();
+  const launchMode = params?.launchMode === "live" ? "live" : "test";
+  const accountId = selectedAccountId;
 
   logInfo("Meta deployment launch check", {
     connection_status: connection.status,
@@ -230,6 +262,7 @@ export async function prepareCampaignDeployment(params?: {
       adSet,
       accessToken,
       accountId,
+      selectedPixelId,
       apiMode,
       launchMode,
     );
@@ -262,6 +295,7 @@ export async function prepareCampaignDeployment(params?: {
           ad,
           accessToken,
           accountId,
+          selectedPageId,
           apiMode,
           launchMode,
         );

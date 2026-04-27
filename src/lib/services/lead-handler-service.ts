@@ -1,7 +1,11 @@
 import { ApiError } from "@/lib/api/route";
 import { generateAiJson } from "@/lib/ai/client";
-import { getSupabaseEnv } from "@/lib/env";
 import { logError, logWarn } from "@/lib/logging";
+import {
+  buildCampaignPlanCriticalFieldPatch,
+  readCampaignPlanDocument,
+  withLeadLoopVerified,
+} from "@/lib/services/campaign-plan-document";
 import {
   bookAppointment,
   createBookingAdminClient,
@@ -10,10 +14,10 @@ import {
   generateSuggestedSlots,
   parseTimeFromMessage,
 } from "@/lib/services/booking-service";
+import { createSystemJob } from "@/lib/services/system-job-service";
 import { normalizePhone, sendSMS } from "@/lib/services/sms-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/supabase/types";
 
 type SupabaseClient = NonNullable<Awaited<ReturnType<typeof createRouteHandlerClient>>>;
@@ -46,10 +50,23 @@ type CreateLeadInput = {
   campaign_id?: string;
   funnel_id?: string | null;
   name?: string | null;
-  phone: string;
+  phone?: string | null;
   email?: string | null;
   source?: string | null;
   notes?: string | null;
+};
+
+type QueueFailedLeadCaptureInput = {
+  requestId: string;
+  campaign_id?: string;
+  funnel_id?: string | null;
+  name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  source?: string | null;
+  notes?: string | null;
+  stage?: string | null;
+  failureReason: string;
 };
 
 type LeadInsertContext = {
@@ -215,34 +232,15 @@ async function createPublicLeadLookupClient() {
     return admin;
   }
 
-  const env = getSupabaseEnv();
-  const email = process.env.QA_EMAIL?.trim() ?? "";
-  const password = process.env.QA_PASSWORD?.trim() ?? "";
-
-  if (!env || !email || !password) {
-    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
-  }
-
-  const client = createSupabaseClient<Database>(env.url, env.anonKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
+  logError("CRITICAL: Public lead lookup blocked: service-role client unavailable", {
+    code: "service_role_missing",
   });
 
-  const {
-    data: { user },
-    error,
-  } = await client.auth.signInWithPassword({
-    email,
-    password,
-  });
-
-  if (error || !user) {
-    throw new ApiError(503, "Public lead lookup client could not authenticate.", "public_lookup_auth_failed");
-  }
-
-  return client;
+  throw new ApiError(
+    503,
+    "Lead capture is temporarily unavailable. Please try again shortly.",
+    "service_role_missing",
+  );
 }
 
 async function resolveOrganizationIdForCampaignRow(
@@ -269,12 +267,17 @@ async function resolveOrganizationIdForCampaignRow(
     .limit(1)
     .maybeSingle();
 
-  if (membershipError || !membership?.organization_id || !row.user_id) {
+  const organizationId =
+    membership && typeof membership === "object" && "organization_id" in membership
+      ? (membership as Record<string, unknown>).organization_id
+      : null;
+
+  if (membershipError || typeof organizationId !== "string" || !row.user_id) {
     throw new ApiError(404, "Campaign organization could not be resolved.", "campaign_context_missing");
   }
 
   return {
-    organizationId: membership.organization_id,
+    organizationId,
     userId: row.user_id,
     campaignId: row.id,
   } satisfies LeadInsertContext;
@@ -290,17 +293,93 @@ async function createPublicLeadInsertClient(expectedUserId: string) {
     } = await client.auth.getUser();
 
     if (error || !user) {
-      throw new ApiError(503, "Public lead insert client could not authenticate.", "public_insert_auth_failed");
+      logError("Public lead insert blocked: service-role auth unavailable", {
+        code: "public_insert_auth_failed",
+      });
+      throw new ApiError(
+        503,
+        "Lead capture is temporarily unavailable. Please try again shortly.",
+        "public_insert_auth_failed",
+      );
     }
 
     if (user.id !== expectedUserId) {
-      throw new ApiError(503, "Public lead insert client does not match campaign owner.", "public_insert_user_mismatch");
+      logError("Public lead insert blocked: service-role user mismatch", {
+        code: "public_insert_user_mismatch",
+        expectedUserId,
+        actualUserId: user.id,
+      });
+      throw new ApiError(
+        503,
+        "Lead capture is temporarily unavailable. Please try again shortly.",
+        "public_insert_user_mismatch",
+      );
     }
 
     return client;
   }
 
   return client;
+}
+
+export async function queueFailedPublicLeadCapture(input: QueueFailedLeadCaptureInput) {
+  const campaignId = input.campaign_id?.trim() ?? "";
+
+  if (!campaignId) {
+    logError("Failed lead capture could not be queued: missing campaign id", {
+      requestId: input.requestId,
+      reason: input.failureReason,
+      code: "failed_lead_capture_missing_campaign",
+    });
+    return null;
+  }
+
+  try {
+    const context = await resolvePublicLeadInsertContext({
+      campaign_id: campaignId,
+      funnel_id: input.funnel_id ?? null,
+    });
+
+    const job = await createSystemJob({
+      organizationId: context.organizationId,
+      userId: context.userId,
+      campaignId: context.campaignId,
+      kind: "lead_capture_retry",
+      payload: {
+        source: input.source?.trim() || "lead_capture_public",
+        requestId: input.requestId,
+        reason: input.failureReason,
+        leadCapture: {
+          campaignId,
+          funnelId: input.funnel_id?.trim() || null,
+          name: input.name?.trim() || "Unknown lead",
+          email: input.email?.trim() || null,
+          phone: input.phone?.trim() ? normalizePhone(input.phone) : null,
+          stage: input.stage?.trim() || "generated",
+          notes: input.notes?.trim() || null,
+        },
+      },
+    });
+
+    logWarn("Lead capture queued for retry", {
+      requestId: input.requestId,
+      campaignId,
+      organizationId: context.organizationId,
+      jobId: job.id,
+      reason: input.failureReason,
+    });
+
+    return job;
+  } catch (queueError) {
+    logError("CRITICAL: Failed lead capture could not be queued", {
+      requestId: input.requestId,
+      campaignId,
+      reason: input.failureReason,
+      message: queueError instanceof Error ? queueError.message : "Unknown queue failure",
+      code: "failed_lead_capture_queue_failed",
+    });
+    return null;
+  }
 }
 
 async function getLeadById(supabase: SupabaseClient, leadId: string) {
@@ -336,6 +415,77 @@ async function getLeadByPhone(
   }
 
   return (data as LeadRow | null) ?? null;
+}
+
+async function findRecentDuplicateLead(params: {
+  supabase: SupabaseClient | AdminClient;
+  organizationId: string;
+  campaignId: string | null;
+  email: string | null;
+  phone: string | null;
+}) {
+  const { supabase, organizationId, campaignId, email, phone } = params;
+
+  if (!campaignId || (!email && !phone)) {
+    return null;
+  }
+
+  const createdAfter = new Date(Date.now() - 60_000).toISOString();
+  const matches: LeadRow[] = [];
+
+  if (email) {
+    const { data, error } = await supabase
+      .from("leads")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .eq("campaign_id", campaignId)
+      .ilike("email", email)
+      .gte("created_at", createdAfter)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (data) {
+      matches.push(data as LeadRow);
+    }
+  }
+
+  if (phone) {
+    const { data, error } = await supabase
+      .from("leads")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .eq("campaign_id", campaignId)
+      .eq("phone", phone)
+      .gte("created_at", createdAfter)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (data) {
+      matches.push(data as LeadRow);
+    }
+  }
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  matches.sort((a, b) => {
+    const left = new Date(a.created_at ?? 0).getTime();
+    const right = new Date(b.created_at ?? 0).getTime();
+    return right - left;
+  });
+
+  return matches[0] ?? null;
 }
 
 async function listLeadMessages(supabase: SupabaseClient | AdminClient, leadId: string) {
@@ -566,10 +716,7 @@ export async function handleNewLead(
       .eq("id", lead.campaign_id)
       .maybeSingle();
     const campaign = campaignRaw as Pick<CampaignPlanRow, "plan"> | null;
-    const savedPlan =
-      campaign?.plan && typeof campaign.plan === "object" && !Array.isArray(campaign.plan)
-        ? (campaign.plan as Record<string, unknown>)
-        : null;
+    const savedPlan = readCampaignPlanDocument(campaign?.plan);
     const strategy =
       savedPlan?.strategy && typeof savedPlan.strategy === "object" && !Array.isArray(savedPlan.strategy)
         ? (savedPlan.strategy as Record<string, unknown>)
@@ -911,10 +1058,22 @@ async function createLeadAndStartConversationForContext(
 
   const { firstName, lastName } = splitLeadName(input.name);
   const email = input.email?.trim() || null;
-  const phone = normalizePhone(input.phone);
+  const phone = input.phone?.trim() ? normalizePhone(input.phone) : null;
 
-  if (!phone) {
-    throw new ApiError(400, "Phone is required.", "validation_error");
+  if (!phone && !email) {
+    throw new ApiError(400, "An email or phone number is required.", "validation_error");
+  }
+
+  const duplicateLead = await findRecentDuplicateLead({
+    supabase,
+    organizationId,
+    campaignId,
+    email,
+    phone,
+  });
+
+  if (duplicateLead) {
+    return duplicateLead;
   }
 
   const { data, error } = await supabase
@@ -949,13 +1108,47 @@ async function createLeadAndStartConversationForContext(
   }
 
   const lead = data as LeadRow;
-  try {
-    await handleNewLead(lead, supabase);
-  } catch (error) {
-    logError("Lead conversation bootstrap failed", {
-      leadId: lead.id,
-      message: error instanceof Error ? error.message : "Unknown error",
-    });
+
+  if (lead.campaign_id) {
+    const { data: campaignPlanData, error: campaignPlanError } = await supabase
+      .from("campaign_plans")
+      .select("plan")
+      .eq("id", lead.campaign_id)
+      .maybeSingle();
+
+    if (campaignPlanError) {
+      logWarn("Lead loop verification campaign lookup failed", {
+        campaignId: lead.campaign_id,
+        message: campaignPlanError.message,
+      });
+    } else {
+      const campaignPlanRow = (campaignPlanData as { plan?: unknown } | null) ?? null;
+      const currentPlan = readCampaignPlanDocument(campaignPlanRow?.plan);
+      const nextPlan = withLeadLoopVerified(currentPlan);
+
+      const { error: leadLoopUpdateError } = await supabase
+        .from("campaign_plans")
+        .update(buildCampaignPlanCriticalFieldPatch(nextPlan) as never)
+        .eq("id", lead.campaign_id);
+
+      if (leadLoopUpdateError) {
+        logWarn("Lead loop verification flag update failed", {
+          campaignId: lead.campaign_id,
+          message: leadLoopUpdateError.message,
+        });
+      }
+    }
+  }
+
+  if (lead.phone) {
+    try {
+      await handleNewLead(lead, supabase);
+    } catch (error) {
+      logError("Lead conversation bootstrap failed", {
+        leadId: lead.id,
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
   }
 
   return lead;

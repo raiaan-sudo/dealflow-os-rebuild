@@ -1,0 +1,503 @@
+import { NextResponse } from "next/server";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type OnboardingPayload = {
+  business_type?: string;
+  business_name?: string;
+  location?: string;
+  market?: string;
+  service?: string;
+  focus?: string;
+  price_range?: string;
+  budget?: number | string;
+  goal?: string;
+  idempotencySeed?: string;
+};
+
+type SafeOnboardingPayloadLog = {
+  businessType: string;
+  businessNamePresent: boolean;
+  market: string;
+  location: string;
+  focus: string;
+  priceRange: string;
+  budget: number | string | null;
+  goalPresent: boolean;
+  servicePresent: boolean;
+  idempotencySeedPresent: boolean;
+};
+
+const REAL_ESTATE_INTERESTS = [
+  "real estate",
+  "house hunting",
+  "home ownership",
+  "mortgage loans",
+] as const;
+
+function safeText(value: unknown) {
+  return (value ?? "").toString().trim();
+}
+
+function buildSafePayloadLog(payload: OnboardingPayload | null): SafeOnboardingPayloadLog {
+  return {
+    businessType: safeText(payload?.business_type),
+    businessNamePresent: safeText(payload?.business_name).length > 0,
+    market: safeText(payload?.market),
+    location: safeText(payload?.location),
+    focus: safeText(payload?.focus),
+    priceRange: safeText(payload?.price_range),
+    budget:
+      typeof payload?.budget === "number" || typeof payload?.budget === "string"
+        ? payload.budget
+        : null,
+    goalPresent: safeText(payload?.goal).length > 0,
+    servicePresent: safeText(payload?.service).length > 0,
+    idempotencySeedPresent: safeText(payload?.idempotencySeed).length > 0,
+  };
+}
+
+function buildEnvPresenceLog() {
+  return {
+    hasSupabaseEnv: Boolean(
+      process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim(),
+    ),
+    hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+    hasAiEnv: Boolean(process.env.OPENAI_API_KEY?.trim() || process.env.AI_API_KEY?.trim()),
+    hasOpenAiApiKey: Boolean(process.env.OPENAI_API_KEY),
+    hasAiApiKey: Boolean(process.env.AI_API_KEY),
+    hasAppUrl: Boolean(process.env.NEXT_PUBLIC_APP_URL),
+    hasMetaAppId: Boolean(process.env.META_APP_ID),
+    hasMetaAppSecret: Boolean(process.env.META_APP_SECRET),
+    hasMetaRedirectUri: Boolean(process.env.META_REDIRECT_URI),
+  };
+}
+
+function validateOnboardingRouteEnv() {
+  const missing: string[] = [];
+
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()) {
+    missing.push("NEXT_PUBLIC_SUPABASE_URL");
+  }
+
+  if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()) {
+    missing.push("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  }
+
+  if (!process.env.OPENAI_API_KEY?.trim() && !process.env.AI_API_KEY?.trim()) {
+    missing.push("OPENAI_API_KEY or AI_API_KEY");
+  }
+
+  return missing;
+}
+
+function normalizeIdempotencyPart(value: unknown) {
+  return safeText(value).toLowerCase().replace(/\s+/g, " ");
+}
+
+function toMonthlyBudget(value: unknown) {
+  const numeric =
+    typeof value === "number"
+      ? value
+      : Number.parseFloat((value ?? "").toString().replace(/[^0-9.]/g, ""));
+
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return 3000;
+  }
+
+  return Math.round(numeric);
+}
+
+function isRealEstateBusinessType(value: string) {
+  return /real estate|realtor|broker|brokerage|realty|property/.test(value.toLowerCase());
+}
+
+function buildOnboardingIdempotencyKey(
+  createHash: (algorithm: string) => { update(value: string): { digest(encoding: "hex"): string } },
+  params: {
+    userId: string;
+    businessType: string;
+    location: string;
+    service: string;
+    budget: number;
+    idempotencySeed?: string;
+  },
+) {
+  const normalizedSeed =
+    normalizeIdempotencyPart(params.idempotencySeed) ||
+    [
+      normalizeIdempotencyPart(params.businessType),
+      normalizeIdempotencyPart(params.location),
+      normalizeIdempotencyPart(params.service),
+      String(params.budget),
+    ].join("|");
+
+  return createHash("sha256")
+    .update(`${params.userId}|${normalizedSeed}`)
+    .digest("hex");
+}
+
+async function findExistingCampaignByIdempotencyKey(
+  supabase: {
+    from(table: "campaign_plans"): {
+      select(value: string): {
+        eq(column: string, value: string): {
+          contains(column: string, value: object): {
+            order(column: string, options: { ascending: boolean }): {
+              limit(value: number): { maybeSingle(): Promise<{ data: unknown; error: Error | null }> };
+            };
+          };
+        };
+      };
+    };
+  },
+  userId: string,
+  idempotencyKey: string,
+) {
+  const { data, error } = await supabase
+    .from("campaign_plans")
+    .select("id, plan")
+    .eq("user_id", userId)
+    .contains("plan", { onboarding_idempotency_key: idempotencyKey } as never)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const row = (data as { id?: unknown } | null) ?? null;
+  return typeof row?.id === "string" ? row.id : null;
+}
+
+function getRealEstateIntent(service: string) {
+  if (/seller|sell|listing|valuation|home value/.test(service.toLowerCase())) {
+    return "seller" as const;
+  }
+
+  return "buyer" as const;
+}
+
+function getRealEstateFocus(params: {
+  focus?: string;
+  service?: string;
+  goal?: string;
+}) {
+  const normalizedFocus = safeText(params.focus).toLowerCase();
+
+  if (normalizedFocus === "seller" || normalizedFocus === "buyer") {
+    return normalizedFocus;
+  }
+
+  return getRealEstateIntent(`${safeText(params.service)} ${safeText(params.goal)}`);
+}
+
+function getRealEstateOnboardingDefaults(params: {
+  businessType: string;
+  businessName: string;
+  location: string;
+  service: string;
+  priceRange: string;
+  goal: string;
+  budget: number;
+}) {
+  const normalizedService = params.service.toLowerCase();
+  const intent = getRealEstateFocus({
+    focus: params.service,
+    goal: params.goal,
+  });
+  const businessName = params.businessName.trim().length > 0 ? params.businessName : params.businessType;
+  const priceRange = params.priceRange.trim().length > 0 ? params.priceRange : "mid-market homes";
+  const serviceLabel =
+    params.goal.trim().length > 0
+      ? params.goal
+      : params.service.trim().length > 0
+        ? params.service
+        : intent === "seller"
+          ? "Free home value strategy call"
+          : "Private listings and buyer consult";
+
+  if (/seller|sell|listing|valuation|home value/.test(normalizedService)) {
+    return {
+      clientName: businessName,
+      businessName,
+      intent,
+      market: params.location,
+      monthlyBudget: params.budget,
+      primaryGoal: "Generate more seller and listing leads",
+      timeline: "30 days",
+      audience: `Homeowners likely to sell ${priceRange} homes in ${params.location}`,
+      propertyType: `${priceRange} homes`,
+      keyOffer: "listing strategy and home value plan",
+      painPoints: [
+        "Homeowners are unsure what their property is worth",
+        "Listing timing feels risky",
+        "Most sellers do not know how to maximize demand before going live",
+      ],
+      mechanism: "seller consultation and listing launch system",
+      serviceLabel,
+      priceRange,
+    };
+  }
+
+  return {
+    clientName: businessName,
+    businessName,
+    intent,
+    market: params.location,
+    monthlyBudget: params.budget,
+    primaryGoal: "Generate more buyer leads",
+    timeline: "30 days",
+    audience: `Home buyers searching for ${priceRange} homes in ${params.location}`,
+    propertyType: `${priceRange} homes`,
+    keyOffer: "buyer consultation and curated home list",
+    painPoints: [
+      "Buyers do not know which homes fit their budget",
+      "They miss listings because they react too late",
+      "Mortgage uncertainty slows down decision-making",
+    ],
+    mechanism: "buyer consultation and qualification system",
+    serviceLabel,
+    priceRange,
+  };
+}
+
+async function enrichRealEstateCampaignPlan(params: {
+  supabase: {
+    from(table: "campaign_plans"): {
+      select(value: string): {
+        eq(column: string, value: string): { maybeSingle(): Promise<{ data: unknown; error: Error | null }> };
+      };
+    };
+  };
+  campaignId: string;
+  location: string;
+  readCampaignPlanDocument: (plan: unknown) => Record<string, unknown>;
+  mergeCampaignPlanDocument: (plan: Record<string, unknown>, patch: Record<string, unknown>) => Record<string, unknown>;
+  persistCampaignPlanDocumentUpdate: any;
+}) {
+  const { data, error } = await params.supabase
+    .from("campaign_plans")
+    .select("plan")
+    .eq("id", params.campaignId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const row = (data as { plan?: unknown } | null) ?? null;
+
+  const currentPlan = params.readCampaignPlanDocument(row?.plan);
+
+  const campaignModes =
+    Array.isArray(currentPlan.campaign_modes) && currentPlan.campaign_modes.length > 0
+      ? currentPlan.campaign_modes
+      : ["buyer campaign", "seller campaign", "listing campaign"];
+
+  await params.persistCampaignPlanDocumentUpdate({
+    supabase: params.supabase,
+    campaignId: params.campaignId,
+    plan: params.mergeCampaignPlanDocument(currentPlan, {
+      industry_mode: "real_estate",
+      campaign_modes: campaignModes,
+      targeting_defaults: {
+        interests: [...REAL_ESTATE_INTERESTS],
+        geo_radius_miles: 15,
+        location: params.location,
+      },
+    }),
+    source: "onboarding_real_estate_defaults",
+  });
+}
+
+export async function POST(req: Request) {
+  let safePayload: SafeOnboardingPayloadLog | null = null;
+
+  try {
+    console.log("HANDLER ENTRY REACHED");
+
+    if (process.env.ONBOARDING_PLAN_ISOLATION_MODE === "true") {
+      return Response.json({ ok: true, isolated: true });
+    }
+
+    console.log("Onboarding plan request started");
+
+    const missingEnv = validateOnboardingRouteEnv();
+
+    if (missingEnv.length > 0) {
+      throw new Error(`Missing required environment variables: ${missingEnv.join(", ")}`);
+    }
+
+    const [{ createHash }, { createRouteHandlerClient }, campaignIntentModule, campaignPlanDocumentModule, persistenceModule, campaignPlanServiceModule] =
+      await Promise.all([
+        import("node:crypto"),
+        import("@/lib/supabase/route-handler"),
+        import("@/lib/campaign-intent"),
+        import("@/lib/services/campaign-plan-document"),
+        import("@/lib/services/campaign-plan-persistence-service"),
+        import("@/lib/services/campaign-plan-service"),
+      ]);
+
+    console.log("STEP: create route handler client");
+    const supabase = await createRouteHandlerClient();
+
+    if (!supabase) {
+      throw new Error("Supabase is not configured.");
+    }
+
+    console.log("STEP: supabase auth getUser");
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Authentication is required.",
+        },
+        { status: 401 },
+      );
+    }
+
+    const payload = (await req.json().catch(() => null)) as OnboardingPayload | null;
+    safePayload = buildSafePayloadLog(payload);
+    console.log("Onboarding plan request payload parsed");
+    const businessType = safeText(payload?.business_type) || "Real Estate";
+    const businessName = safeText(payload?.business_name) || businessType;
+    const location = safeText(payload?.market) || safeText(payload?.location) || "United States";
+    const focus = getRealEstateFocus({
+      focus: payload?.focus,
+      service: payload?.service,
+      goal: payload?.goal,
+    });
+    const priceRange = safeText(payload?.price_range) || "mid-market homes";
+    const service = safeText(payload?.goal) || safeText(payload?.service) || (focus === "seller" ? "Free home value strategy call" : "Private listings and buyer consult");
+    const budget = toMonthlyBudget(payload?.budget);
+    const realEstateMode = isRealEstateBusinessType(businessType) || safeText(payload?.focus).length > 0;
+    const idempotencyKey = buildOnboardingIdempotencyKey(createHash, {
+      userId: user.id,
+      businessType: businessName,
+      location,
+      service: `${focus}|${priceRange}|${service}`,
+      budget,
+      idempotencySeed: payload?.idempotencySeed,
+    });
+
+    console.log("STEP: find existing campaign by idempotency key");
+    const existingCampaignId = await findExistingCampaignByIdempotencyKey(supabase as never, user.id, idempotencyKey);
+
+    if (existingCampaignId) {
+      return NextResponse.json({ success: true, campaignId: existingCampaignId });
+    }
+
+    console.log("STEP: campaign creation and AI generation");
+    const savedPlan = await campaignPlanServiceModule.saveCampaignPlan(
+      realEstateMode
+        ? getRealEstateOnboardingDefaults({
+            businessType,
+            businessName,
+            location,
+            service: focus,
+            priceRange,
+            goal: service,
+            budget,
+          })
+        : {
+            clientName: businessName,
+            businessName,
+            intent: campaignIntentModule.inferCampaignIntent({
+              marketType: businessType,
+              offer: service,
+              audience: `${businessName} prospects in ${location}`,
+              primaryGoal: `Generate more ${service} leads`,
+              mechanism: service,
+            }),
+            market: location,
+            monthlyBudget: budget,
+            primaryGoal: `Generate more ${service} leads`,
+            timeline: "30 days",
+            audience: `${businessName} prospects in ${location}`,
+            propertyType: service,
+            keyOffer: `${service} system`,
+            painPoints: [
+              "Lead volume is inconsistent",
+              "Follow-up is fragmented",
+              "Acquisition costs are too high",
+            ],
+            mechanism: `${service} campaign system`,
+          },
+    );
+
+    console.log("STEP: fetch saved campaign row");
+    const { data: savedRowData, error: savedRowError } = await supabase
+      .from("campaign_plans")
+      .select("plan")
+      .eq("id", savedPlan.id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (savedRowError) {
+      throw savedRowError;
+    }
+
+    const savedRow = (savedRowData as { plan?: unknown } | null) ?? null;
+    const currentPlan = campaignPlanDocumentModule.readCampaignPlanDocument(savedRow?.plan);
+
+    console.log("STEP: persist onboarding metadata");
+    await persistenceModule.persistCampaignPlanDocumentUpdate({
+      supabase,
+      campaignId: savedPlan.id,
+      userId: user.id,
+      plan: campaignPlanDocumentModule.mergeCampaignPlanDocument(currentPlan, {
+        onboarding_idempotency_key: idempotencyKey,
+        onboarding_focus: focus,
+        onboarding_price_range: priceRange,
+        onboarding_goal: service,
+      }),
+      source: "onboarding_idempotency_metadata",
+    });
+
+    if (realEstateMode) {
+      console.log("STEP: enrich real estate campaign plan");
+      await enrichRealEstateCampaignPlan({
+        supabase: supabase as never,
+        campaignId: savedPlan.id,
+        location,
+        readCampaignPlanDocument: campaignPlanDocumentModule.readCampaignPlanDocument,
+        mergeCampaignPlanDocument: campaignPlanDocumentModule.mergeCampaignPlanDocument,
+        persistCampaignPlanDocumentUpdate: persistenceModule.persistCampaignPlanDocumentUpdate,
+      });
+    }
+
+    return NextResponse.json({ success: true, campaignId: savedPlan.id });
+  } catch (error) {
+    console.error("ONBOARDING_PLAN_ERROR:", error);
+    console.error("ONBOARDING_PLAN_ERROR_FULL:", error);
+
+    const { logError } = await import("@/lib/logging");
+
+    logError("onboarding_plan_failed", {
+      errorMessage: error instanceof Error ? error.message : "Unknown error",
+      stack: error instanceof Error ? error.stack ?? null : null,
+      safePayload,
+      envPresence: buildEnvPresenceLog(),
+      runtime: {
+        nodeEnv: process.env.NODE_ENV ?? null,
+        vercel: Boolean(process.env.VERCEL),
+      },
+    });
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : null,
+      },
+      { status: 500 },
+    );
+  }
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import type { CampaignPlan, ExpectedOutcomes } from "@/lib/services/campaign-plan-service";
 
 type FunnelPreviewProps = {
@@ -98,11 +99,15 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
                 className="aspect-video w-full bg-black object-cover"
               />
             ) : media?.thumbnailUrl ? (
-              <img
-                src={media.thumbnailUrl}
-                alt={media.label || section.title}
-                className="aspect-video w-full object-cover"
-              />
+              <div className="relative aspect-video w-full">
+                <Image
+                  src={media.thumbnailUrl}
+                  alt={media.label || section.title}
+                  fill
+                  unoptimized
+                  className="object-cover"
+                />
+              </div>
             ) : (
               <div className="aspect-video bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.12),transparent_28%),linear-gradient(135deg,#112338,#05080d)]" />
             )}
@@ -121,17 +126,25 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
           <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">{section.title}</h3>
           <div className="mt-5 overflow-hidden rounded-[24px] border border-black/8 bg-white">
             {media?.url ? (
-              <img
-                src={media.url}
-                alt={media.label || section.title}
-                className="aspect-[16/9] w-full object-cover"
-              />
+              <div className="relative aspect-[16/9] w-full">
+                <Image
+                  src={media.url}
+                  alt={media.label || section.title}
+                  fill
+                  unoptimized
+                  className="object-cover"
+                />
+              </div>
             ) : media?.thumbnailUrl ? (
-              <img
-                src={media.thumbnailUrl}
-                alt={media.label || section.title}
-                className="aspect-[16/9] w-full object-cover"
-              />
+              <div className="relative aspect-[16/9] w-full">
+                <Image
+                  src={media.thumbnailUrl}
+                  alt={media.label || section.title}
+                  fill
+                  unoptimized
+                  className="object-cover"
+                />
+              </div>
             ) : (
               <div className="aspect-[16/9] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),transparent_30%),linear-gradient(135deg,#77c7ff,#0c1829)]" />
             )}

@@ -73,11 +73,14 @@ export async function fetchMetaConnectionStatus() {
   });
 
   const result = (await response.json().catch(() => null)) as
-    | { connection?: MetaConnectionState; error?: string }
+    | { connection?: MetaConnectionState; error?: string; action?: string }
     | null;
 
   if (!response.ok || !result?.connection) {
-    throw new Error(result?.error ?? "Meta connection status could not be loaded.");
+    throw new Error(
+      [result?.error, result?.action].filter(Boolean).join(" ") ||
+        "Meta connection status could not be loaded.",
+    );
   }
 
   return result.connection;
@@ -117,11 +120,14 @@ export async function syncCampaignStatus() {
   });
 
   const result = (await response.json().catch(() => null)) as
-    | { snapshot?: MetaCampaignSyncSnapshot | null; error?: string }
+    | { snapshot?: MetaCampaignSyncSnapshot | null; error?: string; action?: string }
     | null;
 
   if (!response.ok || !result?.snapshot) {
-    throw new Error(result?.error ?? "Campaign status sync failed.");
+    throw new Error(
+      [result?.error, result?.action].filter(Boolean).join(" ") ||
+        "Campaign status sync failed.",
+    );
   }
 
   return result.snapshot;

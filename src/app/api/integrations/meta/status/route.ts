@@ -1,5 +1,6 @@
-import { apiSuccess, handleApiError, retryRouteStep, withRouteTimeout } from "@/lib/api/route";
+import { ApiError, apiSuccess, retryRouteStep, withRouteTimeout } from "@/lib/api/route";
 import { validateMetaEnv } from "@/lib/env";
+import { createMetaFailureResponse } from "@/lib/integrations/meta/error-mapper";
 import {
   getDefaultMetaConnectionState,
   getMetaConnectionState,
@@ -21,6 +22,7 @@ function buildMetaStatusPayload() {
 }
 
 export async function GET() {
+  const requestId = crypto.randomUUID();
   try {
     const validation = validateMetaEnv();
     const connection = await withRouteTimeout(
@@ -46,6 +48,11 @@ export async function GET() {
       return apiSuccess(buildMetaStatusPayload());
     }
 
-    return handleApiError(error, "Meta status request");
+    return createMetaFailureResponse({
+      context: "status",
+      status: error instanceof ApiError ? error.status : 503,
+      requestId,
+      error,
+    });
   }
 }
