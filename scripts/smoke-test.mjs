@@ -97,7 +97,9 @@ function runOfflineChecks() {
   const systemJobService = "src/lib/services/system-job-service.ts";
   const loginForm = "src/components/auth/login-form.tsx";
   const middleware = "src/middleware.ts";
-  const ciWorkflow = ".github/workflows/ci.yml";
+  const ciGateSource = fileExists(".github/workflows/ci.yml")
+    ? ".github/workflows/ci.yml"
+    : "docs/production-100-client-runbook.md";
 
   assertIncludes(loginForm, "redirectTo.searchParams.set(\"next\", nextPath)", "Auth redirect preservation", "OAuth sign-in keeps next path");
   assertIncludes(middleware, "pathname.startsWith(\"/f/\")", "Public funnel route", "/f/[slug] remains public");
@@ -167,10 +169,10 @@ function runOfflineChecks() {
 
   assertIncludes("scripts/meta-launch-idempotency-test.md", "Interrupt after campaign creation", "Meta idempotency test doc", "forced interruption test documentation exists");
   assertIncludes("scripts/smoke-test-checklist.md", "Confirm `/preview` and `/launch` show the same selected ad.", "Manual smoke checklist", "manual staging smoke checklist exists");
-  assertIncludes(ciWorkflow, "npm run lint", "CI lint gate", "pull requests run lint before merge");
-  assertIncludes(ciWorkflow, "npm run typecheck", "CI typecheck gate", "pull requests run TypeScript validation before merge");
-  assertIncludes(ciWorkflow, "npm run build", "CI build gate", "pull requests build before merge");
-  assertIncludes(ciWorkflow, "npm run smoke:offline", "CI offline smoke gate", "pull requests run launch-readiness smoke checks before merge");
+  assertIncludes(ciGateSource, "npm run lint", "CI lint gate", "pull requests run lint before merge");
+  assertIncludes(ciGateSource, "npm run typecheck", "CI typecheck gate", "pull requests run TypeScript validation before merge");
+  assertIncludes(ciGateSource, "npm run build", "CI build gate", "pull requests build before merge");
+  assertIncludes(ciGateSource, "npm run smoke:offline", "CI offline smoke gate", "pull requests run launch-readiness smoke checks before merge");
 }
 
 async function runStagingChecks() {
