@@ -2224,15 +2224,15 @@ export function BuilderCreativesPanel(props: {
               />
               {generatedVideos[index]?.status === "processing" ? (
                 <p className="text-sm text-primary">
-                  Generating video with HeyGen. This can take a minute while the render job completes.
+                  Video generation is disabled for beta, so no HeyGen render is queued.
                 </p>
               ) : null}
               {videoGenerationErrors[index] ? (
                 <p className="text-sm text-rose-300">{videoGenerationErrors[index]}</p>
               ) : null}
               <div className="flex justify-end">
-                <Button onClick={() => handleGenerateVideo(index)} disabled={videoGenerationIndex === index}>
-                  {videoGenerationIndex === index ? "Generating Video Ad..." : "Generate Video Ad"}
+                <Button disabled title="Video rendering is disabled for beta to avoid paid render spend.">
+                  Video placeholder only
                 </Button>
               </div>
             </div>
@@ -2270,7 +2270,7 @@ export function BuilderCreativesPanel(props: {
               {saveLoading ? "Saving..." : "Save Campaign"}
             </Button>
             <Button asChild variant="secondary">
-              <Link href={savedCampaignId ? `/campaigns/${savedCampaignId}` : "/preview"}>
+              <Link href={savedCampaignId ? `/preview?campaignId=${savedCampaignId}` : "/preview"}>
                 {savedCampaignId ? "Open Saved Campaign" : "Open Review"}
               </Link>
             </Button>
@@ -2279,7 +2279,7 @@ export function BuilderCreativesPanel(props: {
             backLabel="Back: Funnel"
             onBack={() => setActiveTab("funnel")}
             nextLabel="Next: Review"
-            nextHref={savedCampaignId ? `/campaigns/${savedCampaignId}` : "/preview"}
+            nextHref={savedCampaignId ? `/preview?campaignId=${savedCampaignId}` : "/preview"}
           />
         </div>
         {saveError ? <p className="mt-4 text-sm text-rose-300">{saveError}</p> : null}

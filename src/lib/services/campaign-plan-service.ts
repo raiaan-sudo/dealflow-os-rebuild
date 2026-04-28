@@ -1232,6 +1232,9 @@ export async function saveCampaignPlan(input: OnboardingInput) {
     intelligenceProfile,
     targetingProfile,
     reusableAssets,
+    {
+      deferAssetGeneration: true,
+    },
   );
   return saveGeneratedCampaignPlan({
     userId,

@@ -4,6 +4,8 @@ import { GuidedFlowBanner } from "@/components/layout/guided-flow-banner";
 import { TopBar } from "@/components/layout/top-bar";
 import { FeedbackWidget } from "@/components/layout/feedback-widget";
 import { LeadCaptureTrigger } from "@/components/layout/lead-capture-trigger";
+import { isInternalAdminEmail } from "@/lib/env";
+import { getAppContext } from "@/lib/services/app-context";
 
 export default async function AppLayout({
   children,
@@ -14,6 +16,20 @@ export default async function AppLayout({
   const authState = headerStore.get("x-dealflow-auth-state");
   const pathname = headerStore.get("x-pathname") ?? "";
   const isFirstRunFocusRoute = pathname.startsWith("/campaign-built");
+  const appContext = await getAppContext().catch(() => null);
+  const isAdmin = isInternalAdminEmail(appContext?.user.email ?? appContext?.profile?.email ?? null);
+  const organizationName =
+    appContext?.organization.name?.trim() ||
+    appContext?.businessProfile?.business_name?.trim() ||
+    "DealFlow Workspace";
+  const userName =
+    appContext?.profile?.full_name?.trim() ||
+    appContext?.user.email?.split("@")[0] ||
+    "Workspace User";
+  const userEmail =
+    appContext?.profile?.email?.trim() ||
+    appContext?.user.email?.trim() ||
+    "workspace@dealflow.local";
 
   if (isFirstRunFocusRoute) {
     if (authState === "missing_context") {
@@ -33,7 +49,7 @@ export default async function AppLayout({
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <a
-                  href="/boot?next=/dashboard"
+                  href="/onboarding"
                   className="inline-flex h-11 items-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground"
                 >
                   Retry Recovery
@@ -62,12 +78,12 @@ export default async function AppLayout({
 
   return (
     <div className="app-shell relative flex h-screen w-screen overflow-hidden bg-transparent">
-      <AppSidebar isAdmin={false} organizationName="DealFlow Workspace" stage="built" />
+      <AppSidebar isAdmin={isAdmin} organizationName={organizationName} stage="built" />
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <TopBar
-          userName="Workspace User"
-          userEmail="workspace@dealflow.local"
-          organizationName="DealFlow Workspace"
+          userName={userName}
+          userEmail={userEmail}
+          organizationName={organizationName}
         />
         <main className="flex-1 overflow-hidden">
           <div className="flex h-full min-h-0 flex-col overflow-y-auto px-6 py-6">

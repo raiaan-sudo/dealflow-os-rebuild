@@ -49,7 +49,7 @@ export function FeedbackWidget() {
         throw new Error(data?.error || "We couldn’t send your feedback right now.");
       }
 
-      setSuccess("Thanks. Your feedback was saved.");
+      setSuccess("Thanks. Your feedback was recorded.");
       setConfusedText("");
       setBlockerText("");
       setEmail("");

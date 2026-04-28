@@ -66,6 +66,16 @@ export type BuilderRevisionSource = "manual" | "ai" | "system" | (string & {});
 export type BuilderAiCommandResult = {
   summary?: string;
   changes?: string[];
+  direction?: BuilderPreviewDirection | null;
+  creativePatch?: {
+    visualDirection?: string | null;
+    imagePromptAppend?: string | null;
+  };
+  funnelPatch?: {
+    headline?: string | null;
+    subheadline?: string | null;
+    cta?: string | null;
+  };
   payload?: Record<string, unknown>;
 };
 

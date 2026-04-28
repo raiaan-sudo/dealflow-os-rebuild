@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
@@ -222,13 +222,30 @@ function buildOnboardingIdempotencySeed(params: {
 async function fetchJsonWithTimeout<T>(input: string, init: RequestInit, timeoutMs: number) {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  const externalSignal = init.signal;
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
+  }
 
   try {
     const response = await fetch(input, {
       ...init,
       signal: controller.signal,
     });
-    const data = (await response.json().catch(() => null)) as T | null;
+
+    let data: T | null = null;
+
+    try {
+      data = (await response.json()) as T;
+    } catch (error) {
+      console.error("JSON PARSE FAILED:", error);
+      throw new Error("Invalid JSON response");
+    }
 
     return {
       response,
@@ -292,6 +309,8 @@ function formatProgressLabel(step: OnboardingProgressStep) {
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const latestPlanRequestIdRef = useRef(0);
+  const activePlanAbortControllerRef = useRef<AbortController | null>(null);
   const [businessName, setBusinessName] = useState("");
   const [market, setMarket] = useState("");
   const [focus, setFocus] = useState<CampaignFocus>("seller");
@@ -521,8 +540,15 @@ export default function OnboardingPage() {
   }
 
   async function createOrReuseCampaignPlan() {
+    activePlanAbortControllerRef.current?.abort();
+
+    const controller = new AbortController();
+    activePlanAbortControllerRef.current = controller;
+    const requestId = Date.now();
+    latestPlanRequestIdRef.current = requestId;
+
     const { response, data } = await fetchJsonWithTimeout<
-      { campaignId?: string; error?: string }
+      { success?: boolean; campaignId?: string; error?: string; stack?: string | null }
     >(
       "/api/onboarding/plan",
       {
@@ -530,6 +556,7 @@ export default function OnboardingPage() {
         headers: {
           "Content-Type": "application/json",
         },
+        signal: controller.signal,
         body: JSON.stringify({
           business_type: "Real Estate",
           business_name: businessName,
@@ -544,8 +571,18 @@ export default function OnboardingPage() {
       CREATE_PLAN_TIMEOUT_MS,
     );
 
-    if (!response.ok || !data?.campaignId) {
-      throw new Error(data?.error ?? "The onboarding response could not be parsed.");
+    if (requestId !== latestPlanRequestIdRef.current) {
+      console.warn("IGNORING STALE ONBOARDING RESPONSE:", { requestId });
+      throw new Error("Stale onboarding response ignored");
+    }
+
+    if (!data || typeof data.campaignId !== "string" || data.campaignId.trim().length === 0) {
+      console.error("INVALID RESPONSE:", data);
+      throw new Error(data?.error ?? "Invalid onboarding response");
+    }
+
+    if (!response.ok) {
+      throw new Error(data.error ?? "Invalid onboarding response");
     }
 
     return data.campaignId;

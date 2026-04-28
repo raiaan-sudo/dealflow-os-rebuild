@@ -47,10 +47,10 @@ const campaignPlanDocumentSchema = z
     lead_loop_verified: z.boolean().optional().default(false),
     launch_status: z.string().trim().min(1).nullable().optional(),
     public_slug: z.string().trim().min(1).nullable().optional(),
-    campaign_payload: campaignPayloadSchema.optional(),
-    launch_runtime: launchRuntimeSchema.optional(),
-    runtime: runtimeSchema.optional(),
-    first_week_success: z.record(z.string(), z.unknown()).optional(),
+    campaign_payload: campaignPayloadSchema.nullable().optional(),
+    launch_runtime: launchRuntimeSchema.nullable().optional(),
+    runtime: runtimeSchema.nullable().optional(),
+    first_week_success: z.record(z.string(), z.unknown()).nullable().optional(),
     onboarding_idempotency_key: z.string().trim().min(1).optional(),
     onboarding_focus: z.string().trim().min(1).optional(),
     onboarding_price_range: z.string().trim().min(1).optional(),
@@ -120,6 +120,11 @@ function derivePublicSlugFromPlanValue(value: Record<string, unknown>) {
 
 function migrateCampaignPlanDocument(value: Record<string, unknown>) {
   const currentPayload = asObjectRecord(value.campaign_payload);
+  const currentLaunchRuntime = asObjectRecord(value.launch_runtime);
+  const currentRuntime = asObjectRecord(value.runtime);
+  const currentFirstWeekSuccess = asObjectRecord(value.first_week_success);
+  const hasVersion = Object.hasOwn(value, "version");
+  const hasLeadLoopVerified = Object.hasOwn(value, "lead_loop_verified");
   const selectedAdId =
     normalizeSelectedAdId(value.selected_ad_id) ??
     normalizeSelectedAdId(currentPayload?.selected_ad_id) ??
@@ -128,19 +133,22 @@ function migrateCampaignPlanDocument(value: Record<string, unknown>) {
   return {
     ...value,
     version:
-      typeof value.version === "number" && Number.isFinite(value.version)
+      hasVersion
         ? value.version
         : CURRENT_CAMPAIGN_PLAN_VERSION,
     selected_ad_id: selectedAdId,
     launch_status: deriveLaunchStatusFromPlanValue(value),
     public_slug: derivePublicSlugFromPlanValue(value),
+    runtime: currentRuntime ?? undefined,
+    launch_runtime: currentLaunchRuntime ?? undefined,
+    first_week_success: currentFirstWeekSuccess ?? undefined,
     campaign_payload: currentPayload
       ? {
           ...currentPayload,
           ...(selectedAdId ? { selected_ad_id: selectedAdId } : {}),
         }
-      : currentPayload,
-    lead_loop_verified: value.lead_loop_verified === true,
+      : undefined,
+    lead_loop_verified: hasLeadLoopVerified ? value.lead_loop_verified : false,
   };
 }
 
@@ -282,8 +290,20 @@ export function withLaunchRuntime(
   launchRuntime: Record<string, unknown>,
   runtimePatch?: Record<string, unknown>,
 ) {
+  const metaPushStatus = normalizeOptionalText(runtimePatch?.metaPushStatus);
+  const runtimeStatus = normalizeOptionalText(runtimePatch?.status);
+  const launchStatus =
+    metaPushStatus === "published"
+      ? "live"
+      : metaPushStatus === "failed"
+        ? "failed"
+        : runtimeStatus === "launching"
+          ? "launching"
+          : runtimeStatus;
+
   return mergeCampaignPlanDocument(current, {
     launch_runtime: launchRuntime,
+    ...(launchStatus ? { launch_status: launchStatus } : {}),
     ...(runtimePatch ? { runtime: runtimePatch } : {}),
   });
 }
