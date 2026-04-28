@@ -35,6 +35,12 @@ export type SystemJobWorkerCycleResult = {
   claimedJobId: string | null;
   resetCount: number;
 };
+export type SystemJobWorkerBatchResult = {
+  processedJobIds: string[];
+  resetCount: number;
+  cycles: number;
+  exhausted: boolean;
+};
 
 const MAX_SYSTEM_JOB_RETRIES = 1;
 
@@ -928,20 +934,45 @@ export async function runTrackedSystemJob<K extends SystemJobKind, T>(params: {
 export async function runSystemJobWorkerCycle(options?: {
   staleAfterMs?: number;
 }) : Promise<SystemJobWorkerCycleResult> {
-  const resetCount = await resetStaleProcessingSystemJobs(options?.staleAfterMs);
-  const job = await claimNextPendingSystemJob();
-
-  if (!job) {
-    return {
-      claimedJobId: null,
-      resetCount,
-    };
-  }
-
-  await processSystemJob(job.id);
+  const result = await runSystemJobWorkerBatch({
+    maxCycles: 1,
+    staleAfterMs: options?.staleAfterMs,
+  });
 
   return {
-    claimedJobId: job.id,
+    claimedJobId: result.processedJobIds[0] ?? null,
+    resetCount: result.resetCount,
+  };
+}
+
+export async function runSystemJobWorkerBatch(options?: {
+  maxCycles?: number;
+  staleAfterMs?: number;
+}) : Promise<SystemJobWorkerBatchResult> {
+  const maxCycles = Math.min(Math.max(Math.trunc(options?.maxCycles ?? 1), 1), 5);
+  const resetCount = await resetStaleProcessingSystemJobs(options?.staleAfterMs);
+  const processedJobIds: string[] = [];
+
+  for (let cycle = 0; cycle < maxCycles; cycle += 1) {
+    const job = await claimNextPendingSystemJob();
+
+    if (!job) {
+      return {
+        processedJobIds,
+        resetCount,
+        cycles: cycle,
+        exhausted: true,
+      };
+    }
+
+    await processSystemJob(job.id);
+    processedJobIds.push(job.id);
+  }
+
+  return {
+    processedJobIds,
     resetCount,
+    cycles: maxCycles,
+    exhausted: false,
   };
 }

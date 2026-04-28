@@ -16,6 +16,10 @@ const expectedPublicApiRoutes = new Map([
   ["/api/stripe/webhook", new Set(["POST"])],
 ]);
 
+const expectedInternalApiRoutes = new Map([
+  ["/api/internal/system-jobs", new Set(["GET", "POST"])],
+]);
+
 const ownershipMarkers = [
   "getAuthenticatedContext",
   "getCampaignById",
@@ -132,10 +136,50 @@ function checkPrivateMutationGuards(routeFilesByPath, publicApiRoutes) {
       continue;
     }
 
-    if (text.includes("assertSameOriginRequest")) {
+    if (text.includes("assertSameOriginRequest") || text.includes("assertInternalSystemRequest")) {
       pass("Private mutation same-origin guard", `${route} ${privateMutations.join(", ")}`);
     } else {
       fail("Private mutation same-origin guard", `${route} exports ${privateMutations.join(", ")} without assertSameOriginRequest`);
+    }
+  }
+}
+
+function checkInternalApiGuards(publicApiRoutes, routeFilesByPath) {
+  const middleware = read(middlewarePath);
+
+  if (middleware.includes("isInternalApiRequest") && middleware.includes("getInternalSystemJobsSecret")) {
+    pass("Internal API middleware guard", "/api/internal/* bypasses user auth only after bearer secret validation");
+  } else {
+    fail("Internal API middleware guard", "middleware does not contain the internal bearer-secret guard");
+  }
+
+  for (const [route, expectedMethods] of expectedInternalApiRoutes) {
+    if (publicApiRoutes.has(route)) {
+      fail("Internal API public exposure", `${route} must not be in PUBLIC_API_PATHS`);
+    }
+
+    const file = routeFilesByPath.get(route);
+    if (!file) {
+      fail("Internal API route file", `${route} route.ts was not found`);
+      continue;
+    }
+
+    const relativePath = path.relative(root, file);
+    const text = read(relativePath);
+    const actualMethods = exportedMethods(text);
+    const missingMethods = [...expectedMethods].filter((method) => !actualMethods.has(method));
+    const unexpectedMethods = [...actualMethods].filter((method) => !expectedMethods.has(method));
+
+    if (missingMethods.length > 0 || unexpectedMethods.length > 0) {
+      fail("Internal API method surface", `${route} expected ${[...expectedMethods].join(", ")}, found ${[...actualMethods].join(", ")}`);
+    } else {
+      pass("Internal API method surface", `${route} exports ${[...actualMethods].join(", ")}`);
+    }
+
+    if (text.includes("assertInternalSystemRequest") && text.includes("runSystemJobWorkerBatch")) {
+      pass("Internal API route guard", `${route} requires internal authorization before running jobs`);
+    } else {
+      fail("Internal API route guard", `${route} does not use assertInternalSystemRequest and runSystemJobWorkerBatch`);
     }
   }
 }
@@ -162,6 +206,7 @@ const routeFiles = walk(path.join(root, apiRoot));
 const routeFilesByPath = new Map(routeFiles.map((file) => [routePathFromFile(file), file]));
 
 checkPublicAllowlist(publicApiRoutes, routeFilesByPath);
+checkInternalApiGuards(publicApiRoutes, routeFilesByPath);
 checkPrivateMutationGuards(routeFilesByPath, publicApiRoutes);
 checkDynamicOwnershipMarkers(routeFilesByPath, publicApiRoutes);
 

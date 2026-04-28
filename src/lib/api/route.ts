@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
-import { hasSupabaseEnv } from "@/lib/env";
+import { getInternalSystemJobsSecret, hasSupabaseEnv } from "@/lib/env";
 import { logError, logWarn } from "@/lib/logging";
 
 export class ApiError extends Error {
@@ -83,33 +83,106 @@ export function unauthorizedOrConfigError() {
   return new ApiError(401, "Authentication is required for this route.", "unauthorized");
 }
 
+function isLocalHostname(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function addExpectedOrigin(expectedOrigins: Set<string>, value: string | null | undefined) {
+  if (!value) {
+    return;
+  }
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+      expectedOrigins.add(parsed.origin);
+    }
+  } catch {
+    // Ignore invalid optional origins; request candidates are validated separately.
+  }
+}
+
+function addHostOrigin(
+  expectedOrigins: Set<string>,
+  host: string | null,
+  protocol: string | null,
+) {
+  if (!host) {
+    return;
+  }
+
+  const normalizedProtocol = protocol === "http" || protocol === "https" ? protocol : "https";
+  addExpectedOrigin(expectedOrigins, `${normalizedProtocol}://${host}`);
+
+  try {
+    const parsed = new URL(`${normalizedProtocol}://${host}`);
+    if (isLocalHostname(parsed.hostname)) {
+      addExpectedOrigin(expectedOrigins, `http://${host}`);
+      addExpectedOrigin(expectedOrigins, `https://${host}`);
+    }
+  } catch {
+    // Ignore malformed Host headers; they will not be accepted as candidates.
+  }
+}
+
+function normalizeRequestOrigin(value: string | null, errorCode = "csrf_rejected") {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      throw new Error("Unsupported origin protocol.");
+    }
+
+    return parsed.origin;
+  } catch {
+    throw new ApiError(403, "Cross-site request rejected.", errorCode);
+  }
+}
+
+function timingSafeTokenEquals(candidate: string | null, expected: string) {
+  if (!candidate || !expected) {
+    return false;
+  }
+
+  let mismatch = candidate.length ^ expected.length;
+  const length = Math.max(candidate.length, expected.length);
+
+  for (let index = 0; index < length; index += 1) {
+    mismatch |= candidate.charCodeAt(index % candidate.length) ^ expected.charCodeAt(index % expected.length);
+  }
+
+  return mismatch === 0;
+}
+
+function getBearerToken(request: Request) {
+  const authorization = request.headers.get("authorization");
+  const match = authorization?.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() ?? null;
+}
+
 export function assertSameOriginRequest(request: Request) {
-  const origin = request.headers.get("origin");
+  const origin = normalizeRequestOrigin(request.headers.get("origin"));
   const referer = request.headers.get("referer");
   const host = request.headers.get("host");
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ?? null;
   const expectedOrigins = new Set<string>();
 
-  if (host) {
-    expectedOrigins.add(`https://${host}`);
-    expectedOrigins.add(`http://${host}`);
-  }
+  addExpectedOrigin(expectedOrigins, request.url);
+  addHostOrigin(expectedOrigins, forwardedHost, forwardedProto);
+  addHostOrigin(expectedOrigins, host, forwardedProto);
 
   if (process.env.NEXT_PUBLIC_APP_URL) {
-    try {
-      expectedOrigins.add(new URL(process.env.NEXT_PUBLIC_APP_URL).origin);
-    } catch {
-      // Ignore invalid optional app URL here. Startup/schema checks validate env separately.
-    }
+    addExpectedOrigin(expectedOrigins, process.env.NEXT_PUBLIC_APP_URL);
   }
 
-  let candidate = origin ?? null;
+  let candidate = origin;
 
   if (!candidate && referer) {
-    try {
-      candidate = new URL(referer).origin;
-    } catch {
-      throw new ApiError(403, "Cross-site request rejected.", "csrf_rejected");
-    }
+    candidate = normalizeRequestOrigin(referer);
   }
 
   if (!candidate) {
@@ -118,6 +191,24 @@ export function assertSameOriginRequest(request: Request) {
 
   if (!expectedOrigins.has(candidate)) {
     throw new ApiError(403, "Cross-site request rejected.", "csrf_rejected");
+  }
+}
+
+export function assertInternalSystemRequest(request: Request) {
+  const secret = getInternalSystemJobsSecret();
+
+  if (!secret) {
+    throw new ApiError(
+      503,
+      "Internal system job runner secret is not configured.",
+      "internal_runner_secret_missing",
+    );
+  }
+
+  const token = getBearerToken(request) ?? request.headers.get("x-internal-system-key")?.trim() ?? null;
+
+  if (!timingSafeTokenEquals(token, secret)) {
+    throw new ApiError(401, "Internal system authorization is required.", "internal_unauthorized");
   }
 }
 

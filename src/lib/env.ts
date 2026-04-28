@@ -124,6 +124,14 @@ export function getServiceRoleEnv() {
   };
 }
 
+export function getInternalSystemJobsSecret() {
+  return (
+    process.env.INTERNAL_SYSTEM_JOBS_SECRET ??
+    process.env.CRON_SECRET ??
+    ""
+  ).trim();
+}
+
 export function getInternalAdminEmails() {
   return (process.env.INTERNAL_ADMIN_EMAILS ?? "")
     .split(",")

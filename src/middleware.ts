@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { getSupabaseEnv } from "@/lib/env";
+import { getInternalSystemJobsSecret, getSupabaseEnv } from "@/lib/env";
 
 const PUBLIC_PATHS = new Set(["/", "/login", "/privacy", "/terms"]);
 const PUBLIC_API_PATHS = new Set([
@@ -23,10 +23,51 @@ function isPublicRequest(pathname: string) {
   return PUBLIC_API_PATHS.has(pathname);
 }
 
+function timingSafeTokenEquals(candidate: string | null, expected: string) {
+  if (!candidate || !expected) {
+    return false;
+  }
+
+  let mismatch = candidate.length ^ expected.length;
+  const length = Math.max(candidate.length, expected.length);
+
+  for (let index = 0; index < length; index += 1) {
+    mismatch |= candidate.charCodeAt(index % candidate.length) ^ expected.charCodeAt(index % expected.length);
+  }
+
+  return mismatch === 0;
+}
+
+function getBearerToken(request: NextRequest) {
+  const authorization = request.headers.get("authorization");
+  const match = authorization?.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() ?? null;
+}
+
+function isInternalApiRequest(pathname: string) {
+  return pathname === "/api/internal" || pathname.startsWith("/api/internal/");
+}
+
+function isAuthorizedInternalRequest(request: NextRequest) {
+  const secret = getInternalSystemJobsSecret();
+  const token =
+    getBearerToken(request) ??
+    request.headers.get("x-internal-system-key")?.trim() ??
+    null;
+
+  return {
+    configured: Boolean(secret),
+    authorized: timingSafeTokenEquals(token, secret),
+  };
+}
+
 function applySecurityHeaders(response: NextResponse) {
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("Cross-Origin-Opener-Policy", "same-origin");
+  response.headers.set("Origin-Agent-Cluster", "?1");
+  response.headers.set("X-DNS-Prefetch-Control", "off");
   response.headers.set(
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=(), payment=()",
@@ -46,6 +87,11 @@ function applySecurityHeaders(response: NextResponse) {
       "frame-ancestors 'none'",
     ].join("; "),
   );
+
+  if (process.env.NODE_ENV === "production") {
+    response.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+  }
+
   return response;
 }
 
@@ -56,6 +102,33 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   if (isPublicRequest(pathname)) {
+    return applySecurityHeaders(response);
+  }
+
+  if (isInternalApiRequest(pathname)) {
+    const { configured, authorized } = isAuthorizedInternalRequest(request);
+
+    if (!configured) {
+      return applySecurityHeaders(NextResponse.json(
+        { error: "Internal system job runner secret is not configured." },
+        { status: 503 },
+      ));
+    }
+
+    if (!authorized) {
+      const rejected = NextResponse.json(
+        { error: "Internal system authorization is required." },
+        {
+          status: 401,
+          headers: {
+            "WWW-Authenticate": "Bearer",
+          },
+        },
+      );
+      return applySecurityHeaders(rejected);
+    }
+
+    response.headers.set("X-Internal-Job-Runner", "authorized");
     return applySecurityHeaders(response);
   }
 
