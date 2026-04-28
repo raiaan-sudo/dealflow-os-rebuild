@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 
-const repoRoot = "/Users/raiaanreza/Documents/New project/dealflow-os-rebuild";
+const repoRoot = process.cwd();
 const allowedFiles = new Set([
   "src/lib/services/campaign-plan-persistence-service.ts",
 ]);

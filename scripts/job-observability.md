@@ -15,6 +15,9 @@ Each tracked route writes:
 - `payload.tracking.correlationId`
 - `payload.tracking.lifecycleStatus`
 - `retry_count`
+- `attempt_count`
+- `max_attempts`
+- `last_error_code`
 - `error_message`
 - `started_at`
 - `completed_at`
@@ -42,6 +45,7 @@ Database `system_jobs.status` remains the lower-level persistence status:
 - `generate-creatives`: 1 retry for transient provider/server failures
 - `build-campaign`: no automatic retry
 - `meta-sync`: 1 retry for transient Meta failures
+- `lead_capture_retry`: queued with an idempotency key derived from request/contact context; replay is deduped again by `leads.dedupe_hash`
 
 Validation and access failures are not auto-retried.
 
@@ -58,10 +62,22 @@ Inspect:
 
 - `status`
 - `retry_count`
+- `attempt_count`
+- `max_attempts`
 - `error_message`
+- `last_error_code`
+- `dead_lettered_at`
+- `dead_letter_reason`
 - `payload.tracking.correlationId`
 - `payload.tracking.lifecycleStatus`
 - `payload.tracking.lastErrorCategory`
+
+### Job recovery rules
+
+- Retry only jobs that are idempotent by design, such as `lead_capture_retry` or generation jobs with stable output state.
+- Treat `dead_lettered_at is not null` as an operator-review state, not an automatic retry signal.
+- Repeated `last_error_code` values should be grouped before retrying; fix config/access failures first.
+- If `attempt_count >= max_attempts`, the claim RPC will dead-letter the job instead of claiming it.
 
 ### Server logs
 

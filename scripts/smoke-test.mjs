@@ -84,9 +84,20 @@ function runOfflineChecks() {
   const leadRoute = "src/app/api/lead-capture/route.ts";
   const leadForm = "src/app/f/[slug]/lead-capture-form.tsx";
   const dashboardPage = "src/app/(app)/dashboard/page.tsx";
+  const metaConnect = "src/app/api/integrations/meta/connect/route.ts";
   const metaCallback = "src/app/api/integrations/meta/callback/route.ts";
+  const billingCheckoutRoute = "src/app/api/billing/checkout/route.ts";
+  const videoRoute = "src/app/api/campaigns/[id]/generate-video/route.ts";
+  const staticAdsRoute = "src/app/api/campaigns/[id]/generate-static-ads/route.ts";
+  const launchRuntimeApi = "src/components/campaign/launch/launch-runtime-api.ts";
+  const legacyAiProviders = "src/lib/ai/providers.ts";
+  const apiRouteHelpers = "src/lib/api/route.ts";
+  const rateLimitHelpers = "src/lib/api/rate-limit.ts";
+  const sessionCostGuard = "src/lib/services/session-cost-guard.ts";
+  const systemJobService = "src/lib/services/system-job-service.ts";
   const loginForm = "src/components/auth/login-form.tsx";
   const middleware = "src/middleware.ts";
+  const ciWorkflow = ".github/workflows/ci.yml";
 
   assertIncludes(loginForm, "redirectTo.searchParams.set(\"next\", nextPath)", "Auth redirect preservation", "OAuth sign-in keeps next path");
   assertIncludes(middleware, "pathname.startsWith(\"/f/\")", "Public funnel route", "/f/[slug] remains public");
@@ -107,20 +118,59 @@ function runOfflineChecks() {
   assertIncludes(launchRoute, "step_status", "Step-level launch state", "launch_runtime stores step_status");
   assertIncludes(launchRoute, "testModeInterruptAfter", "Forced interruption support", "forced interruption mode exists");
   assertIncludes(launchApiRoute, "test_mode_interrupt_after", "Forced interruption launch API", "launch route forwards interruption mode");
+  assertIncludes(launchApiRoute, "assertMetaLaunchBillingAccess", "Launch billing gate", "launch route enforces subscription/admin override gate");
+  assertIncludes(launchApiRoute, "acquireMetaLaunchLock", "Durable Meta launch lock", "launch route uses DB-backed launch locking");
+  assertIncludes(launchApiRoute, "ALLOW_META_LAUNCH_INTERRUPTION_TESTS", "Interruption guard", "forced interruption is env-gated");
+  assertIncludes("src/lib/integrations/meta/execution.ts", "return \"PAUSED\"", "Meta objects remain paused", "shared Meta execution mapper never emits ACTIVE during beta");
+  assertIncludes("src/lib/services/meta-launch-service.ts", "status: \"paused\"", "Meta publish activation disabled", "publish step reports paused instead of activating Meta objects");
+  assertIncludes(metaConnect, "value.startsWith(\"//\")", "Meta OAuth return path guard", "protocol-relative return paths are rejected");
+  assertIncludes(metaCallback, "resolved.origin === appOrigin", "Meta OAuth callback origin guard", "callback redirects stay on the app origin");
 
   assertExcludes(launchRoute, /accounts\[0\]|pages\[0\]|pixels\[0\]/, "No first-asset fallback in launch execution", "launch route has no accounts[0]/pages[0]/pixels[0]");
   assertIncludes(metaCallback, "asset_discovery", "Meta discovery state tracking", "callback stores partial discovery status");
 
   assertIncludes(leadForm, "Please provide email or phone", "Lead form client validation", "lead form blocks submit without email or phone");
   assertIncludes(leadRoute, "consumeRateLimit", "Lead capture rate limiting", "lead capture rate limiting enabled");
+  assertIncludes(rateLimitHelpers, "rate_limit_unavailable", "Durable rate limiting fails closed", "production rate limiting no longer falls back to in-memory buckets");
+  assertIncludes(rateLimitHelpers, "p_bucket_key", "Durable rate-limit RPC contract", "rate limiter calls the Supabase RPC with versioned parameter names");
+  assertIncludes("src/lib/services/lead-handler-service.ts", "dedupe_hash", "Lead durable dedupe hash", "public leads have durable dedupe hash support");
+  assertIncludes("src/lib/services/lead-handler-service.ts", "consent_metadata", "Lead consent persistence", "lead capture persists consent metadata");
+  assertIncludes("src/lib/services/lead-handler-service.ts", "buildLeadRetryJobIdempotencyKey", "Lead retry idempotency key", "queued lead retry jobs dedupe by request and contact");
   assertIncludes("src/lib/services/lead-handler-service.ts", "findRecentDuplicateLead", "Lead dedupe path", "duplicate public leads are checked before insert");
+  assertIncludes("src/lib/services/lead-handler-service.ts", ".eq(\"publish_state\", \"published\")", "Public lead capture published-only lookup", "raw campaign IDs cannot capture leads for unpublished funnels");
+  assertIncludes("src/lib/services/lead-handler-service.ts", "replayFailedPublicLeadCapture", "Lead retry replay implementation", "queued lead retries call the public lead insert path");
   assertExcludes("src/lib/services/lead-handler-service.ts", /QA_EMAIL|QA_PASSWORD/, "QA credential fallback removed", "no QA credential fallback remains in lead handler");
+
+  assertIncludes(apiRouteHelpers, "assertSameOriginRequest", "Same-origin mutation guard helper", "sensitive authenticated POST routes can reject cross-site requests");
+  assertIncludes(apiRouteHelpers, "if (!candidate)", "Same-origin missing-header rejection", "same-origin guard rejects unsafe requests that omit Origin and Referer");
+  assertIncludes(onboardingRoute, "assertSameOriginRequest", "Onboarding same-origin guard", "onboarding POST rejects cross-site requests");
+  assertIncludes("src/app/api/campaigns/[id]/select-ad/route.ts", "assertSameOriginRequest", "Selected creative same-origin guard", "selected creative writes reject cross-site requests");
+  assertIncludes("src/app/api/campaigns/[id]/select-ad/route.ts", "organization_id", "Selected creative ownership guard", "selected creative writes verify campaign ownership");
+  assertIncludes(launchRoute, "ownershipVerified", "Meta failure persistence ownership guard", "direct Meta launch route does not persist failure state before ownership is proven");
+  assertIncludes(billingCheckoutRoute, "assertSameOriginRequest", "Billing checkout same-origin guard", "checkout route rejects cross-site POSTs");
+  assertIncludes(staticAdsRoute, "consumeSessionCostBudget", "Paid static generation guard", "static ad generation consumes DB-backed provider budget");
+  assertIncludes(staticAdsRoute, "idempotencyKey", "Static generation idempotency", "paid generation job creation uses idempotency key");
+  assertIncludes(sessionCostGuard, "reserve_provider_usage", "Atomic provider usage reservation", "paid-generation guard reserves provider budget through DB RPC");
+  assertIncludes(sessionCostGuard, "markSessionCostBudgetEvent", "Provider usage ledger transitions", "paid-generation reservations are marked consumed/released after job creation");
+  assertIncludes(videoRoute, "video_generation_disabled", "Video generation disabled", "HeyGen/video generation remains disabled for beta");
+  assertExcludes(launchRuntimeApi, "/api/integrations/meta/deploy", "No dead Meta deploy client route", "client helpers do not call a missing Meta deploy endpoint");
+  assertIncludes(legacyAiProviders, "ALLOW_HEYGEN_VIDEO_GENERATION", "Legacy HeyGen helper kill switch", "older AI helper paths cannot call HeyGen unless explicitly enabled");
+  assertIncludes(systemJobService, "claim_next_system_job", "Atomic system job claim", "system job worker uses DB-backed SKIP LOCKED claim RPC");
+  assertIncludes(systemJobService, "replayFailedPublicLeadCapture", "Lead retry job processor", "lead capture retry jobs replay or fail instead of silently completing");
+  assertIncludes(systemJobService, "dead_lettered_at: null", "Manual retry clears dead-letter", "operator retry can make dead-lettered jobs claimable again");
+  assertIncludes(systemJobService, "dead_letter_reason", "System job dead-letter state", "failed jobs preserve dead-letter reason");
+  assertIncludes(systemJobService, "last_error_code", "System job error classification", "operator views can filter repeated job error classes");
+  assertIncludes(systemJobService, "maxAttempts", "System job max attempts", "jobs persist an attempt ceiling for DB claim/dead-letter enforcement");
 
   assertIncludes(dashboardPage, "Last updated", "Dashboard last-updated state", "dashboard shows last updated timestamp");
   assertIncludes(dashboardPage, "leadLoopVerified", "Dashboard lead-loop state", "dashboard loads lead loop verification");
 
   assertIncludes("scripts/meta-launch-idempotency-test.md", "Interrupt after campaign creation", "Meta idempotency test doc", "forced interruption test documentation exists");
   assertIncludes("scripts/smoke-test-checklist.md", "Confirm `/preview` and `/launch` show the same selected ad.", "Manual smoke checklist", "manual staging smoke checklist exists");
+  assertIncludes(ciWorkflow, "npm run lint", "CI lint gate", "pull requests run lint before merge");
+  assertIncludes(ciWorkflow, "npm run typecheck", "CI typecheck gate", "pull requests run TypeScript validation before merge");
+  assertIncludes(ciWorkflow, "npm run build", "CI build gate", "pull requests build before merge");
+  assertIncludes(ciWorkflow, "npm run smoke:offline", "CI offline smoke gate", "pull requests run launch-readiness smoke checks before merge");
 }
 
 async function runStagingChecks() {

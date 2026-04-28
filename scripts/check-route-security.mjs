@@ -1,0 +1,170 @@
+#!/usr/bin/env node
+
+import fs from "node:fs";
+import path from "node:path";
+
+const root = process.cwd();
+const middlewarePath = "src/middleware.ts";
+const apiRoot = "src/app/api";
+const routeMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+const mutatingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+const expectedPublicApiRoutes = new Map([
+  ["/api/integrations/meta/callback", new Set(["GET"])],
+  ["/api/lead-capture", new Set(["POST"])],
+  ["/api/sms/twilio", new Set(["POST"])],
+  ["/api/stripe/webhook", new Set(["POST"])],
+]);
+
+const ownershipMarkers = [
+  "getAuthenticatedContext",
+  "getCampaignById",
+  "updateCampaignPublishState",
+  "deleteCreativeAssetById",
+  "getCreativeAssetById",
+  "listCampaignCreativeAssets",
+  "uploadManualCreativeAsset",
+  "assertMetaLaunchBillingAccess",
+  "auth.userId",
+  "auth.organizationId",
+  "organization_id",
+  "user_id",
+];
+
+let failures = 0;
+
+function pass(name, detail = "") {
+  console.log(`PASS  ${name}${detail ? ` - ${detail}` : ""}`);
+}
+
+function fail(name, detail = "") {
+  console.log(`FAIL  ${name}${detail ? ` - ${detail}` : ""}`);
+  failures += 1;
+}
+
+function read(relativePath) {
+  return fs.readFileSync(path.join(root, relativePath), "utf8");
+}
+
+function walk(dir) {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      return walk(fullPath);
+    }
+    return entry.isFile() && entry.name === "route.ts" ? [fullPath] : [];
+  });
+}
+
+function routePathFromFile(filePath) {
+  const relative = path.relative(path.join(root, apiRoot), filePath);
+  const withoutRoute = relative.replace(/\/route\.ts$/, "");
+  return `/api/${withoutRoute.replace(/\/index$/, "").replaceAll(path.sep, "/")}`;
+}
+
+function exportedMethods(text) {
+  const found = new Set();
+  for (const method of routeMethods) {
+    if (new RegExp(`export\\s+async\\s+function\\s+${method}\\b`).test(text)) {
+      found.add(method);
+    }
+  }
+  return found;
+}
+
+function parsePublicApiAllowlist() {
+  const middleware = read(middlewarePath);
+  const match = middleware.match(/const\s+PUBLIC_API_PATHS\s*=\s*new\s+Set\s*\(\s*\[([\s\S]*?)\]\s*\)/);
+
+  if (!match) {
+    fail("Middleware public API allowlist", "PUBLIC_API_PATHS set was not found");
+    return new Set();
+  }
+
+  return new Set([...match[1].matchAll(/["']([^"']+)["']/g)].map((item) => item[1]));
+}
+
+function checkPublicAllowlist(publicApiRoutes, routeFilesByPath) {
+  for (const route of expectedPublicApiRoutes.keys()) {
+    if (!publicApiRoutes.has(route)) {
+      fail("Expected public API route", `${route} is missing from middleware allowlist`);
+    }
+  }
+
+  for (const route of publicApiRoutes) {
+    if (!expectedPublicApiRoutes.has(route)) {
+      fail("Unexpected public API route", `${route} is public but not documented in check-route-security`);
+      continue;
+    }
+
+    const file = routeFilesByPath.get(route);
+    if (!file) {
+      fail("Public API route file", `${route} is allowlisted but no route.ts exists`);
+      continue;
+    }
+
+    const actual = exportedMethods(read(path.relative(root, file)));
+    const expected = expectedPublicApiRoutes.get(route);
+    const unexpectedMethods = [...actual].filter((method) => !expected.has(method));
+    if (unexpectedMethods.length > 0) {
+      fail("Public API method surface", `${route} also exports ${unexpectedMethods.join(", ")}`);
+    } else {
+      pass("Public API method surface", `${route} exports ${[...actual].join(", ")}`);
+    }
+  }
+
+  if (failures === 0) {
+    pass("Middleware public API allowlist", "only documented public API routes are exposed");
+  }
+}
+
+function checkPrivateMutationGuards(routeFilesByPath, publicApiRoutes) {
+  for (const [route, file] of routeFilesByPath) {
+    if (publicApiRoutes.has(route)) {
+      continue;
+    }
+
+    const text = read(path.relative(root, file));
+    const methods = exportedMethods(text);
+    const privateMutations = [...methods].filter((method) => mutatingMethods.has(method));
+
+    if (privateMutations.length === 0) {
+      continue;
+    }
+
+    if (text.includes("assertSameOriginRequest")) {
+      pass("Private mutation same-origin guard", `${route} ${privateMutations.join(", ")}`);
+    } else {
+      fail("Private mutation same-origin guard", `${route} exports ${privateMutations.join(", ")} without assertSameOriginRequest`);
+    }
+  }
+}
+
+function checkDynamicOwnershipMarkers(routeFilesByPath, publicApiRoutes) {
+  for (const [route, file] of routeFilesByPath) {
+    if (publicApiRoutes.has(route) || !route.includes("[")) {
+      continue;
+    }
+
+    const text = read(path.relative(root, file));
+    const marker = ownershipMarkers.find((candidate) => text.includes(candidate));
+
+    if (marker) {
+      pass("Dynamic route ownership marker", `${route} uses ${marker}`);
+    } else {
+      fail("Dynamic route ownership marker", `${route} has no recognized tenant/auth ownership marker`);
+    }
+  }
+}
+
+const publicApiRoutes = parsePublicApiAllowlist();
+const routeFiles = walk(path.join(root, apiRoot));
+const routeFilesByPath = new Map(routeFiles.map((file) => [routePathFromFile(file), file]));
+
+checkPublicAllowlist(publicApiRoutes, routeFilesByPath);
+checkPrivateMutationGuards(routeFilesByPath, publicApiRoutes);
+checkDynamicOwnershipMarkers(routeFilesByPath, publicApiRoutes);
+
+if (failures > 0) {
+  process.exitCode = 1;
+}

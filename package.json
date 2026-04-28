@@ -11,8 +11,11 @@
     "plan:validate": "node ./scripts/validate-campaign-plan-document.mjs",
     "plan:writes:check": "node ./scripts/check-campaign-plan-write-paths.mjs",
     "schema:check": "node ./scripts/check-required-schema.mjs",
+    "routes:security": "node ./scripts/check-route-security.mjs",
     "smoke:offline": "node ./scripts/smoke-test.mjs offline",
-    "smoke:staging": "node ./scripts/smoke-test.mjs staging"
+    "smoke:staging": "node ./scripts/smoke-test.mjs staging",
+    "load:routes": "node ./scripts/load-test.mjs routes",
+    "load:lead-capture": "node ./scripts/load-test.mjs lead-capture"
   },
   "dependencies": {
     "@next/env": "^16.2.4",
@@ -23,7 +26,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "lucide-react": "^1.11.0",
-    "next": "14.2.5",
+    "next": "^14.2.35",
     "react": "^18",
     "react-dom": "^18",
     "server-only": "^0.0.1",
