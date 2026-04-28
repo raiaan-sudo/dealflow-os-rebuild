@@ -8,6 +8,7 @@ import {
   logMetaError,
   logMetaWarning,
 } from "@/lib/integrations/meta/error-mapper";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { getAppContext } from "@/lib/services/app-context";
 
@@ -36,6 +37,19 @@ const META_STATE_COOKIE = "dealflow_meta_oauth_state";
 const META_RETURN_TO_COOKIE = "dealflow_meta_oauth_return_to";
 
 export const dynamic = "force-dynamic";
+
+function getSafeRedirectBase(value: string | null, appUrl: string) {
+  const fallback = new URL("/launch", appUrl);
+
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return fallback;
+  }
+
+  const resolved = new URL(value, appUrl);
+  const appOrigin = new URL(appUrl).origin;
+
+  return resolved.origin === appOrigin ? resolved : fallback;
+}
 
 async function resolveOrganizationIdForMetaCallback(): Promise<string | null> {
   const context = await getAppContext();
@@ -71,7 +85,7 @@ export async function GET(req: NextRequest) {
     const cookieStore = await cookies();
     const storedState = cookieStore.get(META_STATE_COOKIE)?.value ?? null;
     const returnTo = cookieStore.get(META_RETURN_TO_COOKIE)?.value ?? "/launch";
-    const redirectBase = new URL(returnTo, appUrl);
+    const redirectBase = getSafeRedirectBase(returnTo, appUrl);
     const redirectWithMetaError = (metaErrorCode: string) => {
       const nextUrl = new URL(redirectBase.toString());
       nextUrl.searchParams.set("meta_error", metaErrorCode);
@@ -114,15 +128,21 @@ export async function GET(req: NextRequest) {
       return redirectWithMetaError("no_token");
     }
 
-    const supabase = await createRouteHandlerClient();
+    const routeSupabase = await createRouteHandlerClient();
     const organizationId = await resolveOrganizationIdForMetaCallback();
 
-    if (!supabase) {
+    if (!routeSupabase) {
       return redirectWithMetaError("supabase_unavailable");
     }
 
     if (!organizationId) {
       throw new Error("Missing workspace context");
+    }
+
+    const supabase = createAdminClient();
+
+    if (!supabase) {
+      return redirectWithMetaError("supabase_unavailable");
     }
 
     const access_token = tokenData.access_token;
@@ -131,29 +151,38 @@ export async function GET(req: NextRequest) {
 
     const { data: existing, error: existingError } = await supabase
       .from("marketing_accounts")
-      .select("id, pixel_id")
+      .select("id, pixel_id, name, account_name, external_account_id, connection_metadata")
       .eq("organization_id", organizationId)
       .eq("platform", "meta_ads")
       .maybeSingle();
 
     if (existingError) {
+      logMetaError({
+        context: "oauth_callback",
+        requestId,
+        error: existingError,
+        message: "Meta token store lookup failed.",
+      });
       return redirectWithMetaError("token_store_failed");
     }
 
     const existingRow =
       (existing as {
-        id?: string;
-        pixel_id?: string | null;
-        name?: string | null;
-        account_name?: string | null;
-        connection_metadata?: unknown;
-      } | null) ?? null;
+      id?: string;
+      pixel_id?: string | null;
+      name?: string | null;
+      account_name?: string | null;
+      external_account_id?: string | null;
+      connection_metadata?: unknown;
+    } | null) ?? null;
 
     const tokenPayload = {
       organization_id: organizationId,
       platform: "meta_ads",
       access_token_encrypted: encryptedAccessToken,
       status: "connected",
+      name: existingRow?.name ?? "Meta Ads",
+      account_name: existingRow?.account_name ?? "Meta Ads",
       connected_at: now,
       last_sync_at: now,
       token_last_synced_at: now,
@@ -163,36 +192,63 @@ export async function GET(req: NextRequest) {
       },
     };
 
-    if (existingRow?.id) {
-      const { error: updateError } = await supabase
+    let marketingAccountRowId = existingRow?.id ?? null;
+    let storedMarketingRow = existingRow;
+
+    if (marketingAccountRowId) {
+      const { data: updatedRow, error: updateError } = await supabase
         .from("marketing_accounts")
         .update(tokenPayload as never)
-        .eq("id", existingRow.id);
+        .eq("id", marketingAccountRowId)
+        .select("id, pixel_id, name, account_name, external_account_id, connection_metadata")
+        .maybeSingle();
 
-      if (updateError) {
+      if (updateError || !updatedRow) {
+        logMetaError({
+          context: "oauth_callback",
+          requestId,
+          error: updateError ?? new Error("Meta token update returned no row."),
+          message: "Meta token update failed.",
+        });
         return redirectWithMetaError("token_store_failed");
       }
+
+      storedMarketingRow = updatedRow as typeof existingRow;
     } else {
-      const { error: insertError } = await supabase
+      const { data: insertedRow, error: insertError } = await supabase
         .from("marketing_accounts")
         .insert({
           ...tokenPayload,
           created_at: now,
           updated_at: now,
-        } as never);
+        } as never)
+        .select("id, pixel_id, name, account_name, external_account_id, connection_metadata")
+        .maybeSingle();
 
-      if (insertError) {
+      if (insertError || !insertedRow) {
+        logMetaError({
+          context: "oauth_callback",
+          requestId,
+          error: insertError ?? new Error("Meta token insert returned no row."),
+          message: "Meta token insert failed.",
+        });
         return redirectWithMetaError("token_store_failed");
       }
+
+      storedMarketingRow = insertedRow as typeof existingRow;
+      marketingAccountRowId =
+        typeof storedMarketingRow?.id === "string" ? storedMarketingRow.id : null;
     }
 
     const existingMetadata =
-      existingRow?.connection_metadata && typeof existingRow.connection_metadata === "object"
-        ? (existingRow.connection_metadata as Record<string, unknown>)
+      storedMarketingRow?.connection_metadata && typeof storedMarketingRow.connection_metadata === "object"
+        ? (storedMarketingRow.connection_metadata as Record<string, unknown>)
         : {};
     const selectedExternalAccountId =
       typeof existingMetadata.selected_external_account_id === "string"
         ? existingMetadata.selected_external_account_id
+        : typeof storedMarketingRow?.external_account_id === "string"
+          ? storedMarketingRow.external_account_id
         : null;
     const selectedPageId =
       typeof existingMetadata.selected_page_id === "string"
@@ -201,8 +257,8 @@ export async function GET(req: NextRequest) {
     const existingSelectedPixelId =
       typeof existingMetadata.pixel_id === "string"
         ? existingMetadata.pixel_id
-        : typeof existingRow?.pixel_id === "string"
-          ? existingRow.pixel_id
+        : typeof storedMarketingRow?.pixel_id === "string"
+          ? storedMarketingRow.pixel_id
           : null;
     let accountsError: string | null = null;
     let pagesError: string | null = null;
@@ -406,9 +462,9 @@ export async function GET(req: NextRequest) {
       connected_at: now,
       last_sync_at: now,
       token_last_synced_at: now,
-      name: selectedAccount?.name ?? existingRow?.name ?? "Meta Ads",
-      account_name: selectedAccount?.name ?? existingRow?.account_name ?? "Meta Ads",
-      external_account_id: selectedAccount?.id ?? null,
+      name: selectedAccount?.name ?? storedMarketingRow?.name ?? "Meta Ads",
+      account_name: selectedAccount?.name ?? storedMarketingRow?.account_name ?? "Meta Ads",
+      external_account_id: selectedAccount?.id ?? selectedExternalAccountId,
       pixel_id: selectedPixelId,
       connection_metadata: {
         ...existingMetadata,
@@ -431,10 +487,18 @@ export async function GET(req: NextRequest) {
           errors: discoveryErrors,
           last_checked_at: now,
         },
-        selected_external_account_id: selectedAccount?.id ?? null,
-        selected_account_name: selectedAccount?.name ?? null,
-        selected_page_id: selectedPage?.id ?? null,
-        selected_page_name: selectedPage?.name ?? null,
+        selected_external_account_id: selectedAccount?.id ?? selectedExternalAccountId,
+        selected_account_name:
+          selectedAccount?.name ??
+          (typeof existingMetadata.selected_account_name === "string"
+            ? existingMetadata.selected_account_name
+            : null),
+        selected_page_id: selectedPage?.id ?? selectedPageId,
+        selected_page_name:
+          selectedPage?.name ??
+          (typeof existingMetadata.selected_page_name === "string"
+            ? existingMetadata.selected_page_name
+            : null),
         available_accounts: availableAccounts,
         available_pages: availablePages,
         available_pixels: availablePixels,
@@ -442,12 +506,18 @@ export async function GET(req: NextRequest) {
       },
     };
 
-    if (existingRow?.id) {
+    if (marketingAccountRowId) {
       const { error: accountUpdateError } = await supabase
         .from("marketing_accounts")
         .update(accountPayload as never)
-        .eq("id", existingRow.id);
+        .eq("id", marketingAccountRowId);
       if (accountUpdateError) {
+        logMetaError({
+          context: "oauth_callback",
+          requestId,
+          error: accountUpdateError,
+          message: "Meta asset metadata update failed.",
+        });
         return redirectWithMetaError("asset_store_failed");
       }
     } else {
@@ -459,6 +529,12 @@ export async function GET(req: NextRequest) {
           updated_at: now,
         } as never);
       if (accountInsertError) {
+        logMetaError({
+          context: "oauth_callback",
+          requestId,
+          error: accountInsertError,
+          message: "Meta asset metadata insert failed.",
+        });
         return redirectWithMetaError("asset_store_failed");
       }
     }
@@ -466,7 +542,7 @@ export async function GET(req: NextRequest) {
     const redirectUrl = new URL(redirectBase.toString());
 
     if (discoveryReady) {
-      redirectUrl.searchParams.set("meta_connected", "true");
+      redirectUrl.searchParams.set("meta_connected", "1");
     } else {
       redirectUrl.searchParams.set("meta_warning", "asset_discovery_incomplete");
       redirectUrl.searchParams.set("meta_request_id", requestId);

@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { ApiError, apiSuccess, handleApiError, parseJsonBody } from "@/lib/api/route";
+import {
+  ApiError,
+  apiSuccess,
+  assertSameOriginRequest,
+  handleApiError,
+  parseJsonBody,
+} from "@/lib/api/route";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import {
   mergeCampaignPlanDocument,
@@ -9,7 +15,7 @@ import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import type { CampaignAd } from "@/lib/services/campaign-plan-service";
 import { persistCampaignPlan } from "@/lib/services/campaign-plan-service";
-import { generateCreativePackage } from "@/lib/services/creative-engine";
+import { buildCreativeSystem } from "@/lib/services/creative-engine";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { runTrackedSystemJob } from "@/lib/services/system-job-service";
@@ -86,6 +92,7 @@ async function persistSupplementalCreativeFields(params: {
 
 export async function POST(request: Request) {
   try {
+    assertSameOriginRequest(request);
     const { campaignId } = await parseJsonBody(request, requestSchema);
     const auth = await getAuthenticatedContext();
     const requestId = crypto.randomUUID();
@@ -107,7 +114,10 @@ export async function POST(request: Request) {
         }
 
         const plan = canonicalCampaignToPlan(record);
-        const creativePackage = await generateCreativePackage({
+        // Onboarding must not trigger paid image/video generation. This endpoint
+        // builds launch-review copy and creative drafts only; paid asset
+        // generation stays behind explicit asset-generation routes with guards.
+        const creativePackage = buildCreativeSystem({
           location: plan.market,
           audience: plan.audience,
           offer: plan.offerSummary || plan.keyOffer,

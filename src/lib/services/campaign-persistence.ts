@@ -356,21 +356,24 @@ async function assertCampaignOwnership(
   row: CampaignPlanRow;
   campaign: Campaign;
 }> {
-  const { supabase, userId } = await requireUserSession();
-  const row = await loadCampaignPlanRowForUser(supabase, userId, campaignId);
+  const { supabase, userId, ownerId } = await requireUserSession();
+  const row = await loadCampaignPlanRowForUser(supabase, userId, ownerId, campaignId);
   return { supabase, userId, row, campaign: mapCampaignRow(row) };
 }
 
 async function loadCampaignPlanRowForUser(
   supabase: PersistenceClient,
   userId: string,
-  campaignId: string,
+  ownerIdOrCampaignId: string,
+  maybeCampaignId?: string,
 ) {
+  const campaignId = maybeCampaignId ?? ownerIdOrCampaignId;
+  const ownerId = maybeCampaignId ? ownerIdOrCampaignId : userId;
   const { data, error } = await supabase
     .from("campaign_plans")
     .select("*")
     .eq("id", campaignId)
-    .eq("user_id", userId)
+    .or(`user_id.eq.${userId},owner_id.eq.${ownerId}`)
     .maybeSingle();
 
   if (error) {
@@ -559,7 +562,6 @@ export async function getLatestCampaignRecord(): Promise<FullCampaignRecord | nu
       .from("campaign_plans")
       .select("*")
       .eq("user_id", userId)
-      .order("updated_at", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -757,13 +759,14 @@ export async function updateCampaignPublishState(params: {
     update.staged_at = null;
   }
 
-  const { data, error } = await supabase
+  const writeClient = createAdminClient() ?? supabase;
+  const { data, error } = await writeClient
     .from("campaign_plans")
     .update(update as never)
     .eq("id", params.campaignId)
     .eq("user_id", campaign.user_id)
     .select("*")
-    .single();
+    .maybeSingle();
 
   if (error) {
     if (isMissingPublishSchemaError(error)) {
@@ -779,6 +782,10 @@ export async function updateCampaignPublishState(params: {
     }
 
     throw error;
+  }
+
+  if (!data) {
+    throw new ApiError(404, "Campaign not found for publish update.", "campaign_not_found");
   }
 
   const updatedRow = data as CampaignPlanRow;

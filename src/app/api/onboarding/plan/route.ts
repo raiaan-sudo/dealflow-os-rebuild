@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { assertSameOriginRequest } from "@/lib/api/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,6 +28,21 @@ type SafeOnboardingPayloadLog = {
   goalPresent: boolean;
   servicePresent: boolean;
   idempotencySeedPresent: boolean;
+};
+
+type OnboardingPlanSuccessResponse = {
+  success: true;
+  campaignId: string;
+  data: {
+    campaignId: string;
+  };
+};
+
+type OnboardingPlanFailureResponse = {
+  success: false;
+  error: string;
+  details?: Record<string, unknown> | null;
+  stack?: string | null;
 };
 
 const REAL_ESTATE_INTERESTS = [
@@ -85,11 +101,76 @@ function validateOnboardingRouteEnv() {
     missing.push("NEXT_PUBLIC_SUPABASE_ANON_KEY");
   }
 
-  if (!process.env.OPENAI_API_KEY?.trim() && !process.env.AI_API_KEY?.trim()) {
-    missing.push("OPENAI_API_KEY or AI_API_KEY");
+  return missing;
+}
+
+function buildSuccessResponse(campaignId: string): OnboardingPlanSuccessResponse {
+  return {
+    success: true,
+    campaignId,
+    data: {
+      campaignId,
+    },
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function extractSerializableError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      stack: error.stack ?? null,
+      details: null as Record<string, unknown> | null,
+    };
   }
 
-  return missing;
+  if (isRecord(error)) {
+    const message =
+      typeof error.message === "string" && error.message.trim().length > 0
+        ? error.message
+        : typeof error.error === "string" && error.error.trim().length > 0
+          ? error.error
+          : typeof error.details === "string" && error.details.trim().length > 0
+            ? error.details
+            : JSON.stringify(error);
+
+    const details: Record<string, unknown> = {};
+
+    for (const key of ["code", "details", "hint", "error", "status", "statusCode", "name"]) {
+      if (key in error && error[key] !== undefined) {
+        details[key] = error[key];
+      }
+    }
+
+    return {
+      message,
+      stack: typeof error.stack === "string" ? error.stack : null,
+      details: Object.keys(details).length > 0 ? details : error,
+    };
+  }
+
+  return {
+    message: String(error),
+    stack: null,
+    details: null as Record<string, unknown> | null,
+  };
+}
+
+function buildFailureResponse(error: unknown): OnboardingPlanFailureResponse {
+  const serialized = extractSerializableError(error);
+  const isProduction = process.env.NODE_ENV === "production";
+
+  return {
+    success: false,
+    error: isProduction
+      ? "Campaign generation failed. Your answers are saved, so retry without starting over."
+      : serialized.message,
+    details: isProduction ? undefined : serialized.details,
+    stack: isProduction ? undefined : serialized.stack,
+  };
 }
 
 function normalizeIdempotencyPart(value: unknown) {
@@ -160,7 +241,7 @@ async function findExistingCampaignByIdempotencyKey(
     .select("id, plan")
     .eq("user_id", userId)
     .contains("plan", { onboarding_idempotency_key: idempotencyKey } as never)
-    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
@@ -168,8 +249,30 @@ async function findExistingCampaignByIdempotencyKey(
     throw error;
   }
 
-  const row = (data as { id?: unknown } | null) ?? null;
-  return typeof row?.id === "string" ? row.id : null;
+  const row = (data as { id?: unknown; plan?: unknown } | null) ?? null;
+
+  if (typeof row?.id !== "string") {
+    return null;
+  }
+
+  const document = isRecord(row.plan) ? row.plan : null;
+  const plan = isRecord(document?.plan) ? document.plan : null;
+  const strategy = isRecord(document?.strategy) ? document.strategy : null;
+  const market = safeText(plan?.market ?? strategy?.location);
+  const audience = safeText(plan?.audience ?? strategy?.audience);
+  const monthlyBudget = Number(plan?.monthly_budget ?? 0);
+
+  if (!market || !audience || !Number.isFinite(monthlyBudget) || monthlyBudget <= 0) {
+    console.warn("ONBOARDING_IDEMPOTENCY_SKIPPED_INCOMPLETE_CAMPAIGN:", {
+      campaignId: row.id,
+      hasMarket: Boolean(market),
+      hasAudience: Boolean(audience),
+      hasMonthlyBudget: Number.isFinite(monthlyBudget) && monthlyBudget > 0,
+    });
+    return null;
+  }
+
+  return row.id;
 }
 
 function getRealEstateIntent(service: string) {
@@ -317,14 +420,7 @@ export async function POST(req: Request) {
   let safePayload: SafeOnboardingPayloadLog | null = null;
 
   try {
-    console.log("HANDLER ENTRY REACHED");
-
-    if (process.env.ONBOARDING_PLAN_ISOLATION_MODE === "true") {
-      return Response.json({ ok: true, isolated: true });
-    }
-
-    console.log("Onboarding plan request started");
-
+    assertSameOriginRequest(req);
     const missingEnv = validateOnboardingRouteEnv();
 
     if (missingEnv.length > 0) {
@@ -341,31 +437,29 @@ export async function POST(req: Request) {
         import("@/lib/services/campaign-plan-service"),
       ]);
 
-    console.log("STEP: create route handler client");
     const supabase = await createRouteHandlerClient();
 
     if (!supabase) {
       throw new Error("Supabase is not configured.");
     }
 
-    console.log("STEP: supabase auth getUser");
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
     if (!user) {
+      const responseBody: OnboardingPlanFailureResponse = {
+        success: false,
+        error: "Authentication is required.",
+      };
       return NextResponse.json(
-        {
-          success: false,
-          error: "Authentication is required.",
-        },
+        responseBody,
         { status: 401 },
       );
     }
 
     const payload = (await req.json().catch(() => null)) as OnboardingPayload | null;
     safePayload = buildSafePayloadLog(payload);
-    console.log("Onboarding plan request payload parsed");
     const businessType = safeText(payload?.business_type) || "Real Estate";
     const businessName = safeText(payload?.business_name) || businessType;
     const location = safeText(payload?.market) || safeText(payload?.location) || "United States";
@@ -387,14 +481,13 @@ export async function POST(req: Request) {
       idempotencySeed: payload?.idempotencySeed,
     });
 
-    console.log("STEP: find existing campaign by idempotency key");
     const existingCampaignId = await findExistingCampaignByIdempotencyKey(supabase as never, user.id, idempotencyKey);
 
     if (existingCampaignId) {
-      return NextResponse.json({ success: true, campaignId: existingCampaignId });
+      const responseBody = buildSuccessResponse(existingCampaignId);
+      return NextResponse.json(responseBody);
     }
 
-    console.log("STEP: campaign creation and AI generation");
     const savedPlan = await campaignPlanServiceModule.saveCampaignPlan(
       realEstateMode
         ? getRealEstateOnboardingDefaults({
@@ -432,7 +525,6 @@ export async function POST(req: Request) {
           },
     );
 
-    console.log("STEP: fetch saved campaign row");
     const { data: savedRowData, error: savedRowError } = await supabase
       .from("campaign_plans")
       .select("plan")
@@ -447,7 +539,6 @@ export async function POST(req: Request) {
     const savedRow = (savedRowData as { plan?: unknown } | null) ?? null;
     const currentPlan = campaignPlanDocumentModule.readCampaignPlanDocument(savedRow?.plan);
 
-    console.log("STEP: persist onboarding metadata");
     await persistenceModule.persistCampaignPlanDocumentUpdate({
       supabase,
       campaignId: savedPlan.id,
@@ -462,7 +553,6 @@ export async function POST(req: Request) {
     });
 
     if (realEstateMode) {
-      console.log("STEP: enrich real estate campaign plan");
       await enrichRealEstateCampaignPlan({
         supabase: supabase as never,
         campaignId: savedPlan.id,
@@ -473,16 +563,18 @@ export async function POST(req: Request) {
       });
     }
 
-    return NextResponse.json({ success: true, campaignId: savedPlan.id });
+    const responseBody = buildSuccessResponse(savedPlan.id);
+    return NextResponse.json(responseBody);
   } catch (error) {
-    console.error("ONBOARDING_PLAN_ERROR:", error);
-    console.error("ONBOARDING_PLAN_ERROR_FULL:", error);
+    const serializedError = extractSerializableError(error);
 
     const { logError } = await import("@/lib/logging");
+    const isProduction = process.env.NODE_ENV === "production";
 
     logError("onboarding_plan_failed", {
-      errorMessage: error instanceof Error ? error.message : "Unknown error",
-      stack: error instanceof Error ? error.stack ?? null : null,
+      errorMessage: serializedError.message,
+      stack: isProduction ? null : serializedError.stack,
+      errorDetails: isProduction ? null : serializedError.details,
       safePayload,
       envPresence: buildEnvPresenceLog(),
       runtime: {
@@ -491,13 +583,7 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : null,
-      },
-      { status: 500 },
-    );
+    const responseBody = buildFailureResponse(error);
+    return NextResponse.json(responseBody, { status: 500 });
   }
 }

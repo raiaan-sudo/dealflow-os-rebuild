@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { ApiError } from "@/lib/api/route";
+import { ApiError, assertSameOriginRequest } from "@/lib/api/route";
 import { createMetaFailureResponse } from "@/lib/integrations/meta/error-mapper";
 import {
   getMetaConnectionState,
   selectMetaAdAccount,
   updateMetaLaunchSelections,
 } from "@/lib/integrations/meta/service";
+import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 
 type SelectionBody = {
   externalAccountId?: string;
@@ -16,6 +17,9 @@ type SelectionBody = {
 export async function POST(request: Request) {
   const requestId = crypto.randomUUID();
   try {
+    assertSameOriginRequest(request);
+    await getAuthenticatedContext();
+
     const body = (await request.json().catch(() => null)) as SelectionBody | null;
     const externalAccountId = body?.externalAccountId?.trim() ?? "";
     const pageId = body?.pageId?.trim() ?? "";

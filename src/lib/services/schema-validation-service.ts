@@ -4,8 +4,32 @@ import { createAdminClient } from "@/lib/server/supabase-admin";
 import { ApiError } from "@/lib/api/route";
 import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
 
-const EXPECTED_APP_SCHEMA_VERSION = "20260426";
-const REQUIRED_CAMPAIGN_PLAN_COLUMNS = ["launch_status", "lead_loop_verified"] as const;
+const EXPECTED_APP_SCHEMA_VERSION = "20260428";
+const REQUIRED_CAMPAIGN_PLAN_COLUMNS = ["organization_id", "launch_status", "lead_loop_verified"] as const;
+const REQUIRED_MARKETING_ACCOUNT_COLUMNS = [
+  "account_name",
+  "external_account_id",
+  "pixel_id",
+  "access_token_encrypted",
+  "last_sync_at",
+  "connection_metadata",
+  "launch_domain",
+  "verification_token",
+  "domain_verified",
+  "tracking_status",
+  "tracking_metadata",
+  "tracking_last_checked_at",
+] as const;
+const REQUIRED_STRIPE_WEBHOOK_EVENT_COLUMNS = [
+  "payload",
+  "updated_at",
+] as const;
+const REQUIRED_TABLES = [
+  "stripe_webhook_events",
+  "billing_subscriptions",
+  "system_jobs",
+  "system_job_logs",
+] as const;
 
 type SchemaValidationMode = "block" | "warn";
 
@@ -39,7 +63,7 @@ function isMissingColumnError(error: unknown, column: string) {
   return message.includes(column);
 }
 
-async function checkCampaignPlanColumns() {
+async function checkRequiredColumns(table: string, columns: readonly string[]) {
   const admin = createAdminClient();
 
   if (!admin) {
@@ -48,11 +72,8 @@ async function checkCampaignPlanColumns() {
 
   const missingColumns: string[] = [];
 
-  for (const column of REQUIRED_CAMPAIGN_PLAN_COLUMNS) {
-    const { error } = await admin
-      .from("campaign_plans")
-      .select(`id, ${column}`)
-      .limit(1);
+  for (const column of columns) {
+    const { error } = await admin.from(table).select(`id, ${column}`).limit(1);
 
     if (!error) {
       continue;
@@ -98,17 +119,64 @@ async function readSchemaVersion() {
     : null;
 }
 
+async function checkRequiredTables() {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+  }
+
+  const missingTables: string[] = [];
+
+  for (const table of REQUIRED_TABLES) {
+    const { error } = await admin.from(table).select("*").limit(1);
+
+    if (!error) {
+      continue;
+    }
+
+    const message = typeof error.message === "string" ? error.message : "";
+
+    if (/relation .* does not exist|schema cache/i.test(message)) {
+      missingTables.push(table);
+      continue;
+    }
+
+    throw new ApiError(500, error.message, "schema_table_check_failed");
+  }
+
+  return missingTables;
+}
+
 async function runSchemaValidation(): Promise<SchemaValidationResult> {
   const mode = getSchemaValidationMode();
-  const [missingColumns, actualVersion] = await Promise.all([
-    checkCampaignPlanColumns(),
+  const [
+    missingCampaignPlanColumns,
+    missingMarketingAccountColumns,
+    missingStripeWebhookEventColumns,
+    missingTables,
+    actualVersion,
+  ] = await Promise.all([
+    checkRequiredColumns("campaign_plans", REQUIRED_CAMPAIGN_PLAN_COLUMNS),
+    checkRequiredColumns("marketing_accounts", REQUIRED_MARKETING_ACCOUNT_COLUMNS),
+    checkRequiredColumns("stripe_webhook_events", REQUIRED_STRIPE_WEBHOOK_EVENT_COLUMNS),
+    checkRequiredTables(),
     readSchemaVersion(),
   ]);
+  const missingColumns = [
+    ...missingCampaignPlanColumns.map((column) => `campaign_plans.${column}`),
+    ...missingMarketingAccountColumns.map((column) => `marketing_accounts.${column}`),
+    ...missingStripeWebhookEventColumns.map((column) => `stripe_webhook_events.${column}`),
+  ];
 
   const issues: string[] = [];
 
   if (missingColumns.length > 0) {
-    issues.push(`Missing required campaign_plans columns: ${missingColumns.join(", ")}`);
+    issues.push(`Missing required columns: ${missingColumns.join(", ")}`);
+  }
+
+  if (missingTables.length > 0) {
+    issues.push(`Missing required tables: ${missingTables.join(", ")}`);
   }
 
   if (actualVersion !== EXPECTED_APP_SCHEMA_VERSION) {

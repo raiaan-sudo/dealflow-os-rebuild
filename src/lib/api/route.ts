@@ -83,6 +83,44 @@ export function unauthorizedOrConfigError() {
   return new ApiError(401, "Authentication is required for this route.", "unauthorized");
 }
 
+export function assertSameOriginRequest(request: Request) {
+  const origin = request.headers.get("origin");
+  const referer = request.headers.get("referer");
+  const host = request.headers.get("host");
+  const expectedOrigins = new Set<string>();
+
+  if (host) {
+    expectedOrigins.add(`https://${host}`);
+    expectedOrigins.add(`http://${host}`);
+  }
+
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    try {
+      expectedOrigins.add(new URL(process.env.NEXT_PUBLIC_APP_URL).origin);
+    } catch {
+      // Ignore invalid optional app URL here. Startup/schema checks validate env separately.
+    }
+  }
+
+  let candidate = origin ?? null;
+
+  if (!candidate && referer) {
+    try {
+      candidate = new URL(referer).origin;
+    } catch {
+      throw new ApiError(403, "Cross-site request rejected.", "csrf_rejected");
+    }
+  }
+
+  if (!candidate) {
+    throw new ApiError(403, "Cross-site request rejected.", "csrf_rejected");
+  }
+
+  if (!expectedOrigins.has(candidate)) {
+    throw new ApiError(403, "Cross-site request rejected.", "csrf_rejected");
+  }
+}
+
 export async function parseJsonBody<T>(
   request: Request,
   schema: { parse: (input: unknown) => T },

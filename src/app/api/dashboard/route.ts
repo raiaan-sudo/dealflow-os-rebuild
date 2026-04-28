@@ -1,6 +1,8 @@
 import { apiSuccess, handleApiError, unauthorizedOrConfigError } from "@/lib/api/route";
 import { getDashboardData } from "@/lib/services/dashboard-service";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);

@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { ApiError, apiSuccess, handleApiError, parseJsonBody } from "@/lib/api/route";
+import {
+  ApiError,
+  apiSuccess,
+  assertSameOriginRequest,
+  handleApiError,
+  parseJsonBody,
+} from "@/lib/api/route";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { persistCampaignPlan } from "@/lib/services/campaign-plan-service";
@@ -25,6 +31,7 @@ function deriveFunnelGoal(funnelType?: string | null): "lead_form" | "survey" | 
 
 export async function POST(request: Request) {
   try {
+    assertSameOriginRequest(request);
     const { campaignId } = await parseJsonBody(request, requestSchema);
     const auth = await getAuthenticatedContext();
     const requestId = crypto.randomUUID();

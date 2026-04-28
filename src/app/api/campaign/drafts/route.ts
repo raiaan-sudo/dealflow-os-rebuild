@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { NextResponse } from "next/server";
-import { handleApiError, parseJsonBody } from "@/lib/api/route";
+import { assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
 import {
   getCampaignDraftActions,
   refreshCampaignDraftActions,
@@ -33,6 +33,7 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
+    assertSameOriginRequest(request);
     const body = await parseJsonBody(request, bodySchema);
     const draft = await updateCampaignDraftActionStatus(body);
 

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { NextResponse } from "next/server";
-import { handleApiError, parseOptionalJsonBody } from "@/lib/api/route";
+import { assertSameOriginRequest, handleApiError, parseOptionalJsonBody } from "@/lib/api/route";
 import { evaluateAutonomy } from "@/app/api/autonomy/_shared";
 
 const bodySchema = z.object({
@@ -9,6 +9,7 @@ const bodySchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    assertSameOriginRequest(request);
     const body = await parseOptionalJsonBody(request, bodySchema, {});
     const result = await evaluateAutonomy(body.campaignId ?? null);
 

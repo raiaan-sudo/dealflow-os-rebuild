@@ -1,12 +1,18 @@
 import { z } from "zod";
-import { ApiError, apiSuccess, handleApiError, parseJsonBody } from "@/lib/api/route";
+import {
+  ApiError,
+  apiSuccess,
+  assertSameOriginRequest,
+  handleApiError,
+  parseJsonBody,
+} from "@/lib/api/route";
 import { getPublicAppUrl } from "@/lib/env";
 import {
-  buildCampaignPlanCriticalFieldPatch,
   getCampaignPayloadFromPlan,
   readCampaignPlanDocument,
   withCampaignPayload,
 } from "@/lib/services/campaign-plan-document";
+import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import { getCampaignById, updateCampaignPublishState } from "@/lib/services/campaign-persistence";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
@@ -76,6 +82,7 @@ async function loadStoredPlan(campaignId: string): Promise<Record<string, unknow
 
 async function persistCampaignPayload(params: {
   campaignId: string;
+  userId: string;
   payload: CampaignPayloadRecord;
 }) {
   const supabase = await createRouteHandlerClient();
@@ -87,18 +94,18 @@ async function persistCampaignPayload(params: {
   const currentPlan = await loadStoredPlan(params.campaignId);
   const nextPlan = withCampaignPayload(currentPlan, params.payload as unknown as Record<string, unknown>);
 
-  const { error } = await supabase
-    .from("campaign_plans")
-    .update(buildCampaignPlanCriticalFieldPatch(nextPlan) as never)
-    .eq("id", params.campaignId);
-
-  if (error) {
-    throw error;
-  }
+  await persistCampaignPlanDocumentUpdate({
+    supabase,
+    campaignId: params.campaignId,
+    userId: params.userId,
+    plan: nextPlan,
+    source: "build_campaign_payload",
+  });
 }
 
 export async function POST(request: Request) {
   try {
+    assertSameOriginRequest(request);
     const { campaignId } = await parseJsonBody(request, requestSchema);
     const auth = await getAuthenticatedContext();
     const requestId = crypto.randomUUID();
@@ -247,6 +254,7 @@ export async function POST(request: Request) {
 
         await persistCampaignPayload({
           campaignId,
+          userId: auth.userId,
           payload: campaignPayload,
         });
 
