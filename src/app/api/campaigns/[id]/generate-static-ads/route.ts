@@ -1,8 +1,11 @@
-import { apiSuccess, handleApiError, parseOptionalJsonBody } from "@/lib/api/route";
+import { assertSameOriginRequest, apiSuccess, handleApiError, parseOptionalJsonBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { createSystemJob, listSystemJobs } from "@/lib/services/system-job-service";
-import { consumeSessionCostBudget } from "@/lib/services/session-cost-guard";
+import {
+  consumeSessionCostBudget,
+  markSessionCostBudgetEvent,
+} from "@/lib/services/session-cost-guard";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -14,6 +17,7 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
+    assertSameOriginRequest(request);
     const auth = await getAuthenticatedContext();
     const { id } = await context.params;
     const campaignId = id?.trim();
@@ -50,21 +54,50 @@ export async function POST(
       });
     }
 
-    await consumeSessionCostBudget({
+    const idempotencyKey = `static_creative_generation:${auth.organizationId}:${auth.userId}:${campaignId}`;
+
+    const budgetReservation = await consumeSessionCostBudget({
       bucket: "openai_image_generation",
       userId: auth.userId,
+      organizationId: auth.organizationId,
       campaignId,
+      idempotencyKey,
     });
 
-    const job = await createSystemJob({
-      organizationId: auth.organizationId,
-      userId: auth.userId,
-      campaignId,
-      kind: "static_creative_generation",
-      payload: {
-        force: body.force === true,
-      },
-    });
+    let job;
+
+    try {
+      job = await createSystemJob({
+        organizationId: auth.organizationId,
+        userId: auth.userId,
+        campaignId,
+        kind: "static_creative_generation",
+        idempotencyKey,
+        payload: {
+          force: body.force === true,
+        },
+      });
+      await markSessionCostBudgetEvent({
+        eventId: budgetReservation.eventId,
+        status: "consumed",
+        metadata: {
+          jobId: job.id,
+          campaignId,
+          operation: "static_creative_generation",
+        },
+      });
+    } catch (error) {
+      await markSessionCostBudgetEvent({
+        eventId: budgetReservation.eventId,
+        status: "released",
+        metadata: {
+          campaignId,
+          operation: "static_creative_generation",
+          reason: error instanceof Error ? error.message : "job_create_failed",
+        },
+      }).catch(() => null);
+      throw error;
+    }
 
     return apiSuccess({
       success: true,

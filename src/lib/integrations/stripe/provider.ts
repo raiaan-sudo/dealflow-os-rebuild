@@ -12,10 +12,12 @@ export type StripeBillingExecuteRequest =
   | {
       action: "create_customer";
       params: Stripe.CustomerCreateParams;
+      idempotencyKey?: string;
     }
   | {
       action: "create_checkout_session";
       params: Stripe.Checkout.SessionCreateParams;
+      idempotencyKey?: string;
     }
   | {
       action: "retrieve_subscription";
@@ -135,11 +137,17 @@ class ConfiguredStripeBillingProvider implements StripeBillingProvider
     const { client, env } = this.getClientOrThrow();
 
     if (request.action === "create_customer") {
-      return client.customers.create(request.params);
+      return client.customers.create(
+        request.params,
+        request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : undefined,
+      );
     }
 
     if (request.action === "create_checkout_session") {
-      return client.checkout.sessions.create(request.params);
+      return client.checkout.sessions.create(
+        request.params,
+        request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : undefined,
+      );
     }
 
     if (request.action === "retrieve_subscription") {

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { handleApiError, parseJsonBody } from "@/lib/api/route";
+import { assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
 import { createBillingCheckoutSession } from "@/lib/services/billing-service";
 import { normalizeBillingPlanTier } from "@/lib/billing/plans";
 
@@ -9,6 +9,7 @@ const checkoutSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    assertSameOriginRequest(request);
     const body = await parseJsonBody(request, checkoutSchema);
     const session = await createBillingCheckoutSession({
       planTier: normalizeBillingPlanTier(body.planTier),

@@ -308,6 +308,14 @@ export async function createHeyGenVideo({
     };
   }
 
+  if (process.env.ALLOW_HEYGEN_VIDEO_GENERATION !== "true") {
+    return {
+      url,
+      providerAssetId,
+      providerName: null,
+    };
+  }
+
   if (avatarProvider.isConfigured()) {
     try {
       const result = await avatarProvider.execute({
@@ -366,7 +374,7 @@ export async function createVideoAd(
   const voiceId = videoEnv?.voiceId ?? "";
   let videoUrl = buildMockVideoUrl(`${market}-${audience}-${offer}`);
 
-  if (apiKey && avatarId && voiceId) {
+  if (process.env.ALLOW_HEYGEN_VIDEO_GENERATION === "true" && apiKey && avatarId && voiceId) {
     const generatedVideo = await createHeyGenVideo({
       avatar_id: avatarId,
       script: script.join("\n"),

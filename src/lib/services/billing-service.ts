@@ -37,7 +37,8 @@ export type BillingSummary = {
 };
 
 const BILLING_ACTIVE_STATUSES = new Set(["active", "trialing"]);
-const STRIPE_WEBHOOK_HANDLED_STATUSES = new Set(["processed", "ignored", "processing"]);
+const STRIPE_WEBHOOK_HANDLED_STATUSES = new Set(["processed", "ignored"]);
+const STRIPE_WEBHOOK_PROCESSING_STALE_MS = 5 * 60_000;
 
 type StripeWebhookClaimResult =
   | {
@@ -57,6 +58,35 @@ function isUniqueViolation(error: unknown) {
       typeof (error as { code?: unknown }).code === "string" &&
       (error as { code: string }).code === "23505",
   );
+}
+
+function isStripeCustomerModeMismatch(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return /No such customer:.*similar object exists in (test|live) mode/i.test(error.message);
+}
+
+async function createStripeCustomerForCheckout(params: {
+  stripeProvider: ReturnType<typeof getStripeBillingProvider>;
+  organizationId: string;
+  userId: string;
+  email?: string | null;
+  name?: string | null;
+}) {
+  return params.stripeProvider.execute({
+    action: "create_customer",
+    idempotencyKey: `dealflow_customer_${params.organizationId}`,
+    params: {
+      email: params.email || undefined,
+      name: params.name || undefined,
+      metadata: {
+        organization_id: params.organizationId,
+        user_id: params.userId,
+      },
+    },
+  }) as Promise<Stripe.Customer>;
 }
 
 function getStripeObjectId(event: Stripe.Event) {
@@ -184,6 +214,15 @@ async function claimStripeWebhookEvent(event: Stripe.Event): Promise<StripeWebho
     };
   }
 
+  const staleProcessingBefore = new Date(Date.now() - STRIPE_WEBHOOK_PROCESSING_STALE_MS).toISOString();
+  const reclaimableStatuses =
+    existingRow.status === "failed" ||
+    (existingRow.status === "processing" &&
+      typeof existingRow.updated_at === "string" &&
+      existingRow.updated_at < staleProcessingBefore)
+      ? ["failed", "processing"]
+      : ["failed"];
+
   const { data: reclaimedRow, error: reclaimError } = await admin
     .from("stripe_webhook_events")
     .update({
@@ -193,7 +232,7 @@ async function claimStripeWebhookEvent(event: Stripe.Event): Promise<StripeWebho
       updated_at: new Date().toISOString(),
     } as never)
     .eq("stripe_event_id", event.id)
-    .eq("status", "failed")
+    .in("status", reclaimableStatuses)
     .select("*")
     .maybeSingle();
 
@@ -251,7 +290,8 @@ export async function getBillingSummary() {
     throw new ApiError(401, "Authentication is required for billing access.", "unauthorized");
   }
 
-  const { data, error } = await supabase
+  const billingClient = createAdminClient() ?? supabase;
+  const { data, error } = await billingClient
     .from("billing_subscriptions")
     .select("*")
     .eq("organization_id", context.organization.id)
@@ -273,6 +313,26 @@ export async function getBillingSummary() {
     launchAllowed: summary.launchAllowed || launchOverride,
     launchOverride,
   };
+}
+
+export async function getBillingSummaryForOrganization(organizationId: string) {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+  }
+
+  const { data, error } = await admin
+    .from("billing_subscriptions")
+    .select("*")
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  if (error) {
+    throw new ApiError(500, error.message, "billing_subscription_fetch_failed");
+  }
+
+  return mapBillingRow((data as BillingRow | null) ?? null, "starter");
 }
 
 export async function assertBillingFeatureAccess(feature: BillingFeature) {
@@ -307,6 +367,33 @@ export async function assertMetaLaunchBillingAccess() {
   );
 }
 
+export async function assertMetaLaunchBillingAccessForOrganization(organizationId: string) {
+  const summary = await getBillingSummaryForOrganization(organizationId);
+
+  if (summary.launchAllowed) {
+    return summary;
+  }
+
+  const context = await getAppContext();
+  const launchOverride =
+    context?.organization.id === organizationId &&
+    isInternalAdminEmail(context.user.email ?? context.profile?.email ?? null);
+
+  if (launchOverride) {
+    return {
+      ...summary,
+      launchAllowed: true,
+      launchOverride: true,
+    };
+  }
+
+  throw new ApiError(
+    402,
+    "An active Pro subscription is required before this campaign can launch.",
+    "billing_launch_payment_required",
+  );
+}
+
 export async function createBillingCheckoutSession(params: {
   planTier: BillingPlanTier;
   customerName?: string;
@@ -323,13 +410,14 @@ export async function createBillingCheckoutSession(params: {
     throw new ApiError(503, "Stripe is not configured yet.", "stripe_not_configured");
   }
 
+  const billingClient = createAdminClient() ?? supabase;
   const priceId = getStripePriceId(params.planTier);
 
   if (!priceId) {
     throw new ApiError(503, "The selected plan is not configured in Stripe.", "stripe_price_missing");
   }
 
-  const { data: existingSubscription, error: existingSubscriptionError } = await supabase
+  const { data: existingSubscription, error: existingSubscriptionError } = await billingClient
     .from("billing_subscriptions")
     .select("*")
     .eq("organization_id", context.organization.id)
@@ -339,19 +427,16 @@ export async function createBillingCheckoutSession(params: {
     throw new ApiError(500, existingSubscriptionError.message, "billing_subscription_fetch_failed");
   }
 
-  let customerId = (existingSubscription as BillingRow | null)?.stripe_customer_id ?? null;
+  const existingBillingRow = (existingSubscription as BillingRow | null) ?? null;
+  let customerId = existingBillingRow?.stripe_customer_id ?? null;
 
   if (!customerId) {
-    const customer = await stripeProvider.execute({
-      action: "create_customer",
-      params: {
-        email: params.customerEmail || context.user.email || undefined,
-        name: params.customerName || context.organization.name || undefined,
-        metadata: {
-          organization_id: context.organization.id,
-          user_id: context.user.id,
-        },
-      },
+    const customer = await createStripeCustomerForCheckout({
+      stripeProvider,
+      organizationId: context.organization.id,
+      userId: context.user.id,
+      email: params.customerEmail || context.user.email || undefined,
+      name: params.customerName || context.organization.name || undefined,
     });
     customerId = customer.id;
   }
@@ -362,26 +447,83 @@ export async function createBillingCheckoutSession(params: {
     userId: context.user.id,
     planTier: params.planTier,
   });
-  const session = (await stripeProvider.execute({
-    action: "create_checkout_session",
-    params: {
-      mode: "subscription",
-      customer: customerId,
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
-      success_url: urls.successUrl,
-      cancel_url: urls.cancelUrl,
-      allow_promotion_codes: true,
-      metadata,
-      subscription_data: {
+  const createCheckoutSession = async (stripeCustomerId: string) =>
+    (await stripeProvider.execute({
+      action: "create_checkout_session",
+      idempotencyKey: `dealflow_checkout_${context.organization.id}_${params.planTier}_${crypto.randomUUID()}`,
+      params: {
+        mode: "subscription",
+        customer: stripeCustomerId,
+        line_items: [
+          {
+            price: priceId,
+            quantity: 1,
+          },
+        ],
+        success_url: urls.successUrl,
+        cancel_url: urls.cancelUrl,
+        allow_promotion_codes: true,
         metadata,
+        subscription_data: {
+          metadata,
+        },
       },
-    },
-  })) as Stripe.Checkout.Session;
+    })) as Stripe.Checkout.Session;
+
+  let session: Stripe.Checkout.Session;
+  try {
+    session = await createCheckoutSession(customerId);
+  } catch (error) {
+    if (!customerId || !isStripeCustomerModeMismatch(error)) {
+      throw error;
+    }
+
+    logWarn("Stored Stripe customer belongs to a different mode; creating a replacement customer for checkout.", {
+      organizationId: context.organization.id,
+    });
+    const replacementCustomer = await createStripeCustomerForCheckout({
+      stripeProvider,
+      organizationId: context.organization.id,
+      userId: context.user.id,
+      email: params.customerEmail || context.user.email || undefined,
+      name: params.customerName || context.organization.name || undefined,
+    });
+    customerId = replacementCustomer.id;
+    session = await createCheckoutSession(customerId);
+  }
+
+  const existingMetadata =
+    existingBillingRow?.metadata &&
+    typeof existingBillingRow.metadata === "object" &&
+    !Array.isArray(existingBillingRow.metadata)
+      ? (existingBillingRow.metadata as Record<string, Json>)
+      : {};
+  const metadataPatch = {
+    ...existingMetadata,
+    last_checkout_session_id: session.id,
+  } satisfies Json;
+
+  if (
+    existingBillingRow &&
+    (existingBillingRow.status === "active" ||
+      existingBillingRow.status === "trialing" ||
+      existingBillingRow.status === "past_due")
+  ) {
+    const { error: updateError } = await billingClient
+      .from("billing_subscriptions")
+      .update({
+        stripe_customer_id: customerId,
+        stripe_checkout_session_id: session.id,
+        metadata: metadataPatch,
+      } as never)
+      .eq("organization_id", context.organization.id);
+
+    if (updateError) {
+      throw new ApiError(500, updateError.message, "billing_subscription_update_failed");
+    }
+
+    return { url: session.url, sessionId: session.id };
+  }
 
   const upsertRow: BillingInsert = {
     organization_id: context.organization.id,
@@ -390,12 +532,10 @@ export async function createBillingCheckoutSession(params: {
     stripe_checkout_session_id: session.id,
     plan_tier: params.planTier,
     status: "checkout_started",
-    metadata: {
-      last_checkout_session_id: session.id,
-    },
+    metadata: metadataPatch,
   };
 
-  const { error: upsertError } = await supabase.from("billing_subscriptions").upsert(upsertRow as never, {
+  const { error: upsertError } = await billingClient.from("billing_subscriptions").upsert(upsertRow as never, {
     onConflict: "organization_id",
   });
 
@@ -461,6 +601,36 @@ export async function syncBillingSubscriptionFromStripe(subscription: Stripe.Sub
   }
 }
 
+async function syncBillingSubscriptionFromEventObject(object: Stripe.Event.Data.Object) {
+  const stripeObject = object as { object?: string; subscription?: unknown };
+
+  if (stripeObject.object === "subscription") {
+    await syncBillingSubscriptionFromStripe(object as Stripe.Subscription);
+    return true;
+  }
+
+  let subscriptionId: string | null = null;
+  if (stripeObject.object === "checkout.session" && typeof stripeObject.subscription === "string") {
+    subscriptionId = stripeObject.subscription;
+  }
+  if (stripeObject.object === "invoice" && typeof stripeObject.subscription === "string") {
+    subscriptionId = stripeObject.subscription;
+  }
+
+  if (!subscriptionId) {
+    return false;
+  }
+
+  const provider = getStripeBillingProvider();
+  const subscription = (await provider.execute({
+    action: "retrieve_subscription",
+    subscriptionId,
+  })) as Stripe.Subscription;
+
+  await syncBillingSubscriptionFromStripe(subscription);
+  return true;
+}
+
 export async function handleStripeBillingEvent(event: Stripe.Event) {
   const claim = await claimStripeWebhookEvent(event);
 
@@ -480,9 +650,26 @@ export async function handleStripeBillingEvent(event: Stripe.Event) {
     if (
       event.type === "customer.subscription.created" ||
       event.type === "customer.subscription.updated" ||
-      event.type === "customer.subscription.deleted"
+      event.type === "customer.subscription.deleted" ||
+      event.type === "checkout.session.completed" ||
+      event.type === "invoice.payment_succeeded" ||
+      event.type === "invoice.payment_failed"
     ) {
-      await syncBillingSubscriptionFromStripe(event.data.object as Stripe.Subscription);
+      const synced = await syncBillingSubscriptionFromEventObject(event.data.object);
+
+      if (!synced) {
+        await markStripeWebhookEvent({
+          eventId: event.id,
+          status: "ignored",
+          errorMessage: "No subscription was attached to this Stripe event.",
+        });
+
+        return {
+          duplicate: false,
+          processed: false,
+        };
+      }
+
       await markStripeWebhookEvent({
         eventId: event.id,
         status: "processed",
