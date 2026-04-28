@@ -16,6 +16,20 @@ const SESSION_COST_LIMITS: Record<SessionCostBucket, { cookie: string; limit: nu
   },
 };
 
+function getProviderUsageLimit(bucket: SessionCostBucket) {
+  const envName =
+    bucket === "openai_image_generation"
+      ? "OPENAI_IMAGE_DAILY_LIMIT"
+      : "HEYGEN_VIDEO_DAILY_LIMIT";
+  const configured = Number.parseInt(process.env[envName] ?? "", 10);
+
+  if (Number.isFinite(configured) && configured > 0) {
+    return Math.min(configured, SESSION_COST_LIMITS[bucket].limit);
+  }
+
+  return SESSION_COST_LIMITS[bucket].limit;
+}
+
 function parseCount(value: string | undefined) {
   const numeric = Number.parseInt(value ?? "", 10);
   return Number.isFinite(numeric) && numeric >= 0 ? numeric : 0;
@@ -30,6 +44,7 @@ export async function consumeSessionCostBudget(params: {
   estimatedCost?: number | null;
 }) {
   const config = SESSION_COST_LIMITS[params.bucket];
+  const limit = getProviderUsageLimit(params.bucket);
   const admin = createAdminClient();
 
   if (admin) {
@@ -43,7 +58,7 @@ export async function consumeSessionCostBudget(params: {
         p_campaign_id: params.campaignId ?? null,
         p_provider: provider,
         p_operation: operation,
-        p_limit_count: config.limit,
+        p_limit_count: limit,
         p_idempotency_key: params.idempotencyKey ?? null,
         p_estimated_cost: params.estimatedCost ?? null,
       },
@@ -73,14 +88,14 @@ export async function consumeSessionCostBudget(params: {
         userId: params.userId,
         organizationId: params.organizationId ?? null,
         campaignId: params.campaignId ?? null,
-        limit: config.limit,
+        limit,
         currentCount: Number(reservation.current_count ?? 0),
       });
       throw new ApiError(
         429,
         params.bucket === "openai_image_generation"
-          ? "This workspace already used the maximum 10 OpenAI image generations for this campaign today."
-          : "This workspace already used the maximum 2 HeyGen video generations for this campaign today.",
+          ? `This workspace already used the maximum ${limit} OpenAI image generation${limit === 1 ? "" : "s"} for this campaign today.`
+          : `This workspace already used the maximum ${limit} HeyGen video generation${limit === 1 ? "" : "s"} for this campaign today.`,
         "provider_usage_limit_reached",
       );
     }
@@ -88,7 +103,7 @@ export async function consumeSessionCostBudget(params: {
     return {
       currentCount: Number(reservation.current_count ?? 0),
       nextCount: Number(reservation.next_count ?? 1),
-      limit: config.limit,
+      limit,
       eventId:
         typeof reservation.event_id === "string" && reservation.event_id.trim().length > 0
           ? reservation.event_id
@@ -107,19 +122,19 @@ export async function consumeSessionCostBudget(params: {
   const cookieStore = await cookies();
   const currentCount = parseCount(cookieStore.get(config.cookie)?.value);
 
-  if (currentCount >= config.limit) {
+  if (currentCount >= limit) {
     logWarn("Session cost guard blocked generation request", {
       bucket: params.bucket,
       userId: params.userId,
       campaignId: params.campaignId ?? null,
-      limit: config.limit,
+      limit,
       currentCount,
     });
     throw new ApiError(
       429,
       params.bucket === "openai_image_generation"
-        ? "This session already used the maximum 10 OpenAI image generations."
-        : "This session already used the maximum 2 HeyGen video generations.",
+        ? `This session already used the maximum ${limit} OpenAI image generation${limit === 1 ? "" : "s"}.`
+        : `This session already used the maximum ${limit} HeyGen video generation${limit === 1 ? "" : "s"}.`,
       "session_cost_limit_reached",
     );
   }
@@ -135,7 +150,7 @@ export async function consumeSessionCostBudget(params: {
   return {
     currentCount,
     nextCount,
-    limit: config.limit,
+    limit,
     eventId: null,
   };
 }

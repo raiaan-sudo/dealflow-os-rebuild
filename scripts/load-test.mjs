@@ -4,6 +4,12 @@ const scenario = process.argv[2] ?? "routes";
 const baseUrl = process.env.LOAD_BASE_URL;
 const concurrency = Number.parseInt(process.env.LOAD_CONCURRENCY ?? "20", 10);
 const requests = Number.parseInt(process.env.LOAD_REQUESTS ?? "100", 10);
+const maxErrorRate = Number.parseFloat(process.env.LOAD_MAX_ERROR_RATE ?? "0.01");
+const maxP95Ms = Number.parseInt(
+  process.env.LOAD_MAX_P95_MS ?? (scenario === "lead-capture" ? "2500" : "1500"),
+  10,
+);
+const maxWriteRequests = Number.parseInt(process.env.LOAD_MAX_WRITE_REQUESTS ?? "50", 10);
 
 function fail(message) {
   console.error(message);
@@ -66,6 +72,8 @@ async function runPool(items, worker) {
 function printSummary(results) {
   const latencies = results.map((result) => result.ms);
   const failures = results.filter((result) => !result.ok);
+  const errorRate = results.length > 0 ? failures.length / results.length : 0;
+  const p95 = Math.round(percentile(latencies, 95));
   const statuses = results.reduce((acc, result) => {
     acc[result.status] = (acc[result.status] ?? 0) + 1;
     return acc;
@@ -78,10 +86,15 @@ function printSummary(results) {
       requests: results.length,
       concurrency,
       failures: failures.length,
+      errorRate,
+      thresholds: {
+        maxErrorRate,
+        maxP95Ms,
+      },
       statuses,
       latencyMs: {
         p50: Math.round(percentile(latencies, 50)),
-        p95: Math.round(percentile(latencies, 95)),
+        p95,
         p99: Math.round(percentile(latencies, 99)),
         max: Math.round(Math.max(...latencies)),
       },
@@ -90,7 +103,13 @@ function printSummary(results) {
     2,
   ));
 
-  if (failures.length > 0) {
+  if (errorRate > maxErrorRate) {
+    console.error(`Load test failed: error rate ${errorRate.toFixed(4)} exceeded ${maxErrorRate}.`);
+    process.exitCode = 1;
+  }
+
+  if (p95 > maxP95Ms) {
+    console.error(`Load test failed: p95 ${p95}ms exceeded ${maxP95Ms}ms.`);
     process.exitCode = 1;
   }
 }
@@ -111,6 +130,10 @@ async function runRoutesScenario() {
 async function runLeadCaptureScenario() {
   if (process.env.LOAD_TEST_ALLOW_WRITES !== "true") {
     fail("Refusing to write leads. Set LOAD_TEST_ALLOW_WRITES=true with LOAD_TEST_CAMPAIGN_ID to run this scenario.");
+  }
+
+  if (requests > maxWriteRequests) {
+    fail(`Refusing ${requests} lead writes. Set LOAD_MAX_WRITE_REQUESTS to an explicit higher cap for this QA campaign.`);
   }
 
   const campaignId = process.env.LOAD_TEST_CAMPAIGN_ID;

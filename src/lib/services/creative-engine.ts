@@ -9,6 +9,7 @@ import {
   createVideoAd,
   selectAvatarProfile,
   selectVoiceProfile,
+  type ImageProviderUsageContext,
   type AvatarProfile,
   type VoiceProfile,
 } from "@/lib/ai/providers";
@@ -38,6 +39,9 @@ export type CreativeEngineInput = {
   pain_points?: string[];
   market_type?: CampaignIntent;
   creative_strategy?: CampaignCreativeStrategy;
+  provider_usage_context?: {
+    createForAsset: (asset: StaticCreativeAsset) => ImageProviderUsageContext | null;
+  };
 };
 
 export type CreativeAngle = "opportunity" | "pain" | "authority" | "curiosity";
@@ -1058,7 +1062,8 @@ export async function generateStaticCreativeAds(
   const generatedStaticAds = await Promise.all(
     baseStaticAds.map(async (asset) => {
       try {
-        const imageAd = await createImageAd(brief, asset);
+        const providerUsage = input?.provider_usage_context?.createForAsset(asset) ?? null;
+        const imageAd = await createImageAd(brief, asset, providerUsage);
         return {
           ...asset,
           imageUrl: imageAd.imageUrl ?? "",

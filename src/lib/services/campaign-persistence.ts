@@ -19,6 +19,10 @@ import {
 import { debugLog } from "@/lib/debug";
 import { generateStaticCreativeAds, type StaticCreativeAsset } from "@/lib/services/creative-engine";
 import { persistStaticCreativeAssets } from "@/lib/services/static-creative-asset-service";
+import {
+  consumeSessionCostBudget,
+  markSessionCostBudgetEvent,
+} from "@/lib/services/session-cost-guard";
 import { createAdminClient } from "@/lib/server/supabase-admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
@@ -670,6 +674,23 @@ export async function regenerateStaticCreativeAssetsForUser(
       price_point: currentRecord.strategy.price_point,
       market_type: currentRecord.strategy.market_type,
       creative_strategy: currentRecord.plan.creative_strategy,
+      provider_usage_context: {
+        createForAsset: (asset) => {
+          const idempotencyKey = `openai_image_generation:${row.organization_id ?? "org"}:${userId}:${campaignId}:${asset.id}:${asset.preferredImageModel}`;
+
+          return {
+            reserve: () =>
+              consumeSessionCostBudget({
+                bucket: "openai_image_generation",
+                userId,
+                organizationId: row.organization_id,
+                campaignId,
+                idempotencyKey,
+              }),
+            mark: markSessionCostBudgetEvent,
+          };
+        },
+      },
     });
 
     await persistStaticCreativeAssets({

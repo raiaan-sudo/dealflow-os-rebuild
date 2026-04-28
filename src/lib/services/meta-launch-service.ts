@@ -125,6 +125,76 @@ async function lookupMetaObjectByName(params: {
   return typeof match?.id === "string" ? match.id : null;
 }
 
+async function lookupMetaObjectById(params: {
+  objectId: string;
+  accessToken: string;
+  fields: string;
+}) {
+  const url = new URL(`https://graph.facebook.com/v19.0/${params.objectId}`);
+  url.searchParams.set("fields", params.fields);
+  url.searchParams.set("access_token", params.accessToken);
+
+  const { response, data } = await fetchMetaJson<
+    (Record<string, unknown> & { error?: { message?: string } }) | null
+  >(url.toString(), {
+    purpose: "launch_lookup",
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(
+      502,
+      data?.error?.message ?? "Meta object lookup failed.",
+      "meta_lookup_failed",
+    );
+  }
+
+  return data;
+}
+
+function isPausedMetaStatus(value: unknown) {
+  return typeof value === "string" && value.toUpperCase().includes("PAUSED");
+}
+
+async function ensureMetaObjectPaused(params: {
+  objectId: string;
+  accessToken: string;
+  edge: "campaigns" | "adsets" | "adcreatives" | "ads";
+}) {
+  if (params.edge === "adcreatives") {
+    return;
+  }
+
+  const current = await lookupMetaObjectById({
+    objectId: params.objectId,
+    accessToken: params.accessToken,
+    fields: "id,status,effective_status",
+  });
+
+  if (isPausedMetaStatus(current?.status)) {
+    return;
+  }
+
+  await updateMetaStatus(params.objectId, params.accessToken, "PAUSED");
+
+  const updated = await lookupMetaObjectById({
+    objectId: params.objectId,
+    accessToken: params.accessToken,
+    fields: "id,status,effective_status",
+  });
+
+  if (!isPausedMetaStatus(updated?.status) && !isPausedMetaStatus(updated?.effective_status)) {
+    throw new ApiError(
+      502,
+      `Meta object ${params.objectId} could not be verified PAUSED after creation/recovery.`,
+      "meta_paused_verification_failed",
+    );
+  }
+}
+
 async function createOrRecoverMetaObject<T>(params: {
   accountId: string;
   accessToken: string;
@@ -149,6 +219,12 @@ async function createOrRecoverMetaObject<T>(params: {
   });
 
   if (recoveredId) {
+    await ensureMetaObjectPaused({
+      objectId: recoveredId,
+      accessToken: params.accessToken,
+      edge: params.edge,
+    });
+
     return { id: recoveredId, recovered: true };
   }
 
@@ -161,6 +237,12 @@ async function createOrRecoverMetaObject<T>(params: {
   if (!data?.id) {
     throw new ApiError(502, params.missingIdMessage, params.missingIdCode);
   }
+
+  await ensureMetaObjectPaused({
+    objectId: data.id,
+    accessToken: params.accessToken,
+    edge: params.edge,
+  });
 
   return { id: data.id, recovered: false };
 }

@@ -443,9 +443,9 @@ export async function loadIssueLogRows(limit = 80): Promise<OperatorIssueRow[]> 
     admin
       .from("system_jobs")
       .select("id,organization_id,campaign_id,kind,status,error_message,last_error_code,dead_letter_reason,created_at,locked_until,dead_lettered_at")
-      .or("status.eq.failed,dead_lettered_at.not.is.null")
+      .or("status.eq.failed,status.eq.processing,dead_lettered_at.not.is.null")
       .order("created_at", { ascending: false })
-      .limit(limit),
+      .limit(limit * 2),
     admin
       .from("stripe_webhook_events")
       .select("id,stripe_event_id,stripe_event_type,status,error_code,error_message,created_at,updated_at")
@@ -464,21 +464,36 @@ export async function loadIssueLogRows(limit = 80): Promise<OperatorIssueRow[]> 
     throw new ApiError(500, stripeResult.error.message, "issue_log_stripe_failed");
   }
 
-  const jobIssues = ((jobsResult.data ?? []) as RawSystemJobRow[]).map((row) => ({
-    id: `job:${row.id}`,
-    source: "system_job" as const,
-    severity: issueSeverityFromJob(row),
-    title: `${formatStatusLabel(row.kind, "unknown job")} ${formatStatusLabel(row.status, "unknown status")}`,
-    detail:
-      row.dead_letter_reason ||
-      row.error_message ||
-      row.last_error_code ||
-      "Job is in a failed or dead-lettered state without a detailed error message.",
-    status: row.dead_lettered_at ? ("open" as const) : ("monitoring" as const),
-    createdAt: row.created_at,
-    route: row.campaign_id ? `/admin/launch-monitor?campaignId=${encodeURIComponent(row.campaign_id)}` : "/admin/launch-monitor",
-    rawReference: row.id,
-  }));
+  const jobIssues = ((jobsResult.data ?? []) as RawSystemJobRow[])
+    .filter((row) => {
+      if (row.status === "failed" || row.dead_lettered_at) {
+        return true;
+      }
+
+      if (row.status !== "processing" || !row.locked_until) {
+        return false;
+      }
+
+      const lockedUntil = new Date(row.locked_until);
+      return !Number.isNaN(lockedUntil.getTime()) && lockedUntil.getTime() < Date.now();
+    })
+    .map((row) => ({
+      id: `job:${row.id}`,
+      source: "system_job" as const,
+      severity: issueSeverityFromJob(row),
+      title: `${formatStatusLabel(row.kind, "unknown job")} ${formatStatusLabel(row.status, "unknown status")}`,
+      detail:
+        row.dead_letter_reason ||
+        row.error_message ||
+        row.last_error_code ||
+        (row.status === "processing"
+          ? `Job lock expired at ${row.locked_until}; worker recovery or manual review is required.`
+          : "Job is in a failed or dead-lettered state without a detailed error message."),
+      status: row.dead_lettered_at || row.status === "processing" ? ("open" as const) : ("monitoring" as const),
+      createdAt: row.created_at,
+      route: row.campaign_id ? `/admin/launch-monitor?campaignId=${encodeURIComponent(row.campaign_id)}` : "/admin/launch-monitor",
+      rawReference: row.id,
+    }));
 
   const stripeIssues = ((stripeResult.data ?? []) as RawStripeWebhookEventRow[]).map((row) => ({
     id: `stripe:${row.stripe_event_id}`,

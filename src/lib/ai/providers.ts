@@ -34,6 +34,15 @@ export type ImageAdResult = {
   generationModel: string | null;
 };
 
+export type ImageProviderUsageContext = {
+  reserve: () => Promise<{ eventId: string | null | undefined }>;
+  mark: (params: {
+    eventId: string | null | undefined;
+    status: "consumed" | "released" | "failed";
+    metadata?: Record<string, unknown>;
+  }) => Promise<void>;
+};
+
 export type VideoScene = {
   title: string;
   description: string;
@@ -229,6 +238,7 @@ export async function createImageAd(
     StaticCreativeAsset,
     "imagePrompt" | "imagePromptConfig" | "preferredImageModel" | "hook" | "headline" | "primaryText" | "cta"
   > | null,
+  providerUsage?: ImageProviderUsageContext | null,
 ): Promise<ImageAdResult> {
   const market = safeText(creativeBrief.location) || "your market";
   const audience = safeText(creativeBrief.audience) || "local buyers";
@@ -241,7 +251,12 @@ export async function createImageAd(
   const imageProvider = getImageGenerationProvider();
 
   if (imageProvider.isConfigured()) {
+    let budgetReservation: { eventId: string | null | undefined } | null = null;
     try {
+      if (process.env.ALLOW_OPENAI_IMAGE_GENERATION === "true" && providerUsage) {
+        budgetReservation = await providerUsage.reserve();
+      }
+
       const result = await imageProvider.execute({
         aspectRatio: staticAsset?.imagePromptConfig?.aspectRatio ?? "1:1",
         model: staticAsset?.preferredImageModel ?? getImageGenerationEnv()?.model ?? "gpt-image-1.5",
@@ -258,13 +273,40 @@ export async function createImageAd(
         generationState = "generated";
         generationModel =
           typeof parsed.metadata?.model === "string" ? parsed.metadata.model : null;
+        await providerUsage?.mark({
+          eventId: budgetReservation?.eventId,
+          status: "consumed",
+          metadata: {
+            operation: "openai_image_generation",
+            assetId: staticAsset?.hook ?? null,
+            model: generationModel,
+          },
+        });
       } else {
         generationState = parsed.status === "unsupported" ? "unavailable" : "failed";
         generationMessage = parsed.error ?? "Image generation did not return a usable asset.";
+        await providerUsage?.mark({
+          eventId: budgetReservation?.eventId,
+          status: parsed.status === "unsupported" ? "released" : "failed",
+          metadata: {
+            operation: "openai_image_generation",
+            assetId: staticAsset?.hook ?? null,
+            reason: generationMessage,
+          },
+        });
       }
     } catch (error) {
       generationState = "failed";
       generationMessage = error instanceof Error ? error.message : "Unknown image generation error.";
+      await providerUsage?.mark({
+        eventId: budgetReservation?.eventId,
+        status: "failed",
+        metadata: {
+          operation: "openai_image_generation",
+          assetId: staticAsset?.hook ?? null,
+          reason: generationMessage,
+        },
+      }).catch(() => null);
       logWarn("OpenAI image generation failed", {
         message: error instanceof Error ? error.message : "Unknown error",
         location: market,

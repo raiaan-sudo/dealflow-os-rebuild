@@ -473,6 +473,79 @@ async function fetchMetaObjectById(params: {
   return data;
 }
 
+function isPausedMetaStatus(value: unknown) {
+  return typeof value === "string" && value.toUpperCase().includes("PAUSED");
+}
+
+async function updateMetaObjectPaused(params: {
+  accessToken: string;
+  objectId: string;
+  requestId?: string;
+}) {
+  const body = new URLSearchParams({
+    status: "PAUSED",
+    access_token: params.accessToken,
+  });
+  const { response, data } = await fetchMetaJson<{ success?: boolean; error?: { message?: string } } | null>(
+    `https://graph.facebook.com/v18.0/${params.objectId}`,
+    {
+      purpose: "launch_create",
+      requestId: params.requestId,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    },
+  );
+
+  if (!response.ok || data?.success !== true) {
+    throw new ApiError(
+      502,
+      data?.error?.message ?? `Meta object ${params.objectId} could not be set to PAUSED.`,
+      "meta_status_update_failed",
+    );
+  }
+}
+
+async function ensureDirectMetaObjectPaused(params: {
+  accessToken: string;
+  objectId: string;
+  requestId?: string;
+}) {
+  const current = await fetchMetaObjectById({
+    accessToken: params.accessToken,
+    objectId: params.objectId,
+    fields: "id,status,effective_status",
+    requestId: params.requestId,
+  });
+
+  if (!current) {
+    throw new ApiError(502, "Meta object could not be verified after creation/recovery.", "meta_lookup_failed");
+  }
+
+  if (isPausedMetaStatus(current.status) || isPausedMetaStatus(current.effective_status)) {
+    return;
+  }
+
+  await updateMetaObjectPaused(params);
+
+  const updated = await fetchMetaObjectById({
+    accessToken: params.accessToken,
+    objectId: params.objectId,
+    fields: "id,status,effective_status",
+    requestId: params.requestId,
+  });
+
+  if (!isPausedMetaStatus(updated?.status) && !isPausedMetaStatus(updated?.effective_status)) {
+    throw new ApiError(
+      502,
+      `Meta object ${params.objectId} could not be verified PAUSED after creation/recovery.`,
+      "meta_paused_verification_failed",
+    );
+  }
+}
+
 async function validateExistingMetaObject(params: {
   accessToken: string;
   objectId: string;
@@ -1003,6 +1076,14 @@ export async function launchCampaignToMeta(
       }
     }
 
+    if (lastKnownIds.campaign_id) {
+      await ensureDirectMetaObjectPaused({
+        accessToken: credentials.accessToken,
+        objectId: lastKnownIds.campaign_id,
+        requestId,
+      });
+    }
+
     await persistLaunchState(
       campaignId,
       {
@@ -1222,6 +1303,14 @@ export async function launchCampaignToMeta(
           { status: adSetResponse.ok ? 500 : adSetResponse.status },
         );
       }
+    }
+
+    if (lastKnownIds.adset_id) {
+      await ensureDirectMetaObjectPaused({
+        accessToken: credentials.accessToken,
+        objectId: lastKnownIds.adset_id,
+        requestId,
+      });
     }
 
     await persistLaunchState(
@@ -1600,6 +1689,12 @@ export async function launchCampaignToMeta(
     }
 
     if (lastKnownIds.ad_id) {
+      await ensureDirectMetaObjectPaused({
+        accessToken: credentials.accessToken,
+        objectId: lastKnownIds.ad_id,
+        requestId,
+      });
+
       await persistLaunchState(
         campaignId,
         {

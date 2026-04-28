@@ -10,7 +10,10 @@ This runbook is for controlled beta operation at roughly 100 active client works
 - Public lead capture: `/api/lead-capture`
 - Operator monitor: `/admin/launch-monitor`
 - Operator command center: `/admin/command-center`
+- Operator issue radar: `/admin/issues`
+- Protected job runner: `/api/internal/system-jobs`
 - Required operator access env: `INTERNAL_ADMIN_EMAILS`
+- Required internal runner secret: `INTERNAL_SYSTEM_JOBS_SECRET` or `CRON_SECRET`
 
 ## Rollback
 
@@ -118,13 +121,16 @@ Controls:
 - Video/HeyGen generation is disabled for beta.
 - Static image generation must go through the guarded static generation route.
 - Provider usage is tracked in `provider_usage_limits`.
+- Each OpenAI image call reserves its own `provider_usage_events` row before the provider request and must be capped with `OPENAI_IMAGE_DAILY_LIMIT` during production tests.
 - Retries should reuse existing jobs/assets where possible.
 
 Emergency disable:
 
 1. Hide/disable the static generation UI entry point.
 2. Keep video generation route returning `video_generation_disabled`.
-3. Remove provider API keys from production only if a hard stop is required.
+3. Leave `ALLOW_OPENAI_IMAGE_GENERATION` and `ALLOW_HEYGEN_VIDEO_GENERATION` unset or set to any value other than `true`.
+4. For a controlled image test, set `OPENAI_IMAGE_DAILY_LIMIT=1` before enabling `ALLOW_OPENAI_IMAGE_GENERATION=true`.
+5. Remove provider API keys from production only if a hard stop is required.
 
 ## Meta Emergency Disable
 
@@ -232,7 +238,7 @@ LOAD_BASE_URL=https://dealflow-os-rebuild.vercel.app LOAD_TEST_FUNNEL_SLUG=<publ
 LOAD_BASE_URL=https://dealflow-os-rebuild.vercel.app LOAD_TEST_ALLOW_WRITES=true LOAD_TEST_CAMPAIGN_ID=<campaign-id> npm run load:lead-capture
 ```
 
-The lead-capture profile writes test leads. Use a published QA campaign only, keep request volume modest, and never point load tests at Stripe payment completion, paid generation, or live Meta launch routes.
+The lead-capture profile writes test leads. Use a published QA campaign only, keep request volume modest, and never point load tests at Stripe payment completion, paid generation, or live Meta launch routes. The script enforces the thresholds below by default and refuses more than `50` lead writes unless `LOAD_MAX_WRITE_REQUESTS` is explicitly raised for a QA campaign.
 
 Controlled-beta thresholds:
 
