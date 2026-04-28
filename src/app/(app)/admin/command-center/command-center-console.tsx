@@ -80,6 +80,7 @@ type CommandCenterConsoleProps = {
     failedJobs: number;
     stripeFailures: number;
     validationAlerts: number;
+    smsAutomationEnabled: boolean;
   };
   workLog: WorkLogEntry[];
 };
@@ -292,6 +293,7 @@ export function CommandCenterConsole({
               <StatPanel icon={CheckCircle2} label="Live/complete" value={stats.liveCampaigns} />
               <StatPanel icon={Gauge} label="Clean plans" value={stats.cleanCampaigns} />
               <StatPanel icon={Radio} label="Lead verified" value={stats.leadVerified} />
+              <StatPanel icon={ShieldCheck} label="SMS guard" value={stats.smsAutomationEnabled ? "Enabled" : "Blocked"} />
             </div>
           </section>
         </header>
@@ -432,7 +434,7 @@ function StatPanel({
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
-  value: number;
+  value: number | string;
 }) {
   return (
     <div className="rounded-[22px] border border-cyan-200/16 bg-black/42 p-4">

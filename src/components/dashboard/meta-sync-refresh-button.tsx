@@ -7,8 +7,10 @@ import { syncCampaignStatus } from "@/components/campaign/launch/launch-runtime-
 
 export function MetaSyncRefreshButton({
   label = "Refresh Meta status",
+  campaignId = null,
 }: {
   label?: string;
+  campaignId?: string | null;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -18,7 +20,7 @@ export function MetaSyncRefreshButton({
     setError(null);
 
     startTransition(() => {
-      void syncCampaignStatus()
+      void syncCampaignStatus(campaignId)
         .then(() => {
           router.refresh();
         })

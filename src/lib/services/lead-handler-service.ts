@@ -55,6 +55,10 @@ type CreateLeadInput = {
   email?: string | null;
   source?: string | null;
   notes?: string | null;
+  sms_consent?: boolean | null;
+  sms_consent_copy?: string | null;
+  consent_source?: string | null;
+  consent_url?: string | null;
 };
 
 type QueueFailedLeadCaptureInput = {
@@ -68,6 +72,8 @@ type QueueFailedLeadCaptureInput = {
   notes?: string | null;
   stage?: string | null;
   failureReason: string;
+  smsConsent?: boolean | null;
+  smsConsentCopy?: string | null;
 };
 
 export type PublicLeadCaptureRetryInput = {
@@ -81,6 +87,8 @@ export type PublicLeadCaptureRetryInput = {
   source?: string | null;
   requestId?: string | null;
   reason?: string | null;
+  smsConsent?: boolean | null;
+  smsConsentCopy?: string | null;
 };
 
 type LeadInsertContext = {
@@ -99,6 +107,9 @@ type LeadBookingMetadata = {
 type LeadMetadata = Record<string, Json | undefined> & {
   booking?: LeadBookingMetadata;
 };
+
+const SMS_CONSENT_COPY =
+  "By checking this box and submitting, I agree to receive automated and manual SMS messages about this request from DealFlow OS and its customer. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help.";
 
 function normalizeLeadRetryIdentity(value?: string | null) {
   return (value ?? "").trim().toLowerCase();
@@ -206,6 +217,39 @@ function isSmsOptOutMessage(message: string) {
   return /^(stop|stopall|unsubscribe|cancel|end|quit)$/i.test(message.trim());
 }
 
+function isSmsOptInMessage(message: string) {
+  return /^(start|unstop|subscribe)$/i.test(message.trim());
+}
+
+function isSmsHelpMessage(message: string) {
+  return /^help$/i.test(message.trim());
+}
+
+function buildSmsConsentMetadata(input: {
+  source?: string | null;
+  consented: boolean;
+  phone: string | null;
+  copy?: string | null;
+  url?: string | null;
+}) {
+  const capturedAt = new Date().toISOString();
+
+  return {
+    source: input.source?.trim() || "lead_capture",
+    captured_at: capturedAt,
+    sms: {
+      consented: input.consented,
+      captured_at: capturedAt,
+      phone: input.phone,
+      consent_copy: input.copy?.trim() || SMS_CONSENT_COPY,
+      opt_out_copy: "Reply STOP to opt out or HELP for help.",
+      source_url: input.url?.trim() || null,
+      privacy_url: "/privacy",
+      terms_url: "/terms",
+    },
+  } as Json;
+}
+
 async function markLeadSmsOptedOut(
   supabase: SupabaseClient | AdminClient,
   lead: LeadRow,
@@ -223,6 +267,38 @@ async function markLeadSmsOptedOut(
           opted_out_at: optedOutAt,
         },
       },
+    } as never)
+    .eq("id", lead.id);
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function markLeadSmsOptedIn(
+  supabase: SupabaseClient | AdminClient,
+  lead: LeadRow,
+) {
+  const optedInAt = new Date().toISOString();
+  const { error } = await supabase
+    .from("leads")
+    .update({
+      sms_opted_out_at: null,
+      metadata: {
+        ...getLeadMetadata(lead),
+        sms_opt_in: {
+          status: "opted_in",
+          opted_in_at: optedInAt,
+          source: "inbound_start",
+        },
+      },
+      consent_metadata: buildSmsConsentMetadata({
+        source: "inbound_start",
+        consented: true,
+        phone: lead.phone,
+        copy:
+          "Reply START to resume SMS messages. Message and data rates may apply. Reply STOP to opt out or HELP for help.",
+      }),
     } as never)
     .eq("id", lead.id);
 
@@ -593,6 +669,31 @@ async function listLeadMessages(supabase: SupabaseClient | AdminClient, leadId: 
   return (data as LeadMessageRow[] | null) ?? [];
 }
 
+async function findLeadMessageByProviderMessageId(
+  supabase: SupabaseClient | AdminClient,
+  providerMessageId: string | null | undefined,
+) {
+  const normalized = providerMessageId?.trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("lead_messages")
+    .select("*")
+    .eq("provider_message_id", normalized)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return (data as LeadMessageRow | null) ?? null;
+}
+
 async function saveLeadMessage(
   supabase: SupabaseClient | AdminClient,
   leadId: string,
@@ -618,6 +719,18 @@ async function saveLeadMessage(
   if (error) {
     throw error;
   }
+}
+
+async function sendLeadSMS(lead: LeadRow, message: string, reason: string) {
+  if (!lead.phone) {
+    throw new ApiError(400, "Lead is missing a phone number.", "lead_phone_missing");
+  }
+
+  return sendSMS(lead.phone, message, {
+    consentMetadata: lead.consent_metadata,
+    smsOptedOutAt: lead.sms_opted_out_at,
+    reason,
+  });
 }
 
 const MINIMUM_FOLLOW_UP_MESSAGE = "Just checking — are you still interested?";
@@ -841,21 +954,26 @@ export async function handleNewLead(
   }
 
   let sentMessageId: string | null = null;
+  let deliveryStatus: "sent" | "failed" = "sent";
+  let deliveryError: string | null = null;
 
   try {
-    const result = await sendSMS(lead.phone, message);
+    const result = await sendLeadSMS(lead, message, "lead_opening");
     sentMessageId = result.sid;
   } catch (error) {
+    deliveryStatus = "failed";
+    deliveryError = error instanceof Error ? error.message : "Unknown error";
     logError("Lead opening SMS failed", {
       leadId: lead.id,
-      message: error instanceof Error ? error.message : "Unknown error",
+      message: deliveryError,
+      code: error instanceof ApiError ? error.code : "lead_opening_sms_failed",
     });
-    return;
   }
 
   await saveLeadMessage(supabase, lead.id, "outbound", message, {
     providerMessageId: sentMessageId,
-    deliveryStatus: "sent",
+    deliveryStatus,
+    errorMessage: deliveryError,
   });
   await ensureMinimumConversation(supabase, lead.id);
 }
@@ -877,10 +995,51 @@ export async function handleIncomingMessage(leadId: string, message: string) {
 
   if (isSmsOptOutMessage(message)) {
     await markLeadSmsOptedOut(supabase, lead);
+    await saveLeadMessage(
+      supabase,
+      lead.id,
+      "outbound",
+      "You have been unsubscribed and will not receive more messages.",
+      { deliveryStatus: "recorded" },
+    );
     return {
       leadId: lead.id,
       response: "You have been unsubscribed and will not receive more messages.",
       status: "lost" as const,
+      slots: [] as string[],
+    };
+  }
+
+  if (isSmsOptInMessage(message)) {
+    await markLeadSmsOptedIn(supabase, lead);
+    const reply =
+      "You are subscribed again. Reply STOP to opt out or HELP for help. Message and data rates may apply.";
+    await saveLeadMessage(supabase, lead.id, "outbound", reply, { deliveryStatus: "recorded" });
+    return {
+      leadId: lead.id,
+      response: reply,
+      status: normalizeLeadStatus(lead.status),
+      slots: [] as string[],
+    };
+  }
+
+  if (isSmsHelpMessage(message)) {
+    const reply =
+      "DealFlow OS lead updates: reply STOP to opt out, START to resume, or contact the business directly for help. Message and data rates may apply.";
+    await saveLeadMessage(supabase, lead.id, "outbound", reply, { deliveryStatus: "recorded" });
+    return {
+      leadId: lead.id,
+      response: reply,
+      status: normalizeLeadStatus(lead.status),
+      slots: [] as string[],
+    };
+  }
+
+  if (lead.sms_opted_out_at) {
+    return {
+      leadId: lead.id,
+      response: "You are unsubscribed. Reply START to resume messages.",
+      status: normalizeLeadStatus(lead.status),
       slots: [] as string[],
     };
   }
@@ -922,7 +1081,7 @@ export async function handleIncomingMessage(leadId: string, message: string) {
       let deliveryError: string | null = null;
 
       try {
-        const smsResult = await sendSMS(lead.phone ?? "", reply);
+        const smsResult = await sendLeadSMS(lead, reply, "booking_confirmation");
         providerMessageId = smsResult.sid;
       } catch (error) {
         deliveryStatus = "failed";
@@ -979,7 +1138,7 @@ export async function handleIncomingMessage(leadId: string, message: string) {
   let deliveryError: string | null = null;
 
   try {
-    const smsResult = await sendSMS(lead.phone, outboundReply);
+    const smsResult = await sendLeadSMS(lead, outboundReply, "lead_auto_reply");
     providerMessageId = smsResult.sid;
   } catch (error) {
     deliveryStatus = "failed";
@@ -1043,7 +1202,13 @@ function suggestedSlotsFromMetadata(metadata: Json | undefined) {
     : [];
 }
 
-export async function handleIncomingMessageByPhone(phone: string, message: string) {
+export async function handleIncomingMessageByPhone(
+  phone: string,
+  message: string,
+  options: {
+    messageSid?: string | null;
+  } = {},
+) {
   const adminClient = createBookingAdminClient();
 
   const lead = await getLeadByPhone(adminClient, null, phone);
@@ -1052,14 +1217,73 @@ export async function handleIncomingMessageByPhone(phone: string, message: strin
     throw new ApiError(404, "Lead not found for incoming SMS.", "lead_not_found");
   }
 
-  await saveLeadMessage(adminClient, lead.id, "inbound", message);
+  const existingMessage = await findLeadMessageByProviderMessageId(
+    adminClient,
+    options.messageSid,
+  );
+
+  if (existingMessage) {
+    return {
+      leadId: lead.id,
+      response: "",
+      status: normalizeLeadStatus(lead.status),
+      slots: [] as string[],
+      idempotentReplay: true,
+    };
+  }
+
+  await saveLeadMessage(adminClient, lead.id, "inbound", message, {
+    providerMessageId: options.messageSid ?? null,
+    deliveryStatus: "received",
+  });
 
   if (isSmsOptOutMessage(message)) {
     await markLeadSmsOptedOut(adminClient, lead);
+    await saveLeadMessage(
+      adminClient,
+      lead.id,
+      "outbound",
+      "You have been unsubscribed and will not receive more messages.",
+      { deliveryStatus: "recorded" },
+    );
     return {
       leadId: lead.id,
       response: "You have been unsubscribed and will not receive more messages.",
       status: "lost" as const,
+      slots: [] as string[],
+    };
+  }
+
+  if (isSmsOptInMessage(message)) {
+    await markLeadSmsOptedIn(adminClient, lead);
+    const reply =
+      "You are subscribed again. Reply STOP to opt out or HELP for help. Message and data rates may apply.";
+    await saveLeadMessage(adminClient, lead.id, "outbound", reply, { deliveryStatus: "recorded" });
+    return {
+      leadId: lead.id,
+      response: reply,
+      status: normalizeLeadStatus(lead.status),
+      slots: [] as string[],
+    };
+  }
+
+  if (isSmsHelpMessage(message)) {
+    const reply =
+      "DealFlow OS lead updates: reply STOP to opt out, START to resume, or contact the business directly for help. Message and data rates may apply.";
+    await saveLeadMessage(adminClient, lead.id, "outbound", reply, { deliveryStatus: "recorded" });
+    return {
+      leadId: lead.id,
+      response: reply,
+      status: normalizeLeadStatus(lead.status),
+      slots: [] as string[],
+    };
+  }
+
+  if (lead.sms_opted_out_at) {
+    return {
+      leadId: lead.id,
+      response: "You are unsubscribed. Reply START to resume messages.",
+      status: normalizeLeadStatus(lead.status),
       slots: [] as string[],
     };
   }
@@ -1101,7 +1325,7 @@ export async function handleIncomingMessageByPhone(phone: string, message: strin
       let deliveryError: string | null = null;
 
       try {
-        const smsResult = await sendSMS(lead.phone ?? "", reply);
+        const smsResult = await sendLeadSMS(lead, reply, "booking_confirmation");
         providerMessageId = smsResult.sid;
       } catch (error) {
         deliveryStatus = "failed";
@@ -1158,7 +1382,7 @@ export async function handleIncomingMessageByPhone(phone: string, message: strin
   let deliveryError: string | null = null;
 
   try {
-    const smsResult = await sendSMS(lead.phone, outboundReply);
+    const smsResult = await sendLeadSMS(lead, outboundReply, "lead_auto_reply");
     providerMessageId = smsResult.sid;
   } catch (error) {
     deliveryStatus = "failed";
@@ -1230,6 +1454,7 @@ async function createLeadAndStartConversationForContext(
   const { firstName, lastName } = splitLeadName(input.name);
   const email = input.email?.trim() || null;
   const phone = input.phone?.trim() ? normalizePhone(input.phone) : null;
+  const smsConsent = input.sms_consent === true;
   const dedupeHash = buildLeadDedupeHash({
     organizationId,
     campaignId,
@@ -1239,6 +1464,14 @@ async function createLeadAndStartConversationForContext(
 
   if (!phone && !email) {
     throw new ApiError(400, "An email or phone number is required.", "validation_error");
+  }
+
+  if (phone && !smsConsent) {
+    throw new ApiError(
+      400,
+      "Explicit SMS consent is required when a phone number is submitted.",
+      "sms_consent_required",
+    );
   }
 
   const duplicateLead = await findRecentDuplicateLead({
@@ -1269,12 +1502,13 @@ async function createLeadAndStartConversationForContext(
       dedupe_hash: dedupeHash,
       status: "new",
       notes: input.notes?.trim() || null,
-      consent_metadata: {
-        source: input.source?.trim() || "lead_capture",
-        captured_at: new Date().toISOString(),
-        consent_copy:
-          "By submitting, I agree to be contacted about this request. Message and data rates may apply. Reply STOP to opt out.",
-      } as Json,
+      consent_metadata: buildSmsConsentMetadata({
+        source: input.consent_source?.trim() || input.source?.trim() || "lead_capture",
+        consented: smsConsent,
+        phone,
+        copy: input.sms_consent_copy,
+        url: input.consent_url,
+      }),
       created_at: new Date().toISOString(),
     } as never)
     .select("*")
@@ -1383,6 +1617,9 @@ export async function replayFailedPublicLeadCapture(input: PublicLeadCaptureRetr
     phone: input.phone?.trim() || null,
     source: input.source?.trim() || "lead_capture_retry",
     notes: retryNotes || null,
+    sms_consent: input.smsConsent ?? Boolean(input.phone?.trim()),
+    sms_consent_copy: input.smsConsentCopy ?? SMS_CONSENT_COPY,
+    consent_source: "lead_capture_retry",
   });
 
   return {

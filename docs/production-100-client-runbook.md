@@ -134,10 +134,29 @@ Emergency disable:
 
 ## SMS Emergency Disable
 
-1. Disable outbound SMS provider configuration.
-2. Keep inbound `/api/sms/twilio` signature validation enabled.
-3. Preserve STOP/opt-out state in `leads.sms_opted_out_at`.
-4. Surface operator follow-up instead of automated SMS.
+1. Leave `TWILIO_OUTBOUND_SMS_ENABLED` unset or set to any value other than `true`.
+2. Leave `SMS_COMPLIANCE_ACK` unset unless legal/compliance approval is complete.
+3. Remove Twilio credentials only if a hard provider stop is required.
+4. Keep inbound `/api/sms/twilio` signature validation enabled.
+5. Preserve STOP/opt-out state in `leads.sms_opted_out_at`.
+6. Surface operator follow-up instead of automated SMS.
+
+## SMS Compliance Controls
+
+Outbound SMS automation is default-off. To enable it, all of the following must be true:
+
+- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_PHONE_NUMBER` are configured.
+- `TWILIO_OUTBOUND_SMS_ENABLED=true`.
+- `SMS_COMPLIANCE_ACK=true`.
+- The lead has explicit SMS consent stored in `leads.consent_metadata.sms`.
+- The lead does not have `leads.sms_opted_out_at` set.
+
+Inbound `/api/sms/twilio` must keep handling compliance keywords even when outbound automation is disabled:
+
+- `STOP`, `STOPALL`, `UNSUBSCRIBE`, `CANCEL`, `END`, and `QUIT` set `leads.sms_opted_out_at`.
+- `START`, `UNSTOP`, and `SUBSCRIBE` clear the opt-out timestamp and store renewed consent metadata.
+- `HELP` returns support/opt-out instructions.
+- Twilio `MessageSid` is recorded on inbound `lead_messages.provider_message_id`; duplicate SIDs are treated as idempotent replays and do not trigger another automated reply.
 
 ## Support Playbook
 

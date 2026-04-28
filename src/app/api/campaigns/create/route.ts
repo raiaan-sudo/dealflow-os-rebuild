@@ -649,16 +649,6 @@ export async function launchCampaignToMeta(
     ownershipVerified = true;
     const campaignOwnerId = await loadCampaignOwnerId(campaignId);
     await assertMetaLaunchBillingAccessForOrganization(campaignOwnerId);
-    const preflight = await validateMetaLaunchSelections();
-
-    if (!preflight.ready) {
-      throw new ApiError(
-        400,
-        preflight.errors[0] ?? "Meta launch preflight failed.",
-        "meta_launch_preflight_failed",
-      );
-    }
-
     const credentials: MetaWorkspaceCredentials = await getMetaWorkspaceCredentials();
     const storedPayload = await loadSavedCampaignPayload(campaignId);
     const currentPlan = await loadCampaignPlanDocument(campaignId);
@@ -773,6 +763,16 @@ export async function launchCampaignToMeta(
         400,
         "Missing public destination URL",
         "missing_public_destination_url",
+      );
+    }
+
+    const preflight = await validateMetaLaunchSelections({ destinationUrl });
+
+    if (!preflight.ready) {
+      throw new ApiError(
+        400,
+        preflight.errors[0] ?? "Meta launch preflight failed.",
+        "meta_launch_preflight_failed",
       );
     }
 

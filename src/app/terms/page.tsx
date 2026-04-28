@@ -50,6 +50,12 @@ export default function TermsPage() {
           obtaining required consent, honoring opt-outs, and following applicable privacy,
           telemarketing, SMS, email, and advertising laws.
         </p>
+        <p className="text-slate-300">
+          SMS may only be used for leads that gave explicit consent through an approved form or
+          equivalent compliant process. Message frequency varies. Message and data rates may apply.
+          Recipients can reply STOP to opt out, START to resume, or HELP for help. You may not
+          upload, message, or automate outreach to numbers without valid consent.
+        </p>
       </section>
 
       <section className="space-y-3">

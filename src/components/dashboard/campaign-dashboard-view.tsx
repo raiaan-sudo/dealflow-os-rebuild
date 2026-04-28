@@ -541,7 +541,7 @@ export function CampaignDashboardView({
               {syncStateDescription}
             </p>
           </div>
-          <MetaSyncRefreshButton />
+          <MetaSyncRefreshButton campaignId={plan.id ?? null} />
         </div>
         <div className="mt-6 grid gap-4 lg:grid-cols-3">
           <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">

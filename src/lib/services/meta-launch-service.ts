@@ -1,6 +1,6 @@
 import { ApiError } from "@/lib/api/route";
-import { fetchWithRetryServer } from "@/lib/http/fetch-with-retry-server";
 import { getMetaAccessToken } from "@/lib/integrations/meta/execution";
+import { fetchMetaJson } from "@/lib/integrations/meta/request";
 import type { MetaConnectionRecord } from "@/lib/integrations/meta/types";
 import type {
   BuiltMetaAdPayload,
@@ -47,27 +47,14 @@ type MetaCreateResult<T> = {
   payload: T;
 };
 
-async function parseMetaResponse<T>(response: Response, fallbackCode: string, fallbackMessage: string) {
-  const data = (await response.json().catch(() => null)) as
-    | ({ id?: string; success?: boolean; error?: { message?: string } } & T)
-    | null;
-
-  if (!response.ok) {
-    throw new ApiError(
-      502,
-      data?.error?.message ?? fallbackMessage,
-      fallbackCode,
-    );
-  }
-
-  return data;
-}
-
 async function postToMeta<T>(path: string, accessToken: string, payload: Record<string, unknown>) {
   const url = new URL(`https://graph.facebook.com/v19.0/${path}`);
   url.searchParams.set("access_token", accessToken);
 
-  const response = await fetchWithRetryServer(url.toString(), {
+  const { response, data } = await fetchMetaJson<
+    ({ id?: string; success?: boolean; error?: { message?: string } } & T) | null
+  >(url.toString(), {
+    purpose: "launch_create",
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -75,13 +62,145 @@ async function postToMeta<T>(path: string, accessToken: string, payload: Record<
     body: JSON.stringify(payload),
   });
 
-  return parseMetaResponse<T>(response, "meta_request_failed", "Meta request failed.");
+  if (!response.ok) {
+    throw new ApiError(
+      502,
+      data?.error?.message ?? "Meta request failed.",
+      "meta_request_failed",
+    );
+  }
+
+  return data;
+}
+
+async function lookupMetaObjectByName(params: {
+  accountId: string;
+  accessToken: string;
+  edge: "campaigns" | "adsets" | "adcreatives" | "ads";
+  name: string;
+  fields: string;
+  parentField?: "account_id" | "campaign_id" | "adset_id";
+  parentId?: string | null;
+}) {
+  const url = new URL(
+    `https://graph.facebook.com/v19.0/act_${params.accountId.replace(/^act_/, "")}/${params.edge}`,
+  );
+  url.searchParams.set("fields", params.fields);
+  url.searchParams.set("limit", "200");
+  url.searchParams.set("access_token", params.accessToken);
+
+  const { response, data } = await fetchMetaJson<
+    { data?: Array<Record<string, unknown>>; error?: { message?: string } } | null
+  >(url.toString(), {
+    purpose: "launch_lookup",
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(
+      502,
+      data?.error?.message ?? `Meta ${params.edge} lookup failed.`,
+      "meta_lookup_failed",
+    );
+  }
+
+  const match =
+    data?.data?.find((item) => {
+      if (typeof item.name !== "string" || item.name.trim() !== params.name.trim()) {
+        return false;
+      }
+
+      if (!params.parentField || !params.parentId) {
+        return true;
+      }
+
+      const actualParent = String(item[params.parentField] ?? "").trim().replace(/^act_/, "");
+      const expectedParent = params.parentId.trim().replace(/^act_/, "");
+      return actualParent === expectedParent;
+    }) ?? null;
+
+  return typeof match?.id === "string" ? match.id : null;
+}
+
+async function createOrRecoverMetaObject<T>(params: {
+  accountId: string;
+  accessToken: string;
+  edge: "campaigns" | "adsets" | "adcreatives" | "ads";
+  path: string;
+  payload: Record<string, unknown>;
+  name: string;
+  fields: string;
+  parentField?: "account_id" | "campaign_id" | "adset_id";
+  parentId?: string | null;
+  missingIdMessage: string;
+  missingIdCode: string;
+}) {
+  const recoveredId = await lookupMetaObjectByName({
+    accountId: params.accountId,
+    accessToken: params.accessToken,
+    edge: params.edge,
+    name: params.name,
+    fields: params.fields,
+    parentField: params.parentField,
+    parentId: params.parentId,
+  });
+
+  if (recoveredId) {
+    return { id: recoveredId, recovered: true };
+  }
+
+  const data = await postToMeta<{ id?: string } & T>(
+    params.path,
+    params.accessToken,
+    params.payload,
+  );
+
+  if (!data?.id) {
+    throw new ApiError(502, params.missingIdMessage, params.missingIdCode);
+  }
+
+  return { id: data.id, recovered: false };
+}
+
+function forcePausedPayload<T extends Record<string, unknown>>(payload: T): T & { status: "PAUSED" } {
+  if (payload.status && payload.status !== "PAUSED") {
+    throw new ApiError(
+      400,
+      "Meta launch safety requires all created objects to be PAUSED.",
+      "meta_active_status_blocked",
+    );
+  }
+
+  return {
+    ...payload,
+    status: "PAUSED",
+  };
+}
+
+function assertBudgetSafety(payload: BuiltMetaAdSetPayload) {
+  const configuredCap = Number.parseInt(process.env.META_DAILY_BUDGET_CAP_CENTS ?? "100", 10);
+  const capCents = Number.isFinite(configuredCap) && configuredCap > 0
+    ? Math.min(configuredCap, 100)
+    : 100;
+  const dailyBudget = Number(payload.daily_budget ?? 0);
+  const lifetimeBudget = Number(payload.lifetime_budget ?? 0);
+
+  if (dailyBudget > capCents || lifetimeBudget > capCents) {
+    throw new ApiError(
+      400,
+      `Meta launch budget exceeds the ${capCents} cent safety cap.`,
+      "meta_budget_cap_exceeded",
+    );
+  }
 }
 
 async function updateMetaStatus(
   objectId: string,
   accessToken: string,
-  status: "ACTIVE" | "PAUSED",
+  status: "PAUSED",
 ) {
   const data = await postToMeta<{ success?: boolean }>(objectId, accessToken, { status });
 
@@ -111,19 +230,22 @@ export async function createMetaCampaign(params: {
     );
   }
 
-  const data = await postToMeta<{ id?: string }>(
-    `act_${accountId}/campaigns`,
+  const payload = forcePausedPayload(params.payload as unknown as Record<string, unknown>);
+  const data = await createOrRecoverMetaObject({
+    accountId,
     accessToken,
-    params.payload,
-  );
-
-  if (!data?.id) {
-    throw new ApiError(502, "Meta campaign creation failed.", "meta_campaign_create_failed");
-  }
+    edge: "campaigns",
+    path: `act_${accountId}/campaigns`,
+    payload,
+    name: String(payload.name),
+    fields: "id,name",
+    missingIdMessage: "Meta campaign creation failed.",
+    missingIdCode: "meta_campaign_create_failed",
+  });
 
   return {
     id: data.id,
-    payload: params.payload,
+    payload: payload as unknown as BuiltMetaCampaignPayload,
   } satisfies MetaCreateResult<BuiltMetaCampaignPayload>;
 }
 
@@ -147,22 +269,28 @@ export async function createMetaAdSet(params: {
     throw new ApiError(400, "Missing selected Meta assets", "missing_selected_meta_assets");
   }
 
-  const data = await postToMeta<{ id?: string }>(
-    `act_${accountId}/adsets`,
+  assertBudgetSafety(params.payload);
+  const payload = forcePausedPayload({
+    ...params.payload,
+    campaign_id: params.campaignId,
+  } as unknown as Record<string, unknown>);
+  const data = await createOrRecoverMetaObject({
+    accountId,
     accessToken,
-    {
-      ...params.payload,
-      campaign_id: params.campaignId,
-    },
-  );
-
-  if (!data?.id) {
-    throw new ApiError(502, "Meta ad set creation failed.", "meta_adset_create_failed");
-  }
+    edge: "adsets",
+    path: `act_${accountId}/adsets`,
+    payload,
+    name: String(payload.name),
+    fields: "id,name,campaign_id",
+    parentField: "campaign_id",
+    parentId: params.campaignId,
+    missingIdMessage: "Meta ad set creation failed.",
+    missingIdCode: "meta_adset_create_failed",
+  });
 
   return {
     id: data.id,
-    payload: params.payload,
+    payload: payload as unknown as BuiltMetaAdSetPayload,
   } satisfies MetaCreateResult<BuiltMetaAdSetPayload>;
 }
 
@@ -203,16 +331,18 @@ export async function createMetaCreative(params: {
       ...(objectStorySpec ?? {}),
       page_id: pageId,
     },
-  };
-  const data = await postToMeta<{ id?: string }>(
-    `act_${accountId}/adcreatives`,
+  } as BuiltMetaAdPayload["creativePayload"];
+  const data = await createOrRecoverMetaObject({
+    accountId,
     accessToken,
-    payload,
-  );
-
-  if (!data?.id) {
-    throw new ApiError(502, "Meta creative creation failed.", "meta_creative_create_failed");
-  }
+    edge: "adcreatives",
+    path: `act_${accountId}/adcreatives`,
+    payload: payload as unknown as Record<string, unknown>,
+    name: String(payload.name ?? ""),
+    fields: "id,name",
+    missingIdMessage: "Meta creative creation failed.",
+    missingIdCode: "meta_creative_create_failed",
+  });
 
   return {
     id: data.id,
@@ -237,25 +367,30 @@ export async function createMetaAd(params: {
     );
   }
 
-  const data = await postToMeta<{ id?: string }>(
-    `act_${accountId}/ads`,
-    accessToken,
-    {
-      ...params.payload,
-      adset_id: params.adSetId,
-      creative: {
-        creative_id: params.creativeId,
-      },
+  const payload = forcePausedPayload({
+    ...params.payload,
+    adset_id: params.adSetId,
+    creative: {
+      creative_id: params.creativeId,
     },
-  );
-
-  if (!data?.id) {
-    throw new ApiError(502, "Meta ad creation failed.", "meta_ad_create_failed");
-  }
+  } as unknown as Record<string, unknown>);
+  const data = await createOrRecoverMetaObject({
+    accountId,
+    accessToken,
+    edge: "ads",
+    path: `act_${accountId}/ads`,
+    payload,
+    name: String(payload.name),
+    fields: "id,name,adset_id",
+    parentField: "adset_id",
+    parentId: params.adSetId,
+    missingIdMessage: "Meta ad creation failed.",
+    missingIdCode: "meta_ad_create_failed",
+  });
 
   return {
     id: data.id,
-    payload: params.payload,
+    payload: payload as unknown as BuiltMetaAdPayload["adPayload"],
   };
 }
 

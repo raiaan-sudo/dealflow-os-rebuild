@@ -5,6 +5,7 @@ import {
   loadIssueLogRows,
   loadLaunchMonitorRows,
 } from "@/lib/services/internal-launch-monitor";
+import { getSmsOutboundPolicyStatus } from "@/lib/services/sms-service";
 import { createAdminClient } from "@/lib/server/supabase-admin";
 import { CommandCenterConsole } from "./command-center-console";
 import type {
@@ -96,6 +97,7 @@ export default async function CommandCenterPage() {
   const operatorAlertCount =
     ops.failedJobs + ops.deadLetterJobs + ops.recentStripeFailures + planMismatchCount;
   const unresolvedIssues = issues.filter((issue) => issue.status !== "resolved").length;
+  const smsPolicy = getSmsOutboundPolicyStatus();
 
   const metrics: ReadinessMetric[] = [
     {
@@ -112,8 +114,10 @@ export default async function CommandCenterPage() {
     },
     {
       label: "Self-serve launch",
-      value: 88,
-      detail: "Requires live Stripe secret confirmation, SMS/legal/provider approvals.",
+      value: smsPolicy.automationEnabled ? 90 : 86,
+      detail: smsPolicy.automationEnabled
+        ? "SMS automation guard is enabled with compliance acknowledgement."
+        : "SMS automation remains default-off until Twilio and compliance gates are explicitly enabled.",
       tone: "amber",
     },
     {
@@ -190,6 +194,7 @@ export default async function CommandCenterPage() {
       logs: [
         "Built cockpit HUD with agent drill-down and browser SpeechSynthesis briefing.",
         "Added live issue radar from failed jobs, failed webhooks, and campaign consistency drift.",
+        "SMS automation is surfaced as guarded/default-off unless compliance env gates and consent records are present.",
         "Kept dashboard admin-only, provider-free, and secret-safe.",
         "Labeled unproven measurements as estimated/operator signals.",
       ],
@@ -220,6 +225,14 @@ export default async function CommandCenterPage() {
       value: unresolvedIssues > 0 ? `${unresolvedIssues} open` : "clear",
       detail: issueSignal,
       tone: unresolvedIssues > 0 ? "amber" : "green",
+    },
+    {
+      label: "SMS guard",
+      value: smsPolicy.automationEnabled ? "enabled" : "blocked",
+      detail: smsPolicy.automationEnabled
+        ? "Twilio outbound automation has env gates enabled; per-lead consent and opt-out checks still apply."
+        : "Outbound automation is blocked by default; inbound STOP, START, HELP, and MessageSid idempotency remain active.",
+      tone: smsPolicy.automationEnabled ? "green" : "amber",
     },
   ];
 
@@ -275,6 +288,7 @@ export default async function CommandCenterPage() {
         failedJobs: ops.failedJobs,
         stripeFailures: ops.recentStripeFailures,
         validationAlerts: validationAlertCount,
+        smsAutomationEnabled: smsPolicy.automationEnabled,
       }}
       workLog={workLog}
     />

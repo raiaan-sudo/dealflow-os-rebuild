@@ -9,6 +9,13 @@ export type IncomingSmsPayload = {
   messageSid: string | null;
 };
 
+type SendSmsOptions = {
+  consentMetadata?: unknown;
+  smsOptedOutAt?: string | null;
+  reason?: string;
+  allowComplianceResponse?: boolean;
+};
+
 function normalizePhone(value: string) {
   const trimmed = value.trim();
   const hasPlus = trimmed.startsWith("+");
@@ -29,7 +36,74 @@ function normalizePhone(value: string) {
   return `+${digits}`;
 }
 
-export async function sendSMS(to: string, message: string) {
+function metadataHasExplicitSmsConsent(consentMetadata: unknown) {
+  if (!consentMetadata || typeof consentMetadata !== "object" || Array.isArray(consentMetadata)) {
+    return false;
+  }
+
+  const metadata = consentMetadata as Record<string, unknown>;
+  const sms = metadata.sms;
+
+  if (sms && typeof sms === "object" && !Array.isArray(sms)) {
+    const smsRecord = sms as Record<string, unknown>;
+    return smsRecord.consented === true && typeof smsRecord.captured_at === "string";
+  }
+
+  return false;
+}
+
+export function getSmsOutboundPolicyStatus() {
+  const outboundEnabled = process.env.TWILIO_OUTBOUND_SMS_ENABLED === "true";
+  const complianceAcknowledged = process.env.SMS_COMPLIANCE_ACK === "true";
+  const twilioConfigured = Boolean(getTwilioEnv());
+
+  return {
+    automationEnabled: outboundEnabled && complianceAcknowledged && twilioConfigured,
+    complianceAcknowledged,
+    outboundEnabled,
+    twilioConfigured,
+  };
+}
+
+function assertSmsSendAllowed(options: SendSmsOptions) {
+  if (options.allowComplianceResponse) {
+    return;
+  }
+
+  const policy = getSmsOutboundPolicyStatus();
+
+  if (!policy.outboundEnabled) {
+    throw new ApiError(
+      403,
+      "Outbound SMS automation is disabled until compliance approval is configured.",
+      "sms_outbound_disabled",
+    );
+  }
+
+  if (!policy.complianceAcknowledged) {
+    throw new ApiError(
+      403,
+      "Outbound SMS automation requires compliance acknowledgement.",
+      "sms_compliance_ack_missing",
+    );
+  }
+
+  if (options.smsOptedOutAt) {
+    throw new ApiError(403, "Lead has opted out of SMS.", "sms_recipient_opted_out");
+  }
+
+  if (!metadataHasExplicitSmsConsent(options.consentMetadata)) {
+    throw new ApiError(
+      403,
+      "Explicit SMS consent is required before sending automated SMS.",
+      "sms_consent_missing",
+    );
+  }
+}
+
+export async function sendSMS(to: string, message: string, options: SendSmsOptions = {}) {
+  assertSmsSendAllowed(options);
+
   const env = getTwilioEnv();
 
   if (!env) {

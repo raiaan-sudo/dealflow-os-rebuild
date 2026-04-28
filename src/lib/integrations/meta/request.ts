@@ -31,7 +31,7 @@ const META_RETRIES: Record<MetaRequestPurpose, number> = {
   discovery: 2,
   preflight: 2,
   launch_lookup: 2,
-  launch_create: 2,
+  launch_create: 0,
   sync: 2,
 };
 
@@ -95,12 +95,18 @@ export async function fetchMetaResponse(
   const {
     purpose,
     requestId,
-    retries = META_RETRIES[purpose],
+    retries: requestedRetries,
     retryDelayMs = 500,
     timeoutMs = META_TIMEOUTS_MS[purpose],
     signal: externalSignal,
     ...init
   } = options;
+  const method = typeof init.method === "string" ? init.method.toUpperCase() : "GET";
+  const isNonIdempotentLaunchCreate =
+    purpose === "launch_create" && method !== "GET" && method !== "HEAD";
+  const retries = isNonIdempotentLaunchCreate
+    ? 0
+    : requestedRetries ?? META_RETRIES[purpose];
 
   let lastError: unknown = null;
 
@@ -131,6 +137,14 @@ export async function fetchMetaResponse(
         });
         await sleep(retryDelayMs * (attempt + 1));
         continue;
+      }
+
+      if (
+        isRetryableMetaStatus(response.status) &&
+        attempt >= retries &&
+        isNonIdempotentLaunchCreate
+      ) {
+        return response;
       }
 
       if (isRetryableMetaStatus(response.status) && attempt >= retries) {

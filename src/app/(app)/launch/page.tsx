@@ -143,7 +143,8 @@ export default async function LaunchAliasPage({
     ),
   ]);
   const plan = record ? canonicalCampaignToPlan(record) : null;
-  const selectedAdId = await loadPersistedSelectedAdId(requestedCampaignId);
+  const resolvedCampaignId = record?.campaign.id ?? requestedCampaignId;
+  const selectedAdId = await loadPersistedSelectedAdId(resolvedCampaignId);
   const metaErrorCopy = getMetaQueryUiCopy(metaError, "oauth_callback");
   const discoveryIncomplete =
     metaWarning === "asset_discovery_incomplete"

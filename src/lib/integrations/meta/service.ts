@@ -33,6 +33,8 @@ export type MetaLaunchPreflightState = {
   accountValid: boolean;
   pageValid: boolean;
   pixelValid: boolean;
+  domainValid: boolean;
+  trackingValid: boolean;
   errors: string[];
   ready: boolean;
 };
@@ -211,6 +213,38 @@ async function fetchMetaGraphJson<T>(accessToken: string, path: string, params?:
 
 function isActiveMetaAdAccountStatus(status: unknown) {
   return String(status ?? "") === "1";
+}
+
+function normalizeLaunchDomain(value: string | null | undefined) {
+  const trimmed = value?.trim().toLowerCase().replace(/\/+$/, "");
+
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    return new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`).hostname;
+  } catch {
+    return trimmed.split("/")[0] || null;
+  }
+}
+
+function destinationMatchesLaunchDomain(destinationUrl: string | null | undefined, launchDomain: string | null) {
+  if (!destinationUrl || !launchDomain) {
+    return Boolean(launchDomain);
+  }
+
+  try {
+    const destinationHost = new URL(destinationUrl).hostname.toLowerCase();
+    const normalizedLaunchDomain = normalizeLaunchDomain(launchDomain);
+    return Boolean(
+      normalizedLaunchDomain &&
+        (destinationHost === normalizedLaunchDomain ||
+          destinationHost.endsWith(`.${normalizedLaunchDomain}`)),
+    );
+  } catch {
+    return false;
+  }
 }
 
 function getTrackingMissingFields(params: {
@@ -631,11 +665,20 @@ export async function getMetaWorkspaceCredentials(): Promise<MetaWorkspaceCreden
   };
 }
 
-export async function validateMetaLaunchSelections(): Promise<MetaLaunchPreflightState> {
+export async function validateMetaLaunchSelections(options?: {
+  destinationUrl?: string | null;
+}): Promise<MetaLaunchPreflightState> {
   const checkedAt = new Date().toISOString();
 
   try {
     const credentials = await getMetaWorkspaceCredentials();
+    const row = await getExistingMetaRecord(credentials.workspaceId);
+    const metadata = normalizeMetaConnectionMetadata(row?.connection_metadata ?? null);
+    const tracking = getWorkspaceTrackingConfig(
+      row,
+      metadata,
+      row?.last_sync_at ?? row?.token_last_synced_at ?? row?.connected_at ?? null,
+    );
     const tokenCheck = await fetchMetaGraphJson<{ id?: string }>(credentials.accessToken, "me", {
       fields: "id",
     });
@@ -647,6 +690,8 @@ export async function validateMetaLaunchSelections(): Promise<MetaLaunchPrefligh
         accountValid: false,
         pageValid: false,
         pixelValid: false,
+        domainValid: false,
+        trackingValid: false,
         errors: [
           formatMetaSelectionInvalidMessage(
             tokenCheck.data?.error?.message ?? "Meta token is invalid or expired.",
@@ -692,6 +737,9 @@ export async function validateMetaLaunchSelections(): Promise<MetaLaunchPrefligh
     }
 
     const pixelValid = availablePixels.some((pixel) => pixel.id === credentials.pixelId);
+    const domainValid =
+      tracking.domainVerified &&
+      destinationMatchesLaunchDomain(options?.destinationUrl, tracking.launchDomain);
 
     const errors: string[] = [];
 
@@ -725,14 +773,24 @@ export async function validateMetaLaunchSelections(): Promise<MetaLaunchPrefligh
       );
     }
 
+    if (!tracking.launchDomain) {
+      errors.push("Configure a launch domain before Meta launch.");
+    } else if (!tracking.domainVerified) {
+      errors.push("Verify the launch domain before Meta launch.");
+    } else if (!domainValid) {
+      errors.push("Destination URL must use the verified Meta launch domain.");
+    }
+
     return {
       checkedAt,
       tokenValid: true,
       accountValid,
       pageValid,
       pixelValid,
+      domainValid,
+      trackingValid: pixelValid && domainValid,
       errors,
-      ready: accountValid && pageValid && pixelValid,
+      ready: accountValid && pageValid && pixelValid && domainValid,
     };
   } catch (error) {
     return {
@@ -741,6 +799,8 @@ export async function validateMetaLaunchSelections(): Promise<MetaLaunchPrefligh
       accountValid: false,
       pageValid: false,
       pixelValid: false,
+      domainValid: false,
+      trackingValid: false,
       errors: [
         formatMetaSelectionInvalidMessage(
           error instanceof Error ? error.message : "Meta preflight failed.",

@@ -39,7 +39,9 @@ export async function POST(request: Request) {
     }
 
     const payload = await handleIncomingSMS(formData);
-    const result = await handleIncomingMessageByPhone(payload.from, payload.body);
+    const result = await handleIncomingMessageByPhone(payload.from, payload.body, {
+      messageSid: payload.messageSid,
+    });
 
     logOperationalEvent("sms.inbound_processed", {
       requestId,
@@ -47,6 +49,7 @@ export async function POST(request: Request) {
       messageSid: payload.messageSid,
       leadId: result.leadId,
       status: result.status,
+      idempotentReplay: "idempotentReplay" in result ? result.idempotentReplay : false,
     });
 
     return twiml(result.response);

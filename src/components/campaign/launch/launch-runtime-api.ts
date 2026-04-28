@@ -86,9 +86,15 @@ export async function fetchMetaConnectionStatus() {
   return result.connection;
 }
 
-export async function syncCampaignStatus() {
+export async function syncCampaignStatus(campaignId?: string | null) {
   const response = await fetchWithRetry("/api/integrations/meta/sync", {
     method: "POST",
+    headers: campaignId
+      ? {
+          "Content-Type": "application/json",
+        }
+      : undefined,
+    body: campaignId ? JSON.stringify({ campaignId }) : undefined,
     timeoutMs: 12000,
     retries: 1,
   });

@@ -26,6 +26,9 @@ const leadCaptureSchema = z
     campaignId: z.string().uuid().optional(),
     funnel_id: z.string().trim().min(1).optional(),
     stage: z.enum(["onboarding", "generated", "launched"]).optional(),
+    sms_consent: z.boolean().optional(),
+    smsConsent: z.boolean().optional(),
+    sms_consent_copy: z.string().trim().min(1).max(1000).optional(),
   })
   .superRefine((value, ctx) => {
     if (!value.email?.trim() && !value.phone?.trim()) {
@@ -43,6 +46,14 @@ const leadCaptureSchema = z
         message: "campaignId or funnel_id is required.",
       });
     }
+
+    if (value.phone?.trim() && value.sms_consent !== true && value.smsConsent !== true) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["sms_consent"],
+        message: "SMS consent is required when a phone number is submitted.",
+      });
+    }
   });
 
 export async function POST(req: Request) {
@@ -57,6 +68,8 @@ export async function POST(req: Request) {
         source: string;
         notes: string;
         stage: string;
+        smsConsent: boolean;
+        smsConsentCopy: string;
       }
     | null = null;
 
@@ -80,6 +93,10 @@ export async function POST(req: Request) {
     const normalizedStage = payload.stage?.trim() ?? "generated";
     const phone = payload.phone?.trim() || null;
     const email = payload.email?.trim() || null;
+    const smsConsent = payload.sms_consent === true || payload.smsConsent === true;
+    const smsConsentCopy =
+      payload.sms_consent_copy?.trim() ||
+      "By checking this box and submitting, I agree to receive automated and manual SMS messages about this request from DealFlow OS and its customer. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help.";
     const isDevelopment = process.env.NODE_ENV !== "production";
     const source = `lead_capture_${normalizedStage}`;
     const notes = `Captured from lead capture flow at stage: ${normalizedStage}.`;
@@ -93,6 +110,8 @@ export async function POST(req: Request) {
       source,
       notes,
       stage: normalizedStage,
+      smsConsent,
+      smsConsentCopy,
     };
 
     const lead = await createPublicLeadAndStartConversation({
@@ -103,6 +122,10 @@ export async function POST(req: Request) {
       phone: phone ?? "",
       source,
       notes,
+      sms_consent: smsConsent,
+      sms_consent_copy: smsConsentCopy,
+      consent_source: "public_lead_capture_form",
+      consent_url: req.headers.get("referer"),
     });
 
     logOperationalEvent("lead_capture.succeeded", {
@@ -172,6 +195,8 @@ export async function POST(req: Request) {
         notes: capturedPayload.notes,
         stage: capturedPayload.stage,
         failureReason: error instanceof Error ? error.message : "Lead capture failed.",
+        smsConsent: capturedPayload.smsConsent,
+        smsConsentCopy: capturedPayload.smsConsentCopy,
       });
 
       if (queuedJob) {

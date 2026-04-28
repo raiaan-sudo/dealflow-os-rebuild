@@ -51,7 +51,8 @@ export default async function PreviewPage({
   const activeCampaign = await resolveActiveCampaignRecord(campaignId).catch(() => null);
   let record = activeCampaign?.record ?? null;
   let plan = record ? canonicalCampaignToPlan(record) : null;
-  const selectedAdId = await loadPersistedSelectedAdId(campaignId);
+  const resolvedCampaignId = record?.campaign.id ?? campaignId;
+  const selectedAdId = await loadPersistedSelectedAdId(resolvedCampaignId);
 
   if (!plan) {
     return (

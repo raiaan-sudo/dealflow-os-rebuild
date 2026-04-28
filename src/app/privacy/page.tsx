@@ -34,6 +34,12 @@ export default function PrivacyPolicyPage() {
             When a visitor submits a lead form, we collect the information they choose to provide,
             such as name, email address, phone number, message, and related campaign context.
           </p>
+          <p className="mt-3">
+            If a visitor provides a phone number and checks the SMS consent box, we store the
+            consent text shown, consent source, phone number, and timestamp so opt-in proof can be
+            audited. We also store SMS opt-out timestamps and inbound/outbound message records
+            needed to honor STOP, START, and HELP requests.
+          </p>
         </section>
 
         <section>
@@ -53,7 +59,8 @@ export default function PrivacyPolicyPage() {
             We use information to create and manage campaigns, generate previews and creative
             drafts, process lead submissions, prevent duplicate submissions, maintain billing and
             subscription access, sync campaign state, troubleshoot errors, improve reliability, and
-            provide support.
+            provide support. SMS information is used only to respond to the submitted request,
+            maintain conversation history, document consent, and honor opt-out choices.
           </p>
         </section>
 
@@ -92,6 +99,11 @@ export default function PrivacyPolicyPage() {
             You may request access, correction, deletion, or export of your information. You may
             disconnect third-party integrations where supported, and you may stop using public lead
             forms or campaign pages at any time.
+          </p>
+          <p className="mt-3">
+            SMS recipients can reply STOP to opt out, START to resume messages, or HELP for help.
+            Message and data rates may apply. Opt-out records may be retained as needed to prevent
+            future unauthorized messaging.
           </p>
         </section>
 

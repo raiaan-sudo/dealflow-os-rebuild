@@ -156,6 +156,10 @@ export default function LaunchingPage() {
       return;
     }
 
+    if (attempt < 1) {
+      return;
+    }
+
     const currentCampaignId = campaignId;
     const attemptKey = `${currentCampaignId}:${attempt}`;
     if (startedAttemptRef.current === attemptKey) {
@@ -269,6 +273,27 @@ export default function LaunchingPage() {
               }}
             >
               Retry failed step
+            </Button>
+          </div>
+        ) : attempt < 1 ? (
+          <div className="space-y-5">
+            <div className="inline-flex rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-amber-100">
+              Confirmation required
+            </div>
+            <p className="text-lg font-semibold text-foreground">
+              Launch is ready, but it will not start from page load.
+            </p>
+            <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
+              This prevents browser restores, shared URLs, and accidental refreshes from creating or retrying Meta objects.
+              Start launch only when you are ready to intentionally run the PAUSED Meta launch flow.
+            </p>
+            <Button
+              onClick={() => {
+                setError(null);
+                setAttempt(1);
+              }}
+            >
+              Start PAUSED launch
             </Button>
           </div>
         ) : (

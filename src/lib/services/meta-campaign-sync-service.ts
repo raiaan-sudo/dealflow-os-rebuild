@@ -21,8 +21,13 @@ import { getAppContext } from "@/lib/services/app-context";
 import { refreshCampaignActionSuggestions } from "@/lib/services/campaign-action-service";
 import { refreshCampaignDraftActions } from "@/lib/services/campaign-draft-action-service";
 import { recordCreativePerformanceSnapshot } from "@/lib/services/creative-performance-service";
-import { getLatestCampaignLaunchRecord } from "@/lib/services/campaign-launch-audit-service";
+import {
+  getCampaignLaunchRecordForCampaign,
+  getLatestCampaignLaunchRecord,
+} from "@/lib/services/campaign-launch-audit-service";
 import { getLatestCampaignPlan } from "@/lib/services/campaign-plan-service";
+import { getCampaignById } from "@/lib/services/campaign-persistence";
+import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { logError, logWarn } from "@/lib/logging";
 import type { Json } from "@/lib/supabase/types";
 
@@ -210,15 +215,30 @@ export async function getMetaCampaignSyncSnapshotForCampaign(params: {
   return mapSyncSnapshot((data as Record<string, unknown> | null) ?? null);
 }
 
-export async function syncMetaCampaignStatus() {
-  const [{ context, supabase }, plan, launchRecord] = await Promise.all([
+export async function syncMetaCampaignStatus(params?: { campaignId?: string | null }) {
+  const requestedCampaignId = params?.campaignId?.trim() || null;
+  const [{ context, supabase }, scopedRecord, latestPlan, latestLaunchRecord] = await Promise.all([
     getMetaSyncContext(),
-    getLatestCampaignPlan(),
-    getLatestCampaignLaunchRecord(),
+    requestedCampaignId ? getCampaignById(requestedCampaignId).catch(() => null) : Promise.resolve(null),
+    requestedCampaignId ? Promise.resolve(null) : getLatestCampaignPlan(),
+    requestedCampaignId ? Promise.resolve(null) : getLatestCampaignLaunchRecord(),
   ]);
+  const plan = scopedRecord ? canonicalCampaignToPlan(scopedRecord) : latestPlan;
+  const launchRecord = scopedRecord
+    ? await getCampaignLaunchRecordForCampaign({
+        campaignName: plan?.businessName ?? scopedRecord.campaign.name,
+        metaCampaignId: plan?.runtime.campaignId ?? null,
+      })
+    : latestLaunchRecord;
 
   if (!plan) {
-    throw new ApiError(400, "Generate and launch a campaign before syncing status.", "campaign_plan_missing");
+    throw new ApiError(
+      400,
+      requestedCampaignId
+        ? "Requested campaign could not be found for Meta sync."
+        : "Generate and launch a campaign before syncing status.",
+      "campaign_plan_missing",
+    );
   }
 
   const connection = await getConnectedMetaAccount(context.organization.id);
@@ -407,7 +427,10 @@ export async function syncMetaCampaignStatus() {
     throw new ApiError(500, accountUpdateError.message, "meta_account_sync_timestamp_failed");
   }
 
-  const snapshot = await getLatestMetaCampaignSyncSnapshot();
+  const snapshot = await getMetaCampaignSyncSnapshotForCampaign({
+    campaignName: launchRecord?.campaignName ?? plan.businessName,
+    metaCampaignId: ids.campaignId,
+  });
 
   if (!snapshot) {
     throw new ApiError(500, "Synced snapshot could not be loaded.", "campaign_sync_snapshot_missing");

@@ -377,6 +377,94 @@ function getMetaBudgetCapCents() {
   return Number.isFinite(configured) && configured > 0 ? Math.min(configured, 100) : 100;
 }
 
+function getMetadataString(row: MarketingAccountRow | MetaConnectionRecord | null, key: string) {
+  const metadata = row?.connection_metadata;
+  const value =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>)[key]
+      : null;
+
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function getMetaAccountPixelId(row: MarketingAccountRow | MetaConnectionRecord | null) {
+  return (
+    (typeof row?.pixel_id === "string" && row.pixel_id.trim().length > 0
+      ? row.pixel_id.trim()
+      : null) ?? getMetadataString(row, "pixel_id")
+  );
+}
+
+function normalizeLaunchDomain(value: string | null | undefined) {
+  const trimmed = value?.trim().toLowerCase().replace(/\/+$/, "");
+
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    return new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`).hostname;
+  } catch {
+    return trimmed.split("/")[0] || null;
+  }
+}
+
+function destinationMatchesLaunchDomain(destinationUrl: string, launchDomain: string | null) {
+  if (!launchDomain) {
+    return false;
+  }
+
+  try {
+    const destinationHost = new URL(destinationUrl).hostname.toLowerCase();
+    const normalizedLaunchDomain = normalizeLaunchDomain(launchDomain);
+    return Boolean(
+      normalizedLaunchDomain &&
+        (destinationHost === normalizedLaunchDomain ||
+          destinationHost.endsWith(`.${normalizedLaunchDomain}`)),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function getMetaTrackingPreflightErrors(
+  metaAccount: MarketingAccountRow | MetaConnectionRecord | null,
+  destinationUrl: string,
+) {
+  const errors: string[] = [];
+  const launchDomain =
+    (typeof metaAccount?.launch_domain === "string" && metaAccount.launch_domain.trim().length > 0
+      ? metaAccount.launch_domain.trim()
+      : null) ?? getMetadataString(metaAccount, "launch_domain");
+  const metadata =
+    metaAccount?.connection_metadata &&
+    typeof metaAccount.connection_metadata === "object" &&
+    !Array.isArray(metaAccount.connection_metadata)
+      ? (metaAccount.connection_metadata as Record<string, unknown>)
+      : {};
+  const domainVerified =
+    metaAccount?.domain_verified === true ||
+    metadata.domain_verified === true;
+
+  if (!getMetaAccountPixelId(metaAccount)) {
+    errors.push("Selected Meta ad account is missing a configured pixel.");
+  }
+
+  if (!launchDomain) {
+    errors.push("Selected Meta ad account is missing a launch domain.");
+  } else if (!domainVerified) {
+    errors.push("Selected Meta launch domain is not verified.");
+  } else if (!destinationMatchesLaunchDomain(destinationUrl, launchDomain)) {
+    errors.push("Destination URL must use the verified Meta launch domain.");
+  }
+
+  return errors;
+}
+
+function buildMetaName(baseName: string, campaignId: string, stage: string) {
+  return `${baseName} | DF-${campaignId.slice(0, 8)}-${stage}`.trim();
+}
+
 function inferCountryCode(location: string) {
   const normalized = location.toLowerCase();
 
@@ -541,7 +629,7 @@ function mapLaunchConfigFromExecution(execution: CampaignExecution): CampaignLau
     budget_type: execution.budget_type === "lifetime" ? "lifetime" : "daily",
     daily_budget: execution.daily_budget ?? undefined,
     lifetime_budget: execution.lifetime_budget ?? undefined,
-    start_immediately: true,
+    start_immediately: false,
     form_type: "landing_page",
   };
 }
@@ -715,8 +803,14 @@ export async function validateCampaignForLaunch(
     errors.push(`Lifetime budget must be ${budgetCapCents} cents or lower for beta launch safety.`);
   }
 
-  if (launchInput.objective === "CONVERSIONS" && !launchInput.pixel_id?.trim()) {
+  const selectedPixelId = launchInput.pixel_id?.trim() || getMetaAccountPixelId(metaAccount);
+
+  if (launchInput.objective === "CONVERSIONS" && !selectedPixelId) {
     errors.push("Conversions objective requires a Meta pixel ID.");
+  }
+
+  if (metaAccount && destinationUrl) {
+    errors.push(...getMetaTrackingPreflightErrors(metaAccount, destinationUrl));
   }
 
   const assets = buildLaunchAssets(campaign);
@@ -757,7 +851,7 @@ export async function validateCampaignForLaunch(
     lifetimeBudget,
     startImmediately: false,
     ctaType: normalizeExecutionCta(launchInput.cta_type ?? campaign.funnel?.cta ?? assets[0]?.cta),
-    pixelId: launchInput.pixel_id?.trim() || null,
+    pixelId: selectedPixelId,
     formType: launchInput.form_type === "instant_form" ? "instant_form" : "landing_page",
   };
 
@@ -785,7 +879,11 @@ export function buildMetaCampaignPayload(
   config: ValidatedLaunchConfig,
 ): BuiltMetaCampaignPayload {
   return {
-    name: `${campaignRecord.campaign.name} | ${campaignRecord.strategy.location || "Autopilot"}`.trim(),
+    name: buildMetaName(
+      `${campaignRecord.campaign.name} | ${campaignRecord.strategy.location || "Autopilot"}`.trim(),
+      campaignRecord.campaign.id,
+      "campaign",
+    ),
     objective: normalizeObjective(config.objective ?? "LEADS"),
     status: "PAUSED",
     special_ad_categories: ["HOUSING"],
@@ -808,7 +906,11 @@ export function buildMetaAdSetPayloads(
 
   return [
     {
-      name: `${campaignRecord.campaign.name} | Core audience`,
+      name: buildMetaName(
+        `${campaignRecord.campaign.name} | Core audience`,
+        campaignRecord.campaign.id,
+        "adset",
+      ),
       billing_event: "IMPRESSIONS",
       optimization_goal: normalizeOptimizationGoal(config),
       bid_strategy: "LOWEST_COST_WITHOUT_CAP",
@@ -862,7 +964,11 @@ export function buildMetaAdPayloads(
   })).map(({ asset, mediaUrl }, index) => ({
     asset,
     creativePayload: {
-      name: `${campaignRecord.campaign.name} | Creative ${index + 1}`,
+      name: buildMetaName(
+        `${campaignRecord.campaign.name} | Creative ${index + 1}`,
+        campaignRecord.campaign.id,
+        `creative-${index + 1}`,
+      ),
       object_story_spec: {
         page_id: "",
         link_data: {
@@ -880,7 +986,11 @@ export function buildMetaAdPayloads(
       },
     },
     adPayload: {
-      name: `${campaignRecord.campaign.name} | Ad ${index + 1}`,
+      name: buildMetaName(
+        `${campaignRecord.campaign.name} | Ad ${index + 1}`,
+        campaignRecord.campaign.id,
+        `ad-${index + 1}`,
+      ),
       status: "PAUSED",
     },
   }));
@@ -1323,7 +1433,7 @@ export async function launchCampaignExecution(executionId: string): Promise<Camp
 
     const publishResult = await publishMetaCampaignIfNeeded({
       connection: metaAccount,
-      startImmediately: validatedConfig.startImmediately ?? true,
+      startImmediately: false,
       campaignId: createdCampaign.id,
       adSetIds: createdAdSetIds,
       adIds: createdAdIds,

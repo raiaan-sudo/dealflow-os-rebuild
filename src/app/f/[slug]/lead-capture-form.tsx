@@ -9,6 +9,9 @@ type LeadCaptureFormProps = {
   cta: string;
 };
 
+const SMS_CONSENT_COPY =
+  "By checking this box and submitting, I agree to receive automated and manual SMS messages about this request from DealFlow OS and its customer. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help.";
+
 function includesField(fields: string[], needle: string) {
   return fields.some((field) => field.toLowerCase().includes(needle));
 }
@@ -22,6 +25,7 @@ export function LeadCaptureForm({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [smsConsent, setSmsConsent] = useState(false);
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
 
@@ -51,6 +55,12 @@ export function LeadCaptureForm({
       return;
     }
 
+    if (normalizedPhone && !smsConsent) {
+      setStatus("error");
+      setMessage("Please check the SMS consent box so we can text you about this request.");
+      return;
+    }
+
     setStatus("submitting");
     setMessage(null);
 
@@ -66,6 +76,8 @@ export function LeadCaptureForm({
           name: normalizedName,
           email: showEmail ? normalizedEmail || undefined : undefined,
           phone: showPhone ? normalizedPhone || undefined : undefined,
+          sms_consent: Boolean(showPhone && normalizedPhone && smsConsent),
+          sms_consent_copy: SMS_CONSENT_COPY,
           stage: "launched",
         }),
       });
@@ -83,6 +95,7 @@ export function LeadCaptureForm({
       setName("");
       setEmail("");
       setPhone("");
+      setSmsConsent(false);
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "Lead capture failed.");
@@ -135,20 +148,39 @@ export function LeadCaptureForm({
       ) : null}
 
       {showPhone ? (
-        <label className="block space-y-2">
-          <span className="text-sm text-white/70">Phone</span>
-          <input
-            className="h-11 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none"
-            onChange={(event) => {
-              setPhone(event.target.value);
-              if (message) {
-                setMessage(null);
-                setStatus("idle");
-              }
-            }}
-            value={phone}
-          />
-        </label>
+        <div className="space-y-3">
+          <label className="block space-y-2">
+            <span className="text-sm text-white/70">Phone</span>
+            <input
+              className="h-11 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none"
+              onChange={(event) => {
+                setPhone(event.target.value);
+                if (message) {
+                  setMessage(null);
+                  setStatus("idle");
+                }
+              }}
+              type="tel"
+              value={phone}
+            />
+          </label>
+          <label className="flex gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 text-xs leading-relaxed text-white/62">
+            <input
+              checked={smsConsent}
+              className="mt-1 size-4 shrink-0 accent-primary"
+              onChange={(event) => {
+                setSmsConsent(event.target.checked);
+                if (message) {
+                  setMessage(null);
+                  setStatus("idle");
+                }
+              }}
+              required={Boolean(phone.trim())}
+              type="checkbox"
+            />
+            <span>{SMS_CONSENT_COPY}</span>
+          </label>
+        </div>
       ) : null}
 
       {message ? (
@@ -171,8 +203,8 @@ export function LeadCaptureForm({
         {status === "submitting" ? "Submitting..." : cta}
       </button>
       <p className="text-xs leading-relaxed text-white/45">
-        By submitting, you agree to be contacted about this request. Message and data
-        rates may apply. Reply STOP to opt out. See our{" "}
+        By submitting, you agree to be contacted about this request. SMS is only sent
+        when you explicitly consent above. See our{" "}
         <a className="text-primary underline-offset-4 hover:underline" href="/privacy">
           Privacy Policy
         </a>{" "}
