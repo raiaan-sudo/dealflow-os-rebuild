@@ -51,6 +51,14 @@ export function getCheckoutUrls() {
   };
 }
 
+export function getBillingPortalUrls() {
+  const baseUrl = getPublicAppUrl();
+
+  return {
+    returnUrl: `${baseUrl}/settings?billing=portal`,
+  };
+}
+
 export function buildStripeCheckoutMetadata(params: {
   organizationId: string;
   userId: string;

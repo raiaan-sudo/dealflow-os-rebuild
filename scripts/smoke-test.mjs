@@ -87,6 +87,10 @@ function runOfflineChecks() {
   const metaConnect = "src/app/api/integrations/meta/connect/route.ts";
   const metaCallback = "src/app/api/integrations/meta/callback/route.ts";
   const billingCheckoutRoute = "src/app/api/billing/checkout/route.ts";
+  const billingPortalRoute = "src/app/api/billing/portal/route.ts";
+  const billingService = "src/lib/services/billing-service.ts";
+  const stripeProvider = "src/lib/integrations/stripe/provider.ts";
+  const billingWebhookMigration = "supabase/migrations/20260428140000_harden_billing_subscription_webhooks.sql";
   const videoRoute = "src/app/api/campaigns/[id]/generate-video/route.ts";
   const staticAdsRoute = "src/app/api/campaigns/[id]/generate-static-ads/route.ts";
   const launchRuntimeApi = "src/components/campaign/launch/launch-runtime-api.ts";
@@ -150,6 +154,11 @@ function runOfflineChecks() {
   assertIncludes("src/app/api/campaigns/[id]/select-ad/route.ts", "organization_id", "Selected creative ownership guard", "selected creative writes verify campaign ownership");
   assertIncludes(launchRoute, "ownershipVerified", "Meta failure persistence ownership guard", "direct Meta launch route does not persist failure state before ownership is proven");
   assertIncludes(billingCheckoutRoute, "assertSameOriginRequest", "Billing checkout same-origin guard", "checkout route rejects cross-site POSTs");
+  assertIncludes(billingPortalRoute, "assertSameOriginRequest", "Billing portal same-origin guard", "portal route rejects cross-site POSTs");
+  assertIncludes(stripeProvider, "create_billing_portal_session", "Stripe portal provider support", "billing portal sessions are created through the Stripe provider");
+  assertIncludes(billingService, "apply_billing_subscription_webhook", "Stripe webhook ordering guard", "subscription sync uses DB-backed stale event protection");
+  assertIncludes(billingService, "stripe_subscription_stale_event_ignored", "Stripe stale event observability", "out-of-order subscription events are logged and ignored");
+  assertIncludes(billingWebhookMigration, "stripe_latest_event_created", "Billing subscription event watermark", "billing rows persist latest Stripe event timestamps");
   assertIncludes(staticAdsRoute, "consumeSessionCostBudget", "Paid static generation guard", "static ad generation consumes DB-backed provider budget");
   assertIncludes(staticAdsRoute, "idempotencyKey", "Static generation idempotency", "paid generation job creation uses idempotency key");
   assertIncludes(sessionCostGuard, "reserve_provider_usage", "Atomic provider usage reservation", "paid-generation guard reserves provider budget through DB RPC");

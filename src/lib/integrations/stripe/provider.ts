@@ -20,6 +20,11 @@ export type StripeBillingExecuteRequest =
       idempotencyKey?: string;
     }
   | {
+      action: "create_billing_portal_session";
+      params: Stripe.BillingPortal.SessionCreateParams;
+      idempotencyKey?: string;
+    }
+  | {
       action: "retrieve_subscription";
       subscriptionId: string;
     }
@@ -32,6 +37,7 @@ export type StripeBillingExecuteRequest =
 type StripeBillingRawResult =
   | Stripe.Customer
   | Stripe.Checkout.Session
+  | Stripe.BillingPortal.Session
   | Stripe.Subscription
   | Stripe.Event;
 
@@ -145,6 +151,13 @@ class ConfiguredStripeBillingProvider implements StripeBillingProvider
 
     if (request.action === "create_checkout_session") {
       return client.checkout.sessions.create(
+        request.params,
+        request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : undefined,
+      );
+    }
+
+    if (request.action === "create_billing_portal_session") {
+      return client.billingPortal.sessions.create(
         request.params,
         request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : undefined,
       );

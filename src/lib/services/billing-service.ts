@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAppContext } from "@/lib/services/app-context";
 import {
   buildStripeCheckoutMetadata,
+  getBillingPortalUrls,
   getCheckoutUrls,
   getPlanTierFromPriceId,
   getStripePriceId,
@@ -24,6 +25,12 @@ type BillingRow = Database["public"]["Tables"]["billing_subscriptions"]["Row"];
 type BillingInsert = Database["public"]["Tables"]["billing_subscriptions"]["Insert"];
 type StripeWebhookEventRow = Database["public"]["Tables"]["stripe_webhook_events"]["Row"];
 type StripeWebhookEventInsert = Database["public"]["Tables"]["stripe_webhook_events"]["Insert"];
+
+type BillingSubscriptionWebhookApplyResult = {
+  applied: boolean;
+  ignored_reason: string | null;
+  latest_event_created: number | null;
+};
 
 export type BillingSummary = {
   planTier: BillingPlanTier;
@@ -49,6 +56,12 @@ type StripeWebhookClaimResult =
       status: "duplicate";
       row: StripeWebhookEventRow | null;
     };
+
+type StripeSubscriptionSyncSource = {
+  eventId: string | null;
+  eventCreated: number | null;
+  eventType: string | null;
+};
 
 function isUniqueViolation(error: unknown) {
   return Boolean(
@@ -546,7 +559,62 @@ export async function createBillingCheckoutSession(params: {
   return { url: session.url, sessionId: session.id };
 }
 
-export async function syncBillingSubscriptionFromStripe(subscription: Stripe.Subscription) {
+export async function createBillingPortalSession() {
+  const [context, supabase] = await Promise.all([getAppContext(), createClient()]);
+  const stripeProvider = getStripeBillingProvider();
+
+  if (!context || !supabase) {
+    throw new ApiError(401, "Authentication is required for billing portal access.", "unauthorized");
+  }
+
+  if (!stripeProvider.isConfigured()) {
+    throw new ApiError(503, "Stripe is not configured yet.", "stripe_not_configured");
+  }
+
+  const billingClient = createAdminClient() ?? supabase;
+  const { data, error } = await billingClient
+    .from("billing_subscriptions")
+    .select("stripe_customer_id")
+    .eq("organization_id", context.organization.id)
+    .maybeSingle();
+
+  if (error) {
+    throw new ApiError(500, error.message, "billing_subscription_fetch_failed");
+  }
+
+  const billingRow = data as Pick<BillingRow, "stripe_customer_id"> | null;
+  const customerId =
+    typeof billingRow?.stripe_customer_id === "string" ? billingRow.stripe_customer_id : null;
+
+  if (!customerId) {
+    throw new ApiError(
+      409,
+      "A Stripe customer does not exist for this workspace yet.",
+      "billing_portal_customer_missing",
+    );
+  }
+
+  const urls = getBillingPortalUrls();
+  const session = (await stripeProvider.execute({
+    action: "create_billing_portal_session",
+    idempotencyKey: `dealflow_portal_${context.organization.id}_${crypto.randomUUID()}`,
+    params: {
+      customer: customerId,
+      return_url: urls.returnUrl,
+    },
+  })) as Stripe.BillingPortal.Session;
+
+  return { url: session.url };
+}
+
+export async function syncBillingSubscriptionFromStripe(
+  subscription: Stripe.Subscription,
+  source: StripeSubscriptionSyncSource = {
+    eventId: null,
+    eventCreated: Math.floor(Date.now() / 1000),
+    eventType: null,
+  },
+) {
   const admin = createAdminClient();
 
   if (!admin) {
@@ -581,12 +649,47 @@ export async function syncBillingSubscriptionFromStripe(subscription: Stripe.Sub
     metadata: subscription.metadata,
   };
 
-  const { error: billingError } = await admin.from("billing_subscriptions").upsert(subscriptionRow as never, {
-    onConflict: "organization_id",
-  });
+  const { data: applyRows, error: billingError } = await (admin as any).rpc(
+    "apply_billing_subscription_webhook",
+    {
+      p_organization_id: subscriptionRow.organization_id,
+      p_user_id: subscriptionRow.user_id,
+      p_stripe_customer_id: subscriptionRow.stripe_customer_id,
+      p_stripe_subscription_id: subscriptionRow.stripe_subscription_id,
+      p_stripe_price_id: subscriptionRow.stripe_price_id,
+      p_plan_tier: subscriptionRow.plan_tier,
+      p_status: subscriptionRow.status,
+      p_current_period_start: subscriptionRow.current_period_start,
+      p_current_period_end: subscriptionRow.current_period_end,
+      p_cancel_at_period_end: subscriptionRow.cancel_at_period_end,
+      p_metadata: subscriptionRow.metadata,
+      p_stripe_event_id: source.eventId,
+      p_stripe_event_created: source.eventCreated,
+    },
+  );
 
   if (billingError) {
     throw new ApiError(500, billingError.message, "billing_subscription_sync_failed");
+  }
+
+  const applyResult = Array.isArray(applyRows)
+    ? (applyRows[0] as BillingSubscriptionWebhookApplyResult | undefined)
+    : (applyRows as BillingSubscriptionWebhookApplyResult | null);
+
+  if (applyResult && !applyResult.applied) {
+    logWarn("stripe_subscription_stale_event_ignored", {
+      eventId: source.eventId,
+      eventType: source.eventType,
+      eventCreated: source.eventCreated,
+      latestEventCreated: applyResult.latest_event_created,
+      organizationId,
+      stripeSubscriptionId: subscription.id,
+      reason: applyResult.ignored_reason,
+    });
+    return {
+      applied: false,
+      ignoredReason: applyResult.ignored_reason ?? "stale_event",
+    };
   }
 
   const { error: organizationError } = await admin
@@ -599,14 +702,24 @@ export async function syncBillingSubscriptionFromStripe(subscription: Stripe.Sub
   if (organizationError) {
     throw new ApiError(500, organizationError.message, "organization_plan_update_failed");
   }
+
+  return {
+    applied: true,
+    ignoredReason: null,
+  };
 }
 
-async function syncBillingSubscriptionFromEventObject(object: Stripe.Event.Data.Object) {
+async function syncBillingSubscriptionFromEventObject(event: Stripe.Event) {
+  const object = event.data.object;
   const stripeObject = object as { object?: string; subscription?: unknown };
+  const source = {
+    eventId: event.id,
+    eventCreated: event.created,
+    eventType: event.type,
+  };
 
   if (stripeObject.object === "subscription") {
-    await syncBillingSubscriptionFromStripe(object as Stripe.Subscription);
-    return true;
+    return syncBillingSubscriptionFromStripe(object as Stripe.Subscription, source);
   }
 
   let subscriptionId: string | null = null;
@@ -618,7 +731,10 @@ async function syncBillingSubscriptionFromEventObject(object: Stripe.Event.Data.
   }
 
   if (!subscriptionId) {
-    return false;
+    return {
+      applied: false,
+      ignoredReason: "subscription_missing",
+    };
   }
 
   const provider = getStripeBillingProvider();
@@ -627,8 +743,7 @@ async function syncBillingSubscriptionFromEventObject(object: Stripe.Event.Data.
     subscriptionId,
   })) as Stripe.Subscription;
 
-  await syncBillingSubscriptionFromStripe(subscription);
-  return true;
+  return syncBillingSubscriptionFromStripe(subscription, source);
 }
 
 export async function handleStripeBillingEvent(event: Stripe.Event) {
@@ -655,13 +770,16 @@ export async function handleStripeBillingEvent(event: Stripe.Event) {
       event.type === "invoice.payment_succeeded" ||
       event.type === "invoice.payment_failed"
     ) {
-      const synced = await syncBillingSubscriptionFromEventObject(event.data.object);
+      const syncResult = await syncBillingSubscriptionFromEventObject(event);
 
-      if (!synced) {
+      if (!syncResult.applied) {
         await markStripeWebhookEvent({
           eventId: event.id,
           status: "ignored",
-          errorMessage: "No subscription was attached to this Stripe event.",
+          errorMessage:
+            syncResult.ignoredReason === "subscription_missing"
+              ? "No subscription was attached to this Stripe event."
+              : "A newer Stripe subscription event has already been applied.",
         });
 
         return {

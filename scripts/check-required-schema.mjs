@@ -4,7 +4,7 @@ import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 
 const repoRoot = process.cwd();
-const expectedSchemaVersion = "20260428130000";
+const expectedSchemaVersion = "20260428140000";
 const schemaCheckMode = process.env.SUPABASE_SCHEMA_CHECK_MODE?.trim().toLowerCase() ?? "remote";
 const requiredMigrationFiles = [
   "20260426110000_add_campaign_plan_critical_fields.sql",
@@ -21,6 +21,8 @@ const requiredMigrationFiles = [
   "20260428123000_fix_rate_limit_bucket_shape.sql",
   "20260428124500_harden_job_claim_dead_letters.sql",
   "20260428130000_enable_rls_internal_tables.sql",
+  "20260428132000_harden_internal_job_runner_access.sql",
+  "20260428140000_harden_billing_subscription_webhooks.sql",
 ];
 
 const { loadEnvConfig } = nextEnv;
@@ -191,7 +193,7 @@ async function main() {
   await probeQuery("billing_subscriptions table check", () =>
     supabase
       .from("billing_subscriptions")
-      .select("id, organization_id, status, plan_tier, stripe_customer_id")
+      .select("id, organization_id, status, plan_tier, stripe_customer_id, stripe_latest_event_id, stripe_latest_event_created")
       .limit(1),
   );
 
