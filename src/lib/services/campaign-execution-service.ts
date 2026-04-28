@@ -372,6 +372,11 @@ function toMinorUnits(value: number) {
   return Math.round(value * 100);
 }
 
+function getMetaBudgetCapCents() {
+  const configured = Number.parseInt(process.env.META_DAILY_BUDGET_CAP_CENTS ?? "100", 10);
+  return Number.isFinite(configured) && configured > 0 ? Math.min(configured, 100) : 100;
+}
+
 function inferCountryCode(location: string) {
   const normalized = location.toLowerCase();
 
@@ -700,6 +705,16 @@ export async function validateCampaignForLaunch(
     errors.push("Lifetime budget must be greater than zero.");
   }
 
+  const budgetCapCents = getMetaBudgetCapCents();
+
+  if (budgetType === "daily" && dailyBudget && toMinorUnits(dailyBudget) > budgetCapCents) {
+    errors.push(`Daily budget must be ${budgetCapCents} cents or lower for beta launch safety.`);
+  }
+
+  if (budgetType === "lifetime" && lifetimeBudget && toMinorUnits(lifetimeBudget) > budgetCapCents) {
+    errors.push(`Lifetime budget must be ${budgetCapCents} cents or lower for beta launch safety.`);
+  }
+
   if (launchInput.objective === "CONVERSIONS" && !launchInput.pixel_id?.trim()) {
     errors.push("Conversions objective requires a Meta pixel ID.");
   }
@@ -740,7 +755,7 @@ export async function validateCampaignForLaunch(
     budgetType,
     dailyBudget,
     lifetimeBudget,
-    startImmediately: launchInput.start_immediately ?? true,
+    startImmediately: false,
     ctaType: normalizeExecutionCta(launchInput.cta_type ?? campaign.funnel?.cta ?? assets[0]?.cta),
     pixelId: launchInput.pixel_id?.trim() || null,
     formType: launchInput.form_type === "instant_form" ? "instant_form" : "landing_page",

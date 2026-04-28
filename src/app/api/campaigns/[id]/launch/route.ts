@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { handleApiError, parseRouteParams } from "@/lib/api/route";
+import { ApiError, assertSameOriginRequest, handleApiError, parseRouteParams } from "@/lib/api/route";
 import { launchCampaignToMeta } from "@/app/api/campaigns/create/route";
 import { assertMetaLaunchBillingAccess } from "@/lib/services/billing-service";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 
 const paramsSchema = z.object({
@@ -37,6 +38,7 @@ type LaunchResponsePayload = {
 };
 
 const inFlightLaunches = new Map<string, Promise<LaunchResponsePayload>>();
+const META_LAUNCH_LOCK_MS = 15 * 60_000;
 
 function normalizeStage(
   stage: PersistedLaunchState["current_stage"] | LaunchResponsePayload["stage"] | undefined | null,
@@ -49,7 +51,7 @@ function normalizeStage(
 }
 
 async function loadPersistedLaunchState(campaignId: string): Promise<PersistedLaunchState | null> {
-  const supabase = await createRouteHandlerClient();
+  const supabase = createAdminClient() ?? (await createRouteHandlerClient());
 
   if (!supabase) {
     return null;
@@ -80,16 +82,112 @@ async function loadPersistedLaunchState(campaignId: string): Promise<PersistedLa
   return launchRuntime;
 }
 
+async function acquireMetaLaunchLock(campaignId: string) {
+  const supabase = createAdminClient();
+
+  if (!supabase) {
+    throw new Error("Supabase service role is required for durable Meta launch locking.");
+  }
+
+  const token = crypto.randomUUID();
+  const lockedUntil = new Date(Date.now() + META_LAUNCH_LOCK_MS).toISOString();
+
+  const inserted = await supabase
+    .from("meta_launch_locks")
+    .insert({
+      campaign_id: campaignId,
+      lock_token: token,
+      locked_by: "campaign_launch_route",
+      locked_until: lockedUntil,
+    } as never)
+    .select("*")
+    .maybeSingle();
+
+  if (!inserted.error && inserted.data) {
+    return token;
+  }
+
+  const { data: existingRaw, error: existingError } = await supabase
+    .from("meta_launch_locks")
+    .select("*")
+    .eq("campaign_id", campaignId)
+    .maybeSingle();
+
+  if (existingError) {
+    throw existingError;
+  }
+
+  const existing = existingRaw as { locked_until?: string | null } | null;
+  const existingExpiry = existing?.locked_until ? new Date(existing.locked_until).getTime() : 0;
+
+  if (existing && existingExpiry > Date.now()) {
+    throw new ApiError(
+      409,
+      "A launch is already running for this campaign.",
+      "meta_launch_lock_active",
+    );
+  }
+
+  const { data: updatedRaw, error: updateError } = await supabase
+    .from("meta_launch_locks")
+    .update({
+      lock_token: token,
+      locked_by: "campaign_launch_route",
+      locked_until: lockedUntil,
+      updated_at: new Date().toISOString(),
+    } as never)
+    .eq("campaign_id", campaignId)
+    .lte("locked_until", new Date().toISOString())
+    .select("*")
+    .maybeSingle();
+
+  if (updateError || !updatedRaw) {
+    throw new ApiError(
+      409,
+      "A launch is already running for this campaign.",
+      "meta_launch_lock_active",
+    );
+  }
+
+  return token;
+}
+
+async function releaseMetaLaunchLock(campaignId: string, token: string) {
+  const supabase = createAdminClient();
+
+  if (!supabase) {
+    return;
+  }
+
+  await supabase
+    .from("meta_launch_locks")
+    .delete()
+    .eq("campaign_id", campaignId)
+    .eq("lock_token", token);
+}
+
 export async function POST(
   request: Request,
   context: { params: Promise<Record<string, string>> | Record<string, string> },
 ) {
   try {
+    assertSameOriginRequest(request);
     await assertMetaLaunchBillingAccess();
     const { id } = await parseRouteParams(context.params, paramsSchema);
     const requestBody = await request.json().catch(() => null);
     const parsedRetryBody = retryBodySchema.safeParse(requestBody);
     const retryBody = parsedRetryBody.success ? parsedRetryBody.data : {};
+
+    if (
+      retryBody.test_mode_interrupt_after &&
+      process.env.ALLOW_META_LAUNCH_INTERRUPTION_TESTS !== "true"
+    ) {
+      throw new ApiError(
+        403,
+        "Meta launch interruption testing is not enabled in this environment.",
+        "meta_launch_interruption_disabled",
+      );
+    }
     const existingLaunch = inFlightLaunches.get(id);
 
     if (existingLaunch) {
@@ -124,6 +222,8 @@ export async function POST(
         already_launched: true,
       });
     }
+
+    const launchLockToken = await acquireMetaLaunchLock(id);
 
     const resumeState = {
       metaCampaignId:
@@ -206,6 +306,7 @@ export async function POST(
       return NextResponse.json(await launchPromise);
     } finally {
       inFlightLaunches.delete(id);
+      await releaseMetaLaunchLock(id, launchLockToken).catch(() => undefined);
     }
   } catch (error) {
     if (

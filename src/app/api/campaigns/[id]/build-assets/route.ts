@@ -53,14 +53,13 @@ export async function GET(
 ) {
   try {
     const { id } = await parseRouteParams(context.params, paramsSchema);
-    const [record, storedPayload] = await Promise.all([
-      getCampaignById(id),
-      loadStoredCampaignPayload(id),
-    ]);
+    const record = await getCampaignById(id);
 
     if (!record) {
       throw new ApiError(404, "Campaign plan was not found.", "campaign_plan_not_found");
     }
+
+    const storedPayload = await loadStoredCampaignPayload(id);
 
     const campaignPayload =
       storedPayload ??

@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { ApiError, parseJsonBody } from "@/lib/api/route";
+import { ApiError, assertSameOriginRequest, parseJsonBody } from "@/lib/api/route";
 import { getPublicAppUrl } from "@/lib/env";
 import {
   buildCampaignPlanCriticalFieldPatch,
@@ -17,8 +17,9 @@ import {
   validateMetaLaunchSelections,
   type MetaWorkspaceCredentials,
 } from "@/lib/integrations/meta/service";
-import { assertMetaLaunchBillingAccess } from "@/lib/services/billing-service";
+import { assertMetaLaunchBillingAccessForOrganization } from "@/lib/services/billing-service";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 
 const requestSchema = z.object({
@@ -89,7 +90,23 @@ type CampaignPayloadRecord = {
   };
 };
 
+const DEFAULT_META_DAILY_BUDGET_CAP_CENTS = 100;
+
+function getMetaDailyBudgetCapCents() {
+  const configuredCap = Number(process.env.META_DAILY_BUDGET_CAP_CENTS ?? DEFAULT_META_DAILY_BUDGET_CAP_CENTS);
+
+  if (!Number.isFinite(configuredCap) || configuredCap <= 0) {
+    return DEFAULT_META_DAILY_BUDGET_CAP_CENTS;
+  }
+
+  return Math.floor(configuredCap);
+}
+
 function buildStageFailureMessage(rawMessage: string, stage: LaunchStage) {
+  if (/budget is too low|budget must be more than/i.test(rawMessage)) {
+    return `${rawMessage} Current safety cap is ${getMetaDailyBudgetCapCents()} cents/day, so launch is blocked until you choose an ad account whose minimum fits the cap or approve a higher daily cap.`;
+  }
+
   const diagnostic = mapMetaError({
     context: "launch",
     message: rawMessage,
@@ -97,6 +114,23 @@ function buildStageFailureMessage(rawMessage: string, stage: LaunchStage) {
   const stageLabel =
     stage === "adset" ? "ad set" : stage === "creative" ? "creative" : stage;
   return `${stageLabel[0]!.toUpperCase()}${stageLabel.slice(1)} creation failed. ${diagnostic.userMessage} ${diagnostic.recommendedAction}`.trim();
+}
+
+function getMetaErrorMessage(data: Record<string, unknown> | null, fallback: string) {
+  const error =
+    data && typeof data.error === "object" && data.error
+      ? (data.error as Record<string, unknown>)
+      : null;
+
+  if (!error) {
+    return fallback;
+  }
+
+  const userTitle = typeof error.error_user_title === "string" ? error.error_user_title.trim() : "";
+  const userMessage = typeof error.error_user_msg === "string" ? error.error_user_msg.trim() : "";
+  const message = typeof error.message === "string" ? error.message.trim() : "";
+
+  return [userTitle, userMessage || message].filter(Boolean).join(": ") || fallback;
 }
 
 function inferCountryCode(location: string) {
@@ -131,31 +165,13 @@ function inferAgeRange(audience: string, targetingSummary: string) {
   return { min: 25, max: 54 };
 }
 
-function buildRealEstateInterestDefaults() {
-  return [
-    { id: "seed_interest_real_estate", name: "real estate" },
-    { id: "seed_interest_house_hunting", name: "house hunting" },
-    { id: "seed_interest_home_ownership", name: "home ownership" },
-    { id: "seed_interest_mortgage_loans", name: "mortgage loans" },
-    { id: "seed_interest_zillow", name: "Zillow" },
-    { id: "seed_interest_realtor", name: "Realtor.com" },
-  ];
-}
-
 function buildGeoTargeting(location: string) {
-  return {
-    custom_locations: [
-      {
-        address_string: location,
-        radius: 25,
-        distance_unit: "mile",
-      },
-    ],
-  };
+  void location;
+  return {};
 }
 
 async function loadSavedCampaignPayload(campaignId: string): Promise<CampaignPayloadRecord | null> {
-  const supabase = await createRouteHandlerClient();
+  const supabase = createAdminClient() ?? (await createRouteHandlerClient());
 
   if (!supabase) {
     return null;
@@ -176,7 +192,7 @@ async function loadSavedCampaignPayload(campaignId: string): Promise<CampaignPay
 }
 
 async function loadCampaignPlanDocument(campaignId: string) {
-  const supabase = await createRouteHandlerClient();
+  const supabase = createAdminClient() ?? (await createRouteHandlerClient());
 
   if (!supabase) {
     throw new Error("Supabase is not configured.");
@@ -197,6 +213,33 @@ async function loadCampaignPlanDocument(campaignId: string) {
   return readCampaignPlanDocument(row?.plan);
 }
 
+async function loadCampaignOwnerId(campaignId: string) {
+  const supabase = createAdminClient();
+
+  if (!supabase) {
+    throw new Error("Supabase service role is not configured.");
+  }
+
+  const { data, error } = await supabase
+    .from("campaign_plans")
+    .select("owner_id")
+    .eq("id", campaignId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const row = data as { owner_id?: string | null } | null;
+  const ownerId = typeof row?.owner_id === "string" ? row.owner_id : null;
+
+  if (!ownerId) {
+    throw new ApiError(404, "Campaign plan was not found.", "campaign_plan_not_found");
+  }
+
+  return ownerId;
+}
+
 function getPersistedLaunchState(plan: Record<string, unknown>): PersistedLaunchState | null {
   return (getLaunchRuntimeFromPlan(plan) as PersistedLaunchState | null) ?? null;
 }
@@ -206,7 +249,7 @@ async function persistLaunchState(
   state: PersistedLaunchState,
   message: string,
 ) {
-  const supabase = await createRouteHandlerClient();
+  const supabase = createAdminClient() ?? (await createRouteHandlerClient());
 
   if (!supabase) {
     throw new Error("Supabase is not configured.");
@@ -265,24 +308,34 @@ function normalizeObjective(value?: string | null) {
   const normalized = (value ?? "").toUpperCase();
 
   if (normalized === "OUTCOME_LEADS" || normalized === "LEAD_GENERATION") {
-    return "LEAD_GENERATION";
+    return "OUTCOME_LEADS";
   }
 
   if (normalized === "TRAFFIC" || normalized === "AWARENESS" || normalized === "ENGAGEMENT") {
+    return `OUTCOME_${normalized}`;
+  }
+
+  if (
+    normalized === "OUTCOME_TRAFFIC" ||
+    normalized === "OUTCOME_AWARENESS" ||
+    normalized === "OUTCOME_ENGAGEMENT" ||
+    normalized === "OUTCOME_SALES"
+  ) {
     return normalized;
   }
 
-  return "LEAD_GENERATION";
+  return "OUTCOME_LEADS";
 }
 
 function toMinorDailyBudget(value?: number | null) {
   const normalized = Number(value ?? 0);
+  const capCents = getMetaDailyBudgetCapCents();
 
   if (!Number.isFinite(normalized) || normalized <= 0) {
-    return "1000";
+    return String(capCents);
   }
 
-  return String(Math.max(1000, Math.round(normalized * 100)));
+  return String(Math.min(capCents, Math.round(normalized * 100)));
 }
 
 function isPublicFunnelUrl(value: string) {
@@ -294,8 +347,21 @@ function isPublicFunnelUrl(value: string) {
   }
 }
 
-function buildLaunchAttemptId(existingAttemptId?: string | null) {
-  return existingAttemptId?.trim() || randomUUID();
+function buildLaunchAttemptId(params: {
+  existingAttemptId?: string | null;
+  workspaceId: string;
+  campaignId: string;
+}) {
+  const existing = params.existingAttemptId?.trim();
+
+  if (existing) {
+    return existing;
+  }
+
+  return createHash("sha256")
+    .update(`${params.workspaceId}:${params.campaignId}`)
+    .digest("hex")
+    .slice(0, 16);
 }
 
 function buildDeterministicMetaName(params: {
@@ -412,7 +478,7 @@ async function validateExistingMetaObject(params: {
   objectId: string;
   fields: string;
   expectedName: string;
-  expectedParentField?: "campaign_id" | "adset_id";
+  expectedParentField?: "account_id" | "campaign_id" | "adset_id";
   expectedParentId?: string | null;
   requestId?: string;
 }) {
@@ -558,7 +624,6 @@ export async function launchCampaignToMeta(
     testModeInterruptAfter?: ForcedInterruptStage;
   },
 ) {
-  await assertMetaLaunchBillingAccess();
   const requestId = crypto.randomUUID();
   let activeAttemptId: string | null = null;
   let currentStage: LaunchStage = "campaign";
@@ -569,10 +634,21 @@ export async function launchCampaignToMeta(
     creative_id: resume.metaCreativeId?.trim() || null,
     ad_id: null as string | null,
   };
+  let persistedLaunchStateForFailure: PersistedLaunchState | null = null;
   let requestedObjectType: PersistedLaunchState["requested_object_type"] = null;
   let requestedObjectName: string | null = null;
+  let ownershipVerified = false;
 
   try {
+    const record = await getCampaignById(campaignId);
+
+    if (!record) {
+      throw new ApiError(404, "Campaign plan was not found.", "campaign_plan_not_found");
+    }
+
+    ownershipVerified = true;
+    const campaignOwnerId = await loadCampaignOwnerId(campaignId);
+    await assertMetaLaunchBillingAccessForOrganization(campaignOwnerId);
     const preflight = await validateMetaLaunchSelections();
 
     if (!preflight.ready) {
@@ -584,17 +660,17 @@ export async function launchCampaignToMeta(
     }
 
     const credentials: MetaWorkspaceCredentials = await getMetaWorkspaceCredentials();
-    const record = await getCampaignById(campaignId);
     const storedPayload = await loadSavedCampaignPayload(campaignId);
     const currentPlan = await loadCampaignPlanDocument(campaignId);
     const persistedLaunchState = getPersistedLaunchState(currentPlan);
+    persistedLaunchStateForFailure = persistedLaunchState;
 
-    if (!record) {
-      throw new ApiError(404, "Campaign plan was not found.", "campaign_plan_not_found");
-    }
-
-    activeAttemptId = buildLaunchAttemptId(persistedLaunchState?.attempt_id);
     workspaceId = credentials.workspaceId;
+    activeAttemptId = buildLaunchAttemptId({
+      existingAttemptId: persistedLaunchState?.attempt_id,
+      workspaceId,
+      campaignId,
+    });
     const forcedInterruptStage =
       shouldAllowForcedInterruption() ? options?.testModeInterruptAfter ?? null : null;
     lastKnownIds = {
@@ -629,8 +705,8 @@ export async function launchCampaignToMeta(
     const audience = storedPayload?.targeting_plan?.audience ?? record.strategy.audience ?? record.plan.audience;
     const targetingSummary =
       storedPayload?.targeting_plan?.summary ?? record.plan.targeting_summary ?? "";
-    const ageRange = inferAgeRange(audience, targetingSummary);
-    const realEstateInterests = buildRealEstateInterestDefaults();
+    void audience;
+    void targetingSummary;
     const dailyBudget = toMinorDailyBudget(
       storedPayload?.budget_plan?.estimated_daily_budget ??
       Math.round((record.plan.monthly_budget ?? 0) / 30),
@@ -776,8 +852,10 @@ export async function launchCampaignToMeta(
       const validation = await validateExistingMetaObject({
         accessToken: credentials.accessToken,
         objectId: lastKnownIds.campaign_id,
-        fields: "id,name",
+        fields: "id,name,account_id",
         expectedName: campaignMetaName,
+        expectedParentField: "account_id",
+        expectedParentId: externalAccountId,
         requestId,
       });
       if (!validation.valid) {
@@ -868,7 +946,9 @@ export async function launchCampaignToMeta(
         name: campaignMetaName,
         objective,
         status: "PAUSED",
-        special_ad_categories: "[]",
+        special_ad_categories: JSON.stringify(["HOUSING"]),
+        special_ad_category_country: JSON.stringify([countryCode]),
+        is_adset_budget_sharing_enabled: "false",
         access_token: credentials.accessToken,
       });
       const { response: campaignResponse, data: campaignResponseData } = await fetchMetaJson<Record<string, unknown> | null>(
@@ -888,13 +968,7 @@ export async function launchCampaignToMeta(
         campaignData && typeof campaignData.id === "string" ? campaignData.id : null;
 
       if (!campaignResponse.ok || !lastKnownIds.campaign_id) {
-        const rawErrorMessage =
-          campaignData &&
-          typeof campaignData.error === "object" &&
-          campaignData.error &&
-          "message" in campaignData.error
-            ? String((campaignData.error as { message?: unknown }).message ?? "Campaign creation failed.")
-            : "Campaign creation failed.";
+        const rawErrorMessage = getMetaErrorMessage(campaignData, "Campaign creation failed.");
         logMetaError({
           context: "launch",
           requestId,
@@ -1067,7 +1141,7 @@ export async function launchCampaignToMeta(
         name: adSetMetaName,
         campaign_id: lastKnownIds.campaign_id!,
         billing_event: "IMPRESSIONS",
-        optimization_goal: objective === "LEAD_GENERATION" ? "LEAD_GENERATION" : "LINK_CLICKS",
+        optimization_goal: objective === "OUTCOME_TRAFFIC" ? "LINK_CLICKS" : "OFFSITE_CONVERSIONS",
         daily_budget: dailyBudget,
         bid_strategy: "LOWEST_COST_WITHOUT_CAP",
         targeting: JSON.stringify({
@@ -1075,9 +1149,6 @@ export async function launchCampaignToMeta(
             countries: [countryCode],
             ...buildGeoTargeting(location),
           },
-          age_min: ageRange.min,
-          age_max: ageRange.max,
-          interests: realEstateInterests,
         }),
         status: "PAUSED",
         access_token: credentials.accessToken,
@@ -1086,6 +1157,7 @@ export async function launchCampaignToMeta(
         "promoted_object",
         JSON.stringify({
           pixel_id: pixelId,
+          custom_event_type: "LEAD",
         }),
       );
       adSetBody.set(
@@ -1114,13 +1186,7 @@ export async function launchCampaignToMeta(
         adSetData && typeof adSetData.id === "string" ? adSetData.id : null;
 
       if (!adSetResponse.ok || !lastKnownIds.adset_id) {
-        const rawErrorMessage =
-          adSetData &&
-          typeof adSetData.error === "object" &&
-          adSetData.error &&
-          "message" in adSetData.error
-            ? String((adSetData.error as { message?: unknown }).message ?? "Ad set creation failed.")
-            : "Ad set creation failed.";
+        const rawErrorMessage = getMetaErrorMessage(adSetData, "Ad set creation failed.");
         logMetaError({
           context: "launch",
           requestId,
@@ -1218,8 +1284,10 @@ export async function launchCampaignToMeta(
       const validation = await validateExistingMetaObject({
         accessToken: credentials.accessToken,
         objectId: lastKnownIds.creative_id,
-        fields: "id,name",
+        fields: "id,name,account_id",
         expectedName: creativeMetaName,
+        expectedParentField: "account_id",
+        expectedParentId: externalAccountId,
         requestId,
       });
       if (!validation.valid) {
@@ -1331,13 +1399,7 @@ export async function launchCampaignToMeta(
         creativeData && typeof creativeData.id === "string" ? creativeData.id : null;
 
       if (!creativeResponse.ok || !lastKnownIds.creative_id) {
-        const rawErrorMessage =
-          creativeData &&
-          typeof creativeData.error === "object" &&
-          creativeData.error &&
-          "message" in creativeData.error
-            ? String((creativeData.error as { message?: unknown }).message ?? "Creative creation failed.")
-            : "Creative creation failed.";
+        const rawErrorMessage = getMetaErrorMessage(creativeData, "Creative creation failed.");
         logMetaError({
           context: "launch",
           requestId,
@@ -1556,13 +1618,7 @@ export async function launchCampaignToMeta(
         "Meta ad created and launch completed.",
       );
     } else {
-      const rawErrorMessage =
-        adData &&
-        typeof adData.error === "object" &&
-        adData.error &&
-        "message" in adData.error
-          ? String((adData.error as { message?: unknown }).message ?? "Ad creation failed.")
-          : "Ad creation failed.";
+      const rawErrorMessage = getMetaErrorMessage(adData, "Ad creation failed.");
       logMetaError({
         context: "launch",
         requestId,
@@ -1599,15 +1655,7 @@ export async function launchCampaignToMeta(
         stage: "ad",
         error:
           !lastKnownIds.ad_id
-            ? buildStageFailureMessage(
-                adData &&
-                  typeof adData.error === "object" &&
-                  adData.error &&
-                  "message" in adData.error
-                  ? String((adData.error as { message?: unknown }).message ?? "Ad creation failed.")
-                  : "Ad creation failed.",
-                "ad",
-              )
+            ? buildStageFailureMessage(getMetaErrorMessage(adData, "Ad creation failed."), "ad")
             : undefined,
         requestId,
         campaign: campaignData,
@@ -1629,31 +1677,45 @@ export async function launchCampaignToMeta(
       error instanceof Error ? error.message : "Campaign create failed.",
       currentStage,
     );
-    await persistLaunchState(
-      campaignId,
-      {
-        ...lastKnownIds,
-        current_stage: currentStage,
-        status: "failed",
-        step_status: "failed",
-        attempt_id: activeAttemptId,
-        requested_object_type: requestedObjectType,
-        requested_object_name: requestedObjectName,
-        requested_object_key:
-          requestedObjectType && activeAttemptId && workspaceId
-            ? buildLaunchObjectKey({
-                organizationId: workspaceId,
-                campaignId,
-                attemptId: activeAttemptId,
-                stage: requestedObjectType,
-              })
-            : null,
-        workspace_id: workspaceId,
-        error: error instanceof Error ? error.message : "Campaign create failed.",
-        updated_at: new Date().toISOString(),
-      },
-      error instanceof Error ? error.message : "Campaign create failed.",
-    ).catch(() => null);
+    const failureAttemptId = activeAttemptId ?? persistedLaunchStateForFailure?.attempt_id ?? null;
+    const failureWorkspaceId = workspaceId ?? persistedLaunchStateForFailure?.workspace_id ?? null;
+    const failureRequestedObjectType =
+      requestedObjectType ?? persistedLaunchStateForFailure?.requested_object_type ?? null;
+    const failureRequestedObjectName =
+      requestedObjectName ?? persistedLaunchStateForFailure?.requested_object_name ?? null;
+    const failureRequestedObjectKey =
+      failureRequestedObjectType && failureAttemptId && failureWorkspaceId
+        ? buildLaunchObjectKey({
+            organizationId: failureWorkspaceId,
+            campaignId,
+            attemptId: failureAttemptId,
+            stage: failureRequestedObjectType,
+          })
+        : persistedLaunchStateForFailure?.requested_object_key ?? null;
+    const failureStage =
+      activeAttemptId || !persistedLaunchStateForFailure?.current_stage
+        ? currentStage
+        : persistedLaunchStateForFailure.current_stage;
+
+    if (ownershipVerified) {
+      await persistLaunchState(
+        campaignId,
+        {
+          ...lastKnownIds,
+          current_stage: failureStage,
+          status: "failed",
+          step_status: "failed",
+          attempt_id: failureAttemptId,
+          requested_object_type: failureRequestedObjectType,
+          requested_object_name: failureRequestedObjectName,
+          requested_object_key: failureRequestedObjectKey,
+          workspace_id: failureWorkspaceId,
+          error: error instanceof Error ? error.message : "Campaign create failed.",
+          updated_at: new Date().toISOString(),
+        },
+        error instanceof Error ? error.message : "Campaign create failed.",
+      ).catch(() => null);
+    }
 
     return NextResponse.json(
       {
@@ -1670,6 +1732,7 @@ export async function launchCampaignToMeta(
 }
 
 export async function POST(request: Request) {
+  assertSameOriginRequest(request);
   const { campaignId, testModeInterruptAfter } = await parseJsonBody(request, requestSchema);
   return launchCampaignToMeta(campaignId, {}, {
     testModeInterruptAfter: normalizeForcedInterruptStage(testModeInterruptAfter),

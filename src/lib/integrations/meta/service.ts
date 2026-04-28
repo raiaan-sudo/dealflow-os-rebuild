@@ -209,6 +209,10 @@ async function fetchMetaGraphJson<T>(accessToken: string, path: string, params?:
   };
 }
 
+function isActiveMetaAdAccountStatus(status: unknown) {
+  return String(status ?? "") === "1";
+}
+
 function getTrackingMissingFields(params: {
   pixelId: string | null;
   launchDomain: string | null;
@@ -652,14 +656,16 @@ export async function validateMetaLaunchSelections(): Promise<MetaLaunchPrefligh
       };
     }
 
-    const accountCheck = await fetchMetaGraphJson<{ id?: string; name?: string }>(
+    const accountCheck = await fetchMetaGraphJson<{ id?: string; name?: string; account_status?: string | number }>(
       credentials.accessToken,
       `act_${credentials.adAccountId.replace(/^act_/, "")}`,
       {
         fields: "id,name,account_status",
       },
     );
-    const accountValid = Boolean(accountCheck.ok && accountCheck.data?.id);
+    const accountReachable = Boolean(accountCheck.ok && accountCheck.data?.id);
+    const accountActive = isActiveMetaAdAccountStatus(accountCheck.data?.account_status);
+    const accountValid = accountReachable && accountActive;
 
     const pageCheck = await fetchMetaGraphJson<{ id?: string; name?: string }>(
       credentials.accessToken,
@@ -670,18 +676,35 @@ export async function validateMetaLaunchSelections(): Promise<MetaLaunchPrefligh
     );
     const pageValid = Boolean(pageCheck.ok && pageCheck.data?.id);
 
-    const availablePixels = await fetchMetaPixelsForAccount(
-      credentials.accessToken,
-      credentials.adAccountId,
-    ).catch(() => []);
+    let availablePixels: Array<{ id: string; name: string }> = [];
+    let pixelFetchError: string | null = null;
+
+    try {
+      availablePixels = await fetchMetaPixelsForAccount(
+        credentials.accessToken,
+        credentials.adAccountId,
+      );
+    } catch (error) {
+      pixelFetchError =
+        error instanceof Error
+          ? error.message
+          : "Meta pixels could not be fetched for the selected ad account.";
+    }
+
     const pixelValid = availablePixels.some((pixel) => pixel.id === credentials.pixelId);
 
     const errors: string[] = [];
 
-    if (!accountValid) {
+    if (!accountReachable) {
       errors.push(
         formatMetaSelectionInvalidMessage(
           accountCheck.data?.error?.message ?? "Selected Meta ad account is not available.",
+        ),
+      );
+    } else if (!accountActive) {
+      errors.push(
+        formatMetaSelectionInvalidMessage(
+          "Selected Meta ad account is not active. Choose an active ad account in Meta before launching.",
         ),
       );
     }
@@ -697,7 +720,7 @@ export async function validateMetaLaunchSelections(): Promise<MetaLaunchPrefligh
     if (!pixelValid) {
       errors.push(
         formatMetaSelectionInvalidMessage(
-          "Selected Meta pixel is not available for the chosen ad account.",
+          pixelFetchError ?? "Selected Meta pixel is not available for the chosen ad account.",
         ),
       );
     }

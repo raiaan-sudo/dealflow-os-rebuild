@@ -266,27 +266,8 @@ export async function publishMetaCampaignIfNeeded(params: {
   adSetIds: string[];
   adIds: string[];
 }) {
-  if (!params.startImmediately) {
-    return {
-      published: false,
-      status: "paused" as const,
-    };
-  }
-
-  const accessToken = getMetaAccessToken(params.connection);
-
-  for (const adSetId of params.adSetIds) {
-    await updateMetaStatus(adSetId, accessToken, "ACTIVE");
-  }
-
-  for (const adId of params.adIds) {
-    await updateMetaStatus(adId, accessToken, "ACTIVE");
-  }
-
-  await updateMetaStatus(params.campaignId, accessToken, "ACTIVE");
-
   return {
-    published: true,
-    status: "active" as const,
+    published: false,
+    status: "paused" as const,
   };
 }

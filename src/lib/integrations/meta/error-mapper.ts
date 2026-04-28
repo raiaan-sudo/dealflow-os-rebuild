@@ -12,6 +12,7 @@ export type MetaErrorCategory =
   | "insufficient_business_permissions"
   | "ad_account_restricted"
   | "housing_category_required"
+  | "meta_app_development_mode"
   | "timeout_or_rate_limit"
   | "oauth_cancelled"
   | "oauth_state_invalid"
@@ -111,6 +112,13 @@ const CATEGORY_CONFIG: Record<
     title: "Housing category setup required",
     userMessage: "Meta requires housing campaign settings before this campaign can launch.",
     recommendedAction: "Review the campaign settings and confirm the required housing category setup.",
+    retryEligible: false,
+  },
+  meta_app_development_mode: {
+    code: "meta_app_development_mode",
+    title: "Meta app must be live",
+    userMessage: "Meta blocked ad creative creation because the connected app is still in development mode.",
+    recommendedAction: "Switch the Meta app to Live/Public mode in Meta for Developers, then retry launch.",
     retryEligible: false,
   },
   timeout_or_rate_limit: {
@@ -276,6 +284,14 @@ function inferMetaErrorCategory(input: MetaErrorInput): MetaErrorCategory {
     message.includes("business admin")
   ) {
     return "insufficient_business_permissions";
+  }
+
+  if (
+    message.includes("development mode") ||
+    message.includes("must be in public") ||
+    message.includes("app is in development")
+  ) {
+    return "meta_app_development_mode";
   }
 
   if (

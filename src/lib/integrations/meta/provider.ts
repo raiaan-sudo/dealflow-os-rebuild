@@ -51,7 +51,7 @@ export type MetaMarketingExecuteRequest = {
 
 type MetaMarketingRawResult =
   {
-    mode: "live";
+    mode: "test" | "live";
     campaignId: string;
     executionId: string | null;
     adSetCount: number;
@@ -60,7 +60,7 @@ type MetaMarketingRawResult =
 
 export type MetaMarketingParsedResult = {
   success: true;
-  mode: "live";
+  mode: "test" | "live";
   campaignId: string;
   executionId: string | null;
   adSetCount: number;
@@ -173,7 +173,7 @@ class MetaMarketingProvider
   }
 
   async execute(request: MetaMarketingExecuteRequest): Promise<MetaMarketingRawResult> {
-    const launchMode = request.launchMode === "live" ? "live" : "test";
+    const launchMode = "test";
     const payload = request.payload ?? null;
 
     if (!hasMetaEnv()) {
@@ -197,7 +197,7 @@ class MetaMarketingProvider
       const result = await executeFullAutopilotLaunch(payload.campaignId, request.userId, {
         campaignId: payload.campaignId,
         objective: payload.objective,
-        mode: request.launchMode ?? "live",
+        mode: "test",
         metadata: {
           meta_ad_account_id: payload.meta_ad_account_id,
           destination_url: payload.destination_url,
@@ -212,7 +212,7 @@ class MetaMarketingProvider
       });
 
       return {
-        mode: "live",
+        mode: "test",
         campaignId: result.metaCampaignId ?? result.execution.id,
         executionId: result.execution.id,
         adSetCount: (result.adSets || []).length,
@@ -232,7 +232,7 @@ class MetaMarketingProvider
     }
 
     return {
-      mode: "live",
+      mode: "test",
       campaignId,
       executionId: null,
       adSetCount: result.adSets.length,

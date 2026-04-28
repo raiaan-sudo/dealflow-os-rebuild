@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   apiSuccess,
+  assertSameOriginRequest,
   handleApiError,
   parseJsonBody,
   parseRouteParams,
@@ -17,6 +18,7 @@ export async function POST(
   context: { params: Promise<Record<string, string>> | Record<string, string> },
 ) {
   try {
+    assertSameOriginRequest(request);
     const { id } = await parseRouteParams(context.params, paramsSchema);
     const payload = await parseJsonBody(request, publishCampaignSchema);
     const updated = await updateCampaignPublishState({

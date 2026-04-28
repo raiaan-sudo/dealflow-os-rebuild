@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { handleApiError, parseJsonBody, parseRouteParams } from "@/lib/api/route";
+import {
+  ApiError,
+  assertSameOriginRequest,
+  handleApiError,
+  parseJsonBody,
+  parseRouteParams,
+} from "@/lib/api/route";
+import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import {
   getSelectedAdIdFromPlan,
   withSelectedAdId,
@@ -21,6 +28,8 @@ export async function POST(
   context: { params: Promise<Record<string, string>> | Record<string, string> },
 ) {
   try {
+    assertSameOriginRequest(request);
+    const auth = await getAuthenticatedContext();
     const { id } = await parseRouteParams(context.params, paramsSchema);
     const { selectedAdId } = await parseJsonBody(request, bodySchema);
     const supabase = await createRouteHandlerClient();
@@ -31,7 +40,7 @@ export async function POST(
 
     const { data, error } = await supabase
       .from("campaign_plans")
-      .select("plan")
+      .select("plan, user_id, organization_id")
       .eq("id", id)
       .maybeSingle();
 
@@ -39,7 +48,22 @@ export async function POST(
       throw error;
     }
 
-    const row = (data as { plan?: unknown } | null) ?? null;
+    const row = (data as {
+      plan?: unknown;
+      user_id?: string | null;
+      organization_id?: string | null;
+    } | null) ?? null;
+
+    if (!row) {
+      throw new ApiError(404, "Campaign not found.", "campaign_not_found");
+    }
+
+    if (
+      row.organization_id !== auth.organizationId &&
+      row.user_id !== auth.userId
+    ) {
+      throw new ApiError(404, "Campaign not found.", "campaign_not_found");
+    }
 
     const currentPlan = row?.plan ?? {};
     const existingSelectedAdId = getSelectedAdIdFromPlan(currentPlan);
@@ -54,6 +78,7 @@ export async function POST(
       supabase,
       campaignId: id,
       plan: nextPlan,
+      userId: auth.userId,
       source: "select_ad",
     });
 
