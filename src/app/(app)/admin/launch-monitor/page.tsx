@@ -15,7 +15,13 @@ function formatDateTime(value: string | null) {
     return "Unknown";
   }
 
-  return new Date(value).toLocaleString("en-CA", {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString("en-CA", {
     dateStyle: "medium",
     timeStyle: "short",
   });

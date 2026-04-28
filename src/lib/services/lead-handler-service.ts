@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/api/route";
+import { createHash } from "node:crypto";
 import { generateAiJson } from "@/lib/ai/client";
 import { logError, logWarn } from "@/lib/logging";
 import {
@@ -69,6 +70,19 @@ type QueueFailedLeadCaptureInput = {
   failureReason: string;
 };
 
+export type PublicLeadCaptureRetryInput = {
+  campaignId: string;
+  funnelId: string | null;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  stage: string;
+  notes: string | null;
+  source?: string | null;
+  requestId?: string | null;
+  reason?: string | null;
+};
+
 type LeadInsertContext = {
   organizationId: string;
   userId: string;
@@ -85,6 +99,31 @@ type LeadBookingMetadata = {
 type LeadMetadata = Record<string, Json | undefined> & {
   booking?: LeadBookingMetadata;
 };
+
+function normalizeLeadRetryIdentity(value?: string | null) {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function buildLeadRetryJobIdempotencyKey(input: {
+  requestId: string;
+  campaignId: string;
+  funnelId: string;
+  email?: string | null;
+  phone?: string | null;
+}) {
+  return createHash("sha256")
+    .update(
+      [
+        "lead_capture_retry",
+        input.requestId.trim(),
+        input.campaignId.trim(),
+        input.funnelId.trim(),
+        normalizeLeadRetryIdentity(input.email),
+        normalizePhone(input.phone ?? ""),
+      ].join("|"),
+    )
+    .digest("hex");
+}
 
 function splitLeadName(name?: string | null) {
   const value = (name ?? "").trim();
@@ -118,6 +157,31 @@ function normalizeLeadStatus(status?: string | null): LeadRow["status"] {
   return "new";
 }
 
+function buildLeadDedupeHash(params: {
+  organizationId: string;
+  campaignId: string | null;
+  email: string | null;
+  phone: string | null;
+}) {
+  const normalizedEmail = (params.email ?? "").trim().toLowerCase();
+  const normalizedPhone = (params.phone ?? "").trim();
+
+  if (!normalizedEmail && !normalizedPhone) {
+    return null;
+  }
+
+  return createHash("sha256")
+    .update(
+      [
+        params.organizationId,
+        params.campaignId ?? "no-campaign",
+        normalizedEmail,
+        normalizedPhone,
+      ].join("|"),
+    )
+    .digest("hex");
+}
+
 function getLeadMetadata(lead: LeadRow): LeadMetadata {
   if (!lead.metadata || typeof lead.metadata !== "object" || Array.isArray(lead.metadata)) {
     return {};
@@ -136,6 +200,35 @@ function withBookingMetadata(lead: LeadRow, booking: LeadBookingMetadata): Json 
 function showsStrongBookingIntent(message: string) {
   return /\b(yeah|yes|interested|can someone call me|call me|talk to someone|see options|show me options|show me homes|want to move forward|i'd like to see|book|schedule)\b/i
     .test(message);
+}
+
+function isSmsOptOutMessage(message: string) {
+  return /^(stop|stopall|unsubscribe|cancel|end|quit)$/i.test(message.trim());
+}
+
+async function markLeadSmsOptedOut(
+  supabase: SupabaseClient | AdminClient,
+  lead: LeadRow,
+) {
+  const optedOutAt = new Date().toISOString();
+  const { error } = await supabase
+    .from("leads")
+    .update({
+      sms_opted_out_at: optedOutAt,
+      status: "lost",
+      metadata: {
+        ...getLeadMetadata(lead),
+        sms_opt_out: {
+          status: "opted_out",
+          opted_out_at: optedOutAt,
+        },
+      },
+    } as never)
+    .eq("id", lead.id);
+
+  if (error) {
+    throw error;
+  }
 }
 
 async function requireLeadContext() {
@@ -182,10 +275,15 @@ async function resolvePublicLeadInsertContext(input: Pick<CreateLeadInput, "camp
       .from("campaign_plans")
       .select("id, owner_id, user_id")
       .eq("id", input.campaign_id.trim())
+      .eq("publish_state", "published")
       .maybeSingle();
 
     if (error) {
       throw new ApiError(500, error.message, "campaign_lookup_failed");
+    }
+
+    if (!data) {
+      throw new ApiError(404, "Published funnel not found.", "funnel_not_found");
     }
 
     return resolveOrganizationIdForCampaignRow(admin, data as Pick<
@@ -286,47 +384,16 @@ async function resolveOrganizationIdForCampaignRow(
 async function createPublicLeadInsertClient(expectedUserId: string) {
   const client = await createPublicLeadLookupClient();
 
-  if ("auth" in client) {
-    const {
-      data: { user },
-      error,
-    } = await client.auth.getUser();
-
-    if (error || !user) {
-      logError("Public lead insert blocked: service-role auth unavailable", {
-        code: "public_insert_auth_failed",
-      });
-      throw new ApiError(
-        503,
-        "Lead capture is temporarily unavailable. Please try again shortly.",
-        "public_insert_auth_failed",
-      );
-    }
-
-    if (user.id !== expectedUserId) {
-      logError("Public lead insert blocked: service-role user mismatch", {
-        code: "public_insert_user_mismatch",
-        expectedUserId,
-        actualUserId: user.id,
-      });
-      throw new ApiError(
-        503,
-        "Lead capture is temporarily unavailable. Please try again shortly.",
-        "public_insert_user_mismatch",
-      );
-    }
-
-    return client;
-  }
-
+  void expectedUserId;
   return client;
 }
 
 export async function queueFailedPublicLeadCapture(input: QueueFailedLeadCaptureInput) {
   const campaignId = input.campaign_id?.trim() ?? "";
+  const funnelId = input.funnel_id?.trim() ?? "";
 
-  if (!campaignId) {
-    logError("Failed lead capture could not be queued: missing campaign id", {
+  if (!campaignId && !funnelId) {
+    logError("Failed lead capture could not be queued: missing campaign id and funnel id", {
       requestId: input.requestId,
       reason: input.failureReason,
       code: "failed_lead_capture_missing_campaign",
@@ -336,8 +403,8 @@ export async function queueFailedPublicLeadCapture(input: QueueFailedLeadCapture
 
   try {
     const context = await resolvePublicLeadInsertContext({
-      campaign_id: campaignId,
-      funnel_id: input.funnel_id ?? null,
+      campaign_id: campaignId || undefined,
+      funnel_id: funnelId || null,
     });
 
     const job = await createSystemJob({
@@ -351,7 +418,7 @@ export async function queueFailedPublicLeadCapture(input: QueueFailedLeadCapture
         reason: input.failureReason,
         leadCapture: {
           campaignId,
-          funnelId: input.funnel_id?.trim() || null,
+          funnelId: funnelId || null,
           name: input.name?.trim() || "Unknown lead",
           email: input.email?.trim() || null,
           phone: input.phone?.trim() ? normalizePhone(input.phone) : null,
@@ -359,6 +426,13 @@ export async function queueFailedPublicLeadCapture(input: QueueFailedLeadCapture
           notes: input.notes?.trim() || null,
         },
       },
+      idempotencyKey: buildLeadRetryJobIdempotencyKey({
+        requestId: input.requestId,
+        campaignId,
+        funnelId,
+        email: input.email,
+        phone: input.phone,
+      }),
     });
 
     logWarn("Lead capture queued for retry", {
@@ -423,8 +497,25 @@ async function findRecentDuplicateLead(params: {
   campaignId: string | null;
   email: string | null;
   phone: string | null;
+  dedupeHash?: string | null;
 }) {
   const { supabase, organizationId, campaignId, email, phone } = params;
+
+  if (params.dedupeHash) {
+    const { data, error } = await supabase
+      .from("leads")
+      .select("*")
+      .eq("dedupe_hash", params.dedupeHash)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (data) {
+      return data as LeadRow;
+    }
+  }
 
   if (!campaignId || (!email && !phone)) {
     return null;
@@ -507,11 +598,20 @@ async function saveLeadMessage(
   leadId: string,
   direction: "inbound" | "outbound",
   message: string,
+  options: {
+    providerMessageId?: string | null;
+    deliveryStatus?: "received" | "sent" | "failed" | "recorded";
+    errorMessage?: string | null;
+  } = {},
 ) {
   const { error } = await supabase.from("lead_messages").insert({
     lead_id: leadId,
     direction,
     message,
+    provider_message_id: options.providerMessageId ?? null,
+    delivery_status:
+      options.deliveryStatus ?? (direction === "inbound" ? "received" : "recorded"),
+    error_message: options.errorMessage ?? null,
     created_at: new Date().toISOString(),
   } as never);
 
@@ -535,8 +635,7 @@ async function ensureMinimumConversation(
         message.direction === "outbound" && message.message === MINIMUM_FOLLOW_UP_MESSAGE,
     )
   ) {
-    await saveLeadMessage(supabase, leadId, "outbound", MINIMUM_FOLLOW_UP_MESSAGE);
-    return listLeadMessages(supabase, leadId);
+    return messages;
   }
 
   return messages;
@@ -741,16 +840,23 @@ export async function handleNewLead(
     throw new ApiError(400, "Lead is missing a phone number.", "lead_phone_missing");
   }
 
+  let sentMessageId: string | null = null;
+
   try {
-    await sendSMS(lead.phone, message);
+    const result = await sendSMS(lead.phone, message);
+    sentMessageId = result.sid;
   } catch (error) {
     logError("Lead opening SMS failed", {
       leadId: lead.id,
       message: error instanceof Error ? error.message : "Unknown error",
     });
+    return;
   }
 
-  await saveLeadMessage(supabase, lead.id, "outbound", message);
+  await saveLeadMessage(supabase, lead.id, "outbound", message, {
+    providerMessageId: sentMessageId,
+    deliveryStatus: "sent",
+  });
   await ensureMinimumConversation(supabase, lead.id);
 }
 
@@ -768,6 +874,16 @@ export async function handleIncomingMessage(leadId: string, message: string) {
   }
 
   await saveLeadMessage(supabase, lead.id, "inbound", message);
+
+  if (isSmsOptOutMessage(message)) {
+    await markLeadSmsOptedOut(supabase, lead);
+    return {
+      leadId: lead.id,
+      response: "You have been unsubscribed and will not receive more messages.",
+      status: "lost" as const,
+      slots: [] as string[],
+    };
+  }
 
   const conversation = (await listLeadMessages(supabase, lead.id)) ?? [];
   const metadata = getLeadMetadata(lead);
@@ -801,15 +917,26 @@ export async function handleIncomingMessage(leadId: string, message: string) {
 
       const reply = formatAppointmentConfirmationMessage(appointment.scheduled_at);
 
+      let providerMessageId: string | null = null;
+      let deliveryStatus: "sent" | "failed" = "sent";
+      let deliveryError: string | null = null;
+
       try {
-        await sendSMS(lead.phone ?? "", reply);
+        const smsResult = await sendSMS(lead.phone ?? "", reply);
+        providerMessageId = smsResult.sid;
       } catch (error) {
+        deliveryStatus = "failed";
+        deliveryError = error instanceof Error ? error.message : "Unknown error";
         logError("Lead booking confirmation SMS failed", {
           leadId: lead.id,
-          message: error instanceof Error ? error.message : "Unknown error",
+          message: deliveryError,
         });
       }
-      await saveLeadMessage(supabase, lead.id, "outbound", reply);
+      await saveLeadMessage(supabase, lead.id, "outbound", reply, {
+        providerMessageId,
+        deliveryStatus,
+        errorMessage: deliveryError,
+      });
 
       return {
         leadId: lead.id,
@@ -847,15 +974,26 @@ export async function handleIncomingMessage(leadId: string, message: string) {
     }
   }
 
+  let providerMessageId: string | null = null;
+  let deliveryStatus: "sent" | "failed" = "sent";
+  let deliveryError: string | null = null;
+
   try {
-    await sendSMS(lead.phone, outboundReply);
+    const smsResult = await sendSMS(lead.phone, outboundReply);
+    providerMessageId = smsResult.sid;
   } catch (error) {
+    deliveryStatus = "failed";
+    deliveryError = error instanceof Error ? error.message : "Unknown error";
     logError("Lead outbound SMS failed", {
       leadId: lead.id,
-      message: error instanceof Error ? error.message : "Unknown error",
+      message: deliveryError,
     });
   }
-  await saveLeadMessage(supabase, lead.id, "outbound", outboundReply);
+  await saveLeadMessage(supabase, lead.id, "outbound", outboundReply, {
+    providerMessageId,
+    deliveryStatus,
+    errorMessage: deliveryError,
+  });
 
   const nextStatus =
     response.status ??
@@ -915,6 +1053,17 @@ export async function handleIncomingMessageByPhone(phone: string, message: strin
   }
 
   await saveLeadMessage(adminClient, lead.id, "inbound", message);
+
+  if (isSmsOptOutMessage(message)) {
+    await markLeadSmsOptedOut(adminClient, lead);
+    return {
+      leadId: lead.id,
+      response: "You have been unsubscribed and will not receive more messages.",
+      status: "lost" as const,
+      slots: [] as string[],
+    };
+  }
+
   const conversation = (await listLeadMessages(adminClient, lead.id)) ?? [];
   const metadata = getLeadMetadata(lead);
   const offeredSlots = metadata.booking?.status === "suggested"
@@ -947,15 +1096,26 @@ export async function handleIncomingMessageByPhone(phone: string, message: strin
 
       const reply = formatAppointmentConfirmationMessage(appointment.scheduled_at);
 
+      let providerMessageId: string | null = null;
+      let deliveryStatus: "sent" | "failed" = "sent";
+      let deliveryError: string | null = null;
+
       try {
-        await sendSMS(lead.phone ?? "", reply);
+        const smsResult = await sendSMS(lead.phone ?? "", reply);
+        providerMessageId = smsResult.sid;
       } catch (error) {
+        deliveryStatus = "failed";
+        deliveryError = error instanceof Error ? error.message : "Unknown error";
         logError("Lead booking confirmation SMS failed", {
           leadId: lead.id,
-          message: error instanceof Error ? error.message : "Unknown error",
+          message: deliveryError,
         });
       }
-      await saveLeadMessage(adminClient, lead.id, "outbound", reply);
+      await saveLeadMessage(adminClient, lead.id, "outbound", reply, {
+        providerMessageId,
+        deliveryStatus,
+        errorMessage: deliveryError,
+      });
 
       return {
         leadId: lead.id,
@@ -993,15 +1153,26 @@ export async function handleIncomingMessageByPhone(phone: string, message: strin
     }
   }
 
+  let providerMessageId: string | null = null;
+  let deliveryStatus: "sent" | "failed" = "sent";
+  let deliveryError: string | null = null;
+
   try {
-    await sendSMS(lead.phone, outboundReply);
+    const smsResult = await sendSMS(lead.phone, outboundReply);
+    providerMessageId = smsResult.sid;
   } catch (error) {
+    deliveryStatus = "failed";
+    deliveryError = error instanceof Error ? error.message : "Unknown error";
     logError("Lead outbound SMS failed", {
       leadId: lead.id,
-      message: error instanceof Error ? error.message : "Unknown error",
+      message: deliveryError,
     });
   }
-  await saveLeadMessage(adminClient, lead.id, "outbound", outboundReply);
+  await saveLeadMessage(adminClient, lead.id, "outbound", outboundReply, {
+    providerMessageId,
+    deliveryStatus,
+    errorMessage: deliveryError,
+  });
 
   const nextStatus =
     response.status ??
@@ -1059,6 +1230,12 @@ async function createLeadAndStartConversationForContext(
   const { firstName, lastName } = splitLeadName(input.name);
   const email = input.email?.trim() || null;
   const phone = input.phone?.trim() ? normalizePhone(input.phone) : null;
+  const dedupeHash = buildLeadDedupeHash({
+    organizationId,
+    campaignId,
+    email,
+    phone,
+  });
 
   if (!phone && !email) {
     throw new ApiError(400, "An email or phone number is required.", "validation_error");
@@ -1070,6 +1247,7 @@ async function createLeadAndStartConversationForContext(
     campaignId,
     email,
     phone,
+    dedupeHash,
   });
 
   if (duplicateLead) {
@@ -1088,14 +1266,36 @@ async function createLeadAndStartConversationForContext(
       last_name: lastName,
       email,
       phone,
+      dedupe_hash: dedupeHash,
       status: "new",
       notes: input.notes?.trim() || null,
+      consent_metadata: {
+        source: input.source?.trim() || "lead_capture",
+        captured_at: new Date().toISOString(),
+        consent_copy:
+          "By submitting, I agree to be contacted about this request. Message and data rates may apply. Reply STOP to opt out.",
+      } as Json,
       created_at: new Date().toISOString(),
     } as never)
     .select("*")
     .single();
 
   if (error) {
+    if (
+      dedupeHash &&
+      (error.code === "23505" || /duplicate key|unique constraint/i.test(error.message ?? ""))
+    ) {
+      const { data: recovered } = await supabase
+        .from("leads")
+        .select("*")
+        .eq("dedupe_hash", dedupeHash)
+        .maybeSingle();
+
+      if (recovered) {
+        return recovered as LeadRow;
+      }
+    }
+
     logError("Lead insert failed", {
       message: error.message,
       code: error.code ?? null,
@@ -1164,6 +1364,35 @@ export async function createPublicLeadAndStartConversation(input: CreateLeadInpu
     organizationId: context.organizationId,
     campaignId: context.campaignId,
   });
+}
+
+export async function replayFailedPublicLeadCapture(input: PublicLeadCaptureRetryInput) {
+  const retryNotes = [
+    input.notes?.trim() || null,
+    input.reason?.trim() ? `Recovered queued lead capture: ${input.reason.trim()}` : null,
+    input.requestId?.trim() ? `Original request: ${input.requestId.trim()}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const lead = await createPublicLeadAndStartConversation({
+    campaign_id: input.campaignId?.trim() || undefined,
+    funnel_id: input.funnelId?.trim() || null,
+    name: input.name?.trim() || "Unknown lead",
+    email: input.email?.trim() || null,
+    phone: input.phone?.trim() || null,
+    source: input.source?.trim() || "lead_capture_retry",
+    notes: retryNotes || null,
+  });
+
+  return {
+    leadId: lead.id,
+    campaignId: lead.campaign_id,
+    organizationId: lead.organization_id,
+    dedupeHash: lead.dedupe_hash,
+    status: lead.status,
+    source: lead.source,
+  };
 }
 
 export async function findLeadByPhoneForOrganization(phone: string, organizationId: string) {

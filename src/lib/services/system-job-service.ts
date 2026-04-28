@@ -99,6 +99,8 @@ export type SystemJobRecord<K extends SystemJobKind = SystemJobKind> = Omit<Syst
   lifecycleStatus?: SystemJobLifecycleStatus;
   correlationId?: string | null;
   lastErrorCategory?: string | null;
+  attempt_count?: number;
+  max_attempts?: number;
 };
 
 function getJobClient() {
@@ -216,8 +218,27 @@ export async function createSystemJob<K extends SystemJobKind>(params: {
   campaignId?: string | null;
   kind: K;
   payload: SystemJobPayloadMap[K];
+  idempotencyKey?: string | null;
+  maxAttempts?: number;
 }) {
   const supabase = params.supabase ?? getJobClient();
+
+  if (params.idempotencyKey?.trim()) {
+    const { data: existingRaw, error: existingError } = await supabase
+      .from("system_jobs")
+      .select("*")
+      .eq("idempotency_key", params.idempotencyKey.trim())
+      .maybeSingle();
+
+    if (existingError) {
+      throw new ApiError(500, existingError.message, "system_job_idempotency_lookup_failed");
+    }
+
+    if (existingRaw) {
+      return parseSystemJob(existingRaw as SystemJobRow) as SystemJobRecord<K>;
+    }
+  }
+
   const { data, error } = await supabase
     .from("system_jobs")
     .insert({
@@ -227,11 +248,26 @@ export async function createSystemJob<K extends SystemJobKind>(params: {
       kind: params.kind,
       status: "pending",
       payload: (params.payload ?? {}) as Json,
+      idempotency_key: params.idempotencyKey?.trim() || null,
+      max_attempts: params.maxAttempts ?? MAX_SYSTEM_JOB_RETRIES + 1,
     } as never)
     .select("*")
     .single();
 
   if (error || !data) {
+    const errorCode = error && typeof error === "object" && "code" in error ? String(error.code) : null;
+    if (params.idempotencyKey?.trim() && errorCode === "23505") {
+      const { data: recoveredRaw, error: recoveredError } = await supabase
+        .from("system_jobs")
+        .select("*")
+        .eq("idempotency_key", params.idempotencyKey.trim())
+        .maybeSingle();
+
+      if (!recoveredError && recoveredRaw) {
+        return parseSystemJob(recoveredRaw as SystemJobRow) as SystemJobRecord<K>;
+      }
+    }
+
     throw new ApiError(
       500,
       error?.message ?? "System job could not be created.",
@@ -372,50 +408,32 @@ async function updateSystemJob(
 
 export async function claimNextPendingSystemJob() {
   const supabase = getJobClient();
-  const { data, error } = await supabase
-    .from("system_jobs")
-    .select("*")
-    .eq("status", "pending")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const workerId = `vercel:${process.env.VERCEL_REGION ?? "local"}:${crypto.randomUUID()}`;
+  const { data, error } = await (supabase as any).rpc("claim_next_system_job", {
+    p_worker_id: workerId,
+    p_lease_ms: 5 * 60_000,
+  });
 
   if (error) {
-    throw new ApiError(500, error.message, "system_job_claim_lookup_failed");
+    throw new ApiError(500, error.message, "system_job_claim_failed");
   }
 
-  if (!data) {
+  const row = Array.isArray(data) ? data[0] : data;
+
+  if (!row) {
     return null;
   }
 
-  const candidate = data as SystemJobRow;
-  const claimed = await supabase
-    .from("system_jobs")
-    .update({
-      status: "processing",
-      started_at: new Date().toISOString(),
-      completed_at: null,
-      error_message: null,
-    } as never)
-    .eq("id", candidate.id)
-    .eq("status", "pending")
-    .select("*")
-    .maybeSingle();
-
-  if (claimed.error) {
-    throw new ApiError(500, claimed.error.message, "system_job_claim_failed");
-  }
-
-  if (!claimed.data) {
-    return null;
-  }
-
-  const claimedJob = parseSystemJob(claimed.data as SystemJobRow);
+  const claimedJob = parseSystemJob(row as SystemJobRow);
 
   await appendSystemJobLog({
     supabase,
     jobId: claimedJob.id,
     message: `${claimedJob.kind.replace(/_/g, " ")} job started.`,
+    details: {
+      workerId,
+      lockedUntil: claimedJob.locked_until ?? null,
+    } as Json,
   });
 
   return claimedJob;
@@ -429,10 +447,14 @@ export async function resetStaleProcessingSystemJobs(staleAfterMs = 10 * 60_000)
     .update({
       status: "pending",
       error_message: null,
+      last_error_code: "system_job_stale_reset",
       started_at: null,
+      locked_by: null,
+      locked_until: null,
+      next_run_at: new Date().toISOString(),
     } as never)
     .eq("status", "processing")
-    .lt("started_at", staleBefore)
+    .or(`locked_until.lte.${new Date().toISOString()},started_at.lt.${staleBefore}`)
     .select("id");
 
   if (error) {
@@ -470,8 +492,14 @@ export async function retrySystemJob(jobId: string, userId: string) {
   const nextJob = await updateSystemJob(supabase, jobId, {
     status: "pending",
     error_message: null,
+    last_error_code: null,
     completed_at: null,
     started_at: null,
+    locked_by: null,
+    locked_until: null,
+    next_run_at: new Date().toISOString(),
+    dead_lettered_at: null,
+    dead_letter_reason: null,
     retry_count: currentJob.retry_count + 1,
     result: null,
   });
@@ -495,11 +523,11 @@ export async function retrySystemJob(jobId: string, userId: string) {
 }
 
 function shouldAutoRetrySystemJob(job: SystemJobRecord, error: unknown) {
-  if (job.kind !== "video_generation" || job.retry_count >= MAX_SYSTEM_JOB_RETRIES) {
+  if (job.kind === "video_generation") {
     return false;
   }
 
-  if (!(error instanceof ApiError)) {
+  if (job.retry_count >= MAX_SYSTEM_JOB_RETRIES || !(error instanceof ApiError)) {
     return false;
   }
 
@@ -529,6 +557,7 @@ export async function processSystemJob(jobId: string) {
           status: "processing",
           started_at: new Date().toISOString(),
           error_message: null,
+          last_error_code: null,
         });
 
   try {
@@ -557,17 +586,49 @@ export async function processSystemJob(jobId: string) {
       });
 
       result = output as unknown as Json;
-    } else {
+    } else if (processingJob.kind === "lead_capture_retry") {
+      const payload = processingJob.payload as SystemJobPayloadMap["lead_capture_retry"];
+      const { replayFailedPublicLeadCapture } = await import("@/lib/services/lead-handler-service");
+      const replayResult = await replayFailedPublicLeadCapture({
+        ...payload.leadCapture,
+        source: payload.source,
+        requestId: payload.requestId,
+        reason: payload.reason,
+      });
+
+      result = {
+        ...replayResult,
+        requestId: payload.requestId,
+        retryReason: payload.reason,
+      } as Json;
+    } else if (
+      processingJob.kind === "campaign_build" ||
+      processingJob.kind === "funnel_generation" ||
+      processingJob.kind === "creative_generation" ||
+      processingJob.kind === "meta_sync" ||
+      processingJob.kind === "recommendation_generation"
+    ) {
       result = {
         childJobIds:
           ((processingJob.payload as SystemJobPayloadMap["campaign_build"])?.childJobIds ?? []) as string[],
       } as Json;
+    } else {
+      throw new ApiError(
+        500,
+        `Unsupported system job kind: ${String(processingJob.kind)}`,
+        "system_job_kind_unsupported",
+      );
     }
 
     const completedJob = await updateSystemJob(supabase, jobId, {
       status: "completed",
       completed_at: new Date().toISOString(),
       result,
+      error_message: null,
+      last_error_code: null,
+      locked_by: null,
+      locked_until: null,
+      next_run_at: null,
     });
 
     await appendSystemJobLog({
@@ -588,7 +649,11 @@ export async function processSystemJob(jobId: string) {
         completed_at: null,
         started_at: null,
         error_message: message,
+        last_error_code: error instanceof ApiError ? error.code : "system_job_transient_failure",
         retry_count: processingJob.retry_count + 1,
+        locked_by: null,
+        locked_until: null,
+        next_run_at: new Date(Date.now() + 60_000).toISOString(),
         result: null,
       });
 
@@ -606,6 +671,11 @@ export async function processSystemJob(jobId: string) {
       status: "failed",
       completed_at: new Date().toISOString(),
       error_message: message,
+      last_error_code: error instanceof ApiError ? error.code : "system_job_processing_failed",
+      locked_by: null,
+      locked_until: null,
+      dead_lettered_at: new Date().toISOString(),
+      dead_letter_reason: message,
     });
 
     await appendSystemJobLog({
@@ -663,6 +733,7 @@ export async function runTrackedSystemJob<K extends SystemJobKind, T>(params: {
     campaignId: params.campaignId ?? null,
     kind: params.kind,
     payload: withTrackingPayload(params.payload, queuedTracking),
+    maxAttempts: maxRetries + 1,
   });
 
   logOperationalEvent("system_job.queued", {
@@ -684,6 +755,7 @@ export async function runTrackedSystemJob<K extends SystemJobKind, T>(params: {
         started_at: startedAt,
         completed_at: null,
         error_message: null,
+        last_error_code: null,
       });
 
       await updateSystemJobTracking({
@@ -733,6 +805,10 @@ export async function runTrackedSystemJob<K extends SystemJobKind, T>(params: {
           completed_at: completedAt,
           result: resultPayload,
           error_message: null,
+          last_error_code: null,
+          locked_by: null,
+          locked_until: null,
+          next_run_at: null,
         });
 
         await updateSystemJobTracking({
@@ -775,7 +851,14 @@ export async function runTrackedSystemJob<K extends SystemJobKind, T>(params: {
         const failedJob = await updateSystemJob(supabase, job.id, {
           status: retryEligible ? "pending" : "failed",
           error_message: message,
+          last_error_code:
+            error instanceof ApiError ? error.code : retryEligible ? "system_job_transient_failure" : "system_job_failed",
           completed_at: retryEligible ? null : new Date().toISOString(),
+          locked_by: null,
+          locked_until: null,
+          next_run_at: retryEligible ? new Date(Date.now() + 60_000).toISOString() : null,
+          dead_lettered_at: retryEligible ? null : new Date().toISOString(),
+          dead_letter_reason: retryEligible ? null : message,
         });
 
         await updateSystemJobTracking({

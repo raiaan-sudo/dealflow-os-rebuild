@@ -170,6 +170,18 @@ export function LeadCaptureForm({
       >
         {status === "submitting" ? "Submitting..." : cta}
       </button>
+      <p className="text-xs leading-relaxed text-white/45">
+        By submitting, you agree to be contacted about this request. Message and data
+        rates may apply. Reply STOP to opt out. See our{" "}
+        <a className="text-primary underline-offset-4 hover:underline" href="/privacy">
+          Privacy Policy
+        </a>{" "}
+        and{" "}
+        <a className="text-primary underline-offset-4 hover:underline" href="/terms">
+          Terms
+        </a>
+        .
+      </p>
     </form>
   );
 }

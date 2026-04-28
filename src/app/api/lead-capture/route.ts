@@ -36,11 +36,11 @@ const leadCaptureSchema = z
       });
     }
 
-    if (!value.campaign_id?.trim() && !value.campaignId?.trim()) {
+    if (!value.campaign_id?.trim() && !value.campaignId?.trim() && !value.funnel_id?.trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["campaign_id"],
-        message: "campaignId is required.",
+        message: "campaignId or funnel_id is required.",
       });
     }
   });
@@ -73,8 +73,8 @@ export async function POST(req: Request) {
       return buildRateLimitResponse(rateLimit.resetAt);
     }
 
-    if (!campaignId) {
-      throw new ApiError(400, "campaignId is required.", "validation_error");
+    if (!campaignId && !payload.funnel_id?.trim()) {
+      throw new ApiError(400, "campaignId or funnel_id is required.", "validation_error");
     }
 
     const normalizedStage = payload.stage?.trim() ?? "generated";
