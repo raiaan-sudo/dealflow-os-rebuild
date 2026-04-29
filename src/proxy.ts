@@ -61,7 +61,7 @@ function isAuthorizedInternalRequest(request: NextRequest) {
   };
 }
 
-function applySecurityHeaders(response: NextResponse) {
+function applySecurityHeaders(response: NextResponse, startedAt?: number) {
   const isProduction = process.env.NODE_ENV === "production";
   const scriptSrc = [
     "'self'",
@@ -106,24 +106,30 @@ function applySecurityHeaders(response: NextResponse) {
     response.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
   }
 
+  if (typeof startedAt === "number") {
+    response.headers.set("Server-Timing", `app;dur=${Math.max(Date.now() - startedAt, 0)}`);
+  }
+
   return response;
 }
 
 export async function proxy(request: NextRequest) {
+  const startedAt = Date.now();
+  const finalize = (nextResponse: NextResponse) => applySecurityHeaders(nextResponse, startedAt);
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", request.nextUrl.pathname);
   let response = NextResponse.next({ request: { headers: requestHeaders } });
   const pathname = request.nextUrl.pathname;
 
   if (isPublicRequest(pathname)) {
-    return applySecurityHeaders(response);
+    return finalize(response);
   }
 
   if (isInternalApiRequest(pathname)) {
     const { configured, authorized } = isAuthorizedInternalRequest(request);
 
     if (!configured) {
-      return applySecurityHeaders(NextResponse.json(
+      return finalize(NextResponse.json(
         { error: "Internal system job runner secret is not configured." },
         { status: 503 },
       ));
@@ -139,11 +145,11 @@ export async function proxy(request: NextRequest) {
           },
         },
       );
-      return applySecurityHeaders(rejected);
+      return finalize(rejected);
     }
 
     response.headers.set("X-Internal-Job-Runner", "authorized");
-    return applySecurityHeaders(response);
+    return finalize(response);
   }
 
   const supabaseEnv = getSupabaseEnv();
@@ -153,7 +159,7 @@ export async function proxy(request: NextRequest) {
     if (!pathname.startsWith("/api/")) {
       loginUrl.searchParams.set("redirectedFrom", `${pathname}${request.nextUrl.search}`);
     }
-    return applySecurityHeaders(NextResponse.redirect(loginUrl));
+    return finalize(NextResponse.redirect(loginUrl));
   }
 
   const supabase = createServerClient(supabaseEnv.url, supabaseEnv.anonKey, {
@@ -177,11 +183,11 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (user) {
-    return applySecurityHeaders(response);
+    return finalize(response);
   }
 
   if (pathname.startsWith("/api/")) {
-    return applySecurityHeaders(NextResponse.json(
+    return finalize(NextResponse.json(
       { error: "Authentication is required for this route." },
       { status: 401 },
     ));
@@ -190,7 +196,7 @@ export async function proxy(request: NextRequest) {
   const loginUrl = new URL("/login", request.url);
   loginUrl.searchParams.set("reason", "expired");
   loginUrl.searchParams.set("redirectedFrom", `${pathname}${request.nextUrl.search}`);
-  return applySecurityHeaders(NextResponse.redirect(loginUrl));
+  return finalize(NextResponse.redirect(loginUrl));
 }
 
 export const config = {
