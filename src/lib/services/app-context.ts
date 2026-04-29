@@ -53,6 +53,18 @@ function buildWorkspaceSlug(email: string | null) {
   return slugify(`${(email ?? "workspace").split("@")[0]}-group`);
 }
 
+function getBootstrapErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (error && typeof error === "object" && "message" in error) {
+    return String((error as { message?: unknown }).message ?? "Unknown bootstrap error");
+  }
+
+  return "Unknown bootstrap error";
+}
+
 export async function ensureUserProfile(supabase: SupabaseClient, user: AppContext["user"]) {
   const { data: existingProfileRaw } = await supabase
     .from("users")
@@ -426,10 +438,11 @@ export async function ensureAppContext() {
   }
 
   try {
-    const profile = await ensureUserProfile(supabase, user);
-    const organization = await ensureWorkspace(supabase, profile);
-    const membership = await ensureMembership(supabase, profile, organization);
-    const businessProfile = await ensureBusinessProfile(supabase, organization, profile);
+    const bootstrapSupabase = (createAdminClient() as SupabaseClient | null) ?? supabase;
+    const profile = await ensureUserProfile(bootstrapSupabase, user);
+    const organization = await ensureWorkspace(bootstrapSupabase, profile);
+    const membership = await ensureMembership(bootstrapSupabase, profile, organization);
+    const businessProfile = await ensureBusinessProfile(bootstrapSupabase, organization, profile);
 
     const context: AppContext = {
       user,
@@ -440,7 +453,7 @@ export async function ensureAppContext() {
     };
 
     try {
-      await ensureOrganizationSeedData(supabase, context);
+      await ensureOrganizationSeedData(bootstrapSupabase, context);
     } catch (seedError) {
       logWarn("Organization seed data bootstrap skipped", {
         userId: user.id,
@@ -454,7 +467,7 @@ export async function ensureAppContext() {
     logError("App context bootstrap failed", {
       userId: user.id,
       email: user.email ?? null,
-      message: error instanceof Error ? error.message : "Unknown bootstrap error",
+      message: getBootstrapErrorMessage(error),
     });
     throw error;
   }
