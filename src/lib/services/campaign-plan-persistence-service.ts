@@ -543,6 +543,7 @@ function mapPlanRow(
 function buildCampaignPlanRecordBase(params: PersistPlanParams | MinimalPersistParams) {
   return {
     owner_id: params.ownerId ?? params.userId,
+    organization_id: params.ownerId ?? params.userId,
     user_id: params.userId,
   };
 }
@@ -635,6 +636,7 @@ async function persistCampaignPlanRow(params: PersistPlanParams) {
       .select("*")
       .eq("id", campaignId)
       .eq("user_id", params.userId)
+      .eq("organization_id", params.ownerId)
       .maybeSingle()) as {
         data: CampaignPlanRow | null;
         error: Error | null;
@@ -657,6 +659,7 @@ async function persistCampaignPlanRow(params: PersistPlanParams) {
       .update(record)
       .eq("id", existingCampaignId)
       .eq("user_id", params.userId)
+      .eq("organization_id", params.ownerId)
       .select("*")
       .maybeSingle()) as {
       data: CampaignPlanRow | null;

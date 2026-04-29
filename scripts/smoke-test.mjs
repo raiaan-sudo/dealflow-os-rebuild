@@ -100,6 +100,7 @@ function runOfflineChecks() {
   const legacyAiProviders = "src/lib/ai/providers.ts";
   const creativeEngine = "src/lib/services/creative-engine.ts";
   const campaignPersistence = "src/lib/services/campaign-persistence.ts";
+  const campaignPlanPersistence = "src/lib/services/campaign-plan-persistence-service.ts";
   const directHeyGenClient = "src/lib/ai/heygen.ts";
   const apiRouteHelpers = "src/lib/api/route.ts";
   const rateLimitHelpers = "src/lib/api/rate-limit.ts";
@@ -165,6 +166,7 @@ function runOfflineChecks() {
   assertIncludes("src/lib/services/lead-handler-service.ts", ".eq(\"publish_state\", \"published\")", "Public lead capture published-only lookup", "raw campaign IDs cannot capture leads for unpublished funnels");
   assertIncludes("src/lib/services/lead-handler-service.ts", "replayFailedPublicLeadCapture", "Lead retry replay implementation", "queued lead retries call the public lead insert path");
   assertExcludes("src/lib/services/lead-handler-service.ts", /QA_EMAIL|QA_PASSWORD/, "QA credential fallback removed", "no QA credential fallback remains in lead handler");
+  assertIncludes(campaignPlanPersistence, "organization_id: params.ownerId", "Campaign persistence organization ownership", "fresh campaign rows persist organization_id for downstream jobs and billing");
 
   assertIncludes(apiRouteHelpers, "assertSameOriginRequest", "Same-origin mutation guard helper", "sensitive authenticated POST routes can reject cross-site requests");
   assertIncludes(apiRouteHelpers, "if (!candidate)", "Same-origin missing-header rejection", "same-origin guard rejects unsafe requests that omit Origin and Referer");
