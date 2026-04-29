@@ -181,6 +181,12 @@ export async function POST(
     assertSameOriginRequest(request);
     await assertMetaLaunchBillingAccess();
     const { id } = await parseRouteParams(context.params, paramsSchema);
+    const record = await getCampaignById(id);
+
+    if (!record) {
+      throw new ApiError(404, "Campaign not found.", "campaign_not_found");
+    }
+
     const rateLimit = await consumeRateLimit({
       key: getRateLimitKey(request, "meta-launch", id),
       limit: 6,
@@ -209,7 +215,6 @@ export async function POST(
       return NextResponse.json(await existingLaunch);
     }
 
-    const record = await getCampaignById(id);
     const persistedLaunchState = await loadPersistedLaunchState(id);
 
     const existingCampaignId =

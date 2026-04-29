@@ -7,6 +7,7 @@ import {
   getRequestIp,
 } from "@/lib/api/rate-limit";
 import {
+  getSmsOutboundPolicyStatus,
   handleIncomingSMS,
   validateTwilioWebhookSignature,
 } from "@/lib/services/sms-service";
@@ -26,6 +27,10 @@ function twiml(message?: string) {
       "Content-Type": "text/xml; charset=utf-8",
     },
   });
+}
+
+function isComplianceKeyword(message: string) {
+  return /^(stop|stopall|unsubscribe|cancel|end|quit|start|unstop|yes|help|info)$/i.test(message.trim());
 }
 
 export async function POST(request: Request) {
@@ -77,6 +82,9 @@ export async function POST(request: Request) {
       messageSid: payload.messageSid,
       organizationId: process.env.TWILIO_INBOUND_ORGANIZATION_ID?.trim() || null,
     });
+    const policy = getSmsOutboundPolicyStatus();
+    const canReply =
+      isComplianceKeyword(payload.body) || (policy.automationEnabled && result.status !== "blocked");
 
     logOperationalEvent("sms.inbound_processed", {
       requestId,
@@ -84,10 +92,11 @@ export async function POST(request: Request) {
       messageSid: payload.messageSid,
       leadId: result.leadId,
       status: result.status,
+      replySuppressed: !canReply,
       idempotentReplay: "idempotentReplay" in result ? result.idempotentReplay : false,
     });
 
-    return twiml(result.response);
+    return twiml(canReply ? result.response : undefined);
   } catch (error) {
     logError("Inbound SMS webhook failed", {
       requestId,

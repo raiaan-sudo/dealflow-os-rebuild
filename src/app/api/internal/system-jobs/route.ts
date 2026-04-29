@@ -41,7 +41,7 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
   const requestId = crypto.randomUUID();
   const startedAt = Date.now();
   const result = await runSystemJobWorkerBatch({
-    maxCycles: input.maxCycles ?? 3,
+    maxCycles: input.maxCycles ?? 5,
     staleAfterMs: input.staleAfterMs,
   });
   const durationMs = Date.now() - startedAt;

@@ -170,13 +170,20 @@ export function assertSameOriginRequest(request: Request) {
   const forwardedHost = request.headers.get("x-forwarded-host");
   const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ?? null;
   const expectedOrigins = new Set<string>();
-
-  addExpectedOrigin(expectedOrigins, request.url);
-  addHostOrigin(expectedOrigins, forwardedHost, forwardedProto);
-  addHostOrigin(expectedOrigins, host, forwardedProto);
+  const isProduction = process.env.NODE_ENV === "production";
 
   if (process.env.NEXT_PUBLIC_APP_URL) {
     addExpectedOrigin(expectedOrigins, process.env.NEXT_PUBLIC_APP_URL);
+  }
+
+  if (!isProduction) {
+    addExpectedOrigin(expectedOrigins, request.url);
+    addHostOrigin(expectedOrigins, forwardedHost, forwardedProto);
+    addHostOrigin(expectedOrigins, host, forwardedProto);
+  }
+
+  if (expectedOrigins.size === 0) {
+    throw new ApiError(503, "Application origin is not configured.", "app_origin_missing");
   }
 
   let candidate = origin;
@@ -343,6 +350,12 @@ export async function parseFormDataBody(
   request: Request,
   options?: BodyLimitOptions,
 ) {
+  const declaredLength = getDeclaredContentLength(request);
+
+  if (declaredLength === null) {
+    throw new ApiError(411, "Content-Length is required for form uploads.", "form_content_length_required");
+  }
+
   assertRequestBodySize(
     request,
     options?.maxBytes ?? DEFAULT_FORM_BODY_LIMIT_BYTES,

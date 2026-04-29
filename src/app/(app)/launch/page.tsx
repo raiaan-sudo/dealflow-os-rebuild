@@ -384,7 +384,7 @@ export default async function LaunchAliasPage({
           </div>
         </div>
       </Card>
-      <LaunchMetaSelectionPanel connection={metaConnection} />
+      <LaunchMetaSelectionPanel connection={metaConnection} campaignId={resolvedCampaignId} />
       <Card className="p-5 sm:p-7">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-2xl">

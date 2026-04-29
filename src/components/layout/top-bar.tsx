@@ -60,6 +60,36 @@ export function TopBar({ userName, userEmail, organizationName }: TopBarProps) {
           <SignOutButton />
         </div>
       </div>
+      <nav
+        aria-label="Primary mobile navigation"
+        className="flex gap-2 overflow-x-auto border-t border-white/6 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground lg:hidden"
+      >
+        {[
+          { href: "/builder", label: "Build" },
+          { href: "/preview", label: "Review" },
+          { href: "/launch", label: "Go Live" },
+          { href: "/dashboard", label: "Results" },
+        ].map((item) => {
+          const active =
+            item.href === "/builder"
+              ? pathname.startsWith("/builder") || pathname.startsWith("/build")
+              : pathname.startsWith(item.href);
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={
+                active
+                  ? "shrink-0 rounded-full border border-primary/25 bg-primary/12 px-3 py-2 text-primary"
+                  : "shrink-0 rounded-full border border-white/8 bg-white/[0.03] px-3 py-2"
+              }
+            >
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
     </header>
   );
 }

@@ -1,6 +1,7 @@
 import { assertSameOriginRequest, apiSuccess, handleApiError, parseOptionalJsonBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
+import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { createSystemJob, listSystemJobs } from "@/lib/services/system-job-service";
 import { z } from "zod";
 
@@ -21,6 +22,12 @@ export async function POST(
 
     if (!campaignId) {
       return Response.json({ error: "Campaign id is required." }, { status: 400 });
+    }
+
+    const campaign = await getCampaignById(campaignId);
+
+    if (!campaign) {
+      return Response.json({ error: "Campaign not found." }, { status: 404 });
     }
 
     const rateLimit = await consumeRateLimit({

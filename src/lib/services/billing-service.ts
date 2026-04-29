@@ -312,6 +312,14 @@ async function claimStripeWebhookEvent(event: Stripe.Event): Promise<StripeWebho
     };
   }
 
+  if (existingRow.status === "processing") {
+    throw new ApiError(
+      503,
+      "Stripe webhook event is already processing. Stripe should retry this event shortly.",
+      "stripe_webhook_event_processing",
+    );
+  }
+
   return {
     status: "duplicate",
     row: existingRow,
@@ -540,6 +548,22 @@ export async function createBillingCheckoutSession(params: {
     planTier: params.planTier,
   });
 
+  if (
+    existingBillingRow &&
+    (existingBillingRow.status === "active" ||
+      existingBillingRow.status === "trialing" ||
+      existingBillingRow.status === "past_due")
+  ) {
+    const portalSession = await createBillingPortalSession();
+    logOperationalEvent("billing_checkout_existing_subscription_redirected_to_portal", {
+      organizationId: context.organization.id,
+      subscriptionStatus: existingBillingRow.status,
+      planTier: existingBillingRow.plan_tier,
+      requestedPlanTier: params.planTier,
+    });
+    return { url: portalSession.url, sessionId: existingBillingRow.stripe_checkout_session_id ?? null };
+  }
+
   const lastCheckoutCreatedAt =
     typeof existingMetadata.last_checkout_session_created_at === "string"
       ? Date.parse(existingMetadata.last_checkout_session_created_at)
@@ -638,28 +662,6 @@ export async function createBillingCheckoutSession(params: {
     last_checkout_session_created_at: new Date().toISOString(),
     last_checkout_plan_tier: params.planTier,
   } satisfies Json;
-
-  if (
-    existingBillingRow &&
-    (existingBillingRow.status === "active" ||
-      existingBillingRow.status === "trialing" ||
-      existingBillingRow.status === "past_due")
-  ) {
-    const { error: updateError } = await billingClient
-      .from("billing_subscriptions")
-      .update({
-        stripe_customer_id: customerId,
-        stripe_checkout_session_id: session.id,
-        metadata: metadataPatch,
-      } as never)
-      .eq("organization_id", context.organization.id);
-
-    if (updateError) {
-      throw new ApiError(500, updateError.message, "billing_subscription_update_failed");
-    }
-
-    return { url: session.url, sessionId: session.id };
-  }
 
   const upsertRow: BillingInsert = {
     organization_id: context.organization.id,
@@ -956,6 +958,28 @@ async function syncBillingSubscriptionFromEventObject(event: Stripe.Event) {
   };
 
   if (stripeObject.object === "subscription") {
+    const subscriptionId = typeof (object as Stripe.Subscription).id === "string"
+      ? (object as Stripe.Subscription).id
+      : null;
+
+    if (subscriptionId) {
+      try {
+        const provider = getStripeBillingProvider();
+        const subscription = (await provider.execute({
+          action: "retrieve_subscription",
+          subscriptionId,
+        })) as Stripe.Subscription;
+        return syncBillingSubscriptionFromStripe(subscription, source);
+      } catch (error) {
+        logWarn("stripe_subscription_refresh_failed_using_event_payload", {
+          eventId: event.id,
+          eventType: event.type,
+          subscriptionId,
+          message: error instanceof Error ? error.message : "Unknown subscription refresh failure",
+        });
+      }
+    }
+
     return syncBillingSubscriptionFromStripe(object as Stripe.Subscription, source);
   }
 

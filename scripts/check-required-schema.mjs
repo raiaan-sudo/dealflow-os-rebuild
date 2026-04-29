@@ -4,7 +4,7 @@ import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 
 const repoRoot = process.cwd();
-const expectedSchemaVersion = "20260428163000";
+const expectedSchemaVersion = "20260428171000";
 const schemaCheckMode = process.env.SUPABASE_SCHEMA_CHECK_MODE?.trim().toLowerCase() ?? "remote";
 const requiredMigrationFiles = [
   "20260426110000_add_campaign_plan_critical_fields.sql",
@@ -25,6 +25,8 @@ const requiredMigrationFiles = [
   "20260428140000_harden_billing_subscription_webhooks.sql",
   "20260428162000_harden_lead_message_idempotency.sql",
   "20260428163000_harden_billing_event_ordering.sql",
+  "20260428170000_harden_rpc_and_tenant_rls.sql",
+  "20260428171000_harden_billing_webhook_same_second_ordering.sql",
 ];
 
 const { loadEnvConfig } = nextEnv;

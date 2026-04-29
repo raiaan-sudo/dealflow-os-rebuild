@@ -625,10 +625,11 @@ export async function processSystemJob(jobId: string) {
       processingJob.kind === "meta_sync" ||
       processingJob.kind === "recommendation_generation"
     ) {
-      result = {
-        childJobIds:
-          ((processingJob.payload as SystemJobPayloadMap["campaign_build"])?.childJobIds ?? []) as string[],
-      } as Json;
+      throw new ApiError(
+        500,
+        `${processingJob.kind} was queued as an inline-tracked job and cannot be replayed by the cron worker without a resumable processor.`,
+        "system_job_inline_replay_unsupported",
+      );
     } else {
       throw new ApiError(
         500,

@@ -248,17 +248,22 @@ export function CampaignPublishPanel({
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Live URL</p>
           {livePath ? (
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <Link href={livePath} target="_blank" className="text-sm font-semibold text-primary hover:underline">
-                {livePath}
-              </Link>
               {publish?.state === "published" ? (
-                <Badge className="border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
-                  Public
-                </Badge>
+                <>
+                  <Link href={livePath} target="_blank" className="text-sm font-semibold text-primary hover:underline">
+                    {livePath}
+                  </Link>
+                  <Badge className="border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
+                    Public
+                  </Badge>
+                </>
               ) : (
-                <Badge className="border-white/10 bg-white/[0.06] text-muted-foreground">
-                  Not live yet
-                </Badge>
+                <>
+                  <span className="text-sm font-semibold text-muted-foreground">{livePath}</span>
+                  <Badge className="border-white/10 bg-white/[0.06] text-muted-foreground">
+                    Not live yet
+                  </Badge>
+                </>
               )}
             </div>
           ) : (

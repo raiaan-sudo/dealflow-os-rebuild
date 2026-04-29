@@ -387,7 +387,17 @@ export function getMetaExecutionMode() {
     throw new ApiError(503, "Meta Ads is not configured.", "meta_config_missing");
   }
 
-  return "live" as const;
+  const executionMode: "sandbox" | "live" = env.executionMode === "live" ? "live" : "sandbox";
+
+  if (executionMode === "live" && process.env.ALLOW_META_LIVE_LAUNCH !== "true") {
+    throw new ApiError(
+      403,
+      "Live Meta launch requires ALLOW_META_LIVE_LAUNCH=true. Use sandbox mode for non-mutating validation.",
+      "meta_live_launch_disabled",
+    );
+  }
+
+  return executionMode;
 }
 
 export function getMetaAccessToken(connection: MetaConnectionRecord) {
