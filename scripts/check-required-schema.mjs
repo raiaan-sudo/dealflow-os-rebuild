@@ -4,7 +4,7 @@ import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 
 const repoRoot = process.cwd();
-const expectedSchemaVersion = "20260428171000";
+const expectedSchemaVersion = "20260429101000";
 const schemaCheckMode = process.env.SUPABASE_SCHEMA_CHECK_MODE?.trim().toLowerCase() ?? "remote";
 const requiredMigrationFiles = [
   "20260426110000_add_campaign_plan_critical_fields.sql",
@@ -27,6 +27,8 @@ const requiredMigrationFiles = [
   "20260428163000_harden_billing_event_ordering.sql",
   "20260428170000_harden_rpc_and_tenant_rls.sql",
   "20260428171000_harden_billing_webhook_same_second_ordering.sql",
+  "20260429100000_fix_billing_ordering_and_operator_resolution.sql",
+  "20260429101000_reset_tenant_rls_policies.sql",
 ];
 
 const { loadEnvConfig } = nextEnv;
@@ -197,7 +199,7 @@ async function main() {
   await probeQuery("stripe_webhook_events table check", () =>
     supabase
       .from("stripe_webhook_events")
-      .select("id, stripe_event_id, status, payload, updated_at")
+      .select("id, stripe_event_id, status, payload, updated_at, reviewed_at, reviewed_by, resolution_note")
       .limit(1),
   );
 
@@ -225,10 +227,13 @@ async function main() {
           "locked_until",
           "next_run_at",
           "last_error_code",
-          "dead_lettered_at",
-          "dead_letter_reason",
-          "created_at",
-        ].join(", "),
+        "dead_lettered_at",
+        "dead_letter_reason",
+        "reviewed_at",
+        "reviewed_by",
+        "resolution_note",
+        "created_at",
+      ].join(", "),
       )
       .limit(1),
   );

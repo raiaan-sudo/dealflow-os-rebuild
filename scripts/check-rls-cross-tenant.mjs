@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 
+import nextEnv from "@next/env";
+
+nextEnv.loadEnvConfig(process.cwd());
+
 const requiredEnv = [
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
@@ -61,8 +65,12 @@ async function supabaseRequest(path, jwt, init = {}) {
 }
 
 async function selectById({ table, id, columns, jwt }) {
+  return selectByColumn({ table, column: "id", value: id, columns, jwt });
+}
+
+async function selectByColumn({ table, column, value, columns, jwt }) {
   const response = await supabaseRequest(
-    `/rest/v1/${table}?id=eq.${encodeURIComponent(id)}&select=${encodeURIComponent(columns)}`,
+    `/rest/v1/${table}?${encodeURIComponent(column)}=eq.${encodeURIComponent(value)}&select=${encodeURIComponent(columns)}`,
     jwt,
   );
   const text = await response.text();
@@ -85,7 +93,11 @@ async function expectVisible(name, params) {
   runnableChecks += 1;
 
   try {
-    const rows = await selectById(params);
+    const rows = await selectByColumn({
+      column: params.idColumn ?? "id",
+      value: params.id,
+      ...params,
+    });
 
     if (rows.length === 1) {
       pass(name, `${params.table} row is visible to its owner/member token`);
@@ -101,7 +113,11 @@ async function expectHidden(name, params) {
   runnableChecks += 1;
 
   try {
-    const rows = await selectById(params);
+    const rows = await selectByColumn({
+      column: params.idColumn ?? "id",
+      value: params.id,
+      ...params,
+    });
 
     if (rows.length === 0) {
       pass(name, `${params.table} row is hidden from the other tenant token`);
@@ -111,6 +127,23 @@ async function expectHidden(name, params) {
   } catch (error) {
     fail(name, error instanceof Error ? error.message : "query failed");
   }
+}
+
+async function expectDenied(name, params) {
+  runnableChecks += 1;
+
+  const response = await supabaseRequest(
+    `/rest/v1/${params.table}?${encodeURIComponent(params.idColumn ?? "id")}=eq.${encodeURIComponent(params.id)}&select=${encodeURIComponent(params.columns)}`,
+    params.jwt,
+  );
+
+  if ([401, 403, 404].includes(response.status)) {
+    pass(name, `${params.table} denied with ${response.status}`);
+    return;
+  }
+
+  const text = await response.text();
+  fail(name, `expected denial, got ${response.status} ${text}`);
 }
 
 async function expectRpcDenied(name, jwt) {
@@ -142,6 +175,7 @@ async function runPair({
   columns,
   userAIdEnv,
   userBIdEnv,
+  idColumn = "id",
 }) {
   const userAId = env(userAIdEnv);
   const userBId = env(userBIdEnv);
@@ -154,24 +188,28 @@ async function runPair({
   await expectVisible(`${label}: User A sees own row`, {
     table,
     id: userAId,
+    idColumn,
     columns,
     jwt: env("RLS_USER_A_JWT"),
   });
   await expectHidden(`${label}: User A cannot see User B row`, {
     table,
     id: userBId,
+    idColumn,
     columns,
     jwt: env("RLS_USER_A_JWT"),
   });
   await expectVisible(`${label}: User B sees own row`, {
     table,
     id: userBId,
+    idColumn,
     columns,
     jwt: env("RLS_USER_B_JWT"),
   });
   await expectHidden(`${label}: User B cannot see User A row`, {
     table,
     id: userAId,
+    idColumn,
     columns,
     jwt: env("RLS_USER_B_JWT"),
   });
@@ -203,12 +241,102 @@ async function main() {
     userAIdEnv: "RLS_LEAD_A_ID",
     userBIdEnv: "RLS_LEAD_B_ID",
   });
+  if (env("RLS_SYSTEM_JOBS_INTERNAL_ONLY") === "true") {
+    const systemJobAId = env("RLS_SYSTEM_JOB_A_ID");
+    const systemJobBId = env("RLS_SYSTEM_JOB_B_ID");
+    if (systemJobAId && systemJobBId) {
+      await expectDenied("System jobs: User A denied from internal table", {
+        table: "system_jobs",
+        id: systemJobAId,
+        columns: "id,user_id,organization_id,campaign_id,kind",
+        jwt: env("RLS_USER_A_JWT"),
+      });
+      await expectDenied("System jobs: User A denied from User B internal row", {
+        table: "system_jobs",
+        id: systemJobBId,
+        columns: "id,user_id,organization_id,campaign_id,kind",
+        jwt: env("RLS_USER_A_JWT"),
+      });
+      await expectDenied("System jobs: User B denied from internal table", {
+        table: "system_jobs",
+        id: systemJobBId,
+        columns: "id,user_id,organization_id,campaign_id,kind",
+        jwt: env("RLS_USER_B_JWT"),
+      });
+      await expectDenied("System jobs: User B denied from User A internal row", {
+        table: "system_jobs",
+        id: systemJobAId,
+        columns: "id,user_id,organization_id,campaign_id,kind",
+        jwt: env("RLS_USER_B_JWT"),
+      });
+    } else {
+      warn("System jobs RLS", "set RLS_SYSTEM_JOB_A_ID and RLS_SYSTEM_JOB_B_ID to verify this table");
+    }
+  } else {
+    await runPair({
+      table: "system_jobs",
+      label: "System jobs",
+      columns: "id,user_id,organization_id,campaign_id,kind",
+      userAIdEnv: "RLS_SYSTEM_JOB_A_ID",
+      userBIdEnv: "RLS_SYSTEM_JOB_B_ID",
+    });
+  }
   await runPair({
-    table: "system_jobs",
-    label: "System jobs",
-    columns: "id,user_id,organization_id,campaign_id,kind",
-    userAIdEnv: "RLS_SYSTEM_JOB_A_ID",
-    userBIdEnv: "RLS_SYSTEM_JOB_B_ID",
+    table: "lead_messages",
+    label: "Lead messages",
+    columns: "id,lead_id,direction",
+    userAIdEnv: "RLS_LEAD_MESSAGE_A_ID",
+    userBIdEnv: "RLS_LEAD_MESSAGE_B_ID",
+  });
+  await runPair({
+    table: "marketing_accounts",
+    label: "Marketing accounts",
+    columns: "id,organization_id,platform,status",
+    userAIdEnv: "RLS_MARKETING_ACCOUNT_A_ID",
+    userBIdEnv: "RLS_MARKETING_ACCOUNT_B_ID",
+  });
+  await runPair({
+    table: "creative_assets",
+    label: "Creative assets",
+    columns: "id,user_id,campaign_id,status",
+    userAIdEnv: "RLS_CREATIVE_ASSET_A_ID",
+    userBIdEnv: "RLS_CREATIVE_ASSET_B_ID",
+  });
+  await runPair({
+    table: "billing_subscriptions",
+    label: "Billing subscriptions",
+    columns: "id,user_id,organization_id,status",
+    userAIdEnv: "RLS_BILLING_SUBSCRIPTION_A_ID",
+    userBIdEnv: "RLS_BILLING_SUBSCRIPTION_B_ID",
+  });
+  await runPair({
+    table: "stripe_webhook_events",
+    label: "Stripe webhook events",
+    columns: "id,organization_id,stripe_event_id,status",
+    userAIdEnv: "RLS_STRIPE_WEBHOOK_EVENT_A_ID",
+    userBIdEnv: "RLS_STRIPE_WEBHOOK_EVENT_B_ID",
+  });
+  await runPair({
+    table: "provider_usage_limits",
+    label: "Provider usage limits",
+    columns: "id,user_id,organization_id,campaign_id,provider,operation",
+    userAIdEnv: "RLS_PROVIDER_USAGE_LIMIT_A_ID",
+    userBIdEnv: "RLS_PROVIDER_USAGE_LIMIT_B_ID",
+  });
+  await runPair({
+    table: "provider_usage_events",
+    label: "Provider usage events",
+    columns: "id,user_id,organization_id,campaign_id,provider,operation,status",
+    userAIdEnv: "RLS_PROVIDER_USAGE_EVENT_A_ID",
+    userBIdEnv: "RLS_PROVIDER_USAGE_EVENT_B_ID",
+  });
+  await runPair({
+    table: "meta_launch_locks",
+    label: "Meta launch locks",
+    columns: "campaign_id,lock_token,locked_until",
+    userAIdEnv: "RLS_META_LAUNCH_LOCK_A_ID",
+    userBIdEnv: "RLS_META_LAUNCH_LOCK_B_ID",
+    idColumn: "campaign_id",
   });
 
   await expectRpcDenied("Internal rate-limit RPC: anon denied", null);

@@ -61,6 +61,9 @@ type RawSystemJobRow = {
   updated_at?: string | null;
   locked_until: string | null;
   dead_lettered_at: string | null;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
+  resolution_note?: string | null;
 };
 
 type RawStripeWebhookEventRow = {
@@ -72,6 +75,9 @@ type RawStripeWebhookEventRow = {
   error_message: string | null;
   created_at: string | null;
   updated_at: string | null;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
+  resolution_note?: string | null;
 };
 
 type RawProviderUsageEventRow = {
@@ -454,14 +460,16 @@ export async function loadIssueLogRows(limit = 80): Promise<OperatorIssueRow[]> 
   const [jobsResult, stripeResult, providerResult, campaigns] = await Promise.all([
     admin
       .from("system_jobs")
-      .select("id,organization_id,campaign_id,kind,status,error_message,last_error_code,dead_letter_reason,created_at,locked_until,dead_lettered_at")
+      .select("id,organization_id,campaign_id,kind,status,error_message,last_error_code,dead_letter_reason,created_at,locked_until,dead_lettered_at,reviewed_at,reviewed_by,resolution_note")
       .or("status.eq.failed,status.eq.processing,dead_lettered_at.not.is.null")
+      .is("reviewed_at", null)
       .order("created_at", { ascending: false })
       .limit(limit * 2),
     admin
       .from("stripe_webhook_events")
-      .select("id,stripe_event_id,stripe_event_type,status,error_code,error_message,created_at,updated_at")
+      .select("id,stripe_event_id,stripe_event_type,status,error_code,error_message,created_at,updated_at,reviewed_at,reviewed_by,resolution_note")
       .eq("status", "failed")
+      .is("reviewed_at", null)
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(limit),
