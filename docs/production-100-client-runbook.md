@@ -170,12 +170,33 @@ Inbound `/api/sms/twilio` must keep handling compliance keywords even when outbo
 
 Owner-only Supabase Auth settings are required before unrestricted signup:
 
-1. For controlled beta, disable public signup or operate an invite-only signup path.
-2. If public signup is enabled, require email confirmation before users can build campaigns.
-3. Enable CAPTCHA/Turnstile in Supabase Auth if available for the project.
-4. Configure Supabase Auth rate limits for signup, password reset, OTP/email, and token refresh.
-5. Restrict OAuth redirect URLs to production and approved preview domains only.
-6. Review disposable-email controls before broad public launch.
+1. Create a Cloudflare Turnstile site for `dealflow-os-rebuild.vercel.app`.
+2. Add the Turnstile keys to Vercel:
+   - Vercel Dashboard → Project → Settings → Environment Variables.
+   - Add `NEXT_PUBLIC_TURNSTILE_SITE_KEY` for Production and Preview.
+   - Add `TURNSTILE_SECRET_KEY` for Production and Preview.
+   - Redeploy after adding both values.
+3. Enable Supabase Auth CAPTCHA:
+   - Supabase Dashboard → Project → Authentication → Bot and Abuse Protection.
+   - Toggle Enable CAPTCHA protection.
+   - Provider: Cloudflare Turnstile.
+   - Site key: the same `NEXT_PUBLIC_TURNSTILE_SITE_KEY`.
+   - Secret key: the same `TURNSTILE_SECRET_KEY`.
+   - Save, then create one disposable signup to confirm account creation succeeds only after the challenge completes.
+4. Require email confirmation before users can build campaigns:
+   - Supabase Dashboard → Project → Authentication → Sign In / Providers → Email.
+   - Enable Confirm email.
+   - Save and verify the confirmation email works with the production redirect URL.
+5. Configure Supabase Auth rate limits:
+   - Supabase Dashboard → Project → Authentication → Rate Limits.
+   - Keep password reset, signup confirmation, OTP, and token-refresh limits at or below Supabase defaults unless a real pilot requires higher limits.
+   - Watch for `429` responses during the first public signup test before raising limits.
+6. Restrict OAuth redirect URLs:
+   - Supabase Dashboard → Project → Authentication → URL Configuration.
+   - Site URL: `https://dealflow-os-rebuild.vercel.app`.
+   - Redirect URLs: production domain plus explicitly approved Vercel preview domains only.
+7. For controlled beta, operate invite-only signup until CAPTCHA and email confirmation are enabled.
+8. Review disposable-email controls before broad public launch.
 
 App-side controls still apply after signup: onboarding, campaign build, generation, checkout, Meta sync, and public lead capture use durable rate limits. These controls are not a replacement for Supabase Auth abuse controls because attackers can call Auth endpoints directly with the public anon key.
 
@@ -183,15 +204,20 @@ App-side controls still apply after signup: onboarding, campaign build, generati
 
 Recommended Vercel account-level rules for public launch:
 
-1. Add bot/challenge or rate-limit protection for `/api/lead-capture`, `/f/*`, `/login`, `/api/billing/checkout`, and builder/generation routes.
-2. Exempt signed provider webhooks from challenge pages, but keep app-level signature validation:
+1. Enable Attack Challenge Mode only during an active attack:
+   - Vercel Dashboard → Project → Firewall → Attack Challenge Mode → Enable.
+   - Disable it after the incident to avoid unnecessary user friction.
+2. Add WAF Custom Rules in monitor/log mode first, then enforce:
+   - Rule: Challenge non-browser traffic for `/login`, `/f/*`, and `/api/lead-capture`.
+   - Rule: Rate-limit or challenge repeated POSTs to `/api/billing/checkout`, `/api/onboarding/plan`, `/api/build-campaign`, `/api/generate-funnel`, `/api/generate-creatives`, and `/api/builder/*`.
+   - Rule: Bypass provider webhook endpoints listed below so Stripe/Twilio/Meta are never served a browser challenge.
+3. Exempt signed provider webhooks from challenge pages, but keep app-level signature validation:
    - `/api/stripe/webhook`
    - `/api/integrations/meta/callback`
    - `/api/sms/twilio`
-3. Block or challenge obvious high-risk countries/IP ranges only after reviewing real traffic.
-4. Keep `/api/internal/*` inaccessible except through the configured cron secret. Do not create public bypasses.
-5. Roll out new WAF rules in log-only/monitoring mode first, then enforce after confirming no Stripe, Meta, Supabase auth, or funnel traffic is blocked.
-6. During an active attack, enable Attack Challenge Mode for public lead and signup paths before disabling core app functionality.
+4. Block or challenge obvious high-risk countries/IP ranges only after reviewing real traffic.
+5. Keep `/api/internal/*` inaccessible except through the configured cron secret. Do not create public bypasses.
+6. Confirm Vercel Firewall logs show no challenge/block events for Stripe, Meta, Supabase Auth callbacks, or public funnel visits before enforcing.
 
 ## Support Playbook
 

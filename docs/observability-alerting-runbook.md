@@ -101,8 +101,8 @@ Escalate to owner approval before:
 
 These settings need account owner access and are not controlled by code:
 
-- Supabase Auth signup policy, email confirmation, CAPTCHA/Turnstile, auth rate limits, and approved redirect URLs.
-- Vercel Firewall/WAF rules and log-drain destinations.
+- Supabase Auth signup policy, email confirmation, CAPTCHA/Turnstile, auth rate limits, and approved redirect URLs. Exact setup path: Supabase Dashboard → Project → Authentication → Bot and Abuse Protection / Rate Limits / URL Configuration.
+- Vercel Firewall/WAF rules and log-drain destinations. Exact setup path: Vercel Dashboard → Project → Firewall for WAF/Attack Challenge Mode, and Project → Settings → Log Drains for external log destinations.
 - Stripe webhook endpoint health alerts and production webhook signing secret rotation.
 - Meta app alerting, OAuth review status, and Ads account spending controls.
 - Twilio messaging service compliance review, inbound number ownership, and opt-out audit settings.

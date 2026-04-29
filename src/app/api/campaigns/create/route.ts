@@ -100,7 +100,17 @@ function getMetaDailyBudgetCapCents() {
     return DEFAULT_META_DAILY_BUDGET_CAP_CENTS;
   }
 
-  return Math.floor(configuredCap);
+  return Math.min(Math.floor(configuredCap), DEFAULT_META_DAILY_BUDGET_CAP_CENTS);
+}
+
+function assertMetaLiveLaunchEnabled() {
+  if (process.env.ALLOW_META_LIVE_LAUNCH !== "true") {
+    throw new ApiError(
+      503,
+      "Live Meta launch is disabled. Set ALLOW_META_LIVE_LAUNCH=true only after running the PAUSED retry proof.",
+      "meta_live_launch_disabled",
+    );
+  }
 }
 
 function buildStageFailureMessage(rawMessage: string, stage: LaunchStage) {
@@ -723,6 +733,7 @@ export async function launchCampaignToMeta(
     ownershipVerified = true;
     const campaignOwnerId = await loadCampaignOwnerId(campaignId);
     await assertMetaLaunchBillingAccessForOrganization(campaignOwnerId);
+    assertMetaLiveLaunchEnabled();
     const credentials: MetaWorkspaceCredentials = await getMetaWorkspaceCredentials();
     const storedPayload = await loadSavedCampaignPayload(campaignId);
     const currentPlan = await loadCampaignPlanDocument(campaignId);

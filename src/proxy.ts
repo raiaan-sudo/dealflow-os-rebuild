@@ -69,6 +69,7 @@ function applySecurityHeaders(response: NextResponse) {
     ...(isProduction ? [] : ["'unsafe-eval'"]),
     "https://js.stripe.com",
     "https://connect.facebook.net",
+    "https://challenges.cloudflare.com",
   ];
 
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -91,8 +92,8 @@ function applySecurityHeaders(response: NextResponse) {
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
       "media-src 'self' blob: https:",
-      "connect-src 'self' https://*.supabase.co https://api.stripe.com https://graph.facebook.com https://www.facebook.com https://api.openai.com https://api.heygen.com",
-      "frame-src https://js.stripe.com https://hooks.stripe.com https://www.facebook.com",
+      "connect-src 'self' https://*.supabase.co https://api.stripe.com https://graph.facebook.com https://www.facebook.com https://api.openai.com https://api.heygen.com https://challenges.cloudflare.com",
+      "frame-src https://js.stripe.com https://hooks.stripe.com https://www.facebook.com https://challenges.cloudflare.com",
       "form-action 'self'",
       "object-src 'none'",
       "base-uri 'self'",

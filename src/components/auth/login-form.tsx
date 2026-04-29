@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type LoginFormProps = {
@@ -8,6 +8,26 @@ type LoginFormProps = {
   reason?: string;
   isConfigured: boolean;
 };
+
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
+const TURNSTILE_SCRIPT_ID = "cloudflare-turnstile-script";
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        element: HTMLElement,
+        options: {
+          sitekey: string;
+          callback: (token: string) => void;
+          "expired-callback": () => void;
+          "error-callback": () => void;
+        },
+      ) => string;
+      reset: (widgetId?: string) => void;
+    };
+  }
+}
 
 export function LoginForm({
   redirectedFrom,
@@ -21,6 +41,10 @@ export function LoginForm({
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
+  const turnstileWidgetIdRef = useRef<string | null>(null);
+  const turnstileEnabled = Boolean(TURNSTILE_SITE_KEY);
 
   function getSafeRedirectPath(value?: string) {
     if (!value) {
@@ -109,10 +133,15 @@ export function LoginForm({
         return;
       }
 
+      if (turnstileEnabled && !turnstileToken) {
+        throw new Error("Please complete the verification challenge.");
+      }
+
       const { error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
+          captchaToken: turnstileEnabled ? turnstileToken : undefined,
           data: {
             full_name: fullName,
           },
@@ -127,13 +156,72 @@ export function LoginForm({
         "Account created. If email confirmation is enabled in Supabase, confirm your inbox before signing in.",
       );
       setMode("sign-in");
+      resetTurnstile();
     } catch (caughtError) {
       setError(
         caughtError instanceof Error ? caughtError.message : "Authentication failed.",
       );
+      if (mode === "sign-up") {
+        resetTurnstile();
+      }
     } finally {
       setIsPending(false);
     }
+  }
+
+  useEffect(() => {
+    if (mode !== "sign-up") {
+      setTurnstileToken("");
+      turnstileWidgetIdRef.current = null;
+      return;
+    }
+
+    const siteKey = TURNSTILE_SITE_KEY;
+
+    if (!siteKey || !turnstileContainerRef.current || turnstileWidgetIdRef.current) {
+      return;
+    }
+
+    function renderTurnstile(siteKey: string) {
+      if (!window.turnstile || !turnstileContainerRef.current || turnstileWidgetIdRef.current) {
+        return;
+      }
+
+      turnstileWidgetIdRef.current = window.turnstile.render(turnstileContainerRef.current, {
+        sitekey: siteKey,
+        callback: setTurnstileToken,
+        "expired-callback": () => setTurnstileToken(""),
+        "error-callback": () => setTurnstileToken(""),
+      });
+    }
+
+    const existingScript = document.getElementById(TURNSTILE_SCRIPT_ID);
+    if (existingScript) {
+      const renderExistingTurnstile = () => renderTurnstile(siteKey);
+      renderExistingTurnstile();
+      existingScript.addEventListener("load", renderExistingTurnstile, { once: true });
+      return () => existingScript.removeEventListener("load", renderExistingTurnstile);
+    }
+
+    const script = document.createElement("script");
+    script.id = TURNSTILE_SCRIPT_ID;
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.async = true;
+    script.defer = true;
+    const renderNewTurnstile = () => renderTurnstile(siteKey);
+    script.addEventListener("load", renderNewTurnstile, { once: true });
+    document.head.appendChild(script);
+
+    return () => script.removeEventListener("load", renderNewTurnstile);
+  }, [mode]);
+
+  function resetTurnstile() {
+    if (!turnstileWidgetIdRef.current) {
+      return;
+    }
+
+    setTurnstileToken("");
+    window.turnstile?.reset(turnstileWidgetIdRef.current);
   }
 
   const actionLabel =
@@ -221,6 +309,15 @@ export function LoginForm({
             className="h-11 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none"
           />
         </label>
+
+        {mode === "sign-up" && turnstileEnabled ? (
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+            <div ref={turnstileContainerRef} />
+            {!turnstileToken ? (
+              <p className="mt-2 text-xs text-white/60">Complete the verification challenge before creating an account.</p>
+            ) : null}
+          </div>
+        ) : null}
 
         {reason === "setup" ? (
           <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100">
