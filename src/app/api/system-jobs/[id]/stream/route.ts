@@ -11,7 +11,7 @@ export async function GET(
     const { id } = await context.params;
     const jobId = id?.trim();
     const job = jobId ? await getSystemJob(jobId, auth.userId) : null;
-    const logs = job ? await getSystemJobLogs(job.id) : [];
+    const logs = job ? await getSystemJobLogs(job.id, auth.userId) : [];
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream({

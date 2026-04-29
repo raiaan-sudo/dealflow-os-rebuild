@@ -234,6 +234,8 @@ export async function createSystemJob<K extends SystemJobKind>(params: {
       .from("system_jobs")
       .select("*")
       .eq("idempotency_key", params.idempotencyKey.trim())
+      .eq("organization_id", params.organizationId)
+      .eq("user_id", params.userId)
       .maybeSingle();
 
     if (existingError) {
@@ -267,6 +269,8 @@ export async function createSystemJob<K extends SystemJobKind>(params: {
         .from("system_jobs")
         .select("*")
         .eq("idempotency_key", params.idempotencyKey.trim())
+        .eq("organization_id", params.organizationId)
+        .eq("user_id", params.userId)
         .maybeSingle();
 
       if (!recoveredError && recoveredRaw) {
@@ -374,13 +378,20 @@ export async function listSystemJobs(params: {
   return Array.isArray(data) ? data.map((row) => parseSystemJob(row as SystemJobRow)) : [];
 }
 
-export async function getSystemJobLogs(jobId: string) {
+export async function getSystemJobLogs(jobId: string, userId?: string) {
   const supabase = getJobClient();
-  const { data, error } = await supabase
+  const selection = userId ? "*, system_jobs!inner(user_id)" : "*";
+  let query = supabase
     .from("system_job_logs")
-    .select("*")
+    .select(selection)
     .eq("job_id", jobId)
     .order("created_at", { ascending: true });
+
+  if (userId) {
+    query = query.eq("system_jobs.user_id", userId);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     throw new ApiError(500, error.message, "system_job_log_list_failed");
