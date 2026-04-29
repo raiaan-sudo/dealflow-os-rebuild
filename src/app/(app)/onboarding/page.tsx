@@ -7,6 +7,7 @@ import { WizardSteps } from "@/components/app/wizard-steps";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PageShell } from "@/components/ui/page-shell";
 import { Spinner } from "@/components/ui/spinner";
 
 type CampaignFocus = "seller" | "buyer";
@@ -739,15 +740,16 @@ export default function OnboardingPage() {
         type="button"
         onClick={params.onClick}
         disabled={loading}
-        className={`rounded-2xl border px-4 py-4 text-left transition ${
+        className={`group relative overflow-hidden rounded-[22px] border px-4 py-4 text-left transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-55 ${
           params.active
-            ? "border-foreground bg-foreground text-background"
-            : "border-border/70 bg-background text-foreground hover:border-foreground/40"
+            ? "border-cyan-200/35 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.18),transparent_70%),linear-gradient(145deg,rgba(116,199,255,0.16),rgba(124,58,237,0.12))] text-white shadow-[0_20px_55px_-36px_rgba(103,232,249,0.75)]"
+            : "border-white/10 bg-white/[0.035] text-foreground hover:-translate-y-0.5 hover:border-cyan-200/22 hover:bg-white/[0.06]"
         }`}
       >
+        <span className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
         <p className="text-sm font-semibold">{params.label}</p>
         {params.description ? (
-          <p className={`mt-1 text-sm ${params.active ? "text-background/75" : "text-muted-foreground"}`}>
+          <p className={`mt-1 text-sm ${params.active ? "text-white/72" : "text-muted-foreground"}`}>
             {params.description}
           </p>
         ) : null}
@@ -756,7 +758,7 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[920px] space-y-8">
+    <PageShell className="max-w-[980px]">
       <WizardSteps current="onboarding" />
       <PageHeader
         eyebrow="Campaign setup"
@@ -766,14 +768,14 @@ export default function OnboardingPage() {
 
       <Card className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          <p className="df-eyebrow">
             {formatProgressLabel(currentStep)}
           </p>
           <p className="text-sm text-muted-foreground">
             About 60 seconds for setup, then about 90 seconds to generate the preview.
           </p>
         </div>
-        <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+        <div className="rounded-2xl border border-cyan-200/12 bg-cyan-300/[0.045] px-4 py-3 text-sm text-cyan-50/70">
           Resume is always saved. If generation slows down, you can come back without losing progress.
         </div>
       </Card>
@@ -806,7 +808,7 @@ export default function OnboardingPage() {
         </Card>
       ) : null}
 
-      <Card className="p-6 sm:p-8">
+      <Card className="overflow-hidden p-6 sm:p-8">
         <form className="space-y-8" onSubmit={handleSubmit}>
           <div className="grid gap-6 md:grid-cols-2">
             <label className="space-y-2 text-sm">
@@ -938,8 +940,8 @@ export default function OnboardingPage() {
               </p>
             </label>
 
-            <div className="rounded-3xl border border-border/70 bg-muted/20 p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Preview summary</p>
+            <div className="surface-strong rounded-[24px] border border-white/10 p-5">
+              <p className="df-eyebrow">Preview summary</p>
               <div className="mt-3 space-y-2 text-sm text-foreground">
                 <p><span className="text-muted-foreground">Market:</span> {market || "Your city"}</p>
                 <p><span className="text-muted-foreground">Focus:</span> {FOCUS_SUMMARY[focus]}</p>
@@ -950,7 +952,7 @@ export default function OnboardingPage() {
             </div>
           </div>
 
-          <div className="space-y-4 rounded-3xl border border-border/60 bg-muted/20 p-4">
+          <div className="surface-strong space-y-4 rounded-[24px] border border-white/10 p-4">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-foreground">Generation progress</p>
@@ -976,7 +978,15 @@ export default function OnboardingPage() {
                 return (
                   <div
                     key={step.key}
-                    className="flex items-center justify-between rounded-2xl border border-border/60 bg-background/80 px-4 py-3"
+                    className={`flex items-center justify-between rounded-2xl border px-4 py-3 transition-colors duration-200 ${
+                      isActive
+                        ? "border-cyan-200/24 bg-cyan-300/[0.055]"
+                        : isComplete
+                          ? "border-emerald-300/18 bg-emerald-300/[0.035]"
+                          : isFailed
+                            ? "border-rose-300/20 bg-rose-400/[0.045]"
+                            : "border-white/10 bg-black/20"
+                    }`}
                   >
                     <div className="space-y-1">
                       <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{step.title}</p>
@@ -1055,6 +1065,6 @@ export default function OnboardingPage() {
           </div>
         </form>
       </Card>
-    </div>
+    </PageShell>
   );
 }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PageShell } from "@/components/ui/page-shell";
 import {
   getBillingSummary,
   reconcileBillingCheckoutSuccess,
@@ -27,7 +28,7 @@ export default async function UnlockPage({
   const launchAllowed = billing?.launchAllowed ?? false;
 
   return (
-    <div className="space-y-8">
+    <PageShell>
       <PageHeader
         eyebrow="Billing"
         title={launchAllowed ? "Launch access active" : "Checkout updated"}
@@ -65,6 +66,6 @@ export default async function UnlockPage({
           </Button>
         </div>
       </Card>
-    </div>
+    </PageShell>
   );
 }

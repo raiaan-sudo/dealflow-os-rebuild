@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PageShell } from "@/components/ui/page-shell";
 import { CheckoutButton } from "@/components/billing/checkout-button";
 import { BILLING_PLANS } from "@/lib/billing/plans";
 import { getBillingSummary } from "@/lib/services/billing-service";
@@ -19,7 +20,7 @@ export default async function PaywallPage({
   const proPlan = BILLING_PLANS.pro;
 
   return (
-    <div className="space-y-8">
+    <PageShell>
       <WizardSteps current="launch" />
       <PageHeader
         eyebrow="Activate"
@@ -38,7 +39,7 @@ export default async function PaywallPage({
             </p>
           </div>
 
-          <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
+          <div className="surface-subtle rounded-[20px] border border-white/10 p-5">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Plan</p>
             <p className="mt-2 text-lg font-semibold">
               {proPlan.name} · {proPlan.priceLabel}
@@ -64,6 +65,6 @@ export default async function PaywallPage({
           </div>
         </div>
       </Card>
-    </div>
+    </PageShell>
   );
 }

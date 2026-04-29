@@ -86,10 +86,10 @@ export function FeedbackWidget() {
 
       {open ? (
         <div className="fixed inset-0 z-50 flex items-end justify-end bg-black/55 p-4 backdrop-blur-sm sm:items-center sm:justify-center">
-          <div className="w-full max-w-lg rounded-[28px] border border-white/10 bg-[#060a11] p-6 shadow-[0_40px_120px_-52px_rgba(0,0,0,0.95)]">
+          <div className="surface-guided w-full max-w-lg rounded-df-panel border border-white/10 p-6 shadow-df-elevated">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary/80">
+                <p className="df-eyebrow">
                   Early feedback
                 </p>
                 <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">
@@ -115,7 +115,7 @@ export function FeedbackWidget() {
                 </label>
                 <textarea
                   id="feedback-confused"
-                  className="min-h-28 w-full rounded-[20px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition focus:border-primary/30 focus:ring-2 focus:ring-primary/20"
+                  className="min-h-28 w-full rounded-df-control border border-white/10 bg-white/[0.045] px-4 py-3 text-sm text-white outline-none transition duration-200 placeholder:text-white/35 focus:border-cyan-200/40 focus:bg-white/[0.07] focus:ring-2 focus:ring-cyan-200/10"
                   placeholder="Anything unclear, surprising, or harder than it should be."
                   value={confusedText}
                   onChange={(event) => setConfusedText(event.target.value)}
@@ -128,7 +128,7 @@ export function FeedbackWidget() {
                 </label>
                 <textarea
                   id="feedback-blocker"
-                  className="min-h-28 w-full rounded-[20px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition focus:border-primary/30 focus:ring-2 focus:ring-primary/20"
+                  className="min-h-28 w-full rounded-df-control border border-white/10 bg-white/[0.045] px-4 py-3 text-sm text-white outline-none transition duration-200 placeholder:text-white/35 focus:border-cyan-200/40 focus:bg-white/[0.07] focus:ring-2 focus:ring-cyan-200/10"
                   placeholder="Anything missing, risky, or not believable enough."
                   value={blockerText}
                   onChange={(event) => setBlockerText(event.target.value)}
@@ -142,7 +142,7 @@ export function FeedbackWidget() {
                 <input
                   id="feedback-email"
                   type="email"
-                  className="h-12 w-full rounded-[18px] border border-white/10 bg-white/[0.04] px-4 text-sm text-white outline-none transition focus:border-primary/30 focus:ring-2 focus:ring-primary/20"
+                  className="h-12 w-full rounded-df-control border border-white/10 bg-white/[0.045] px-4 text-sm text-white outline-none transition duration-200 placeholder:text-white/35 focus:border-cyan-200/40 focus:bg-white/[0.07] focus:ring-2 focus:ring-cyan-200/10"
                   placeholder="you@team.com"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}

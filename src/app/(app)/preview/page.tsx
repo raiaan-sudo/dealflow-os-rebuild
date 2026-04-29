@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
+import { PageShell } from "@/components/ui/page-shell";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { getSelectedAdIdFromPlan, readCampaignPlanDocument } from "@/lib/services/campaign-plan-document";
@@ -56,7 +57,7 @@ export default async function PreviewPage({
 
   if (!plan) {
     return (
-      <div className="mx-auto w-full max-w-[900px] space-y-8 p-6 sm:p-8">
+      <PageShell className="max-w-[900px]">
         <WizardSteps current="review" />
         <PageHeader
           eyebrow="Preview"
@@ -67,7 +68,7 @@ export default async function PreviewPage({
           title="No campaign available yet"
           description="Finish onboarding to create a campaign before opening review."
         />
-      </div>
+      </PageShell>
     );
   }
 
@@ -75,7 +76,7 @@ export default async function PreviewPage({
 
   if (!validated) {
     return (
-      <div className="mx-auto w-full max-w-[900px] space-y-8 p-6 sm:p-8">
+      <PageShell className="max-w-[900px]">
         <WizardSteps current="review" />
         <PageHeader
           eyebrow="Preview"
@@ -86,7 +87,7 @@ export default async function PreviewPage({
           title="Preview data incomplete"
           description="Some campaign details are missing. Update or regenerate the campaign, then return to review."
         />
-      </div>
+      </PageShell>
     );
   }
 
@@ -99,7 +100,7 @@ export default async function PreviewPage({
   const campaignIdForFlow = record?.campaign.id ?? null;
 
   return (
-    <div className="mx-auto w-full max-w-[900px] space-y-8 p-6 sm:p-8">
+    <PageShell className="max-w-[900px]">
       <WizardSteps current="review" />
       <PageHeader
         eyebrow="Preview"
@@ -107,7 +108,7 @@ export default async function PreviewPage({
         description="Review the selected funnel and ad, then move into launch."
       />
 
-      <section className="space-y-4 rounded-2xl border border-border bg-card p-6">
+      <section className="surface-strong space-y-4 rounded-df-card border border-white/10 p-6">
         <h2 className="text-lg font-semibold text-foreground">Selected funnel</h2>
         <FunnelPreview
           plan={previewPlan}
@@ -116,17 +117,17 @@ export default async function PreviewPage({
         />
       </section>
 
-      <section className="space-y-4 rounded-2xl border border-border bg-card p-6">
+      <section className="surface-strong space-y-4 rounded-df-card border border-white/10 p-6">
         <h2 className="text-lg font-semibold text-foreground">Selected ad</h2>
         {selectedAd ? (
-          <div className="overflow-hidden rounded-2xl border border-border bg-background">
+          <div className="surface-subtle overflow-hidden rounded-df-card border border-white/10">
             {selectedAd.imageUrl ? (
               <div
                 className="aspect-[16/9] w-full bg-cover bg-center"
                 style={{ backgroundImage: `url(${selectedAd.imageUrl})` }}
               />
             ) : (
-              <div className="flex aspect-[16/9] items-center justify-center bg-muted text-sm text-muted-foreground">
+              <div className="flex aspect-[16/9] items-center justify-center bg-black/20 text-sm text-muted-foreground">
                 Preview image not available yet
               </div>
             )}
@@ -146,7 +147,7 @@ export default async function PreviewPage({
             </div>
           </div>
         ) : (
-          <div className="rounded-2xl border border-border p-6 text-sm text-muted-foreground">
+          <div className="rounded-df-card border border-white/10 bg-white/[0.035] p-6 text-sm text-muted-foreground">
             No saved ad preview is ready yet. Go back to creatives and choose an ad first.
           </div>
         )}
@@ -164,6 +165,6 @@ export default async function PreviewPage({
           </Link>
         </Button>
       </div>
-    </div>
+    </PageShell>
   );
 }

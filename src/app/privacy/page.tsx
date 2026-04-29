@@ -7,12 +7,12 @@ const lastUpdated = "April 28, 2026";
 
 export default function PrivacyPolicyPage() {
   return (
-    <main className="mx-auto max-w-3xl py-10 text-white">
+    <main className="mx-auto max-w-3xl px-6 py-16 text-white">
       <p className="text-sm uppercase tracking-[0.3em] text-sky-300">DealFlow OS</p>
       <h1 className="mt-4 text-4xl font-semibold tracking-tight">Privacy Policy</h1>
       <p className="mt-3 text-sm text-white/60">Last updated: {lastUpdated}</p>
 
-      <div className="mt-10 space-y-8 rounded-3xl border border-white/10 bg-white/[0.04] p-6 leading-7 text-white/75 shadow-2xl shadow-black/20">
+      <div className="surface-guided mt-10 space-y-8 rounded-df-panel border border-white/10 p-6 leading-7 text-white/75 shadow-df-elevated sm:p-8">
         <section>
           <h2 className="text-xl font-semibold text-white">1. Overview</h2>
           <p className="mt-3">

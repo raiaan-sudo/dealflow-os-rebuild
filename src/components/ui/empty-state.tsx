@@ -12,7 +12,7 @@ export function EmptyState({ title, description, className, guidance }: EmptySta
   return (
     <Card
       className={cn(
-        "relative overflow-hidden flex min-h-52 flex-col items-center justify-center px-6 py-10 text-center",
+        "relative flex min-h-52 flex-col items-center justify-center overflow-hidden px-6 py-10 text-center",
         className,
       )}
     >
@@ -21,7 +21,9 @@ export function EmptyState({ title, description, className, guidance }: EmptySta
         <span className="system-status-dot" />
         AI guidance ready
       </div>
-      <div className="mb-4 h-11 w-11 rounded-full border border-white/10 bg-white/[0.04] shadow-[0_14px_36px_-24px_rgba(108,184,255,0.55)]" />
+      <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full border border-cyan-200/15 bg-cyan-300/[0.045] shadow-df-glow-blue">
+        <span className="h-2.5 w-2.5 rounded-full bg-cyan-200 shadow-[0_0_18px_rgba(103,232,249,0.8)]" />
+      </div>
       <p className="text-xl font-semibold tracking-[-0.04em]">{title}</p>
       <p className="mt-2 max-w-xl text-sm leading-7 text-muted-foreground">
         {description}

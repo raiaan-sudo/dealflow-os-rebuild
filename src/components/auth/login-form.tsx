@@ -231,10 +231,13 @@ export function LoginForm({
         ? "Launch My Campaign"
         : "Create Account";
 
+  const inputClassName =
+    "h-12 w-full rounded-df-control border border-white/10 bg-white/[0.045] px-4 text-white outline-none transition duration-200 placeholder:text-white/35 focus:border-cyan-200/40 focus:bg-white/[0.07] focus:shadow-[0_0_0_3px_rgba(103,232,249,0.08)]";
+
   return (
-    <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-6 shadow-[0_30px_90px_-45px_rgba(0,0,0,0.7)] sm:p-8">
+    <div className="surface-guided rounded-df-panel border border-white/10 p-6 shadow-df-elevated sm:p-8">
       <div className="mb-6">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary/80">
+        <p className="df-eyebrow">
           Replace your agency
         </p>
         <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">
@@ -245,12 +248,12 @@ export function LoginForm({
         </p>
       </div>
 
-      <div className="flex rounded-full bg-white/[0.04] p-1">
+      <div className="flex rounded-full border border-white/10 bg-white/[0.04] p-1 shadow-inner shadow-black/30">
         <button
           className={`flex-1 rounded-full px-4 py-2 text-sm transition ${
             mode === "sign-in"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground"
+              ? "bg-df-primary text-slate-950 shadow-df-button"
+              : "text-muted-foreground hover:text-white"
           }`}
           onClick={() => setMode("sign-in")}
           type="button"
@@ -260,8 +263,8 @@ export function LoginForm({
         <button
           className={`flex-1 rounded-full px-4 py-2 text-sm transition ${
             mode === "sign-up"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground"
+              ? "bg-df-primary text-slate-950 shadow-df-button"
+              : "text-muted-foreground hover:text-white"
           }`}
           onClick={() => setMode("sign-up")}
           type="button"
@@ -279,7 +282,7 @@ export function LoginForm({
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
               placeholder="Alex Morgan"
-              className="h-11 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none"
+              className={inputClassName}
             />
           </label>
         ) : null}
@@ -293,7 +296,7 @@ export function LoginForm({
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             placeholder="you@company.com"
-            className="h-11 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none"
+            className={inputClassName}
           />
         </label>
 
@@ -306,7 +309,7 @@ export function LoginForm({
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             placeholder="••••••••"
-            className="h-11 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none"
+            className={inputClassName}
           />
         </label>
 
@@ -350,7 +353,7 @@ export function LoginForm({
         ) : null}
 
         <button
-          className="h-12 w-full rounded-2xl bg-primary px-4 text-base font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+          className="h-12 w-full rounded-df-control bg-df-primary px-4 text-base font-semibold text-slate-950 shadow-df-button transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_70px_-32px_rgba(103,232,249,0.95)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
           disabled={!isConfigured || isPending}
           type="submit"
         >
@@ -358,7 +361,7 @@ export function LoginForm({
         </button>
 
         <button
-          className="h-12 w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+          className="h-12 w-full rounded-df-control border border-white/10 bg-white/[0.035] px-4 text-base font-semibold text-white transition duration-200 hover:-translate-y-0.5 hover:border-cyan-200/25 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
           disabled={!isConfigured || isPending}
           onClick={() => handleProviderLogin("google")}
           type="button"

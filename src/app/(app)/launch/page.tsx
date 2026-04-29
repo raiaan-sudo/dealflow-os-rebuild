@@ -5,6 +5,7 @@ import { LaunchMetaSelectionPanel } from "@/components/campaign/launch/launch-me
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
+import { PageShell } from "@/components/ui/page-shell";
 import { StatusPill, getStatusTone } from "@/components/ui/status-pill";
 import { getCampaignIntentLabel } from "@/lib/campaign-intent";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
@@ -153,7 +154,7 @@ export default async function LaunchAliasPage({
 
   if (!plan) {
     return (
-      <div className="space-y-8">
+      <PageShell>
         <WizardSteps current="launch" />
         <PageHeader
           eyebrow="Launch"
@@ -169,7 +170,7 @@ export default async function LaunchAliasPage({
             <Link href="/dashboard">Open dashboard</Link>
           </Button>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
@@ -220,7 +221,7 @@ export default async function LaunchAliasPage({
 
   if (!selectedAdId || !selectedCreative) {
     return (
-      <div className="space-y-8">
+      <PageShell>
         <WizardSteps current="launch" />
         <PageHeader
           eyebrow="Launch"
@@ -244,12 +245,12 @@ export default async function LaunchAliasPage({
             </Link>
           </Button>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="space-y-8">
+    <PageShell>
       <WizardSteps current="launch" />
       <PageHeader
         eyebrow="Launch"
@@ -290,7 +291,7 @@ export default async function LaunchAliasPage({
       <Card className="p-5 sm:p-7">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
           <div className="space-y-4">
-            <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-5">
+            <div className="surface-subtle rounded-[22px] border border-white/10 p-5">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Campaign</p>
               <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
                 {plan.businessName || `${plan.market} ${intentLabel} Campaign`}
@@ -340,7 +341,7 @@ export default async function LaunchAliasPage({
                 </div>
               ) : null}
             </div>
-            <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-5">
+            <div className="surface-subtle rounded-[22px] border border-white/10 p-5">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Meta setup</p>
               <p className="mt-3 text-sm font-semibold">
                 {metaConnected
@@ -353,7 +354,7 @@ export default async function LaunchAliasPage({
               </p>
             </div>
           </div>
-          <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-5">
+          <div className="surface-subtle rounded-[22px] border border-white/10 p-5">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Selected creative</p>
             {selectedCreative ? (
               <div className="mt-4 space-y-4">
@@ -424,6 +425,6 @@ export default async function LaunchAliasPage({
           </div>
         </div>
       </Card>
-    </div>
+    </PageShell>
   );
 }

@@ -195,7 +195,7 @@ export function LeadCaptureTrigger({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-end bg-black/55 p-4 backdrop-blur-sm sm:items-center sm:justify-center">
-      <div className="w-full max-w-md rounded-[28px] border border-white/10 bg-[#060a11] p-6 shadow-[0_40px_120px_-52px_rgba(0,0,0,0.95)]">
+      <div className="surface-guided w-full max-w-md rounded-df-panel border border-white/10 p-6 shadow-df-elevated">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h3 className="text-2xl font-semibold tracking-[-0.04em] text-white">
@@ -222,7 +222,7 @@ export function LeadCaptureTrigger({
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="Jordan Walker"
-              className="h-12 rounded-[18px] border-white/10 bg-white/[0.04] text-white"
+              className="h-12"
             />
           </div>
           <div className="space-y-2">
@@ -235,7 +235,7 @@ export function LeadCaptureTrigger({
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="you@team.com"
-              className="h-12 rounded-[18px] border-white/10 bg-white/[0.04] text-white"
+              className="h-12"
             />
           </div>
         </div>

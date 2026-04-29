@@ -2,13 +2,14 @@ import { PageHeader } from "@/components/app/page-header";
 import { CheckoutButton } from "@/components/billing/checkout-button";
 import { PortalButton } from "@/components/billing/portal-button";
 import { Card } from "@/components/ui/card";
+import { PageShell } from "@/components/ui/page-shell";
 import { getBillingSummary } from "@/lib/services/billing-service";
 
 export default async function SettingsPage() {
   const billing = await getBillingSummary().catch(() => null);
 
   return (
-    <div className="space-y-6">
+    <PageShell>
       <PageHeader
         eyebrow="Workspace"
         title="Settings"
@@ -50,6 +51,6 @@ export default async function SettingsPage() {
           )}
         </div>
       </Card>
-    </div>
+    </PageShell>
   );
 }

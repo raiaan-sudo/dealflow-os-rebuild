@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { CampaignDashboardView } from "@/components/dashboard/campaign-dashboard-view";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
+import { PageShell } from "@/components/ui/page-shell";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import {
   getCampaignPayloadFromPlan,
@@ -241,7 +242,7 @@ async function loadLeadLoopVerified(campaignId: string | null) {
 
 function DashboardFallback({ campaignId = null }: { campaignId?: string | null }) {
   return (
-    <div className="space-y-8">
+    <PageShell>
       <PageHeader
         eyebrow="Dashboard"
         title="Dashboard"
@@ -273,7 +274,7 @@ function DashboardFallback({ campaignId = null }: { campaignId?: string | null }
           </Link>
         </Button>
       </div>
-    </div>
+    </PageShell>
   );
 }
 
@@ -423,7 +424,7 @@ export default async function DashboardPage({
 
   if (!state.plan) {
     return (
-      <div className="space-y-8">
+      <PageShell>
         <PageHeader
           eyebrow="Dashboard"
           title="Dashboard"
@@ -451,7 +452,7 @@ export default async function DashboardPage({
             </Link>
           </Button>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
@@ -467,7 +468,7 @@ export default async function DashboardPage({
   const recentDeals = state.dashboardData?.recentDeals ?? [];
 
   return (
-    <div className="space-y-8">
+    <PageShell>
       <PageHeader
         eyebrow="Dashboard"
         title="Dashboard"
@@ -510,6 +511,6 @@ export default async function DashboardPage({
           },
         )}
       />
-    </div>
+    </PageShell>
   );
 }
