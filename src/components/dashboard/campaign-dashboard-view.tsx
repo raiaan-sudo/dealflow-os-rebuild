@@ -72,6 +72,7 @@ type Props = {
   } | null;
   leadLoopVerified?: boolean;
   firstWeekSuccess?: FirstWeekSuccessState | null;
+  renderedAt?: string;
 };
 
 function currency(value: number) {
@@ -86,12 +87,12 @@ function normalizeText(value: string | null | undefined) {
   return (value ?? "").trim().toLowerCase();
 }
 
-function formatLastVerified(value: string | null | undefined) {
+function formatLastVerified(value: string | null | undefined, nowMs: number) {
   if (!value) {
     return "not verified yet";
   }
 
-  const diffMs = Date.now() - new Date(value).getTime();
+  const diffMs = nowMs - new Date(value).getTime();
   const diffMinutes = Math.max(0, Math.round(diffMs / 60_000));
 
   if (diffMinutes <= 1) {
@@ -103,7 +104,7 @@ function formatLastVerified(value: string | null | undefined) {
 
 const META_SYNC_STALE_MS = 30 * 60 * 1000;
 
-function isStaleSync(value: string | null | undefined) {
+function isStaleSync(value: string | null | undefined, nowMs: number) {
   if (!value) {
     return true;
   }
@@ -114,7 +115,7 @@ function isStaleSync(value: string | null | undefined) {
     return true;
   }
 
-  return Date.now() - timestamp > META_SYNC_STALE_MS;
+  return nowMs - timestamp > META_SYNC_STALE_MS;
 }
 
 function includesRecommendation(
@@ -194,7 +195,10 @@ export function CampaignDashboardView({
   selectedAdSummary = null,
   leadLoopVerified = false,
   firstWeekSuccess = null,
+  renderedAt,
 }: Props) {
+  const renderedAtMs = new Date(renderedAt ?? "1970-01-01T00:00:00.000Z").getTime();
+  const stableNowMs = Number.isFinite(renderedAtMs) ? renderedAtMs : 0;
   const launchState = getLaunchState(plan);
   const dataSourceState = getDataSourceState({
     metaConnection,
@@ -348,7 +352,7 @@ export function CampaignDashboardView({
       : typeof syncSnapshot?.lastSyncedAt === "string"
         ? syncSnapshot.lastSyncedAt
         : null;
-  const syncIsStale = isStaleSync(syncedAt);
+  const syncIsStale = isStaleSync(syncedAt, stableNowMs);
   const syncStateLabel = !syncedAt
     ? "Estimated state only"
     : syncIsStale
@@ -408,7 +412,7 @@ export function CampaignDashboardView({
     { label: "Meta connection", value: metaConnection.accountName || "Not connected" },
   ];
   const metaStatusText = metaConnection.hasAccessToken
-    ? `Connected (last verified ${formatLastVerified(metaConnection.lastSyncAt ?? metaConnection.connectedAt)})`
+    ? `Connected (last verified ${formatLastVerified(metaConnection.lastSyncAt ?? metaConnection.connectedAt, stableNowMs)})`
     : "Not connected";
   const metaSelectionMissingText = metaConnection.hasAccessToken
     ? "Selection required before launch"
@@ -558,7 +562,7 @@ export function CampaignDashboardView({
           <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Freshness</p>
             <p className="mt-3 text-sm leading-6">
-              {syncedAt ? `Last verified ${formatLastVerified(syncedAt)}` : "Not verified yet"}
+              {syncedAt ? `Last verified ${formatLastVerified(syncedAt, stableNowMs)}` : "Not verified yet"}
             </p>
           </div>
           <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">

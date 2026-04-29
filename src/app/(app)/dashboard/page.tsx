@@ -491,6 +491,7 @@ export default async function DashboardPage({
         selectedAdSummary={state.selectedAdSummary}
         leadLoopVerified={state.leadLoopVerified}
         firstWeekSuccess={state.firstWeekSuccess}
+        renderedAt={state.lastUpdatedAt}
         optimizerResult={analyzeCampaign(
           buildOptimizerInput({
             plan: state.plan,
