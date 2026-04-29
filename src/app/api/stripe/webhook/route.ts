@@ -1,12 +1,21 @@
 import Stripe from "stripe";
 import { headers } from "next/headers";
-import { ApiError, apiSuccess, handleApiError } from "@/lib/api/route";
+import {
+  ApiError,
+  STRIPE_WEBHOOK_BODY_LIMIT_BYTES,
+  apiSuccess,
+  handleApiError,
+  parseTextBody,
+} from "@/lib/api/route";
 import { getStripeBillingProvider } from "@/lib/integrations/stripe/provider";
 import { handleStripeBillingEvent } from "@/lib/services/billing-service";
 
 export async function POST(request: Request) {
   try {
-    const rawBody = await request.text();
+    const rawBody = await parseTextBody(request, {
+      maxBytes: STRIPE_WEBHOOK_BODY_LIMIT_BYTES,
+      code: "stripe_webhook_body_too_large",
+    });
     const headerStore = await headers();
     const signature = headerStore.get("stripe-signature");
 

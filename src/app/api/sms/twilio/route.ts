@@ -1,4 +1,11 @@
-import { ApiError, handleApiError } from "@/lib/api/route";
+import { ApiError, handleApiError, parseTextBody } from "@/lib/api/route";
+import {
+  buildRateLimitResponse,
+  consumeRateLimit,
+  getHashedRateLimitIdentifier,
+  getRateLimitKey,
+  getRequestIp,
+} from "@/lib/api/rate-limit";
 import {
   handleIncomingSMS,
   validateTwilioWebhookSignature,
@@ -25,7 +32,22 @@ export async function POST(request: Request) {
   const requestId = crypto.randomUUID();
 
   try {
-    const formData = await request.formData();
+    const ipHash = getHashedRateLimitIdentifier(getRequestIp(request));
+    const inboundRateLimit = await consumeRateLimit({
+      key: getRateLimitKey(request, "twilio:webhook:ip", ipHash),
+      limit: 30,
+      windowMs: 60_000,
+    });
+
+    if (inboundRateLimit && !inboundRateLimit.allowed) {
+      return buildRateLimitResponse(inboundRateLimit.resetAt);
+    }
+
+    const rawBody = await parseTextBody(request, {
+      maxBytes: 64 * 1024,
+      code: "twilio_body_too_large",
+    });
+    const formData = new URLSearchParams(rawBody);
     const signature = request.headers.get("x-twilio-signature");
 
     if (
@@ -35,12 +57,25 @@ export async function POST(request: Request) {
         formData,
       })
     ) {
+      const invalidRateLimit = await consumeRateLimit({
+        key: getRateLimitKey(request, "twilio:webhook:invalid", ipHash),
+        limit: 10,
+        windowMs: 60_000,
+      });
+      logOperationalEvent("sms.webhook_signature_rejected", {
+        requestId,
+        rateLimitRemaining: invalidRateLimit?.remaining ?? null,
+      });
+      if (invalidRateLimit && !invalidRateLimit.allowed) {
+        return buildRateLimitResponse(invalidRateLimit.resetAt);
+      }
       throw new ApiError(401, "Invalid Twilio webhook signature.", "twilio_signature_invalid");
     }
 
     const payload = await handleIncomingSMS(formData);
     const result = await handleIncomingMessageByPhone(payload.from, payload.body, {
       messageSid: payload.messageSid,
+      organizationId: process.env.TWILIO_INBOUND_ORGANIZATION_ID?.trim() || null,
     });
 
     logOperationalEvent("sms.inbound_processed", {

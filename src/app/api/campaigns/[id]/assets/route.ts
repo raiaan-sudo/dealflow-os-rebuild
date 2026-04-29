@@ -1,9 +1,16 @@
-import { ApiError, apiSuccess, assertSameOriginRequest, handleApiError } from "@/lib/api/route";
+import {
+  ApiError,
+  apiSuccess,
+  assertSameOriginRequest,
+  handleApiError,
+  parseFormDataBody,
+} from "@/lib/api/route";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import {
   listCampaignCreativeAssets,
   uploadManualCreativeAsset,
 } from "@/lib/services/creative-builder-service";
+import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 
 export async function GET(
   _request: Request,
@@ -39,7 +46,20 @@ export async function POST(
       throw new ApiError(400, "Campaign id is required.", "campaign_id_required");
     }
 
-    const formData = await request.formData();
+    const rateLimit = await consumeRateLimit({
+      key: getRateLimitKey(request, "campaign-assets-upload", `${auth.organizationId}:${auth.userId}:${campaignId}`),
+      limit: 12,
+      windowMs: 60_000,
+    });
+
+    if (rateLimit && !rateLimit.allowed) {
+      return buildRateLimitResponse(rateLimit.resetAt);
+    }
+
+    const formData = await parseFormDataBody(request, {
+      maxBytes: 60 * 1024 * 1024,
+      code: "asset_upload_body_too_large",
+    });
     const file = formData.get("file");
     const kind = formData.get("kind");
 

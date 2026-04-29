@@ -62,6 +62,15 @@ function isAuthorizedInternalRequest(request: NextRequest) {
 }
 
 function applySecurityHeaders(response: NextResponse) {
+  const isProduction = process.env.NODE_ENV === "production";
+  const scriptSrc = [
+    "'self'",
+    "'unsafe-inline'",
+    ...(isProduction ? [] : ["'unsafe-eval'"]),
+    "https://js.stripe.com",
+    "https://connect.facebook.net",
+  ];
+
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "DENY");
@@ -76,19 +85,23 @@ function applySecurityHeaders(response: NextResponse) {
     "Content-Security-Policy",
     [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://connect.facebook.net",
+      `script-src ${scriptSrc.join(" ")}`,
+      "script-src-attr 'none'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
+      "media-src 'self' blob: https:",
       "connect-src 'self' https://*.supabase.co https://api.stripe.com https://graph.facebook.com https://www.facebook.com https://api.openai.com https://api.heygen.com",
       "frame-src https://js.stripe.com https://hooks.stripe.com https://www.facebook.com",
+      "form-action 'self'",
       "object-src 'none'",
       "base-uri 'self'",
       "frame-ancestors 'none'",
+      ...(isProduction ? ["upgrade-insecure-requests"] : []),
     ].join("; "),
   );
 
-  if (process.env.NODE_ENV === "production") {
+  if (isProduction) {
     response.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
   }
 

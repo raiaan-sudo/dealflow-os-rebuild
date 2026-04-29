@@ -171,7 +171,7 @@ export async function handleIncomingSMS(payload: FormData | URLSearchParams): Pr
 export function validateTwilioWebhookSignature(params: {
   url: string;
   signature: string | null;
-  formData: FormData;
+  formData: FormData | URLSearchParams;
 }) {
   const env = getTwilioEnv();
 

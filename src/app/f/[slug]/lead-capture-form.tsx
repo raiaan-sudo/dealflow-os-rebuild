@@ -28,6 +28,7 @@ export function LeadCaptureForm({
   const [smsConsent, setSmsConsent] = useState(false);
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [formStartedAt] = useState(() => Date.now());
 
   const normalizedFields = useMemo(
     () => formFields.map((field) => field.trim()).filter(Boolean),
@@ -79,6 +80,8 @@ export function LeadCaptureForm({
           sms_consent: Boolean(showPhone && normalizedPhone && smsConsent),
           sms_consent_copy: SMS_CONSENT_COPY,
           stage: "launched",
+          company_website: "",
+          formStartedAt,
         }),
       });
 

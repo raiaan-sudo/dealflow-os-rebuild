@@ -578,11 +578,17 @@ async function findRecentDuplicateLead(params: {
   const { supabase, organizationId, campaignId, email, phone } = params;
 
   if (params.dedupeHash) {
-    const { data, error } = await supabase
+    let dedupeQuery = supabase
       .from("leads")
       .select("*")
       .eq("dedupe_hash", params.dedupeHash)
-      .maybeSingle();
+      .eq("organization_id", organizationId);
+
+    if (campaignId) {
+      dedupeQuery = dedupeQuery.eq("campaign_id", campaignId);
+    }
+
+    const { data, error } = await dedupeQuery.maybeSingle();
 
     if (error) {
       throw error;
@@ -1207,11 +1213,20 @@ export async function handleIncomingMessageByPhone(
   message: string,
   options: {
     messageSid?: string | null;
+    organizationId?: string | null;
   } = {},
 ) {
   const adminClient = createBookingAdminClient();
 
-  const lead = await getLeadByPhone(adminClient, null, phone);
+  if (!options.organizationId) {
+    throw new ApiError(
+      503,
+      "Inbound SMS tenant mapping is not configured.",
+      "sms_tenant_mapping_missing",
+    );
+  }
+
+  const lead = await getLeadByPhone(adminClient, options.organizationId, phone);
 
   if (!lead) {
     throw new ApiError(404, "Lead not found for incoming SMS.", "lead_not_found");
@@ -1519,11 +1534,17 @@ async function createLeadAndStartConversationForContext(
       dedupeHash &&
       (error.code === "23505" || /duplicate key|unique constraint/i.test(error.message ?? ""))
     ) {
-      const { data: recovered } = await supabase
+      let recoveryQuery = supabase
         .from("leads")
         .select("*")
         .eq("dedupe_hash", dedupeHash)
-        .maybeSingle();
+        .eq("organization_id", organizationId);
+
+      if (campaignId) {
+        recoveryQuery = recoveryQuery.eq("campaign_id", campaignId);
+      }
+
+      const { data: recovered } = await recoveryQuery.maybeSingle();
 
       if (recovered) {
         return recovered as LeadRow;

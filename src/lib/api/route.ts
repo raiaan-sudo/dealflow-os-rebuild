@@ -212,15 +212,91 @@ export function assertInternalSystemRequest(request: Request) {
   }
 }
 
+export const DEFAULT_JSON_BODY_LIMIT_BYTES = 128 * 1024;
+export const DEFAULT_FORM_BODY_LIMIT_BYTES = 64 * 1024;
+export const STRIPE_WEBHOOK_BODY_LIMIT_BYTES = 1024 * 1024;
+
+export type BodyLimitOptions = {
+  maxBytes?: number;
+  code?: string;
+};
+
+function getDeclaredContentLength(request: Request) {
+  const contentLength = request.headers.get("content-length");
+  if (!contentLength) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(contentLength, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+export function assertRequestBodySize(
+  request: Request,
+  maxBytes: number,
+  code = "request_body_too_large",
+) {
+  const declaredLength = getDeclaredContentLength(request);
+
+  if (declaredLength !== null && declaredLength > maxBytes) {
+    throw new ApiError(413, "Request body is too large.", code);
+  }
+}
+
+export async function parseTextBody(
+  request: Request,
+  options?: BodyLimitOptions,
+) {
+  const maxBytes = options?.maxBytes ?? DEFAULT_JSON_BODY_LIMIT_BYTES;
+  const code = options?.code ?? "request_body_too_large";
+  assertRequestBodySize(request, maxBytes, code);
+
+  if (!request.body) {
+    return "";
+  }
+
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let bytesRead = 0;
+  let text = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+
+    if (done) {
+      break;
+    }
+
+    bytesRead += value.byteLength;
+    if (bytesRead > maxBytes) {
+      throw new ApiError(413, "Request body is too large.", code);
+    }
+
+    text += decoder.decode(value, { stream: true });
+  }
+
+  text += decoder.decode();
+  return text;
+}
+
 export async function parseJsonBody<T>(
   request: Request,
   schema: { parse: (input: unknown) => T },
+  options?: BodyLimitOptions,
 ) {
   let body: unknown;
 
   try {
-    body = await request.json();
-  } catch {
+    const raw = await parseTextBody(request, {
+      maxBytes: options?.maxBytes ?? DEFAULT_JSON_BODY_LIMIT_BYTES,
+      code: options?.code ?? "json_body_too_large",
+    });
+    body = JSON.parse(raw);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
     throw new ApiError(400, "Request body must be valid JSON.", "invalid_json");
   }
 
@@ -231,12 +307,20 @@ export async function parseOptionalJsonBody<T>(
   request: Request,
   schema: { parse: (input: unknown) => T },
   fallback: T,
+  options?: BodyLimitOptions,
 ) {
   let raw = "";
 
   try {
-    raw = await request.text();
-  } catch {
+    raw = await parseTextBody(request, {
+      maxBytes: options?.maxBytes ?? DEFAULT_JSON_BODY_LIMIT_BYTES,
+      code: options?.code ?? "json_body_too_large",
+    });
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
     throw new ApiError(400, "Request body must be valid JSON.", "invalid_json");
   }
 
@@ -253,6 +337,19 @@ export async function parseOptionalJsonBody<T>(
 
     throw error;
   }
+}
+
+export async function parseFormDataBody(
+  request: Request,
+  options?: BodyLimitOptions,
+) {
+  assertRequestBodySize(
+    request,
+    options?.maxBytes ?? DEFAULT_FORM_BODY_LIMIT_BYTES,
+    options?.code ?? "form_body_too_large",
+  );
+
+  return request.formData();
 }
 
 export async function parseRouteParams<T>(

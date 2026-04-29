@@ -24,7 +24,7 @@ export async function POST(
     }
 
     const rateLimit = await consumeRateLimit({
-      key: getRateLimitKey(request, "generate-static-ads", auth.userId),
+      key: getRateLimitKey(request, "generate-static-ads", `${auth.organizationId}:${auth.userId}:${campaignId}`),
       limit: 6,
       windowMs: 60_000,
     });

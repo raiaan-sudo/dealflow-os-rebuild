@@ -39,11 +39,13 @@ type PersistedOnboardingProgress = {
   currentStep: OnboardingProgressStep;
   failedStep: PipelineStepKey | null;
   error: string | null;
+  expiresAt: number;
 };
 
 const CREATE_PLAN_TIMEOUT_MS = 20_000;
 const PIPELINE_STEP_TIMEOUT_MS = 45_000;
 const ONBOARDING_PROGRESS_STORAGE_KEY = "dealflow-onboarding-progress-v2";
+const ONBOARDING_PROGRESS_TTL_MS = 24 * 60 * 60 * 1000;
 
 const PIPELINE_STEPS: PipelineStep[] = [
   {
@@ -363,6 +365,12 @@ export default function OnboardingPage() {
 
     try {
       const saved = JSON.parse(raw) as Partial<PersistedOnboardingProgress>;
+      if (typeof saved.expiresAt !== "number" || saved.expiresAt <= Date.now()) {
+        window.localStorage.removeItem(ONBOARDING_PROGRESS_STORAGE_KEY);
+        setHydrated(true);
+        return;
+      }
+
       const restoredStep = isProgressStep(saved.currentStep) ? saved.currentStep : "plan";
       const restoredFailedStep = isPipelineStepKey(saved.failedStep) ? saved.failedStep : null;
       const restoredFocus = isCampaignFocus(saved.focus) ? saved.focus : "seller";
@@ -414,6 +422,7 @@ export default function OnboardingPage() {
       currentStep,
       failedStep,
       error,
+      expiresAt: Date.now() + ONBOARDING_PROGRESS_TTL_MS,
     };
 
     const hasMeaningfulState =

@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { ApiError, assertSameOriginRequest, handleApiError, parseRouteParams } from "@/lib/api/route";
+import {
+  ApiError,
+  assertSameOriginRequest,
+  handleApiError,
+  parseOptionalJsonBody,
+  parseRouteParams,
+} from "@/lib/api/route";
+import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { launchCampaignToMeta } from "@/app/api/campaigns/create/route";
 import { assertMetaLaunchBillingAccess } from "@/lib/services/billing-service";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
@@ -174,9 +181,17 @@ export async function POST(
     assertSameOriginRequest(request);
     await assertMetaLaunchBillingAccess();
     const { id } = await parseRouteParams(context.params, paramsSchema);
-    const requestBody = await request.json().catch(() => null);
-    const parsedRetryBody = retryBodySchema.safeParse(requestBody);
-    const retryBody = parsedRetryBody.success ? parsedRetryBody.data : {};
+    const rateLimit = await consumeRateLimit({
+      key: getRateLimitKey(request, "meta-launch", id),
+      limit: 6,
+      windowMs: 60_000,
+    });
+
+    if (rateLimit && !rateLimit.allowed) {
+      return buildRateLimitResponse(rateLimit.resetAt);
+    }
+
+    const retryBody = await parseOptionalJsonBody(request, retryBodySchema, {});
 
     if (
       retryBody.test_mode_interrupt_after &&

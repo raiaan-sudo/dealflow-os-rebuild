@@ -74,6 +74,18 @@ type RawStripeWebhookEventRow = {
   updated_at: string | null;
 };
 
+type RawProviderUsageEventRow = {
+  id: string;
+  organization_id: string | null;
+  campaign_id: string | null;
+  provider: string | null;
+  operation: string | null;
+  status: string | null;
+  metadata: unknown;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
 export type LaunchMonitorRow = {
   campaignId: string;
   userLabel: string;
@@ -109,7 +121,7 @@ export type LaunchMonitorRow = {
 
 export type OperatorIssueRow = {
   id: string;
-  source: "system_job" | "stripe_webhook" | "campaign_plan";
+  source: "system_job" | "stripe_webhook" | "provider_usage" | "campaign_plan";
   severity: "critical" | "high" | "medium" | "low";
   title: string;
   detail: string;
@@ -439,7 +451,7 @@ export async function loadIssueLogRows(limit = 80): Promise<OperatorIssueRow[]> 
   }
 
   const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-  const [jobsResult, stripeResult, campaigns] = await Promise.all([
+  const [jobsResult, stripeResult, providerResult, campaigns] = await Promise.all([
     admin
       .from("system_jobs")
       .select("id,organization_id,campaign_id,kind,status,error_message,last_error_code,dead_letter_reason,created_at,locked_until,dead_lettered_at")
@@ -453,6 +465,13 @@ export async function loadIssueLogRows(limit = 80): Promise<OperatorIssueRow[]> 
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(limit),
+    admin
+      .from("provider_usage_events")
+      .select("id,organization_id,campaign_id,provider,operation,status,metadata,created_at,updated_at")
+      .in("status", ["failed", "reserved"])
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(limit),
     loadLaunchMonitorRows(Math.min(limit, 50)).catch(() => []),
   ]);
 
@@ -462,6 +481,10 @@ export async function loadIssueLogRows(limit = 80): Promise<OperatorIssueRow[]> 
 
   if (stripeResult.error) {
     throw new ApiError(500, stripeResult.error.message, "issue_log_stripe_failed");
+  }
+
+  if (providerResult.error) {
+    throw new ApiError(500, providerResult.error.message, "issue_log_provider_failed");
   }
 
   const jobIssues = ((jobsResult.data ?? []) as RawSystemJobRow[])
@@ -507,6 +530,34 @@ export async function loadIssueLogRows(limit = 80): Promise<OperatorIssueRow[]> 
     rawReference: row.stripe_event_id,
   }));
 
+  const providerIssues = ((providerResult.data ?? []) as RawProviderUsageEventRow[])
+    .filter((row) => {
+      if (row.status === "failed") {
+        return true;
+      }
+
+      if (row.status !== "reserved" || !row.created_at) {
+        return false;
+      }
+
+      const createdAt = new Date(row.created_at);
+      return !Number.isNaN(createdAt.getTime()) && Date.now() - createdAt.getTime() > 30 * 60 * 1000;
+    })
+    .map((row) => ({
+      id: `provider:${row.id}`,
+      source: "provider_usage" as const,
+      severity: row.status === "failed" ? ("high" as const) : ("medium" as const),
+      title: `${formatStatusLabel(row.provider, "Provider")} ${formatStatusLabel(row.operation, "operation")} ${formatStatusLabel(row.status, "issue")}`,
+      detail:
+        row.status === "reserved"
+          ? "Provider usage reservation has been open for more than 30 minutes and needs release, retry, or review."
+          : "Provider usage event failed and may require operator review before retry.",
+      status: "open" as const,
+      createdAt: row.updated_at || row.created_at,
+      route: row.campaign_id ? `/admin/launch-monitor?campaignId=${encodeURIComponent(row.campaign_id)}` : "/admin/issues",
+      rawReference: row.id,
+    }));
+
   const campaignIssues = campaigns
     .filter((row) => row.consistencyMismatch || row.consistencyMissingFields.length > 0)
     .map((row) => ({
@@ -523,7 +574,7 @@ export async function loadIssueLogRows(limit = 80): Promise<OperatorIssueRow[]> 
       rawReference: row.campaignId,
     }));
 
-  return [...jobIssues, ...stripeIssues, ...campaignIssues]
+  return [...jobIssues, ...stripeIssues, ...providerIssues, ...campaignIssues]
     .sort((first, second) => {
       const firstTime = first.createdAt ? new Date(first.createdAt).getTime() : 0;
       const secondTime = second.createdAt ? new Date(second.createdAt).getTime() : 0;

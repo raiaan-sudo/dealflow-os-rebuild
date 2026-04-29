@@ -12,6 +12,11 @@ import { persistCampaignPlan } from "@/lib/services/campaign-plan-service";
 import { generateFunnel } from "@/lib/services/funnel-engine";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { runTrackedSystemJob } from "@/lib/services/system-job-service";
+import {
+  buildRateLimitResponse,
+  consumeRateLimit,
+  getRateLimitKey,
+} from "@/lib/api/rate-limit";
 
 const requestSchema = z.object({
   campaignId: z.string().min(1),
@@ -34,6 +39,16 @@ export async function POST(request: Request) {
     assertSameOriginRequest(request);
     const { campaignId } = await parseJsonBody(request, requestSchema);
     const auth = await getAuthenticatedContext();
+    const rateLimit = await consumeRateLimit({
+      key: getRateLimitKey(request, "generate-funnel", `${auth.organizationId}:${auth.userId}:${campaignId}`),
+      limit: 10,
+      windowMs: 60_000,
+    });
+
+    if (rateLimit && !rateLimit.allowed) {
+      return buildRateLimitResponse(rateLimit.resetAt);
+    }
+
     const requestId = crypto.randomUUID();
     const { output, jobId, correlationId } = await runTrackedSystemJob({
       organizationId: auth.organizationId,

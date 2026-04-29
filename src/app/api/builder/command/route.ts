@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { apiSuccess, assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
+import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 
 const commandSchema = z.object({
@@ -24,7 +25,17 @@ function sentenceCase(value: string) {
 export async function POST(request: Request) {
   try {
     assertSameOriginRequest(request);
-    await getAuthenticatedContext();
+    const auth = await getAuthenticatedContext();
+    const rateLimit = await consumeRateLimit({
+      key: getRateLimitKey(request, "builder-command", `${auth.organizationId}:${auth.userId}`),
+      limit: 30,
+      windowMs: 60_000,
+    });
+
+    if (rateLimit && !rateLimit.allowed) {
+      return buildRateLimitResponse(rateLimit.resetAt);
+    }
+
     const body = await parseJsonBody(request, commandSchema);
     const command = body.command.toLowerCase();
     const campaign = body.campaign ?? {};

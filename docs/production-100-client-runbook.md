@@ -152,6 +152,7 @@ Emergency disable:
 Outbound SMS automation is default-off. To enable it, all of the following must be true:
 
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_PHONE_NUMBER` are configured.
+- `TWILIO_INBOUND_ORGANIZATION_ID` maps the inbound Twilio number to exactly one workspace, or a dedicated per-tenant inbound-number mapping table has been implemented.
 - `TWILIO_OUTBOUND_SMS_ENABLED=true`.
 - `SMS_COMPLIANCE_ACK=true`.
 - The lead has explicit SMS consent stored in `leads.consent_metadata.sms`.
@@ -163,6 +164,33 @@ Inbound `/api/sms/twilio` must keep handling compliance keywords even when outbo
 - `START`, `UNSTOP`, and `SUBSCRIBE` clear the opt-out timestamp and store renewed consent metadata.
 - `HELP` returns support/opt-out instructions.
 - Twilio `MessageSid` is recorded on inbound `lead_messages.provider_message_id`; duplicate SIDs are treated as idempotent replays and do not trigger another automated reply.
+
+## Signup Abuse Controls
+
+Owner-only Supabase Auth settings are required before unrestricted signup:
+
+1. For controlled beta, disable public signup or operate an invite-only signup path.
+2. If public signup is enabled, require email confirmation before users can build campaigns.
+3. Enable CAPTCHA/Turnstile in Supabase Auth if available for the project.
+4. Configure Supabase Auth rate limits for signup, password reset, OTP/email, and token refresh.
+5. Restrict OAuth redirect URLs to production and approved preview domains only.
+6. Review disposable-email controls before broad public launch.
+
+App-side controls still apply after signup: onboarding, campaign build, generation, checkout, Meta sync, and public lead capture use durable rate limits. These controls are not a replacement for Supabase Auth abuse controls because attackers can call Auth endpoints directly with the public anon key.
+
+## Vercel Firewall / WAF Baseline
+
+Recommended Vercel account-level rules for public launch:
+
+1. Add bot/challenge or rate-limit protection for `/api/lead-capture`, `/f/*`, `/login`, `/api/billing/checkout`, and builder/generation routes.
+2. Exempt signed provider webhooks from challenge pages, but keep app-level signature validation:
+   - `/api/stripe/webhook`
+   - `/api/integrations/meta/callback`
+   - `/api/sms/twilio`
+3. Block or challenge obvious high-risk countries/IP ranges only after reviewing real traffic.
+4. Keep `/api/internal/*` inaccessible except through the configured cron secret. Do not create public bypasses.
+5. Roll out new WAF rules in log-only/monitoring mode first, then enforce after confirming no Stripe, Meta, Supabase auth, or funnel traffic is blocked.
+6. During an active attack, enable Attack Challenge Mode for public lead and signup paths before disabling core app functionality.
 
 ## Support Playbook
 

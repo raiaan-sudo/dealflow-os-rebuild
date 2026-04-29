@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { apiSuccess, assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
+import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { logOperationalEvent } from "@/lib/logging";
 
@@ -14,6 +15,16 @@ export async function POST(request: Request) {
   try {
     assertSameOriginRequest(request);
     const auth = await getAuthenticatedContext();
+    const rateLimit = await consumeRateLimit({
+      key: getRateLimitKey(request, "feedback", `${auth.organizationId}:${auth.userId}`),
+      limit: 10,
+      windowMs: 60_000,
+    });
+
+    if (rateLimit && !rateLimit.allowed) {
+      return buildRateLimitResponse(rateLimit.resetAt);
+    }
+
     const body = await parseJsonBody(request, feedbackSchema);
 
     logOperationalEvent("product_feedback_received", {

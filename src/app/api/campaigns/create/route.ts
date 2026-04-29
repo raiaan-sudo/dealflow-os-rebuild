@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ApiError, assertSameOriginRequest, parseJsonBody } from "@/lib/api/route";
+import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { getPublicAppUrl } from "@/lib/env";
 import {
   buildCampaignPlanCriticalFieldPatch,
@@ -1829,6 +1830,16 @@ export async function launchCampaignToMeta(
 export async function POST(request: Request) {
   assertSameOriginRequest(request);
   const { campaignId, testModeInterruptAfter } = await parseJsonBody(request, requestSchema);
+  const rateLimit = await consumeRateLimit({
+    key: getRateLimitKey(request, "campaign-create-launch", campaignId),
+    limit: 6,
+    windowMs: 60_000,
+  });
+
+  if (rateLimit && !rateLimit.allowed) {
+    return buildRateLimitResponse(rateLimit.resetAt);
+  }
+
   return launchCampaignToMeta(campaignId, {}, {
     testModeInterruptAfter: normalizeForcedInterruptStage(testModeInterruptAfter),
   });

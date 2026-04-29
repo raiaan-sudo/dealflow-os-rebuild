@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { ApiError, assertSameOriginRequest } from "@/lib/api/route";
+import { ApiError, assertSameOriginRequest, parseOptionalJsonBody } from "@/lib/api/route";
+import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { createMetaFailureResponse } from "@/lib/integrations/meta/error-mapper";
 import {
   getMetaConnectionState,
@@ -18,9 +19,18 @@ export async function POST(request: Request) {
   const requestId = crypto.randomUUID();
   try {
     assertSameOriginRequest(request);
-    await getAuthenticatedContext();
+    const auth = await getAuthenticatedContext();
+    const rateLimit = await consumeRateLimit({
+      key: getRateLimitKey(request, "meta-selections", `${auth.organizationId}:${auth.userId}`),
+      limit: 20,
+      windowMs: 60_000,
+    });
 
-    const body = (await request.json().catch(() => null)) as SelectionBody | null;
+    if (rateLimit && !rateLimit.allowed) {
+      return buildRateLimitResponse(rateLimit.resetAt);
+    }
+
+    const body = (await parseOptionalJsonBody(request, { parse: (input) => input }, null)) as SelectionBody | null;
     const externalAccountId = body?.externalAccountId?.trim() ?? "";
     const pageId = body?.pageId?.trim() ?? "";
     const pixelId = body?.pixelId?.trim() ?? "";

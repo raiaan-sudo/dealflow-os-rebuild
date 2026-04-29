@@ -24,6 +24,7 @@ export function SignOutButton() {
     try {
       await supabase.auth.signOut();
     } finally {
+      window.localStorage.removeItem("dealflow-onboarding-progress-v2");
       router.replace("/login");
       router.refresh();
       setIsPending(false);

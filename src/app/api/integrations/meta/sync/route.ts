@@ -1,4 +1,5 @@
-import { ApiError, apiSuccess, assertSameOriginRequest } from "@/lib/api/route";
+import { ApiError, apiSuccess, assertSameOriginRequest, parseOptionalJsonBody } from "@/lib/api/route";
+import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { createMetaFailureResponse } from "@/lib/integrations/meta/error-mapper";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { syncMetaCampaignStatus } from "@/lib/services/meta-campaign-sync-service";
@@ -8,12 +9,24 @@ export async function POST(request: Request) {
   const requestId = crypto.randomUUID();
   try {
     assertSameOriginRequest(request);
-    const body = (await request.json().catch(() => null)) as { campaignId?: unknown } | null;
+    const auth = await getAuthenticatedContext();
+    const rateLimit = await consumeRateLimit({
+      key: getRateLimitKey(request, "meta-sync", `${auth.organizationId}:${auth.userId}`),
+      limit: 10,
+      windowMs: 60_000,
+    });
+
+    if (rateLimit && !rateLimit.allowed) {
+      return buildRateLimitResponse(rateLimit.resetAt);
+    }
+
+    const body = (await parseOptionalJsonBody(request, { parse: (input) => input }, null)) as {
+      campaignId?: unknown;
+    } | null;
     const campaignId =
       typeof body?.campaignId === "string" && body.campaignId.trim().length > 0
         ? body.campaignId.trim()
         : null;
-    const auth = await getAuthenticatedContext();
     const { output, jobId, correlationId } = await runTrackedSystemJob({
       organizationId: auth.organizationId,
       userId: auth.userId,

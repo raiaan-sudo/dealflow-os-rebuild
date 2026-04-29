@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { assertSameOriginRequest } from "@/lib/api/route";
+import { assertSameOriginRequest, parseOptionalJsonBody } from "@/lib/api/route";
+import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -458,7 +459,20 @@ export async function POST(req: Request) {
       );
     }
 
-    const payload = (await req.json().catch(() => null)) as OnboardingPayload | null;
+    const rateLimit = await consumeRateLimit({
+      key: getRateLimitKey(req, "onboarding-plan", user.id),
+      limit: 4,
+      windowMs: 60_000,
+    });
+
+    if (rateLimit && !rateLimit.allowed) {
+      return buildRateLimitResponse(rateLimit.resetAt);
+    }
+
+    const payload = (await parseOptionalJsonBody(req, { parse: (input) => input }, null, {
+      maxBytes: 64 * 1024,
+      code: "onboarding_body_too_large",
+    })) as OnboardingPayload | null;
     safePayload = buildSafePayloadLog(payload);
     const businessType = safeText(payload?.business_type) || "Real Estate";
     const businessName = safeText(payload?.business_name) || businessType;

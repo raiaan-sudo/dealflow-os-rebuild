@@ -46,6 +46,7 @@ export type BillingSummary = {
 const BILLING_ACTIVE_STATUSES = new Set(["active", "trialing"]);
 const STRIPE_WEBHOOK_HANDLED_STATUSES = new Set(["processed", "ignored"]);
 const STRIPE_WEBHOOK_PROCESSING_STALE_MS = 5 * 60_000;
+const CHECKOUT_SESSION_REUSE_MS = 30 * 60_000;
 
 type StripeWebhookClaimResult =
   | {
@@ -513,6 +514,12 @@ export async function createBillingCheckoutSession(params: {
   }
 
   const existingBillingRow = (existingSubscription as BillingRow | null) ?? null;
+  const existingMetadata =
+    existingBillingRow?.metadata &&
+    typeof existingBillingRow.metadata === "object" &&
+    !Array.isArray(existingBillingRow.metadata)
+      ? (existingBillingRow.metadata as Record<string, Json>)
+      : {};
   let customerId = existingBillingRow?.stripe_customer_id ?? null;
 
   if (!customerId) {
@@ -532,10 +539,57 @@ export async function createBillingCheckoutSession(params: {
     userId: context.user.id,
     planTier: params.planTier,
   });
+
+  const lastCheckoutCreatedAt =
+    typeof existingMetadata.last_checkout_session_created_at === "string"
+      ? Date.parse(existingMetadata.last_checkout_session_created_at)
+      : 0;
+  const lastCheckoutPlanTier =
+    typeof existingMetadata.last_checkout_plan_tier === "string"
+      ? existingMetadata.last_checkout_plan_tier
+      : null;
+
+  if (
+    customerId &&
+    existingBillingRow?.stripe_checkout_session_id &&
+    lastCheckoutPlanTier === params.planTier &&
+    Number.isFinite(lastCheckoutCreatedAt) &&
+    Date.now() - lastCheckoutCreatedAt < CHECKOUT_SESSION_REUSE_MS
+  ) {
+    try {
+      const reusableSession = (await stripeProvider.execute({
+        action: "retrieve_checkout_session",
+        sessionId: existingBillingRow.stripe_checkout_session_id,
+      })) as Stripe.Checkout.Session;
+      const sessionCustomerId = getStripeCustomerIdFromSession(reusableSession);
+
+      if (
+        reusableSession.status === "open" &&
+        reusableSession.url &&
+        sessionCustomerId === customerId
+      ) {
+        logOperationalEvent("billing_checkout_session_reused", {
+          organizationId: context.organization.id,
+          checkoutSessionId: reusableSession.id,
+          planTier: params.planTier,
+        });
+        return { url: reusableSession.url, sessionId: reusableSession.id };
+      }
+    } catch (error) {
+      logWarn("Stored checkout session could not be reused; creating a replacement.", {
+        organizationId: context.organization.id,
+        checkoutSessionId: existingBillingRow.stripe_checkout_session_id,
+        message: error instanceof Error ? error.message : "Unknown checkout retrieval failure",
+      });
+    }
+  }
+
   const createCheckoutSession = async (stripeCustomerId: string) =>
     (await stripeProvider.execute({
       action: "create_checkout_session",
-      idempotencyKey: `dealflow_checkout_${context.organization.id}_${params.planTier}_${crypto.randomUUID()}`,
+      idempotencyKey: `dealflow_checkout_${context.organization.id}_${params.planTier}_${Math.floor(
+        Date.now() / CHECKOUT_SESSION_REUSE_MS,
+      )}`,
       params: {
         mode: "subscription",
         customer: stripeCustomerId,
@@ -578,15 +632,11 @@ export async function createBillingCheckoutSession(params: {
     session = await createCheckoutSession(customerId);
   }
 
-  const existingMetadata =
-    existingBillingRow?.metadata &&
-    typeof existingBillingRow.metadata === "object" &&
-    !Array.isArray(existingBillingRow.metadata)
-      ? (existingBillingRow.metadata as Record<string, Json>)
-      : {};
   const metadataPatch = {
     ...existingMetadata,
     last_checkout_session_id: session.id,
+    last_checkout_session_created_at: new Date().toISOString(),
+    last_checkout_plan_tier: params.planTier,
   } satisfies Json;
 
   if (
@@ -706,6 +756,11 @@ export async function reconcileBillingCheckoutSuccess(sessionId: string) {
       expectedSessionId: existingBillingRow.stripe_checkout_session_id,
       actualSessionId: session.id,
     });
+    throw new ApiError(
+      409,
+      "Checkout session is no longer the current session for this workspace.",
+      "checkout_session_stale",
+    );
   }
 
   const expandedSubscription = getStripeSubscriptionFromSession(session);

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { apiSuccess, assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
+import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 
 const sectionAssistantSchema = z.object({
@@ -24,7 +25,17 @@ const sectionAssistantSchema = z.object({
 export async function POST(request: Request) {
   try {
     assertSameOriginRequest(request);
-    await getAuthenticatedContext();
+    const auth = await getAuthenticatedContext();
+    const rateLimit = await consumeRateLimit({
+      key: getRateLimitKey(request, "builder-section-assistant", `${auth.organizationId}:${auth.userId}`),
+      limit: 30,
+      windowMs: 60_000,
+    });
+
+    if (rateLimit && !rateLimit.allowed) {
+      return buildRateLimitResponse(rateLimit.resetAt);
+    }
+
     const body = await parseJsonBody(request, sectionAssistantSchema);
     const context = body.campaignContext ?? {};
     const title = body.section.title?.trim() || "Campaign section";

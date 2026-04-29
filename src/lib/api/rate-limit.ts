@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { ApiError } from "@/lib/api/route";
 import { logWarn } from "@/lib/logging";
@@ -220,6 +221,30 @@ export async function consumeRateLimit(options: RateLimitOptions): Promise<RateL
   }
 }
 
+export async function consumeRateLimitBuckets(
+  options: RateLimitOptions[],
+): Promise<RateLimitResult | null> {
+  for (const option of options) {
+    const result = await consumeRateLimit(option);
+    if (result && !result.allowed) {
+      return result;
+    }
+  }
+
+  return null;
+}
+
+export function getRequestIp(request: Request | { headers: Headers }) {
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  const realIp = request.headers.get("x-real-ip");
+  return forwardedFor?.split(",")[0]?.trim() || realIp || "anonymous";
+}
+
+export function getHashedRateLimitIdentifier(value: string | null | undefined) {
+  const normalized = (value ?? "anonymous").trim().toLowerCase() || "anonymous";
+  return createHash("sha256").update(normalized).digest("hex").slice(0, 24);
+}
+
 export function getRateLimitKey(
   request: Request | { headers: Headers; url: string },
   bucket: string,
@@ -229,10 +254,7 @@ export function getRateLimitKey(
     return `${bucket}:${identifier}`;
   }
 
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  const realIp = request.headers.get("x-real-ip");
-  const ip = forwardedFor?.split(",")[0]?.trim() || realIp || "anonymous";
-  return `${bucket}:${ip}`;
+  return `${bucket}:${getRequestIp(request)}`;
 }
 
 export function buildRateLimitResponse(resetAt: number) {
