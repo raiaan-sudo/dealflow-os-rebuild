@@ -107,7 +107,9 @@ function applySecurityHeaders(response: NextResponse, startedAt?: number) {
   }
 
   if (typeof startedAt === "number") {
-    response.headers.set("Server-Timing", `app;dur=${Math.max(Date.now() - startedAt, 0)}`);
+    const durationMs = Math.max(Date.now() - startedAt, 0);
+    response.headers.set("Server-Timing", `app;dur=${durationMs}`);
+    response.headers.set("X-DealFlow-Route-Duration-Ms", String(durationMs));
   }
 
   return response;
