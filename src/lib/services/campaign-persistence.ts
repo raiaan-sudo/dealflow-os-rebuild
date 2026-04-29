@@ -50,7 +50,12 @@ function isMissingPublishSchemaError(error: unknown) {
   const code = "code" in error ? error.code : null;
   const message = "message" in error ? error.message : null;
 
-  return code === "42703" || /publish_state|public_slug|staged_snapshot|published_snapshot/i.test(String(message ?? ""));
+  return (
+    code === "42703" ||
+    /schema cache|column .* does not exist|could not find .*publish_state|could not find .*staged_snapshot|could not find .*published_snapshot/i.test(
+      String(message ?? ""),
+    )
+  );
 }
 
 function safeText(value: unknown) {
@@ -342,7 +347,9 @@ function buildPersistedSavedDocument(record: FullCampaignRecord): CampaignPublis
 }
 
 function buildPublicSlug(record: FullCampaignRecord, requestedSlug?: string | null) {
-  const candidate = safeText(requestedSlug) || safeText(record.publish.slug) || `${record.campaign.name}-${record.plan.market}`;
+  const explicitSlug = safeText(requestedSlug) || safeText(record.publish.slug);
+  const automaticSlug = `${record.campaign.name}-${record.plan.market}-${record.campaign.id.slice(0, 8)}`;
+  const candidate = explicitSlug || automaticSlug;
   const normalized = slugify(candidate);
 
   if (!normalized) {
