@@ -107,6 +107,18 @@ includes(
   "Lead tenant derivation",
   "lead writes derive organization from the campaign row instead of client input",
 );
+includes(
+  "scripts/check-rls-cross-tenant.mjs",
+  "RLS_USER_A_JWT",
+  "Executable cross-tenant RLS smoke",
+  "script can prove User A cannot read User B rows with authenticated Supabase REST tokens",
+);
+includes(
+  "scripts/check-rls-cross-tenant.mjs",
+  "/rest/v1/rpc/consume_rate_limit_bucket",
+  "Internal RPC permission smoke",
+  "script verifies public/authenticated callers cannot execute internal rate-limit RPC",
+);
 
 includes(
   "src/lib/integrations/meta/service.ts",

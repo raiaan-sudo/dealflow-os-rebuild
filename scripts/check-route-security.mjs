@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = process.cwd();
-const middlewarePath = "src/middleware.ts";
+const middlewarePath = "src/proxy.ts";
 const apiRoot = "src/app/api";
 const routeMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 const mutatingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);

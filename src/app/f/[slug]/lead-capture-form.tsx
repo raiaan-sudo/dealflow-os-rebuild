@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type LeadCaptureFormProps = {
   campaignId: string;
@@ -11,6 +11,26 @@ type LeadCaptureFormProps = {
 
 const SMS_CONSENT_COPY =
   "By checking this box, I agree to receive SMS messages from DealFlow OS and/or the business operating this campaign about my inquiry, follow-ups, and appointment coordination. Message and data rates may apply. Message frequency may vary. Reply STOP to opt out or HELP for help. Consent is not a condition of purchase.";
+
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
+const TURNSTILE_SCRIPT_ID = "cloudflare-turnstile-script";
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        element: HTMLElement,
+        options: {
+          sitekey: string;
+          callback: (token: string) => void;
+          "expired-callback": () => void;
+          "error-callback": () => void;
+        },
+      ) => string;
+      reset: (widgetId?: string) => void;
+    };
+  }
+}
 
 function includesField(fields: string[], needle: string) {
   return fields.some((field) => field.toLowerCase().includes(needle));
@@ -29,6 +49,10 @@ export function LeadCaptureForm({
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [formStartedAt] = useState(() => Date.now());
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
+  const turnstileWidgetIdRef = useRef<string | null>(null);
+  const turnstileEnabled = Boolean(TURNSTILE_SITE_KEY);
 
   const normalizedFields = useMemo(
     () => formFields.map((field) => field.trim()).filter(Boolean),
@@ -37,6 +61,55 @@ export function LeadCaptureForm({
   const hasConfiguredEmailField = includesField(normalizedFields, "email");
   const showPhone = includesField(normalizedFields, "phone");
   const showEmail = hasConfiguredEmailField || !showPhone;
+
+  useEffect(() => {
+    const siteKey = TURNSTILE_SITE_KEY;
+
+    if (!siteKey || !turnstileContainerRef.current || turnstileWidgetIdRef.current) {
+      return;
+    }
+
+    function renderTurnstile(siteKey: string) {
+      if (!window.turnstile || !turnstileContainerRef.current || turnstileWidgetIdRef.current) {
+        return;
+      }
+
+      turnstileWidgetIdRef.current = window.turnstile.render(turnstileContainerRef.current, {
+        sitekey: siteKey,
+        callback: setTurnstileToken,
+        "expired-callback": () => setTurnstileToken(""),
+        "error-callback": () => setTurnstileToken(""),
+      });
+    }
+
+    const existingScript = document.getElementById(TURNSTILE_SCRIPT_ID);
+    if (existingScript) {
+      const renderExistingTurnstile = () => renderTurnstile(siteKey);
+      renderExistingTurnstile();
+      existingScript.addEventListener("load", renderExistingTurnstile, { once: true });
+      return () => existingScript.removeEventListener("load", renderExistingTurnstile);
+    }
+
+    const script = document.createElement("script");
+    script.id = TURNSTILE_SCRIPT_ID;
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.async = true;
+    script.defer = true;
+    const renderNewTurnstile = () => renderTurnstile(siteKey);
+    script.addEventListener("load", renderNewTurnstile, { once: true });
+    document.head.appendChild(script);
+
+    return () => script.removeEventListener("load", renderNewTurnstile);
+  }, []);
+
+  function resetTurnstile() {
+    if (!turnstileWidgetIdRef.current) {
+      return;
+    }
+
+    setTurnstileToken("");
+    window.turnstile?.reset(turnstileWidgetIdRef.current);
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -62,6 +135,12 @@ export function LeadCaptureForm({
       return;
     }
 
+    if (turnstileEnabled && !turnstileToken) {
+      setStatus("error");
+      setMessage("Please complete the verification challenge.");
+      return;
+    }
+
     setStatus("submitting");
     setMessage(null);
 
@@ -82,6 +161,7 @@ export function LeadCaptureForm({
           stage: "launched",
           company_website: "",
           formStartedAt,
+          turnstile_token: turnstileToken || undefined,
         }),
       });
 
@@ -99,9 +179,11 @@ export function LeadCaptureForm({
       setEmail("");
       setPhone("");
       setSmsConsent(false);
+      resetTurnstile();
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "Lead capture failed.");
+      resetTurnstile();
     }
   }
 
@@ -196,6 +278,13 @@ export function LeadCaptureForm({
         >
           {message}
         </div>
+      ) : null}
+
+      {turnstileEnabled ? (
+        <div
+          ref={turnstileContainerRef}
+          className="min-h-[65px] overflow-hidden rounded-2xl border border-white/10 bg-black/20 p-2"
+        />
       ) : null}
 
       <button

@@ -14,6 +14,7 @@ This runbook is for controlled beta operation at roughly 100 active client works
 - Protected job runner: `/api/internal/system-jobs`
 - Required operator access env: `INTERNAL_ADMIN_EMAILS`
 - Required internal runner secret: `INTERNAL_SYSTEM_JOBS_SECRET` or `CRON_SECRET`
+- Observability/alerting runbook: `docs/observability-alerting-runbook.md`
 
 ## Rollback
 
@@ -193,6 +194,8 @@ Recommended Vercel account-level rules for public launch:
 6. During an active attack, enable Attack Challenge Mode for public lead and signup paths before disabling core app functionality.
 
 ## Support Playbook
+
+Use `/admin/issues` for durable issue records and `docs/observability-alerting-runbook.md` to distinguish live DB telemetry, log-only events, manual proof, and estimated command-center values before contacting customers.
 
 ### Failed checkout
 

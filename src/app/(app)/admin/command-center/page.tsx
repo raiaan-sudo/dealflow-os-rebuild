@@ -104,12 +104,14 @@ export default async function CommandCenterPage() {
       label: "Controlled beta",
       value: 100,
       detail: "Operator readiness score from latest proof run; verify smoke checks before each launch window.",
+      sourceLabel: "manual proof score",
       tone: "cyan",
     },
     {
       label: "100-client live",
       value: 100,
       detail: "Operator readiness score from persisted proof notes, route checks, and smoke validation.",
+      sourceLabel: "manual proof score",
       tone: "green",
     },
     {
@@ -118,12 +120,14 @@ export default async function CommandCenterPage() {
       detail: smsPolicy.automationEnabled
         ? "SMS automation guard is enabled with compliance acknowledgement."
         : "SMS automation remains default-off until Twilio and compliance gates are explicitly enabled.",
+      sourceLabel: "guarded readiness score",
       tone: "amber",
     },
     {
       label: "1,000-client scale",
       value: 62,
       detail: "Estimated scale score; needs load-test proof, external alerting, and deeper isolation tests.",
+      sourceLabel: "estimated, not live telemetry",
       tone: "blue",
     },
   ];
@@ -144,6 +148,7 @@ export default async function CommandCenterPage() {
       role: "Meta Launch Sentinel",
       status: "Paused retry proof complete",
       readiness: rows.length > 0 && metaReady.length === rows.length ? 100 : 92,
+      readinessLabel: "manual proof score",
       signal: metaSignal,
       tone: "cyan",
       logs: [
@@ -159,6 +164,7 @@ export default async function CommandCenterPage() {
       role: "Security Cortex",
       status: "Route lockdown active",
       readiness: operatorAlertCount > 0 ? 88 : 98,
+      readinessLabel: "CI-backed operator score",
       signal: "Public API allowlist, same-origin guards, and dynamic ownership markers are checked in CI.",
       tone: "green",
       logs: [
@@ -174,6 +180,7 @@ export default async function CommandCenterPage() {
       role: "Reliability Reactor",
       status: "Queues, leads, and billing guarded",
       readiness: ops.deadLetterJobs > 0 || ops.recentStripeFailures > 0 ? 88 : 98,
+      readinessLabel: "live DB + proof score",
       signal: `${ops.processingJobs} processing jobs, ${ops.deadLetterJobs} dead-letter jobs, ${ops.recentStripeProcessed} Stripe events / 24h.`,
       tone: "amber",
       logs: [
@@ -189,6 +196,7 @@ export default async function CommandCenterPage() {
       role: "Operator Armor",
       status: "Command console deployed",
       readiness: validationAlertCount > 0 ? 84 : 96,
+      readinessLabel: "live DB + manual proof score",
       signal: `${validationAlertCount} validation alerts, ${rows.length} campaigns watched, ${issues.length} issue rows indexed.`,
       tone: "violet",
       logs: [

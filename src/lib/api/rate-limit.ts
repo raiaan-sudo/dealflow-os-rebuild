@@ -31,7 +31,6 @@ let supabaseAdapter: RateLimitAdapter | null | undefined;
 let durableRateLimitFailureLogged = false;
 
 declare global {
-  // eslint-disable-next-line no-var
   var __DEALFLOW_RATE_LIMIT_ADAPTER__: RateLimitAdapter | undefined;
 }
 

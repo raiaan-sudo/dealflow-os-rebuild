@@ -1,6 +1,34 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import vm from "node:vm";
+import ts from "typescript";
 
-import {
+const require = createRequire(import.meta.url);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+function loadTypeScriptCommonJsModule(relativePath) {
+  const filename = resolve(__dirname, relativePath);
+  const source = readFileSync(filename, "utf8");
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: {
+      esModuleInterop: true,
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+    },
+    fileName: filename,
+  }).outputText;
+  const commonJsModule = { exports: {} };
+  const wrapper = `(function(exports, require, module, __filename, __dirname) {\n${transpiled}\n})`;
+  const compiled = vm.runInThisContext(wrapper, { filename });
+  compiled(commonJsModule.exports, require, commonJsModule, filename, dirname(filename));
+  return commonJsModule.exports;
+}
+
+const {
   CURRENT_CAMPAIGN_PLAN_VERSION,
   assertCampaignPlanDocument,
   buildCampaignPlanCriticalFieldPatch,
@@ -14,7 +42,7 @@ import {
   withLaunchRuntime,
   withLeadLoopVerified,
   withSelectedAdId,
-} from "../src/lib/services/campaign-plan-document.ts";
+} = loadTypeScriptCommonJsModule("../src/lib/services/campaign-plan-document.ts");
 
 function testLegacyPlanDefaults() {
   const legacyPlan = {

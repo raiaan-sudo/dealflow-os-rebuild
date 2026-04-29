@@ -105,13 +105,17 @@ function runOfflineChecks() {
   const apiRouteHelpers = "src/lib/api/route.ts";
   const rateLimitHelpers = "src/lib/api/rate-limit.ts";
   const twilioWebhookRoute = "src/app/api/sms/twilio/route.ts";
+  const smsService = "src/lib/services/sms-service.ts";
   const leadMessageIdempotencyMigration = "supabase/migrations/20260428162000_harden_lead_message_idempotency.sql";
   const envHelpers = "src/lib/env.ts";
   const sessionCostGuard = "src/lib/services/session-cost-guard.ts";
   const systemJobService = "src/lib/services/system-job-service.ts";
   const internalLaunchMonitor = "src/lib/services/internal-launch-monitor.ts";
+  const metaExecution = "src/lib/integrations/meta/execution.ts";
+  const metaLaunchService = "src/lib/services/meta-launch-service.ts";
+  const imageProvider = "src/lib/integrations/creative/image-provider.ts";
   const loginForm = "src/components/auth/login-form.tsx";
-  const middleware = "src/middleware.ts";
+  const middleware = "src/proxy.ts";
   const ciGateSource = fileExists(".github/workflows/ci.yml")
     ? ".github/workflows/ci.yml"
     : "docs/production-100-client-runbook.md";
@@ -139,8 +143,11 @@ function runOfflineChecks() {
   assertIncludes(launchApiRoute, "assertMetaLaunchBillingAccess", "Launch billing gate", "launch route enforces subscription/admin override gate");
   assertIncludes(launchApiRoute, "acquireMetaLaunchLock", "Durable Meta launch lock", "launch route uses DB-backed launch locking");
   assertIncludes(launchApiRoute, "ALLOW_META_LAUNCH_INTERRUPTION_TESTS", "Interruption guard", "forced interruption is env-gated");
-  assertIncludes("src/lib/integrations/meta/execution.ts", "return \"PAUSED\"", "Meta objects remain paused", "shared Meta execution mapper never emits ACTIVE during beta");
-  assertIncludes("src/lib/services/meta-launch-service.ts", "status: \"paused\"", "Meta publish activation disabled", "publish step reports paused instead of activating Meta objects");
+  assertIncludes(metaExecution, "return \"PAUSED\"", "Meta objects remain paused", "shared Meta execution mapper never emits ACTIVE during beta");
+  assertIncludes(metaExecution, "ALLOW_META_LIVE_LAUNCH", "Meta live launch kill switch", "live execution mode requires an explicit owner-controlled env flag");
+  assertIncludes(metaLaunchService, "forcePausedPayload", "Direct Meta payload pause guard", "direct Meta launch creation forces PAUSED payloads");
+  assertIncludes(metaLaunchService, "meta_active_status_blocked", "Direct Meta ACTIVE block", "direct Meta launch rejects active object payloads");
+  assertIncludes(metaLaunchService, "status: \"paused\"", "Meta publish activation disabled", "publish step reports paused instead of activating Meta objects");
   assertIncludes(metaConnect, "value.startsWith(\"//\")", "Meta OAuth return path guard", "protocol-relative return paths are rejected");
   assertIncludes(metaCallback, "resolved.origin === appOrigin", "Meta OAuth callback origin guard", "callback redirects stay on the app origin");
 
@@ -152,12 +159,20 @@ function runOfflineChecks() {
   assertIncludes(leadRoute, "lead-capture:campaign-ip", "Lead capture campaign+IP limit", "public lead capture rate limit is caller-aware");
   assertIncludes(leadRoute, "lead-capture:contact", "Lead capture contact limit", "public lead capture has contact-hash abuse control");
   assertIncludes(leadRoute, "lead_spam_rejected", "Lead capture honeypot/timing guard", "public lead capture rejects obvious bot submissions");
+  assertIncludes(leadRoute, "TURNSTILE_SECRET_KEY", "Lead capture Turnstile server gate", "Cloudflare Turnstile verification is enforced only when the secret env var is configured");
+  assertIncludes(leadRoute, "https://challenges.cloudflare.com/turnstile/v0/siteverify", "Lead capture Turnstile siteverify", "public lead capture verifies Turnstile tokens server-side");
+  assertIncludes(leadForm, "NEXT_PUBLIC_TURNSTILE_SITE_KEY", "Lead form Turnstile client gate", "public lead form renders Turnstile only when the public site key is configured");
   assertIncludes(rateLimitHelpers, "rate_limit_unavailable", "Durable rate limiting fails closed", "production rate limiting no longer falls back to in-memory buckets");
   assertIncludes(rateLimitHelpers, "p_bucket_key", "Durable rate-limit RPC contract", "rate limiter calls the Supabase RPC with versioned parameter names");
   assertIncludes(apiRouteHelpers, "Request body is too large.", "API body size limit helper", "shared request parsing rejects oversized bodies");
   assertIncludes(apiRouteHelpers, "parseTextBody", "Bounded text body parser", "raw webhook/body reads are bounded");
   assertIncludes(twilioWebhookRoute, "twilio:webhook:ip", "Twilio webhook IP rate limit", "public Twilio webhook has durable caller bucket");
   assertIncludes(twilioWebhookRoute, "twilio_body_too_large", "Twilio webhook body limit", "public Twilio webhook rejects oversized bodies");
+  assertIncludes(twilioWebhookRoute, "replySuppressed", "Twilio automated reply suppression", "inbound SMS webhook records when automated SMS replies are suppressed");
+  assertIncludes(smsService, "TWILIO_OUTBOUND_SMS_ENABLED === \"true\"", "SMS outbound disabled by default", "outbound SMS automation requires explicit env opt-in");
+  assertIncludes(smsService, "SMS_COMPLIANCE_ACK === \"true\"", "SMS compliance acknowledgement gate", "outbound SMS automation requires explicit compliance approval");
+  assertIncludes(smsService, "sms_consent_missing", "SMS consent enforcement", "automated SMS sends require explicit per-lead consent");
+  assertIncludes(smsService, "sms_recipient_opted_out", "SMS opt-out enforcement", "automated SMS sends block opted-out recipients");
   assertIncludes(leadMessageIdempotencyMigration, "lead_messages_provider_message_unique_idx", "Lead message provider idempotency constraint", "Twilio retries cannot duplicate provider messages after migration");
   assertIncludes("src/lib/services/lead-handler-service.ts", "dedupe_hash", "Lead durable dedupe hash", "public leads have durable dedupe hash support");
   assertIncludes("src/lib/services/lead-handler-service.ts", "consent_metadata", "Lead consent persistence", "lead capture persists consent metadata");
@@ -167,6 +182,8 @@ function runOfflineChecks() {
   assertIncludes("src/lib/services/lead-handler-service.ts", "replayFailedPublicLeadCapture", "Lead retry replay implementation", "queued lead retries call the public lead insert path");
   assertExcludes("src/lib/services/lead-handler-service.ts", /QA_EMAIL|QA_PASSWORD/, "QA credential fallback removed", "no QA credential fallback remains in lead handler");
   assertIncludes(campaignPlanPersistence, "organization_id: params.ownerId", "Campaign persistence organization ownership", "fresh campaign rows persist organization_id for downstream jobs and billing");
+  assertIncludes("scripts/check-rls-cross-tenant.mjs", "RLS_USER_A_JWT", "Cross-tenant RLS smoke script", "operator can prove User A cannot read User B fixtures");
+  assertIncludes("scripts/check-rls-cross-tenant.mjs", "expectRpcDenied", "Internal RPC denial smoke script", "operator can prove internal RPCs are not executable by anon/authenticated clients");
 
   assertIncludes(apiRouteHelpers, "assertSameOriginRequest", "Same-origin mutation guard helper", "sensitive authenticated POST routes can reject cross-site requests");
   assertIncludes(apiRouteHelpers, "if (!candidate)", "Same-origin missing-header rejection", "same-origin guard rejects unsafe requests that omit Origin and Referer");
@@ -195,6 +212,7 @@ function runOfflineChecks() {
   assertIncludes(creativeEngine, "provider_usage_context", "Paid static generation guard", "each generated image carries DB-backed provider usage context");
   assertIncludes(campaignPersistence, "consumeSessionCostBudget", "Paid image call guard", "server-side static generation reserves provider budget before execution");
   assertIncludes(staticAdsRoute, "idempotencyKey", "Static generation idempotency", "paid generation job creation uses idempotency key");
+  assertIncludes(imageProvider, "ALLOW_OPENAI_IMAGE_GENERATION !== \"true\"", "OpenAI image generation kill switch", "paid image provider returns unsupported unless explicitly enabled");
   assertIncludes(sessionCostGuard, "reserve_provider_usage", "Atomic provider usage reservation", "paid-generation guard reserves provider budget through DB RPC");
   assertIncludes(sessionCostGuard, "OPENAI_IMAGE_DAILY_LIMIT", "Configurable image cap", "OpenAI image generation can be capped below the default for production tests");
   assertIncludes(legacyAiProviders, "providerUsage?.mark", "Provider usage ledger transitions", "paid-generation reservations are marked consumed/released after the provider call");

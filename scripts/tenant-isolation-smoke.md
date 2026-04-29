@@ -3,6 +3,12 @@
 Use two authenticated users in different organizations: User A owns Campaign A and User B owns Campaign B.
 Run these after applying migrations in a staging project with realistic auth cookies.
 
+## Automated RLS proof
+
+Run `npm run rls:cross-tenant` with `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `RLS_USER_A_JWT`, `RLS_USER_B_JWT`, and at least one row pair such as `RLS_CAMPAIGN_A_ID` plus `RLS_CAMPAIGN_B_ID`.
+Optional row-pair groups: `RLS_ORG_A_ID`/`RLS_ORG_B_ID`, `RLS_CAMPAIGN_A_ID`/`RLS_CAMPAIGN_B_ID`, `RLS_LEAD_A_ID`/`RLS_LEAD_B_ID`, and `RLS_SYSTEM_JOB_A_ID`/`RLS_SYSTEM_JOB_B_ID`.
+The script expects each owner token to read its own row, the opposite token to receive zero rows, and anon/authenticated callers to be denied access to the internal rate-limit RPC.
+
 ## Campaigns and assets
 
 1. As User A, request `GET /api/campaigns/<campaign-b-id>` and confirm `404`.

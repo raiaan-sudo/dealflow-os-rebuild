@@ -28,6 +28,7 @@ export type ReadinessMetric = {
   label: string;
   value: number;
   detail: string;
+  sourceLabel: string;
   tone: HudTone;
 };
 
@@ -37,6 +38,7 @@ export type AgentConsole = {
   role: string;
   status: string;
   readiness: number;
+  readinessLabel: string;
   signal: string;
   tone: HudTone;
   logs: string[];
@@ -196,7 +198,7 @@ export function CommandCenterConsole({
       : "No active agent selected.";
     return [
       "DealFlow command center briefing.",
-      `Controlled beta and 100 client readiness are at ${metrics[0]?.value ?? 0} and ${metrics[1]?.value ?? 0} percent.`,
+      `Controlled beta and 100 client readiness are operator scores at ${metrics[0]?.value ?? 0} and ${metrics[1]?.value ?? 0} percent.`,
       agentStatus,
       `${criticalIssues.length} high priority issues are on radar.`,
       "Stripe replay and Meta paused retry proof are complete.",
@@ -395,14 +397,14 @@ function HudCore({ metrics }: { metrics: ReadinessMetric[] }) {
       <div className="relative z-10 flex h-full min-h-[290px] flex-col justify-between">
         <div className="flex items-center justify-between">
           <span className="rounded-full border border-cyan-200/25 bg-cyan-200/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.24em] text-cyan-100">
-            reactor core
+            operator score core
           </span>
-          <span className="font-mono text-xs text-cyan-100/70">{pct(primary)} beta</span>
+          <span className="font-mono text-xs text-cyan-100/70">{pct(primary)} labeled score</span>
         </div>
         <div className="mx-auto w-full max-w-[240px] rounded-3xl border border-cyan-200/20 bg-black/62 p-4 text-center backdrop-blur">
           <Sparkles className="mx-auto size-6 text-cyan-100" />
           <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.26em] text-cyan-100/60">
-            readiness core
+            readiness score
           </p>
           <p className="mt-1 text-5xl font-black tracking-[-0.08em] text-white">{pct(primary)}</p>
         </div>
@@ -415,6 +417,9 @@ function HudCore({ metrics }: { metrics: ReadinessMetric[] }) {
                   <span className="text-xs text-cyan-50/78">{metric.label}</span>
                   <span className="font-mono text-xs text-cyan-50">{pct(metric.value)}</span>
                 </div>
+                <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.2em] text-cyan-100/42">
+                  {metric.sourceLabel}
+                </p>
                 <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
                   <div className={`h-full rounded-full bg-gradient-to-r ${tone.line}`} style={{ width: pct(metric.value) }} />
                 </div>
@@ -480,6 +485,9 @@ function AgentButton({
       </div>
       <p className="mt-4 text-sm font-semibold text-white">{agent.role}</p>
       <p className="mt-1 text-xs text-cyan-100/58">{agent.status}</p>
+      <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.2em] text-cyan-100/42">
+        {agent.readinessLabel}
+      </p>
       <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
         <div className={`h-full rounded-full bg-gradient-to-r ${tone.line}`} style={{ width: pct(agent.readiness) }} />
       </div>
@@ -506,7 +514,7 @@ function AgentDetail({
           <p className={cn("mt-1 text-sm font-semibold", tone.text)}>{agent.role}</p>
         </div>
         <div className="rounded-3xl border border-white/10 bg-white/[0.04] px-5 py-3 text-right">
-          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-cyan-100/45">readiness</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-cyan-100/45">{agent.readinessLabel}</p>
           <p className="text-3xl font-black text-white">{pct(agent.readiness)}</p>
         </div>
       </div>

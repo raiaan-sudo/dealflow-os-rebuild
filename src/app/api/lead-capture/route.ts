@@ -37,6 +37,9 @@ const leadCaptureSchema = z
     hp: z.string().max(500).optional(),
     form_started_at: z.union([z.number(), z.string()]).optional(),
     formStartedAt: z.union([z.number(), z.string()]).optional(),
+    turnstile_token: z.string().trim().min(1).max(4096).optional(),
+    turnstileToken: z.string().trim().min(1).max(4096).optional(),
+    "cf-turnstile-response": z.string().trim().min(1).max(4096).optional(),
   })
   .superRefine((value, ctx) => {
     if (!value.email?.trim() && !value.phone?.trim()) {
@@ -72,6 +75,67 @@ const leadCaptureSchema = z
     }
   });
 
+function getTurnstileSecret() {
+  return process.env.TURNSTILE_SECRET_KEY?.trim() || null;
+}
+
+async function verifyTurnstileToken(params: {
+  token?: string | null;
+  ip?: string | null;
+  requestId: string;
+}) {
+  const secret = getTurnstileSecret();
+
+  if (!secret) {
+    return;
+  }
+
+  const token = params.token?.trim();
+
+  if (!token) {
+    logOperationalEvent("lead_capture.turnstile_rejected", {
+      requestId: params.requestId,
+      reason: "missing_token",
+    });
+    throw new ApiError(400, "Lead submission was rejected.", "turnstile_required");
+  }
+
+  const formData = new FormData();
+  formData.set("secret", secret);
+  formData.set("response", token);
+
+  if (params.ip) {
+    formData.set("remoteip", params.ip);
+  }
+
+  const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    logOperationalEvent("lead_capture.turnstile_rejected", {
+      requestId: params.requestId,
+      reason: "siteverify_unavailable",
+      status: response.status,
+    });
+    throw new ApiError(503, "Lead verification is temporarily unavailable.", "turnstile_unavailable");
+  }
+
+  const result = (await response.json().catch(() => null)) as
+    | { success?: boolean; "error-codes"?: string[] }
+    | null;
+
+  if (!result?.success) {
+    logOperationalEvent("lead_capture.turnstile_rejected", {
+      requestId: params.requestId,
+      reason: "invalid_token",
+      errors: result?.["error-codes"] ?? [],
+    });
+    throw new ApiError(400, "Lead submission was rejected.", "turnstile_failed");
+  }
+}
+
 export async function POST(req: Request) {
   const requestId = crypto.randomUUID();
   let capturedPayload:
@@ -90,7 +154,8 @@ export async function POST(req: Request) {
     | null = null;
 
   try {
-    const ipHash = getHashedRateLimitIdentifier(getRequestIp(req));
+    const requestIp = getRequestIp(req);
+    const ipHash = getHashedRateLimitIdentifier(requestIp);
     const ipRateLimit = await consumeRateLimit({
       key: getRateLimitKey(req, "lead-capture:ip", ipHash),
       limit: 30,
@@ -110,6 +175,16 @@ export async function POST(req: Request) {
       maxBytes: 16 * 1024,
       code: "lead_capture_body_too_large",
     });
+    await verifyTurnstileToken({
+      token:
+        payload.turnstile_token ??
+        payload.turnstileToken ??
+        payload["cf-turnstile-response"] ??
+        null,
+      ip: requestIp,
+      requestId,
+    });
+
     const campaignId = payload.campaign_id?.trim() || payload.campaignId?.trim() || "";
     const funnelId = payload.funnel_id?.trim() || "";
     const campaignScope = campaignId || funnelId || "unknown";

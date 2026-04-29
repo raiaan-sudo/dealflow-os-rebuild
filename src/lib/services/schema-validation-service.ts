@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/server/supabase-admin";
 import { ApiError } from "@/lib/api/route";
 import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
 
-const EXPECTED_APP_SCHEMA_VERSION = "20260428";
+const EXPECTED_APP_SCHEMA_VERSION = "20260428171000";
 const REQUIRED_CAMPAIGN_PLAN_COLUMNS = ["organization_id", "launch_status", "lead_loop_verified"] as const;
 const REQUIRED_MARKETING_ACCOUNT_COLUMNS = [
   "account_name",
