@@ -103,13 +103,13 @@ export default async function CommandCenterPage() {
     {
       label: "Controlled beta",
       value: 100,
-      detail: "All 100-client controlled-beta proof gates passed.",
+      detail: "Operator readiness score from latest proof run; verify smoke checks before each launch window.",
       tone: "cyan",
     },
     {
       label: "100-client live",
       value: 100,
-      detail: "Stripe replay, Meta retry, browser smoke, and validation complete.",
+      detail: "Operator readiness score from persisted proof notes, route checks, and smoke validation.",
       tone: "green",
     },
     {
@@ -123,7 +123,7 @@ export default async function CommandCenterPage() {
     {
       label: "1,000-client scale",
       value: 62,
-      detail: "Needs load-test proof, external alerting, and deeper isolation tests.",
+      detail: "Estimated scale score; needs load-test proof, external alerting, and deeper isolation tests.",
       tone: "blue",
     },
   ];
@@ -147,9 +147,9 @@ export default async function CommandCenterPage() {
       signal: metaSignal,
       tone: "cyan",
       logs: [
-        "Read-only Graph verification covered 20 known Meta objects from production DB.",
-        "5 campaigns, 5 ad sets, and 5 ads returned PAUSED/effective PAUSED.",
-        "Retry route returned alreadyLaunched=true with persisted campaign/ad IDs.",
+        "Operator-recorded Meta proof covered known production DB objects.",
+        "Prior proof returned PAUSED/effective PAUSED for monitored activatable objects.",
+        "Prior retry proof returned alreadyLaunched=true with persisted campaign/ad IDs.",
         "No Meta create, update, activation, or spend path was triggered.",
       ],
     },
@@ -196,7 +196,7 @@ export default async function CommandCenterPage() {
         "Added live issue radar from failed jobs, failed webhooks, and campaign consistency drift.",
         "SMS automation is surfaced as guarded/default-off unless compliance env gates and consent records are present.",
         "Kept dashboard admin-only, provider-free, and secret-safe.",
-        "Labeled unproven measurements as estimated/operator signals.",
+        "Readiness values are labeled as operator scores or estimates when not live telemetry.",
       ],
     },
   ];
@@ -204,20 +204,20 @@ export default async function CommandCenterPage() {
   const proofs: ProofEvent[] = [
     {
       label: "Stripe replay",
-      value: "complete",
-      detail: "evt_1TRGD8EF3q1nrT5Us3OKTXmK delivered and resent 200 OK; one DB row, one active billing row.",
+      value: "operator proof",
+      detail: "Operator-recorded proof: evt_1TRGD8EF3q1nrT5Us3OKTXmK delivered and resent 200 OK; one DB row, one active billing row.",
       tone: ops.recentStripeFailures > 0 ? "amber" : "green",
     },
     {
       label: "Meta PAUSED proof",
-      value: "complete",
-      detail: "Persisted retry reused existing Meta IDs; all activatable objects verified PAUSED.",
+      value: "operator proof",
+      detail: "Operator-recorded proof: persisted retry reused existing Meta IDs; activatable objects verified PAUSED.",
       tone: "green",
     },
     {
       label: "Browser smoke",
-      value: "complete",
-      detail: "Authenticated admin/product screens loaded with no critical console errors; public lead flow passed.",
+      value: "operator proof",
+      detail: "Operator-recorded proof: authenticated admin/product screens loaded with no critical console errors; public lead flow passed.",
       tone: "green",
     },
     {
@@ -240,8 +240,8 @@ export default async function CommandCenterPage() {
     {
       agent: "JARVIS",
       title: "Meta retry/idempotency proof",
-      status: "complete",
-      detail: "Read-only Graph verification and persisted retry proof completed without creating or activating objects.",
+      status: "operator proof",
+      detail: "Operator-recorded read-only Graph verification and persisted retry proof completed without creating or activating objects.",
     },
     {
       agent: "FRIDAY",
@@ -259,7 +259,7 @@ export default async function CommandCenterPage() {
       agent: "VERONICA",
       title: "JARVIS command center",
       status: "complete",
-      detail: "Cockpit HUD, clickable agents, voice briefing, proof panels, and issue radar deployed.",
+      detail: "Cockpit HUD, clickable agents, voice briefing, proof panels, labeled readiness scores, and issue radar deployed.",
     },
   ];
 

@@ -96,7 +96,7 @@ export async function POST(req: Request) {
     const smsConsent = payload.sms_consent === true || payload.smsConsent === true;
     const smsConsentCopy =
       payload.sms_consent_copy?.trim() ||
-      "By checking this box and submitting, I agree to receive automated and manual SMS messages about this request from DealFlow OS and its customer. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help.";
+      "By checking this box, I agree to receive SMS messages from DealFlow OS and/or the business operating this campaign about my inquiry, follow-ups, and appointment coordination. Message and data rates may apply. Message frequency may vary. Reply STOP to opt out or HELP for help. Consent is not a condition of purchase.";
     const isDevelopment = process.env.NODE_ENV !== "production";
     const source = `lead_capture_${normalizedStage}`;
     const notes = `Captured from lead capture flow at stage: ${normalizedStage}.`;

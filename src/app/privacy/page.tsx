@@ -72,6 +72,12 @@ export default function PrivacyPolicyPage() {
             analytics, AI generation, and advertising integration providers. We may also disclose
             information if required by law, to protect users, or to prevent abuse.
           </p>
+          <p className="mt-3">
+            We do not sell or share SMS consent data, phone numbers, or opt-in records with third
+            parties for their independent marketing. We may share data with service providers such
+            as Twilio, Stripe, Supabase, Vercel, Meta, OpenAI, analytics, security, and
+            infrastructure vendors only to operate DealFlow OS.
+          </p>
         </section>
 
         <section>
@@ -99,6 +105,12 @@ export default function PrivacyPolicyPage() {
             You may request access, correction, deletion, or export of your information. You may
             disconnect third-party integrations where supported, and you may stop using public lead
             forms or campaign pages at any time.
+          </p>
+          <p className="mt-3">
+            You may request access, correction, export, or deletion of your account/workspace data
+            by contacting support. Some records may be retained where required for billing, fraud
+            prevention, security, legal obligations, backups, dispute resolution, or operational
+            recovery.
           </p>
           <p className="mt-3">
             SMS recipients can reply STOP to opt out, START to resume messages, or HELP for help.

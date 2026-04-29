@@ -41,6 +41,30 @@ export default function TermsPage() {
           be limited, suspended, or cancelled if payment fails, a subscription ends, or account use
           violates these terms.
         </p>
+        <p className="text-slate-300">
+          Subscriptions renew automatically unless cancelled before the next billing period.
+          Customers may cancel through the Stripe billing portal or by contacting support.
+          Cancellation stops future renewals but does not automatically refund prior charges.
+          Refunds are reviewed case-by-case unless otherwise required by law. Third-party ad spend,
+          SMS fees, AI generation costs, and provider costs already incurred may be non-refundable.
+          Failed payments may cause access to paid launch features to be suspended or downgraded.
+        </p>
+        <p className="text-slate-300">
+          Prices may not include taxes, and you are responsible for any applicable taxes, payment
+          processor fees, advertising spend, provider usage, or other third-party costs connected to
+          your workspace or campaigns.
+        </p>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-xl font-semibold">Third-Party Providers</h2>
+        <p className="text-slate-300">
+          DealFlow OS may connect to third-party services including Stripe, Meta, Supabase, Vercel,
+          Twilio, OpenAI, and other infrastructure or AI providers. You are responsible for complying
+          with those providers&apos; terms, policies, permissions, billing requirements, and advertising
+          rules. DealFlow OS does not control provider availability, approval decisions, policy
+          enforcement, or third-party billing systems.
+        </p>
       </section>
 
       <section className="space-y-3">
@@ -63,6 +87,9 @@ export default function TermsPage() {
         <p className="text-slate-300">
           DealFlow OS provides software, automation, analytics, and workflow support. We do not
           guarantee ad approval, lead volume, appointment volume, revenue, or business outcomes.
+          Beta or provider-dependent features may be limited, paused, delayed, or unavailable while
+          third-party integrations, account permissions, compliance review, or infrastructure
+          capacity are being verified.
         </p>
       </section>
 
