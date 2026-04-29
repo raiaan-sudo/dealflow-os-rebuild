@@ -162,6 +162,13 @@ async function main() {
     supabase.from("campaign_plans").select("id, organization_id").limit(1),
   );
 
+  await probeQuery("campaign_plans public publishing columns check", () =>
+    supabase
+      .from("campaign_plans")
+      .select("id, publish_state, staged_snapshot, published_snapshot, staged_at, published_at")
+      .limit(1),
+  );
+
   await probeQuery("marketing_accounts Meta columns check", () =>
     supabase
       .from("marketing_accounts")
