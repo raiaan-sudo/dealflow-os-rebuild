@@ -309,6 +309,10 @@ function formatProgressLabel(step: OnboardingProgressStep) {
   }
 }
 
+function getCampaignReviewPath(campaignId: string) {
+  return `/build/funnel?campaignId=${encodeURIComponent(campaignId)}`;
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
   const latestPlanRequestIdRef = useRef(0);
@@ -356,9 +360,16 @@ export default function OnboardingPage() {
       return;
     }
 
+    const urlCampaignId = new URL(window.location.href).searchParams.get("campaignId")?.trim() ?? "";
     const raw = window.localStorage.getItem(ONBOARDING_PROGRESS_STORAGE_KEY);
 
     if (!raw) {
+      if (urlCampaignId) {
+        setCampaignId(urlCampaignId);
+        setCurrentStep("complete");
+        setStepStatuses(getStatusesForProgressStep("complete"));
+        setHasSavedProgress(true);
+      }
       setHydrated(true);
       return;
     }
@@ -443,7 +454,7 @@ export default function OnboardingPage() {
       setHasSavedProgress(true);
     } else {
       window.localStorage.removeItem(ONBOARDING_PROGRESS_STORAGE_KEY);
-      setHasSavedProgress(false);
+      setHasSavedProgress(Boolean(campaignId && currentStep === "complete"));
     }
 
     const url = new URL(window.location.href);
@@ -462,6 +473,14 @@ export default function OnboardingPage() {
 
     window.history.replaceState({}, "", url.toString());
   }, [budget, businessName, campaignId, currentStep, error, failedStep, focus, goal, hydrated, market, normalizedGoal, priceRange]);
+
+  useEffect(() => {
+    if (!hydrated || loading || currentStep !== "complete" || !campaignId) {
+      return;
+    }
+
+    router.replace(getCampaignReviewPath(campaignId));
+  }, [campaignId, currentStep, hydrated, loading, router]);
 
   function clearSavedProgress() {
     if (typeof window !== "undefined") {
@@ -545,7 +564,7 @@ export default function OnboardingPage() {
       window.localStorage.removeItem(ONBOARDING_PROGRESS_STORAGE_KEY);
     }
     setHasSavedProgress(false);
-    router.push(`/build/funnel?campaignId=${encodeURIComponent(currentCampaignId)}`);
+    router.push(getCampaignReviewPath(currentCampaignId));
   }
 
   async function createOrReuseCampaignPlan() {
@@ -691,7 +710,7 @@ export default function OnboardingPage() {
       }
 
       if (currentStep === "complete") {
-        router.push(`/build/funnel?campaignId=${encodeURIComponent(campaignId)}`);
+        router.push(getCampaignReviewPath(campaignId));
         return;
       }
 
