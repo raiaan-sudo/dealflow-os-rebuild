@@ -100,6 +100,40 @@ export async function consumeSessionCostBudget(params: {
       );
     }
 
+    const reusedExisting = reservation.reused_existing === true;
+    const eventStatus =
+      typeof reservation.event_status === "string" ? reservation.event_status : null;
+
+    if (reusedExisting && eventStatus === "consumed") {
+      logWarn("Provider usage guard blocked duplicate consumed request", {
+        bucket: params.bucket,
+        userId: params.userId,
+        organizationId: params.organizationId ?? null,
+        campaignId: params.campaignId ?? null,
+        idempotencyKey: params.idempotencyKey ?? null,
+      });
+      throw new ApiError(
+        409,
+        "This paid generation request was already completed for the same idempotency key.",
+        "provider_usage_idempotency_consumed",
+      );
+    }
+
+    if (reusedExisting && eventStatus === "reserved") {
+      logWarn("Provider usage guard blocked duplicate in-progress request", {
+        bucket: params.bucket,
+        userId: params.userId,
+        organizationId: params.organizationId ?? null,
+        campaignId: params.campaignId ?? null,
+        idempotencyKey: params.idempotencyKey ?? null,
+      });
+      throw new ApiError(
+        409,
+        "This paid generation request is already reserved or in progress.",
+        "provider_usage_idempotency_in_progress",
+      );
+    }
+
     return {
       currentCount: Number(reservation.current_count ?? 0),
       nextCount: Number(reservation.next_count ?? 1),
