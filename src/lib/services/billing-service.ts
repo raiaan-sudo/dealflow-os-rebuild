@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { ApiError } from "@/lib/api/route";
-import { isInternalAdminEmail } from "@/lib/env";
+import { isBillingAdminOverrideEnabled, isInternalAdminEmail } from "@/lib/env";
 import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -79,6 +79,57 @@ function isStripeCustomerModeMismatch(error: unknown) {
   }
 
   return /No such customer:.*similar object exists in (test|live) mode/i.test(error.message);
+}
+
+function getStripeCustomerIdFromSession(session: Stripe.Checkout.Session) {
+  if (typeof session.customer === "string") {
+    return session.customer;
+  }
+
+  return session.customer?.id ?? null;
+}
+
+function getStripeSubscriptionFromSession(session: Stripe.Checkout.Session) {
+  if (!session.subscription || typeof session.subscription === "string") {
+    return null;
+  }
+
+  return session.subscription.object === "subscription" ? session.subscription : null;
+}
+
+function getStripeSubscriptionIdFromSession(session: Stripe.Checkout.Session) {
+  if (typeof session.subscription === "string") {
+    return session.subscription;
+  }
+
+  return session.subscription?.id ?? null;
+}
+
+function getBillingAdminOverrideEmail(context: Awaited<ReturnType<typeof getAppContext>>) {
+  if (!context || !isBillingAdminOverrideEnabled()) {
+    return null;
+  }
+
+  const email = context.user.email ?? context.profile?.email ?? null;
+  return isInternalAdminEmail(email) ? email : null;
+}
+
+function logBillingAdminOverrideGrant(params: {
+  source: string;
+  organizationId: string;
+  userId: string;
+  email: string | null;
+  planTier: BillingPlanTier;
+  subscriptionStatus: string;
+}) {
+  logOperationalEvent("billing_admin_override_launch_access_granted", {
+    source: params.source,
+    organizationId: params.organizationId,
+    userId: params.userId,
+    email: params.email,
+    planTier: params.planTier,
+    subscriptionStatus: params.subscriptionStatus,
+  });
 }
 
 async function createStripeCustomerForCheckout(params: {
@@ -319,7 +370,19 @@ export async function getBillingSummary() {
     context.organization.plan_tier ?? "starter",
   );
 
-  const launchOverride = isInternalAdminEmail(context.user.email ?? context.profile?.email ?? null);
+  const launchOverrideEmail = getBillingAdminOverrideEmail(context);
+  const launchOverride = Boolean(launchOverrideEmail);
+
+  if (launchOverride && !summary.launchAllowed) {
+    logBillingAdminOverrideGrant({
+      source: "billing_summary",
+      organizationId: context.organization.id,
+      userId: context.user.id,
+      email: launchOverrideEmail,
+      planTier: summary.planTier,
+      subscriptionStatus: summary.subscriptionStatus,
+    });
+  }
 
   return {
     ...summary,
@@ -388,11 +451,20 @@ export async function assertMetaLaunchBillingAccessForOrganization(organizationI
   }
 
   const context = await getAppContext();
-  const launchOverride =
-    context?.organization.id === organizationId &&
-    isInternalAdminEmail(context.user.email ?? context.profile?.email ?? null);
+  const launchOverrideEmail =
+    context?.organization.id === organizationId ? getBillingAdminOverrideEmail(context) : null;
+  const launchOverride = Boolean(launchOverrideEmail);
 
   if (launchOverride) {
+    logBillingAdminOverrideGrant({
+      source: "organization_launch_assertion",
+      organizationId,
+      userId: context?.user.id ?? "unknown",
+      email: launchOverrideEmail,
+      planTier: summary.planTier,
+      subscriptionStatus: summary.subscriptionStatus,
+    });
+
     return {
       ...summary,
       launchAllowed: true,
@@ -467,6 +539,7 @@ export async function createBillingCheckoutSession(params: {
       params: {
         mode: "subscription",
         customer: stripeCustomerId,
+        client_reference_id: context.organization.id,
         line_items: [
           {
             price: priceId,
@@ -557,6 +630,115 @@ export async function createBillingCheckoutSession(params: {
   }
 
   return { url: session.url, sessionId: session.id };
+}
+
+export async function reconcileBillingCheckoutSuccess(sessionId: string) {
+  const [context, supabase] = await Promise.all([getAppContext(), createClient()]);
+  const stripeProvider = getStripeBillingProvider();
+
+  if (!context || !supabase) {
+    throw new ApiError(401, "Authentication is required for checkout reconciliation.", "unauthorized");
+  }
+
+  if (!stripeProvider.isConfigured()) {
+    throw new ApiError(503, "Stripe is not configured yet.", "stripe_not_configured");
+  }
+
+  const session = (await stripeProvider.execute({
+    action: "retrieve_checkout_session",
+    sessionId,
+  })) as Stripe.Checkout.Session;
+
+  if (session.mode !== "subscription") {
+    throw new ApiError(400, "Checkout session is not a subscription checkout.", "checkout_mode_invalid");
+  }
+
+  if (session.status !== "complete") {
+    throw new ApiError(409, "Checkout session has not completed yet.", "checkout_session_incomplete");
+  }
+
+  const sessionOrganizationId =
+    typeof session.metadata?.organization_id === "string" ? session.metadata.organization_id : null;
+
+  if (sessionOrganizationId !== context.organization.id) {
+    throw new ApiError(403, "Checkout session does not belong to this workspace.", "checkout_session_forbidden");
+  }
+
+  const sessionSubscriptionId = getStripeSubscriptionIdFromSession(session);
+  if (!sessionSubscriptionId) {
+    throw new ApiError(
+      409,
+      "Checkout session completed without an attached subscription.",
+      "checkout_subscription_missing",
+    );
+  }
+
+  const billingClient = createAdminClient() ?? supabase;
+  const { data: existingSubscription, error: existingSubscriptionError } = await billingClient
+    .from("billing_subscriptions")
+    .select("stripe_customer_id,stripe_checkout_session_id")
+    .eq("organization_id", context.organization.id)
+    .maybeSingle();
+
+  if (existingSubscriptionError) {
+    throw new ApiError(500, existingSubscriptionError.message, "billing_subscription_fetch_failed");
+  }
+
+  const existingBillingRow =
+    (existingSubscription as Pick<BillingRow, "stripe_customer_id" | "stripe_checkout_session_id"> | null) ??
+    null;
+  const sessionCustomerId = getStripeCustomerIdFromSession(session);
+
+  if (
+    existingBillingRow?.stripe_customer_id &&
+    sessionCustomerId &&
+    existingBillingRow.stripe_customer_id !== sessionCustomerId
+  ) {
+    throw new ApiError(403, "Checkout session customer does not match this workspace.", "checkout_customer_forbidden");
+  }
+
+  if (
+    existingBillingRow?.stripe_checkout_session_id &&
+    existingBillingRow.stripe_checkout_session_id !== session.id
+  ) {
+    logWarn("checkout_success_reconciliation_session_mismatch", {
+      organizationId: context.organization.id,
+      expectedSessionId: existingBillingRow.stripe_checkout_session_id,
+      actualSessionId: session.id,
+    });
+  }
+
+  const expandedSubscription = getStripeSubscriptionFromSession(session);
+  const subscription =
+    expandedSubscription ??
+    ((await stripeProvider.execute({
+      action: "retrieve_subscription",
+      subscriptionId: sessionSubscriptionId,
+    })) as Stripe.Subscription);
+
+  if (subscription.metadata.organization_id !== context.organization.id) {
+    throw new ApiError(
+      403,
+      "Checkout subscription does not belong to this workspace.",
+      "checkout_subscription_forbidden",
+    );
+  }
+
+  const syncResult = await syncBillingSubscriptionFromStripe(subscription, {
+    eventId: `checkout_session:${session.id}`,
+    eventCreated: session.created,
+    eventType: "checkout.success_reconciliation",
+  });
+
+  logOperationalEvent("checkout_success_reconciled", {
+    organizationId: context.organization.id,
+    checkoutSessionId: session.id,
+    stripeSubscriptionId: subscription.id,
+    applied: syncResult.applied,
+    ignoredReason: syncResult.ignoredReason,
+  });
+
+  return syncResult;
 }
 
 export async function createBillingPortalSession() {

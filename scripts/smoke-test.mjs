@@ -89,6 +89,7 @@ function runOfflineChecks() {
   const billingCheckoutRoute = "src/app/api/billing/checkout/route.ts";
   const billingPortalRoute = "src/app/api/billing/portal/route.ts";
   const billingService = "src/lib/services/billing-service.ts";
+  const stripeService = "src/lib/integrations/stripe/service.ts";
   const stripeProvider = "src/lib/integrations/stripe/provider.ts";
   const billingWebhookMigration = "supabase/migrations/20260428140000_harden_billing_subscription_webhooks.sql";
   const createCampaignRoute = "src/app/api/campaigns/create/route.ts";
@@ -101,6 +102,7 @@ function runOfflineChecks() {
   const directHeyGenClient = "src/lib/ai/heygen.ts";
   const apiRouteHelpers = "src/lib/api/route.ts";
   const rateLimitHelpers = "src/lib/api/rate-limit.ts";
+  const envHelpers = "src/lib/env.ts";
   const sessionCostGuard = "src/lib/services/session-cost-guard.ts";
   const systemJobService = "src/lib/services/system-job-service.ts";
   const loginForm = "src/components/auth/login-form.tsx";
@@ -161,6 +163,11 @@ function runOfflineChecks() {
   assertIncludes(billingCheckoutRoute, "assertSameOriginRequest", "Billing checkout same-origin guard", "checkout route rejects cross-site POSTs");
   assertIncludes(billingPortalRoute, "assertSameOriginRequest", "Billing portal same-origin guard", "portal route rejects cross-site POSTs");
   assertIncludes(stripeProvider, "create_billing_portal_session", "Stripe portal provider support", "billing portal sessions are created through the Stripe provider");
+  assertIncludes(stripeService, "session_id={CHECKOUT_SESSION_ID}", "Stripe checkout success session id", "checkout success redirects carry the Stripe session id");
+  assertIncludes(stripeProvider, "retrieve_checkout_session", "Stripe checkout retrieval support", "checkout sessions can be verified server-side after redirect");
+  assertIncludes(billingService, "reconcileBillingCheckoutSuccess", "Stripe checkout success reconciliation", "unlock success can sync subscription state if webhooks lag");
+  assertIncludes(envHelpers, "ALLOW_BILLING_ADMIN_OVERRIDE", "Billing admin override env gate", "internal launch override requires explicit env opt-in");
+  assertIncludes(billingService, "billing_admin_override_launch_access_granted", "Billing admin override audit log", "override-based launch access grants are audit logged");
   assertIncludes(billingService, "apply_billing_subscription_webhook", "Stripe webhook ordering guard", "subscription sync uses DB-backed stale event protection");
   assertIncludes(billingService, "stripe_subscription_stale_event_ignored", "Stripe stale event observability", "out-of-order subscription events are logged and ignored");
   assertIncludes(billingWebhookMigration, "stripe_latest_event_created", "Billing subscription event watermark", "billing rows persist latest Stripe event timestamps");

@@ -147,6 +147,10 @@ export function isInternalAdminEmail(email?: string | null) {
   return getInternalAdminEmails().includes(email.toLowerCase());
 }
 
+export function isBillingAdminOverrideEnabled() {
+  return process.env.ALLOW_BILLING_ADMIN_OVERRIDE === "true";
+}
+
 export function getMetaEnv() {
   const appId = process.env.META_APP_ID;
   const appSecret = process.env.META_APP_SECRET;

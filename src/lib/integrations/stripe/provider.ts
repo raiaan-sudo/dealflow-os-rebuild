@@ -25,6 +25,10 @@ export type StripeBillingExecuteRequest =
       idempotencyKey?: string;
     }
   | {
+      action: "retrieve_checkout_session";
+      sessionId: string;
+    }
+  | {
       action: "retrieve_subscription";
       subscriptionId: string;
     }
@@ -161,6 +165,12 @@ class ConfiguredStripeBillingProvider implements StripeBillingProvider
         request.params,
         request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : undefined,
       );
+    }
+
+    if (request.action === "retrieve_checkout_session") {
+      return client.checkout.sessions.retrieve(request.sessionId, {
+        expand: ["subscription", "customer"],
+      });
     }
 
     if (request.action === "retrieve_subscription") {
