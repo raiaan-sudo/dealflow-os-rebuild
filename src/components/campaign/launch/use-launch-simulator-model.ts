@@ -15,7 +15,7 @@ export const LAUNCH_STEPS = [
   "Launching ads...",
 ] as const;
 
-export const MAX_SAFE_DAILY_BUDGET = 100;
+export const MAX_SAFE_DAILY_BUDGET = 200;
 
 function getTrendTone(trend: "improving" | "stable" | "declining") {
   if (trend === "improving") {

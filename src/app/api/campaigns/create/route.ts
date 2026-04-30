@@ -91,7 +91,7 @@ type CampaignPayloadRecord = {
   };
 };
 
-const DEFAULT_META_DAILY_BUDGET_CAP_CENTS = 100;
+const DEFAULT_META_DAILY_BUDGET_CAP_CENTS = 200;
 
 function getMetaDailyBudgetCapCents() {
   const configuredCap = Number(process.env.META_DAILY_BUDGET_CAP_CENTS ?? DEFAULT_META_DAILY_BUDGET_CAP_CENTS);

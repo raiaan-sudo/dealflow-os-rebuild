@@ -223,7 +223,7 @@ function runOfflineChecks() {
   assertIncludes(staticAdsRoute, "idempotencyKey", "Static generation idempotency", "paid generation job creation uses idempotency key");
   assertIncludes(imageProvider, "ALLOW_OPENAI_IMAGE_GENERATION !== \"true\"", "OpenAI image generation kill switch", "paid image provider returns unsupported unless explicitly enabled");
   assertIncludes(launchRoute, "assertMetaLiveLaunchEnabled", "Reachable Meta live launch kill switch", "direct Meta launch route fails closed unless ALLOW_META_LIVE_LAUNCH=true");
-  assertIncludes(launchRoute, "Math.min(Math.floor(configuredCap), DEFAULT_META_DAILY_BUDGET_CAP_CENTS)", "Reachable Meta budget hard cap", "direct Meta launch route cannot raise budget above the $1/day cap through env");
+  assertIncludes(launchRoute, "Math.min(Math.floor(configuredCap), DEFAULT_META_DAILY_BUDGET_CAP_CENTS)", "Reachable Meta budget hard cap", "direct Meta launch route cannot raise budget above the owner-approved $2/day cap through env");
   assertIncludes(sessionCostGuard, "reserve_provider_usage", "Atomic provider usage reservation", "paid-generation guard reserves provider budget through DB RPC");
   assertIncludes(sessionCostGuard, "OPENAI_IMAGE_DAILY_LIMIT", "Configurable image cap", "OpenAI image generation can be capped below the default for production tests");
   assertIncludes(sessionCostGuard, "provider_usage_idempotency_consumed", "Paid generation duplicate-spend guard", "consumed provider usage reservations fail closed instead of calling the provider again");

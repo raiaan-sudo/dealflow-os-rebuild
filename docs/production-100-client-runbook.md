@@ -90,7 +90,7 @@ https://dealflow-os-rebuild.vercel.app/api/stripe/webhook
 3. Retry launch from the UI or route only after confirming the campaign is not actively locked.
 4. `meta_launch_locks` prevents concurrent duplicate launch attempts.
 5. All launch-created Meta objects must remain `PAUSED`.
-6. Daily budget cap must remain at or below 100 cents unless the owner explicitly approves otherwise.
+6. Daily budget cap must remain at or below the owner-approved 200-cent safety cap unless the owner explicitly approves otherwise.
 
 ## Lead Retry Recovery
 
@@ -243,7 +243,7 @@ Use `/admin/issues` for durable issue records and `docs/observability-alerting-r
 - Inspect `plan.launch_runtime`.
 - Inspect `meta_launch_locks`.
 - Retry only after confirming no active lock and no active Meta objects were created.
-- Escalate before retry if any Meta object is not `PAUSED`, if the budget cap is above 100 cents/day, or if the launch has already failed twice.
+- Escalate before retry if any Meta object is not `PAUSED`, if the budget cap is above the owner-approved 200 cents/day, or if the launch has already failed twice.
 
 ### Missing lead
 

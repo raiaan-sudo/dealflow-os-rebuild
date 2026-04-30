@@ -263,10 +263,10 @@ function forcePausedPayload<T extends Record<string, unknown>>(payload: T): T & 
 }
 
 function assertBudgetSafety(payload: BuiltMetaAdSetPayload) {
-  const configuredCap = Number.parseInt(process.env.META_DAILY_BUDGET_CAP_CENTS ?? "100", 10);
+  const configuredCap = Number.parseInt(process.env.META_DAILY_BUDGET_CAP_CENTS ?? "200", 10);
   const capCents = Number.isFinite(configuredCap) && configuredCap > 0
-    ? Math.min(configuredCap, 100)
-    : 100;
+    ? Math.min(configuredCap, 200)
+    : 200;
   const dailyBudget = Number(payload.daily_budget ?? 0);
   const lifetimeBudget = Number(payload.lifetime_budget ?? 0);
 

@@ -10,6 +10,7 @@ const PUBLIC_API_PATHS = new Set([
   "/api/lead-capture",
   "/api/sms/twilio",
   "/api/webhooks/twilio/status",
+  "/api/webhooks/vercel/events",
   "/api/stripe/webhook",
 ]);
 

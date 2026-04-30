@@ -16,6 +16,7 @@ const expectedPublicApiRoutes = new Map([
   ["/api/sms/twilio", new Set(["POST"])],
   ["/api/stripe/webhook", new Set(["POST"])],
   ["/api/webhooks/twilio/status", new Set(["POST"])],
+  ["/api/webhooks/vercel/events", new Set(["POST"])],
 ]);
 
 const expectedInternalApiRoutes = new Map([
