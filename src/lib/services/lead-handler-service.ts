@@ -55,6 +55,11 @@ type CreateLeadInput = {
   email?: string | null;
   source?: string | null;
   notes?: string | null;
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  ad_id?: string | null;
+  landing_page_url?: string | null;
   sms_consent?: boolean | null;
   sms_consent_copy?: string | null;
   consent_source?: string | null;
@@ -74,6 +79,12 @@ type QueueFailedLeadCaptureInput = {
   failureReason: string;
   smsConsent?: boolean | null;
   smsConsentCopy?: string | null;
+  consentUrl?: string | null;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  adId?: string | null;
+  landingPageUrl?: string | null;
 };
 
 export type PublicLeadCaptureRetryInput = {
@@ -89,6 +100,12 @@ export type PublicLeadCaptureRetryInput = {
   reason?: string | null;
   smsConsent?: boolean | null;
   smsConsentCopy?: string | null;
+  consentUrl?: string | null;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  adId?: string | null;
+  landingPageUrl?: string | null;
 };
 
 type LeadInsertContext = {
@@ -500,6 +517,14 @@ export async function queueFailedPublicLeadCapture(input: QueueFailedLeadCapture
           phone: input.phone?.trim() ? normalizePhone(input.phone) : null,
           stage: input.stage?.trim() || "generated",
           notes: input.notes?.trim() || null,
+          smsConsent: input.smsConsent ?? null,
+          smsConsentCopy: input.smsConsentCopy?.trim() || null,
+          consentUrl: input.consentUrl?.trim() || null,
+          utmSource: input.utmSource?.trim() || null,
+          utmMedium: input.utmMedium?.trim() || null,
+          utmCampaign: input.utmCampaign?.trim() || null,
+          adId: input.adId?.trim() || null,
+          landingPageUrl: input.landingPageUrl?.trim() || null,
         },
       },
       idempotencyKey: buildLeadRetryJobIdempotencyKey({
@@ -1467,8 +1492,9 @@ async function createLeadAndStartConversationForContext(
   const { supabase, userId, organizationId, campaignId } = context;
 
   const { firstName, lastName } = splitLeadName(input.name);
+  const phoneRaw = input.phone?.trim() || null;
   const email = input.email?.trim() || null;
-  const phone = input.phone?.trim() ? normalizePhone(input.phone) : null;
+  const phone = phoneRaw ? normalizePhone(phoneRaw) : null;
   const smsConsent = input.sms_consent === true;
   const dedupeHash = buildLeadDedupeHash({
     organizationId,
@@ -1506,6 +1532,7 @@ async function createLeadAndStartConversationForContext(
     .from("leads")
     .insert({
       organization_id: organizationId,
+      tenant_id: organizationId,
       user_id: userId,
       campaign_id: campaignId,
       name: input.name?.trim() || null,
@@ -1514,6 +1541,13 @@ async function createLeadAndStartConversationForContext(
       last_name: lastName,
       email,
       phone,
+      phone_raw: phoneRaw,
+      phone_e164: phone,
+      utm_source: input.utm_source?.trim() || null,
+      utm_medium: input.utm_medium?.trim() || null,
+      utm_campaign: input.utm_campaign?.trim() || null,
+      ad_id: input.ad_id?.trim() || null,
+      landing_page_url: input.landing_page_url?.trim() || null,
       dedupe_hash: dedupeHash,
       status: "new",
       notes: input.notes?.trim() || null,
@@ -1596,14 +1630,10 @@ async function createLeadAndStartConversationForContext(
   }
 
   if (lead.phone) {
-    try {
-      await handleNewLead(lead, supabase);
-    } catch (error) {
-      logError("Lead conversation bootstrap failed", {
-        leadId: lead.id,
-        message: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
+    logWarn("Lead conversation bootstrap skipped", {
+      leadId: lead.id,
+      reason: "lead_sms_automation_disabled_internal_notifications_only",
+    });
   }
 
   return lead;
@@ -1638,9 +1668,15 @@ export async function replayFailedPublicLeadCapture(input: PublicLeadCaptureRetr
     phone: input.phone?.trim() || null,
     source: input.source?.trim() || "lead_capture_retry",
     notes: retryNotes || null,
-    sms_consent: input.smsConsent ?? Boolean(input.phone?.trim()),
+    sms_consent: input.smsConsent === true,
     sms_consent_copy: input.smsConsentCopy ?? SMS_CONSENT_COPY,
     consent_source: "lead_capture_retry",
+    consent_url: input.consentUrl ?? input.landingPageUrl ?? null,
+    utm_source: input.utmSource ?? null,
+    utm_medium: input.utmMedium ?? null,
+    utm_campaign: input.utmCampaign ?? null,
+    ad_id: input.adId ?? null,
+    landing_page_url: input.landingPageUrl ?? input.consentUrl ?? null,
   });
 
   return {

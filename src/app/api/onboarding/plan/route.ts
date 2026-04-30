@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { assertSameOriginRequest, parseOptionalJsonBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
+import { normalizePhone } from "@/lib/phone";
+import { upsertAgentProfile } from "@/lib/services/internal-lead-notification-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,6 +10,10 @@ export const dynamic = "force-dynamic";
 type OnboardingPayload = {
   business_type?: string;
   business_name?: string;
+  agent_first_name?: string;
+  agent_last_name?: string;
+  agent_phone?: string;
+  agent_company_name?: string;
   location?: string;
   market?: string;
   service?: string;
@@ -21,6 +27,9 @@ type OnboardingPayload = {
 type SafeOnboardingPayloadLog = {
   businessType: string;
   businessNamePresent: boolean;
+  agentFirstNamePresent: boolean;
+  agentLastNamePresent: boolean;
+  agentPhonePresent: boolean;
   market: string;
   location: string;
   focus: string;
@@ -61,6 +70,9 @@ function buildSafePayloadLog(payload: OnboardingPayload | null): SafeOnboardingP
   return {
     businessType: safeText(payload?.business_type),
     businessNamePresent: safeText(payload?.business_name).length > 0,
+    agentFirstNamePresent: safeText(payload?.agent_first_name).length > 0,
+    agentLastNamePresent: safeText(payload?.agent_last_name).length > 0,
+    agentPhonePresent: safeText(payload?.agent_phone).length > 0,
     market: safeText(payload?.market),
     location: safeText(payload?.location),
     focus: safeText(payload?.focus),
@@ -476,6 +488,10 @@ export async function POST(req: Request) {
     safePayload = buildSafePayloadLog(payload);
     const businessType = safeText(payload?.business_type) || "Real Estate";
     const businessName = safeText(payload?.business_name) || businessType;
+    const agentFirstName = safeText(payload?.agent_first_name);
+    const agentLastName = safeText(payload?.agent_last_name);
+    const agentPhone = safeText(payload?.agent_phone);
+    const agentCompanyName = safeText(payload?.agent_company_name) || businessName;
     const location = safeText(payload?.market) || safeText(payload?.location) || "United States";
     const focus = getRealEstateFocus({
       focus: payload?.focus,
@@ -486,6 +502,16 @@ export async function POST(req: Request) {
     const service = safeText(payload?.goal) || safeText(payload?.service) || (focus === "seller" ? "Free home value strategy call" : "Private listings and buyer consult");
     const budget = toMonthlyBudget(payload?.budget);
     const realEstateMode = isRealEstateBusinessType(businessType) || safeText(payload?.focus).length > 0;
+    const normalizedAgentPhone = normalizePhone(agentPhone);
+
+    if (!agentFirstName || !agentLastName || !agentPhone || !agentCompanyName) {
+      throw new Error("Agent first name, last name, phone, and company are required.");
+    }
+
+    if (!normalizedAgentPhone) {
+      throw new Error("Enter a valid US or Canada phone number for internal lead alerts.");
+    }
+
     const idempotencyKey = buildOnboardingIdempotencyKey(createHash, {
       userId: user.id,
       businessType: businessName,
@@ -498,6 +524,28 @@ export async function POST(req: Request) {
     const existingCampaignId = await findExistingCampaignByIdempotencyKey(supabase as never, user.id, idempotencyKey);
 
     if (existingCampaignId) {
+      const { data: existingRowData, error: existingRowError } = await supabase
+        .from("campaign_plans")
+        .select("organization_id")
+        .eq("id", existingCampaignId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (existingRowError) {
+        throw existingRowError;
+      }
+
+      const existingRow = existingRowData as { organization_id?: string | null } | null;
+      await upsertAgentProfile({
+        tenantId: existingRow?.organization_id || user.id,
+        userId: user.id,
+        firstName: agentFirstName,
+        lastName: agentLastName,
+        email: user.email || "",
+        phoneRaw: agentPhone,
+        companyName: agentCompanyName,
+      });
+
       const responseBody = buildSuccessResponse(existingCampaignId);
       return NextResponse.json(responseBody);
     }
@@ -541,7 +589,7 @@ export async function POST(req: Request) {
 
     const { data: savedRowData, error: savedRowError } = await supabase
       .from("campaign_plans")
-      .select("plan")
+      .select("plan, organization_id, user_id")
       .eq("id", savedPlan.id)
       .eq("user_id", user.id)
       .maybeSingle();
@@ -550,7 +598,16 @@ export async function POST(req: Request) {
       throw savedRowError;
     }
 
-    const savedRow = (savedRowData as { plan?: unknown } | null) ?? null;
+    const savedRow = (savedRowData as { plan?: unknown; organization_id?: string | null; user_id?: string | null } | null) ?? null;
+    await upsertAgentProfile({
+      tenantId: savedRow?.organization_id || user.id,
+      userId: user.id,
+      firstName: agentFirstName,
+      lastName: agentLastName,
+      email: user.email || "",
+      phoneRaw: agentPhone,
+      companyName: agentCompanyName,
+    });
     const currentPlan = campaignPlanDocumentModule.readCampaignPlanDocument(savedRow?.plan);
 
     await persistenceModule.persistCampaignPlanDocumentUpdate({

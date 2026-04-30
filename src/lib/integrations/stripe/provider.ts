@@ -8,6 +8,8 @@ import type {
   ProviderFailure,
 } from "@/lib/integrations/contracts";
 
+const STRIPE_API_VERSION = "2026-04-22.dahlia";
+
 export type StripeBillingExecuteRequest =
   | {
       action: "create_customer";
@@ -126,7 +128,9 @@ class ConfiguredStripeBillingProvider implements StripeBillingProvider
     }
 
     if (!this.client) {
-      this.client = new Stripe(env.secretKey);
+      this.client = new Stripe(env.secretKey, {
+        apiVersion: STRIPE_API_VERSION,
+      });
     }
 
     return {

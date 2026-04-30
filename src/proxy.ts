@@ -9,6 +9,7 @@ const PUBLIC_API_PATHS = new Set([
   "/api/integrations/meta/callback",
   "/api/lead-capture",
   "/api/sms/twilio",
+  "/api/webhooks/twilio/status",
   "/api/stripe/webhook",
 ]);
 

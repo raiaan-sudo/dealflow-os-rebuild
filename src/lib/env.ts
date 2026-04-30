@@ -328,16 +328,17 @@ export function validateVoiceGenerationEnv() {
 export function getTwilioEnv() {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const phoneNumber = process.env.TWILIO_PHONE_NUMBER;
+  const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
 
-  if (!accountSid || !authToken || !phoneNumber) {
+  if (!accountSid || !authToken || !messagingServiceSid) {
     return null;
   }
 
   return {
     accountSid,
     authToken,
-    phoneNumber,
+    messagingServiceSid,
+    internalLeadSmsEnabled: process.env.INTERNAL_LEAD_SMS_ENABLED === "true",
   };
 }
 

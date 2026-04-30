@@ -4,6 +4,7 @@ import { getMetaEnv, getPublicAppUrl } from "@/lib/env";
 import { ApiError, apiFailure, parseTextBody } from "@/lib/api/route";
 import { logOperationalEvent, logWarn } from "@/lib/logging";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type MetaSignedRequestPayload = {

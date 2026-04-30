@@ -92,7 +92,7 @@ function runOfflineChecks() {
   const stripeService = "src/lib/integrations/stripe/service.ts";
   const stripeProvider = "src/lib/integrations/stripe/provider.ts";
   const billingWebhookMigration = "supabase/migrations/20260428140000_harden_billing_subscription_webhooks.sql";
-  const billingOrderingMigration = "supabase/migrations/20260428163000_harden_billing_event_ordering.sql";
+  const billingOrderingMigration = "supabase/migrations/20260430010000_public_launch_final_hardening.sql";
   const createCampaignRoute = "src/app/api/campaigns/create/route.ts";
   const videoRoute = "src/app/api/campaigns/[id]/generate-video/route.ts";
   const staticAdsRoute = "src/app/api/campaigns/[id]/generate-static-ads/route.ts";
@@ -159,7 +159,8 @@ function runOfflineChecks() {
   assertIncludes(leadRoute, "lead-capture:campaign-ip", "Lead capture campaign+IP limit", "public lead capture rate limit is caller-aware");
   assertIncludes(leadRoute, "lead-capture:contact", "Lead capture contact limit", "public lead capture has contact-hash abuse control");
   assertIncludes(leadRoute, "lead_spam_rejected", "Lead capture honeypot/timing guard", "public lead capture rejects obvious bot submissions");
-  assertIncludes(leadRoute, "TURNSTILE_SECRET_KEY", "Lead capture Turnstile server gate", "Cloudflare Turnstile verification is enforced only when the secret env var is configured");
+  assertIncludes(leadRoute, "TURNSTILE_SECRET_KEY", "Lead capture Turnstile server gate", "Cloudflare Turnstile verification is enforced when the secret env var is configured");
+  assertIncludes(leadRoute, "ALLOW_PUBLIC_LEAD_NO_TURNSTILE", "Lead capture Turnstile production guard", "production lead capture fails closed if Turnstile is not configured unless break-glass is set");
   assertIncludes(leadRoute, "https://challenges.cloudflare.com/turnstile/v0/siteverify", "Lead capture Turnstile siteverify", "public lead capture verifies Turnstile tokens server-side");
   assertIncludes(leadForm, "NEXT_PUBLIC_TURNSTILE_SITE_KEY", "Lead form Turnstile client gate", "public lead form renders Turnstile only when the public site key is configured");
   assertIncludes(loginForm, "captchaToken", "Signup Turnstile token support", "Supabase Auth CAPTCHA can receive a Turnstile token during account creation");
@@ -171,10 +172,10 @@ function runOfflineChecks() {
   assertIncludes(twilioWebhookRoute, "twilio:webhook:ip", "Twilio webhook IP rate limit", "public Twilio webhook has durable caller bucket");
   assertIncludes(twilioWebhookRoute, "twilio_body_too_large", "Twilio webhook body limit", "public Twilio webhook rejects oversized bodies");
   assertIncludes(twilioWebhookRoute, "replySuppressed", "Twilio automated reply suppression", "inbound SMS webhook records when automated SMS replies are suppressed");
-  assertIncludes(smsService, "TWILIO_OUTBOUND_SMS_ENABLED === \"true\"", "SMS outbound disabled by default", "outbound SMS automation requires explicit env opt-in");
+  assertIncludes(smsService, "outboundLeadSmsEnabled: false", "SMS outbound disabled by default", "lead-facing SMS automation remains hard-disabled");
   assertIncludes(smsService, "SMS_COMPLIANCE_ACK === \"true\"", "SMS compliance acknowledgement gate", "outbound SMS automation requires explicit compliance approval");
-  assertIncludes(smsService, "sms_consent_missing", "SMS consent enforcement", "automated SMS sends require explicit per-lead consent");
-  assertIncludes(smsService, "sms_recipient_opted_out", "SMS opt-out enforcement", "automated SMS sends block opted-out recipients");
+  assertIncludes(smsService, "lead_sms_automation_disabled", "SMS consent enforcement", "lead-facing sends are blocked instead of relying on consent state");
+  assertIncludes(smsService, "Outbound SMS to leads is disabled", "SMS opt-out enforcement", "lead-facing sends cannot reach opted-out recipients because automation is disabled");
   assertIncludes(leadMessageIdempotencyMigration, "lead_messages_provider_message_unique_idx", "Lead message provider idempotency constraint", "Twilio retries cannot duplicate provider messages after migration");
   assertIncludes("src/lib/services/lead-handler-service.ts", "dedupe_hash", "Lead durable dedupe hash", "public leads have durable dedupe hash support");
   assertIncludes("src/lib/services/lead-handler-service.ts", "consent_metadata", "Lead consent persistence", "lead capture persists consent metadata");
@@ -210,7 +211,7 @@ function runOfflineChecks() {
   assertIncludes(billingService, "apply_billing_subscription_webhook", "Stripe webhook ordering guard", "subscription sync uses DB-backed stale event protection");
   assertIncludes(billingService, "stripe_subscription_stale_event_ignored", "Stripe stale event observability", "out-of-order subscription events are logged and ignored");
   assertIncludes(billingWebhookMigration, "stripe_latest_event_created", "Billing subscription event watermark", "billing rows persist latest Stripe event timestamps");
-  assertIncludes(billingOrderingMigration, "stripe_latest_event_id", "Billing equal-timestamp ordering guard", "same-second Stripe events are ordered deterministically");
+  assertIncludes(billingOrderingMigration, "stripe_latest_event_id, '') < normalized_event_id", "Billing equal-timestamp ordering guard", "same-second Stripe events are ordered deterministically");
   assertIncludes(creativeEngine, "provider_usage_context", "Paid static generation guard", "each generated image carries DB-backed provider usage context");
   assertIncludes(campaignPersistence, "consumeSessionCostBudget", "Paid image call guard", "server-side static generation reserves provider budget before execution");
   assertIncludes(staticAdsRoute, "idempotencyKey", "Static generation idempotency", "paid generation job creation uses idempotency key");

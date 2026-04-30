@@ -150,9 +150,16 @@ Emergency disable:
 
 ## SMS Compliance Controls
 
-Outbound SMS automation is default-off. To enable it, all of the following must be true:
+Lead-facing outbound SMS automation is not part of this launch and must stay disabled. Internal agent lead-alert SMS may be enabled only after all of the following are true:
 
-- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_PHONE_NUMBER` are configured.
+- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_MESSAGING_SERVICE_SID` are configured server-side.
+- `INTERNAL_LEAD_SMS_ENABLED=true`.
+- The target agent has an `agent_profiles.phone_e164`, `active=true`, and `sms_notifications_enabled=true`.
+- The send path records one `new_lead_alert` and one `lead_reply_template` row in `lead_notifications`.
+- Load/stress tests use `SMS_MOCK_MODE=true` or `TEST_SMS_MODE=mock`; do not send bulk real SMS.
+
+Lead-facing outbound SMS automation remains disabled unless a future compliance launch explicitly re-enables it with all of the following:
+
 - `TWILIO_INBOUND_ORGANIZATION_ID` maps the inbound Twilio number to exactly one workspace, or a dedicated per-tenant inbound-number mapping table has been implemented.
 - `TWILIO_OUTBOUND_SMS_ENABLED=true`.
 - `SMS_COMPLIANCE_ACK=true`.

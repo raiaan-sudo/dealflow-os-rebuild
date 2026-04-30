@@ -10,10 +10,12 @@ const routeMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 const mutatingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 const expectedPublicApiRoutes = new Map([
+  ["/api/meta/data-deletion", new Set(["GET", "POST"])],
   ["/api/integrations/meta/callback", new Set(["GET"])],
   ["/api/lead-capture", new Set(["POST"])],
   ["/api/sms/twilio", new Set(["POST"])],
   ["/api/stripe/webhook", new Set(["POST"])],
+  ["/api/webhooks/twilio/status", new Set(["POST"])],
 ]);
 
 const expectedInternalApiRoutes = new Map([

@@ -19,6 +19,7 @@ import {
   createPublicLeadAndStartConversation,
   queueFailedPublicLeadCapture,
 } from "@/lib/services/lead-handler-service";
+import { safeNotifyAssignedAgentOfNewLead } from "@/lib/services/internal-lead-notification-service";
 
 const leadCaptureSchema = z
   .object({
@@ -35,6 +36,11 @@ const leadCaptureSchema = z
     website: z.string().max(500).optional(),
     company_website: z.string().max(500).optional(),
     hp: z.string().max(500).optional(),
+    utm_source: z.string().trim().max(200).optional(),
+    utm_medium: z.string().trim().max(200).optional(),
+    utm_campaign: z.string().trim().max(200).optional(),
+    ad_id: z.string().trim().max(200).optional(),
+    landing_page_url: z.string().trim().url().max(2000).optional(),
     form_started_at: z.union([z.number(), z.string()]).optional(),
     formStartedAt: z.union([z.number(), z.string()]).optional(),
     turnstile_token: z.string().trim().min(1).max(4096).optional(),
@@ -79,6 +85,10 @@ function getTurnstileSecret() {
   return process.env.TURNSTILE_SECRET_KEY?.trim() || null;
 }
 
+function canBypassTurnstileSecret() {
+  return process.env.NODE_ENV !== "production" || process.env.ALLOW_PUBLIC_LEAD_NO_TURNSTILE === "true";
+}
+
 async function verifyTurnstileToken(params: {
   token?: string | null;
   ip?: string | null;
@@ -87,6 +97,14 @@ async function verifyTurnstileToken(params: {
   const secret = getTurnstileSecret();
 
   if (!secret) {
+    if (!canBypassTurnstileSecret()) {
+      logOperationalEvent("lead_capture.turnstile_rejected", {
+        requestId: params.requestId,
+        reason: "turnstile_secret_missing",
+      });
+      throw new ApiError(503, "Lead verification is temporarily unavailable.", "turnstile_unconfigured");
+    }
+
     return;
   }
 
@@ -150,6 +168,11 @@ export async function POST(req: Request) {
         stage: string;
         smsConsent: boolean;
         smsConsentCopy: string;
+        utmSource: string | null;
+        utmMedium: string | null;
+        utmCampaign: string | null;
+        adId: string | null;
+        landingPageUrl: string | null;
       }
     | null = null;
 
@@ -269,6 +292,11 @@ export async function POST(req: Request) {
       stage: normalizedStage,
       smsConsent,
       smsConsentCopy,
+      utmSource: payload.utm_source?.trim() || null,
+      utmMedium: payload.utm_medium?.trim() || null,
+      utmCampaign: payload.utm_campaign?.trim() || null,
+      adId: payload.ad_id?.trim() || null,
+      landingPageUrl: payload.landing_page_url || req.headers.get("referer"),
     };
 
     const lead = await createPublicLeadAndStartConversation({
@@ -283,6 +311,11 @@ export async function POST(req: Request) {
       sms_consent_copy: smsConsentCopy,
       consent_source: "public_lead_capture_form",
       consent_url: req.headers.get("referer"),
+      utm_source: payload.utm_source,
+      utm_medium: payload.utm_medium,
+      utm_campaign: payload.utm_campaign,
+      ad_id: payload.ad_id,
+      landing_page_url: payload.landing_page_url || req.headers.get("referer"),
     });
 
     logOperationalEvent("lead_capture.succeeded", {
@@ -302,6 +335,25 @@ export async function POST(req: Request) {
         "lead_context_missing",
       );
     }
+
+    const notificationResult = await safeNotifyAssignedAgentOfNewLead({
+      ...lead,
+      phone_raw: phone,
+      phone_e164: null,
+      lead_type: null,
+      utm_source: payload.utm_source,
+      utm_medium: payload.utm_medium,
+      utm_campaign: payload.utm_campaign,
+      ad_id: payload.ad_id,
+      landing_page_url: payload.landing_page_url || req.headers.get("referer"),
+    });
+
+    logOperationalEvent("lead_capture.internal_notification_processed", {
+      requestId,
+      leadId: lead.id,
+      organizationId: lead.organization_id,
+      result: notificationResult,
+    });
 
     if (isDevelopment) {
       debugLog("lead-capture", {
@@ -354,6 +406,12 @@ export async function POST(req: Request) {
         failureReason: error instanceof Error ? error.message : "Lead capture failed.",
         smsConsent: capturedPayload.smsConsent,
         smsConsentCopy: capturedPayload.smsConsentCopy,
+        consentUrl: capturedPayload.landingPageUrl,
+        utmSource: capturedPayload.utmSource,
+        utmMedium: capturedPayload.utmMedium,
+        utmCampaign: capturedPayload.utmCampaign,
+        adId: capturedPayload.adId,
+        landingPageUrl: capturedPayload.landingPageUrl,
       });
 
       if (queuedJob) {

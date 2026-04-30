@@ -4,7 +4,7 @@ import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 
 const repoRoot = process.cwd();
-const expectedSchemaVersion = "20260429190000";
+const expectedSchemaVersion = "20260430010000";
 const schemaCheckMode = process.env.SUPABASE_SCHEMA_CHECK_MODE?.trim().toLowerCase() ?? "remote";
 const requiredMigrationFiles = [
   "20260426110000_add_campaign_plan_critical_fields.sql",
@@ -30,6 +30,8 @@ const requiredMigrationFiles = [
   "20260429100000_fix_billing_ordering_and_operator_resolution.sql",
   "20260429101000_reset_tenant_rls_policies.sql",
   "20260429190000_harden_provider_usage_idempotency.sql",
+  "20260429230000_internal_sms_lead_notifications.sql",
+  "20260430010000_public_launch_final_hardening.sql",
 ];
 
 const { loadEnvConfig } = nextEnv;
@@ -281,10 +283,31 @@ async function main() {
       .limit(1),
   );
 
+  await probeQuery("agent_profiles table check", () =>
+    supabase
+      .from("agent_profiles")
+      .select("id, tenant_id, user_id, first_name, last_name, email, phone_raw, phone_e164, company_name, brokerage_name, sms_notifications_enabled, active, created_at, updated_at")
+      .limit(1),
+  );
+
+  await probeQuery("lead_assignments table check", () =>
+    supabase
+      .from("lead_assignments")
+      .select("id, tenant_id, lead_id, agent_id, assigned_at, contacted_at, status, created_at, updated_at")
+      .limit(1),
+  );
+
+  await probeQuery("lead_notifications table check", () =>
+    supabase
+      .from("lead_notifications")
+      .select("id, tenant_id, lead_id, agent_id, channel, provider, purpose, provider_message_id, status, error_message, sent_at, delivered_at, failed_at, created_at, updated_at")
+      .limit(1),
+  );
+
   await probeQuery("leads reliability columns check", () =>
     supabase
       .from("leads")
-      .select("id, organization_id, campaign_id, email, phone, dedupe_hash, consent_metadata, sms_opted_out_at")
+      .select("id, organization_id, tenant_id, campaign_id, first_name, last_name, email, phone, phone_raw, phone_e164, campaign_name, lead_type, source, utm_source, utm_medium, utm_campaign, ad_id, landing_page_url, dedupe_hash, consent_metadata, sms_opted_out_at")
       .limit(1),
   );
 

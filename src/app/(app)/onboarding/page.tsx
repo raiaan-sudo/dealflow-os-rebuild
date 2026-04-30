@@ -23,14 +23,20 @@ type PipelineStep = {
 };
 
 type FieldErrors = {
+  firstName?: string;
+  lastName?: string;
   businessName?: string;
+  agentPhone?: string;
   market?: string;
   priceRange?: string;
   budget?: string;
 };
 
 type PersistedOnboardingProgress = {
+  firstName: string;
+  lastName: string;
   businessName: string;
+  agentPhone: string;
   market: string;
   focus: CampaignFocus;
   priceRange: string;
@@ -203,7 +209,10 @@ function getStartStepIndex(step: OnboardingProgressStep) {
 }
 
 function buildOnboardingIdempotencySeed(params: {
+  firstName: string;
+  lastName: string;
   businessName: string;
+  agentPhone: string;
   market: string;
   focus: CampaignFocus;
   priceRange: string;
@@ -211,7 +220,10 @@ function buildOnboardingIdempotencySeed(params: {
   goal: string;
 }) {
   return [
+    params.firstName,
+    params.lastName,
     params.businessName,
+    params.agentPhone,
     params.market,
     params.focus,
     params.priceRange,
@@ -266,7 +278,10 @@ async function fetchJsonWithTimeout<T>(input: string, init: RequestInit, timeout
 }
 
 function validateFields(params: {
+  firstName: string;
+  lastName: string;
   businessName: string;
+  agentPhone: string;
   market: string;
   priceRange: string;
   budget: string;
@@ -274,8 +289,20 @@ function validateFields(params: {
   const errors: FieldErrors = {};
   const budgetValue = Number.parseFloat(params.budget.replace(/[^0-9.]/g, ""));
 
+  if (params.firstName.trim().length === 0) {
+    errors.firstName = "Add your first name for lead alerts.";
+  }
+
+  if (params.lastName.trim().length === 0) {
+    errors.lastName = "Add your last name for lead alerts.";
+  }
+
   if (params.businessName.trim().length === 0) {
-    errors.businessName = "Add your name, team, or brokerage so we can personalize the preview.";
+    errors.businessName = "Add your company or brokerage so we can personalize the preview.";
+  }
+
+  if (params.agentPhone.trim().length === 0) {
+    errors.agentPhone = "Add the phone number that should receive internal lead alerts.";
   }
 
   if (params.market.trim().length === 0) {
@@ -318,7 +345,10 @@ export default function OnboardingPage() {
   const router = useRouter();
   const latestPlanRequestIdRef = useRef(0);
   const activePlanAbortControllerRef = useRef<AbortController | null>(null);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [businessName, setBusinessName] = useState("");
+  const [agentPhone, setAgentPhone] = useState("");
   const [market, setMarket] = useState("");
   const [focus, setFocus] = useState<CampaignFocus>("seller");
   const [priceRange, setPriceRange] = useState<string>(PRICE_RANGE_OPTIONS[1]);
@@ -340,14 +370,17 @@ export default function OnboardingPage() {
   const idempotencySeed = useMemo(
     () =>
       buildOnboardingIdempotencySeed({
+        firstName,
+        lastName,
         businessName,
+        agentPhone,
         market,
         focus,
         priceRange,
         budget,
         goal: normalizedGoal,
       }),
-    [budget, businessName, focus, market, normalizedGoal, priceRange],
+    [agentPhone, budget, businessName, firstName, focus, lastName, market, normalizedGoal, priceRange],
   );
 
   useEffect(() => {
@@ -390,7 +423,10 @@ export default function OnboardingPage() {
         ? saved.goal
         : DEFAULT_GOALS[restoredFocus];
 
+      setFirstName(typeof saved.firstName === "string" ? saved.firstName : "");
+      setLastName(typeof saved.lastName === "string" ? saved.lastName : "");
       setBusinessName(typeof saved.businessName === "string" ? saved.businessName : "");
+      setAgentPhone(typeof saved.agentPhone === "string" ? saved.agentPhone : "");
       setMarket(typeof saved.market === "string" ? saved.market : "");
       setFocus(restoredFocus);
       setPriceRange(
@@ -424,7 +460,10 @@ export default function OnboardingPage() {
     }
 
     const progress: PersistedOnboardingProgress = {
+      firstName,
+      lastName,
       businessName,
+      agentPhone,
       market,
       focus,
       priceRange,
@@ -439,7 +478,10 @@ export default function OnboardingPage() {
 
     const hasMeaningfulState =
       Boolean(
-        businessName.trim() ||
+        firstName.trim() ||
+          lastName.trim() ||
+          businessName.trim() ||
+          agentPhone.trim() ||
           market.trim() ||
           priceRange.trim() ||
           budget.trim() ||
@@ -473,7 +515,7 @@ export default function OnboardingPage() {
     }
 
     window.history.replaceState({}, "", url.toString());
-  }, [budget, businessName, campaignId, currentStep, error, failedStep, focus, goal, hydrated, market, normalizedGoal, priceRange]);
+  }, [agentPhone, budget, businessName, campaignId, currentStep, error, failedStep, firstName, focus, goal, hydrated, lastName, market, normalizedGoal, priceRange]);
 
   useEffect(() => {
     if (!hydrated || loading || currentStep !== "complete" || !campaignId) {
@@ -589,6 +631,10 @@ export default function OnboardingPage() {
         body: JSON.stringify({
           business_type: "Real Estate",
           business_name: businessName,
+          agent_first_name: firstName,
+          agent_last_name: lastName,
+          agent_phone: agentPhone,
+          agent_company_name: businessName,
           market,
           focus,
           price_range: priceRange,
@@ -625,7 +671,10 @@ export default function OnboardingPage() {
     }
 
     const nextFieldErrors = validateFields({
+      firstName,
+      lastName,
       businessName,
+      agentPhone,
       market,
       priceRange,
       budget,
@@ -812,7 +861,37 @@ export default function OnboardingPage() {
         <form className="space-y-8" onSubmit={handleSubmit}>
           <div className="grid gap-6 md:grid-cols-2">
             <label className="space-y-2 text-sm">
-              <span className="text-muted-foreground">Agent, team, or brokerage name</span>
+              <span className="text-muted-foreground">First name</span>
+              <Input
+                required
+                value={firstName}
+                onChange={(event) => {
+                  setFirstName(event.target.value);
+                  setFieldErrors((current) => ({ ...current, firstName: undefined }));
+                }}
+                disabled={loading}
+                placeholder="Alex"
+              />
+              {fieldErrors.firstName ? <p className="text-sm text-rose-400">{fieldErrors.firstName}</p> : null}
+            </label>
+
+            <label className="space-y-2 text-sm">
+              <span className="text-muted-foreground">Last name</span>
+              <Input
+                required
+                value={lastName}
+                onChange={(event) => {
+                  setLastName(event.target.value);
+                  setFieldErrors((current) => ({ ...current, lastName: undefined }));
+                }}
+                disabled={loading}
+                placeholder="Morgan"
+              />
+              {fieldErrors.lastName ? <p className="text-sm text-rose-400">{fieldErrors.lastName}</p> : null}
+            </label>
+
+            <label className="space-y-2 text-sm">
+              <span className="text-muted-foreground">Company or brokerage name</span>
               <Input
                 required
                 value={businessName}
@@ -824,6 +903,21 @@ export default function OnboardingPage() {
                 placeholder="Northline Realty Group"
               />
               {fieldErrors.businessName ? <p className="text-sm text-rose-400">{fieldErrors.businessName}</p> : null}
+            </label>
+
+            <label className="space-y-2 text-sm">
+              <span className="text-muted-foreground">SMS alert phone</span>
+              <Input
+                required
+                value={agentPhone}
+                onChange={(event) => {
+                  setAgentPhone(event.target.value);
+                  setFieldErrors((current) => ({ ...current, agentPhone: undefined }));
+                }}
+                disabled={loading}
+                placeholder="(555) 123-4567"
+              />
+              {fieldErrors.agentPhone ? <p className="text-sm text-rose-400">{fieldErrors.agentPhone}</p> : null}
             </label>
 
             <label className="space-y-2 text-sm">

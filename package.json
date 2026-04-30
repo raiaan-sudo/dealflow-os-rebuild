@@ -22,7 +22,8 @@
     "smoke:offline": "node ./scripts/smoke-test.mjs offline",
     "smoke:staging": "node ./scripts/smoke-test.mjs staging",
     "load:routes": "node ./scripts/load-test.mjs routes",
-    "load:lead-capture": "node ./scripts/load-test.mjs lead-capture"
+    "load:lead-capture": "node ./scripts/load-test.mjs lead-capture",
+    "test:internal-sms": "node ./scripts/test-internal-sms-notifications.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",

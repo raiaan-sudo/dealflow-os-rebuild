@@ -69,17 +69,25 @@ type SystemJobPayloadMap = {
     source: string;
     requestId: string;
     reason: string;
-    leadCapture: {
-      campaignId: string;
-      funnelId: string | null;
-      name: string;
-      email: string | null;
-      phone: string | null;
-      stage: string;
-      notes: string | null;
+      leadCapture: {
+        campaignId: string;
+        funnelId: string | null;
+        name: string;
+        email: string | null;
+        phone: string | null;
+        stage: string;
+        notes: string | null;
+        smsConsent?: boolean | null;
+        smsConsentCopy?: string | null;
+        consentUrl?: string | null;
+        utmSource?: string | null;
+        utmMedium?: string | null;
+        utmCampaign?: string | null;
+        adId?: string | null;
+        landingPageUrl?: string | null;
+      };
     };
   };
-};
 
 export type SystemJobTrackingPayload = {
   correlationId: string;
