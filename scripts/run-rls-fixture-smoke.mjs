@@ -43,6 +43,31 @@ async function signIn(anon, email) {
   return data.session.access_token;
 }
 
+async function createFixtureSession(admin, anon, email) {
+  const { data, error } = await admin.auth.admin.generateLink({
+    type: "magiclink",
+    email,
+  });
+  assertNoError(error, `generate fixture session link ${email}`);
+
+  const tokenHash = data.properties?.hashed_token;
+  if (!tokenHash) {
+    throw new Error(`generate fixture session link ${email}: missing token hash`);
+  }
+
+  const { data: sessionData, error: verifyError } = await anon.auth.verifyOtp({
+    type: "magiclink",
+    token_hash: tokenHash,
+  });
+  assertNoError(verifyError, `verify fixture session ${email}`);
+
+  if (!sessionData.session?.access_token) {
+    throw new Error(`verify fixture session ${email}: missing access token`);
+  }
+
+  return sessionData.session.access_token;
+}
+
 async function expectMutationHidden({ jwt, table, idColumn = "id", id, patch }) {
   const response = await fetch(
     `${requireEnv("NEXT_PUBLIC_SUPABASE_URL").replace(/\/$/, "")}/rest/v1/${table}?${encodeURIComponent(idColumn)}=eq.${encodeURIComponent(id)}&select=*`,
@@ -355,8 +380,22 @@ async function main() {
       fixtures.providerEventIds.push(tenant.providerEvent.id);
     }
 
-    const jwtA = await signIn(anon, tenantA.email);
-    const jwtB = await signIn(anon, tenantB.email);
+    let jwtA;
+    let jwtB;
+
+    try {
+      jwtA = await signIn(anon, tenantA.email);
+      jwtB = await signIn(anon, tenantB.email);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/captcha/i.test(message)) {
+        throw error;
+      }
+
+      jwtA = await createFixtureSession(admin, anon, tenantA.email);
+      jwtB = await createFixtureSession(admin, anon, tenantB.email);
+      console.log("INFO  Public password sign-in is CAPTCHA-protected; using admin-generated fixture sessions for RLS smoke.");
+    }
 
     await expectMutationHidden({
       jwt: jwtA,
