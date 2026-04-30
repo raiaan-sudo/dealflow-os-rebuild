@@ -84,6 +84,7 @@ function runOfflineChecks() {
   const leadRoute = "src/app/api/lead-capture/route.ts";
   const leadForm = "src/app/f/[slug]/lead-capture-form.tsx";
   const dashboardPage = "src/app/(app)/dashboard/page.tsx";
+  const appContextService = "src/lib/services/app-context.ts";
   const metaConnect = "src/app/api/integrations/meta/connect/route.ts";
   const metaCallback = "src/app/api/integrations/meta/callback/route.ts";
   const billingCheckoutRoute = "src/app/api/billing/checkout/route.ts";
@@ -120,6 +121,7 @@ function runOfflineChecks() {
     ? ".github/workflows/ci.yml"
     : "docs/production-100-client-runbook.md";
   const productionRunbook = "docs/production-100-client-runbook.md";
+  const membershipPolicyMigration = "supabase/migrations/20260430060000_harden_membership_insert_policy.sql";
 
   assertIncludes(loginForm, "redirectTo.searchParams.set(\"next\", nextPath)", "Auth redirect preservation", "OAuth sign-in keeps next path");
   assertIncludes(middleware, "pathname.startsWith(\"/f/\")", "Public funnel route", "/f/[slug] remains public");
@@ -128,6 +130,10 @@ function runOfflineChecks() {
   assertIncludes(onboardingPage, "Generating funnel", "Onboarding progress step 1", "funnel progress visible");
   assertIncludes(onboardingPage, "Generating ads and creative angles", "Onboarding progress step 2", "creative progress visible");
   assertIncludes(onboardingPage, "Building launch-ready campaign", "Onboarding progress step 3", "campaign build progress visible");
+  assertIncludes(appContextService, "isDemoWorkspaceSeedingEnabled", "Production demo seeding guard", "workspace demo data seeding is environment-gated");
+  assertIncludes(appContextService, "fallbackOrganizationSlug", "Workspace slug collision guard", "bootstrap creates a user-owned fallback slug instead of recovering another owner workspace");
+  assertIncludes(appContextService, "non-owned organization", "Workspace ownership bootstrap guard", "membership bootstrap refuses non-owned organizations");
+  assertIncludes(membershipPolicyMigration, "drop policy if exists organization_memberships_insert_self", "Membership self-join policy removed", "authenticated users cannot self-join arbitrary organizations");
 
   assertIncludes(previewPage, "loadPersistedSelectedAdId", "Preview selected ad source", "preview loads persisted selected ad from DB helper");
   assertIncludes(previewPage, "getSelectedAdIdFromPlan", "Preview selected ad plan helper", "preview resolves selected ad through typed plan helper");

@@ -75,6 +75,33 @@ async function expectMutationHidden({ jwt, table, idColumn = "id", id, patch }) 
   throw new Error(`${table} cross-tenant mutation was not blocked`);
 }
 
+async function expectMembershipSelfJoinBlocked({ jwt, organizationId, userId }) {
+  const response = await fetch(
+    `${requireEnv("NEXT_PUBLIC_SUPABASE_URL").replace(/\/$/, "")}/rest/v1/organization_memberships`,
+    {
+      method: "POST",
+      headers: {
+        apikey: requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+        Authorization: `Bearer ${jwt}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({
+        organization_id: organizationId,
+        user_id: userId,
+        role: "member",
+      }),
+    },
+  );
+
+  if ([401, 403].includes(response.status)) {
+    return;
+  }
+
+  const text = await response.text();
+  throw new Error(`organization_memberships self-join was not blocked: ${response.status} ${text}`);
+}
+
 async function cleanup(admin, fixtures, authUserIds) {
   const deletes = [
     ["stripe_webhook_events", "id", fixtures.stripeEventIds],
@@ -355,6 +382,11 @@ async function main() {
       id: tenantA.job.id,
       patch: { status: tenantA.job.status },
     });
+    await expectMembershipSelfJoinBlocked({
+      jwt: jwtA,
+      organizationId: tenantB.org.id,
+      userId: tenantA.userId,
+    });
 
     const result = spawnSync(process.execPath, ["./scripts/check-rls-cross-tenant.mjs"], {
       cwd: process.cwd(),
@@ -397,6 +429,7 @@ async function main() {
     }
 
     console.log("PASS  Cross-tenant mutation denial - campaign, lead, and system job writes are blocked across tenants");
+    console.log("PASS  Membership self-join denial - users cannot insert themselves into another organization");
   } finally {
     await cleanup(admin, fixtures, authUserIds);
   }
