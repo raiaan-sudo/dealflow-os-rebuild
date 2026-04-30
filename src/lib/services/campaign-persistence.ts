@@ -297,6 +297,7 @@ function mapCampaignRow(row: CampaignPlanRow): Campaign {
   return {
     id: row.id,
     user_id: row.user_id,
+    organization_id: row.organization_id,
     name: safeText(plan?.name) || "Untitled Campaign",
     location: plan?.strategy?.location ?? null,
     audience: plan?.strategy?.audience ?? null,

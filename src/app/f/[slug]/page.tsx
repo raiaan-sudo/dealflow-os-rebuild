@@ -1,6 +1,9 @@
 import { notFound } from "next/navigation";
 import { getPublishedCampaignBySlug } from "@/lib/services/campaign-persistence";
 import { LeadCaptureForm } from "@/app/f/[slug]/lead-capture-form";
+import { getMetaPixelIdForOrganization } from "@/lib/integrations/meta/conversions";
+
+export const dynamic = "force-dynamic";
 
 export default async function PublicFunnelPage({
   params,
@@ -14,6 +17,7 @@ export default async function PublicFunnelPage({
     notFound();
   }
 
+  const metaPixelId = await getMetaPixelIdForOrganization(record.campaign.organization_id);
   const visibleSections = record.funnel.sections.filter((section) => section.visible !== false);
 
   return (
@@ -56,6 +60,7 @@ export default async function PublicFunnelPage({
           funnelSlug={record.publish.slug ?? resolvedParams.slug}
           formFields={record.funnel.form_fields ?? []}
           cta={record.funnel.cta || "Submit"}
+          metaPixelId={metaPixelId}
         />
       </div>
     </div>

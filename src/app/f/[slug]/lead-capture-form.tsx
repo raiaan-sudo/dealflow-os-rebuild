@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Script from "next/script";
 
 type LeadCaptureFormProps = {
   campaignId: string;
   funnelSlug: string;
   formFields: string[];
   cta: string;
+  metaPixelId?: string | null;
 };
 
 const SMS_CONSENT_COPY =
@@ -17,6 +19,8 @@ const TURNSTILE_SCRIPT_ID = "cloudflare-turnstile-script";
 
 declare global {
   interface Window {
+    fbq?: (...args: unknown[]) => void;
+    _fbq?: (...args: unknown[]) => void;
     turnstile?: {
       render: (
         element: HTMLElement,
@@ -41,6 +45,7 @@ export function LeadCaptureForm({
   funnelSlug,
   formFields,
   cta,
+  metaPixelId,
 }: LeadCaptureFormProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -52,6 +57,7 @@ export function LeadCaptureForm({
   const [turnstileToken, setTurnstileToken] = useState("");
   const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
   const turnstileWidgetIdRef = useRef<string | null>(null);
+  const pageViewTrackedRef = useRef(false);
   const turnstileEnabled = Boolean(TURNSTILE_SITE_KEY);
 
   const normalizedFields = useMemo(
@@ -61,6 +67,24 @@ export function LeadCaptureForm({
   const hasConfiguredEmailField = includesField(normalizedFields, "email");
   const showPhone = includesField(normalizedFields, "phone");
   const showEmail = hasConfiguredEmailField || !showPhone;
+
+  useEffect(() => {
+    if (!metaPixelId || pageViewTrackedRef.current) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      if (typeof window.fbq !== "function" || pageViewTrackedRef.current) {
+        return;
+      }
+
+      window.fbq("init", metaPixelId);
+      window.fbq("track", "PageView");
+      pageViewTrackedRef.current = true;
+      window.clearInterval(intervalId);
+    }, 250);
+
+    return () => window.clearInterval(intervalId);
+  }, [metaPixelId]);
 
   useEffect(() => {
     const siteKey = TURNSTILE_SITE_KEY;
@@ -166,11 +190,17 @@ export function LeadCaptureForm({
       });
 
       const data = (await response.json().catch(() => null)) as
-        | { error?: string }
+        | { error?: string; lead_id?: string; id?: string }
         | null;
 
       if (!response.ok) {
         throw new Error(data?.error ?? "Lead capture failed.");
+      }
+
+      const leadId = data?.lead_id ?? data?.id ?? null;
+
+      if (metaPixelId && leadId && typeof window.fbq === "function") {
+        window.fbq("track", "Lead", { campaign_id: campaignId }, { eventID: leadId });
       }
 
       setStatus("success");
@@ -188,7 +218,32 @@ export function LeadCaptureForm({
   }
 
   return (
-    <form className="space-y-4 rounded-[24px] border border-white/10 bg-white/[0.04] p-6" onSubmit={handleSubmit}>
+    <>
+      {metaPixelId ? (
+        <>
+          <Script id="meta-pixel-base" strategy="afterInteractive">
+            {`!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+            'https://connect.facebook.net/en_US/fbevents.js');`}
+          </Script>
+          <noscript>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              alt=""
+              height="1"
+              src={`https://www.facebook.com/tr?id=${encodeURIComponent(metaPixelId)}&ev=PageView&noscript=1`}
+              style={{ display: "none" }}
+              width="1"
+            />
+          </noscript>
+        </>
+      ) : null}
+      <form className="space-y-4 rounded-[24px] border border-white/10 bg-white/[0.04] p-6" onSubmit={handleSubmit}>
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary/80">
           Get Started
@@ -306,6 +361,7 @@ export function LeadCaptureForm({
         </a>
         .
       </p>
-    </form>
+      </form>
+    </>
   );
 }

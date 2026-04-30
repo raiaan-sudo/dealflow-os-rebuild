@@ -14,6 +14,10 @@ import {
   getRequestIp,
 } from "@/lib/api/rate-limit";
 import { debugLog } from "@/lib/debug";
+import {
+  getMetaCookiesFromHeader,
+  safeSendMetaLeadConversion,
+} from "@/lib/integrations/meta/conversions";
 import { logError, logOperationalEvent } from "@/lib/logging";
 import {
   createPublicLeadAndStartConversation,
@@ -178,6 +182,8 @@ export async function POST(req: Request) {
 
   try {
     const requestIp = getRequestIp(req);
+    const cookieHeader = req.headers.get("cookie");
+    const userAgent = req.headers.get("user-agent");
     const ipHash = getHashedRateLimitIdentifier(requestIp);
     const ipRateLimit = await consumeRateLimit({
       key: getRateLimitKey(req, "lead-capture:ip", ipHash),
@@ -348,11 +354,28 @@ export async function POST(req: Request) {
       landing_page_url: payload.landing_page_url || req.headers.get("referer"),
     });
 
+    const metaCookies = getMetaCookiesFromHeader(cookieHeader);
+    const metaConversionResult = await safeSendMetaLeadConversion({
+      organizationId: lead.organization_id,
+      leadId: lead.id,
+      campaignId: lead.campaign_id,
+      eventSourceUrl: payload.landing_page_url || req.headers.get("referer"),
+      eventTime: lead.created_at,
+      name: lead.name,
+      email,
+      phone,
+      clientIp: requestIp,
+      clientUserAgent: userAgent,
+      fbp: metaCookies.fbp,
+      fbc: metaCookies.fbc,
+    });
+
     logOperationalEvent("lead_capture.internal_notification_processed", {
       requestId,
       leadId: lead.id,
       organizationId: lead.organization_id,
       result: notificationResult,
+      metaConversionResult,
     });
 
     if (isDevelopment) {
