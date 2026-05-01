@@ -454,7 +454,10 @@ function issueSeverityFromStripe(row: RawStripeWebhookEventRow): OperatorIssueRo
   return row.status === "failed" ? "high" : "medium";
 }
 
-export async function loadIssueLogRows(limit = 80): Promise<OperatorIssueRow[]> {
+export async function loadIssueLogRows(
+  limit = 80,
+  preloadedCampaigns?: LaunchMonitorRow[],
+): Promise<OperatorIssueRow[]> {
   const admin = createAdminClient();
 
   if (!admin) {
@@ -489,7 +492,9 @@ export async function loadIssueLogRows(limit = 80): Promise<OperatorIssueRow[]> 
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(limit),
-    loadLaunchMonitorRows(Math.min(limit, 50)).catch(() => []),
+    preloadedCampaigns
+      ? Promise.resolve(preloadedCampaigns)
+      : loadLaunchMonitorRows(Math.min(limit, 50)).catch(() => []),
   ]);
 
   if (jobsResult.error) {

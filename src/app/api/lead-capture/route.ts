@@ -220,7 +220,7 @@ async function verifyTurnstileToken(params: {
   }
 }
 
-export async function POST(req: Request) {
+export async function handleLeadCaptureRequest(req: Request) {
   const requestId = crypto.randomUUID();
   let capturedPayload:
     | {
@@ -542,4 +542,8 @@ export async function POST(req: Request) {
 
     return handleApiError(error, "Lead capture");
   }
+}
+
+export async function POST(req: Request) {
+  return handleLeadCaptureRequest(req);
 }

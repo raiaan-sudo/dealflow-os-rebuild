@@ -87,11 +87,12 @@ export default async function CommandCenterPage() {
     throw error;
   }
 
-  const [rows, ops, issues] = await Promise.all([
-    loadLaunchMonitorRows(24),
+  const rowsPromise = loadLaunchMonitorRows(24);
+  const [rows, ops] = await Promise.all([
+    rowsPromise,
     loadOpsSummary(),
-    loadIssueLogRows(36),
   ]);
+  const issues = await loadIssueLogRows(36, rows);
 
   const liveCampaigns = rows.filter((row) => row.launchStatus.includes("completed") || row.launchStatus.includes("live"));
   const cleanCampaigns = rows.filter(
