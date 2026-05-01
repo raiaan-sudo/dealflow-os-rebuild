@@ -390,6 +390,8 @@ export async function POST(req: Request) {
       utm_campaign: payload.utm_campaign,
       ad_id: payload.ad_id,
       landing_page_url: payload.landing_page_url || req.headers.get("referer"),
+      skip_recent_duplicate_fallback: isLoadTestBypass,
+      skip_lead_loop_verification: isLoadTestBypass,
     });
 
     logOperationalEvent("lead_capture.succeeded", {

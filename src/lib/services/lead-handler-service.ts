@@ -64,6 +64,8 @@ type CreateLeadInput = {
   sms_consent_copy?: string | null;
   consent_source?: string | null;
   consent_url?: string | null;
+  skip_recent_duplicate_fallback?: boolean;
+  skip_lead_loop_verification?: boolean;
 };
 
 type QueueFailedLeadCaptureInput = {
@@ -599,6 +601,7 @@ async function findRecentDuplicateLead(params: {
   email: string | null;
   phone: string | null;
   dedupeHash?: string | null;
+  skipRecentDuplicateFallback?: boolean;
 }) {
   const { supabase, organizationId, campaignId, email, phone } = params;
 
@@ -622,6 +625,10 @@ async function findRecentDuplicateLead(params: {
     if (data) {
       return data as LeadRow;
     }
+  }
+
+  if (params.skipRecentDuplicateFallback) {
+    return null;
   }
 
   if (!campaignId || (!email && !phone)) {
@@ -1522,6 +1529,7 @@ async function createLeadAndStartConversationForContext(
     email,
     phone,
     dedupeHash,
+    skipRecentDuplicateFallback: input.skip_recent_duplicate_fallback === true,
   });
 
   if (duplicateLead) {
@@ -1598,7 +1606,7 @@ async function createLeadAndStartConversationForContext(
 
   const lead = data as LeadRow;
 
-  if (lead.campaign_id) {
+  if (lead.campaign_id && input.skip_lead_loop_verification !== true) {
     void markCampaignLeadLoopVerified({
       supabase,
       campaignId: lead.campaign_id,
