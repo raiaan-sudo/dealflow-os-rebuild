@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { after } from "next/server";
 import {
   buildCampaignScopedPath,
   resolveActiveCampaignRecord,
@@ -268,7 +269,11 @@ async function loadDashboardStateForCampaign(
   campaignId: string | null,
 ): Promise<DashboardLoadState> {
   try {
-    const resolvedCampaign = await resolveActiveCampaignRecord(campaignId).catch(() => null);
+    const resolvedCampaign = await withTimeout(
+      resolveActiveCampaignRecord(campaignId).catch(() => null),
+      null,
+      3_500,
+    );
     const record = resolvedCampaign?.record
       ? canonicalCampaignToPlan(resolvedCampaign.record)
       : null;
@@ -345,10 +350,12 @@ async function loadDashboardStateForCampaign(
       : null;
 
     if (resolvedCampaignId && firstWeekSuccess) {
-      await persistFirstWeekSuccessState({
-        campaignId: resolvedCampaignId,
-        state: firstWeekSuccess,
-      }).catch(() => undefined);
+      after(async () => {
+        await persistFirstWeekSuccessState({
+          campaignId: resolvedCampaignId,
+          state: firstWeekSuccess,
+        }).catch(() => undefined);
+      });
     }
 
     return {
