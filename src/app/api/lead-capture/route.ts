@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { after } from "next/server";
 import {
   apiSuccess,
   handleApiError,
@@ -8,7 +9,6 @@ import {
 import {
   buildRateLimitResponse,
   consumeRateLimitBuckets,
-  consumeRateLimit,
   getHashedRateLimitIdentifier,
   getRateLimitKey,
   getRequestIp,
@@ -185,20 +185,6 @@ export async function POST(req: Request) {
     const cookieHeader = req.headers.get("cookie");
     const userAgent = req.headers.get("user-agent");
     const ipHash = getHashedRateLimitIdentifier(requestIp);
-    const ipRateLimit = await consumeRateLimit({
-      key: getRateLimitKey(req, "lead-capture:ip", ipHash),
-      limit: 30,
-      windowMs: 60_000,
-    });
-
-    if (ipRateLimit && !ipRateLimit.allowed) {
-      logOperationalEvent("rate_limit.blocked", {
-        requestId,
-        route: "lead-capture",
-        bucket: "ip",
-      });
-      return buildRateLimitResponse(ipRateLimit.resetAt);
-    }
 
     const payload = await parseJsonBody(req, leadCaptureSchema, {
       maxBytes: 16 * 1024,
@@ -236,6 +222,11 @@ export async function POST(req: Request) {
     }
 
     const rateLimit = await consumeRateLimitBuckets([
+      {
+        key: getRateLimitKey(req, "lead-capture:ip", ipHash),
+        limit: 30,
+        windowMs: 60_000,
+      },
       {
         key: getRateLimitKey(req, "lead-capture:campaign-ip", `${campaignScope}:${ipHash}`),
         limit: 8,
@@ -342,7 +333,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const notificationResult = await safeNotifyAssignedAgentOfNewLead({
+    const landingPageUrl = payload.landing_page_url || req.headers.get("referer");
+    const metaCookies = getMetaCookiesFromHeader(cookieHeader);
+    const notificationLead = {
       ...lead,
       phone_raw: phone,
       phone_e164: null,
@@ -351,31 +344,33 @@ export async function POST(req: Request) {
       utm_medium: payload.utm_medium,
       utm_campaign: payload.utm_campaign,
       ad_id: payload.ad_id,
-      landing_page_url: payload.landing_page_url || req.headers.get("referer"),
-    });
+      landing_page_url: landingPageUrl,
+    };
 
-    const metaCookies = getMetaCookiesFromHeader(cookieHeader);
-    const metaConversionResult = await safeSendMetaLeadConversion({
-      organizationId: lead.organization_id,
-      leadId: lead.id,
-      campaignId: lead.campaign_id,
-      eventSourceUrl: payload.landing_page_url || req.headers.get("referer"),
-      eventTime: lead.created_at,
-      name: lead.name,
-      email,
-      phone,
-      clientIp: requestIp,
-      clientUserAgent: userAgent,
-      fbp: metaCookies.fbp,
-      fbc: metaCookies.fbc,
-    });
+    after(async () => {
+      const notificationResult = await safeNotifyAssignedAgentOfNewLead(notificationLead);
+      const metaConversionResult = await safeSendMetaLeadConversion({
+        organizationId: lead.organization_id,
+        leadId: lead.id,
+        campaignId: lead.campaign_id,
+        eventSourceUrl: landingPageUrl,
+        eventTime: lead.created_at,
+        name: lead.name,
+        email,
+        phone,
+        clientIp: requestIp,
+        clientUserAgent: userAgent,
+        fbp: metaCookies.fbp,
+        fbc: metaCookies.fbc,
+      });
 
-    logOperationalEvent("lead_capture.internal_notification_processed", {
-      requestId,
-      leadId: lead.id,
-      organizationId: lead.organization_id,
-      result: notificationResult,
-      metaConversionResult,
+      logOperationalEvent("lead_capture.internal_notification_processed", {
+        requestId,
+        leadId: lead.id,
+        organizationId: lead.organization_id,
+        result: notificationResult,
+        metaConversionResult,
+      });
     });
 
     if (isDevelopment) {

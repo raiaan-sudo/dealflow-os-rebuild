@@ -223,14 +223,9 @@ export async function consumeRateLimit(options: RateLimitOptions): Promise<RateL
 export async function consumeRateLimitBuckets(
   options: RateLimitOptions[],
 ): Promise<RateLimitResult | null> {
-  for (const option of options) {
-    const result = await consumeRateLimit(option);
-    if (result && !result.allowed) {
-      return result;
-    }
-  }
+  const results = await Promise.all(options.map((option) => consumeRateLimit(option)));
 
-  return null;
+  return results.find((result) => result && !result.allowed) ?? null;
 }
 
 export function getRequestIp(request: Request | { headers: Headers }) {

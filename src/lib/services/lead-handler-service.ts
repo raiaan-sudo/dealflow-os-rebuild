@@ -1599,34 +1599,15 @@ async function createLeadAndStartConversationForContext(
   const lead = data as LeadRow;
 
   if (lead.campaign_id) {
-    const { data: campaignPlanData, error: campaignPlanError } = await supabase
-      .from("campaign_plans")
-      .select("plan")
-      .eq("id", lead.campaign_id)
-      .maybeSingle();
-
-    if (campaignPlanError) {
-      logWarn("Lead loop verification campaign lookup failed", {
+    void markCampaignLeadLoopVerified({
+      supabase,
+      campaignId: lead.campaign_id,
+    }).catch((error) => {
+      logWarn("Lead loop verification update failed", {
         campaignId: lead.campaign_id,
-        message: campaignPlanError.message,
+        message: error instanceof Error ? error.message : "Unknown lead loop verification failure",
       });
-    } else {
-      const campaignPlanRow = (campaignPlanData as { plan?: unknown } | null) ?? null;
-      const currentPlan = readCampaignPlanDocument(campaignPlanRow?.plan);
-      const nextPlan = withLeadLoopVerified(currentPlan);
-
-      const { error: leadLoopUpdateError } = await supabase
-        .from("campaign_plans")
-        .update(buildCampaignPlanCriticalFieldPatch(nextPlan) as never)
-        .eq("id", lead.campaign_id);
-
-      if (leadLoopUpdateError) {
-        logWarn("Lead loop verification flag update failed", {
-          campaignId: lead.campaign_id,
-          message: leadLoopUpdateError.message,
-        });
-      }
-    }
+    });
   }
 
   if (lead.phone) {
@@ -1637,6 +1618,41 @@ async function createLeadAndStartConversationForContext(
   }
 
   return lead;
+}
+
+async function markCampaignLeadLoopVerified(params: {
+  supabase: SupabaseClient | AdminClient;
+  campaignId: string;
+}) {
+  const { data: campaignPlanData, error: campaignPlanError } = await params.supabase
+    .from("campaign_plans")
+    .select("plan")
+    .eq("id", params.campaignId)
+    .maybeSingle();
+
+  if (campaignPlanError) {
+    logWarn("Lead loop verification campaign lookup failed", {
+      campaignId: params.campaignId,
+      message: campaignPlanError.message,
+    });
+    return;
+  }
+
+  const campaignPlanRow = (campaignPlanData as { plan?: unknown } | null) ?? null;
+  const currentPlan = readCampaignPlanDocument(campaignPlanRow?.plan);
+  const nextPlan = withLeadLoopVerified(currentPlan);
+
+  const { error: leadLoopUpdateError } = await params.supabase
+    .from("campaign_plans")
+    .update(buildCampaignPlanCriticalFieldPatch(nextPlan) as never)
+    .eq("id", params.campaignId);
+
+  if (leadLoopUpdateError) {
+    logWarn("Lead loop verification flag update failed", {
+      campaignId: params.campaignId,
+      message: leadLoopUpdateError.message,
+    });
+  }
 }
 
 export async function createPublicLeadAndStartConversation(input: CreateLeadInput) {
