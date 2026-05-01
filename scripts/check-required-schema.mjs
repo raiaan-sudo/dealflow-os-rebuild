@@ -4,7 +4,7 @@ import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 
 const repoRoot = process.cwd();
-const expectedSchemaVersion = "20260430061000";
+const expectedSchemaVersion = "20260430190000";
 const schemaCheckMode = process.env.SUPABASE_SCHEMA_CHECK_MODE?.trim().toLowerCase() ?? "remote";
 const requiredMigrationFiles = [
   "20260426110000_add_campaign_plan_critical_fields.sql",
@@ -34,6 +34,7 @@ const requiredMigrationFiles = [
   "20260430010000_public_launch_final_hardening.sql",
   "20260430060000_harden_membership_insert_policy.sql",
   "20260430061000_rate_limit_bucket_cleanup_support.sql",
+  "20260430190000_create_user_credits.sql",
 ];
 
 const { loadEnvConfig } = nextEnv;
@@ -261,6 +262,20 @@ async function main() {
     supabase
       .from("provider_usage_events")
       .select("id, organization_id, user_id, campaign_id, provider, operation, idempotency_key, status, created_at")
+      .limit(1),
+  );
+
+  await probeQuery("user_credits table check", () =>
+    supabase
+      .from("user_credits")
+      .select("user_id, balance, updated_at")
+      .limit(1),
+  );
+
+  await probeQuery("user_credit_ledger table check", () =>
+    supabase
+      .from("user_credit_ledger")
+      .select("id, user_id, organization_id, delta, balance_after, reason, reference_type, reference_id, idempotency_key, created_at")
       .limit(1),
   );
 

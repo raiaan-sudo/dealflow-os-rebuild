@@ -19,6 +19,10 @@ import {
   type BillingFeature,
   type BillingPlanTier,
 } from "@/lib/billing/plans";
+import {
+  CREDIT_TOP_UP_MINIMUM_CENTS,
+  grantUserCredits,
+} from "@/lib/services/credit-service";
 import type { Database, Json } from "@/lib/supabase/types";
 
 type BillingRow = Database["public"]["Tables"]["billing_subscriptions"]["Row"];
@@ -170,12 +174,17 @@ function getStripeSubscriptionId(event: Stripe.Event) {
 }
 
 function getStripeWebhookOrganizationId(event: Stripe.Event) {
-  if (event.data.object.object !== "subscription") {
-    return null;
+  if (event.data.object.object === "checkout.session") {
+    const organizationId = event.data.object.metadata?.organization_id;
+    return typeof organizationId === "string" && organizationId.length > 0 ? organizationId : null;
   }
 
-  const organizationId = event.data.object.metadata?.organization_id;
-  return typeof organizationId === "string" && organizationId.length > 0 ? organizationId : null;
+  if (event.data.object.object === "subscription") {
+    const organizationId = event.data.object.metadata?.organization_id;
+    return typeof organizationId === "string" && organizationId.length > 0 ? organizationId : null;
+  }
+
+  return null;
 }
 
 async function readStripeWebhookEvent(eventId: string) {
@@ -438,6 +447,22 @@ export async function assertBillingFeatureAccess(feature: BillingFeature) {
   return summary;
 }
 
+export async function assertActiveBillingFeatureAccess(feature: BillingFeature) {
+  const summary = await assertBillingFeatureAccess(feature);
+
+  if (BILLING_ACTIVE_STATUSES.has(summary.subscriptionStatus) || summary.launchOverride) {
+    return summary;
+  }
+
+  throw new ApiError(
+    402,
+    feature === "autonomy_access"
+      ? "An active Pro subscription is required before autonomous campaign operation can run."
+      : "An active subscription is required before this feature can run.",
+    "billing_feature_payment_required",
+  );
+}
+
 export async function assertMetaLaunchBillingAccess() {
   const summary = await getBillingSummary();
 
@@ -680,6 +705,100 @@ export async function createBillingCheckoutSession(params: {
   if (upsertError) {
     throw new ApiError(500, upsertError.message, "billing_subscription_upsert_failed");
   }
+
+  return { url: session.url, sessionId: session.id };
+}
+
+export async function createCreditTopUpCheckoutSession(params: {
+  amountCents: number;
+  customerName?: string;
+  customerEmail?: string;
+}) {
+  const [context, supabase] = await Promise.all([getAppContext(), createClient()]);
+  const stripeProvider = getStripeBillingProvider();
+
+  if (!context || !supabase) {
+    throw new ApiError(401, "Authentication is required for credit checkout.", "unauthorized");
+  }
+
+  if (!stripeProvider.isConfigured()) {
+    throw new ApiError(503, "Stripe is not configured yet.", "stripe_not_configured");
+  }
+
+  const amountCents = Math.floor(params.amountCents);
+  if (!Number.isFinite(amountCents) || amountCents < CREDIT_TOP_UP_MINIMUM_CENTS) {
+    throw new ApiError(
+      400,
+      `Credit top-up minimum is $${(CREDIT_TOP_UP_MINIMUM_CENTS / 100).toFixed(2)}.`,
+      "credit_top_up_minimum_not_met",
+    );
+  }
+
+  const billingClient = createAdminClient() ?? supabase;
+  const { data: existingSubscription, error: existingSubscriptionError } = await billingClient
+    .from("billing_subscriptions")
+    .select("*")
+    .eq("organization_id", context.organization.id)
+    .maybeSingle();
+
+  if (existingSubscriptionError) {
+    throw new ApiError(500, existingSubscriptionError.message, "billing_subscription_fetch_failed");
+  }
+
+  const existingBillingRow = (existingSubscription as BillingRow | null) ?? null;
+  let customerId = existingBillingRow?.stripe_customer_id ?? null;
+
+  if (!customerId) {
+    const customer = await createStripeCustomerForCheckout({
+      stripeProvider,
+      organizationId: context.organization.id,
+      userId: context.user.id,
+      email: params.customerEmail || context.user.email || undefined,
+      name: params.customerName || context.organization.name || undefined,
+    });
+    customerId = customer.id;
+  }
+
+  const baseUrl =
+    process.env.NEXT_PUBLIC_APP_URL ??
+    process.env.APP_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+  const metadata = {
+    checkout_kind: "credit_top_up",
+    organization_id: context.organization.id,
+    user_id: context.user.id,
+    credit_amount_cents: String(amountCents),
+  };
+
+  const session = (await stripeProvider.execute({
+    action: "create_checkout_session",
+    idempotencyKey: `dealflow_credit_top_up_${context.organization.id}_${context.user.id}_${amountCents}_${Math.floor(
+      Date.now() / CHECKOUT_SESSION_REUSE_MS,
+    )}`,
+    params: {
+      mode: "payment",
+      customer: customerId,
+      client_reference_id: context.organization.id,
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            unit_amount: amountCents,
+            product_data: {
+              name: "DealFlow OS generation credits",
+            },
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: `${baseUrl}/settings?credits=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/settings?credits=cancelled`,
+      metadata,
+      payment_intent_data: {
+        metadata,
+      },
+    },
+  })) as Stripe.Checkout.Session;
 
   return { url: session.url, sessionId: session.id };
 }
@@ -1007,6 +1126,64 @@ async function syncBillingSubscriptionFromEventObject(event: Stripe.Event) {
   return syncBillingSubscriptionFromStripe(subscription, source);
 }
 
+function isCreditTopUpCheckoutSession(object: Stripe.Event.Data.Object): object is Stripe.Checkout.Session {
+  const checkoutObject = object as { object?: unknown; metadata?: Record<string, string> | null };
+
+  return (
+    checkoutObject.object === "checkout.session" &&
+    checkoutObject.metadata?.checkout_kind === "credit_top_up"
+  );
+}
+
+async function applyCreditTopUpCheckoutSession(session: Stripe.Checkout.Session, event: Stripe.Event) {
+  if (session.mode !== "payment") {
+    throw new ApiError(400, "Credit top-up checkout session is not a payment session.", "credit_checkout_mode_invalid");
+  }
+
+  if (session.payment_status !== "paid") {
+    throw new ApiError(409, "Credit top-up checkout session has not been paid.", "credit_checkout_unpaid");
+  }
+
+  const organizationId =
+    typeof session.metadata?.organization_id === "string" ? session.metadata.organization_id : null;
+  const userId = typeof session.metadata?.user_id === "string" ? session.metadata.user_id : null;
+  const amountCents = Number.parseInt(session.metadata?.credit_amount_cents ?? "", 10);
+
+  if (!organizationId || !userId || !Number.isFinite(amountCents) || amountCents < CREDIT_TOP_UP_MINIMUM_CENTS) {
+    throw new ApiError(400, "Credit top-up checkout metadata is invalid.", "credit_checkout_metadata_invalid");
+  }
+
+  const result = await grantUserCredits({
+    userId,
+    organizationId,
+    amount: amountCents,
+    reason: "stripe_credit_top_up",
+    referenceType: "stripe_checkout_session",
+    referenceId: session.id,
+    idempotencyKey: `stripe_credit_top_up:${session.id}`,
+    metadata: {
+      stripeEventId: event.id,
+      paymentIntent:
+        typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent?.id ?? null,
+      livemode: event.livemode,
+    },
+  });
+
+  logOperationalEvent("stripe_credit_top_up_processed", {
+    eventId: event.id,
+    checkoutSessionId: session.id,
+    organizationId,
+    userId,
+    amountCents,
+    ledgerId: result.ledgerId,
+    reusedExisting: result.reusedExisting,
+  });
+
+  return result;
+}
+
 export async function handleStripeBillingEvent(event: Stripe.Event) {
   const claim = await claimStripeWebhookEvent(event);
 
@@ -1023,6 +1200,22 @@ export async function handleStripeBillingEvent(event: Stripe.Event) {
   }
 
   try {
+    if (
+      event.type === "checkout.session.completed" &&
+      isCreditTopUpCheckoutSession(event.data.object)
+    ) {
+      await applyCreditTopUpCheckoutSession(event.data.object, event);
+      await markStripeWebhookEvent({
+        eventId: event.id,
+        status: "processed",
+      });
+
+      return {
+        duplicate: false,
+        processed: true,
+      };
+    }
+
     if (
       event.type === "customer.subscription.created" ||
       event.type === "customer.subscription.updated" ||

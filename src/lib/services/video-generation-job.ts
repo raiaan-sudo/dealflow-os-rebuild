@@ -11,6 +11,10 @@ import type { VideoCreativeAsset } from "@/lib/services/creative-engine";
 import type { Database, Json } from "@/lib/supabase/types";
 import type { CreativeAsset } from "@/lib/types/creative-assets";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  consumeSessionCostBudget,
+  markSessionCostBudgetEvent,
+} from "@/lib/services/session-cost-guard";
 
 type VideoPersistenceClient = SupabaseClient<Database>;
 type CampaignPlanRow = Database["public"]["Tables"]["campaign_plans"]["Row"];
@@ -367,6 +371,14 @@ export async function runVideoGenerationJob(params: {
     };
   }
 
+  const budgetReservation = await consumeSessionCostBudget({
+    bucket: "heygen_video_generation",
+    userId: params.userId,
+    organizationId: row.organization_id,
+    campaignId: params.campaignId,
+    idempotencyKey: `heygen_video_generation:${row.organization_id ?? "org"}:${params.userId}:${params.campaignId}:${params.payload.creativeIndex}`,
+  });
+
   let heyGenVideo;
 
   try {
@@ -379,6 +391,14 @@ export async function runVideoGenerationJob(params: {
       resolution: "720p",
     });
   } catch (error) {
+    await markSessionCostBudgetEvent({
+      eventId: budgetReservation.eventId,
+      status: "failed",
+      metadata: {
+        operation: "heygen_video_generation",
+        reason: error instanceof Error ? error.message : "Video generation failed to start.",
+      },
+    }).catch(() => null);
     throw toVideoProviderApiError(error, "start");
   }
 
@@ -419,9 +439,27 @@ export async function runVideoGenerationJob(params: {
     );
 
     if (schemaMessage) {
+      await markSessionCostBudgetEvent({
+        eventId: budgetReservation.eventId,
+        status: "failed",
+        metadata: {
+          operation: "heygen_video_generation",
+          providerAssetId: heyGenVideo.videoId,
+          reason: schemaMessage,
+        },
+      }).catch(() => null);
       throw new ApiError(500, schemaMessage, "creative_assets_schema_incompatible");
     }
 
+    await markSessionCostBudgetEvent({
+      eventId: budgetReservation.eventId,
+      status: "failed",
+      metadata: {
+        operation: "heygen_video_generation",
+        providerAssetId: heyGenVideo.videoId,
+        reason: error?.message ?? "Video asset could not be created.",
+      },
+    }).catch(() => null);
     throw new ApiError(
       500,
       error?.message ?? "Video asset could not be created.",
@@ -469,6 +507,16 @@ export async function runVideoGenerationJob(params: {
       message: apiError.message,
     });
 
+    await markSessionCostBudgetEvent({
+      eventId: budgetReservation.eventId,
+      status: "failed",
+      metadata: {
+        operation: "heygen_video_generation",
+        providerAssetId: heyGenVideo.videoId,
+        reason: apiError.message,
+      },
+    }).catch(() => null);
+
     throw apiError;
   }
 
@@ -486,6 +534,16 @@ export async function runVideoGenerationJob(params: {
       message: failureMessage,
       raw: finalStatus.raw,
     });
+
+    await markSessionCostBudgetEvent({
+      eventId: budgetReservation.eventId,
+      status: "failed",
+      metadata: {
+        operation: "heygen_video_generation",
+        providerAssetId: heyGenVideo.videoId,
+        reason: failureMessage,
+      },
+    }).catch(() => null);
 
     throw new ApiError(
       502,
@@ -516,6 +574,15 @@ export async function runVideoGenerationJob(params: {
     .single();
 
   if (updateError || !updatedAssetRaw) {
+    await markSessionCostBudgetEvent({
+      eventId: budgetReservation.eventId,
+      status: "failed",
+      metadata: {
+        operation: "heygen_video_generation",
+        providerAssetId: heyGenVideo.videoId,
+        reason: updateError?.message ?? "Completed video asset could not be updated.",
+      },
+    }).catch(() => null);
     throw new ApiError(
       500,
       updateError?.message ?? "Completed video asset could not be updated.",
@@ -531,6 +598,15 @@ export async function runVideoGenerationJob(params: {
     status: "generated",
     videoUrl: finalStatus.videoUrl,
     message: null,
+  });
+
+  await markSessionCostBudgetEvent({
+    eventId: budgetReservation.eventId,
+    status: "consumed",
+    metadata: {
+      operation: "heygen_video_generation",
+      providerAssetId: heyGenVideo.videoId,
+    },
   });
 
   return {

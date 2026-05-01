@@ -331,6 +331,21 @@ async function main() {
     userBIdEnv: "RLS_PROVIDER_USAGE_EVENT_B_ID",
   });
   await runPair({
+    table: "user_credits",
+    label: "User credits",
+    columns: "user_id,balance",
+    userAIdEnv: "RLS_USER_CREDIT_A_ID",
+    userBIdEnv: "RLS_USER_CREDIT_B_ID",
+    idColumn: "user_id",
+  });
+  await runPair({
+    table: "user_credit_ledger",
+    label: "User credit ledger",
+    columns: "id,user_id,organization_id,delta,balance_after,reason",
+    userAIdEnv: "RLS_USER_CREDIT_LEDGER_A_ID",
+    userBIdEnv: "RLS_USER_CREDIT_LEDGER_B_ID",
+  });
+  await runPair({
     table: "meta_launch_locks",
     label: "Meta launch locks",
     columns: "campaign_id,lock_token,locked_until",

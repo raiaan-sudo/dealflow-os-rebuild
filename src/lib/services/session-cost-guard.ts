@@ -2,6 +2,10 @@ import { ApiError } from "@/lib/api/route";
 import { cookies } from "next/headers";
 import { logWarn } from "@/lib/logging";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  consumeCreditsForGeneration,
+  refundCreditsForProviderUsageEvent,
+} from "@/lib/services/credit-service";
 
 type SessionCostBucket = "openai_image_generation" | "heygen_video_generation";
 
@@ -134,14 +138,52 @@ export async function consumeSessionCostBudget(params: {
       );
     }
 
+    const eventId =
+      typeof reservation.event_id === "string" && reservation.event_id.trim().length > 0
+        ? reservation.event_id
+        : null;
+
+    try {
+      await consumeCreditsForGeneration({
+        bucket: params.bucket,
+        userId: params.userId,
+        organizationId: params.organizationId ?? null,
+        campaignId: params.campaignId ?? null,
+        referenceId: eventId ?? params.idempotencyKey ?? crypto.randomUUID(),
+        idempotencyKey: eventId
+          ? `generation_credit:${params.bucket}:${eventId}`
+          : params.idempotencyKey
+            ? `generation_credit:${params.bucket}:${params.idempotencyKey}`
+            : null,
+        metadata: {
+          provider,
+          operation,
+          estimatedCost: params.estimatedCost ?? null,
+        },
+      });
+    } catch (error) {
+      if (eventId) {
+        await admin
+          .from("provider_usage_events")
+          .update({
+            status: "released",
+            metadata: {
+              creditReservation: "failed",
+              reason: error instanceof Error ? error.message : "Credit reservation failed.",
+            },
+            updated_at: new Date().toISOString(),
+          } as never)
+          .eq("id", eventId);
+      }
+
+      throw error;
+    }
+
     return {
       currentCount: Number(reservation.current_count ?? 0),
       nextCount: Number(reservation.next_count ?? 1),
       limit,
-      eventId:
-        typeof reservation.event_id === "string" && reservation.event_id.trim().length > 0
-          ? reservation.event_id
-          : null,
+      eventId,
     };
   }
 
@@ -221,5 +263,12 @@ export async function markSessionCostBudgetEvent(params: {
 
   if (error) {
     throw new ApiError(500, error.message, "provider_usage_event_update_failed");
+  }
+
+  if (params.status === "released" || params.status === "failed") {
+    await refundCreditsForProviderUsageEvent({
+      providerUsageEventId: params.eventId,
+      status: params.status,
+    });
   }
 }

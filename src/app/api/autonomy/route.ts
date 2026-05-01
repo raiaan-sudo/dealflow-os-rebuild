@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
 import { evaluateAutonomy } from "@/app/api/autonomy/_shared";
+import { assertActiveBillingFeatureAccess } from "@/lib/services/billing-service";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,11 @@ export async function PATCH(request: Request) {
   try {
     assertSameOriginRequest(request);
     const body = await parseJsonBody(request, patchBodySchema);
+
+    if (body.mode === "autonomous") {
+      await assertActiveBillingFeatureAccess("autonomy_access");
+    }
+
     const result = await evaluateAutonomy(body.campaignId ?? null);
 
     return NextResponse.json({
@@ -34,10 +40,10 @@ export async function PATCH(request: Request) {
         ...result.snapshot,
         mode: body.mode,
       },
-      executionMode: "recommendation_only",
+      executionMode: body.mode === "autonomous" ? "autonomous_plan_operator" : "recommendation_only",
       message:
         body.mode === "autonomous"
-          ? "Autonomous execution is recommendation-only during beta."
+          ? "Autonomous plan optimization is enabled for this workspace."
           : "Autonomy mode updated for this session.",
     });
   } catch (error) {

@@ -129,6 +129,8 @@ async function expectMembershipSelfJoinBlocked({ jwt, organizationId, userId }) 
 
 async function cleanup(admin, fixtures, authUserIds) {
   const deletes = [
+    ["user_credit_ledger", "id", fixtures.userCreditLedgerIds],
+    ["user_credits", "user_id", fixtures.userCreditUserIds],
     ["stripe_webhook_events", "id", fixtures.stripeEventIds],
     ["provider_usage_events", "id", fixtures.providerEventIds],
     ["provider_usage_limits", "id", fixtures.providerLimitIds],
@@ -309,6 +311,24 @@ async function createTenant(admin, suffix) {
     metadata: { fixture: true, suffix },
   });
 
+  const userCredit = await insertOne(admin, "user_credits", {
+    user_id: userId,
+    balance: 2500,
+  });
+
+  const userCreditLedger = await insertOne(admin, "user_credit_ledger", {
+    id: rowId(),
+    user_id: userId,
+    organization_id: org.id,
+    delta: 2500,
+    balance_after: 2500,
+    reason: "rls_fixture",
+    reference_type: "rls_fixture",
+    reference_id: `rls-fixture-${stamp}-${suffix}`,
+    idempotency_key: `rls-fixture-credit-${stamp}-${suffix}`,
+    metadata: { fixture: true, suffix },
+  });
+
   await insertOne(admin, "meta_launch_locks", {
     campaign_id: campaign.id,
     lock_token: `rls-fixture-${stamp}-${suffix}`,
@@ -330,6 +350,8 @@ async function createTenant(admin, suffix) {
     stripeEvent,
     providerLimit,
     providerEvent,
+    userCredit,
+    userCreditLedger,
   };
 }
 
@@ -359,6 +381,8 @@ async function main() {
     stripeEventIds: [],
     providerLimitIds: [],
     providerEventIds: [],
+    userCreditUserIds: [],
+    userCreditLedgerIds: [],
   };
   const authUserIds = [];
 
@@ -378,6 +402,8 @@ async function main() {
       fixtures.stripeEventIds.push(tenant.stripeEvent.id);
       fixtures.providerLimitIds.push(tenant.providerLimit.id);
       fixtures.providerEventIds.push(tenant.providerEvent.id);
+      fixtures.userCreditUserIds.push(tenant.userCredit.user_id);
+      fixtures.userCreditLedgerIds.push(tenant.userCreditLedger.id);
     }
 
     let jwtA;
@@ -456,6 +482,10 @@ async function main() {
         RLS_PROVIDER_USAGE_LIMIT_B_ID: tenantB.providerLimit.id,
         RLS_PROVIDER_USAGE_EVENT_A_ID: tenantA.providerEvent.id,
         RLS_PROVIDER_USAGE_EVENT_B_ID: tenantB.providerEvent.id,
+        RLS_USER_CREDIT_A_ID: tenantA.userCredit.user_id,
+        RLS_USER_CREDIT_B_ID: tenantB.userCredit.user_id,
+        RLS_USER_CREDIT_LEDGER_A_ID: tenantA.userCreditLedger.id,
+        RLS_USER_CREDIT_LEDGER_B_ID: tenantB.userCreditLedger.id,
         RLS_META_LAUNCH_LOCK_A_ID: tenantA.campaign.id,
         RLS_META_LAUNCH_LOCK_B_ID: tenantB.campaign.id,
       },

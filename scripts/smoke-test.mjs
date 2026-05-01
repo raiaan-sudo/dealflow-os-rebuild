@@ -110,6 +110,7 @@ function runOfflineChecks() {
   const leadMessageIdempotencyMigration = "supabase/migrations/20260428162000_harden_lead_message_idempotency.sql";
   const envHelpers = "src/lib/env.ts";
   const sessionCostGuard = "src/lib/services/session-cost-guard.ts";
+  const creditService = "src/lib/services/credit-service.ts";
   const systemJobService = "src/lib/services/system-job-service.ts";
   const internalLaunchMonitor = "src/lib/services/internal-launch-monitor.ts";
   const metaExecution = "src/lib/integrations/meta/execution.ts";
@@ -218,6 +219,11 @@ function runOfflineChecks() {
   assertIncludes(billingService, "stripe_subscription_stale_event_ignored", "Stripe stale event observability", "out-of-order subscription events are logged and ignored");
   assertIncludes(billingWebhookMigration, "stripe_latest_event_created", "Billing subscription event watermark", "billing rows persist latest Stripe event timestamps");
   assertIncludes(billingOrderingMigration, "stripe_latest_event_id, '') < normalized_event_id", "Billing equal-timestamp ordering guard", "same-second Stripe events are ordered deterministically");
+  assertIncludes(creditService, "consume_user_credits", "Atomic credit deduction", "paid generation credits are deducted through a DB RPC");
+  assertIncludes(creditService, "grant_user_credits", "Credit top-up ledger", "credit grants and refunds use the append-only DB ledger");
+  assertIncludes(creditService, "credits_insufficient", "Insufficient credit block", "paid generation is blocked before balances can go negative");
+  assertIncludes(billingService, "checkout_kind: \"credit_top_up\"", "Stripe credit top-up checkout", "credit purchases are isolated from subscription checkout metadata");
+  assertIncludes(billingService, "stripe_credit_top_up_processed", "Stripe credit top-up webhook", "paid credit checkout sessions grant credits idempotently");
   assertIncludes(creativeEngine, "provider_usage_context", "Paid static generation guard", "each generated image carries DB-backed provider usage context");
   assertIncludes(campaignPersistence, "consumeSessionCostBudget", "Paid image call guard", "server-side static generation reserves provider budget before execution");
   assertIncludes(staticAdsRoute, "idempotencyKey", "Static generation idempotency", "paid generation job creation uses idempotency key");
@@ -227,6 +233,8 @@ function runOfflineChecks() {
   assertIncludes(sessionCostGuard, "reserve_provider_usage", "Atomic provider usage reservation", "paid-generation guard reserves provider budget through DB RPC");
   assertIncludes(sessionCostGuard, "OPENAI_IMAGE_DAILY_LIMIT", "Configurable image cap", "OpenAI image generation can be capped below the default for production tests");
   assertIncludes(sessionCostGuard, "provider_usage_idempotency_consumed", "Paid generation duplicate-spend guard", "consumed provider usage reservations fail closed instead of calling the provider again");
+  assertIncludes(sessionCostGuard, "consumeCreditsForGeneration", "Provider usage credit coupling", "provider reservations consume credits before paid calls execute");
+  assertIncludes(sessionCostGuard, "refundCreditsForProviderUsageEvent", "Credit refund coupling", "released or failed paid calls refund reserved credits");
   assertIncludes(legacyAiProviders, "providerUsage?.mark", "Provider usage ledger transitions", "paid-generation reservations are marked consumed/released after the provider call");
   assertIncludes(videoRoute, "video_generation_disabled", "Video generation disabled", "HeyGen/video generation remains disabled for beta");
   assertExcludes(launchRuntimeApi, "/api/integrations/meta/deploy", "No dead Meta deploy client route", "client helpers do not call a missing Meta deploy endpoint");
