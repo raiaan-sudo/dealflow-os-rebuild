@@ -294,46 +294,48 @@ export async function POST(req: Request) {
       throw new ApiError(400, "Lead submission was rejected.", "lead_spam_rejected");
     }
 
-    const rateLimit = await consumeRateLimitBuckets([
-      {
-        key: getRateLimitKey(req, "lead-capture:ip", ipHash),
-        limit: isLoadTestBypass ? 100 : 30,
-        windowMs: 60_000,
-      },
-      {
-        key: getRateLimitKey(req, "lead-capture:campaign-ip", `${campaignScope}:${ipHash}`),
-        limit: isLoadTestBypass ? 50 : 8,
-        windowMs: 60_000,
-      },
-      {
-        key: getRateLimitKey(req, "lead-capture:campaign-global", campaignScope),
-        limit: isLoadTestBypass ? 200 : 120,
-        windowMs: 60_000,
-      },
-      {
-        key: getRateLimitKey(req, "lead-capture:contact", `${campaignScope}:${contactHash}`),
-        limit: 3,
-        windowMs: 5 * 60_000,
-      },
-      ...(funnelId
-        ? [
-            {
-              key: getRateLimitKey(req, "lead-capture:funnel", `${funnelId}:${ipHash}`),
-              limit: 12,
-              windowMs: 60_000,
-            },
-          ]
-        : []),
-    ]);
+    if (!isLoadTestBypass) {
+      const rateLimit = await consumeRateLimitBuckets([
+        {
+          key: getRateLimitKey(req, "lead-capture:ip", ipHash),
+          limit: 30,
+          windowMs: 60_000,
+        },
+        {
+          key: getRateLimitKey(req, "lead-capture:campaign-ip", `${campaignScope}:${ipHash}`),
+          limit: 8,
+          windowMs: 60_000,
+        },
+        {
+          key: getRateLimitKey(req, "lead-capture:campaign-global", campaignScope),
+          limit: 120,
+          windowMs: 60_000,
+        },
+        {
+          key: getRateLimitKey(req, "lead-capture:contact", `${campaignScope}:${contactHash}`),
+          limit: 3,
+          windowMs: 5 * 60_000,
+        },
+        ...(funnelId
+          ? [
+              {
+                key: getRateLimitKey(req, "lead-capture:funnel", `${funnelId}:${ipHash}`),
+                limit: 12,
+                windowMs: 60_000,
+              },
+            ]
+          : []),
+      ]);
 
-    if (rateLimit && !rateLimit.allowed) {
-      logOperationalEvent("rate_limit.blocked", {
-        requestId,
-        route: "lead-capture",
-        bucket: "layered",
-        campaignScope: getHashedRateLimitIdentifier(campaignScope),
-      });
-      return buildRateLimitResponse(rateLimit.resetAt);
+      if (rateLimit && !rateLimit.allowed) {
+        logOperationalEvent("rate_limit.blocked", {
+          requestId,
+          route: "lead-capture",
+          bucket: "layered",
+          campaignScope: getHashedRateLimitIdentifier(campaignScope),
+        });
+        return buildRateLimitResponse(rateLimit.resetAt);
+      }
     }
 
     if (!campaignId && !payload.funnel_id?.trim()) {
