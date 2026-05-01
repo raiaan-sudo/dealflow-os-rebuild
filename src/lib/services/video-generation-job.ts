@@ -38,6 +38,13 @@ export type VideoGenerationJobPayload = {
   force: boolean;
 };
 
+export type VideoGenerationStatusJobPayload = {
+  assetId: string;
+  providerAssetId: string;
+  providerUsageEventId: string | null;
+  pollAttempt?: number;
+};
+
 function createDefaultVideoState(payload: VideoGenerationJobPayload): VideoCreativeAsset {
   return {
     id: `video-${payload.creativeIndex}`,
@@ -223,30 +230,66 @@ async function persistVideoFailure(params: {
   });
 }
 
-async function waitForHeyGenCompletion(videoId: string) {
-  const maxAttempts = 120;
-  const delayMs = 5_000;
+async function queueVideoStatusPollJob(params: {
+  supabase: VideoPersistenceClient;
+  organizationId: string | null;
+  userId: string;
+  campaignId: string;
+  assetId: string;
+  providerAssetId: string;
+  providerUsageEventId: string | null | undefined;
+}) {
+  const idempotencyKey = `video_generation_status:${params.providerAssetId}`;
+  const { error } = await params.supabase.from("system_jobs").insert({
+    organization_id: params.organizationId ?? params.userId,
+    user_id: params.userId,
+    campaign_id: params.campaignId,
+    kind: "video_generation_status",
+    status: "pending",
+    payload: {
+      assetId: params.assetId,
+      providerAssetId: params.providerAssetId,
+      providerUsageEventId: params.providerUsageEventId ?? null,
+      pollAttempt: 0,
+    } satisfies VideoGenerationStatusJobPayload,
+    idempotency_key: idempotencyKey,
+    max_attempts: 1,
+    next_run_at: new Date(Date.now() + 60_000).toISOString(),
+  } as never);
 
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    let status;
+  const errorCode =
+    error && typeof error === "object" && "code" in error ? String(error.code) : null;
 
-    try {
-      status = await retryRouteStep(() => getHeyGenVideoStatus(videoId), {
-        retries: 2,
-        delayMs: 1_000,
-      });
-    } catch (error) {
-      throw toVideoProviderApiError(error, "check");
-    }
+  if (error && errorCode !== "23505") {
+    throw new ApiError(
+      500,
+      error.message ?? "Video status poll job could not be queued.",
+      "video_status_job_create_failed",
+    );
+  }
+}
 
-    if (status.status === "completed" || status.status === "failed") {
-      return status;
-    }
+async function loadCreativeAssetForVideoStatus(params: {
+  supabase: VideoPersistenceClient;
+  userId: string;
+  assetId: string;
+}) {
+  const { data, error } = await params.supabase
+    .from("creative_assets")
+    .select("*")
+    .eq("id", params.assetId)
+    .eq("user_id", params.userId)
+    .maybeSingle();
 
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  if (error) {
+    throw new ApiError(500, error.message, "creative_asset_lookup_failed");
   }
 
-  throw new ApiError(504, "Video generation timed out.", "video_generation_timeout");
+  if (!data) {
+    throw new ApiError(404, "Video asset was not found.", "creative_asset_not_found");
+  }
+
+  return data as CreativeAsset;
 }
 
 export async function runVideoGenerationJob(params: {
@@ -486,38 +529,69 @@ export async function runVideoGenerationJob(params: {
     videoAds: mergeVideoAdState(existingVideoAds, queuedVideoState, params.payload.creativeIndex),
   });
 
+  await queueVideoStatusPollJob({
+    supabase: params.supabase,
+    organizationId: row.organization_id,
+    userId: params.userId,
+    campaignId: params.campaignId,
+    assetId: insertedAsset.id,
+    providerAssetId: heyGenVideo.videoId,
+    providerUsageEventId: budgetReservation.eventId,
+  });
+
+  return {
+    assetId: insertedAsset.id,
+    providerAssetId: heyGenVideo.videoId,
+    status: "processing",
+    asset: insertedAsset,
+    video: {
+      url: "",
+      hook: params.payload.hook,
+      script: params.payload.scriptLines,
+      scenes: params.payload.scenes.map((scene) => scene.text),
+    },
+  };
+}
+
+export async function pollVideoGenerationStatusJob(params: {
+  supabase: VideoPersistenceClient;
+  userId: string;
+  campaignId: string;
+  payload: VideoGenerationStatusJobPayload;
+}) {
+  const asset = await loadCreativeAssetForVideoStatus({
+    supabase: params.supabase,
+    userId: params.userId,
+    assetId: params.payload.assetId,
+  });
+
   let finalStatus;
 
   try {
-    finalStatus = await waitForHeyGenCompletion(heyGenVideo.videoId);
-  } catch (error) {
-    const apiError =
-      error instanceof ApiError
-        ? error
-        : new ApiError(502, "Video generation failed.", "video_generation_failed");
-
-    await persistVideoFailure({
-      supabase: params.supabase,
-      userId: params.userId,
-      campaignId: params.campaignId,
-      assetId: insertedAsset.id,
-      providerAssetId: heyGenVideo.videoId,
-      insertedAssetMetadata: insertedAsset.metadata,
-      code: apiError.code,
-      message: apiError.message,
-    });
-
-    await markSessionCostBudgetEvent({
-      eventId: budgetReservation.eventId,
-      status: "failed",
-      metadata: {
-        operation: "heygen_video_generation",
-        providerAssetId: heyGenVideo.videoId,
-        reason: apiError.message,
+    finalStatus = await retryRouteStep(
+      () => getHeyGenVideoStatus(params.payload.providerAssetId),
+      {
+        retries: 2,
+        delayMs: 1_000,
       },
-    }).catch(() => null);
+    );
+  } catch (error) {
+    throw toVideoProviderApiError(error, "check");
+  }
 
-    throw apiError;
+  if (
+    finalStatus.status === "pending" ||
+    finalStatus.status === "waiting" ||
+    finalStatus.status === "processing" ||
+    finalStatus.status === "unknown"
+  ) {
+    return {
+      assetId: asset.id,
+      providerAssetId: params.payload.providerAssetId,
+      status: "processing",
+      providerStatus: finalStatus.status,
+      videoUrl: null,
+    };
   }
 
   if (finalStatus.status === "failed") {
@@ -527,34 +601,38 @@ export async function runVideoGenerationJob(params: {
       supabase: params.supabase,
       userId: params.userId,
       campaignId: params.campaignId,
-      assetId: insertedAsset.id,
-      providerAssetId: heyGenVideo.videoId,
-      insertedAssetMetadata: insertedAsset.metadata,
+      assetId: asset.id,
+      providerAssetId: params.payload.providerAssetId,
+      insertedAssetMetadata: asset.metadata,
       code: "video_generation_failed",
       message: failureMessage,
       raw: finalStatus.raw,
     });
 
     await markSessionCostBudgetEvent({
-      eventId: budgetReservation.eventId,
+      eventId: params.payload.providerUsageEventId,
       status: "failed",
       metadata: {
         operation: "heygen_video_generation",
-        providerAssetId: heyGenVideo.videoId,
+        providerAssetId: params.payload.providerAssetId,
         reason: failureMessage,
       },
     }).catch(() => null);
 
+    throw new ApiError(502, failureMessage, "video_generation_failed");
+  }
+
+  if (!finalStatus.videoUrl) {
     throw new ApiError(
       502,
-      failureMessage,
-      "video_generation_failed",
+      "HeyGen reported completion without a video URL.",
+      "video_generation_missing_url",
     );
   }
 
   const nextMetadata = {
-    ...(typeof insertedAsset.metadata === "object" && insertedAsset.metadata
-      ? (insertedAsset.metadata as Record<string, unknown>)
+    ...(typeof asset.metadata === "object" && asset.metadata
+      ? (asset.metadata as Record<string, unknown>)
       : {}),
     heygenStatus: finalStatus.status,
     heygenRaw: finalStatus.raw,
@@ -568,21 +646,12 @@ export async function runVideoGenerationJob(params: {
       thumbnail_url: finalStatus.thumbnailUrl,
       metadata: nextMetadata as Json,
     } as never)
-    .eq("id", insertedAsset.id)
+    .eq("id", asset.id)
     .eq("user_id", params.userId)
     .select("*")
     .single();
 
   if (updateError || !updatedAssetRaw) {
-    await markSessionCostBudgetEvent({
-      eventId: budgetReservation.eventId,
-      status: "failed",
-      metadata: {
-        operation: "heygen_video_generation",
-        providerAssetId: heyGenVideo.videoId,
-        reason: updateError?.message ?? "Completed video asset could not be updated.",
-      },
-    }).catch(() => null);
     throw new ApiError(
       500,
       updateError?.message ?? "Completed video asset could not be updated.",
@@ -594,31 +663,26 @@ export async function runVideoGenerationJob(params: {
     supabase: params.supabase,
     userId: params.userId,
     campaignId: params.campaignId,
-    providerAssetId: heyGenVideo.videoId,
+    providerAssetId: params.payload.providerAssetId,
     status: "generated",
     videoUrl: finalStatus.videoUrl,
     message: null,
   });
 
   await markSessionCostBudgetEvent({
-    eventId: budgetReservation.eventId,
+    eventId: params.payload.providerUsageEventId,
     status: "consumed",
     metadata: {
       operation: "heygen_video_generation",
-      providerAssetId: heyGenVideo.videoId,
+      providerAssetId: params.payload.providerAssetId,
     },
   });
 
   return {
-    assetId: insertedAsset.id,
-    providerAssetId: heyGenVideo.videoId,
+    assetId: asset.id,
+    providerAssetId: params.payload.providerAssetId,
     status: "completed",
     asset: updatedAssetRaw as CreativeAsset,
-    video: {
-      url: finalStatus.videoUrl || "",
-      hook: params.payload.hook,
-      script: params.payload.scriptLines,
-      scenes: params.payload.scenes.map((scene) => scene.text),
-    },
+    videoUrl: finalStatus.videoUrl,
   };
 }

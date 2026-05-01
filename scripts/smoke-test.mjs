@@ -238,6 +238,7 @@ function runOfflineChecks() {
   assertIncludes(legacyAiProviders, "providerUsage?.mark", "Provider usage ledger transitions", "paid-generation reservations are marked consumed/released after the provider call");
   assertIncludes(videoRoute, "kind: \"video_generation\"", "Video generation job route", "HeyGen/video generation is queued through the paid system job path");
   assertIncludes(videoRoute, "getCampaignById", "Video generation ownership guard", "video generation verifies campaign ownership before queueing paid work");
+  assertIncludes(systemJobService, "video_generation_status", "Video generation status polling", "HeyGen render completion is polled by durable follow-up jobs instead of blocking the cron worker");
   assertExcludes(launchRuntimeApi, "/api/integrations/meta/deploy", "No dead Meta deploy client route", "client helpers do not call a missing Meta deploy endpoint");
   assertIncludes(legacyAiProviders, "ALLOW_HEYGEN_VIDEO_GENERATION", "Legacy HeyGen helper kill switch", "older AI helper paths cannot call HeyGen unless explicitly enabled");
   assertIncludes(directHeyGenClient, "ALLOW_HEYGEN_VIDEO_GENERATION", "Direct HeyGen client kill switch", "queued video jobs cannot call HeyGen unless explicitly enabled");

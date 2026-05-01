@@ -11,7 +11,7 @@ import { runSystemJobWorkerBatch } from "@/lib/services/system-job-service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 const runnerInputSchema = z.object({
   maxCycles: z.number().int().min(1).max(5).optional(),
@@ -48,7 +48,7 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
       staleAfterMs: input.staleAfterMs,
     }),
     {
-      timeoutMs: 25_000,
+      timeoutMs: 55_000,
       message: "Internal system job runner timed out.",
       code: "internal_runner_timeout",
     },

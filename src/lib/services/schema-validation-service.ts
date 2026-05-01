@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/server/supabase-admin";
 import { ApiError } from "@/lib/api/route";
 import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
 
-const EXPECTED_APP_SCHEMA_VERSION = "20260428171000";
+const EXPECTED_APP_SCHEMA_VERSION = "20260430190000";
 const REQUIRED_CAMPAIGN_PLAN_COLUMNS = ["organization_id", "launch_status", "lead_loop_verified"] as const;
 const REQUIRED_MARKETING_ACCOUNT_COLUMNS = [
   "account_name",
@@ -119,6 +119,21 @@ async function readSchemaVersion() {
     : null;
 }
 
+function isSchemaVersionAtLeast(actualVersion: string | null, expectedVersion: string) {
+  if (!actualVersion) {
+    return false;
+  }
+
+  const actual = Number.parseInt(actualVersion, 10);
+  const expected = Number.parseInt(expectedVersion, 10);
+
+  if (!Number.isFinite(actual) || !Number.isFinite(expected)) {
+    return actualVersion === expectedVersion;
+  }
+
+  return actual >= expected;
+}
+
 async function checkRequiredTables() {
   const admin = createAdminClient();
 
@@ -179,10 +194,10 @@ async function runSchemaValidation(): Promise<SchemaValidationResult> {
     issues.push(`Missing required tables: ${missingTables.join(", ")}`);
   }
 
-  if (actualVersion !== EXPECTED_APP_SCHEMA_VERSION) {
+  if (!isSchemaVersionAtLeast(actualVersion, EXPECTED_APP_SCHEMA_VERSION)) {
     issues.push(
       actualVersion
-        ? `Schema version mismatch. Expected ${EXPECTED_APP_SCHEMA_VERSION}, got ${actualVersion}.`
+        ? `Schema version is behind. Expected at least ${EXPECTED_APP_SCHEMA_VERSION}, got ${actualVersion}.`
         : `Schema version metadata is missing. Expected ${EXPECTED_APP_SCHEMA_VERSION}.`,
     );
   }

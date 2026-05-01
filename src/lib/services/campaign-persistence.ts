@@ -622,7 +622,7 @@ export async function regenerateStaticCreativeAssets(
 export async function regenerateStaticCreativeAssetsForUser(
   campaignId: string,
   userId: string,
-  options?: { force?: boolean; supabase?: PersistenceClient },
+  options?: { force?: boolean; supabase?: PersistenceClient; providerUsageRunId?: string | null },
 ): Promise<FullCampaignRecord> {
   const supabase =
     options?.supabase ??
@@ -684,7 +684,8 @@ export async function regenerateStaticCreativeAssetsForUser(
       creative_strategy: currentRecord.plan.creative_strategy,
       provider_usage_context: {
         createForAsset: (asset) => {
-          const idempotencyKey = `openai_image_generation:${row.organization_id ?? "org"}:${userId}:${campaignId}:${asset.id}:${asset.preferredImageModel}`;
+          const runScope = options?.providerUsageRunId?.trim() || "default";
+          const idempotencyKey = `openai_image_generation:${row.organization_id ?? "org"}:${userId}:${campaignId}:${asset.id}:${asset.preferredImageModel}:${runScope}`;
 
           return {
             reserve: () =>

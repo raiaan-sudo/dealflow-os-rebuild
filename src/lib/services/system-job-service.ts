@@ -6,7 +6,9 @@ import type { Database, Json } from "@/lib/supabase/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { regenerateStaticCreativeAssetsForUser } from "@/lib/services/campaign-persistence";
 import {
+  pollVideoGenerationStatusJob,
   type VideoGenerationJobPayload,
+  type VideoGenerationStatusJobPayload,
   runVideoGenerationJob,
 } from "@/lib/services/video-generation-job";
 
@@ -17,6 +19,7 @@ type SystemJobClient = SupabaseClient<Database>;
 export type SystemJobKind =
   | "static_creative_generation"
   | "video_generation"
+  | "video_generation_status"
   | "campaign_build"
   | "funnel_generation"
   | "creative_generation"
@@ -49,6 +52,7 @@ type SystemJobPayloadMap = {
     force?: boolean;
   };
   video_generation: VideoGenerationJobPayload;
+  video_generation_status: VideoGenerationStatusJobPayload;
   campaign_build: {
     childJobIds?: string[];
     videoIndexes?: number[];
@@ -594,6 +598,7 @@ export async function processSystemJob(jobId: string) {
         processingJob.user_id,
         {
           force: Boolean((processingJob.payload as SystemJobPayloadMap["static_creative_generation"])?.force),
+          providerUsageRunId: `${processingJob.id}:${processingJob.attempt_count ?? 0}`,
           supabase,
         },
       );
@@ -609,6 +614,51 @@ export async function processSystemJob(jobId: string) {
         campaignId: processingJob.campaign_id ?? "",
         payload: processingJob.payload as SystemJobPayloadMap["video_generation"],
       });
+
+      result = output as unknown as Json;
+    } else if (processingJob.kind === "video_generation_status") {
+      const payload =
+        processingJob.payload as SystemJobPayloadMap["video_generation_status"];
+      const output = await pollVideoGenerationStatusJob({
+        supabase,
+        userId: processingJob.user_id,
+        campaignId: processingJob.campaign_id ?? "",
+        payload,
+      });
+
+      if (output.status === "processing") {
+        const pollAttempt = Math.min((payload.pollAttempt ?? 0) + 1, 120);
+        const nextRunAt = new Date(
+          Date.now() + Math.min(5 * 60_000, 30_000 + pollAttempt * 15_000),
+        ).toISOString();
+        const pendingJob = await updateSystemJob(supabase, processingJob.id, {
+          status: "pending",
+          result: output as unknown as Json,
+          payload: {
+            ...payload,
+            pollAttempt,
+          } as unknown as Json,
+          error_message: null,
+          last_error_code: null,
+          locked_by: null,
+          locked_until: null,
+          next_run_at: nextRunAt,
+        });
+
+        await appendSystemJobLog({
+          supabase,
+          jobId: processingJob.id,
+          message: "Video render is still processing at the provider; status poll rescheduled.",
+          details: {
+            providerAssetId: payload.providerAssetId,
+            providerStatus: output.providerStatus,
+            pollAttempt,
+            nextRunAt,
+          } as Json,
+        });
+
+        return pendingJob;
+      }
 
       result = output as unknown as Json;
     } else if (processingJob.kind === "lead_capture_retry") {

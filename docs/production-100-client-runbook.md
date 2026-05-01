@@ -119,18 +119,19 @@ Paid media generation must not run during normal onboarding or draft creative ge
 
 Controls:
 
-- Video/HeyGen generation is disabled for beta.
+- Video/HeyGen generation is enabled only through the guarded paid generation job path.
 - Static image generation must go through the guarded static generation route.
 - Provider usage is tracked in `provider_usage_limits`.
 - Each OpenAI image call reserves its own `provider_usage_events` row before the provider request and must be capped with `OPENAI_IMAGE_DAILY_LIMIT` during production tests.
+- HeyGen render completion is polled by durable `video_generation_status` jobs so Vercel cron functions do not wait on multi-minute renders.
 - Retries should reuse existing jobs/assets where possible.
 
 Emergency disable:
 
 1. Hide/disable the static generation UI entry point.
 2. Keep image and video generation behind credits and provider usage reservations.
-3. Set `ALLOW_OPENAI_IMAGE_GENERATION=true` and `ALLOW_HEYGEN_VIDEO_GENERATION=true` only after the production provider keys are present in Vercel.
-4. For a controlled image or UGC test, temporarily lower `OPENAI_IMAGE_DAILY_LIMIT` or `HEYGEN_VIDEO_DAILY_LIMIT` before enabling provider calls.
+3. Unset `ALLOW_OPENAI_IMAGE_GENERATION` or `ALLOW_HEYGEN_VIDEO_GENERATION` if paid generation needs an emergency stop.
+4. For a controlled image or UGC test, temporarily lower `OPENAI_IMAGE_DAILY_LIMIT` or `HEYGEN_VIDEO_DAILY_LIMIT` before provider calls.
 5. Remove provider API keys from production only if a hard stop is required.
 
 ## Meta Emergency Disable
