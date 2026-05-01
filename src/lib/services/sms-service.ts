@@ -11,6 +11,7 @@ type SendSmsParams = {
   leadId: string;
   agentId: string | null;
   tenantId: string;
+  mockOnly?: boolean;
 };
 
 type SmsStatus = "queued" | "sent" | "delivered" | "undelivered" | "failed";
@@ -210,6 +211,22 @@ export async function sendSms(params: SendSmsParams) {
       errorMessage: "Assigned agent does not have a valid E.164 phone number.",
     });
     return { notificationId: notification.id, status: "failed" as const, providerMessageId: null };
+  }
+
+  if (params.mockOnly) {
+    const providerMessageId = `mock_sms_load_test_${Date.now()}_${randomUUID()}`;
+    await updateNotification({
+      id: notification.id,
+      status: "sent",
+      providerMessageId,
+    });
+    logOperationalEvent("sms.internal_lead_notification_load_test_mocked", {
+      tenantId: params.tenantId,
+      leadId: params.leadId,
+      agentId: params.agentId,
+      purpose: params.purpose,
+    });
+    return { notificationId: notification.id, status: "sent" as const, providerMessageId };
   }
 
   if (!isInternalLeadSmsEnabled()) {

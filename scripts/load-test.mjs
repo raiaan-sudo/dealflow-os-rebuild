@@ -140,17 +140,25 @@ async function runLeadCaptureScenario() {
   if (!campaignId) {
     fail("LOAD_TEST_CAMPAIGN_ID is required for lead-capture load tests.");
   }
+  const loadTestSecret = process.env.LOAD_TEST_SECRET?.trim();
+  if (!loadTestSecret) {
+    fail("LOAD_TEST_SECRET is required for production-safe lead-capture load tests.");
+  }
 
   const items = Array.from({ length: requests }, (_, idx) => idx);
   const results = await runPool(items, (idx) =>
     timedRequest("/api/lead-capture", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-dealflow-load-test-secret": loadTestSecret,
+      },
       body: JSON.stringify({
         name: `Load Test ${idx}`,
         campaignId,
         email: `load+${Date.now()}-${idx}@example.com`,
         notes: "Automated load-test lead.",
+        load_test: true,
       }),
     }),
   );

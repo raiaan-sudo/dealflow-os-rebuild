@@ -190,6 +190,9 @@ function runOfflineChecks() {
   assertIncludes("src/lib/services/lead-handler-service.ts", "findRecentDuplicateLead", "Lead dedupe path", "duplicate public leads are checked before insert");
   assertIncludes("src/lib/services/lead-handler-service.ts", ".eq(\"publish_state\", \"published\")", "Public lead capture published-only lookup", "raw campaign IDs cannot capture leads for unpublished funnels");
   assertIncludes("src/lib/services/lead-handler-service.ts", "replayFailedPublicLeadCapture", "Lead retry replay implementation", "queued lead retries call the public lead insert path");
+  assertIncludes(leadRoute, "LEAD_CAPTURE_LOAD_TEST_BYPASS_ENABLED", "Lead load proof gate", "production write load proof requires an explicit env gate");
+  assertIncludes(leadRoute, "x-dealflow-load-test-secret", "Lead load proof secret", "production write load proof requires a server-side secret header");
+  assertIncludes(systemJobService, "lead_side_effects", "Durable lead side effects", "lead notification and CAPI work is processed by durable system jobs");
   assertExcludes("src/lib/services/lead-handler-service.ts", /QA_EMAIL|QA_PASSWORD/, "QA credential fallback removed", "no QA credential fallback remains in lead handler");
   assertIncludes(campaignPlanPersistence, "organization_id: params.ownerId", "Campaign persistence organization ownership", "fresh campaign rows persist organization_id for downstream jobs and billing");
   assertIncludes("scripts/check-rls-cross-tenant.mjs", "RLS_USER_A_JWT", "Cross-tenant RLS smoke script", "operator can prove User A cannot read User B fixtures");

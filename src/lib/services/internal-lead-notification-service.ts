@@ -368,6 +368,7 @@ async function sendNotificationIfMissing(params: {
   agent: AgentProfile;
   purpose: "new_lead_alert" | "lead_reply_template";
   body: string;
+  mockOnly?: boolean;
 }) {
   const result = await sendSms({
     to: params.agent.phone_e164,
@@ -376,6 +377,7 @@ async function sendNotificationIfMissing(params: {
     leadId: params.leadId,
     agentId: params.agent.id,
     tenantId: params.tenantId,
+    mockOnly: params.mockOnly,
   });
 
   return result;
@@ -456,12 +458,14 @@ export async function notifyAssignedAgentOfNewLead(lead: LeadRecord) {
     status: "assigned",
   });
 
+  const mockOnly = lead.source === "lead_capture_load_test";
   const alert = await sendNotificationIfMissing({
     tenantId,
     leadId: lead.id,
     agent,
     purpose: "new_lead_alert",
     body: buildLeadAlertSms(enrichedLead),
+    mockOnly,
   });
   const reply = await sendNotificationIfMissing({
     tenantId,
@@ -469,6 +473,7 @@ export async function notifyAssignedAgentOfNewLead(lead: LeadRecord) {
     agent,
     purpose: "lead_reply_template",
     body: buildLeadReplyTemplateSms(enrichedLead, agent),
+    mockOnly,
   });
 
   return {

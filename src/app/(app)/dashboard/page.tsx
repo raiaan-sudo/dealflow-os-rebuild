@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import {
-  getCampaignPayloadFromPlan,
   getLeadLoopVerifiedFromPlan,
   getSelectedAdIdFromPlan,
   readCampaignPlanDocument,
@@ -160,57 +159,42 @@ type DashboardLoadState = {
 };
 
 async function loadSelectedAdSummary(params: {
-  campaignId: string | null;
   plan: ReturnType<typeof canonicalCampaignToPlan> | null;
+  selectedAdId: string | null;
 }) {
-  if (!params.campaignId || !params.plan) {
-    return null;
-  }
-
-  const supabase = await createClient();
-
-  if (!supabase) {
-    return null;
-  }
-
-  const { data } = await supabase
-    .from("campaign_plans")
-    .select("plan")
-    .eq("id", params.campaignId)
-    .maybeSingle();
-
-  const planRow = data as { plan?: unknown } | null;
-  const rawPlan = readCampaignPlanDocument(planRow?.plan);
-  const campaignPayload = getCampaignPayloadFromPlan(rawPlan) as Record<string, unknown> | null;
-  const selectedAdId = getSelectedAdIdFromPlan(rawPlan);
-
-  if (!selectedAdId) {
+  if (!params.plan || !params.selectedAdId) {
     return null;
   }
 
   const selectedAd =
-    params.plan.creatives.staticAds.find((ad) => ad.id === selectedAdId) ?? null;
+    params.plan.creatives.staticAds.find((ad) => ad.id === params.selectedAdId) ?? null;
 
   if (!selectedAd) {
     return null;
   }
 
   return {
-    id: selectedAdId,
+    id: params.selectedAdId,
     headline: selectedAd.headline ?? "Selected ad",
     primaryText: typeof selectedAd.primaryText === "string" ? selectedAd.primaryText : "",
   };
 }
 
-async function loadLeadLoopVerified(campaignId: string | null) {
+async function loadCampaignPlanUiState(campaignId: string | null) {
   if (!campaignId) {
-    return false;
+    return {
+      leadLoopVerified: false,
+      selectedAdId: null as string | null,
+    };
   }
 
   const supabase = await createClient();
 
   if (!supabase) {
-    return false;
+    return {
+      leadLoopVerified: false,
+      selectedAdId: null as string | null,
+    };
   }
 
   const { data } = await supabase
@@ -220,7 +204,12 @@ async function loadLeadLoopVerified(campaignId: string | null) {
     .maybeSingle();
 
   const planRow = data as { plan?: unknown } | null;
-  return getLeadLoopVerifiedFromPlan(planRow?.plan);
+  const rawPlan = readCampaignPlanDocument(planRow?.plan);
+
+  return {
+    leadLoopVerified: getLeadLoopVerifiedFromPlan(rawPlan),
+    selectedAdId: getSelectedAdIdFromPlan(rawPlan),
+  };
 }
 
 function DashboardFallback({ campaignId = null }: { campaignId?: string | null }) {
@@ -272,7 +261,7 @@ async function loadDashboardStateForCampaign(
     const resolvedCampaign = await withTimeout(
       resolveActiveCampaignRecord(campaignId).catch(() => null),
       null,
-      3_500,
+      2_800,
     );
     const record = resolvedCampaign?.record
       ? canonicalCampaignToPlan(resolvedCampaign.record)
@@ -280,11 +269,11 @@ async function loadDashboardStateForCampaign(
     const metaCampaignId = record?.runtime.campaignId ?? null;
     const resolvedCampaignId = resolvedCampaign?.campaignId ?? campaignId ?? record?.id ?? null;
     const lastUpdatedAt = new Date().toISOString();
-    const [metaConnection, syncSnapshot, launchRecord, dashboardData, creativePerformanceSummary, autonomyResult, selectedAdSummary, leadLoopVerified] = await Promise.all([
+    const [metaConnection, syncSnapshot, launchRecord, dashboardData, creativePerformanceSummary, autonomyResult, planUiState] = await Promise.all([
       withTimeout(
         getMetaConnectionState().catch(() => getDefaultMetaConnectionState()),
         getDefaultMetaConnectionState(),
-        2_500,
+        1_800,
       ),
       record
         ? withTimeout(
@@ -293,7 +282,7 @@ async function loadDashboardStateForCampaign(
               metaCampaignId,
             }).catch(() => null),
             null,
-            3_500,
+            2_200,
           )
         : Promise.resolve(null),
       record
@@ -303,7 +292,7 @@ async function loadDashboardStateForCampaign(
               metaCampaignId,
             }).catch(() => null),
             null,
-            3_500,
+            2_200,
           )
         : Promise.resolve(null),
       withTimeout(
@@ -311,32 +300,39 @@ async function loadDashboardStateForCampaign(
           () => null,
         ),
         null,
-        4_000,
+        2_500,
       ),
       resolvedCampaignId
         ? withTimeout(
             getCreativePerformanceSummaryForCampaign(resolvedCampaignId).catch(() => null),
             null,
-            3_500,
+            2_000,
           )
-        : withTimeout(getLatestCreativePerformanceSummary().catch(() => null), null, 3_500),
+        : withTimeout(getLatestCreativePerformanceSummary().catch(() => null), null, 2_000),
       resolvedCampaignId
         ? withTimeout(
             evaluateAutonomy(resolvedCampaignId).catch(() => null),
             null,
-            3_500,
+            2_000,
           )
         : Promise.resolve(null),
       withTimeout(
-        loadSelectedAdSummary({
-          campaignId: resolvedCampaignId,
-          plan: record,
-        }).catch(() => null),
-        null,
-        2_500,
+        loadCampaignPlanUiState(resolvedCampaignId).catch(() => ({
+          leadLoopVerified: false,
+          selectedAdId: null,
+        })),
+        {
+          leadLoopVerified: false,
+          selectedAdId: null,
+        },
+        1_800,
       ),
-      withTimeout(loadLeadLoopVerified(resolvedCampaignId).catch(() => false), false, 2_500),
     ]);
+    const leadLoopVerified = planUiState.leadLoopVerified;
+    const selectedAdSummary = await loadSelectedAdSummary({
+      plan: record,
+      selectedAdId: planUiState.selectedAdId,
+    });
     const recentLeads = dashboardData?.recentLeads ?? [];
     const firstWeekSuccess = record
       ? buildFirstWeekSuccessState({

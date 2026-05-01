@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { after } from "next/server";
 import {
   apiSuccess,
   handleApiError,
@@ -16,14 +15,13 @@ import {
 import { debugLog } from "@/lib/debug";
 import {
   getMetaCookiesFromHeader,
-  safeSendMetaLeadConversion,
 } from "@/lib/integrations/meta/conversions";
 import { logError, logOperationalEvent } from "@/lib/logging";
 import {
   createPublicLeadAndStartConversation,
   queueFailedPublicLeadCapture,
 } from "@/lib/services/lead-handler-service";
-import { safeNotifyAssignedAgentOfNewLead } from "@/lib/services/internal-lead-notification-service";
+import { createSystemJob } from "@/lib/services/system-job-service";
 
 const leadCaptureSchema = z
   .object({
@@ -50,6 +48,8 @@ const leadCaptureSchema = z
     turnstile_token: z.string().trim().min(1).max(4096).optional(),
     turnstileToken: z.string().trim().min(1).max(4096).optional(),
     "cf-turnstile-response": z.string().trim().min(1).max(4096).optional(),
+    load_test: z.boolean().optional(),
+    loadTest: z.boolean().optional(),
   })
   .superRefine((value, ctx) => {
     if (!value.email?.trim() && !value.phone?.trim()) {
@@ -91,6 +91,68 @@ function getTurnstileSecret() {
 
 function canBypassTurnstileSecret() {
   return process.env.NODE_ENV !== "production" || process.env.ALLOW_PUBLIC_LEAD_NO_TURNSTILE === "true";
+}
+
+function timingSafeTextEquals(candidate: string | null, expected: string) {
+  if (!candidate || !expected) {
+    return false;
+  }
+
+  let mismatch = candidate.length ^ expected.length;
+  const length = Math.max(candidate.length, expected.length);
+
+  for (let index = 0; index < length; index += 1) {
+    mismatch |= candidate.charCodeAt(index % candidate.length) ^ expected.charCodeAt(index % expected.length);
+  }
+
+  return mismatch === 0;
+}
+
+function getLoadTestBypass(params: {
+  req: Request;
+  requestId: string;
+  campaignScope: string;
+  name: string;
+  email: string | null | undefined;
+  phone: string | null | undefined;
+  requested: boolean;
+}) {
+  if (!params.requested) {
+    return false;
+  }
+
+  const enabled = process.env.LEAD_CAPTURE_LOAD_TEST_BYPASS_ENABLED === "true";
+  const expectedSecret = process.env.LEAD_CAPTURE_LOAD_TEST_SECRET?.trim() ?? "";
+  const providedSecret = params.req.headers.get("x-dealflow-load-test-secret")?.trim() ?? null;
+  const email = params.email?.trim().toLowerCase() ?? "";
+  const phone = params.phone?.trim() ?? "";
+  const validFakeLead =
+    params.name.trim().startsWith("Load Test") &&
+    email.endsWith("@example.com") &&
+    phone.length === 0;
+
+  if (
+    !enabled ||
+    expectedSecret.length < 32 ||
+    !timingSafeTextEquals(providedSecret, expectedSecret) ||
+    !validFakeLead
+  ) {
+    logOperationalEvent("lead_capture.load_test_bypass_rejected", {
+      requestId: params.requestId,
+      campaignScope: getHashedRateLimitIdentifier(params.campaignScope),
+      enabled,
+      hasSecret: Boolean(providedSecret),
+      validFakeLead,
+    });
+    throw new ApiError(403, "Lead submission was rejected.", "lead_load_test_rejected");
+  }
+
+  logOperationalEvent("lead_capture.load_test_bypass_allowed", {
+    requestId: params.requestId,
+    campaignScope: getHashedRateLimitIdentifier(params.campaignScope),
+  });
+
+  return true;
 }
 
 async function verifyTurnstileToken(params: {
@@ -190,19 +252,30 @@ export async function POST(req: Request) {
       maxBytes: 16 * 1024,
       code: "lead_capture_body_too_large",
     });
-    await verifyTurnstileToken({
-      token:
-        payload.turnstile_token ??
-        payload.turnstileToken ??
-        payload["cf-turnstile-response"] ??
-        null,
-      ip: requestIp,
-      requestId,
-    });
 
     const campaignId = payload.campaign_id?.trim() || payload.campaignId?.trim() || "";
     const funnelId = payload.funnel_id?.trim() || "";
     const campaignScope = campaignId || funnelId || "unknown";
+    const isLoadTestBypass = getLoadTestBypass({
+      req,
+      requestId,
+      campaignScope,
+      name: payload.name,
+      email: payload.email,
+      phone: payload.phone,
+      requested: payload.load_test === true || payload.loadTest === true,
+    });
+    if (!isLoadTestBypass) {
+      await verifyTurnstileToken({
+        token:
+          payload.turnstile_token ??
+          payload.turnstileToken ??
+          payload["cf-turnstile-response"] ??
+          null,
+        ip: requestIp,
+        requestId,
+      });
+    }
     const contactHash = getHashedRateLimitIdentifier(payload.email?.trim() || payload.phone?.trim() || payload.name);
     const startedAtRaw = payload.form_started_at ?? payload.formStartedAt;
     const startedAt =
@@ -275,8 +348,10 @@ export async function POST(req: Request) {
       payload.sms_consent_copy?.trim() ||
       "By checking this box, I agree to receive SMS messages from DealFlow OS and/or the business operating this campaign about my inquiry, follow-ups, and appointment coordination. Message and data rates may apply. Message frequency may vary. Reply STOP to opt out or HELP for help. Consent is not a condition of purchase.";
     const isDevelopment = process.env.NODE_ENV !== "production";
-    const source = `lead_capture_${normalizedStage}`;
-    const notes = `Captured from lead capture flow at stage: ${normalizedStage}.`;
+    const source = isLoadTestBypass ? "lead_capture_load_test" : `lead_capture_${normalizedStage}`;
+    const notes = isLoadTestBypass
+      ? `Captured from internal lead-write load proof at stage: ${normalizedStage}.`
+      : `Captured from lead capture flow at stage: ${normalizedStage}.`;
 
     capturedPayload = {
       campaignId,
@@ -347,30 +422,39 @@ export async function POST(req: Request) {
       landing_page_url: landingPageUrl,
     };
 
-    after(async () => {
-      const notificationResult = await safeNotifyAssignedAgentOfNewLead(notificationLead);
-      const metaConversionResult = await safeSendMetaLeadConversion({
-        organizationId: lead.organization_id,
-        leadId: lead.id,
-        campaignId: lead.campaign_id,
-        eventSourceUrl: landingPageUrl,
-        eventTime: lead.created_at,
-        name: lead.name,
-        email,
-        phone,
-        clientIp: requestIp,
-        clientUserAgent: userAgent,
-        fbp: metaCookies.fbp,
-        fbc: metaCookies.fbc,
-      });
-
-      logOperationalEvent("lead_capture.internal_notification_processed", {
+    const sideEffectJob = await createSystemJob({
+      organizationId: lead.organization_id,
+      userId: lead.user_id,
+      campaignId: lead.campaign_id,
+      kind: "lead_side_effects",
+      idempotencyKey: `lead_side_effects:${lead.id}`,
+      maxAttempts: 3,
+      payload: {
         requestId,
-        leadId: lead.id,
-        organizationId: lead.organization_id,
-        result: notificationResult,
-        metaConversionResult,
-      });
+        lead: notificationLead,
+        metaConversion: {
+          organizationId: lead.organization_id,
+          leadId: lead.id,
+          campaignId: lead.campaign_id,
+          eventSourceUrl: landingPageUrl,
+          eventTime: lead.created_at,
+          name: lead.name,
+          email,
+          phone,
+          clientIp: requestIp,
+          clientUserAgent: userAgent,
+          fbp: metaCookies.fbp,
+          fbc: metaCookies.fbc,
+        },
+      },
+    });
+
+    logOperationalEvent("lead_capture.side_effects_queued", {
+      requestId,
+      leadId: lead.id,
+      organizationId: lead.organization_id,
+      jobId: sideEffectJob.id,
+      loadTest: isLoadTestBypass,
     });
 
     if (isDevelopment) {

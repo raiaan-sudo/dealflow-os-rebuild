@@ -25,7 +25,8 @@ export type SystemJobKind =
   | "creative_generation"
   | "meta_sync"
   | "recommendation_generation"
-  | "lead_capture_retry";
+  | "lead_capture_retry"
+  | "lead_side_effects";
 export type SystemJobStatus = "pending" | "processing" | "completed" | "failed";
 export type SystemJobLifecycleStatus =
   | "queued"
@@ -73,25 +74,64 @@ type SystemJobPayloadMap = {
     source: string;
     requestId: string;
     reason: string;
-      leadCapture: {
-        campaignId: string;
-        funnelId: string | null;
-        name: string;
-        email: string | null;
-        phone: string | null;
-        stage: string;
-        notes: string | null;
-        smsConsent?: boolean | null;
-        smsConsentCopy?: string | null;
-        consentUrl?: string | null;
-        utmSource?: string | null;
-        utmMedium?: string | null;
-        utmCampaign?: string | null;
-        adId?: string | null;
-        landingPageUrl?: string | null;
-      };
+    leadCapture: {
+      campaignId: string;
+      funnelId: string | null;
+      name: string;
+      email: string | null;
+      phone: string | null;
+      stage: string;
+      notes: string | null;
+      smsConsent?: boolean | null;
+      smsConsentCopy?: string | null;
+      consentUrl?: string | null;
+      utmSource?: string | null;
+      utmMedium?: string | null;
+      utmCampaign?: string | null;
+      adId?: string | null;
+      landingPageUrl?: string | null;
     };
   };
+  lead_side_effects: {
+    requestId: string;
+    lead: {
+      id: string;
+      organization_id: string;
+      tenant_id?: string | null;
+      campaign_id: string;
+      campaign_name?: string | null;
+      name?: string | null;
+      first_name?: string | null;
+      last_name?: string | null;
+      email?: string | null;
+      phone?: string | null;
+      phone_raw?: string | null;
+      phone_e164?: string | null;
+      source?: string | null;
+      lead_type?: string | null;
+      utm_source?: string | null;
+      utm_medium?: string | null;
+      utm_campaign?: string | null;
+      ad_id?: string | null;
+      landing_page_url?: string | null;
+      created_at?: string | null;
+    };
+    metaConversion: {
+      organizationId: string;
+      leadId: string;
+      campaignId: string;
+      eventSourceUrl?: string | null;
+      eventTime?: string | null;
+      name?: string | null;
+      email?: string | null;
+      phone?: string | null;
+      clientIp?: string | null;
+      clientUserAgent?: string | null;
+      fbp?: string | null;
+      fbc?: string | null;
+    };
+  };
+};
 
 export type SystemJobTrackingPayload = {
   correlationId: string;
@@ -675,6 +715,30 @@ export async function processSystemJob(jobId: string) {
         ...replayResult,
         requestId: payload.requestId,
         retryReason: payload.reason,
+      } as Json;
+    } else if (processingJob.kind === "lead_side_effects") {
+      const payload = processingJob.payload as SystemJobPayloadMap["lead_side_effects"];
+      const { safeNotifyAssignedAgentOfNewLead } = await import("@/lib/services/internal-lead-notification-service");
+      const { safeSendMetaLeadConversion } = await import("@/lib/integrations/meta/conversions");
+      const [notificationResult, metaConversionResult] = await Promise.all([
+        safeNotifyAssignedAgentOfNewLead(payload.lead),
+        safeSendMetaLeadConversion(payload.metaConversion),
+      ]);
+
+      logOperationalEvent("lead_capture.side_effects_processed", {
+        requestId: payload.requestId,
+        leadId: payload.lead.id,
+        organizationId: payload.lead.organization_id,
+        jobId: processingJob.id,
+        notificationResult,
+        metaConversionResult,
+      });
+
+      result = {
+        requestId: payload.requestId,
+        leadId: payload.lead.id,
+        notificationResult,
+        metaConversionResult,
       } as Json;
     } else if (
       processingJob.kind === "campaign_build" ||
