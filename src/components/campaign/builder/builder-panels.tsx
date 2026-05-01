@@ -2224,15 +2224,19 @@ export function BuilderCreativesPanel(props: {
               />
               {generatedVideos[index]?.status === "processing" ? (
                 <p className="text-sm text-primary">
-                  Video generation is disabled for beta, so no HeyGen render is queued.
+                  Video generation is queued. The finished render will appear here when the provider job completes.
                 </p>
               ) : null}
               {videoGenerationErrors[index] ? (
                 <p className="text-sm text-rose-300">{videoGenerationErrors[index]}</p>
               ) : null}
               <div className="flex justify-end">
-                <Button disabled title="Video rendering is disabled for beta to avoid paid render spend.">
-                  Video placeholder only
+                <Button
+                  disabled={videoGenerationIndex === index}
+                  onClick={() => handleGenerateVideo(index)}
+                  title="Uses paid generation credits and queues a HeyGen render."
+                >
+                  {videoGenerationIndex === index ? "Queueing video..." : "Generate UGC video"}
                 </Button>
               </div>
             </div>

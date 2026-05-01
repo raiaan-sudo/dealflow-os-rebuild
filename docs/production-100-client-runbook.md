@@ -128,9 +128,9 @@ Controls:
 Emergency disable:
 
 1. Hide/disable the static generation UI entry point.
-2. Keep video generation route returning `video_generation_disabled`.
-3. Leave `ALLOW_OPENAI_IMAGE_GENERATION` and `ALLOW_HEYGEN_VIDEO_GENERATION` unset or set to any value other than `true`.
-4. For a controlled image test, set `OPENAI_IMAGE_DAILY_LIMIT=1` before enabling `ALLOW_OPENAI_IMAGE_GENERATION=true`.
+2. Keep image and video generation behind credits and provider usage reservations.
+3. Set `ALLOW_OPENAI_IMAGE_GENERATION=true` and `ALLOW_HEYGEN_VIDEO_GENERATION=true` only after the production provider keys are present in Vercel.
+4. For a controlled image or UGC test, temporarily lower `OPENAI_IMAGE_DAILY_LIMIT` or `HEYGEN_VIDEO_DAILY_LIMIT` before enabling provider calls.
 5. Remove provider API keys from production only if a hard stop is required.
 
 ## Meta Emergency Disable
