@@ -173,6 +173,10 @@ function asBoolean(value: unknown) {
   return value === true;
 }
 
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
 function readPlanRoot(plan: unknown) {
   return asRecord(plan) ?? {};
 }
@@ -215,10 +219,15 @@ function deriveFunnelStatus(plan: Record<string, unknown>) {
 
 function deriveCreativeStatus(plan: Record<string, unknown>) {
   const selectedAdId = asString(plan.selected_ad_id) ?? asString(readCampaignPayload(plan).selected_ad_id);
+  const payload = readCampaignPayload(plan);
+  const selectedAdIds =
+    asArray(plan.selected_ad_ids).length > 0
+      ? asArray(plan.selected_ad_ids)
+      : asArray(payload.selected_ad_ids);
   const staticAds = Array.isArray(plan.staticAds) ? plan.staticAds : [];
 
-  if (selectedAdId) {
-    return "selected";
+  if (selectedAdId || selectedAdIds.length > 0) {
+    return selectedAdIds.length > 1 ? `${selectedAdIds.length} selected` : "selected";
   }
 
   if (staticAds.length > 0) {

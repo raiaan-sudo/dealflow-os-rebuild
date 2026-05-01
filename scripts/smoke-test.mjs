@@ -136,10 +136,10 @@ function runOfflineChecks() {
   assertIncludes(appContextService, "non-owned organization", "Workspace ownership bootstrap guard", "membership bootstrap refuses non-owned organizations");
   assertIncludes(membershipPolicyMigration, "drop policy if exists organization_memberships_insert_self", "Membership self-join policy removed", "authenticated users cannot self-join arbitrary organizations");
 
-  assertIncludes(previewPage, "loadPersistedSelectedAdId", "Preview selected ad source", "preview loads persisted selected ad from DB helper");
-  assertIncludes(previewPage, "getSelectedAdIdFromPlan", "Preview selected ad plan helper", "preview resolves selected ad through typed plan helper");
-  assertIncludes(launchPage, "loadPersistedSelectedAdId", "Launch selected ad source", "launch loads persisted selected ad from DB helper");
-  assertIncludes(launchPage, "getSelectedAdIdFromPlan", "Launch selected ad plan helper", "launch resolves selected ad through typed plan helper");
+  assertIncludes(previewPage, "loadPersistedSelectedAdIds", "Preview selected creative source", "preview loads persisted selected creative set from DB helper");
+  assertIncludes(previewPage, "getSelectedAdIdsFromPlan", "Preview selected creative plan helper", "preview resolves selected creative set through typed plan helper");
+  assertIncludes(launchPage, "loadPersistedSelectedAdIds", "Launch selected creative source", "launch loads persisted selected creative set from DB helper");
+  assertIncludes(launchPage, "getSelectedAdIdsFromPlan", "Launch selected creative plan helper", "launch resolves selected creative set through typed plan helper");
   assertExcludes(launchPage, "recommended", "Launch recommended fallback removed", "launch preview does not use recommended fallback");
 
   assertIncludes(launchRoute, "validateExistingMetaObject", "Meta object validation before reuse", "existing Meta IDs are validated before reuse");

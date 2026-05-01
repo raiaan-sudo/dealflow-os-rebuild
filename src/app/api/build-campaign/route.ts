@@ -29,6 +29,7 @@ const requestSchema = z.object({
 
 type CampaignPayloadRecord = {
   selected_ad_id?: string;
+  selected_ad_ids?: string[];
   campaign_id?: string;
   destination_url?: string;
   business_profile?: Record<string, unknown>;
@@ -198,6 +199,11 @@ export async function POST(request: Request) {
         const campaignPayload: CampaignPayloadRecord = {
           campaign_id: campaignId,
           selected_ad_id: existingPayload?.selected_ad_id,
+          selected_ad_ids: Array.isArray(existingPayload?.selected_ad_ids)
+            ? existingPayload.selected_ad_ids.map(String).filter(Boolean).slice(0, 6)
+            : existingPayload?.selected_ad_id
+              ? [existingPayload.selected_ad_id]
+              : undefined,
           destination_url: destinationUrl,
           business_profile: {
             business_name: record.plan.business_name,
@@ -280,6 +286,7 @@ export async function POST(request: Request) {
           campaignId,
           hasDestinationUrl: Boolean(campaignPayload.destination_url),
           hasSelectedAd: Boolean(campaignPayload.selected_ad_id),
+          selectedAdCount: campaignPayload.selected_ad_ids?.length ?? 0,
         }) as never,
     });
 

@@ -414,6 +414,76 @@ function buildStructuredPrimaryText(params: {
   return `${shortSentence(params.hook)} ${sentenceCase(params.problem)} ${sentenceCase(params.outcome)} ${params.cta}.`;
 }
 
+function normalizeForOfferMatch(value: string) {
+  return safeText(value).toLowerCase().replace(/[^\w\s]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function textIncludesOffer(text: string, offer: string) {
+  const normalizedText = normalizeForOfferMatch(text);
+  const normalizedOffer = normalizeForOfferMatch(offer);
+
+  if (!normalizedText || !normalizedOffer) {
+    return false;
+  }
+
+  if (normalizedText.includes(normalizedOffer)) {
+    return true;
+  }
+
+  const offerTokens = normalizedOffer.split(" ").filter((token) => token.length > 2);
+  const matchedTokens = offerTokens.filter((token) => normalizedText.includes(token));
+  return offerTokens.length > 0 && matchedTokens.length / offerTokens.length >= 0.72;
+}
+
+function buildCompliantOfferLead(offer: string, category: CampaignCreativeStrategy["campaignCategory"]) {
+  const cleanOffer = shortSentence(offer);
+
+  if (!cleanOffer) {
+    return "";
+  }
+
+  if (category === "seller" && /guarantee|guaranteed/i.test(cleanOffer)) {
+    return `See if your home qualifies for: ${cleanOffer}`;
+  }
+
+  return cleanOffer;
+}
+
+function ensureOfferDrivenStaticAd(
+  ad: StaticCreativeAsset,
+  strategy: CampaignCreativeStrategy,
+  offer: string,
+): StaticCreativeAsset {
+  const offerLead = buildCompliantOfferLead(offer, strategy.campaignCategory);
+
+  if (!offerLead) {
+    return ad;
+  }
+
+  const headline =
+    textIncludesOffer(ad.headline, offer)
+      ? ad.headline
+      : `${offerLead}: ${shortSentence(ad.headline)}`;
+  const primaryText =
+    textIncludesOffer(ad.primaryText, offer)
+      ? ad.primaryText
+      : `${offerLead}. ${ad.primaryText}`;
+  const overlayText =
+    textIncludesOffer(ad.overlayText, offer)
+      ? ad.overlayText
+      : clampOverlayLine(offerLead);
+
+  return {
+    ...ad,
+    headline,
+    primaryText,
+    overlayText,
+    visualConcept: textIncludesOffer(ad.visualConcept, offer)
+      ? ad.visualConcept
+      : `${ad.visualConcept} using the offer "${shortSentence(offer)}"`,
+  };
+}
+
 function buildStaticCreatives(
   brief: CreativeBrief,
   strategy: CampaignCreativeStrategy,
@@ -773,6 +843,41 @@ function buildStaticCreatives(
       score: 0,
       recommended: false,
     },
+    {
+      id: "static-direct-offer",
+      angle: "guarantee",
+      imageUrl: "",
+      imageGenerationState: "unavailable",
+      imageGenerationMessage: null,
+      imageGenerationModel: null,
+      visualConcept: `Direct response offer ad centered on ${cleanOffer}`,
+      imagePrompt: "",
+      imagePromptConfig: null,
+      preferredImageModel: "gpt-image-1.5",
+      visualPromptBrief: null,
+      scoreBreakdown: null,
+      hook:
+        strategy.campaignCategory === "seller"
+          ? `${market} sellers: this is the offer to review before you list.`
+          : `${market}: compare your next move against ${trimWords(cleanOffer, 7)}.`,
+      overlayText: buildOverlayText({
+        category: strategy.campaignCategory,
+        market,
+        base: cleanOffer,
+        trigger,
+        proof,
+      }),
+      primaryText: buildStructuredPrimaryText({
+        hook: `${audience} in ${market} need the offer clear before they decide.`,
+        problem: `Most campaigns bury the strongest reason to respond behind generic market copy.`,
+        outcome: `${sentenceCase(mechanism)} keeps ${cleanOffer} at the center with ${proof.toLowerCase()} so the next step is easier to take.`,
+        cta,
+      }),
+      headline: `${trimWords(cleanOffer, 8)} in ${market}`,
+      cta,
+      score: 0,
+      recommended: false,
+    },
   ] as StaticCreativeAsset[];
 
   return rankStaticCreativeAssets(
@@ -786,7 +891,7 @@ function buildStaticCreatives(
         strategy,
       });
 
-      return {
+      return ensureOfferDrivenStaticAd({
         ...ad,
         hook: hookLooksGeneric(ad.hook, rulePack.forbiddenHookPatterns) ? baseHook : ad.hook,
         angle: ad.angle as StaticCreativeAsset["angle"],
@@ -800,7 +905,7 @@ function buildStaticCreatives(
         visualPromptBrief: visualBrief,
         visualConcept: visualBrief.visualConcept,
         score: scoreStaticAd(ad),
-      };
+      }, strategy, cleanOffer);
     }),
     strategy,
     { market },

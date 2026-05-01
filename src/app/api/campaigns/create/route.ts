@@ -57,6 +57,7 @@ type PersistedLaunchState = {
 
 type CampaignPayloadRecord = {
   selected_ad_id?: string;
+  selected_ad_ids?: string[];
   destination_url?: string;
   business_profile?: {
     business_name?: string;

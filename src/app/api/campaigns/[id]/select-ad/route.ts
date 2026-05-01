@@ -9,8 +9,8 @@ import {
 } from "@/lib/api/route";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import {
-  getSelectedAdIdFromPlan,
-  withSelectedAdId,
+  getSelectedAdIdsFromPlan,
+  withSelectedAdIds,
 } from "@/lib/services/campaign-plan-document";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
@@ -20,7 +20,8 @@ const paramsSchema = z.object({
 });
 
 const bodySchema = z.object({
-  selectedAdId: z.string().min(1),
+  selectedAdId: z.string().min(1).optional(),
+  selectedAdIds: z.array(z.string().min(1)).min(1).max(6).optional(),
 });
 
 export async function POST(
@@ -31,7 +32,10 @@ export async function POST(
     assertSameOriginRequest(request);
     const auth = await getAuthenticatedContext();
     const { id } = await parseRouteParams(context.params, paramsSchema);
-    const { selectedAdId } = await parseJsonBody(request, bodySchema);
+    const body = await parseJsonBody(request, bodySchema);
+    const selectedAdIds = Array.from(
+      new Set([...(body.selectedAdIds ?? []), ...(body.selectedAdId ? [body.selectedAdId] : [])]),
+    ).slice(0, 6);
     const supabase = await createRouteHandlerClient();
 
     if (!supabase) {
@@ -66,13 +70,25 @@ export async function POST(
     }
 
     const currentPlan = row?.plan ?? {};
-    const existingSelectedAdId = getSelectedAdIdFromPlan(currentPlan);
-
-    if (existingSelectedAdId === selectedAdId) {
-      return NextResponse.json({ campaign_id: id, selected_ad_id: selectedAdId, unchanged: true });
+    if (selectedAdIds.length === 0) {
+      throw new ApiError(400, "Select at least one creative before continuing.", "selected_ads_missing");
     }
 
-    const nextPlan = withSelectedAdId(currentPlan, selectedAdId);
+    const existingSelectedAdIds = getSelectedAdIdsFromPlan(currentPlan);
+
+    if (
+      existingSelectedAdIds.length === selectedAdIds.length &&
+      existingSelectedAdIds.every((selectedId, index) => selectedId === selectedAdIds[index])
+    ) {
+      return NextResponse.json({
+        campaign_id: id,
+        selected_ad_id: selectedAdIds[0],
+        selected_ad_ids: selectedAdIds,
+        unchanged: true,
+      });
+    }
+
+    const nextPlan = withSelectedAdIds(currentPlan, selectedAdIds);
 
     await persistCampaignPlanDocumentUpdate({
       supabase,
@@ -82,7 +98,11 @@ export async function POST(
       source: "select_ad",
     });
 
-    return NextResponse.json({ campaign_id: id, selected_ad_id: selectedAdId });
+    return NextResponse.json({
+      campaign_id: id,
+      selected_ad_id: selectedAdIds[0],
+      selected_ad_ids: selectedAdIds,
+    });
   } catch (error) {
     return handleApiError(error, "Select ad");
   }
