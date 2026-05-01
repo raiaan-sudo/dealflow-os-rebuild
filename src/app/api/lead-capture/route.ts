@@ -297,17 +297,17 @@ export async function POST(req: Request) {
     const rateLimit = await consumeRateLimitBuckets([
       {
         key: getRateLimitKey(req, "lead-capture:ip", ipHash),
-        limit: 30,
+        limit: isLoadTestBypass ? 100 : 30,
         windowMs: 60_000,
       },
       {
         key: getRateLimitKey(req, "lead-capture:campaign-ip", `${campaignScope}:${ipHash}`),
-        limit: 8,
+        limit: isLoadTestBypass ? 50 : 8,
         windowMs: 60_000,
       },
       {
         key: getRateLimitKey(req, "lead-capture:campaign-global", campaignScope),
-        limit: 120,
+        limit: isLoadTestBypass ? 200 : 120,
         windowMs: 60_000,
       },
       {
