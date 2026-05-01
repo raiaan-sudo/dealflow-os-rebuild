@@ -348,6 +348,67 @@ export async function createSystemJob<K extends SystemJobKind>(params: {
   return parseSystemJob(insertedJob) as SystemJobRecord<K>;
 }
 
+export async function queueLeadSideEffectsJob(params: {
+  organizationId: string;
+  userId: string;
+  campaignId: string;
+  payload: SystemJobPayloadMap["lead_side_effects"];
+}) {
+  const supabase = getJobClient();
+  const idempotencyKey = `lead_side_effects:${params.payload.lead.id}`;
+  const insertPayload = {
+    organization_id: params.organizationId,
+    user_id: params.userId,
+    campaign_id: params.campaignId,
+    kind: "lead_side_effects",
+    status: "pending",
+    payload: params.payload as unknown as Json,
+    idempotency_key: idempotencyKey,
+    max_attempts: 3,
+  };
+  const { data, error } = await supabase
+    .from("system_jobs")
+    .insert(insertPayload as never)
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    const errorCode = error && typeof error === "object" && "code" in error ? String(error.code) : null;
+
+    if (errorCode === "23505") {
+      const { data: existing, error: existingError } = await supabase
+        .from("system_jobs")
+        .select("id")
+        .eq("idempotency_key", idempotencyKey)
+        .eq("organization_id", params.organizationId)
+        .eq("user_id", params.userId)
+        .maybeSingle();
+
+      const existingRow = existing as { id?: unknown } | null;
+
+      if (!existingError && typeof existingRow?.id === "string") {
+        return { id: existingRow.id };
+      }
+    }
+
+    throw new ApiError(
+      500,
+      error?.message ?? "Lead side effect job could not be queued.",
+      "lead_side_effect_job_create_failed",
+    );
+  }
+
+  const row = data as { id: string };
+  logOperationalEvent("system_job.queued", {
+    kind: "lead_side_effects",
+    jobId: row.id,
+    campaignId: params.campaignId,
+    requestId: params.payload.requestId,
+  });
+
+  return row;
+}
+
 async function updateSystemJobTracking<K extends SystemJobKind>(params: {
   supabase: SystemJobClient;
   job: SystemJobRecord<K>;

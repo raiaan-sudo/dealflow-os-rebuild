@@ -21,7 +21,7 @@ import {
   createPublicLeadAndStartConversation,
   queueFailedPublicLeadCapture,
 } from "@/lib/services/lead-handler-service";
-import { createSystemJob } from "@/lib/services/system-job-service";
+import { queueLeadSideEffectsJob } from "@/lib/services/system-job-service";
 
 const leadCaptureSchema = z
   .object({
@@ -424,13 +424,10 @@ export async function POST(req: Request) {
       landing_page_url: landingPageUrl,
     };
 
-    const sideEffectJob = await createSystemJob({
+    const sideEffectJob = await queueLeadSideEffectsJob({
       organizationId: lead.organization_id,
       userId: lead.user_id,
       campaignId: lead.campaign_id,
-      kind: "lead_side_effects",
-      idempotencyKey: `lead_side_effects:${lead.id}`,
-      maxAttempts: 3,
       payload: {
         requestId,
         lead: notificationLead,
