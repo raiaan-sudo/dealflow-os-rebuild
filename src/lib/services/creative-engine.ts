@@ -137,6 +137,7 @@ type RequiredCreativeInput = {
   location: string;
   audience: string;
   offer: string;
+  rawOffer: string;
   pricePoint: string | null;
   propertyType: string;
   mechanism: string;
@@ -180,6 +181,7 @@ function normalizeInput(input?: CreativeEngineInput | null): RequiredCreativeInp
     location: safeText(raw.location) || "your market",
     audience,
     offer,
+    rawOffer: offer,
     pricePoint: safeText(raw.price_point) || null,
     propertyType,
     mechanism,
@@ -487,12 +489,13 @@ function ensureOfferDrivenStaticAd(
 function buildStaticCreatives(
   brief: CreativeBrief,
   strategy: CampaignCreativeStrategy,
+  rawOffer?: string | null,
 ): StaticCreativeAsset[] {
   const market = toTitleCase(brief.location);
   const audience = brief.audience;
   const offer = brief.keyOffer;
-  const cleanOffer = normalizeOfferPhrase(offer) || shortSentence(offer);
-  const normalizedOffer = safeText(offer).toLowerCase();
+  const cleanOffer = normalizeOfferPhrase(rawOffer ?? "") || normalizeOfferPhrase(offer) || shortSentence(offer);
+  const normalizedOffer = safeText(cleanOffer).toLowerCase();
   const rulePack = getCategoryRulePack(strategy.campaignCategory);
   const trigger = shortSentence(strategy.triggerCondition || rulePack.triggerConditions[0] || "market shift");
   const mechanism = ensureMechanism(strategy.mechanism, rulePack.approvedMechanismStyles[0] || brief.mechanism);
@@ -1147,7 +1150,7 @@ export function buildCreativeSystem(input?: CreativeEngineInput | null): Creativ
     pain_points: normalized.painPoints.length > 0 ? normalized.painPoints : [shortPain(normalized)],
     market_type: normalized.marketType,
   });
-  const staticAds = buildStaticCreatives(brief, normalized.creativeStrategy);
+  const staticAds = buildStaticCreatives(brief, normalized.creativeStrategy, normalized.rawOffer);
   const videoAds = buildVideoCreativeDrafts(brief);
 
   return {
