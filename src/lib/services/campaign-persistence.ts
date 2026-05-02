@@ -415,26 +415,76 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
     throw new ApiError(400, "Campaign name is required.", "validation_error");
   }
 
+  const requestedCampaignId = safeText(payload.campaignId);
+  const campaignId = requestedCampaignId || crypto.randomUUID();
+  let existingSavedDocument: SavedCampaignDocument | null = null;
+  let existingAssetGeneration: Record<string, unknown> | null = null;
+
+  if (requestedCampaignId) {
+    const { data: existingRow } = await supabase
+      .from("campaign_plans")
+      .select("plan")
+      .eq("id", campaignId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    existingSavedDocument = existingRow
+      ? getSavedCampaignDocumentFromRow(existingRow as CampaignPlanRow)
+      : null;
+
+    existingAssetGeneration =
+      existingSavedDocument?.assetGeneration &&
+      typeof existingSavedDocument.assetGeneration === "object" &&
+      !Array.isArray(existingSavedDocument.assetGeneration)
+        ? (existingSavedDocument.assetGeneration as Record<string, unknown>)
+        : null;
+  }
+
+  const incomingSavedDocument: SavedCampaignDocument = {
+    name: campaignName,
+    plan: payload.plan ?? null,
+    strategy: payload.campaign?.strategy ?? null,
+    creatives: payload.creatives ?? payload.campaign?.creatives ?? null,
+    items: payload.campaign?.items ?? null,
+    copy: payload.copy ?? payload.campaign?.copy ?? null,
+    ads: payload.ads ?? null,
+    funnel: payload.funnel ?? payload.campaign?.funnel ?? null,
+    launch: payload.launch ?? null,
+    results: payload.results ?? null,
+  };
+  const mergedSavedDocument: SavedCampaignDocument =
+    requestedCampaignId && existingSavedDocument
+      ? {
+          ...existingSavedDocument,
+          ...incomingSavedDocument,
+          name: campaignName,
+          plan: {
+            ...((existingSavedDocument.plan as Record<string, unknown> | null) ?? {}),
+            ...((incomingSavedDocument.plan as Record<string, unknown> | null) ?? {}),
+          },
+          strategy: {
+            ...((existingSavedDocument.strategy as Record<string, unknown> | null) ?? {}),
+            ...((incomingSavedDocument.strategy as Record<string, unknown> | null) ?? {}),
+          },
+          funnel: {
+            ...((existingSavedDocument.funnel as Record<string, unknown> | null) ?? {}),
+            ...((incomingSavedDocument.funnel as Record<string, unknown> | null) ?? {}),
+          },
+          launch: incomingSavedDocument.launch ?? existingSavedDocument.launch ?? null,
+          results: incomingSavedDocument.results ?? existingSavedDocument.results ?? null,
+          assetGeneration: existingSavedDocument.assetGeneration,
+        }
+      : incomingSavedDocument;
+
   const canonical = normalizeCanonicalCampaign({
     campaign: {
-      id: "",
+      id: campaignId,
       user_id: userId,
       name: campaignName,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
-    savedDocument: {
-      name: campaignName,
-      plan: payload.plan ?? null,
-      strategy: payload.campaign?.strategy ?? null,
-      creatives: payload.creatives ?? payload.campaign?.creatives ?? null,
-      items: payload.campaign?.items ?? null,
-      copy: payload.copy ?? payload.campaign?.copy ?? null,
-      ads: payload.ads ?? null,
-      funnel: payload.funnel ?? payload.campaign?.funnel ?? null,
-      launch: payload.launch ?? null,
-      results: payload.results ?? null,
-    },
+    savedDocument: mergedSavedDocument,
     builtCampaign: payload.campaign,
     publish: {
       state: "draft",
@@ -460,30 +510,6 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
     results: canonical.results,
   };
 
-  const requestedCampaignId = safeText(payload.campaignId);
-  const campaignId = requestedCampaignId || crypto.randomUUID();
-  let existingAssetGeneration: Record<string, unknown> | null = null;
-
-  if (campaignId) {
-    const { data: existingRow } = await supabase
-      .from("campaign_plans")
-      .select("plan")
-      .eq("id", campaignId)
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    const existingSavedDocument = existingRow
-      ? getSavedCampaignDocumentFromRow(existingRow as CampaignPlanRow)
-      : null;
-
-    existingAssetGeneration =
-      existingSavedDocument?.assetGeneration &&
-      typeof existingSavedDocument.assetGeneration === "object" &&
-      !Array.isArray(existingSavedDocument.assetGeneration)
-        ? (existingSavedDocument.assetGeneration as Record<string, unknown>)
-        : null;
-  }
-
   const persistencePayload = {
     id: campaignId,
     owner_id: ownerId,
@@ -493,19 +519,19 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
       ...(plan as Record<string, unknown>),
       ...(existingAssetGeneration ? { assetGeneration: existingAssetGeneration } : {}),
     } as unknown as Json,
-  } as never;
+  };
 
   const query = requestedCampaignId
     ? supabase
         .from("campaign_plans")
-        .update(persistencePayload)
+        .update(persistencePayload as never)
         .eq("id", campaignId)
         .eq("user_id", userId)
         .select("*")
         .single()
     : supabase
         .from("campaign_plans")
-        .insert(persistencePayload)
+        .insert(persistencePayload as never)
         .select("*")
         .single();
 
@@ -521,7 +547,7 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
     ) {
       const { data: existingRow, error: existingRowError } = await supabase
         .from("campaign_plans")
-        .select("id")
+        .select("id, plan")
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -537,11 +563,34 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
           : "";
 
       if (existingCampaignId) {
+        const recoveredExistingDocument = getSavedCampaignDocumentFromRow(existingRow as CampaignPlanRow);
+        const currentPersistencePlan = persistencePayload.plan as Record<string, unknown>;
+        const recoveredPlan = recoveredExistingDocument
+          ? {
+              ...currentPersistencePlan,
+              plan: {
+                ...((recoveredExistingDocument.plan as Record<string, unknown> | null) ?? {}),
+                ...((currentPersistencePlan.plan as Record<string, unknown> | null) ?? {}),
+              },
+              strategy: {
+                ...((recoveredExistingDocument.strategy as Record<string, unknown> | null) ?? {}),
+                ...((currentPersistencePlan.strategy as Record<string, unknown> | null) ?? {}),
+              },
+              funnel: {
+                ...((recoveredExistingDocument.funnel as Record<string, unknown> | null) ?? {}),
+                ...((currentPersistencePlan.funnel as Record<string, unknown> | null) ?? {}),
+              },
+              ...(recoveredExistingDocument.assetGeneration
+                ? { assetGeneration: recoveredExistingDocument.assetGeneration }
+                : {}),
+            }
+          : currentPersistencePlan;
         const { data: recoveredData, error: recoveredError } = await supabase
           .from("campaign_plans")
           .update({
             ...(persistencePayload as Record<string, unknown>),
             id: existingCampaignId,
+            plan: recoveredPlan,
           } as never)
           .eq("id", existingCampaignId)
           .eq("user_id", userId)
