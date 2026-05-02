@@ -208,6 +208,41 @@ export function LoginForm({
       return;
     }
 
+    const client = supabase;
+
+    async function recoverSessionFromHash() {
+      if (typeof window === "undefined" || !window.location.hash) {
+        return;
+      }
+
+      const hashParams = new URLSearchParams(window.location.hash.slice(1));
+      const recoveryType = hashParams.get("type");
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+
+      if (recoveryType !== "recovery" || !accessToken || !refreshToken) {
+        return;
+      }
+
+      const { error: sessionError } = await client.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+
+      if (sessionError) {
+        setError(sessionError.message);
+        return;
+      }
+
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+      setError(null);
+      setMessage("Enter a new password to finish account recovery.");
+      setPassword("");
+      setMode("update-password");
+    }
+
+    void recoverSessionFromHash();
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
