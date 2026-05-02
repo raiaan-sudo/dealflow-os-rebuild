@@ -1,16 +1,9 @@
 import { notFound } from "next/navigation";
-import { unstable_cache } from "next/cache";
 import { getPublishedCampaignBySlug } from "@/lib/services/campaign-persistence";
 import { LeadCaptureForm } from "@/app/f/[slug]/lead-capture-form";
 import { getMetaPixelIdForOrganization } from "@/lib/integrations/meta/conversions";
 
 export const revalidate = 60;
-
-const getCachedPublishedCampaignBySlug = unstable_cache(
-  async (slug: string) => getPublishedCampaignBySlug(slug),
-  ["public-funnel"],
-  { revalidate: 60 },
-);
 
 export default async function PublicFunnelPage({
   params,
@@ -18,7 +11,7 @@ export default async function PublicFunnelPage({
   params: Promise<{ slug: string }> | { slug: string };
 }) {
   const resolvedParams = params instanceof Promise ? await params : params;
-  const record = await getCachedPublishedCampaignBySlug(resolvedParams.slug).catch(() => null);
+  const record = await getPublishedCampaignBySlug(resolvedParams.slug).catch(() => null);
 
   if (!record) {
     notFound();
