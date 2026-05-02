@@ -110,10 +110,17 @@ export function LoginForm({
     setIsPending(true);
 
     try {
+      if (turnstileEnabled && !turnstileToken) {
+        throw new Error("Please complete the verification challenge.");
+      }
+
       if (mode === "sign-in") {
         const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
           email,
           password,
+          options: {
+            captchaToken: turnstileEnabled ? turnstileToken : undefined,
+          },
         });
 
         if (signInError) {
@@ -131,10 +138,6 @@ export function LoginForm({
         const nextPath = getSafeRedirectPath(redirectedFrom);
         window.location.assign(nextPath);
         return;
-      }
-
-      if (turnstileEnabled && !turnstileToken) {
-        throw new Error("Please complete the verification challenge.");
       }
 
       const { error: signUpError } = await supabase.auth.signUp({
@@ -161,7 +164,7 @@ export function LoginForm({
       setError(
         caughtError instanceof Error ? caughtError.message : "Authentication failed.",
       );
-      if (mode === "sign-up") {
+      if (turnstileEnabled) {
         resetTurnstile();
       }
     } finally {
@@ -170,7 +173,7 @@ export function LoginForm({
   }
 
   useEffect(() => {
-    if (mode !== "sign-up") {
+    if (!turnstileEnabled) {
       setTurnstileToken("");
       turnstileWidgetIdRef.current = null;
       return;
@@ -213,7 +216,7 @@ export function LoginForm({
     document.head.appendChild(script);
 
     return () => script.removeEventListener("load", renderNewTurnstile);
-  }, [mode]);
+  }, [mode, turnstileEnabled]);
 
   function resetTurnstile() {
     if (!turnstileWidgetIdRef.current) {
@@ -313,11 +316,11 @@ export function LoginForm({
           />
         </label>
 
-        {mode === "sign-up" && turnstileEnabled ? (
+        {turnstileEnabled ? (
           <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
             <div ref={turnstileContainerRef} />
             {!turnstileToken ? (
-              <p className="mt-2 text-xs text-white/60">Complete the verification challenge before creating an account.</p>
+              <p className="mt-2 text-xs text-white/60">Complete the verification challenge before continuing.</p>
             ) : null}
           </div>
         ) : null}
