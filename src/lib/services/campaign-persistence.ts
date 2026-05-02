@@ -585,13 +585,14 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
                 : {}),
             }
           : currentPersistencePlan;
+        const recoveredUpdatePayload = {
+          ...(persistencePayload as Record<string, unknown>),
+          id: existingCampaignId,
+          plan: recoveredPlan,
+        };
         const { data: recoveredData, error: recoveredError } = await supabase
           .from("campaign_plans")
-          .update({
-            ...(persistencePayload as Record<string, unknown>),
-            id: existingCampaignId,
-            plan: recoveredPlan,
-          } as never)
+          .update(recoveredUpdatePayload as never)
           .eq("id", existingCampaignId)
           .eq("user_id", userId)
           .select("*")
