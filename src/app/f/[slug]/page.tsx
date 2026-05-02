@@ -12,12 +12,6 @@ const getCachedPublishedCampaignBySlug = unstable_cache(
   { revalidate: 60 },
 );
 
-const getCachedMetaPixelIdForOrganization = unstable_cache(
-  async (organizationId: string) => getMetaPixelIdForOrganization(organizationId),
-  ["public-funnel-meta-pixel"],
-  { revalidate: 60 },
-);
-
 export default async function PublicFunnelPage({
   params,
 }: {
@@ -31,7 +25,7 @@ export default async function PublicFunnelPage({
   }
 
   const metaPixelId = record.campaign.organization_id
-    ? await getCachedMetaPixelIdForOrganization(record.campaign.organization_id)
+    ? await getMetaPixelIdForOrganization(record.campaign.organization_id)
     : null;
   const visibleSections = record.funnel.sections.filter((section) => section.visible !== false);
 
