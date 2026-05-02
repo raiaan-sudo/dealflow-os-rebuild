@@ -207,6 +207,14 @@ function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[
       preferredImageModel,
       visualPromptBrief: null,
       scoreBreakdown: asScoreBreakdown(metadata?.scoreBreakdown),
+      offerQuality:
+        metadata?.offerQuality && typeof metadata.offerQuality === "object"
+          ? metadata.offerQuality as StaticCreativeAsset["offerQuality"]
+          : null,
+      qualityGate:
+        metadata?.qualityGate && typeof metadata.qualityGate === "object"
+          ? metadata.qualityGate as StaticCreativeAsset["qualityGate"]
+          : null,
       hook: typeof metadata?.overlayText === "string" ? metadata.overlayText : "",
       overlayText: typeof metadata?.overlayText === "string" ? metadata.overlayText : "",
       primaryText: typeof metadata?.primaryText === "string" ? metadata.primaryText : "",

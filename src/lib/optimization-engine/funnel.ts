@@ -1,4 +1,5 @@
 import type { CampaignInput } from "@/lib/optimization-engine/index";
+import { selectMediaBuyerCta } from "@/lib/optimization-engine/media-buying-rules";
 
 export type FunnelConfig = {
   type: "landing_page";
@@ -26,10 +27,10 @@ export function buildFunnelConfig(
     structure: {
       headline: `${input.offer} for ${input.location}.`,
       supportingCopy:
-        "Keep the first step simple: outcome-led promise, short support copy, tight proof, and one form submission path.",
+        "Keep cold traffic on a simple opt-in: outcome-led offer, mechanism, proof, risk reversal, FAQ, and one short form.",
       bulletsMax: 5,
       formFields: ["name", "email", "phone"],
-      cta: "Get the next step",
+      cta: selectMediaBuyerCta(input.audience),
     },
     allowMultiStep: false,
     followUpAction: "Qualify the lead, deliver the promised asset, and move directly into booking or review.",

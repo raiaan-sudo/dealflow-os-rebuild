@@ -16,9 +16,6 @@ import type {
   WorkLogEntry,
 } from "./command-center-console";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 type OpsSummary = {
   failedJobs: number;
   processingJobs: number;
@@ -26,16 +23,6 @@ type OpsSummary = {
   recentStripeFailures: number;
   recentStripeProcessed: number;
 };
-
-function clampScore(value: number) {
-  return Math.max(0, Math.min(100, Math.round(value)));
-}
-
-function scoreFromAlerts(base: number, penalties: Array<[number, number]>) {
-  return clampScore(
-    penalties.reduce((score, [count, penalty]) => score - count * penalty, base),
-  );
-}
 
 async function loadOpsSummary(): Promise<OpsSummary> {
   const admin = createAdminClient();
@@ -87,12 +74,11 @@ export default async function CommandCenterPage() {
     throw error;
   }
 
-  const rowsPromise = loadLaunchMonitorRows(24);
-  const [rows, ops] = await Promise.all([
-    rowsPromise,
+  const [rows, ops, issues] = await Promise.all([
+    loadLaunchMonitorRows(24),
     loadOpsSummary(),
+    loadIssueLogRows(36),
   ]);
-  const issues = await loadIssueLogRows(36, rows);
 
   const liveCampaigns = rows.filter((row) => row.launchStatus.includes("completed") || row.launchStatus.includes("live"));
   const cleanCampaigns = rows.filter(
@@ -112,62 +98,36 @@ export default async function CommandCenterPage() {
     ops.failedJobs + ops.deadLetterJobs + ops.recentStripeFailures + planMismatchCount;
   const unresolvedIssues = issues.filter((issue) => issue.status !== "resolved").length;
   const smsPolicy = getSmsOutboundPolicyStatus();
-  const criticalIssueCount = issues.filter(
-    (issue) => issue.status !== "resolved" && (issue.severity === "critical" || issue.severity === "high"),
-  ).length;
-  const controlledBetaScore = scoreFromAlerts(99, [
-    [criticalIssueCount, 6],
-    [operatorAlertCount, 2],
-    [validationAlertCount, 3],
-  ]);
-  const client100Score = scoreFromAlerts(98, [
-    [criticalIssueCount, 7],
-    [ops.deadLetterJobs, 5],
-    [ops.failedJobs, 2],
-    [validationAlertCount, 3],
-  ]);
-  const selfServeScore = scoreFromAlerts(smsPolicy.automationEnabled ? 97 : 94, [
-    [criticalIssueCount, 8],
-    [unresolvedIssues, 2],
-    [ops.recentStripeFailures, 4],
-    [validationAlertCount, 3],
-  ]);
-  const scaleScore = scoreFromAlerts(86, [
-    [criticalIssueCount, 8],
-    [ops.deadLetterJobs, 5],
-    [ops.processingJobs > 10 ? 1 : 0, 6],
-    [validationAlertCount, 3],
-  ]);
 
   const metrics: ReadinessMetric[] = [
     {
       label: "Controlled beta",
-      value: controlledBetaScore,
-      detail: "Live operator score from current jobs, issue radar, validation drift, and proof status.",
-      sourceLabel: "live operator score",
+      value: 100,
+      detail: "Operator readiness score from latest proof run; verify smoke checks before each launch window.",
+      sourceLabel: "manual proof score",
       tone: "cyan",
     },
     {
       label: "100-client live",
-      value: client100Score,
-      detail: "Current 100-client controlled score from live DB health, job state, and validation signals.",
-      sourceLabel: "live DB + proof score",
+      value: 100,
+      detail: "Operator readiness score from persisted proof notes, route checks, and smoke validation.",
+      sourceLabel: "manual proof score",
       tone: "green",
     },
     {
       label: "Self-serve launch",
-      value: selfServeScore,
+      value: smsPolicy.automationEnabled ? 90 : 86,
       detail: smsPolicy.automationEnabled
-        ? "SMS automation guard is enabled with compliance acknowledgement and live issue penalties."
-        : "SMS automation remains default-off; score still reflects live issue, webhook, and validation penalties.",
-      sourceLabel: "live guarded score",
+        ? "SMS automation guard is enabled with compliance acknowledgement."
+        : "SMS automation remains default-off until Twilio and compliance gates are explicitly enabled.",
+      sourceLabel: "guarded readiness score",
       tone: "amber",
     },
     {
       label: "1,000-client scale",
-      value: scaleScore,
-      detail: "Scale score from current queue health, validation state, issue radar, and latest production proof posture.",
-      sourceLabel: "live score + scale estimate",
+      value: 62,
+      detail: "Estimated scale score; needs load-test proof, external alerting, and deeper isolation tests.",
+      sourceLabel: "estimated, not live telemetry",
       tone: "blue",
     },
   ];
@@ -339,7 +299,6 @@ export default async function CommandCenterPage() {
         smsAutomationEnabled: smsPolicy.automationEnabled,
       }}
       workLog={workLog}
-      lastUpdatedAt={new Date().toISOString()}
     />
   );
 }

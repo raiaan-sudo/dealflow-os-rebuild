@@ -40,7 +40,7 @@ function parseImageFailure(error: unknown): ProviderFailure {
   };
 }
 
-const IMAGE_GENERATION_TIMEOUT_MS = 45_000;
+const IMAGE_GENERATION_TIMEOUT_MS = 60_000;
 const IMAGE_GENERATION_ATTEMPTS_PER_MODEL = 1;
 
 function toDataUrl(base64: string) {

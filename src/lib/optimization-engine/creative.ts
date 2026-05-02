@@ -1,4 +1,5 @@
 import type { CampaignInput } from "@/lib/optimization-engine/index";
+import { buildMediaBuyingCampaignStructure } from "@/lib/optimization-engine/media-buying-rules";
 
 export type CreativeValidationResult = {
   accepted: boolean;
@@ -11,7 +12,7 @@ export type CreativePlan = {
   staticCreatives: number;
   minVideoRatio: number;
   primaryFormat: "talking_head_ugc";
-  scriptStructure: ["Hook", "Problem", "Mechanism", "CTA"];
+  scriptStructure: ["Hook", "Problem", "Mechanism", "Proof", "Offer", "CTA"];
   hookRequirements: string[];
   rejectionPatterns: string[];
   refreshCadenceDays: number;
@@ -19,8 +20,9 @@ export type CreativePlan = {
 };
 
 export function buildCreativePlan(input: CampaignInput): CreativePlan {
-  const totalCreatives = input.budget >= 100 ? 8 : 6;
-  const videoCreatives = Math.ceil(totalCreatives / 2);
+  const structure = buildMediaBuyingCampaignStructure(input.budget);
+  const totalCreatives = structure.creativeCount;
+  const videoCreatives = structure.minVideoCreatives;
 
   return {
     totalCreatives,
@@ -28,7 +30,7 @@ export function buildCreativePlan(input: CampaignInput): CreativePlan {
     staticCreatives: totalCreatives - videoCreatives,
     minVideoRatio: 0.5,
     primaryFormat: "talking_head_ugc",
-    scriptStructure: ["Hook", "Problem", "Mechanism", "CTA"],
+    scriptStructure: ["Hook", "Problem", "Mechanism", "Proof", "Offer", "CTA"],
     hookRequirements: [
       "Call out the ICP in the first three seconds, or lead with the core claim.",
       "Enter through pain, opportunity, or a direct market problem.",
@@ -38,6 +40,8 @@ export function buildCreativePlan(input: CampaignInput): CreativePlan {
       "Self-focused script",
       "Long intro",
       "No hook",
+      "No mechanism",
+      "No proof",
       "No CTA",
       "Overly polished generic visuals",
     ],

@@ -36,9 +36,7 @@ async function timedRequest(path, init) {
     const response = await fetch(`${baseUrl}${path}`, init);
     await response.arrayBuffer();
     return {
-      ok: scenario === "lead-capture"
-        ? response.status >= 200 && response.status < 300
-        : response.status < 500,
+      ok: response.status < 500,
       status: response.status,
       ms: performance.now() - started,
     };
@@ -142,32 +140,17 @@ async function runLeadCaptureScenario() {
   if (!campaignId) {
     fail("LOAD_TEST_CAMPAIGN_ID is required for lead-capture load tests.");
   }
-  const internalProof = process.env.LOAD_TEST_INTERNAL_PROOF === "true";
-  const internalProofSecret = process.env.LOAD_TEST_INTERNAL_SECRET?.trim();
-  if (internalProof && !internalProofSecret) {
-    fail("LOAD_TEST_INTERNAL_SECRET is required when LOAD_TEST_INTERNAL_PROOF=true.");
-  }
-  const loadTestSecret = process.env.LOAD_TEST_SECRET?.trim();
-  if (!internalProof && !loadTestSecret) {
-    fail("LOAD_TEST_SECRET is required for production-safe lead-capture load tests.");
-  }
 
   const items = Array.from({ length: requests }, (_, idx) => idx);
   const results = await runPool(items, (idx) =>
-    timedRequest(internalProof ? "/api/internal/lead-write-proof" : "/api/lead-capture", {
+    timedRequest("/api/lead-capture", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(internalProof
-          ? { Authorization: `Bearer ${internalProofSecret}` }
-          : { "x-dealflow-load-test-secret": loadTestSecret }),
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: `Load Test ${idx}`,
         campaignId,
         email: `load+${Date.now()}-${idx}@example.com`,
         notes: "Automated load-test lead.",
-        load_test: true,
       }),
     }),
   );

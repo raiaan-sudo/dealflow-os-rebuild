@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CreativeOpsQaCard } from "@/components/campaign/creative-ops-qa-card";
 import { CreativeStrategySummary } from "@/components/campaign/creative-strategy-summary";
+import { StaticAdComposedPreview } from "@/components/campaign/static-ad-composed-preview";
 import { fetchWithRetry } from "@/lib/http/fetch-with-retry";
 import { assessCreativeOpsQuality } from "@/lib/services/creative-ops-qa-service";
 import type {
@@ -538,29 +539,24 @@ export function CampaignPreviewReview({
                   </Badge>
                 )}
               </div>
-              {ad?.imageUrl ? (
-                <div
-                  className="aspect-[16/9] bg-[linear-gradient(180deg,rgba(15,23,42,0.18),rgba(2,6,23,0.92))] bg-cover bg-center p-4"
-                  style={{ backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.18), rgba(2,6,23,0.92)), url(${ad.imageUrl})` }}
-                >
-                  <div className="max-w-[72%] rounded-[14px] bg-black/40 px-3 py-2 shadow-sm backdrop-blur-sm">
-                    <p className="text-sm font-semibold leading-5 text-white">
-                      {trimWords(ad?.overlayText || "", 7)}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex aspect-[16/9] items-end bg-[linear-gradient(180deg,rgba(15,23,42,0.55),rgba(2,6,23,0.98))] p-4">
-                  <div className="max-w-[72%] rounded-[14px] border border-white/8 bg-black/30 px-3 py-2 shadow-sm">
-                    <p className="text-sm font-semibold leading-5 text-white">
-                      {trimWords(ad?.overlayText || ad?.hook || "Creative preview unavailable", 7)}
-                    </p>
-                    <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                      {getAdPreviewFallbackMessage(ad?.imageGenerationState)}
-                    </p>
-                  </div>
-                </div>
-              )}
+              <StaticAdComposedPreview
+                category={plan.creativeStrategy.campaignCategory}
+                compact
+                cta={ad.cta}
+                headline={ad.headline}
+                imageGenerationMessage={ad.imageGenerationMessage}
+                imageGenerationState={ad.imageGenerationState}
+                imageUrl={ad.imageUrl}
+                location={plan.market}
+                offer={plan.offerSummary || plan.keyOffer}
+                overlayText={ad.overlayText || ad.hook}
+                primaryText={ad.primaryText}
+                qualityGate={ad.qualityGate}
+                score={ad.score}
+                selectedCount={visibleAds.length}
+                showRawAssetState={false}
+                visualPromptBrief={ad.visualPromptBrief}
+              />
               <div className="space-y-3 px-4 py-4 sm:px-5">
                 <CreativeOpsQaCard
                   compact

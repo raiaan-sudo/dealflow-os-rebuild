@@ -4,14 +4,12 @@ import {
   assertInternalSystemRequest,
   handleApiError,
   parseOptionalJsonBody,
-  withRouteTimeout,
 } from "@/lib/api/route";
 import { logOperationalEvent } from "@/lib/logging";
 import { runSystemJobWorkerBatch } from "@/lib/services/system-job-service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 60;
 
 const runnerInputSchema = z.object({
   maxCycles: z.number().int().min(1).max(5).optional(),
@@ -42,17 +40,10 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
 
   const requestId = crypto.randomUUID();
   const startedAt = Date.now();
-  const result = await withRouteTimeout(
-    runSystemJobWorkerBatch({
-      maxCycles: input.maxCycles ?? 3,
-      staleAfterMs: input.staleAfterMs,
-    }),
-    {
-      timeoutMs: 55_000,
-      message: "Internal system job runner timed out.",
-      code: "internal_runner_timeout",
-    },
-  );
+  const result = await runSystemJobWorkerBatch({
+    maxCycles: input.maxCycles ?? 5,
+    staleAfterMs: input.staleAfterMs,
+  });
   const durationMs = Date.now() - startedAt;
 
   logOperationalEvent("internal.system_jobs_runner.completed", {

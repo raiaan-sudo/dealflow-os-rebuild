@@ -749,7 +749,6 @@ export function normalizeCanonicalCampaign(params: {
     campaign: {
       id: params.campaign.id,
       user_id: params.campaign.user_id,
-      organization_id: params.campaign.organization_id ?? null,
       name: safeText(params.savedDocument?.name ?? params.campaign.name) || "Untitled Campaign",
       location: market || null,
       audience: audience || null,

@@ -117,6 +117,10 @@ export default async function BuildCreativesPage({
         imageGenerationState: ad.imageGenerationState ?? null,
         imageGenerationMessage: ad.imageGenerationMessage ?? null,
         overlayText: ad.overlayText ?? null,
+        category: ad.visualPromptBrief?.category ?? ensuredRecord.plan.creative_strategy?.campaignCategory ?? null,
+        location: ensuredRecord.plan.market || null,
+        qualityGate: ad.qualityGate ?? null,
+        visualPromptBrief: ad.visualPromptBrief ?? null,
         offer: ensuredRecord.plan.offer_summary || ensuredRecord.plan.offer || null,
         breakdown: {
           hook: ad.hook || matchingCopy?.hook || "",

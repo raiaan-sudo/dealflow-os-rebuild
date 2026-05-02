@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StaticCreativePreviewCard } from "@/components/campaign/static-creative-preview-card";
 import { Button } from "@/components/ui/button";
+import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
 
 type CreativeOption = {
   id: string;
@@ -18,6 +19,20 @@ type CreativeOption = {
   imageGenerationMessage?: string | null;
   overlayText?: string | null;
   offer?: string | null;
+  category?: CampaignCategory | string | null;
+  location?: string | null;
+  qualityGate?: {
+    score?: number | null;
+    accepted?: boolean | null;
+    hardFailures?: string[] | null;
+  } | null;
+  visualPromptBrief?: {
+    category?: CampaignCategory | string | null;
+    proofStyle?: string | null;
+    mechanism?: string | null;
+    visualLogic?: string[] | null;
+    overlayLogic?: string[] | null;
+  } | null;
   breakdown?: {
     hook?: string;
     concept?: string;
@@ -152,14 +167,20 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
         </div>
 
         <StaticCreativePreviewCard
+          category={primaryCreative.category}
           cta={primaryCreative.cta}
           headline={primaryCreative.headline}
           imageGenerationMessage={primaryCreative.imageGenerationMessage}
           imageGenerationState={primaryCreative.imageGenerationState}
           imageUrl={primaryCreative.imageUrl}
+          location={primaryCreative.location}
           offer={primaryCreative.offer}
           overlayText={primaryCreative.overlayText}
           primaryText={primaryCreative.primaryText}
+          qualityGate={primaryCreative.qualityGate}
+          score={primaryCreative.score}
+          selectedCount={selectedCreatives.length}
+          visualPromptBrief={primaryCreative.visualPromptBrief}
         />
 
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
@@ -223,15 +244,21 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
                   </span>
                 </div>
                 <StaticCreativePreviewCard
+                  category={creative.category}
                   compact
                   cta={creative.cta}
                   headline={creative.headline}
                   imageGenerationMessage={creative.imageGenerationMessage}
                   imageGenerationState={creative.imageGenerationState}
                   imageUrl={creative.imageUrl}
+                  location={creative.location}
                   offer={creative.offer}
                   overlayText={creative.overlayText}
                   primaryText={creative.primaryText}
+                  qualityGate={creative.qualityGate}
+                  score={creative.score}
+                  selectedCount={selectedCreatives.length}
+                  visualPromptBrief={creative.visualPromptBrief}
                 />
               </button>
             );

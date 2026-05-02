@@ -237,7 +237,15 @@ export function rankStaticCreativeAssets(
 ): ScoredStaticCreativeAsset[] {
   const scored = assets.map((asset) => {
     const scoreBreakdown = scoreStaticCreativeAsset(asset, strategy, context);
-    const adjustedScore = totalCreativeScore(scoreBreakdown) + categoryAngleAdjustment(asset, strategy);
+    const mediaBuyerGateScore =
+      typeof asset.qualityGate?.score === "number" ? asset.qualityGate.score : null;
+    const adjustedScore =
+      mediaBuyerGateScore === null
+        ? totalCreativeScore(scoreBreakdown) + categoryAngleAdjustment(asset, strategy)
+        : Math.min(
+            mediaBuyerGateScore,
+            totalCreativeScore(scoreBreakdown) + categoryAngleAdjustment(asset, strategy),
+          );
     return {
       ...asset,
       scoreBreakdown,

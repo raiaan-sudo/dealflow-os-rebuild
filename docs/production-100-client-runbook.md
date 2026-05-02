@@ -90,7 +90,7 @@ https://dealflow-os-rebuild.vercel.app/api/stripe/webhook
 3. Retry launch from the UI or route only after confirming the campaign is not actively locked.
 4. `meta_launch_locks` prevents concurrent duplicate launch attempts.
 5. All launch-created Meta objects must remain `PAUSED`.
-6. Daily budget cap must remain at or below the owner-approved 200-cent safety cap unless the owner explicitly approves otherwise.
+6. Daily budget cap must remain at or below 100 cents unless the owner explicitly approves otherwise.
 
 ## Lead Retry Recovery
 
@@ -119,19 +119,18 @@ Paid media generation must not run during normal onboarding or draft creative ge
 
 Controls:
 
-- Video/HeyGen generation is enabled only through the guarded paid generation job path.
+- Video/HeyGen generation is disabled for beta.
 - Static image generation must go through the guarded static generation route.
 - Provider usage is tracked in `provider_usage_limits`.
 - Each OpenAI image call reserves its own `provider_usage_events` row before the provider request and must be capped with `OPENAI_IMAGE_DAILY_LIMIT` during production tests.
-- HeyGen render completion is polled by durable `video_generation_status` jobs so Vercel cron functions do not wait on multi-minute renders.
 - Retries should reuse existing jobs/assets where possible.
 
 Emergency disable:
 
 1. Hide/disable the static generation UI entry point.
-2. Keep image and video generation behind credits and provider usage reservations.
-3. Unset `ALLOW_OPENAI_IMAGE_GENERATION` or `ALLOW_HEYGEN_VIDEO_GENERATION` if paid generation needs an emergency stop.
-4. For a controlled image or UGC test, temporarily lower `OPENAI_IMAGE_DAILY_LIMIT` or `HEYGEN_VIDEO_DAILY_LIMIT` before provider calls.
+2. Keep video generation route returning `video_generation_disabled`.
+3. Leave `ALLOW_OPENAI_IMAGE_GENERATION` and `ALLOW_HEYGEN_VIDEO_GENERATION` unset or set to any value other than `true`.
+4. For a controlled image test, set `OPENAI_IMAGE_DAILY_LIMIT=1` before enabling `ALLOW_OPENAI_IMAGE_GENERATION=true`.
 5. Remove provider API keys from production only if a hard stop is required.
 
 ## Meta Emergency Disable
@@ -244,7 +243,7 @@ Use `/admin/issues` for durable issue records and `docs/observability-alerting-r
 - Inspect `plan.launch_runtime`.
 - Inspect `meta_launch_locks`.
 - Retry only after confirming no active lock and no active Meta objects were created.
-- Escalate before retry if any Meta object is not `PAUSED`, if the budget cap is above the owner-approved 200 cents/day, or if the launch has already failed twice.
+- Escalate before retry if any Meta object is not `PAUSED`, if the budget cap is above 100 cents/day, or if the launch has already failed twice.
 
 ### Missing lead
 

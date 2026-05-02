@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { after } from "next/server";
 import {
   buildCampaignScopedPath,
   resolveActiveCampaignRecord,
@@ -11,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import {
+  getCampaignPayloadFromPlan,
   getLeadLoopVerifiedFromPlan,
   getSelectedAdIdFromPlan,
   readCampaignPlanDocument,
@@ -96,11 +96,29 @@ function formatLastUpdated(value: string) {
   return `Last updated ${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
 }
 
+function parseCostPerLeadRange(value: string) {
+  const matches = value.match(/(\d+(?:\.\d+)?)/g) ?? [];
+  const first = Number(matches[0] ?? 0);
+  const second = Number(matches[1] ?? first);
+
+  if (!Number.isFinite(first) || first <= 0) {
+    return 20;
+  }
+
+  if (!Number.isFinite(second) || second <= 0) {
+    return first;
+  }
+
+  return Number(((first + second) / 2).toFixed(2));
+}
+
 function buildOptimizerInput(params: {
   plan: NonNullable<ReturnType<typeof canonicalCampaignToPlan>>;
   expectedOutcomes: NonNullable<ReturnType<typeof getExpectedOutcomes>>;
   syncSnapshot: Awaited<ReturnType<typeof getLatestMetaCampaignSyncSnapshot>> | null;
 }): CampaignAnalysisInput {
+  const budgetDailyInput = params.plan.runtime.budgetDailyInput ?? 0;
+
   if (params.syncSnapshot) {
     const metrics = params.syncSnapshot.deliveryMetrics;
     const ctrPercent = Number((metrics.ctr * 100).toFixed(2));
@@ -128,13 +146,13 @@ function buildOptimizerInput(params: {
   }
 
   return {
-    ctr: 0,
-    cpc: 0,
-    cpl: 0,
-    frequency: 0,
-    spend: 0,
+    ctr: 1,
+    cpc: 3,
+    cpl: parseCostPerLeadRange(params.expectedOutcomes.costPerLeadRange),
+    frequency: 1,
+    spend: budgetDailyInput,
     leads: 0,
-    lp_cvr: 0,
+    lp_cvr: 6,
   };
 }
 
@@ -159,42 +177,57 @@ type DashboardLoadState = {
 };
 
 async function loadSelectedAdSummary(params: {
+  campaignId: string | null;
   plan: ReturnType<typeof canonicalCampaignToPlan> | null;
-  selectedAdId: string | null;
 }) {
-  if (!params.plan || !params.selectedAdId) {
+  if (!params.campaignId || !params.plan) {
+    return null;
+  }
+
+  const supabase = await createClient();
+
+  if (!supabase) {
+    return null;
+  }
+
+  const { data } = await supabase
+    .from("campaign_plans")
+    .select("plan")
+    .eq("id", params.campaignId)
+    .maybeSingle();
+
+  const planRow = data as { plan?: unknown } | null;
+  const rawPlan = readCampaignPlanDocument(planRow?.plan);
+  const campaignPayload = getCampaignPayloadFromPlan(rawPlan) as Record<string, unknown> | null;
+  const selectedAdId = getSelectedAdIdFromPlan(rawPlan);
+
+  if (!selectedAdId) {
     return null;
   }
 
   const selectedAd =
-    params.plan.creatives.staticAds.find((ad) => ad.id === params.selectedAdId) ?? null;
+    params.plan.creatives.staticAds.find((ad) => ad.id === selectedAdId) ?? null;
 
   if (!selectedAd) {
     return null;
   }
 
   return {
-    id: params.selectedAdId,
+    id: selectedAdId,
     headline: selectedAd.headline ?? "Selected ad",
     primaryText: typeof selectedAd.primaryText === "string" ? selectedAd.primaryText : "",
   };
 }
 
-async function loadCampaignPlanUiState(campaignId: string | null) {
+async function loadLeadLoopVerified(campaignId: string | null) {
   if (!campaignId) {
-    return {
-      leadLoopVerified: false,
-      selectedAdId: null as string | null,
-    };
+    return false;
   }
 
   const supabase = await createClient();
 
   if (!supabase) {
-    return {
-      leadLoopVerified: false,
-      selectedAdId: null as string | null,
-    };
+    return false;
   }
 
   const { data } = await supabase
@@ -204,12 +237,7 @@ async function loadCampaignPlanUiState(campaignId: string | null) {
     .maybeSingle();
 
   const planRow = data as { plan?: unknown } | null;
-  const rawPlan = readCampaignPlanDocument(planRow?.plan);
-
-  return {
-    leadLoopVerified: getLeadLoopVerifiedFromPlan(rawPlan),
-    selectedAdId: getSelectedAdIdFromPlan(rawPlan),
-  };
+  return getLeadLoopVerifiedFromPlan(planRow?.plan);
 }
 
 function DashboardFallback({ campaignId = null }: { campaignId?: string | null }) {
@@ -258,22 +286,18 @@ async function loadDashboardStateForCampaign(
   campaignId: string | null,
 ): Promise<DashboardLoadState> {
   try {
-    const resolvedCampaign = await withTimeout(
-      resolveActiveCampaignRecord(campaignId).catch(() => null),
-      null,
-      2_800,
-    );
+    const resolvedCampaign = await resolveActiveCampaignRecord(campaignId).catch(() => null);
     const record = resolvedCampaign?.record
       ? canonicalCampaignToPlan(resolvedCampaign.record)
       : null;
     const metaCampaignId = record?.runtime.campaignId ?? null;
     const resolvedCampaignId = resolvedCampaign?.campaignId ?? campaignId ?? record?.id ?? null;
     const lastUpdatedAt = new Date().toISOString();
-    const [metaConnection, syncSnapshot, launchRecord, dashboardData, creativePerformanceSummary, autonomyResult, planUiState] = await Promise.all([
+    const [metaConnection, syncSnapshot, launchRecord, dashboardData, creativePerformanceSummary, autonomyResult, selectedAdSummary, leadLoopVerified] = await Promise.all([
       withTimeout(
         getMetaConnectionState().catch(() => getDefaultMetaConnectionState()),
         getDefaultMetaConnectionState(),
-        1_800,
+        2_500,
       ),
       record
         ? withTimeout(
@@ -282,7 +306,7 @@ async function loadDashboardStateForCampaign(
               metaCampaignId,
             }).catch(() => null),
             null,
-            2_200,
+            3_500,
           )
         : Promise.resolve(null),
       record
@@ -292,7 +316,7 @@ async function loadDashboardStateForCampaign(
               metaCampaignId,
             }).catch(() => null),
             null,
-            2_200,
+            3_500,
           )
         : Promise.resolve(null),
       withTimeout(
@@ -300,39 +324,32 @@ async function loadDashboardStateForCampaign(
           () => null,
         ),
         null,
-        2_500,
+        4_000,
       ),
       resolvedCampaignId
         ? withTimeout(
             getCreativePerformanceSummaryForCampaign(resolvedCampaignId).catch(() => null),
             null,
-            2_000,
+            3_500,
           )
-        : withTimeout(getLatestCreativePerformanceSummary().catch(() => null), null, 2_000),
+        : withTimeout(getLatestCreativePerformanceSummary().catch(() => null), null, 3_500),
       resolvedCampaignId
         ? withTimeout(
             evaluateAutonomy(resolvedCampaignId).catch(() => null),
             null,
-            2_000,
+            3_500,
           )
         : Promise.resolve(null),
       withTimeout(
-        loadCampaignPlanUiState(resolvedCampaignId).catch(() => ({
-          leadLoopVerified: false,
-          selectedAdId: null,
-        })),
-        {
-          leadLoopVerified: false,
-          selectedAdId: null,
-        },
-        1_800,
+        loadSelectedAdSummary({
+          campaignId: resolvedCampaignId,
+          plan: record,
+        }).catch(() => null),
+        null,
+        2_500,
       ),
+      withTimeout(loadLeadLoopVerified(resolvedCampaignId).catch(() => false), false, 2_500),
     ]);
-    const leadLoopVerified = planUiState.leadLoopVerified;
-    const selectedAdSummary = await loadSelectedAdSummary({
-      plan: record,
-      selectedAdId: planUiState.selectedAdId,
-    });
     const recentLeads = dashboardData?.recentLeads ?? [];
     const firstWeekSuccess = record
       ? buildFirstWeekSuccessState({
@@ -346,12 +363,10 @@ async function loadDashboardStateForCampaign(
       : null;
 
     if (resolvedCampaignId && firstWeekSuccess) {
-      after(async () => {
-        await persistFirstWeekSuccessState({
-          campaignId: resolvedCampaignId,
-          state: firstWeekSuccess,
-        }).catch(() => undefined);
-      });
+      await persistFirstWeekSuccessState({
+        campaignId: resolvedCampaignId,
+        state: firstWeekSuccess,
+      }).catch(() => undefined);
     }
 
     return {

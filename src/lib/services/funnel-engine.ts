@@ -1,5 +1,10 @@
 import type { CampaignIntent } from "@/lib/campaign-intent";
 import { enhanceOffer, extractOfferData } from "@/lib/copy/offer-enhancement";
+import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
+import {
+  getCategoryCtaOptions,
+  selectMediaBuyerCta,
+} from "@/lib/optimization-engine/media-buying-rules";
 
 export type FunnelMarketType = CampaignIntent;
 export type FunnelGoal = "lead_form" | "survey" | "book_call";
@@ -82,6 +87,7 @@ type NormalizedInput = {
   mechanism: string;
   painPoints: string[];
   marketType: FunnelMarketType;
+  campaignCategory: CampaignCategory;
   funnelGoal: FunnelGoal;
 };
 
@@ -169,6 +175,13 @@ function normalizeInput(input?: FunnelEngineInput | null): NormalizedInput {
   const offer = normalizeText(raw.key_offer) || normalizeText(raw.offer) || "a clearer next step";
   const mechanism = normalizeText(raw.mechanism);
   const painPoints = safeArray(raw.pain_points ?? []);
+  const category = inferFunnelCampaignCategory({
+    marketType: raw.market_type ?? "buyer",
+    audience,
+    offer,
+    mechanism,
+    painPoints,
+  });
 
   return {
     location,
@@ -177,8 +190,45 @@ function normalizeInput(input?: FunnelEngineInput | null): NormalizedInput {
     mechanism,
     painPoints,
     marketType: raw.market_type ?? "buyer",
+    campaignCategory: category,
     funnelGoal: raw.funnel_goal ?? "survey",
   };
+}
+
+function inferFunnelCampaignCategory(input: {
+  marketType: FunnelMarketType;
+  audience: string;
+  offer: string;
+  mechanism: string;
+  painPoints: string[];
+}): CampaignCategory {
+  const haystack = [
+    input.marketType,
+    input.audience,
+    input.offer,
+    input.mechanism,
+    ...input.painPoints,
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  if (/pre[- ]?con|new build|construction|deposit|completion|assignment/.test(haystack)) {
+    return "precon";
+  }
+
+  if (/luxury|private|rare|penthouse|high[- ]?net|exclusive|curated/.test(haystack)) {
+    return "luxury";
+  }
+
+  if (input.marketType === "seller" || /seller|homeowner|home value|sell|listing/.test(haystack)) {
+    return "seller";
+  }
+
+  if (input.marketType === "investor" || /invest|roi|yield|cash[- ]?flow|rental|off[- ]market deal/.test(haystack)) {
+    return "investor";
+  }
+
+  return "buyer";
 }
 
 function capitalize(value: string) {
@@ -414,24 +464,20 @@ function buildSubheadlineVariations(input: NormalizedInput, parsed: ParsedOffer)
   ]);
 }
 
-function buildCtaVariations(parsed: ParsedOffer) {
-  if (parsed.offerClass === "investor") {
-    return ["See If You Qualify", "Get My Cash-Flow List", "See Investor Deals"];
-  }
-
+function buildCtaVariations(input: NormalizedInput, parsed: ParsedOffer) {
   if (parsed.offerClass === "approval") {
-    return ["Check Available Homes", "See If You Qualify", "Get My Approval Options"];
+    return ["See If You Qualify", "Check Available Homes", "Get My Approval Options"];
   }
 
-  if (parsed.offerClass === "guarantee" || parsed.offerClass === "seller") {
-    return ["Get My Sale Plan", "See If Your Home Qualifies", "Get My Buyer Plan"];
-  }
+  const ctas = getCategoryCtaOptions(input.campaignCategory);
+  const primary = selectMediaBuyerCta(input.campaignCategory);
 
-  if (/under\s*\$|under\s*\d/i.test(parsed.promise.toLowerCase()) || /homes under|condos under/i.test(parsed.outcome.toLowerCase())) {
-    return ["See Homes That Match", "Book My Buyer Strategy Call", "Get My Matching List"];
-  }
-
-  return ["Book My Strategy Call", "See Homes That Match", "Get My Matching List"];
+  return uniqueFragments([
+    primary,
+    ...ctas,
+    input.campaignCategory === "buyer" ? "See Homes That Match" : "",
+    input.campaignCategory === "precon" ? "Get The List" : "",
+  ]);
 }
 
 function scoreFunnelVariation(variation: Omit<FunnelVariation, "score">, input: NormalizedInput, parsed: ParsedOffer): FunnelVariation {
@@ -477,7 +523,7 @@ function pickBestFunnelVariation(input: NormalizedInput) {
   const parsed = parseOffer(input);
   const headlines = buildHeadlineVariations(input, parsed);
   const subheadlines = buildSubheadlineVariations(input, parsed);
-  const ctas = buildCtaVariations(parsed);
+  const ctas = buildCtaVariations(input, parsed);
 
   const variations = headlines.flatMap((headline, index) =>
     subheadlines.slice(0, 3).map((subheadline, subIndex) =>
@@ -539,8 +585,8 @@ function buildProcess(input: NormalizedInput) {
   if (input.funnelGoal === "book_call") {
     return [
       "Review the offer and confirm the right fit",
-      "Choose a time for a short strategy call",
-      "Get the next step mapped out clearly",
+      "See the mechanism and proof before committing to a call",
+      "Choose a time only after the offer makes sense",
     ];
   }
 
@@ -555,7 +601,7 @@ function buildProcess(input: NormalizedInput) {
   return [
     "Answer a few short qualification questions",
     "See the strongest next step based on your goals",
-    "Book a call if you want help moving forward",
+    "Expect a fast follow-up if the fit is clear",
   ];
 }
 
@@ -628,9 +674,21 @@ function buildTrustBar(input: NormalizedInput, parsed: ParsedOffer) {
 }
 
 function buildProofMetrics(input: NormalizedInput, parsed: ParsedOffer) {
-  void input;
-  void parsed;
-  return [];
+  const proof = [
+    parsed.timeHorizon ? `${parsed.timeHorizon} timing context` : "",
+    parsed.riskReversal || (input.campaignCategory === "seller" ? "No-obligation price update" : ""),
+    input.campaignCategory === "investor"
+      ? "ROI and deal-fit filtering"
+      : input.campaignCategory === "precon"
+        ? "Deposit and completion timeline"
+        : input.campaignCategory === "buyer"
+          ? "Early-access inventory path"
+          : input.campaignCategory === "luxury"
+            ? "Private-access availability"
+            : "Demand and pricing clarity",
+  ];
+
+  return uniqueFragments(proof).slice(0, 4);
 }
 
 function buildObjections(input: NormalizedInput, parsed: ParsedOffer) {
@@ -668,9 +726,23 @@ function buildObjections(input: NormalizedInput, parsed: ParsedOffer) {
 }
 
 function buildMarketSnapshot(input: NormalizedInput, parsed: ParsedOffer) {
-  void input;
-  void parsed;
-  return [];
+  const tension =
+    input.painPoints[0] ||
+    (input.campaignCategory === "seller"
+      ? "pricing wrong before listing"
+      : input.campaignCategory === "investor"
+        ? "underwriting the wrong deals"
+        : input.campaignCategory === "precon"
+          ? "waiting until future pricing moves"
+          : input.campaignCategory === "luxury"
+            ? "seeing rare inventory too late"
+            : "missing the best-fit option before it goes public");
+
+  return [
+    `Problem: ${tension}`,
+    `Mechanism: ${input.mechanism || "filtered access process"}`,
+    parsed.riskReversal ? `Risk reversal: ${parsed.riskReversal}` : `Low-friction next step: ${selectMediaBuyerCta(input.campaignCategory)}`,
+  ];
 }
 
 function createSection(
@@ -707,7 +779,6 @@ function buildSections(input: NormalizedInput, parsed: ParsedOffer, headline: st
   const benefits = buildBenefits(input);
   const process = buildProcess(input);
   const faq = buildFaq(input);
-  const proof = buildSocialProof(input);
   const trustBar = buildTrustBar(input, parsed);
   const proofMetrics = buildProofMetrics(input, parsed);
   const objections = buildObjections(input, parsed);
@@ -730,6 +801,27 @@ function buildSections(input: NormalizedInput, parsed: ParsedOffer, headline: st
       variant: "signal-strip",
       style: { spacing: "compact", width: "full", align: "left", theme: "accent" },
     }),
+    createSection("proof_metrics", "Proof before commitment", proofMetrics, {
+      variant: "metrics-strip",
+      style: { spacing: "compact", width: "full", align: "left", theme: "accent" },
+    }),
+    createSection(
+      "market_snapshot",
+      input.marketType === "seller"
+        ? "The problem this solves"
+        : input.marketType === "investor"
+          ? "Why generic deal flow breaks down"
+          : "Why the normal search path creates friction",
+      snapshot,
+      {
+        variant: "problem-brief",
+        style: { spacing: "comfortable", width: "full", align: "left", theme: "light" },
+      },
+    ),
+    createSection("process", "How the mechanism works", process, {
+      variant: "mechanism-steps",
+      style: { spacing: "comfortable", width: "content", align: "left", theme: "light" },
+    }),
     createSection(
       "benefits",
       input.marketType === "seller"
@@ -743,12 +835,8 @@ function buildSections(input: NormalizedInput, parsed: ParsedOffer, headline: st
         style: { spacing: "comfortable", width: "full", align: "left", theme: "light" },
       },
     ),
-    createSection("objections", "Common objections handled early", objections, {
-      variant: "faq-style",
-      style: { spacing: "comfortable", width: "content", align: "left", theme: "light" },
-    }),
-    createSection("process", "How it works", process, {
-      variant: "steps",
+    createSection("objections", "Offer and risk reversal", objections, {
+      variant: "risk-reversal",
       style: { spacing: "comfortable", width: "content", align: "left", theme: "light" },
     }),
     createSection(
@@ -757,9 +845,9 @@ function buildSections(input: NormalizedInput, parsed: ParsedOffer, headline: st
       [
         input.marketType === "seller"
           ? "Use this section for a short seller explanation or listing strategy breakdown."
-          : input.marketType === "investor"
-            ? "Use this section for a short underwriting or opportunity breakdown."
-            : "Use this section for a short walkthrough, VSL, or agent explanation.",
+        : input.marketType === "investor"
+          ? "Use this section for a short underwriting or opportunity breakdown."
+            : "Use this section for a short walkthrough, proof breakdown, or opportunity explanation.",
       ],
       {
         variant: "embedded-video",
@@ -777,7 +865,7 @@ function buildSections(input: NormalizedInput, parsed: ParsedOffer, headline: st
       "Visual proof",
       [
         input.marketType === "seller"
-          ? "Use this block for listing photos, agent branding, or before-and-after visuals."
+          ? "Use this block for neighborhood visuals, demand proof, or before-and-after value visuals."
           : input.marketType === "investor"
             ? "Use this block for property photos, deal snapshots, or underwriting visuals."
             : "Use this block for listing photos, neighborhood shots, or branded imagery.",
@@ -804,6 +892,9 @@ function buildSections(input: NormalizedInput, parsed: ParsedOffer, headline: st
         input.funnelGoal === "book_call"
           ? "Collect only the details needed to confirm fit and a preferred time."
           : "Use a short form to capture intent without overwhelming cold traffic.",
+        input.funnelGoal === "book_call"
+          ? "After you submit, you can choose a time if the offer is a fit."
+          : "After you submit, expect a call or text in 5-15 minutes when the team is available.",
         `Primary CTA: ${cta}`,
       ],
       {
@@ -826,8 +917,11 @@ export function generateFunnel(input?: FunnelEngineInput | null): FunnelBlueprin
   let subheadline = safeText(raw.subheadline) || safeText(bestVariation?.subheadline);
   let mechanism = safeText(raw.mechanism) || normalized.mechanism;
   const audience = safeText(raw.audience) || normalized.audience;
-  const cta = safeText(bestVariation?.cta) || "See Homes That Match";
   const parsed = parseOffer(normalized);
+  const cta =
+    normalized.marketType === "approval" || parsed.offerClass === "approval"
+      ? "See If You Qualify"
+      : selectMediaBuyerCta(normalized.campaignCategory);
 
   if (!headline) {
     headline = safeText(parseOffer(normalized).promise) || "Your campaign is ready";
@@ -855,7 +949,10 @@ export function generateFunnel(input?: FunnelEngineInput | null): FunnelBlueprin
     cta,
     sections: buildSections(normalized, parsed, headline, subheadline, cta),
     form_fields: FORM_FIELDS_BY_GOAL[normalized.funnelGoal],
-    follow_up_action: FOLLOW_UP_ACTION_BY_GOAL[normalized.funnelGoal],
+    follow_up_action:
+      normalized.funnelGoal === "book_call"
+        ? FOLLOW_UP_ACTION_BY_GOAL[normalized.funnelGoal]
+        : "show_thank_you_page_call_5_15_minutes",
     optimization_notes: buildOptimizationNotes(normalized),
   };
 }

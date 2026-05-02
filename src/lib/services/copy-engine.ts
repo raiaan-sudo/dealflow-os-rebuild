@@ -1365,6 +1365,7 @@ Rules:
 - Strong hook
 - Real pain point
 - Clear mechanism
+- Concrete proof or outcome
 - Must include the real offer
 - Direct CTA
 - No generic phrases
@@ -1376,6 +1377,7 @@ Structure:
 Hook
 Problem
 Mechanism
+Proof / Outcome
 Offer
 CTA
 

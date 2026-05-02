@@ -373,8 +373,8 @@ function toMinorUnits(value: number) {
 }
 
 function getMetaBudgetCapCents() {
-  const configured = Number.parseInt(process.env.META_DAILY_BUDGET_CAP_CENTS ?? "200", 10);
-  return Number.isFinite(configured) && configured > 0 ? Math.min(configured, 200) : 200;
+  const configured = Number.parseInt(process.env.META_DAILY_BUDGET_CAP_CENTS ?? "100", 10);
+  return Number.isFinite(configured) && configured > 0 ? Math.min(configured, 100) : 100;
 }
 
 function getMetadataString(row: MarketingAccountRow | MetaConnectionRecord | null, key: string) {

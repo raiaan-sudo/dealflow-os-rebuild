@@ -122,16 +122,22 @@ export default async function PreviewPage({
           <div className="grid gap-4 lg:grid-cols-2">
             {selectedAds.map((selectedAd) => (
               <StaticCreativePreviewCard
+                category={previewPlan.creativeStrategy.campaignCategory}
                 compact={selectedAds.length > 1}
                 cta={selectedAd.cta}
                 headline={selectedAd.headline}
                 imageGenerationMessage={selectedAd.imageGenerationMessage}
                 imageGenerationState={selectedAd.imageGenerationState}
                 imageUrl={selectedAd.imageUrl}
+                location={previewPlan.market}
                 key={selectedAd.id}
                 offer={previewPlan.offerSummary || previewPlan.keyOffer}
                 overlayText={selectedAd.overlayText}
                 primaryText={selectedAd.primaryText}
+                qualityGate={selectedAd.qualityGate}
+                score={selectedAd.score}
+                selectedCount={selectedAds.length}
+                visualPromptBrief={selectedAd.visualPromptBrief}
               />
             ))}
           </div>

@@ -85,7 +85,6 @@ type CommandCenterConsoleProps = {
     smsAutomationEnabled: boolean;
   };
   workLog: WorkLogEntry[];
-  lastUpdatedAt: string;
 };
 
 const agentIcons = {
@@ -188,7 +187,6 @@ export function CommandCenterConsole({
   proofs,
   stats,
   workLog,
-  lastUpdatedAt,
 }: CommandCenterConsoleProps) {
   const [activeAgentId, setActiveAgentId] = useState(agents[0]?.id ?? "");
   const activeAgent = agents.find((agent) => agent.id === activeAgentId) ?? agents[0];
@@ -237,15 +235,15 @@ export function CommandCenterConsole({
   }
 
   return (
-    <div className="relative min-h-full overflow-hidden rounded-[24px] border border-cyan-300/20 bg-[#02060d] text-cyan-50 shadow-[0_0_120px_-60px_rgba(34,211,238,0.7)]">
+    <div className="relative min-h-full overflow-hidden rounded-[34px] border border-cyan-300/20 bg-[#02060d] text-cyan-50 shadow-[0_0_160px_-60px_rgba(34,211,238,0.7)]">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_22%,rgba(14,165,233,0.22),transparent_30%),radial-gradient(circle_at_88%_14%,rgba(34,197,94,0.12),transparent_22%),radial-gradient(circle_at_10%_70%,rgba(217,70,239,0.12),transparent_22%)]" />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(103,232,249,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(103,232,249,0.07)_1px,transparent_1px)] bg-[size:36px_36px] opacity-35" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[linear-gradient(180deg,rgba(103,232,249,0.14),transparent)]" />
-      <div className="pointer-events-none absolute inset-3 rounded-[20px] border border-cyan-200/12" />
+      <div className="pointer-events-none absolute inset-4 rounded-[28px] border border-cyan-200/12" />
 
-      <div className="relative z-10 space-y-4 p-3 sm:p-4">
-        <header className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-          <section className="relative overflow-hidden rounded-[22px] border border-cyan-300/25 bg-black/48 p-4 shadow-[inset_0_1px_0_rgba(186,230,253,0.16)]">
+      <div className="relative z-10 space-y-5 p-4 sm:p-6">
+        <header className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+          <section className="relative overflow-hidden rounded-[28px] border border-cyan-300/25 bg-black/48 p-5 shadow-[inset_0_1px_0_rgba(186,230,253,0.16)]">
             <div className="pointer-events-none absolute -right-20 -top-20 size-60 rounded-full border border-cyan-200/20" />
             <div className="pointer-events-none absolute bottom-0 right-0 h-px w-2/3 bg-[linear-gradient(90deg,transparent,rgba(103,232,249,0.8))]" />
             <div className="flex flex-wrap items-center gap-2">
@@ -256,17 +254,14 @@ export function CommandCenterConsole({
                 command_center_v4.1
               </span>
             </div>
-            <h1 className="mt-4 max-w-3xl text-balance text-3xl font-black uppercase tracking-normal text-white sm:text-5xl">
+            <h1 className="mt-5 max-w-3xl text-balance text-4xl font-black uppercase tracking-[-0.09em] text-white sm:text-6xl">
               DealFlow control room
             </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-cyan-100/72">
+            <p className="mt-4 max-w-3xl text-sm leading-7 text-cyan-100/72">
               Operational HUD for readiness, launch proof, autonomous agent work, and error intake.
               Confirmed telemetry is separated from estimated signals so support can act fast.
             </p>
-            <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-100/45">
-              Last updated {formatDateTime(lastUpdatedAt)}
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-5 flex flex-wrap gap-3">
               <button
                 className="inline-flex items-center gap-2 rounded-full border border-cyan-200/30 bg-cyan-200/10 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-200/18"
                 onClick={speakBriefing}
@@ -293,9 +288,9 @@ export function CommandCenterConsole({
             </div>
           </section>
 
-          <section className="grid gap-3 lg:grid-cols-[0.95fr_1.05fr]">
+          <section className="grid gap-4 md:grid-cols-[0.95fr_1.05fr]">
             <HudCore metrics={metrics} />
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+            <div className="grid gap-3">
               <StatPanel icon={Activity} label="Campaigns watched" value={stats.campaigns} />
               <StatPanel icon={CheckCircle2} label="Live/complete" value={stats.liveCampaigns} />
               <StatPanel icon={Gauge} label="Clean plans" value={stats.cleanCampaigns} />
@@ -305,8 +300,8 @@ export function CommandCenterConsole({
           </section>
         </header>
 
-        <section className="grid gap-4 xl:grid-cols-[0.7fr_1.3fr]">
-          <div className="rounded-[22px] border border-cyan-200/18 bg-black/42 p-4">
+        <section className="grid gap-4 xl:grid-cols-[0.78fr_1.22fr]">
+          <div className="rounded-[28px] border border-cyan-200/18 bg-black/42 p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-100/55">
@@ -334,7 +329,7 @@ export function CommandCenterConsole({
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-[22px] border border-cyan-200/18 bg-black/42 p-4">
+          <div className="rounded-[28px] border border-cyan-200/18 bg-black/42 p-4">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-100/55">
@@ -353,7 +348,7 @@ export function CommandCenterConsole({
             </div>
           </div>
 
-          <div className="rounded-[22px] border border-cyan-200/18 bg-black/42 p-4">
+          <div className="rounded-[28px] border border-cyan-200/18 bg-black/42 p-4">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-100/55">

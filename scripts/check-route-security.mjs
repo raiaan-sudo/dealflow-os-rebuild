@@ -16,11 +16,9 @@ const expectedPublicApiRoutes = new Map([
   ["/api/sms/twilio", new Set(["POST"])],
   ["/api/stripe/webhook", new Set(["POST"])],
   ["/api/webhooks/twilio/status", new Set(["POST"])],
-  ["/api/webhooks/vercel/events", new Set(["POST"])],
 ]);
 
 const expectedInternalApiRoutes = new Map([
-  ["/api/internal/lead-write-proof", new Set(["POST"])],
   ["/api/internal/system-jobs", new Set(["GET", "POST"])],
 ]);
 
@@ -180,15 +178,10 @@ function checkInternalApiGuards(publicApiRoutes, routeFilesByPath) {
       pass("Internal API method surface", `${route} exports ${[...actualMethods].join(", ")}`);
     }
 
-    const requiresExpectedWork =
-      route === "/api/internal/system-jobs"
-        ? text.includes("runSystemJobWorkerBatch")
-        : text.includes("handleLeadCaptureRequest") && text.includes("LEAD_CAPTURE_LOAD_TEST_SECRET");
-
-    if (text.includes("assertInternalSystemRequest") && requiresExpectedWork) {
-      pass("Internal API route guard", `${route} requires internal authorization before protected work`);
+    if (text.includes("assertInternalSystemRequest") && text.includes("runSystemJobWorkerBatch")) {
+      pass("Internal API route guard", `${route} requires internal authorization before running jobs`);
     } else {
-      fail("Internal API route guard", `${route} does not use assertInternalSystemRequest before its protected work`);
+      fail("Internal API route guard", `${route} does not use assertInternalSystemRequest and runSystemJobWorkerBatch`);
     }
   }
 }

@@ -58,7 +58,7 @@ assert.match(notificationSource, /no_eligible_agent/);
 assert.match(notificationSource, /Copy\/paste reply for/);
 assert.match(notificationSource, /params\.agent\.phone_e164/);
 assert.doesNotMatch(notificationSource, /lead\.phone_e164\)\s*;/);
-assert.match(leadCaptureSource, /queueLeadSideEffectsJob/);
+assert.match(leadCaptureSource, /safeNotifyAssignedAgentOfNewLead/);
 assert.match(leadCaptureSource, /ALLOW_PUBLIC_LEAD_NO_TURNSTILE/);
 
 console.log("Internal SMS notification static tests passed.");

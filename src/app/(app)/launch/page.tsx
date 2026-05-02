@@ -359,16 +359,22 @@ export default async function LaunchAliasPage({
             <div className="mt-4 grid gap-4">
               {selectedCreatives.map((selectedCreative) => (
                 <StaticCreativePreviewCard
+                  category={plan.creativeStrategy.campaignCategory}
                   compact
                   cta={selectedCreative.cta}
                   headline={selectedCreative.headline}
                   imageGenerationMessage={selectedCreative.imageGenerationMessage}
                   imageGenerationState={selectedCreative.imageGenerationState}
                   imageUrl={selectedCreative.imageUrl}
+                  location={plan.market}
                   key={selectedCreative.id}
                   offer={plan.offerSummary || plan.keyOffer}
                   overlayText={selectedCreative.overlayText}
                   primaryText={selectedCreative.primaryText}
+                  qualityGate={selectedCreative.qualityGate}
+                  score={selectedCreative.score}
+                  selectedCount={selectedCreatives.length}
+                  visualPromptBrief={selectedCreative.visualPromptBrief}
                 />
               ))}
             </div>
