@@ -1,4 +1,4 @@
-import { ApiError, apiSuccess, handleApiError, parseFormDataBody } from "@/lib/api/route";
+import { ApiError, apiSuccess, handleApiError, parseTextBody } from "@/lib/api/route";
 import {
   updateSmsDeliveryStatus,
   validateTwilioWebhookSignature,
@@ -31,10 +31,11 @@ async function consumeInvalidSignatureBucket(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const formData = await parseFormDataBody(request, {
+    const rawBody = await parseTextBody(request, {
       maxBytes: 8 * 1024,
       code: "twilio_status_body_too_large",
     });
+    const formData = new URLSearchParams(rawBody);
     const signature = request.headers.get("x-twilio-signature");
 
     if (
