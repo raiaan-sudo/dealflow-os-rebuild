@@ -172,6 +172,8 @@ function runOfflineChecks() {
   assertIncludes(leadForm, "NEXT_PUBLIC_TURNSTILE_SITE_KEY", "Lead form Turnstile client gate", "public lead form renders Turnstile only when the public site key is configured");
   assertIncludes(loginForm, "supabase.auth.signInWithPassword({\n          email,\n          password,\n          options:", "Signin Turnstile token support", "Supabase Auth password sign-in can receive a Turnstile token");
   assertIncludes(loginForm, "captchaToken", "Signup Turnstile token support", "Supabase Auth CAPTCHA can receive a Turnstile token during account creation");
+  assertIncludes(loginForm, "resetPasswordForEmail", "Forgot password support", "login page can request a Supabase password reset link");
+  assertIncludes(loginForm, "PASSWORD_RECOVERY", "Password recovery completion", "login page handles Supabase recovery sessions");
   assertIncludes(middleware, "https://challenges.cloudflare.com", "Turnstile CSP allowlist", "production CSP allows Cloudflare Turnstile script, frame, and verification traffic");
   assertIncludes(rateLimitHelpers, "rate_limit_unavailable", "Durable rate limiting fails closed", "production rate limiting no longer falls back to in-memory buckets");
   assertIncludes(rateLimitHelpers, "p_bucket_key", "Durable rate-limit RPC contract", "rate limiter calls the Supabase RPC with versioned parameter names");

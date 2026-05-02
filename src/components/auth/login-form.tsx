@@ -34,7 +34,7 @@ export function LoginForm({
   reason,
   isConfigured,
 }: LoginFormProps) {
-  const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
+  const [mode, setMode] = useState<"sign-in" | "sign-up" | "reset-password" | "update-password">("sign-in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -45,6 +45,7 @@ export function LoginForm({
   const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
   const turnstileWidgetIdRef = useRef<string | null>(null);
   const turnstileEnabled = Boolean(TURNSTILE_SITE_KEY);
+  const requiresTurnstile = turnstileEnabled && mode !== "update-password";
 
   function getSafeRedirectPath(value?: string) {
     if (!value) {
@@ -110,8 +111,36 @@ export function LoginForm({
     setIsPending(true);
 
     try {
-      if (turnstileEnabled && !turnstileToken) {
+      if (requiresTurnstile && !turnstileToken) {
         throw new Error("Please complete the verification challenge.");
+      }
+
+      if (mode === "reset-password") {
+        const redirectTo = new URL("/login", window.location.origin);
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: redirectTo.toString(),
+          captchaToken: turnstileEnabled ? turnstileToken : undefined,
+        });
+
+        if (resetError) {
+          throw resetError;
+        }
+
+        setMessage("Password reset link sent. Check your inbox to continue.");
+        resetTurnstile();
+        return;
+      }
+
+      if (mode === "update-password") {
+        const { error: updateError } = await supabase.auth.updateUser({ password });
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        setMessage("Password updated. You can continue to your dashboard.");
+        setMode("sign-in");
+        return;
       }
 
       if (mode === "sign-in") {
@@ -173,7 +202,28 @@ export function LoginForm({
   }
 
   useEffect(() => {
-    if (!turnstileEnabled) {
+    const supabase = createClient();
+
+    if (!supabase) {
+      return;
+    }
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setError(null);
+        setMessage("Enter a new password to finish account recovery.");
+        setPassword("");
+        setMode("update-password");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!requiresTurnstile) {
       setTurnstileToken("");
       turnstileWidgetIdRef.current = null;
       return;
@@ -216,7 +266,7 @@ export function LoginForm({
     document.head.appendChild(script);
 
     return () => script.removeEventListener("load", renderNewTurnstile);
-  }, [mode, turnstileEnabled]);
+  }, [mode, requiresTurnstile]);
 
   function resetTurnstile() {
     if (!turnstileWidgetIdRef.current) {
@@ -232,7 +282,11 @@ export function LoginForm({
       ? "Please wait..."
       : mode === "sign-in"
         ? "Launch My Campaign"
-        : "Create Account";
+        : mode === "sign-up"
+          ? "Create Account"
+          : mode === "reset-password"
+            ? "Send Reset Link"
+            : "Update Password";
 
   const inputClassName =
     "h-12 w-full rounded-df-control border border-white/10 bg-white/[0.045] px-4 text-white outline-none transition duration-200 placeholder:text-white/35 focus:border-cyan-200/40 focus:bg-white/[0.07] focus:shadow-[0_0_0_3px_rgba(103,232,249,0.08)]";
@@ -290,33 +344,39 @@ export function LoginForm({
           </label>
         ) : null}
 
-        <label className="block space-y-2">
-          <span className="text-sm text-white/70">Email</span>
-          <input
-            id="email"
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="you@company.com"
-            className={inputClassName}
-          />
-        </label>
+        {mode !== "update-password" ? (
+          <label className="block space-y-2">
+            <span className="text-sm text-white/70">Email</span>
+            <input
+              id="email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="you@company.com"
+              className={inputClassName}
+            />
+          </label>
+        ) : null}
 
-        <label className="block space-y-2">
-          <span className="text-sm text-white/70">Password</span>
-          <input
-            id="password"
-            type="password"
-            autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="••••••••"
-            className={inputClassName}
-          />
-        </label>
+        {mode !== "reset-password" ? (
+          <label className="block space-y-2">
+            <span className="text-sm text-white/70">
+              {mode === "update-password" ? "New password" : "Password"}
+            </span>
+            <input
+              id="password"
+              type="password"
+              autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="••••••••"
+              className={inputClassName}
+            />
+          </label>
+        ) : null}
 
-        {turnstileEnabled ? (
+        {requiresTurnstile ? (
           <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
             <div ref={turnstileContainerRef} />
             {!turnstileToken ? (
@@ -363,14 +423,44 @@ export function LoginForm({
           {actionLabel}
         </button>
 
-        <button
-          className="h-12 w-full rounded-df-control border border-white/10 bg-white/[0.035] px-4 text-base font-semibold text-white transition duration-200 hover:-translate-y-0.5 hover:border-cyan-200/25 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-          disabled={!isConfigured || isPending}
-          onClick={() => handleProviderLogin("google")}
-          type="button"
-        >
-          Continue with Google
-        </button>
+        {mode === "sign-in" ? (
+          <button
+            className="w-full text-sm font-medium text-white/65 transition hover:text-white"
+            onClick={() => {
+              setError(null);
+              setMessage(null);
+              setMode("reset-password");
+            }}
+            type="button"
+          >
+            Forgot password?
+          </button>
+        ) : null}
+
+        {mode === "reset-password" || mode === "update-password" ? (
+          <button
+            className="w-full text-sm font-medium text-white/65 transition hover:text-white"
+            onClick={() => {
+              setError(null);
+              setMessage(null);
+              setMode("sign-in");
+            }}
+            type="button"
+          >
+            Back to sign in
+          </button>
+        ) : null}
+
+        {mode === "sign-in" || mode === "sign-up" ? (
+          <button
+            className="h-12 w-full rounded-df-control border border-white/10 bg-white/[0.035] px-4 text-base font-semibold text-white transition duration-200 hover:-translate-y-0.5 hover:border-cyan-200/25 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+            disabled={!isConfigured || isPending}
+            onClick={() => handleProviderLogin("google")}
+            type="button"
+          >
+            Continue with Google
+          </button>
+        ) : null}
       </form>
     </div>
   );
