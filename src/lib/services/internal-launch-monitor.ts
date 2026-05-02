@@ -9,7 +9,6 @@ type RawCampaignPlanRow = {
   user_id: string | null;
   organization_id: string | null;
   created_at: string | null;
-  updated_at: string | null;
   public_slug: string | null;
   launch_status: string | null;
   lead_loop_verified: boolean | null;
@@ -49,6 +48,50 @@ type RawOrganizationRow = {
   name: string | null;
 };
 
+type RawSystemJobRow = {
+  id: string;
+  organization_id: string | null;
+  campaign_id: string | null;
+  kind: string | null;
+  status: string | null;
+  error_message: string | null;
+  last_error_code: string | null;
+  dead_letter_reason: string | null;
+  created_at: string | null;
+  updated_at?: string | null;
+  locked_until: string | null;
+  dead_lettered_at: string | null;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
+  resolution_note?: string | null;
+};
+
+type RawStripeWebhookEventRow = {
+  id: string;
+  stripe_event_id: string;
+  stripe_event_type: string | null;
+  status: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
+  resolution_note?: string | null;
+};
+
+type RawProviderUsageEventRow = {
+  id: string;
+  organization_id: string | null;
+  campaign_id: string | null;
+  provider: string | null;
+  operation: string | null;
+  status: string | null;
+  metadata: unknown;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
 export type LaunchMonitorRow = {
   campaignId: string;
   userLabel: string;
@@ -80,6 +123,18 @@ export type LaunchMonitorRow = {
     status: string;
     createdAt: string;
   }>;
+};
+
+export type OperatorIssueRow = {
+  id: string;
+  source: "system_job" | "stripe_webhook" | "provider_usage" | "campaign_plan";
+  severity: "critical" | "high" | "medium" | "low";
+  title: string;
+  detail: string;
+  status: "open" | "monitoring" | "resolved";
+  createdAt: string | null;
+  route: string | null;
+  rawReference: string;
 };
 
 export async function assertInternalOperatorAccess() {
@@ -116,6 +171,10 @@ function asString(value: unknown) {
 
 function asBoolean(value: unknown) {
   return value === true;
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
 }
 
 function readPlanRoot(plan: unknown) {
@@ -160,10 +219,15 @@ function deriveFunnelStatus(plan: Record<string, unknown>) {
 
 function deriveCreativeStatus(plan: Record<string, unknown>) {
   const selectedAdId = asString(plan.selected_ad_id) ?? asString(readCampaignPayload(plan).selected_ad_id);
+  const payload = readCampaignPayload(plan);
+  const selectedAdIds =
+    asArray(plan.selected_ad_ids).length > 0
+      ? asArray(plan.selected_ad_ids)
+      : asArray(payload.selected_ad_ids);
   const staticAds = Array.isArray(plan.staticAds) ? plan.staticAds : [];
 
-  if (selectedAdId) {
-    return "selected";
+  if (selectedAdId || selectedAdIds.length > 0) {
+    return selectedAdIds.length > 1 ? `${selectedAdIds.length} selected` : "selected";
   }
 
   if (staticAds.length > 0) {
@@ -240,7 +304,7 @@ export async function loadLaunchMonitorRows(limit = 50): Promise<LaunchMonitorRo
 
   const { data: campaignRowsRaw, error: campaignError } = await admin
     .from("campaign_plans")
-    .select("id,user_id,organization_id,created_at,updated_at,public_slug,launch_status,lead_loop_verified,plan")
+    .select("id,user_id,organization_id,created_at,public_slug,launch_status,lead_loop_verified,plan")
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -361,4 +425,182 @@ export async function loadLaunchMonitorRows(limit = 50): Promise<LaunchMonitorRo
       })),
     } satisfies LaunchMonitorRow;
   });
+}
+
+function issueSeverityFromJob(row: RawSystemJobRow): OperatorIssueRow["severity"] {
+  if (row.dead_lettered_at) {
+    return "critical";
+  }
+
+  if (row.status === "failed") {
+    return "high";
+  }
+
+  if (row.status === "processing" && row.locked_until) {
+    const lockedUntil = new Date(row.locked_until);
+    if (!Number.isNaN(lockedUntil.getTime()) && lockedUntil.getTime() < Date.now()) {
+      return "high";
+    }
+  }
+
+  return "medium";
+}
+
+function issueSeverityFromStripe(row: RawStripeWebhookEventRow): OperatorIssueRow["severity"] {
+  if (row.error_code === "signature_verification_failed") {
+    return "critical";
+  }
+
+  return row.status === "failed" ? "high" : "medium";
+}
+
+export async function loadIssueLogRows(
+  limit = 80,
+  preloadedCampaigns?: LaunchMonitorRow[],
+): Promise<OperatorIssueRow[]> {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new ApiError(
+      503,
+      "Supabase service role is not configured for the internal issue log.",
+      "service_role_missing",
+    );
+  }
+
+  const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+  const [jobsResult, stripeResult, providerResult, campaigns] = await Promise.all([
+    admin
+      .from("system_jobs")
+      .select("id,organization_id,campaign_id,kind,status,error_message,last_error_code,dead_letter_reason,created_at,locked_until,dead_lettered_at,reviewed_at,reviewed_by,resolution_note")
+      .or("status.eq.failed,status.eq.processing,dead_lettered_at.not.is.null")
+      .is("reviewed_at", null)
+      .order("created_at", { ascending: false })
+      .limit(limit * 2),
+    admin
+      .from("stripe_webhook_events")
+      .select("id,stripe_event_id,stripe_event_type,status,error_code,error_message,created_at,updated_at,reviewed_at,reviewed_by,resolution_note")
+      .eq("status", "failed")
+      .is("reviewed_at", null)
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(limit),
+    admin
+      .from("provider_usage_events")
+      .select("id,organization_id,campaign_id,provider,operation,status,metadata,created_at,updated_at")
+      .in("status", ["failed", "reserved"])
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(limit),
+    preloadedCampaigns
+      ? Promise.resolve(preloadedCampaigns)
+      : loadLaunchMonitorRows(Math.min(limit, 50)).catch(() => []),
+  ]);
+
+  if (jobsResult.error) {
+    throw new ApiError(500, jobsResult.error.message, "issue_log_jobs_failed");
+  }
+
+  if (stripeResult.error) {
+    throw new ApiError(500, stripeResult.error.message, "issue_log_stripe_failed");
+  }
+
+  if (providerResult.error) {
+    throw new ApiError(500, providerResult.error.message, "issue_log_provider_failed");
+  }
+
+  const jobIssues = ((jobsResult.data ?? []) as RawSystemJobRow[])
+    .filter((row) => {
+      if (row.status === "failed" || row.dead_lettered_at) {
+        return true;
+      }
+
+      if (row.status !== "processing" || !row.locked_until) {
+        return false;
+      }
+
+      const lockedUntil = new Date(row.locked_until);
+      return !Number.isNaN(lockedUntil.getTime()) && lockedUntil.getTime() < Date.now();
+    })
+    .map((row) => ({
+      id: `job:${row.id}`,
+      source: "system_job" as const,
+      severity: issueSeverityFromJob(row),
+      title: `${formatStatusLabel(row.kind, "unknown job")} ${formatStatusLabel(row.status, "unknown status")}`,
+      detail:
+        row.dead_letter_reason ||
+        row.error_message ||
+        row.last_error_code ||
+        (row.status === "processing"
+          ? `Job lock expired at ${row.locked_until}; worker recovery or manual review is required.`
+          : "Job is in a failed or dead-lettered state without a detailed error message."),
+      status: row.dead_lettered_at || row.status === "processing" ? ("open" as const) : ("monitoring" as const),
+      createdAt: row.created_at,
+      route: row.campaign_id ? `/admin/launch-monitor?campaignId=${encodeURIComponent(row.campaign_id)}` : "/admin/launch-monitor",
+      rawReference: row.id,
+    }));
+
+  const stripeIssues = ((stripeResult.data ?? []) as RawStripeWebhookEventRow[]).map((row) => ({
+    id: `stripe:${row.stripe_event_id}`,
+    source: "stripe_webhook" as const,
+    severity: issueSeverityFromStripe(row),
+    title: `${formatStatusLabel(row.stripe_event_type, "Stripe event")} failed`,
+    detail: row.error_message || row.error_code || "Stripe webhook event failed without a detailed error message.",
+    status: "open" as const,
+    createdAt: row.updated_at || row.created_at,
+    route: "/admin/command-center",
+    rawReference: row.stripe_event_id,
+  }));
+
+  const providerIssues = ((providerResult.data ?? []) as RawProviderUsageEventRow[])
+    .filter((row) => {
+      if (row.status === "failed") {
+        return true;
+      }
+
+      if (row.status !== "reserved" || !row.created_at) {
+        return false;
+      }
+
+      const createdAt = new Date(row.created_at);
+      return !Number.isNaN(createdAt.getTime()) && Date.now() - createdAt.getTime() > 30 * 60 * 1000;
+    })
+    .map((row) => ({
+      id: `provider:${row.id}`,
+      source: "provider_usage" as const,
+      severity: row.status === "failed" ? ("high" as const) : ("medium" as const),
+      title: `${formatStatusLabel(row.provider, "Provider")} ${formatStatusLabel(row.operation, "operation")} ${formatStatusLabel(row.status, "issue")}`,
+      detail:
+        row.status === "reserved"
+          ? "Provider usage reservation has been open for more than 30 minutes and needs release, retry, or review."
+          : "Provider usage event failed and may require operator review before retry.",
+      status: "open" as const,
+      createdAt: row.updated_at || row.created_at,
+      route: row.campaign_id ? `/admin/launch-monitor?campaignId=${encodeURIComponent(row.campaign_id)}` : "/admin/issues",
+      rawReference: row.id,
+    }));
+
+  const campaignIssues = campaigns
+    .filter((row) => row.consistencyMismatch || row.consistencyMissingFields.length > 0)
+    .map((row) => ({
+      id: `campaign:${row.campaignId}`,
+      source: "campaign_plan" as const,
+      severity: row.consistencyMismatch ? ("high" as const) : ("medium" as const),
+      title: `Campaign plan consistency alert`,
+      detail: row.consistencyMismatch
+        ? `${row.consistencyMismatchCount} row/plan fields are out of sync.`
+        : `Missing critical fields: ${row.consistencyMissingFields.join(", ")}`,
+      status: "monitoring" as const,
+      createdAt: row.createdAt,
+      route: `/admin/launch-monitor?campaignId=${encodeURIComponent(row.campaignId)}`,
+      rawReference: row.campaignId,
+    }));
+
+  return [...jobIssues, ...stripeIssues, ...providerIssues, ...campaignIssues]
+    .sort((first, second) => {
+      const firstTime = first.createdAt ? new Date(first.createdAt).getTime() : 0;
+      const secondTime = second.createdAt ? new Date(second.createdAt).getTime() : 0;
+      return secondTime - firstTime;
+    })
+    .slice(0, limit);
 }

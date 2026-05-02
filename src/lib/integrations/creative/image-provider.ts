@@ -41,8 +41,7 @@ function parseImageFailure(error: unknown): ProviderFailure {
 }
 
 const IMAGE_GENERATION_TIMEOUT_MS = 60_000;
-const IMAGE_GENERATION_RETRY_BACKOFF_MS = 1_500;
-const IMAGE_GENERATION_ATTEMPTS_PER_MODEL = 2;
+const IMAGE_GENERATION_ATTEMPTS_PER_MODEL = 1;
 
 function toDataUrl(base64: string) {
   return `data:image/png;base64,${base64}`;
@@ -88,10 +87,6 @@ function isTimeoutError(error: unknown) {
   );
 }
 
-async function sleep(ms: number) {
-  await new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 class OpenAiImageProvider implements ImageGenerationProvider {
   id = "ai_image_generation";
   label = "AI Image Generation";
@@ -126,6 +121,18 @@ class OpenAiImageProvider implements ImageGenerationProvider {
   async execute(request: ProviderRenderRequest): Promise<ProviderRenderResult> {
     const env = getImageGenerationEnv();
 
+    if (process.env.ALLOW_OPENAI_IMAGE_GENERATION !== "true") {
+      return {
+        ok: false,
+        providerName: this.name,
+        providerAssetId: null,
+        status: "unsupported",
+        fileUrl: null,
+        thumbnailUrl: null,
+        error: "OpenAI image generation is disabled until the provider usage guard is explicitly enabled.",
+      };
+    }
+
     if (!env || env.provider !== "openai") {
       return {
         ok: false,
@@ -151,11 +158,9 @@ class OpenAiImageProvider implements ImageGenerationProvider {
     }
 
     const requestModel = request.model?.trim() || env.model;
-    const models = Array.from(
-      new Set(
-        [requestModel, env.model, env.fallbackModel, requestModel === "gpt-image-1.5" ? "gpt-image-1" : null].filter(Boolean),
-      ),
-    );
+    // One explicit guarded request should map to one paid provider call. Do not
+    // silently retry across fallback models while debugging or during launch.
+    const models = [requestModel];
     const prompt =
       [request.prompt?.trim(), request.negativePrompt?.trim() ? `Avoid: ${request.negativePrompt.trim()}.` : null]
         .filter(Boolean)
@@ -211,10 +216,7 @@ class OpenAiImageProvider implements ImageGenerationProvider {
 
           retryCount += 1;
 
-          if (attempt < IMAGE_GENERATION_ATTEMPTS_PER_MODEL - 1) {
-            await sleep(IMAGE_GENERATION_RETRY_BACKOFF_MS * (attempt + 1));
-            continue;
-          }
+          continue;
         }
 
         if (fileUrl) {
@@ -223,7 +225,6 @@ class OpenAiImageProvider implements ImageGenerationProvider {
 
         if (attempt < IMAGE_GENERATION_ATTEMPTS_PER_MODEL - 1) {
           retryCount += 1;
-          await sleep(IMAGE_GENERATION_RETRY_BACKOFF_MS * (attempt + 1));
         }
       }
 

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { CreativeOpsQaCard } from "@/components/campaign/creative-ops-qa-card";
+import { StaticAdComposedPreview } from "@/components/campaign/static-ad-composed-preview";
 import { generateCreativeCopyAssistant, improveCopyText, type CreativeCopyAssistantOutput } from "@/lib/services/copy-engine";
 import type { BuiltCampaign, CampaignStrategyInput } from "@/lib/services/campaign-orchestrator";
 import type { CampaignCreativeStrategy } from "@/lib/services/campaign-creative-strategy";
@@ -446,7 +447,6 @@ const StaticAdPreview = memo(function StaticAdPreview({
   headline,
   cta,
   imageUrl,
-  direction,
   compact = false,
 }: {
   businessName: string;
@@ -455,82 +455,19 @@ const StaticAdPreview = memo(function StaticAdPreview({
   headline: string;
   cta: string;
   imageUrl?: string | null;
-  direction?: BuilderPreviewDirection | null;
   compact?: boolean;
 }) {
-  const brand = businessName || "DealFlow OS";
-  const theme = useMemo(() => getPreviewDirection(direction), [direction]);
-  const typography = useMemo(() => getTypographyClasses(theme), [theme]);
-
   return (
-    <div
-      className="overflow-hidden rounded-[24px] border border-white/8 text-[#111111] shadow-[0_24px_80px_-44px_rgba(0,0,0,0.35)]"
-      style={{ backgroundColor: theme.palette.panel }}
-    >
-      <div className={`flex items-center justify-between gap-3 ${compact ? "px-3 py-3" : "px-4 py-4"}`}>
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#e7eefc] text-sm font-semibold text-[#315b96]">
-            {brand.slice(0, 2).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">{brand}</p>
-            <p className="truncate text-xs text-[#6b7280]">Sponsored</p>
-          </div>
-        </div>
-      </div>
-      <div className="border-y border-black/6">
-        <div className={`${compact ? "aspect-[16/11]" : "aspect-[16/9]"} relative overflow-hidden`}>
-          {imageUrl ? (
-            <Image
-              src={imageUrl}
-              alt={headline || overlayText || businessName}
-              fill
-              unoptimized
-              className="object-cover"
-            />
-          ) : (
-            <div
-              className={`h-full w-full ${compact ? "p-3" : "p-4"}`}
-              style={{
-                background: `linear-gradient(180deg, rgba(15,23,42,0.18), rgba(2,6,23,0.92)), radial-gradient(circle at top, rgba(255,255,255,0.18), transparent 28%), linear-gradient(135deg, ${theme.palette.accent}, ${theme.palette.surface})`,
-              }}
-            />
-          )}
-          <div className={`absolute inset-0 ${compact ? "p-3" : "p-4"}`}>
-            <div className="flex h-full flex-col justify-start">
-              <div className="max-w-[72%] rounded-[14px] bg-black/40 px-3 py-2 shadow-sm backdrop-blur-sm">
-                <p className={`${compact ? "text-xs" : "text-sm"} font-semibold leading-5 text-white`}>
-                  <span className={typography.displayClass}>
-                    {trimWords(overlayText || "Get Deals Before Others", 7)}
-                  </span>
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className={`space-y-3 ${compact ? "px-3 py-3" : "px-4 py-4"}`}>
-        <p className={`line-clamp-2 max-w-[680px] ${compact ? "text-xs" : "text-sm"} text-[#374151] ${typography.bodyClass}`}>
-          {trimWords(primaryText || overlayText || businessName, compact ? 14 : 18)}
-        </p>
-        <div className={`flex items-center justify-between gap-3 rounded-[18px] border border-black/6 bg-white ${compact ? "px-3 py-2.5" : "px-4 py-3"} shadow-[0_10px_24px_-18px_rgba(0,0,0,0.22)]`}>
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#9ca3af]">
-              Sponsored
-            </p>
-            <p className={`line-clamp-2 ${compact ? "text-xs leading-5" : "text-sm leading-5"} font-semibold`}>
-              {headline || overlayText || businessName}
-            </p>
-          </div>
-          <div
-            className={`shrink-0 rounded-md ${compact ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm"} font-semibold`}
-            style={{ backgroundColor: theme.palette.accent, color: theme.palette.ctaText }}
-          >
-            {cta || "Book My Strategy Call"}
-          </div>
-        </div>
-      </div>
-    </div>
+    <StaticAdComposedPreview
+      compact={compact}
+      cta={cta}
+      headline={headline}
+      imageUrl={imageUrl}
+      location={businessName}
+      overlayText={overlayText}
+      primaryText={primaryText}
+      showRawAssetState={!compact}
+    />
   );
 });
 
@@ -2224,15 +2161,19 @@ export function BuilderCreativesPanel(props: {
               />
               {generatedVideos[index]?.status === "processing" ? (
                 <p className="text-sm text-primary">
-                  Generating video with HeyGen. This can take a minute while the render job completes.
+                  Video generation is queued. The finished render will appear here when the provider job completes.
                 </p>
               ) : null}
               {videoGenerationErrors[index] ? (
                 <p className="text-sm text-rose-300">{videoGenerationErrors[index]}</p>
               ) : null}
               <div className="flex justify-end">
-                <Button onClick={() => handleGenerateVideo(index)} disabled={videoGenerationIndex === index}>
-                  {videoGenerationIndex === index ? "Generating Video Ad..." : "Generate Video Ad"}
+                <Button
+                  disabled={videoGenerationIndex === index}
+                  onClick={() => handleGenerateVideo(index)}
+                  title="Uses paid generation credits and queues a HeyGen render."
+                >
+                  {videoGenerationIndex === index ? "Queueing video..." : "Generate UGC video"}
                 </Button>
               </div>
             </div>
@@ -2270,7 +2211,7 @@ export function BuilderCreativesPanel(props: {
               {saveLoading ? "Saving..." : "Save Campaign"}
             </Button>
             <Button asChild variant="secondary">
-              <Link href={savedCampaignId ? `/campaigns/${savedCampaignId}` : "/preview"}>
+              <Link href={savedCampaignId ? `/preview?campaignId=${savedCampaignId}` : "/preview"}>
                 {savedCampaignId ? "Open Saved Campaign" : "Open Review"}
               </Link>
             </Button>
@@ -2279,7 +2220,7 @@ export function BuilderCreativesPanel(props: {
             backLabel="Back: Funnel"
             onBack={() => setActiveTab("funnel")}
             nextLabel="Next: Review"
-            nextHref={savedCampaignId ? `/campaigns/${savedCampaignId}` : "/preview"}
+            nextHref={savedCampaignId ? `/preview?campaignId=${savedCampaignId}` : "/preview"}
           />
         </div>
         {saveError ? <p className="mt-4 text-sm text-rose-300">{saveError}</p> : null}

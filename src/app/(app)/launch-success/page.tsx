@@ -324,7 +324,7 @@ export default async function LaunchSuccessPage({
           </div>
 
           <div className="flex flex-wrap gap-3 pt-2">
-            <LaunchSuccessRecheckButton />
+            <LaunchSuccessRecheckButton campaignId={resolvedSavedCampaignId} />
             {metaLink ? (
               <Button asChild>
                 <Link href={metaLink} target="_blank" rel="noreferrer">

@@ -3,9 +3,11 @@ import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
+import { PageShell } from "@/components/ui/page-shell";
+import { StaticCreativePreviewCard } from "@/components/campaign/static-creative-preview-card";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
-import { getSelectedAdIdFromPlan, readCampaignPlanDocument } from "@/lib/services/campaign-plan-document";
+import { getSelectedAdIdsFromPlan, readCampaignPlanDocument } from "@/lib/services/campaign-plan-document";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import {
   getExpectedOutcomes,
@@ -17,15 +19,15 @@ import {
 } from "@/lib/services/campaign-validation";
 import { FunnelPreview } from "@/components/funnel/funnel-preview";
 
-async function loadPersistedSelectedAdId(campaignId: string | null) {
+async function loadPersistedSelectedAdIds(campaignId: string | null) {
   if (!campaignId) {
-    return null;
+    return [];
   }
 
   const supabase = await createRouteHandlerClient();
 
   if (!supabase) {
-    return null;
+    return [];
   }
 
   const { data } = await supabase
@@ -35,7 +37,7 @@ async function loadPersistedSelectedAdId(campaignId: string | null) {
     .maybeSingle();
 
   const row = (data as { plan?: unknown } | null) ?? null;
-  return getSelectedAdIdFromPlan(readCampaignPlanDocument(row?.plan));
+  return getSelectedAdIdsFromPlan(readCampaignPlanDocument(row?.plan));
 }
 
 export default async function PreviewPage({
@@ -51,11 +53,12 @@ export default async function PreviewPage({
   const activeCampaign = await resolveActiveCampaignRecord(campaignId).catch(() => null);
   let record = activeCampaign?.record ?? null;
   let plan = record ? canonicalCampaignToPlan(record) : null;
-  const selectedAdId = await loadPersistedSelectedAdId(campaignId);
+  const resolvedCampaignId = record?.campaign.id ?? campaignId;
+  const selectedAdIds = await loadPersistedSelectedAdIds(resolvedCampaignId);
 
   if (!plan) {
     return (
-      <div className="mx-auto w-full max-w-[900px] space-y-8 p-6 sm:p-8">
+      <PageShell className="max-w-[900px]">
         <WizardSteps current="review" />
         <PageHeader
           eyebrow="Preview"
@@ -66,7 +69,7 @@ export default async function PreviewPage({
           title="No campaign available yet"
           description="Finish onboarding to create a campaign before opening review."
         />
-      </div>
+      </PageShell>
     );
   }
 
@@ -74,7 +77,7 @@ export default async function PreviewPage({
 
   if (!validated) {
     return (
-      <div className="mx-auto w-full max-w-[900px] space-y-8 p-6 sm:p-8">
+      <PageShell className="max-w-[900px]">
         <WizardSteps current="review" />
         <PageHeader
           eyebrow="Preview"
@@ -85,28 +88,26 @@ export default async function PreviewPage({
           title="Preview data incomplete"
           description="Some campaign details are missing. Update or regenerate the campaign, then return to review."
         />
-      </div>
+      </PageShell>
     );
   }
 
   const safeCampaign = normalizeCampaign(validated);
   const previewPlan = safeCampaign.plan;
   const expectedOutcomes = getExpectedOutcomes(previewPlan);
-  const selectedAd =
-    previewPlan.creatives.staticAds.find((ad) => ad.id === selectedAdId) ??
-    null;
+  const selectedAds = previewPlan.creatives.staticAds.filter((ad) => selectedAdIds.includes(ad.id));
   const campaignIdForFlow = record?.campaign.id ?? null;
 
   return (
-    <div className="mx-auto w-full max-w-[900px] space-y-8 p-6 sm:p-8">
+    <PageShell className="max-w-[900px]">
       <WizardSteps current="review" />
       <PageHeader
         eyebrow="Preview"
         title="Final preview"
-        description="Review the selected funnel and ad, then move into launch."
+        description="Review the selected funnel and creative test set, then move into launch."
       />
 
-      <section className="space-y-4 rounded-2xl border border-border bg-card p-6">
+      <section className="surface-strong space-y-4 rounded-df-card border border-white/10 p-6">
         <h2 className="text-lg font-semibold text-foreground">Selected funnel</h2>
         <FunnelPreview
           plan={previewPlan}
@@ -115,38 +116,34 @@ export default async function PreviewPage({
         />
       </section>
 
-      <section className="space-y-4 rounded-2xl border border-border bg-card p-6">
-        <h2 className="text-lg font-semibold text-foreground">Selected ad</h2>
-        {selectedAd ? (
-          <div className="overflow-hidden rounded-2xl border border-border bg-background">
-            {selectedAd.imageUrl ? (
-              <div
-                className="aspect-[16/9] w-full bg-cover bg-center"
-                style={{ backgroundImage: `url(${selectedAd.imageUrl})` }}
+      <section className="surface-strong space-y-4 rounded-df-card border border-white/10 p-6">
+        <h2 className="text-lg font-semibold text-foreground">Selected creative test set</h2>
+        {selectedAds.length > 0 ? (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {selectedAds.map((selectedAd) => (
+              <StaticCreativePreviewCard
+                category={previewPlan.creativeStrategy.campaignCategory}
+                compact={selectedAds.length > 1}
+                cta={selectedAd.cta}
+                headline={selectedAd.headline}
+                imageGenerationMessage={selectedAd.imageGenerationMessage}
+                imageGenerationState={selectedAd.imageGenerationState}
+                imageUrl={selectedAd.imageUrl}
+                location={previewPlan.market}
+                key={selectedAd.id}
+                offer={previewPlan.offerSummary || previewPlan.keyOffer}
+                overlayText={selectedAd.overlayText}
+                primaryText={selectedAd.primaryText}
+                qualityGate={selectedAd.qualityGate}
+                score={selectedAd.score}
+                selectedCount={selectedAds.length}
+                visualPromptBrief={selectedAd.visualPromptBrief}
               />
-            ) : (
-              <div className="flex aspect-[16/9] items-center justify-center bg-muted text-sm text-muted-foreground">
-                Preview image not available yet
-              </div>
-            )}
-            <div className="space-y-4 p-6">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Headline</p>
-                <p className="mt-1 text-xl font-semibold text-foreground">{selectedAd.headline}</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Primary Text</p>
-                <p className="mt-1 text-sm leading-7 text-foreground">{selectedAd.primaryText}</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">CTA</p>
-                <p className="mt-1 text-sm font-semibold text-foreground">{selectedAd.cta || "Learn More"}</p>
-              </div>
-            </div>
+            ))}
           </div>
         ) : (
-          <div className="rounded-2xl border border-border p-6 text-sm text-muted-foreground">
-            No saved ad preview is ready yet. Go back to creatives and choose an ad first.
+          <div className="rounded-df-card border border-white/10 bg-white/[0.035] p-6 text-sm text-muted-foreground">
+            No saved creative test set is ready yet. Go back to creatives and choose the ads you want to test first.
           </div>
         )}
       </section>
@@ -163,6 +160,6 @@ export default async function PreviewPage({
           </Link>
         </Button>
       </div>
-    </div>
+    </PageShell>
   );
 }

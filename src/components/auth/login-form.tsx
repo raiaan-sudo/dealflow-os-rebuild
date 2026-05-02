@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type LoginFormProps = {
@@ -9,18 +9,43 @@ type LoginFormProps = {
   isConfigured: boolean;
 };
 
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
+const TURNSTILE_SCRIPT_ID = "cloudflare-turnstile-script";
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        element: HTMLElement,
+        options: {
+          sitekey: string;
+          callback: (token: string) => void;
+          "expired-callback": () => void;
+          "error-callback": () => void;
+        },
+      ) => string;
+      reset: (widgetId?: string) => void;
+    };
+  }
+}
+
 export function LoginForm({
   redirectedFrom,
   reason,
   isConfigured,
 }: LoginFormProps) {
-  const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
+  const [mode, setMode] = useState<"sign-in" | "sign-up" | "reset-password" | "update-password">("sign-in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
+  const turnstileWidgetIdRef = useRef<string | null>(null);
+  const turnstileEnabled = Boolean(TURNSTILE_SITE_KEY);
+  const requiresTurnstile = turnstileEnabled && mode !== "update-password";
 
   function getSafeRedirectPath(value?: string) {
     if (!value) {
@@ -86,10 +111,45 @@ export function LoginForm({
     setIsPending(true);
 
     try {
+      if (requiresTurnstile && !turnstileToken) {
+        throw new Error("Please complete the verification challenge.");
+      }
+
+      if (mode === "reset-password") {
+        const redirectTo = new URL("/login", window.location.origin);
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: redirectTo.toString(),
+          captchaToken: turnstileEnabled ? turnstileToken : undefined,
+        });
+
+        if (resetError) {
+          throw resetError;
+        }
+
+        setMessage("Password reset link sent. Check your inbox to continue.");
+        resetTurnstile();
+        return;
+      }
+
+      if (mode === "update-password") {
+        const { error: updateError } = await supabase.auth.updateUser({ password });
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        setMessage("Password updated. You can continue to your dashboard.");
+        setMode("sign-in");
+        return;
+      }
+
       if (mode === "sign-in") {
         const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
           email,
           password,
+          options: {
+            captchaToken: turnstileEnabled ? turnstileToken : undefined,
+          },
         });
 
         if (signInError) {
@@ -113,6 +173,7 @@ export function LoginForm({
         email,
         password,
         options: {
+          captchaToken: turnstileEnabled ? turnstileToken : undefined,
           data: {
             full_name: fullName,
           },
@@ -127,13 +188,128 @@ export function LoginForm({
         "Account created. If email confirmation is enabled in Supabase, confirm your inbox before signing in.",
       );
       setMode("sign-in");
+      resetTurnstile();
     } catch (caughtError) {
       setError(
         caughtError instanceof Error ? caughtError.message : "Authentication failed.",
       );
+      if (turnstileEnabled) {
+        resetTurnstile();
+      }
     } finally {
       setIsPending(false);
     }
+  }
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    if (!supabase) {
+      return;
+    }
+
+    const client = supabase;
+
+    async function recoverSessionFromHash() {
+      if (typeof window === "undefined" || !window.location.hash) {
+        return;
+      }
+
+      const hashParams = new URLSearchParams(window.location.hash.slice(1));
+      const recoveryType = hashParams.get("type");
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+
+      if (recoveryType !== "recovery" || !accessToken || !refreshToken) {
+        return;
+      }
+
+      const { error: sessionError } = await client.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+
+      if (sessionError) {
+        setError(sessionError.message);
+        return;
+      }
+
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+      setError(null);
+      setMessage("Enter a new password to finish account recovery.");
+      setPassword("");
+      setMode("update-password");
+    }
+
+    void recoverSessionFromHash();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setError(null);
+        setMessage("Enter a new password to finish account recovery.");
+        setPassword("");
+        setMode("update-password");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!requiresTurnstile) {
+      setTurnstileToken("");
+      turnstileWidgetIdRef.current = null;
+      return;
+    }
+
+    const siteKey = TURNSTILE_SITE_KEY;
+
+    if (!siteKey || !turnstileContainerRef.current || turnstileWidgetIdRef.current) {
+      return;
+    }
+
+    function renderTurnstile(siteKey: string) {
+      if (!window.turnstile || !turnstileContainerRef.current || turnstileWidgetIdRef.current) {
+        return;
+      }
+
+      turnstileWidgetIdRef.current = window.turnstile.render(turnstileContainerRef.current, {
+        sitekey: siteKey,
+        callback: setTurnstileToken,
+        "expired-callback": () => setTurnstileToken(""),
+        "error-callback": () => setTurnstileToken(""),
+      });
+    }
+
+    const existingScript = document.getElementById(TURNSTILE_SCRIPT_ID);
+    if (existingScript) {
+      const renderExistingTurnstile = () => renderTurnstile(siteKey);
+      renderExistingTurnstile();
+      existingScript.addEventListener("load", renderExistingTurnstile, { once: true });
+      return () => existingScript.removeEventListener("load", renderExistingTurnstile);
+    }
+
+    const script = document.createElement("script");
+    script.id = TURNSTILE_SCRIPT_ID;
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.async = true;
+    script.defer = true;
+    const renderNewTurnstile = () => renderTurnstile(siteKey);
+    script.addEventListener("load", renderNewTurnstile, { once: true });
+    document.head.appendChild(script);
+
+    return () => script.removeEventListener("load", renderNewTurnstile);
+  }, [mode, requiresTurnstile]);
+
+  function resetTurnstile() {
+    if (!turnstileWidgetIdRef.current) {
+      return;
+    }
+
+    setTurnstileToken("");
+    window.turnstile?.reset(turnstileWidgetIdRef.current);
   }
 
   const actionLabel =
@@ -141,12 +317,19 @@ export function LoginForm({
       ? "Please wait..."
       : mode === "sign-in"
         ? "Launch My Campaign"
-        : "Create Account";
+        : mode === "sign-up"
+          ? "Create Account"
+          : mode === "reset-password"
+            ? "Send Reset Link"
+            : "Update Password";
+
+  const inputClassName =
+    "h-12 w-full rounded-df-control border border-white/10 bg-white/[0.045] px-4 text-white outline-none transition duration-200 placeholder:text-white/35 focus:border-cyan-200/40 focus:bg-white/[0.07] focus:shadow-[0_0_0_3px_rgba(103,232,249,0.08)]";
 
   return (
-    <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-6 shadow-[0_30px_90px_-45px_rgba(0,0,0,0.7)] sm:p-8">
+    <div className="surface-guided rounded-df-panel border border-white/10 p-6 shadow-df-elevated sm:p-8">
       <div className="mb-6">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary/80">
+        <p className="df-eyebrow">
           Replace your agency
         </p>
         <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">
@@ -157,12 +340,12 @@ export function LoginForm({
         </p>
       </div>
 
-      <div className="flex rounded-full bg-white/[0.04] p-1">
+      <div className="flex rounded-full border border-white/10 bg-white/[0.04] p-1 shadow-inner shadow-black/30">
         <button
           className={`flex-1 rounded-full px-4 py-2 text-sm transition ${
             mode === "sign-in"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground"
+              ? "bg-df-primary text-slate-950 shadow-df-button"
+              : "text-muted-foreground hover:text-white"
           }`}
           onClick={() => setMode("sign-in")}
           type="button"
@@ -172,8 +355,8 @@ export function LoginForm({
         <button
           className={`flex-1 rounded-full px-4 py-2 text-sm transition ${
             mode === "sign-up"
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground"
+              ? "bg-df-primary text-slate-950 shadow-df-button"
+              : "text-muted-foreground hover:text-white"
           }`}
           onClick={() => setMode("sign-up")}
           type="button"
@@ -191,36 +374,51 @@ export function LoginForm({
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
               placeholder="Alex Morgan"
-              className="h-11 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none"
+              className={inputClassName}
             />
           </label>
         ) : null}
 
-        <label className="block space-y-2">
-          <span className="text-sm text-white/70">Email</span>
-          <input
-            id="email"
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="you@company.com"
-            className="h-11 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none"
-          />
-        </label>
+        {mode !== "update-password" ? (
+          <label className="block space-y-2">
+            <span className="text-sm text-white/70">Email</span>
+            <input
+              id="email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="you@company.com"
+              className={inputClassName}
+            />
+          </label>
+        ) : null}
 
-        <label className="block space-y-2">
-          <span className="text-sm text-white/70">Password</span>
-          <input
-            id="password"
-            type="password"
-            autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="••••••••"
-            className="h-11 w-full rounded-2xl border border-white/10 bg-black/20 px-4 text-white outline-none"
-          />
-        </label>
+        {mode !== "reset-password" ? (
+          <label className="block space-y-2">
+            <span className="text-sm text-white/70">
+              {mode === "update-password" ? "New password" : "Password"}
+            </span>
+            <input
+              id="password"
+              type="password"
+              autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="••••••••"
+              className={inputClassName}
+            />
+          </label>
+        ) : null}
+
+        {requiresTurnstile ? (
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+            <div ref={turnstileContainerRef} />
+            {!turnstileToken ? (
+              <p className="mt-2 text-xs text-white/60">Complete the verification challenge before continuing.</p>
+            ) : null}
+          </div>
+        ) : null}
 
         {reason === "setup" ? (
           <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100">
@@ -253,21 +451,51 @@ export function LoginForm({
         ) : null}
 
         <button
-          className="h-12 w-full rounded-2xl bg-primary px-4 text-base font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+          className="h-12 w-full rounded-df-control bg-df-primary px-4 text-base font-semibold text-slate-950 shadow-df-button transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_70px_-32px_rgba(103,232,249,0.95)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
           disabled={!isConfigured || isPending}
           type="submit"
         >
           {actionLabel}
         </button>
 
-        <button
-          className="h-12 w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-          disabled={!isConfigured || isPending}
-          onClick={() => handleProviderLogin("google")}
-          type="button"
-        >
-          Continue with Google
-        </button>
+        {mode === "sign-in" ? (
+          <button
+            className="w-full text-sm font-medium text-white/65 transition hover:text-white"
+            onClick={() => {
+              setError(null);
+              setMessage(null);
+              setMode("reset-password");
+            }}
+            type="button"
+          >
+            Forgot password?
+          </button>
+        ) : null}
+
+        {mode === "reset-password" || mode === "update-password" ? (
+          <button
+            className="w-full text-sm font-medium text-white/65 transition hover:text-white"
+            onClick={() => {
+              setError(null);
+              setMessage(null);
+              setMode("sign-in");
+            }}
+            type="button"
+          >
+            Back to sign in
+          </button>
+        ) : null}
+
+        {mode === "sign-in" || mode === "sign-up" ? (
+          <button
+            className="h-12 w-full rounded-df-control border border-white/10 bg-white/[0.035] px-4 text-base font-semibold text-white transition duration-200 hover:-translate-y-0.5 hover:border-cyan-200/25 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+            disabled={!isConfigured || isPending}
+            onClick={() => handleProviderLogin("google")}
+            type="button"
+          >
+            Continue with Google
+          </button>
+        ) : null}
       </form>
     </div>
   );

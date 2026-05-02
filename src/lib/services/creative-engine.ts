@@ -1,4 +1,4 @@
-import type { CampaignIntent } from "@/lib/campaign-intent";
+import { inferCampaignIntent, type CampaignIntent } from "@/lib/campaign-intent";
 import {
   buildCreativeBrief,
   type CreativeBrief,
@@ -9,6 +9,7 @@ import {
   createVideoAd,
   selectAvatarProfile,
   selectVoiceProfile,
+  type ImageProviderUsageContext,
   type AvatarProfile,
   type VoiceProfile,
 } from "@/lib/ai/providers";
@@ -26,6 +27,15 @@ import {
   rankStaticCreativeAssets,
   type CreativeScoreBreakdown,
 } from "@/lib/services/creative-scoring-service";
+import {
+  evaluateCreativeQuality,
+  evaluateOfferQuality,
+  getCategorySafeOffer,
+  getMediaBuyerCategoryStrategy,
+  type CreativeQualityEvaluation,
+  type OfferQualityEvaluation,
+} from "@/lib/services/media-buyer-framework";
+import { selectMediaBuyerCta } from "@/lib/optimization-engine/media-buying-rules";
 
 export type CreativeEngineInput = {
   location: string;
@@ -38,6 +48,9 @@ export type CreativeEngineInput = {
   pain_points?: string[];
   market_type?: CampaignIntent;
   creative_strategy?: CampaignCreativeStrategy;
+  provider_usage_context?: {
+    createForAsset: (asset: StaticCreativeAsset) => ImageProviderUsageContext | null;
+  };
 };
 
 export type CreativeAngle = "opportunity" | "pain" | "authority" | "curiosity";
@@ -63,6 +76,8 @@ export type StaticCreativeAsset = {
   cta: string;
   score: number;
   recommended: boolean;
+  offerQuality?: OfferQualityEvaluation | null;
+  qualityGate?: CreativeQualityEvaluation | null;
 };
 
 export type VideoCreativeAsset = {
@@ -82,6 +97,7 @@ export type VideoCreativeAsset = {
   voiceStyle: string;
   avatarProfile: AvatarProfile;
   voiceProfile: VoiceProfile;
+  qualityGate?: CreativeQualityEvaluation | null;
 };
 
 export type CanonicalCreativeItem = {
@@ -133,6 +149,7 @@ type RequiredCreativeInput = {
   location: string;
   audience: string;
   offer: string;
+  rawOffer: string;
   pricePoint: string | null;
   propertyType: string;
   mechanism: string;
@@ -176,6 +193,7 @@ function normalizeInput(input?: CreativeEngineInput | null): RequiredCreativeInp
     location: safeText(raw.location) || "your market",
     audience,
     offer,
+    rawOffer: offer,
     pricePoint: safeText(raw.price_point) || null,
     propertyType,
     mechanism,
@@ -347,6 +365,40 @@ function ensureMechanism(value: string, fallback: string) {
   return mechanism || "a clearer decision system";
 }
 
+function preserveExplicitConsumerAudienceCategory(
+  strategy: CampaignCreativeStrategy,
+  audience: string,
+  offer: string,
+): CampaignCreativeStrategy {
+  const haystack = `${audience} ${offer}`.toLowerCase();
+
+  if (/\b(buyer|buyers|homebuyer|homebuyers|first[- ]time|upsize|downsize)\b/.test(haystack) && !/\b(investor|investors|roi|yield|cash[- ]?flow|rental)\b/.test(haystack)) {
+    const buyerRules = getCategoryRulePack("buyer");
+    return {
+      ...strategy,
+      campaignCategory: "buyer",
+      proofStyle: buyerRules.proofStyles[0] || strategy.proofStyle,
+      ctaStyle: buyerRules.explicitLowFrictionCtas[0] || strategy.ctaStyle,
+      visualLogic: buyerRules.visualLogic,
+      overlayStyle: buyerRules.overlayLogic,
+    };
+  }
+
+  if (/\b(seller|sellers|homeowner|homeowners|sell|listing|home value)\b/.test(haystack) && !/\b(agent|realtor|broker)\b/.test(haystack)) {
+    const sellerRules = getCategoryRulePack("seller");
+    return {
+      ...strategy,
+      campaignCategory: "seller",
+      proofStyle: sellerRules.proofStyles[0] || strategy.proofStyle,
+      ctaStyle: sellerRules.explicitLowFrictionCtas[0] || strategy.ctaStyle,
+      visualLogic: sellerRules.visualLogic,
+      overlayStyle: sellerRules.overlayLogic,
+    };
+  }
+
+  return strategy;
+}
+
 function buildDecisionTension(strategy: CampaignCreativeStrategy, rulePack: ReturnType<typeof getCategoryRulePack>) {
   return shortSentence(strategy.internalTension || rulePack.internalTensions[0] || "the wrong move feels too expensive");
 }
@@ -410,15 +462,212 @@ function buildStructuredPrimaryText(params: {
   return `${shortSentence(params.hook)} ${sentenceCase(params.problem)} ${sentenceCase(params.outcome)} ${params.cta}.`;
 }
 
+function normalizeForOfferMatch(value: string) {
+  return safeText(value).toLowerCase().replace(/[^\w\s]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function textIncludesOffer(text: string, offer: string) {
+  const normalizedText = normalizeForOfferMatch(text);
+  const normalizedOffer = normalizeForOfferMatch(offer);
+
+  if (!normalizedText || !normalizedOffer) {
+    return false;
+  }
+
+  if (normalizedText.includes(normalizedOffer)) {
+    return true;
+  }
+
+  const offerTokens = normalizedOffer.split(" ").filter((token) => token.length > 2);
+  const matchedTokens = offerTokens.filter((token) => normalizedText.includes(token));
+  return offerTokens.length > 0 && matchedTokens.length / offerTokens.length >= 0.72;
+}
+
+function buildCompliantOfferLead(offer: string, category: CampaignCreativeStrategy["campaignCategory"]) {
+  const cleanOffer = shortSentence(offer);
+
+  if (!cleanOffer) {
+    return "";
+  }
+
+  if (category === "seller" && /guarantee|guaranteed/i.test(cleanOffer)) {
+    return `See if your home qualifies for: ${cleanOffer}`;
+  }
+
+  return cleanOffer;
+}
+
+function ensureOfferDrivenStaticAd(
+  ad: StaticCreativeAsset,
+  strategy: CampaignCreativeStrategy,
+  offer: string,
+): StaticCreativeAsset {
+  const offerLead = buildCompliantOfferLead(offer, strategy.campaignCategory);
+
+  if (!offerLead) {
+    return ad;
+  }
+
+  const headline =
+    textIncludesOffer(ad.headline, offer)
+      ? ad.headline
+      : `${offerLead}: ${shortSentence(ad.headline)}`;
+  const primaryText =
+    textIncludesOffer(ad.primaryText, offer)
+      ? ad.primaryText
+      : `${offerLead}. ${ad.primaryText}`;
+  const overlayText =
+    textIncludesOffer(ad.overlayText, offer)
+      ? ad.overlayText
+      : clampOverlayLine(offerLead);
+
+  return {
+    ...ad,
+    headline,
+    primaryText,
+    overlayText,
+    visualConcept: textIncludesOffer(ad.visualConcept, offer)
+      ? ad.visualConcept
+      : `${ad.visualConcept} using the offer "${shortSentence(offer)}"`,
+  };
+}
+
+function fillMediaBuyerPattern(pattern: string, params: {
+  market: string;
+  propertyType: string;
+}) {
+  return pattern
+    .replace(/\{market\}/g, params.market)
+    .replace(/\{propertyType\}/g, params.propertyType)
+    .trim();
+}
+
+function repairStaticCreativeForMediaBuyerQuality(params: {
+  ad: StaticCreativeAsset;
+  strategy: CampaignCreativeStrategy;
+  offer: string;
+  market: string;
+  audience: string;
+  propertyType: string;
+}) {
+  const mediaBuyer = getMediaBuyerCategoryStrategy(params.strategy.campaignCategory);
+  const offerQuality = evaluateOfferQuality({
+    category: params.strategy.campaignCategory,
+    offer: params.offer,
+    mechanism: params.strategy.mechanism,
+    audience: params.audience,
+    cta: params.ad.cta,
+  });
+  const initialQuality = evaluateCreativeQuality({
+    category: params.strategy.campaignCategory,
+    offer: params.offer,
+    mechanism: params.strategy.mechanism,
+    audience: params.audience,
+    hook: params.ad.hook,
+    primaryText: params.ad.primaryText,
+    headline: params.ad.headline,
+    overlayText: params.ad.overlayText,
+    cta: params.ad.cta,
+    visualConcept: params.ad.visualConcept,
+    imagePrompt: params.ad.imagePrompt,
+  });
+
+  if (initialQuality.accepted) {
+    return {
+      ...params.ad,
+      offerQuality,
+      qualityGate: initialQuality,
+    };
+  }
+
+  const safeOffer = offerQuality.safeOffer || getCategorySafeOffer(params.strategy.campaignCategory);
+  const mechanism =
+    safeText(params.strategy.mechanism) ||
+    mediaBuyer.mechanismStyles[0] ||
+    "a clearer decision process";
+  const proof =
+    safeText(params.strategy.proofStyle) ||
+    mediaBuyer.proofStyles[0] ||
+    "clearer proof before the next step";
+  const hook = fillMediaBuyerPattern(
+    mediaBuyer.approvedHookPatterns[0] || params.ad.hook,
+    {
+      market: params.market,
+      propertyType: params.propertyType,
+    },
+  );
+  const cta =
+    mediaBuyer.lowFrictionCtas.find((candidate) => /see|view|get|check|request|access|review/i.test(candidate)) ||
+    params.ad.cta;
+  const proofLead = /\d|\$|%|under|below|before|after|timeline|deposit|roi|yield|price|value/i.test(safeOffer)
+    ? safeOffer
+    : proof;
+  const repairedPrompt =
+    `${params.ad.imagePrompt.replace(params.offer, safeOffer)} Core offer: ${safeOffer}. Avoid agent-acquisition lead promises unless the audience is explicitly real estate agents.`;
+  const repaired: StaticCreativeAsset = {
+    ...params.ad,
+    hook,
+    overlayText: clampOverlayLine(proofLead),
+    headline: `${shortSentence(safeOffer)}: ${shortSentence(proof)}`,
+    primaryText: `${hook} ${sentenceCase(mechanism)} gives you ${proof.toLowerCase()} around ${shortSentence(safeOffer)}. ${cta}.`,
+    cta,
+    visualConcept: `${mediaBuyer.visualLogic[0] || params.ad.visualConcept} with ${mediaBuyer.overlayLogic[0] || "numbers-first overlay"} for ${shortSentence(safeOffer)}`,
+    imagePrompt: repairedPrompt,
+    imagePromptConfig: params.ad.imagePromptConfig
+      ? {
+          ...params.ad.imagePromptConfig,
+          prompt: repairedPrompt,
+        }
+      : null,
+  };
+  const finalOfferQuality = evaluateOfferQuality({
+    category: params.strategy.campaignCategory,
+    offer: safeOffer,
+    mechanism,
+    audience: params.audience,
+    cta,
+  });
+  const finalQuality = evaluateCreativeQuality({
+    category: params.strategy.campaignCategory,
+    offer: safeOffer,
+    mechanism,
+    audience: params.audience,
+    hook: repaired.hook,
+    primaryText: repaired.primaryText,
+    headline: repaired.headline,
+    overlayText: repaired.overlayText,
+    cta: repaired.cta,
+    visualConcept: repaired.visualConcept,
+    imagePrompt: repaired.imagePrompt,
+  });
+
+  return {
+    ...repaired,
+    offerQuality: finalOfferQuality,
+    qualityGate: finalQuality.accepted
+      ? finalQuality
+      : {
+          ...finalQuality,
+          hardFailures: Array.from(
+            new Set([...finalQuality.hardFailures, ...initialQuality.hardFailures]),
+          ),
+          improvementHints: Array.from(
+            new Set([...finalQuality.improvementHints, ...initialQuality.improvementHints]),
+          ),
+        },
+  };
+}
+
 function buildStaticCreatives(
   brief: CreativeBrief,
   strategy: CampaignCreativeStrategy,
+  rawOffer?: string | null,
 ): StaticCreativeAsset[] {
   const market = toTitleCase(brief.location);
   const audience = brief.audience;
   const offer = brief.keyOffer;
-  const cleanOffer = normalizeOfferPhrase(offer) || shortSentence(offer);
-  const normalizedOffer = safeText(offer).toLowerCase();
+  const cleanOffer = normalizeOfferPhrase(rawOffer ?? "") || normalizeOfferPhrase(offer) || shortSentence(offer);
+  const normalizedOffer = safeText(cleanOffer).toLowerCase();
   const rulePack = getCategoryRulePack(strategy.campaignCategory);
   const trigger = shortSentence(strategy.triggerCondition || rulePack.triggerConditions[0] || "market shift");
   const mechanism = ensureMechanism(strategy.mechanism, rulePack.approvedMechanismStyles[0] || brief.mechanism);
@@ -769,6 +1018,41 @@ function buildStaticCreatives(
       score: 0,
       recommended: false,
     },
+    {
+      id: "static-direct-offer",
+      angle: "guarantee",
+      imageUrl: "",
+      imageGenerationState: "unavailable",
+      imageGenerationMessage: null,
+      imageGenerationModel: null,
+      visualConcept: `Direct response offer ad centered on ${cleanOffer}`,
+      imagePrompt: "",
+      imagePromptConfig: null,
+      preferredImageModel: "gpt-image-1.5",
+      visualPromptBrief: null,
+      scoreBreakdown: null,
+      hook:
+        strategy.campaignCategory === "seller"
+          ? `${market} sellers: this is the offer to review before you list.`
+          : `${market}: compare your next move against ${trimWords(cleanOffer, 7)}.`,
+      overlayText: buildOverlayText({
+        category: strategy.campaignCategory,
+        market,
+        base: cleanOffer,
+        trigger,
+        proof,
+      }),
+      primaryText: buildStructuredPrimaryText({
+        hook: `${audience} in ${market} need the offer clear before they decide.`,
+        problem: `Most campaigns bury the strongest reason to respond behind generic market copy.`,
+        outcome: `${sentenceCase(mechanism)} keeps ${cleanOffer} at the center with ${proof.toLowerCase()} so the next step is easier to take.`,
+        cta,
+      }),
+      headline: `${trimWords(cleanOffer, 8)} in ${market}`,
+      cta,
+      score: 0,
+      recommended: false,
+    },
   ] as StaticCreativeAsset[];
 
   return rankStaticCreativeAssets(
@@ -782,7 +1066,7 @@ function buildStaticCreatives(
         strategy,
       });
 
-      return {
+      const offerDrivenAd = ensureOfferDrivenStaticAd({
         ...ad,
         hook: hookLooksGeneric(ad.hook, rulePack.forbiddenHookPatterns) ? baseHook : ad.hook,
         angle: ad.angle as StaticCreativeAsset["angle"],
@@ -796,7 +1080,18 @@ function buildStaticCreatives(
         visualPromptBrief: visualBrief,
         visualConcept: visualBrief.visualConcept,
         score: scoreStaticAd(ad),
-      };
+        offerQuality: null,
+        qualityGate: null,
+      }, strategy, cleanOffer);
+
+      return repairStaticCreativeForMediaBuyerQuality({
+        ad: offerDrivenAd,
+        strategy,
+        offer: cleanOffer,
+        market,
+        audience,
+        propertyType: brief.propertyType,
+      });
     }),
     strategy,
     { market },
@@ -805,9 +1100,23 @@ function buildStaticCreatives(
 
 async function buildVideoCreatives(brief: CreativeBrief): Promise<VideoCreativeAsset[]> {
   const market = toTitleCase(brief.location);
-  const desiredOutcome =
-    safeText(brief.angles[0]) ||
-    `Move faster with ${brief.keyOffer}`;
+  const strategy = preserveExplicitConsumerAudienceCategory(buildDefaultCreativeStrategy({
+    intent: inferCampaignIntent({
+      audience: brief.audience,
+      offer: brief.keyOffer,
+      mechanism: brief.mechanism,
+    }),
+    audience: brief.audience,
+    propertyType: brief.propertyType,
+    keyOffer: brief.keyOffer,
+    mechanism: brief.mechanism,
+    primaryGoal: brief.angles[0],
+    painPoints: brief.painPoints,
+  }), brief.audience, brief.keyOffer);
+  const mediaBuyer = getMediaBuyerCategoryStrategy(strategy.campaignCategory);
+  const proof = strategy.proofStyle || mediaBuyer.proofStyles[0] || "clearer proof before the next step";
+  const mechanism = strategy.mechanism || mediaBuyer.mechanismStyles[0] || brief.mechanism;
+  const cta = selectMediaBuyerCta(strategy.campaignCategory);
   const baseAvatar = selectAvatarProfile(brief);
   const baseVoice = selectVoiceProfile(brief);
   const founderAvatar: AvatarProfile = {
@@ -846,81 +1155,170 @@ async function buildVideoCreatives(brief: CreativeBrief): Promise<VideoCreativeA
     createVideoAd(brief, founderAvatar, founderVoice),
     createVideoAd(brief, customerAvatar, customerVoice),
   ]);
+  const founderFallbackScript = buildVideoArchetype({
+    category: strategy.campaignCategory,
+    market,
+    audience: brief.audience,
+    propertyType: brief.propertyType,
+    offer: brief.keyOffer,
+    mechanism,
+    proof,
+    cta,
+    hookFallback: brief.hooks[0] ?? mediaBuyer.approvedHookPatterns[0] ?? "Nobody is talking about this.",
+    painFallback: brief.painPoints[0] ?? mediaBuyer.internalTensions[0] ?? "The normal search path creates too much noise.",
+  });
+  const ugcFallbackScript = buildVideoArchetype({
+    category: strategy.campaignCategory,
+    market,
+    audience: brief.audience,
+    propertyType: brief.propertyType,
+    offer: brief.keyOffer,
+    mechanism,
+    proof,
+    cta,
+    hookFallback: brief.hooks[1] ?? mediaBuyer.approvedHookPatterns[1] ?? "You may be looking in the wrong place.",
+    painFallback: brief.painPoints[1] ?? mediaBuyer.internalTensions[0] ?? "Most people wait until the opportunity is already obvious.",
+  });
+  const founderScript = founderFallbackScript;
+  const ugcScript = ugcFallbackScript;
+  const founderQuality = evaluateVideoScriptQuality({
+    category: strategy.campaignCategory,
+    script: founderScript,
+    offer: brief.keyOffer,
+    mechanism,
+    audience: brief.audience,
+    cta,
+    visualConcept: mediaBuyer.visualLogic[0] || "casual talking head",
+  });
+  const ugcQuality = evaluateVideoScriptQuality({
+    category: strategy.campaignCategory,
+    script: ugcScript,
+    offer: brief.keyOffer,
+    mechanism,
+    audience: brief.audience,
+    cta,
+    visualConcept: "casual UGC talking head with proof overlay",
+  });
 
   return [
     {
       id: "video-founder",
       conceptType: "founder_expert",
       title: `${market} expert breakdown`,
-      hook: founderVideo.hook,
-      script: founderVideo.script.length > 0
-        ? founderVideo.script
-        : [
-            `Quick one — ${brief.hooks[0] ?? "nobody is talking about this"}`,
-            `${brief.keyOffer} is still available in ${market}.`,
-            `Comment 'LIST' and I will send it.`,
-          ],
-      shotList: founderVideo.scenes.map((scene) => scene.description),
+      hook: founderScript[0] || founderVideo.hook,
+      script: founderScript,
+      shotList: founderVideo.scenes.length > 0
+        ? founderVideo.scenes.map((scene) => scene.description)
+        : ["Hook", "Problem", "Mechanism", "Proof", "Offer", "CTA"],
       onScreenText: [
         `${market} ${brief.audience}`,
         brief.keyOffer,
-        "Move faster now",
+        proof,
       ],
       videoUrl: founderVideo.videoUrl,
       videoGenerationState: founderVideo.videoUrl ? "generated" : "unavailable",
       videoGenerationMessage: founderVideo.videoUrl ? null : "This video preview is not ready yet.",
       providerAssetId: null,
-      cta: /cash ?flow|investor|off-market/i.test(brief.keyOffer) ? "See Available Cash-Flow Deals" : "Book My Strategy Call",
+      cta,
       creatorStyle: "founder / local expert",
       voiceStyle: brief.scriptStyle === "authority" ? "clear, decisive, high-authority" : "clear and direct",
       avatarProfile: founderVideo.avatar,
       voiceProfile: founderVideo.voice,
+      qualityGate: founderQuality,
     },
     {
       id: "video-ugc",
       conceptType: "customer_ugc",
       title: `${market} buyer POV`,
-      hook: customerVideo.hook,
-      script: customerVideo.script.length > 0
-        ? customerVideo.script
-        : [
-            `Quick one — ${brief.hooks[1] ?? `stop ${brief.painPoints[0] ?? "missing deals"}`}`,
-            `Most buyers in ${market} do not know where to find ${brief.keyOffer}.`,
-            `Comment 'ACCESS' and I will send the list.`,
-          ],
-      shotList: customerVideo.scenes.map((scene) => scene.description),
+      hook: ugcScript[0] || customerVideo.hook,
+      script: ugcScript,
+      shotList: customerVideo.scenes.length > 0
+        ? customerVideo.scenes.map((scene) => scene.description)
+        : ["Hook", "Problem", "Mechanism", "Proof", "Offer", "CTA"],
       onScreenText: [
         `Tired of losing in ${market}?`,
         brief.keyOffer,
-        "Get the list now",
+        cta,
       ],
       videoUrl: customerVideo.videoUrl,
       videoGenerationState: customerVideo.videoUrl ? "generated" : "unavailable",
       videoGenerationMessage: customerVideo.videoUrl ? null : "This video preview is not ready yet.",
       providerAssetId: null,
-      cta: /cash ?flow|investor|off-market/i.test(brief.keyOffer) ? "See Available Cash-Flow Deals" : "Book My Strategy Call",
+      cta,
       creatorStyle: "customer / relatable UGC",
       voiceStyle: "fast, authentic, reassuring",
       avatarProfile: customerVideo.avatar,
       voiceProfile: customerVideo.voice,
+      qualityGate: ugcQuality,
     },
   ];
 }
 
-function buildVideoCreativeDrafts(brief: CreativeBrief): VideoCreativeAsset[] {
+function buildVideoCreativeDrafts(brief: CreativeBrief, rawOffer?: string): VideoCreativeAsset[] {
   const market = toTitleCase(brief.location);
-  const founderCta =
-    /cash ?flow|investor|off-market/i.test(brief.keyOffer) ? "See Available Cash-Flow Deals" : "See If You Qualify";
-  const founderScript = [
-    brief.hooks[0] || `${market}: stop missing the strongest opportunities`,
-    `${brief.keyOffer} is easier to act on when the process is built around ${brief.mechanism || "speed and fit"}.`,
-    founderCta,
-  ];
-  const ugcScript = [
-    brief.hooks[1] || `Most ${brief.audience} are still looking in the wrong places`,
-    `Instead of chasing crowded inventory, focus on ${brief.keyOffer} with a tighter path in ${market}.`,
-    founderCta,
-  ];
+  const videoOffer = safeText(rawOffer) || brief.keyOffer;
+  const strategy = preserveExplicitConsumerAudienceCategory(buildDefaultCreativeStrategy({
+    intent: inferCampaignIntent({
+      audience: brief.audience,
+      offer: videoOffer,
+      mechanism: brief.mechanism,
+    }),
+    audience: brief.audience,
+    propertyType: brief.propertyType,
+    keyOffer: videoOffer,
+    mechanism: brief.mechanism,
+    primaryGoal: brief.angles[0],
+    painPoints: brief.painPoints,
+  }), brief.audience, videoOffer);
+  const mediaBuyer = getMediaBuyerCategoryStrategy(strategy.campaignCategory);
+  const proof = strategy.proofStyle || mediaBuyer.proofStyles[0] || "clearer proof before the next step";
+  const mechanism = strategy.mechanism || mediaBuyer.mechanismStyles[0] || brief.mechanism;
+  const founderCta = selectMediaBuyerCta(strategy.campaignCategory);
+  const founderScript = buildVideoArchetype({
+    category: strategy.campaignCategory,
+    market,
+    audience: brief.audience,
+    propertyType: brief.propertyType,
+    offer: videoOffer,
+    mechanism,
+    proof,
+    cta: founderCta,
+    hookFallback: brief.hooks[0] || fillMediaBuyerPattern(mediaBuyer.approvedHookPatterns[0] || `${market}: stop missing the strongest opportunities`, {
+      market,
+      propertyType: brief.propertyType,
+    }),
+    painFallback: brief.painPoints[0] || mediaBuyer.internalTensions[0] || `Most ${brief.audience} wait until the obvious move is already crowded.`,
+  });
+  const ugcScript = buildVideoArchetype({
+    category: strategy.campaignCategory,
+    market,
+    audience: brief.audience,
+    propertyType: brief.propertyType,
+    offer: videoOffer,
+    mechanism,
+    proof,
+    cta: founderCta,
+    hookFallback: brief.hooks[1] || `Most ${brief.audience} are still looking in the wrong places`,
+    painFallback: brief.painPoints[1] || `The problem is not effort; it is not knowing which option is actually worth acting on.`,
+  });
+  const founderQuality = evaluateVideoScriptQuality({
+    category: strategy.campaignCategory,
+    script: founderScript,
+    offer: videoOffer,
+    mechanism,
+    audience: brief.audience,
+    cta: founderCta,
+    visualConcept: mediaBuyer.visualLogic[0],
+  });
+  const ugcQuality = evaluateVideoScriptQuality({
+    category: strategy.campaignCategory,
+    script: ugcScript,
+    offer: videoOffer,
+    mechanism,
+    audience: brief.audience,
+    cta: founderCta,
+    visualConcept: "casual UGC talking head with proof overlay",
+  });
 
   return [
     {
@@ -929,8 +1327,8 @@ function buildVideoCreativeDrafts(brief: CreativeBrief): VideoCreativeAsset[] {
       title: `${market} expert breakdown`,
       hook: founderScript[0],
       script: founderScript,
-      shotList: ["Pattern interrupt", "Mechanism", "CTA"],
-      onScreenText: [market, brief.keyOffer, founderCta],
+      shotList: ["Hook", "Problem", "Mechanism", "Proof", "Offer", "CTA"],
+      onScreenText: [market, videoOffer, proof, founderCta],
       videoUrl: undefined,
       videoGenerationState: "unavailable",
       videoGenerationMessage: "This video preview is not ready yet.",
@@ -940,6 +1338,7 @@ function buildVideoCreativeDrafts(brief: CreativeBrief): VideoCreativeAsset[] {
       voiceStyle: "clear and direct",
       avatarProfile: selectAvatarProfile(brief),
       voiceProfile: selectVoiceProfile(brief),
+      qualityGate: founderQuality,
     },
     {
       id: "video-ugc",
@@ -947,8 +1346,8 @@ function buildVideoCreativeDrafts(brief: CreativeBrief): VideoCreativeAsset[] {
       title: `${market} customer POV`,
       hook: ugcScript[0],
       script: ugcScript,
-      shotList: ["Pain", "Reframe", "CTA"],
-      onScreenText: [brief.audience, brief.keyOffer, founderCta],
+      shotList: ["Hook", "Problem", "Mechanism", "Proof", "Offer", "CTA"],
+      onScreenText: [brief.audience, videoOffer, proof, founderCta],
       videoUrl: undefined,
       videoGenerationState: "unavailable",
       videoGenerationMessage: "This video preview is not ready yet.",
@@ -958,8 +1357,104 @@ function buildVideoCreativeDrafts(brief: CreativeBrief): VideoCreativeAsset[] {
       voiceStyle: "warm and conversational",
       avatarProfile: selectAvatarProfile(brief),
       voiceProfile: selectVoiceProfile(brief),
+      qualityGate: ugcQuality,
     },
   ];
+}
+
+function buildVideoArchetype(params: {
+  category: ReturnType<typeof buildDefaultCreativeStrategy>["campaignCategory"];
+  market: string;
+  audience: string;
+  propertyType: string;
+  offer: string;
+  mechanism: string;
+  proof: string;
+  cta: string;
+  hookFallback: string;
+  painFallback: string;
+}) {
+  const { category, market, audience, propertyType, offer, mechanism, proof, cta, hookFallback, painFallback } = params;
+  const archetypes = {
+    seller: {
+      hook: `Before you sell in ${market}, watch this first.`,
+      problem: `Most homeowners do not lose money after listing; they lose it before they price, time, and position the home.`,
+      mechanism: `${sentenceCase(mechanism)} tests demand and positioning before the listing goes public.`,
+      proof: `${sentenceCase(proof)} gives you a clearer read before you commit to the wrong move.`,
+      offer,
+      cta,
+    },
+    buyer: {
+      hook: `By the time most buyers see the listing in ${market}, it may already be gone.`,
+      problem: `The issue is not effort; it is getting access and affordability clarity too late.`,
+      mechanism: `${sentenceCase(mechanism)} filters homes around fit, timing, and budget before the broad market reacts.`,
+      proof: `${sentenceCase(proof)} shows the path before you waste time chasing the wrong ${propertyType}.`,
+      offer,
+      cta,
+    },
+    precon: {
+      hook: `You do not always need the full resale down payment to get into ${market}.`,
+      problem: `The risk is waiting until completion or future pricing makes the entry harder.`,
+      mechanism: `${sentenceCase(mechanism)} uses deposit timing and project selection instead of a normal resale search.`,
+      proof: `${sentenceCase(proof)} makes the upside and timeline easier to compare.`,
+      offer,
+      cta,
+    },
+    investor: {
+      hook: `If you are still searching public listings for deals in ${market}, you may already be late.`,
+      problem: `The best investor opportunities usually get filtered before they look obvious to everyone else.`,
+      mechanism: `${sentenceCase(mechanism)} screens markets around ROI, risk, and timing.`,
+      proof: `${sentenceCase(proof)} gives you a cleaner reason to review the deal before capital moves.`,
+      offer,
+      cta,
+    },
+    luxury: {
+      hook: `This kind of ${market} opportunity is not meant for everyone.`,
+      problem: `Public-market luxury inventory often loses the privacy and fit that serious buyers actually want.`,
+      mechanism: `${sentenceCase(mechanism)} keeps access curated before the release becomes broadly visible.`,
+      proof: `${sentenceCase(proof)} gives the right buyer a quieter path to review it.`,
+      offer,
+      cta,
+    },
+  } as const;
+  const selected = archetypes[category] ?? {
+    hook: hookFallback,
+    problem: painFallback,
+    mechanism: `${sentenceCase(mechanism)} creates a clearer path than generic browsing.`,
+    proof: `${sentenceCase(proof)} reduces uncertainty before the next step.`,
+    offer,
+    cta,
+  };
+
+  return [
+    selected.hook,
+    selected.problem,
+    selected.mechanism,
+    selected.proof,
+    selected.offer,
+    selected.cta,
+  ].map((line) => line.replace(/\bhi,?\s+my name is\b/gi, "").trim()).filter(Boolean);
+}
+
+function evaluateVideoScriptQuality(params: {
+  category: ReturnType<typeof buildDefaultCreativeStrategy>["campaignCategory"];
+  script: string[];
+  offer: string;
+  mechanism: string;
+  audience: string;
+  cta: string;
+  visualConcept: string;
+}) {
+  return evaluateCreativeQuality({
+    category: params.category,
+    offer: params.offer,
+    mechanism: params.mechanism,
+    audience: params.audience,
+    hook: params.script[0] || "",
+    cta: params.cta,
+    visualConcept: params.visualConcept,
+    scriptLines: params.script,
+  });
 }
 
 function toCanonicalCreativeItems(params: {
@@ -1038,8 +1533,8 @@ export function buildCreativeSystem(input?: CreativeEngineInput | null): Creativ
     pain_points: normalized.painPoints.length > 0 ? normalized.painPoints : [shortPain(normalized)],
     market_type: normalized.marketType,
   });
-  const staticAds = buildStaticCreatives(brief, normalized.creativeStrategy);
-  const videoAds = buildVideoCreativeDrafts(brief);
+  const staticAds = buildStaticCreatives(brief, normalized.creativeStrategy, normalized.rawOffer);
+  const videoAds = buildVideoCreativeDrafts(brief, normalized.rawOffer || normalized.offer);
 
   return {
     brief,
@@ -1058,7 +1553,8 @@ export async function generateStaticCreativeAds(
   const generatedStaticAds = await Promise.all(
     baseStaticAds.map(async (asset) => {
       try {
-        const imageAd = await createImageAd(brief, asset);
+        const providerUsage = input?.provider_usage_context?.createForAsset(asset) ?? null;
+        const imageAd = await createImageAd(brief, asset, providerUsage);
         return {
           ...asset,
           imageUrl: imageAd.imageUrl ?? "",

@@ -1,0 +1,393 @@
+import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
+
+export type StaticAdTemplateKind =
+  | "seller_value_map"
+  | "seller_price_comparison"
+  | "seller_homeowner_callout"
+  | "seller_price_update"
+  | "buyer_listing_collage"
+  | "buyer_affordability"
+  | "buyer_payment_anchor"
+  | "buyer_feature_collage"
+  | "precon_breaking_news"
+  | "precon_current_future"
+  | "precon_deposit_timeline"
+  | "precon_price_anchor"
+  | "investor_roi_dashboard"
+  | "investor_rent_price"
+  | "investor_map_data"
+  | "luxury_private_access"
+  | "luxury_cinematic"
+  | "luxury_scarcity";
+
+export type StaticAdTemplateStatus =
+  | "final_composed"
+  | "template_fallback"
+  | "background_generating"
+  | "background_failed";
+
+export type StaticAdTemplateInput = {
+  id?: string | null;
+  category?: CampaignCategory | string | null;
+  location?: string | null;
+  offer?: string | null;
+  imageUrl?: string | null;
+  imageGenerationState?: string | null;
+  imageGenerationMessage?: string | null;
+  visualPromptBrief?: {
+    category?: CampaignCategory | string | null;
+    proofStyle?: string | null;
+    mechanism?: string | null;
+    visualLogic?: string[] | null;
+    overlayLogic?: string[] | null;
+  } | null;
+  hook?: string | null;
+  overlayText?: string | null;
+  headline?: string | null;
+  primaryText?: string | null;
+  cta?: string | null;
+  score?: number | null;
+  qualityGate?: {
+    score?: number | null;
+    accepted?: boolean | null;
+    hardFailures?: string[] | null;
+  } | null;
+  offerQuality?: {
+    score?: number | null;
+    accepted?: boolean | null;
+    missingElements?: string[] | null;
+  } | null;
+};
+
+export type ComposedStaticAdPreview = {
+  templateId: StaticAdTemplateKind;
+  category: CampaignCategory;
+  status: StaticAdTemplateStatus;
+  aspectRatio: "1:1" | "16:9";
+  backgroundImageUrl: string | null;
+  rawBackgroundAvailable: boolean;
+  location: string;
+  eyebrow: string;
+  headline: string;
+  overlayText: string;
+  primaryText: string;
+  cta: string;
+  proofChips: string[];
+  designBadges: string[];
+  visualRules: string[];
+  qualityScore: number | null;
+  qualityAccepted: boolean | null;
+  overflowRisk: boolean;
+  backgroundMessage: string;
+};
+
+const CATEGORY_LABELS: Record<CampaignCategory, string> = {
+  buyer: "Buyer opportunity",
+  seller: "Homeowner update",
+  investor: "Investor brief",
+  precon: "Pre-con release",
+  luxury: "Private access",
+};
+
+const CATEGORY_CTAS: Record<CampaignCategory, string> = {
+  buyer: "Get Access",
+  seller: "Check Your Home Value",
+  investor: "View Available Deals",
+  precon: "Get the Full List",
+  luxury: "Request Private Access",
+};
+
+const CATEGORY_RULES: Record<CampaignCategory, string[]> = {
+  seller: [
+    "map or value comparison",
+    "before/after pricing cue",
+    "demand indicator",
+    "suburban homeowner context",
+  ],
+  buyer: [
+    "warm lived-in interior",
+    "affordability or payment cue",
+    "home feature collage",
+    "opportunity framing",
+  ],
+  precon: [
+    "current vs future context",
+    "deposit or timeline proof",
+    "construction plus render cue",
+    "price anchor",
+  ],
+  investor: [
+    "ROI or yield proof",
+    "rent vs price comparison",
+    "map or market data",
+    "clean dashboard layout",
+  ],
+  luxury: [
+    "minimal premium text",
+    "private-access signal",
+    "cinematic depth",
+    "scarcity cue",
+  ],
+};
+
+const VAGUE_CTA_PATTERN = /learn more|submit|contact us|book a call/i;
+
+function safeText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function compactWhitespace(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function titleCase(value: string) {
+  return compactWhitespace(value)
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function includesAny(value: string, patterns: RegExp[]) {
+  return patterns.some((pattern) => pattern.test(value));
+}
+
+export function normalizeStaticAdTemplateCategory(input: StaticAdTemplateInput): CampaignCategory {
+  const explicit = safeText(input.category || input.visualPromptBrief?.category).toLowerCase();
+
+  if (explicit === "seller" || explicit === "buyer" || explicit === "investor" || explicit === "precon" || explicit === "luxury") {
+    return explicit;
+  }
+
+  const haystack = [
+    input.offer,
+    input.hook,
+    input.overlayText,
+    input.headline,
+    input.primaryText,
+    input.visualPromptBrief?.proofStyle,
+    input.visualPromptBrief?.mechanism,
+    ...(input.visualPromptBrief?.visualLogic ?? []),
+    ...(input.visualPromptBrief?.overlayLogic ?? []),
+  ]
+    .map((item) => safeText(item).toLowerCase())
+    .filter(Boolean)
+    .join(" ");
+
+  if (includesAny(haystack, [/pre[- ]?con|construction|deposit|completion|202[6-9]|assignment potential|developer/])) {
+    return "precon";
+  }
+
+  if (includesAny(haystack, [/luxury|private access|exclusive|penthouse|skyline|marble|off[- ]market network|rare opportunity/])) {
+    return "luxury";
+  }
+
+  if (includesAny(haystack, [/invest|roi|yield|cash ?flow|rent vs|rental|cap rate|undervalued/])) {
+    return "investor";
+  }
+
+  if (includesAny(haystack, [/seller|homeowner|home value|what.*worth|before you sell|listing|price update|valuation/])) {
+    return "seller";
+  }
+
+  return "buyer";
+}
+
+function selectTemplateKind(category: CampaignCategory, input: StaticAdTemplateInput): StaticAdTemplateKind {
+  const haystack = [
+    input.offer,
+    input.hook,
+    input.overlayText,
+    input.headline,
+    input.primaryText,
+    input.visualPromptBrief?.proofStyle,
+  ]
+    .map((item) => safeText(item).toLowerCase())
+    .filter(Boolean)
+    .join(" ");
+
+  if (category === "seller") {
+    if (/2019|202[0-9]|\$|price comparison|before.*after|vs/.test(haystack)) return "seller_price_comparison";
+    if (/homeowner|neighborhood|area|street/.test(haystack)) return "seller_homeowner_callout";
+    if (/value|worth|valuation|price update/.test(haystack)) return "seller_price_update";
+    return "seller_value_map";
+  }
+
+  if (category === "buyer") {
+    if (/payment|monthly|afford|down payment|under \$/.test(haystack)) return "buyer_affordability";
+    if (/new listing|listing alert|bed|bath|feature|backyard|kitchen/.test(haystack)) return "buyer_feature_collage";
+    if (/\$|price|under/.test(haystack)) return "buyer_payment_anchor";
+    return "buyer_listing_collage";
+  }
+
+  if (category === "precon") {
+    if (/breaking|arrived|news/.test(haystack)) return "precon_breaking_news";
+    if (/202[6-9]|timeline|completion/.test(haystack)) return "precon_deposit_timeline";
+    if (/current|future|render|crane|construction/.test(haystack)) return "precon_current_future";
+    return "precon_price_anchor";
+  }
+
+  if (category === "investor") {
+    if (/rent|price|cash ?flow/.test(haystack)) return "investor_rent_price";
+    if (/map|micro-market|area|location/.test(haystack)) return "investor_map_data";
+    return "investor_roi_dashboard";
+  }
+
+  if (/scarce|few|limited|rare/.test(haystack)) return "luxury_scarcity";
+  if (/cinematic|skyline|night|marble|glass/.test(haystack)) return "luxury_cinematic";
+  return "luxury_private_access";
+}
+
+function extractNumberTokens(input: StaticAdTemplateInput) {
+  const source = [
+    input.offer,
+    input.overlayText,
+    input.headline,
+    input.primaryText,
+    input.visualPromptBrief?.proofStyle,
+  ].join(" ");
+  const matches = source.match(/(?:\$[\d,.]+[mk]?|\d+%|\d+\s*-\s*\d+|\d+\+?|202[6-9])/gi) ?? [];
+  return Array.from(new Set(matches.map((item) => item.trim()))).slice(0, 3);
+}
+
+function trimForSlot(value: string, maxChars: number) {
+  const text = compactWhitespace(value);
+  if (text.length <= maxChars) {
+    return text;
+  }
+
+  const ellipsis = "...";
+  const bodyLimit = Math.max(0, maxChars - ellipsis.length);
+  const trimmed = text.slice(0, bodyLimit).replace(/\s+\S*$/, "");
+  return `${trimmed || text.slice(0, bodyLimit)}${ellipsis}`.slice(0, maxChars);
+}
+
+export function fitStaticAdText(input: {
+  headline: string;
+  overlayText: string;
+  primaryText: string;
+  cta: string;
+  category: CampaignCategory;
+}) {
+  const luxury = input.category === "luxury";
+  const headlineLimit = luxury ? 58 : 72;
+  const overlayLimit = luxury ? 52 : 82;
+  const primaryLimit = 150;
+  const ctaLimit = 34;
+  const overflowRisk =
+    input.headline.length > headlineLimit ||
+    input.overlayText.length > overlayLimit ||
+    input.primaryText.length > primaryLimit ||
+    input.cta.length > ctaLimit;
+
+  return {
+    headline: trimForSlot(input.headline, headlineLimit),
+    overlayText: trimForSlot(input.overlayText, overlayLimit),
+    primaryText: trimForSlot(input.primaryText, primaryLimit),
+    cta: trimForSlot(input.cta, ctaLimit),
+    overflowRisk,
+  };
+}
+
+function buildStatus(input: StaticAdTemplateInput): StaticAdTemplateStatus {
+  if (input.imageUrl) {
+    return "final_composed";
+  }
+
+  if (input.imageGenerationState === "generating") {
+    return "background_generating";
+  }
+
+  if (input.imageGenerationState === "failed") {
+    return "background_failed";
+  }
+
+  return "template_fallback";
+}
+
+function buildBackgroundMessage(input: StaticAdTemplateInput, status: StaticAdTemplateStatus) {
+  if (status === "final_composed") {
+    return "Raw background asset composed into final ad template.";
+  }
+
+  if (status === "background_generating") {
+    return input.imageGenerationMessage || "Background is still generating; final layout is ready.";
+  }
+
+  if (status === "background_failed") {
+    return input.imageGenerationMessage || "Background generation failed; deterministic template is still usable.";
+  }
+
+  return "No raw background yet; deterministic template preview is shown.";
+}
+
+function buildEyebrow(category: CampaignCategory, location: string, templateId: StaticAdTemplateKind) {
+  if (category === "seller") return `${location} homeowners`;
+  if (category === "precon") return /breaking/.test(templateId) ? "Breaking news" : `${location} pre-con`;
+  if (category === "investor") return `${location} investors`;
+  if (category === "luxury") return "Private release";
+  return `${location} opportunity`;
+}
+
+function fallbackHeadline(category: CampaignCategory, location: string) {
+  if (category === "seller") return `What is your ${location} home worth?`;
+  if (category === "precon") return `New ${location} pre-con opportunities`;
+  if (category === "investor") return `${location} deal flow brief`;
+  if (category === "luxury") return `Private access in ${location}`;
+  return `New homes available in ${location}`;
+}
+
+export function buildComposedStaticAdPreview(input: StaticAdTemplateInput): ComposedStaticAdPreview {
+  const category = normalizeStaticAdTemplateCategory(input);
+  const templateId = selectTemplateKind(category, input);
+  const location = titleCase(safeText(input.location) || "Your Market");
+  const numbers = extractNumberTokens(input);
+  const status = buildStatus(input);
+  const safeCta = VAGUE_CTA_PATTERN.test(safeText(input.cta)) || !safeText(input.cta)
+    ? CATEGORY_CTAS[category]
+    : safeText(input.cta);
+  const headlineSource = safeText(input.headline) || safeText(input.hook) || safeText(input.offer) || fallbackHeadline(category, location);
+  const overlaySource =
+    safeText(input.overlayText) ||
+    safeText(input.offer) ||
+    safeText(input.visualPromptBrief?.proofStyle) ||
+    headlineSource;
+  const primarySource =
+    safeText(input.primaryText) ||
+    safeText(input.offer) ||
+    `Use this ${CATEGORY_LABELS[category].toLowerCase()} to reduce uncertainty before the next move.`;
+  const fitted = fitStaticAdText({
+    headline: headlineSource,
+    overlayText: overlaySource,
+    primaryText: primarySource,
+    cta: safeCta,
+    category,
+  });
+  const proofChips = [
+    ...numbers,
+    safeText(input.visualPromptBrief?.proofStyle),
+    safeText(input.visualPromptBrief?.mechanism),
+  ].filter(Boolean).slice(0, 4);
+
+  return {
+    templateId,
+    category,
+    status,
+    aspectRatio: category === "luxury" ? "16:9" : "1:1",
+    backgroundImageUrl: safeText(input.imageUrl) || null,
+    rawBackgroundAvailable: Boolean(input.imageUrl),
+    location,
+    eyebrow: buildEyebrow(category, location, templateId),
+    headline: fitted.headline,
+    overlayText: fitted.overlayText,
+    primaryText: fitted.primaryText,
+    cta: fitted.cta,
+    proofChips,
+    designBadges: [CATEGORY_LABELS[category], templateId.replace(/_/g, " ")],
+    visualRules: CATEGORY_RULES[category],
+    qualityScore: input.qualityGate?.score ?? input.offerQuality?.score ?? input.score ?? null,
+    qualityAccepted: input.qualityGate?.accepted ?? input.offerQuality?.accepted ?? null,
+    overflowRisk: fitted.overflowRisk,
+    backgroundMessage: buildBackgroundMessage(input, status),
+  };
+}

@@ -1,5 +1,7 @@
 // @ts-nocheck
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { ApiError } from "@/lib/api/route";
 import { logWarn } from "@/lib/logging";
 import { createAdminClient } from "@/lib/supabase/admin";
 type Bucket = {
@@ -26,10 +28,9 @@ export type RateLimitAdapter = {
 
 const RATE_LIMIT_BUCKETS = new Map<string, Bucket>();
 let supabaseAdapter: RateLimitAdapter | null | undefined;
-let durableRateLimitFallbackLogged = false;
+let durableRateLimitFailureLogged = false;
 
 declare global {
-  // eslint-disable-next-line no-var
   var __DEALFLOW_RATE_LIMIT_ADAPTER__: RateLimitAdapter | undefined;
 }
 
@@ -97,9 +98,9 @@ class SupabaseRateLimitAdapter implements RateLimitAdapter {
     }
 
     const { data, error } = await (admin as any).rpc("consume_rate_limit_bucket", {
-      bucket_key: options.key,
-      max_requests: options.limit,
-      window_ms: options.windowMs,
+      p_bucket_key: options.key,
+      p_max_requests: options.limit,
+      p_window_ms: options.windowMs,
     });
 
     if (error) {
@@ -135,6 +136,28 @@ function shouldFallbackToMemoryRateLimit(error: unknown) {
     message.includes("consume_rate_limit_bucket") ||
     message.includes("rate limit bucket") ||
     message.includes("reset_at")
+  );
+}
+
+function isProductionRuntime() {
+  return process.env.NODE_ENV === "production";
+}
+
+function durableRateLimitUnavailable(options: RateLimitOptions, error?: unknown) {
+  if (!durableRateLimitFailureLogged) {
+    durableRateLimitFailureLogged = true;
+    logWarn("Durable rate limit adapter unavailable", {
+      key: options.key,
+      windowMs: options.windowMs,
+      limit: options.limit,
+      error: error instanceof Error ? error.message : String(error ?? "unknown"),
+    });
+  }
+
+  return new ApiError(
+    503,
+    "Durable rate limiting is unavailable. Please retry shortly.",
+    "rate_limit_unavailable",
   );
 }
 
@@ -176,6 +199,9 @@ export async function consumeRateLimit(options: RateLimitOptions): Promise<RateL
       windowMs: options.windowMs,
       limit: options.limit,
     });
+    if (isProductionRuntime()) {
+      throw durableRateLimitUnavailable(options);
+    }
     return null;
   }
 
@@ -183,11 +209,8 @@ export async function consumeRateLimit(options: RateLimitOptions): Promise<RateL
     return await adapter.consume(options);
   } catch (error) {
     if (adapter.name === "supabase" && shouldFallbackToMemoryRateLimit(error)) {
-      if (!durableRateLimitFallbackLogged) {
-        durableRateLimitFallbackLogged = true;
-        logWarn("Supabase rate limit function unavailable, falling back to memory adapter", {
-          key: options.key,
-        });
+      if (isProductionRuntime()) {
+        throw durableRateLimitUnavailable(options, error);
       }
 
       return new MemoryRateLimitAdapter().consume(options);
@@ -195,6 +218,30 @@ export async function consumeRateLimit(options: RateLimitOptions): Promise<RateL
 
     throw error;
   }
+}
+
+export async function consumeRateLimitBuckets(
+  options: RateLimitOptions[],
+): Promise<RateLimitResult | null> {
+  for (const option of options) {
+    const result = await consumeRateLimit(option);
+    if (result && !result.allowed) {
+      return result;
+    }
+  }
+
+  return null;
+}
+
+export function getRequestIp(request: Request | { headers: Headers }) {
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  const realIp = request.headers.get("x-real-ip");
+  return forwardedFor?.split(",")[0]?.trim() || realIp || "anonymous";
+}
+
+export function getHashedRateLimitIdentifier(value: string | null | undefined) {
+  const normalized = (value ?? "anonymous").trim().toLowerCase() || "anonymous";
+  return createHash("sha256").update(normalized).digest("hex").slice(0, 24);
 }
 
 export function getRateLimitKey(
@@ -206,10 +253,7 @@ export function getRateLimitKey(
     return `${bucket}:${identifier}`;
   }
 
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  const realIp = request.headers.get("x-real-ip");
-  const ip = forwardedFor?.split(",")[0]?.trim() || realIp || "anonymous";
-  return `${bucket}:${ip}`;
+  return `${bucket}:${getRequestIp(request)}`;
 }
 
 export function buildRateLimitResponse(resetAt: number) {

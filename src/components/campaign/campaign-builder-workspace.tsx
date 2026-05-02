@@ -1097,18 +1097,20 @@ export function CampaignBuilderWorkspace({
       setPreviewDirection(commandResult.direction || DEFAULT_PREVIEW_DIRECTION);
       setAiCommandSummary(commandResult.summary || "Applied AI-directed page changes.");
       setCampaign((current) => {
+        const creativePatch = commandResult.creativePatch ?? {};
+        const funnelPatch = commandResult.funnelPatch ?? {};
         const nextItems = (current.items || []).map((item) => ({
           ...item,
           visualDirection:
-            commandResult.creativePatch.visualDirection || item.visualDirection,
-          imagePrompt: commandResult.creativePatch.imagePromptAppend
-            ? [item.imagePrompt, commandResult.creativePatch.imagePromptAppend].filter(Boolean).join(". ")
+            creativePatch.visualDirection || item.visualDirection,
+          imagePrompt: creativePatch.imagePromptAppend
+            ? [item.imagePrompt, creativePatch.imagePromptAppend].filter(Boolean).join(". ")
             : item.imagePrompt,
         }));
         const nextCreatives = (current.creatives || []).map((creative) => ({
           ...creative,
           visual_direction:
-            commandResult.creativePatch.visualDirection || creative.visual_direction,
+            creativePatch.visualDirection || creative.visual_direction,
         }));
 
         return {
@@ -1117,9 +1119,9 @@ export function CampaignBuilderWorkspace({
           creatives: nextCreatives,
           funnel: {
             ...current.funnel,
-            headline: commandResult.funnelPatch.headline || current.funnel.headline,
-            subheadline: commandResult.funnelPatch.subheadline || current.funnel.subheadline,
-            cta: commandResult.funnelPatch.cta || current.funnel.cta,
+            headline: funnelPatch.headline || current.funnel.headline,
+            subheadline: funnelPatch.subheadline || current.funnel.subheadline,
+            cta: funnelPatch.cta || current.funnel.cta,
           },
         };
       }, {

@@ -46,8 +46,16 @@ export function getCheckoutUrls() {
   const baseUrl = getPublicAppUrl();
 
   return {
-    successUrl: `${baseUrl}/unlock?checkout=success`,
+    successUrl: `${baseUrl}/unlock?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancelUrl: `${baseUrl}/unlock?checkout=cancelled`,
+  };
+}
+
+export function getBillingPortalUrls() {
+  const baseUrl = getPublicAppUrl();
+
+  return {
+    returnUrl: `${baseUrl}/settings?billing=portal`,
   };
 }
 

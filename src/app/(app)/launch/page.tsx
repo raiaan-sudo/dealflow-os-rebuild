@@ -2,15 +2,17 @@ import Link from "next/link";
 import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { LaunchMetaSelectionPanel } from "@/components/campaign/launch/launch-meta-selection-panel";
+import { StaticCreativePreviewCard } from "@/components/campaign/static-creative-preview-card";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
+import { PageShell } from "@/components/ui/page-shell";
 import { StatusPill, getStatusTone } from "@/components/ui/status-pill";
 import { getCampaignIntentLabel } from "@/lib/campaign-intent";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { getIntegrationProviderState } from "@/lib/integrations/provider-registry";
-import { getSelectedAdIdFromPlan, readCampaignPlanDocument } from "@/lib/services/campaign-plan-document";
+import { getSelectedAdIdsFromPlan, readCampaignPlanDocument } from "@/lib/services/campaign-plan-document";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { getBillingSummary } from "@/lib/services/billing-service";
 import { getMetaQueryUiCopy } from "@/lib/integrations/meta/error-mapper";
@@ -64,15 +66,15 @@ function formatVerifiedTimestamp(value: string | null | undefined) {
   });
 }
 
-async function loadPersistedSelectedAdId(campaignId: string | null) {
+async function loadPersistedSelectedAdIds(campaignId: string | null) {
   if (!campaignId) {
-    return null;
+    return [];
   }
 
   const supabase = await createRouteHandlerClient();
 
   if (!supabase) {
-    return null;
+    return [];
   }
 
   const { data } = await supabase
@@ -82,7 +84,7 @@ async function loadPersistedSelectedAdId(campaignId: string | null) {
     .maybeSingle();
 
   const row = (data as { plan?: unknown } | null) ?? null;
-  return getSelectedAdIdFromPlan(readCampaignPlanDocument(row?.plan));
+  return getSelectedAdIdsFromPlan(readCampaignPlanDocument(row?.plan));
 }
 
 export default async function LaunchAliasPage({
@@ -143,7 +145,8 @@ export default async function LaunchAliasPage({
     ),
   ]);
   const plan = record ? canonicalCampaignToPlan(record) : null;
-  const selectedAdId = await loadPersistedSelectedAdId(requestedCampaignId);
+  const resolvedCampaignId = record?.campaign.id ?? requestedCampaignId;
+  const selectedAdIds = await loadPersistedSelectedAdIds(resolvedCampaignId);
   const metaErrorCopy = getMetaQueryUiCopy(metaError, "oauth_callback");
   const discoveryIncomplete =
     metaWarning === "asset_discovery_incomplete"
@@ -152,7 +155,7 @@ export default async function LaunchAliasPage({
 
   if (!plan) {
     return (
-      <div className="space-y-8">
+      <PageShell>
         <WizardSteps current="launch" />
         <PageHeader
           eyebrow="Launch"
@@ -168,7 +171,7 @@ export default async function LaunchAliasPage({
             <Link href="/dashboard">Open dashboard</Link>
           </Button>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
@@ -204,8 +207,7 @@ export default async function LaunchAliasPage({
     ...getLaunchBlockingReasons(launchRequirements),
     ...(metaSelectionReady && !metaPreflightReady ? metaPreflight?.errors ?? ["Meta preflight failed."] : []),
   ];
-  const selectedCreative =
-    plan.creatives.staticAds.find((ad) => ad.id === selectedAdId) ?? null;
+  const selectedCreatives = plan.creatives.staticAds.filter((ad) => selectedAdIds.includes(ad.id));
   const metaStatusText = metaLaunchReady
     ? `Connected (last verified ${formatLastVerified(metaPreflight?.checkedAt)})`
     : metaVerificationTimedOut
@@ -217,9 +219,9 @@ export default async function LaunchAliasPage({
           : "Meta connection required";
   const metaVerifiedAtText = formatVerifiedTimestamp(metaPreflight?.checkedAt);
 
-  if (!selectedAdId || !selectedCreative) {
+  if (selectedCreatives.length === 0) {
     return (
-      <div className="space-y-8">
+      <PageShell>
         <WizardSteps current="launch" />
         <PageHeader
           eyebrow="Launch"
@@ -228,7 +230,7 @@ export default async function LaunchAliasPage({
         />
         <EmptyState
           title="No selected creative is saved for this campaign"
-          description="Launch is blocked until a persisted selected ad exists. Go back to creatives and choose the ad you want to launch."
+          description="Launch is blocked until a persisted creative test set exists. Go back to creatives and choose the ads you want to test."
         />
         <div>
           <Button asChild>
@@ -243,12 +245,12 @@ export default async function LaunchAliasPage({
             </Link>
           </Button>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="space-y-8">
+    <PageShell>
       <WizardSteps current="launch" />
       <PageHeader
         eyebrow="Launch"
@@ -289,7 +291,7 @@ export default async function LaunchAliasPage({
       <Card className="p-5 sm:p-7">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
           <div className="space-y-4">
-            <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-5">
+            <div className="surface-subtle rounded-[22px] border border-white/10 p-5">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Campaign</p>
               <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
                 {plan.businessName || `${plan.market} ${intentLabel} Campaign`}
@@ -339,7 +341,7 @@ export default async function LaunchAliasPage({
                 </div>
               ) : null}
             </div>
-            <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-5">
+            <div className="surface-subtle rounded-[22px] border border-white/10 p-5">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Meta setup</p>
               <p className="mt-3 text-sm font-semibold">
                 {metaConnected
@@ -352,38 +354,34 @@ export default async function LaunchAliasPage({
               </p>
             </div>
           </div>
-          <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-5">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Selected creative</p>
-            {selectedCreative ? (
-              <div className="mt-4 space-y-4">
-                {selectedCreative.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={selectedCreative.imageUrl}
-                    alt={selectedCreative.headline || "Selected ad preview"}
-                    className="h-56 w-full rounded-[18px] object-cover"
-                  />
-                ) : (
-                  <div className="flex h-56 items-center justify-center rounded-[18px] border border-dashed border-white/10 bg-black/20 text-sm text-muted-foreground">
-                    Creative preview will appear here
-                  </div>
-                )}
-                <div>
-                  <p className="text-lg font-semibold">{selectedCreative.headline}</p>
-                  <p className="mt-2 text-sm leading-7 text-muted-foreground">
-                    {selectedCreative.primaryText}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-4 rounded-[18px] border border-dashed border-white/10 bg-black/20 p-4 text-sm text-muted-foreground">
-                No creative has been selected yet. Go back to review creatives before launch.
-              </div>
-            )}
+          <div className="surface-subtle rounded-[22px] border border-white/10 p-5">
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Selected creative test set</p>
+            <div className="mt-4 grid gap-4">
+              {selectedCreatives.map((selectedCreative) => (
+                <StaticCreativePreviewCard
+                  category={plan.creativeStrategy.campaignCategory}
+                  compact
+                  cta={selectedCreative.cta}
+                  headline={selectedCreative.headline}
+                  imageGenerationMessage={selectedCreative.imageGenerationMessage}
+                  imageGenerationState={selectedCreative.imageGenerationState}
+                  imageUrl={selectedCreative.imageUrl}
+                  location={plan.market}
+                  key={selectedCreative.id}
+                  offer={plan.offerSummary || plan.keyOffer}
+                  overlayText={selectedCreative.overlayText}
+                  primaryText={selectedCreative.primaryText}
+                  qualityGate={selectedCreative.qualityGate}
+                  score={selectedCreative.score}
+                  selectedCount={selectedCreatives.length}
+                  visualPromptBrief={selectedCreative.visualPromptBrief}
+                />
+              ))}
+            </div>
           </div>
         </div>
       </Card>
-      <LaunchMetaSelectionPanel connection={metaConnection} />
+      <LaunchMetaSelectionPanel connection={metaConnection} campaignId={resolvedCampaignId} />
       <Card className="p-5 sm:p-7">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-2xl">
@@ -423,6 +421,6 @@ export default async function LaunchAliasPage({
           </div>
         </div>
       </Card>
-    </div>
+    </PageShell>
   );
 }

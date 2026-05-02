@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { handleApiError, parseJsonBody } from "@/lib/api/route";
+import { assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
+import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { createBillingCheckoutSession } from "@/lib/services/billing-service";
 import { normalizeBillingPlanTier } from "@/lib/billing/plans";
 
@@ -9,6 +10,17 @@ const checkoutSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    assertSameOriginRequest(request);
+    const rateLimit = await consumeRateLimit({
+      key: getRateLimitKey(request, "billing-checkout"),
+      limit: 10,
+      windowMs: 60_000,
+    });
+
+    if (rateLimit && !rateLimit.allowed) {
+      return buildRateLimitResponse(rateLimit.resetAt);
+    }
+
     const body = await parseJsonBody(request, checkoutSchema);
     const session = await createBillingCheckoutSession({
       planTier: normalizeBillingPlanTier(body.planTier),

@@ -5,6 +5,9 @@ import {
   getDefaultMetaConnectionState,
   getMetaConnectionState,
 } from "@/lib/integrations/meta/service";
+import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
+
+export const dynamic = "force-dynamic";
 
 function buildMetaStatusPayload() {
   const validation = validateMetaEnv();
@@ -24,6 +27,8 @@ function buildMetaStatusPayload() {
 export async function GET() {
   const requestId = crypto.randomUUID();
   try {
+    await getAuthenticatedContext();
+
     const validation = validateMetaEnv();
     const connection = await withRouteTimeout(
       retryRouteStep(() => getMetaConnectionState(), { retries: 1, delayMs: 300 }),

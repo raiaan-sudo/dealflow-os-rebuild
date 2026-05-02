@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/server/supabase-admin";
 import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
 import type { Database, Json } from "@/lib/supabase/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -357,10 +358,11 @@ export async function persistCampaignPlanDocumentUpdate(params: {
     });
     throw error;
   }
+  const writeClient = createAdminClient() ?? params.supabase;
   const existingRow =
     params.existingRow ??
     (await loadCampaignPlanRecordForPersistence({
-      supabase: params.supabase,
+      supabase: writeClient,
       campaignId: params.campaignId,
       userId: params.userId ?? null,
     }));
@@ -397,7 +399,7 @@ export async function persistCampaignPlanDocumentUpdate(params: {
     });
   }
 
-  let query = params.supabase
+  let query = writeClient
     .from("campaign_plans")
     .update(patch as never)
     .eq("id", params.campaignId);
@@ -406,7 +408,7 @@ export async function persistCampaignPlanDocumentUpdate(params: {
     query = query.eq("user_id", params.userId);
   }
 
-  const result = (await query.select("*").single()) as {
+  const result = (await query.select("*").maybeSingle()) as {
     data: CampaignPlanRow | null;
     error: Error | null;
   };
@@ -415,7 +417,21 @@ export async function persistCampaignPlanDocumentUpdate(params: {
     throw result.error;
   }
 
-  return result.data as CampaignPlanRow;
+  if (result.data) {
+    return result.data as CampaignPlanRow;
+  }
+
+  const recoveredRow = await loadCampaignPlanRecordForPersistence({
+    supabase: writeClient,
+    campaignId: params.campaignId,
+    userId: params.userId ?? null,
+  });
+
+  if (!recoveredRow) {
+    throw new Error("Campaign plan update succeeded but no row could be recovered.");
+  }
+
+  return recoveredRow as CampaignPlanRow;
 }
 
 function isLegacySingleCampaignConstraintError(error: unknown) {
@@ -527,6 +543,7 @@ function mapPlanRow(
 function buildCampaignPlanRecordBase(params: PersistPlanParams | MinimalPersistParams) {
   return {
     owner_id: params.ownerId ?? params.userId,
+    organization_id: params.ownerId ?? params.userId,
     user_id: params.userId,
   };
 }
@@ -582,7 +599,7 @@ function buildModernCampaignPlanRecord(params: PersistPlanParams) {
 }
 
 async function persistCampaignPlanRow(params: PersistPlanParams) {
-  const supabase = await createClient();
+  const supabase = createAdminClient() ?? (await createClient());
 
   if (!supabase) {
     throw new Error("Supabase client could not be created.");
@@ -590,14 +607,61 @@ async function persistCampaignPlanRow(params: PersistPlanParams) {
   const client = supabase;
 
   const record = buildModernCampaignPlanRecord(params) as never;
+  async function findLatestCampaignPlanRow() {
+    const existingResult = (await client
+      .from("campaign_plans")
+      .select("*")
+      .eq("user_id", params.userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()) as {
+        data: CampaignPlanRow | null;
+        error: Error | null;
+      };
+
+    if (existingResult.error) {
+      throw existingResult.error;
+    }
+
+    if (!existingResult.data) {
+      throw new Error("Campaign plan write succeeded but no row could be recovered.");
+    }
+
+    return existingResult.data as CampaignPlanRow;
+  }
+
+  async function findCampaignPlanRowById(campaignId: string) {
+    const existingResult = (await client
+      .from("campaign_plans")
+      .select("*")
+      .eq("id", campaignId)
+      .eq("user_id", params.userId)
+      .eq("organization_id", params.ownerId)
+      .maybeSingle()) as {
+        data: CampaignPlanRow | null;
+        error: Error | null;
+      };
+
+    if (existingResult.error) {
+      throw existingResult.error;
+    }
+
+    if (!existingResult.data) {
+      throw new Error("Campaign plan write succeeded but no row could be recovered.");
+    }
+
+    return existingResult.data as CampaignPlanRow;
+  }
+
   async function updateExistingCampaignPlan(existingCampaignId: string) {
     const updateResult = (await client
       .from("campaign_plans")
       .update(record)
       .eq("id", existingCampaignId)
       .eq("user_id", params.userId)
+      .eq("organization_id", params.ownerId)
       .select("*")
-      .single()) as {
+      .maybeSingle()) as {
       data: CampaignPlanRow | null;
       error: Error | null;
     };
@@ -607,7 +671,7 @@ async function persistCampaignPlanRow(params: PersistPlanParams) {
     }
 
     if (!updateResult.data) {
-      throw new Error("DB write returned null");
+      return findCampaignPlanRowById(existingCampaignId);
     }
 
     return updateResult.data as CampaignPlanRow;
@@ -621,13 +685,18 @@ async function persistCampaignPlanRow(params: PersistPlanParams) {
     .from("campaign_plans")
     .insert(record)
     .select("*")
-    .single()) as {
+    .maybeSingle()) as {
     data: CampaignPlanRow | null;
     error: Error | null;
   };
 
   if (!insertResult.error && insertResult.data) {
     return insertResult.data as CampaignPlanRow;
+  }
+
+  if (!insertResult.error && !insertResult.data) {
+    const latestRow = await findLatestCampaignPlanRow();
+    return updateExistingCampaignPlan(latestRow.id);
   }
 
   if (!isLegacySingleCampaignConstraintError(insertResult.error)) {
@@ -771,7 +840,7 @@ export async function insertMinimalCampaignPlan(params: MinimalPersistParams) {
       } as never,
     )
     .select("*")
-    .single()) as {
+    .maybeSingle()) as {
     data: CampaignPlanRow | null;
     error: Error | null;
   };
@@ -780,7 +849,26 @@ export async function insertMinimalCampaignPlan(params: MinimalPersistParams) {
     throw result.error;
   }
 
-  return result.data as CampaignPlanRow | null;
+  if (result.data) {
+    return result.data as CampaignPlanRow | null;
+  }
+
+  const fallbackResult = (await supabase
+    .from("campaign_plans")
+    .select("*")
+    .eq("user_id", params.userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()) as {
+    data: CampaignPlanRow | null;
+    error: Error | null;
+  };
+
+  if (fallbackResult.error) {
+    throw fallbackResult.error;
+  }
+
+  return fallbackResult.data as CampaignPlanRow | null;
 }
 
 export async function insertCampaignPlan(params: PersistPlanParams) {

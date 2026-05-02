@@ -20,6 +20,7 @@ import {
 import { getLatestMetaCampaignSyncSnapshot } from "@/lib/services/meta-campaign-sync-service";
 import { logInfo } from "@/lib/logging";
 import type { Json } from "@/lib/supabase/types";
+import { evaluateMediaBuyingDecision } from "@/lib/optimization-engine/media-buying-rules";
 
 type ActionSupabase = NonNullable<Awaited<ReturnType<typeof createClient>>>;
 
@@ -245,6 +246,16 @@ function buildSuggestions(params: {
   const bestAudience = targetingIntelligence?.recommendedAudience ?? null;
   const bestLocation = targetingIntelligence?.recommendedLocation ?? null;
   const bestPattern = targetingIntelligence?.recommendedTargetingPattern ?? null;
+  const mediaDecision = evaluateMediaBuyingDecision({
+    ctr,
+    cpc: snapshot.deliveryMetrics.cpc,
+    cpl: snapshot.deliveryMetrics.cpl,
+    frequency: snapshot.deliveryMetrics.frequency,
+    spend,
+    leads: snapshot.deliveryMetrics.leads,
+    lp_cvr: 0,
+    hoursElapsed: null,
+  });
 
   if (topWinner && topLoser && topWinner.angle !== topLoser.angle) {
     suggestions.push({
@@ -268,12 +279,12 @@ function buildSuggestions(params: {
     });
   }
 
-  if (spend >= 60 && clicks <= 12 && adStatuses.length >= 2) {
+  if (mediaDecision.action === "kill" && adStatuses.length >= 1) {
     suggestions.push({
       campaignId: metaCampaignId,
       type: "pause_low_performing_ad",
       title: "Pause low-performing ad",
-      reason: `${snapshot.campaignName} has already spent $${spend.toFixed(2)} for ${clicks} clicks across ${adStatuses.length} ads. Delivery is too expensive for ${audience}, and one or more creatives are drifting away from ${creativeStrategy.mechanism} and ${creativeStrategy.proofStyle}.`,
+      reason: `${snapshot.campaignName} hit a media-buyer kill rule: ${mediaDecision.reasons.join(" ")} Keep spend away from weak creatives and protect the ${creativeStrategy.mechanism} proof path.`,
       expectedImpact: "Reduce wasted spend and concentrate delivery on the strongest active ad before testing the next strategy-aligned angle.",
       status: "suggested",
       syncSnapshotId,
@@ -281,17 +292,21 @@ function buildSuggestions(params: {
         campaignCategory: creativeStrategy.campaignCategory,
         spend,
         clicks,
+        cpl: snapshot.deliveryMetrics.cpl,
+        cpc: snapshot.deliveryMetrics.cpc,
+        frequency: snapshot.deliveryMetrics.frequency,
+        mediaBuyingRules: mediaDecision.reasons,
         adStatuses,
       },
     });
   }
 
-  if (ctr < 0.012 && snapshot.deliveryMetrics.impressions >= 1500) {
+  if (ctr < 0.005 && snapshot.deliveryMetrics.impressions >= 1500) {
     suggestions.push({
       campaignId: metaCampaignId,
       type: "refresh_headline",
       title: "Refresh headline",
-      reason: `${audience} are only clicking at ${formatPercent(ctr)} after ${snapshot.deliveryMetrics.impressions.toLocaleString()} impressions. The current headline is not surfacing ${creativeStrategy.triggerCondition || keyOffer} fast enough, and the ${creativeStrategy.mechanism} mechanism is getting buried.`,
+      reason: `${audience} are only clicking at ${formatPercent(ctr)} after ${snapshot.deliveryMetrics.impressions.toLocaleString()} impressions. This is below the 0.5% CTR kill threshold, so the hook needs to surface ${creativeStrategy.triggerCondition || keyOffer}, ${creativeStrategy.mechanism}, and ${creativeStrategy.proofStyle} faster.`,
       expectedImpact: "Improve click-through rate with a sharper situation-led promise tied directly to the mechanism and proof style.",
       status: "suggested",
       syncSnapshotId,
@@ -333,13 +348,13 @@ function buildSuggestions(params: {
     });
   }
 
-  if (ctr >= 0.025 && clicks >= 30 && activeAds > 0) {
+  if (mediaDecision.action === "scale_duplicate" && clicks >= 30 && activeAds > 0) {
     suggestions.push({
       campaignId: metaCampaignId,
       type: "increase_budget_on_winner",
-      title: "Increase budget on winner",
-      reason: `${snapshot.campaignName} is returning ${clicks} clicks at ${formatPercent(ctr)} CTR. The current offer around ${keyOffer} is landing with ${audience}, and the winner is strong because it keeps ${creativeStrategy.mechanism} and ${creativeStrategy.proofStyle} intact.`,
-      expectedImpact: "Scale the strongest ad set while momentum is positive and keep the winning mechanism constant during controlled promotion.",
+      title: "Duplicate winner into scale",
+      reason: `${snapshot.campaignName} is overperforming on ${mediaDecision.strongMetrics.join(", ")}. Scale by duplicating the winning creative, not editing it, so ${creativeStrategy.mechanism} and ${creativeStrategy.proofStyle} stay intact.`,
+      expectedImpact: "Scale the strongest ad while preserving the validated winner and avoiding edits that reset or weaken performance.",
       status: "suggested",
       syncSnapshotId,
       context: {
@@ -350,6 +365,8 @@ function buildSuggestions(params: {
         clicks,
         activeAds,
         keyOffer,
+        scalingMethod: "duplicate_winner_do_not_edit",
+        strongMetrics: mediaDecision.strongMetrics,
       },
     });
   }

@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { ApiError, apiSuccess, handleApiError, parseJsonBody } from "@/lib/api/route";
+import {
+  ApiError,
+  apiSuccess,
+  assertSameOriginRequest,
+  handleApiError,
+  parseJsonBody,
+} from "@/lib/api/route";
 import { inferCampaignIntent } from "@/lib/campaign-intent";
 import { ACTIVE_CAMPAIGN_COOKIE } from "@/lib/paywall-access";
 import { buildCampaign } from "@/lib/services/campaign-orchestrator";
@@ -257,6 +263,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    assertSameOriginRequest(request);
     const body = await parseJsonBody(request, saveCampaignSchema);
 
     if (!body || Object.keys(body).length === 0) {

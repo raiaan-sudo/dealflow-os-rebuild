@@ -100,7 +100,7 @@ export default async function BuildCreativesPage({
   const creativeOptions = ensuredRecord.creatives.staticAds
     .slice()
     .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
-    .slice(0, 3)
+    .slice(0, 6)
     .map((ad) => {
       const matchingCopy = ensuredRecord.creatives.copy?.find(
         (item) => item.headline === ad.headline || item.primary_text === ad.primaryText,
@@ -114,6 +114,14 @@ export default async function BuildCreativesPage({
         score: ad.score ?? 0,
         recommended: ad.recommended ?? false,
         imageUrl: ad.imageUrl ?? null,
+        imageGenerationState: ad.imageGenerationState ?? null,
+        imageGenerationMessage: ad.imageGenerationMessage ?? null,
+        overlayText: ad.overlayText ?? null,
+        category: ad.visualPromptBrief?.category ?? ensuredRecord.plan.creative_strategy?.campaignCategory ?? null,
+        location: ensuredRecord.plan.market || null,
+        qualityGate: ad.qualityGate ?? null,
+        visualPromptBrief: ad.visualPromptBrief ?? null,
+        offer: ensuredRecord.plan.offer_summary || ensuredRecord.plan.offer || null,
         breakdown: {
           hook: ad.hook || matchingCopy?.hook || "",
           concept: ad.visualConcept || "",
@@ -126,8 +134,8 @@ export default async function BuildCreativesPage({
       <WizardSteps current="creatives" />
       <PageHeader
         eyebrow="Build"
-        title="Choose your ad"
-        description="Pick one recommended creative and keep the rest hidden unless you need them."
+        title="Choose your creative test set"
+        description="Select 2-6 recommended creatives. DealFlow will preserve the full test set so your launch can compare multiple angles instead of betting on one ad."
       />
 
       <CreativeWizard campaignId={ensuredRecord.campaign.id} creatives={creativeOptions} />

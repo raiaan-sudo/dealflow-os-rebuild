@@ -25,7 +25,7 @@ export function PreviewActions({ connectHref = "/launch", campaignId = null }: P
     <div className="flex w-full flex-col items-center space-y-4 text-center">
       <div className="flex w-full max-w-[320px] justify-center">
         <Button
-          className="h-13 w-full rounded-full bg-[#2f80ff] px-6 text-base font-semibold text-white shadow-[0_26px_70px_-28px_rgba(47,128,255,0.95)] hover:bg-[#3d8bff] sm:h-14"
+          className="h-13 w-full rounded-full px-6 text-base font-semibold sm:h-14"
           onClick={completePreview}
         >
           Continue to launch

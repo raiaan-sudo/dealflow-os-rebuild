@@ -18,6 +18,14 @@ export async function generateAiJson(
   messages: ChatMessage[],
   options: GenerateAiJsonOptions = {},
 ) {
+  if (process.env.ALLOW_AI_TEXT_GENERATION !== "true") {
+    return {
+      ok: false as const,
+      error: "AI text generation is disabled.",
+      content: null,
+    };
+  }
+
   const env = getAiEnv();
 
   if (!env) {

@@ -109,6 +109,18 @@ class HeyGenAvatarProvider implements AvatarVideoProvider {
     const env = getVideoGenerationEnv();
     const script = (request.script ?? "").trim();
 
+    if (process.env.ALLOW_HEYGEN_VIDEO_GENERATION !== "true") {
+      return {
+        ok: false,
+        providerName: this.name,
+        providerAssetId: null,
+        status: "unsupported",
+        fileUrl: null,
+        thumbnailUrl: null,
+        error: "HeyGen video generation is disabled for beta.",
+      };
+    }
+
     if (!env?.apiKey || !env.avatarId || !env.voiceId) {
       return {
         ok: false,

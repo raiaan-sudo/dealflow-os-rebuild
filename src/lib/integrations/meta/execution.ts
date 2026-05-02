@@ -3,6 +3,7 @@ import { getMetaEnv, getPublicAppUrl } from "@/lib/env";
 import { decryptSecret } from "@/lib/integrations/meta-crypto";
 import type { MetaConnectionRecord } from "@/lib/integrations/meta/types";
 import { fetchWithRetryServer } from "@/lib/http/fetch-with-retry-server";
+import { fetchMetaResponse } from "@/lib/integrations/meta/request";
 import type {
   ExecutableAd,
   ExecutableAdSet,
@@ -12,7 +13,7 @@ import type {
 export type MetaCampaignPayload = {
   name: string;
   objective: string;
-  status: "PAUSED" | "ACTIVE";
+  status: "PAUSED";
   special_ad_categories: string[];
 };
 
@@ -43,12 +44,12 @@ export type MetaAdSetPayload = {
     action_type: string[];
     fb_pixel: string[];
   }>;
-  status: "PAUSED" | "ACTIVE";
+  status: "PAUSED";
 };
 
 export type MetaAdPayload = {
   name: string;
-  status: "PAUSED" | "ACTIVE";
+  status: "PAUSED";
   creative: {
     creative_id: string;
   };
@@ -93,8 +94,21 @@ function getInterestKeywords(adSet: ExecutableAdSet) {
   ];
 }
 
-function getMetaObjectStatus(launchMode: "test" | "live") {
-  return launchMode === "live" ? "ACTIVE" : "PAUSED";
+function getMetaObjectStatus(launchMode: "test" | "live"): "PAUSED" {
+  void launchMode;
+  return "PAUSED";
+}
+
+const DEFAULT_META_DAILY_BUDGET_CAP_CENTS = 100;
+
+function getMetaDailyBudgetCapCents() {
+  const configuredCap = Number(process.env.META_DAILY_BUDGET_CAP_CENTS ?? DEFAULT_META_DAILY_BUDGET_CAP_CENTS);
+
+  if (!Number.isFinite(configuredCap) || configuredCap <= 0) {
+    return DEFAULT_META_DAILY_BUDGET_CAP_CENTS;
+  }
+
+  return Math.floor(configuredCap);
 }
 
 function inferCountryCode(location: string) {
@@ -208,7 +222,8 @@ async function createAdCreative(params: {
   const url = new URL(`https://graph.facebook.com/v19.0/act_${params.accountId}/adcreatives`);
   url.searchParams.set("access_token", params.accessToken);
 
-  const response = await fetchWithRetryServer(url.toString(), {
+  const response = await fetchMetaResponse(url.toString(), {
+    purpose: "launch_create",
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params.payload),
@@ -257,8 +272,8 @@ export async function mapAdSetToMetaPayload(
   }
 
   const numericBudget = Number(adSet.budget.replace(/[^0-9.]/g, ""));
-  const computedDailyBudget = Math.max(1000, Math.round((numericBudget / 30) * 100));
-  const dailyBudget = launchMode === "test" ? Math.min(computedDailyBudget, 1000) : computedDailyBudget;
+  const computedDailyBudget = Math.max(1, Math.round((numericBudget / 30) * 100));
+  const dailyBudget = Math.min(computedDailyBudget, getMetaDailyBudgetCapCents());
   const ageRange = getAgeRange(adSet);
   const interests = await resolveMetaInterests({
     accessToken,
@@ -372,7 +387,17 @@ export function getMetaExecutionMode() {
     throw new ApiError(503, "Meta Ads is not configured.", "meta_config_missing");
   }
 
-  return "live" as const;
+  const executionMode: "sandbox" | "live" = env.executionMode === "live" ? "live" : "sandbox";
+
+  if (executionMode === "live" && process.env.ALLOW_META_LIVE_LAUNCH !== "true") {
+    throw new ApiError(
+      403,
+      "Live Meta launch requires ALLOW_META_LIVE_LAUNCH=true. Use sandbox mode for non-mutating validation.",
+      "meta_live_launch_disabled",
+    );
+  }
+
+  return executionMode;
 }
 
 export function getMetaAccessToken(connection: MetaConnectionRecord) {
@@ -405,7 +430,8 @@ export async function createCampaign(params: {
   const url = new URL(`https://graph.facebook.com/v19.0/act_${params.accountId}/campaigns`);
   url.searchParams.set("access_token", params.accessToken);
 
-  const response = await fetch(url.toString(), {
+  const response = await fetchMetaResponse(url.toString(), {
+    purpose: "launch_create",
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params.payload),
@@ -447,7 +473,8 @@ export async function createAdSet(params: {
   const url = new URL(`https://graph.facebook.com/v19.0/act_${params.accountId}/adsets`);
   url.searchParams.set("access_token", params.accessToken);
 
-  const response = await fetch(url.toString(), {
+  const response = await fetchMetaResponse(url.toString(), {
+    purpose: "launch_create",
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -493,7 +520,8 @@ export async function createAd(params: {
   const url = new URL(`https://graph.facebook.com/v19.0/act_${params.accountId}/ads`);
   url.searchParams.set("access_token", params.accessToken);
 
-  const response = await fetch(url.toString(), {
+  const response = await fetchMetaResponse(url.toString(), {
+    purpose: "launch_create",
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

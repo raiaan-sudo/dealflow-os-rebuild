@@ -86,35 +86,15 @@ export async function fetchMetaConnectionStatus() {
   return result.connection;
 }
 
-export async function deployToMeta(body: {
-  launchMode: "test" | "live";
-  budgetDailyInput: number;
-}) {
-  const response = await fetchWithRetry("/api/integrations/meta/deploy", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-    timeoutMs: 12000,
-    retries: 1,
-  });
-
-  const result = (await response.json().catch(() => null)) as
-    | (DeployResult & { error?: string })
-    | { success?: false; error?: string }
-    | null;
-
-  if (!response.ok || !result || result.success !== true) {
-    throw new Error(result?.error ?? "Meta deployment failed.");
-  }
-
-  return result;
-}
-
-export async function syncCampaignStatus() {
+export async function syncCampaignStatus(campaignId?: string | null) {
   const response = await fetchWithRetry("/api/integrations/meta/sync", {
     method: "POST",
+    headers: campaignId
+      ? {
+          "Content-Type": "application/json",
+        }
+      : undefined,
+    body: campaignId ? JSON.stringify({ campaignId }) : undefined,
     timeoutMs: 12000,
     retries: 1,
   });
@@ -170,11 +150,11 @@ export async function fetchCreativePerformance() {
 
 export async function updateCampaignAction(id: string, action: "approve" | "dismiss") {
   const response = await fetchWithRetry("/api/campaign/actions", {
-    method: "POST",
+    method: "PATCH",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ id, action }),
+    body: JSON.stringify({ id, status: action === "approve" ? "approved" : "dismissed" }),
     timeoutMs: 8000,
     retries: 1,
   });
@@ -209,11 +189,11 @@ export async function fetchCampaignDrafts() {
 
 export async function updateCampaignDraft(id: string, action: "approve" | "dismiss") {
   const response = await fetchWithRetry("/api/campaign/drafts", {
-    method: "POST",
+    method: "PATCH",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ id, action }),
+    body: JSON.stringify({ id, status: action === "approve" ? "approved" : "dismissed" }),
     timeoutMs: 8000,
     retries: 1,
   });

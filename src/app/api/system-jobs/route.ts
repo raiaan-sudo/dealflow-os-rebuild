@@ -2,6 +2,8 @@ import { apiSuccess, handleApiError } from "@/lib/api/route";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { listSystemJobs } from "@/lib/services/system-job-service";
 
+export const dynamic = "force-dynamic";
+
 function parseStatuses(value: string | null) {
   if (!value) {
     return undefined;

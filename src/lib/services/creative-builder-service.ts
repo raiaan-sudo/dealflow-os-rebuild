@@ -981,11 +981,16 @@ export async function getCreativeAssetById(
   userId?: string,
 ): Promise<CampaignCreativeAssetRecord | null> {
   const { supabase } = await requireCreativeBuilderContext(userId);
-  const { data: assetRaw, error } = await supabase
+  let query = supabase
     .from("creative_assets")
     .select("*")
-    .eq("id", assetId)
-    .maybeSingle();
+    .eq("id", assetId);
+
+  if (userId) {
+    query = query.eq("user_id", userId);
+  }
+
+  const { data: assetRaw, error } = await query.maybeSingle();
 
   if (error) {
     throw error;
@@ -1174,11 +1179,16 @@ export async function uploadManualCreativeAsset(params: {
 
 export async function deleteCreativeAssetById(assetId: string, userId?: string) {
   const { supabase } = await requireCreativeBuilderContext(userId);
-  const { data, error } = await supabase
+  let query = supabase
     .from("creative_assets")
     .select("*")
-    .eq("id", assetId)
-    .maybeSingle();
+    .eq("id", assetId);
+
+  if (userId) {
+    query = query.eq("user_id", userId);
+  }
+
+  const { data, error } = await query.maybeSingle();
 
   if (error) {
     throw error;
@@ -1199,10 +1209,16 @@ export async function deleteCreativeAssetById(assetId: string, userId?: string) 
     await supabase.storage.from(storageBucket).remove([storagePath]).catch(() => undefined);
   }
 
-  const { error: deleteError } = await supabase
+  let deleteQuery = supabase
     .from("creative_assets")
     .delete()
     .eq("id", assetId);
+
+  if (userId) {
+    deleteQuery = deleteQuery.eq("user_id", userId);
+  }
+
+  const { error: deleteError } = await deleteQuery;
 
   if (deleteError) {
     throw deleteError;

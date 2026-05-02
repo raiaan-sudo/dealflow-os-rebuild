@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import { colors, gradients, shadows, spacing, typography } from "./src/design-system";
 
 const config: Config = {
   content: [
@@ -9,6 +10,10 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        "df-background": colors.background,
+        "df-text": colors.text,
+        "df-accent": colors.accent,
+        "df-border": colors.border,
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -47,6 +52,33 @@ const config: Config = {
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
         "gradient-conic":
           "conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))",
+        "df-app": gradients.appBackground,
+        "df-panel": gradients.panel,
+        "df-panel-strong": gradients.panelStrong,
+        "df-primary": gradients.primary,
+        "df-aurora": gradients.aurora,
+      },
+      boxShadow: {
+        "df-glow-blue": shadows.glowBlue,
+        "df-glow-purple": shadows.glowPurple,
+        "df-panel": shadows.panel,
+        "df-elevated": shadows.elevated,
+        "df-button": shadows.button,
+      },
+      spacing: {
+        "df-page-x": spacing.pageX,
+        "df-page-y": spacing.pageY,
+        "df-section": spacing.sectionGap,
+        "df-card": spacing.cardPadding,
+      },
+      borderRadius: {
+        "df-panel": spacing.radius.panel,
+        "df-card": spacing.radius.card,
+        "df-control": spacing.radius.control,
+      },
+      fontFamily: {
+        sans: [typography.fontFamily],
+        mono: [typography.monoFamily],
       },
     },
   },

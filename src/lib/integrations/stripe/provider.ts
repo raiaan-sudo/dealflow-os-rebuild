@@ -8,14 +8,27 @@ import type {
   ProviderFailure,
 } from "@/lib/integrations/contracts";
 
+const STRIPE_API_VERSION = "2026-04-22.dahlia";
+
 export type StripeBillingExecuteRequest =
   | {
       action: "create_customer";
       params: Stripe.CustomerCreateParams;
+      idempotencyKey?: string;
     }
   | {
       action: "create_checkout_session";
       params: Stripe.Checkout.SessionCreateParams;
+      idempotencyKey?: string;
+    }
+  | {
+      action: "create_billing_portal_session";
+      params: Stripe.BillingPortal.SessionCreateParams;
+      idempotencyKey?: string;
+    }
+  | {
+      action: "retrieve_checkout_session";
+      sessionId: string;
     }
   | {
       action: "retrieve_subscription";
@@ -30,6 +43,7 @@ export type StripeBillingExecuteRequest =
 type StripeBillingRawResult =
   | Stripe.Customer
   | Stripe.Checkout.Session
+  | Stripe.BillingPortal.Session
   | Stripe.Subscription
   | Stripe.Event;
 
@@ -114,7 +128,9 @@ class ConfiguredStripeBillingProvider implements StripeBillingProvider
     }
 
     if (!this.client) {
-      this.client = new Stripe(env.secretKey);
+      this.client = new Stripe(env.secretKey, {
+        apiVersion: STRIPE_API_VERSION,
+      });
     }
 
     return {
@@ -135,11 +151,30 @@ class ConfiguredStripeBillingProvider implements StripeBillingProvider
     const { client, env } = this.getClientOrThrow();
 
     if (request.action === "create_customer") {
-      return client.customers.create(request.params);
+      return client.customers.create(
+        request.params,
+        request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : undefined,
+      );
     }
 
     if (request.action === "create_checkout_session") {
-      return client.checkout.sessions.create(request.params);
+      return client.checkout.sessions.create(
+        request.params,
+        request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : undefined,
+      );
+    }
+
+    if (request.action === "create_billing_portal_session") {
+      return client.billingPortal.sessions.create(
+        request.params,
+        request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : undefined,
+      );
+    }
+
+    if (request.action === "retrieve_checkout_session") {
+      return client.checkout.sessions.retrieve(request.sessionId, {
+        expand: ["subscription", "customer"],
+      });
     }
 
     if (request.action === "retrieve_subscription") {

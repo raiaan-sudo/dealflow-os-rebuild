@@ -827,13 +827,13 @@ async function resolvePlanOwner() {
     };
   } catch {
     debugLog("campaign-plan-owner", {
-      organizationId: user.id,
+      organizationId: null,
       userId: user.id,
       fallbackToUser: true,
     });
     return {
       supabase,
-      organizationId: user.id,
+      organizationId: null,
       userId: user.id,
     };
   }
@@ -1232,6 +1232,9 @@ export async function saveCampaignPlan(input: OnboardingInput) {
     intelligenceProfile,
     targetingProfile,
     reusableAssets,
+    {
+      deferAssetGeneration: true,
+    },
   );
   return saveGeneratedCampaignPlan({
     userId,

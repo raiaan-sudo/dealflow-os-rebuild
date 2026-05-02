@@ -66,6 +66,8 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       recommended: asset.recommended,
       score: asset.score,
       scoreBreakdown: asset.scoreBreakdown,
+      offerQuality: (asset.offerQuality ?? null) as Json,
+      qualityGate: (asset.qualityGate ?? null) as Json,
       overlayText: asset.overlayText,
       headline: asset.headline,
       primaryText: asset.primaryText,

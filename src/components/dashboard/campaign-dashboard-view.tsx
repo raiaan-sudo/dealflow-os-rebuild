@@ -72,6 +72,7 @@ type Props = {
   } | null;
   leadLoopVerified?: boolean;
   firstWeekSuccess?: FirstWeekSuccessState | null;
+  renderedAt?: string;
 };
 
 function currency(value: number) {
@@ -82,16 +83,30 @@ function currency(value: number) {
   }).format(value);
 }
 
+function formatDateTime(value: string) {
+  return new Date(value).toLocaleString("en-CA", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "UTC",
+  });
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString("en-CA", {
+    timeZone: "UTC",
+  });
+}
+
 function normalizeText(value: string | null | undefined) {
   return (value ?? "").trim().toLowerCase();
 }
 
-function formatLastVerified(value: string | null | undefined) {
+function formatLastVerified(value: string | null | undefined, nowMs: number) {
   if (!value) {
     return "not verified yet";
   }
 
-  const diffMs = Date.now() - new Date(value).getTime();
+  const diffMs = nowMs - new Date(value).getTime();
   const diffMinutes = Math.max(0, Math.round(diffMs / 60_000));
 
   if (diffMinutes <= 1) {
@@ -103,7 +118,7 @@ function formatLastVerified(value: string | null | undefined) {
 
 const META_SYNC_STALE_MS = 30 * 60 * 1000;
 
-function isStaleSync(value: string | null | undefined) {
+function isStaleSync(value: string | null | undefined, nowMs: number) {
   if (!value) {
     return true;
   }
@@ -114,7 +129,7 @@ function isStaleSync(value: string | null | undefined) {
     return true;
   }
 
-  return Date.now() - timestamp > META_SYNC_STALE_MS;
+  return nowMs - timestamp > META_SYNC_STALE_MS;
 }
 
 function includesRecommendation(
@@ -194,7 +209,10 @@ export function CampaignDashboardView({
   selectedAdSummary = null,
   leadLoopVerified = false,
   firstWeekSuccess = null,
+  renderedAt,
 }: Props) {
+  const renderedAtMs = new Date(renderedAt ?? "1970-01-01T00:00:00.000Z").getTime();
+  const stableNowMs = Number.isFinite(renderedAtMs) ? renderedAtMs : 0;
   const launchState = getLaunchState(plan);
   const dataSourceState = getDataSourceState({
     metaConnection,
@@ -332,10 +350,7 @@ export function CampaignDashboardView({
         : "Saved buyer follow-up logic is available for connected lead handling."
     : "No live follow-up activity is being reported yet.";
   const bookingText = bookingSummary?.scheduled_at
-    ? `Next booking: ${new Date(bookingSummary.scheduled_at).toLocaleString("en-CA", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })}`
+    ? `Next booking: ${formatDateTime(bookingSummary.scheduled_at)}`
     : "No booking record yet.";
   const runtimeMetaCampaignId = plan.runtime.campaignId ?? null;
   const runtimeMetaAdSetIds = Array.isArray(plan.runtime.metaAdSetIds) ? plan.runtime.metaAdSetIds : [];
@@ -348,7 +363,7 @@ export function CampaignDashboardView({
       : typeof syncSnapshot?.lastSyncedAt === "string"
         ? syncSnapshot.lastSyncedAt
         : null;
-  const syncIsStale = isStaleSync(syncedAt);
+  const syncIsStale = isStaleSync(syncedAt, stableNowMs);
   const syncStateLabel = !syncedAt
     ? "Estimated state only"
     : syncIsStale
@@ -391,12 +406,7 @@ export function CampaignDashboardView({
     },
     {
       label: "Last live sync",
-      value: syncedAt
-        ? new Date(syncedAt).toLocaleString("en-CA", {
-            dateStyle: "medium",
-            timeStyle: "short",
-          })
-        : "No live sync yet",
+      value: syncedAt ? formatDateTime(syncedAt) : "No live sync yet",
     },
   ];
   const campaignSummaryItems = [
@@ -408,7 +418,7 @@ export function CampaignDashboardView({
     { label: "Meta connection", value: metaConnection.accountName || "Not connected" },
   ];
   const metaStatusText = metaConnection.hasAccessToken
-    ? `Connected (last verified ${formatLastVerified(metaConnection.lastSyncAt ?? metaConnection.connectedAt)})`
+    ? `Connected (last verified ${formatLastVerified(metaConnection.lastSyncAt ?? metaConnection.connectedAt, stableNowMs)})`
     : "Not connected";
   const metaSelectionMissingText = metaConnection.hasAccessToken
     ? "Selection required before launch"
@@ -483,10 +493,7 @@ export function CampaignDashboardView({
   ];
   const creativeSummaryItems = creativePerformanceSummary
     ? [
-        { label: "Synced at", value: new Date(creativePerformanceSummary.syncedAt).toLocaleString("en-CA", {
-          dateStyle: "medium",
-          timeStyle: "short",
-        }) },
+        { label: "Synced at", value: formatDateTime(creativePerformanceSummary.syncedAt) },
         { label: "Winners", value: String(creativePerformanceSummary.winners.length) },
         { label: "Underperformers", value: String(creativePerformanceSummary.underperformers.length) },
         { label: "Ranked creatives", value: String(creativePerformanceSummary.rankedCreatives.length) },
@@ -510,16 +517,10 @@ export function CampaignDashboardView({
     { label: "Spend", value: displayedSpend > 0 ? currency(displayedSpend) : "Waiting for data" },
   ];
   const firstWeekLastVerifiedText = firstWeekSuccess?.lastVerifiedAt
-    ? new Date(firstWeekSuccess.lastVerifiedAt).toLocaleString("en-CA", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
+    ? formatDateTime(firstWeekSuccess.lastVerifiedAt)
     : "Not verified yet";
   const firstWeekLastSyncText = firstWeekSuccess?.lastSyncAt
-    ? new Date(firstWeekSuccess.lastSyncAt).toLocaleString("en-CA", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
+    ? formatDateTime(firstWeekSuccess.lastSyncAt)
     : "No live sync yet";
   const lifecycleStatusTone =
     firstWeekSuccess?.firstLead
@@ -541,24 +542,19 @@ export function CampaignDashboardView({
               {syncStateDescription}
             </p>
           </div>
-          <MetaSyncRefreshButton />
+          <MetaSyncRefreshButton campaignId={plan.id ?? null} />
         </div>
         <div className="mt-6 grid gap-4 lg:grid-cols-3">
           <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Last sync time</p>
             <p className="mt-3 text-sm leading-6">
-              {syncedAt
-                ? new Date(syncedAt).toLocaleString("en-CA", {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  })
-                : "No Meta sync yet"}
+              {syncedAt ? formatDateTime(syncedAt) : "No Meta sync yet"}
             </p>
           </div>
           <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Freshness</p>
             <p className="mt-3 text-sm leading-6">
-              {syncedAt ? `Last verified ${formatLastVerified(syncedAt)}` : "Not verified yet"}
+              {syncedAt ? `Last verified ${formatLastVerified(syncedAt, stableNowMs)}` : "Not verified yet"}
             </p>
           </div>
           <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
@@ -662,10 +658,7 @@ export function CampaignDashboardView({
                   <p className="mt-3 text-lg font-semibold text-foreground">{firstWeekSuccess.firstLead.name}</p>
                   <p className="mt-2 text-sm text-muted-foreground">
                     {firstWeekSuccess.firstLead.contact} • received{" "}
-                    {new Date(firstWeekSuccess.firstLead.receivedAt).toLocaleString("en-CA", {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}
+                    {formatDateTime(firstWeekSuccess.firstLead.receivedAt)}
                   </p>
                   <p className="mt-3 text-sm leading-7 text-muted-foreground">
                     Recommended follow-up: {firstWeekSuccess.firstLead.recommendedFollowUp}
@@ -1100,10 +1093,7 @@ export function CampaignDashboardView({
                     <p>Status: {lead.status || "new"}{lead.source ? ` • ${lead.source}` : ""}</p>
                     <p>
                       {lead.estimated_value ? `Value ${currency(lead.estimated_value)} • ` : ""}
-                      {new Date(lead.created_at).toLocaleString("en-CA", {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      })}
+                      {formatDateTime(lead.created_at)}
                     </p>
                   </div>
                 </div>
@@ -1123,11 +1113,8 @@ export function CampaignDashboardView({
                 <p className="mt-1 text-sm text-muted-foreground">{appointment.status || "scheduled"}</p>
                 <p className="mt-2 text-xs text-muted-foreground">
                   {appointment.scheduled_at
-                    ? new Date(appointment.scheduled_at).toLocaleString("en-CA", {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      })
-                    : new Date(appointment.created_at).toLocaleDateString("en-CA")}
+                    ? formatDateTime(appointment.scheduled_at)
+                    : formatDate(appointment.created_at)}
                 </p>
               </div>
             )) : (
@@ -1150,7 +1137,7 @@ export function CampaignDashboardView({
                     ? `Closed ${currency(deal.closed_value)}`
                     : deal.estimated_value
                       ? `Pipeline ${currency(deal.estimated_value)}`
-                      : "No value recorded"} • {new Date(deal.created_at).toLocaleDateString("en-CA")}
+                      : "No value recorded"} • {formatDate(deal.created_at)}
                 </p>
               </div>
             )) : (

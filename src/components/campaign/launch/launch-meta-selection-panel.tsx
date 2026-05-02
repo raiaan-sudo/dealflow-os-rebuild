@@ -8,6 +8,7 @@ import type { MetaConnectionState } from "@/lib/integrations/meta/types";
 
 type LaunchMetaSelectionPanelProps = {
   connection: MetaConnectionState;
+  campaignId?: string | null;
 };
 
 async function saveMetaSelections(input: {
@@ -45,6 +46,7 @@ async function saveMetaSelections(input: {
 
 export function LaunchMetaSelectionPanel({
   connection,
+  campaignId,
 }: LaunchMetaSelectionPanelProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -59,6 +61,9 @@ export function LaunchMetaSelectionPanel({
   const availablePages = liveConnection.availablePages;
   const availablePixels = liveConnection.availablePixels;
   const allSelectionsReady = Boolean(selectedAccountId && selectedPageId && selectedPixelId);
+  const launchReturnTo = campaignId
+    ? `/launch?campaignId=${encodeURIComponent(campaignId)}`
+    : "/launch";
   const missingSelections = useMemo(() => {
     const missing: string[] = [];
 
@@ -150,7 +155,9 @@ export function LaunchMetaSelectionPanel({
           <Button
             type="button"
             onClick={() => {
-              window.location.assign("/api/integrations/meta/connect?returnTo=%2Flaunch");
+              window.location.assign(
+                `/api/integrations/meta/connect?returnTo=${encodeURIComponent(launchReturnTo)}`,
+              );
             }}
           >
             Connect Meta

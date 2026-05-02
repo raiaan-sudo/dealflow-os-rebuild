@@ -18,7 +18,7 @@ export function WizardSteps({ current }: WizardStepsProps) {
   const currentIndex = STEPS.findIndex((step) => step.key === current);
 
   return (
-    <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
+    <div className="surface-subtle rounded-df-card border border-white/8 p-4 backdrop-blur-xl">
       <div className="grid gap-3 md:grid-cols-5">
         {STEPS.map((step, index) => {
           const isCurrent = step.key === current;
@@ -28,9 +28,9 @@ export function WizardSteps({ current }: WizardStepsProps) {
             <div
               key={step.key}
               className={cn(
-                "rounded-2xl border px-4 py-3 transition",
+                "rounded-2xl border px-4 py-3 transition duration-200",
                 isCurrent
-                  ? "border-primary/25 bg-primary/12"
+                  ? "border-cyan-200/25 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.16),transparent_70%),rgba(116,199,255,0.08)] shadow-[0_16px_38px_-28px_rgba(103,232,249,0.6)]"
                   : isComplete
                     ? "border-emerald-500/20 bg-emerald-500/10"
                     : "border-white/8 bg-black/10",

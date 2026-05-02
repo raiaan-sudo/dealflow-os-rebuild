@@ -80,6 +80,10 @@ function looksMaskedApiKey(value: string | null | undefined) {
 function getHeyGenConfig() {
   const env = getVideoGenerationEnv();
 
+  if (process.env.ALLOW_HEYGEN_VIDEO_GENERATION !== "true") {
+    throw new Error("HeyGen video generation is disabled until the provider usage guard is explicitly enabled.");
+  }
+
   if (!env?.apiKey) {
     throw new Error("Missing HEYGEN_API_KEY");
   }

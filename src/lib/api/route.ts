@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
-import { hasSupabaseEnv } from "@/lib/env";
+import { getInternalSystemJobsSecret, hasSupabaseEnv } from "@/lib/env";
 import { logError, logWarn } from "@/lib/logging";
 
 export class ApiError extends Error {
@@ -83,15 +83,227 @@ export function unauthorizedOrConfigError() {
   return new ApiError(401, "Authentication is required for this route.", "unauthorized");
 }
 
+function isLocalHostname(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function addExpectedOrigin(expectedOrigins: Set<string>, value: string | null | undefined) {
+  if (!value) {
+    return;
+  }
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+      expectedOrigins.add(parsed.origin);
+    }
+  } catch {
+    // Ignore invalid optional origins; request candidates are validated separately.
+  }
+}
+
+function addHostOrigin(
+  expectedOrigins: Set<string>,
+  host: string | null,
+  protocol: string | null,
+) {
+  if (!host) {
+    return;
+  }
+
+  const normalizedProtocol = protocol === "http" || protocol === "https" ? protocol : "https";
+  addExpectedOrigin(expectedOrigins, `${normalizedProtocol}://${host}`);
+
+  try {
+    const parsed = new URL(`${normalizedProtocol}://${host}`);
+    if (isLocalHostname(parsed.hostname)) {
+      addExpectedOrigin(expectedOrigins, `http://${host}`);
+      addExpectedOrigin(expectedOrigins, `https://${host}`);
+    }
+  } catch {
+    // Ignore malformed Host headers; they will not be accepted as candidates.
+  }
+}
+
+function normalizeRequestOrigin(value: string | null, errorCode = "csrf_rejected") {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      throw new Error("Unsupported origin protocol.");
+    }
+
+    return parsed.origin;
+  } catch {
+    throw new ApiError(403, "Cross-site request rejected.", errorCode);
+  }
+}
+
+function timingSafeTokenEquals(candidate: string | null, expected: string) {
+  if (!candidate || !expected) {
+    return false;
+  }
+
+  let mismatch = candidate.length ^ expected.length;
+  const length = Math.max(candidate.length, expected.length);
+
+  for (let index = 0; index < length; index += 1) {
+    mismatch |= candidate.charCodeAt(index % candidate.length) ^ expected.charCodeAt(index % expected.length);
+  }
+
+  return mismatch === 0;
+}
+
+function getBearerToken(request: Request) {
+  const authorization = request.headers.get("authorization");
+  const match = authorization?.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() ?? null;
+}
+
+export function assertSameOriginRequest(request: Request) {
+  const origin = normalizeRequestOrigin(request.headers.get("origin"));
+  const referer = request.headers.get("referer");
+  const host = request.headers.get("host");
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ?? null;
+  const expectedOrigins = new Set<string>();
+  const isProduction = process.env.NODE_ENV === "production";
+
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    addExpectedOrigin(expectedOrigins, process.env.NEXT_PUBLIC_APP_URL);
+  }
+
+  if (!isProduction) {
+    addExpectedOrigin(expectedOrigins, request.url);
+    addHostOrigin(expectedOrigins, forwardedHost, forwardedProto);
+    addHostOrigin(expectedOrigins, host, forwardedProto);
+  }
+
+  if (expectedOrigins.size === 0) {
+    throw new ApiError(503, "Application origin is not configured.", "app_origin_missing");
+  }
+
+  let candidate = origin;
+
+  if (!candidate && referer) {
+    candidate = normalizeRequestOrigin(referer);
+  }
+
+  if (!candidate) {
+    throw new ApiError(403, "Cross-site request rejected.", "csrf_rejected");
+  }
+
+  if (!expectedOrigins.has(candidate)) {
+    throw new ApiError(403, "Cross-site request rejected.", "csrf_rejected");
+  }
+}
+
+export function assertInternalSystemRequest(request: Request) {
+  const secret = getInternalSystemJobsSecret();
+
+  if (!secret) {
+    throw new ApiError(
+      503,
+      "Internal system job runner secret is not configured.",
+      "internal_runner_secret_missing",
+    );
+  }
+
+  const token = getBearerToken(request) ?? request.headers.get("x-internal-system-key")?.trim() ?? null;
+
+  if (!timingSafeTokenEquals(token, secret)) {
+    throw new ApiError(401, "Internal system authorization is required.", "internal_unauthorized");
+  }
+}
+
+export const DEFAULT_JSON_BODY_LIMIT_BYTES = 128 * 1024;
+export const DEFAULT_FORM_BODY_LIMIT_BYTES = 64 * 1024;
+export const STRIPE_WEBHOOK_BODY_LIMIT_BYTES = 1024 * 1024;
+
+export type BodyLimitOptions = {
+  maxBytes?: number;
+  code?: string;
+};
+
+function getDeclaredContentLength(request: Request) {
+  const contentLength = request.headers.get("content-length");
+  if (!contentLength) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(contentLength, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+export function assertRequestBodySize(
+  request: Request,
+  maxBytes: number,
+  code = "request_body_too_large",
+) {
+  const declaredLength = getDeclaredContentLength(request);
+
+  if (declaredLength !== null && declaredLength > maxBytes) {
+    throw new ApiError(413, "Request body is too large.", code);
+  }
+}
+
+export async function parseTextBody(
+  request: Request,
+  options?: BodyLimitOptions,
+) {
+  const maxBytes = options?.maxBytes ?? DEFAULT_JSON_BODY_LIMIT_BYTES;
+  const code = options?.code ?? "request_body_too_large";
+  assertRequestBodySize(request, maxBytes, code);
+
+  if (!request.body) {
+    return "";
+  }
+
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let bytesRead = 0;
+  let text = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+
+    if (done) {
+      break;
+    }
+
+    bytesRead += value.byteLength;
+    if (bytesRead > maxBytes) {
+      throw new ApiError(413, "Request body is too large.", code);
+    }
+
+    text += decoder.decode(value, { stream: true });
+  }
+
+  text += decoder.decode();
+  return text;
+}
+
 export async function parseJsonBody<T>(
   request: Request,
   schema: { parse: (input: unknown) => T },
+  options?: BodyLimitOptions,
 ) {
   let body: unknown;
 
   try {
-    body = await request.json();
-  } catch {
+    const raw = await parseTextBody(request, {
+      maxBytes: options?.maxBytes ?? DEFAULT_JSON_BODY_LIMIT_BYTES,
+      code: options?.code ?? "json_body_too_large",
+    });
+    body = JSON.parse(raw);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
     throw new ApiError(400, "Request body must be valid JSON.", "invalid_json");
   }
 
@@ -102,12 +314,20 @@ export async function parseOptionalJsonBody<T>(
   request: Request,
   schema: { parse: (input: unknown) => T },
   fallback: T,
+  options?: BodyLimitOptions,
 ) {
   let raw = "";
 
   try {
-    raw = await request.text();
-  } catch {
+    raw = await parseTextBody(request, {
+      maxBytes: options?.maxBytes ?? DEFAULT_JSON_BODY_LIMIT_BYTES,
+      code: options?.code ?? "json_body_too_large",
+    });
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
     throw new ApiError(400, "Request body must be valid JSON.", "invalid_json");
   }
 
@@ -124,6 +344,25 @@ export async function parseOptionalJsonBody<T>(
 
     throw error;
   }
+}
+
+export async function parseFormDataBody(
+  request: Request,
+  options?: BodyLimitOptions,
+) {
+  const declaredLength = getDeclaredContentLength(request);
+
+  if (declaredLength === null) {
+    throw new ApiError(411, "Content-Length is required for form uploads.", "form_content_length_required");
+  }
+
+  assertRequestBodySize(
+    request,
+    options?.maxBytes ?? DEFAULT_FORM_BODY_LIMIT_BYTES,
+    options?.code ?? "form_body_too_large",
+  );
+
+  return request.formData();
 }
 
 export async function parseRouteParams<T>(

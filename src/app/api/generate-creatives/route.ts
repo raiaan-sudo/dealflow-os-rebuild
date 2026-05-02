@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { ApiError, apiSuccess, handleApiError, parseJsonBody } from "@/lib/api/route";
+import {
+  ApiError,
+  apiSuccess,
+  assertSameOriginRequest,
+  handleApiError,
+  parseJsonBody,
+} from "@/lib/api/route";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import {
   mergeCampaignPlanDocument,
@@ -9,10 +15,15 @@ import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import type { CampaignAd } from "@/lib/services/campaign-plan-service";
 import { persistCampaignPlan } from "@/lib/services/campaign-plan-service";
-import { generateCreativePackage } from "@/lib/services/creative-engine";
+import { buildCreativeSystem } from "@/lib/services/creative-engine";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { runTrackedSystemJob } from "@/lib/services/system-job-service";
+import {
+  buildRateLimitResponse,
+  consumeRateLimit,
+  getRateLimitKey,
+} from "@/lib/api/rate-limit";
 
 const requestSchema = z.object({
   campaignId: z.string().min(1),
@@ -86,8 +97,19 @@ async function persistSupplementalCreativeFields(params: {
 
 export async function POST(request: Request) {
   try {
+    assertSameOriginRequest(request);
     const { campaignId } = await parseJsonBody(request, requestSchema);
     const auth = await getAuthenticatedContext();
+    const rateLimit = await consumeRateLimit({
+      key: getRateLimitKey(request, "generate-creatives", `${auth.organizationId}:${auth.userId}:${campaignId}`),
+      limit: 10,
+      windowMs: 60_000,
+    });
+
+    if (rateLimit && !rateLimit.allowed) {
+      return buildRateLimitResponse(rateLimit.resetAt);
+    }
+
     const requestId = crypto.randomUUID();
     const { output, jobId, correlationId } = await runTrackedSystemJob({
       organizationId: auth.organizationId,
@@ -107,7 +129,10 @@ export async function POST(request: Request) {
         }
 
         const plan = canonicalCampaignToPlan(record);
-        const creativePackage = await generateCreativePackage({
+        // Onboarding must not trigger paid image/video generation. This endpoint
+        // builds launch-review copy and creative drafts only; paid asset
+        // generation stays behind explicit asset-generation routes with guards.
+        const creativePackage = buildCreativeSystem({
           location: plan.market,
           audience: plan.audience,
           offer: plan.offerSummary || plan.keyOffer,

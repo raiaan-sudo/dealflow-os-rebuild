@@ -145,6 +145,81 @@ function safeArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
+function safeRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function isModernPersistedPlanDocument(value: Record<string, unknown>) {
+  return Boolean(
+    safeText(value.market) ||
+      safeText(value.audience) ||
+      safeText(value.business_name) ||
+      Number(value.monthly_budget ?? 0) > 0,
+  );
+}
+
+function funnelGoalFromPlan(value: Record<string, unknown>): CampaignStrategyInput["funnel_goal"] {
+  const funnelType = safeText(value.funnel_type).toLowerCase();
+
+  if (/book|call/.test(funnelType)) {
+    return "book_call";
+  }
+
+  if (/form|lead/.test(funnelType)) {
+    return "lead_form";
+  }
+
+  return "survey";
+}
+
+function adaptModernPersistedPlanDocument(value: Record<string, unknown>): SavedCampaignDocument {
+  const creatives = safeRecord(value.creatives);
+  const launch = safeRecord(value.launch);
+  const rootRuntime = safeRecord(value.runtime);
+  const launchRuntime = safeRecord(value.launch_runtime);
+  const results = safeRecord(value.results);
+
+  return {
+    name: value.business_name ?? value.client_name ?? value.name,
+    plan: value,
+    strategy: {
+      location: safeText(value.market),
+      audience: safeText(value.audience),
+      offer: safeText(value.offer_summary ?? value.key_offer),
+      price_point: safeText(value.property_type) || undefined,
+      market_type: inferCampaignIntent({
+        intent: value.intent,
+        marketType: value.intent,
+        offer: safeText(value.offer_summary ?? value.key_offer),
+        audience: safeText(value.audience),
+        primaryGoal: safeText(value.primary_goal),
+        mechanism: safeText(value.mechanism),
+      }),
+      funnel_goal: funnelGoalFromPlan(value),
+    },
+    creatives: value.creatives,
+    staticAds: creatives?.staticAds,
+    videoAds: creatives?.videoAds,
+    assetGeneration: value.assetGeneration,
+    items: value.items,
+    copy: value.copy,
+    ads: value.ads,
+    funnel: safeRecord(value.funnel),
+    launch: {
+      runtime: (rootRuntime ??
+        launchRuntime ??
+        safeRecord(launch?.runtime)) as Partial<CampaignRuntime> | null,
+    },
+    results: results
+      ? {
+          optimizations: results.optimizations,
+        }
+      : null,
+  };
+}
+
 function normalizeStrategyInput(
   value?: Partial<CampaignStrategyInput> | null,
   campaign?: Partial<Campaign> | null,
@@ -674,6 +749,7 @@ export function normalizeCanonicalCampaign(params: {
     campaign: {
       id: params.campaign.id,
       user_id: params.campaign.user_id,
+      organization_id: params.campaign.organization_id ?? null,
       name: safeText(params.savedDocument?.name ?? params.campaign.name) || "Untitled Campaign",
       location: market || null,
       audience: audience || null,
@@ -828,5 +904,29 @@ export function getSavedCampaignDocumentFromRow(row: CampaignPlanRow): SavedCamp
     return null;
   }
 
-  return readCampaignPlanDocumentWithDriftGuard(row, "canonical_campaign_read") as unknown as SavedCampaignDocument;
+  const document = readCampaignPlanDocumentWithDriftGuard(row, "canonical_campaign_read") as Record<string, unknown>;
+  const nestedPlan = safeRecord(document.plan);
+
+  if (!nestedPlan && isModernPersistedPlanDocument(document)) {
+    return adaptModernPersistedPlanDocument(document);
+  }
+
+  if (nestedPlan) {
+    const strategy = safeRecord(document.strategy);
+
+    if (
+      isModernPersistedPlanDocument(nestedPlan) &&
+      (!strategy ||
+        (!safeText(strategy.location) &&
+          !safeText(strategy.audience) &&
+          !safeText(strategy.offer)))
+    ) {
+      return {
+        ...(document as unknown as SavedCampaignDocument),
+        strategy: adaptModernPersistedPlanDocument(nestedPlan).strategy,
+      };
+    }
+  }
+
+  return document as unknown as SavedCampaignDocument;
 }

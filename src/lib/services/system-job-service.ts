@@ -6,7 +6,9 @@ import type { Database, Json } from "@/lib/supabase/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { regenerateStaticCreativeAssetsForUser } from "@/lib/services/campaign-persistence";
 import {
+  pollVideoGenerationStatusJob,
   type VideoGenerationJobPayload,
+  type VideoGenerationStatusJobPayload,
   runVideoGenerationJob,
 } from "@/lib/services/video-generation-job";
 
@@ -17,12 +19,14 @@ type SystemJobClient = SupabaseClient<Database>;
 export type SystemJobKind =
   | "static_creative_generation"
   | "video_generation"
+  | "video_generation_status"
   | "campaign_build"
   | "funnel_generation"
   | "creative_generation"
   | "meta_sync"
   | "recommendation_generation"
-  | "lead_capture_retry";
+  | "lead_capture_retry"
+  | "lead_side_effects";
 export type SystemJobStatus = "pending" | "processing" | "completed" | "failed";
 export type SystemJobLifecycleStatus =
   | "queued"
@@ -35,6 +39,12 @@ export type SystemJobWorkerCycleResult = {
   claimedJobId: string | null;
   resetCount: number;
 };
+export type SystemJobWorkerBatchResult = {
+  processedJobIds: string[];
+  resetCount: number;
+  cycles: number;
+  exhausted: boolean;
+};
 
 const MAX_SYSTEM_JOB_RETRIES = 1;
 
@@ -43,6 +53,7 @@ type SystemJobPayloadMap = {
     force?: boolean;
   };
   video_generation: VideoGenerationJobPayload;
+  video_generation_status: VideoGenerationStatusJobPayload;
   campaign_build: {
     childJobIds?: string[];
     videoIndexes?: number[];
@@ -71,6 +82,53 @@ type SystemJobPayloadMap = {
       phone: string | null;
       stage: string;
       notes: string | null;
+      smsConsent?: boolean | null;
+      smsConsentCopy?: string | null;
+      consentUrl?: string | null;
+      utmSource?: string | null;
+      utmMedium?: string | null;
+      utmCampaign?: string | null;
+      adId?: string | null;
+      landingPageUrl?: string | null;
+    };
+  };
+  lead_side_effects: {
+    requestId: string;
+    lead: {
+      id: string;
+      organization_id: string;
+      tenant_id?: string | null;
+      campaign_id: string;
+      campaign_name?: string | null;
+      name?: string | null;
+      first_name?: string | null;
+      last_name?: string | null;
+      email?: string | null;
+      phone?: string | null;
+      phone_raw?: string | null;
+      phone_e164?: string | null;
+      source?: string | null;
+      lead_type?: string | null;
+      utm_source?: string | null;
+      utm_medium?: string | null;
+      utm_campaign?: string | null;
+      ad_id?: string | null;
+      landing_page_url?: string | null;
+      created_at?: string | null;
+    };
+    metaConversion: {
+      organizationId: string;
+      leadId: string;
+      campaignId: string;
+      eventSourceUrl?: string | null;
+      eventTime?: string | null;
+      name?: string | null;
+      email?: string | null;
+      phone?: string | null;
+      clientIp?: string | null;
+      clientUserAgent?: string | null;
+      fbp?: string | null;
+      fbc?: string | null;
     };
   };
 };
@@ -99,6 +157,8 @@ export type SystemJobRecord<K extends SystemJobKind = SystemJobKind> = Omit<Syst
   lifecycleStatus?: SystemJobLifecycleStatus;
   correlationId?: string | null;
   lastErrorCategory?: string | null;
+  attempt_count?: number;
+  max_attempts?: number;
 };
 
 function getJobClient() {
@@ -216,8 +276,29 @@ export async function createSystemJob<K extends SystemJobKind>(params: {
   campaignId?: string | null;
   kind: K;
   payload: SystemJobPayloadMap[K];
+  idempotencyKey?: string | null;
+  maxAttempts?: number;
 }) {
   const supabase = params.supabase ?? getJobClient();
+
+  if (params.idempotencyKey?.trim()) {
+    const { data: existingRaw, error: existingError } = await supabase
+      .from("system_jobs")
+      .select("*")
+      .eq("idempotency_key", params.idempotencyKey.trim())
+      .eq("organization_id", params.organizationId)
+      .eq("user_id", params.userId)
+      .maybeSingle();
+
+    if (existingError) {
+      throw new ApiError(500, existingError.message, "system_job_idempotency_lookup_failed");
+    }
+
+    if (existingRaw) {
+      return parseSystemJob(existingRaw as SystemJobRow) as SystemJobRecord<K>;
+    }
+  }
+
   const { data, error } = await supabase
     .from("system_jobs")
     .insert({
@@ -227,11 +308,28 @@ export async function createSystemJob<K extends SystemJobKind>(params: {
       kind: params.kind,
       status: "pending",
       payload: (params.payload ?? {}) as Json,
+      idempotency_key: params.idempotencyKey?.trim() || null,
+      max_attempts: params.maxAttempts ?? MAX_SYSTEM_JOB_RETRIES + 1,
     } as never)
     .select("*")
     .single();
 
   if (error || !data) {
+    const errorCode = error && typeof error === "object" && "code" in error ? String(error.code) : null;
+    if (params.idempotencyKey?.trim() && errorCode === "23505") {
+      const { data: recoveredRaw, error: recoveredError } = await supabase
+        .from("system_jobs")
+        .select("*")
+        .eq("idempotency_key", params.idempotencyKey.trim())
+        .eq("organization_id", params.organizationId)
+        .eq("user_id", params.userId)
+        .maybeSingle();
+
+      if (!recoveredError && recoveredRaw) {
+        return parseSystemJob(recoveredRaw as SystemJobRow) as SystemJobRecord<K>;
+      }
+    }
+
     throw new ApiError(
       500,
       error?.message ?? "System job could not be created.",
@@ -248,6 +346,67 @@ export async function createSystemJob<K extends SystemJobKind>(params: {
   });
 
   return parseSystemJob(insertedJob) as SystemJobRecord<K>;
+}
+
+export async function queueLeadSideEffectsJob(params: {
+  organizationId: string;
+  userId: string;
+  campaignId: string;
+  payload: SystemJobPayloadMap["lead_side_effects"];
+}) {
+  const supabase = getJobClient();
+  const idempotencyKey = `lead_side_effects:${params.payload.lead.id}`;
+  const insertPayload = {
+    organization_id: params.organizationId,
+    user_id: params.userId,
+    campaign_id: params.campaignId,
+    kind: "lead_side_effects",
+    status: "pending",
+    payload: params.payload as unknown as Json,
+    idempotency_key: idempotencyKey,
+    max_attempts: 3,
+  };
+  const { data, error } = await supabase
+    .from("system_jobs")
+    .insert(insertPayload as never)
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    const errorCode = error && typeof error === "object" && "code" in error ? String(error.code) : null;
+
+    if (errorCode === "23505") {
+      const { data: existing, error: existingError } = await supabase
+        .from("system_jobs")
+        .select("id")
+        .eq("idempotency_key", idempotencyKey)
+        .eq("organization_id", params.organizationId)
+        .eq("user_id", params.userId)
+        .maybeSingle();
+
+      const existingRow = existing as { id?: unknown } | null;
+
+      if (!existingError && typeof existingRow?.id === "string") {
+        return { id: existingRow.id };
+      }
+    }
+
+    throw new ApiError(
+      500,
+      error?.message ?? "Lead side effect job could not be queued.",
+      "lead_side_effect_job_create_failed",
+    );
+  }
+
+  const row = data as { id: string };
+  logOperationalEvent("system_job.queued", {
+    kind: "lead_side_effects",
+    jobId: row.id,
+    campaignId: params.campaignId,
+    requestId: params.payload.requestId,
+  });
+
+  return row;
 }
 
 async function updateSystemJobTracking<K extends SystemJobKind>(params: {
@@ -332,13 +491,20 @@ export async function listSystemJobs(params: {
   return Array.isArray(data) ? data.map((row) => parseSystemJob(row as SystemJobRow)) : [];
 }
 
-export async function getSystemJobLogs(jobId: string) {
+export async function getSystemJobLogs(jobId: string, userId?: string) {
   const supabase = getJobClient();
-  const { data, error } = await supabase
+  const selection = userId ? "*, system_jobs!inner(user_id)" : "*";
+  let query = supabase
     .from("system_job_logs")
-    .select("*")
+    .select(selection)
     .eq("job_id", jobId)
     .order("created_at", { ascending: true });
+
+  if (userId) {
+    query = query.eq("system_jobs.user_id", userId);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     throw new ApiError(500, error.message, "system_job_log_list_failed");
@@ -372,50 +538,32 @@ async function updateSystemJob(
 
 export async function claimNextPendingSystemJob() {
   const supabase = getJobClient();
-  const { data, error } = await supabase
-    .from("system_jobs")
-    .select("*")
-    .eq("status", "pending")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const workerId = `vercel:${process.env.VERCEL_REGION ?? "local"}:${crypto.randomUUID()}`;
+  const { data, error } = await (supabase as any).rpc("claim_next_system_job", {
+    p_worker_id: workerId,
+    p_lease_ms: 5 * 60_000,
+  });
 
   if (error) {
-    throw new ApiError(500, error.message, "system_job_claim_lookup_failed");
+    throw new ApiError(500, error.message, "system_job_claim_failed");
   }
 
-  if (!data) {
+  const row = Array.isArray(data) ? data[0] : data;
+
+  if (!row) {
     return null;
   }
 
-  const candidate = data as SystemJobRow;
-  const claimed = await supabase
-    .from("system_jobs")
-    .update({
-      status: "processing",
-      started_at: new Date().toISOString(),
-      completed_at: null,
-      error_message: null,
-    } as never)
-    .eq("id", candidate.id)
-    .eq("status", "pending")
-    .select("*")
-    .maybeSingle();
-
-  if (claimed.error) {
-    throw new ApiError(500, claimed.error.message, "system_job_claim_failed");
-  }
-
-  if (!claimed.data) {
-    return null;
-  }
-
-  const claimedJob = parseSystemJob(claimed.data as SystemJobRow);
+  const claimedJob = parseSystemJob(row as SystemJobRow);
 
   await appendSystemJobLog({
     supabase,
     jobId: claimedJob.id,
     message: `${claimedJob.kind.replace(/_/g, " ")} job started.`,
+    details: {
+      workerId,
+      lockedUntil: claimedJob.locked_until ?? null,
+    } as Json,
   });
 
   return claimedJob;
@@ -429,10 +577,14 @@ export async function resetStaleProcessingSystemJobs(staleAfterMs = 10 * 60_000)
     .update({
       status: "pending",
       error_message: null,
+      last_error_code: "system_job_stale_reset",
       started_at: null,
+      locked_by: null,
+      locked_until: null,
+      next_run_at: new Date().toISOString(),
     } as never)
     .eq("status", "processing")
-    .lt("started_at", staleBefore)
+    .or(`locked_until.lte.${new Date().toISOString()},started_at.lt.${staleBefore}`)
     .select("id");
 
   if (error) {
@@ -470,8 +622,14 @@ export async function retrySystemJob(jobId: string, userId: string) {
   const nextJob = await updateSystemJob(supabase, jobId, {
     status: "pending",
     error_message: null,
+    last_error_code: null,
     completed_at: null,
     started_at: null,
+    locked_by: null,
+    locked_until: null,
+    next_run_at: new Date().toISOString(),
+    dead_lettered_at: null,
+    dead_letter_reason: null,
     retry_count: currentJob.retry_count + 1,
     result: null,
   });
@@ -495,11 +653,11 @@ export async function retrySystemJob(jobId: string, userId: string) {
 }
 
 function shouldAutoRetrySystemJob(job: SystemJobRecord, error: unknown) {
-  if (job.kind !== "video_generation" || job.retry_count >= MAX_SYSTEM_JOB_RETRIES) {
+  if (job.kind === "video_generation") {
     return false;
   }
 
-  if (!(error instanceof ApiError)) {
+  if (job.retry_count >= MAX_SYSTEM_JOB_RETRIES || !(error instanceof ApiError)) {
     return false;
   }
 
@@ -529,6 +687,7 @@ export async function processSystemJob(jobId: string) {
           status: "processing",
           started_at: new Date().toISOString(),
           error_message: null,
+          last_error_code: null,
         });
 
   try {
@@ -540,6 +699,7 @@ export async function processSystemJob(jobId: string) {
         processingJob.user_id,
         {
           force: Boolean((processingJob.payload as SystemJobPayloadMap["static_creative_generation"])?.force),
+          providerUsageRunId: `${processingJob.id}:${processingJob.attempt_count ?? 0}`,
           supabase,
         },
       );
@@ -557,17 +717,119 @@ export async function processSystemJob(jobId: string) {
       });
 
       result = output as unknown as Json;
-    } else {
+    } else if (processingJob.kind === "video_generation_status") {
+      const payload =
+        processingJob.payload as SystemJobPayloadMap["video_generation_status"];
+      const output = await pollVideoGenerationStatusJob({
+        supabase,
+        userId: processingJob.user_id,
+        campaignId: processingJob.campaign_id ?? "",
+        payload,
+      });
+
+      if (output.status === "processing") {
+        const pollAttempt = Math.min((payload.pollAttempt ?? 0) + 1, 120);
+        const nextRunAt = new Date(
+          Date.now() + Math.min(5 * 60_000, 30_000 + pollAttempt * 15_000),
+        ).toISOString();
+        const pendingJob = await updateSystemJob(supabase, processingJob.id, {
+          status: "pending",
+          result: output as unknown as Json,
+          payload: {
+            ...payload,
+            pollAttempt,
+          } as unknown as Json,
+          error_message: null,
+          last_error_code: null,
+          locked_by: null,
+          locked_until: null,
+          next_run_at: nextRunAt,
+        });
+
+        await appendSystemJobLog({
+          supabase,
+          jobId: processingJob.id,
+          message: "Video render is still processing at the provider; status poll rescheduled.",
+          details: {
+            providerAssetId: payload.providerAssetId,
+            providerStatus: output.providerStatus,
+            pollAttempt,
+            nextRunAt,
+          } as Json,
+        });
+
+        return pendingJob;
+      }
+
+      result = output as unknown as Json;
+    } else if (processingJob.kind === "lead_capture_retry") {
+      const payload = processingJob.payload as SystemJobPayloadMap["lead_capture_retry"];
+      const { replayFailedPublicLeadCapture } = await import("@/lib/services/lead-handler-service");
+      const replayResult = await replayFailedPublicLeadCapture({
+        ...payload.leadCapture,
+        source: payload.source,
+        requestId: payload.requestId,
+        reason: payload.reason,
+      });
+
       result = {
-        childJobIds:
-          ((processingJob.payload as SystemJobPayloadMap["campaign_build"])?.childJobIds ?? []) as string[],
+        ...replayResult,
+        requestId: payload.requestId,
+        retryReason: payload.reason,
       } as Json;
+    } else if (processingJob.kind === "lead_side_effects") {
+      const payload = processingJob.payload as SystemJobPayloadMap["lead_side_effects"];
+      const { safeNotifyAssignedAgentOfNewLead } = await import("@/lib/services/internal-lead-notification-service");
+      const { safeSendMetaLeadConversion } = await import("@/lib/integrations/meta/conversions");
+      const [notificationResult, metaConversionResult] = await Promise.all([
+        safeNotifyAssignedAgentOfNewLead(payload.lead),
+        safeSendMetaLeadConversion(payload.metaConversion),
+      ]);
+
+      logOperationalEvent("lead_capture.side_effects_processed", {
+        requestId: payload.requestId,
+        leadId: payload.lead.id,
+        organizationId: payload.lead.organization_id,
+        jobId: processingJob.id,
+        notificationResult,
+        metaConversionResult,
+      });
+
+      result = {
+        requestId: payload.requestId,
+        leadId: payload.lead.id,
+        notificationResult,
+        metaConversionResult,
+      } as Json;
+    } else if (
+      processingJob.kind === "campaign_build" ||
+      processingJob.kind === "funnel_generation" ||
+      processingJob.kind === "creative_generation" ||
+      processingJob.kind === "meta_sync" ||
+      processingJob.kind === "recommendation_generation"
+    ) {
+      throw new ApiError(
+        500,
+        `${processingJob.kind} was queued as an inline-tracked job and cannot be replayed by the cron worker without a resumable processor.`,
+        "system_job_inline_replay_unsupported",
+      );
+    } else {
+      throw new ApiError(
+        500,
+        `Unsupported system job kind: ${String(processingJob.kind)}`,
+        "system_job_kind_unsupported",
+      );
     }
 
     const completedJob = await updateSystemJob(supabase, jobId, {
       status: "completed",
       completed_at: new Date().toISOString(),
       result,
+      error_message: null,
+      last_error_code: null,
+      locked_by: null,
+      locked_until: null,
+      next_run_at: null,
     });
 
     await appendSystemJobLog({
@@ -588,7 +850,11 @@ export async function processSystemJob(jobId: string) {
         completed_at: null,
         started_at: null,
         error_message: message,
+        last_error_code: error instanceof ApiError ? error.code : "system_job_transient_failure",
         retry_count: processingJob.retry_count + 1,
+        locked_by: null,
+        locked_until: null,
+        next_run_at: new Date(Date.now() + 60_000).toISOString(),
         result: null,
       });
 
@@ -606,6 +872,11 @@ export async function processSystemJob(jobId: string) {
       status: "failed",
       completed_at: new Date().toISOString(),
       error_message: message,
+      last_error_code: error instanceof ApiError ? error.code : "system_job_processing_failed",
+      locked_by: null,
+      locked_until: null,
+      dead_lettered_at: new Date().toISOString(),
+      dead_letter_reason: message,
     });
 
     await appendSystemJobLog({
@@ -663,6 +934,7 @@ export async function runTrackedSystemJob<K extends SystemJobKind, T>(params: {
     campaignId: params.campaignId ?? null,
     kind: params.kind,
     payload: withTrackingPayload(params.payload, queuedTracking),
+    maxAttempts: maxRetries + 1,
   });
 
   logOperationalEvent("system_job.queued", {
@@ -684,6 +956,7 @@ export async function runTrackedSystemJob<K extends SystemJobKind, T>(params: {
         started_at: startedAt,
         completed_at: null,
         error_message: null,
+        last_error_code: null,
       });
 
       await updateSystemJobTracking({
@@ -733,6 +1006,10 @@ export async function runTrackedSystemJob<K extends SystemJobKind, T>(params: {
           completed_at: completedAt,
           result: resultPayload,
           error_message: null,
+          last_error_code: null,
+          locked_by: null,
+          locked_until: null,
+          next_run_at: null,
         });
 
         await updateSystemJobTracking({
@@ -775,7 +1052,14 @@ export async function runTrackedSystemJob<K extends SystemJobKind, T>(params: {
         const failedJob = await updateSystemJob(supabase, job.id, {
           status: retryEligible ? "pending" : "failed",
           error_message: message,
+          last_error_code:
+            error instanceof ApiError ? error.code : retryEligible ? "system_job_transient_failure" : "system_job_failed",
           completed_at: retryEligible ? null : new Date().toISOString(),
+          locked_by: null,
+          locked_until: null,
+          next_run_at: retryEligible ? new Date(Date.now() + 60_000).toISOString() : null,
+          dead_lettered_at: retryEligible ? null : new Date().toISOString(),
+          dead_letter_reason: retryEligible ? null : message,
         });
 
         await updateSystemJobTracking({
@@ -845,20 +1129,45 @@ export async function runTrackedSystemJob<K extends SystemJobKind, T>(params: {
 export async function runSystemJobWorkerCycle(options?: {
   staleAfterMs?: number;
 }) : Promise<SystemJobWorkerCycleResult> {
-  const resetCount = await resetStaleProcessingSystemJobs(options?.staleAfterMs);
-  const job = await claimNextPendingSystemJob();
-
-  if (!job) {
-    return {
-      claimedJobId: null,
-      resetCount,
-    };
-  }
-
-  await processSystemJob(job.id);
+  const result = await runSystemJobWorkerBatch({
+    maxCycles: 1,
+    staleAfterMs: options?.staleAfterMs,
+  });
 
   return {
-    claimedJobId: job.id,
+    claimedJobId: result.processedJobIds[0] ?? null,
+    resetCount: result.resetCount,
+  };
+}
+
+export async function runSystemJobWorkerBatch(options?: {
+  maxCycles?: number;
+  staleAfterMs?: number;
+}) : Promise<SystemJobWorkerBatchResult> {
+  const maxCycles = Math.min(Math.max(Math.trunc(options?.maxCycles ?? 1), 1), 5);
+  const resetCount = await resetStaleProcessingSystemJobs(options?.staleAfterMs);
+  const processedJobIds: string[] = [];
+
+  for (let cycle = 0; cycle < maxCycles; cycle += 1) {
+    const job = await claimNextPendingSystemJob();
+
+    if (!job) {
+      return {
+        processedJobIds,
+        resetCount,
+        cycles: cycle,
+        exhausted: true,
+      };
+    }
+
+    await processSystemJob(job.id);
+    processedJobIds.push(job.id);
+  }
+
+  return {
+    processedJobIds,
     resetCount,
+    cycles: maxCycles,
+    exhausted: false,
   };
 }

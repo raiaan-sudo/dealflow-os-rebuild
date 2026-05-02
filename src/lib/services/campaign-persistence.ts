@@ -19,6 +19,10 @@ import {
 import { debugLog } from "@/lib/debug";
 import { generateStaticCreativeAds, type StaticCreativeAsset } from "@/lib/services/creative-engine";
 import { persistStaticCreativeAssets } from "@/lib/services/static-creative-asset-service";
+import {
+  consumeSessionCostBudget,
+  markSessionCostBudgetEvent,
+} from "@/lib/services/session-cost-guard";
 import { createAdminClient } from "@/lib/server/supabase-admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
@@ -46,7 +50,12 @@ function isMissingPublishSchemaError(error: unknown) {
   const code = "code" in error ? error.code : null;
   const message = "message" in error ? error.message : null;
 
-  return code === "42703" || /publish_state|public_slug|staged_snapshot|published_snapshot/i.test(String(message ?? ""));
+  return (
+    code === "42703" ||
+    /schema cache|column .* does not exist|could not find .*publish_state|could not find .*staged_snapshot|could not find .*published_snapshot/i.test(
+      String(message ?? ""),
+    )
+  );
 }
 
 function safeText(value: unknown) {
@@ -198,6 +207,14 @@ function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[
       preferredImageModel,
       visualPromptBrief: null,
       scoreBreakdown: asScoreBreakdown(metadata?.scoreBreakdown),
+      offerQuality:
+        metadata?.offerQuality && typeof metadata.offerQuality === "object"
+          ? metadata.offerQuality as StaticCreativeAsset["offerQuality"]
+          : null,
+      qualityGate:
+        metadata?.qualityGate && typeof metadata.qualityGate === "object"
+          ? metadata.qualityGate as StaticCreativeAsset["qualityGate"]
+          : null,
       hook: typeof metadata?.overlayText === "string" ? metadata.overlayText : "",
       overlayText: typeof metadata?.overlayText === "string" ? metadata.overlayText : "",
       primaryText: typeof metadata?.primaryText === "string" ? metadata.primaryText : "",
@@ -288,6 +305,7 @@ function mapCampaignRow(row: CampaignPlanRow): Campaign {
   return {
     id: row.id,
     user_id: row.user_id,
+    organization_id: row.organization_id,
     name: safeText(plan?.name) || "Untitled Campaign",
     location: plan?.strategy?.location ?? null,
     audience: plan?.strategy?.audience ?? null,
@@ -338,7 +356,9 @@ function buildPersistedSavedDocument(record: FullCampaignRecord): CampaignPublis
 }
 
 function buildPublicSlug(record: FullCampaignRecord, requestedSlug?: string | null) {
-  const candidate = safeText(requestedSlug) || safeText(record.publish.slug) || `${record.campaign.name}-${record.plan.market}`;
+  const explicitSlug = safeText(requestedSlug) || safeText(record.publish.slug);
+  const automaticSlug = `${record.campaign.name}-${record.plan.market}-${record.campaign.id.slice(0, 8)}`;
+  const candidate = explicitSlug || automaticSlug;
   const normalized = slugify(candidate);
 
   if (!normalized) {
@@ -356,21 +376,24 @@ async function assertCampaignOwnership(
   row: CampaignPlanRow;
   campaign: Campaign;
 }> {
-  const { supabase, userId } = await requireUserSession();
-  const row = await loadCampaignPlanRowForUser(supabase, userId, campaignId);
+  const { supabase, userId, ownerId } = await requireUserSession();
+  const row = await loadCampaignPlanRowForUser(supabase, userId, ownerId, campaignId);
   return { supabase, userId, row, campaign: mapCampaignRow(row) };
 }
 
 async function loadCampaignPlanRowForUser(
   supabase: PersistenceClient,
   userId: string,
-  campaignId: string,
+  ownerIdOrCampaignId: string,
+  maybeCampaignId?: string,
 ) {
+  const campaignId = maybeCampaignId ?? ownerIdOrCampaignId;
+  const ownerId = maybeCampaignId ? ownerIdOrCampaignId : userId;
   const { data, error } = await supabase
     .from("campaign_plans")
     .select("*")
     .eq("id", campaignId)
-    .eq("user_id", userId)
+    .or(`user_id.eq.${userId},owner_id.eq.${ownerId}`)
     .maybeSingle();
 
   if (error) {
@@ -464,6 +487,7 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
   const persistencePayload = {
     id: campaignId,
     owner_id: ownerId,
+    organization_id: ownerId,
     user_id: userId,
     plan: {
       ...(plan as Record<string, unknown>),
@@ -488,6 +512,55 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
   const { data, error } = await query;
 
   if (error) {
+    if (
+      !requestedCampaignId &&
+      error.code === "23505" &&
+      /campaign_plans_user_id_unique|campaign_plans.*user_id.*unique|duplicate key value/i.test(
+        error.message,
+      )
+    ) {
+      const { data: existingRow, error: existingRowError } = await supabase
+        .from("campaign_plans")
+        .select("id")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingRowError) {
+        throw new ApiError(500, existingRowError.message, "campaign_save_failed");
+      }
+
+      const existingCampaignId =
+        existingRow && typeof (existingRow as Pick<CampaignPlanRow, "id">).id === "string"
+          ? (existingRow as Pick<CampaignPlanRow, "id">).id
+          : "";
+
+      if (existingCampaignId) {
+        const { data: recoveredData, error: recoveredError } = await supabase
+          .from("campaign_plans")
+          .update({
+            ...(persistencePayload as Record<string, unknown>),
+            id: existingCampaignId,
+          } as never)
+          .eq("id", existingCampaignId)
+          .eq("user_id", userId)
+          .select("*")
+          .single();
+
+        if (recoveredError) {
+          throw new ApiError(500, recoveredError.message, "campaign_save_failed");
+        }
+
+        if (recoveredData) {
+          return {
+            success: true,
+            campaignId: (recoveredData as CampaignPlanRow).id,
+          };
+        }
+      }
+    }
+
     debugLog("campaign-save-failed", {
       message: error.message,
       code: "campaign_save_failed",
@@ -559,7 +632,6 @@ export async function getLatestCampaignRecord(): Promise<FullCampaignRecord | nu
       .from("campaign_plans")
       .select("*")
       .eq("user_id", userId)
-      .order("updated_at", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -608,7 +680,7 @@ export async function regenerateStaticCreativeAssets(
 export async function regenerateStaticCreativeAssetsForUser(
   campaignId: string,
   userId: string,
-  options?: { force?: boolean; supabase?: PersistenceClient },
+  options?: { force?: boolean; supabase?: PersistenceClient; providerUsageRunId?: string | null },
 ): Promise<FullCampaignRecord> {
   const supabase =
     options?.supabase ??
@@ -668,6 +740,24 @@ export async function regenerateStaticCreativeAssetsForUser(
       price_point: currentRecord.strategy.price_point,
       market_type: currentRecord.strategy.market_type,
       creative_strategy: currentRecord.plan.creative_strategy,
+      provider_usage_context: {
+        createForAsset: (asset) => {
+          const runScope = options?.providerUsageRunId?.trim() || "default";
+          const idempotencyKey = `openai_image_generation:${row.organization_id ?? "org"}:${userId}:${campaignId}:${asset.id}:${asset.preferredImageModel}:${runScope}`;
+
+          return {
+            reserve: () =>
+              consumeSessionCostBudget({
+                bucket: "openai_image_generation",
+                userId,
+                organizationId: row.organization_id,
+                campaignId,
+                idempotencyKey,
+              }),
+            mark: markSessionCostBudgetEvent,
+          };
+        },
+      },
     });
 
     await persistStaticCreativeAssets({
@@ -757,13 +847,14 @@ export async function updateCampaignPublishState(params: {
     update.staged_at = null;
   }
 
-  const { data, error } = await supabase
+  const writeClient = createAdminClient() ?? supabase;
+  const { data, error } = await writeClient
     .from("campaign_plans")
     .update(update as never)
     .eq("id", params.campaignId)
     .eq("user_id", campaign.user_id)
     .select("*")
-    .single();
+    .maybeSingle();
 
   if (error) {
     if (isMissingPublishSchemaError(error)) {
@@ -779,6 +870,10 @@ export async function updateCampaignPublishState(params: {
     }
 
     throw error;
+  }
+
+  if (!data) {
+    throw new ApiError(404, "Campaign not found for publish update.", "campaign_not_found");
   }
 
   const updatedRow = data as CampaignPlanRow;

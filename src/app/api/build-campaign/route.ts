@@ -1,16 +1,27 @@
 import { z } from "zod";
-import { ApiError, apiSuccess, handleApiError, parseJsonBody } from "@/lib/api/route";
+import {
+  ApiError,
+  apiSuccess,
+  assertSameOriginRequest,
+  handleApiError,
+  parseJsonBody,
+} from "@/lib/api/route";
 import { getPublicAppUrl } from "@/lib/env";
 import {
-  buildCampaignPlanCriticalFieldPatch,
   getCampaignPayloadFromPlan,
   readCampaignPlanDocument,
   withCampaignPayload,
 } from "@/lib/services/campaign-plan-document";
+import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import { getCampaignById, updateCampaignPublishState } from "@/lib/services/campaign-persistence";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { runTrackedSystemJob } from "@/lib/services/system-job-service";
+import {
+  buildRateLimitResponse,
+  consumeRateLimit,
+  getRateLimitKey,
+} from "@/lib/api/rate-limit";
 
 const requestSchema = z.object({
   campaignId: z.string().min(1),
@@ -18,6 +29,7 @@ const requestSchema = z.object({
 
 type CampaignPayloadRecord = {
   selected_ad_id?: string;
+  selected_ad_ids?: string[];
   campaign_id?: string;
   destination_url?: string;
   business_profile?: Record<string, unknown>;
@@ -76,6 +88,7 @@ async function loadStoredPlan(campaignId: string): Promise<Record<string, unknow
 
 async function persistCampaignPayload(params: {
   campaignId: string;
+  userId: string;
   payload: CampaignPayloadRecord;
 }) {
   const supabase = await createRouteHandlerClient();
@@ -87,20 +100,30 @@ async function persistCampaignPayload(params: {
   const currentPlan = await loadStoredPlan(params.campaignId);
   const nextPlan = withCampaignPayload(currentPlan, params.payload as unknown as Record<string, unknown>);
 
-  const { error } = await supabase
-    .from("campaign_plans")
-    .update(buildCampaignPlanCriticalFieldPatch(nextPlan) as never)
-    .eq("id", params.campaignId);
-
-  if (error) {
-    throw error;
-  }
+  await persistCampaignPlanDocumentUpdate({
+    supabase,
+    campaignId: params.campaignId,
+    userId: params.userId,
+    plan: nextPlan,
+    source: "build_campaign_payload",
+  });
 }
 
 export async function POST(request: Request) {
   try {
+    assertSameOriginRequest(request);
     const { campaignId } = await parseJsonBody(request, requestSchema);
     const auth = await getAuthenticatedContext();
+    const rateLimit = await consumeRateLimit({
+      key: getRateLimitKey(request, "build-campaign", `${auth.organizationId}:${auth.userId}:${campaignId}`),
+      limit: 10,
+      windowMs: 60_000,
+    });
+
+    if (rateLimit && !rateLimit.allowed) {
+      return buildRateLimitResponse(rateLimit.resetAt);
+    }
+
     const requestId = crypto.randomUUID();
     const { output, jobId, correlationId } = await runTrackedSystemJob({
       organizationId: auth.organizationId,
@@ -176,6 +199,11 @@ export async function POST(request: Request) {
         const campaignPayload: CampaignPayloadRecord = {
           campaign_id: campaignId,
           selected_ad_id: existingPayload?.selected_ad_id,
+          selected_ad_ids: Array.isArray(existingPayload?.selected_ad_ids)
+            ? existingPayload.selected_ad_ids.map(String).filter(Boolean).slice(0, 6)
+            : existingPayload?.selected_ad_id
+              ? [existingPayload.selected_ad_id]
+              : undefined,
           destination_url: destinationUrl,
           business_profile: {
             business_name: record.plan.business_name,
@@ -247,6 +275,7 @@ export async function POST(request: Request) {
 
         await persistCampaignPayload({
           campaignId,
+          userId: auth.userId,
           payload: campaignPayload,
         });
 
@@ -257,6 +286,7 @@ export async function POST(request: Request) {
           campaignId,
           hasDestinationUrl: Boolean(campaignPayload.destination_url),
           hasSelectedAd: Boolean(campaignPayload.selected_ad_id),
+          selectedAdCount: campaignPayload.selected_ad_ids?.length ?? 0,
         }) as never,
     });
 

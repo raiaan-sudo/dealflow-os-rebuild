@@ -12,6 +12,7 @@ export type CampaignPublishState = "draft" | "staged" | "published";
 export type Campaign = {
   id: string;
   user_id: string;
+  organization_id?: string | null;
   name: string;
   location: string | null;
   audience: string | null;

@@ -53,6 +53,26 @@ function buildWorkspaceSlug(email: string | null) {
   return slugify(`${(email ?? "workspace").split("@")[0]}-group`);
 }
 
+function getBootstrapErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (error && typeof error === "object" && "message" in error) {
+    return String((error as { message?: unknown }).message ?? "Unknown bootstrap error");
+  }
+
+  return "Unknown bootstrap error";
+}
+
+function isDemoWorkspaceSeedingEnabled() {
+  if (process.env.ENABLE_DEMO_WORKSPACE_SEEDING === "true") {
+    return true;
+  }
+
+  return process.env.NODE_ENV !== "production" && process.env.ENABLE_DEMO_WORKSPACE_SEEDING !== "false";
+}
+
 export async function ensureUserProfile(supabase: SupabaseClient, user: AppContext["user"]) {
   const { data: existingProfileRaw } = await supabase
     .from("users")
@@ -139,6 +159,7 @@ export async function ensureWorkspace(
 ) {
   const organizationName = buildWorkspaceName(profile);
   const organizationSlug = buildWorkspaceSlug(profile.email);
+  const fallbackOrganizationSlug = `${organizationSlug}-${profile.id.slice(0, 8)}`;
 
   const { data: existingOrganizationRaw, error: existingOrganizationError } = await supabase
     .from("organizations")
@@ -177,20 +198,22 @@ export async function ensureWorkspace(
         throw error;
       }
 
-      const { data: recoveredOrganizationRaw, error: recoveredOrganizationError } =
-        await supabase
-          .from("organizations")
-          .select("*")
-          .eq("slug", organizationSlug)
-          .order("created_at", { ascending: true })
-          .limit(1)
-          .maybeSingle();
+      const { data: organizationRaw, error: fallbackOrganizationError } = await supabase
+        .from("organizations")
+        .insert({
+          name: organizationName,
+          slug: fallbackOrganizationSlug,
+          owner_user_id: profile.id,
+          plan_tier: "starter",
+        } as never)
+        .select("*")
+        .single();
 
-      if (recoveredOrganizationError) {
-        throw recoveredOrganizationError;
+      if (fallbackOrganizationError) {
+        throw fallbackOrganizationError;
       }
 
-      organization = recoveredOrganizationRaw as Row<"organizations"> | null;
+      organization = organizationRaw as Row<"organizations"> | null;
     }
   }
 
@@ -206,6 +229,10 @@ export async function ensureMembership(
   profile: Row<"users">,
   organization: Row<"organizations">,
 ) {
+  if (organization.owner_user_id !== profile.id) {
+    throw new Error("Workspace bootstrap refused to create membership for a non-owned organization.");
+  }
+
   const { data: directMembershipRaw, error: directMembershipError } = await supabase
     .from("organization_memberships")
     .select("*")
@@ -426,10 +453,11 @@ export async function ensureAppContext() {
   }
 
   try {
-    const profile = await ensureUserProfile(supabase, user);
-    const organization = await ensureWorkspace(supabase, profile);
-    const membership = await ensureMembership(supabase, profile, organization);
-    const businessProfile = await ensureBusinessProfile(supabase, organization, profile);
+    const bootstrapSupabase = (createAdminClient() as SupabaseClient | null) ?? supabase;
+    const profile = await ensureUserProfile(bootstrapSupabase, user);
+    const organization = await ensureWorkspace(bootstrapSupabase, profile);
+    const membership = await ensureMembership(bootstrapSupabase, profile, organization);
+    const businessProfile = await ensureBusinessProfile(bootstrapSupabase, organization, profile);
 
     const context: AppContext = {
       user,
@@ -440,7 +468,7 @@ export async function ensureAppContext() {
     };
 
     try {
-      await ensureOrganizationSeedData(supabase, context);
+      await ensureOrganizationSeedData(bootstrapSupabase, context);
     } catch (seedError) {
       logWarn("Organization seed data bootstrap skipped", {
         userId: user.id,
@@ -454,7 +482,7 @@ export async function ensureAppContext() {
     logError("App context bootstrap failed", {
       userId: user.id,
       email: user.email ?? null,
-      message: error instanceof Error ? error.message : "Unknown bootstrap error",
+      message: getBootstrapErrorMessage(error),
     });
     throw error;
   }
@@ -464,6 +492,10 @@ async function ensureOrganizationSeedData(
   supabase: SupabaseClient,
   context: Pick<AppContext, "organization" | "user">,
 ) {
+  if (!isDemoWorkspaceSeedingEnabled()) {
+    return;
+  }
+
   const organizationId = context.organization.id;
 
   const [

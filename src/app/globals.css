@@ -4,25 +4,33 @@
 
 @layer base {
   :root {
-    --background: 222 47% 11%;
+    --background: 224 60% 4%;
     --foreground: 210 40% 98%;
-    --card: 222 47% 14%;
+    --card: 220 50% 7%;
     --card-foreground: 210 40% 98%;
-    --popover: 222 47% 14%;
+    --popover: 220 50% 7%;
     --popover-foreground: 210 40% 98%;
-    --primary: 207 100% 64%;
-    --primary-foreground: 222 47% 11%;
-    --secondary: 217 33% 18%;
+    --primary: 259 91% 74%;
+    --primary-foreground: 224 60% 5%;
+    --secondary: 218 38% 12%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 18%;
-    --muted-foreground: 215 20% 70%;
-    --accent: 217 33% 18%;
+    --muted: 218 38% 12%;
+    --muted-foreground: 216 24% 70%;
+    --accent: 209 100% 64%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62% 45%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217 24% 24%;
-    --input: 217 24% 24%;
-    --ring: 207 100% 64%;
+    --border: 217 26% 20%;
+    --input: 217 26% 20%;
+    --ring: 194 92% 70%;
+    --font-sans: "Satoshi", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", "SFMono-Regular", ui-monospace, monospace;
+    --df-bg-primary: #030712;
+    --df-bg-secondary: #060a12;
+    --df-bg-elevated: #08111d;
+    --df-accent-blue: #74c7ff;
+    --df-accent-purple: #a78bfa;
+    --df-accent-cyan: #67e8f9;
   }
 
   * {
@@ -35,6 +43,13 @@
 
   body {
     @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+    background:
+      radial-gradient(circle at 50% -10%, rgba(124, 58, 237, 0.24), transparent 32%),
+      radial-gradient(circle at 14% 18%, rgba(103, 232, 249, 0.16), transparent 28%),
+      radial-gradient(circle at 88% 8%, rgba(116, 199, 255, 0.18), transparent 26%),
+      linear-gradient(180deg, #030712 0%, #06101d 46%, #030712 100%);
+    min-height: 100vh;
   }
 
   main,
@@ -48,5 +63,98 @@
   ::selection {
     background: hsl(var(--primary) / 0.28);
     color: hsl(var(--foreground));
+  }
+}
+
+@layer components {
+  .df-atmosphere {
+    @apply pointer-events-none fixed inset-0 -z-10 overflow-hidden;
+    background:
+      radial-gradient(circle at 50% -8%, rgba(124, 58, 237, 0.22), transparent 34%),
+      radial-gradient(circle at 18% 12%, rgba(103, 232, 249, 0.14), transparent 30%),
+      radial-gradient(circle at 82% 20%, rgba(47, 128, 255, 0.18), transparent 28%);
+  }
+
+  .df-atmosphere::before {
+    content: "";
+    position: absolute;
+    inset: -22%;
+    background:
+      linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(circle at center, black, transparent 68%);
+    opacity: 0.45;
+  }
+
+  .df-atmosphere::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.22) 0.7px, transparent 0.7px);
+    background-size: 3px 3px;
+    opacity: 0.055;
+    mix-blend-mode: screen;
+  }
+
+  .surface-subtle {
+    background:
+      radial-gradient(circle at 20% 0%, rgba(116, 199, 255, 0.12), transparent 36%),
+      linear-gradient(145deg, rgba(11, 22, 38, 0.82), rgba(4, 8, 15, 0.74));
+    box-shadow: 0 30px 90px -58px rgba(0, 0, 0, 0.95);
+  }
+
+  .surface-strong {
+    background:
+      radial-gradient(circle at 18% 0%, rgba(167, 139, 250, 0.16), transparent 36%),
+      linear-gradient(145deg, rgba(14, 30, 52, 0.94), rgba(5, 9, 17, 0.88));
+    box-shadow: 0 34px 100px -60px rgba(0, 0, 0, 0.95);
+  }
+
+  .surface-guided {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(173, 235, 255, 0.14);
+    background:
+      radial-gradient(circle at 12% 0%, rgba(167, 139, 250, 0.22), transparent 34%),
+      radial-gradient(circle at 88% 12%, rgba(103, 232, 249, 0.16), transparent 30%),
+      linear-gradient(145deg, rgba(10, 20, 35, 0.92), rgba(4, 8, 15, 0.82));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 34px 100px -58px rgba(47, 128, 255, 0.52);
+  }
+
+  .surface-guided::before {
+    content: "";
+    position: absolute;
+    inset-inline: 12%;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.8), transparent);
+  }
+
+  .df-container {
+    @apply mx-auto w-full max-w-[1180px];
+  }
+
+  .df-page-stack {
+    @apply space-y-6 sm:space-y-8;
+  }
+
+  .df-eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.24em] text-primary/85;
+  }
+
+  .df-heading-xl {
+    @apply text-balance text-4xl font-semibold tracking-[-0.075em] text-white sm:text-6xl;
+  }
+
+  .df-body-muted {
+    @apply text-sm leading-7 sm:text-[15px];
+    color: rgba(255, 255, 255, 0.68);
+  }
+
+  .system-status-dot {
+    @apply inline-block h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(52,211,153,0.95)];
   }
 }

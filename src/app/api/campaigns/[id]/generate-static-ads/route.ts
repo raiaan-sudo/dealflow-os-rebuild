@@ -1,8 +1,8 @@
-import { apiSuccess, handleApiError, parseOptionalJsonBody } from "@/lib/api/route";
+import { assertSameOriginRequest, apiSuccess, handleApiError, parseOptionalJsonBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
+import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { createSystemJob, listSystemJobs } from "@/lib/services/system-job-service";
-import { consumeSessionCostBudget } from "@/lib/services/session-cost-guard";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -14,6 +14,7 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
+    assertSameOriginRequest(request);
     const auth = await getAuthenticatedContext();
     const { id } = await context.params;
     const campaignId = id?.trim();
@@ -23,8 +24,14 @@ export async function POST(
       return Response.json({ error: "Campaign id is required." }, { status: 400 });
     }
 
+    const campaign = await getCampaignById(campaignId);
+
+    if (!campaign) {
+      return Response.json({ error: "Campaign not found." }, { status: 404 });
+    }
+
     const rateLimit = await consumeRateLimit({
-      key: getRateLimitKey(request, "generate-static-ads", auth.userId),
+      key: getRateLimitKey(request, "generate-static-ads", `${auth.organizationId}:${auth.userId}:${campaignId}`),
       limit: 6,
       windowMs: 60_000,
     });
@@ -50,17 +57,14 @@ export async function POST(
       });
     }
 
-    await consumeSessionCostBudget({
-      bucket: "openai_image_generation",
-      userId: auth.userId,
-      campaignId,
-    });
+    const idempotencyKey = `static_creative_generation:${auth.organizationId}:${auth.userId}:${campaignId}`;
 
     const job = await createSystemJob({
       organizationId: auth.organizationId,
       userId: auth.userId,
       campaignId,
       kind: "static_creative_generation",
+      idempotencyKey,
       payload: {
         force: body.force === true,
       },

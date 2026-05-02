@@ -48,6 +48,7 @@ curl -X POST \
 6. Confirm:
    - no second Meta campaign is created
    - existing campaign is validated and reused
+   - the reused campaign reports `status=PAUSED` or is immediately reset to `PAUSED`
    - launch continues with ad set creation
 
 ## Scenario 2: Interrupt after ad set creation
@@ -67,6 +68,7 @@ curl -X POST \
 5. Confirm:
    - no duplicate campaign is created
    - no duplicate ad set is created
+   - campaign and ad set report `status=PAUSED` or are immediately reset to `PAUSED`
    - launch resumes at creative creation
 
 ## Scenario 3: Interrupt after creative creation
@@ -87,6 +89,7 @@ curl -X POST \
    - no duplicate campaign is created
    - no duplicate ad set is created
    - no duplicate creative is created
+   - campaign and ad set report `status=PAUSED` or are immediately reset to `PAUSED`
    - launch resumes at ad creation
 
 ## DB validation checklist
@@ -119,6 +122,7 @@ For each retry:
 ## Pass criteria
 
 - Retry reuses any already-created valid object.
+- Retry verifies or restores `PAUSED` before reusing any activatable Meta object.
 - Missing or deleted objects are recreated one step at a time.
 - Completed objects are not duplicated.
 - User-visible error stage matches the failing stage.

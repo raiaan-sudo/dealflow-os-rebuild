@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/api/route";
+import { createHash } from "node:crypto";
 import { generateAiJson } from "@/lib/ai/client";
 import { logError, logWarn } from "@/lib/logging";
 import {
@@ -54,6 +55,17 @@ type CreateLeadInput = {
   email?: string | null;
   source?: string | null;
   notes?: string | null;
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  ad_id?: string | null;
+  landing_page_url?: string | null;
+  sms_consent?: boolean | null;
+  sms_consent_copy?: string | null;
+  consent_source?: string | null;
+  consent_url?: string | null;
+  skip_recent_duplicate_fallback?: boolean;
+  skip_lead_loop_verification?: boolean;
 };
 
 type QueueFailedLeadCaptureInput = {
@@ -67,6 +79,35 @@ type QueueFailedLeadCaptureInput = {
   notes?: string | null;
   stage?: string | null;
   failureReason: string;
+  smsConsent?: boolean | null;
+  smsConsentCopy?: string | null;
+  consentUrl?: string | null;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  adId?: string | null;
+  landingPageUrl?: string | null;
+};
+
+export type PublicLeadCaptureRetryInput = {
+  campaignId: string;
+  funnelId: string | null;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  stage: string;
+  notes: string | null;
+  source?: string | null;
+  requestId?: string | null;
+  reason?: string | null;
+  smsConsent?: boolean | null;
+  smsConsentCopy?: string | null;
+  consentUrl?: string | null;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  adId?: string | null;
+  landingPageUrl?: string | null;
 };
 
 type LeadInsertContext = {
@@ -85,6 +126,34 @@ type LeadBookingMetadata = {
 type LeadMetadata = Record<string, Json | undefined> & {
   booking?: LeadBookingMetadata;
 };
+
+const SMS_CONSENT_COPY =
+  "By checking this box and submitting, I agree to receive automated and manual SMS messages about this request from DealFlow OS and its customer. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help.";
+
+function normalizeLeadRetryIdentity(value?: string | null) {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function buildLeadRetryJobIdempotencyKey(input: {
+  requestId: string;
+  campaignId: string;
+  funnelId: string;
+  email?: string | null;
+  phone?: string | null;
+}) {
+  return createHash("sha256")
+    .update(
+      [
+        "lead_capture_retry",
+        input.requestId.trim(),
+        input.campaignId.trim(),
+        input.funnelId.trim(),
+        normalizeLeadRetryIdentity(input.email),
+        normalizePhone(input.phone ?? ""),
+      ].join("|"),
+    )
+    .digest("hex");
+}
 
 function splitLeadName(name?: string | null) {
   const value = (name ?? "").trim();
@@ -118,6 +187,31 @@ function normalizeLeadStatus(status?: string | null): LeadRow["status"] {
   return "new";
 }
 
+function buildLeadDedupeHash(params: {
+  organizationId: string;
+  campaignId: string | null;
+  email: string | null;
+  phone: string | null;
+}) {
+  const normalizedEmail = (params.email ?? "").trim().toLowerCase();
+  const normalizedPhone = (params.phone ?? "").trim();
+
+  if (!normalizedEmail && !normalizedPhone) {
+    return null;
+  }
+
+  return createHash("sha256")
+    .update(
+      [
+        params.organizationId,
+        params.campaignId ?? "no-campaign",
+        normalizedEmail,
+        normalizedPhone,
+      ].join("|"),
+    )
+    .digest("hex");
+}
+
 function getLeadMetadata(lead: LeadRow): LeadMetadata {
   if (!lead.metadata || typeof lead.metadata !== "object" || Array.isArray(lead.metadata)) {
     return {};
@@ -136,6 +230,100 @@ function withBookingMetadata(lead: LeadRow, booking: LeadBookingMetadata): Json 
 function showsStrongBookingIntent(message: string) {
   return /\b(yeah|yes|interested|can someone call me|call me|talk to someone|see options|show me options|show me homes|want to move forward|i'd like to see|book|schedule)\b/i
     .test(message);
+}
+
+function isSmsOptOutMessage(message: string) {
+  return /^(stop|stopall|unsubscribe|cancel|end|quit)$/i.test(message.trim());
+}
+
+function isSmsOptInMessage(message: string) {
+  return /^(start|unstop|subscribe)$/i.test(message.trim());
+}
+
+function isSmsHelpMessage(message: string) {
+  return /^help$/i.test(message.trim());
+}
+
+function buildSmsConsentMetadata(input: {
+  source?: string | null;
+  consented: boolean;
+  phone: string | null;
+  copy?: string | null;
+  url?: string | null;
+}) {
+  const capturedAt = new Date().toISOString();
+
+  return {
+    source: input.source?.trim() || "lead_capture",
+    captured_at: capturedAt,
+    sms: {
+      consented: input.consented,
+      captured_at: capturedAt,
+      phone: input.phone,
+      consent_copy: input.copy?.trim() || SMS_CONSENT_COPY,
+      opt_out_copy: "Reply STOP to opt out or HELP for help.",
+      source_url: input.url?.trim() || null,
+      privacy_url: "/privacy",
+      terms_url: "/terms",
+    },
+  } as Json;
+}
+
+async function markLeadSmsOptedOut(
+  supabase: SupabaseClient | AdminClient,
+  lead: LeadRow,
+) {
+  const optedOutAt = new Date().toISOString();
+  const { error } = await supabase
+    .from("leads")
+    .update({
+      sms_opted_out_at: optedOutAt,
+      status: "lost",
+      metadata: {
+        ...getLeadMetadata(lead),
+        sms_opt_out: {
+          status: "opted_out",
+          opted_out_at: optedOutAt,
+        },
+      },
+    } as never)
+    .eq("id", lead.id);
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function markLeadSmsOptedIn(
+  supabase: SupabaseClient | AdminClient,
+  lead: LeadRow,
+) {
+  const optedInAt = new Date().toISOString();
+  const { error } = await supabase
+    .from("leads")
+    .update({
+      sms_opted_out_at: null,
+      metadata: {
+        ...getLeadMetadata(lead),
+        sms_opt_in: {
+          status: "opted_in",
+          opted_in_at: optedInAt,
+          source: "inbound_start",
+        },
+      },
+      consent_metadata: buildSmsConsentMetadata({
+        source: "inbound_start",
+        consented: true,
+        phone: lead.phone,
+        copy:
+          "Reply START to resume SMS messages. Message and data rates may apply. Reply STOP to opt out or HELP for help.",
+      }),
+    } as never)
+    .eq("id", lead.id);
+
+  if (error) {
+    throw error;
+  }
 }
 
 async function requireLeadContext() {
@@ -182,10 +370,15 @@ async function resolvePublicLeadInsertContext(input: Pick<CreateLeadInput, "camp
       .from("campaign_plans")
       .select("id, owner_id, user_id")
       .eq("id", input.campaign_id.trim())
+      .eq("publish_state", "published")
       .maybeSingle();
 
     if (error) {
       throw new ApiError(500, error.message, "campaign_lookup_failed");
+    }
+
+    if (!data) {
+      throw new ApiError(404, "Published funnel not found.", "funnel_not_found");
     }
 
     return resolveOrganizationIdForCampaignRow(admin, data as Pick<
@@ -286,47 +479,16 @@ async function resolveOrganizationIdForCampaignRow(
 async function createPublicLeadInsertClient(expectedUserId: string) {
   const client = await createPublicLeadLookupClient();
 
-  if ("auth" in client) {
-    const {
-      data: { user },
-      error,
-    } = await client.auth.getUser();
-
-    if (error || !user) {
-      logError("Public lead insert blocked: service-role auth unavailable", {
-        code: "public_insert_auth_failed",
-      });
-      throw new ApiError(
-        503,
-        "Lead capture is temporarily unavailable. Please try again shortly.",
-        "public_insert_auth_failed",
-      );
-    }
-
-    if (user.id !== expectedUserId) {
-      logError("Public lead insert blocked: service-role user mismatch", {
-        code: "public_insert_user_mismatch",
-        expectedUserId,
-        actualUserId: user.id,
-      });
-      throw new ApiError(
-        503,
-        "Lead capture is temporarily unavailable. Please try again shortly.",
-        "public_insert_user_mismatch",
-      );
-    }
-
-    return client;
-  }
-
+  void expectedUserId;
   return client;
 }
 
 export async function queueFailedPublicLeadCapture(input: QueueFailedLeadCaptureInput) {
   const campaignId = input.campaign_id?.trim() ?? "";
+  const funnelId = input.funnel_id?.trim() ?? "";
 
-  if (!campaignId) {
-    logError("Failed lead capture could not be queued: missing campaign id", {
+  if (!campaignId && !funnelId) {
+    logError("Failed lead capture could not be queued: missing campaign id and funnel id", {
       requestId: input.requestId,
       reason: input.failureReason,
       code: "failed_lead_capture_missing_campaign",
@@ -336,8 +498,8 @@ export async function queueFailedPublicLeadCapture(input: QueueFailedLeadCapture
 
   try {
     const context = await resolvePublicLeadInsertContext({
-      campaign_id: campaignId,
-      funnel_id: input.funnel_id ?? null,
+      campaign_id: campaignId || undefined,
+      funnel_id: funnelId || null,
     });
 
     const job = await createSystemJob({
@@ -351,14 +513,29 @@ export async function queueFailedPublicLeadCapture(input: QueueFailedLeadCapture
         reason: input.failureReason,
         leadCapture: {
           campaignId,
-          funnelId: input.funnel_id?.trim() || null,
+          funnelId: funnelId || null,
           name: input.name?.trim() || "Unknown lead",
           email: input.email?.trim() || null,
           phone: input.phone?.trim() ? normalizePhone(input.phone) : null,
           stage: input.stage?.trim() || "generated",
           notes: input.notes?.trim() || null,
+          smsConsent: input.smsConsent ?? null,
+          smsConsentCopy: input.smsConsentCopy?.trim() || null,
+          consentUrl: input.consentUrl?.trim() || null,
+          utmSource: input.utmSource?.trim() || null,
+          utmMedium: input.utmMedium?.trim() || null,
+          utmCampaign: input.utmCampaign?.trim() || null,
+          adId: input.adId?.trim() || null,
+          landingPageUrl: input.landingPageUrl?.trim() || null,
         },
       },
+      idempotencyKey: buildLeadRetryJobIdempotencyKey({
+        requestId: input.requestId,
+        campaignId,
+        funnelId,
+        email: input.email,
+        phone: input.phone,
+      }),
     });
 
     logWarn("Lead capture queued for retry", {
@@ -423,8 +600,36 @@ async function findRecentDuplicateLead(params: {
   campaignId: string | null;
   email: string | null;
   phone: string | null;
+  dedupeHash?: string | null;
+  skipRecentDuplicateFallback?: boolean;
 }) {
   const { supabase, organizationId, campaignId, email, phone } = params;
+
+  if (params.dedupeHash) {
+    let dedupeQuery = supabase
+      .from("leads")
+      .select("*")
+      .eq("dedupe_hash", params.dedupeHash)
+      .eq("organization_id", organizationId);
+
+    if (campaignId) {
+      dedupeQuery = dedupeQuery.eq("campaign_id", campaignId);
+    }
+
+    const { data, error } = await dedupeQuery.maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (data) {
+      return data as LeadRow;
+    }
+  }
+
+  if (params.skipRecentDuplicateFallback) {
+    return null;
+  }
 
   if (!campaignId || (!email && !phone)) {
     return null;
@@ -502,22 +707,68 @@ async function listLeadMessages(supabase: SupabaseClient | AdminClient, leadId: 
   return (data as LeadMessageRow[] | null) ?? [];
 }
 
+async function findLeadMessageByProviderMessageId(
+  supabase: SupabaseClient | AdminClient,
+  providerMessageId: string | null | undefined,
+) {
+  const normalized = providerMessageId?.trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("lead_messages")
+    .select("*")
+    .eq("provider_message_id", normalized)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return (data as LeadMessageRow | null) ?? null;
+}
+
 async function saveLeadMessage(
   supabase: SupabaseClient | AdminClient,
   leadId: string,
   direction: "inbound" | "outbound",
   message: string,
+  options: {
+    providerMessageId?: string | null;
+    deliveryStatus?: "received" | "sent" | "failed" | "recorded";
+    errorMessage?: string | null;
+  } = {},
 ) {
   const { error } = await supabase.from("lead_messages").insert({
     lead_id: leadId,
     direction,
     message,
+    provider_message_id: options.providerMessageId ?? null,
+    delivery_status:
+      options.deliveryStatus ?? (direction === "inbound" ? "received" : "recorded"),
+    error_message: options.errorMessage ?? null,
     created_at: new Date().toISOString(),
   } as never);
 
   if (error) {
     throw error;
   }
+}
+
+async function sendLeadSMS(lead: LeadRow, message: string, reason: string) {
+  if (!lead.phone) {
+    throw new ApiError(400, "Lead is missing a phone number.", "lead_phone_missing");
+  }
+
+  return sendSMS(lead.phone, message, {
+    consentMetadata: lead.consent_metadata,
+    smsOptedOutAt: lead.sms_opted_out_at,
+    reason,
+  });
 }
 
 const MINIMUM_FOLLOW_UP_MESSAGE = "Just checking — are you still interested?";
@@ -535,8 +786,7 @@ async function ensureMinimumConversation(
         message.direction === "outbound" && message.message === MINIMUM_FOLLOW_UP_MESSAGE,
     )
   ) {
-    await saveLeadMessage(supabase, leadId, "outbound", MINIMUM_FOLLOW_UP_MESSAGE);
-    return listLeadMessages(supabase, leadId);
+    return messages;
   }
 
   return messages;
@@ -741,16 +991,28 @@ export async function handleNewLead(
     throw new ApiError(400, "Lead is missing a phone number.", "lead_phone_missing");
   }
 
+  let sentMessageId: string | null = null;
+  let deliveryStatus: "sent" | "failed" = "sent";
+  let deliveryError: string | null = null;
+
   try {
-    await sendSMS(lead.phone, message);
+    const result = await sendLeadSMS(lead, message, "lead_opening");
+    sentMessageId = result.sid;
   } catch (error) {
+    deliveryStatus = "failed";
+    deliveryError = error instanceof Error ? error.message : "Unknown error";
     logError("Lead opening SMS failed", {
       leadId: lead.id,
-      message: error instanceof Error ? error.message : "Unknown error",
+      message: deliveryError,
+      code: error instanceof ApiError ? error.code : "lead_opening_sms_failed",
     });
   }
 
-  await saveLeadMessage(supabase, lead.id, "outbound", message);
+  await saveLeadMessage(supabase, lead.id, "outbound", message, {
+    providerMessageId: sentMessageId,
+    deliveryStatus,
+    errorMessage: deliveryError,
+  });
   await ensureMinimumConversation(supabase, lead.id);
 }
 
@@ -768,6 +1030,57 @@ export async function handleIncomingMessage(leadId: string, message: string) {
   }
 
   await saveLeadMessage(supabase, lead.id, "inbound", message);
+
+  if (isSmsOptOutMessage(message)) {
+    await markLeadSmsOptedOut(supabase, lead);
+    await saveLeadMessage(
+      supabase,
+      lead.id,
+      "outbound",
+      "You have been unsubscribed and will not receive more messages.",
+      { deliveryStatus: "recorded" },
+    );
+    return {
+      leadId: lead.id,
+      response: "You have been unsubscribed and will not receive more messages.",
+      status: "lost" as const,
+      slots: [] as string[],
+    };
+  }
+
+  if (isSmsOptInMessage(message)) {
+    await markLeadSmsOptedIn(supabase, lead);
+    const reply =
+      "You are subscribed again. Reply STOP to opt out or HELP for help. Message and data rates may apply.";
+    await saveLeadMessage(supabase, lead.id, "outbound", reply, { deliveryStatus: "recorded" });
+    return {
+      leadId: lead.id,
+      response: reply,
+      status: normalizeLeadStatus(lead.status),
+      slots: [] as string[],
+    };
+  }
+
+  if (isSmsHelpMessage(message)) {
+    const reply =
+      "DealFlow OS lead updates: reply STOP to opt out, START to resume, or contact the business directly for help. Message and data rates may apply.";
+    await saveLeadMessage(supabase, lead.id, "outbound", reply, { deliveryStatus: "recorded" });
+    return {
+      leadId: lead.id,
+      response: reply,
+      status: normalizeLeadStatus(lead.status),
+      slots: [] as string[],
+    };
+  }
+
+  if (lead.sms_opted_out_at) {
+    return {
+      leadId: lead.id,
+      response: "You are unsubscribed. Reply START to resume messages.",
+      status: normalizeLeadStatus(lead.status),
+      slots: [] as string[],
+    };
+  }
 
   const conversation = (await listLeadMessages(supabase, lead.id)) ?? [];
   const metadata = getLeadMetadata(lead);
@@ -801,15 +1114,26 @@ export async function handleIncomingMessage(leadId: string, message: string) {
 
       const reply = formatAppointmentConfirmationMessage(appointment.scheduled_at);
 
+      let providerMessageId: string | null = null;
+      let deliveryStatus: "sent" | "failed" = "sent";
+      let deliveryError: string | null = null;
+
       try {
-        await sendSMS(lead.phone ?? "", reply);
+        const smsResult = await sendLeadSMS(lead, reply, "booking_confirmation");
+        providerMessageId = smsResult.sid;
       } catch (error) {
+        deliveryStatus = "failed";
+        deliveryError = error instanceof Error ? error.message : "Unknown error";
         logError("Lead booking confirmation SMS failed", {
           leadId: lead.id,
-          message: error instanceof Error ? error.message : "Unknown error",
+          message: deliveryError,
         });
       }
-      await saveLeadMessage(supabase, lead.id, "outbound", reply);
+      await saveLeadMessage(supabase, lead.id, "outbound", reply, {
+        providerMessageId,
+        deliveryStatus,
+        errorMessage: deliveryError,
+      });
 
       return {
         leadId: lead.id,
@@ -847,15 +1171,26 @@ export async function handleIncomingMessage(leadId: string, message: string) {
     }
   }
 
+  let providerMessageId: string | null = null;
+  let deliveryStatus: "sent" | "failed" = "sent";
+  let deliveryError: string | null = null;
+
   try {
-    await sendSMS(lead.phone, outboundReply);
+    const smsResult = await sendLeadSMS(lead, outboundReply, "lead_auto_reply");
+    providerMessageId = smsResult.sid;
   } catch (error) {
+    deliveryStatus = "failed";
+    deliveryError = error instanceof Error ? error.message : "Unknown error";
     logError("Lead outbound SMS failed", {
       leadId: lead.id,
-      message: error instanceof Error ? error.message : "Unknown error",
+      message: deliveryError,
     });
   }
-  await saveLeadMessage(supabase, lead.id, "outbound", outboundReply);
+  await saveLeadMessage(supabase, lead.id, "outbound", outboundReply, {
+    providerMessageId,
+    deliveryStatus,
+    errorMessage: deliveryError,
+  });
 
   const nextStatus =
     response.status ??
@@ -905,16 +1240,101 @@ function suggestedSlotsFromMetadata(metadata: Json | undefined) {
     : [];
 }
 
-export async function handleIncomingMessageByPhone(phone: string, message: string) {
+export async function handleIncomingMessageByPhone(
+  phone: string,
+  message: string,
+  options: {
+    messageSid?: string | null;
+    organizationId?: string | null;
+  } = {},
+) {
   const adminClient = createBookingAdminClient();
 
-  const lead = await getLeadByPhone(adminClient, null, phone);
+  if (!options.organizationId) {
+    throw new ApiError(
+      503,
+      "Inbound SMS tenant mapping is not configured.",
+      "sms_tenant_mapping_missing",
+    );
+  }
+
+  const lead = await getLeadByPhone(adminClient, options.organizationId, phone);
 
   if (!lead) {
     throw new ApiError(404, "Lead not found for incoming SMS.", "lead_not_found");
   }
 
-  await saveLeadMessage(adminClient, lead.id, "inbound", message);
+  const existingMessage = await findLeadMessageByProviderMessageId(
+    adminClient,
+    options.messageSid,
+  );
+
+  if (existingMessage) {
+    return {
+      leadId: lead.id,
+      response: "",
+      status: normalizeLeadStatus(lead.status),
+      slots: [] as string[],
+      idempotentReplay: true,
+    };
+  }
+
+  await saveLeadMessage(adminClient, lead.id, "inbound", message, {
+    providerMessageId: options.messageSid ?? null,
+    deliveryStatus: "received",
+  });
+
+  if (isSmsOptOutMessage(message)) {
+    await markLeadSmsOptedOut(adminClient, lead);
+    await saveLeadMessage(
+      adminClient,
+      lead.id,
+      "outbound",
+      "You have been unsubscribed and will not receive more messages.",
+      { deliveryStatus: "recorded" },
+    );
+    return {
+      leadId: lead.id,
+      response: "You have been unsubscribed and will not receive more messages.",
+      status: "lost" as const,
+      slots: [] as string[],
+    };
+  }
+
+  if (isSmsOptInMessage(message)) {
+    await markLeadSmsOptedIn(adminClient, lead);
+    const reply =
+      "You are subscribed again. Reply STOP to opt out or HELP for help. Message and data rates may apply.";
+    await saveLeadMessage(adminClient, lead.id, "outbound", reply, { deliveryStatus: "recorded" });
+    return {
+      leadId: lead.id,
+      response: reply,
+      status: normalizeLeadStatus(lead.status),
+      slots: [] as string[],
+    };
+  }
+
+  if (isSmsHelpMessage(message)) {
+    const reply =
+      "DealFlow OS lead updates: reply STOP to opt out, START to resume, or contact the business directly for help. Message and data rates may apply.";
+    await saveLeadMessage(adminClient, lead.id, "outbound", reply, { deliveryStatus: "recorded" });
+    return {
+      leadId: lead.id,
+      response: reply,
+      status: normalizeLeadStatus(lead.status),
+      slots: [] as string[],
+    };
+  }
+
+  if (lead.sms_opted_out_at) {
+    return {
+      leadId: lead.id,
+      response: "You are unsubscribed. Reply START to resume messages.",
+      status: normalizeLeadStatus(lead.status),
+      slots: [] as string[],
+    };
+  }
+
   const conversation = (await listLeadMessages(adminClient, lead.id)) ?? [];
   const metadata = getLeadMetadata(lead);
   const offeredSlots = metadata.booking?.status === "suggested"
@@ -947,15 +1367,26 @@ export async function handleIncomingMessageByPhone(phone: string, message: strin
 
       const reply = formatAppointmentConfirmationMessage(appointment.scheduled_at);
 
+      let providerMessageId: string | null = null;
+      let deliveryStatus: "sent" | "failed" = "sent";
+      let deliveryError: string | null = null;
+
       try {
-        await sendSMS(lead.phone ?? "", reply);
+        const smsResult = await sendLeadSMS(lead, reply, "booking_confirmation");
+        providerMessageId = smsResult.sid;
       } catch (error) {
+        deliveryStatus = "failed";
+        deliveryError = error instanceof Error ? error.message : "Unknown error";
         logError("Lead booking confirmation SMS failed", {
           leadId: lead.id,
-          message: error instanceof Error ? error.message : "Unknown error",
+          message: deliveryError,
         });
       }
-      await saveLeadMessage(adminClient, lead.id, "outbound", reply);
+      await saveLeadMessage(adminClient, lead.id, "outbound", reply, {
+        providerMessageId,
+        deliveryStatus,
+        errorMessage: deliveryError,
+      });
 
       return {
         leadId: lead.id,
@@ -993,15 +1424,26 @@ export async function handleIncomingMessageByPhone(phone: string, message: strin
     }
   }
 
+  let providerMessageId: string | null = null;
+  let deliveryStatus: "sent" | "failed" = "sent";
+  let deliveryError: string | null = null;
+
   try {
-    await sendSMS(lead.phone, outboundReply);
+    const smsResult = await sendLeadSMS(lead, outboundReply, "lead_auto_reply");
+    providerMessageId = smsResult.sid;
   } catch (error) {
+    deliveryStatus = "failed";
+    deliveryError = error instanceof Error ? error.message : "Unknown error";
     logError("Lead outbound SMS failed", {
       leadId: lead.id,
-      message: error instanceof Error ? error.message : "Unknown error",
+      message: deliveryError,
     });
   }
-  await saveLeadMessage(adminClient, lead.id, "outbound", outboundReply);
+  await saveLeadMessage(adminClient, lead.id, "outbound", outboundReply, {
+    providerMessageId,
+    deliveryStatus,
+    errorMessage: deliveryError,
+  });
 
   const nextStatus =
     response.status ??
@@ -1057,11 +1499,27 @@ async function createLeadAndStartConversationForContext(
   const { supabase, userId, organizationId, campaignId } = context;
 
   const { firstName, lastName } = splitLeadName(input.name);
+  const phoneRaw = input.phone?.trim() || null;
   const email = input.email?.trim() || null;
-  const phone = input.phone?.trim() ? normalizePhone(input.phone) : null;
+  const phone = phoneRaw ? normalizePhone(phoneRaw) : null;
+  const smsConsent = input.sms_consent === true;
+  const dedupeHash = buildLeadDedupeHash({
+    organizationId,
+    campaignId,
+    email,
+    phone,
+  });
 
   if (!phone && !email) {
     throw new ApiError(400, "An email or phone number is required.", "validation_error");
+  }
+
+  if (phone && !smsConsent) {
+    throw new ApiError(
+      400,
+      "Explicit SMS consent is required when a phone number is submitted.",
+      "sms_consent_required",
+    );
   }
 
   const duplicateLead = await findRecentDuplicateLead({
@@ -1070,6 +1528,8 @@ async function createLeadAndStartConversationForContext(
     campaignId,
     email,
     phone,
+    dedupeHash,
+    skipRecentDuplicateFallback: input.skip_recent_duplicate_fallback === true,
   });
 
   if (duplicateLead) {
@@ -1080,6 +1540,7 @@ async function createLeadAndStartConversationForContext(
     .from("leads")
     .insert({
       organization_id: organizationId,
+      tenant_id: organizationId,
       user_id: userId,
       campaign_id: campaignId,
       name: input.name?.trim() || null,
@@ -1088,14 +1549,50 @@ async function createLeadAndStartConversationForContext(
       last_name: lastName,
       email,
       phone,
+      phone_raw: phoneRaw,
+      phone_e164: phone,
+      utm_source: input.utm_source?.trim() || null,
+      utm_medium: input.utm_medium?.trim() || null,
+      utm_campaign: input.utm_campaign?.trim() || null,
+      ad_id: input.ad_id?.trim() || null,
+      landing_page_url: input.landing_page_url?.trim() || null,
+      dedupe_hash: dedupeHash,
       status: "new",
       notes: input.notes?.trim() || null,
+      consent_metadata: buildSmsConsentMetadata({
+        source: input.consent_source?.trim() || input.source?.trim() || "lead_capture",
+        consented: smsConsent,
+        phone,
+        copy: input.sms_consent_copy,
+        url: input.consent_url,
+      }),
       created_at: new Date().toISOString(),
     } as never)
     .select("*")
     .single();
 
   if (error) {
+    if (
+      dedupeHash &&
+      (error.code === "23505" || /duplicate key|unique constraint/i.test(error.message ?? ""))
+    ) {
+      let recoveryQuery = supabase
+        .from("leads")
+        .select("*")
+        .eq("dedupe_hash", dedupeHash)
+        .eq("organization_id", organizationId);
+
+      if (campaignId) {
+        recoveryQuery = recoveryQuery.eq("campaign_id", campaignId);
+      }
+
+      const { data: recovered } = await recoveryQuery.maybeSingle();
+
+      if (recovered) {
+        return recovered as LeadRow;
+      }
+    }
+
     logError("Lead insert failed", {
       message: error.message,
       code: error.code ?? null,
@@ -1109,49 +1606,61 @@ async function createLeadAndStartConversationForContext(
 
   const lead = data as LeadRow;
 
-  if (lead.campaign_id) {
-    const { data: campaignPlanData, error: campaignPlanError } = await supabase
-      .from("campaign_plans")
-      .select("plan")
-      .eq("id", lead.campaign_id)
-      .maybeSingle();
-
-    if (campaignPlanError) {
-      logWarn("Lead loop verification campaign lookup failed", {
+  if (lead.campaign_id && input.skip_lead_loop_verification !== true) {
+    void markCampaignLeadLoopVerified({
+      supabase,
+      campaignId: lead.campaign_id,
+    }).catch((error) => {
+      logWarn("Lead loop verification update failed", {
         campaignId: lead.campaign_id,
-        message: campaignPlanError.message,
+        message: error instanceof Error ? error.message : "Unknown lead loop verification failure",
       });
-    } else {
-      const campaignPlanRow = (campaignPlanData as { plan?: unknown } | null) ?? null;
-      const currentPlan = readCampaignPlanDocument(campaignPlanRow?.plan);
-      const nextPlan = withLeadLoopVerified(currentPlan);
-
-      const { error: leadLoopUpdateError } = await supabase
-        .from("campaign_plans")
-        .update(buildCampaignPlanCriticalFieldPatch(nextPlan) as never)
-        .eq("id", lead.campaign_id);
-
-      if (leadLoopUpdateError) {
-        logWarn("Lead loop verification flag update failed", {
-          campaignId: lead.campaign_id,
-          message: leadLoopUpdateError.message,
-        });
-      }
-    }
+    });
   }
 
   if (lead.phone) {
-    try {
-      await handleNewLead(lead, supabase);
-    } catch (error) {
-      logError("Lead conversation bootstrap failed", {
-        leadId: lead.id,
-        message: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
+    logWarn("Lead conversation bootstrap skipped", {
+      leadId: lead.id,
+      reason: "lead_sms_automation_disabled_internal_notifications_only",
+    });
   }
 
   return lead;
+}
+
+async function markCampaignLeadLoopVerified(params: {
+  supabase: SupabaseClient | AdminClient;
+  campaignId: string;
+}) {
+  const { data: campaignPlanData, error: campaignPlanError } = await params.supabase
+    .from("campaign_plans")
+    .select("plan")
+    .eq("id", params.campaignId)
+    .maybeSingle();
+
+  if (campaignPlanError) {
+    logWarn("Lead loop verification campaign lookup failed", {
+      campaignId: params.campaignId,
+      message: campaignPlanError.message,
+    });
+    return;
+  }
+
+  const campaignPlanRow = (campaignPlanData as { plan?: unknown } | null) ?? null;
+  const currentPlan = readCampaignPlanDocument(campaignPlanRow?.plan);
+  const nextPlan = withLeadLoopVerified(currentPlan);
+
+  const { error: leadLoopUpdateError } = await params.supabase
+    .from("campaign_plans")
+    .update(buildCampaignPlanCriticalFieldPatch(nextPlan) as never)
+    .eq("id", params.campaignId);
+
+  if (leadLoopUpdateError) {
+    logWarn("Lead loop verification flag update failed", {
+      campaignId: params.campaignId,
+      message: leadLoopUpdateError.message,
+    });
+  }
 }
 
 export async function createPublicLeadAndStartConversation(input: CreateLeadInput) {
@@ -1164,6 +1673,44 @@ export async function createPublicLeadAndStartConversation(input: CreateLeadInpu
     organizationId: context.organizationId,
     campaignId: context.campaignId,
   });
+}
+
+export async function replayFailedPublicLeadCapture(input: PublicLeadCaptureRetryInput) {
+  const retryNotes = [
+    input.notes?.trim() || null,
+    input.reason?.trim() ? `Recovered queued lead capture: ${input.reason.trim()}` : null,
+    input.requestId?.trim() ? `Original request: ${input.requestId.trim()}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const lead = await createPublicLeadAndStartConversation({
+    campaign_id: input.campaignId?.trim() || undefined,
+    funnel_id: input.funnelId?.trim() || null,
+    name: input.name?.trim() || "Unknown lead",
+    email: input.email?.trim() || null,
+    phone: input.phone?.trim() || null,
+    source: input.source?.trim() || "lead_capture_retry",
+    notes: retryNotes || null,
+    sms_consent: input.smsConsent === true,
+    sms_consent_copy: input.smsConsentCopy ?? SMS_CONSENT_COPY,
+    consent_source: "lead_capture_retry",
+    consent_url: input.consentUrl ?? input.landingPageUrl ?? null,
+    utm_source: input.utmSource ?? null,
+    utm_medium: input.utmMedium ?? null,
+    utm_campaign: input.utmCampaign ?? null,
+    ad_id: input.adId ?? null,
+    landing_page_url: input.landingPageUrl ?? input.consentUrl ?? null,
+  });
+
+  return {
+    leadId: lead.id,
+    campaignId: lead.campaign_id,
+    organizationId: lead.organization_id,
+    dedupeHash: lead.dedupe_hash,
+    status: lead.status,
+    source: lead.source,
+  };
 }
 
 export async function findLeadByPhoneForOrganization(phone: string, organizationId: string) {

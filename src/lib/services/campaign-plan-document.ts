@@ -6,6 +6,7 @@ export const CURRENT_CAMPAIGN_PLAN_VERSION = 3;
 const campaignPayloadSchema = z
   .object({
     selected_ad_id: z.string().trim().min(1).nullable().optional(),
+    selected_ad_ids: z.array(z.string().trim().min(1)).max(6).optional(),
     destination_url: z.string().trim().min(1).nullable().optional(),
   })
   .passthrough();
@@ -44,13 +45,14 @@ const campaignPlanDocumentSchema = z
   .object({
     version: z.coerce.number().int().min(1).default(CURRENT_CAMPAIGN_PLAN_VERSION),
     selected_ad_id: z.string().trim().min(1).nullable().optional(),
+    selected_ad_ids: z.array(z.string().trim().min(1)).max(6).optional(),
     lead_loop_verified: z.boolean().optional().default(false),
     launch_status: z.string().trim().min(1).nullable().optional(),
     public_slug: z.string().trim().min(1).nullable().optional(),
-    campaign_payload: campaignPayloadSchema.optional(),
-    launch_runtime: launchRuntimeSchema.optional(),
-    runtime: runtimeSchema.optional(),
-    first_week_success: z.record(z.string(), z.unknown()).optional(),
+    campaign_payload: campaignPayloadSchema.nullable().optional(),
+    launch_runtime: launchRuntimeSchema.nullable().optional(),
+    runtime: runtimeSchema.nullable().optional(),
+    first_week_success: z.record(z.string(), z.unknown()).nullable().optional(),
     onboarding_idempotency_key: z.string().trim().min(1).optional(),
     onboarding_focus: z.string().trim().min(1).optional(),
     onboarding_price_range: z.string().trim().min(1).optional(),
@@ -69,6 +71,20 @@ function asObjectRecord(value: unknown) {
 
 function normalizeSelectedAdId(value: unknown) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function normalizeSelectedAdIds(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .map((item) => normalizeSelectedAdId(item))
+        .filter((item): item is string => Boolean(item)),
+    ),
+  ).slice(0, 6);
 }
 
 function normalizeOptionalText(value: unknown) {
@@ -120,27 +136,43 @@ function derivePublicSlugFromPlanValue(value: Record<string, unknown>) {
 
 function migrateCampaignPlanDocument(value: Record<string, unknown>) {
   const currentPayload = asObjectRecord(value.campaign_payload);
+  const currentLaunchRuntime = asObjectRecord(value.launch_runtime);
+  const currentRuntime = asObjectRecord(value.runtime);
+  const currentFirstWeekSuccess = asObjectRecord(value.first_week_success);
+  const hasVersion = Object.hasOwn(value, "version");
+  const hasLeadLoopVerified = Object.hasOwn(value, "lead_loop_verified");
   const selectedAdId =
     normalizeSelectedAdId(value.selected_ad_id) ??
     normalizeSelectedAdId(currentPayload?.selected_ad_id) ??
     null;
+  const selectedAdIds = normalizeSelectedAdIds(value.selected_ad_ids);
+  const payloadSelectedAdIds = normalizeSelectedAdIds(currentPayload?.selected_ad_ids);
+  const mergedSelectedAdIds = [
+    ...(selectedAdIds.length > 0 ? selectedAdIds : payloadSelectedAdIds),
+    ...(selectedAdId ? [selectedAdId] : []),
+  ].filter((item, index, list) => list.indexOf(item) === index).slice(0, 6);
 
   return {
     ...value,
     version:
-      typeof value.version === "number" && Number.isFinite(value.version)
+      hasVersion
         ? value.version
         : CURRENT_CAMPAIGN_PLAN_VERSION,
     selected_ad_id: selectedAdId,
+    selected_ad_ids: mergedSelectedAdIds,
     launch_status: deriveLaunchStatusFromPlanValue(value),
     public_slug: derivePublicSlugFromPlanValue(value),
+    runtime: currentRuntime ?? undefined,
+    launch_runtime: currentLaunchRuntime ?? undefined,
+    first_week_success: currentFirstWeekSuccess ?? undefined,
     campaign_payload: currentPayload
       ? {
           ...currentPayload,
           ...(selectedAdId ? { selected_ad_id: selectedAdId } : {}),
+          ...(mergedSelectedAdIds.length > 0 ? { selected_ad_ids: mergedSelectedAdIds } : {}),
         }
-      : currentPayload,
-    lead_loop_verified: value.lead_loop_verified === true,
+      : undefined,
+    lead_loop_verified: hasLeadLoopVerified ? value.lead_loop_verified : false,
   };
 }
 
@@ -187,6 +219,20 @@ export function getSelectedAdIdFromPlan(value: unknown) {
   return normalizeSelectedAdId(plan.selected_ad_id) ??
     normalizeSelectedAdId(plan.campaign_payload?.selected_ad_id) ??
     null;
+}
+
+export function getSelectedAdIdsFromPlan(value: unknown) {
+  const plan = readCampaignPlanDocument(value);
+  const ids = [
+    ...normalizeSelectedAdIds(plan.selected_ad_ids),
+    ...normalizeSelectedAdIds(plan.campaign_payload?.selected_ad_ids),
+    ...(normalizeSelectedAdId(plan.selected_ad_id) ? [normalizeSelectedAdId(plan.selected_ad_id) as string] : []),
+    ...(normalizeSelectedAdId(plan.campaign_payload?.selected_ad_id)
+      ? [normalizeSelectedAdId(plan.campaign_payload?.selected_ad_id) as string]
+      : []),
+  ].filter((item, index, list) => list.indexOf(item) === index);
+
+  return ids.slice(0, 6);
 }
 
 export function getLeadLoopVerifiedFromPlan(value: unknown) {
@@ -253,11 +299,20 @@ export function mergeCampaignPlanDocument(
 }
 
 export function withSelectedAdId(current: unknown, selectedAdId: string) {
+  return withSelectedAdIds(current, [selectedAdId]);
+}
+
+export function withSelectedAdIds(current: unknown, selectedAdIds: string[]) {
+  const normalizedIds = normalizeSelectedAdIds(selectedAdIds);
+  const primarySelectedAdId = normalizedIds[0] ?? "";
+
   return mergeCampaignPlanDocument(current, {
-    selected_ad_id: selectedAdId,
+    selected_ad_ids: normalizedIds,
+    selected_ad_id: primarySelectedAdId || null,
     campaign_payload: {
       ...(getCampaignPayloadFromPlan(current) ?? {}),
-      selected_ad_id: selectedAdId,
+      selected_ad_id: primarySelectedAdId || null,
+      selected_ad_ids: normalizedIds,
     },
   });
 }
@@ -282,8 +337,20 @@ export function withLaunchRuntime(
   launchRuntime: Record<string, unknown>,
   runtimePatch?: Record<string, unknown>,
 ) {
+  const metaPushStatus = normalizeOptionalText(runtimePatch?.metaPushStatus);
+  const runtimeStatus = normalizeOptionalText(runtimePatch?.status);
+  const launchStatus =
+    metaPushStatus === "published"
+      ? "live"
+      : metaPushStatus === "failed"
+        ? "failed"
+        : runtimeStatus === "launching"
+          ? "launching"
+          : runtimeStatus;
+
   return mergeCampaignPlanDocument(current, {
     launch_runtime: launchRuntime,
+    ...(launchStatus ? { launch_status: launchStatus } : {}),
     ...(runtimePatch ? { runtime: runtimePatch } : {}),
   });
 }

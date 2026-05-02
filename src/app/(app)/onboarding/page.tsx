@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PageShell } from "@/components/ui/page-shell";
 import { Spinner } from "@/components/ui/spinner";
 
 type CampaignFocus = "seller" | "buyer";
@@ -22,14 +23,20 @@ type PipelineStep = {
 };
 
 type FieldErrors = {
+  firstName?: string;
+  lastName?: string;
   businessName?: string;
+  agentPhone?: string;
   market?: string;
   priceRange?: string;
   budget?: string;
 };
 
 type PersistedOnboardingProgress = {
+  firstName: string;
+  lastName: string;
   businessName: string;
+  agentPhone: string;
   market: string;
   focus: CampaignFocus;
   priceRange: string;
@@ -39,11 +46,13 @@ type PersistedOnboardingProgress = {
   currentStep: OnboardingProgressStep;
   failedStep: PipelineStepKey | null;
   error: string | null;
+  expiresAt: number;
 };
 
 const CREATE_PLAN_TIMEOUT_MS = 20_000;
 const PIPELINE_STEP_TIMEOUT_MS = 45_000;
 const ONBOARDING_PROGRESS_STORAGE_KEY = "dealflow-onboarding-progress-v2";
+const ONBOARDING_PROGRESS_TTL_MS = 24 * 60 * 60 * 1000;
 
 const PIPELINE_STEPS: PipelineStep[] = [
   {
@@ -200,7 +209,10 @@ function getStartStepIndex(step: OnboardingProgressStep) {
 }
 
 function buildOnboardingIdempotencySeed(params: {
+  firstName: string;
+  lastName: string;
   businessName: string;
+  agentPhone: string;
   market: string;
   focus: CampaignFocus;
   priceRange: string;
@@ -208,7 +220,10 @@ function buildOnboardingIdempotencySeed(params: {
   goal: string;
 }) {
   return [
+    params.firstName,
+    params.lastName,
     params.businessName,
+    params.agentPhone,
     params.market,
     params.focus,
     params.priceRange,
@@ -222,13 +237,30 @@ function buildOnboardingIdempotencySeed(params: {
 async function fetchJsonWithTimeout<T>(input: string, init: RequestInit, timeoutMs: number) {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  const externalSignal = init.signal;
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
+  }
 
   try {
     const response = await fetch(input, {
       ...init,
       signal: controller.signal,
     });
-    const data = (await response.json().catch(() => null)) as T | null;
+
+    let data: T | null = null;
+
+    try {
+      data = (await response.json()) as T;
+    } catch (error) {
+      console.error("JSON PARSE FAILED:", error);
+      throw new Error("Invalid JSON response");
+    }
 
     return {
       response,
@@ -246,7 +278,10 @@ async function fetchJsonWithTimeout<T>(input: string, init: RequestInit, timeout
 }
 
 function validateFields(params: {
+  firstName: string;
+  lastName: string;
   businessName: string;
+  agentPhone: string;
   market: string;
   priceRange: string;
   budget: string;
@@ -254,8 +289,20 @@ function validateFields(params: {
   const errors: FieldErrors = {};
   const budgetValue = Number.parseFloat(params.budget.replace(/[^0-9.]/g, ""));
 
+  if (params.firstName.trim().length === 0) {
+    errors.firstName = "Add your first name for lead alerts.";
+  }
+
+  if (params.lastName.trim().length === 0) {
+    errors.lastName = "Add your last name for lead alerts.";
+  }
+
   if (params.businessName.trim().length === 0) {
-    errors.businessName = "Add your name, team, or brokerage so we can personalize the preview.";
+    errors.businessName = "Add your company or brokerage so we can personalize the preview.";
+  }
+
+  if (params.agentPhone.trim().length === 0) {
+    errors.agentPhone = "Add the phone number that should receive internal lead alerts.";
   }
 
   if (params.market.trim().length === 0) {
@@ -290,9 +337,18 @@ function formatProgressLabel(step: OnboardingProgressStep) {
   }
 }
 
+function getCampaignReviewPath(campaignId: string) {
+  return `/build/funnel?campaignId=${encodeURIComponent(campaignId)}`;
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
+  const latestPlanRequestIdRef = useRef(0);
+  const activePlanAbortControllerRef = useRef<AbortController | null>(null);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [businessName, setBusinessName] = useState("");
+  const [agentPhone, setAgentPhone] = useState("");
   const [market, setMarket] = useState("");
   const [focus, setFocus] = useState<CampaignFocus>("seller");
   const [priceRange, setPriceRange] = useState<string>(PRICE_RANGE_OPTIONS[1]);
@@ -314,14 +370,17 @@ export default function OnboardingPage() {
   const idempotencySeed = useMemo(
     () =>
       buildOnboardingIdempotencySeed({
+        firstName,
+        lastName,
         businessName,
+        agentPhone,
         market,
         focus,
         priceRange,
         budget,
         goal: normalizedGoal,
       }),
-    [budget, businessName, focus, market, normalizedGoal, priceRange],
+    [agentPhone, budget, businessName, firstName, focus, lastName, market, normalizedGoal, priceRange],
   );
 
   useEffect(() => {
@@ -335,15 +394,28 @@ export default function OnboardingPage() {
       return;
     }
 
+    const urlCampaignId = new URL(window.location.href).searchParams.get("campaignId")?.trim() ?? "";
     const raw = window.localStorage.getItem(ONBOARDING_PROGRESS_STORAGE_KEY);
 
     if (!raw) {
+      if (urlCampaignId) {
+        setCampaignId(urlCampaignId);
+        setCurrentStep("complete");
+        setStepStatuses(getStatusesForProgressStep("complete"));
+        setHasSavedProgress(true);
+      }
       setHydrated(true);
       return;
     }
 
     try {
       const saved = JSON.parse(raw) as Partial<PersistedOnboardingProgress>;
+      if (typeof saved.expiresAt !== "number" || saved.expiresAt <= Date.now()) {
+        window.localStorage.removeItem(ONBOARDING_PROGRESS_STORAGE_KEY);
+        setHydrated(true);
+        return;
+      }
+
       const restoredStep = isProgressStep(saved.currentStep) ? saved.currentStep : "plan";
       const restoredFailedStep = isPipelineStepKey(saved.failedStep) ? saved.failedStep : null;
       const restoredFocus = isCampaignFocus(saved.focus) ? saved.focus : "seller";
@@ -351,7 +423,10 @@ export default function OnboardingPage() {
         ? saved.goal
         : DEFAULT_GOALS[restoredFocus];
 
+      setFirstName(typeof saved.firstName === "string" ? saved.firstName : "");
+      setLastName(typeof saved.lastName === "string" ? saved.lastName : "");
       setBusinessName(typeof saved.businessName === "string" ? saved.businessName : "");
+      setAgentPhone(typeof saved.agentPhone === "string" ? saved.agentPhone : "");
       setMarket(typeof saved.market === "string" ? saved.market : "");
       setFocus(restoredFocus);
       setPriceRange(
@@ -385,7 +460,10 @@ export default function OnboardingPage() {
     }
 
     const progress: PersistedOnboardingProgress = {
+      firstName,
+      lastName,
       businessName,
+      agentPhone,
       market,
       focus,
       priceRange,
@@ -395,11 +473,15 @@ export default function OnboardingPage() {
       currentStep,
       failedStep,
       error,
+      expiresAt: Date.now() + ONBOARDING_PROGRESS_TTL_MS,
     };
 
     const hasMeaningfulState =
       Boolean(
-        businessName.trim() ||
+        firstName.trim() ||
+          lastName.trim() ||
+          businessName.trim() ||
+          agentPhone.trim() ||
           market.trim() ||
           priceRange.trim() ||
           budget.trim() ||
@@ -415,7 +497,7 @@ export default function OnboardingPage() {
       setHasSavedProgress(true);
     } else {
       window.localStorage.removeItem(ONBOARDING_PROGRESS_STORAGE_KEY);
-      setHasSavedProgress(false);
+      setHasSavedProgress(Boolean(campaignId && currentStep === "complete"));
     }
 
     const url = new URL(window.location.href);
@@ -433,7 +515,15 @@ export default function OnboardingPage() {
     }
 
     window.history.replaceState({}, "", url.toString());
-  }, [budget, businessName, campaignId, currentStep, error, failedStep, focus, goal, hydrated, market, normalizedGoal, priceRange]);
+  }, [agentPhone, budget, businessName, campaignId, currentStep, error, failedStep, firstName, focus, goal, hydrated, lastName, market, normalizedGoal, priceRange]);
+
+  useEffect(() => {
+    if (!hydrated || loading || currentStep !== "complete" || !campaignId) {
+      return;
+    }
+
+    router.replace(getCampaignReviewPath(campaignId));
+  }, [campaignId, currentStep, hydrated, loading, router]);
 
   function clearSavedProgress() {
     if (typeof window !== "undefined") {
@@ -517,12 +607,19 @@ export default function OnboardingPage() {
       window.localStorage.removeItem(ONBOARDING_PROGRESS_STORAGE_KEY);
     }
     setHasSavedProgress(false);
-    router.push(`/build/funnel?campaignId=${encodeURIComponent(currentCampaignId)}`);
+    router.push(getCampaignReviewPath(currentCampaignId));
   }
 
   async function createOrReuseCampaignPlan() {
+    activePlanAbortControllerRef.current?.abort();
+
+    const controller = new AbortController();
+    activePlanAbortControllerRef.current = controller;
+    const requestId = Date.now();
+    latestPlanRequestIdRef.current = requestId;
+
     const { response, data } = await fetchJsonWithTimeout<
-      { campaignId?: string; error?: string }
+      { success?: boolean; campaignId?: string; error?: string; stack?: string | null }
     >(
       "/api/onboarding/plan",
       {
@@ -530,9 +627,14 @@ export default function OnboardingPage() {
         headers: {
           "Content-Type": "application/json",
         },
+        signal: controller.signal,
         body: JSON.stringify({
           business_type: "Real Estate",
           business_name: businessName,
+          agent_first_name: firstName,
+          agent_last_name: lastName,
+          agent_phone: agentPhone,
+          agent_company_name: businessName,
           market,
           focus,
           price_range: priceRange,
@@ -544,8 +646,18 @@ export default function OnboardingPage() {
       CREATE_PLAN_TIMEOUT_MS,
     );
 
-    if (!response.ok || !data?.campaignId) {
-      throw new Error(data?.error ?? "The onboarding response could not be parsed.");
+    if (requestId !== latestPlanRequestIdRef.current) {
+      console.warn("IGNORING STALE ONBOARDING RESPONSE:", { requestId });
+      throw new Error("Stale onboarding response ignored");
+    }
+
+    if (!data || typeof data.campaignId !== "string" || data.campaignId.trim().length === 0) {
+      console.error("INVALID RESPONSE:", data);
+      throw new Error(data?.error ?? "Invalid onboarding response");
+    }
+
+    if (!response.ok) {
+      throw new Error(data.error ?? "Invalid onboarding response");
     }
 
     return data.campaignId;
@@ -559,7 +671,10 @@ export default function OnboardingPage() {
     }
 
     const nextFieldErrors = validateFields({
+      firstName,
+      lastName,
       businessName,
+      agentPhone,
       market,
       priceRange,
       budget,
@@ -645,7 +760,7 @@ export default function OnboardingPage() {
       }
 
       if (currentStep === "complete") {
-        router.push(`/build/funnel?campaignId=${encodeURIComponent(campaignId)}`);
+        router.push(getCampaignReviewPath(campaignId));
         return;
       }
 
@@ -674,15 +789,16 @@ export default function OnboardingPage() {
         type="button"
         onClick={params.onClick}
         disabled={loading}
-        className={`rounded-2xl border px-4 py-4 text-left transition ${
+        className={`group relative overflow-hidden rounded-[22px] border px-4 py-4 text-left transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-55 ${
           params.active
-            ? "border-foreground bg-foreground text-background"
-            : "border-border/70 bg-background text-foreground hover:border-foreground/40"
+            ? "border-cyan-200/35 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.18),transparent_70%),linear-gradient(145deg,rgba(116,199,255,0.16),rgba(124,58,237,0.12))] text-white shadow-[0_20px_55px_-36px_rgba(103,232,249,0.75)]"
+            : "border-white/10 bg-white/[0.035] text-foreground hover:-translate-y-0.5 hover:border-cyan-200/22 hover:bg-white/[0.06]"
         }`}
       >
+        <span className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
         <p className="text-sm font-semibold">{params.label}</p>
         {params.description ? (
-          <p className={`mt-1 text-sm ${params.active ? "text-background/75" : "text-muted-foreground"}`}>
+          <p className={`mt-1 text-sm ${params.active ? "text-white/72" : "text-muted-foreground"}`}>
             {params.description}
           </p>
         ) : null}
@@ -691,7 +807,7 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[920px] space-y-8">
+    <PageShell className="max-w-[980px]">
       <WizardSteps current="onboarding" />
       <PageHeader
         eyebrow="Campaign setup"
@@ -701,14 +817,14 @@ export default function OnboardingPage() {
 
       <Card className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          <p className="df-eyebrow">
             {formatProgressLabel(currentStep)}
           </p>
           <p className="text-sm text-muted-foreground">
             About 60 seconds for setup, then about 90 seconds to generate the preview.
           </p>
         </div>
-        <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+        <div className="rounded-2xl border border-cyan-200/12 bg-cyan-300/[0.045] px-4 py-3 text-sm text-cyan-50/70">
           Resume is always saved. If generation slows down, you can come back without losing progress.
         </div>
       </Card>
@@ -741,11 +857,41 @@ export default function OnboardingPage() {
         </Card>
       ) : null}
 
-      <Card className="p-6 sm:p-8">
+      <Card className="overflow-hidden p-6 sm:p-8">
         <form className="space-y-8" onSubmit={handleSubmit}>
           <div className="grid gap-6 md:grid-cols-2">
             <label className="space-y-2 text-sm">
-              <span className="text-muted-foreground">Agent, team, or brokerage name</span>
+              <span className="text-muted-foreground">First name</span>
+              <Input
+                required
+                value={firstName}
+                onChange={(event) => {
+                  setFirstName(event.target.value);
+                  setFieldErrors((current) => ({ ...current, firstName: undefined }));
+                }}
+                disabled={loading}
+                placeholder="Alex"
+              />
+              {fieldErrors.firstName ? <p className="text-sm text-rose-400">{fieldErrors.firstName}</p> : null}
+            </label>
+
+            <label className="space-y-2 text-sm">
+              <span className="text-muted-foreground">Last name</span>
+              <Input
+                required
+                value={lastName}
+                onChange={(event) => {
+                  setLastName(event.target.value);
+                  setFieldErrors((current) => ({ ...current, lastName: undefined }));
+                }}
+                disabled={loading}
+                placeholder="Morgan"
+              />
+              {fieldErrors.lastName ? <p className="text-sm text-rose-400">{fieldErrors.lastName}</p> : null}
+            </label>
+
+            <label className="space-y-2 text-sm">
+              <span className="text-muted-foreground">Company or brokerage name</span>
               <Input
                 required
                 value={businessName}
@@ -757,6 +903,21 @@ export default function OnboardingPage() {
                 placeholder="Northline Realty Group"
               />
               {fieldErrors.businessName ? <p className="text-sm text-rose-400">{fieldErrors.businessName}</p> : null}
+            </label>
+
+            <label className="space-y-2 text-sm">
+              <span className="text-muted-foreground">SMS alert phone</span>
+              <Input
+                required
+                value={agentPhone}
+                onChange={(event) => {
+                  setAgentPhone(event.target.value);
+                  setFieldErrors((current) => ({ ...current, agentPhone: undefined }));
+                }}
+                disabled={loading}
+                placeholder="(555) 123-4567"
+              />
+              {fieldErrors.agentPhone ? <p className="text-sm text-rose-400">{fieldErrors.agentPhone}</p> : null}
             </label>
 
             <label className="space-y-2 text-sm">
@@ -873,8 +1034,8 @@ export default function OnboardingPage() {
               </p>
             </label>
 
-            <div className="rounded-3xl border border-border/70 bg-muted/20 p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Preview summary</p>
+            <div className="surface-strong rounded-[24px] border border-white/10 p-5">
+              <p className="df-eyebrow">Preview summary</p>
               <div className="mt-3 space-y-2 text-sm text-foreground">
                 <p><span className="text-muted-foreground">Market:</span> {market || "Your city"}</p>
                 <p><span className="text-muted-foreground">Focus:</span> {FOCUS_SUMMARY[focus]}</p>
@@ -885,7 +1046,7 @@ export default function OnboardingPage() {
             </div>
           </div>
 
-          <div className="space-y-4 rounded-3xl border border-border/60 bg-muted/20 p-4">
+          <div className="surface-strong space-y-4 rounded-[24px] border border-white/10 p-4">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-foreground">Generation progress</p>
@@ -911,7 +1072,15 @@ export default function OnboardingPage() {
                 return (
                   <div
                     key={step.key}
-                    className="flex items-center justify-between rounded-2xl border border-border/60 bg-background/80 px-4 py-3"
+                    className={`flex items-center justify-between rounded-2xl border px-4 py-3 transition-colors duration-200 ${
+                      isActive
+                        ? "border-cyan-200/24 bg-cyan-300/[0.055]"
+                        : isComplete
+                          ? "border-emerald-300/18 bg-emerald-300/[0.035]"
+                          : isFailed
+                            ? "border-rose-300/20 bg-rose-400/[0.045]"
+                            : "border-white/10 bg-black/20"
+                    }`}
                   >
                     <div className="space-y-1">
                       <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{step.title}</p>
@@ -990,6 +1159,6 @@ export default function OnboardingPage() {
           </div>
         </form>
       </Card>
-    </div>
+    </PageShell>
   );
 }
