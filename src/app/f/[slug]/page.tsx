@@ -3,7 +3,7 @@ import { getPublishedCampaignBySlug } from "@/lib/services/campaign-persistence"
 import { LeadCaptureForm } from "@/app/f/[slug]/lead-capture-form";
 import { getMetaPixelIdForOrganization } from "@/lib/integrations/meta/conversions";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function PublicFunnelPage({
   params,
