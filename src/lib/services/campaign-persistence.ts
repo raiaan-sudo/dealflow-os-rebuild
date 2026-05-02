@@ -487,6 +487,7 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
   const persistencePayload = {
     id: campaignId,
     owner_id: ownerId,
+    organization_id: ownerId,
     user_id: userId,
     plan: {
       ...(plan as Record<string, unknown>),
@@ -511,6 +512,55 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
   const { data, error } = await query;
 
   if (error) {
+    if (
+      !requestedCampaignId &&
+      error.code === "23505" &&
+      /campaign_plans_user_id_unique|campaign_plans.*user_id.*unique|duplicate key value/i.test(
+        error.message,
+      )
+    ) {
+      const { data: existingRow, error: existingRowError } = await supabase
+        .from("campaign_plans")
+        .select("id")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingRowError) {
+        throw new ApiError(500, existingRowError.message, "campaign_save_failed");
+      }
+
+      const existingCampaignId =
+        existingRow && typeof (existingRow as Pick<CampaignPlanRow, "id">).id === "string"
+          ? (existingRow as Pick<CampaignPlanRow, "id">).id
+          : "";
+
+      if (existingCampaignId) {
+        const { data: recoveredData, error: recoveredError } = await supabase
+          .from("campaign_plans")
+          .update({
+            ...(persistencePayload as Record<string, unknown>),
+            id: existingCampaignId,
+          } as never)
+          .eq("id", existingCampaignId)
+          .eq("user_id", userId)
+          .select("*")
+          .single();
+
+        if (recoveredError) {
+          throw new ApiError(500, recoveredError.message, "campaign_save_failed");
+        }
+
+        if (recoveredData) {
+          return {
+            success: true,
+            campaignId: (recoveredData as CampaignPlanRow).id,
+          };
+        }
+      }
+    }
+
     debugLog("campaign-save-failed", {
       message: error.message,
       code: "campaign_save_failed",
