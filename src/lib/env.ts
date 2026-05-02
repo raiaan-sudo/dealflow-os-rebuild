@@ -212,12 +212,23 @@ export function getPublicAppUrl() {
   ).replace(/\/$/, "");
 }
 
+function shouldUseStripeTestEnv() {
+  return process.env.STRIPE_FORCE_TEST_MODE === "true" && process.env.VERCEL_ENV !== "production";
+}
+
 export function getStripeEnv() {
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  const starterPriceId = process.env.STRIPE_STARTER_PRICE_ID;
-  const proPriceId = process.env.STRIPE_PRO_PRICE_ID;
-  const growthPriceId = process.env.STRIPE_GROWTH_PRICE_ID;
+  const useTestEnv = shouldUseStripeTestEnv();
+  const secretKey = useTestEnv ? process.env.STRIPE_TEST_SECRET_KEY : process.env.STRIPE_SECRET_KEY;
+  const webhookSecret = useTestEnv
+    ? process.env.STRIPE_TEST_WEBHOOK_SECRET
+    : process.env.STRIPE_WEBHOOK_SECRET;
+  const starterPriceId = useTestEnv
+    ? process.env.STRIPE_TEST_STARTER_PRICE_ID
+    : process.env.STRIPE_STARTER_PRICE_ID;
+  const proPriceId = useTestEnv ? process.env.STRIPE_TEST_PRO_PRICE_ID : process.env.STRIPE_PRO_PRICE_ID;
+  const growthPriceId = useTestEnv
+    ? process.env.STRIPE_TEST_GROWTH_PRICE_ID
+    : process.env.STRIPE_GROWTH_PRICE_ID;
 
   if (!secretKey || !webhookSecret || !starterPriceId || !proPriceId || !growthPriceId) {
     return null;
@@ -238,13 +249,14 @@ export function hasStripeEnv() {
 
 export function validateStripeEnv() {
   const env = getStripeEnv();
+  const useTestEnv = shouldUseStripeTestEnv();
 
   return validateEnv([
-    ["STRIPE_SECRET_KEY", env?.secretKey],
-    ["STRIPE_WEBHOOK_SECRET", env?.webhookSecret],
-    ["STRIPE_STARTER_PRICE_ID", env?.starterPriceId],
-    ["STRIPE_PRO_PRICE_ID", env?.proPriceId],
-    ["STRIPE_GROWTH_PRICE_ID", env?.growthPriceId],
+    [useTestEnv ? "STRIPE_TEST_SECRET_KEY" : "STRIPE_SECRET_KEY", env?.secretKey],
+    [useTestEnv ? "STRIPE_TEST_WEBHOOK_SECRET" : "STRIPE_WEBHOOK_SECRET", env?.webhookSecret],
+    [useTestEnv ? "STRIPE_TEST_STARTER_PRICE_ID" : "STRIPE_STARTER_PRICE_ID", env?.starterPriceId],
+    [useTestEnv ? "STRIPE_TEST_PRO_PRICE_ID" : "STRIPE_PRO_PRICE_ID", env?.proPriceId],
+    [useTestEnv ? "STRIPE_TEST_GROWTH_PRICE_ID" : "STRIPE_GROWTH_PRICE_ID", env?.growthPriceId],
   ]);
 }
 
