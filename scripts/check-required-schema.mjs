@@ -4,7 +4,7 @@ import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 
 const repoRoot = process.cwd();
-const expectedSchemaVersion = "20260430190000";
+const expectedSchemaVersion = "20260502010000";
 const schemaCheckMode = process.env.SUPABASE_SCHEMA_CHECK_MODE?.trim().toLowerCase() ?? "remote";
 const requiredMigrationFiles = [
   "20260426110000_add_campaign_plan_critical_fields.sql",
@@ -35,6 +35,7 @@ const requiredMigrationFiles = [
   "20260430060000_harden_membership_insert_policy.sql",
   "20260430061000_rate_limit_bucket_cleanup_support.sql",
   "20260430190000_create_user_credits.sql",
+  "20260502010000_harden_schema_metadata_access.sql",
 ];
 
 const { loadEnvConfig } = nextEnv;
