@@ -17,3 +17,11 @@ pnpm-debug.log*
 
 .gitignore.blocking-*
 *.tsbuildinfo
+
+# Local recovery/generated files that must not be uploaded by CLI deploys.
+.eslintrc.json
+postcss.config 2.js
+postcss.config 2.mjs
+tailwind.config 2.ts
+src/middleware.ts
+**/src/middleware.ts
