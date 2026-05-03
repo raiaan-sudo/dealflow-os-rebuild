@@ -2,13 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  CheckCircle2,
-  ClipboardList,
-  ShieldCheck,
-  Target,
-  Wand2,
-} from "lucide-react";
+import { Target } from "lucide-react";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -130,63 +124,6 @@ function IconTile({
     <div className={cn("flex size-11 shrink-0 items-center justify-center rounded-2xl border", toneClass)}>
       <Icon className="size-5" />
     </div>
-  );
-}
-
-function SetupProgressCard({
-  currentStep,
-  loading,
-}: {
-  currentStep: OnboardingProgressStep;
-  loading: boolean;
-}) {
-  const setupComplete = currentStep !== "plan";
-  const steps = [
-    { label: "Setup", active: currentStep === "plan", complete: setupComplete },
-    { label: "Funnel", active: currentStep === "funnel", complete: currentStep === "creatives" || currentStep === "payload" || currentStep === "complete" },
-    { label: "Creatives", active: currentStep === "creatives", complete: currentStep === "payload" || currentStep === "complete" },
-    { label: "Package", active: currentStep === "payload", complete: currentStep === "complete" },
-    { label: "Review", active: currentStep === "complete", complete: currentStep === "complete" },
-  ];
-
-  return (
-    <Card className="p-4 sm:p-5">
-      <div className="flex items-center justify-between gap-4">
-        <p className="df-eyebrow">Progress</p>
-        <p className="text-sm font-semibold text-white/62">{loading ? "Generating" : "Ready"}</p>
-      </div>
-      <div className="mt-4 grid gap-2 md:grid-cols-5">
-        {steps.map((step, index) => (
-          <div
-            key={step.label}
-            className={cn(
-              "flex min-w-0 items-center gap-3 rounded-2xl border px-3 py-3 text-left",
-              step.active
-                ? "border-cyan-200/24 bg-cyan-300/[0.07]"
-                : step.complete
-                  ? "border-emerald-300/20 bg-emerald-300/[0.045]"
-                  : "border-white/10 bg-white/[0.025]",
-            )}
-          >
-            <span
-              className={cn(
-                "flex size-8 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
-                step.complete
-                  ? "border-emerald-200/25 bg-emerald-300/[0.08] text-emerald-100"
-                  : step.active
-                    ? "border-cyan-200/30 bg-cyan-300/[0.1] text-cyan-100"
-                    : "border-white/10 bg-white/[0.035] text-white/54",
-              )}
-            >
-              {step.complete ? <CheckCircle2 className="size-4" /> : index + 1}
-            </span>
-            <span className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-white/62">
-              {step.label}
-            </span>
-          </div>
-        ))}
-      </div>
-    </Card>
   );
 }
 
@@ -1009,7 +946,7 @@ export default function OnboardingPage() {
         type="button"
         onClick={params.onClick}
         disabled={loading}
-        className={`group relative overflow-hidden rounded-[22px] border px-4 py-4 text-left transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-55 ${
+        className={`group relative min-h-[74px] overflow-hidden rounded-[18px] border px-4 py-3 text-left transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-55 ${
           params.active
             ? "border-cyan-200/35 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.18),transparent_70%),linear-gradient(145deg,rgba(116,199,255,0.16),rgba(124,58,237,0.12))] text-white shadow-[0_20px_55px_-36px_rgba(103,232,249,0.75)]"
             : "border-white/10 bg-white/[0.035] text-foreground hover:-translate-y-0.5 hover:border-cyan-200/22 hover:bg-white/[0.06]"
@@ -1018,7 +955,7 @@ export default function OnboardingPage() {
         <span className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
         <p className="text-sm font-semibold">{params.label}</p>
         {params.description ? (
-          <p className={`mt-1 text-sm ${params.active ? "text-white/72" : "text-muted-foreground"}`}>
+          <p className={`mt-1 text-xs leading-5 ${params.active ? "text-white/72" : "text-muted-foreground"}`}>
             {params.description}
           </p>
         ) : null}
@@ -1027,12 +964,12 @@ export default function OnboardingPage() {
   }
 
   return (
-    <PageShell className="max-w-[1560px] space-y-4 sm:space-y-5 2xl:max-w-[1680px]">
-      <div className="grid items-stretch gap-4 xl:grid-cols-[0.92fr_1.08fr]">
-        <Card className="flex h-full flex-col justify-between p-5 sm:p-6">
+    <PageShell className="max-w-[1640px] space-y-4 2xl:max-w-[1760px]">
+      <div className="grid items-stretch gap-4 xl:grid-cols-[0.82fr_1.18fr]">
+        <Card className="flex h-full flex-col justify-center p-5">
           <div>
             <div className="flex flex-wrap items-center gap-3">
-              <Badge>Mockup 1</Badge>
+              <Badge>Campaign setup</Badge>
               <Badge className="border-emerald-300/20 bg-emerald-300/[0.06] text-emerald-100">
                 Production flow
               </Badge>
@@ -1040,27 +977,20 @@ export default function OnboardingPage() {
             <h1 className="mt-4 text-3xl font-semibold tracking-[-0.06em] sm:text-4xl">
               Step-by-step onboarding builder
             </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-white/66">
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-white/66">
               Answer the setup questions once. DealFlow then creates the real campaign preview, funnel, creatives, and
               launch package without stretching the page into a long checklist.
             </p>
           </div>
-          <div className="mt-5 rounded-[22px] border border-white/10 bg-black/15 p-4">
-            <p className="text-sm font-semibold text-foreground">Let&apos;s build a campaign that actually gets you leads</p>
-            <p className="mt-2 text-sm leading-6 text-white/58">
-              The snapshot updates as you answer, and every launch action remains gated later.
-            </p>
-          </div>
         </Card>
 
-        <div className="flex h-full flex-col gap-4">
+        <div className="flex h-full items-stretch">
           <WizardSteps current="onboarding" />
-          <SetupProgressCard currentStep={currentStep} loading={loading} />
         </div>
       </div>
 
       {hydrated && hasSavedProgress ? (
-        <Card className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
+        <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <p className="text-sm font-medium text-foreground">Resume campaign build</p>
             <p className="text-sm text-muted-foreground">
@@ -1087,21 +1017,21 @@ export default function OnboardingPage() {
         </Card>
       ) : null}
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.18fr)_minmax(380px,0.82fr)] 2xl:grid-cols-[minmax(0,1.22fr)_minmax(430px,0.78fr)]">
-        <Card className="overflow-hidden p-5 sm:p-6">
-        <form className="space-y-8" onSubmit={handleSubmit}>
-          <div className="flex items-start gap-4">
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(410px,0.6fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(460px,0.58fr)]">
+        <Card className="overflow-hidden p-5">
+        <form className="space-y-5" onSubmit={handleSubmit}>
+          <div className="flex items-start gap-3">
             <IconTile icon={Target} tone="cyan" />
             <div>
               <p className="df-eyebrow">{formatProgressLabel(currentStep)}</p>
-              <h3 className="mt-2 text-2xl font-semibold tracking-[-0.05em]">What type of leads do you want first?</h3>
-              <p className="mt-2 text-sm leading-7 text-white/64">
+              <h3 className="mt-1 text-2xl font-semibold tracking-[-0.05em]">What type of leads do you want first?</h3>
+              <p className="mt-1 text-sm leading-6 text-white/64">
                 Required fields validate before generation. This screen only prepares the campaign; live Meta launch, SMS, and billing remain gated later.
               </p>
             </div>
           </div>
 
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             <label className="space-y-2 text-sm">
               <span className="text-muted-foreground">First name</span>
               <Input
@@ -1178,32 +1108,32 @@ export default function OnboardingPage() {
             </label>
           </div>
 
-          <div className="space-y-3">
-            <div>
-              <p className="text-sm font-medium text-foreground">Campaign focus</p>
-              <p className="text-sm text-muted-foreground">Start with the side of the business you want the fastest preview for.</p>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <div className="space-y-3 rounded-[22px] border border-white/10 bg-black/10 p-4">
+              <div>
+                <p className="text-sm font-medium text-foreground">Campaign focus</p>
+                <p className="text-xs leading-5 text-muted-foreground">Choose the first lead segment.</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {renderChoiceButton({
+                  active: focus === "seller",
+                  label: "Sellers",
+                  description: FOCUS_HELP.seller,
+                  onClick: () => setFocus("seller"),
+                })}
+                {renderChoiceButton({
+                  active: focus === "buyer",
+                  label: "Buyers",
+                  description: FOCUS_HELP.buyer,
+                  onClick: () => setFocus("buyer"),
+                })}
+              </div>
             </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {renderChoiceButton({
-                active: focus === "seller",
-                label: "Sellers",
-                description: FOCUS_HELP.seller,
-                onClick: () => setFocus("seller"),
-              })}
-              {renderChoiceButton({
-                active: focus === "buyer",
-                label: "Buyers",
-                description: FOCUS_HELP.buyer,
-                onClick: () => setFocus("buyer"),
-              })}
-            </div>
-          </div>
 
-          <div className="grid gap-6 md:grid-cols-2">
-            <div className="space-y-3">
+            <div className="space-y-3 rounded-[22px] border border-white/10 bg-black/10 p-4">
               <div>
                 <p className="text-sm font-medium text-foreground">Property price range</p>
-                <p className="text-sm text-muted-foreground">Pick the part of the market you want this preview to target.</p>
+                <p className="text-xs leading-5 text-muted-foreground">Pick the market band for the preview.</p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {PRICE_RANGE_OPTIONS.map((option) => (
@@ -1222,10 +1152,10 @@ export default function OnboardingPage() {
               {fieldErrors.priceRange ? <p className="text-sm text-rose-400">{fieldErrors.priceRange}</p> : null}
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-3 rounded-[22px] border border-white/10 bg-black/10 p-4">
               <div>
                 <p className="text-sm font-medium text-foreground">Monthly ad budget</p>
-                <p className="text-sm text-muted-foreground">We use this to shape the preview and launch settings.</p>
+                <p className="text-xs leading-5 text-muted-foreground">Used for preview pacing and launch settings.</p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {BUDGET_OPTIONS.map((option) => (
@@ -1257,33 +1187,33 @@ export default function OnboardingPage() {
               </label>
               {fieldErrors.budget ? <p className="text-sm text-rose-400">{fieldErrors.budget}</p> : null}
             </div>
-          </div>
 
-          <div className="grid gap-6 md:grid-cols-[1.1fr_0.9fr]">
-            <label className="space-y-2 text-sm">
-              <span className="text-muted-foreground">Offer or goal</span>
-              <Input
-                value={goal}
-                onChange={(event) => {
-                  setGoal(event.target.value);
-                  setGoalTouched(true);
-                }}
-                disabled={loading}
-                placeholder={DEFAULT_GOALS[focus]}
-              />
-              <p className="text-sm text-muted-foreground">
-                Leave this as-is if you want the default {FOCUS_SUMMARY[focus].toLowerCase()} angle.
-              </p>
-            </label>
+            <div className="grid gap-4 rounded-[22px] border border-white/10 bg-black/10 p-4 md:grid-cols-[1.05fr_0.95fr] xl:grid-cols-1 2xl:grid-cols-[1.05fr_0.95fr]">
+              <label className="space-y-2 text-sm">
+                <span className="text-muted-foreground">Offer or goal</span>
+                <Input
+                  value={goal}
+                  onChange={(event) => {
+                    setGoal(event.target.value);
+                    setGoalTouched(true);
+                  }}
+                  disabled={loading}
+                  placeholder={DEFAULT_GOALS[focus]}
+                />
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Leave as-is for the default {FOCUS_SUMMARY[focus].toLowerCase()} angle.
+                </p>
+              </label>
 
-            <div className="surface-strong rounded-[24px] border border-white/10 p-5">
-              <p className="df-eyebrow">Preview summary</p>
-              <div className="mt-3 space-y-2 text-sm text-foreground">
-                <p><span className="text-muted-foreground">Market:</span> {market || "Your city"}</p>
-                <p><span className="text-muted-foreground">Focus:</span> {FOCUS_SUMMARY[focus]}</p>
-                <p><span className="text-muted-foreground">Price range:</span> {priceRange}</p>
-                <p><span className="text-muted-foreground">Budget:</span> ${budget || BUDGET_OPTIONS[1].value}/month</p>
-                <p><span className="text-muted-foreground">Offer:</span> {normalizedGoal}</p>
+              <div className="surface-strong rounded-[18px] border border-white/10 p-4">
+                <p className="df-eyebrow">Preview summary</p>
+                <div className="mt-3 grid gap-2 text-xs text-foreground sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                  <p><span className="text-muted-foreground">Market:</span> {market || "Your city"}</p>
+                  <p><span className="text-muted-foreground">Focus:</span> {FOCUS_SUMMARY[focus]}</p>
+                  <p><span className="text-muted-foreground">Range:</span> {priceRange}</p>
+                  <p><span className="text-muted-foreground">Budget:</span> ${budget || BUDGET_OPTIONS[1].value}/mo</p>
+                  <p className="sm:col-span-2 xl:col-span-1 2xl:col-span-2"><span className="text-muted-foreground">Offer:</span> {normalizedGoal}</p>
+                </div>
               </div>
             </div>
           </div>
@@ -1342,30 +1272,6 @@ export default function OnboardingPage() {
             campaignId={campaignId}
           />
         </div>
-      </div>
-
-      <div className="grid auto-rows-fr gap-4 md:grid-cols-3">
-        <Card className="flex h-full flex-col p-5">
-          <IconTile icon={Wand2} tone="violet" />
-          <h3 className="mt-4 text-xl font-semibold tracking-[-0.04em]">Onboarding</h3>
-          <p className="mt-2 text-sm leading-6 text-white/64">
-            One setup screen with autosave, validation, and campaign-generation recovery.
-          </p>
-        </Card>
-        <Card className="flex h-full flex-col p-5">
-          <IconTile icon={ClipboardList} tone="cyan" />
-          <h3 className="mt-4 text-xl font-semibold tracking-[-0.04em]">Campaign package</h3>
-          <p className="mt-2 text-sm leading-6 text-white/64">
-            Funnel, creative, and launch payloads are generated before review.
-          </p>
-        </Card>
-        <Card className="flex h-full flex-col p-5">
-          <IconTile icon={ShieldCheck} tone="green" />
-          <h3 className="mt-4 text-xl font-semibold tracking-[-0.04em]">Guardrails</h3>
-          <p className="mt-2 text-sm leading-6 text-white/64">
-            Meta launch, lead SMS, and billing remain blocked until explicit later steps.
-          </p>
-        </Card>
       </div>
     </PageShell>
   );
