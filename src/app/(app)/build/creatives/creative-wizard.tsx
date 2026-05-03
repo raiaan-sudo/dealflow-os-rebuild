@@ -42,9 +42,63 @@ type CreativeOption = {
 type CreativeWizardProps = {
   campaignId: string;
   creatives: CreativeOption[];
+  ugcConcepts: Array<{
+    id: string;
+    title: string;
+    hook: string;
+    script: string[];
+    shotList: string[];
+    onScreenText: string[];
+    cta: string;
+    creatorStyle: string;
+    format: string;
+  }>;
 };
 
-export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
+function UgcConceptCard({
+  concept,
+  index,
+}: {
+  concept: CreativeWizardProps["ugcConcepts"][number];
+  index: number;
+}) {
+  return (
+    <div className="h-full rounded-2xl border border-cyan-200/15 bg-[linear-gradient(145deg,rgba(14,165,233,0.09),rgba(2,6,23,0.34))] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/70">
+            AI UGC {index + 1}
+          </p>
+          <h3 className="mt-2 line-clamp-2 text-base font-semibold leading-6 text-foreground">{concept.title}</h3>
+        </div>
+        <span className="shrink-0 rounded-full border border-cyan-200/15 bg-cyan-300/[0.08] px-2.5 py-1 text-xs font-semibold text-cyan-100">
+          {concept.format}
+        </span>
+      </div>
+      <p className="mt-3 line-clamp-3 text-sm leading-6 text-muted-foreground">{concept.hook}</p>
+      <div className="mt-4 grid gap-3">
+        <div className="rounded-xl border border-white/8 bg-black/20 p-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Spoken script</p>
+          <p className="mt-2 line-clamp-4 text-sm leading-6 text-foreground">{concept.script.slice(0, 4).join(" ")}</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-white/8 bg-black/20 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Visual direction</p>
+            <p className="mt-2 line-clamp-3 text-sm leading-6 text-muted-foreground">
+              {concept.shotList.slice(0, 3).join(" / ") || concept.creatorStyle}
+            </p>
+          </div>
+          <div className="rounded-xl border border-white/8 bg-black/20 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">CTA</p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-foreground">{concept.cta}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function CreativeWizard({ campaignId, creatives, ugcConcepts }: CreativeWizardProps) {
   const router = useRouter();
   const rankedCreatives = useMemo(
     () => [...creatives].sort((left, right) => (right.score ?? 0) - (left.score ?? 0)),
@@ -60,7 +114,8 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const selectedCreatives = rankedCreatives.filter((creative) => selectedIds.includes(creative.id));
-  const primaryCreative = selectedCreatives[0] ?? rankedCreatives[0] ?? null;
+  const selectedPreviewCreatives = selectedCreatives.length > 0 ? selectedCreatives : rankedCreatives.slice(0, 3);
+  const primaryCreative = selectedPreviewCreatives[0] ?? rankedCreatives[0] ?? null;
   const canContinue = selectedCreatives.length >= minSelected && selectedCreatives.length <= maxSelected;
 
   function toggleCreative(creativeId: string) {
@@ -166,22 +221,34 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
           </span>
         </div>
 
-        <StaticCreativePreviewCard
-          category={primaryCreative.category}
-          cta={primaryCreative.cta}
-          headline={primaryCreative.headline}
-          imageGenerationMessage={primaryCreative.imageGenerationMessage}
-          imageGenerationState={primaryCreative.imageGenerationState}
-          imageUrl={primaryCreative.imageUrl}
-          location={primaryCreative.location}
-          offer={primaryCreative.offer}
-          overlayText={primaryCreative.overlayText}
-          primaryText={primaryCreative.primaryText}
-          qualityGate={primaryCreative.qualityGate}
-          score={primaryCreative.score}
-          selectedCount={selectedCreatives.length}
-          visualPromptBrief={primaryCreative.visualPromptBrief}
-        />
+        <div className="grid gap-4 xl:grid-cols-3">
+          {selectedPreviewCreatives.slice(0, 3).map((creative) => (
+            <StaticCreativePreviewCard
+              category={creative.category}
+              compact
+              cta={creative.cta}
+              headline={creative.headline}
+              imageGenerationMessage={creative.imageGenerationMessage}
+              imageGenerationState={creative.imageGenerationState}
+              imageUrl={creative.imageUrl}
+              key={creative.id}
+              location={creative.location}
+              offer={creative.offer}
+              overlayText={creative.overlayText}
+              primaryText={creative.primaryText}
+              qualityGate={creative.qualityGate}
+              score={creative.score}
+              selectedCount={selectedCreatives.length}
+              visualPromptBrief={creative.visualPromptBrief}
+            />
+          ))}
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          {ugcConcepts.slice(0, 2).map((concept, index) => (
+            <UgcConceptCard concept={concept} index={index} key={concept.id} />
+          ))}
+        </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
           <Button asChild type="button" variant="secondary">

@@ -18,6 +18,7 @@ type OnboardingPayload = {
   market?: string;
   service?: string;
   focus?: string;
+  targeting?: unknown;
   price_range?: string;
   budget?: number | string;
   goal?: string;
@@ -33,6 +34,7 @@ type SafeOnboardingPayloadLog = {
   market: string;
   location: string;
   focus: string;
+  targetingCount: number;
   priceRange: string;
   budget: number | string | null;
   goalPresent: boolean;
@@ -62,8 +64,53 @@ const REAL_ESTATE_INTERESTS = [
   "mortgage loans",
 ] as const;
 
+const TARGETING_LABELS = {
+  first_time_home_buyers: "first-time home buyers",
+  investors: "investors",
+  condos: "condos",
+  single_family_homes: "single-family homes",
+} as const;
+
+type TargetingKey = keyof typeof TARGETING_LABELS;
+
 function safeText(value: unknown) {
   return (value ?? "").toString().trim();
+}
+
+function normalizeTargetingSegments(value: unknown): TargetingKey[] {
+  const rawItems = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(",")
+      : [];
+  const normalized = rawItems
+    .map((item) => safeText(item).toLowerCase().replace(/[\s-]+/g, "_"))
+    .map((item) => {
+      if (item === "first_time_buyers" || item === "first_time_homebuyer" || item === "first_time_homebuyers") {
+        return "first_time_home_buyers";
+      }
+      if (item === "single_family" || item === "single_family_home") {
+        return "single_family_homes";
+      }
+      return item;
+    })
+    .filter((item): item is TargetingKey => item in TARGETING_LABELS);
+
+  return Array.from(new Set(normalized));
+}
+
+function formatTargetingSegments(values: TargetingKey[]) {
+  return values.map((value) => TARGETING_LABELS[value]);
+}
+
+function normalizeOfferForCampaign(value: string) {
+  const offer = safeText(value);
+
+  if (/guaranteed approval/i.test(offer) && /600\+?|six hundred/i.test(offer) && /credit/i.test(offer)) {
+    return "See if you qualify for guaranteed approval options with 600+ credit";
+  }
+
+  return offer;
 }
 
 function buildSafePayloadLog(payload: OnboardingPayload | null): SafeOnboardingPayloadLog {
@@ -76,6 +123,7 @@ function buildSafePayloadLog(payload: OnboardingPayload | null): SafeOnboardingP
     market: safeText(payload?.market),
     location: safeText(payload?.location),
     focus: safeText(payload?.focus),
+    targetingCount: normalizeTargetingSegments(payload?.targeting).length,
     priceRange: safeText(payload?.price_range),
     budget:
       typeof payload?.budget === "number" || typeof payload?.budget === "string"
@@ -318,6 +366,7 @@ function getRealEstateOnboardingDefaults(params: {
   priceRange: string;
   goal: string;
   budget: number;
+  targetingSegments: TargetingKey[];
 }) {
   const normalizedService = params.service.toLowerCase();
   const intent = getRealEstateFocus({
@@ -326,9 +375,19 @@ function getRealEstateOnboardingDefaults(params: {
   });
   const businessName = params.businessName.trim().length > 0 ? params.businessName : params.businessType;
   const priceRange = params.priceRange.trim().length > 0 ? params.priceRange : "mid-market homes";
+  const targetingLabels = formatTargetingSegments(params.targetingSegments);
+  const targetingSummary =
+    targetingLabels.length > 0
+      ? targetingLabels.join(", ")
+      : intent === "seller"
+        ? "single-family homes"
+        : "first-time home buyers";
+  const propertyFocus = targetingLabels.some((label) => /condo|single-family/.test(label))
+    ? targetingLabels.filter((label) => /condo|single-family/.test(label)).join(" and ")
+    : "homes";
   const serviceLabel =
-    params.goal.trim().length > 0
-      ? params.goal
+    normalizeOfferForCampaign(params.goal).trim().length > 0
+      ? normalizeOfferForCampaign(params.goal)
       : params.service.trim().length > 0
         ? params.service
         : intent === "seller"
@@ -344,17 +403,18 @@ function getRealEstateOnboardingDefaults(params: {
       monthlyBudget: params.budget,
       primaryGoal: "Generate more seller and listing leads",
       timeline: "30 days",
-      audience: `Homeowners likely to sell ${priceRange} homes in ${params.location}`,
-      propertyType: `${priceRange} homes`,
-      keyOffer: "listing strategy and home value plan",
+      audience: `Homeowners in ${params.location} focused on ${targetingSummary}`,
+      propertyType: `${priceRange} ${propertyFocus}`,
+      keyOffer: serviceLabel,
       painPoints: [
         "Homeowners are unsure what their property is worth",
         "Listing timing feels risky",
         "Most sellers do not know how to maximize demand before going live",
       ],
-      mechanism: "seller consultation and listing launch system",
+      mechanism: `${serviceLabel} through a seller consultation and listing launch system`,
       serviceLabel,
       priceRange,
+      targetingSummary,
     };
   }
 
@@ -366,17 +426,18 @@ function getRealEstateOnboardingDefaults(params: {
     monthlyBudget: params.budget,
     primaryGoal: "Generate more buyer leads",
     timeline: "30 days",
-    audience: `Home buyers searching for ${priceRange} homes in ${params.location}`,
-    propertyType: `${priceRange} homes`,
-    keyOffer: "buyer consultation and curated home list",
+    audience: `Home buyers in ${params.location} focused on ${targetingSummary}`,
+    propertyType: `${priceRange} ${propertyFocus}`,
+    keyOffer: serviceLabel,
     painPoints: [
       "Buyers do not know which homes fit their budget",
       "They miss listings because they react too late",
       "Mortgage uncertainty slows down decision-making",
     ],
-    mechanism: "buyer consultation and qualification system",
+    mechanism: `${serviceLabel} through a buyer consultation and qualification system`,
     serviceLabel,
     priceRange,
+    targetingSummary,
   };
 }
 
@@ -498,8 +559,9 @@ export async function POST(req: Request) {
       service: payload?.service,
       goal: payload?.goal,
     });
+    const targetingSegments = normalizeTargetingSegments(payload?.targeting);
     const priceRange = safeText(payload?.price_range) || "mid-market homes";
-    const service = safeText(payload?.goal) || safeText(payload?.service) || (focus === "seller" ? "Free home value strategy call" : "Private listings and buyer consult");
+    const service = normalizeOfferForCampaign(safeText(payload?.goal)) || safeText(payload?.service) || (focus === "seller" ? "Free home value strategy call" : "Private listings and buyer consult");
     const budget = toMonthlyBudget(payload?.budget);
     const realEstateMode = isRealEstateBusinessType(businessType) || safeText(payload?.focus).length > 0;
     const normalizedAgentPhone = normalizePhone(agentPhone);
@@ -560,6 +622,7 @@ export async function POST(req: Request) {
             priceRange,
             goal: service,
             budget,
+            targetingSegments,
           })
         : {
             clientName: businessName,
@@ -617,8 +680,12 @@ export async function POST(req: Request) {
       plan: campaignPlanDocumentModule.mergeCampaignPlanDocument(currentPlan, {
         onboarding_idempotency_key: idempotencyKey,
         onboarding_focus: focus,
+        onboarding_targeting: targetingSegments,
         onboarding_price_range: priceRange,
         onboarding_goal: service,
+        targeting_summary: formatTargetingSegments(targetingSegments).join(", "),
+        offer_summary: service,
+        key_offer: service,
       }),
       source: "onboarding_idempotency_metadata",
     });

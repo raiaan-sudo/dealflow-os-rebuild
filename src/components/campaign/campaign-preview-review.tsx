@@ -159,7 +159,7 @@ export function CampaignPreviewReview({
   previewVideos,
 }: Props) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<PreviewTab>("Funnel");
+  const [activeTab, setActiveTab] = useState<PreviewTab>("Ads");
   const [adsState, setAdsState] = useState(previewAds);
   const [isGeneratingAds, setIsGeneratingAds] = useState(false);
   const [generationMessage, setGenerationMessage] = useState<string | null>(null);
@@ -172,7 +172,7 @@ export function CampaignPreviewReview({
   const visibleAds = [...adsState]
     .filter(Boolean)
     .sort((left, right) => right.score - left.score)
-    .slice(0, 3);
+    .slice(0, 6);
   const allStaticAdsMissing =
     adsState.length > 0 &&
     adsState.every((ad) => ad.imageGenerationState !== "generated" || !ad.imageUrl);
@@ -227,10 +227,8 @@ export function CampaignPreviewReview({
   const systemMessage = getReviewSystemMessage(plan);
   const adsGridClass =
     visibleAds.length <= 1
-      ? "grid max-w-2xl gap-5"
-      : visibleAds.length === 2
-        ? "grid gap-5 xl:grid-cols-2"
-        : "grid gap-5 lg:grid-cols-2 2xl:grid-cols-3";
+      ? "grid max-w-2xl gap-4"
+      : "grid gap-4 md:grid-cols-2 2xl:grid-cols-3";
   const assetsGridClass =
     assetItems.length <= 1
       ? "grid max-w-xl gap-4"
@@ -486,7 +484,7 @@ export function CampaignPreviewReview({
               </div>
               <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto sm:justify-end">
                 <Badge className="border-white/8 bg-white/[0.03] text-muted-foreground">
-                  {visibleAds.length} ad {visibleAds.length === 1 ? "concept" : "concepts"}
+                  {visibleAds.length + previewVideos.slice(0, 2).length} creative {visibleAds.length + previewVideos.slice(0, 2).length === 1 ? "option" : "options"}
                 </Badge>
                 {canGenerateStaticAds ? (
                   <Button
@@ -607,6 +605,48 @@ export function CampaignPreviewReview({
             </Card>
           ))}
           </div>
+          {previewVideos.length > 0 ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {previewVideos.slice(0, 2).map((video, index) => (
+                <Card key={video.id || index} className="rounded-[20px] border border-cyan-200/15 bg-cyan-300/[0.04] p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-100/70">
+                        AI UGC concept {index + 1}
+                      </p>
+                      <h3 className="mt-2 line-clamp-2 text-base font-semibold leading-6">{video.title}</h3>
+                    </div>
+                    <Badge className="border-cyan-200/15 bg-cyan-300/[0.08] text-cyan-100">
+                      {video.conceptType === "customer_ugc" ? "Customer POV" : "Expert POV"}
+                    </Badge>
+                  </div>
+                  <p className="mt-3 line-clamp-3 text-sm leading-6 text-muted-foreground">{video.hook}</p>
+                  <div className="mt-4 rounded-[14px] border border-white/8 bg-black/20 px-3 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      Spoken script
+                    </p>
+                    <p className="mt-2 line-clamp-4 text-sm leading-6">{video.script.slice(0, 4).join(" ")}</p>
+                  </div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-[14px] border border-white/8 bg-black/20 px-3 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        Visual direction
+                      </p>
+                      <p className="mt-2 line-clamp-3 text-sm leading-6 text-muted-foreground">
+                        {video.shotList.slice(0, 3).join(" / ") || video.creatorStyle}
+                      </p>
+                    </div>
+                    <div className="rounded-[14px] border border-white/8 bg-black/20 px-3 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        CTA
+                      </p>
+                      <p className="mt-2 text-sm font-semibold leading-6">{video.cta}</p>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
 

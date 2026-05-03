@@ -68,6 +68,10 @@ export default async function BuildCreativesPage({
     missingArtifacts.push("creatives");
   }
 
+  if ((record?.creatives?.videoAds?.length ?? 0) < 2) {
+    missingArtifacts.push("UGC previews");
+  }
+
   if (missingArtifacts.length > 0) {
     return (
       <div className="mx-auto w-full max-w-[900px] space-y-8 p-6 sm:p-8">
@@ -83,7 +87,7 @@ export default async function BuildCreativesPage({
           description="The required creative data is missing or incomplete. Regenerate the missing artifacts below, or go back to onboarding."
           missingArtifacts={missingArtifacts}
           recoverySteps={[
-            ...(missingArtifacts.includes("creatives") ? (["generate-creatives"] as const) : []),
+            ...(missingArtifacts.includes("creatives") || missingArtifacts.includes("UGC previews") ? (["generate-creatives"] as const) : []),
             ...(missingArtifacts.includes("campaign payload") ? (["build-campaign"] as const) : []),
           ]}
         />
@@ -128,6 +132,17 @@ export default async function BuildCreativesPage({
         },
       };
     });
+  const ugcOptions = ensuredRecord.creatives.videoAds.slice(0, 2).map((video, index) => ({
+    id: video.id || `ugc-${index + 1}`,
+    title: video.title || `UGC concept ${index + 1}`,
+    hook: video.hook || "",
+    script: Array.isArray(video.script) ? video.script : [],
+    shotList: Array.isArray(video.shotList) ? video.shotList : [],
+    onScreenText: Array.isArray(video.onScreenText) ? video.onScreenText : [],
+    cta: video.cta || "See If You Qualify",
+    creatorStyle: video.creatorStyle || "UGC creator",
+    format: video.conceptType === "customer_ugc" ? "Customer POV" : "Expert POV",
+  }));
 
   return (
     <div className="mx-auto w-full max-w-[900px] space-y-8 p-6 sm:p-8">
@@ -138,7 +153,7 @@ export default async function BuildCreativesPage({
         description="Select 2-6 recommended creatives. DealFlow will preserve the full test set so your launch can compare multiple angles instead of betting on one ad."
       />
 
-      <CreativeWizard campaignId={ensuredRecord.campaign.id} creatives={creativeOptions} />
+      <CreativeWizard campaignId={ensuredRecord.campaign.id} creatives={creativeOptions} ugcConcepts={ugcOptions} />
     </div>
   );
 }

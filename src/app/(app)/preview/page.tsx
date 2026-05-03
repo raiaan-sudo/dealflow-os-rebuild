@@ -114,6 +114,11 @@ export default async function PreviewPage({
   const previewPlan = safeCampaign.plan;
   const expectedOutcomes = getExpectedOutcomes(previewPlan);
   const selectedAds = previewPlan.creatives.staticAds.filter((ad) => selectedAdIds.includes(ad.id));
+  const visibleStaticAds =
+    selectedAds.length > 0
+      ? selectedAds
+      : [...previewPlan.creatives.staticAds].sort((left, right) => (right.score ?? 0) - (left.score ?? 0)).slice(0, 3);
+  const visibleUgcAds = previewPlan.creatives.videoAds.slice(0, 2);
   const campaignIdForFlow = record?.campaign.id ?? null;
 
   return (
@@ -136,12 +141,12 @@ export default async function PreviewPage({
 
       <section className="surface-strong space-y-4 rounded-df-card border border-white/10 p-6">
         <h2 className="text-lg font-semibold text-foreground">Selected creative test set</h2>
-        {selectedAds.length > 0 ? (
-          <div className="grid gap-4 lg:grid-cols-2">
-            {selectedAds.map((selectedAd) => (
+        {visibleStaticAds.length > 0 ? (
+          <div className="grid gap-4 lg:grid-cols-3">
+            {visibleStaticAds.map((selectedAd) => (
               <StaticCreativePreviewCard
                 category={previewPlan.creativeStrategy.campaignCategory}
-                compact={selectedAds.length > 1}
+                compact
                 cta={selectedAd.cta}
                 headline={selectedAd.headline}
                 imageGenerationMessage={selectedAd.imageGenerationMessage}
@@ -154,7 +159,7 @@ export default async function PreviewPage({
                 primaryText={selectedAd.primaryText}
                 qualityGate={selectedAd.qualityGate}
                 score={selectedAd.score}
-                selectedCount={selectedAds.length}
+                selectedCount={visibleStaticAds.length}
                 visualPromptBrief={selectedAd.visualPromptBrief}
               />
             ))}
@@ -162,6 +167,26 @@ export default async function PreviewPage({
         ) : (
           <div className="rounded-df-card border border-white/10 bg-white/[0.035] p-6 text-sm text-muted-foreground">
             No saved creative test set is ready yet. Go back to creatives and choose the ads you want to test first.
+          </div>
+        )}
+        {visibleUgcAds.length > 0 ? (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {visibleUgcAds.map((video, index) => (
+              <div key={video.id || index} className="rounded-df-card border border-cyan-200/15 bg-cyan-300/[0.04] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/70">AI UGC concept {index + 1}</p>
+                <h3 className="mt-2 line-clamp-2 text-base font-semibold leading-6">{video.title}</h3>
+                <p className="mt-3 line-clamp-3 text-sm leading-6 text-muted-foreground">{video.hook}</p>
+                <div className="mt-4 rounded-xl border border-white/8 bg-black/20 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Script preview</p>
+                  <p className="mt-2 line-clamp-4 text-sm leading-6">{video.script.slice(0, 4).join(" ")}</p>
+                </div>
+                <p className="mt-3 text-sm font-semibold text-foreground">{video.cta}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-df-card border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
+            UGC concepts are missing. Return to creative recovery so DealFlow can regenerate the two required UGC previews.
           </div>
         )}
       </section>

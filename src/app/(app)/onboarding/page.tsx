@@ -25,9 +25,10 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
 type CampaignFocus = "seller" | "buyer";
+type TargetingSegment = "first_time_home_buyers" | "investors" | "condos" | "single_family_homes";
 type PipelineStepKey = "funnel" | "creatives" | "campaign";
 type OnboardingProgressStep = "plan" | "funnel" | "creatives" | "payload" | "complete";
-type QuestionStepKey = "identity" | "focus" | "price" | "budget" | "offer" | "review";
+type QuestionStepKey = "identity" | "focus" | "targeting" | "price" | "budget" | "offer" | "review";
 type StepStatus = "pending" | "active" | "complete" | "failed";
 
 type PipelineStep = {
@@ -43,6 +44,7 @@ type FieldErrors = {
   businessName?: string;
   agentPhone?: string;
   market?: string;
+  targeting?: string;
   priceRange?: string;
   budget?: string;
 };
@@ -54,6 +56,7 @@ type PersistedOnboardingProgress = {
   agentPhone: string;
   market: string;
   focus: CampaignFocus;
+  targetingSegments: TargetingSegment[];
   priceRange: string;
   budget: string;
   goal: string;
@@ -119,6 +122,46 @@ const FOCUS_HELP: Record<CampaignFocus, string> = {
   buyer: "Built around search intent, private-listing offers, and tour-ready buyer consultations.",
 };
 
+const TARGETING_OPTIONS: Array<{
+  value: TargetingSegment;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}> = [
+  {
+    value: "first_time_home_buyers",
+    label: "First-time home buyers",
+    description: "Approval clarity, confidence, and simple next-step education for buyers who need guidance.",
+    icon: Users,
+  },
+  {
+    value: "investors",
+    label: "Investors",
+    description: "Deal logic, yield framing, and faster filtering for buyers evaluating upside and risk.",
+    icon: Briefcase,
+  },
+  {
+    value: "condos",
+    label: "Condos",
+    description: "Urban inventory, payment-fit framing, and market-specific condo options.",
+    icon: Building2,
+  },
+  {
+    value: "single_family_homes",
+    label: "Single-family homes",
+    description: "Detached and family-home positioning for buyers comparing space, schools, and neighborhoods.",
+    icon: Home,
+  },
+];
+
+function formatTargetingSegments(values: TargetingSegment[]) {
+  const labels = values
+    .map((value) => TARGETING_OPTIONS.find((option) => option.value === value)?.label)
+    .filter(Boolean);
+
+  return labels.length > 0 ? labels.join(", ") : "Not set";
+}
+
 const FIELD_LABEL_CLASS = "grid gap-2 text-sm";
 const FIELD_LABEL_TEXT_CLASS = "flex items-end text-muted-foreground";
 
@@ -141,6 +184,13 @@ const QUESTION_STEPS: Array<{
     title: "Which lead type should DealFlow build first?",
     description:
       "Pick the first audience segment for the campaign package. You can expand into the other side later, but the first preview needs one clear direction.",
+  },
+  {
+    key: "targeting",
+    label: "Targeting",
+    title: "Which targeting details should shape the campaign?",
+    description:
+      "Choose the buyer or property segments the campaign should speak to. These selections flow into the funnel, ad angles, creative previews, and launch review.",
   },
   {
     key: "price",
@@ -201,12 +251,14 @@ function IconTile({
 function SetupSummaryPanel({
   market,
   focus,
+  targetingSegments,
   priceRange,
   budget,
   goal,
 }: {
   market: string;
   focus: CampaignFocus;
+  targetingSegments: TargetingSegment[];
   priceRange: string;
   budget: string;
   goal: string;
@@ -214,6 +266,7 @@ function SetupSummaryPanel({
   const summaryItems: Array<[string, string, LucideIcon]> = [
     ["Focus", FOCUS_SUMMARY[focus], Target],
     ["Market", market || "Not set", MapPin],
+    ["Targeting", formatTargetingSegments(targetingSegments), Users],
     ["Offer", goal || DEFAULT_GOALS[focus], Home],
     ["Safety", "No live launch", ShieldCheck],
   ];
@@ -448,6 +501,7 @@ function buildOnboardingIdempotencySeed(params: {
   agentPhone: string;
   market: string;
   focus: CampaignFocus;
+  targetingSegments: TargetingSegment[];
   priceRange: string;
   budget: string;
   goal: string;
@@ -459,6 +513,7 @@ function buildOnboardingIdempotencySeed(params: {
     params.agentPhone,
     params.market,
     params.focus,
+    [...params.targetingSegments].sort().join(","),
     params.priceRange,
     params.budget,
     params.goal,
@@ -516,6 +571,7 @@ function validateFields(params: {
   businessName: string;
   agentPhone: string;
   market: string;
+  targetingSegments: TargetingSegment[];
   priceRange: string;
   budget: string;
 }) {
@@ -540,6 +596,10 @@ function validateFields(params: {
 
   if (params.market.trim().length === 0) {
     errors.market = "Enter the city or market you want to advertise in.";
+  }
+
+  if (params.targetingSegments.length === 0) {
+    errors.targeting = "Choose at least one targeting detail for the campaign.";
   }
 
   if (params.priceRange.trim().length === 0) {
@@ -589,6 +649,10 @@ function getQuestionStepErrors(step: QuestionStepKey, errors: FieldErrors) {
     return [errors.priceRange].filter(Boolean);
   }
 
+  if (step === "targeting") {
+    return [errors.targeting].filter(Boolean);
+  }
+
   if (step === "budget") {
     return [errors.budget].filter(Boolean);
   }
@@ -606,6 +670,7 @@ export default function OnboardingPage() {
   const [agentPhone, setAgentPhone] = useState("");
   const [market, setMarket] = useState("");
   const [focus, setFocus] = useState<CampaignFocus>("seller");
+  const [targetingSegments, setTargetingSegments] = useState<TargetingSegment[]>([]);
   const [priceRange, setPriceRange] = useState<string>(PRICE_RANGE_OPTIONS[1]);
   const [budget, setBudget] = useState<string>(BUDGET_OPTIONS[1].value);
   const [goal, setGoal] = useState<string>(DEFAULT_GOALS.seller);
@@ -637,11 +702,12 @@ export default function OnboardingPage() {
         agentPhone,
         market,
         focus,
+        targetingSegments,
         priceRange,
         budget,
         goal: normalizedGoal,
       }),
-    [agentPhone, budget, businessName, firstName, focus, lastName, market, normalizedGoal, priceRange],
+    [agentPhone, budget, businessName, firstName, focus, lastName, market, normalizedGoal, priceRange, targetingSegments],
   );
 
   useEffect(() => {
@@ -690,6 +756,13 @@ export default function OnboardingPage() {
       setAgentPhone(typeof saved.agentPhone === "string" ? saved.agentPhone : "");
       setMarket(typeof saved.market === "string" ? saved.market : "");
       setFocus(restoredFocus);
+      setTargetingSegments(
+        Array.isArray(saved.targetingSegments)
+          ? saved.targetingSegments.filter((value): value is TargetingSegment =>
+              TARGETING_OPTIONS.some((option) => option.value === value),
+            )
+          : [],
+      );
       setPriceRange(
         typeof saved.priceRange === "string" && saved.priceRange.trim().length > 0
           ? saved.priceRange
@@ -727,6 +800,7 @@ export default function OnboardingPage() {
       agentPhone,
       market,
       focus,
+      targetingSegments,
       priceRange,
       budget,
       goal: normalizedGoal,
@@ -744,6 +818,7 @@ export default function OnboardingPage() {
           businessName.trim() ||
           agentPhone.trim() ||
           market.trim() ||
+          targetingSegments.length > 0 ||
           priceRange.trim() ||
           budget.trim() ||
           goal.trim() ||
@@ -776,7 +851,7 @@ export default function OnboardingPage() {
     }
 
     window.history.replaceState({}, "", url.toString());
-  }, [agentPhone, budget, businessName, campaignId, currentStep, error, failedStep, firstName, focus, goal, hydrated, lastName, market, normalizedGoal, priceRange]);
+  }, [agentPhone, budget, businessName, campaignId, currentStep, error, failedStep, firstName, focus, goal, hydrated, lastName, market, normalizedGoal, priceRange, targetingSegments]);
 
   useEffect(() => {
     if (!hydrated || loading || currentStep !== "complete" || !campaignId) {
@@ -798,6 +873,7 @@ export default function OnboardingPage() {
     setBusinessName("");
     setMarket("");
     setFocus("seller");
+    setTargetingSegments([]);
     setPriceRange(PRICE_RANGE_OPTIONS[1]);
     setBudget(BUDGET_OPTIONS[1].value);
     setGoal(DEFAULT_GOALS.seller);
@@ -899,6 +975,7 @@ export default function OnboardingPage() {
           agent_company_name: businessName,
           market,
           focus,
+          targeting: targetingSegments,
           price_range: priceRange,
           budget,
           goal: normalizedGoal,
@@ -943,6 +1020,7 @@ export default function OnboardingPage() {
       businessName,
       agentPhone,
       market,
+      targetingSegments,
       priceRange,
       budget,
     });
@@ -990,6 +1068,7 @@ export default function OnboardingPage() {
       businessName,
       agentPhone,
       market,
+      targetingSegments,
       priceRange,
       budget,
     });
@@ -1022,6 +1101,10 @@ export default function OnboardingPage() {
 
       if (activeQuestionStep === "price") {
         return { ...current, priceRange: undefined };
+      }
+
+      if (activeQuestionStep === "targeting") {
+        return { ...current, targeting: undefined };
       }
 
       if (activeQuestionStep === "budget") {
@@ -1160,6 +1243,7 @@ export default function OnboardingPage() {
       businessName,
       agentPhone,
       market,
+      targetingSegments,
       priceRange,
       budget,
     });
@@ -1271,6 +1355,36 @@ export default function OnboardingPage() {
     );
   }
 
+  function toggleTargetingSegment(value: TargetingSegment) {
+    setTargetingSegments((current) => {
+      if (current.includes(value)) {
+        return current.filter((item) => item !== value);
+      }
+
+      return [...current, value];
+    });
+    setFieldErrors((current) => ({ ...current, targeting: undefined }));
+  }
+
+  function renderTargetingStep() {
+    return (
+      <div className="grid gap-4 md:grid-cols-2">
+        {TARGETING_OPTIONS.map((option) => (
+          <div key={option.value}>
+            {renderChoiceButton({
+              active: targetingSegments.includes(option.value),
+              label: option.label,
+              description: option.description,
+              icon: option.icon,
+              onClick: () => toggleTargetingSegment(option.value),
+            })}
+          </div>
+        ))}
+        {fieldErrors.targeting ? <p className="text-sm text-rose-400 md:col-span-2">{fieldErrors.targeting}</p> : null}
+      </div>
+    );
+  }
+
   function renderPriceStep() {
     return (
       <div className="grid gap-4 sm:grid-cols-2">
@@ -1368,6 +1482,7 @@ export default function OnboardingPage() {
           ["Company", businessName || "Not set"],
           ["Market", market || "Not set"],
           ["Focus", FOCUS_SUMMARY[focus]],
+          ["Targeting", formatTargetingSegments(targetingSegments)],
           ["Price range", priceRange],
           ["Budget", `$${budget || BUDGET_OPTIONS[1].value}/month`],
           ["Offer", normalizedGoal],
@@ -1388,6 +1503,7 @@ export default function OnboardingPage() {
   function renderQuestionContent() {
     if (activeQuestionStep === "identity") return renderIdentityStep();
     if (activeQuestionStep === "focus") return renderFocusStep();
+    if (activeQuestionStep === "targeting") return renderTargetingStep();
     if (activeQuestionStep === "price") return renderPriceStep();
     if (activeQuestionStep === "budget") return renderBudgetStep();
     if (activeQuestionStep === "offer") return renderOfferStep();
@@ -1466,7 +1582,7 @@ export default function OnboardingPage() {
               </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-6 gap-2">
+            <div className="mt-6 grid grid-cols-7 gap-2">
               {QUESTION_STEPS.map((step, index) => {
                 const complete = index < activeQuestionIndex;
                 const active = step.key === activeQuestionStep;
@@ -1568,6 +1684,7 @@ export default function OnboardingPage() {
           <SetupSummaryPanel
             market={market}
             focus={focus}
+            targetingSegments={targetingSegments}
             priceRange={priceRange}
             budget={budget}
             goal={normalizedGoal}

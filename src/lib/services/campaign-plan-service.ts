@@ -857,6 +857,39 @@ function cleanSentence(value: string) {
   return `${normalized}.`;
 }
 
+function normalizeForCopyMatch(value: string) {
+  return value.toLowerCase().replace(/[^\w\s+]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function textKeepsOfferConcept(text: string, offer: string) {
+  const normalizedText = normalizeForCopyMatch(text);
+  const normalizedOffer = normalizeForCopyMatch(offer);
+
+  if (!normalizedText || !normalizedOffer) {
+    return false;
+  }
+
+  if (normalizedText.includes(normalizedOffer)) {
+    return true;
+  }
+
+  const offerTokens = normalizedOffer.split(" ").filter((token) => token.length > 2);
+  const matchedTokens = offerTokens.filter((token) => normalizedText.includes(token));
+  return offerTokens.length > 0 && matchedTokens.length / offerTokens.length >= 0.65;
+}
+
+function buildOfferFirstHeadline(params: {
+  headline: string;
+  offer: string;
+  market: string;
+}) {
+  if (textKeepsOfferConcept(params.headline, params.offer)) {
+    return params.headline;
+  }
+
+  return `${params.offer} in ${params.market}`;
+}
+
 function canReuseCampaignAssets(input: OnboardingInput, plan: CampaignPlan | null) {
   if (!plan) {
     return false;
@@ -976,8 +1009,14 @@ export async function generateCampaignPlan(
     selectedPatterns[0]?.hook ?? "",
     creativeStrategy,
   );
-  const funnelHeadline = leadCopy.headline;
-  const funnelSubheadline = leadCopy.subheadline;
+  const funnelHeadline = buildOfferFirstHeadline({
+    headline: leadCopy.headline,
+    offer: offerLabel,
+    market: context.market,
+  });
+  const funnelSubheadline = textKeepsOfferConcept(leadCopy.subheadline, offerLabel)
+    ? leadCopy.subheadline
+    : cleanSentence(`${offerLabel} is the first promise prospects see. ${leadCopy.subheadline}`);
   const funnelCta = leadCopy.cta;
   const funnelSteps = [
     ...funnelFramework.bodySteps.map((step) => fillPattern(step, knowledgeContext)),
