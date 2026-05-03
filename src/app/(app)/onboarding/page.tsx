@@ -2,7 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Target } from "lucide-react";
+import {
+  Briefcase,
+  Building2,
+  DollarSign,
+  Home,
+  MapPin,
+  ShieldCheck,
+  Target,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -106,6 +116,10 @@ const FOCUS_HELP: Record<CampaignFocus, string> = {
   buyer: "Best for home search offers, buyer consultations, and tour-ready leads.",
 };
 
+const FIELD_LABEL_CLASS = "grid min-h-[104px] grid-rows-[40px_48px_auto] gap-2 text-sm";
+const FIELD_LABEL_TEXT_CLASS = "flex items-end text-muted-foreground";
+const SETUP_CARD_CLASS = "space-y-3 rounded-[20px] border border-sky-100/10 bg-slate-950/20 p-4";
+
 function IconTile({
   icon: Icon,
   tone = "cyan",
@@ -140,38 +154,43 @@ function SetupSummaryPanel({
   budget: string;
   goal: string;
 }) {
+  const summaryItems: Array<[string, string, LucideIcon]> = [
+    ["Focus", FOCUS_SUMMARY[focus], Target],
+    ["Market", market || "Not set", MapPin],
+    ["Offer", goal || DEFAULT_GOALS[focus], Home],
+    ["Safety", "No live launch", ShieldCheck],
+  ];
+
   return (
     <Card className="h-fit p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="df-eyebrow text-cyan-100/76">Campaign snapshot</p>
-          <h3 className="mt-2 text-2xl font-semibold tracking-[-0.05em]">
+          <h3 className="mt-2 text-balance text-2xl font-semibold leading-tight tracking-[-0.05em]">
             A quick preview of what this setup is creating
           </h3>
         </div>
         <Badge className="border-cyan-200/20 bg-cyan-300/[0.055] text-cyan-100">Real generation</Badge>
       </div>
 
-      <div className="mt-5 rounded-[20px] border border-white/10 bg-black/15 p-5">
+      <div className="mt-5 rounded-[18px] border border-sky-100/10 bg-[linear-gradient(145deg,rgba(15,23,42,0.62),rgba(2,6,23,0.36))] p-5">
         <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Likely path</p>
-        <p className="mt-3 text-xl font-semibold leading-8">
+        <p className="mt-3 text-lg font-semibold leading-7">
           {FOCUS_SUMMARY[focus]} in {market || "your market"} with a {priceRange || "focused"} campaign and ${budget || "3000"}/month launch plan.
         </p>
-        <p className="mt-3 text-sm leading-7 text-white/58">
+        <p className="mt-3 text-sm leading-6 text-white/58">
           The next action creates a real campaign preview, then moves through funnel review, creative selection, final review, and launch gating.
         </p>
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        {[
-          ["Focus", FOCUS_SUMMARY[focus]],
-          ["Market", market || "Not set"],
-          ["Offer", goal || DEFAULT_GOALS[focus]],
-          ["Safety", "No live launch"],
-        ].map(([label, value]) => (
-          <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3">
-            <p className="text-xs text-white/48">{label}</p>
-            <p className="mt-1 text-sm font-semibold text-white/86">{value}</p>
+        {summaryItems.map(([label, value, Icon]) => (
+          <div key={label} className="min-h-[82px] rounded-2xl border border-sky-100/10 bg-white/[0.028] px-4 py-3">
+            <div className="flex items-center gap-2 text-xs text-white/48">
+              <Icon className="size-3.5 text-cyan-100/70" />
+              <span>{label}</span>
+            </div>
+            <p className="mt-2 text-sm font-semibold leading-5 text-white/86">{value}</p>
           </div>
         ))}
       </div>
@@ -939,23 +958,40 @@ export default function OnboardingPage() {
     active: boolean;
     label: string;
     description?: string;
+    icon?: LucideIcon;
     onClick: () => void;
   }) {
+    const Icon = params.icon;
+
     return (
       <button
         type="button"
         onClick={params.onClick}
         disabled={loading}
-        className={`group relative min-h-[74px] overflow-hidden rounded-[18px] border px-4 py-3 text-left transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-55 ${
+        className={`group relative min-h-[70px] overflow-hidden rounded-[16px] border px-4 py-3 text-left transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-55 ${
           params.active
-            ? "border-cyan-200/35 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.18),transparent_70%),linear-gradient(145deg,rgba(116,199,255,0.16),rgba(124,58,237,0.12))] text-white shadow-[0_20px_55px_-36px_rgba(103,232,249,0.75)]"
-            : "border-white/10 bg-white/[0.035] text-foreground hover:-translate-y-0.5 hover:border-cyan-200/22 hover:bg-white/[0.06]"
+            ? "border-cyan-100/35 bg-[linear-gradient(145deg,rgba(56,189,248,0.18),rgba(34,211,238,0.11)_52%,rgba(167,243,208,0.1))] text-white shadow-[0_20px_55px_-38px_rgba(34,211,238,0.65)]"
+            : "border-sky-100/10 bg-white/[0.026] text-foreground hover:-translate-y-0.5 hover:border-cyan-100/24 hover:bg-white/[0.05]"
         }`}
       >
         <span className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-        <p className="text-sm font-semibold">{params.label}</p>
+        <span className="flex items-center gap-2">
+          {Icon ? (
+            <span
+              className={cn(
+                "flex size-7 shrink-0 items-center justify-center rounded-full border",
+                params.active
+                  ? "border-cyan-100/25 bg-cyan-100/10 text-cyan-50"
+                  : "border-white/10 bg-white/[0.035] text-white/58",
+              )}
+            >
+              <Icon className="size-3.5" />
+            </span>
+          ) : null}
+          <span className="text-sm font-semibold">{params.label}</span>
+        </span>
         {params.description ? (
-          <p className={`mt-1 text-xs leading-5 ${params.active ? "text-white/72" : "text-muted-foreground"}`}>
+          <p className={`mt-2 text-xs leading-5 ${params.active ? "text-white/72" : "text-muted-foreground"}`}>
             {params.description}
           </p>
         ) : null}
@@ -1031,9 +1067,9 @@ export default function OnboardingPage() {
             </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <label className="space-y-2 text-sm">
-              <span className="text-muted-foreground">First name</span>
+          <div className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <label className={FIELD_LABEL_CLASS}>
+              <span className={FIELD_LABEL_TEXT_CLASS}>First name</span>
               <Input
                 required
                 value={firstName}
@@ -1047,8 +1083,8 @@ export default function OnboardingPage() {
               {fieldErrors.firstName ? <p className="text-sm text-rose-400">{fieldErrors.firstName}</p> : null}
             </label>
 
-            <label className="space-y-2 text-sm">
-              <span className="text-muted-foreground">Last name</span>
+            <label className={FIELD_LABEL_CLASS}>
+              <span className={FIELD_LABEL_TEXT_CLASS}>Last name</span>
               <Input
                 required
                 value={lastName}
@@ -1062,8 +1098,8 @@ export default function OnboardingPage() {
               {fieldErrors.lastName ? <p className="text-sm text-rose-400">{fieldErrors.lastName}</p> : null}
             </label>
 
-            <label className="space-y-2 text-sm">
-              <span className="text-muted-foreground">Company or brokerage name</span>
+            <label className={FIELD_LABEL_CLASS}>
+              <span className={FIELD_LABEL_TEXT_CLASS}>Company or brokerage name</span>
               <Input
                 required
                 value={businessName}
@@ -1077,8 +1113,8 @@ export default function OnboardingPage() {
               {fieldErrors.businessName ? <p className="text-sm text-rose-400">{fieldErrors.businessName}</p> : null}
             </label>
 
-            <label className="space-y-2 text-sm">
-              <span className="text-muted-foreground">SMS alert phone</span>
+            <label className={FIELD_LABEL_CLASS}>
+              <span className={FIELD_LABEL_TEXT_CLASS}>SMS alert phone</span>
               <Input
                 required
                 value={agentPhone}
@@ -1092,8 +1128,8 @@ export default function OnboardingPage() {
               {fieldErrors.agentPhone ? <p className="text-sm text-rose-400">{fieldErrors.agentPhone}</p> : null}
             </label>
 
-            <label className="space-y-2 text-sm">
-              <span className="text-muted-foreground">City or market</span>
+            <label className={FIELD_LABEL_CLASS}>
+              <span className={FIELD_LABEL_TEXT_CLASS}>City or market</span>
               <Input
                 required
                 value={market}
@@ -1109,9 +1145,12 @@ export default function OnboardingPage() {
           </div>
 
           <div className="grid gap-4 xl:grid-cols-2">
-            <div className="space-y-3 rounded-[22px] border border-white/10 bg-black/10 p-4">
+            <div className={SETUP_CARD_CLASS}>
               <div>
-                <p className="text-sm font-medium text-foreground">Campaign focus</p>
+                <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Users className="size-4 text-cyan-100/70" />
+                  Campaign focus
+                </p>
                 <p className="text-xs leading-5 text-muted-foreground">Choose the first lead segment.</p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -1119,23 +1158,28 @@ export default function OnboardingPage() {
                   active: focus === "seller",
                   label: "Sellers",
                   description: FOCUS_HELP.seller,
+                  icon: Home,
                   onClick: () => setFocus("seller"),
                 })}
                 {renderChoiceButton({
                   active: focus === "buyer",
                   label: "Buyers",
                   description: FOCUS_HELP.buyer,
+                  icon: Building2,
                   onClick: () => setFocus("buyer"),
                 })}
               </div>
             </div>
 
-            <div className="space-y-3 rounded-[22px] border border-white/10 bg-black/10 p-4">
+            <div className={SETUP_CARD_CLASS}>
               <div>
-                <p className="text-sm font-medium text-foreground">Property price range</p>
+                <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Home className="size-4 text-cyan-100/70" />
+                  Property price range
+                </p>
                 <p className="text-xs leading-5 text-muted-foreground">Pick the market band for the preview.</p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
                 {PRICE_RANGE_OPTIONS.map((option) => (
                   <div key={option}>
                     {renderChoiceButton({
@@ -1152,12 +1196,15 @@ export default function OnboardingPage() {
               {fieldErrors.priceRange ? <p className="text-sm text-rose-400">{fieldErrors.priceRange}</p> : null}
             </div>
 
-            <div className="space-y-3 rounded-[22px] border border-white/10 bg-black/10 p-4">
+            <div className={SETUP_CARD_CLASS}>
               <div>
-                <p className="text-sm font-medium text-foreground">Monthly ad budget</p>
+                <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <DollarSign className="size-4 text-cyan-100/70" />
+                  Monthly ad budget
+                </p>
                 <p className="text-xs leading-5 text-muted-foreground">Used for preview pacing and launch settings.</p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
                 {BUDGET_OPTIONS.map((option) => (
                   <div key={option.value}>
                     {renderChoiceButton({
@@ -1171,7 +1218,7 @@ export default function OnboardingPage() {
                   </div>
                 ))}
               </div>
-              <label className="space-y-2 text-sm">
+              <label className="grid gap-2 text-sm">
                 <span className="text-muted-foreground">Or enter a custom monthly budget</span>
                 <Input
                   type="number"
@@ -1188,9 +1235,12 @@ export default function OnboardingPage() {
               {fieldErrors.budget ? <p className="text-sm text-rose-400">{fieldErrors.budget}</p> : null}
             </div>
 
-            <div className="grid gap-4 rounded-[22px] border border-white/10 bg-black/10 p-4 md:grid-cols-[1.05fr_0.95fr] xl:grid-cols-1 2xl:grid-cols-[1.05fr_0.95fr]">
-              <label className="space-y-2 text-sm">
-                <span className="text-muted-foreground">Offer or goal</span>
+            <div className={cn(SETUP_CARD_CLASS, "grid gap-4 md:grid-cols-[1.05fr_0.95fr] xl:grid-cols-1 2xl:grid-cols-[1.05fr_0.95fr]")}>
+              <label className="grid content-start gap-2 text-sm">
+                <span className="flex items-center gap-2 text-muted-foreground">
+                  <Briefcase className="size-4 text-cyan-100/60" />
+                  Offer or goal
+                </span>
                 <Input
                   value={goal}
                   onChange={(event) => {
@@ -1205,7 +1255,7 @@ export default function OnboardingPage() {
                 </p>
               </label>
 
-              <div className="surface-strong rounded-[18px] border border-white/10 p-4">
+              <div className="rounded-[16px] border border-sky-100/10 bg-[linear-gradient(145deg,rgba(15,23,42,0.7),rgba(2,6,23,0.48))] p-4">
                 <p className="df-eyebrow">Preview summary</p>
                 <div className="mt-3 grid gap-2 text-xs text-foreground sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                   <p><span className="text-muted-foreground">Market:</span> {market || "Your city"}</p>

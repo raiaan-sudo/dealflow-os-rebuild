@@ -10,7 +10,7 @@
     --card-foreground: 210 40% 98%;
     --popover: 220 50% 7%;
     --popover-foreground: 210 40% 98%;
-    --primary: 259 91% 74%;
+    --primary: 187 92% 59%;
     --primary-foreground: 224 60% 5%;
     --secondary: 218 38% 12%;
     --secondary-foreground: 210 40% 98%;
@@ -28,8 +28,8 @@
     --df-bg-primary: #030712;
     --df-bg-secondary: #060a12;
     --df-bg-elevated: #08111d;
-    --df-accent-blue: #74c7ff;
-    --df-accent-purple: #a78bfa;
+    --df-accent-blue: #38bdf8;
+    --df-accent-purple: #8b8cf6;
     --df-accent-cyan: #67e8f9;
   }
 
@@ -45,9 +45,9 @@
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans);
     background:
-      radial-gradient(circle at 50% -10%, rgba(124, 58, 237, 0.24), transparent 32%),
-      radial-gradient(circle at 14% 18%, rgba(103, 232, 249, 0.16), transparent 28%),
-      radial-gradient(circle at 88% 8%, rgba(116, 199, 255, 0.18), transparent 26%),
+      radial-gradient(circle at 50% -10%, rgba(56, 189, 248, 0.18), transparent 32%),
+      radial-gradient(circle at 14% 18%, rgba(103, 232, 249, 0.14), transparent 28%),
+      radial-gradient(circle at 88% 8%, rgba(167, 243, 208, 0.1), transparent 26%),
       linear-gradient(180deg, #030712 0%, #06101d 46%, #030712 100%);
     min-height: 100vh;
   }
@@ -70,9 +70,9 @@
   .df-atmosphere {
     @apply pointer-events-none fixed inset-0 -z-10 overflow-hidden;
     background:
-      radial-gradient(circle at 50% -8%, rgba(124, 58, 237, 0.22), transparent 34%),
-      radial-gradient(circle at 18% 12%, rgba(103, 232, 249, 0.14), transparent 30%),
-      radial-gradient(circle at 82% 20%, rgba(47, 128, 255, 0.18), transparent 28%);
+      radial-gradient(circle at 50% -8%, rgba(56, 189, 248, 0.16), transparent 34%),
+      radial-gradient(circle at 18% 12%, rgba(103, 232, 249, 0.12), transparent 30%),
+      radial-gradient(circle at 82% 20%, rgba(167, 243, 208, 0.1), transparent 28%);
   }
 
   .df-atmosphere::before {
@@ -106,7 +106,7 @@
 
   .surface-strong {
     background:
-      radial-gradient(circle at 18% 0%, rgba(167, 139, 250, 0.16), transparent 36%),
+      radial-gradient(circle at 18% 0%, rgba(56, 189, 248, 0.12), transparent 36%),
       linear-gradient(145deg, rgba(14, 30, 52, 0.94), rgba(5, 9, 17, 0.88));
     box-shadow: 0 34px 100px -60px rgba(0, 0, 0, 0.95);
   }

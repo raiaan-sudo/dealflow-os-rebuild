@@ -9,7 +9,8 @@ import { fetchWithRetry } from "@/lib/http/fetch-with-retry";
 export function FeedbackWidget() {
   const pathname = usePathname();
   const hideFloatingButton =
-    pathname?.startsWith("/campaign-built");
+    pathname?.startsWith("/campaign-built") ||
+    pathname?.startsWith("/onboarding");
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [confusedText, setConfusedText] = useState("");

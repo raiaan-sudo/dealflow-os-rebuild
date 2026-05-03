@@ -6,7 +6,7 @@ export const gradients = {
   panelStrong:
     "linear-gradient(145deg, rgba(14, 30, 52, 0.94), rgba(5, 9, 17, 0.88))",
   primary:
-    "linear-gradient(135deg, #8b5cf6 0%, #2f80ff 48%, #67e8f9 100%)",
+    "linear-gradient(135deg, #38bdf8 0%, #22d3ee 48%, #a7f3d0 100%)",
   aurora:
     "radial-gradient(circle at 20% 10%, rgba(167, 139, 250, 0.24), transparent 32%), radial-gradient(circle at 90% 16%, rgba(103, 232, 249, 0.18), transparent 28%)",
 } as const;
