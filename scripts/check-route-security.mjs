@@ -19,7 +19,18 @@ const expectedPublicApiRoutes = new Map([
 ]);
 
 const expectedInternalApiRoutes = new Map([
-  ["/api/internal/system-jobs", new Set(["GET", "POST"])],
+  ["/api/internal/qa-auth-session", {
+    methods: new Set(["POST"]),
+    markers: ["assertInternalSystemRequest", "QA_AUTH_HARNESS_ENABLED"],
+  }],
+  ["/api/internal/stripe-test-proof", {
+    methods: new Set(["POST"]),
+    markers: ["assertInternalSystemRequest", "STRIPE_TEST_HARNESS_ENABLED"],
+  }],
+  ["/api/internal/system-jobs", {
+    methods: new Set(["GET", "POST"]),
+    markers: ["assertInternalSystemRequest", "runSystemJobWorkerBatch"],
+  }],
 ]);
 
 const ownershipMarkers = [
@@ -155,7 +166,7 @@ function checkInternalApiGuards(publicApiRoutes, routeFilesByPath) {
     fail("Internal API middleware guard", "middleware does not contain the internal bearer-secret guard");
   }
 
-  for (const [route, expectedMethods] of expectedInternalApiRoutes) {
+  for (const [route, expected] of expectedInternalApiRoutes) {
     if (publicApiRoutes.has(route)) {
       fail("Internal API public exposure", `${route} must not be in PUBLIC_API_PATHS`);
     }
@@ -169,6 +180,7 @@ function checkInternalApiGuards(publicApiRoutes, routeFilesByPath) {
     const relativePath = path.relative(root, file);
     const text = read(relativePath);
     const actualMethods = exportedMethods(text);
+    const expectedMethods = expected.methods;
     const missingMethods = [...expectedMethods].filter((method) => !actualMethods.has(method));
     const unexpectedMethods = [...actualMethods].filter((method) => !expectedMethods.has(method));
 
@@ -178,10 +190,11 @@ function checkInternalApiGuards(publicApiRoutes, routeFilesByPath) {
       pass("Internal API method surface", `${route} exports ${[...actualMethods].join(", ")}`);
     }
 
-    if (text.includes("assertInternalSystemRequest") && text.includes("runSystemJobWorkerBatch")) {
-      pass("Internal API route guard", `${route} requires internal authorization before running jobs`);
+    const missingMarkers = expected.markers.filter((marker) => !text.includes(marker));
+    if (missingMarkers.length === 0) {
+      pass("Internal API route guard", `${route} requires internal authorization and expected env gates`);
     } else {
-      fail("Internal API route guard", `${route} does not use assertInternalSystemRequest and runSystemJobWorkerBatch`);
+      fail("Internal API route guard", `${route} is missing ${missingMarkers.join(", ")}`);
     }
   }
 }
