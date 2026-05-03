@@ -946,7 +946,7 @@ export default function OnboardingPage() {
   }
 
   return (
-    <PageShell className="max-w-[1180px]">
+    <PageShell className="max-w-[1640px] 2xl:max-w-[1760px]">
       <WizardSteps current="onboarding" />
       <PageHeader
         eyebrow="Campaign setup"
@@ -1002,7 +1002,7 @@ export default function OnboardingPage() {
         </Card>
       ) : null}
 
-      <div className="grid items-start gap-4 xl:grid-cols-[1fr_0.92fr]">
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.18fr)_minmax(380px,0.82fr)] 2xl:grid-cols-[minmax(0,1.22fr)_minmax(430px,0.78fr)]">
       <Card className="overflow-hidden p-6 sm:p-8">
         <form className="space-y-8" onSubmit={handleSubmit}>
           <div className="flex items-start gap-4">
