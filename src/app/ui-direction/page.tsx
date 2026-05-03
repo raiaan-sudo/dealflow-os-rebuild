@@ -240,8 +240,20 @@ export default function UIDirectionPage() {
 
       <OnboardingMockupPanel />
 
+      <div className="px-1">
+        <p className="df-eyebrow">Mockup 2</p>
+        <h2 className="mt-2 text-3xl font-semibold tracking-[-0.055em]">
+          Results page: Starter {BILLING_PLANS.starter.priceLabel}
+        </h2>
+      </div>
       <PlanAwareResultsPreview planTier="starter" sourceLabel="Mockup 2" />
 
+      <div className="px-1">
+        <p className="df-eyebrow">Mockup 3</p>
+        <h2 className="mt-2 text-3xl font-semibold tracking-[-0.055em]">
+          Results page: Pro {BILLING_PLANS.pro.priceLabel}
+        </h2>
+      </div>
       <PlanAwareResultsPreview planTier="pro" sourceLabel="Mockup 3" />
 
       <Card className="p-6 sm:p-8">
