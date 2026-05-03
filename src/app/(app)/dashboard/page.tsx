@@ -8,6 +8,8 @@ import { CampaignDashboardView } from "@/components/dashboard/campaign-dashboard
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
+import { PlanAwareResultsPreview } from "@/components/results/plan-aware-results-preview";
+import { normalizeBillingPlanTier } from "@/lib/billing/plans";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import {
   getCampaignPayloadFromPlan,
@@ -412,6 +414,22 @@ export default async function DashboardPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = searchParams ? await searchParams : {};
+  const requestedPlanTier =
+    typeof params.plan === "string"
+      ? normalizeBillingPlanTier(params.plan)
+      : null;
+
+  if (requestedPlanTier === "starter" || requestedPlanTier === "pro") {
+    return (
+      <PageShell>
+        <PlanAwareResultsPreview
+          planTier={requestedPlanTier}
+          sourceLabel={params.source === "onboarding" ? "Onboarding draft" : "Safe demo data"}
+        />
+      </PageShell>
+    );
+  }
+
   const requestedCampaignId =
     typeof params.campaignId === "string" && params.campaignId.length > 0
       ? params.campaignId
@@ -432,24 +450,14 @@ export default async function DashboardPage({
         />
         <EmptyState
           title="No campaign available yet"
-          description="Complete onboarding to create a campaign before opening the dashboard."
+          description="Start onboarding to create a campaign before opening review, launch, or results."
         />
         <div className="flex flex-wrap gap-3">
           <Button asChild>
-            <Link href={buildCampaignScopedPath("/preview", state.campaignId)}>
-              Review
-            </Link>
+            <Link href="/onboarding">Start onboarding</Link>
           </Button>
           <Button asChild variant="secondary">
-            <Link
-              href={
-                state.campaignId
-                  ? `/launch?campaignId=${encodeURIComponent(state.campaignId)}`
-                  : "/launch"
-              }
-            >
-              Launch
-            </Link>
+            <Link href={buildCampaignScopedPath("/builder", state.campaignId)}>Open builder</Link>
           </Button>
         </div>
       </PageShell>

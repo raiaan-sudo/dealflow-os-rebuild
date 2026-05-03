@@ -2,13 +2,22 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  CheckCircle2,
+  ClipboardList,
+  ShieldCheck,
+  Target,
+  Wand2,
+} from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/page-shell";
 import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/utils";
 
 type CampaignFocus = "seller" | "buyer";
 type PipelineStepKey = "funnel" | "creatives" | "campaign";
@@ -103,6 +112,136 @@ const FOCUS_HELP: Record<CampaignFocus, string> = {
   seller: "Best for listing appointments, home valuation offers, and seller nurture.",
   buyer: "Best for home search offers, buyer consultations, and tour-ready leads.",
 };
+
+function IconTile({
+  icon: Icon,
+  tone = "cyan",
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  tone?: "cyan" | "violet" | "green" | "amber";
+}) {
+  const toneClass = {
+    cyan: "border-cyan-200/20 bg-cyan-300/[0.06] text-cyan-100",
+    violet: "border-violet-200/20 bg-violet-300/[0.06] text-violet-100",
+    green: "border-emerald-200/20 bg-emerald-300/[0.06] text-emerald-100",
+    amber: "border-amber-200/20 bg-amber-300/[0.06] text-amber-100",
+  }[tone];
+
+  return (
+    <div className={cn("flex size-11 shrink-0 items-center justify-center rounded-2xl border", toneClass)}>
+      <Icon className="size-5" />
+    </div>
+  );
+}
+
+function SetupProgressCard({
+  currentStep,
+  loading,
+}: {
+  currentStep: OnboardingProgressStep;
+  loading: boolean;
+}) {
+  const setupComplete = currentStep !== "plan";
+  const steps = [
+    { label: "Setup", active: currentStep === "plan", complete: setupComplete },
+    { label: "Funnel", active: currentStep === "funnel", complete: currentStep === "creatives" || currentStep === "payload" || currentStep === "complete" },
+    { label: "Creatives", active: currentStep === "creatives", complete: currentStep === "payload" || currentStep === "complete" },
+    { label: "Package", active: currentStep === "payload", complete: currentStep === "complete" },
+    { label: "Review", active: currentStep === "complete", complete: currentStep === "complete" },
+  ];
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <div className="flex items-center justify-between gap-4">
+        <p className="df-eyebrow">Progress</p>
+        <p className="text-sm font-semibold text-white/62">{loading ? "Generating" : "Ready"}</p>
+      </div>
+      <div className="mt-4 grid gap-2 md:grid-cols-5">
+        {steps.map((step, index) => (
+          <div
+            key={step.label}
+            className={cn(
+              "flex min-w-0 items-center gap-3 rounded-2xl border px-3 py-3 text-left",
+              step.active
+                ? "border-cyan-200/24 bg-cyan-300/[0.07]"
+                : step.complete
+                  ? "border-emerald-300/20 bg-emerald-300/[0.045]"
+                  : "border-white/10 bg-white/[0.025]",
+            )}
+          >
+            <span
+              className={cn(
+                "flex size-8 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
+                step.complete
+                  ? "border-emerald-200/25 bg-emerald-300/[0.08] text-emerald-100"
+                  : step.active
+                    ? "border-cyan-200/30 bg-cyan-300/[0.1] text-cyan-100"
+                    : "border-white/10 bg-white/[0.035] text-white/54",
+              )}
+            >
+              {step.complete ? <CheckCircle2 className="size-4" /> : index + 1}
+            </span>
+            <span className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-white/62">
+              {step.label}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function SetupSummaryPanel({
+  market,
+  focus,
+  priceRange,
+  budget,
+  goal,
+}: {
+  market: string;
+  focus: CampaignFocus;
+  priceRange: string;
+  budget: string;
+  goal: string;
+}) {
+  return (
+    <Card className="h-fit p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="df-eyebrow text-cyan-100/76">Campaign snapshot</p>
+          <h3 className="mt-2 text-2xl font-semibold tracking-[-0.05em]">
+            A quick preview of what this setup is creating
+          </h3>
+        </div>
+        <Badge className="border-cyan-200/20 bg-cyan-300/[0.055] text-cyan-100">Real generation</Badge>
+      </div>
+
+      <div className="mt-5 rounded-[20px] border border-white/10 bg-black/15 p-5">
+        <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Likely path</p>
+        <p className="mt-3 text-xl font-semibold leading-8">
+          {FOCUS_SUMMARY[focus]} in {market || "your market"} with a {priceRange || "focused"} campaign and ${budget || "3000"}/month launch plan.
+        </p>
+        <p className="mt-3 text-sm leading-7 text-white/58">
+          The next action creates a real campaign preview, then moves through funnel review, creative selection, final review, and launch gating.
+        </p>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        {[
+          ["Focus", FOCUS_SUMMARY[focus]],
+          ["Market", market || "Not set"],
+          ["Offer", goal || DEFAULT_GOALS[focus]],
+          ["Safety", "No live launch"],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3">
+            <p className="text-xs text-white/48">{label}</p>
+            <p className="mt-1 text-sm font-semibold text-white/86">{value}</p>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
 
 function getStepErrorMessage(value: unknown, fallbackLabel: string) {
   if (
@@ -807,27 +946,33 @@ export default function OnboardingPage() {
   }
 
   return (
-    <PageShell className="max-w-[980px]">
+    <PageShell className="max-w-[1180px]">
       <WizardSteps current="onboarding" />
       <PageHeader
         eyebrow="Campaign setup"
-        title="Build your real estate campaign preview"
-        description="Answer a few quick questions, then we will generate your funnel, ads, and launch-ready preview. Most teams finish this in about 2 minutes."
+        title="Step-by-step onboarding builder"
+        description="Answer a few quick questions, then DealFlow creates the real campaign preview, funnel, ads, and launch package behind this interface."
       />
 
-      <Card className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
-        <div className="space-y-2">
-          <p className="df-eyebrow">
-            {formatProgressLabel(currentStep)}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            About 60 seconds for setup, then about 90 seconds to generate the preview.
-          </p>
-        </div>
-        <div className="rounded-2xl border border-cyan-200/12 bg-cyan-300/[0.045] px-4 py-3 text-sm text-cyan-50/70">
-          Resume is always saved. If generation slows down, you can come back without losing progress.
+      <Card className="p-5 sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <Badge>Mockup 1</Badge>
+            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.055em] sm:text-4xl">
+              Let&apos;s build a campaign that actually gets you leads
+            </h2>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-white/66">
+              Start with the market and offer. The snapshot updates as you answer, and the final action runs the real
+              generation pipeline used by launch-ready campaigns.
+            </p>
+          </div>
+          <Badge className="border-emerald-300/20 bg-emerald-300/[0.06] text-emerald-100">
+            Production flow
+          </Badge>
         </div>
       </Card>
+
+      <SetupProgressCard currentStep={currentStep} loading={loading} />
 
       {hydrated && hasSavedProgress ? (
         <Card className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
@@ -857,8 +1002,20 @@ export default function OnboardingPage() {
         </Card>
       ) : null}
 
+      <div className="grid items-start gap-4 xl:grid-cols-[1fr_0.92fr]">
       <Card className="overflow-hidden p-6 sm:p-8">
         <form className="space-y-8" onSubmit={handleSubmit}>
+          <div className="flex items-start gap-4">
+            <IconTile icon={Target} tone="cyan" />
+            <div>
+              <p className="df-eyebrow">{formatProgressLabel(currentStep)}</p>
+              <h3 className="mt-2 text-2xl font-semibold tracking-[-0.05em]">What type of leads do you want first?</h3>
+              <p className="mt-2 text-sm leading-7 text-white/64">
+                Required fields validate before generation. This screen only prepares the campaign; live Meta launch, SMS, and billing remain gated later.
+              </p>
+            </div>
+          </div>
+
           <div className="grid gap-6 md:grid-cols-2">
             <label className="space-y-2 text-sm">
               <span className="text-muted-foreground">First name</span>
@@ -944,13 +1101,13 @@ export default function OnboardingPage() {
             <div className="grid gap-3 md:grid-cols-2">
               {renderChoiceButton({
                 active: focus === "seller",
-                label: "Seller campaign",
+                label: "Sellers",
                 description: FOCUS_HELP.seller,
                 onClick: () => setFocus("seller"),
               })}
               {renderChoiceButton({
                 active: focus === "buyer",
-                label: "Buyer campaign",
+                label: "Buyers",
                 description: FOCUS_HELP.buyer,
                 onClick: () => setFocus("buyer"),
               })}
@@ -1159,6 +1316,38 @@ export default function OnboardingPage() {
           </div>
         </form>
       </Card>
+      <SetupSummaryPanel
+        market={market}
+        focus={focus}
+        priceRange={priceRange}
+        budget={budget}
+        goal={normalizedGoal}
+      />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="p-5">
+          <IconTile icon={Wand2} tone="violet" />
+          <h3 className="mt-4 text-xl font-semibold tracking-[-0.04em]">Onboarding</h3>
+          <p className="mt-2 text-sm leading-7 text-white/64">
+            One setup screen with autosave, validation, and campaign-generation recovery.
+          </p>
+        </Card>
+        <Card className="p-5">
+          <IconTile icon={ClipboardList} tone="cyan" />
+          <h3 className="mt-4 text-xl font-semibold tracking-[-0.04em]">Campaign package</h3>
+          <p className="mt-2 text-sm leading-7 text-white/64">
+            Funnel, creative, and launch payloads are generated before review.
+          </p>
+        </Card>
+        <Card className="p-5">
+          <IconTile icon={ShieldCheck} tone="green" />
+          <h3 className="mt-4 text-xl font-semibold tracking-[-0.04em]">Guardrails</h3>
+          <p className="mt-2 text-sm leading-7 text-white/64">
+            Meta launch, lead SMS, and billing remain blocked until explicit later steps.
+          </p>
+        </Card>
+      </div>
     </PageShell>
   );
 }
