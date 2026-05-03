@@ -17,6 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { PlanAwareResultsPreview } from "@/components/results/plan-aware-results-preview";
 import { BILLING_PLANS } from "@/lib/billing/plans";
 import { cn } from "@/lib/utils";
 
@@ -104,6 +105,82 @@ function BehaviorCard({
   );
 }
 
+function OnboardingMockupPanel() {
+  return (
+    <Card className="p-6 sm:p-8">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <Badge>Mockup 1</Badge>
+          <h2 className="mt-4 text-3xl font-semibold tracking-[-0.055em] sm:text-4xl">
+            Step-by-step onboarding builder
+          </h2>
+          <p className="mt-3 max-w-4xl text-sm leading-7 text-white/66">
+            The production onboarding screen now keeps the same generated campaign flow while presenting the clearer setup,
+            progress, and campaign snapshot treatment from the supplied UI direction.
+          </p>
+        </div>
+        <Badge className="border-emerald-300/20 bg-emerald-300/[0.055] text-emerald-100">Production flow</Badge>
+      </div>
+
+      <div className="mt-6 rounded-[24px] border border-white/10 bg-black/18 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="df-eyebrow">Let&apos;s build a campaign that actually gets you leads</p>
+            <h3 className="mt-2 text-2xl font-semibold tracking-[-0.045em]">
+              Real setup data feeds the same funnel, creative, and campaign package APIs.
+            </h3>
+          </div>
+          <Button asChild>
+            <Link href="/onboarding">
+              Open onboarding
+              <ArrowUpRight className="size-4" />
+            </Link>
+          </Button>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-5">
+          {["Setup", "Funnel", "Creatives", "Package", "Review"].map((step, index) => (
+            <div key={step} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+              <span className="flex size-8 items-center justify-center rounded-full border border-cyan-200/24 bg-cyan-300/[0.08] text-xs font-semibold text-cyan-100">
+                {index + 1}
+              </span>
+              <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-white/58">{step}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-5">
+            <p className="df-eyebrow">Campaign focus</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {["Buyer leads", "Seller leads"].map((focus) => (
+                <div key={focus} className="rounded-2xl border border-white/10 bg-black/15 p-4">
+                  <IconTile icon={ClipboardList} />
+                  <h4 className="mt-3 text-lg font-semibold">{focus}</h4>
+                  <p className="mt-2 text-sm leading-6 text-white/62">
+                    Sets the offer, funnel angle, and campaign package context.
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[20px] border border-cyan-200/16 bg-cyan-300/[0.045] p-5">
+            <p className="df-eyebrow text-cyan-100/76">Campaign snapshot</p>
+            <h4 className="mt-3 text-xl font-semibold tracking-[-0.04em]">
+              A quick preview of what this setup is creating
+            </h4>
+            <p className="mt-3 text-sm leading-7 text-white/66">
+              The form persists progress, validates required fields, resumes interrupted work, and then sends users into
+              funnel review, creative selection, preview, billing, and launch gating.
+            </p>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export default function UIDirectionPage() {
   return (
     <main className="mx-auto flex w-full max-w-[1380px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
@@ -160,6 +237,12 @@ export default function UIDirectionPage() {
           })}
         </div>
       </Card>
+
+      <OnboardingMockupPanel />
+
+      <PlanAwareResultsPreview planTier="starter" sourceLabel="Mockup 2" />
+
+      <PlanAwareResultsPreview planTier="pro" sourceLabel="Mockup 3" />
 
       <Card className="p-6 sm:p-8">
         <p className="df-eyebrow">Layout behavior comparison</p>
