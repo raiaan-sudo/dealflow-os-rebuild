@@ -919,23 +919,15 @@ export function CampaignBuilderWorkspace({
     setBuilderError(null);
 
     try {
-      const response = await fetchWithRetry("/api/build-campaign", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(strategy),
-        retries: 1,
-        timeoutMs: 10000,
-      });
-
-      const data = (await response.json()) as BuiltCampaign | { error?: string };
-
-      if (!response.ok) {
-        throw new Error("error" in data && data.error ? data.error : "Campaign build failed.");
+      if (!strategy.location?.trim() || !strategy.audience?.trim() || !strategy.offer?.trim()) {
+        throw new Error("Add a location, audience, and offer before generating the campaign.");
       }
 
-      const built = data as BuiltCampaign;
+      const built = buildCampaign({
+        ...strategy,
+        market_type: strategy.market_type ?? "buyer",
+        funnel_goal: strategy.funnel_goal ?? "survey",
+      });
       replaceCampaignWithoutRevision(built);
       setCampaignRevisions([]);
       setCampaignName(`${strategy.location || "Local"} ${strategy.offer || "Campaign"}`.trim());
