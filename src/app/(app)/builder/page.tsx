@@ -1,12 +1,7 @@
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/app/page-header";
 import { CampaignBuilderWorkspace } from "@/components/campaign/campaign-builder-workspace";
-import {
-  buildCampaignScopedPath,
-  getPaywallAccessState,
-  requirePreviewCompletion,
-  resolveActiveCampaignRecord,
-} from "@/lib/paywall-access";
+import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { getAppContext } from "@/lib/services/app-context";
 import type {
   BuiltCampaign,
@@ -123,14 +118,11 @@ export default async function BuilderPage({
     redirect("/login?redirectedFrom=%2Fbuilder&reason=expired");
   }
 
-  const access = await requirePreviewCompletion(requestedCampaignId);
-  const resolvedCampaign = await resolveActiveCampaignRecord(
-    requestedCampaignId ?? access.activeCampaignId,
-  ).catch(() => null);
+  const resolvedCampaign = await resolveActiveCampaignRecord(requestedCampaignId).catch(() => null);
   const record = resolvedCampaign?.record ?? null;
 
-  if (!record && !access.activeCampaignId && !requestedCampaignId) {
-    redirect("/dashboard");
+  if (!record) {
+    redirect("/onboarding");
   }
 
   const tabParam =
