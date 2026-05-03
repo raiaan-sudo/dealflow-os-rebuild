@@ -1221,27 +1221,40 @@ export function CampaignBuilderWorkspace({
 
     const job = activeVideoJob;
     const source = new EventSource(`/api/system-jobs/${encodeURIComponent(job.jobId)}/stream`);
+    let receivedJobEvent = false;
 
     source.addEventListener("job", (event) => {
+      receivedJobEvent = true;
       const payload = JSON.parse((event as MessageEvent).data) as {
         status?: "pending" | "processing" | "completed" | "failed";
+        job?: {
+          status?: "pending" | "processing" | "completed" | "failed";
+          result?: {
+            asset?: CreativeAsset;
+            video?: { url?: string; hook?: string; script?: string[]; scenes?: string[] };
+          } | null;
+          error_message?: string | null;
+        } | null;
         result?: {
           asset?: CreativeAsset;
           video?: { url?: string; hook?: string; script?: string[]; scenes?: string[] };
         } | null;
         error_message?: string | null;
       };
+      const status = payload.status ?? payload.job?.status;
+      const result = payload.result ?? payload.job?.result;
+      const errorMessage = payload.error_message ?? payload.job?.error_message;
 
-      if (payload.status === "completed") {
+      if (status === "completed") {
         setGeneratedVideos((current) => ({
           ...current,
           [job.index]: {
-            asset: payload.result?.asset ?? ({} as CreativeAsset),
+            asset: result?.asset ?? ({} as CreativeAsset),
             status: "completed",
             videoId: job.jobId,
             video: {
               ...job.video,
-              url: payload.result?.video?.url || "",
+              url: result?.video?.url || "",
             },
           },
         }));
@@ -1251,15 +1264,15 @@ export function CampaignBuilderWorkspace({
         return;
       }
 
-      if (payload.status === "failed") {
+      if (status === "failed") {
         setVideoGenerationErrors((current) => ({
           ...current,
-          [job.index]: payload.error_message || "Video generation failed.",
+          [job.index]: errorMessage || "Video generation failed.",
         }));
         setGeneratedVideos((current) => ({
           ...current,
           [job.index]: {
-            asset: payload.result?.asset ?? ({} as CreativeAsset),
+            asset: result?.asset ?? ({} as CreativeAsset),
             status: "failed",
             videoId: job.jobId,
             video: job.video,
@@ -1269,9 +1282,34 @@ export function CampaignBuilderWorkspace({
         setActiveVideoJob(null);
         source.close();
       }
+
+      if (status === "pending" || status === "processing") {
+        setGeneratedVideos((current) => ({
+          ...current,
+          [job.index]: {
+            asset: current[job.index]?.asset ?? ({} as CreativeAsset),
+            status: "processing",
+            videoId: job.jobId,
+            video: job.video,
+          },
+        }));
+        setVideoGenerationErrors((current) => {
+          const next = { ...current };
+          delete next[job.index];
+          return next;
+        });
+        setVideoGenerationIndex(null);
+        setActiveVideoJob(null);
+        source.close();
+      }
     });
 
     source.addEventListener("error", () => {
+      if (receivedJobEvent) {
+        source.close();
+        return;
+      }
+
       setVideoGenerationErrors((current) => ({
         ...current,
         [job.index]: "Video status stream failed.",

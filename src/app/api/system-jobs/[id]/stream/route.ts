@@ -16,15 +16,11 @@ export async function GET(
 
     const stream = new ReadableStream({
       start(controller) {
-      controller.enqueue(
-        encoder.encode(
-          `event: job\ndata: ${JSON.stringify(
-            job
-              ? { job, logs }
-              : { job: null, logs: [], status: "failed", error_message: "System job was not found." },
-          )}\n\n`,
-        ),
-      );
+      const payload = job
+        ? { ...job, job, logs }
+        : { job: null, logs: [], status: "failed", error_message: "System job was not found." };
+
+      controller.enqueue(encoder.encode(`event: job\ndata: ${JSON.stringify(payload)}\n\n`));
       controller.close();
     },
   });
