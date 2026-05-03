@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -49,12 +49,13 @@ export function LaunchMetaSelectionPanel({
   campaignId,
 }: LaunchMetaSelectionPanelProps) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
   const [liveConnection, setLiveConnection] = useState(connection);
   const [selectedAccountId, setSelectedAccountId] = useState(connection.accountId ?? "");
   const [selectedPageId, setSelectedPageId] = useState(connection.pageId ?? "");
   const [selectedPixelId, setSelectedPixelId] = useState(connection.tracking.pixelId ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const isConnected = liveConnection.connectionStatus === "connected";
   const availableAccounts = liveConnection.availableAccounts;
@@ -84,59 +85,70 @@ export function LaunchMetaSelectionPanel({
     setSelectedAccountId(nextAccountId);
     setSelectedPixelId("");
     setError(null);
+    setSaveMessage(null);
 
     if (!nextAccountId) {
       return;
     }
 
-    startTransition(() => {
-      void saveMetaSelections({ externalAccountId: nextAccountId })
-        .then((nextConnection) => {
-          setLiveConnection(nextConnection);
-          setSelectedAccountId(nextConnection.accountId ?? nextAccountId);
-          setSelectedPageId(nextConnection.pageId ?? selectedPageId);
-          setSelectedPixelId(nextConnection.tracking.pixelId ?? "");
-          router.refresh();
-        })
-        .catch((nextError: unknown) => {
-          setError(
-            nextError instanceof Error
-              ? nextError.message
-              : "Meta ad account selection could not be updated.",
-          );
-        });
-    });
+    setIsSaving(true);
+    void saveMetaSelections({ externalAccountId: nextAccountId })
+      .then((nextConnection) => {
+        setLiveConnection(nextConnection);
+        setSelectedAccountId(nextConnection.accountId ?? nextAccountId);
+        setSelectedPageId(nextConnection.pageId ?? selectedPageId);
+        setSelectedPixelId(nextConnection.tracking.pixelId ?? "");
+        router.refresh();
+      })
+      .catch((nextError: unknown) => {
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Meta ad account selection could not be updated.",
+        );
+      })
+      .finally(() => {
+        setIsSaving(false);
+      });
   }
 
   function handleSaveSelections() {
+    if (isSaving) {
+      return;
+    }
+
     if (!allSelectionsReady) {
       setError(`Select a ${missingSelections.join(", ")} before launch.`);
       return;
     }
 
     setError(null);
+    setSaveMessage(null);
+    setIsSaving(true);
 
-    startTransition(() => {
-      void saveMetaSelections({
-        externalAccountId: selectedAccountId,
-        pageId: selectedPageId,
-        pixelId: selectedPixelId,
+    void saveMetaSelections({
+      externalAccountId: selectedAccountId,
+      pageId: selectedPageId,
+      pixelId: selectedPixelId,
+    })
+      .then((nextConnection) => {
+        setLiveConnection(nextConnection);
+        setSelectedAccountId(nextConnection.accountId ?? selectedAccountId);
+        setSelectedPageId(nextConnection.pageId ?? selectedPageId);
+        setSelectedPixelId(nextConnection.tracking.pixelId ?? selectedPixelId);
+        setSaveMessage("Meta selections saved. You can continue to launch review.");
+        router.refresh();
       })
-        .then((nextConnection) => {
-          setLiveConnection(nextConnection);
-          setSelectedAccountId(nextConnection.accountId ?? selectedAccountId);
-          setSelectedPageId(nextConnection.pageId ?? selectedPageId);
-          setSelectedPixelId(nextConnection.tracking.pixelId ?? selectedPixelId);
-          router.refresh();
-        })
-        .catch((nextError: unknown) => {
-          setError(
-            nextError instanceof Error
-              ? nextError.message
-              : "Meta launch selections could not be saved.",
-          );
-        });
-    });
+      .catch((nextError: unknown) => {
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Meta launch selections could not be saved.",
+        );
+      })
+      .finally(() => {
+        setIsSaving(false);
+      });
   }
 
   if (!isConnected) {
@@ -187,7 +199,7 @@ export function LaunchMetaSelectionPanel({
               className="flex h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-foreground outline-none"
               value={selectedAccountId}
               onChange={(event) => handleAccountRefresh(event.target.value)}
-              disabled={isPending}
+              disabled={isSaving}
             >
               <option value="">Select ad account</option>
               {availableAccounts.map((account) => (
@@ -208,8 +220,9 @@ export function LaunchMetaSelectionPanel({
               onChange={(event) => {
                 setSelectedPageId(event.target.value);
                 setError(null);
+                setSaveMessage(null);
               }}
-              disabled={isPending}
+              disabled={isSaving}
             >
               <option value="">Select Facebook Page</option>
               {availablePages.map((page) => (
@@ -227,8 +240,9 @@ export function LaunchMetaSelectionPanel({
               onChange={(event) => {
                 setSelectedPixelId(event.target.value);
                 setError(null);
+                setSaveMessage(null);
               }}
-              disabled={isPending || !selectedAccountId}
+              disabled={isSaving || !selectedAccountId}
             >
               <option value="">
                 {selectedAccountId ? "Select pixel" : "Select ad account first"}
@@ -246,14 +260,19 @@ export function LaunchMetaSelectionPanel({
             {error}
           </div>
         ) : null}
+        {saveMessage ? (
+          <div className="rounded-[18px] border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-100">
+            {saveMessage}
+          </div>
+        ) : null}
         {!allSelectionsReady ? (
           <div className="rounded-[18px] border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
             Missing required selections: {missingSelections.join(", ")}.
           </div>
         ) : null}
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Button type="button" onClick={handleSaveSelections} disabled={isPending || !allSelectionsReady}>
-            {isPending ? "Saving..." : "Save Meta selections"}
+          <Button type="button" onClick={handleSaveSelections} disabled={isSaving || !allSelectionsReady}>
+            {isSaving ? "Saving..." : saveMessage ? "Meta selections saved" : "Save Meta selections"}
           </Button>
           <Button
             type="button"
@@ -261,7 +280,7 @@ export function LaunchMetaSelectionPanel({
             onClick={() => {
               window.location.assign("/api/integrations/meta/connect?returnTo=%2Flaunch");
             }}
-            disabled={isPending}
+            disabled={isSaving}
           >
             Reconnect Meta
           </Button>
