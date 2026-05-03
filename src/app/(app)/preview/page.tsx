@@ -69,6 +69,14 @@ export default async function PreviewPage({
           title="No campaign available yet"
           description="Finish onboarding to create a campaign before opening review."
         />
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Button asChild>
+            <Link href="/onboarding">Start onboarding</Link>
+          </Button>
+          <Button asChild variant="secondary">
+            <Link href="/builder">Open builder</Link>
+          </Button>
+        </div>
       </PageShell>
     );
   }
@@ -88,6 +96,16 @@ export default async function PreviewPage({
           title="Preview data incomplete"
           description="Some campaign details are missing. Update or regenerate the campaign, then return to review."
         />
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Button asChild>
+            <Link href={resolvedCampaignId ? `/builder?campaignId=${encodeURIComponent(resolvedCampaignId)}` : "/builder"}>
+              Open builder
+            </Link>
+          </Button>
+          <Button asChild variant="secondary">
+            <Link href="/onboarding">Restart onboarding</Link>
+          </Button>
+        </div>
       </PageShell>
     );
   }
