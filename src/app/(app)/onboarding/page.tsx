@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import {
   Briefcase,
   Building2,
+  CheckCircle2,
   DollarSign,
   Home,
   MapPin,
+  Search,
   ShieldCheck,
   Target,
   Users,
@@ -25,6 +27,7 @@ import { cn } from "@/lib/utils";
 type CampaignFocus = "seller" | "buyer";
 type PipelineStepKey = "funnel" | "creatives" | "campaign";
 type OnboardingProgressStep = "plan" | "funnel" | "creatives" | "payload" | "complete";
+type QuestionStepKey = "identity" | "focus" | "price" | "budget" | "offer" | "review";
 type StepStatus = "pending" | "active" | "complete" | "failed";
 
 type PipelineStep = {
@@ -112,13 +115,67 @@ const FOCUS_SUMMARY: Record<CampaignFocus, string> = {
 };
 
 const FOCUS_HELP: Record<CampaignFocus, string> = {
-  seller: "Best for listing appointments, home valuation offers, and seller nurture.",
-  buyer: "Best for home search offers, buyer consultations, and tour-ready leads.",
+  seller: "Built around valuation intent, listing appointments, and seller nurture sequences.",
+  buyer: "Built around search intent, private-listing offers, and tour-ready buyer consultations.",
 };
 
-const FIELD_LABEL_CLASS = "grid min-h-[104px] grid-rows-[40px_48px_auto] gap-2 text-sm";
+const FIELD_LABEL_CLASS = "grid gap-2 text-sm";
 const FIELD_LABEL_TEXT_CLASS = "flex items-end text-muted-foreground";
-const SETUP_CARD_CLASS = "space-y-3 rounded-[20px] border border-sky-100/10 bg-slate-950/20 p-4";
+
+const QUESTION_STEPS: Array<{
+  key: QuestionStepKey;
+  label: string;
+  title: string;
+  description: string;
+}> = [
+  {
+    key: "identity",
+    label: "Workspace",
+    title: "Tell us where to personalize the campaign.",
+    description:
+      "This sets the market, sender identity, and internal lead-alert destination. It is only used to build the preview and keep the campaign attached to your workspace.",
+  },
+  {
+    key: "focus",
+    label: "Audience",
+    title: "Which lead type should DealFlow build first?",
+    description:
+      "Pick the first audience segment for the campaign package. You can expand into the other side later, but the first preview needs one clear direction.",
+  },
+  {
+    key: "price",
+    label: "Market band",
+    title: "Which price range should the campaign target?",
+    description:
+      "The range shapes the funnel copy, ad hooks, and offer framing so the campaign feels specific to the homes your audience cares about.",
+  },
+  {
+    key: "budget",
+    label: "Pacing",
+    title: "Choose the monthly ad budget for the preview.",
+    description:
+      "This does not launch spend. It gives DealFlow a realistic pacing model for estimates, campaign structure, and launch recommendations.",
+  },
+  {
+    key: "offer",
+    label: "Offer",
+    title: "Set the offer the campaign should lead with.",
+    description:
+      "Use the default if you want the fastest route. Edit it if you already have a stronger consultation, listing, or buyer offer.",
+  },
+  {
+    key: "review",
+    label: "Review",
+    title: "Review the setup before generating the campaign.",
+    description:
+      "DealFlow will create the campaign preview, funnel, creatives, and launch-ready package next. Live launch, SMS, and billing stay gated.",
+  },
+];
+
+const QUESTION_STEP_INDEX = QUESTION_STEPS.reduce(
+  (acc, step, index) => ({ ...acc, [step.key]: index }),
+  {} as Record<QuestionStepKey, number>,
+);
 
 function IconTile({
   icon: Icon,
@@ -517,6 +574,28 @@ function getCampaignReviewPath(campaignId: string) {
   return `/build/funnel?campaignId=${encodeURIComponent(campaignId)}`;
 }
 
+function getQuestionStepErrors(step: QuestionStepKey, errors: FieldErrors) {
+  if (step === "identity") {
+    return [
+      errors.firstName,
+      errors.lastName,
+      errors.businessName,
+      errors.agentPhone,
+      errors.market,
+    ].filter(Boolean);
+  }
+
+  if (step === "price") {
+    return [errors.priceRange].filter(Boolean);
+  }
+
+  if (step === "budget") {
+    return [errors.budget].filter(Boolean);
+  }
+
+  return [];
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
   const latestPlanRequestIdRef = useRef(0);
@@ -540,8 +619,14 @@ export default function OnboardingPage() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [hydrated, setHydrated] = useState(false);
   const [hasSavedProgress, setHasSavedProgress] = useState(false);
+  const [activeQuestionStep, setActiveQuestionStep] = useState<QuestionStepKey>("identity");
 
   const normalizedGoal = goal.trim() || DEFAULT_GOALS[focus];
+  const activeQuestion = QUESTION_STEPS[QUESTION_STEP_INDEX[activeQuestionStep]];
+  const activeQuestionIndex = QUESTION_STEP_INDEX[activeQuestionStep];
+  const isFirstQuestion = activeQuestionIndex === 0;
+  const isReviewQuestion = activeQuestionStep === "review";
+  const currentStepErrors = getQuestionStepErrors(activeQuestionStep, fieldErrors);
 
   const idempotencySeed = useMemo(
     () =>
@@ -725,6 +810,7 @@ export default function OnboardingPage() {
     setFieldErrors({});
     setHasSavedProgress(false);
     setLoading(false);
+    setActiveQuestionStep("identity");
   }
 
   async function runPipeline(startStepIndex: number, currentCampaignId: string) {
@@ -846,6 +932,11 @@ export default function OnboardingPage() {
       return;
     }
 
+    if (!isReviewQuestion) {
+      handleNextQuestion();
+      return;
+    }
+
     const nextFieldErrors = validateFields({
       firstName,
       lastName,
@@ -886,6 +977,69 @@ export default function OnboardingPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleNextQuestion() {
+    if (loading || isReviewQuestion) {
+      return;
+    }
+
+    const nextFieldErrors = validateFields({
+      firstName,
+      lastName,
+      businessName,
+      agentPhone,
+      market,
+      priceRange,
+      budget,
+    });
+    const stepErrors = getQuestionStepErrors(activeQuestionStep, nextFieldErrors);
+
+    setFieldErrors((current) => ({
+      ...current,
+      ...Object.fromEntries(
+        Object.entries(nextFieldErrors).filter(([, value]) => value !== undefined),
+      ),
+    }));
+
+    if (stepErrors.length > 0) {
+      setError("Finish this step before continuing.");
+      return;
+    }
+
+    setError(null);
+    setFieldErrors((current) => {
+      if (activeQuestionStep === "identity") {
+        return {
+          ...current,
+          firstName: undefined,
+          lastName: undefined,
+          businessName: undefined,
+          agentPhone: undefined,
+          market: undefined,
+        };
+      }
+
+      if (activeQuestionStep === "price") {
+        return { ...current, priceRange: undefined };
+      }
+
+      if (activeQuestionStep === "budget") {
+        return { ...current, budget: undefined };
+      }
+
+      return current;
+    });
+    setActiveQuestionStep(QUESTION_STEPS[Math.min(activeQuestionIndex + 1, QUESTION_STEPS.length - 1)].key);
+  }
+
+  function handlePreviousQuestion() {
+    if (loading || isFirstQuestion) {
+      return;
+    }
+
+    setError(null);
+    setActiveQuestionStep(QUESTION_STEPS[Math.max(activeQuestionIndex - 1, 0)].key);
   }
 
   async function handleRetry() {
@@ -971,7 +1125,7 @@ export default function OnboardingPage() {
         className={`group relative min-h-[70px] overflow-hidden rounded-[16px] border px-4 py-3 text-left transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-55 ${
           params.active
             ? "border-cyan-100/35 bg-[linear-gradient(145deg,rgba(56,189,248,0.18),rgba(34,211,238,0.11)_52%,rgba(167,243,208,0.1))] text-white shadow-[0_20px_55px_-38px_rgba(34,211,238,0.65)]"
-            : "border-sky-100/10 bg-white/[0.026] text-foreground hover:-translate-y-0.5 hover:border-cyan-100/24 hover:bg-white/[0.05]"
+            : "border-sky-100/10 bg-white/[0.026] text-foreground hover:-translate-y-1 hover:scale-[1.01] hover:border-cyan-100/28 hover:bg-cyan-100/[0.045] hover:shadow-[0_20px_48px_-36px_rgba(34,211,238,0.58)]"
         }`}
       >
         <span className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
@@ -997,6 +1151,247 @@ export default function OnboardingPage() {
         ) : null}
       </button>
     );
+  }
+
+  function isCurrentQuestionValid() {
+    const nextFieldErrors = validateFields({
+      firstName,
+      lastName,
+      businessName,
+      agentPhone,
+      market,
+      priceRange,
+      budget,
+    });
+
+    return getQuestionStepErrors(activeQuestionStep, nextFieldErrors).length === 0;
+  }
+
+  function renderIdentityStep() {
+    return (
+      <div className="grid gap-4 md:grid-cols-2">
+        <label className={FIELD_LABEL_CLASS}>
+          <span className={FIELD_LABEL_TEXT_CLASS}>First name</span>
+          <Input
+            required
+            value={firstName}
+            onChange={(event) => {
+              setFirstName(event.target.value);
+              setFieldErrors((current) => ({ ...current, firstName: undefined }));
+            }}
+            disabled={loading}
+            placeholder="Alex"
+          />
+          {fieldErrors.firstName ? <p className="text-sm text-rose-400">{fieldErrors.firstName}</p> : null}
+        </label>
+
+        <label className={FIELD_LABEL_CLASS}>
+          <span className={FIELD_LABEL_TEXT_CLASS}>Last name</span>
+          <Input
+            required
+            value={lastName}
+            onChange={(event) => {
+              setLastName(event.target.value);
+              setFieldErrors((current) => ({ ...current, lastName: undefined }));
+            }}
+            disabled={loading}
+            placeholder="Morgan"
+          />
+          {fieldErrors.lastName ? <p className="text-sm text-rose-400">{fieldErrors.lastName}</p> : null}
+        </label>
+
+        <label className={FIELD_LABEL_CLASS}>
+          <span className={FIELD_LABEL_TEXT_CLASS}>Company or brokerage name</span>
+          <Input
+            required
+            value={businessName}
+            onChange={(event) => {
+              setBusinessName(event.target.value);
+              setFieldErrors((current) => ({ ...current, businessName: undefined }));
+            }}
+            disabled={loading}
+            placeholder="Northline Realty Group"
+          />
+          {fieldErrors.businessName ? <p className="text-sm text-rose-400">{fieldErrors.businessName}</p> : null}
+        </label>
+
+        <label className={FIELD_LABEL_CLASS}>
+          <span className={FIELD_LABEL_TEXT_CLASS}>SMS alert phone</span>
+          <Input
+            required
+            value={agentPhone}
+            onChange={(event) => {
+              setAgentPhone(event.target.value);
+              setFieldErrors((current) => ({ ...current, agentPhone: undefined }));
+            }}
+            disabled={loading}
+            placeholder="(555) 123-4567"
+          />
+          {fieldErrors.agentPhone ? <p className="text-sm text-rose-400">{fieldErrors.agentPhone}</p> : null}
+        </label>
+
+        <label className={cn(FIELD_LABEL_CLASS, "md:col-span-2")}>
+          <span className={FIELD_LABEL_TEXT_CLASS}>City or market</span>
+          <Input
+            required
+            value={market}
+            onChange={(event) => {
+              setMarket(event.target.value);
+              setFieldErrors((current) => ({ ...current, market: undefined }));
+            }}
+            disabled={loading}
+            placeholder="Toronto, ON"
+          />
+          {fieldErrors.market ? <p className="text-sm text-rose-400">{fieldErrors.market}</p> : null}
+        </label>
+      </div>
+    );
+  }
+
+  function renderFocusStep() {
+    return (
+      <div className="grid gap-4 md:grid-cols-2">
+        {renderChoiceButton({
+          active: focus === "seller",
+          label: "Sellers",
+          description:
+            "Prioritizes valuation intent, listing appointments, and homeowner nurture angles. Best when your fastest path to revenue is seller conversations.",
+          icon: Home,
+          onClick: () => setFocus("seller"),
+        })}
+        {renderChoiceButton({
+          active: focus === "buyer",
+          label: "Buyers",
+          description:
+            "Prioritizes search intent, private listing hooks, and buyer consultation angles. Best when you want more tour-ready conversations.",
+          icon: Search,
+          onClick: () => setFocus("buyer"),
+        })}
+      </div>
+    );
+  }
+
+  function renderPriceStep() {
+    return (
+      <div className="grid gap-4 sm:grid-cols-2">
+        {PRICE_RANGE_OPTIONS.map((option) => (
+          <div key={option}>
+            {renderChoiceButton({
+              active: priceRange === option,
+              label: option,
+              description:
+                option === "$1.5M+"
+                  ? "Luxury positioning, trust-heavy copy, and higher-intent qualification."
+                  : "Sets the language, proof points, and offer angle around this market band.",
+              icon: Home,
+              onClick: () => {
+                setPriceRange(option);
+                setFieldErrors((current) => ({ ...current, priceRange: undefined }));
+              },
+            })}
+          </div>
+        ))}
+        {fieldErrors.priceRange ? <p className="text-sm text-rose-400 sm:col-span-2">{fieldErrors.priceRange}</p> : null}
+      </div>
+    );
+  }
+
+  function renderBudgetStep() {
+    return (
+      <div className="grid gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          {BUDGET_OPTIONS.map((option) => (
+            <div key={option.value}>
+              {renderChoiceButton({
+                active: budget === option.value,
+                label: option.label,
+                description: "Shapes expected pacing, campaign structure, and the preview’s launch recommendations.",
+                icon: DollarSign,
+                onClick: () => {
+                  setBudget(option.value);
+                  setFieldErrors((current) => ({ ...current, budget: undefined }));
+                },
+              })}
+            </div>
+          ))}
+        </div>
+        <label className="grid gap-2 text-sm">
+          <span className="text-muted-foreground">Or enter a custom monthly budget</span>
+          <Input
+            type="number"
+            inputMode="numeric"
+            value={budget}
+            onChange={(event) => {
+              setBudget(event.target.value);
+              setFieldErrors((current) => ({ ...current, budget: undefined }));
+            }}
+            disabled={loading}
+            placeholder="3000"
+          />
+        </label>
+        {fieldErrors.budget ? <p className="text-sm text-rose-400">{fieldErrors.budget}</p> : null}
+      </div>
+    );
+  }
+
+  function renderOfferStep() {
+    return (
+      <div className="grid gap-4">
+        <label className="grid gap-2 text-sm">
+          <span className="flex items-center gap-2 text-muted-foreground">
+            <Briefcase className="size-4 text-cyan-100/60" />
+            Offer or goal
+          </span>
+          <Input
+            value={goal}
+            onChange={(event) => {
+              setGoal(event.target.value);
+              setGoalTouched(true);
+            }}
+            disabled={loading}
+            placeholder={DEFAULT_GOALS[focus]}
+          />
+          <p className="text-sm leading-6 text-muted-foreground">
+            The offer becomes the center of the landing page, ad copy, and review package. Keep it specific enough to
+            make the next step obvious.
+          </p>
+        </label>
+      </div>
+    );
+  }
+
+  function renderReviewStep() {
+    return (
+      <div className="grid gap-4">
+        {[
+          ["Name", `${firstName || "First"} ${lastName || "Last"}`],
+          ["Company", businessName || "Not set"],
+          ["Market", market || "Not set"],
+          ["Focus", FOCUS_SUMMARY[focus]],
+          ["Price range", priceRange],
+          ["Budget", `$${budget || BUDGET_OPTIONS[1].value}/month`],
+          ["Offer", normalizedGoal],
+        ].map(([label, value]) => (
+          <div key={label} className="flex items-center justify-between gap-4 rounded-2xl border border-sky-100/10 bg-white/[0.025] px-4 py-3">
+            <span className="text-sm text-muted-foreground">{label}</span>
+            <span className="max-w-[60%] text-right text-sm font-semibold text-white/88">{value}</span>
+          </div>
+        ))}
+        <div className="rounded-2xl border border-emerald-200/15 bg-emerald-300/[0.04] px-4 py-3 text-sm leading-6 text-emerald-50/82">
+          This generates the campaign preview only. Live launch, outbound SMS, and billing remain gated behind later
+          confirmation steps.
+        </div>
+      </div>
+    );
+  }
+
+  function renderQuestionContent() {
+    if (activeQuestionStep === "identity") return renderIdentityStep();
+    if (activeQuestionStep === "focus") return renderFocusStep();
+    if (activeQuestionStep === "price") return renderPriceStep();
+    if (activeQuestionStep === "budget") return renderBudgetStep();
+    if (activeQuestionStep === "offer") return renderOfferStep();
+    return renderReviewStep();
   }
 
   return (
@@ -1054,257 +1449,119 @@ export default function OnboardingPage() {
       ) : null}
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(410px,0.6fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(460px,0.58fr)]">
-        <Card className="overflow-hidden p-5">
-        <form className="space-y-5" onSubmit={handleSubmit}>
-          <div className="flex items-start gap-3">
-            <IconTile icon={Target} tone="cyan" />
-            <div>
-              <p className="df-eyebrow">{formatProgressLabel(currentStep)}</p>
-              <h3 className="mt-1 text-2xl font-semibold tracking-[-0.05em]">What type of leads do you want first?</h3>
-              <p className="mt-1 text-sm leading-6 text-white/64">
-                Required fields validate before generation. This screen only prepares the campaign; live Meta launch, SMS, and billing remain gated later.
+        <Card className="overflow-hidden p-5 sm:p-6">
+          <form className="flex min-h-[620px] flex-col" onSubmit={handleSubmit}>
+            <div className="flex items-start gap-3">
+              <IconTile icon={isReviewQuestion ? CheckCircle2 : Target} tone="cyan" />
+              <div className="min-w-0">
+                <p className="df-eyebrow">
+                  Step {activeQuestionIndex + 1} of {QUESTION_STEPS.length}: {activeQuestion.label}
+                </p>
+                <h3 className="mt-2 text-balance text-3xl font-semibold leading-tight tracking-[-0.055em]">
+                  {activeQuestion.title}
+                </h3>
+                <p className="mt-3 max-w-3xl text-sm leading-7 text-white/64">
+                  {activeQuestion.description}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 grid grid-cols-6 gap-2">
+              {QUESTION_STEPS.map((step, index) => {
+                const complete = index < activeQuestionIndex;
+                const active = step.key === activeQuestionStep;
+
+                return (
+                  <button
+                    key={step.key}
+                    type="button"
+                    disabled={loading}
+                    onClick={() => {
+                      if (index <= activeQuestionIndex) {
+                        setError(null);
+                        setActiveQuestionStep(step.key);
+                      }
+                    }}
+                    className={cn(
+                      "h-2 rounded-full transition-all duration-300 motion-reduce:transition-none",
+                      active
+                        ? "bg-df-primary shadow-[0_0_24px_-10px_rgba(34,211,238,0.9)]"
+                        : complete
+                          ? "bg-cyan-100/45"
+                          : "bg-white/10",
+                    )}
+                    aria-label={`Go to ${step.label}`}
+                  />
+                );
+              })}
+            </div>
+
+            <div
+              key={activeQuestionStep}
+              className="mt-7 flex-1 animate-[questionIn_260ms_ease-out] motion-reduce:animate-none"
+            >
+              {renderQuestionContent()}
+            </div>
+
+            {error || currentStepErrors.length > 0 ? (
+              <div className="mt-5 rounded-2xl border border-rose-300/16 bg-rose-400/[0.055] px-4 py-3 text-sm leading-6 text-rose-100">
+                {error ?? currentStepErrors[0]}
+              </div>
+            ) : null}
+
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-white/8 pt-5">
+              <p className="max-w-xl text-sm leading-6 text-muted-foreground">
+                {isReviewQuestion
+                  ? "Generate the preview package when the setup looks right. Nothing goes live from this screen."
+                  : "Move one step at a time. Your answers keep updating the campaign snapshot on the right."}
               </p>
-            </div>
-          </div>
 
-          <div className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <label className={FIELD_LABEL_CLASS}>
-              <span className={FIELD_LABEL_TEXT_CLASS}>First name</span>
-              <Input
-                required
-                value={firstName}
-                onChange={(event) => {
-                  setFirstName(event.target.value);
-                  setFieldErrors((current) => ({ ...current, firstName: undefined }));
-                }}
-                disabled={loading}
-                placeholder="Alex"
-              />
-              {fieldErrors.firstName ? <p className="text-sm text-rose-400">{fieldErrors.firstName}</p> : null}
-            </label>
-
-            <label className={FIELD_LABEL_CLASS}>
-              <span className={FIELD_LABEL_TEXT_CLASS}>Last name</span>
-              <Input
-                required
-                value={lastName}
-                onChange={(event) => {
-                  setLastName(event.target.value);
-                  setFieldErrors((current) => ({ ...current, lastName: undefined }));
-                }}
-                disabled={loading}
-                placeholder="Morgan"
-              />
-              {fieldErrors.lastName ? <p className="text-sm text-rose-400">{fieldErrors.lastName}</p> : null}
-            </label>
-
-            <label className={FIELD_LABEL_CLASS}>
-              <span className={FIELD_LABEL_TEXT_CLASS}>Company or brokerage name</span>
-              <Input
-                required
-                value={businessName}
-                onChange={(event) => {
-                  setBusinessName(event.target.value);
-                  setFieldErrors((current) => ({ ...current, businessName: undefined }));
-                }}
-                disabled={loading}
-                placeholder="Northline Realty Group"
-              />
-              {fieldErrors.businessName ? <p className="text-sm text-rose-400">{fieldErrors.businessName}</p> : null}
-            </label>
-
-            <label className={FIELD_LABEL_CLASS}>
-              <span className={FIELD_LABEL_TEXT_CLASS}>SMS alert phone</span>
-              <Input
-                required
-                value={agentPhone}
-                onChange={(event) => {
-                  setAgentPhone(event.target.value);
-                  setFieldErrors((current) => ({ ...current, agentPhone: undefined }));
-                }}
-                disabled={loading}
-                placeholder="(555) 123-4567"
-              />
-              {fieldErrors.agentPhone ? <p className="text-sm text-rose-400">{fieldErrors.agentPhone}</p> : null}
-            </label>
-
-            <label className={FIELD_LABEL_CLASS}>
-              <span className={FIELD_LABEL_TEXT_CLASS}>City or market</span>
-              <Input
-                required
-                value={market}
-                onChange={(event) => {
-                  setMarket(event.target.value);
-                  setFieldErrors((current) => ({ ...current, market: undefined }));
-                }}
-                disabled={loading}
-                placeholder="Toronto, ON"
-              />
-              {fieldErrors.market ? <p className="text-sm text-rose-400">{fieldErrors.market}</p> : null}
-            </label>
-          </div>
-
-          <div className="grid gap-4 xl:grid-cols-2">
-            <div className={SETUP_CARD_CLASS}>
-              <div>
-                <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <Users className="size-4 text-cyan-100/70" />
-                  Campaign focus
-                </p>
-                <p className="text-xs leading-5 text-muted-foreground">Choose the first lead segment.</p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {renderChoiceButton({
-                  active: focus === "seller",
-                  label: "Sellers",
-                  description: FOCUS_HELP.seller,
-                  icon: Home,
-                  onClick: () => setFocus("seller"),
-                })}
-                {renderChoiceButton({
-                  active: focus === "buyer",
-                  label: "Buyers",
-                  description: FOCUS_HELP.buyer,
-                  icon: Building2,
-                  onClick: () => setFocus("buyer"),
-                })}
-              </div>
-            </div>
-
-            <div className={SETUP_CARD_CLASS}>
-              <div>
-                <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <Home className="size-4 text-cyan-100/70" />
-                  Property price range
-                </p>
-                <p className="text-xs leading-5 text-muted-foreground">Pick the market band for the preview.</p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
-                {PRICE_RANGE_OPTIONS.map((option) => (
-                  <div key={option}>
-                    {renderChoiceButton({
-                      active: priceRange === option,
-                      label: option,
-                      onClick: () => {
-                        setPriceRange(option);
-                        setFieldErrors((current) => ({ ...current, priceRange: undefined }));
-                      },
-                    })}
-                  </div>
-                ))}
-              </div>
-              {fieldErrors.priceRange ? <p className="text-sm text-rose-400">{fieldErrors.priceRange}</p> : null}
-            </div>
-
-            <div className={SETUP_CARD_CLASS}>
-              <div>
-                <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <DollarSign className="size-4 text-cyan-100/70" />
-                  Monthly ad budget
-                </p>
-                <p className="text-xs leading-5 text-muted-foreground">Used for preview pacing and launch settings.</p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
-                {BUDGET_OPTIONS.map((option) => (
-                  <div key={option.value}>
-                    {renderChoiceButton({
-                      active: budget === option.value,
-                      label: option.label,
-                      onClick: () => {
-                        setBudget(option.value);
-                        setFieldErrors((current) => ({ ...current, budget: undefined }));
-                      },
-                    })}
-                  </div>
-                ))}
-              </div>
-              <label className="grid gap-2 text-sm">
-                <span className="text-muted-foreground">Or enter a custom monthly budget</span>
-                <Input
-                  type="number"
-                  inputMode="numeric"
-                  value={budget}
-                  onChange={(event) => {
-                    setBudget(event.target.value);
-                    setFieldErrors((current) => ({ ...current, budget: undefined }));
-                  }}
-                  disabled={loading}
-                  placeholder="3000"
-                />
-              </label>
-              {fieldErrors.budget ? <p className="text-sm text-rose-400">{fieldErrors.budget}</p> : null}
-            </div>
-
-            <div className={cn(SETUP_CARD_CLASS, "grid gap-4 md:grid-cols-[1.05fr_0.95fr] xl:grid-cols-1 2xl:grid-cols-[1.05fr_0.95fr]")}>
-              <label className="grid content-start gap-2 text-sm">
-                <span className="flex items-center gap-2 text-muted-foreground">
-                  <Briefcase className="size-4 text-cyan-100/60" />
-                  Offer or goal
-                </span>
-                <Input
-                  value={goal}
-                  onChange={(event) => {
-                    setGoal(event.target.value);
-                    setGoalTouched(true);
-                  }}
-                  disabled={loading}
-                  placeholder={DEFAULT_GOALS[focus]}
-                />
-                <p className="text-xs leading-5 text-muted-foreground">
-                  Leave as-is for the default {FOCUS_SUMMARY[focus].toLowerCase()} angle.
-                </p>
-              </label>
-
-              <div className="rounded-[16px] border border-sky-100/10 bg-[linear-gradient(145deg,rgba(15,23,42,0.7),rgba(2,6,23,0.48))] p-4">
-                <p className="df-eyebrow">Preview summary</p>
-                <div className="mt-3 grid gap-2 text-xs text-foreground sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                  <p><span className="text-muted-foreground">Market:</span> {market || "Your city"}</p>
-                  <p><span className="text-muted-foreground">Focus:</span> {FOCUS_SUMMARY[focus]}</p>
-                  <p><span className="text-muted-foreground">Range:</span> {priceRange}</p>
-                  <p><span className="text-muted-foreground">Budget:</span> ${budget || BUDGET_OPTIONS[1].value}/mo</p>
-                  <p className="sm:col-span-2 xl:col-span-1 2xl:col-span-2"><span className="text-muted-foreground">Offer:</span> {normalizedGoal}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {error ? <p className="text-sm text-rose-400">{error}</p> : null}
-
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-muted-foreground">
-              This creates your preview first. You will still review funnel and ad details before any live launch.
-            </p>
-
-            <div className="flex flex-wrap gap-3">
-              {hasSavedProgress ? (
-                <Button type="button" variant="secondary" onClick={clearSavedProgress} disabled={loading}>
-                  Start over
-                </Button>
-              ) : null}
-              {failedStep ? (
-                <Button type="button" variant="secondary" onClick={handleRetry} disabled={loading}>
-                  {loading ? (
-                    <>
-                      <Spinner />
-                      Retrying failed step...
-                    </>
-                  ) : (
-                    "Retry failed step"
-                  )}
-                </Button>
-              ) : null}
-              <Button disabled={loading} type="submit">
-                {loading ? (
-                  <>
-                    <Spinner />
-                    {failedStep ? "Retrying..." : "Generating preview..."}
-                  </>
+              <div className="flex flex-wrap gap-3">
+                {hasSavedProgress ? (
+                  <Button type="button" variant="secondary" onClick={clearSavedProgress} disabled={loading}>
+                    Start over
+                  </Button>
+                ) : null}
+                {!isFirstQuestion ? (
+                  <Button type="button" variant="secondary" onClick={handlePreviousQuestion} disabled={loading}>
+                    Back
+                  </Button>
+                ) : null}
+                {failedStep ? (
+                  <Button type="button" variant="secondary" onClick={handleRetry} disabled={loading}>
+                    {loading ? (
+                      <>
+                        <Spinner />
+                        Retrying failed step...
+                      </>
+                    ) : (
+                      "Retry failed step"
+                    )}
+                  </Button>
+                ) : null}
+                {!isReviewQuestion ? (
+                  <Button
+                    type="button"
+                    onClick={handleNextQuestion}
+                    disabled={loading || !isCurrentQuestionValid()}
+                    data-testid="onboarding-next-step"
+                  >
+                    Next step
+                  </Button>
                 ) : (
-                  "Generate campaign preview"
+                  <Button disabled={loading} type="submit" data-testid="onboarding-generate-preview">
+                    {loading ? (
+                      <>
+                        <Spinner />
+                        {failedStep ? "Retrying..." : "Generating preview..."}
+                      </>
+                    ) : (
+                      "Generate campaign preview"
+                    )}
+                  </Button>
                 )}
-              </Button>
+              </div>
             </div>
-          </div>
           </form>
         </Card>
         <div className="grid gap-4 lg:sticky lg:top-6">
