@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { StaticAdComposedPreview } from "@/components/campaign/static-ad-composed-preview";
 import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
+import { buildOfferFirstBody, buildOfferFirstHeadline } from "@/lib/copy/offer-consistency";
 
 type StaticCreativePreviewCardProps = {
   headline: string;
@@ -52,6 +53,15 @@ export function StaticCreativePreviewCard({
   const safeHeadline = headline || offer || "Campaign creative";
   const safeCta = cta || "Learn More";
   const safeOffer = offer || safeHeadline;
+  const displayHeadline = buildOfferFirstHeadline({
+    headline: safeHeadline,
+    offer: safeOffer,
+    market: location,
+  }) || safeHeadline;
+  const displayPrimaryText = buildOfferFirstBody({
+    body: primaryText,
+    offer: safeOffer,
+  }) || safeOffer;
 
   return (
     <div className={cn("overflow-hidden rounded-df-card border border-white/10 bg-black/20", className)}>
@@ -59,14 +69,14 @@ export function StaticCreativePreviewCard({
         category={category}
         compact={compact}
         cta={safeCta}
-        headline={safeHeadline}
+        headline={displayHeadline}
         imageGenerationMessage={imageGenerationMessage}
         imageGenerationState={imageGenerationState}
         imageUrl={imageUrl}
         location={location}
         offer={safeOffer}
-        overlayText={overlayText}
-        primaryText={primaryText}
+        overlayText={buildOfferFirstHeadline({ headline: overlayText || safeHeadline, offer: safeOffer, market: location })}
+        primaryText={displayPrimaryText}
         qualityGate={qualityGate}
         score={score}
         selectedCount={selectedCount}
@@ -76,11 +86,11 @@ export function StaticCreativePreviewCard({
       <div className={cn("space-y-4", compact ? "p-4" : "p-6")}>
         <div>
           <p className="text-sm font-medium text-muted-foreground">Headline</p>
-          <p className="mt-1 text-lg font-semibold text-foreground">{safeHeadline}</p>
+          <p className="mt-1 line-clamp-3 text-base font-semibold leading-6 text-foreground">{displayHeadline}</p>
         </div>
         <div>
           <p className="text-sm font-medium text-muted-foreground">Primary Text</p>
-          <p className="mt-1 text-sm leading-7 text-foreground">{primaryText || safeOffer}</p>
+          <p className="mt-1 line-clamp-4 text-sm leading-6 text-foreground">{displayPrimaryText}</p>
         </div>
         <div>
           <p className="text-sm font-medium text-muted-foreground">CTA</p>

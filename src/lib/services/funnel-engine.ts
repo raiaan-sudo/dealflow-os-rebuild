@@ -1,5 +1,9 @@
 import type { CampaignIntent } from "@/lib/campaign-intent";
 import { enhanceOffer, extractOfferData } from "@/lib/copy/offer-enhancement";
+import {
+  buildOfferFirstHeadline as buildConsistentOfferHeadline,
+  textPreservesOfferConcept,
+} from "@/lib/copy/offer-consistency";
 import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
 import {
   getCategoryCtaOptions,
@@ -300,20 +304,6 @@ function toConceptPhrase(value: string) {
   return `access to ${normalized}`;
 }
 
-function includesOfferConcept(headline: string, offer: string) {
-  const normalizedHeadline = safeText(headline).toLowerCase();
-  const offerTokens = safeText(offer)
-    .toLowerCase()
-    .split(/[^a-z0-9$]+/i)
-    .filter((token) => token.length > 3);
-
-  if (!normalizedHeadline || offerTokens.length === 0) {
-    return true;
-  }
-
-  return offerTokens.some((token) => normalizedHeadline.includes(token));
-}
-
 function sentence(value: string) {
   const normalized = safeText(value).replace(/[.!?]+$/, "");
   return normalized ? `${normalized}.` : "";
@@ -502,7 +492,7 @@ function scoreFunnelVariation(variation: Omit<FunnelVariation, "score">, input: 
   offerAlignment += Math.min(4, matchedTokens);
 
   if (/get approved faster/.test(variation.subheadline.toLowerCase()) && parsed.offerClass === "investor") offerAlignment -= 4;
-  if (!includesOfferConcept(variation.headline, input.offer)) offerAlignment -= 3;
+  if (!textPreservesOfferConcept(variation.headline, input.offer)) offerAlignment -= 3;
   if (/get access/.test(variation.cta.toLowerCase()) && parsed.offerClass === "guarantee") offerAlignment -= 1;
 
   const total = specificity + directness + promiseStrength + offerAlignment;
@@ -927,9 +917,14 @@ export function generateFunnel(input?: FunnelEngineInput | null): FunnelBlueprin
     headline = safeText(parseOffer(normalized).promise) || "Your campaign is ready";
   }
 
-  if (!includesOfferConcept(headline, normalized.offer)) {
-    headline = safeText(bestVariation?.headline) || headline;
-  }
+  headline =
+    buildConsistentOfferHeadline({
+      headline: textPreservesOfferConcept(headline, normalized.offer)
+        ? headline
+        : safeText(bestVariation?.headline) || headline,
+      offer: normalized.offer,
+      market: normalized.location,
+    }) || headline;
 
   if (!mechanism) {
     mechanism = "A system designed to filter weak-fit inventory and book better next steps";

@@ -18,6 +18,11 @@ import {
   validateCampaign,
 } from "@/lib/services/campaign-validation";
 import { FunnelPreview } from "@/components/funnel/funnel-preview";
+import {
+  buildOfferFirstBody,
+  buildOfferFirstHeadline,
+  textPreservesOfferConcept,
+} from "@/lib/copy/offer-consistency";
 
 async function loadPersistedSelectedAdIds(campaignId: string | null) {
   if (!campaignId) {
@@ -112,6 +117,24 @@ export default async function PreviewPage({
 
   const safeCampaign = normalizeCampaign(validated);
   const previewPlan = safeCampaign.plan;
+  const offer = textPreservesOfferConcept(previewPlan.offerSummary, previewPlan.keyOffer)
+    ? previewPlan.offerSummary
+    : previewPlan.keyOffer || previewPlan.offerSummary;
+  const offerFirstPlan = {
+    ...previewPlan,
+    funnel: {
+      ...previewPlan.funnel,
+      headline: buildOfferFirstHeadline({
+        headline: previewPlan.funnel.headline,
+        offer,
+        market: previewPlan.market,
+      }) || previewPlan.funnel.headline,
+      subheadline: buildOfferFirstBody({
+        body: previewPlan.funnel.subheadline,
+        offer,
+      }) || previewPlan.funnel.subheadline,
+    },
+  };
   const expectedOutcomes = getExpectedOutcomes(previewPlan);
   const selectedAds = previewPlan.creatives.staticAds.filter((ad) => selectedAdIds.includes(ad.id));
   const visibleStaticAds =
@@ -122,27 +145,28 @@ export default async function PreviewPage({
   const campaignIdForFlow = record?.campaign.id ?? null;
 
   return (
-    <PageShell className="max-w-[900px]">
+    <PageShell className="max-w-[1280px]">
       <WizardSteps current="review" />
       <PageHeader
         eyebrow="Preview"
         title="Final preview"
-        description="Review the selected funnel and creative test set, then move into launch."
+        description="Review the creative test set and funnel promise before launch."
       />
 
       <section className="surface-strong space-y-4 rounded-df-card border border-white/10 p-6">
-        <h2 className="text-lg font-semibold text-foreground">Selected funnel</h2>
-        <FunnelPreview
-          plan={previewPlan}
-          expectedOutcomes={expectedOutcomes}
-          strategyWhy={getStrategyWhy(previewPlan)}
-        />
-      </section>
-
-      <section className="surface-strong space-y-4 rounded-df-card border border-white/10 p-6">
-        <h2 className="text-lg font-semibold text-foreground">Selected creative test set</h2>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Creative preview</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-foreground">
+              Selected creative test set
+            </h2>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {visibleStaticAds.length + visibleUgcAds.length} previews ready
+          </p>
+        </div>
         {visibleStaticAds.length > 0 ? (
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {visibleStaticAds.map((selectedAd) => (
               <StaticCreativePreviewCard
                 category={previewPlan.creativeStrategy.campaignCategory}
@@ -154,7 +178,7 @@ export default async function PreviewPage({
                 imageUrl={selectedAd.imageUrl}
                 location={previewPlan.market}
                 key={selectedAd.id}
-                offer={previewPlan.offerSummary || previewPlan.keyOffer}
+                offer={offer}
                 overlayText={selectedAd.overlayText}
                 primaryText={selectedAd.primaryText}
                 qualityGate={selectedAd.qualityGate}
@@ -170,6 +194,10 @@ export default async function PreviewPage({
           </div>
         )}
         {visibleUgcAds.length > 0 ? (
+          <>
+          <div className="pt-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">AI UGC previews</p>
+          </div>
           <div className="grid gap-4 lg:grid-cols-2">
             {visibleUgcAds.map((video, index) => (
               <div key={video.id || index} className="rounded-df-card border border-cyan-200/15 bg-cyan-300/[0.04] p-4">
@@ -184,11 +212,21 @@ export default async function PreviewPage({
               </div>
             ))}
           </div>
+          </>
         ) : (
           <div className="rounded-df-card border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
             UGC concepts are missing. Return to creative recovery so DealFlow can regenerate the two required UGC previews.
           </div>
         )}
+      </section>
+
+      <section className="surface-strong space-y-4 rounded-df-card border border-white/10 p-6">
+        <h2 className="text-lg font-semibold text-foreground">Selected funnel</h2>
+        <FunnelPreview
+          plan={offerFirstPlan}
+          expectedOutcomes={expectedOutcomes}
+          strategyWhy={getStrategyWhy(offerFirstPlan)}
+        />
       </section>
 
       <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-between">

@@ -3,6 +3,11 @@ import { unstable_cache } from "next/cache";
 import { getPublishedCampaignBySlug } from "@/lib/services/campaign-persistence";
 import { LeadCaptureForm } from "@/app/f/[slug]/lead-capture-form";
 import { getMetaPixelIdForOrganization } from "@/lib/integrations/meta/conversions";
+import {
+  buildOfferFirstBody,
+  buildOfferFirstHeadline,
+  textPreservesOfferConcept,
+} from "@/lib/copy/offer-consistency";
 
 export const revalidate = 60;
 
@@ -32,6 +37,20 @@ export default async function PublicFunnelPage({
   }
 
   const visibleSections = record.funnel.sections.filter((section) => section.visible !== false);
+  const offer = textPreservesOfferConcept(record.plan.offer_summary, record.plan.offer)
+    ? record.plan.offer_summary
+    : record.plan.offer || record.plan.offer_summary;
+  const headline =
+    buildOfferFirstHeadline({
+      headline: record.funnel.headline,
+      offer,
+      market: record.strategy.location,
+    }) || record.funnel.headline;
+  const subheadline =
+    buildOfferFirstBody({
+      body: record.funnel.subheadline,
+      offer,
+    }) || record.funnel.subheadline;
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-[1100px] flex-col gap-8 px-6 py-10 lg:flex-row lg:items-start">
@@ -41,10 +60,10 @@ export default async function PublicFunnelPage({
             {record.campaign.name}
           </p>
           <h1 className="text-4xl font-semibold tracking-[-0.05em] text-white">
-            {record.funnel.headline}
+            {headline}
           </h1>
           <p className="max-w-[720px] text-lg leading-8 text-white/75">
-            {record.funnel.subheadline}
+            {subheadline}
           </p>
         </div>
 
