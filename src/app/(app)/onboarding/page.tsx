@@ -9,7 +9,6 @@ import {
   Target,
   Wand2,
 } from "lucide-react";
-import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -239,6 +238,88 @@ function SetupSummaryPanel({
           </div>
         ))}
       </div>
+    </Card>
+  );
+}
+
+function PipelineProgressPanel({
+  loading,
+  currentStep,
+  stepStatuses,
+  campaignId,
+}: {
+  loading: boolean;
+  currentStep: OnboardingProgressStep;
+  stepStatuses: Record<PipelineStepKey, StepStatus>;
+  campaignId: string | null;
+}) {
+  return (
+    <Card className="p-5">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="df-eyebrow">Generation progress</p>
+          <p className="mt-2 text-sm leading-6 text-white/62">
+            Each completed step is saved, so campaign generation can resume cleanly.
+          </p>
+        </div>
+        {loading ? (
+          <div className="flex shrink-0 items-center gap-2 text-sm text-foreground">
+            <Spinner />
+            {currentStep === "plan" ? "Creating" : "Generating"}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-4 grid gap-2">
+        {PIPELINE_STEPS.map((step) => {
+          const status = stepStatuses[step.key];
+          const isActive = status === "active";
+          const isComplete = status === "complete";
+          const isFailed = status === "failed";
+
+          return (
+            <div
+              key={step.key}
+              className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 transition-colors duration-200 ${
+                isActive
+                  ? "border-cyan-200/24 bg-cyan-300/[0.055]"
+                  : isComplete
+                    ? "border-emerald-300/18 bg-emerald-300/[0.035]"
+                    : isFailed
+                      ? "border-rose-300/20 bg-rose-400/[0.045]"
+                      : "border-white/10 bg-black/20"
+              }`}
+            >
+              <div className="min-w-0">
+                <p className="truncate text-xs uppercase tracking-[0.18em] text-muted-foreground">{step.title}</p>
+                <p className="mt-1 truncate text-sm font-medium text-foreground">{step.label}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2 text-sm">
+                {isActive ? <Spinner /> : null}
+                <span
+                  className={
+                    isFailed
+                      ? "text-rose-400"
+                      : isComplete
+                        ? "text-emerald-400"
+                        : isActive
+                          ? "text-foreground"
+                          : "text-muted-foreground"
+                  }
+                >
+                  {isComplete ? "Done" : isFailed ? "Failed" : isActive ? "Active" : "Waiting"}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {campaignId ? (
+        <p className="mt-4 truncate text-xs text-muted-foreground">
+          Campaign ID: <span className="font-mono text-foreground">{campaignId}</span>
+        </p>
+      ) : null}
     </Card>
   );
 }
@@ -946,33 +1027,37 @@ export default function OnboardingPage() {
   }
 
   return (
-    <PageShell className="max-w-[1640px] 2xl:max-w-[1760px]">
-      <WizardSteps current="onboarding" />
-      <PageHeader
-        eyebrow="Campaign setup"
-        title="Step-by-step onboarding builder"
-        description="Answer a few quick questions, then DealFlow creates the real campaign preview, funnel, ads, and launch package behind this interface."
-      />
-
-      <Card className="p-5 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+    <PageShell className="max-w-[1560px] space-y-4 sm:space-y-5 2xl:max-w-[1680px]">
+      <div className="grid items-stretch gap-4 xl:grid-cols-[0.92fr_1.08fr]">
+        <Card className="flex h-full flex-col justify-between p-5 sm:p-6">
           <div>
-            <Badge>Mockup 1</Badge>
-            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.055em] sm:text-4xl">
-              Let&apos;s build a campaign that actually gets you leads
-            </h2>
+            <div className="flex flex-wrap items-center gap-3">
+              <Badge>Mockup 1</Badge>
+              <Badge className="border-emerald-300/20 bg-emerald-300/[0.06] text-emerald-100">
+                Production flow
+              </Badge>
+            </div>
+            <h1 className="mt-4 text-3xl font-semibold tracking-[-0.06em] sm:text-4xl">
+              Step-by-step onboarding builder
+            </h1>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-white/66">
-              Start with the market and offer. The snapshot updates as you answer, and the final action runs the real
-              generation pipeline used by launch-ready campaigns.
+              Answer the setup questions once. DealFlow then creates the real campaign preview, funnel, creatives, and
+              launch package without stretching the page into a long checklist.
             </p>
           </div>
-          <Badge className="border-emerald-300/20 bg-emerald-300/[0.06] text-emerald-100">
-            Production flow
-          </Badge>
-        </div>
-      </Card>
+          <div className="mt-5 rounded-[22px] border border-white/10 bg-black/15 p-4">
+            <p className="text-sm font-semibold text-foreground">Let&apos;s build a campaign that actually gets you leads</p>
+            <p className="mt-2 text-sm leading-6 text-white/58">
+              The snapshot updates as you answer, and every launch action remains gated later.
+            </p>
+          </div>
+        </Card>
 
-      <SetupProgressCard currentStep={currentStep} loading={loading} />
+        <div className="flex h-full flex-col gap-4">
+          <WizardSteps current="onboarding" />
+          <SetupProgressCard currentStep={currentStep} loading={loading} />
+        </div>
+      </div>
 
       {hydrated && hasSavedProgress ? (
         <Card className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
@@ -1003,7 +1088,7 @@ export default function OnboardingPage() {
       ) : null}
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.18fr)_minmax(380px,0.82fr)] 2xl:grid-cols-[minmax(0,1.22fr)_minmax(430px,0.78fr)]">
-      <Card className="overflow-hidden p-6 sm:p-8">
+        <Card className="overflow-hidden p-5 sm:p-6">
         <form className="space-y-8" onSubmit={handleSubmit}>
           <div className="flex items-start gap-4">
             <IconTile icon={Target} tone="cyan" />
@@ -1203,80 +1288,6 @@ export default function OnboardingPage() {
             </div>
           </div>
 
-          <div className="surface-strong space-y-4 rounded-[24px] border border-white/10 p-4">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-foreground">Generation progress</p>
-                <p className="text-sm text-muted-foreground">
-                  We save each step as it finishes so you can resume without rebuilding the whole campaign.
-                </p>
-              </div>
-              {loading ? (
-                <div className="flex items-center gap-2 text-sm text-foreground">
-                  <Spinner />
-                  {currentStep === "plan" ? "Creating campaign" : "Generating preview"}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="grid gap-3">
-              {PIPELINE_STEPS.map((step) => {
-                const status = stepStatuses[step.key];
-                const isActive = status === "active";
-                const isComplete = status === "complete";
-                const isFailed = status === "failed";
-
-                return (
-                  <div
-                    key={step.key}
-                    className={`flex items-center justify-between rounded-2xl border px-4 py-3 transition-colors duration-200 ${
-                      isActive
-                        ? "border-cyan-200/24 bg-cyan-300/[0.055]"
-                        : isComplete
-                          ? "border-emerald-300/18 bg-emerald-300/[0.035]"
-                          : isFailed
-                            ? "border-rose-300/20 bg-rose-400/[0.045]"
-                            : "border-white/10 bg-black/20"
-                    }`}
-                  >
-                    <div className="space-y-1">
-                      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{step.title}</p>
-                      <p className="text-sm font-medium text-foreground">{step.label}</p>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      {isActive ? <Spinner /> : null}
-                      <span
-                        className={
-                          isFailed
-                            ? "text-rose-400"
-                            : isComplete
-                              ? "text-emerald-400"
-                              : isActive
-                                ? "text-foreground"
-                                : "text-muted-foreground"
-                        }
-                      >
-                        {isComplete
-                          ? "Done"
-                          : isFailed
-                            ? "Failed"
-                            : isActive
-                              ? "In progress"
-                              : "Waiting"}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {campaignId ? (
-              <p className="text-xs text-muted-foreground">
-                Campaign ID: <span className="font-mono text-foreground">{campaignId}</span>
-              </p>
-            ) : null}
-          </div>
-
           {error ? <p className="text-sm text-rose-400">{error}</p> : null}
 
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1314,36 +1325,44 @@ export default function OnboardingPage() {
               </Button>
             </div>
           </div>
-        </form>
-      </Card>
-      <SetupSummaryPanel
-        market={market}
-        focus={focus}
-        priceRange={priceRange}
-        budget={budget}
-        goal={normalizedGoal}
-      />
+          </form>
+        </Card>
+        <div className="grid gap-4 lg:sticky lg:top-6">
+          <SetupSummaryPanel
+            market={market}
+            focus={focus}
+            priceRange={priceRange}
+            budget={budget}
+            goal={normalizedGoal}
+          />
+          <PipelineProgressPanel
+            loading={loading}
+            currentStep={currentStep}
+            stepStatuses={stepStatuses}
+            campaignId={campaignId}
+          />
+        </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="p-5">
+      <div className="grid auto-rows-fr gap-4 md:grid-cols-3">
+        <Card className="flex h-full flex-col p-5">
           <IconTile icon={Wand2} tone="violet" />
           <h3 className="mt-4 text-xl font-semibold tracking-[-0.04em]">Onboarding</h3>
-          <p className="mt-2 text-sm leading-7 text-white/64">
+          <p className="mt-2 text-sm leading-6 text-white/64">
             One setup screen with autosave, validation, and campaign-generation recovery.
           </p>
         </Card>
-        <Card className="p-5">
+        <Card className="flex h-full flex-col p-5">
           <IconTile icon={ClipboardList} tone="cyan" />
           <h3 className="mt-4 text-xl font-semibold tracking-[-0.04em]">Campaign package</h3>
-          <p className="mt-2 text-sm leading-7 text-white/64">
+          <p className="mt-2 text-sm leading-6 text-white/64">
             Funnel, creative, and launch payloads are generated before review.
           </p>
         </Card>
-        <Card className="p-5">
+        <Card className="flex h-full flex-col p-5">
           <IconTile icon={ShieldCheck} tone="green" />
           <h3 className="mt-4 text-xl font-semibold tracking-[-0.04em]">Guardrails</h3>
-          <p className="mt-2 text-sm leading-7 text-white/64">
+          <p className="mt-2 text-sm leading-6 text-white/64">
             Meta launch, lead SMS, and billing remain blocked until explicit later steps.
           </p>
         </Card>
