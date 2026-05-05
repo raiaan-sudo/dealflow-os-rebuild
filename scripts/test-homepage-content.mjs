@@ -5,6 +5,7 @@ const page = readFileSync("src/app/page.tsx", "utf8");
 const loginPage = readFileSync("src/app/(auth)/login/page.tsx", "utf8");
 
 const requiredHomepageSnippets = [
+  "DealFlow OS",
   "Get Access",
   "/login?mode=sign-up",
   "BILLING_PLANS",

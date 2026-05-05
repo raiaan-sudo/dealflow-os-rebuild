@@ -211,12 +211,12 @@ function AnimatedChart() {
   return (
     <div className="relative min-h-[230px] overflow-hidden rounded-lg border border-white/10 bg-[#07101c] p-4">
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:44px_44px]" />
-      <div className="relative flex items-center justify-between">
+      <div className="relative flex items-start justify-between gap-3">
         <div>
           <p className="text-[11px] uppercase text-white/50">Pipeline pressure</p>
           <p className="mt-1 text-sm font-medium text-white">Modeled campaign cockpit</p>
         </div>
-        <div className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+        <div className="hidden shrink-0 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-semibold text-emerald-200 sm:block">
           Rising signal
         </div>
       </div>
@@ -270,16 +270,18 @@ function AnimatedChart() {
 
 function CommandCenterVisual() {
   return (
-    <div className="relative mx-auto w-full max-w-[calc(100vw-40px)] min-w-0 sm:max-w-[720px]">
+    <div className="relative mx-auto min-w-0" style={{ width: "min(100%, 720px, calc(100vw - 64px))" }}>
       <div className="relative w-full min-w-0 overflow-hidden rounded-lg border border-white/10 bg-[#050914] shadow-[0_40px_140px_-64px_rgba(34,211,238,0.7)]">
-        <div className="flex items-center justify-between border-b border-white/10 bg-white/[0.035] px-4 py-3">
+        <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-white/[0.035] px-4 py-3">
           <div className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
             <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
           </div>
-          <p className="font-mono text-[11px] text-white/50">dealflow.io / command-center</p>
-          <div className="h-2 w-12 rounded-full bg-white/10" />
+          <p className="hidden min-w-0 truncate font-mono text-[11px] text-white/50 sm:block">
+            agentdealflow.io / command-center
+          </p>
+          <div className="hidden h-2 w-12 shrink-0 rounded-full bg-white/10 sm:block" />
         </div>
 
         <div className="grid min-w-0 gap-4 p-4 lg:grid-cols-[0.95fr_1.3fr]">
@@ -287,7 +289,7 @@ function CommandCenterVisual() {
             <div className="rounded-lg border border-white/10 bg-white/[0.045] p-4">
               <div className="flex items-center justify-between">
                 <p className="text-[11px] uppercase text-white/50">Launch queue</p>
-                <span className="rounded-full bg-cyan-300/10 px-2 py-1 text-[11px] text-cyan-200">
+                <span className="hidden rounded-full bg-cyan-300/10 px-2 py-1 text-[11px] text-cyan-200 sm:inline-flex">
                   Review ready
                 </span>
               </div>
@@ -377,11 +379,11 @@ export function HomeCommandCenter() {
         <div className="absolute inset-x-0 top-0 h-[720px] bg-[radial-gradient(circle_at_50%_0%,rgba(34,211,238,0.16),transparent_44%),linear-gradient(180deg,rgba(6,15,26,0.2),transparent)]" />
 
         <header className="relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-5 py-5 sm:px-6 lg:px-8">
-          <Link aria-label="DealFlow home" className="flex items-center gap-3" href="/">
+          <Link aria-label="DealFlow OS home" className="flex items-center gap-3" href="/">
             <span className="grid size-10 place-items-center rounded-lg border border-cyan-200/20 bg-cyan-300/10 text-sm font-bold text-cyan-100 shadow-[0_0_38px_-16px_rgba(103,232,249,0.95)]">
               D
             </span>
-            <span className="text-lg font-semibold">DealFlow</span>
+            <span className="text-lg font-semibold">DealFlow OS</span>
           </Link>
 
           <nav aria-label="Primary navigation" className="hidden items-center gap-7 text-sm text-white/60 md:flex">
@@ -419,7 +421,7 @@ export function HomeCommandCenter() {
               <span className="block sm:inline">into dealflow.</span>
             </h1>
             <p className="mt-6 max-w-[340px] text-lg leading-8 text-white/70 sm:max-w-2xl">
-              DealFlow builds the funnel, campaign assets, lead capture path, dashboard, and optimization loop
+              DealFlow OS builds the funnel, campaign assets, lead capture path, dashboard, and optimization loop
               real estate operators need before they spend another dollar on traffic.
             </p>
 
@@ -463,7 +465,7 @@ export function HomeCommandCenter() {
           <SectionHeader
             eyebrow="What gets installed"
             title="One operating layer, not another disconnected landing page."
-            body="DealFlow is the command layer around the whole acquisition loop: campaign build, review, launch readiness, lead capture, performance signal, and next action."
+            body="DealFlow OS is the command layer around the whole acquisition loop: campaign build, review, launch readiness, lead capture, performance signal, and next action."
           />
 
           <div className="mt-14 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -642,7 +644,7 @@ export function HomeCommandCenter() {
               Built around guarded execution.
             </h2>
             <p className="mt-5 text-base leading-8 text-white/60">
-              DealFlow sits near sensitive workflows: auth, billing, lead capture, campaign launch, and customer
+              DealFlow OS sits near sensitive workflows: auth, billing, lead capture, campaign launch, and customer
               communication. The public page should make that seriousness visible without exposing private details.
             </p>
           </div>
@@ -711,7 +713,7 @@ export function HomeCommandCenter() {
               </h2>
               <p className="mt-4 max-w-2xl text-base leading-8 text-white/60">
                 Start with account access, build the first campaign workspace, and keep the launch path inside
-                DealFlow from the first input to the final review.
+                DealFlow OS from the first input to the final review.
               </p>
             </div>
             <Link
