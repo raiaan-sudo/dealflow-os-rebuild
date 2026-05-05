@@ -158,13 +158,13 @@ const agencyFatigueCards = [
   {
     label: "Promise",
     title: "Big pipeline claims before the system exists.",
-    body: "Agents have heard every version of the pitch: more leads, better ads, done-for-you growth. The part that usually stays vague is the actual operating layer.",
+    body: "Agents have heard every version of the pitch: more leads, better ads, done-for-you growth. The part that usually stays vague is who owns the creative, funnel, routing, follow-up, and optimization layer.",
     status: "Discarded",
   },
   {
     label: "Handoff",
-    title: "Assets scattered across people and portals.",
-    body: "A funnel in one place, ads somewhere else, lead notes in a spreadsheet, reporting in a screenshot. Nobody owns the complete path.",
+    title: "Contractors, portals, and recycled creative.",
+    body: "A funnel in one place, ads somewhere else, lead notes in a spreadsheet, reporting in a screenshot, and recycled creative passed through another contractor. Nobody owns the complete path.",
     status: "Contained",
   },
   {
@@ -179,7 +179,7 @@ const operatorProofCards = [
   {
     label: "01",
     title: "Built by ex-agency operators.",
-    body: "DealFlow OS was shaped by operators who have sat on the agency side, managed real acquisition workflows, and seen exactly where real estate campaigns break.",
+    body: "DealFlow OS was shaped by operators who have sat on the agency side, managed real acquisition workflows, and rebuilt the model as software instead of another lead-gen vendor.",
     icon: BadgeCheck,
   },
   {
@@ -191,13 +191,13 @@ const operatorProofCards = [
   {
     label: "03",
     title: "Custom-coded AI infrastructure.",
-    body: "The system comes from internal AI tooling built to coordinate marketing operations: creative production, funnel assembly, launch checks, routing, and optimization logic.",
+    body: "The system comes from internal AI tooling built to operate marketing infrastructure across creative production, funnel assembly, routing, optimization, and reporting.",
     icon: CircuitBoard,
   },
   {
     label: "04",
     title: "Software plus human oversight.",
-    body: "AI helps build and diagnose the system. The DealFlow team keeps the operating logic, quality bar, and launch-readiness layer under review so users are not dropped into a blank tool.",
+    body: "AI builds and coordinates the system. Humans oversee quality, strategy, and launch readiness so users are not dropped into a blank tool.",
     icon: ShieldCheck,
   },
 ];
@@ -338,7 +338,7 @@ const faqs = [
   {
     question: "Is DealFlow OS an agency?",
     answer:
-      "No. DealFlow OS is software-first acquisition infrastructure. It was built by ex-agency operators, but the CTA sends users into the product instead of a call-first retainer funnel.",
+      "No. DealFlow OS is software-first acquisition infrastructure built by ex-agency operators, not another lead-gen vendor. The CTA sends users into the product instead of a call-first retainer funnel.",
   },
   {
     question: "Is this just another dashboard?",
@@ -348,12 +348,12 @@ const faqs = [
   {
     question: "What role does AI play?",
     answer:
-      "AI assists the build and operating layer: campaign blueprint, funnel structure, creative angles, launch checks, routing logic, and optimization recommendations. It is infrastructure, not magic, and not a replacement for review.",
+      "AI builds and coordinates the operating layer: campaign blueprint, funnel structure, creative angles, launch checks, routing logic, reporting signal, and optimization recommendations. It is infrastructure, not magic, and not a replacement for review.",
   },
   {
     question: "Is there human oversight?",
     answer:
-      "Yes. The product is designed around review gates and team-maintained operating logic so users are not left alone with a blank tool or an uninspected launch path.",
+      "Yes. Humans oversee quality, strategy, and launch readiness through review gates and team-maintained operating logic so users are not left alone with a blank tool or an uninspected launch path.",
   },
   {
     question: "Are results guaranteed?",
@@ -1369,9 +1369,10 @@ function AgencyFatigueSection() {
             Real estate agents are done buying promises.
           </h2>
           <p className="mt-6 text-base leading-8 text-white/64">
-            The market has been trained to distrust the pitch: vague lead guarantees, rented dashboards, hidden
-            handoffs, and another call before anyone can see the actual system. DealFlow is positioned against that
-            fatigue. It shows the operating layer and sends the user straight into software access.
+            The market has been trained to distrust the pitch: vague lead guarantees, rented dashboards, disconnected
+            contractors, recycled creative, missed follow-up, unclear ownership, and another call before anyone can see
+            the actual system. DealFlow is positioned against that fatigue. It shows the operating layer and sends the
+            user straight into software access.
           </p>
           <div className="mt-8 grid gap-3 sm:grid-cols-3">
             {["No sales-call gate", "No rented black box", "No fake proof"].map((item, index) => (
@@ -1452,17 +1453,17 @@ function OperatorBuiltSection() {
           <Reveal>
             <p className="text-xs font-semibold uppercase text-cyan-200/80">Built by operators</p>
             <h2 className="mt-4 text-3xl font-semibold leading-tight text-white sm:text-5xl">
-              Ex-agency experience, rebuilt as owned infrastructure.
+              Built by ex-agency operators, not another lead-gen vendor.
             </h2>
             <p className="mt-5 text-base leading-8 text-white/62">
-              DealFlow OS was written by ex-agency operators who have managed over eight figures in ad spend and
-              watched the same failure pattern repeat: the offer lives in one place, the creative in another, the
-              funnel somewhere else, and the operator gets a screenshot instead of a system.
+              The founding team has managed over eight figures in ad spend and built DealFlow OS from the internal
+              custom-coded AI infrastructure used to operate marketing systems across creative, funnels, routing,
+              optimization, and reporting. That experience is background, not a customer result claim.
             </p>
             <p className="mt-4 text-base leading-8 text-white/62">
-              The product turns that operating experience into software: custom-coded AI infrastructure helps assemble
-              the campaign, while the DealFlow team keeps the strategy, quality bar, and launch-readiness logic under
-              review. It is not a passive KPI screen, and it is not a black-box agency promise.
+              The product turns that operating experience into active full-stack acquisition infrastructure: creative
+              production, funnel assembly, lead capture, routing, dashboard visibility, optimization loops, and team
+              oversight. AI builds and coordinates the system; humans oversee quality, strategy, and launch readiness.
             </p>
           </Reveal>
 
@@ -1775,8 +1776,8 @@ export function HomeCommandCenter() {
             </h1>
             <p className="mt-6 max-w-[340px] text-lg leading-8 text-white/70 sm:max-w-2xl">
               A one-of-one command layer from ex-agency operators who have managed over eight figures in ad spend.
-              DealFlow turns the funnel, creative direction, capture path, routing, dashboard, and optimization loop
-              into owned software before another dollar goes into traffic.
+              DealFlow turns creative production, funnel assembly, capture, routing, dashboard visibility, and
+              optimization loops into owned software before another dollar goes into traffic.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
