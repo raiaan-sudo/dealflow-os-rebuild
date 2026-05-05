@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
@@ -155,6 +156,23 @@ const fitSignals = [
   "You care about owning the funnel path, data flow, and operating process.",
 ];
 
+const assemblyNodes = [
+  { label: "Offer", x: 70, y: 72, icon: Target },
+  { label: "Funnel", x: 205, y: 42, icon: MousePointer2 },
+  { label: "Creative", x: 345, y: 72, icon: WandSparkles },
+  { label: "Routing", x: 118, y: 190, icon: Route },
+  { label: "Dashboard", x: 250, y: 158, icon: Gauge },
+  { label: "Optimize", x: 382, y: 190, icon: Activity },
+];
+
+const productTabs = [
+  { label: "Workspace", value: "Inputs locked", icon: Layers3 },
+  { label: "Campaign", value: "Assets staged", icon: Megaphone },
+  { label: "Leads", value: "Route armed", icon: Route },
+  { label: "Launch", value: "Review gate on", icon: ShieldCheck },
+  { label: "Reports", value: "Signal rising", icon: BarChart3 },
+];
+
 const pricingCopy: Record<BillingPlanTier, { summary: string; features: string[]; highlighted?: boolean }> = {
   starter: {
     summary: "For getting the first campaign system built and reviewed.",
@@ -194,14 +212,74 @@ const faqs = [
   },
 ];
 
+function useInView<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) {
+      return;
+    }
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReducedMotion) {
+      setIsVisible(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "0px 0px -12% 0px", threshold: 0.18 },
+    );
+
+    observer.observe(node);
+
+    return () => observer.disconnect();
+  }, []);
+
+  return { ref, isVisible };
+}
+
 function useCountUp(target: number, durationMs = 1300) {
   const [value, setValue] = useState(0);
   const ref = useRef<HTMLDivElement | null>(null);
+  const [shouldRun, setShouldRun] = useState(false);
 
   useEffect(() => {
+    const node = ref.current;
+    if (!node) {
+      return;
+    }
+
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (prefersReducedMotion) {
       setValue(target);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setShouldRun(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "0px 0px -10% 0px", threshold: 0.25 },
+    );
+
+    observer.observe(node);
+
+    return () => observer.disconnect();
+  }, [target]);
+
+  useEffect(() => {
+    if (!shouldRun) {
       return;
     }
 
@@ -228,9 +306,31 @@ function useCountUp(target: number, durationMs = 1300) {
         window.cancelAnimationFrame(frameId);
       }
     };
-  }, [durationMs, target]);
+  }, [durationMs, shouldRun, target]);
 
   return { value, ref };
+}
+
+function Reveal({
+  children,
+  className,
+  delay = 0,
+}: {
+  children: ReactNode;
+  className?: string;
+  delay?: number;
+}) {
+  const { ref, isVisible } = useInView<HTMLDivElement>();
+
+  return (
+    <div
+      ref={ref}
+      className={cn("df-reveal", isVisible && "df-reveal-visible", className)}
+      style={{ animationDelay: `${delay}ms`, transitionDelay: `${delay}ms` }}
+    >
+      {children}
+    </div>
+  );
 }
 
 function MetricCounter({
@@ -247,9 +347,13 @@ function MetricCounter({
   const { value, ref } = useCountUp(target);
 
   return (
-    <div ref={ref} className="rounded-lg border border-white/10 bg-white/[0.045] p-4">
+    <div
+      ref={ref}
+      className="group relative overflow-hidden rounded-lg border border-white/10 bg-white/[0.045] p-4 transition hover:-translate-y-1 hover:border-indigo-300/30"
+    >
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-300/70 to-transparent opacity-0 transition group-hover:opacity-100" />
       <p className="text-[11px] uppercase text-white/50">{label}</p>
-      <p className="mt-3 text-3xl font-semibold text-white">
+      <p className="mt-3 bg-gradient-to-r from-white via-cyan-100 to-indigo-200 bg-clip-text text-3xl font-semibold text-transparent">
         {value}
         {suffix}
       </p>
@@ -265,7 +369,8 @@ function AnimatedChart() {
   );
 
   return (
-    <div className="relative min-h-[230px] overflow-hidden rounded-lg border border-white/10 bg-[#07101c] p-4">
+    <div className="relative min-h-[230px] overflow-hidden rounded-lg border border-white/10 bg-[#07101c] p-4 shadow-[0_30px_110px_-70px_rgba(99,102,241,0.9)]">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_72%_4%,rgba(99,102,241,0.2),transparent_34%),radial-gradient(circle_at_18%_100%,rgba(34,211,238,0.12),transparent_34%)]" />
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:44px_44px]" />
       <div className="relative flex items-start justify-between gap-3">
         <div>
@@ -283,13 +388,14 @@ function AnimatedChart() {
       >
         <defs>
           <linearGradient id="dealflow-chart-fill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#67e8f9" stopOpacity="0.32" />
+            <stop offset="0%" stopColor="#818cf8" stopOpacity="0.34" />
+            <stop offset="45%" stopColor="#67e8f9" stopOpacity="0.14" />
             <stop offset="100%" stopColor="#67e8f9" stopOpacity="0" />
           </linearGradient>
           <linearGradient id="dealflow-chart-line" x1="0" x2="1" y1="0" y2="0">
             <stop offset="0%" stopColor="#22d3ee" />
-            <stop offset="55%" stopColor="#60a5fa" />
-            <stop offset="100%" stopColor="#a7f3d0" />
+            <stop offset="48%" stopColor="#818cf8" />
+            <stop offset="100%" stopColor="#c084fc" />
           </linearGradient>
         </defs>
         <polygon
@@ -314,7 +420,7 @@ function AnimatedChart() {
             cy={[103, 94, 56, 24][index]}
             fill="#07101c"
             r="6"
-            stroke="#67e8f9"
+            stroke="#a5b4fc"
             strokeWidth="3"
             style={{ animationDelay: `${index * 160}ms` }}
           />
@@ -327,12 +433,12 @@ function AnimatedChart() {
 function CommandCenterVisual() {
   return (
     <div className="relative mx-auto min-w-0" style={{ width: "min(100%, 720px, calc(100vw - 64px))" }}>
-      <div className="relative w-full min-w-0 overflow-hidden rounded-lg border border-white/10 bg-[#050914] shadow-[0_40px_140px_-64px_rgba(34,211,238,0.7)]">
+      <div className="df-ambient-panel relative w-full min-w-0 overflow-hidden rounded-lg border border-indigo-200/15 bg-[#050914] shadow-[0_40px_150px_-64px_rgba(99,102,241,0.9)]">
         <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-white/[0.035] px-4 py-3">
           <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
-            <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
+            <span className="h-2.5 w-2.5 rounded-full bg-rose-400 shadow-[0_0_18px_rgba(251,113,133,0.6)]" />
+            <span className="h-2.5 w-2.5 rounded-full bg-indigo-300 shadow-[0_0_18px_rgba(165,180,252,0.75)]" />
+            <span className="h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,0.8)]" />
           </div>
           <p className="hidden min-w-0 truncate font-mono text-[11px] text-white/50 sm:block">
             agentdealflow.io / command-center
@@ -342,7 +448,8 @@ function CommandCenterVisual() {
 
         <div className="grid min-w-0 gap-4 p-4 lg:grid-cols-[0.95fr_1.3fr]">
           <div className="min-w-0 space-y-4">
-            <div className="rounded-lg border border-white/10 bg-white/[0.045] p-4">
+            <div className="relative overflow-hidden rounded-lg border border-white/10 bg-white/[0.045] p-4">
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-300/70 to-transparent" />
               <div className="flex items-center justify-between">
                 <p className="text-[11px] uppercase text-white/50">Launch queue</p>
                 <span className="hidden rounded-full bg-cyan-300/10 px-2 py-1 text-[11px] text-cyan-200 sm:inline-flex">
@@ -355,11 +462,12 @@ function CommandCenterVisual() {
                     <div key={item} className="flex items-center gap-3">
                       <div
                         className={cn(
-                          "grid size-7 place-items-center rounded-full border",
+                          "grid size-7 place-items-center rounded-full border motion-safe:animate-[nodeBreathe_2.8s_ease-in-out_infinite]",
                           index < 3
-                            ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-200"
-                            : "border-cyan-300/30 bg-cyan-300/10 text-cyan-200",
+                            ? "border-cyan-300/30 bg-cyan-300/10 text-cyan-200"
+                            : "border-indigo-300/40 bg-indigo-300/10 text-indigo-200",
                         )}
+                        style={{ animationDelay: `${index * 140}ms` }}
                       >
                         {index < 3 ? <Check className="size-3.5" /> : <Radar className="size-3.5" />}
                       </div>
@@ -367,7 +475,7 @@ function CommandCenterVisual() {
                         <p className="text-sm font-medium text-white">{item}</p>
                         <div className="mt-1 h-1.5 rounded-full bg-white/10">
                           <div
-                            className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-emerald-300 motion-safe:animate-[progressGrow_1.8s_ease-out_both]"
+                            className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-indigo-300 to-purple-300 motion-safe:animate-[progressGrow_1.8s_ease-out_both]"
                             style={{ width: `${index < 3 ? 100 : 68}%`, animationDelay: `${index * 150}ms` }}
                           />
                         </div>
@@ -379,11 +487,11 @@ function CommandCenterVisual() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-lg border border-white/10 bg-white/[0.045] p-4">
+              <div className="rounded-lg border border-indigo-200/15 bg-white/[0.045] p-4">
                 <p className="text-[11px] uppercase text-white/50">Lead route</p>
                 <p className="mt-2 text-2xl font-semibold text-white">Armed</p>
               </div>
-              <div className="rounded-lg border border-white/10 bg-white/[0.045] p-4">
+              <div className="rounded-lg border border-indigo-200/15 bg-white/[0.045] p-4">
                 <p className="text-[11px] uppercase text-white/50">Review gate</p>
                 <p className="mt-2 text-2xl font-semibold text-white">On</p>
               </div>
@@ -409,11 +517,203 @@ function CommandCenterVisual() {
   );
 }
 
+function SystemAssemblyMap() {
+  return (
+    <Reveal className="mt-14">
+      <div className="df-ambient-panel relative overflow-hidden rounded-lg border border-indigo-200/15 bg-[#07101c] p-5 sm:p-7">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase text-indigo-200/80">System assembly map</p>
+            <h3 className="mt-3 text-2xl font-semibold text-white">Every module connects back to the command layer.</h3>
+          </div>
+          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-indigo-300/25 bg-indigo-300/10 px-3 py-1 text-xs font-semibold text-indigo-100">
+            <span className="size-1.5 rounded-full bg-cyan-300 shadow-[0_0_16px_rgba(103,232,249,0.95)]" />
+            Installing acquisition loop
+          </div>
+        </div>
+
+        <div className="relative mt-8 min-h-[320px] overflow-hidden rounded-lg border border-white/10 bg-[#050914]">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_48%,rgba(99,102,241,0.22),transparent_34%),radial-gradient(circle_at_20%_18%,rgba(34,211,238,0.14),transparent_30%),radial-gradient(circle_at_82%_74%,rgba(168,85,247,0.18),transparent_30%)]" />
+          <svg
+            aria-hidden="true"
+            className="absolute inset-0 h-full w-full"
+            preserveAspectRatio="xMidYMid meet"
+            viewBox="0 0 500 260"
+          >
+            <defs>
+              <linearGradient id="assembly-line" x1="0" x2="1" y1="0" y2="0">
+                <stop offset="0%" stopColor="#22d3ee" />
+                <stop offset="52%" stopColor="#818cf8" />
+                <stop offset="100%" stopColor="#c084fc" />
+              </linearGradient>
+            </defs>
+            {assemblyNodes.map((node, index) => (
+              <line
+                key={node.label}
+                className="dealflow-signal-line"
+                stroke="url(#assembly-line)"
+                strokeLinecap="round"
+                strokeWidth="2"
+                x1="250"
+                x2={node.x}
+                y1="130"
+                y2={node.y}
+                style={{ animationDelay: `${index * 110}ms` }}
+              />
+            ))}
+            <circle
+              className="motion-safe:animate-[corePulse_3.4s_ease-in-out_infinite]"
+              cx="250"
+              cy="130"
+              fill="rgba(129,140,248,0.18)"
+              r="54"
+              stroke="rgba(165,180,252,0.5)"
+              strokeWidth="1"
+            />
+            <circle cx="250" cy="130" fill="rgba(103,232,249,0.18)" r="30" stroke="#67e8f9" strokeWidth="2" />
+          </svg>
+
+          <div className="absolute left-1/2 top-1/2 grid size-24 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-cyan-200/30 bg-[#08111d]/90 text-center shadow-[0_0_70px_-22px_rgba(103,232,249,0.95)]">
+            <CircuitBoard className="size-5 text-cyan-100" />
+            <span className="mt-1 block text-[10px] font-semibold uppercase text-white/70">OS Core</span>
+          </div>
+
+          {assemblyNodes.map((node, index) => {
+            const Icon = node.icon;
+            return (
+              <div
+                key={node.label}
+                className="absolute w-28 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-white/10 bg-white/[0.055] p-3 text-center shadow-[0_22px_70px_-48px_rgba(99,102,241,0.9)] motion-safe:animate-[nodeFloat_4.4s_ease-in-out_infinite]"
+                style={{
+                  left: `${(node.x / 500) * 100}%`,
+                  top: `${(node.y / 260) * 100}%`,
+                  animationDelay: `${index * 180}ms`,
+                }}
+              >
+                <Icon className="mx-auto size-4 text-indigo-100" />
+                <p className="mt-2 text-xs font-semibold text-white">{node.label}</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Reveal>
+  );
+}
+
+function AgencySignalGraphic() {
+  return (
+    <div className="df-ambient-panel overflow-hidden rounded-lg border border-indigo-200/15 bg-[#07101c] p-5">
+      <div className="grid gap-5 lg:grid-cols-2">
+        <div className="relative min-h-[240px] rounded-lg border border-white/10 bg-white/[0.03] p-4">
+          <p className="text-xs font-semibold uppercase text-white/45">Fragmented service model</p>
+          {["Ads", "CRM", "Landing page", "Reports"].map((item, index) => (
+            <div
+              key={item}
+              className="absolute rounded-lg border border-white/10 bg-[#0b1020] px-3 py-2 text-xs text-white/55"
+              style={{
+                left: `${[9, 55, 18, 62][index]}%`,
+                top: `${[27, 22, 64, 66][index]}%`,
+              }}
+            >
+              {item}
+            </div>
+          ))}
+          <svg className="absolute inset-0 h-full w-full opacity-55" viewBox="0 0 420 240">
+            <path className="dealflow-broken-line" d="M84 78 C170 44 216 116 318 70" fill="none" stroke="#64748b" strokeDasharray="7 10" strokeWidth="2" />
+            <path className="dealflow-broken-line" d="M112 166 C164 120 234 172 310 162" fill="none" stroke="#64748b" strokeDasharray="7 10" strokeWidth="2" />
+          </svg>
+        </div>
+        <div className="relative min-h-[240px] rounded-lg border border-indigo-300/20 bg-indigo-300/[0.055] p-4">
+          <p className="text-xs font-semibold uppercase text-indigo-100/80">DealFlow OS</p>
+          <div className="absolute left-1/2 top-1/2 grid size-20 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-cyan-200/30 bg-[#08111d] text-xs font-semibold text-white shadow-[0_0_70px_-24px_rgba(103,232,249,0.95)]">
+            OS
+          </div>
+          {["Funnel", "Creative", "Leads", "Launch"].map((item, index) => (
+            <div
+              key={item}
+              className="absolute rounded-lg border border-cyan-200/20 bg-cyan-200/10 px-3 py-2 text-xs font-semibold text-cyan-50"
+              style={{
+                left: `${[10, 64, 13, 66][index]}%`,
+                top: `${[28, 28, 66, 66][index]}%`,
+              }}
+            >
+              {item}
+            </div>
+          ))}
+          <svg className="absolute inset-0 h-full w-full" viewBox="0 0 420 240">
+            <defs>
+              <linearGradient id="owned-signal" x1="0" x2="1">
+                <stop offset="0%" stopColor="#22d3ee" />
+                <stop offset="58%" stopColor="#818cf8" />
+                <stop offset="100%" stopColor="#c084fc" />
+              </linearGradient>
+            </defs>
+            {["M102 76 L210 120", "M322 76 L210 120", "M100 166 L210 120", "M324 166 L210 120"].map((path, index) => (
+              <path
+                key={path}
+                className="dealflow-signal-line"
+                d={path}
+                fill="none"
+                stroke="url(#owned-signal)"
+                strokeLinecap="round"
+                strokeWidth="2.4"
+                style={{ animationDelay: `${index * 140}ms` }}
+              />
+            ))}
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProductTabsPreview() {
+  return (
+    <div className="df-ambient-panel overflow-hidden rounded-lg border border-indigo-200/15 bg-[#07101c] p-5">
+      <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-4">
+        <div>
+          <p className="text-xs font-semibold uppercase text-indigo-200/80">Live software surface</p>
+          <h3 className="mt-2 text-2xl font-semibold text-white">One cockpit, five active views.</h3>
+        </div>
+        <Radar className="hidden size-6 text-cyan-200 sm:block" />
+      </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-5">
+        {productTabs.map((tab, index) => {
+          const Icon = tab.icon;
+          return (
+            <div
+              key={tab.label}
+              className={cn(
+                "relative overflow-hidden rounded-lg border p-4 motion-safe:animate-[panelRise_700ms_ease-out_both]",
+                index === 1
+                  ? "border-indigo-300/40 bg-indigo-300/10"
+                  : "border-white/10 bg-white/[0.035]",
+              )}
+              style={{ animationDelay: `${index * 90}ms` }}
+            >
+              <Icon className={cn("size-5", index === 1 ? "text-indigo-100" : "text-cyan-200")} />
+              <p className="mt-4 text-sm font-semibold text-white">{tab.label}</p>
+              <p className="mt-1 text-xs leading-5 text-white/55">{tab.value}</p>
+              <div className="mt-4 h-1 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-indigo-300 to-purple-300 motion-safe:animate-[progressGrow_1.4s_ease-out_both]"
+                  style={{ width: `${72 + index * 5}%`, animationDelay: `${index * 120}ms` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ComparisonSection() {
   return (
     <section id="difference" className="py-20 sm:py-28">
       <div className="mx-auto grid w-full max-w-7xl gap-12 px-5 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
-        <div>
+        <Reveal>
           <p className="text-xs font-semibold uppercase text-cyan-200/80">Agency vs owned system</p>
           <h2 className="mt-4 text-3xl font-semibold leading-tight text-white sm:text-5xl">
             Stop renting a service. Install the system.
@@ -424,31 +724,38 @@ function ComparisonSection() {
             dashboards, and tools.
           </p>
           <div className="mt-8 space-y-3">
-            {realizationBullets.map((item) => (
-              <div key={item} className="flex gap-3 rounded-lg border border-white/10 bg-white/[0.035] p-4">
+            {realizationBullets.map((item, index) => (
+              <div
+                key={item}
+                className="flex gap-3 rounded-lg border border-white/10 bg-white/[0.035] p-4 transition hover:-translate-y-1 hover:border-indigo-300/30 hover:bg-indigo-300/[0.055]"
+                style={{ transitionDelay: `${index * 35}ms` }}
+              >
                 <ArrowRight className="mt-1 size-4 shrink-0 text-cyan-200" />
                 <p className="text-sm leading-6 text-white/70">{item}</p>
               </div>
             ))}
           </div>
-        </div>
+        </Reveal>
 
-        <div className="rounded-lg border border-white/10 bg-[#07101c] p-4 sm:p-6">
-          <div className="grid grid-cols-[0.8fr_1fr_1fr] gap-3 border-b border-white/10 pb-4 text-xs uppercase text-white/50">
-            <span>Layer</span>
-            <span>Service model</span>
-            <span>DealFlow OS</span>
+        <Reveal delay={110} className="space-y-4">
+          <AgencySignalGraphic />
+          <div className="rounded-lg border border-white/10 bg-[#07101c] p-4 sm:p-6">
+            <div className="grid grid-cols-[0.8fr_1fr_1fr] gap-3 border-b border-white/10 pb-4 text-xs uppercase text-white/50">
+              <span>Layer</span>
+              <span>Service model</span>
+              <span>DealFlow OS</span>
+            </div>
+            <div className="divide-y divide-white/10">
+              {comparisonRows.map((row) => (
+                <div key={row.label} className="grid grid-cols-1 gap-3 py-4 sm:grid-cols-[0.8fr_1fr_1fr]">
+                  <p className="text-sm font-semibold text-white">{row.label}</p>
+                  <p className="text-sm leading-6 text-white/50">{row.agency}</p>
+                  <p className="text-sm leading-6 text-cyan-100">{row.system}</p>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="divide-y divide-white/10">
-            {comparisonRows.map((row) => (
-              <div key={row.label} className="grid grid-cols-1 gap-3 py-4 sm:grid-cols-[0.8fr_1fr_1fr]">
-                <p className="text-sm font-semibold text-white">{row.label}</p>
-                <p className="text-sm leading-6 text-white/50">{row.agency}</p>
-                <p className="text-sm leading-6 text-cyan-100">{row.system}</p>
-              </div>
-            ))}
-          </div>
-        </div>
+        </Reveal>
       </div>
     </section>
   );
@@ -465,25 +772,29 @@ function SoftwareModulesSection() {
         />
 
         <div className="mt-14 grid gap-4 lg:grid-cols-5">
-          {softwareModules.map((module) => (
-            <article key={module.label} className="rounded-lg border border-white/10 bg-white/[0.035] p-5">
-              <p className="font-mono text-sm text-cyan-200">{module.label}</p>
-              <h3 className="mt-4 text-lg font-semibold text-white">{module.title}</h3>
-              <p className="mt-3 text-sm leading-7 text-white/60">{module.body}</p>
-              <div className="mt-5 space-y-2">
-                {module.items.map((item) => (
-                  <div key={item} className="inline-flex w-full items-center gap-2 text-xs text-white/55">
-                    <Check className="size-3.5 shrink-0 text-cyan-200" />
-                    {item}
-                  </div>
-                ))}
-              </div>
-            </article>
+          {softwareModules.map((module, index) => (
+            <Reveal key={module.label} delay={index * 80}>
+              <article className="group relative h-full overflow-hidden rounded-lg border border-white/10 bg-white/[0.035] p-5 transition hover:-translate-y-1 hover:border-indigo-300/35 hover:bg-indigo-300/[0.055]">
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-purple-300/70 to-transparent opacity-0 transition group-hover:opacity-100" />
+                <p className="font-mono text-sm text-cyan-200">{module.label}</p>
+                <h3 className="mt-4 text-lg font-semibold text-white">{module.title}</h3>
+                <p className="mt-3 text-sm leading-7 text-white/60">{module.body}</p>
+                <div className="mt-5 space-y-2">
+                  {module.items.map((item) => (
+                    <div key={item} className="inline-flex w-full items-center gap-2 text-xs text-white/55">
+                      <Check className="size-3.5 shrink-0 text-cyan-200" />
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </article>
+            </Reveal>
           ))}
         </div>
 
         <div className="mt-14 grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
-          <div className="rounded-lg border border-white/10 bg-[#07101c] p-6">
+          <Reveal>
+            <div className="h-full rounded-lg border border-white/10 bg-[#07101c] p-6">
             <p className="text-xs font-semibold uppercase text-cyan-200/80">Product preview</p>
             <h3 className="mt-4 text-2xl font-semibold text-white">Show the system before the user commits.</h3>
             <p className="mt-4 text-sm leading-7 text-white/60">
@@ -491,8 +802,11 @@ function SoftwareModulesSection() {
               campaign, leads, creative state, launch readiness, and reporting signal. That is now expressed in
               the command-center cockpit instead of a static promise.
             </p>
-          </div>
-          <CommandCenterVisual />
+            </div>
+          </Reveal>
+          <Reveal delay={120}>
+            <ProductTabsPreview />
+          </Reveal>
         </div>
       </div>
     </section>
@@ -503,7 +817,7 @@ function FitSection() {
   return (
     <section className="py-20 sm:py-28">
       <div className="mx-auto grid w-full max-w-7xl gap-8 px-5 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
-        <div>
+        <Reveal>
           <p className="text-xs font-semibold uppercase text-cyan-200/80">Who it is for</p>
           <h2 className="mt-4 text-3xl font-semibold leading-tight text-white sm:text-5xl">
             Built for operators who want the stack, not the song and dance.
@@ -512,13 +826,15 @@ function FitSection() {
             No invented revenue thresholds. No fake scarcity. The clean qualifier is operational: this is for
             real estate teams that want the inbound acquisition loop built into software.
           </p>
-        </div>
+        </Reveal>
         <div className="grid gap-3 sm:grid-cols-2">
-          {fitSignals.map((item) => (
-            <div key={item} className="rounded-lg border border-white/10 bg-white/[0.035] p-5">
+          {fitSignals.map((item, index) => (
+            <Reveal key={item} delay={index * 80}>
+            <div className="h-full rounded-lg border border-white/10 bg-white/[0.035] p-5 transition hover:-translate-y-1 hover:border-indigo-300/30 hover:bg-indigo-300/[0.055]">
               <Check className="size-5 text-cyan-200" />
               <p className="mt-4 text-sm leading-7 text-white/70">{item}</p>
             </div>
+            </Reveal>
           ))}
         </div>
       </div>
@@ -549,7 +865,8 @@ export function HomeCommandCenter() {
     <main className="overflow-x-hidden bg-[#030712] text-white">
       <div className="relative">
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.026)_1px,transparent_1px)] bg-[size:72px_72px] opacity-45" />
-        <div className="absolute inset-x-0 top-0 h-[720px] bg-[radial-gradient(circle_at_50%_0%,rgba(34,211,238,0.16),transparent_44%),linear-gradient(180deg,rgba(6,15,26,0.2),transparent)]" />
+        <div className="absolute inset-x-0 top-0 h-[760px] bg-[radial-gradient(ellipse_at_58%_0%,rgba(99,102,241,0.28),transparent_44%),radial-gradient(ellipse_at_82%_18%,rgba(168,85,247,0.22),transparent_34%),radial-gradient(ellipse_at_24%_4%,rgba(34,211,238,0.18),transparent_34%),linear-gradient(180deg,rgba(6,15,26,0.2),transparent)]" />
+        <div className="absolute left-1/2 top-28 h-px w-[min(920px,calc(100vw-40px))] -translate-x-1/2 bg-gradient-to-r from-transparent via-indigo-300/70 to-transparent motion-safe:animate-[signalSweep_4.8s_ease-in-out_infinite]" />
 
         <header className="relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-5 py-5 sm:px-6 lg:px-8">
           <Link aria-label="DealFlow OS home" className="flex items-center gap-3" href="/">
@@ -583,7 +900,7 @@ export function HomeCommandCenter() {
 
         <section className="relative z-10 mx-auto grid w-full max-w-7xl gap-12 px-5 pb-20 pt-12 sm:px-6 sm:pt-20 lg:grid-cols-[0.92fr_1.08fr] lg:px-8 lg:pb-28">
           <div className="min-w-0 flex flex-col justify-center">
-            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1.5 text-xs font-semibold text-cyan-100">
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-indigo-200/25 bg-indigo-300/10 px-3 py-1.5 text-xs font-semibold text-cyan-100 shadow-[0_0_50px_-28px_rgba(129,140,248,0.95)]">
               <span className="size-1.5 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.9)]" />
               Command center for inbound dealflow
             </div>
@@ -591,7 +908,9 @@ export function HomeCommandCenter() {
             <h1 className="mt-7 max-w-[340px] text-4xl font-semibold leading-tight text-white sm:max-w-4xl sm:text-6xl sm:leading-[0.98] lg:text-7xl">
               <span className="block sm:inline">Launch the system</span>{" "}
               <span className="block sm:inline">that turns campaigns</span>{" "}
-              <span className="block sm:inline">into dealflow.</span>
+              <span className="block bg-gradient-to-r from-cyan-100 via-indigo-200 to-purple-300 bg-clip-text text-transparent sm:inline">
+                into dealflow.
+              </span>
             </h1>
             <p className="mt-6 max-w-[340px] text-lg leading-8 text-white/70 sm:max-w-2xl">
               DealFlow OS builds the funnel, campaign assets, lead capture path, dashboard, and optimization loop
@@ -600,11 +919,11 @@ export function HomeCommandCenter() {
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link
-                className="inline-flex h-12 w-full max-w-[340px] items-center justify-center gap-2 rounded-full bg-cyan-200 px-6 text-base font-semibold text-slate-950 shadow-[0_24px_70px_-28px_rgba(103,232,249,0.95)] transition hover:-translate-y-0.5 hover:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-200/50 sm:w-auto"
+                className="group inline-flex h-12 w-full max-w-[340px] items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-200 via-indigo-200 to-purple-200 px-6 text-base font-semibold text-slate-950 shadow-[0_24px_90px_-28px_rgba(129,140,248,0.95)] transition hover:-translate-y-0.5 hover:shadow-[0_28px_100px_-26px_rgba(192,132,252,0.95)] focus:outline-none focus:ring-2 focus:ring-indigo-200/50 sm:w-auto"
                 href={signupHref}
               >
                 Get Access
-                <ArrowRight className="size-4" />
+                <ArrowRight className="size-4 transition group-hover:translate-x-1" />
               </Link>
               <a
                 className="inline-flex h-12 w-full max-w-[340px] items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.045] px-6 text-base font-semibold text-white transition hover:-translate-y-0.5 hover:bg-white/[0.075] focus:outline-none focus:ring-2 focus:ring-white/20 sm:w-auto"
@@ -621,7 +940,7 @@ export function HomeCommandCenter() {
                 ["Review-gated", "Operator approval before risk"],
                 ["Built for real estate", "Campaign, funnel, leadflow"],
               ].map(([title, body]) => (
-                <div key={title} className="rounded-lg border border-white/10 bg-white/[0.035] p-4">
+                <div key={title} className="rounded-lg border border-white/10 bg-white/[0.035] p-4 transition hover:-translate-y-1 hover:border-indigo-300/25 hover:bg-indigo-300/[0.055]">
                   <p className="text-sm font-semibold text-white">{title}</p>
                   <p className="mt-1 text-xs leading-5 text-white/60">{body}</p>
                 </div>
@@ -642,19 +961,21 @@ export function HomeCommandCenter() {
           />
 
           <div className="mt-14 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {installStack.map((item) => (
-              <article
-                key={item.title}
-                className="group rounded-lg border border-white/10 bg-white/[0.035] p-5 transition hover:-translate-y-1 hover:border-cyan-200/25 hover:bg-white/[0.055]"
-              >
-                <div className="grid size-11 place-items-center rounded-lg border border-cyan-200/20 bg-cyan-200/10 text-cyan-100">
-                  <item.icon className="size-5" />
-                </div>
-                <h3 className="mt-5 text-lg font-semibold text-white">{item.title}</h3>
-                <p className="mt-3 text-sm leading-7 text-white/60">{item.body}</p>
-              </article>
+            {installStack.map((item, index) => (
+              <Reveal key={item.title} delay={index * 70}>
+                <article className="group relative overflow-hidden rounded-lg border border-white/10 bg-white/[0.035] p-5 transition hover:-translate-y-1 hover:border-indigo-300/35 hover:bg-indigo-300/[0.055]">
+                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-300/70 to-transparent opacity-0 transition group-hover:opacity-100" />
+                  <div className="grid size-11 place-items-center rounded-lg border border-cyan-200/20 bg-cyan-200/10 text-cyan-100 transition group-hover:border-indigo-200/40 group-hover:bg-indigo-300/15">
+                    <item.icon className="size-5" />
+                  </div>
+                  <h3 className="mt-5 text-lg font-semibold text-white">{item.title}</h3>
+                  <p className="mt-3 text-sm leading-7 text-white/60">{item.body}</p>
+                </article>
+              </Reveal>
             ))}
           </div>
+
+          <SystemAssemblyMap />
         </div>
       </section>
 

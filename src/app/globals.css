@@ -215,9 +215,177 @@
   animation: drawChart 1.9s ease-out forwards;
 }
 
+.dealflow-signal-line {
+  stroke-dasharray: 420;
+  stroke-dashoffset: 420;
+  animation: drawSignal 1.45s ease-out forwards;
+  filter: drop-shadow(0 0 7px rgba(129, 140, 248, 0.42));
+}
+
+.dealflow-broken-line {
+  animation: brokenSignal 3.2s ease-in-out infinite;
+}
+
+.df-reveal {
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+}
+
+.df-reveal-visible {
+  animation: revealIn 720ms ease both;
+}
+
+.df-ambient-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.df-ambient-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(103, 232, 249, 0.12), transparent 32%),
+    radial-gradient(circle at 86% 10%, rgba(168, 85, 247, 0.15), transparent 34%);
+  opacity: 0.9;
+}
+
+.df-ambient-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(120deg, transparent 30%, rgba(255, 255, 255, 0.075) 48%, transparent 66%);
+  opacity: 0;
+  transform: translateX(-52%);
+  animation: panelSheen 7.5s ease-in-out infinite;
+}
+
+.df-ambient-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
 @keyframes drawChart {
   to {
     stroke-dashoffset: 0;
+  }
+}
+
+@keyframes drawSignal {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes brokenSignal {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+
+  50% {
+    opacity: 0.65;
+  }
+}
+
+@keyframes corePulse {
+  0%,
+  100% {
+    opacity: 0.68;
+    transform: scale(0.98);
+    transform-origin: center;
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+    transform-origin: center;
+  }
+}
+
+@keyframes nodeFloat {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) translateY(0);
+  }
+
+  50% {
+    transform: translate(-50%, -50%) translateY(-7px);
+  }
+}
+
+@keyframes nodeBreathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(103, 232, 249, 0.12);
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px rgba(129, 140, 248, 0.08);
+  }
+}
+
+@keyframes panelRise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes revealIn {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+    filter: blur(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes signalSweep {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: translateX(-50%) scaleX(0.72);
+  }
+
+  50% {
+    opacity: 0.85;
+    transform: translateX(-50%) scaleX(1);
+  }
+}
+
+@keyframes panelSheen {
+  0%,
+  28% {
+    opacity: 0;
+    transform: translateX(-60%);
+  }
+
+  40% {
+    opacity: 0.9;
+  }
+
+  58% {
+    opacity: 0;
+    transform: translateX(60%);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(60%);
   }
 }
 
@@ -225,5 +393,22 @@
   .dealflow-chart-line {
     animation: none;
     stroke-dashoffset: 0;
+  }
+
+  .dealflow-signal-line,
+  .dealflow-broken-line,
+  .df-ambient-panel::after {
+    animation: none;
+  }
+
+  .dealflow-signal-line {
+    stroke-dashoffset: 0;
+  }
+
+  .df-reveal {
+    opacity: 1;
+    transform: none;
+    filter: none;
+    transition: none;
   }
 }
