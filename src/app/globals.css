@@ -259,6 +259,79 @@
     transform: translateX(0);
   }
 
+  .df-scroll-cinema {
+    position: relative;
+    overflow: visible;
+  }
+
+  .df-scroll-cinema-backdrop {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 52% 40%, rgba(129, 140, 248, 0.22), transparent 34%),
+      radial-gradient(circle at 16% 20%, rgba(103, 232, 249, 0.14), transparent 28%),
+      radial-gradient(circle at 86% 18%, rgba(168, 85, 247, 0.18), transparent 28%),
+      linear-gradient(180deg, rgba(3, 7, 18, 0.72), rgba(3, 7, 18, 0.95));
+  }
+
+  .df-scroll-cinema-backdrop::before {
+    content: "";
+    position: absolute;
+    inset: -12%;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.026) 1px, transparent 1px);
+    background-size: 52px 52px;
+    mask-image: radial-gradient(circle at center, black, transparent 72%);
+    opacity: 0.58;
+    animation: gridDrift 18s linear infinite;
+  }
+
+  .df-scroll-cinema-backdrop::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(120deg, transparent 20%, rgba(103, 232, 249, 0.08) 36%, transparent 48%, rgba(168, 85, 247, 0.08) 64%, transparent 78%);
+    animation: cinematicSweep 7s ease-in-out infinite;
+    opacity: 0.82;
+  }
+
+  .df-scroll-scan {
+    pointer-events: none;
+    position: absolute;
+    inset-inline: 0;
+    top: -12vh;
+    z-index: 1;
+    height: 18vh;
+    background: linear-gradient(180deg, transparent, rgba(103, 232, 249, 0.1), rgba(168, 85, 247, 0.08), transparent);
+    filter: blur(2px);
+    opacity: 0.86;
+  }
+
+  .df-scroll-stage::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    background:
+      linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.28;
+  }
+
+  .df-scroll-stage::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2;
+    background: linear-gradient(90deg, rgba(103, 232, 249, 0.14), transparent 26%, transparent 72%, rgba(168, 85, 247, 0.12));
+    mix-blend-mode: screen;
+    opacity: 0.58;
+  }
+
   .df-holo-card {
     transform-style: preserve-3d;
   }
@@ -521,6 +594,29 @@
   }
 }
 
+@keyframes gridDrift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+
+  to {
+    transform: translate3d(-52px, -52px, 0);
+  }
+}
+
+@keyframes cinematicSweep {
+  0%,
+  100% {
+    transform: translateX(-18%);
+    opacity: 0.28;
+  }
+
+  50% {
+    transform: translateX(18%);
+    opacity: 0.88;
+  }
+}
+
 @keyframes cinematicSpin {
   from {
     transform: rotate(0deg) scale(1.08);
@@ -579,12 +675,15 @@
 
   .df-pointer-glow,
   .df-mode-fill,
-  .df-cinematic-panel::before {
+  .df-cinematic-panel::before,
+  .df-scroll-cinema-backdrop::before,
+  .df-scroll-cinema-backdrop::after {
     display: none;
   }
 
   .df-cinematic-tile,
-  .df-impact-card {
+  .df-impact-card,
+  .df-scroll-scan {
     animation: none;
     transform: none;
   }
