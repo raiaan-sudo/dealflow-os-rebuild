@@ -96,8 +96,11 @@ export default function TermsPage() {
       <section className="space-y-3">
         <h2 className="text-xl font-semibold">Contact</h2>
         <p className="text-slate-300">
-          For terms, privacy, or compliance questions, contact the DealFlow OS operator through
-          your workspace support channel.
+          For terms, privacy, or compliance questions, contact us at{" "}
+          <a className="text-sky-300 underline" href="mailto:raiaan@scaleholdings.co">
+            raiaan@scaleholdings.co
+          </a>
+          .
         </p>
       </section>
     </main>

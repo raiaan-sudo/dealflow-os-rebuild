@@ -24,6 +24,9 @@ const requiredHomepageSnippets = [
   "Five modules",
   "Who it is for",
   "Pricing",
+  "/privacy",
+  "/terms",
+  "/data-deletion",
   "review-first launch path",
 ];
 
