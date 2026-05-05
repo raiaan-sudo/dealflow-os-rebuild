@@ -33,10 +33,10 @@ const signupHref = "/login?mode=sign-up";
 
 const navItems = [
   { label: "System", href: "#system" },
+  { label: "Agency fatigue", href: "#agency-fatigue" },
   { label: "Difference", href: "#difference" },
   { label: "Software", href: "#software" },
   { label: "Pricing", href: "#pricing" },
-  { label: "Security", href: "#security" },
 ];
 
 const installStack = [
@@ -96,10 +96,10 @@ const commandSteps = [
 ];
 
 const realizationBullets = [
-  "More leads do not fix a broken pipeline.",
-  "Another marketer does not help if the funnel, routing, and dashboard are disconnected.",
-  "If the system disappears when a vendor relationship ends, it was never really yours.",
-  "Operators need the acquisition layer installed inside their own software workflow.",
+  "More lead promises do not fix a broken pipeline.",
+  "Another agency dashboard does not help if the funnel, routing, and follow-up are disconnected.",
+  "If the system disappears when the retainer ends, it was never really yours.",
+  "Operators need the acquisition layer installed inside their own software workflow, not trapped in a vendor account.",
 ];
 
 const comparisonRows = [
@@ -144,10 +144,37 @@ const softwareModules = [
 ];
 
 const fitSignals = [
-  "You want software access instead of another sales-call funnel.",
+  "You want software access instead of another agency sales-call funnel.",
   "You need campaign assets, lead capture, and reporting in one workflow.",
   "You want to review launch risk before spend or automations move.",
   "You care about owning the funnel path, data flow, and operating process.",
+];
+
+const agencyFatigueCards = [
+  {
+    label: "Promise",
+    title: "Big pipeline claims before the system exists.",
+    body: "Agents have heard every version of the pitch: more leads, better ads, done-for-you growth. The part that usually stays vague is the actual operating layer.",
+    status: "Discarded",
+  },
+  {
+    label: "Handoff",
+    title: "Assets scattered across people and portals.",
+    body: "A funnel in one place, ads somewhere else, lead notes in a spreadsheet, reporting in a screenshot. Nobody owns the complete path.",
+    status: "Contained",
+  },
+  {
+    label: "Control",
+    title: "DealFlow installs the loop in software.",
+    body: "The campaign, capture path, review gate, dashboard, and optimization signal stay inside the operator workflow from day one.",
+    status: "Installed",
+  },
+];
+
+const conversionSteps = [
+  { label: "01", title: "Create access", body: "Enter through the software, not a calendar gate." },
+  { label: "02", title: "Build the first system", body: "Shape the market, offer, funnel, assets, and lead route." },
+  { label: "03", title: "Review before risk", body: "Inspect launch readiness before spend or automations move." },
 ];
 
 const assemblyNodes = [
@@ -396,6 +423,28 @@ function useCountUp(target: number, durationMs = 1300) {
   }, [durationMs, shouldRun, target]);
 
   return { value, ref };
+}
+
+function useScrollProgress() {
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const update = () => {
+      const scrollable = document.documentElement.scrollHeight - window.innerHeight;
+      setProgress(scrollable > 0 ? Math.min(window.scrollY / scrollable, 1) : 0);
+    };
+
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+
+    return () => {
+      window.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  return progress;
 }
 
 function Reveal({
@@ -1033,6 +1082,94 @@ function ProductEngineSection() {
   );
 }
 
+function AgencyFatigueSection() {
+  return (
+    <section
+      id="agency-fatigue"
+      className="df-cinematic-section border-y border-white/10 bg-[#030712] py-20 sm:py-28"
+    >
+      <div className="mx-auto grid w-full max-w-7xl gap-10 px-5 sm:px-6 lg:grid-cols-[0.95fr_1.05fr] lg:px-8">
+        <Reveal>
+          <p className="text-xs font-semibold uppercase text-rose-200/80">Built for agency-fatigued operators</p>
+          <h2 className="mt-4 text-4xl font-semibold leading-[0.95] text-white sm:text-6xl">
+            Real estate agents are done buying promises.
+          </h2>
+          <p className="mt-6 text-base leading-8 text-white/64">
+            The market has been trained to distrust the pitch: vague lead guarantees, rented dashboards, hidden
+            handoffs, and another call before anyone can see the actual system. DealFlow is positioned against that
+            fatigue. It shows the operating layer and sends the user straight into software access.
+          </p>
+          <div className="mt-8 grid gap-3 sm:grid-cols-3">
+            {["No sales-call gate", "No rented black box", "No fake proof"].map((item, index) => (
+              <div
+                key={item}
+                className="df-cinematic-tile rounded-lg border border-white/10 bg-white/[0.04] p-4"
+                style={{ animationDelay: `${index * 120}ms` }}
+              >
+                <p className="font-mono text-xs text-cyan-200">0{index + 1}</p>
+                <p className="mt-3 text-sm font-semibold text-white">{item}</p>
+              </div>
+            ))}
+          </div>
+          <Link
+            className="mt-8 inline-flex h-12 w-full max-w-[340px] items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-200 via-indigo-200 to-purple-200 px-6 text-base font-semibold text-slate-950 shadow-[0_24px_90px_-28px_rgba(129,140,248,0.95)] transition hover:-translate-y-0.5 hover:shadow-[0_30px_110px_-24px_rgba(192,132,252,0.95)] focus:outline-none focus:ring-2 focus:ring-indigo-200/50 sm:w-auto"
+            href={signupHref}
+          >
+            Get software access
+            <ArrowRight className="size-4" />
+          </Link>
+        </Reveal>
+
+        <Reveal delay={140}>
+          <div className="df-cinematic-panel relative overflow-hidden rounded-lg border border-indigo-200/15 bg-[#07101c] p-4 sm:p-6">
+            <div className="grid gap-4">
+              {agencyFatigueCards.map((card, index) => (
+                <article
+                  key={card.label}
+                  className={cn(
+                    "df-impact-card group relative overflow-hidden rounded-lg border p-5",
+                    index === agencyFatigueCards.length - 1
+                      ? "border-cyan-200/30 bg-cyan-200/[0.08]"
+                      : "border-white/10 bg-white/[0.035]",
+                  )}
+                  style={{ animationDelay: `${index * 150}ms` }}
+                >
+                  <div className="relative z-10 grid gap-4 sm:grid-cols-[0.45fr_1fr_auto] sm:items-center">
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-white/45">{card.label}</p>
+                      <p
+                        className={cn(
+                          "mt-2 inline-flex rounded-full border px-3 py-1 text-xs font-semibold",
+                          index === agencyFatigueCards.length - 1
+                            ? "border-cyan-200/30 bg-cyan-200/10 text-cyan-100"
+                            : "border-rose-200/20 bg-rose-300/10 text-rose-100",
+                        )}
+                      >
+                        {card.status}
+                      </p>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-semibold text-white">{card.title}</h3>
+                      <p className="mt-2 text-sm leading-7 text-white/58">{card.body}</p>
+                    </div>
+                    <div className="hidden size-16 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-white/55 sm:grid">
+                      {index === agencyFatigueCards.length - 1 ? (
+                        <CircuitBoard className="size-6 text-cyan-100" />
+                      ) : (
+                        <Megaphone className="size-6 text-rose-100/70" />
+                      )}
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
 function ComparisonSection() {
   return (
     <section id="difference" className="py-20 sm:py-28">
@@ -1040,12 +1177,11 @@ function ComparisonSection() {
         <Reveal>
           <p className="text-xs font-semibold uppercase text-cyan-200/80">Agency vs owned system</p>
           <h2 className="mt-4 text-3xl font-semibold leading-tight text-white sm:text-5xl">
-            Stop renting a service. Install the system.
+            Stop renting a service. Own the operating system.
           </h2>
           <p className="mt-5 text-base leading-8 text-white/60">
-            The preview was right about the core wedge: the problem is rarely one missing ad or one more
-            follow-up reminder. The problem is that the acquisition workflow is split across people, docs,
-            dashboards, and tools.
+            The core wedge is blunt: agents do not need another vendor promising a mystery pipeline. They need the
+            acquisition workflow installed where they can inspect it, operate it, and keep it.
           </p>
           <div className="mt-8 space-y-3">
             {realizationBullets.map((item, index) => (
@@ -1144,11 +1280,12 @@ function FitSection() {
         <Reveal>
           <p className="text-xs font-semibold uppercase text-cyan-200/80">Who it is for</p>
           <h2 className="mt-4 text-3xl font-semibold leading-tight text-white sm:text-5xl">
-            Built for operators who want the stack, not the song and dance.
+            Built for operators who want the stack, not the agency show.
           </h2>
           <p className="mt-5 text-base leading-8 text-white/60">
-            No invented revenue thresholds. No fake scarcity. The clean qualifier is operational: this is for
-            real estate teams that want the inbound acquisition loop built into software.
+            No invented revenue thresholds. No fake scarcity. No call-first funnel pretending to be a product. The
+            clean qualifier is operational: this is for real estate teams that want the inbound acquisition loop
+            built into software.
           </p>
         </Reveal>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -1161,6 +1298,52 @@ function FitSection() {
             </Reveal>
           ))}
         </div>
+      </div>
+    </section>
+  );
+}
+
+function ConversionPathSection() {
+  return (
+    <section className="df-cinematic-section py-20 sm:py-28">
+      <div className="mx-auto grid w-full max-w-7xl gap-10 px-5 sm:px-6 lg:grid-cols-[0.88fr_1.12fr] lg:px-8">
+        <Reveal>
+          <p className="text-xs font-semibold uppercase text-cyan-200/80">Conversion path</p>
+          <h2 className="mt-4 text-3xl font-semibold leading-tight text-white sm:text-5xl">
+            The CTA stays brutally simple: get access and start building.
+          </h2>
+          <p className="mt-5 text-base leading-8 text-white/60">
+            This is more conversion-optimized because it removes the agency behavior agents already distrust:
+            no calendar gate, no vague discovery call, no promise wall before they see the product.
+          </p>
+        </Reveal>
+        <Reveal delay={120}>
+          <div className="df-cinematic-panel grid gap-3 rounded-lg border border-indigo-200/15 bg-[#07101c] p-4 sm:grid-cols-3 sm:p-5">
+            {conversionSteps.map((step, index) => (
+              <article
+                key={step.label}
+                className="df-cinematic-tile relative overflow-hidden rounded-lg border border-white/10 bg-white/[0.04] p-5"
+                style={{ animationDelay: `${index * 130}ms` }}
+              >
+                <p className="font-mono text-sm text-cyan-200">{step.label}</p>
+                <h3 className="mt-5 text-lg font-semibold text-white">{step.title}</h3>
+                <p className="mt-3 text-sm leading-7 text-white/58">{step.body}</p>
+              </article>
+            ))}
+            <Link
+              className="group relative overflow-hidden rounded-lg border border-cyan-200/25 bg-cyan-200 p-5 text-slate-950 shadow-[0_26px_90px_-38px_rgba(103,232,249,0.95)] transition hover:-translate-y-1 hover:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-200/50 sm:col-span-3"
+              href={signupHref}
+            >
+              <span className="flex items-center justify-between gap-4">
+                <span>
+                  <span className="block text-sm font-semibold uppercase tracking-[0.18em] text-slate-700">Direct software path</span>
+                  <span className="mt-2 block text-2xl font-semibold">Get Access to DealFlow OS</span>
+                </span>
+                <ArrowRight className="size-6 transition group-hover:translate-x-1" />
+              </span>
+            </Link>
+          </div>
+        </Reveal>
       </div>
     </section>
   );
@@ -1186,6 +1369,7 @@ function SectionHeader({
 
 export function HomeCommandCenter() {
   const mainRef = useRef<HTMLElement | null>(null);
+  const scrollProgress = useScrollProgress();
 
   function handlePointerMove(event: PointerEvent<HTMLElement>) {
     const node = mainRef.current;
@@ -1204,6 +1388,12 @@ export function HomeCommandCenter() {
       className="df-interactive-shell overflow-x-hidden bg-[#030712] text-white"
       onPointerMove={handlePointerMove}
     >
+      <div aria-hidden="true" className="fixed inset-x-0 top-0 z-50 h-1 bg-white/5">
+        <div
+          className="h-full origin-left bg-gradient-to-r from-cyan-300 via-indigo-300 to-purple-300 shadow-[0_0_24px_rgba(129,140,248,0.75)]"
+          style={{ transform: `scaleX(${scrollProgress})` }}
+        />
+      </div>
       <div aria-hidden="true" className="df-pointer-glow" />
       <div className="relative">
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.026)_1px,transparent_1px)] bg-[size:72px_72px] opacity-45" />
@@ -1244,19 +1434,20 @@ export function HomeCommandCenter() {
           <div className="min-w-0 flex flex-col justify-center">
             <div className="inline-flex w-fit items-center gap-2 rounded-full border border-indigo-200/25 bg-indigo-300/10 px-3 py-1.5 text-xs font-semibold text-cyan-100 shadow-[0_0_50px_-28px_rgba(129,140,248,0.95)]">
               <span className="size-1.5 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.9)]" />
-              Command center for inbound dealflow
+              No-agency command center for inbound dealflow
             </div>
 
             <h1 className="mt-7 max-w-[340px] text-4xl font-semibold leading-tight text-white sm:max-w-4xl sm:text-6xl sm:leading-[0.98] lg:text-7xl">
+              <span className="block sm:inline">Stop buying agency promises.</span>{" "}
               <span className="block sm:inline">Launch the system</span>{" "}
-              <span className="block sm:inline">that turns campaigns</span>{" "}
               <span className="block bg-gradient-to-r from-cyan-100 via-indigo-200 to-purple-300 bg-clip-text text-transparent sm:inline">
                 into dealflow.
               </span>
             </h1>
             <p className="mt-6 max-w-[340px] text-lg leading-8 text-white/70 sm:max-w-2xl">
-              A one-of-one command layer that builds the funnel, campaign assets, lead capture path, dashboard,
-              and optimization loop real estate operators need before they spend another dollar on traffic.
+              A one-of-one command layer for real estate operators who are tired of vague retainers, rented
+              dashboards, and lead promises. Build the funnel, assets, capture path, dashboard, and optimization
+              loop before another dollar goes into traffic.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -1278,9 +1469,9 @@ export function HomeCommandCenter() {
 
             <div className="mt-9 grid max-w-[340px] gap-3 sm:max-w-none sm:grid-cols-3">
               {[
-                ["Software-first", "No sales-call gate"],
+                ["No agency gate", "Direct software access"],
                 ["Review-gated", "Operator approval before risk"],
-                ["Built for real estate", "Campaign, funnel, leadflow"],
+                ["Owned system", "Campaign, funnel, leadflow"],
               ].map(([title, body]) => (
                 <div key={title} className="rounded-lg border border-white/10 bg-white/[0.035] p-4 transition hover:-translate-y-1 hover:border-indigo-300/25 hover:bg-indigo-300/[0.055]">
                   <p className="text-sm font-semibold text-white">{title}</p>
@@ -1320,6 +1511,8 @@ export function HomeCommandCenter() {
           <SystemAssemblyMap />
         </div>
       </section>
+
+      <AgencyFatigueSection />
 
       <ProductEngineSection />
 
@@ -1417,6 +1610,8 @@ export function HomeCommandCenter() {
       </section>
 
       <FitSection />
+
+      <ConversionPathSection />
 
       <section id="pricing" className="py-20 sm:py-28">
         <div className="mx-auto w-full max-w-7xl px-5 sm:px-6 lg:px-8">
