@@ -179,6 +179,14 @@
     transform: translate(-50%, -50%);
   }
 
+  @media (max-width: 639px) {
+    .df-pointer-glow {
+      width: 260px;
+      height: 260px;
+      opacity: 0.56;
+    }
+  }
+
   .df-cinematic-section {
     position: relative;
     overflow: hidden;
