@@ -1,5 +1,13 @@
 import "./globals.css";
+import { Analytics } from "@vercel/analytics/next";
+import type { Metadata } from "next";
 import { ThemeProvider } from "@/components/theme-provider";
+
+export const metadata: Metadata = {
+  metadataBase: new URL("https://www.agentdealflow.io"),
+};
+
+const shouldRenderVercelAnalytics = process.env.VERCEL === "1";
 
 export default function RootLayout({
   children,
@@ -15,6 +23,7 @@ export default function RootLayout({
             {children}
           </div>
         </ThemeProvider>
+        {shouldRenderVercelAnalytics ? <Analytics /> : null}
       </body>
     </html>
   );

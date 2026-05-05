@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getInternalSystemJobsSecret, getSupabaseEnv } from "@/lib/env";
 
-const PUBLIC_PATHS = new Set(["/", "/login", "/privacy", "/terms", "/data-deletion"]);
+const PUBLIC_PATHS = new Set(["/", "/login", "/privacy", "/terms", "/data-deletion", "/opengraph-image"]);
 const PUBLIC_API_PATHS = new Set([
   "/api/meta/data-deletion",
   "/api/integrations/meta/callback",

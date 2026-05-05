@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { track } from "@vercel/analytics";
 import type { PointerEvent, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -30,6 +31,27 @@ import { BILLING_PLANS, type BillingPlanTier } from "@/lib/billing/plans";
 import { cn } from "@/lib/utils";
 
 const signupHref = "/login?mode=sign-up";
+const scrollTrackingMilestones = [25, 50, 75, 90] as const;
+
+function trackHomepageEvent(event: string, properties: Record<string, string | number | boolean> = {}) {
+  track(event, {
+    page: "homepage",
+    ...properties,
+  });
+}
+
+function useHomepageScrollTracking(progress: number) {
+  const trackedMilestones = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    for (const milestone of scrollTrackingMilestones) {
+      if (progress >= milestone / 100 && !trackedMilestones.current.has(milestone)) {
+        trackedMilestones.current.add(milestone);
+        trackHomepageEvent("homepage_scroll_depth", { depth: milestone });
+      }
+    }
+  }, [progress]);
+}
 
 const navItems = [
   { label: "System", href: "#system" },
@@ -1389,6 +1411,7 @@ function AgencyFatigueSection() {
           <Link
             className="mt-8 inline-flex h-12 w-full max-w-[340px] items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-200 via-indigo-200 to-purple-200 px-6 text-base font-semibold text-slate-950 shadow-[0_24px_90px_-28px_rgba(129,140,248,0.95)] transition hover:-translate-y-0.5 hover:shadow-[0_30px_110px_-24px_rgba(192,132,252,0.95)] focus:outline-none focus:ring-2 focus:ring-indigo-200/50 sm:w-auto"
             href={signupHref}
+            onClick={() => trackHomepageEvent("homepage_cta_click", { cta: "agency_fatigue_get_software_access", destination: signupHref })}
           >
             Get software access
             <ArrowRight className="size-4" />
@@ -1663,6 +1686,7 @@ function ConversionPathSection() {
             <Link
               className="group relative overflow-hidden rounded-lg border border-cyan-200/25 bg-cyan-200 p-5 text-slate-950 shadow-[0_26px_90px_-38px_rgba(103,232,249,0.95)] transition hover:-translate-y-1 hover:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-200/50 sm:col-span-3"
               href={signupHref}
+              onClick={() => trackHomepageEvent("homepage_cta_click", { cta: "conversion_direct_software_path", destination: signupHref })}
             >
               <span className="flex items-center justify-between gap-4">
                 <span>
@@ -1700,6 +1724,7 @@ function SectionHeader({
 export function HomeCommandCenter() {
   const mainRef = useRef<HTMLElement | null>(null);
   const scrollProgress = useScrollProgress();
+  useHomepageScrollTracking(scrollProgress);
 
   function handlePointerMove(event: PointerEvent<HTMLElement>) {
     const node = mainRef.current;
@@ -1747,12 +1772,17 @@ export function HomeCommandCenter() {
           </nav>
 
           <div className="flex shrink-0 items-center gap-2">
-            <Link className="hidden text-sm font-medium text-white/60 transition hover:text-white sm:inline" href="/login">
+            <Link
+              className="hidden text-sm font-medium text-white/60 transition hover:text-white sm:inline"
+              href="/login"
+              onClick={() => trackHomepageEvent("homepage_signin_click", { destination: "/login" })}
+            >
               Sign in
             </Link>
             <Link
               className="hidden h-10 items-center gap-2 rounded-full bg-cyan-200 px-4 text-sm font-semibold text-slate-950 shadow-[0_18px_54px_-24px_rgba(103,232,249,0.95)] transition hover:-translate-y-0.5 hover:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-200/50 sm:inline-flex"
               href={signupHref}
+              onClick={() => trackHomepageEvent("homepage_cta_click", { cta: "nav_get_access", destination: signupHref })}
             >
               Get Access
               <ArrowRight className="size-4" />
@@ -1784,6 +1814,7 @@ export function HomeCommandCenter() {
               <Link
                 className="group inline-flex h-12 w-full max-w-[340px] items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-200 via-indigo-200 to-purple-200 px-6 text-base font-semibold text-slate-950 shadow-[0_24px_90px_-28px_rgba(129,140,248,0.95)] transition hover:-translate-y-0.5 hover:shadow-[0_28px_100px_-26px_rgba(192,132,252,0.95)] focus:outline-none focus:ring-2 focus:ring-indigo-200/50 sm:w-auto"
                 href={signupHref}
+                onClick={() => trackHomepageEvent("homepage_cta_click", { cta: "hero_get_access", destination: signupHref })}
               >
                 Get Access
                 <ArrowRight className="size-4 transition group-hover:translate-x-1" />
@@ -1791,6 +1822,7 @@ export function HomeCommandCenter() {
               <a
                 className="inline-flex h-12 w-full max-w-[340px] items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.045] px-6 text-base font-semibold text-white transition hover:-translate-y-0.5 hover:bg-white/[0.075] focus:outline-none focus:ring-2 focus:ring-white/20 sm:w-auto"
                 href="#system"
+                onClick={() => trackHomepageEvent("homepage_cta_click", { cta: "hero_see_the_system", destination: "#system" })}
               >
                 See the system
                 <ChevronRight className="size-4" />
@@ -1991,6 +2023,13 @@ export function HomeCommandCenter() {
                         : "border border-white/10 bg-white/[0.045] text-white hover:bg-white/[0.075] focus:ring-white/20",
                     )}
                     href={`${signupHref}&plan=${tier}`}
+                    onClick={() =>
+                      trackHomepageEvent("homepage_pricing_cta_click", {
+                        cta: `pricing_${tier}`,
+                        destination: `${signupHref}&plan=${tier}`,
+                        plan: tier,
+                      })
+                    }
                   >
                     Get {plan.name}
                     <ArrowRight className="size-4" />
@@ -2094,6 +2133,7 @@ export function HomeCommandCenter() {
             <Link
               className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-cyan-200 px-7 text-base font-semibold text-slate-950 shadow-[0_24px_70px_-28px_rgba(103,232,249,0.95)] transition hover:-translate-y-0.5 hover:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-200/50"
               href={signupHref}
+              onClick={() => trackHomepageEvent("homepage_cta_click", { cta: "final_get_access", destination: signupHref })}
             >
               Get Access
               <Rocket className="size-4" />
