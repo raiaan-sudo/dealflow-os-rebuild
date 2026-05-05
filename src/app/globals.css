@@ -157,6 +157,51 @@
   .system-status-dot {
     @apply inline-block h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(52,211,153,0.95)];
   }
+
+  .df-interactive-shell {
+    --df-pointer-x: 50vw;
+    --df-pointer-y: 220px;
+    position: relative;
+  }
+
+  .df-pointer-glow {
+    pointer-events: none;
+    position: fixed;
+    left: var(--df-pointer-x);
+    top: var(--df-pointer-y);
+    z-index: 2;
+    width: 360px;
+    height: 360px;
+    border-radius: 999px;
+    background: radial-gradient(circle, rgba(103, 232, 249, 0.14), rgba(129, 140, 248, 0.08) 34%, transparent 68%);
+    mix-blend-mode: screen;
+    opacity: 0.82;
+    transform: translate(-50%, -50%);
+  }
+
+  .df-holo-card {
+    transform-style: preserve-3d;
+  }
+
+  .df-holo-card::before {
+    opacity: 1;
+  }
+
+  .df-holo-card:hover {
+    border-color: rgba(165, 180, 252, 0.32);
+    box-shadow:
+      0 44px 150px -68px rgba(129, 140, 248, 0.95),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  .df-mode-fill {
+    position: absolute;
+    inset: auto 0 0;
+    height: 2px;
+    background: linear-gradient(90deg, #67e8f9, #818cf8, #c084fc);
+    transform-origin: left;
+    animation: progressGrow 4.2s linear both;
+  }
 }
 @keyframes questionIn {
   from {
@@ -341,7 +386,7 @@
 
 @keyframes revealIn {
   from {
-    opacity: 0;
+    opacity: 1;
     transform: translateY(24px);
   }
 
@@ -386,6 +431,16 @@
   }
 }
 
+@keyframes engineOrbit {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .dealflow-chart-line {
     animation: none;
@@ -406,5 +461,10 @@
     opacity: 1;
     transform: none;
     transition: none;
+  }
+
+  .df-pointer-glow,
+  .df-mode-fill {
+    display: none;
   }
 }

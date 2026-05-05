@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { PointerEvent, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
@@ -37,12 +37,6 @@ const navItems = [
   { label: "Software", href: "#software" },
   { label: "Pricing", href: "#pricing" },
   { label: "Security", href: "#security" },
-];
-
-const liveMetrics = [
-  { label: "Campaign assets", value: 18, suffix: "", detail: "Funnel, ads, copy, routing" },
-  { label: "Launch checks", value: 42, suffix: "", detail: "Guardrails before publish" },
-  { label: "Signal routes", value: 9, suffix: "", detail: "Lead, creative, budget, CRM" },
 ];
 
 const installStack = [
@@ -171,6 +165,99 @@ const productTabs = [
   { label: "Leads", value: "Route armed", icon: Route },
   { label: "Launch", value: "Review gate on", icon: ShieldCheck },
   { label: "Reports", value: "Signal rising", icon: BarChart3 },
+];
+
+const cockpitModes = [
+  {
+    id: "build",
+    label: "Build",
+    cue: "Generating the campaign instance",
+    route: "Mapping",
+    gate: "Draft",
+    chartTitle: "Assembly pressure",
+    chartStatus: "Build active",
+    chartTone: "cyan",
+    linePoints: "0,118 70,96 142,102 214,72 286,64 360,42 426,38 500,27",
+    metrics: [
+      { label: "Campaign assets", value: 18, suffix: "", detail: "Funnel, ads, copy, routing" },
+      { label: "Launch checks", value: 27, suffix: "", detail: "Rules staged for review" },
+      { label: "Signal routes", value: 6, suffix: "", detail: "Audience, offer, lead path" },
+    ],
+    chips: ["Offer", "Audience", "Funnel", "Creative"],
+  },
+  {
+    id: "route",
+    label: "Route",
+    cue: "Connecting lead capture to the command layer",
+    route: "Armed",
+    gate: "On",
+    chartTitle: "Lead route pressure",
+    chartStatus: "Signal routing",
+    chartTone: "purple",
+    linePoints: "0,124 70,114 142,88 214,91 286,58 360,52 426,34 500,22",
+    metrics: [
+      { label: "Lead routes", value: 9, suffix: "", detail: "Form, CRM, review, next action" },
+      { label: "Quality checks", value: 34, suffix: "", detail: "Validation before handoff" },
+      { label: "Inbox states", value: 12, suffix: "", detail: "New, reviewed, routed" },
+    ],
+    chips: ["Capture", "Validate", "Route", "Review"],
+  },
+  {
+    id: "optimize",
+    label: "Optimize",
+    cue: "Watching performance signal after launch",
+    route: "Live",
+    gate: "Guarded",
+    chartTitle: "Optimization pressure",
+    chartStatus: "Rising signal",
+    chartTone: "emerald",
+    linePoints: "0,128 70,118 142,95 214,80 286,75 360,43 426,31 500,18",
+    metrics: [
+      { label: "Optimization rules", value: 42, suffix: "", detail: "Budget, creative, follow-up" },
+      { label: "Signal routes", value: 15, suffix: "", detail: "Lead, creative, cost, CRM" },
+      { label: "Next actions", value: 8, suffix: "", detail: "Operator-ready recommendations" },
+    ],
+    chips: ["Score", "Diagnose", "Recommend", "Improve"],
+  },
+];
+
+const engineModes = [
+  {
+    id: "blueprint",
+    label: "Blueprint",
+    title: "Market input becomes a real campaign shape.",
+    body: "Offer, audience, area, lead type, and budget become the first working model of the acquisition system.",
+    stat: "04",
+    statLabel: "Core inputs",
+    icon: Target,
+  },
+  {
+    id: "assemble",
+    label: "Assemble",
+    title: "The stack starts wiring itself together.",
+    body: "Funnel sections, ad angles, lead form states, preview panels, and routing logic move into one command layer.",
+    stat: "18",
+    statLabel: "Assets staged",
+    icon: CircuitBoard,
+  },
+  {
+    id: "review",
+    label: "Review",
+    title: "Risk stays visible before anything goes live.",
+    body: "Launch readiness, spend posture, creative quality, and lead routing stay in front of the operator.",
+    stat: "42",
+    statLabel: "Checks visible",
+    icon: ShieldCheck,
+  },
+  {
+    id: "signal",
+    label: "Signal",
+    title: "The cockpit keeps telling the operator what changed.",
+    body: "DealFlow turns scattered campaign activity into next-action signal across leads, creative, budget, and follow-up.",
+    stat: "09",
+    statLabel: "Signal paths",
+    icon: Activity,
+  },
 ];
 
 const pricingCopy: Record<BillingPlanTier, { summary: string; features: string[]; highlighted?: boolean }> = {
@@ -362,11 +449,34 @@ function MetricCounter({
   );
 }
 
-function AnimatedChart() {
-  const points = useMemo(
-    () => "0,116 72,103 138,91 206,94 280,69 354,56 426,47 500,24",
-    [],
+function AnimatedChart({
+  points = "0,116 72,103 138,91 206,94 280,69 354,56 426,47 500,24",
+  title = "Modeled campaign cockpit",
+  status = "Rising signal",
+  tone = "purple",
+  gradientId = "dealflow-chart",
+}: {
+  points?: string;
+  title?: string;
+  status?: string;
+  tone?: string;
+  gradientId?: string;
+}) {
+  const pointPairs = useMemo(
+    () =>
+      points.split(" ").map((point) => {
+        const [x, y] = point.split(",").map(Number);
+        return { x, y };
+      }),
+    [points],
   );
+  const markerIndexes = [1, 3, 5, 7].filter((index) => pointPairs[index]);
+  const statusClass =
+    tone === "emerald"
+      ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-200"
+      : tone === "cyan"
+        ? "border-cyan-300/20 bg-cyan-300/10 text-cyan-100"
+        : "border-indigo-300/20 bg-indigo-300/10 text-indigo-100";
 
   return (
     <div className="relative min-h-[230px] overflow-hidden rounded-lg border border-white/10 bg-[#07101c] p-4 shadow-[0_30px_110px_-70px_rgba(99,102,241,0.9)]">
@@ -375,10 +485,10 @@ function AnimatedChart() {
       <div className="relative flex items-start justify-between gap-3">
         <div>
           <p className="text-[11px] uppercase text-white/50">Pipeline pressure</p>
-          <p className="mt-1 text-sm font-medium text-white">Modeled campaign cockpit</p>
+          <p className="mt-1 text-sm font-medium text-white">{title}</p>
         </div>
-        <div className="hidden shrink-0 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-semibold text-emerald-200 sm:block">
-          Rising signal
+        <div className={cn("hidden shrink-0 rounded-full border px-3 py-1 text-xs font-semibold sm:block", statusClass)}>
+          {status}
         </div>
       </div>
       <svg
@@ -387,12 +497,12 @@ function AnimatedChart() {
         viewBox="0 0 500 140"
       >
         <defs>
-          <linearGradient id="dealflow-chart-fill" x1="0" x2="0" y1="0" y2="1">
+          <linearGradient id={`${gradientId}-fill`} x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="#818cf8" stopOpacity="0.34" />
             <stop offset="45%" stopColor="#67e8f9" stopOpacity="0.14" />
             <stop offset="100%" stopColor="#67e8f9" stopOpacity="0" />
           </linearGradient>
-          <linearGradient id="dealflow-chart-line" x1="0" x2="1" y1="0" y2="0">
+          <linearGradient id={`${gradientId}-line`} x1="0" x2="1" y1="0" y2="0">
             <stop offset="0%" stopColor="#22d3ee" />
             <stop offset="48%" stopColor="#818cf8" />
             <stop offset="100%" stopColor="#c084fc" />
@@ -400,40 +510,63 @@ function AnimatedChart() {
         </defs>
         <polygon
           className="motion-safe:animate-[chartFill_1.9s_ease-out_both]"
-          fill="url(#dealflow-chart-fill)"
+          fill={`url(#${gradientId}-fill)`}
           points={`0,140 ${points} 500,140`}
         />
         <polyline
           className="dealflow-chart-line"
           fill="none"
           points={points}
-          stroke="url(#dealflow-chart-line)"
+          stroke={`url(#${gradientId}-line)`}
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeWidth="4"
         />
-        {[72, 206, 354, 500].map((x, index) => (
-          <circle
-            key={x}
-            className="motion-safe:animate-[pulseNode_2.2s_ease-in-out_infinite]"
-            cx={x}
-            cy={[103, 94, 56, 24][index]}
-            fill="#07101c"
-            r="6"
-            stroke="#a5b4fc"
-            strokeWidth="3"
-            style={{ animationDelay: `${index * 160}ms` }}
-          />
-        ))}
+        {markerIndexes.map((pointIndex, index) => {
+          const point = pointPairs[pointIndex];
+          if (!point) {
+            return null;
+          }
+
+          return (
+            <circle
+              key={pointIndex}
+              className="motion-safe:animate-[pulseNode_2.2s_ease-in-out_infinite]"
+              cx={point.x}
+              cy={point.y}
+              fill="#07101c"
+              r="6"
+              stroke="#a5b4fc"
+              strokeWidth="3"
+              style={{ animationDelay: `${index * 160}ms` }}
+            />
+          );
+        })}
       </svg>
     </div>
   );
 }
 
 function CommandCenterVisual() {
+  const [activeMode, setActiveMode] = useState(0);
+  const currentMode = cockpitModes[activeMode] ?? cockpitModes[0]!;
+
+  useEffect(() => {
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReducedMotion) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setActiveMode((mode) => (mode + 1) % cockpitModes.length);
+    }, 4200);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
   return (
     <div className="relative mx-auto min-w-0" style={{ width: "min(100%, 720px, calc(100vw - 64px))" }}>
-      <div className="df-ambient-panel relative w-full min-w-0 overflow-hidden rounded-lg border border-indigo-200/15 bg-[#050914] shadow-[0_40px_150px_-64px_rgba(99,102,241,0.9)]">
+      <div className="df-ambient-panel df-holo-card relative w-full min-w-0 overflow-hidden rounded-lg border border-indigo-200/15 bg-[#050914] shadow-[0_40px_150px_-64px_rgba(99,102,241,0.9)]">
         <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-white/[0.035] px-4 py-3">
           <div className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-rose-400 shadow-[0_0_18px_rgba(251,113,133,0.6)]" />
@@ -446,6 +579,34 @@ function CommandCenterVisual() {
           <div className="hidden h-2 w-12 shrink-0 rounded-full bg-white/10 sm:block" />
         </div>
 
+        <div className="grid gap-2 border-b border-white/10 bg-white/[0.025] p-3 sm:grid-cols-3">
+          {cockpitModes.map((mode, index) => (
+            <button
+              key={mode.id}
+              className={cn(
+                "group relative overflow-hidden rounded-lg border px-3 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-cyan-200/35",
+                activeMode === index
+                  ? "border-cyan-200/35 bg-cyan-200/10 text-white shadow-[0_18px_58px_-32px_rgba(103,232,249,0.75)]"
+                  : "border-white/10 bg-white/[0.025] text-white/58 hover:border-indigo-200/25 hover:bg-indigo-300/[0.055] hover:text-white",
+              )}
+              type="button"
+              onClick={() => setActiveMode(index)}
+            >
+              <span className="relative z-10 flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold">{mode.label}</span>
+                <span
+                  className={cn(
+                    "size-2 rounded-full",
+                    activeMode === index ? "bg-cyan-200 shadow-[0_0_18px_rgba(103,232,249,0.95)]" : "bg-white/20",
+                  )}
+                />
+              </span>
+              <span className="relative z-10 mt-1 block text-[11px] leading-4 text-white/45">{mode.cue}</span>
+              {activeMode === index ? <span className="df-mode-fill" /> : null}
+            </button>
+          ))}
+        </div>
+
         <div className="grid min-w-0 gap-4 p-4 lg:grid-cols-[0.95fr_1.3fr]">
           <div className="min-w-0 space-y-4">
             <div className="relative overflow-hidden rounded-lg border border-white/10 bg-white/[0.045] p-4">
@@ -453,7 +614,7 @@ function CommandCenterVisual() {
               <div className="flex items-center justify-between">
                 <p className="text-[11px] uppercase text-white/50">Launch queue</p>
                 <span className="hidden rounded-full bg-cyan-300/10 px-2 py-1 text-[11px] text-cyan-200 sm:inline-flex">
-                  Review ready
+                  {currentMode.chartStatus}
                 </span>
               </div>
               <div className="mt-5 space-y-3">
@@ -476,7 +637,10 @@ function CommandCenterVisual() {
                         <div className="mt-1 h-1.5 rounded-full bg-white/10">
                           <div
                             className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-indigo-300 to-purple-300 motion-safe:animate-[progressGrow_1.8s_ease-out_both]"
-                            style={{ width: `${index < 3 ? 100 : 68}%`, animationDelay: `${index * 150}ms` }}
+                            style={{
+                              width: `${Math.min(100, 72 + activeMode * 9 + index * 8)}%`,
+                              animationDelay: `${index * 150}ms`,
+                            }}
                           />
                         </div>
                       </div>
@@ -489,27 +653,41 @@ function CommandCenterVisual() {
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-lg border border-indigo-200/15 bg-white/[0.045] p-4">
                 <p className="text-[11px] uppercase text-white/50">Lead route</p>
-                <p className="mt-2 text-2xl font-semibold text-white">Armed</p>
+                <p className="mt-2 text-2xl font-semibold text-white">{currentMode.route}</p>
               </div>
               <div className="rounded-lg border border-indigo-200/15 bg-white/[0.045] p-4">
                 <p className="text-[11px] uppercase text-white/50">Review gate</p>
-                <p className="mt-2 text-2xl font-semibold text-white">On</p>
+                <p className="mt-2 text-2xl font-semibold text-white">{currentMode.gate}</p>
               </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {currentMode.chips.map((chip) => (
+                <span key={chip} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/62">
+                  {chip}
+                </span>
+              ))}
             </div>
           </div>
 
           <div className="min-w-0 space-y-4">
             <div className="grid gap-3 sm:grid-cols-3">
-              {liveMetrics.map((metric) => (
+              {currentMode.metrics.map((metric) => (
                 <MetricCounter
-                  key={metric.label}
+                  key={`${currentMode.id}-${metric.label}`}
                   label={metric.label}
                   target={metric.value}
                   detail={metric.detail}
                 />
               ))}
             </div>
-            <AnimatedChart />
+            <AnimatedChart
+              key={currentMode.id}
+              gradientId={`hero-${currentMode.id}`}
+              points={currentMode.linePoints}
+              status={currentMode.chartStatus}
+              title={currentMode.chartTitle}
+              tone={currentMode.chartTone}
+            />
           </div>
         </div>
       </div>
@@ -709,6 +887,152 @@ function ProductTabsPreview() {
   );
 }
 
+function ProductEngineSection() {
+  const [activeEngine, setActiveEngine] = useState(1);
+  const current = engineModes[activeEngine] ?? engineModes[0]!;
+  const CurrentIcon = current.icon;
+
+  return (
+    <section className="border-y border-white/10 bg-[#050b14] py-20 sm:py-28">
+      <div className="mx-auto grid w-full max-w-7xl gap-10 px-5 sm:px-6 lg:grid-cols-[0.92fr_1.08fr] lg:px-8">
+        <Reveal>
+          <p className="text-xs font-semibold uppercase text-cyan-200/80">One-of-one operating layer</p>
+          <h2 className="mt-4 text-3xl font-semibold leading-tight text-white sm:text-5xl">
+            Make the visitor feel the machine turning on.
+          </h2>
+          <p className="mt-5 text-base leading-8 text-white/60">
+            DealFlow should not feel like another agency funnel. It should feel like a live acquisition system:
+            inputs become assets, assets become routes, routes become signal, and the operator always sees the next
+            move.
+          </p>
+          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+            {engineModes.map((mode, index) => {
+              const Icon = mode.icon;
+              const isActive = activeEngine === index;
+
+              return (
+                <button
+                  key={mode.id}
+                  className={cn(
+                    "group relative overflow-hidden rounded-lg border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-cyan-200/35",
+                    isActive
+                      ? "border-cyan-200/35 bg-cyan-200/10 shadow-[0_22px_70px_-40px_rgba(103,232,249,0.85)]"
+                      : "border-white/10 bg-white/[0.035] hover:-translate-y-1 hover:border-indigo-300/30 hover:bg-indigo-300/[0.055]",
+                  )}
+                  type="button"
+                  onClick={() => setActiveEngine(index)}
+                >
+                  <div className="relative z-10 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={cn(
+                          "grid size-9 place-items-center rounded-lg border",
+                          isActive
+                            ? "border-cyan-200/30 bg-cyan-200/15 text-cyan-100"
+                            : "border-white/10 bg-white/[0.04] text-white/58",
+                        )}
+                      >
+                        <Icon className="size-4" />
+                      </span>
+                      <span className="font-semibold text-white">{mode.label}</span>
+                    </div>
+                    <ChevronRight className={cn("size-4 transition", isActive ? "translate-x-1 text-cyan-100" : "text-white/35")} />
+                  </div>
+                  {isActive ? <span className="df-mode-fill" /> : null}
+                </button>
+              );
+            })}
+          </div>
+        </Reveal>
+
+        <Reveal delay={120}>
+          <div className="df-ambient-panel df-holo-card relative min-h-[620px] overflow-hidden rounded-lg border border-indigo-200/15 bg-[#07101c] p-5 sm:p-7">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(129,140,248,0.22),transparent_34%),radial-gradient(circle_at_18%_78%,rgba(34,211,238,0.14),transparent_28%),radial-gradient(circle_at_82%_18%,rgba(168,85,247,0.18),transparent_30%)]" />
+            <div className="relative z-10 flex items-start justify-between gap-5">
+              <div>
+                <p className="text-xs font-semibold uppercase text-indigo-200/80">DealFlow engine</p>
+                <h3 className="mt-3 max-w-xl text-2xl font-semibold text-white sm:text-3xl">{current.title}</h3>
+                <p className="mt-4 max-w-xl text-sm leading-7 text-white/62">{current.body}</p>
+              </div>
+              <div className="hidden rounded-lg border border-cyan-200/20 bg-cyan-200/10 p-4 text-right sm:block">
+                <p className="font-mono text-3xl font-semibold text-cyan-100">{current.stat}</p>
+                <p className="mt-1 text-xs uppercase text-white/48">{current.statLabel}</p>
+              </div>
+            </div>
+
+            <div className="relative z-10 mt-10 min-h-[390px] overflow-hidden rounded-lg border border-white/10 bg-[#030712]/72">
+              <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:42px_42px] opacity-70" />
+              <div className="absolute left-1/2 top-1/2 size-56 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-200/15 bg-cyan-200/[0.025] motion-safe:animate-[engineOrbit_12s_linear_infinite]" />
+              <div className="absolute left-1/2 top-1/2 size-80 -translate-x-1/2 -translate-y-1/2 rounded-full border border-indigo-200/12 bg-indigo-300/[0.018] motion-safe:animate-[engineOrbit_18s_linear_infinite_reverse]" />
+
+              <svg aria-hidden="true" className="absolute inset-0 h-full w-full" viewBox="0 0 620 390" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="engine-beam" x1="0" x2="1">
+                    <stop offset="0%" stopColor="#22d3ee" />
+                    <stop offset="50%" stopColor="#818cf8" />
+                    <stop offset="100%" stopColor="#c084fc" />
+                  </linearGradient>
+                </defs>
+                {[
+                  "M80 84 C210 50 250 150 310 195",
+                  "M540 88 C420 56 370 150 310 195",
+                  "M92 310 C218 336 248 238 310 195",
+                  "M530 312 C420 340 370 238 310 195",
+                ].map((path, index) => (
+                  <path
+                    key={path}
+                    className="dealflow-signal-line"
+                    d={path}
+                    fill="none"
+                    stroke="url(#engine-beam)"
+                    strokeLinecap="round"
+                    strokeWidth="2"
+                    style={{ animationDelay: `${index * 130 + activeEngine * 90}ms` }}
+                  />
+                ))}
+              </svg>
+
+              <div className="absolute left-1/2 top-1/2 grid size-32 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-cyan-200/35 bg-[#07101c]/95 text-center shadow-[0_0_95px_-24px_rgba(103,232,249,0.95)]">
+                <CurrentIcon className="size-7 text-cyan-100" />
+                <span className="mt-2 block text-xs font-semibold uppercase text-white/70">{current.label}</span>
+              </div>
+
+              {engineModes.map((mode, index) => {
+                const Icon = mode.icon;
+                const coordinates = [
+                  ["8%", "13%"],
+                  ["69%", "14%"],
+                  ["9%", "72%"],
+                  ["69%", "72%"],
+                ][index] ?? ["8%", "13%"];
+
+                return (
+                  <button
+                    key={mode.id}
+                    className={cn(
+                      "absolute w-[130px] rounded-lg border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-cyan-200/35 sm:w-[150px]",
+                      activeEngine === index
+                        ? "border-cyan-200/35 bg-cyan-200/12 text-white shadow-[0_24px_80px_-44px_rgba(103,232,249,0.9)]"
+                        : "border-white/10 bg-white/[0.045] text-white/60 hover:border-indigo-200/25 hover:bg-indigo-300/[0.06]",
+                    )}
+                    style={{ left: coordinates[0], top: coordinates[1] }}
+                    type="button"
+                    onClick={() => setActiveEngine(index)}
+                  >
+                    <Icon className="size-4 text-cyan-100" />
+                    <span className="mt-2 block text-sm font-semibold">{mode.label}</span>
+                    <span className="mt-1 block text-[11px] leading-4 text-white/45">{mode.statLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
 function ComparisonSection() {
   return (
     <section id="difference" className="py-20 sm:py-28">
@@ -861,8 +1185,26 @@ function SectionHeader({
 }
 
 export function HomeCommandCenter() {
+  const mainRef = useRef<HTMLElement | null>(null);
+
+  function handlePointerMove(event: PointerEvent<HTMLElement>) {
+    const node = mainRef.current;
+    if (!node) {
+      return;
+    }
+
+    const rect = node.getBoundingClientRect();
+    node.style.setProperty("--df-pointer-x", `${event.clientX - rect.left}px`);
+    node.style.setProperty("--df-pointer-y", `${event.clientY - rect.top}px`);
+  }
+
   return (
-    <main className="overflow-x-hidden bg-[#030712] text-white">
+    <main
+      ref={mainRef}
+      className="df-interactive-shell overflow-x-hidden bg-[#030712] text-white"
+      onPointerMove={handlePointerMove}
+    >
+      <div aria-hidden="true" className="df-pointer-glow" />
       <div className="relative">
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.026)_1px,transparent_1px)] bg-[size:72px_72px] opacity-45" />
         <div className="absolute inset-x-0 top-0 h-[760px] bg-[radial-gradient(ellipse_at_58%_0%,rgba(99,102,241,0.28),transparent_44%),radial-gradient(ellipse_at_82%_18%,rgba(168,85,247,0.22),transparent_34%),radial-gradient(ellipse_at_24%_4%,rgba(34,211,238,0.18),transparent_34%),linear-gradient(180deg,rgba(6,15,26,0.2),transparent)]" />
@@ -913,8 +1255,8 @@ export function HomeCommandCenter() {
               </span>
             </h1>
             <p className="mt-6 max-w-[340px] text-lg leading-8 text-white/70 sm:max-w-2xl">
-              DealFlow OS builds the funnel, campaign assets, lead capture path, dashboard, and optimization loop
-              real estate operators need before they spend another dollar on traffic.
+              A one-of-one command layer that builds the funnel, campaign assets, lead capture path, dashboard,
+              and optimization loop real estate operators need before they spend another dollar on traffic.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -978,6 +1320,8 @@ export function HomeCommandCenter() {
           <SystemAssemblyMap />
         </div>
       </section>
+
+      <ProductEngineSection />
 
       <ComparisonSection />
 
