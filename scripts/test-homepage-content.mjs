@@ -10,6 +10,10 @@ const requiredHomepageSnippets = [
   "/login?mode=sign-up",
   "BILLING_PLANS",
   "What gets installed",
+  "Stop renting a service",
+  "Agency vs owned system",
+  "Five modules",
+  "Who it is for",
   "Pricing",
   "review-first launch path",
 ];
@@ -20,6 +24,14 @@ const forbiddenSnippets = [
   "trusted by",
   "guaranteed leads",
   "guaranteed ROI",
+  "15–40 appointments",
+  "15-40 appointments",
+  "8-figures",
+  "100+ agents",
+  "limited installs",
+  "$250K",
+  "$3K",
+  "$50K",
 ];
 
 for (const snippet of requiredHomepageSnippets) {

@@ -32,7 +32,8 @@ const signupHref = "/login?mode=sign-up";
 
 const navItems = [
   { label: "System", href: "#system" },
-  { label: "Install", href: "#install" },
+  { label: "Difference", href: "#difference" },
+  { label: "Software", href: "#software" },
   { label: "Pricing", href: "#pricing" },
   { label: "Security", href: "#security" },
 ];
@@ -97,6 +98,61 @@ const commandSteps = [
     title: "Run the loop",
     body: "Dashboard signals and optimization rules keep the campaign measurable after launch.",
   },
+];
+
+const realizationBullets = [
+  "More leads do not fix a broken pipeline.",
+  "Another marketer does not help if the funnel, routing, and dashboard are disconnected.",
+  "If the system disappears when a vendor relationship ends, it was never really yours.",
+  "Operators need the acquisition layer installed inside their own software workflow.",
+];
+
+const comparisonRows = [
+  { label: "Lead flow", agency: "Inconsistent handoffs across tools", system: "One workspace from campaign to lead loop" },
+  { label: "Execution", agency: "Fragmented vendors and unclear ownership", system: "Funnel, creative, routing, and dashboard installed together" },
+  { label: "Reporting", agency: "Vanity metrics with unclear next action", system: "Launch state, lead signal, and optimization prompts in context" },
+  { label: "Ownership", agency: "Assets, data, and workflow often live elsewhere", system: "Campaign system lives in the operator account" },
+  { label: "Scaling", agency: "Add another vendor or meeting cycle", system: "Tune the build, routing, creative, and review loop from software" },
+];
+
+const softwareModules = [
+  {
+    label: "01",
+    title: "Offer & positioning",
+    body: "Market, audience, service area, lead type, and offer logic become the campaign blueprint.",
+    items: ["Positioning brief", "Lead intent", "Message angles"],
+  },
+  {
+    label: "02",
+    title: "Conversion funnel",
+    body: "Landing page structure, qualifying fields, confirmation states, and public funnel boundaries are assembled together.",
+    items: ["Page sections", "Lead form", "Review preview"],
+  },
+  {
+    label: "03",
+    title: "Creative engine",
+    body: "Ad angles and launch copy are generated around the funnel instead of sitting in a separate document.",
+    items: ["Hooks", "Static ad concepts", "Copy variants"],
+  },
+  {
+    label: "04",
+    title: "Traffic launch workflow",
+    body: "Launch readiness keeps budget, targeting, assets, and guardrails visible before anything risky happens.",
+    items: ["Checklist", "Review gate", "Paused-by-default posture"],
+  },
+  {
+    label: "05",
+    title: "Follow-up & optimization",
+    body: "Lead capture, routing signal, dashboard state, and next-action recommendations keep the loop measurable.",
+    items: ["Lead loop", "Dashboard signal", "Optimization queue"],
+  },
+];
+
+const fitSignals = [
+  "You want software access instead of another sales-call funnel.",
+  "You need campaign assets, lead capture, and reporting in one workflow.",
+  "You want to review launch risk before spend or automations move.",
+  "You care about owning the funnel path, data flow, and operating process.",
 ];
 
 const pricingCopy: Record<BillingPlanTier, { summary: string; features: string[]; highlighted?: boolean }> = {
@@ -353,6 +409,123 @@ function CommandCenterVisual() {
   );
 }
 
+function ComparisonSection() {
+  return (
+    <section id="difference" className="py-20 sm:py-28">
+      <div className="mx-auto grid w-full max-w-7xl gap-12 px-5 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
+        <div>
+          <p className="text-xs font-semibold uppercase text-cyan-200/80">Agency vs owned system</p>
+          <h2 className="mt-4 text-3xl font-semibold leading-tight text-white sm:text-5xl">
+            Stop renting a service. Install the system.
+          </h2>
+          <p className="mt-5 text-base leading-8 text-white/60">
+            The preview was right about the core wedge: the problem is rarely one missing ad or one more
+            follow-up reminder. The problem is that the acquisition workflow is split across people, docs,
+            dashboards, and tools.
+          </p>
+          <div className="mt-8 space-y-3">
+            {realizationBullets.map((item) => (
+              <div key={item} className="flex gap-3 rounded-lg border border-white/10 bg-white/[0.035] p-4">
+                <ArrowRight className="mt-1 size-4 shrink-0 text-cyan-200" />
+                <p className="text-sm leading-6 text-white/70">{item}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-white/10 bg-[#07101c] p-4 sm:p-6">
+          <div className="grid grid-cols-[0.8fr_1fr_1fr] gap-3 border-b border-white/10 pb-4 text-xs uppercase text-white/50">
+            <span>Layer</span>
+            <span>Service model</span>
+            <span>DealFlow OS</span>
+          </div>
+          <div className="divide-y divide-white/10">
+            {comparisonRows.map((row) => (
+              <div key={row.label} className="grid grid-cols-1 gap-3 py-4 sm:grid-cols-[0.8fr_1fr_1fr]">
+                <p className="text-sm font-semibold text-white">{row.label}</p>
+                <p className="text-sm leading-6 text-white/50">{row.agency}</p>
+                <p className="text-sm leading-6 text-cyan-100">{row.system}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SoftwareModulesSection() {
+  return (
+    <section id="software" className="border-y border-white/10 bg-[#050b14] py-20 sm:py-28">
+      <div className="mx-auto w-full max-w-7xl px-5 sm:px-6 lg:px-8">
+        <SectionHeader
+          eyebrow="The software"
+          title="Five modules. One owned operating layer."
+          body="The preview had the right amount of product specificity here. This version keeps the depth, but ties it directly to the actual software routes and review-first launch model."
+        />
+
+        <div className="mt-14 grid gap-4 lg:grid-cols-5">
+          {softwareModules.map((module) => (
+            <article key={module.label} className="rounded-lg border border-white/10 bg-white/[0.035] p-5">
+              <p className="font-mono text-sm text-cyan-200">{module.label}</p>
+              <h3 className="mt-4 text-lg font-semibold text-white">{module.title}</h3>
+              <p className="mt-3 text-sm leading-7 text-white/60">{module.body}</p>
+              <div className="mt-5 space-y-2">
+                {module.items.map((item) => (
+                  <div key={item} className="inline-flex w-full items-center gap-2 text-xs text-white/55">
+                    <Check className="size-3.5 shrink-0 text-cyan-200" />
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div className="mt-14 grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+          <div className="rounded-lg border border-white/10 bg-[#07101c] p-6">
+            <p className="text-xs font-semibold uppercase text-cyan-200/80">Product preview</p>
+            <h3 className="mt-4 text-2xl font-semibold text-white">Show the system before the user commits.</h3>
+            <p className="mt-4 text-sm leading-7 text-white/60">
+              The homepage should make the visitor feel like the campaign instance already has shape: workspace,
+              campaign, leads, creative state, launch readiness, and reporting signal. That is now expressed in
+              the command-center cockpit instead of a static promise.
+            </p>
+          </div>
+          <CommandCenterVisual />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FitSection() {
+  return (
+    <section className="py-20 sm:py-28">
+      <div className="mx-auto grid w-full max-w-7xl gap-8 px-5 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
+        <div>
+          <p className="text-xs font-semibold uppercase text-cyan-200/80">Who it is for</p>
+          <h2 className="mt-4 text-3xl font-semibold leading-tight text-white sm:text-5xl">
+            Built for operators who want the stack, not the song and dance.
+          </h2>
+          <p className="mt-5 text-base leading-8 text-white/60">
+            No invented revenue thresholds. No fake scarcity. The clean qualifier is operational: this is for
+            real estate teams that want the inbound acquisition loop built into software.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {fitSignals.map((item) => (
+            <div key={item} className="rounded-lg border border-white/10 bg-white/[0.035] p-5">
+              <Check className="size-5 text-cyan-200" />
+              <p className="mt-4 text-sm leading-7 text-white/70">{item}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function SectionHeader({
   eyebrow,
   title,
@@ -485,6 +658,8 @@ export function HomeCommandCenter() {
         </div>
       </section>
 
+      <ComparisonSection />
+
       <section id="install" className="py-20 sm:py-28">
         <div className="mx-auto grid w-full max-w-7xl gap-12 px-5 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
           <div>
@@ -547,6 +722,8 @@ export function HomeCommandCenter() {
         </div>
       </section>
 
+      <SoftwareModulesSection />
+
       <section className="border-y border-white/10 bg-[#050b14] py-20 sm:py-28">
         <div className="mx-auto w-full max-w-7xl px-5 sm:px-6 lg:px-8">
           <SectionHeader
@@ -573,6 +750,8 @@ export function HomeCommandCenter() {
           </div>
         </div>
       </section>
+
+      <FitSection />
 
       <section id="pricing" className="py-20 sm:py-28">
         <div className="mx-auto w-full max-w-7xl px-5 sm:px-6 lg:px-8">
