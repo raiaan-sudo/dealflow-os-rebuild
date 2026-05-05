@@ -179,7 +179,7 @@ const operatorProofCards = [
   {
     label: "01",
     title: "Built by ex-agency operators.",
-    body: "DealFlow OS was shaped by operators who have sat on the agency side, managed real acquisition workflows, and rebuilt the model as software instead of another lead-gen vendor.",
+    body: "DealFlow OS was shaped by operators who have sat on the agency side, managed real acquisition workflows, and rebuilt the model as software instead of another lead vendor.",
     icon: BadgeCheck,
   },
   {
@@ -338,7 +338,7 @@ const faqs = [
   {
     question: "Is DealFlow OS an agency?",
     answer:
-      "No. DealFlow OS is software-first acquisition infrastructure built by ex-agency operators, not another lead-gen vendor. The CTA sends users into the product instead of a call-first retainer funnel.",
+      "No. DealFlow OS is software-first acquisition infrastructure built by ex-agency operators, not another lead vendor. The CTA sends users into the product instead of a call-first retainer funnel.",
   },
   {
     question: "Is this just another dashboard?",
@@ -1453,17 +1453,17 @@ function OperatorBuiltSection() {
           <Reveal>
             <p className="text-xs font-semibold uppercase text-cyan-200/80">Built by operators</p>
             <h2 className="mt-4 text-3xl font-semibold leading-tight text-white sm:text-5xl">
-              Built by ex-agency operators, not another lead-gen vendor.
+              Built by ex-agency operators, not another lead vendor.
             </h2>
             <p className="mt-5 text-base leading-8 text-white/62">
-              The founding team has managed over eight figures in ad spend and built DealFlow OS from the internal
-              custom-coded AI infrastructure used to operate marketing systems across creative, funnels, routing,
-              optimization, and reporting. That experience is background, not a customer result claim.
+              DealFlow OS comes from the infrastructure we built after managing over eight figures in ad spend and
+              seeing where real estate acquisition systems break: recycled creative, weak funnels, slow follow-up,
+              rented dashboards, and no accountable operating layer.
             </p>
             <p className="mt-4 text-base leading-8 text-white/62">
-              The product turns that operating experience into active full-stack acquisition infrastructure: creative
-              production, funnel assembly, lead capture, routing, dashboard visibility, optimization loops, and team
-              oversight. AI builds and coordinates the system; humans oversee quality, strategy, and launch readiness.
+              This is not a passive KPI screen. The system assembles the funnel, creative direction, lead capture,
+              routing, launch checks, reporting surface, and optimization loop with custom-coded AI infrastructure and
+              human oversight from the DealFlow team.
             </p>
           </Reveal>
 
