@@ -229,7 +229,6 @@
 .df-reveal {
   opacity: 1;
   transform: translateY(0);
-  filter: blur(0);
 }
 
 .df-reveal-visible {
@@ -344,13 +343,11 @@
   from {
     opacity: 0;
     transform: translateY(24px);
-    filter: blur(8px);
   }
 
   to {
     opacity: 1;
     transform: translateY(0);
-    filter: blur(0);
   }
 }
 
@@ -408,7 +405,6 @@
   .df-reveal {
     opacity: 1;
     transform: none;
-    filter: none;
     transition: none;
   }
 }
