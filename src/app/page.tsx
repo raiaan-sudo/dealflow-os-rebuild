@@ -1,54 +1,23 @@
-import { redirect } from "next/navigation";
-import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
+import type { Metadata } from "next";
+import { HomeCommandCenter } from "@/components/marketing/home-command-center";
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
-  return new Promise<T>((resolve) => {
-    const timer = setTimeout(() => resolve(fallback), timeoutMs);
+export const metadata: Metadata = {
+  title: "DealFlow | Inbound Deal System for Real Estate Operators",
+  description:
+    "DealFlow builds the funnel, campaign assets, lead capture, dashboard, and optimization loop for real estate acquisition teams.",
+  alternates: {
+    canonical: "https://www.agentdealflow.io",
+  },
+  openGraph: {
+    title: "DealFlow | Inbound Deal System for Real Estate Operators",
+    description:
+      "Launch a complete real estate dealflow command center with funnel, creatives, lead capture, reporting, and optimization workflows.",
+    url: "https://www.agentdealflow.io",
+    siteName: "DealFlow",
+    type: "website",
+  },
+};
 
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      () => {
-        clearTimeout(timer);
-        resolve(fallback);
-      },
-    );
-  });
-}
-
-function getSafeRedirectPath(value?: string | null) {
-  if (!value) {
-    return "/dashboard";
-  }
-
-  if (!value.startsWith("/") || value.startsWith("//")) {
-    return "/dashboard";
-  }
-
-  return value;
-}
-
-export default async function HomePage({
-  searchParams,
-}: {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const supabase = await createRouteHandlerClient();
-  const params = searchParams ? await searchParams : {};
-  const nextPath =
-    typeof params.next === "string" ? getSafeRedirectPath(params.next) : "/dashboard";
-
-  if (!supabase) {
-    redirect("/login");
-  }
-
-  const user = await withTimeout(
-    supabase.auth.getUser().then((result) => result.data.user).catch(() => null),
-    2_500,
-    null,
-  );
-
-  redirect(user ? nextPath : "/login");
+export default function HomePage() {
+  return <HomeCommandCenter />;
 }

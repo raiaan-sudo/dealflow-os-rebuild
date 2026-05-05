@@ -23,6 +23,7 @@
     "test:media-buying-upgrades": "node ./scripts/test-media-buying-upgrades.mjs",
     "test:media-buyer-regression": "node ./scripts/regress-media-buyer-integration.mjs",
     "test:static-ad-templates": "node ./scripts/test-static-ad-templates.mjs",
+    "test:homepage": "node ./scripts/test-homepage-content.mjs",
     "smoke:offline": "node ./scripts/smoke-test.mjs offline",
     "smoke:staging": "node ./scripts/smoke-test.mjs staging",
     "load:routes": "node ./scripts/load-test.mjs routes",

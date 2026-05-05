@@ -7,6 +7,7 @@ type LoginFormProps = {
   redirectedFrom?: string;
   reason?: string;
   isConfigured: boolean;
+  initialMode?: "sign-in" | "sign-up";
 };
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
@@ -33,8 +34,9 @@ export function LoginForm({
   redirectedFrom,
   reason,
   isConfigured,
+  initialMode = "sign-in",
 }: LoginFormProps) {
-  const [mode, setMode] = useState<"sign-in" | "sign-up" | "reset-password" | "update-password">("sign-in");
+  const [mode, setMode] = useState<"sign-in" | "sign-up" | "reset-password" | "update-password">(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
