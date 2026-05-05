@@ -27,7 +27,6 @@ import {
   Workflow,
   Zap,
 } from "lucide-react";
-import { BILLING_PLANS, type BillingPlanTier } from "@/lib/billing/plans";
 import { cn } from "@/lib/utils";
 
 const signupHref = "/login?mode=sign-up";
@@ -59,7 +58,7 @@ const navItems = [
   { label: "Operators", href: "#operators" },
   { label: "Difference", href: "#difference" },
   { label: "Software", href: "#software" },
-  { label: "Pricing", href: "#pricing" },
+  { label: "Access", href: "#access" },
 ];
 
 const installStack = [
@@ -121,8 +120,8 @@ const commandSteps = [
 const realizationBullets = [
   "More lead promises do not fix a broken pipeline.",
   "Another agency dashboard does not help if the funnel, creative, routing, and follow-up are disconnected.",
-  "If the system disappears when the retainer ends, it was never really yours.",
-  "Operators need the acquisition layer installed inside their own software workflow, not trapped in a vendor account or hidden behind reporting screenshots.",
+  "Software access only matters when the operating layer keeps improving with the campaign, the data, and the operator.",
+  "Operators need the acquisition layer organized inside a real workflow, not trapped in a vendor account or reduced to reporting screenshots.",
 ];
 
 const comparisonRows = [
@@ -339,22 +338,6 @@ const engineModes = [
     icon: Activity,
   },
 ];
-
-const pricingCopy: Record<BillingPlanTier, { summary: string; features: string[]; highlighted?: boolean }> = {
-  starter: {
-    summary: "For getting the first campaign system built and reviewed.",
-    features: ["Campaign builder", "Funnel preview", "Dashboard shell", "Guided next actions"],
-  },
-  pro: {
-    summary: "For operators who want the launch workflow and optimization loop active.",
-    highlighted: true,
-    features: ["Meta launch workflow", "Autonomy recommendations", "Creative performance view", "Lead loop visibility"],
-  },
-  growth: {
-    summary: "For teams scaling campaign volume and deeper operating workflows.",
-    features: ["Data import access", "Expanded campaign operations", "Growth plan controls", "Priority operating layer"],
-  },
-};
 
 const faqs = [
   {
@@ -1980,71 +1963,57 @@ export function HomeCommandCenter() {
 
       <ConversionPathSection />
 
-      <section id="pricing" className="py-20 sm:py-28">
-        <div className="mx-auto w-full max-w-7xl px-5 sm:px-6 lg:px-8">
-          <SectionHeader
-            eyebrow="Pricing"
-            title="Start with the plan that matches how much of the system you want active."
-            body="Pricing uses the app's existing plan model so the homepage aligns with the product and billing layer."
-          />
+      <section id="access" className="py-20 sm:py-28">
+        <div className="mx-auto grid w-full max-w-7xl gap-8 px-5 sm:px-6 lg:grid-cols-[0.88fr_1.12fr] lg:px-8">
+          <div>
+            <p className="text-xs font-semibold uppercase text-cyan-200/80">Software access</p>
+            <h2 className="mt-4 text-3xl font-semibold leading-tight text-white sm:text-5xl">
+              Enter through the product, not a plan comparison.
+            </h2>
+            <p className="mt-5 text-base leading-8 text-white/60">
+              DealFlow OS is positioned around the operating layer: build the first acquisition system, inspect the
+              launch path, and keep the optimization loop active as the campaign evolves. Plan details and billing stay
+              inside the software flow instead of turning the homepage into a plan-comparison detour.
+            </p>
+            <Link
+              className="mt-8 inline-flex h-12 items-center justify-center gap-2 rounded-full bg-cyan-200 px-6 text-sm font-semibold text-slate-950 transition hover:-translate-y-0.5 hover:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-200/50"
+              href={signupHref}
+              onClick={() =>
+                trackHomepageEvent("homepage_cta_click", {
+                  cta: "access_section_get_access",
+                  destination: signupHref,
+                })
+              }
+            >
+              Get Access
+              <ArrowRight className="size-4" />
+            </Link>
+          </div>
 
-          <div className="mt-14 grid gap-4 lg:grid-cols-3">
-            {(Object.keys(BILLING_PLANS) as BillingPlanTier[]).map((tier) => {
-              const plan = BILLING_PLANS[tier];
-              const copy = pricingCopy[tier];
-
-              return (
-                <article
-                  key={tier}
-                  className={cn(
-                    "rounded-lg border bg-white/[0.035] p-6",
-                    copy.highlighted
-                      ? "border-cyan-200/30 shadow-[0_34px_90px_-54px_rgba(103,232,249,0.65)]"
-                      : "border-white/10",
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <h3 className="text-2xl font-semibold text-white">{plan.name}</h3>
-                      <p className="mt-2 text-sm leading-6 text-white/60">{copy.summary}</p>
-                    </div>
-                    {copy.highlighted ? (
-                      <span className="rounded-full bg-cyan-200 px-3 py-1 text-xs font-semibold text-slate-950">
-                        Popular
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="mt-7 text-4xl font-semibold text-white">{plan.priceLabel}</p>
-                  <Link
-                    className={cn(
-                      "mt-6 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full text-sm font-semibold transition hover:-translate-y-0.5 focus:outline-none focus:ring-2",
-                      copy.highlighted
-                        ? "bg-cyan-200 text-slate-950 hover:bg-white focus:ring-cyan-200/50"
-                        : "border border-white/10 bg-white/[0.045] text-white hover:bg-white/[0.075] focus:ring-white/20",
-                    )}
-                    href={`${signupHref}&plan=${tier}`}
-                    onClick={() =>
-                      trackHomepageEvent("homepage_pricing_cta_click", {
-                        cta: `pricing_${tier}`,
-                        destination: `${signupHref}&plan=${tier}`,
-                        plan: tier,
-                      })
-                    }
-                  >
-                    Get {plan.name}
-                    <ArrowRight className="size-4" />
-                  </Link>
-                  <ul className="mt-6 space-y-3">
-                    {copy.features.map((feature) => (
-                      <li key={feature} className="flex gap-3 text-sm leading-6 text-white/60">
-                        <Check className="mt-1 size-4 shrink-0 text-cyan-200" />
-                        {feature}
-                      </li>
-                    ))}
-                  </ul>
-                </article>
-              );
-            })}
+          <div className="grid gap-4 sm:grid-cols-3">
+            {[
+              {
+                title: "Build",
+                body: "Input the market, offer, audience, and lead path so the system can assemble the acquisition layer.",
+                icon: CircuitBoard,
+              },
+              {
+                title: "Review",
+                body: "Inspect funnel, creative direction, routing, dashboard state, and launch readiness before risk moves.",
+                icon: ShieldCheck,
+              },
+              {
+                title: "Operate",
+                body: "Keep the loop active with dashboard signal, optimization prompts, and team-reviewed operating logic.",
+                icon: Activity,
+              },
+            ].map((item) => (
+              <article key={item.title} className="rounded-lg border border-white/10 bg-white/[0.035] p-5">
+                <item.icon className="size-5 text-cyan-200" />
+                <h3 className="mt-4 text-lg font-semibold text-white">{item.title}</h3>
+                <p className="mt-2 text-sm leading-7 text-white/60">{item.body}</p>
+              </article>
+            ))}
           </div>
         </div>
       </section>
@@ -2077,7 +2046,7 @@ export function HomeCommandCenter() {
               },
               {
                 title: "Billing alignment",
-                body: "Homepage pricing mirrors the existing app plan model.",
+                body: "Plan selection and billing stay inside the authenticated software flow.",
                 icon: BarChart3,
               },
               {
