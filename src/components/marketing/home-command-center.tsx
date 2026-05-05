@@ -34,6 +34,7 @@ const signupHref = "/login?mode=sign-up";
 const navItems = [
   { label: "System", href: "#system" },
   { label: "Agency fatigue", href: "#agency-fatigue" },
+  { label: "Operators", href: "#operators" },
   { label: "Difference", href: "#difference" },
   { label: "Software", href: "#software" },
   { label: "Pricing", href: "#pricing" },
@@ -42,32 +43,32 @@ const navItems = [
 const installStack = [
   {
     title: "Offer-first funnel",
-    body: "A conversion page shaped around market, audience, offer, lead form, and follow-up path.",
+    body: "A conversion page shaped around the market, audience, offer, lead form, and review path instead of a generic landing template.",
     icon: MousePointer2,
   },
   {
     title: "Campaign assets",
-    body: "Static ad angles, launch copy, creative scoring, and preview states in one build flow.",
+    body: "Creative angles, static ad concepts, launch copy, scoring, and preview states generated around the actual funnel.",
     icon: Megaphone,
   },
   {
     title: "Lead capture loop",
-    body: "Capture, validate, route, and inspect inbound deal activity from the same workspace.",
+    body: "Capture, validate, route, and inspect inbound deal activity from the same workspace before it turns into another missed handoff.",
     icon: Route,
   },
   {
     title: "Operator dashboard",
-    body: "Pipeline, spend, creative health, launch state, and next action live in the command center.",
+    body: "Pipeline, spend posture, creative health, launch state, and next action live in the command center.",
     icon: Gauge,
   },
   {
     title: "Optimization engine",
-    body: "Rules and recommendations watch the campaign for creative fatigue, cost drift, and missed follow-up.",
+    body: "AI-assisted rules and recommendations watch for creative fatigue, cost drift, routing gaps, and missed follow-up.",
     icon: Sparkles,
   },
   {
     title: "Launch guardrails",
-    body: "Human review stays in front of risky actions while the system prepares the campaign for execution.",
+    body: "Human oversight stays in front of risky actions while the system prepares the campaign for operator approval.",
     icon: ShieldCheck,
   },
 ];
@@ -81,7 +82,7 @@ const commandSteps = [
   {
     label: "02",
     title: "Build the system",
-    body: "The app assembles funnel copy, creative angles, lead fields, preview states, and launch checks.",
+    body: "Custom-coded AI infrastructure assembles funnel copy, creative angles, lead fields, preview states, and launch checks.",
   },
   {
     label: "03",
@@ -91,20 +92,22 @@ const commandSteps = [
   {
     label: "04",
     title: "Run the loop",
-    body: "Dashboard signals and optimization rules keep the campaign measurable after launch.",
+    body: "Dashboard signals, optimization rules, and team-reviewed operating logic keep the campaign measurable after launch.",
   },
 ];
 
 const realizationBullets = [
   "More lead promises do not fix a broken pipeline.",
-  "Another agency dashboard does not help if the funnel, routing, and follow-up are disconnected.",
+  "Another agency dashboard does not help if the funnel, creative, routing, and follow-up are disconnected.",
   "If the system disappears when the retainer ends, it was never really yours.",
-  "Operators need the acquisition layer installed inside their own software workflow, not trapped in a vendor account.",
+  "Operators need the acquisition layer installed inside their own software workflow, not trapped in a vendor account or hidden behind reporting screenshots.",
 ];
 
 const comparisonRows = [
   { label: "Lead flow", agency: "Inconsistent handoffs across tools", system: "One workspace from campaign to lead loop" },
   { label: "Execution", agency: "Fragmented vendors and unclear ownership", system: "Funnel, creative, routing, and dashboard installed together" },
+  { label: "AI role", agency: "Generic prompts or a passive stats screen", system: "Custom-coded AI assists build, diagnosis, and optimization" },
+  { label: "Oversight", agency: "Accountability disappears after the pitch", system: "Software workflow plus team-reviewed operating logic" },
   { label: "Reporting", agency: "Vanity metrics with unclear next action", system: "Launch state, lead signal, and optimization prompts in context" },
   { label: "Ownership", agency: "Assets, data, and workflow often live elsewhere", system: "Campaign system lives in the operator account" },
   { label: "Scaling", agency: "Add another vendor or meeting cycle", system: "Tune the build, routing, creative, and review loop from software" },
@@ -126,8 +129,8 @@ const softwareModules = [
   {
     label: "03",
     title: "Creative engine",
-    body: "Ad angles and launch copy are generated around the funnel instead of sitting in a separate document.",
-    items: ["Hooks", "Static ad concepts", "Copy variants"],
+    body: "Ad angles, hooks, static concepts, and launch copy are generated around the funnel instead of sitting in a disconnected document.",
+    items: ["Hooks", "Static ad concepts", "Launch copy"],
   },
   {
     label: "04",
@@ -138,7 +141,7 @@ const softwareModules = [
   {
     label: "05",
     title: "Follow-up & optimization",
-    body: "Lead capture, routing signal, dashboard state, and next-action recommendations keep the loop measurable.",
+    body: "Lead capture, routing signal, dashboard state, and next-action recommendations keep the loop measurable without pretending results are guaranteed.",
     items: ["Lead loop", "Dashboard signal", "Optimization queue"],
   },
 ];
@@ -147,6 +150,7 @@ const fitSignals = [
   "You want software access instead of another agency sales-call funnel.",
   "You need campaign assets, lead capture, and reporting in one workflow.",
   "You want to review launch risk before spend or automations move.",
+  "You want AI-assisted infrastructure with human oversight, not a blank dashboard.",
   "You care about owning the funnel path, data flow, and operating process.",
 ];
 
@@ -166,8 +170,35 @@ const agencyFatigueCards = [
   {
     label: "Control",
     title: "DealFlow installs the loop in software.",
-    body: "The campaign, capture path, review gate, dashboard, and optimization signal stay inside the operator workflow from day one.",
+    body: "The campaign, creative layer, capture path, review gate, dashboard, and optimization signal stay inside the operator workflow from day one.",
     status: "Installed",
+  },
+];
+
+const operatorProofCards = [
+  {
+    label: "01",
+    title: "Built by ex-agency operators.",
+    body: "DealFlow OS was shaped by operators who have sat on the agency side, managed real acquisition workflows, and seen exactly where real estate campaigns break.",
+    icon: BadgeCheck,
+  },
+  {
+    label: "02",
+    title: "Over eight figures in ad spend experience.",
+    body: "That experience informs the operating model: offer, funnel, creative, routing, reporting, and optimization must work together before more traffic gets involved.",
+    icon: BarChart3,
+  },
+  {
+    label: "03",
+    title: "Custom-coded AI infrastructure.",
+    body: "The system comes from internal AI tooling built to coordinate marketing operations: creative production, funnel assembly, launch checks, routing, and optimization logic.",
+    icon: CircuitBoard,
+  },
+  {
+    label: "04",
+    title: "Software plus human oversight.",
+    body: "AI helps build and diagnose the system. The DealFlow team keeps the operating logic, quality bar, and launch-readiness layer under review so users are not dropped into a blank tool.",
+    icon: ShieldCheck,
   },
 ];
 
@@ -262,7 +293,7 @@ const engineModes = [
     id: "assemble",
     label: "Assemble",
     title: "The stack starts wiring itself together.",
-    body: "Funnel sections, ad angles, lead form states, preview panels, and routing logic move into one command layer.",
+    body: "Funnel sections, ad angles, lead form states, preview panels, and routing logic move into one command layer from the same operating model.",
     stat: "18",
     statLabel: "Assets staged",
     icon: CircuitBoard,
@@ -280,7 +311,7 @@ const engineModes = [
     id: "signal",
     label: "Signal",
     title: "The cockpit keeps telling the operator what changed.",
-    body: "DealFlow turns scattered campaign activity into next-action signal across leads, creative, budget, and follow-up.",
+    body: "DealFlow turns scattered campaign activity into next-action signal across leads, creative, budget posture, and follow-up.",
     stat: "09",
     statLabel: "Signal paths",
     icon: Activity,
@@ -305,24 +336,34 @@ const pricingCopy: Record<BillingPlanTier, { summary: string; features: string[]
 
 const faqs = [
   {
-    question: "Is this a marketing site or the actual product?",
+    question: "Is DealFlow OS an agency?",
     answer:
-      "The homepage is public. The software stays behind /login, with the dashboard, builder, preview, launch, settings, and public funnel routes preserved.",
+      "No. DealFlow OS is software-first acquisition infrastructure. It was built by ex-agency operators, but the CTA sends users into the product instead of a call-first retainer funnel.",
+  },
+  {
+    question: "Is this just another dashboard?",
+    answer:
+      "No. A passive dashboard only shows numbers after the work is scattered elsewhere. DealFlow OS assembles the funnel, creative direction, lead capture, routing, launch readiness, dashboard state, and optimization loop in one workflow.",
+  },
+  {
+    question: "What role does AI play?",
+    answer:
+      "AI assists the build and operating layer: campaign blueprint, funnel structure, creative angles, launch checks, routing logic, and optimization recommendations. It is infrastructure, not magic, and not a replacement for review.",
+  },
+  {
+    question: "Is there human oversight?",
+    answer:
+      "Yes. The product is designed around review gates and team-maintained operating logic so users are not left alone with a blank tool or an uninspected launch path.",
+  },
+  {
+    question: "Are results guaranteed?",
+    answer:
+      "No. This homepage intentionally avoids testimonials, logos, lead-volume guarantees, ROI guarantees, and unsupported performance claims. The promise is the infrastructure and operating workflow, not a fabricated outcome.",
   },
   {
     question: "Does DealFlow launch campaigns without review?",
     answer:
       "The product is built around a review-first launch path. Risky actions stay gated so operators can inspect campaign assets and settings before publishing.",
-  },
-  {
-    question: "Can the homepage use customer claims later?",
-    answer:
-      "Yes, once real proof exists. This version intentionally avoids testimonials, logos, and unsupported performance promises.",
-  },
-  {
-    question: "Where does the CTA go?",
-    answer:
-      "The main CTA sends visitors directly into account creation so the path stays software-first instead of sales-call-first.",
   },
 ];
 
@@ -1403,6 +1444,59 @@ function AgencyFatigueSection() {
   );
 }
 
+function OperatorBuiltSection() {
+  return (
+    <section id="operators" className="border-y border-white/10 bg-[#050b14] py-20 sm:py-28">
+      <div className="mx-auto w-full max-w-7xl px-5 sm:px-6 lg:px-8">
+        <div className="grid gap-10 lg:grid-cols-[0.88fr_1.12fr] lg:items-start">
+          <Reveal>
+            <p className="text-xs font-semibold uppercase text-cyan-200/80">Built by operators</p>
+            <h2 className="mt-4 text-3xl font-semibold leading-tight text-white sm:text-5xl">
+              Ex-agency experience, rebuilt as owned infrastructure.
+            </h2>
+            <p className="mt-5 text-base leading-8 text-white/62">
+              DealFlow OS was written by ex-agency operators who have managed over eight figures in ad spend and
+              watched the same failure pattern repeat: the offer lives in one place, the creative in another, the
+              funnel somewhere else, and the operator gets a screenshot instead of a system.
+            </p>
+            <p className="mt-4 text-base leading-8 text-white/62">
+              The product turns that operating experience into software: custom-coded AI infrastructure helps assemble
+              the campaign, while the DealFlow team keeps the strategy, quality bar, and launch-readiness logic under
+              review. It is not a passive KPI screen, and it is not a black-box agency promise.
+            </p>
+          </Reveal>
+
+          <Reveal delay={120}>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {operatorProofCards.map((card, index) => {
+                const Icon = card.icon;
+
+                return (
+                  <article
+                    key={card.title}
+                    className="group relative overflow-hidden rounded-lg border border-white/10 bg-white/[0.035] p-5 transition hover:-translate-y-1 hover:border-indigo-300/35 hover:bg-indigo-300/[0.055]"
+                    style={{ transitionDelay: `${index * 35}ms` }}
+                  >
+                    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent opacity-0 transition group-hover:opacity-100" />
+                    <div className="flex items-center justify-between gap-4">
+                      <p className="font-mono text-sm text-cyan-200">{card.label}</p>
+                      <span className="grid size-10 place-items-center rounded-lg border border-cyan-200/20 bg-cyan-200/10 text-cyan-100">
+                        <Icon className="size-5" />
+                      </span>
+                    </div>
+                    <h3 className="mt-5 text-lg font-semibold text-white">{card.title}</h3>
+                    <p className="mt-3 text-sm leading-7 text-white/60">{card.body}</p>
+                  </article>
+                );
+              })}
+            </div>
+          </Reveal>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function ComparisonSection() {
   return (
     <section id="difference" className="py-20 sm:py-28">
@@ -1410,11 +1504,12 @@ function ComparisonSection() {
         <Reveal>
           <p className="text-xs font-semibold uppercase text-cyan-200/80">Agency vs owned system</p>
           <h2 className="mt-4 text-3xl font-semibold leading-tight text-white sm:text-5xl">
-            Stop renting a service. Own the operating system.
+            Stop renting a service. Own the operating layer.
           </h2>
           <p className="mt-5 text-base leading-8 text-white/60">
             The core wedge is blunt: agents do not need another vendor promising a mystery pipeline. They need the
-            acquisition workflow installed where they can inspect it, operate it, and keep it.
+            acquisition workflow installed where they can inspect the funnel, creative, routing, launch state, and
+            optimization logic.
           </p>
           <div className="mt-8 space-y-3">
             {realizationBullets.map((item, index) => (
@@ -1461,7 +1556,7 @@ function SoftwareModulesSection() {
         <SectionHeader
           eyebrow="The software"
           title="Five modules. One owned operating layer."
-          body="The preview had the right amount of product specificity here. This version keeps the depth, but ties it directly to the actual software routes and review-first launch model."
+          body="DealFlow OS is active full-stack marketing infrastructure: inputs become a funnel, creative direction, lead capture, routing, dashboard signal, and optimization queue inside the same product path."
         />
 
         <div className="mt-14 grid gap-4 lg:grid-cols-5">
@@ -1492,8 +1587,8 @@ function SoftwareModulesSection() {
             <h3 className="mt-4 text-2xl font-semibold text-white">Show the system before the user commits.</h3>
             <p className="mt-4 text-sm leading-7 text-white/60">
               The homepage should make the visitor feel like the campaign instance already has shape: workspace,
-              campaign, leads, creative state, launch readiness, and reporting signal. That is now expressed in
-              the command-center cockpit instead of a static promise.
+              campaign, leads, creative state, launch readiness, and reporting signal. That is expressed in the
+              command-center cockpit instead of a static promise or a passive reporting screen.
             </p>
             </div>
           </Reveal>
@@ -1517,8 +1612,8 @@ function FitSection() {
           </h2>
           <p className="mt-5 text-base leading-8 text-white/60">
             No invented revenue thresholds. No fake scarcity. No call-first funnel pretending to be a product. The
-            clean qualifier is operational: this is for real estate teams that want the inbound acquisition loop
-            built into software.
+            clean qualifier is operational: this is for real estate teams that want AI-assisted inbound acquisition
+            infrastructure with human oversight built into software.
           </p>
         </Reveal>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -1547,7 +1642,8 @@ function ConversionPathSection() {
           </h2>
           <p className="mt-5 text-base leading-8 text-white/60">
             This is more conversion-optimized because it removes the agency behavior agents already distrust:
-            no calendar gate, no vague discovery call, no promise wall before they see the product.
+            no calendar gate, no vague discovery call, no promise wall before they see the product and the operating
+            layer behind it.
           </p>
         </Reveal>
         <Reveal delay={120}>
@@ -1641,7 +1737,7 @@ export function HomeCommandCenter() {
             <span className="text-lg font-semibold">DealFlow OS</span>
           </Link>
 
-          <nav aria-label="Primary navigation" className="hidden items-center gap-7 text-sm text-white/60 md:flex">
+          <nav aria-label="Primary navigation" className="hidden items-center gap-6 text-sm text-white/60 lg:flex">
             {navItems.map((item) => (
               <a key={item.href} className="transition hover:text-white" href={item.href}>
                 {item.label}
@@ -1667,7 +1763,7 @@ export function HomeCommandCenter() {
           <div className="min-w-0 flex flex-col justify-center">
             <div className="inline-flex w-fit items-center gap-2 rounded-full border border-indigo-200/25 bg-indigo-300/10 px-3 py-1.5 text-xs font-semibold text-cyan-100 shadow-[0_0_50px_-28px_rgba(129,140,248,0.95)]">
               <span className="size-1.5 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.9)]" />
-              No-agency command center for inbound dealflow
+              Ex-agency built command center for inbound dealflow
             </div>
 
             <h1 className="mt-7 max-w-[340px] text-4xl font-semibold leading-tight text-white sm:max-w-4xl sm:text-6xl sm:leading-[0.98] lg:text-7xl">
@@ -1678,9 +1774,9 @@ export function HomeCommandCenter() {
               </span>
             </h1>
             <p className="mt-6 max-w-[340px] text-lg leading-8 text-white/70 sm:max-w-2xl">
-              A one-of-one command layer for real estate operators who are tired of vague retainers, rented
-              dashboards, and lead promises. Build the funnel, assets, capture path, dashboard, and optimization
-              loop before another dollar goes into traffic.
+              A one-of-one command layer from ex-agency operators who have managed over eight figures in ad spend.
+              DealFlow turns the funnel, creative direction, capture path, routing, dashboard, and optimization loop
+              into owned software before another dollar goes into traffic.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -1703,8 +1799,8 @@ export function HomeCommandCenter() {
             <div className="mt-9 grid max-w-[340px] gap-3 sm:max-w-none sm:grid-cols-3">
               {[
                 ["No agency gate", "Direct software access"],
-                ["Review-gated", "Operator approval before risk"],
-                ["Owned system", "Campaign, funnel, leadflow"],
+                ["Human oversight", "Review before risk"],
+                ["AI infrastructure", "Campaign, funnel, leadflow"],
               ].map(([title, body]) => (
                 <div key={title} className="rounded-lg border border-white/10 bg-white/[0.035] p-4 transition hover:-translate-y-1 hover:border-indigo-300/25 hover:bg-indigo-300/[0.055]">
                   <p className="text-sm font-semibold text-white">{title}</p>
@@ -1723,7 +1819,7 @@ export function HomeCommandCenter() {
           <SectionHeader
             eyebrow="What gets installed"
             title="One operating layer, not another disconnected landing page."
-            body="DealFlow OS is the command layer around the whole acquisition loop: campaign build, review, launch readiness, lead capture, performance signal, and next action."
+            body="DealFlow OS is the command layer around the whole acquisition loop: campaign build, creative production, review, launch readiness, lead capture, routing, performance signal, and next action."
           />
 
           <div className="mt-14 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -1749,6 +1845,8 @@ export function HomeCommandCenter() {
 
       <AgencyFatigueSection />
 
+      <OperatorBuiltSection />
+
       <ProductEngineSection />
 
       <ComparisonSection />
@@ -1761,8 +1859,9 @@ export function HomeCommandCenter() {
               From raw market input to launch-ready system.
             </h2>
             <p className="mt-5 text-base leading-8 text-white/60">
-              The experience should feel like installing an acquisition machine: concise inputs, visible system
-              generation, review gates, and a dashboard that makes the next move obvious.
+              The experience should feel like installing an acquisition machine: concise inputs, AI-assisted system
+              generation, review gates, team-maintained operating logic, and a dashboard that makes the next move
+              obvious.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               {[
@@ -1919,7 +2018,8 @@ export function HomeCommandCenter() {
             </h2>
             <p className="mt-5 text-base leading-8 text-white/60">
               DealFlow OS sits near sensitive workflows: auth, billing, lead capture, campaign launch, and customer
-              communication. The public page should make that seriousness visible without exposing private details.
+              communication. The public page makes that seriousness visible without exposing private details or
+              pretending that automation removes operator review.
             </p>
           </div>
 
@@ -1961,7 +2061,7 @@ export function HomeCommandCenter() {
           <SectionHeader
             eyebrow="FAQ"
             title="Direct access, clean boundaries, no fake proof."
-            body="The homepage is built to convert into software access while respecting what the product can truthfully claim today."
+            body="The homepage is built to convert into software access while explaining the operator-built infrastructure behind the product."
           />
           <div className="mt-12 divide-y divide-white/10 rounded-lg border border-white/10 bg-white/[0.035]">
             {faqs.map((faq) => (
@@ -1986,8 +2086,8 @@ export function HomeCommandCenter() {
                 Build the command center before the next campaign goes live.
               </h2>
               <p className="mt-4 max-w-2xl text-base leading-8 text-white/60">
-                Start with account access, build the first campaign workspace, and keep the launch path inside
-                DealFlow OS from the first input to the final review.
+                Start with account access, build the first campaign workspace, and keep the funnel, creative, lead
+                route, dashboard, and review path inside DealFlow OS from the first input to the final review.
               </p>
             </div>
             <Link
