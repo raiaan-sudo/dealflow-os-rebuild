@@ -1,54 +1,39 @@
-import { redirect } from "next/navigation";
-import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
+import type { Metadata } from "next";
+import { HomeCommandCenter } from "@/components/marketing/home-command-center";
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
-  return new Promise<T>((resolve) => {
-    const timer = setTimeout(() => resolve(fallback), timeoutMs);
-
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
+export const metadata: Metadata = {
+  metadataBase: new URL("https://www.agentdealflow.io"),
+  title: "DealFlow OS | Inbound Deal System for Real Estate Operators",
+  description:
+    "DealFlow OS builds the funnel, campaign assets, lead capture, dashboard, and optimization loop for real estate acquisition teams.",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: "DealFlow OS | Inbound Deal System for Real Estate Operators",
+    description:
+      "Launch a complete real estate dealflow command center with funnel, creatives, lead capture, reporting, and optimization workflows.",
+    url: "/",
+    siteName: "DealFlow OS",
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "DealFlow OS command center for real estate inbound dealflow",
       },
-      () => {
-        clearTimeout(timer);
-        resolve(fallback);
-      },
-    );
-  });
-}
+    ],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "DealFlow OS | Inbound Deal System for Real Estate Operators",
+    description:
+      "Built by ex-agency operators, DealFlow OS turns funnel, creative, routing, reporting, and optimization into owned software.",
+    images: ["/opengraph-image"],
+  },
+};
 
-function getSafeRedirectPath(value?: string | null) {
-  if (!value) {
-    return "/dashboard";
-  }
-
-  if (!value.startsWith("/") || value.startsWith("//")) {
-    return "/dashboard";
-  }
-
-  return value;
-}
-
-export default async function HomePage({
-  searchParams,
-}: {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const supabase = await createRouteHandlerClient();
-  const params = searchParams ? await searchParams : {};
-  const nextPath =
-    typeof params.next === "string" ? getSafeRedirectPath(params.next) : "/dashboard";
-
-  if (!supabase) {
-    redirect("/login");
-  }
-
-  const user = await withTimeout(
-    supabase.auth.getUser().then((result) => result.data.user).catch(() => null),
-    2_500,
-    null,
-  );
-
-  redirect(user ? nextPath : "/login");
+export default function HomePage() {
+  return <HomeCommandCenter />;
 }
