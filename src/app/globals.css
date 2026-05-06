@@ -363,6 +363,57 @@
     transform-origin: left;
     animation: progressGrow 4.2s linear both;
   }
+
+  .df-figma-hero {
+    isolation: isolate;
+  }
+
+  .df-figma-hero::before {
+    content: "";
+    position: absolute;
+    inset-inline: max(20px, 8vw);
+    top: 160px;
+    height: 360px;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255, 255, 255, 0.1), transparent 62%),
+      radial-gradient(ellipse at 38% 34%, rgba(103, 232, 249, 0.12), transparent 56%),
+      radial-gradient(ellipse at 68% 30%, rgba(167, 139, 250, 0.16), transparent 58%);
+    filter: blur(10px);
+    opacity: 0.92;
+  }
+
+  .df-hero-stage {
+    isolation: isolate;
+  }
+
+  .df-hero-stage::before {
+    content: "";
+    position: absolute;
+    inset-inline: 4%;
+    top: -34px;
+    height: 140px;
+    z-index: -1;
+    pointer-events: none;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.24), rgba(129, 140, 248, 0.22), transparent);
+    filter: blur(24px);
+    opacity: 0.74;
+  }
+
+  .df-hero-stage::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    bottom: -2px;
+    height: 34%;
+    pointer-events: none;
+    background: linear-gradient(180deg, transparent, #030712 82%);
+  }
+
+  .df-hero-mockup {
+    transform-origin: top center;
+  }
 }
 @keyframes questionIn {
   from {

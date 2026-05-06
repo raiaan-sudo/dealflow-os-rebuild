@@ -711,8 +711,8 @@ function CommandCenterVisual() {
   }, []);
 
   return (
-    <div className="relative mx-auto min-w-0" style={{ width: "min(100%, 720px, calc(100vw - 64px))" }}>
-      <div className="df-ambient-panel df-holo-card relative w-full min-w-0 overflow-hidden rounded-lg border border-indigo-200/15 bg-[#050914] shadow-[0_40px_150px_-64px_rgba(99,102,241,0.9)]">
+    <div className="relative mx-auto min-w-0" style={{ width: "min(100%, 1100px, calc(100vw - 40px))" }}>
+      <div className="df-hero-mockup df-ambient-panel df-holo-card relative w-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-[#050914] shadow-[0_44px_150px_-62px_rgba(99,102,241,0.95)]">
         <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-white/[0.035] px-4 py-3">
           <div className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-rose-400 shadow-[0_0_18px_rgba(251,113,133,0.6)]" />
@@ -753,7 +753,7 @@ function CommandCenterVisual() {
           ))}
         </div>
 
-        <div className="grid min-w-0 gap-4 p-4 lg:grid-cols-[0.95fr_1.3fr]">
+        <div className="grid min-w-0 gap-4 p-4 sm:p-5 lg:grid-cols-[0.95fr_1.3fr]">
           <div className="min-w-0 space-y-4">
             <div className="relative overflow-hidden rounded-lg border border-white/10 bg-white/[0.045] p-4">
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-300/70 to-transparent" />
@@ -1773,60 +1773,66 @@ export function HomeCommandCenter() {
           </div>
         </header>
 
-        <section className="relative z-10 mx-auto grid w-full max-w-7xl gap-12 px-5 pb-20 pt-12 sm:px-6 sm:pt-20 lg:grid-cols-[0.92fr_1.08fr] lg:px-8 lg:pb-28">
-          <div className="min-w-0 flex flex-col justify-center">
-            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-indigo-200/25 bg-indigo-300/10 px-3 py-1.5 text-xs font-semibold text-cyan-100 shadow-[0_0_50px_-28px_rgba(129,140,248,0.95)]">
-              <span className="size-1.5 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.9)]" />
-              Ex-agency built command center for inbound dealflow
-            </div>
-
-            <h1 className="mt-7 max-w-[340px] text-4xl font-semibold leading-tight text-white sm:max-w-4xl sm:text-6xl sm:leading-[0.98] lg:text-7xl">
-              <span className="block sm:inline">Stop buying agency promises.</span>{" "}
-              <span className="block sm:inline">Launch the system</span>{" "}
-              <span className="block bg-gradient-to-r from-cyan-100 via-indigo-200 to-purple-300 bg-clip-text text-transparent sm:inline">
-                into dealflow.
-              </span>
-            </h1>
-            <p className="mt-6 max-w-[340px] text-lg leading-8 text-white/70 sm:max-w-2xl">
-              A one-of-one command layer from ex-agency operators who have managed over eight figures in ad spend.
-              DealFlow turns creative production, funnel assembly, capture, routing, dashboard visibility, and
-              optimization loops into owned software before another dollar goes into traffic.
-            </p>
-
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link
-                className="group inline-flex h-12 w-full max-w-[340px] items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-200 via-indigo-200 to-purple-200 px-6 text-base font-semibold text-slate-950 shadow-[0_24px_90px_-28px_rgba(129,140,248,0.95)] transition hover:-translate-y-0.5 hover:shadow-[0_28px_100px_-26px_rgba(192,132,252,0.95)] focus:outline-none focus:ring-2 focus:ring-indigo-200/50 sm:w-auto"
-                href={signupHref}
-                onClick={() => trackHomepageEvent("homepage_cta_click", { cta: "hero_get_access", destination: signupHref })}
-              >
-                Get Access
-                <ArrowRight className="size-4 transition group-hover:translate-x-1" />
-              </Link>
-              <a
-                className="inline-flex h-12 w-full max-w-[340px] items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.045] px-6 text-base font-semibold text-white transition hover:-translate-y-0.5 hover:bg-white/[0.075] focus:outline-none focus:ring-2 focus:ring-white/20 sm:w-auto"
-                href="#system"
-                onClick={() => trackHomepageEvent("homepage_cta_click", { cta: "hero_see_the_system", destination: "#system" })}
-              >
-                See the system
-                <ChevronRight className="size-4" />
-              </a>
-            </div>
-
-            <div className="mt-9 grid max-w-[340px] gap-3 sm:max-w-none sm:grid-cols-3">
-              {[
-                ["No agency gate", "Direct software access"],
-                ["Human oversight", "Review before risk"],
-                ["AI infrastructure", "Campaign, funnel, leadflow"],
-              ].map(([title, body]) => (
-                <div key={title} className="rounded-lg border border-white/10 bg-white/[0.035] p-4 transition hover:-translate-y-1 hover:border-indigo-300/25 hover:bg-indigo-300/[0.055]">
-                  <p className="text-sm font-semibold text-white">{title}</p>
-                  <p className="mt-1 text-xs leading-5 text-white/60">{body}</p>
-                </div>
-              ))}
-            </div>
+        <section className="df-figma-hero relative z-10 mx-auto flex w-full max-w-[1312px] flex-col items-center px-5 pb-16 pt-8 text-center sm:px-8 sm:pt-20 lg:pb-24">
+          <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/12 bg-white/[0.035] px-3 py-1.5 text-xs font-semibold text-white/68 shadow-[0_18px_70px_-46px_rgba(129,140,248,0.95)] backdrop-blur-xl sm:px-4">
+            <span className="size-1.5 shrink-0 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.9)]" />
+            <span className="truncate">Ex-agency built command center for inbound dealflow</span>
+            <ChevronRight className="hidden size-3.5 text-white/50 sm:block" />
           </div>
 
-          <CommandCenterVisual />
+          <h1 className="mt-6 max-w-[1120px] text-balance text-[42px] font-semibold leading-[0.96] text-white sm:mt-8 sm:text-7xl sm:leading-[0.94] lg:text-8xl">
+            <span className="bg-gradient-to-r from-white via-white to-white/55 bg-clip-text text-transparent">
+              Stop buying agency promises.
+            </span>{" "}
+            <span className="bg-gradient-to-r from-cyan-100 via-indigo-200 to-purple-300 bg-clip-text text-transparent">
+              Launch the system into dealflow.
+            </span>
+          </h1>
+
+          <p className="mt-5 max-w-3xl text-[15px] font-medium leading-7 text-white/62 sm:mt-6 sm:text-xl sm:leading-8">
+            A one-of-one command layer from ex-agency operators who have managed over eight figures in ad spend.
+            DealFlow turns creative production, funnel assembly, capture, routing, dashboard visibility, and
+            optimization loops into owned software before another dollar goes into traffic.
+          </p>
+
+          <div className="mt-7 flex w-full max-w-[520px] flex-col items-center justify-center gap-3 sm:mt-9 sm:flex-row">
+            <Link
+              className="group inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-white px-6 text-base font-semibold text-slate-950 shadow-[0_18px_70px_-34px_rgba(255,255,255,0.72)] transition hover:-translate-y-0.5 hover:bg-cyan-100 focus:outline-none focus:ring-2 focus:ring-white/50 sm:w-auto"
+              href={signupHref}
+              onClick={() => trackHomepageEvent("homepage_cta_click", { cta: "hero_get_access", destination: signupHref })}
+            >
+              Get Access
+              <ArrowRight className="size-4 transition group-hover:translate-x-1" />
+            </Link>
+            <a
+              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md border border-white/12 bg-white/[0.045] px-6 text-base font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition hover:-translate-y-0.5 hover:bg-white/[0.075] focus:outline-none focus:ring-2 focus:ring-white/20 sm:w-auto"
+              href="#system"
+              onClick={() => trackHomepageEvent("homepage_cta_click", { cta: "hero_see_the_system", destination: "#system" })}
+            >
+              See the system
+              <ChevronRight className="size-4" />
+            </a>
+          </div>
+
+          <div className="mt-10 grid w-full max-w-3xl gap-3 sm:grid-cols-3">
+            {[
+              ["No agency gate", "Direct software access"],
+              ["Human oversight", "Review before risk"],
+              ["AI infrastructure", "Campaign, funnel, leadflow"],
+            ].map(([title, body]) => (
+              <div
+                key={title}
+                className="rounded-lg border border-white/10 bg-white/[0.028] p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:-translate-y-1 hover:border-indigo-300/25 hover:bg-indigo-300/[0.055]"
+              >
+                <p className="text-sm font-semibold text-white">{title}</p>
+                <p className="mt-1 text-xs leading-5 text-white/54">{body}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="df-hero-stage relative mt-14 w-full">
+            <CommandCenterVisual />
+          </div>
         </section>
       </div>
 
