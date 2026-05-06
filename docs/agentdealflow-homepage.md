@@ -28,6 +28,7 @@ The public root route renders a software-first landing page for `agentdealflow.i
 - The first viewport is adapted from the Launch UI "Titanium" Figma reference: compact nav, centered badge, oversized gradient headline, paired CTAs, trust chips, and a framed product cockpit mockup rising from a soft glow.
 - Treat Figma as visual direction, not source copy. Preserve DealFlow positioning, no-pricing policy, no fake proof, direct signup CTA, and SaaS route boundaries.
 - Mobile first viewport should keep the primary signup CTA reachable at 320px width without horizontal overflow.
+- Do not use scroll-driven overlapping panel transitions on the public homepage. If a transition harms readability or causes layered text/card overlap, replace it with a static, scannable section.
 
 ## Verification
 

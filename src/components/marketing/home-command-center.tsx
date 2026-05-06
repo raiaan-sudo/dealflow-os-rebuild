@@ -493,57 +493,6 @@ function useScrollProgress() {
   return progress;
 }
 
-function useElementScrollProgress<T extends HTMLElement>() {
-  const ref = useRef<T | null>(null);
-  const [progress, setProgress] = useState(0);
-
-  useEffect(() => {
-    const node = ref.current;
-    if (!node) {
-      return;
-    }
-
-    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (prefersReducedMotion) {
-      setProgress(1);
-      return;
-    }
-
-    let frameId = 0;
-    const update = () => {
-      if (frameId) {
-        window.cancelAnimationFrame(frameId);
-      }
-
-      frameId = window.requestAnimationFrame(() => {
-        const rect = node.getBoundingClientRect();
-        const viewport = window.innerHeight || 1;
-        const scrollable = Math.max(rect.height - viewport, 1);
-        const raw = -rect.top / scrollable;
-        setProgress(Math.min(Math.max(raw, 0), 1));
-      });
-    };
-
-    update();
-    window.addEventListener("scroll", update, { passive: true });
-    window.addEventListener("resize", update);
-
-    return () => {
-      if (frameId) {
-        window.cancelAnimationFrame(frameId);
-      }
-      window.removeEventListener("scroll", update);
-      window.removeEventListener("resize", update);
-    };
-  }, []);
-
-  return { ref, progress };
-}
-
-function clamp(value: number) {
-  return Math.min(Math.max(value, 0), 1);
-}
-
 function Reveal({
   children,
   className,
@@ -992,182 +941,69 @@ function AgencySignalGraphic() {
   );
 }
 
-function ScrollCinemaTransition() {
-  const { ref, progress } = useElementScrollProgress<HTMLElement>();
-  const promiseOpacity = clamp(1 - progress * 2.35);
-  const systemOpacity = clamp((progress - 0.24) * 2.2);
-  const commandOpacity = clamp((progress - 0.52) * 2.6);
-  const splitDistance = Math.round(clamp(progress * 1.35) * 46);
-  const scanY = Math.round(12 + progress * 76);
-  const cockpitScale = 0.92 + commandOpacity * 0.08;
+function OperatingLayerSection() {
+  const breakdown = [
+    {
+      label: "01",
+      title: "Promises get removed.",
+      body: "No guarantee language, rented dashboards, fake proof, or call-first sales loop. The page moves straight into software access.",
+      icon: Megaphone,
+    },
+    {
+      label: "02",
+      title: "The system gets installed.",
+      body: "Funnel, creative direction, lead capture, routing, launch checks, dashboard state, and optimization logic live in one operating layer.",
+      icon: CircuitBoard,
+    },
+    {
+      label: "03",
+      title: "Humans review the risky parts.",
+      body: "AI coordinates the build. The DealFlow team oversees quality, strategy, and launch readiness before risky actions move.",
+      icon: ShieldCheck,
+    },
+  ];
 
   return (
-    <section ref={ref} className="df-scroll-cinema relative border-y border-white/10 bg-[#020611] lg:min-h-[260vh]">
-      <div className="relative flex items-center overflow-visible py-16 sm:py-20 lg:sticky lg:top-0 lg:min-h-screen lg:overflow-hidden">
-        <div aria-hidden="true" className="df-scroll-cinema-backdrop" />
-        <div
-          aria-hidden="true"
-          className="df-scroll-scan"
-          style={{ transform: `translateY(${scanY}vh)` }}
-        />
-        <div className="relative z-10 mx-auto grid w-full max-w-7xl gap-8 px-5 sm:px-6 lg:grid-cols-[0.86fr_1.14fr] lg:items-center lg:px-8">
-          <div className="max-w-xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1.5 text-xs font-semibold text-cyan-100">
-              <span className="size-1.5 rounded-full bg-cyan-200 shadow-[0_0_18px_rgba(103,232,249,0.9)]" />
-              Scroll transition
-            </div>
-            <h2 className="mt-6 text-4xl font-semibold leading-[0.98] text-white sm:text-6xl sm:leading-[0.95]">
-              Watch the agency pitch collapse into an owned system.
-            </h2>
-            <p className="mt-6 text-base leading-8 text-white/62">
-              As the visitor scrolls, the page moves from the old promise layer into the actual product layer:
-              disconnected claims break apart, the acquisition loop assembles, and the command center comes online.
-            </p>
-            <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              {[
-                ["Promise", promiseOpacity],
-                ["Assembly", systemOpacity],
-                ["Command", commandOpacity],
-              ].map(([label, opacity], index) => (
-                <div key={label as string} className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
-                  <p className="font-mono text-xs text-cyan-200">0{index + 1}</p>
-                  <p className="mt-2 text-sm font-semibold text-white">{label as string}</p>
-                  <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/10">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-indigo-300 to-purple-300"
-                      style={{ transform: `scaleX(${opacity as number})`, transformOrigin: "left" }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+    <section className="border-y border-white/10 bg-[#020611] py-20 sm:py-28">
+      <div className="mx-auto grid w-full max-w-7xl gap-10 px-5 sm:px-6 lg:grid-cols-[0.86fr_1.14fr] lg:items-center lg:px-8">
+        <Reveal>
+          <p className="text-xs font-semibold uppercase text-cyan-200/80">Operating layer</p>
+          <h2 className="mt-4 text-3xl font-semibold leading-tight text-white sm:text-5xl">
+            The agency pitch gets replaced by a real acquisition workflow.
+          </h2>
+          <p className="mt-5 text-base leading-8 text-white/62">
+            Real estate operators do not need another animated promise stack. They need to see what DealFlow actually
+            controls: creative direction, funnel assembly, lead capture, routing, launch checks, reporting, optimization
+            logic, and human oversight in one software-first flow.
+          </p>
+        </Reveal>
 
-          <div className="df-scroll-stage relative min-h-[760px] overflow-hidden rounded-lg border border-indigo-200/15 bg-[#050914] p-4 shadow-[0_48px_150px_-72px_rgba(129,140,248,0.95)] sm:min-h-[620px] sm:p-6">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_54%_42%,rgba(129,140,248,0.22),transparent_32%),radial-gradient(circle_at_20%_84%,rgba(34,211,238,0.12),transparent_30%),radial-gradient(circle_at_84%_18%,rgba(168,85,247,0.2),transparent_28%)]" />
+        <Reveal delay={120}>
+          <div className="df-ambient-panel overflow-hidden rounded-2xl border border-indigo-200/15 bg-[#07101c] p-5 shadow-[0_44px_130px_-76px_rgba(129,140,248,0.9)] sm:p-6">
+            <div className="grid gap-4 md:grid-cols-3">
+              {breakdown.map((item) => {
+                const Icon = item.icon;
 
-            <div
-              className="absolute inset-3 rounded-lg border border-rose-200/15 bg-rose-300/[0.035] p-4 transition will-change-transform sm:inset-5 sm:p-5"
-              style={{
-                opacity: promiseOpacity,
-                transform: `translateX(${-splitDistance}px) rotate(${-progress * 3}deg) scale(${1 - progress * 0.06})`,
-              }}
-            >
-              <p className="text-xs font-semibold uppercase text-rose-100/70">Old layer</p>
-              <h3 className="mt-4 max-w-sm text-2xl font-semibold text-white sm:text-3xl">The agency promise stack.</h3>
-              <div className="mt-6 grid gap-3 sm:mt-8 sm:grid-cols-2">
-                {["Lead guarantee", "Rented dashboard", "Hidden handoff", "Another call"].map((item, index) => (
-                  <div
-                    key={item}
-                    className="rounded-lg border border-white/10 bg-[#0b1020]/80 p-3 sm:p-4"
-                    style={{
-                      transform: `translate(${index % 2 === 0 ? -splitDistance : splitDistance}px, ${progress * 22}px)`,
-                    }}
-                  >
-                    <Megaphone className="size-4 text-rose-100/70" />
-                    <p className="mt-3 text-sm font-semibold text-white">{item}</p>
-                    <p className="mt-2 text-xs leading-5 text-white/48">Disconnected from the operator workflow.</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div
-              className="absolute inset-3 rounded-lg border border-cyan-200/20 bg-cyan-200/[0.035] p-4 transition will-change-transform sm:inset-5 sm:p-5"
-              style={{
-                opacity: systemOpacity,
-                transform: `translateY(${(1 - systemOpacity) * 34}px) scale(${0.96 + systemOpacity * 0.04})`,
-              }}
-            >
-              <p className="text-xs font-semibold uppercase text-cyan-100/75">Installing system</p>
-              <h3 className="mt-4 max-w-md text-2xl font-semibold text-white sm:text-3xl">The acquisition loop assembles.</h3>
-              <div className="relative mt-6 min-h-[330px] rounded-lg border border-white/10 bg-[#030712]/80 sm:mt-8 sm:min-h-[300px]">
-                <svg aria-hidden="true" className="absolute inset-0 h-full w-full" viewBox="0 0 560 300" preserveAspectRatio="none">
-                  <defs>
-                    <linearGradient id="scroll-cinema-line" x1="0" x2="1">
-                      <stop offset="0%" stopColor="#22d3ee" />
-                      <stop offset="52%" stopColor="#818cf8" />
-                      <stop offset="100%" stopColor="#c084fc" />
-                    </linearGradient>
-                  </defs>
-                  {["M80 70 C190 36 238 112 280 150", "M480 70 C370 36 322 112 280 150", "M90 238 C190 260 238 186 280 150", "M470 238 C370 260 322 186 280 150"].map((path, index) => (
-                    <path
-                      key={path}
-                      className="dealflow-signal-line"
-                      d={path}
-                      fill="none"
-                      stroke="url(#scroll-cinema-line)"
-                      strokeLinecap="round"
-                      strokeWidth="2.2"
-                      style={{ animationDelay: `${index * 100}ms` }}
-                    />
-                  ))}
-                </svg>
-                <div className="absolute left-1/2 top-1/2 grid size-28 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-cyan-200/35 bg-[#07101c] shadow-[0_0_95px_-22px_rgba(103,232,249,0.95)]">
-                  <CircuitBoard className="size-7 text-cyan-100" />
-                  <span className="text-[10px] font-semibold uppercase text-white/70">Core</span>
-                </div>
-                {["Funnel", "Assets", "Lead route", "Dashboard"].map((item, index) => (
-                  <div
-                    key={item}
-                    className="absolute rounded-lg border border-cyan-200/20 bg-cyan-200/10 px-3 py-2 text-xs font-semibold text-cyan-50"
-                    style={{
-                      left: `${[8, 68, 10, 66][index]}%`,
-                      top: `${[14, 16, 72, 72][index]}%`,
-                      opacity: clamp(systemOpacity + index * 0.12),
-                    }}
-                  >
-                    {item}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div
-              className="absolute inset-3 rounded-lg border border-indigo-200/25 bg-[#07101c] p-4 transition will-change-transform sm:inset-5 sm:p-5"
-              style={{
-                opacity: commandOpacity,
-                transform: `translateY(${(1 - commandOpacity) * 42}px) scale(${cockpitScale})`,
-              }}
-            >
-              <div className="flex flex-col gap-3 border-b border-white/10 pb-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase text-indigo-100/75">Command center online</p>
-                  <h3 className="mt-2 text-xl font-semibold text-white sm:text-2xl">DealFlow OS takes over the page.</h3>
-                </div>
-                <span className="w-fit rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-                  Online
-                </span>
-              </div>
-              <div className="mt-5 grid gap-4 lg:grid-cols-[0.88fr_1.12fr]">
-                <div className="space-y-3">
-                  {["Funnel generated", "Creatives assembled", "Lead route checked", "Operator review"].map((item, index) => (
-                    <div key={item} className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.04] p-2.5 sm:p-3">
-                      <div className="grid size-7 shrink-0 place-items-center rounded-full border border-cyan-300/30 bg-cyan-300/10 text-cyan-200 sm:size-8">
-                        <Check className="size-4" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-white">{item}</p>
-                        <div className="mt-1 h-1.5 rounded-full bg-white/10">
-                          <div
-                            className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-indigo-300 to-purple-300"
-                            style={{ width: `${72 + index * 8}%` }}
-                          />
-                        </div>
-                      </div>
+                return (
+                  <article key={item.title} className="rounded-lg border border-white/10 bg-white/[0.035] p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-mono text-xs text-cyan-200">{item.label}</span>
+                      <span className="grid size-9 place-items-center rounded-lg border border-cyan-200/20 bg-cyan-200/10 text-cyan-100">
+                        <Icon className="size-4" />
+                      </span>
                     </div>
-                  ))}
-                </div>
-                <AnimatedChart
-                  gradientId="scroll-cinema-chart"
-                  points="0,126 70,112 142,88 214,82 286,58 360,46 426,32 500,18"
-                  status="Rising signal"
-                  title="Owned system pressure"
-                />
-              </div>
+                    <h3 className="mt-5 text-lg font-semibold text-white">{item.title}</h3>
+                    <p className="mt-3 text-sm leading-7 text-white/60">{item.body}</p>
+                  </article>
+                );
+              })}
+            </div>
+
+            <div className="mt-5">
+              <AgencySignalGraphic />
             </div>
           </div>
-        </div>
+        </Reveal>
       </div>
     </section>
   );
@@ -1863,7 +1699,7 @@ export function HomeCommandCenter() {
         </div>
       </section>
 
-      <ScrollCinemaTransition />
+      <OperatingLayerSection />
 
       <AgencyFatigueSection />
 
