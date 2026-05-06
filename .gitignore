@@ -30,4 +30,5 @@ pnpm-debug.log*
 coverage/
 output/
 *.tsbuildinfo
+next-env.d.ts
 recovery-report.json

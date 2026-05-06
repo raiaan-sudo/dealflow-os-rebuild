@@ -1575,7 +1575,7 @@ export function HomeCommandCenter() {
         <div className="absolute left-1/2 top-28 h-px w-[min(920px,calc(100vw-40px))] -translate-x-1/2 bg-gradient-to-r from-transparent via-indigo-300/70 to-transparent motion-safe:animate-[signalSweep_4.8s_ease-in-out_infinite]" />
 
         <header className="relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-5 py-5 sm:px-6 lg:px-8">
-          <Link aria-label="DealFlow OS home" className="flex items-center gap-3" href="/">
+          <Link className="flex items-center gap-3" href="/">
             <span className="grid size-10 place-items-center rounded-lg border border-cyan-200/20 bg-cyan-300/10 text-sm font-bold text-cyan-100 shadow-[0_0_38px_-16px_rgba(103,232,249,0.95)]">
               D
             </span>
@@ -1616,16 +1616,22 @@ export function HomeCommandCenter() {
             <ChevronRight className="hidden size-3.5 text-white/50 sm:block" />
           </div>
 
-          <h1 className="mt-6 max-w-[1120px] text-balance text-[42px] font-semibold leading-[0.96] text-white sm:mt-8 sm:text-7xl sm:leading-[0.94] lg:text-8xl">
-            <span className="bg-gradient-to-r from-white via-white to-white/55 bg-clip-text text-transparent">
-              Stop buying agency promises.
+          <h1 className="mt-6 max-w-[10.5em] text-balance text-[clamp(1.875rem,7vw,2.25rem)] font-semibold leading-[0.98] text-white sm:mt-8 sm:max-w-[1120px] sm:text-7xl sm:leading-[0.94] lg:text-8xl">
+            <span className="block bg-gradient-to-r from-white via-white to-white/55 bg-clip-text text-transparent sm:inline">
+              Stop buying
             </span>{" "}
-            <span className="bg-gradient-to-r from-cyan-100 via-indigo-200 to-purple-300 bg-clip-text text-transparent">
-              Launch the system into dealflow.
+            <span className="block bg-gradient-to-r from-white via-white to-white/55 bg-clip-text text-transparent sm:inline">
+              agency promises.
+            </span>{" "}
+            <span className="block bg-gradient-to-r from-cyan-100 via-indigo-200 to-purple-300 bg-clip-text text-transparent sm:inline">
+              Launch the system
+            </span>{" "}
+            <span className="block bg-gradient-to-r from-cyan-100 via-indigo-200 to-purple-300 bg-clip-text text-transparent sm:inline">
+              into dealflow.
             </span>
           </h1>
 
-          <p className="mt-5 max-w-3xl text-[15px] font-medium leading-7 text-white/62 sm:mt-6 sm:text-xl sm:leading-8">
+          <p className="mt-5 max-w-[30ch] text-sm font-medium leading-6 text-white/62 sm:mt-6 sm:max-w-3xl sm:text-xl sm:leading-8">
             A one-of-one command layer from ex-agency operators who have managed over eight figures in ad spend.
             DealFlow turns creative production, funnel assembly, capture, routing, dashboard visibility, and
             optimization loops into owned software before another dollar goes into traffic.
