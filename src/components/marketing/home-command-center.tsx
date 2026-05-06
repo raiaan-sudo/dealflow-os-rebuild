@@ -33,10 +33,14 @@ const signupHref = "/login?mode=sign-up";
 const scrollTrackingMilestones = [25, 50, 75, 90] as const;
 
 function trackHomepageEvent(event: string, properties: Record<string, string | number | boolean> = {}) {
-  track(event, {
-    page: "homepage",
-    ...properties,
-  });
+  try {
+    track(event, {
+      page: "homepage",
+      ...properties,
+    });
+  } catch {
+    // Analytics must never block homepage navigation or interactive controls.
+  }
 }
 
 function useHomepageScrollTracking(progress: number) {
@@ -1584,7 +1588,7 @@ export function HomeCommandCenter() {
 
           <nav aria-label="Primary navigation" className="hidden items-center gap-6 text-sm text-white/60 lg:flex">
             {navItems.map((item) => (
-              <a key={item.href} className="transition hover:text-white" href={item.href}>
+              <a key={item.href} className="inline-flex min-h-10 items-center transition hover:text-white" href={item.href}>
                 {item.label}
               </a>
             ))}
@@ -1592,7 +1596,7 @@ export function HomeCommandCenter() {
 
           <div className="flex shrink-0 items-center gap-2">
             <Link
-              className="hidden text-sm font-medium text-white/60 transition hover:text-white sm:inline"
+              className="hidden min-h-10 items-center px-2 text-sm font-medium text-white/60 transition hover:text-white sm:inline-flex"
               href="/login"
               onClick={() => trackHomepageEvent("homepage_signin_click", { destination: "/login" })}
             >
@@ -1963,13 +1967,13 @@ export function HomeCommandCenter() {
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 text-sm text-white/48 sm:flex-row sm:items-center sm:justify-between">
           <p>DealFlow OS. Software access for owned inbound dealflow infrastructure.</p>
           <nav aria-label="Legal" className="flex flex-wrap gap-x-5 gap-y-2">
-            <Link className="transition hover:text-white" href="/privacy">
+            <Link className="inline-flex min-h-9 items-center transition hover:text-white" href="/privacy">
               Privacy
             </Link>
-            <Link className="transition hover:text-white" href="/terms">
+            <Link className="inline-flex min-h-9 items-center transition hover:text-white" href="/terms">
               Terms
             </Link>
-            <Link className="transition hover:text-white" href="/data-deletion">
+            <Link className="inline-flex min-h-9 items-center transition hover:text-white" href="/data-deletion">
               Data deletion
             </Link>
           </nav>

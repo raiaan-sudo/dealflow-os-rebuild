@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 const homepage = readFileSync("src/components/marketing/home-command-center.tsx", "utf8");
 const page = readFileSync("src/app/page.tsx", "utf8");
 const loginPage = readFileSync("src/app/(auth)/login/page.tsx", "utf8");
+const loginForm = readFileSync("src/components/auth/login-form.tsx", "utf8");
 
 const requiredHomepageSnippets = [
   "DealFlow OS",
@@ -74,6 +75,18 @@ if (!page.includes("HomeCommandCenter")) {
 
 if (!loginPage.includes("initialMode")) {
   throw new Error("Login page must support homepage sign-up CTA mode.");
+}
+
+if (!loginForm.includes("? \"Sign In\"")) {
+  throw new Error("Login form sign-in action must be clearly labeled Sign In.");
+}
+
+if (loginForm.includes("Launch My Campaign")) {
+  throw new Error("Login form must not label sign-in as a campaign launch action.");
+}
+
+if (!homepage.includes("try {\n    track(event") || !homepage.includes("} catch {")) {
+  throw new Error("Homepage CTA tracking must stay fail-open so analytics cannot block navigation.");
 }
 
 console.log("Homepage content checks passed.");

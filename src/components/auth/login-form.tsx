@@ -318,7 +318,7 @@ export function LoginForm({
     isPending
       ? "Please wait..."
       : mode === "sign-in"
-        ? "Launch My Campaign"
+        ? "Sign In"
         : mode === "sign-up"
           ? "Create Account"
           : mode === "reset-password"
