@@ -10,24 +10,31 @@ type SelectablePlanTier = Extract<BillingPlanTier, "starter" | "pro">;
 
 const PLAN_FEATURES: Record<SelectablePlanTier, string[]> = {
   starter: [
-    "Guided campaign builder",
-    "Offer-led funnel preview",
-    "Static creative test set",
-    "Meta connection and launch gates",
-    "Manual launch approval controls",
+    "Guided campaign setup",
+    "Offer-led funnel and creative preview",
+    "Recommended optimization checklist",
+    "Meta readiness and launch gates",
+    "You approve and apply each step",
   ],
   pro: [
     "Everything in Starter",
-    "Priority launch workspace",
-    "Advanced creative and funnel controls",
-    "Autonomous operator readiness checks",
-    "Expanded optimization reporting",
+    "Fully covered launch workspace",
+    "Self-optimizing campaign checks",
+    "Autonomous readiness monitoring",
+    "Expanded performance recommendations",
   ],
 };
 
 const PLAN_SUMMARY: Record<SelectablePlanTier, string> = {
-  starter: "Best for agents who want a guided campaign launch without autonomous operator controls.",
-  pro: "Best for agents who want the full launch room, richer controls, and ongoing optimization signals.",
+  starter:
+    "Recommended for agents who want DealFlow to map the optimizations while they approve and apply the next steps.",
+  pro:
+    "For agents who want the campaign fully covered with self-optimizing checks, richer controls, and ongoing launch guidance.",
+};
+
+const PLAN_POSITIONING: Record<SelectablePlanTier, string> = {
+  starter: "Recommended optimization",
+  pro: "Fully covered + self-optimizing",
 };
 
 export function PaywallPlanSelector({
@@ -55,7 +62,7 @@ export function PaywallPlanSelector({
               type="button"
               onClick={() => setSelectedTier(tier)}
               className={[
-                "group relative flex min-h-[360px] flex-col rounded-[28px] border p-5 text-left transition duration-200",
+                "group relative flex min-h-[340px] flex-col rounded-[28px] border p-5 text-left transition duration-200",
                 "hover:-translate-y-1 hover:border-cyan-300/45 hover:bg-cyan-300/[0.055] hover:shadow-[0_28px_90px_-44px_rgba(34,211,238,0.55)]",
                 selected
                   ? "border-cyan-300/55 bg-cyan-300/[0.08] shadow-[0_26px_80px_-48px_rgba(34,211,238,0.8)]"
@@ -68,9 +75,7 @@ export function PaywallPlanSelector({
                   <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-100/75">
                     {tier === "starter" ? "Guided launch" : "Operator launch"}
                   </p>
-                  <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-white">
-                    {plan.name}
-                  </h3>
+                  <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-white">{plan.name}</h3>
                   <p className="mt-1 text-lg font-semibold text-cyan-100">{plan.priceLabel}</p>
                 </div>
                 <span
@@ -85,7 +90,11 @@ export function PaywallPlanSelector({
                 </span>
               </div>
 
-              <p className="mt-4 text-sm leading-6 text-white/68">{PLAN_SUMMARY[tier]}</p>
+              <div className="mt-4 inline-flex w-fit rounded-full border border-cyan-300/18 bg-cyan-300/[0.06] px-3 py-1 text-xs font-semibold text-cyan-100">
+                {PLAN_POSITIONING[tier]}
+              </div>
+
+              <p className="mt-3 text-sm leading-6 text-white/68">{PLAN_SUMMARY[tier]}</p>
 
               <div className="mt-5 space-y-3">
                 {PLAN_FEATURES[tier].map((feature) => (
@@ -96,13 +105,11 @@ export function PaywallPlanSelector({
                 ))}
               </div>
 
-              {tier === "pro" ? (
-                <div className="mt-auto pt-5">
-                  <span className="rounded-full border border-cyan-300/20 bg-cyan-300/[0.08] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100">
-                    Recommended
-                  </span>
-                </div>
-              ) : null}
+              <div className="mt-auto pt-5">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-white/44">
+                  {tier === "starter" ? "Guided by DealFlow, executed by you" : "DealFlow monitors and guides the full path"}
+                </span>
+              </div>
             </button>
           );
         })}

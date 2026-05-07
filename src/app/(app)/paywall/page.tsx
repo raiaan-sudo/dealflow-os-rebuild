@@ -96,14 +96,14 @@ export default async function PaywallPage({
         }
       />
 
-      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,0.78fr)_minmax(620px,1fr)] xl:items-start">
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(540px,0.95fr)_minmax(560px,1.05fr)] xl:items-start">
         <div className="min-w-0 space-y-4 xl:order-2">
           <Card className="p-5 sm:p-6">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Choose launch access</p>
-              <h2 className="mt-2 text-2xl font-semibold">Pick the plan that fits this launch</h2>
+              <h2 className="mt-2 text-2xl font-semibold">Pick how DealFlow should optimize this launch</h2>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
-                Preview stays free. Checkout only unlocks launch access; paid image or video generation still remains credit-gated after activation.
+                Starter gives you recommended optimizations to approve and apply. Pro keeps the launch fully covered with self-optimizing checks. Paid image or video generation remains credit-gated after activation.
               </p>
             </div>
             <div className="mt-5">

@@ -588,7 +588,7 @@ export function PrepaywallCampaignPreview({
         </div>
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
         <CompactLockedPill icon={ImageIcon} label="Static creative locked" />
         <CompactLockedPill icon={Sparkles} label="AI image locked" />
         <CompactLockedPill icon={PlayCircle} label="HeyGen UGC locked" />
