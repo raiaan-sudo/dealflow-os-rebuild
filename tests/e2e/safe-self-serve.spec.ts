@@ -56,6 +56,14 @@ test.describe("safe public browser proof", () => {
     await page.goto("/login");
     await expect(page.getByText("Build, launch, and optimize your ads")).toBeVisible();
 
+    await page.goto("/");
+    await page.getByRole("link", { name: /Start building/i }).click();
+    await expect(page).toHaveURL(/\/login\?reason=expired&redirectedFrom=%2Fwelcome/);
+
+    await page.goto("/");
+    await page.getByRole("link", { name: /Open app/i }).click();
+    await expect(page).toHaveURL(/\/login\?reason=expired&redirectedFrom=%2Fdashboard/);
+
     await page.goto("/privacy");
     await expect(page.getByRole("heading", { name: /Privacy/i })).toBeVisible();
 

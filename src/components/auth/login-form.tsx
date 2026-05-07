@@ -12,6 +12,7 @@ type LoginFormProps = {
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
 const GOOGLE_AUTH_ENABLED = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_AUTH === "true";
 const TURNSTILE_SCRIPT_ID = "cloudflare-turnstile-script";
+const DEFAULT_AUTH_REDIRECT_PATH = "/welcome";
 
 declare global {
   interface Window {
@@ -50,11 +51,15 @@ export function LoginForm({
 
   function getSafeRedirectPath(value?: string) {
     if (!value) {
-      return "/";
+      return DEFAULT_AUTH_REDIRECT_PATH;
     }
 
     if (!value.startsWith("/") || value.startsWith("//")) {
-      return "/";
+      return DEFAULT_AUTH_REDIRECT_PATH;
+    }
+
+    if (value === "/" || value.startsWith("/login")) {
+      return DEFAULT_AUTH_REDIRECT_PATH;
     }
 
     return value;
@@ -75,10 +80,7 @@ export function LoginForm({
 
     try {
       const nextPath = getSafeRedirectPath(redirectedFrom);
-      const redirectTo = new URL("/", window.location.origin);
-      if (nextPath && nextPath !== "/") {
-        redirectTo.searchParams.set("next", nextPath);
-      }
+      const redirectTo = new URL(nextPath, window.location.origin);
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: {

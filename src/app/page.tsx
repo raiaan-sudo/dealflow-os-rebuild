@@ -50,7 +50,7 @@ export default function HomePage() {
               <Link href="/login">Sign in</Link>
             </Button>
             <Button asChild size="sm">
-              <Link href="/login">
+              <Link href="/dashboard">
                 Open app
                 <ArrowRight aria-hidden="true" />
               </Link>
@@ -75,7 +75,7 @@ export default function HomePage() {
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Button asChild size="lg">
-              <Link href="/login">
+              <Link href="/welcome">
                 Start building
                 <ArrowRight aria-hidden="true" />
               </Link>
