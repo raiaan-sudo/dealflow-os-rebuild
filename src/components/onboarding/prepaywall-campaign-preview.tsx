@@ -296,31 +296,6 @@ function PreviewChip({ children }: { children: ReactNode }) {
   );
 }
 
-function LockedItem({
-  icon,
-  label,
-  detail,
-  compact = false,
-}: {
-  icon: ComponentType<{ className?: string }>;
-  label: string;
-  detail: string;
-  compact?: boolean;
-}) {
-  return (
-    <div className={cn("flex items-start gap-3 rounded-2xl border border-white/10 bg-black/16", compact ? "p-2.5" : "p-3")}>
-      <MiniIconTile icon={icon} className="text-violet-100" />
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <p className={cn("font-semibold text-white/88", compact ? "text-xs leading-4" : "text-sm")}>{label}</p>
-          <Lock className="size-3.5 text-white/42" />
-        </div>
-        <p className={cn("mt-1 text-xs text-white/50", compact ? "line-clamp-2 leading-4" : "leading-5")}>{detail}</p>
-      </div>
-    </div>
-  );
-}
-
 function CompactLockedPill({
   icon: Icon,
   label,
@@ -614,26 +589,10 @@ export function PrepaywallCampaignPreview({
       </div>
 
       <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        <LockedItem
-          icon={ImageIcon}
-          label="Static creative generation locked"
-          detail="The frame above is a deterministic placeholder, not a final generated asset."
-        />
-        <LockedItem
-          icon={Sparkles}
-          label="AI image generation locked"
-          detail="OpenAI image generation is credit-gated and stays off before checkout."
-        />
-        <LockedItem
-          icon={PlayCircle}
-          label="HeyGen UGC video locked"
-          detail="UGC video generation starts only after billing and explicit credit use."
-        />
-        <LockedItem
-          icon={MonitorSmartphone}
-          label="Full-resolution files locked"
-          detail="The preview is watermarked, low-resolution, and has no export controls."
-        />
+        <CompactLockedPill icon={ImageIcon} label="Static creative locked" />
+        <CompactLockedPill icon={Sparkles} label="AI image locked" />
+        <CompactLockedPill icon={PlayCircle} label="HeyGen UGC locked" />
+        <CompactLockedPill icon={MonitorSmartphone} label="Full-resolution files locked" />
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[18px] border border-white/10 bg-black/18 px-3 py-2.5 text-xs leading-5 text-white/54">
