@@ -29,7 +29,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const signupHref = "/login?mode=sign-up";
+const appBaseUrl = "https://dealflow-os-rebuild.vercel.app";
+const signinHref = `${appBaseUrl}/login`;
+const signupHref = `${appBaseUrl}/login?mode=sign-up`;
 const scrollTrackingMilestones = [25, 50, 75, 90] as const;
 
 function trackHomepageEvent(event: string, properties: Record<string, string | number | boolean> = {}) {
@@ -1597,8 +1599,8 @@ export function HomeCommandCenter() {
           <div className="flex shrink-0 items-center gap-2">
             <Link
               className="hidden min-h-10 items-center px-2 text-sm font-medium text-white/60 transition hover:text-white sm:inline-flex"
-              href="/login"
-              onClick={() => trackHomepageEvent("homepage_signin_click", { destination: "/login" })}
+              href={signinHref}
+              onClick={() => trackHomepageEvent("homepage_signin_click", { destination: signinHref })}
             >
               Sign in
             </Link>
