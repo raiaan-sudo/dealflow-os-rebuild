@@ -67,9 +67,9 @@ assert.ok(weakOffer.hardFailures.length >= 4, "weak vague offer is blocked");
 const strongInvestorOffer = evaluateOfferQuality({
   category: "investor",
   offer: "Get 3 off-market properties this month that meet your exact ROI criteria",
-  mechanism: "micro-market analysis system",
-  audience: "Montreal investors",
-  cta: "View Available Deals",
+	  mechanism: "micro-market analysis system",
+	  audience: "Montreal investors",
+	  cta: "Get Deal Flow",
 });
 assert.equal(strongInvestorOffer.accepted, true);
 assert.ok(strongInvestorOffer.score >= 7);
@@ -96,9 +96,9 @@ const sellerCreative = evaluateCreativeQuality({
   headline: "Bradford price gap before you list",
   primaryText:
     "A pre-market positioning strategy tests demand before you list, so you can review the price gap before making the wrong move.",
-  overlayText: "$950K to $1.1M",
-  cta: "Get My Price Update",
-  visualConcept: "zestimate-style comparison with map overlay and before-after price numbers",
+	  overlayText: "$950K to $1.1M",
+	  cta: "Get My Equity Report",
+	  visualConcept: "neighborhood sale comparison with map overlay and before-after price numbers",
 });
 assert.equal(sellerCreative.accepted, true);
 assert.ok(sellerCreative.score >= 7);

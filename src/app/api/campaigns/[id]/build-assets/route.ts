@@ -49,7 +49,7 @@ async function loadStoredCampaignPayload(campaignId: string) {
 
 export async function GET(
   _request: Request,
-  context: { params: Promise<Record<string, string>> | Record<string, string> },
+  context: { params: Promise<Record<string, string>> },
 ) {
   try {
     const { id } = await parseRouteParams(context.params, paramsSchema);

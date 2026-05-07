@@ -10,6 +10,7 @@ type LoginFormProps = {
 };
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
+const GOOGLE_AUTH_ENABLED = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_AUTH === "true";
 const TURNSTILE_SCRIPT_ID = "cloudflare-turnstile-script";
 
 declare global {
@@ -49,11 +50,11 @@ export function LoginForm({
 
   function getSafeRedirectPath(value?: string) {
     if (!value) {
-      return "/dashboard";
+      return "/";
     }
 
     if (!value.startsWith("/") || value.startsWith("//")) {
-      return "/dashboard";
+      return "/";
     }
 
     return value;
@@ -75,7 +76,7 @@ export function LoginForm({
     try {
       const nextPath = getSafeRedirectPath(redirectedFrom);
       const redirectTo = new URL("/", window.location.origin);
-      if (nextPath && nextPath !== "/dashboard") {
+      if (nextPath && nextPath !== "/") {
         redirectTo.searchParams.set("next", nextPath);
       }
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
@@ -169,7 +170,7 @@ export function LoginForm({
         return;
       }
 
-      const { error: signUpError } = await supabase.auth.signUp({
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -182,6 +183,11 @@ export function LoginForm({
 
       if (signUpError) {
         throw signUpError;
+      }
+
+      if (signUpData.session) {
+        window.location.assign(getSafeRedirectPath(redirectedFrom));
+        return;
       }
 
       setMessage(
@@ -327,15 +333,15 @@ export function LoginForm({
     "h-12 w-full rounded-df-control border border-white/10 bg-white/[0.045] px-4 text-white outline-none transition duration-200 placeholder:text-white/35 focus:border-cyan-200/40 focus:bg-white/[0.07] focus:shadow-[0_0_0_3px_rgba(103,232,249,0.08)]";
 
   return (
-    <div className="surface-guided rounded-df-panel border border-white/10 p-6 shadow-df-elevated sm:p-8">
+    <div className="surface-guided w-full min-w-0 max-w-[calc(100vw-40px)] rounded-df-panel border border-white/10 p-6 shadow-df-elevated sm:max-w-none sm:p-8">
       <div className="mb-6">
         <p className="df-eyebrow">
           Replace your agency
         </p>
-        <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">
+        <p className="mt-2 text-2xl font-semibold text-white [overflow-wrap:anywhere] sm:tracking-[-0.04em]">
           Build, launch, and optimize your ads without paying an agency
         </p>
-        <p className="mt-2 text-sm leading-6 text-white/70">
+        <p className="mt-2 text-sm leading-6 text-white/70 [overflow-wrap:anywhere]">
           Sign in to get your funnel, ads, campaign launch path, and optimization workflow in one place.
         </p>
       </div>
@@ -486,7 +492,7 @@ export function LoginForm({
           </button>
         ) : null}
 
-        {mode === "sign-in" || mode === "sign-up" ? (
+        {GOOGLE_AUTH_ENABLED && (mode === "sign-in" || mode === "sign-up") ? (
           <button
             className="h-12 w-full rounded-df-control border border-white/10 bg-white/[0.035] px-4 text-base font-semibold text-white transition duration-200 hover:-translate-y-0.5 hover:border-cyan-200/25 hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
             disabled={!isConfigured || isPending}

@@ -1,4 +1,5 @@
 import {
+  isCommercialCampaignIntent,
   isInvestorCampaignIntent,
   isSellerCampaignIntent,
   type CampaignIntent,
@@ -9,6 +10,7 @@ export type CampaignCategory =
   | "buyer"
   | "seller"
   | "investor"
+  | "commercial"
   | "precon"
   | "luxury";
 
@@ -99,6 +101,12 @@ function inferTriggerCondition(input: StrategyDefaultsInput, category: CampaignC
             : matchesAny(haystack, [/\byield/, /\bcash flow/, /\broi/])
               ? "looking for yield"
               : "comparing asset classes"
+          : category === "commercial"
+            ? matchesAny(haystack, [/\blease/, /\btenant/, /\bowner[-\s]?user/])
+              ? "tenant or owner-user demand"
+              : matchesAny(haystack, [/\bwarehouse/, /\bindustrial/, /\boffice/, /\bretail/])
+                ? "asset-specific opportunity"
+                : "business expansion"
           : category === "precon"
             ? matchesAny(haystack, [/\bafford resale/, /\bcan.t afford resale/, /\bresale/])
               ? "can't afford resale now"
@@ -149,6 +157,23 @@ export function inferCampaignCategory(input: StrategyDefaultsInput): CampaignCat
     ])
   ) {
     return "luxury";
+  }
+
+  if (
+    isCommercialCampaignIntent(input.intent) ||
+    matchesAny(haystack, [
+      /\bcommercial\b/,
+      /\boffice\b/,
+      /\bretail\b/,
+      /\bindustrial\b/,
+      /\bwarehouse\b/,
+      /\bmixed[-\s]?use\b/,
+      /\btenant\b/,
+      /\blease\b/,
+      /\bowner[-\s]?user\b/,
+    ])
+  ) {
+    return "commercial";
   }
 
   if (
@@ -203,6 +228,7 @@ export function normalizeCreativeStrategy(
       category === "buyer" ||
       category === "seller" ||
       category === "investor" ||
+      category === "commercial" ||
       category === "precon" ||
       category === "luxury"
         ? category

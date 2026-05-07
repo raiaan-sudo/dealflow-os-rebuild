@@ -929,6 +929,7 @@ export function BuilderSetupPanel({
               <option value="buyer">buyer</option>
               <option value="seller">seller</option>
               <option value="investor">investor</option>
+              <option value="commercial">commercial</option>
             </select>
           </div>
         </div>

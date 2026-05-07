@@ -139,12 +139,27 @@ export function getInternalAdminEmails() {
     .filter(Boolean);
 }
 
+export function getBillingAdminOverrideEmails() {
+  return (process.env.BILLING_ADMIN_OVERRIDE_EMAILS ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 export function isInternalAdminEmail(email?: string | null) {
   if (!email) {
     return false;
   }
 
   return getInternalAdminEmails().includes(email.toLowerCase());
+}
+
+export function isBillingAdminOverrideEmail(email?: string | null) {
+  if (!email) {
+    return false;
+  }
+
+  return getBillingAdminOverrideEmails().includes(email.toLowerCase());
 }
 
 export function isBillingAdminOverrideEnabled() {
@@ -230,7 +245,7 @@ export function getStripeEnv() {
     ? process.env.STRIPE_TEST_GROWTH_PRICE_ID
     : process.env.STRIPE_GROWTH_PRICE_ID;
 
-  if (!secretKey || !webhookSecret || !starterPriceId || !proPriceId || !growthPriceId) {
+  if (!secretKey || !webhookSecret || !starterPriceId || !proPriceId) {
     return null;
   }
 
@@ -239,7 +254,7 @@ export function getStripeEnv() {
     webhookSecret,
     starterPriceId,
     proPriceId,
-    growthPriceId,
+    growthPriceId: growthPriceId ?? null,
   };
 }
 
@@ -256,7 +271,6 @@ export function validateStripeEnv() {
     [useTestEnv ? "STRIPE_TEST_WEBHOOK_SECRET" : "STRIPE_WEBHOOK_SECRET", env?.webhookSecret],
     [useTestEnv ? "STRIPE_TEST_STARTER_PRICE_ID" : "STRIPE_STARTER_PRICE_ID", env?.starterPriceId],
     [useTestEnv ? "STRIPE_TEST_PRO_PRICE_ID" : "STRIPE_PRO_PRICE_ID", env?.proPriceId],
-    [useTestEnv ? "STRIPE_TEST_GROWTH_PRICE_ID" : "STRIPE_GROWTH_PRICE_ID", env?.growthPriceId],
   ]);
 }
 

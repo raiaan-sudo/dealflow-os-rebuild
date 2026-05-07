@@ -26,7 +26,7 @@ const bodySchema = z.object({
 
 export async function POST(
   request: Request,
-  context: { params: Promise<Record<string, string>> | Record<string, string> },
+  context: { params: Promise<Record<string, string>> },
 ) {
   try {
     assertSameOriginRequest(request);

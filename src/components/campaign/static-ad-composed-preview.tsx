@@ -49,12 +49,17 @@ function backgroundClass(category: ReturnType<typeof buildComposedStaticAdPrevie
     return "bg-[radial-gradient(circle_at_85%_15%,rgba(34,197,94,0.35),transparent_20%),linear-gradient(135deg,#08111f_0%,#0f2f2d_50%,#f8fafc_100%)]";
   }
 
+  if (category === "commercial") {
+    return "bg-[linear-gradient(90deg,rgba(255,255,255,0.92)_0_46%,rgba(15,23,42,0.2)_46%_48%,rgba(15,23,42,0.1)_48%),linear-gradient(135deg,#f8fafc_0%,#dbe4ee_52%,#2563eb_100%)]";
+  }
+
   return "bg-[radial-gradient(circle_at_25%_15%,rgba(255,255,255,0.3),transparent_18%),linear-gradient(135deg,#050505_0%,#1f2937_52%,#d6c08f_100%)]";
 }
 
 function accentClass(category: ReturnType<typeof buildComposedStaticAdPreview>["category"]) {
   if (category === "luxury") return "bg-[#111111] text-[#f4ead2] border-[#d6c08f]/40";
   if (category === "investor") return "bg-emerald-400 text-slate-950 border-emerald-200/40";
+  if (category === "commercial") return "bg-blue-600 text-white border-blue-200/40";
   if (category === "buyer") return "bg-[#5ff082] text-black border-white/50";
   return "bg-[#ff202e] text-white border-white/40";
 }
@@ -62,6 +67,7 @@ function accentClass(category: ReturnType<typeof buildComposedStaticAdPreview>["
 function ctaClass(category: ReturnType<typeof buildComposedStaticAdPreview>["category"]) {
   if (category === "luxury") return "border-[#d6c08f]/60 bg-[#f4ead2] text-[#111111]";
   if (category === "investor") return "border-emerald-300/70 bg-emerald-300 text-slate-950";
+  if (category === "commercial") return "border-blue-200/70 bg-blue-600 text-white";
   if (category === "buyer") return "border-[#111111]/15 bg-white text-[#111111]";
   return "border-[#111111]/15 bg-white text-[#111111]";
 }
@@ -108,6 +114,36 @@ function renderTemplateDetails(preview: ReturnType<typeof buildComposedStaticAdP
           <div className="rounded-md bg-white px-3 py-2 text-slate-950">
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">Opportunity</p>
             <p className={cn("font-black leading-tight", compact ? "text-lg" : "text-2xl")}>{preview.overlayText}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (preview.category === "commercial") {
+    return (
+      <div className="absolute inset-0 grid grid-rows-[auto_1fr_auto] p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className={cn("rounded-sm border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em]", accentClass(preview.category))}>
+            {preview.eyebrow}
+          </div>
+          <div className="rounded-sm border border-slate-950/10 bg-white/88 px-2 py-1 text-[10px] font-bold text-slate-950">
+            Fit brief
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2 self-start">
+          {preview.proofChips.slice(0, 4).map((chip, index) => (
+            <div key={`${chip}-${index}`} className="rounded-md border border-slate-950/10 bg-white/82 p-2 text-slate-950 shadow-sm">
+              <p className="text-[9px] uppercase tracking-[0.16em] text-slate-500">Requirement</p>
+              <p className="mt-1 break-words text-sm font-black leading-tight">{chip}</p>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-md bg-slate-950 px-3 py-3 text-white">
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-200">Commercial match</p>
+          <p className={cn("break-words font-black leading-tight", compact ? "text-lg" : "text-2xl")}>{preview.overlayText}</p>
+          <div className={cn("mt-3 inline-flex rounded-full border px-4 py-2 text-xs font-semibold", ctaClass(preview.category))}>
+            {preview.cta}
           </div>
         </div>
       </div>

@@ -1640,7 +1640,7 @@ export function CampaignBuilderWorkspace({
                 }
                 className="flex h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-sm text-foreground outline-none transition focus:border-primary/30 focus:bg-white/[0.06]"
               >
-                {["buyer", "seller", "investor", "precon", "luxury"].map((option) => (
+                {["buyer", "seller", "investor", "commercial", "precon", "luxury"].map((option) => (
                   <option key={option} value={option} className="bg-[#0b1220] text-white">
                     {option.charAt(0).toUpperCase() + option.slice(1)}
                   </option>

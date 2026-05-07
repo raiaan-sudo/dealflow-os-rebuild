@@ -1,5 +1,6 @@
 import {
   inferCampaignIntent,
+  isCommercialCampaignIntent,
   isInvestorCampaignIntent,
   isSellerCampaignIntent,
   type CampaignIntent,
@@ -77,6 +78,8 @@ function transformOffer(params: {
   if (!offer) {
     return isSellerCampaignIntent(params.marketType)
       ? "Get your home sold with a stronger plan"
+      : isCommercialCampaignIntent(params.marketType)
+        ? "See better-fit commercial spaces faster"
       : isInvestorCampaignIntent(params.marketType)
         ? "See stronger investor-grade opportunities"
       : "Get access to better deals";
@@ -95,6 +98,8 @@ function transformMechanism(params: {
   if (!mechanism) {
     return isSellerCampaignIntent(params.marketType)
       ? "With a seller-focused launch system, we connect you with qualified buyers"
+      : isCommercialCampaignIntent(params.marketType)
+        ? "With a commercial space-fit system, we match business requirements to stronger locations"
       : isInvestorCampaignIntent(params.marketType)
         ? "With an investor-focused deal flow system, we surface stronger opportunities faster"
       : "With a deal-focused system, we help you move faster";
@@ -126,6 +131,13 @@ function enforceAudienceLanguage(params: {
     return value;
   }
 
+  if (isCommercialCampaignIntent(params.marketType)) {
+    if (/sell your home|get your home sold|qualified buyers|first-time buyers/i.test(value)) {
+      return `Find better-fit commercial space in ${params.location}`;
+    }
+    return value;
+  }
+
   if (/sell your home|get your home sold|qualified buyers/i.test(value)) {
     return `Get access to deals in ${params.location}`;
   }
@@ -143,6 +155,10 @@ function inferTone(params: {
 
   if (isInvestorCampaignIntent(params.marketType)) {
     return "sharp, fast, opportunity-led";
+  }
+
+  if (isCommercialCampaignIntent(params.marketType)) {
+    return "clear, analytical, requirement-led";
   }
 
   if (/first|new|starter/i.test(params.audience)) {
@@ -166,6 +182,10 @@ function inferPainPoints(params: {
 
   if (isInvestorCampaignIntent(params.marketType)) {
     return ["missing the best deals"];
+  }
+
+  if (isCommercialCampaignIntent(params.marketType)) {
+    return ["wasting time on mismatched spaces"];
   }
 
   return ["getting beat by faster buyers"];
@@ -195,6 +215,14 @@ function inferAngles(params: {
       `See stronger investor opportunities in ${market}`,
       `Most investors in ${market} miss the best deals`,
       `${market} cash-flow opportunities move faster than most investors expect`,
+    ];
+  }
+
+  if (isCommercialCampaignIntent(params.marketType)) {
+    return [
+      `Find better-fit commercial space in ${market}`,
+      `Most operators in ${market} waste time on the wrong spaces`,
+      `${market} commercial opportunities move when requirements are clear`,
     ];
   }
 
@@ -238,6 +266,14 @@ function inferHooks(params: {
     ];
   }
 
+  if (isCommercialCampaignIntent(params.marketType)) {
+    return [
+      `Business owners in ${market}: stop touring the wrong spaces`,
+      `If you need commercial space in ${market}, watch this`,
+      "The best commercial matches start with sharper requirements",
+    ];
+  }
+
   return [
     `Nobody is talking about ${offer || "this"}`,
     `If you're buying in ${year}, watch this`,
@@ -248,9 +284,14 @@ function inferHooks(params: {
 function inferVisualDirection(params: {
   location: string;
   propertyType: string;
+  marketType: CampaignIntent;
 }) {
   const market = toTitleCase(params.location);
   const propertyType = safeLower(params.propertyType);
+
+  if (isCommercialCampaignIntent(params.marketType)) {
+    return `${market} commercial real estate visuals with clean location, frontage, and space-fit framing`;
+  }
 
   if (/condo/.test(propertyType)) {
     return `${market} condo visuals with modern, urban, clean framing`;
@@ -275,6 +316,10 @@ function inferScriptStyle(params: {
     return "authority";
   }
 
+  if (isCommercialCampaignIntent(params.marketType)) {
+    return "authority";
+  }
+
   if (/first|new|starter/i.test(params.audience)) {
     return "UGC";
   }
@@ -285,13 +330,15 @@ function inferScriptStyle(params: {
 export function buildCreativeBrief(input?: CreativeBriefInput | null): CreativeBrief {
   const raw: Partial<CreativeBriefInput> = input ?? {};
   const location = safeText(raw.location) || "your market";
-  const audience = safeText(raw.audience) || "motivated local buyers";
-  const propertyType = safeText(raw.property_type) || "homes";
+  const rawAudience = safeText(raw.audience);
+  const rawPropertyType = safeText(raw.property_type);
   const marketType = inferMarketType({
-    audience,
-    propertyType,
+    audience: rawAudience,
+    propertyType: rawPropertyType,
     provided: raw.market_type,
   });
+  const audience = rawAudience || (isCommercialCampaignIntent(marketType) ? "business owners and owner-users" : "motivated local buyers");
+  const propertyType = rawPropertyType || (isCommercialCampaignIntent(marketType) ? "commercial spaces" : "homes");
   const keyOffer = transformOffer({
     keyOffer: safeText(raw.key_offer) || safeText(raw.offer) || "a stronger buying opportunity",
     marketType,
@@ -320,7 +367,7 @@ export function buildCreativeBrief(input?: CreativeBriefInput | null): CreativeB
     tone: inferTone({ audience, marketType }),
     angles: inferAngles({ location, audience, keyOffer, painPoints, marketType }),
     hooks: inferHooks({ location, audience, keyOffer, painPoints, marketType }),
-    visualDirection: inferVisualDirection({ location, propertyType }),
+    visualDirection: inferVisualDirection({ location, propertyType, marketType }),
     scriptStyle: inferScriptStyle({ marketType, audience }),
   };
 }

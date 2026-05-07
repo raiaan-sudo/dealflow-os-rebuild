@@ -70,7 +70,7 @@ export default async function BuildCreativesPage({
 
   if (missingArtifacts.length > 0) {
     return (
-      <div className="mx-auto w-full max-w-[900px] space-y-8 p-6 sm:p-8">
+      <div className="mx-auto w-full max-w-[1280px] space-y-6 p-5 sm:p-6">
         <WizardSteps current="creatives" />
         <PageHeader
           eyebrow="Build"
@@ -130,7 +130,7 @@ export default async function BuildCreativesPage({
     });
 
   return (
-    <div className="mx-auto w-full max-w-[900px] space-y-8 p-6 sm:p-8">
+    <div className="mx-auto w-full max-w-[1280px] space-y-6 p-5 sm:p-6">
       <WizardSteps current="creatives" />
       <PageHeader
         eyebrow="Build"

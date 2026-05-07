@@ -44,11 +44,12 @@ export function selectMediaBuyerCta(category: CampaignCategory, options?: { b2bA
     return "See If You Qualify";
   }
 
-  if (category === "investor") return "View Available Deals";
-  if (category === "seller") return "Get My Price Update";
+  if (category === "investor") return "Get Deal Flow";
+  if (category === "commercial") return "See Matching Spaces";
+  if (category === "seller") return "Get My Equity Report";
   if (category === "precon") return "View Deposit Options";
   if (category === "luxury") return "Request Private Access";
-  return "Get Access";
+  return "See Matching Homes";
 }
 
 export function getCategoryCtaOptions(category: CampaignCategory, options?: { b2bAgent?: boolean }) {
@@ -57,11 +58,15 @@ export function getCategoryCtaOptions(category: CampaignCategory, options?: { b2
   }
 
   if (category === "investor") {
-    return ["View Available Deals", "Review The Deal Breakdown", "See Available Cash-Flow Deals"];
+    return ["Get Deal Flow", "View Deals", "See ROI Map", "Review The Deal Breakdown"];
+  }
+
+  if (category === "commercial") {
+    return ["See Matching Spaces", "Review Available Options", "Check Space Fit"];
   }
 
   if (category === "seller") {
-    return ["Check Your Home Value", "Get My Price Update", "Check Pre-Listing Demand"];
+    return ["Get My Equity Report", "Get My Price Range", "Check Pre-Listing Demand", "Check My Timing"];
   }
 
   if (category === "precon") {
@@ -72,7 +77,7 @@ export function getCategoryCtaOptions(category: CampaignCategory, options?: { b2
     return ["Request Private Access", "View The Private Release", "See If This Fits"];
   }
 
-  return ["Get Access", "See Homes That Match", "See If You Qualify"];
+  return ["See Matching Homes", "Get a Home Shortlist", "See If You Qualify"];
 }
 
 export function buildMediaBuyingCampaignStructure(budget: number): MediaBuyingCampaignStructure {

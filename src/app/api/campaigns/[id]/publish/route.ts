@@ -7,6 +7,7 @@ import {
   parseRouteParams,
 } from "@/lib/api/route";
 import { publishCampaignSchema } from "@/lib/schemas/api";
+import { assertCampaignCanPublishFunnel } from "@/lib/services/campaign-entitlements";
 import { updateCampaignPublishState } from "@/lib/services/campaign-persistence";
 
 const paramsSchema = z.object({
@@ -15,12 +16,13 @@ const paramsSchema = z.object({
 
 export async function POST(
   request: Request,
-  context: { params: Promise<Record<string, string>> | Record<string, string> },
+  context: { params: Promise<Record<string, string>> },
 ) {
   try {
     assertSameOriginRequest(request);
     const { id } = await parseRouteParams(context.params, paramsSchema);
     const payload = await parseJsonBody(request, publishCampaignSchema);
+    await assertCampaignCanPublishFunnel(id);
     const updated = await updateCampaignPublishState({
       campaignId: id,
       state: payload.state,

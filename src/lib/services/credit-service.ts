@@ -5,7 +5,7 @@ import type { Json } from "@/lib/supabase/types";
 
 type GenerationCreditBucket = "openai_image_generation" | "heygen_video_generation";
 
-export const CREDIT_TOP_UP_MINIMUM_CENTS = 2_500;
+export const CREDIT_TOP_UP_MINIMUM_CENTS = 2_000;
 
 const DEFAULT_GENERATION_CREDIT_COSTS_CENTS: Record<GenerationCreditBucket, number> = {
   openai_image_generation: 100,

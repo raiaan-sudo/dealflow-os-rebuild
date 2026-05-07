@@ -2,6 +2,7 @@
 
 import {
   getCampaignIntentLabel,
+  isCommercialCampaignIntent,
   isInvestorCampaignIntent,
   isSellerCampaignIntent,
 } from "@/lib/campaign-intent";
@@ -20,6 +21,7 @@ import type { CampaignLaunchRecord } from "@/lib/services/campaign-launch-audit-
 import type { AutonomySnapshot } from "@/lib/services/autonomy-engine";
 import type { DashboardMetrics } from "@/lib/services/dashboard-service";
 import type { FirstWeekSuccessState } from "@/lib/services/first-week-success-service";
+import type { CampaignValueReport } from "@/lib/services/campaign-value-report-builder";
 
 type AppointmentSummary = Pick<
   Database["public"]["Tables"]["appointments"]["Row"],
@@ -72,6 +74,7 @@ type Props = {
   } | null;
   leadLoopVerified?: boolean;
   firstWeekSuccess?: FirstWeekSuccessState | null;
+  valueReport?: CampaignValueReport | null;
   renderedAt?: string;
 };
 
@@ -209,6 +212,7 @@ export function CampaignDashboardView({
   selectedAdSummary = null,
   leadLoopVerified = false,
   firstWeekSuccess = null,
+  valueReport = null,
   renderedAt,
 }: Props) {
   const renderedAtMs = new Date(renderedAt ?? "1970-01-01T00:00:00.000Z").getTime();
@@ -345,6 +349,8 @@ export function CampaignDashboardView({
   const smsPrompt = dataSourceState === "active"
     ? isSellerCampaignIntent(plan.intent)
       ? "Saved seller follow-up logic is available for connected lead handling."
+      : isCommercialCampaignIntent(plan.intent)
+        ? "Saved commercial follow-up logic is available for connected lead handling."
       : isInvestorCampaignIntent(plan.intent)
         ? "Saved investor follow-up logic is available for connected lead handling."
         : "Saved buyer follow-up logic is available for connected lead handling."
@@ -499,6 +505,33 @@ export function CampaignDashboardView({
         { label: "Ranked creatives", value: String(creativePerformanceSummary.rankedCreatives.length) },
       ]
     : [];
+  const reportStatusClass =
+    valueReport?.status === "active"
+      ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-100"
+      : valueReport?.status === "needs_attention"
+        ? "border-rose-400/20 bg-rose-400/10 text-rose-100"
+        : valueReport?.status === "collecting"
+          ? "border-amber-400/20 bg-amber-400/10 text-amber-100"
+          : "border-cyan-400/20 bg-cyan-400/10 text-cyan-100";
+  const reportMetricItems = valueReport
+    ? [
+        { label: "Spend", value: currency(valueReport.metrics.spend) },
+        { label: "Clicks", value: valueReport.metrics.clicks.toLocaleString() },
+        { label: "Leads", value: valueReport.metrics.leads.toLocaleString() },
+        {
+          label: "CTR",
+          value: valueReport.metrics.ctr > 0 ? `${(valueReport.metrics.ctr * 100).toFixed(2)}%` : "Waiting for data",
+        },
+      ]
+    : [];
+  const reportAssetItems = valueReport
+    ? [
+        { label: "Funnel", value: valueReport.campaign.funnelStatus },
+        { label: "Static ads", value: String(valueReport.assets.staticAdsGenerated) },
+        { label: "Video ads", value: String(valueReport.assets.videoAdsGenerated) },
+        { label: "Selected ads", value: String(valueReport.assets.selectedAds) },
+      ]
+    : [];
 
   const metrics = [
     { label: "Total leads", value: String(displayedLeads) },
@@ -532,6 +565,105 @@ export function CampaignDashboardView({
   return (
     <div className="space-y-6">
       <p className="text-sm font-medium text-muted-foreground">{statusText}</p>
+
+      {valueReport ? (
+        <Card className="rounded-[24px] p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Weekly value report</p>
+              <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{valueReport.headline}</h3>
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
+                {valueReport.summary}
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Reporting window: {valueReport.periodStart} to {valueReport.periodEnd}
+              </p>
+            </div>
+            <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${reportStatusClass}`}>
+              {valueReport.status.replaceAll("_", " ")}
+            </span>
+          </div>
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-4">
+            {reportMetricItems.map((item) => (
+              <div key={item.label} className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{item.label}</p>
+                <p className="mt-3 text-2xl font-semibold tracking-[-0.04em]">{item.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {valueReport.emptyState ? (
+            <div className="mt-5 rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Current reporting state</p>
+              <p className="mt-3 text-sm leading-7 text-muted-foreground">{valueReport.emptyState}</p>
+            </div>
+          ) : null}
+
+          <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Assets built</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {reportAssetItems.map((item) => (
+                  <div key={item.label} className="rounded-[16px] border border-white/8 bg-black/10 px-4 py-3">
+                    <p className="text-xs text-muted-foreground">{item.label}</p>
+                    <p className="mt-1 text-sm font-medium text-foreground">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-4 text-sm leading-7 text-muted-foreground">
+                Selected creative: {valueReport.assets.selectedAdHeadline ?? "No selected creative saved yet."}
+              </p>
+            </div>
+
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Next recommended action</p>
+              <p className="mt-3 text-lg font-semibold leading-7 text-foreground">{valueReport.nextAction}</p>
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                <div className="rounded-[16px] border border-white/8 bg-black/10 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Creative signal</p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    Winner: {valueReport.creativeInsights.winner ?? "Waiting for enough data."}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    Watch: {valueReport.creativeInsights.underperformer ?? "No underperformer identified yet."}
+                  </p>
+                </div>
+                <div className="rounded-[16px] border border-white/8 bg-black/10 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Lead loop</p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    {valueReport.leadLoop.leadLoopVerified ? "Lead loop verified." : "Lead loop not verified yet."}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    Recent statuses: {valueReport.leadLoop.recentLeadStatuses.length > 0
+                      ? valueReport.leadLoop.recentLeadStatuses.map((item) => `${item.status} ${item.count}`).join(", ")
+                      : "No recent leads."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Recommendations</p>
+              <div className="mt-3 space-y-2">
+                {valueReport.recommendations.map((item) => (
+                  <p key={item} className="text-sm leading-7 text-muted-foreground">{item}</p>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">DealFlow is monitoring</p>
+              <div className="mt-3 space-y-2">
+                {valueReport.monitoringNext.map((item) => (
+                  <p key={item} className="text-sm leading-7 text-muted-foreground">{item}</p>
+                ))}
+              </div>
+            </div>
+          </div>
+        </Card>
+      ) : null}
 
       <Card className="rounded-[24px] p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">

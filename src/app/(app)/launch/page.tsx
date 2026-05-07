@@ -2,7 +2,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { LaunchMetaSelectionPanel } from "@/components/campaign/launch/launch-meta-selection-panel";
-import { StaticCreativePreviewCard } from "@/components/campaign/static-creative-preview-card";
+import { StaticCreativeSummaryCard } from "@/components/campaign/static-creative-preview-card";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import {
   validateMetaLaunchSelections,
 } from "@/lib/integrations/meta/service";
 import { getLaunchBlockingReasons, getLaunchRequirements } from "@/lib/services/launch-readiness";
+import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
 
 function withTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs: number) {
   return new Promise<T>((resolve) => {
@@ -64,6 +65,47 @@ function formatVerifiedTimestamp(value: string | null | undefined) {
     dateStyle: "medium",
     timeStyle: "short",
   });
+}
+
+function getBillingLaunchBlockCopy(billing: Awaited<ReturnType<typeof getBillingSummary>> | null) {
+  if (!billing) {
+    return "Activate billing before this workspace can launch to Meta.";
+  }
+
+  if (billing.billingState === "payment_issue") {
+    return "Update the payment method in Stripe Portal before launching. Existing funnel operations stay in warning mode, but new Meta launches are blocked while Stripe reports a payment issue.";
+  }
+
+  if (billing.requiresSuspension) {
+    return "Billing is inactive, so DealFlow-managed launch, funnel capture, alerts, and optimization are paused until the subscription is reactivated.";
+  }
+
+  if (billing.cancelAtPeriodEnd) {
+    return "This subscription is scheduled to cancel. Launch remains available during the paid period, but reactivation is required after the period ends.";
+  }
+
+  return "Activate billing before this workspace can launch to Meta.";
+}
+
+const DEFAULT_META_DAILY_BUDGET_CAP_CENTS = 200;
+
+function getUiMetaDailyBudgetCapCents() {
+  const configuredCap = Number(process.env.META_DAILY_BUDGET_CAP_CENTS ?? DEFAULT_META_DAILY_BUDGET_CAP_CENTS);
+
+  if (!Number.isFinite(configuredCap) || configuredCap <= 0) {
+    return DEFAULT_META_DAILY_BUDGET_CAP_CENTS;
+  }
+
+  return Math.min(Math.floor(configuredCap), DEFAULT_META_DAILY_BUDGET_CAP_CENTS);
+}
+
+function formatBudgetCap(valueCents: number) {
+  return new Intl.NumberFormat("en-CA", {
+    style: "currency",
+    currency: "CAD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(valueCents / 100);
 }
 
 async function loadPersistedSelectedAdIds(campaignId: string | null) {
@@ -193,6 +235,8 @@ export default async function LaunchAliasPage({
   const metaLaunchReady = metaSelectionReady && metaPreflightReady;
   const billingLaunchAllowed = billing?.launchAllowed ?? false;
   const billingOverride = billing?.launchOverride ?? false;
+  const billingBlockCopy = getBillingLaunchBlockCopy(billing);
+  const providerLaunchEnabled = process.env.ALLOW_META_LIVE_LAUNCH === "true";
   const metaVerificationTimedOut =
     metaPreflight === null &&
     (metaProviderState?.status.status === "connected" || metaSelectionReady || metaConnected);
@@ -206,8 +250,76 @@ export default async function LaunchAliasPage({
     ...(!billingLaunchAllowed ? ["Activate billing before launch."] : []),
     ...getLaunchBlockingReasons(launchRequirements),
     ...(metaSelectionReady && !metaPreflightReady ? metaPreflight?.errors ?? ["Meta preflight failed."] : []),
+    ...(!providerLaunchEnabled ? ["Provider launch switch is off."] : []),
   ];
   const selectedCreatives = plan.creatives.staticAds.filter((ad) => selectedAdIds.includes(ad.id));
+  const publicFunnelPublished =
+    savedRecord.publish.state === "published" &&
+    Boolean(savedRecord.publish.slug) &&
+    savedRecord.publish.hasPublishedSnapshot;
+  if (!publicFunnelPublished) {
+    blockingReasons.push("Publish the public funnel before launch.");
+  }
+  const dailyBudgetInput =
+    plan.runtime.budgetDailyInput && plan.runtime.budgetDailyInput > 0
+      ? plan.runtime.budgetDailyInput
+      : Math.round(plan.monthlyBudget / 30);
+  const dailyBudgetCents = Math.max(0, Math.round(dailyBudgetInput * 100));
+  const budgetCapCents = getUiMetaDailyBudgetCapCents();
+  const budgetCapApplied = budgetCapCents > 0;
+  const launchRoomReady =
+    billingLaunchAllowed &&
+    metaLaunchReady &&
+    selectedCreatives.length > 0 &&
+    publicFunnelPublished &&
+    budgetCapApplied &&
+    providerLaunchEnabled;
+  const readinessItems = [
+    {
+      label: "Billing",
+      ready: billingLaunchAllowed,
+      detail: billingLaunchAllowed ? "Launch access active" : billingBlockCopy,
+    },
+    {
+      label: "Meta connection",
+      ready: metaConnected,
+      detail: metaConnected ? "Workspace connected" : "Connect Meta before launch",
+    },
+    {
+      label: "Ad account / Page / pixel",
+      ready: metaLaunchReady,
+      detail: metaLaunchReady
+        ? "Saved selections passed preflight"
+        : "Select and save a valid ad account, Page, and pixel",
+    },
+    {
+      label: "Creative selected",
+      ready: selectedCreatives.length > 0,
+      detail:
+        selectedCreatives.length > 0
+          ? `${selectedCreatives.length} selected creative${selectedCreatives.length === 1 ? "" : "s"} saved`
+          : "Choose the creative test set first",
+    },
+    {
+      label: "Funnel published",
+      ready: publicFunnelPublished,
+      detail: publicFunnelPublished
+        ? `Published at /f/${savedRecord.publish.slug}`
+        : "Publish the public funnel before sending traffic",
+    },
+    {
+      label: "Budget cap",
+      ready: budgetCapApplied,
+      detail: `Provider launch is capped at ${formatBudgetCap(budgetCapCents)}/day; requested daily budget is ${formatBudgetCap(dailyBudgetCents)}.`,
+    },
+    {
+      label: "Launch switch",
+      ready: providerLaunchEnabled,
+      detail: providerLaunchEnabled
+        ? "Provider launch switch is on; Meta objects are still created PAUSED."
+        : "Provider launch switch is off, so the route will not create Meta objects.",
+    },
+  ];
   const metaStatusText = metaLaunchReady
     ? `Connected (last verified ${formatLastVerified(metaPreflight?.checkedAt)})`
     : metaVerificationTimedOut
@@ -216,8 +328,23 @@ export default async function LaunchAliasPage({
         ? "Meta selection invalid"
         : metaConnected
           ? "Selection required before launch"
-          : "Meta connection required";
+      : "Meta connection required";
   const metaVerifiedAtText = formatVerifiedTimestamp(metaPreflight?.checkedAt);
+
+  if (launchRoomReady) {
+    await recordActivationEventForCurrentUser({
+      eventName: "launch_ready",
+      campaignId: resolvedCampaignId,
+      source: "launch_page",
+      metadata: {
+        route: "launch",
+        selectedCreativeCount: selectedAdIds.length,
+        billingLaunchAllowed,
+        metaPreflightReady,
+      },
+      idempotencyKey: `launch_ready:${resolvedCampaignId ?? "unknown"}`,
+    }).catch(() => undefined);
+  }
 
   if (selectedCreatives.length === 0) {
     return (
@@ -280,7 +407,7 @@ export default async function LaunchAliasPage({
       ) : null}
       {!billingLaunchAllowed ? (
         <div className="rounded-[22px] border border-amber-400/15 bg-amber-400/10 px-5 py-4 text-sm font-medium text-amber-100">
-          Your campaign is ready. Activate billing before this workspace can launch to Meta.
+          Your campaign is ready. {billingBlockCopy}
         </div>
       ) : null}
       {billingOverride ? (
@@ -323,7 +450,7 @@ export default async function LaunchAliasPage({
                   ? "Meta is slow right now. We retried automatically, but validation still timed out. Try again or refresh this page."
                   : metaSelectionInvalid
                     ? "The saved Meta selection is no longer valid. Re-select the ad account, Page, and pixel before launch."
-                    : blockingReasons.length === 0
+                    : launchRoomReady
                   ? "Preflight passed. Save the Meta selections below, then use the launch button to attempt launch."
                   : `Before launch: ${blockingReasons.join(" • ")}.`}
               </p>
@@ -356,11 +483,10 @@ export default async function LaunchAliasPage({
           </div>
           <div className="surface-subtle rounded-[22px] border border-white/10 p-5">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Selected creative test set</p>
-            <div className="mt-4 grid gap-4">
-              {selectedCreatives.map((selectedCreative) => (
-                <StaticCreativePreviewCard
+            <div className="mt-4 grid gap-3">
+              {selectedCreatives.map((selectedCreative, index) => (
+                <StaticCreativeSummaryCard
                   category={plan.creativeStrategy.campaignCategory}
-                  compact
                   cta={selectedCreative.cta}
                   headline={selectedCreative.headline}
                   imageGenerationMessage={selectedCreative.imageGenerationMessage}
@@ -373,6 +499,8 @@ export default async function LaunchAliasPage({
                   primaryText={selectedCreative.primaryText}
                   qualityGate={selectedCreative.qualityGate}
                   score={selectedCreative.score}
+                  index={index}
+                  selected
                   selectedCount={selectedCreatives.length}
                   visualPromptBrief={selectedCreative.visualPromptBrief}
                 />
@@ -383,6 +511,39 @@ export default async function LaunchAliasPage({
       </Card>
       <LaunchMetaSelectionPanel connection={metaConnection} campaignId={resolvedCampaignId} />
       <Card className="p-5 sm:p-7">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Launch readiness gates</p>
+            <h2 className="mt-2 text-lg font-semibold">
+              {launchRoomReady ? "All launch gates are ready" : "Launch gates still need attention"}
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-7 text-muted-foreground">
+              Launch remains blocked until billing, Meta selections, selected creative, published funnel,
+              budget cap, and the provider launch switch all pass.
+            </p>
+          </div>
+          <StatusPill tone={launchRoomReady ? "success" : "warning"}>
+            {launchRoomReady ? "Ready" : "Blocked"}
+          </StatusPill>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {readinessItems.map((item) => (
+            <div
+              key={item.label}
+              className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-foreground">{item.label}</p>
+                <span className={item.ready ? "text-sm font-semibold text-emerald-300" : "text-sm font-semibold text-amber-300"}>
+                  {item.ready ? "Ready" : "Blocked"}
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.detail}</p>
+            </div>
+          ))}
+        </div>
+      </Card>
+      <Card className="p-5 sm:p-7">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-2xl">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Launch check</p>
@@ -390,9 +551,11 @@ export default async function LaunchAliasPage({
               {billingLaunchAllowed ? "Ready to attempt launch" : "Activate to launch"}
             </p>
             <p className="mt-2 max-w-[720px] text-sm leading-7 text-muted-foreground">
-              {billingLaunchAllowed
+              {launchRoomReady
                 ? `Launch stays blocked until the saved token, ad account, page, and pixel all pass preflight validation. Last verified at: ${metaVerifiedAtText}. Meta state may change before launch.`
-                : "Preview stays available before payment. Live Meta launch is blocked until billing is active for this workspace."}
+                : blockingReasons.length > 0
+                  ? `Blocked: ${blockingReasons.join(" • ")}.`
+                  : billingBlockCopy}
             </p>
           </div>
           <div className="flex w-full flex-col gap-3 lg:w-auto lg:flex-row">
@@ -401,7 +564,7 @@ export default async function LaunchAliasPage({
                 Back
               </Link>
             </Button>
-            {billingLaunchAllowed && metaLaunchReady ? (
+            {launchRoomReady ? (
               <Button asChild className="w-full lg:w-auto">
                 <Link href={`/launching?campaignId=${encodeURIComponent(savedRecord.campaign.id)}`}>
                   Ready to attempt launch

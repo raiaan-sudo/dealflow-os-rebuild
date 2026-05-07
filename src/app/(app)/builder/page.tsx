@@ -105,7 +105,7 @@ function buildInitialCampaignFromRecord(record?: FullCampaignRecord | null): Bui
 export default async function BuilderPage({
   searchParams,
 }: {
-  searchParams?: Promise<Record<string, string | string[] | undefined>> | Record<string, string | string[] | undefined>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const requestedCampaignId =

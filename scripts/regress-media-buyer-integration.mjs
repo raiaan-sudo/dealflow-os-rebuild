@@ -66,7 +66,7 @@ const cases = [
     mechanism: "pre-market positioning strategy",
     pain_points: ["not knowing if listing now is the right move"],
     market_type: "seller",
-    expectedCta: "Get My Price Update",
+    expectedCta: "Get Report",
   },
   {
     category: "buyer",
@@ -77,7 +77,7 @@ const cases = [
     mechanism: "off-market access system",
     pain_points: ["getting beat before homes go public"],
     market_type: "buyer",
-    expectedCta: "Get Access",
+    expectedCta: "View Homes",
   },
   {
     category: "precon",
@@ -99,7 +99,7 @@ const cases = [
     mechanism: "micro-market analysis system",
     pain_points: ["underwriting the wrong deals"],
     market_type: "investor",
-    expectedCta: "View Available Deals",
+    expectedCta: "View Deals",
   },
   {
     category: "luxury",

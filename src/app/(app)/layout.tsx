@@ -6,6 +6,16 @@ import { FeedbackWidget } from "@/components/layout/feedback-widget";
 import { LeadCaptureTrigger } from "@/components/layout/lead-capture-trigger";
 import { isInternalAdminEmail } from "@/lib/env";
 import { getAppContext } from "@/lib/services/app-context";
+import type { CampaignExperienceStage } from "@/lib/services/campaign-plan-service";
+
+function getStageForPath(pathname: string): CampaignExperienceStage {
+  if (pathname.startsWith("/preview")) return "preview";
+  if (pathname.startsWith("/launch")) return "launch_ready";
+  if (pathname.startsWith("/dashboard") || pathname.startsWith("/results")) return "live";
+  if (pathname.startsWith("/paywall")) return "paywall";
+  if (pathname.startsWith("/builder") || pathname.startsWith("/build")) return "built";
+  return "built";
+}
 
 export default async function AppLayout({
   children,
@@ -15,7 +25,14 @@ export default async function AppLayout({
   const headerStore = await headers();
   const authState = headerStore.get("x-dealflow-auth-state");
   const pathname = headerStore.get("x-pathname") ?? "";
-  const isFirstRunFocusRoute = pathname.startsWith("/campaign-built");
+  const isFirstRunFocusRoute =
+    pathname.startsWith("/campaign-built") ||
+    pathname.startsWith("/welcome") ||
+    pathname.startsWith("/onboarding") ||
+    pathname.startsWith("/build") ||
+    pathname.startsWith("/builder") ||
+    pathname.startsWith("/preview") ||
+    pathname.startsWith("/paywall");
   const appContext = await getAppContext().catch(() => null);
   const isAdmin = isInternalAdminEmail(appContext?.user.email ?? appContext?.profile?.email ?? null);
   const organizationName =
@@ -72,13 +89,14 @@ export default async function AppLayout({
         <main className="min-h-screen px-5 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
           {children}
         </main>
+        <FeedbackWidget />
       </div>
     );
   }
 
   return (
     <div className="app-shell relative flex h-screen w-screen overflow-hidden bg-transparent">
-      <AppSidebar isAdmin={isAdmin} organizationName={organizationName} stage="built" />
+      <AppSidebar isAdmin={isAdmin} organizationName={organizationName} stage={getStageForPath(pathname)} />
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <TopBar
           userName={userName}
@@ -87,7 +105,7 @@ export default async function AppLayout({
         />
         <main className="flex-1 overflow-hidden">
           <div className="flex h-full min-h-0 flex-col overflow-y-auto px-6 py-6">
-            <div className="app-page-transition flex min-h-full flex-col gap-6">
+            <div className="app-page-transition flex min-h-full min-w-0 flex-col gap-5 pb-20">
               <GuidedFlowBanner />
               {children}
             </div>

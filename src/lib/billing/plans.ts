@@ -11,7 +11,7 @@ export const BILLING_PLANS: Record<
 > = {
   starter: {
     name: "Starter",
-    priceLabel: "$97/mo",
+    priceLabel: "$147/mo",
     rank: 1,
   },
   pro: {
@@ -27,7 +27,7 @@ export const BILLING_PLANS: Record<
 };
 
 const FEATURE_MIN_PLAN: Record<BillingFeature, BillingPlanTier> = {
-  meta_launch: "pro",
+  meta_launch: "starter",
   campaign_data_import: "growth",
   autonomy_access: "pro",
 };

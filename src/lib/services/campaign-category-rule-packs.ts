@@ -31,8 +31,9 @@ export const CATEGORY_RULE_PACKS: Record<CampaignCategory, CategoryRulePack> = {
     ],
     winningAngles: [
       "hidden inventory",
-      "affordability access",
-      "upsize opportunity",
+      "budget-matched home shortlist",
+      "early access listings",
+      "true buying power",
     ],
     approvedHookStructures: [
       "If you're looking to upsize in {market}, stop scrolling.",
@@ -46,12 +47,12 @@ export const CATEGORY_RULE_PACKS: Record<CampaignCategory, CategoryRulePack> = {
       "learn more",
     ],
     approvedMechanismStyles: [
-      "off-market access system",
-      "approval-first matching process",
+      "curated home shortlist",
+      "affordability breakdown",
       "property matching workflow before homes hit MLS",
     ],
     proofStyles: [
-      "payment comparison overlay",
+      "budget-fit comparison",
       "affordability certainty",
       "inventory access proof",
       "monthly payment anchor",
@@ -77,7 +78,7 @@ export const CATEGORY_RULE_PACKS: Record<CampaignCategory, CategoryRulePack> = {
     ],
     explicitLowFrictionCtas: [
       "See Homes That Match",
-      "See If You Qualify",
+      "Get My Home List",
       "Check Monthly Payment Options",
     ],
     defaultCtaStyle: "curiosity",
@@ -95,9 +96,10 @@ export const CATEGORY_RULE_PACKS: Record<CampaignCategory, CategoryRulePack> = {
       "worry that the wrong agent or wrong timing will cost real money",
     ],
     winningAngles: [
-      "equity gap",
-      "pricing risk",
-      "timing mistake",
+      "hidden equity check",
+      "pre-listing buyer demand",
+      "neighborhood sale comparison",
+      "timing window strategy",
     ],
     approvedHookStructures: [
       "Before you sell your home in {market}, watch this.",
@@ -115,18 +117,18 @@ export const CATEGORY_RULE_PACKS: Record<CampaignCategory, CategoryRulePack> = {
       "demand test before listing",
       "buyer attraction plan before going live",
     ],
-    proofStyles: [
-      "price comparison overlay",
-      "equity delta proof",
-      "timing certainty proof",
-      "home value update comparison",
+	    proofStyles: [
+	      "neighborhood sale comparison report",
+	      "equity delta proof",
+	      "timing certainty proof",
+	      "home value update comparison",
     ],
-    visualLogic: [
-      "clean suburban homes",
-      "family-oriented exteriors",
-      "map or demand indicators with pricing context",
-      "zestimate-style price comparison boards",
-    ],
+	    visualLogic: [
+	      "clean suburban homes",
+	      "family-oriented exteriors",
+	      "map or demand indicators with pricing context",
+	      "neighborhood sale comparison boards",
+	    ],
     overlayLogic: [
       "price overlays",
       "before-versus-after sale numbers",
@@ -141,8 +143,8 @@ export const CATEGORY_RULE_PACKS: Record<CampaignCategory, CategoryRulePack> = {
       "perfect listing-photo polish without local proof",
     ],
     explicitLowFrictionCtas: [
-      "Get My Price Update",
-      "See My Value Gap",
+      "Get My Equity Report",
+      "Get My Price Range",
       "Check Pre-Listing Demand",
     ],
     defaultCtaStyle: "low_friction",
@@ -160,9 +162,10 @@ export const CATEGORY_RULE_PACKS: Record<CampaignCategory, CategoryRulePack> = {
       "worry that you are underwriting the wrong deals",
     ],
     winningAngles: [
-      "cash flow plus appreciation",
-      "overlooked market data",
-      "capital efficiency",
+      "cash-flow screening list",
+      "off-market investor opportunities",
+      "rent-to-price ratio map",
+      "BRRRR-ready property filter",
     ],
     approvedHookStructures: [
       "If your money is sitting in the bank, watch this.",
@@ -176,8 +179,10 @@ export const CATEGORY_RULE_PACKS: Record<CampaignCategory, CategoryRulePack> = {
       "learn more",
     ],
     approvedMechanismStyles: [
+      "cash-flow deal screening list",
       "micro-market analysis system",
       "undervalued-area selection process",
+      "underwritten deal sheet",
       "long-term growth underwriting framework",
     ],
     proofStyles: [
@@ -211,6 +216,70 @@ export const CATEGORY_RULE_PACKS: Record<CampaignCategory, CategoryRulePack> = {
       "See Yield By Area",
     ],
     defaultCtaStyle: "analysis",
+  },
+  commercial: {
+    category: "commercial",
+    triggerConditions: [
+      "business expansion",
+      "tenant or owner-user demand",
+      "asset-specific opportunity",
+    ],
+    internalTensions: [
+      "needing the right space before competitors secure it",
+      "not knowing which properties actually fit the operating plan",
+      "worrying that lease or purchase timing will create costly friction",
+    ],
+    winningAngles: [
+      "space-fit analysis",
+      "off-market inventory",
+      "location economics",
+    ],
+    approvedHookStructures: [
+      "If your business needs space in {market}, start here.",
+      "Most commercial searches in {market} miss this step.",
+      "Here's how operators are finding better-fit {propertyType} right now.",
+    ],
+    forbiddenHookPatterns: [
+      "dream office",
+      "beautiful property",
+      "learn more",
+      "generic availability",
+    ],
+    approvedMechanismStyles: [
+      "commercial space-fit analysis",
+      "tenant and owner-user qualification workflow",
+      "market availability screening system",
+    ],
+    proofStyles: [
+      "location and space-fit comparison",
+      "lease versus purchase decision proof",
+      "availability map with requirement filters",
+      "operating-cost comparison",
+    ],
+    visualLogic: [
+      "clean maps with commercial nodes",
+      "office, retail, or industrial exteriors",
+      "space planning and requirement checklists",
+      "operator-focused dashboards over lifestyle scenes",
+    ],
+    overlayLogic: [
+      "square-footage callouts",
+      "location requirement chips",
+      "lease or purchase fit labels",
+      "availability and timing cues",
+    ],
+    antiPatterns: [
+      "residential lifestyle framing",
+      "generic skyline glamour",
+      "agent-first branding",
+      "vague investment promises",
+    ],
+    explicitLowFrictionCtas: [
+      "See Matching Spaces",
+      "Review Available Options",
+      "Check Space Fit",
+    ],
+    defaultCtaStyle: "operator",
   },
   precon: {
     category: "precon",

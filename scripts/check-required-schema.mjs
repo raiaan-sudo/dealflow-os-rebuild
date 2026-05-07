@@ -4,7 +4,7 @@ import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 
 const repoRoot = process.cwd();
-const expectedSchemaVersion = "20260502010000";
+const expectedSchemaVersion = "20260502192332";
 const schemaCheckMode = process.env.SUPABASE_SCHEMA_CHECK_MODE?.trim().toLowerCase() ?? "remote";
 const requiredMigrationFiles = [
   "20260426110000_add_campaign_plan_critical_fields.sql",
@@ -36,6 +36,14 @@ const requiredMigrationFiles = [
   "20260430061000_rate_limit_bucket_cleanup_support.sql",
   "20260430190000_create_user_credits.sql",
   "20260502010000_harden_schema_metadata_access.sql",
+  "20260502192332_move_rls_membership_helper_private.sql",
+  "20260504183000_create_activation_events.sql",
+  "20260504190000_create_campaign_value_reports.sql",
+  "20260504203000_create_billing_cancellation_intents.sql",
+  "20260504210000_create_customer_success_checklists.sql",
+  "20260504213000_harden_launch_ops_tables_advisors.sql",
+  "20260504220000_harden_rls_and_fk_advisors.sql",
+  "20260504223000_create_client_error_events.sql",
 ];
 
 const { loadEnvConfig } = nextEnv;
@@ -322,6 +330,41 @@ async function main() {
       .limit(1),
   );
 
+  await probeQuery("activation_events table check", () =>
+    supabase
+      .from("activation_events")
+      .select("id, organization_id, user_id, campaign_id, event_name, event_key, source, metadata, occurred_at, created_at")
+      .limit(1),
+  );
+
+  await probeQuery("campaign_value_reports table check", () =>
+    supabase
+      .from("campaign_value_reports")
+      .select("id, organization_id, user_id, campaign_id, report_type, report_key, period_start, period_end, status, summary, created_at, updated_at")
+      .limit(1),
+  );
+
+  await probeQuery("billing_cancellation_intents table check", () =>
+    supabase
+      .from("billing_cancellation_intents")
+      .select("id, organization_id, user_id, stripe_customer_id, stripe_subscription_id, plan_tier, subscription_status, billing_state, reason_code, reason_detail, source, created_at")
+      .limit(1),
+  );
+
+  await probeQuery("customer_success_checklists table check", () =>
+    supabase
+      .from("customer_success_checklists")
+      .select("id, organization_id, user_id, campaign_id, onboarding_reviewed_at, creative_qa_completed_at, preview_reviewed_at, billing_verified_at, meta_connected_verified_at, assets_selected_verified_at, launch_readiness_verified_at, lead_loop_verified_at, day_7_check_in_completed_at, day_14_value_proof_completed_at, day_25_renewal_risk_review_completed_at, risk_level, owner_note, created_at, updated_at")
+      .limit(1),
+  );
+
+  await probeQuery("client_error_events table check", () =>
+    supabase
+      .from("client_error_events")
+      .select("id, event_key, route_path, source, severity, error_name, message, occurrence_count, first_seen_at, last_seen_at, reviewed_at")
+      .limit(1),
+  );
+
   await probeQuery("leads reliability columns check", () =>
     supabase
       .from("leads")
@@ -342,6 +385,35 @@ async function main() {
     fail(
       `Schema version mismatch. Expected ${expectedSchemaVersion}, got ${actualVersion ?? "missing"}.`,
     );
+  }
+
+  const expectedMetadataVersions = new Map([
+    ["activation_events_schema_version", "20260504183000"],
+    ["campaign_value_reports_schema_version", "20260504190000"],
+    ["billing_cancellation_intents_schema_version", "20260504203000"],
+    ["customer_success_checklists_schema_version", "20260504210000"],
+    ["launch_ops_table_advisor_hardening_schema_version", "20260504213000"],
+    ["rls_and_fk_advisor_hardening_schema_version", "20260504220000"],
+    ["client_error_events_schema_version", "20260504223000"],
+  ]);
+
+  for (const [key, expectedVersion] of expectedMetadataVersions) {
+    const metadataRow = await probeQuery(`app_schema_metadata ${key} check`, () =>
+      supabase.from("app_schema_metadata").select("value").eq("key", key).maybeSingle(),
+    );
+    const actualMetadataVersion =
+      metadataRow &&
+      typeof metadataRow === "object" &&
+      "value" in metadataRow &&
+      typeof metadataRow.value === "string"
+        ? metadataRow.value
+        : null;
+
+    if (actualMetadataVersion !== expectedVersion) {
+      fail(
+        `Schema metadata mismatch for ${key}. Expected ${expectedVersion}, got ${actualMetadataVersion ?? "missing"}.`,
+      );
+    }
   }
 
   console.log("remote schema check passed");

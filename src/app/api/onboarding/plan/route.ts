@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { assertSameOriginRequest, parseOptionalJsonBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
+import { logWarn } from "@/lib/logging";
 import { normalizePhone } from "@/lib/phone";
+import { recordActivationEvent } from "@/lib/services/activation-telemetry-service";
 import { upsertAgentProfile } from "@/lib/services/internal-lead-notification-service";
 
 export const runtime = "nodejs";
@@ -18,6 +20,7 @@ type OnboardingPayload = {
   market?: string;
   service?: string;
   focus?: string;
+  property_type?: string;
   price_range?: string;
   budget?: number | string;
   goal?: string;
@@ -33,6 +36,7 @@ type SafeOnboardingPayloadLog = {
   market: string;
   location: string;
   focus: string;
+  propertyType: string;
   priceRange: string;
   budget: number | string | null;
   goalPresent: boolean;
@@ -76,6 +80,7 @@ function buildSafePayloadLog(payload: OnboardingPayload | null): SafeOnboardingP
     market: safeText(payload?.market),
     location: safeText(payload?.location),
     focus: safeText(payload?.focus),
+    propertyType: safeText(payload?.property_type),
     priceRange: safeText(payload?.price_range),
     budget:
       typeof payload?.budget === "number" || typeof payload?.budget === "string"
@@ -276,7 +281,7 @@ async function findExistingCampaignByIdempotencyKey(
   const monthlyBudget = Number(plan?.monthly_budget ?? 0);
 
   if (!market || !audience || !Number.isFinite(monthlyBudget) || monthlyBudget <= 0) {
-    console.warn("ONBOARDING_IDEMPOTENCY_SKIPPED_INCOMPLETE_CAMPAIGN:", {
+    logWarn("onboarding_idempotency_skipped_incomplete_campaign", {
       campaignId: row.id,
       hasMarket: Boolean(market),
       hasAudience: Boolean(audience),
@@ -288,12 +293,22 @@ async function findExistingCampaignByIdempotencyKey(
   return row.id;
 }
 
-function getRealEstateIntent(service: string) {
-  if (/seller|sell|listing|valuation|home value/.test(service.toLowerCase())) {
-    return "seller" as const;
+type RealEstateOnboardingFocus = "buyer" | "seller" | "investor" | "commercial";
+
+function getRealEstateIntent(service: string): RealEstateOnboardingFocus {
+  if (/commercial|office|retail|industrial|warehouse|mixed[- ]use|lease|tenant|owner[- ]user/.test(service.toLowerCase())) {
+    return "commercial";
   }
 
-  return "buyer" as const;
+  if (/invest|investor|cash ?flow|off-market|rental|income property|multifamily|roi|yield/.test(service.toLowerCase())) {
+    return "investor";
+  }
+
+  if (/seller|sell|listing|valuation|home value/.test(service.toLowerCase())) {
+    return "seller";
+  }
+
+  return "buyer";
 }
 
 function getRealEstateFocus(params: {
@@ -303,7 +318,12 @@ function getRealEstateFocus(params: {
 }) {
   const normalizedFocus = safeText(params.focus).toLowerCase();
 
-  if (normalizedFocus === "seller" || normalizedFocus === "buyer") {
+  if (
+    normalizedFocus === "seller" ||
+    normalizedFocus === "buyer" ||
+    normalizedFocus === "investor" ||
+    normalizedFocus === "commercial"
+  ) {
     return normalizedFocus;
   }
 
@@ -315,6 +335,7 @@ function getRealEstateOnboardingDefaults(params: {
   businessName: string;
   location: string;
   service: string;
+  propertyType?: string;
   priceRange: string;
   goal: string;
   budget: number;
@@ -326,14 +347,71 @@ function getRealEstateOnboardingDefaults(params: {
   });
   const businessName = params.businessName.trim().length > 0 ? params.businessName : params.businessType;
   const priceRange = params.priceRange.trim().length > 0 ? params.priceRange : "mid-market homes";
+  const propertyType =
+    safeText(params.propertyType) ||
+    (intent === "commercial"
+      ? "commercial spaces"
+      : intent === "investor"
+        ? "cash-flow properties"
+        : `${priceRange} homes`);
   const serviceLabel =
     params.goal.trim().length > 0
       ? params.goal
       : params.service.trim().length > 0
         ? params.service
-        : intent === "seller"
-          ? "Free home value strategy call"
-          : "Private listings and buyer consult";
+        : intent === "commercial"
+	          ? "Commercial space-fit consultation"
+	          : intent === "investor"
+	            ? "Cash Flow Deal List"
+	            : intent === "seller"
+	          ? "Home Equity Snapshot Report"
+	          : "Curated Home List";
+
+  if (intent === "commercial") {
+    return {
+      clientName: businessName,
+      businessName,
+      intent,
+      market: params.location,
+      monthlyBudget: params.budget,
+      primaryGoal: "Generate qualified commercial real estate conversations",
+      timeline: "30 days",
+      audience: `Business owners, tenants, and owner-users evaluating ${propertyType} in ${params.location}`,
+      propertyType,
+      keyOffer: "commercial space-fit shortlist",
+      painPoints: [
+        "Operators waste time on spaces that do not fit their requirements",
+        "Lease and purchase timing is difficult to compare",
+        "Commercial availability changes before buyers or tenants can act",
+      ],
+      mechanism: "commercial space-fit analysis and shortlist system",
+      serviceLabel,
+      priceRange,
+    };
+  }
+
+  if (intent === "investor") {
+    return {
+      clientName: businessName,
+      businessName,
+      intent,
+      market: params.location,
+      monthlyBudget: params.budget,
+      primaryGoal: "Generate investor deal-flow conversations",
+      timeline: "30 days",
+      audience: `Real estate investors evaluating ${propertyType} in ${params.location}`,
+      propertyType,
+      keyOffer: "investor deal flow and ROI brief",
+      painPoints: [
+        "Investors do not know which pockets still have strong upside",
+        "They waste time underwriting weak opportunities",
+        "Good deals move before most investors see the numbers",
+      ],
+      mechanism: "investor deal-screening and market brief system",
+      serviceLabel,
+      priceRange,
+    };
+  }
 
   if (/seller|sell|listing|valuation|home value/.test(normalizedService)) {
     return {
@@ -345,7 +423,7 @@ function getRealEstateOnboardingDefaults(params: {
       primaryGoal: "Generate more seller and listing leads",
       timeline: "30 days",
       audience: `Homeowners likely to sell ${priceRange} homes in ${params.location}`,
-      propertyType: `${priceRange} homes`,
+      propertyType,
       keyOffer: "listing strategy and home value plan",
       painPoints: [
         "Homeowners are unsure what their property is worth",
@@ -367,7 +445,7 @@ function getRealEstateOnboardingDefaults(params: {
     primaryGoal: "Generate more buyer leads",
     timeline: "30 days",
     audience: `Home buyers searching for ${priceRange} homes in ${params.location}`,
-    propertyType: `${priceRange} homes`,
+    propertyType,
     keyOffer: "buyer consultation and curated home list",
     painPoints: [
       "Buyers do not know which homes fit their budget",
@@ -390,6 +468,7 @@ async function enrichRealEstateCampaignPlan(params: {
   };
   campaignId: string;
   location: string;
+  focus: RealEstateOnboardingFocus;
   readCampaignPlanDocument: (plan: unknown) => Record<string, unknown>;
   mergeCampaignPlanDocument: (plan: Record<string, unknown>, patch: Record<string, unknown>) => Record<string, unknown>;
   persistCampaignPlanDocumentUpdate: any;
@@ -411,14 +490,16 @@ async function enrichRealEstateCampaignPlan(params: {
   const campaignModes =
     Array.isArray(currentPlan.campaign_modes) && currentPlan.campaign_modes.length > 0
       ? currentPlan.campaign_modes
-      : ["buyer campaign", "seller campaign", "listing campaign"];
+      : ["buyer campaign", "seller campaign", "investor campaign", "commercial campaign"];
+  const nextCampaignModes = Array.from(new Set([...campaignModes, `${params.focus} campaign`]));
 
   await params.persistCampaignPlanDocumentUpdate({
     supabase: params.supabase,
     campaignId: params.campaignId,
     plan: params.mergeCampaignPlanDocument(currentPlan, {
       industry_mode: "real_estate",
-      campaign_modes: campaignModes,
+      campaign_modes: nextCampaignModes,
+      campaign_mode: params.focus,
       targeting_defaults: {
         interests: [...REAL_ESTATE_INTERESTS],
         geo_radius_miles: 15,
@@ -499,7 +580,17 @@ export async function POST(req: Request) {
       goal: payload?.goal,
     });
     const priceRange = safeText(payload?.price_range) || "mid-market homes";
-    const service = safeText(payload?.goal) || safeText(payload?.service) || (focus === "seller" ? "Free home value strategy call" : "Private listings and buyer consult");
+    const propertyType = safeText(payload?.property_type);
+    const service =
+      safeText(payload?.goal) ||
+      safeText(payload?.service) ||
+      (focus === "commercial"
+	        ? "Commercial space-fit shortlist"
+	        : focus === "investor"
+	          ? "Cash Flow Deal List"
+	          : focus === "seller"
+	            ? "Home Equity Snapshot Report"
+	            : "Curated Home List");
     const budget = toMonthlyBudget(payload?.budget);
     const realEstateMode = isRealEstateBusinessType(businessType) || safeText(payload?.focus).length > 0;
     const normalizedAgentPhone = normalizePhone(agentPhone);
@@ -545,6 +636,34 @@ export async function POST(req: Request) {
         phoneRaw: agentPhone,
         companyName: agentCompanyName,
       });
+      if (existingRow?.organization_id) {
+        await Promise.all([
+          recordActivationEvent({
+            organizationId: existingRow.organization_id,
+            userId: user.id,
+            campaignId: existingCampaignId,
+            eventName: "onboarding_completed",
+            source: "onboarding_route",
+            metadata: {
+              mode: focus,
+              sourceStage: "existing_campaign",
+            },
+            idempotencyKey: `onboarding_completed:${idempotencyKey}`,
+          }),
+          recordActivationEvent({
+            organizationId: existingRow.organization_id,
+            userId: user.id,
+            campaignId: existingCampaignId,
+            eventName: "campaign_plan_persisted",
+            source: "onboarding_route",
+            metadata: {
+              mode: focus,
+              sourceStage: "existing_campaign",
+            },
+            idempotencyKey: `campaign_plan_persisted:${idempotencyKey}`,
+          }),
+        ]);
+      }
 
       const responseBody = buildSuccessResponse(existingCampaignId);
       return NextResponse.json(responseBody);
@@ -557,6 +676,7 @@ export async function POST(req: Request) {
             businessName,
             location,
             service: focus,
+            propertyType,
             priceRange,
             goal: service,
             budget,
@@ -628,10 +748,40 @@ export async function POST(req: Request) {
         supabase: supabase as never,
         campaignId: savedPlan.id,
         location,
+        focus,
         readCampaignPlanDocument: campaignPlanDocumentModule.readCampaignPlanDocument,
         mergeCampaignPlanDocument: campaignPlanDocumentModule.mergeCampaignPlanDocument,
         persistCampaignPlanDocumentUpdate: persistenceModule.persistCampaignPlanDocumentUpdate,
       });
+    }
+
+    if (savedRow?.organization_id) {
+      await Promise.all([
+        recordActivationEvent({
+          organizationId: savedRow.organization_id,
+          userId: user.id,
+          campaignId: savedPlan.id,
+          eventName: "onboarding_completed",
+          source: "onboarding_route",
+          metadata: {
+            mode: focus,
+            sourceStage: "new_campaign",
+          },
+          idempotencyKey: `onboarding_completed:${idempotencyKey}`,
+        }),
+        recordActivationEvent({
+          organizationId: savedRow.organization_id,
+          userId: user.id,
+          campaignId: savedPlan.id,
+          eventName: "campaign_plan_persisted",
+          source: "onboarding_route",
+          metadata: {
+            mode: focus,
+            sourceStage: "new_campaign",
+          },
+          idempotencyKey: `campaign_plan_persisted:${idempotencyKey}`,
+        }),
+      ]);
     }
 
     const responseBody = buildSuccessResponse(savedPlan.id);

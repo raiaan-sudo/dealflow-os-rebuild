@@ -2,14 +2,24 @@
 .env.*
 
 .next/
+.next.stale-*/
+node_modules/
+node_modules.corrupt*/
 out/
 output/
 test-results/
 .tmp-playwright/
+playwright-report/
+screenshots/
 supabase/.temp/
+recovery-report.json
 
 coverage/
 *.log
+*screenshot*.png
+*screenshot*.jpg
+*screenshot*.jpeg
+*screenshot*.webp
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

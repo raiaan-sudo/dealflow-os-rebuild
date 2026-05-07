@@ -21,6 +21,7 @@ import {
   createPublicLeadAndStartConversation,
   queueFailedPublicLeadCapture,
 } from "@/lib/services/lead-handler-service";
+import { getPublicFunnelEntitlements } from "@/lib/services/campaign-entitlements";
 import { queueLeadSideEffectsJob } from "@/lib/services/system-job-service";
 
 const leadCaptureSchema = z
@@ -220,7 +221,7 @@ async function verifyTurnstileToken(params: {
   }
 }
 
-export async function handleLeadCaptureRequest(req: Request) {
+async function handleLeadCaptureRequest(req: Request) {
   const requestId = crypto.randomUUID();
   let capturedPayload:
     | {
@@ -340,6 +341,26 @@ export async function handleLeadCaptureRequest(req: Request) {
 
     if (!campaignId && !payload.funnel_id?.trim()) {
       throw new ApiError(400, "campaignId or funnel_id is required.", "validation_error");
+    }
+
+    const entitlementContext = await getPublicFunnelEntitlements({
+      campaignId: campaignId || null,
+      funnelSlug: funnelId || null,
+    });
+
+    if (!entitlementContext.entitlements.canCaptureLeads) {
+      logOperationalEvent("lead_capture.subscription_inactive", {
+        requestId,
+        campaignId: entitlementContext.campaignId,
+        organizationId: entitlementContext.organizationId,
+        billingState: entitlementContext.entitlements.billingState,
+        reason: entitlementContext.entitlements.suspensionReason,
+      });
+      throw new ApiError(
+        402,
+        "This campaign is inactive. Ask the agent to reactivate DealFlow before submitting this form.",
+        "campaign_subscription_inactive",
+      );
     }
 
     const normalizedStage = payload.stage?.trim() ?? "generated";

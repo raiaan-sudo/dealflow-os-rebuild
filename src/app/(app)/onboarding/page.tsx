@@ -1,1164 +1,946 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PageHeader } from "@/components/app/page-header";
-import { WizardSteps } from "@/components/app/wizard-steps";
+import {
+  ArrowLeft,
+  ArrowRight,
+  BadgeCheck,
+  BarChart3,
+  Building2,
+  CheckCircle2,
+  CircleDollarSign,
+  Home,
+  Lightbulb,
+  Loader2,
+  Rocket,
+  ShieldCheck,
+  Store,
+  Target,
+} from "lucide-react";
+import { PrepaywallCampaignPreview } from "@/components/onboarding/prepaywall-campaign-preview";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/page-shell";
-import { Spinner } from "@/components/ui/spinner";
+import { BILLING_PLANS, type BillingPlanTier } from "@/lib/billing/plans";
+import { cn } from "@/lib/utils";
 
-type CampaignFocus = "seller" | "buyer";
-type PipelineStepKey = "funnel" | "creatives" | "campaign";
-type OnboardingProgressStep = "plan" | "funnel" | "creatives" | "payload" | "complete";
-type StepStatus = "pending" | "active" | "complete" | "failed";
+type CampaignMode = "buyer" | "seller" | "investor" | "commercial";
+type OnboardingStepKey = "intent" | "market" | "property" | "offer" | "agent" | "plan" | "review";
 
-type PipelineStep = {
-  key: PipelineStepKey;
-  title: string;
-  label: string;
-  endpoint: string;
-};
-
-type FieldErrors = {
-  firstName?: string;
-  lastName?: string;
-  businessName?: string;
-  agentPhone?: string;
-  market?: string;
-  priceRange?: string;
-  budget?: string;
-};
-
-type PersistedOnboardingProgress = {
-  firstName: string;
-  lastName: string;
-  businessName: string;
+type DraftState = {
+  agentFirstName: string;
+  agentLastName: string;
+  agentCompanyName: string;
   agentPhone: string;
+  campaignMode: CampaignMode;
   market: string;
-  focus: CampaignFocus;
+  audience: string;
+  propertyType: string;
   priceRange: string;
-  budget: string;
-  goal: string;
-  campaignId: string | null;
-  currentStep: OnboardingProgressStep;
-  failedStep: PipelineStepKey | null;
-  error: string | null;
-  expiresAt: number;
+  monthlyBudget: string;
+  offer: string;
+  planTier: Extract<BillingPlanTier, "starter" | "pro">;
+  idempotencySeed: string;
 };
 
-const CREATE_PLAN_TIMEOUT_MS = 20_000;
-const PIPELINE_STEP_TIMEOUT_MS = 45_000;
-const ONBOARDING_PROGRESS_STORAGE_KEY = "dealflow-onboarding-progress-v2";
-const ONBOARDING_PROGRESS_TTL_MS = 24 * 60 * 60 * 1000;
+type FieldErrors = Partial<Record<keyof DraftState | "submit", string>>;
 
-const PIPELINE_STEPS: PipelineStep[] = [
-  {
-    key: "funnel",
-    title: "Step 1 of 3",
-    label: "Generating funnel preview",
-    endpoint: "/api/generate-funnel",
-  },
-  {
-    key: "creatives",
-    title: "Step 2 of 3",
-    label: "Generating ads and creative angles",
-    endpoint: "/api/generate-creatives",
-  },
-  {
-    key: "campaign",
-    title: "Step 3 of 3",
-    label: "Building launch-ready campaign",
-    endpoint: "/api/build-campaign",
-  },
+const STORAGE_KEY = "dealflow-guided-onboarding-v3";
+
+const STEPS: { key: OnboardingStepKey; label: string; title: string }[] = [
+  { key: "intent", label: "Type", title: "Choose campaign type" },
+  { key: "market", label: "Market", title: "Pick the city or market" },
+  { key: "property", label: "Property", title: "Choose inventory focus" },
+  { key: "offer", label: "Offer", title: "Shape the audience and offer" },
+  { key: "agent", label: "Agent", title: "Identify the agent" },
+  { key: "plan", label: "Plan", title: "Select behavior" },
+  { key: "review", label: "Review", title: "Confirm and build" },
 ];
 
-const PRICE_RANGE_OPTIONS = [
-  "$400k-$600k",
-  "$600k-$900k",
-  "$900k-$1.5M",
-  "$1.5M+",
-] as const;
+const MODE_DEFAULTS: Record<
+  CampaignMode,
+  {
+    title: string;
+    summary: string;
+    path: string;
+    audience: string;
+    propertyType: string;
+    priceRange: string;
+    offer: string;
+    icon: typeof Home;
+  }
+> = {
+  buyer: {
+    title: "Buyer leads",
+    summary: "Attract active buyers with sharper search intent, a focused funnel, and a fast path to a consultation.",
+    path: "Buyer leads in the selected market who are ready to compare listings and book a call.",
+    audience: "Move-ready buyers actively comparing homes",
+    propertyType: "Detached homes",
+    priceRange: "$600k-$900k",
+    offer: "Private listings and a fast buyer strategy call",
+    icon: Home,
+  },
+  seller: {
+    title: "Seller leads",
+    summary: "Turn homeowner curiosity into listing conversations with stronger positioning and clearer proof.",
+    path: "Seller leads in the selected market who want pricing, timing, and demand clarity.",
+    audience: "Homeowners considering a sale in the next 12 months",
+    propertyType: "Detached homes",
+    priceRange: "$600k-$900k",
+    offer: "Free home value and demand strategy call",
+    icon: Building2,
+  },
+  investor: {
+    title: "Investor leads",
+    summary: "Help real estate agents attract investors who want clearer deal flow, yield context, and stronger filtering.",
+    path: "Investor prospects who want deal flow and ROI context before they review properties.",
+    audience: "Real estate investors looking for stronger deal flow",
+    propertyType: "Cash-flow rentals",
+    priceRange: "$500k-$1.5M",
+    offer: "Investor deal flow and ROI brief",
+    icon: CircleDollarSign,
+  },
+  commercial: {
+    title: "Commercial leads",
+    summary: "Capture business owners, tenants, and owner-users who need a practical commercial shortlist.",
+    path: "Commercial clients evaluating lease, purchase, or expansion options in the selected market.",
+    audience: "Business owners, tenants, and owner-users evaluating space",
+    propertyType: "Office",
+    priceRange: "Lease-ready",
+    offer: "Commercial space-fit shortlist",
+    icon: Store,
+  },
+};
 
-const BUDGET_OPTIONS = [
+const PROPERTY_TYPE_OPTIONS: Record<CampaignMode, { label: string; description: string }[]> = {
+  buyer: [
+    { label: "Detached homes", description: "Move-ready detached inventory for active residential buyers." },
+    { label: "Townhomes", description: "Townhome shoppers comparing space, schools, and affordability." },
+    { label: "Condos", description: "Condo buyers looking for sharper building and neighborhood fit." },
+    { label: "First-time buyer homes", description: "Entry-point options for buyers who need a clearer first step." },
+    { label: "Move-up homes", description: "Families upgrading into more space or a better location." },
+    { label: "New construction", description: "Builder inventory, pre-construction, and newer homes." },
+    { label: "Luxury homes", description: "Higher-intent buyers seeking premium private access." },
+  ],
+  seller: [
+    { label: "Detached homes", description: "Listing conversations with detached homeowners." },
+    { label: "Townhomes", description: "Townhome owners comparing value, timing, and demand." },
+    { label: "Condos", description: "Condo sellers who need pricing and building-specific demand clarity." },
+    { label: "Luxury listings", description: "Premium homeowners who need a stronger launch plan." },
+    { label: "Downsizer homes", description: "Owners weighing whether now is the right move-down window." },
+    { label: "Probate/estate sale", description: "Estate-related sellers who need a practical next step." },
+    { label: "Investment property owners", description: "Landlords and owners considering a sale or portfolio shift." },
+  ],
+  investor: [
+    { label: "Cash-flow rentals", description: "Rental properties where investors care about yield and monthly spread." },
+    { label: "Value-add properties", description: "Properties with upside through renovation, repositioning, or better operations." },
+    { label: "Multifamily", description: "Apartment and small multifamily opportunities for investor buyers." },
+    { label: "Duplex/triplex/fourplex", description: "Small multi-unit assets for house hackers and cash-flow buyers." },
+    { label: "BRRRR opportunities", description: "Buy, rehab, rent, refinance, repeat opportunities." },
+    { label: "Off-market deals", description: "Private or early-access opportunities before broad market exposure." },
+    { label: "Pre-construction investment", description: "Pre-construction opportunities with investor-oriented context." },
+    { label: "Fix-and-flip properties", description: "Short-horizon renovation deals and resale opportunities." },
+  ],
+  commercial: [
+    { label: "Office", description: "Office space for tenants, owner-users, and professional teams." },
+    { label: "Retail", description: "Retail space for operators comparing visibility, access, and location fit." },
+    { label: "Industrial", description: "Industrial units for operators, investors, and users." },
+    { label: "Warehouse", description: "Warehouse and logistics space with capacity and access requirements." },
+    { label: "Mixed-use", description: "Mixed-use commercial properties with flexible use cases." },
+    { label: "Owner-user", description: "Businesses evaluating purchase options for their own operations." },
+    { label: "Lease opportunities", description: "Tenant-focused campaigns around lease-ready space." },
+    { label: "Purchase opportunities", description: "Commercial purchase campaigns for buyers and owner-users." },
+    { label: "Medical/professional space", description: "Clinics, medical offices, and professional-service spaces." },
+    { label: "Land/development sites", description: "Commercial land, redevelopment, or buildable site opportunities." },
+  ],
+};
+
+const DEFAULT_DRAFT: DraftState = {
+  agentFirstName: "",
+  agentLastName: "",
+  agentCompanyName: "",
+  agentPhone: "",
+  campaignMode: "buyer",
+  market: "Toronto, ON",
+  audience: MODE_DEFAULTS.buyer.audience,
+  propertyType: MODE_DEFAULTS.buyer.propertyType,
+  priceRange: MODE_DEFAULTS.buyer.priceRange,
+  monthlyBudget: "3000",
+  offer: MODE_DEFAULTS.buyer.offer,
+  planTier: "starter",
+  idempotencySeed: "",
+};
+
+const PRICE_RANGES = ["$400k-$600k", "$600k-$900k", "$900k-$1.5M", "$1.5M+"] as const;
+const INVESTOR_PRICE_RANGES = ["<$500k", "$500k-$1.5M", "$1.5M-$3M", "$3M+"] as const;
+const COMMERCIAL_PRICE_RANGES = ["Lease-ready", "$750k-$1.5M", "$1.5M-$3M", "$3M+"] as const;
+const BUDGETS = [
   { label: "$1.5k/mo", value: "1500" },
   { label: "$3k/mo", value: "3000" },
   { label: "$5k/mo", value: "5000" },
   { label: "$7.5k+/mo", value: "7500" },
 ] as const;
 
-const DEFAULT_GOALS: Record<CampaignFocus, string> = {
-  seller: "Free home value strategy call",
-  buyer: "Private listings + buyer consult",
+const OFFER_SUGGESTIONS: Record<CampaignMode, string[]> = {
+  buyer: [
+    "Curated Home List",
+    "Affordability Breakdown",
+    "Early Access Listings",
+    "First-Time Buyer Plan",
+    "Relocation Shortlist",
+    "Move-Up Strategy Plan",
+    "Under-Market Deals",
+    "Neighborhood Match Report",
+    "Private Inventory Preview",
+    "Monthly Payment Estimator",
+  ],
+  seller: [
+    "Home Equity Snapshot Report",
+    "Pre-Listing Buyer Demand Check",
+    "Neighbourhood Sale Comparison Report",
+    "Instant Home Value Range",
+    "Sell vs Renovate Decision Report",
+    "Downsizing Profit Calculator",
+    "Timing the Market Report",
+    "Private Buyer Match Preview",
+    "14-Day Sale Analysis",
+    "Listing Strategy Blueprint",
+  ],
+  investor: [
+    "Cash Flow Deal List",
+    "ROI Report",
+    "Off-Market List",
+    "Rent-to-Price Analysis",
+    "BRRRR Candidate List",
+    "Investor Pocket Map",
+    "Underwritten Deal Sheet",
+    "Multifamily Shortlist",
+    "Monthly Cash Flow Estimate Tool",
+    "Pre-Market Alert List",
+  ],
+  commercial: [
+    "Available spaces shortlist",
+    "Lease vs purchase strategy call",
+    "Owner-user opportunity list",
+    "Industrial/warehouse availability report",
+    "Tenant relocation options",
+    "Commercial market snapshot",
+    "Development site shortlist",
+  ],
 };
 
-const FOCUS_SUMMARY: Record<CampaignFocus, string> = {
-  seller: "Seller leads",
-  buyer: "Buyer leads",
+const AUDIENCE_REASONS: Record<CampaignMode, string> = {
+  buyer: "We chose this because buyers respond fastest when the campaign filters inventory by budget, lifestyle, and timing instead of sending generic listing noise.",
+  seller: "We chose this because homeowners need a low-pressure way to understand equity, timing, and demand before they decide whether to list.",
+  investor: "We chose this because investors care about filtered deal flow, rent-to-price logic, and underwritten opportunities more than generic property ads.",
+  commercial: "We chose this because commercial prospects need space-fit criteria and use-case clarity before they are ready to talk.",
 };
 
-const FOCUS_HELP: Record<CampaignFocus, string> = {
-  seller: "Best for listing appointments, home valuation offers, and seller nurture.",
-  buyer: "Best for home search offers, buyer consultations, and tour-ready leads.",
-};
-
-function getStepErrorMessage(value: unknown, fallbackLabel: string) {
-  if (
-    value &&
-    typeof value === "object" &&
-    "error" in value &&
-    typeof value.error === "string" &&
-    value.error.trim().length > 0
-  ) {
-    return value.error;
+function createIdempotencySeed() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
   }
 
-  return `${fallbackLabel} failed.`;
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function isPipelineStepKey(value: unknown): value is PipelineStepKey {
-  return value === "funnel" || value === "creatives" || value === "campaign";
+function isCampaignMode(value: unknown): value is CampaignMode {
+  return value === "buyer" || value === "seller" || value === "investor" || value === "commercial";
 }
 
-function isProgressStep(value: unknown): value is OnboardingProgressStep {
+async function recordActivationEvent(params: {
+  eventName: string;
+  idempotencyKey: string;
+  metadata?: Record<string, unknown>;
+}) {
+  try {
+    await fetch("/api/activation/events", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(params),
+    });
+  } catch {
+    // Activation telemetry is useful for operators but must never block onboarding.
+  }
+}
+
+function IconTile({
+  icon: Icon,
+  tone = "cyan",
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  tone?: "cyan" | "violet" | "green" | "amber";
+}) {
+  const toneClass = {
+    cyan: "border-cyan-200/20 bg-cyan-300/[0.06] text-cyan-100",
+    violet: "border-violet-200/20 bg-violet-300/[0.06] text-violet-100",
+    green: "border-emerald-200/20 bg-emerald-300/[0.06] text-emerald-100",
+    amber: "border-amber-200/20 bg-amber-300/[0.06] text-amber-100",
+  }[tone];
+
   return (
-    value === "plan" ||
-    value === "funnel" ||
-    value === "creatives" ||
-    value === "payload" ||
-    value === "complete"
+    <div className={cn("flex size-11 shrink-0 items-center justify-center rounded-2xl border", toneClass)}>
+      <Icon className="size-5" />
+    </div>
   );
 }
 
-function isCampaignFocus(value: unknown): value is CampaignFocus {
-  return value === "seller" || value === "buyer";
-}
-
-function createInitialStepStatuses(): Record<PipelineStepKey, StepStatus> {
-  return {
-    funnel: "pending",
-    creatives: "pending",
-    campaign: "pending",
-  };
-}
-
-function getProgressStepFromPipelineStep(step: PipelineStepKey): OnboardingProgressStep {
-  if (step === "campaign") {
-    return "payload";
-  }
-
-  return step;
-}
-
-function getNextProgressStep(step: PipelineStepKey): OnboardingProgressStep {
-  if (step === "funnel") {
-    return "creatives";
-  }
-
-  if (step === "creatives") {
-    return "payload";
-  }
-
-  return "complete";
-}
-
-function getStatusesForProgressStep(step: OnboardingProgressStep) {
-  if (step === "plan") {
-    return createInitialStepStatuses();
-  }
-
-  if (step === "funnel") {
-    return createInitialStepStatuses();
-  }
-
-  if (step === "creatives") {
-    return {
-      funnel: "complete",
-      creatives: "pending",
-      campaign: "pending",
-    } satisfies Record<PipelineStepKey, StepStatus>;
-  }
-
-  if (step === "payload") {
-    return {
-      funnel: "complete",
-      creatives: "complete",
-      campaign: "pending",
-    } satisfies Record<PipelineStepKey, StepStatus>;
-  }
-
-  return {
-    funnel: "complete",
-    creatives: "complete",
-    campaign: "complete",
-  } satisfies Record<PipelineStepKey, StepStatus>;
-}
-
-function getStartStepIndex(step: OnboardingProgressStep) {
-  if (step === "creatives") {
-    return 1;
-  }
-
-  if (step === "payload") {
-    return 2;
-  }
-
-  return 0;
-}
-
-function buildOnboardingIdempotencySeed(params: {
-  firstName: string;
-  lastName: string;
-  businessName: string;
-  agentPhone: string;
-  market: string;
-  focus: CampaignFocus;
-  priceRange: string;
-  budget: string;
-  goal: string;
-}) {
-  return [
-    params.firstName,
-    params.lastName,
-    params.businessName,
-    params.agentPhone,
-    params.market,
-    params.focus,
-    params.priceRange,
-    params.budget,
-    params.goal,
-  ]
-    .map((value) => value.trim().toLowerCase().replace(/\s+/g, " "))
-    .join("|");
-}
-
-async function fetchJsonWithTimeout<T>(input: string, init: RequestInit, timeoutMs: number) {
-  const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-  const externalSignal = init.signal;
-
-  if (externalSignal) {
-    if (externalSignal.aborted) {
-      controller.abort();
-    } else {
-      externalSignal.addEventListener("abort", () => controller.abort(), { once: true });
-    }
-  }
-
-  try {
-    const response = await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    });
-
-    let data: T | null = null;
-
-    try {
-      data = (await response.json()) as T;
-    } catch (error) {
-      console.error("JSON PARSE FAILED:", error);
-      throw new Error("Invalid JSON response");
-    }
-
-    return {
-      response,
-      data,
-    };
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("Request timed out.");
-    }
-
-    throw error;
-  } finally {
-    window.clearTimeout(timer);
-  }
-}
-
-function validateFields(params: {
-  firstName: string;
-  lastName: string;
-  businessName: string;
-  agentPhone: string;
-  market: string;
-  priceRange: string;
-  budget: string;
-}) {
+function validateStep(step: OnboardingStepKey, draft: DraftState) {
   const errors: FieldErrors = {};
-  const budgetValue = Number.parseFloat(params.budget.replace(/[^0-9.]/g, ""));
+  const budget = Number.parseFloat(draft.monthlyBudget.replace(/[^0-9.]/g, ""));
 
-  if (params.firstName.trim().length === 0) {
-    errors.firstName = "Add your first name for lead alerts.";
+  if (step === "agent" || step === "review") {
+    if (!draft.agentFirstName.trim()) errors.agentFirstName = "Add the agent first name.";
+    if (!draft.agentLastName.trim()) errors.agentLastName = "Add the agent last name.";
+    if (!draft.agentCompanyName.trim()) errors.agentCompanyName = "Add the company or brokerage.";
+    if (!draft.agentPhone.trim()) errors.agentPhone = "Add the agent phone for internal lead alerts.";
   }
 
-  if (params.lastName.trim().length === 0) {
-    errors.lastName = "Add your last name for lead alerts.";
+  if (step === "market" || step === "review") {
+    if (!draft.market.trim()) errors.market = "Add the city or market this campaign should target.";
   }
 
-  if (params.businessName.trim().length === 0) {
-    errors.businessName = "Add your company or brokerage so we can personalize the preview.";
+  if (step === "property" || step === "review") {
+    if (!draft.propertyType.trim()) errors.propertyType = "Add the property type or inventory focus.";
   }
 
-  if (params.agentPhone.trim().length === 0) {
-    errors.agentPhone = "Add the phone number that should receive internal lead alerts.";
-  }
-
-  if (params.market.trim().length === 0) {
-    errors.market = "Enter the city or market you want to advertise in.";
-  }
-
-  if (params.priceRange.trim().length === 0) {
-    errors.priceRange = "Choose the price range you want this campaign to focus on.";
-  }
-
-  if (!Number.isFinite(budgetValue) || budgetValue <= 0) {
-    errors.budget = "Choose a monthly ad budget so the preview uses a realistic spend plan.";
+  if (step === "offer" || step === "review") {
+    if (!draft.audience.trim()) errors.audience = "Describe who the campaign should attract.";
+    if (!draft.priceRange.trim()) errors.priceRange = "Choose a price range.";
+    if (!Number.isFinite(budget) || budget <= 0) errors.monthlyBudget = "Choose or enter a realistic monthly ad budget.";
+    if (!draft.offer.trim()) errors.offer = "Add the offer or lead magnet for this campaign.";
   }
 
   return errors;
 }
 
-function formatProgressLabel(step: OnboardingProgressStep) {
-  switch (step) {
-    case "plan":
-      return "Step 1 of 2: campaign setup";
-    case "funnel":
-      return "Step 2 of 2: generating funnel";
-    case "creatives":
-      return "Step 2 of 2: generating ads";
-    case "payload":
-      return "Step 2 of 2: preparing launch";
-    case "complete":
-      return "Step 2 of 2: ready to review";
-    default:
-      return "Step 1 of 2: campaign setup";
-  }
+function StepProgress({
+  currentStep,
+  furthestStepIndex,
+  onSelect,
+}: {
+  currentStep: OnboardingStepKey;
+  furthestStepIndex: number;
+  onSelect: (step: OnboardingStepKey) => void;
+}) {
+  const currentIndex = STEPS.findIndex((step) => step.key === currentStep);
+  const progress = Math.round(((currentIndex + 1) / STEPS.length) * 100);
+
+  return (
+    <Card className="p-3 sm:p-4">
+      <div className="flex items-center justify-between gap-4">
+        <p className="df-eyebrow">Progress</p>
+        <p className="text-sm font-semibold text-white/62">{progress}%</p>
+      </div>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+        <div className="h-full rounded-full bg-[linear-gradient(90deg,#7c5cff,#55d5ff)] transition-all" style={{ width: `${progress}%` }} />
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-4 xl:grid-cols-7">
+        {STEPS.map((step, index) => {
+          const active = step.key === currentStep;
+          const available = index <= furthestStepIndex;
+
+          return (
+            <button
+              key={step.key}
+              type="button"
+              onClick={() => available && onSelect(step.key)}
+              disabled={!available}
+              className={cn(
+                "flex min-w-0 items-center gap-2 rounded-2xl border px-3 py-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-45",
+                active
+                  ? "border-cyan-200/24 bg-cyan-300/[0.07]"
+                  : "border-white/10 bg-white/[0.025] hover:border-cyan-200/18 hover:bg-white/[0.05]",
+              )}
+            >
+              <span
+                className={cn(
+                  "flex size-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
+                  index < currentIndex
+                    ? "border-emerald-200/25 bg-emerald-300/[0.08] text-emerald-100"
+                    : active
+                      ? "border-cyan-200/30 bg-cyan-300/[0.1] text-cyan-100"
+                      : "border-white/10 bg-white/[0.035] text-white/54",
+                )}
+              >
+                {index < currentIndex ? <CheckCircle2 className="size-3.5" /> : index + 1}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-white/62">
+                  {step.label}
+                </span>
+                <span className="mt-1 hidden text-xs leading-snug text-white/44 lg:line-clamp-2">{step.title}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </Card>
+  );
 }
 
-function getCampaignReviewPath(campaignId: string) {
-  return `/build/funnel?campaignId=${encodeURIComponent(campaignId)}`;
+function ChoiceCard({
+  active,
+  icon,
+  title,
+  body,
+  detail,
+  onClick,
+}: {
+  active: boolean;
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  body: string;
+  detail?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "group min-h-[132px] rounded-[22px] border p-4 text-left transition hover:-translate-y-0.5",
+        active
+          ? "border-cyan-200/28 bg-[linear-gradient(145deg,rgba(116,199,255,0.14),rgba(255,255,255,0.035))] shadow-[0_22px_70px_-48px_rgba(103,232,249,0.7)]"
+          : "border-white/10 bg-white/[0.025] hover:border-cyan-200/20 hover:bg-cyan-300/[0.045]",
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <IconTile icon={icon} tone={active ? "cyan" : "violet"} />
+        {active ? <BadgeCheck className="size-5 text-cyan-100" /> : null}
+      </div>
+      <p className="mt-4 text-xl font-semibold tracking-[-0.05em] text-white">{title}</p>
+      <p className="mt-2 line-clamp-3 text-sm leading-6 text-white/64">{body}</p>
+      {detail ? <p className="mt-3 text-sm font-semibold text-cyan-100">{detail}</p> : null}
+    </button>
+  );
 }
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const latestPlanRequestIdRef = useRef(0);
-  const activePlanAbortControllerRef = useRef<AbortController | null>(null);
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [businessName, setBusinessName] = useState("");
-  const [agentPhone, setAgentPhone] = useState("");
-  const [market, setMarket] = useState("");
-  const [focus, setFocus] = useState<CampaignFocus>("seller");
-  const [priceRange, setPriceRange] = useState<string>(PRICE_RANGE_OPTIONS[1]);
-  const [budget, setBudget] = useState<string>(BUDGET_OPTIONS[1].value);
-  const [goal, setGoal] = useState<string>(DEFAULT_GOALS.seller);
-  const [goalTouched, setGoalTouched] = useState(false);
-  const [campaignId, setCampaignId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [stepStatuses, setStepStatuses] = useState<Record<PipelineStepKey, StepStatus>>(createInitialStepStatuses);
-  const [currentStep, setCurrentStep] = useState<OnboardingProgressStep>("plan");
-  const [failedStep, setFailedStep] = useState<PipelineStepKey | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [hydrated, setHydrated] = useState(false);
-  const [hasSavedProgress, setHasSavedProgress] = useState(false);
+  const [currentStep, setCurrentStep] = useState<OnboardingStepKey>("intent");
+  const [furthestStepIndex, setFurthestStepIndex] = useState(0);
+  const [draft, setDraft] = useState<DraftState>(DEFAULT_DRAFT);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [submitting, setSubmitting] = useState(false);
+  const currentStepIndex = STEPS.findIndex((step) => step.key === currentStep);
+  const modeCopy = MODE_DEFAULTS[draft.campaignMode];
+  const propertyTypeOptions = PROPERTY_TYPE_OPTIONS[draft.campaignMode];
+  const priceRangeOptions =
+    draft.campaignMode === "commercial"
+      ? COMMERCIAL_PRICE_RANGES
+      : draft.campaignMode === "investor"
+        ? INVESTOR_PRICE_RANGES
+        : PRICE_RANGES;
 
-  const normalizedGoal = goal.trim() || DEFAULT_GOALS[focus];
-
-  const idempotencySeed = useMemo(
-    () =>
-      buildOnboardingIdempotencySeed({
-        firstName,
-        lastName,
-        businessName,
-        agentPhone,
-        market,
-        focus,
-        priceRange,
-        budget,
-        goal: normalizedGoal,
-      }),
-    [agentPhone, budget, businessName, firstName, focus, lastName, market, normalizedGoal, priceRange],
+  const stepTitle = useMemo(
+    () => STEPS.find((step) => step.key === currentStep)?.title ?? "Build campaign",
+    [currentStep],
   );
 
   useEffect(() => {
-    if (!goalTouched) {
-      setGoal(DEFAULT_GOALS[focus]);
-    }
-  }, [focus, goalTouched]);
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    let nextDraft = { ...DEFAULT_DRAFT, idempotencySeed: createIdempotencySeed() };
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const urlCampaignId = new URL(window.location.href).searchParams.get("campaignId")?.trim() ?? "";
-    const raw = window.localStorage.getItem(ONBOARDING_PROGRESS_STORAGE_KEY);
-
-    if (!raw) {
-      if (urlCampaignId) {
-        setCampaignId(urlCampaignId);
-        setCurrentStep("complete");
-        setStepStatuses(getStatusesForProgressStep("complete"));
-        setHasSavedProgress(true);
+    if (raw) {
+      try {
+        const saved = JSON.parse(raw) as Partial<DraftState> & {
+          currentStep?: OnboardingStepKey;
+          furthestStepIndex?: number;
+        };
+        const campaignMode = isCampaignMode(saved.campaignMode) ? saved.campaignMode : "buyer";
+        nextDraft = {
+          ...nextDraft,
+          ...saved,
+          campaignMode,
+          planTier: saved.planTier === "pro" ? "pro" : "starter",
+          idempotencySeed: saved.idempotencySeed || nextDraft.idempotencySeed,
+        };
+        setDraft(nextDraft);
+        if (saved.currentStep && STEPS.some((step) => step.key === saved.currentStep)) {
+          setCurrentStep(saved.currentStep);
+        }
+        if (typeof saved.furthestStepIndex === "number") {
+          setFurthestStepIndex(Math.min(Math.max(saved.furthestStepIndex, 0), STEPS.length - 1));
+        }
+      } catch {
+        window.localStorage.removeItem(STORAGE_KEY);
+        setDraft(nextDraft);
       }
-      setHydrated(true);
-      return;
+    } else {
+      setDraft(nextDraft);
     }
 
-    try {
-      const saved = JSON.parse(raw) as Partial<PersistedOnboardingProgress>;
-      if (typeof saved.expiresAt !== "number" || saved.expiresAt <= Date.now()) {
-        window.localStorage.removeItem(ONBOARDING_PROGRESS_STORAGE_KEY);
-        setHydrated(true);
-        return;
-      }
-
-      const restoredStep = isProgressStep(saved.currentStep) ? saved.currentStep : "plan";
-      const restoredFailedStep = isPipelineStepKey(saved.failedStep) ? saved.failedStep : null;
-      const restoredFocus = isCampaignFocus(saved.focus) ? saved.focus : "seller";
-      const restoredGoal = typeof saved.goal === "string" && saved.goal.trim().length > 0
-        ? saved.goal
-        : DEFAULT_GOALS[restoredFocus];
-
-      setFirstName(typeof saved.firstName === "string" ? saved.firstName : "");
-      setLastName(typeof saved.lastName === "string" ? saved.lastName : "");
-      setBusinessName(typeof saved.businessName === "string" ? saved.businessName : "");
-      setAgentPhone(typeof saved.agentPhone === "string" ? saved.agentPhone : "");
-      setMarket(typeof saved.market === "string" ? saved.market : "");
-      setFocus(restoredFocus);
-      setPriceRange(
-        typeof saved.priceRange === "string" && saved.priceRange.trim().length > 0
-          ? saved.priceRange
-          : PRICE_RANGE_OPTIONS[1],
-      );
-      setBudget(
-        typeof saved.budget === "string" && saved.budget.trim().length > 0
-          ? saved.budget
-          : BUDGET_OPTIONS[1].value,
-      );
-      setGoal(restoredGoal);
-      setGoalTouched(restoredGoal !== DEFAULT_GOALS[restoredFocus]);
-      setCampaignId(typeof saved.campaignId === "string" && saved.campaignId.trim().length > 0 ? saved.campaignId : null);
-      setCurrentStep(restoredStep);
-      setStepStatuses(getStatusesForProgressStep(restoredStep));
-      setFailedStep(restoredFailedStep);
-      setError(typeof saved.error === "string" ? saved.error : null);
-      setHasSavedProgress(restoredStep !== "complete" || typeof saved.campaignId === "string");
-    } catch {
-      window.localStorage.removeItem(ONBOARDING_PROGRESS_STORAGE_KEY);
-    } finally {
-      setHydrated(true);
-    }
+    setHydrated(true);
   }, []);
 
   useEffect(() => {
-    if (!hydrated || typeof window === "undefined") {
-      return;
-    }
+    if (!hydrated || !draft.idempotencySeed) return;
 
-    const progress: PersistedOnboardingProgress = {
-      firstName,
-      lastName,
-      businessName,
-      agentPhone,
-      market,
-      focus,
-      priceRange,
-      budget,
-      goal: normalizedGoal,
-      campaignId,
-      currentStep,
-      failedStep,
-      error,
-      expiresAt: Date.now() + ONBOARDING_PROGRESS_TTL_MS,
-    };
-
-    const hasMeaningfulState =
-      Boolean(
-        firstName.trim() ||
-          lastName.trim() ||
-          businessName.trim() ||
-          agentPhone.trim() ||
-          market.trim() ||
-          priceRange.trim() ||
-          budget.trim() ||
-          goal.trim() ||
-          campaignId ||
-          currentStep !== "plan" ||
-          failedStep ||
-          error,
-      ) && currentStep !== "complete";
-
-    if (hasMeaningfulState) {
-      window.localStorage.setItem(ONBOARDING_PROGRESS_STORAGE_KEY, JSON.stringify(progress));
-      setHasSavedProgress(true);
-    } else {
-      window.localStorage.removeItem(ONBOARDING_PROGRESS_STORAGE_KEY);
-      setHasSavedProgress(Boolean(campaignId && currentStep === "complete"));
-    }
-
-    const url = new URL(window.location.href);
-
-    if (campaignId) {
-      url.searchParams.set("campaignId", campaignId);
-    } else {
-      url.searchParams.delete("campaignId");
-    }
-
-    if (hasMeaningfulState) {
-      url.searchParams.set("step", currentStep);
-    } else {
-      url.searchParams.delete("step");
-    }
-
-    window.history.replaceState({}, "", url.toString());
-  }, [agentPhone, budget, businessName, campaignId, currentStep, error, failedStep, firstName, focus, goal, hydrated, lastName, market, normalizedGoal, priceRange]);
+    void recordActivationEvent({
+      eventName: "onboarding_started",
+      idempotencyKey: `onboarding_started:${draft.idempotencySeed}`,
+      metadata: {
+        route: "onboarding",
+        mode: draft.campaignMode,
+        planTier: draft.planTier,
+      },
+    });
+  }, [draft.campaignMode, draft.idempotencySeed, draft.planTier, hydrated]);
 
   useEffect(() => {
-    if (!hydrated || loading || currentStep !== "complete" || !campaignId) {
-      return;
-    }
+    if (!hydrated) return;
 
-    router.replace(getCampaignReviewPath(campaignId));
-  }, [campaignId, currentStep, hydrated, loading, router]);
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        ...draft,
+        currentStep,
+        furthestStepIndex,
+        updatedAt: new Date().toISOString(),
+      }),
+    );
+  }, [currentStep, draft, furthestStepIndex, hydrated]);
 
-  function clearSavedProgress() {
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(ONBOARDING_PROGRESS_STORAGE_KEY);
-      const url = new URL(window.location.href);
-      url.searchParams.delete("campaignId");
-      url.searchParams.delete("step");
-      window.history.replaceState({}, "", url.toString());
-    }
-
-    setBusinessName("");
-    setMarket("");
-    setFocus("seller");
-    setPriceRange(PRICE_RANGE_OPTIONS[1]);
-    setBudget(BUDGET_OPTIONS[1].value);
-    setGoal(DEFAULT_GOALS.seller);
-    setGoalTouched(false);
-    setCampaignId(null);
-    setCurrentStep("plan");
-    setStepStatuses(createInitialStepStatuses());
-    setFailedStep(null);
-    setError(null);
-    setFieldErrors({});
-    setHasSavedProgress(false);
-    setLoading(false);
-  }
-
-  async function runPipeline(startStepIndex: number, currentCampaignId: string) {
-    for (let index = startStepIndex; index < PIPELINE_STEPS.length; index += 1) {
-      const step = PIPELINE_STEPS[index];
-
-      setCurrentStep(getProgressStepFromPipelineStep(step.key));
-      setStepStatuses((current) => ({
-        ...current,
-        [step.key]: "active",
-      }));
-      setFailedStep(null);
-      setError(null);
-
-      try {
-        const { response, data } = await fetchJsonWithTimeout<Record<string, unknown>>(
-          step.endpoint,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ campaignId: currentCampaignId }),
-          },
-          PIPELINE_STEP_TIMEOUT_MS,
-        );
-
-        if (!response.ok) {
-          throw new Error(getStepErrorMessage(data, step.label));
-        }
-
-        setStepStatuses((current) => ({
-          ...current,
-          [step.key]: "complete",
-        }));
-        setCurrentStep(getNextProgressStep(step.key));
-      } catch (stepError) {
-        const message =
-          stepError instanceof Error && stepError.message === "Request timed out."
-            ? `${step.label} timed out. Retry this step to continue.`
-            : stepError instanceof Error
-              ? stepError.message
-              : `${step.label} failed.`;
-        setStepStatuses((current) => ({
-          ...current,
-          [step.key]: "failed",
-        }));
-        setFailedStep(step.key);
-        setError(message);
-        throw stepError;
+  function updateDraft(nextDraft: Partial<DraftState>) {
+    setDraft((current) => ({ ...current, ...nextDraft }));
+    setErrors((current) => {
+      const next = { ...current };
+      for (const key of Object.keys(nextDraft) as (keyof DraftState)[]) {
+        delete next[key];
       }
-    }
-
-    setCurrentStep("complete");
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(ONBOARDING_PROGRESS_STORAGE_KEY);
-    }
-    setHasSavedProgress(false);
-    router.push(getCampaignReviewPath(currentCampaignId));
+      delete next.submit;
+      return next;
+    });
   }
 
-  async function createOrReuseCampaignPlan() {
-    activePlanAbortControllerRef.current?.abort();
+  function selectMode(campaignMode: CampaignMode) {
+    const defaults = MODE_DEFAULTS[campaignMode];
+    updateDraft({
+      campaignMode,
+      audience: defaults.audience,
+      propertyType: defaults.propertyType,
+      priceRange: defaults.priceRange,
+      offer: defaults.offer,
+    });
+  }
 
-    const controller = new AbortController();
-    activePlanAbortControllerRef.current = controller;
-    const requestId = Date.now();
-    latestPlanRequestIdRef.current = requestId;
+  function goToStep(step: OnboardingStepKey) {
+    setCurrentStep(step);
+    setErrors({});
+  }
 
-    const { response, data } = await fetchJsonWithTimeout<
-      { success?: boolean; campaignId?: string; error?: string; stack?: string | null }
-    >(
-      "/api/onboarding/plan",
-      {
+  function goBack() {
+    if (currentStepIndex > 0) {
+      goToStep(STEPS[currentStepIndex - 1].key);
+    }
+  }
+
+  async function submitOnboarding() {
+    const nextErrors = validateStep("review", draft);
+    setErrors(nextErrors);
+
+    if (Object.keys(nextErrors).length > 0) return;
+
+    setSubmitting(true);
+
+    try {
+      const response = await fetch("/api/onboarding/plan", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        signal: controller.signal,
         body: JSON.stringify({
           business_type: "Real Estate",
-          business_name: businessName,
-          agent_first_name: firstName,
-          agent_last_name: lastName,
-          agent_phone: agentPhone,
-          agent_company_name: businessName,
-          market,
-          focus,
-          price_range: priceRange,
-          budget,
-          goal: normalizedGoal,
-          idempotencySeed,
+          business_name: draft.agentCompanyName,
+          agent_first_name: draft.agentFirstName,
+          agent_last_name: draft.agentLastName,
+          agent_phone: draft.agentPhone,
+          agent_company_name: draft.agentCompanyName,
+          market: draft.market,
+          location: draft.market,
+          focus: draft.campaignMode,
+          service: draft.offer,
+          property_type: draft.propertyType,
+          price_range: draft.priceRange,
+          budget: draft.monthlyBudget,
+          goal: draft.offer,
+          idempotencySeed: draft.idempotencySeed,
         }),
+      });
+      const data = (await response.json().catch(() => null)) as
+        | { success?: boolean; campaignId?: string; data?: { campaignId?: string }; error?: string }
+        | null;
+      const campaignId = data?.campaignId ?? data?.data?.campaignId ?? null;
+
+      if (!response.ok || !data?.success || !campaignId) {
+        throw new Error(data?.error ?? "Campaign could not be created.");
+      }
+
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          ...draft,
+          currentStep: "review",
+          furthestStepIndex: STEPS.length - 1,
+          campaignId,
+          completedAt: new Date().toISOString(),
+        }),
+      );
+      router.push(`/paywall?campaignId=${encodeURIComponent(campaignId)}&plan=${draft.planTier}`);
+    } catch (error) {
+      setSubmitting(false);
+      setErrors((current) => ({
+        ...current,
+        submit: error instanceof Error ? error.message : "Campaign could not be created.",
+      }));
+    }
+  }
+
+  function continueFlow() {
+    const nextErrors = validateStep(currentStep, draft);
+    setErrors(nextErrors);
+
+    if (Object.keys(nextErrors).length > 0) return;
+
+    if (currentStepIndex >= STEPS.length - 1) {
+      void submitOnboarding();
+      return;
+    }
+
+    const nextIndex = currentStepIndex + 1;
+    setFurthestStepIndex((current) => Math.max(current, nextIndex));
+    void recordActivationEvent({
+      eventName: "onboarding_step_completed",
+      idempotencyKey: `onboarding_step_completed:${draft.idempotencySeed}:${currentStep}`,
+      metadata: {
+        stepKey: currentStep,
+        mode: draft.campaignMode,
+        planTier: draft.planTier,
       },
-      CREATE_PLAN_TIMEOUT_MS,
-    );
-
-    if (requestId !== latestPlanRequestIdRef.current) {
-      console.warn("IGNORING STALE ONBOARDING RESPONSE:", { requestId });
-      throw new Error("Stale onboarding response ignored");
-    }
-
-    if (!data || typeof data.campaignId !== "string" || data.campaignId.trim().length === 0) {
-      console.error("INVALID RESPONSE:", data);
-      throw new Error(data?.error ?? "Invalid onboarding response");
-    }
-
-    if (!response.ok) {
-      throw new Error(data.error ?? "Invalid onboarding response");
-    }
-
-    return data.campaignId;
-  }
-
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (loading) {
-      return;
-    }
-
-    const nextFieldErrors = validateFields({
-      firstName,
-      lastName,
-      businessName,
-      agentPhone,
-      market,
-      priceRange,
-      budget,
     });
-
-    setFieldErrors(nextFieldErrors);
-
-    if (Object.keys(nextFieldErrors).length > 0) {
-      setError("Fix the highlighted fields, then generate your preview.");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    setFailedStep(null);
-    setCurrentStep("plan");
-    setCampaignId(null);
-    setStepStatuses(createInitialStepStatuses());
-
-    try {
-      const nextCampaignId = await createOrReuseCampaignPlan();
-      setCampaignId(nextCampaignId);
-      setCurrentStep("funnel");
-      await runPipeline(0, nextCampaignId);
-    } catch (submitError) {
-      setError(
-        submitError instanceof Error && submitError.message === "Request timed out."
-          ? "Creating your campaign took too long. Your answers are saved, so you can retry without starting over."
-          : submitError instanceof Error
-            ? submitError.message
-            : "We could not create your campaign preview.",
-      );
-    } finally {
-      setLoading(false);
-    }
+    goToStep(STEPS[nextIndex].key);
   }
 
-  async function handleRetry() {
-    if (loading || !campaignId || !failedStep) {
-      return;
-    }
-
-    const failedStepIndex = PIPELINE_STEPS.findIndex((step) => step.key === failedStep);
-
-    if (failedStepIndex < 0) {
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      await runPipeline(failedStepIndex, campaignId);
-    } catch (retryError) {
-      setError(
-        retryError instanceof Error && retryError.message === "Request timed out."
-          ? "That step timed out again. Retry when the service responds."
-          : retryError instanceof Error
-            ? retryError.message
-            : "Retry failed.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleResume() {
-    if (loading) {
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    setFailedStep(null);
-
-    try {
-      if (!campaignId) {
-        const nextCampaignId = await createOrReuseCampaignPlan();
-        setCampaignId(nextCampaignId);
-        setCurrentStep("funnel");
-        await runPipeline(getStartStepIndex("funnel"), nextCampaignId);
-        return;
-      }
-
-      if (currentStep === "complete") {
-        router.push(getCampaignReviewPath(campaignId));
-        return;
-      }
-
-      await runPipeline(getStartStepIndex(currentStep), campaignId);
-    } catch (resumeError) {
-      setError(
-        resumeError instanceof Error && resumeError.message === "Request timed out."
-          ? "Resuming took too long. Retry the current step when the service responds."
-          : resumeError instanceof Error
-            ? resumeError.message
-            : "Resume failed.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function renderChoiceButton(params: {
-    active: boolean;
-    label: string;
-    description?: string;
-    onClick: () => void;
-  }) {
-    return (
-      <button
-        type="button"
-        onClick={params.onClick}
-        disabled={loading}
-        className={`group relative overflow-hidden rounded-[22px] border px-4 py-4 text-left transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-55 ${
-          params.active
-            ? "border-cyan-200/35 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.18),transparent_70%),linear-gradient(145deg,rgba(116,199,255,0.16),rgba(124,58,237,0.12))] text-white shadow-[0_20px_55px_-36px_rgba(103,232,249,0.75)]"
-            : "border-white/10 bg-white/[0.035] text-foreground hover:-translate-y-0.5 hover:border-cyan-200/22 hover:bg-white/[0.06]"
-        }`}
-      >
-        <span className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-        <p className="text-sm font-semibold">{params.label}</p>
-        {params.description ? (
-          <p className={`mt-1 text-sm ${params.active ? "text-white/72" : "text-muted-foreground"}`}>
-            {params.description}
-          </p>
-        ) : null}
-      </button>
-    );
+  function resetDraft() {
+    const freshDraft = { ...DEFAULT_DRAFT, idempotencySeed: createIdempotencySeed() };
+    window.localStorage.removeItem(STORAGE_KEY);
+    setDraft(freshDraft);
+    setCurrentStep("intent");
+    setFurthestStepIndex(0);
+    setErrors({});
   }
 
   return (
-    <PageShell className="max-w-[980px]">
-      <WizardSteps current="onboarding" />
-      <PageHeader
-        eyebrow="Campaign setup"
-        title="Build your real estate campaign preview"
-        description="Answer a few quick questions, then we will generate your funnel, ads, and launch-ready preview. Most teams finish this in about 2 minutes."
-      />
-
-      <Card className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
-        <div className="space-y-2">
-          <p className="df-eyebrow">
-            {formatProgressLabel(currentStep)}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            About 60 seconds for setup, then about 90 seconds to generate the preview.
-          </p>
-        </div>
-        <div className="rounded-2xl border border-cyan-200/12 bg-cyan-300/[0.045] px-4 py-3 text-sm text-cyan-50/70">
-          Resume is always saved. If generation slows down, you can come back without losing progress.
+    <PageShell className="w-full max-w-[1500px] gap-4">
+      <Card className="p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge>Campaign setup</Badge>
+              <Badge className="border-emerald-300/20 bg-emerald-300/[0.06] text-emerald-100">Safe build</Badge>
+            </div>
+            <h1 className="mt-3 text-2xl font-semibold tracking-[-0.055em] sm:text-4xl">
+              Step-by-step campaign builder
+            </h1>
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-white/62">
+              One decision at a time. DealFlow recommends the strategy, updates the preview, and keeps the next click obvious.
+            </p>
+          </div>
         </div>
       </Card>
 
-      {hydrated && hasSavedProgress ? (
-        <Card className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-foreground">Resume campaign build</p>
-            <p className="text-sm text-muted-foreground">
-              {campaignId
-                ? `Resume from ${currentStep === "payload" ? "building the launch package" : currentStep}. Your saved answers and generated assets are still attached to this campaign.`
-                : "Your answers are saved. Resume from campaign creation without creating a duplicate plan."}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Button type="button" variant="secondary" onClick={clearSavedProgress} disabled={loading}>
-              Start over
-            </Button>
-            <Button type="button" onClick={handleResume} disabled={loading}>
-              {loading ? (
-                <>
-                  <Spinner />
-                  Resuming...
-                </>
-              ) : (
-                "Resume build"
-              )}
-            </Button>
-          </div>
-        </Card>
-      ) : null}
+      <StepProgress currentStep={currentStep} furthestStepIndex={furthestStepIndex} onSelect={goToStep} />
 
-      <Card className="overflow-hidden p-6 sm:p-8">
-        <form className="space-y-8" onSubmit={handleSubmit}>
-          <div className="grid gap-6 md:grid-cols-2">
-            <label className="space-y-2 text-sm">
-              <span className="text-muted-foreground">First name</span>
-              <Input
-                required
-                value={firstName}
-                onChange={(event) => {
-                  setFirstName(event.target.value);
-                  setFieldErrors((current) => ({ ...current, firstName: undefined }));
-                }}
-                disabled={loading}
-                placeholder="Alex"
-              />
-              {fieldErrors.firstName ? <p className="text-sm text-rose-400">{fieldErrors.firstName}</p> : null}
-            </label>
-
-            <label className="space-y-2 text-sm">
-              <span className="text-muted-foreground">Last name</span>
-              <Input
-                required
-                value={lastName}
-                onChange={(event) => {
-                  setLastName(event.target.value);
-                  setFieldErrors((current) => ({ ...current, lastName: undefined }));
-                }}
-                disabled={loading}
-                placeholder="Morgan"
-              />
-              {fieldErrors.lastName ? <p className="text-sm text-rose-400">{fieldErrors.lastName}</p> : null}
-            </label>
-
-            <label className="space-y-2 text-sm">
-              <span className="text-muted-foreground">Company or brokerage name</span>
-              <Input
-                required
-                value={businessName}
-                onChange={(event) => {
-                  setBusinessName(event.target.value);
-                  setFieldErrors((current) => ({ ...current, businessName: undefined }));
-                }}
-                disabled={loading}
-                placeholder="Northline Realty Group"
-              />
-              {fieldErrors.businessName ? <p className="text-sm text-rose-400">{fieldErrors.businessName}</p> : null}
-            </label>
-
-            <label className="space-y-2 text-sm">
-              <span className="text-muted-foreground">SMS alert phone</span>
-              <Input
-                required
-                value={agentPhone}
-                onChange={(event) => {
-                  setAgentPhone(event.target.value);
-                  setFieldErrors((current) => ({ ...current, agentPhone: undefined }));
-                }}
-                disabled={loading}
-                placeholder="(555) 123-4567"
-              />
-              {fieldErrors.agentPhone ? <p className="text-sm text-rose-400">{fieldErrors.agentPhone}</p> : null}
-            </label>
-
-            <label className="space-y-2 text-sm">
-              <span className="text-muted-foreground">City or market</span>
-              <Input
-                required
-                value={market}
-                onChange={(event) => {
-                  setMarket(event.target.value);
-                  setFieldErrors((current) => ({ ...current, market: undefined }));
-                }}
-                disabled={loading}
-                placeholder="Toronto, ON"
-              />
-              {fieldErrors.market ? <p className="text-sm text-rose-400">{fieldErrors.market}</p> : null}
-            </label>
-          </div>
-
-          <div className="space-y-3">
+      <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.82fr)]">
+        <Card className="min-w-0 p-4 sm:p-5" data-testid="onboarding-current-step-panel">
+          <div className="flex items-start gap-4">
+            <IconTile icon={Target} tone="cyan" />
             <div>
-              <p className="text-sm font-medium text-foreground">Campaign focus</p>
-              <p className="text-sm text-muted-foreground">Start with the side of the business you want the fastest preview for.</p>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {renderChoiceButton({
-                active: focus === "seller",
-                label: "Seller campaign",
-                description: FOCUS_HELP.seller,
-                onClick: () => setFocus("seller"),
-              })}
-              {renderChoiceButton({
-                active: focus === "buyer",
-                label: "Buyer campaign",
-                description: FOCUS_HELP.buyer,
-                onClick: () => setFocus("buyer"),
-              })}
-            </div>
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-2">
-            <div className="space-y-3">
-              <div>
-                <p className="text-sm font-medium text-foreground">Property price range</p>
-                <p className="text-sm text-muted-foreground">Pick the part of the market you want this preview to target.</p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {PRICE_RANGE_OPTIONS.map((option) => (
-                  <div key={option}>
-                    {renderChoiceButton({
-                      active: priceRange === option,
-                      label: option,
-                      onClick: () => {
-                        setPriceRange(option);
-                        setFieldErrors((current) => ({ ...current, priceRange: undefined }));
-                      },
-                    })}
-                  </div>
-                ))}
-              </div>
-              {fieldErrors.priceRange ? <p className="text-sm text-rose-400">{fieldErrors.priceRange}</p> : null}
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <p className="text-sm font-medium text-foreground">Monthly ad budget</p>
-                <p className="text-sm text-muted-foreground">We use this to shape the preview and launch settings.</p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {BUDGET_OPTIONS.map((option) => (
-                  <div key={option.value}>
-                    {renderChoiceButton({
-                      active: budget === option.value,
-                      label: option.label,
-                      onClick: () => {
-                        setBudget(option.value);
-                        setFieldErrors((current) => ({ ...current, budget: undefined }));
-                      },
-                    })}
-                  </div>
-                ))}
-              </div>
-              <label className="space-y-2 text-sm">
-                <span className="text-muted-foreground">Or enter a custom monthly budget</span>
-                <Input
-                  type="number"
-                  inputMode="numeric"
-                  value={budget}
-                  onChange={(event) => {
-                    setBudget(event.target.value);
-                    setFieldErrors((current) => ({ ...current, budget: undefined }));
-                  }}
-                  disabled={loading}
-                  placeholder="3000"
-                />
-              </label>
-              {fieldErrors.budget ? <p className="text-sm text-rose-400">{fieldErrors.budget}</p> : null}
-            </div>
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-[1.1fr_0.9fr]">
-            <label className="space-y-2 text-sm">
-              <span className="text-muted-foreground">Offer or goal</span>
-              <Input
-                value={goal}
-                onChange={(event) => {
-                  setGoal(event.target.value);
-                  setGoalTouched(true);
-                }}
-                disabled={loading}
-                placeholder={DEFAULT_GOALS[focus]}
-              />
-              <p className="text-sm text-muted-foreground">
-                Leave this as-is if you want the default {FOCUS_SUMMARY[focus].toLowerCase()} angle.
+              <p className="df-eyebrow">Current step</p>
+              <h3 className="mt-2 text-2xl font-semibold tracking-[-0.05em]">{stepTitle}</h3>
+              <p className="mt-2 text-sm leading-6 text-white/64">
+                Answer this step, watch the campaign preview update, then continue.
               </p>
-            </label>
-
-            <div className="surface-strong rounded-[24px] border border-white/10 p-5">
-              <p className="df-eyebrow">Preview summary</p>
-              <div className="mt-3 space-y-2 text-sm text-foreground">
-                <p><span className="text-muted-foreground">Market:</span> {market || "Your city"}</p>
-                <p><span className="text-muted-foreground">Focus:</span> {FOCUS_SUMMARY[focus]}</p>
-                <p><span className="text-muted-foreground">Price range:</span> {priceRange}</p>
-                <p><span className="text-muted-foreground">Budget:</span> ${budget || BUDGET_OPTIONS[1].value}/month</p>
-                <p><span className="text-muted-foreground">Offer:</span> {normalizedGoal}</p>
-              </div>
             </div>
           </div>
 
-          <div className="surface-strong space-y-4 rounded-[24px] border border-white/10 p-4">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-foreground">Generation progress</p>
-                <p className="text-sm text-muted-foreground">
-                  We save each step as it finishes so you can resume without rebuilding the whole campaign.
+          {currentStep === "intent" ? (
+            <>
+              <p className="mt-6 text-sm font-medium text-foreground">Who should this first campaign attract?</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                {(Object.keys(MODE_DEFAULTS) as CampaignMode[]).map((mode) => {
+                  const item = MODE_DEFAULTS[mode];
+                  return (
+                    <ChoiceCard
+                      active={draft.campaignMode === mode}
+                      body={item.summary}
+                      detail={draft.campaignMode === mode ? "Selected" : `Choose ${item.title.toLowerCase()}`}
+                      icon={item.icon}
+                      key={mode}
+                      onClick={() => selectMode(mode)}
+                      title={item.title}
+                    />
+                  );
+                })}
+              </div>
+            </>
+          ) : null}
+
+          {currentStep === "market" ? (
+            <div className="mt-6 grid gap-5">
+              <label className="space-y-2 text-sm">
+                <span className="text-muted-foreground">City or market</span>
+                <Input value={draft.market} onChange={(event) => updateDraft({ market: event.target.value })} placeholder="Toronto, ON" />
+                {errors.market ? <p className="text-sm text-rose-400">{errors.market}</p> : null}
+              </label>
+              <div className="rounded-[20px] border border-white/10 bg-white/[0.025] p-5">
+                <p className="text-sm font-semibold text-white">Current campaign type</p>
+                <p className="mt-2 text-sm leading-7 text-white/64">
+                  {modeCopy.path.replace("the selected market", draft.market || "your selected market")}
                 </p>
               </div>
-              {loading ? (
-                <div className="flex items-center gap-2 text-sm text-foreground">
-                  <Spinner />
-                  {currentStep === "plan" ? "Creating campaign" : "Generating preview"}
-                </div>
-              ) : null}
             </div>
+          ) : null}
 
-            <div className="grid gap-3">
-              {PIPELINE_STEPS.map((step) => {
-                const status = stepStatuses[step.key];
-                const isActive = status === "active";
-                const isComplete = status === "complete";
-                const isFailed = status === "failed";
-
-                return (
-                  <div
-                    key={step.key}
-                    className={`flex items-center justify-between rounded-2xl border px-4 py-3 transition-colors duration-200 ${
-                      isActive
-                        ? "border-cyan-200/24 bg-cyan-300/[0.055]"
-                        : isComplete
-                          ? "border-emerald-300/18 bg-emerald-300/[0.035]"
-                          : isFailed
-                            ? "border-rose-300/20 bg-rose-400/[0.045]"
-                            : "border-white/10 bg-black/20"
-                    }`}
+          {currentStep === "property" ? (
+            <div className="mt-6">
+              <p className="text-sm font-medium text-foreground">What kind of property or inventory should this target?</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                {propertyTypeOptions.map((option) => (
+                  <button
+                    key={option.label}
+                    type="button"
+                    onClick={() => updateDraft({ propertyType: option.label })}
+                    className={cn(
+                      "group rounded-[20px] border p-4 text-left transition hover:-translate-y-0.5",
+                      draft.propertyType === option.label
+                        ? "border-cyan-200/28 bg-cyan-300/[0.07] shadow-[0_18px_55px_-40px_rgba(103,232,249,0.75)]"
+                        : "border-white/10 bg-white/[0.03] hover:border-cyan-200/18 hover:bg-white/[0.05]",
+                    )}
                   >
-                    <div className="space-y-1">
-                      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{step.title}</p>
-                      <p className="text-sm font-medium text-foreground">{step.label}</p>
+                    <div className="flex items-start gap-3">
+                      <IconTile icon={modeCopy.icon} tone={draft.propertyType === option.label ? "cyan" : "violet"} />
+                      <div>
+                        <p className="text-base font-semibold text-white">{option.label}</p>
+                        <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-white/62">{option.description}</p>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      {isActive ? <Spinner /> : null}
-                      <span
-                        className={
-                          isFailed
-                            ? "text-rose-400"
-                            : isComplete
-                              ? "text-emerald-400"
-                              : isActive
-                                ? "text-foreground"
-                                : "text-muted-foreground"
-                        }
-                      >
-                        {isComplete
-                          ? "Done"
-                          : isFailed
-                            ? "Failed"
-                            : isActive
-                              ? "In progress"
-                              : "Waiting"}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+                  </button>
+                ))}
+              </div>
+              {errors.propertyType ? <p className="mt-2 text-sm text-rose-400">{errors.propertyType}</p> : null}
             </div>
+          ) : null}
 
-            {campaignId ? (
-              <p className="text-xs text-muted-foreground">
-                Campaign ID: <span className="font-mono text-foreground">{campaignId}</span>
-              </p>
-            ) : null}
-          </div>
+          {currentStep === "offer" ? (
+            <div className="mt-6 grid gap-6">
+              <label className="space-y-2 text-sm">
+                <span className="text-muted-foreground">Recommended audience</span>
+                <Input value={draft.audience} onChange={(event) => updateDraft({ audience: event.target.value })} placeholder={modeCopy.audience} />
+                <p className="text-xs leading-5 text-cyan-100/72">{AUDIENCE_REASONS[draft.campaignMode]}</p>
+                {errors.audience ? <p className="text-sm text-rose-400">{errors.audience}</p> : null}
+              </label>
 
-          {error ? <p className="text-sm text-rose-400">{error}</p> : null}
+              <div>
+                <p className="text-sm font-medium text-foreground">Price range or deal size</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {priceRangeOptions.map((range) => (
+                    <button
+                      key={range}
+                      type="button"
+                      onClick={() => updateDraft({ priceRange: range })}
+                      className={cn(
+                        "rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition",
+                        draft.priceRange === range
+                          ? "border-cyan-200/28 bg-cyan-300/[0.07] text-cyan-100"
+                          : "border-white/10 bg-white/[0.035] text-white/72 hover:border-cyan-200/18",
+                      )}
+                    >
+                      {range}
+                    </button>
+                  ))}
+                </div>
+                {errors.priceRange ? <p className="mt-2 text-sm text-rose-400">{errors.priceRange}</p> : null}
+              </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-muted-foreground">
-              This creates your preview first. You will still review funnel and ad details before any live launch.
-            </p>
+              <div>
+                <p className="text-sm font-medium text-foreground">Monthly ad budget</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                  {BUDGETS.map((budget) => (
+                    <button
+                      key={budget.value}
+                      type="button"
+                      onClick={() => updateDraft({ monthlyBudget: budget.value })}
+                      className={cn(
+                        "rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition",
+                        draft.monthlyBudget === budget.value
+                          ? "border-cyan-200/28 bg-cyan-300/[0.07] text-cyan-100"
+                          : "border-white/10 bg-white/[0.035] text-white/72 hover:border-cyan-200/18",
+                      )}
+                    >
+                      {budget.label}
+                    </button>
+                  ))}
+                </div>
+                <Input className="mt-3" type="number" inputMode="numeric" value={draft.monthlyBudget} onChange={(event) => updateDraft({ monthlyBudget: event.target.value })} placeholder="3000" />
+                {errors.monthlyBudget ? <p className="mt-2 text-sm text-rose-400">{errors.monthlyBudget}</p> : null}
+              </div>
 
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Offer or lead magnet</p>
+                  <p className="mt-1 text-xs leading-5 text-white/52">
+                    This is the reason someone gives you their contact info. DealFlow can pick a starting offer, or you can customize it.
+                  </p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {OFFER_SUGGESTIONS[draft.campaignMode].map((offer) => (
+                    <button
+                      type="button"
+                      key={offer}
+                      onClick={() => updateDraft({ offer })}
+                      className={cn(
+                        "rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition",
+                        draft.offer === offer
+                          ? "border-cyan-200/28 bg-cyan-300/[0.07] text-cyan-100"
+                          : "border-white/10 bg-white/[0.035] text-white/72 hover:border-cyan-200/18",
+                      )}
+                    >
+                      {offer}
+                    </button>
+                  ))}
+                </div>
+                <Input
+                  aria-label="Offer or lead magnet"
+                  value={draft.offer}
+                  onChange={(event) => updateDraft({ offer: event.target.value })}
+                  placeholder={modeCopy.offer}
+                />
+                {errors.offer ? <p className="text-sm text-rose-400">{errors.offer}</p> : null}
+              </div>
+            </div>
+          ) : null}
+
+          {currentStep === "agent" ? (
+            <div className="mt-6 grid gap-5 sm:grid-cols-2">
+              <label className="space-y-2 text-sm">
+                <span className="text-muted-foreground">Agent first name</span>
+                <Input value={draft.agentFirstName} onChange={(event) => updateDraft({ agentFirstName: event.target.value })} placeholder="Jane" />
+                {errors.agentFirstName ? <p className="text-sm text-rose-400">{errors.agentFirstName}</p> : null}
+              </label>
+              <label className="space-y-2 text-sm">
+                <span className="text-muted-foreground">Agent last name</span>
+                <Input value={draft.agentLastName} onChange={(event) => updateDraft({ agentLastName: event.target.value })} placeholder="Smith" />
+                {errors.agentLastName ? <p className="text-sm text-rose-400">{errors.agentLastName}</p> : null}
+              </label>
+              <label className="space-y-2 text-sm">
+                <span className="text-muted-foreground">Company or brokerage</span>
+                <Input value={draft.agentCompanyName} onChange={(event) => updateDraft({ agentCompanyName: event.target.value })} placeholder="Smith Realty Group" />
+                {errors.agentCompanyName ? <p className="text-sm text-rose-400">{errors.agentCompanyName}</p> : null}
+              </label>
+              <label className="space-y-2 text-sm">
+                <span className="text-muted-foreground">SMS alert phone</span>
+                <Input value={draft.agentPhone} onChange={(event) => updateDraft({ agentPhone: event.target.value })} placeholder="(555) 555-5555" inputMode="tel" />
+                {errors.agentPhone ? <p className="text-sm text-rose-400">{errors.agentPhone}</p> : null}
+              </label>
+            </div>
+          ) : null}
+
+          {currentStep === "plan" ? (
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <ChoiceCard
+                active={draft.planTier === "starter"}
+                icon={Lightbulb}
+                title={`${BILLING_PLANS.starter.name} ${BILLING_PLANS.starter.priceLabel}`}
+                body="Guided recommendations and Meta launch access. DealFlow tells the agent what to do while execution stays manual."
+                detail="Guided self-serve launch"
+                onClick={() => updateDraft({ planTier: "starter" })}
+              />
+              <ChoiceCard
+                active={draft.planTier === "pro"}
+                icon={Rocket}
+                title={`${BILLING_PLANS.pro.name} ${BILLING_PLANS.pro.priceLabel}`}
+                body="Autonomous operator controls with evidence, guardrails, and safe monitoring for optimization decisions."
+                detail="Autonomous guardrails"
+                onClick={() => updateDraft({ planTier: "pro" })}
+              />
+            </div>
+          ) : null}
+
+          {currentStep === "review" ? (
+            <div className="mt-6 grid gap-4">
+              <div className="rounded-[22px] border border-emerald-300/18 bg-emerald-300/[0.045] p-5">
+                <div className="flex items-start gap-3">
+                  <IconTile icon={ShieldCheck} tone="green" />
+                  <div>
+                    <h3 className="text-xl font-semibold tracking-[-0.04em]">Ready to build campaign preview</h3>
+                    <p className="mt-2 text-sm leading-7 text-white/64">
+                      Continue saves the campaign, updates the agent profile for internal lead alerts, and opens checkout. No live provider action runs here.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  ["Agent", [draft.agentFirstName, draft.agentLastName].filter(Boolean).join(" ")],
+                  ["Campaign mode", modeCopy.title],
+                  ["Market", draft.market],
+                  ["Property type", draft.propertyType],
+                  ["Price/deal size", draft.priceRange],
+                  ["Budget", `$${draft.monthlyBudget}/month`],
+                  ["Offer", draft.offer],
+                  ["Behavior", draft.planTier === "pro" ? "Autonomous" : "Guided"],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                    <p className="text-xs text-white/48">{label}</p>
+                    <p className="mt-1 text-sm font-semibold text-white/86">{value}</p>
+                  </div>
+                ))}
+              </div>
+              {errors.submit ? <p className="text-sm text-rose-300">{errors.submit}</p> : null}
+            </div>
+          ) : null}
+
+          <div className="mt-7 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5">
+            <Button type="button" variant="secondary" onClick={resetDraft} disabled={submitting}>
+              Start over
+            </Button>
             <div className="flex flex-wrap gap-3">
-              {hasSavedProgress ? (
-                <Button type="button" variant="secondary" onClick={clearSavedProgress} disabled={loading}>
-                  Start over
-                </Button>
-              ) : null}
-              {failedStep ? (
-                <Button type="button" variant="secondary" onClick={handleRetry} disabled={loading}>
-                  {loading ? (
-                    <>
-                      <Spinner />
-                      Retrying failed step...
-                    </>
-                  ) : (
-                    "Retry failed step"
-                  )}
-                </Button>
-              ) : null}
-              <Button disabled={loading} type="submit">
-                {loading ? (
+              <Button type="button" variant="secondary" onClick={goBack} disabled={currentStepIndex === 0 || submitting}>
+                <ArrowLeft className="size-4" />
+                Back
+              </Button>
+              <Button type="button" onClick={continueFlow} disabled={submitting}>
+                {submitting ? (
                   <>
-                    <Spinner />
-                    {failedStep ? "Retrying..." : "Generating preview..."}
+                    Saving campaign
+                    <Loader2 className="size-4 animate-spin" />
+                  </>
+                ) : currentStep === "review" ? (
+                  <>
+                    Continue to checkout
+                    <BarChart3 className="size-4" />
                   </>
                 ) : (
-                  "Generate campaign preview"
+                  <>
+                    Continue to {STEPS[currentStepIndex + 1]?.label.toLowerCase()}
+                    <ArrowRight className="size-4" />
+                  </>
                 )}
               </Button>
             </div>
           </div>
-        </form>
-      </Card>
+        </Card>
+
+        <PrepaywallCampaignPreview draft={draft} variant={currentStep === "review" ? "package" : "compact"} />
+      </div>
     </PageShell>
   );
 }

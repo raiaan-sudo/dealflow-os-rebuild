@@ -44,7 +44,8 @@ export default function TermsPage() {
         <p className="text-slate-300">
           Subscriptions renew automatically unless cancelled before the next billing period.
           Customers may cancel through the Stripe billing portal or by contacting support.
-          Cancellation stops future renewals but does not automatically refund prior charges.
+          DealFlow may ask for optional cancellation feedback before opening Stripe Portal, but
+          that feedback is not required to cancel. Cancellation stops future renewals but does not automatically refund prior charges.
           Refunds are reviewed case-by-case unless otherwise required by law. Third-party ad spend,
           SMS fees, AI generation costs, and provider costs already incurred may be non-refundable.
           Failed payments may cause access to paid launch features to be suspended or downgraded.

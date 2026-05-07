@@ -5,6 +5,16 @@ import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { logOperationalEvent } from "@/lib/logging";
 
 const feedbackSchema = z.object({
+  category: z.enum([
+    "confusing_ux",
+    "billing",
+    "onboarding",
+    "creative_quality",
+    "meta_connect",
+    "lead_funnel",
+    "bug",
+    "cancellation_refund",
+  ]).default("confusing_ux"),
   confusedText: z.string().max(4000).optional().default(""),
   blockerText: z.string().max(4000).optional().default(""),
   email: z.string().email().optional().or(z.literal("")).default(""),
@@ -30,6 +40,7 @@ export async function POST(request: Request) {
     logOperationalEvent("product_feedback_received", {
       userId: auth.userId,
       organizationId: auth.organizationId,
+      category: body.category,
       page: body.page || null,
       emailPresent: Boolean(body.email),
       confusedTextPresent: Boolean(body.confusedText.trim()),

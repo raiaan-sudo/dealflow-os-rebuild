@@ -7,6 +7,7 @@ import {
   selectMetaAdAccount,
   updateMetaLaunchSelections,
 } from "@/lib/integrations/meta/service";
+import { recordActivationEvent } from "@/lib/services/activation-telemetry-service";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 
 type SelectionBody = {
@@ -54,6 +55,20 @@ export async function POST(request: Request) {
     if (!connection) {
       connection = await getMetaConnectionState();
     }
+
+    await recordActivationEvent({
+      organizationId: auth.organizationId,
+      userId: auth.userId,
+      eventName: "meta_selection_completed",
+      source: "meta_selections_route",
+      metadata: {
+        route: "meta_selections",
+        hasAdAccount: Boolean(externalAccountId),
+        hasPage: Boolean(pageId),
+        hasPixel: Boolean(pixelId),
+      },
+      idempotencyKey: `meta_selection_completed:${auth.organizationId}:${externalAccountId}:${Boolean(pageId)}:${Boolean(pixelId)}`,
+    }).catch(() => undefined);
 
     return NextResponse.json({ connection });
   } catch (error) {

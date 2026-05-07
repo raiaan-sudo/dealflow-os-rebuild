@@ -9,11 +9,12 @@ export type KnowledgeAudienceType =
   | "first_time_buyers"
   | "move_up_buyers"
   | "investors"
+  | "commercial_clients"
   | "sellers"
   | "downsizers"
   | "generic_buyers"
   | "generic_sellers";
-export type KnowledgeFunnelType = "buyer_match" | "seller_valuation";
+export type KnowledgeFunnelType = "buyer_match" | "seller_valuation" | "commercial_match";
 export type KnowledgeAdAngle =
   | "approval"
   | "urgency"
@@ -107,6 +108,15 @@ export const HIGH_PERFORMING_AD_HOOKS: KnowledgeHook[] = [
     pattern: "{audience} in {market}: get tighter {propertyType} opportunities with {keyOffer}.",
   },
   {
+    id: "commercial-fit-1",
+    industry: "real_estate",
+    audienceType: "commercial_clients",
+    funnelType: "commercial_match",
+    adAngle: "authority",
+    label: "Commercial space fit",
+    pattern: "{audience} in {market}: compare better-fit {propertyType} options with {keyOffer}.",
+  },
+  {
     id: "sellers-speed-1",
     industry: "real_estate",
     audienceType: "sellers",
@@ -162,6 +172,19 @@ export const FUNNEL_FRAMEWORKS: FunnelFramework[] = [
       "Use a short form and a next-step CTA that reinforces {keyOffer}.",
     ],
   },
+  {
+    id: "commercial-space-response",
+    industry: "real_estate",
+    audienceType: "commercial_clients",
+    funnelType: "commercial_match",
+    name: "Commercial space-fit response",
+    heroPattern: "{audience} in {market} need a sharper way to compare {propertyType}. {keyOffer} makes the shortlist clearer.",
+    bodySteps: [
+      "Open with the cost of chasing properties that do not fit the operating plan.",
+      "Introduce {mechanism} as the reason the search narrows around real business requirements.",
+      "Close with a low-friction form that collects space needs before the advisory call.",
+    ],
+  },
 ];
 
 export const TARGETING_STRATEGIES: TargetingStrategy[] = [
@@ -182,6 +205,15 @@ export const TARGETING_STRATEGIES: TargetingStrategy[] = [
     name: "Deal-seeking investors",
     summaryPattern:
       "Target {audience} searching for {market} {propertyType} and lead with {keyOffer} so the message stays focused on stronger deal intent.",
+  },
+  {
+    id: "commercial-space-seekers",
+    industry: "real_estate",
+    audienceType: "commercial_clients",
+    funnelType: "commercial_match",
+    name: "Commercial space seekers",
+    summaryPattern:
+      "Target {audience} evaluating {market} {propertyType}, then filter by space fit, location needs, and timing before pushing to a consultation.",
   },
   {
     id: "seller-ready-movers",
@@ -213,6 +245,15 @@ export const OFFER_STRUCTURES: OfferStructure[] = [
     summaryPattern:
       "{keyOffer}. Delivered through {mechanism} for {audience} in {market} who want a cleaner next step for their {propertyType}.",
   },
+  {
+    id: "commercial-fit-offer",
+    industry: "real_estate",
+    audienceType: "commercial_clients",
+    funnelType: "commercial_match",
+    name: "Commercial fit offer",
+    summaryPattern:
+      "{keyOffer}. Delivered through {mechanism} for {audience} in {market} who need a practical shortlist of {propertyType}.",
+  },
 ];
 
 type TemplateContext = {
@@ -234,6 +275,10 @@ function inferAudienceType(audience: string, intent: CampaignIntent): KnowledgeA
     return "investors";
   }
 
+  if (/commercial|tenant|owner[-\s]?user|office|retail|industrial|warehouse|business/.test(normalized)) {
+    return "commercial_clients";
+  }
+
   if (normalized.includes("move-up")) {
     return "move_up_buyers";
   }
@@ -253,7 +298,12 @@ export function getKnowledgeProfile(
   source: Pick<OnboardingInput, "intent" | "audience" | "propertyType" | "keyOffer" | "market" | "mechanism">,
 ) {
   const audienceType = inferAudienceType(source.audience, source.intent);
-  const funnelType: KnowledgeFunnelType = source.intent === "buyer" ? "buyer_match" : "seller_valuation";
+  const funnelType: KnowledgeFunnelType =
+    source.intent === "buyer" || source.intent === "investor"
+      ? "buyer_match"
+      : source.intent === "commercial"
+        ? "commercial_match"
+        : "seller_valuation";
 
   return {
     industry: "real_estate" as const,
@@ -287,7 +337,12 @@ function matchAudience<T extends { audienceType: KnowledgeAudienceType; funnelTy
     (item) =>
       item.funnelType === funnelType &&
       (item.audienceType === audienceType ||
-        item.audienceType === (funnelType === "buyer_match" ? "generic_buyers" : "generic_sellers")),
+        item.audienceType ===
+          (funnelType === "buyer_match"
+            ? "generic_buyers"
+            : funnelType === "commercial_match"
+              ? "commercial_clients"
+              : "generic_sellers")),
   );
 }
 

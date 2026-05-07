@@ -11,9 +11,17 @@ const PUBLIC_API_PATHS = new Set([
   "/api/sms/twilio",
   "/api/webhooks/twilio/status",
   "/api/stripe/webhook",
+  "/api/client-errors",
 ]);
 
 function isPublicRequest(pathname: string) {
+  if (
+    pathname === "/ui-direction" &&
+    (process.env.NODE_ENV !== "production" || process.env.UI_DIRECTION_PREVIEW === "1")
+  ) {
+    return true;
+  }
+
   if (PUBLIC_PATHS.has(pathname)) {
     return true;
   }

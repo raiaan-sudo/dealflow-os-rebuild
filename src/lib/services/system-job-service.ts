@@ -11,6 +11,7 @@ import {
   type VideoGenerationStatusJobPayload,
   runVideoGenerationJob,
 } from "@/lib/services/video-generation-job";
+import type { SubscriptionSuspensionJobPayload } from "@/lib/services/subscription-suspension-service";
 
 type SystemJobRow = Database["public"]["Tables"]["system_jobs"]["Row"];
 type SystemJobLogRow = Database["public"]["Tables"]["system_job_logs"]["Row"];
@@ -26,7 +27,8 @@ export type SystemJobKind =
   | "meta_sync"
   | "recommendation_generation"
   | "lead_capture_retry"
-  | "lead_side_effects";
+  | "lead_side_effects"
+  | "subscription_suspension";
 export type SystemJobStatus = "pending" | "processing" | "completed" | "failed";
 export type SystemJobLifecycleStatus =
   | "queued"
@@ -47,6 +49,13 @@ export type SystemJobWorkerBatchResult = {
 };
 
 const MAX_SYSTEM_JOB_RETRIES = 1;
+const SUBSCRIPTION_GATED_JOB_KINDS = new Set<SystemJobKind>([
+  "static_creative_generation",
+  "video_generation",
+  "video_generation_status",
+  "meta_sync",
+  "recommendation_generation",
+]);
 
 type SystemJobPayloadMap = {
   static_creative_generation: {
@@ -131,6 +140,7 @@ type SystemJobPayloadMap = {
       fbc?: string | null;
     };
   };
+  subscription_suspension: SubscriptionSuspensionJobPayload;
 };
 
 export type SystemJobTrackingPayload = {
@@ -691,9 +701,26 @@ export async function processSystemJob(jobId: string) {
         });
 
   try {
-    let result: Json;
+    let result: Json | undefined;
 
-    if (processingJob.kind === "static_creative_generation") {
+    if (
+      processingJob.campaign_id &&
+      SUBSCRIPTION_GATED_JOB_KINDS.has(processingJob.kind)
+    ) {
+      const { getCampaignEntitlementsForCampaign } = await import("@/lib/services/campaign-entitlements");
+      const entitlements = await getCampaignEntitlementsForCampaign(processingJob.campaign_id);
+
+      if (entitlements.requiresSuspension) {
+        result = {
+          skipped: true,
+          reason: "subscription_inactive",
+          campaignId: processingJob.campaign_id,
+          billingState: entitlements.billingState,
+        } as Json;
+      }
+    }
+
+    if (result === undefined && processingJob.kind === "static_creative_generation") {
       const output = await regenerateStaticCreativeAssetsForUser(
         processingJob.campaign_id ?? "",
         processingJob.user_id,
@@ -708,7 +735,7 @@ export async function processSystemJob(jobId: string) {
         staticAds: output.creatives.staticAds,
         campaignId: processingJob.campaign_id,
       } as Json;
-    } else if (processingJob.kind === "video_generation") {
+    } else if (result === undefined && processingJob.kind === "video_generation") {
       const output = await runVideoGenerationJob({
         supabase,
         userId: processingJob.user_id,
@@ -717,7 +744,7 @@ export async function processSystemJob(jobId: string) {
       });
 
       result = output as unknown as Json;
-    } else if (processingJob.kind === "video_generation_status") {
+    } else if (result === undefined && processingJob.kind === "video_generation_status") {
       const payload =
         processingJob.payload as SystemJobPayloadMap["video_generation_status"];
       const output = await pollVideoGenerationStatusJob({
@@ -762,8 +789,23 @@ export async function processSystemJob(jobId: string) {
       }
 
       result = output as unknown as Json;
-    } else if (processingJob.kind === "lead_capture_retry") {
+    } else if (result === undefined && processingJob.kind === "lead_capture_retry") {
       const payload = processingJob.payload as SystemJobPayloadMap["lead_capture_retry"];
+      const { getPublicFunnelEntitlements } = await import("@/lib/services/campaign-entitlements");
+      const entitlementContext = await getPublicFunnelEntitlements({
+        campaignId: payload.leadCapture.campaignId,
+        funnelSlug: payload.leadCapture.funnelId,
+      });
+
+      if (!entitlementContext.entitlements.canCaptureLeads) {
+        result = {
+          skipped: true,
+          reason: "subscription_inactive",
+          requestId: payload.requestId,
+          campaignId: payload.leadCapture.campaignId,
+          billingState: entitlementContext.entitlements.billingState,
+        } as Json;
+      } else {
       const { replayFailedPublicLeadCapture } = await import("@/lib/services/lead-handler-service");
       const replayResult = await replayFailedPublicLeadCapture({
         ...payload.leadCapture,
@@ -777,8 +819,24 @@ export async function processSystemJob(jobId: string) {
         requestId: payload.requestId,
         retryReason: payload.reason,
       } as Json;
-    } else if (processingJob.kind === "lead_side_effects") {
+      }
+    } else if (result === undefined && processingJob.kind === "lead_side_effects") {
       const payload = processingJob.payload as SystemJobPayloadMap["lead_side_effects"];
+      const { getCampaignEntitlementsForOrganization } = await import("@/lib/services/campaign-entitlements");
+      const entitlements = await getCampaignEntitlementsForOrganization({
+        organizationId: payload.lead.organization_id,
+      });
+
+      if (!entitlements.canCaptureLeads || !entitlements.canSendLeadAlerts) {
+        result = {
+          skipped: true,
+          reason: "subscription_inactive",
+          requestId: payload.requestId,
+          leadId: payload.lead.id,
+          organizationId: payload.lead.organization_id,
+          billingState: entitlements.billingState,
+        } as Json;
+      } else {
       const { safeNotifyAssignedAgentOfNewLead } = await import("@/lib/services/internal-lead-notification-service");
       const { safeSendMetaLeadConversion } = await import("@/lib/integrations/meta/conversions");
       const [notificationResult, metaConversionResult] = await Promise.all([
@@ -801,19 +859,25 @@ export async function processSystemJob(jobId: string) {
         notificationResult,
         metaConversionResult,
       } as Json;
-    } else if (
+      }
+    } else if (result === undefined && processingJob.kind === "subscription_suspension") {
+      const { runSubscriptionSuspensionJob } = await import("@/lib/services/subscription-suspension-service");
+      result = await runSubscriptionSuspensionJob({
+        job: processingJob as SystemJobRecord<"subscription_suspension">,
+      });
+    } else if (result === undefined && (
       processingJob.kind === "campaign_build" ||
       processingJob.kind === "funnel_generation" ||
       processingJob.kind === "creative_generation" ||
       processingJob.kind === "meta_sync" ||
       processingJob.kind === "recommendation_generation"
-    ) {
+    )) {
       throw new ApiError(
         500,
         `${processingJob.kind} was queued as an inline-tracked job and cannot be replayed by the cron worker without a resumable processor.`,
         "system_job_inline_replay_unsupported",
       );
-    } else {
+    } else if (result === undefined) {
       throw new ApiError(
         500,
         `Unsupported system job kind: ${String(processingJob.kind)}`,
@@ -824,7 +888,7 @@ export async function processSystemJob(jobId: string) {
     const completedJob = await updateSystemJob(supabase, jobId, {
       status: "completed",
       completed_at: new Date().toISOString(),
-      result,
+      result: result as Json,
       error_message: null,
       last_error_code: null,
       locked_by: null,

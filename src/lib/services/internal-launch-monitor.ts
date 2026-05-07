@@ -3,6 +3,15 @@ import { getPublicAppUrl, isInternalAdminEmail } from "@/lib/env";
 import { createAdminClient } from "@/lib/server/supabase-admin";
 import { getAppContext } from "@/lib/services/app-context";
 import { getCampaignPlanConsistencyStatus } from "@/lib/services/campaign-plan-persistence-service";
+import { loadActivationStallIssues } from "@/lib/services/activation-telemetry-service";
+import { loadBillingRecoveryIssues } from "@/lib/services/billing-cancellation-intent-service";
+import {
+  CREDIT_TOP_UP_MINIMUM_CENTS,
+  formatCreditCurrency,
+} from "@/lib/services/credit-service";
+import { loadCampaignValueReportIssues } from "@/lib/services/campaign-value-report-service";
+import { loadClientErrorIssues } from "@/lib/services/client-error-telemetry-service";
+import { loadCustomerSuccessIssues } from "@/lib/services/customer-success-service";
 
 type RawCampaignPlanRow = {
   id: string;
@@ -87,13 +96,35 @@ type RawProviderUsageEventRow = {
   provider: string | null;
   operation: string | null;
   status: string | null;
+  estimated_cost: number | string | null;
+  actual_cost: number | string | null;
   metadata: unknown;
   created_at: string | null;
   updated_at: string | null;
 };
 
+type RawProviderUsageLimitRow = {
+  id: string;
+  organization_id: string | null;
+  campaign_id: string | null;
+  user_id: string | null;
+  provider: string | null;
+  operation: string | null;
+  usage_date: string | null;
+  usage_count: number | null;
+  limit_count: number | null;
+  updated_at: string | null;
+};
+
+type RawUserCreditRow = {
+  user_id: string;
+  balance: number | null;
+  updated_at: string | null;
+};
+
 export type LaunchMonitorRow = {
   campaignId: string;
+  organizationId: string | null;
   userLabel: string;
   organizationLabel: string;
   createdAt: string | null;
@@ -127,7 +158,17 @@ export type LaunchMonitorRow = {
 
 export type OperatorIssueRow = {
   id: string;
-  source: "system_job" | "stripe_webhook" | "provider_usage" | "campaign_plan";
+  source:
+    | "system_job"
+    | "stripe_webhook"
+    | "provider_usage"
+    | "provider_cost"
+    | "client_error"
+    | "campaign_plan"
+    | "activation"
+    | "value_report"
+    | "billing_recovery"
+    | "customer_success";
   severity: "critical" | "high" | "medium" | "low";
   title: string;
   detail: string;
@@ -283,12 +324,13 @@ function deriveLastError(account: RawMarketingAccountRow | null, plan: Record<st
 }
 
 function formatLeadName(row: RawLeadRow) {
-  const fullName = [row.first_name, row.last_name].filter(Boolean).join(" ").trim();
-  return fullName || "Unnamed lead";
+  void row;
+  return "Lead captured";
 }
 
 function formatLeadContact(row: RawLeadRow) {
-  return row.email || row.phone || "No contact";
+  void row;
+  return "Contact redacted";
 }
 
 export async function loadLaunchMonitorRows(limit = 50): Promise<LaunchMonitorRow[]> {
@@ -394,7 +436,8 @@ export async function loadLaunchMonitorRows(limit = 50): Promise<LaunchMonitorRo
 
     return {
       campaignId: row.id,
-      userLabel: user?.full_name || user?.email || row.user_id || "Unknown user",
+      organizationId: row.organization_id,
+      userLabel: user?.id ? `User ${user.id.slice(0, 8)}` : row.user_id ? `User ${row.user_id.slice(0, 8)}` : "Unknown user",
       organizationLabel: organization?.name || row.organization_id || "Unknown workspace",
       createdAt: row.created_at,
       onboardingStatus: deriveOnboardingStatus(plan),
@@ -454,6 +497,60 @@ function issueSeverityFromStripe(row: RawStripeWebhookEventRow): OperatorIssueRo
   return row.status === "failed" ? "high" : "medium";
 }
 
+const PROVIDER_USAGE_WARNING_RATIO = 0.8;
+const DEFAULT_PROVIDER_DAILY_COST_WARNING_CENTS = 2_000;
+const OPERATOR_TEXT_REDACTION_PATTERN =
+  /(?:Bearer\s+[A-Za-z0-9._~+/=-]+|sk_(?:live|test)_[A-Za-z0-9]+|pk_(?:live|test)_[A-Za-z0-9]+|eyJ[A-Za-z0-9._-]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|\+?\d[\d\s().-]{7,}\d)/gi;
+const OPERATOR_PROVIDER_PAYLOAD_PATTERN = /\{[^{}]*(?:access_token|refresh_token|client_secret|authorization|cookie|payload|metadata)[^{}]*\}/gi;
+
+function getProviderDailyCostWarningCents() {
+  const configured = Number.parseInt(process.env.OPERATOR_PROVIDER_DAILY_COST_WARNING_CENTS ?? "", 10);
+  return Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_PROVIDER_DAILY_COST_WARNING_CENTS;
+}
+
+function parseProviderCostCents(value: number | string | null | undefined) {
+  if (value === null || value === undefined) {
+    return 0;
+  }
+
+  const numeric = typeof value === "number" ? value : Number.parseFloat(value);
+
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return 0;
+  }
+
+  return Math.round(numeric * 100);
+}
+
+function sanitizeOperatorText(value: string, maxLength = 700) {
+  return value
+    .replace(OPERATOR_PROVIDER_PAYLOAD_PATTERN, "[redacted provider payload]")
+    .replace(OPERATOR_TEXT_REDACTION_PATTERN, "[redacted]")
+    .slice(0, maxLength);
+}
+
+function sanitizeOperatorIssue(issue: OperatorIssueRow): OperatorIssueRow {
+  return {
+    ...issue,
+    title: sanitizeOperatorText(issue.title, 180),
+    detail: sanitizeOperatorText(issue.detail, 700),
+    rawReference: sanitizeOperatorText(issue.rawReference, 160),
+  };
+}
+
+function providerUsageRatio(row: RawProviderUsageLimitRow) {
+  const usageCount = Number(row.usage_count ?? 0);
+  const limitCount = Number(row.limit_count ?? 0);
+
+  if (!Number.isFinite(usageCount) || !Number.isFinite(limitCount) || limitCount <= 0) {
+    return 0;
+  }
+
+  return usageCount / limitCount;
+}
+
 export async function loadIssueLogRows(
   limit = 80,
   preloadedCampaigns?: LaunchMonitorRow[],
@@ -469,7 +566,21 @@ export async function loadIssueLogRows(
   }
 
   const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-  const [jobsResult, stripeResult, providerResult, campaigns] = await Promise.all([
+  const today = new Date().toISOString().slice(0, 10);
+  const todayStart = `${today}T00:00:00.000Z`;
+  const [
+    jobsResult,
+    stripeResult,
+    providerResult,
+    providerLimitResult,
+    providerCostResult,
+    lowCreditResult,
+    campaigns,
+    activationIssues,
+    valueReportIssues,
+    billingRecoveryIssues,
+    clientErrorIssues,
+  ] = await Promise.all([
     admin
       .from("system_jobs")
       .select("id,organization_id,campaign_id,kind,status,error_message,last_error_code,dead_letter_reason,created_at,locked_until,dead_lettered_at,reviewed_at,reviewed_by,resolution_note")
@@ -487,14 +598,37 @@ export async function loadIssueLogRows(
       .limit(limit),
     admin
       .from("provider_usage_events")
-      .select("id,organization_id,campaign_id,provider,operation,status,metadata,created_at,updated_at")
+      .select("id,organization_id,campaign_id,provider,operation,status,estimated_cost,actual_cost,metadata,created_at,updated_at")
       .in("status", ["failed", "reserved"])
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(limit),
+    admin
+      .from("provider_usage_limits")
+      .select("id,organization_id,campaign_id,user_id,provider,operation,usage_date,usage_count,limit_count,updated_at")
+      .gte("usage_date", today)
+      .order("updated_at", { ascending: false })
+      .limit(limit),
+    admin
+      .from("provider_usage_events")
+      .select("id,organization_id,campaign_id,provider,operation,status,estimated_cost,actual_cost,metadata,created_at,updated_at")
+      .in("status", ["reserved", "consumed", "failed"])
+      .gte("created_at", todayStart)
+      .order("created_at", { ascending: false })
+      .limit(limit * 4),
+    admin
+      .from("user_credits")
+      .select("user_id,balance,updated_at")
+      .lt("balance", CREDIT_TOP_UP_MINIMUM_CENTS)
+      .order("updated_at", { ascending: false })
+      .limit(limit),
     preloadedCampaigns
       ? Promise.resolve(preloadedCampaigns)
       : loadLaunchMonitorRows(Math.min(limit, 50)).catch(() => []),
+    loadActivationStallIssues(Math.min(limit, 80)).catch(() => []),
+    loadCampaignValueReportIssues(Math.min(limit, 80)).catch(() => []),
+    loadBillingRecoveryIssues(Math.min(limit, 80)).catch(() => []),
+    loadClientErrorIssues(Math.min(limit, 60)).catch(() => []),
   ]);
 
   if (jobsResult.error) {
@@ -507,6 +641,18 @@ export async function loadIssueLogRows(
 
   if (providerResult.error) {
     throw new ApiError(500, providerResult.error.message, "issue_log_provider_failed");
+  }
+
+  if (providerLimitResult.error) {
+    throw new ApiError(500, providerLimitResult.error.message, "issue_log_provider_limits_failed");
+  }
+
+  if (providerCostResult.error) {
+    throw new ApiError(500, providerCostResult.error.message, "issue_log_provider_cost_failed");
+  }
+
+  if (lowCreditResult.error) {
+    throw new ApiError(500, lowCreditResult.error.message, "issue_log_user_credits_failed");
   }
 
   const jobIssues = ((jobsResult.data ?? []) as RawSystemJobRow[])
@@ -580,6 +726,67 @@ export async function loadIssueLogRows(
       rawReference: row.id,
     }));
 
+  const providerLimitIssues = ((providerLimitResult.data ?? []) as RawProviderUsageLimitRow[])
+    .map((row) => {
+      const ratio = providerUsageRatio(row);
+      return { row, ratio };
+    })
+    .filter(({ ratio }) => ratio >= PROVIDER_USAGE_WARNING_RATIO)
+    .map(({ row, ratio }) => ({
+      id: `provider-limit:${row.id}`,
+      source: "provider_cost" as const,
+      severity: ratio >= 1 ? ("high" as const) : ("medium" as const),
+      title: `${formatStatusLabel(row.provider, "Provider")} ${formatStatusLabel(row.operation, "operation")} quota at ${row.usage_count ?? 0}/${row.limit_count ?? 0}`,
+      detail:
+        ratio >= 1
+          ? "Daily provider quota is exhausted. Paid generation should remain blocked until the cap resets or the owner intentionally raises the limit."
+          : `Daily provider quota is above ${Math.round(PROVIDER_USAGE_WARNING_RATIO * 100)}%. Watch fulfillment cost and raise limits only after owner review.`,
+      status: "open" as const,
+      createdAt: row.updated_at,
+      route: row.campaign_id ? `/admin/launch-monitor?campaignId=${encodeURIComponent(row.campaign_id)}` : "/admin/issues",
+      rawReference: row.id,
+    }));
+
+  const dailyCostWarningCents = getProviderDailyCostWarningCents();
+  const dailyProviderCostCents = ((providerCostResult.data ?? []) as RawProviderUsageEventRow[])
+    .reduce(
+      (total, row) =>
+        total + parseProviderCostCents(row.actual_cost ?? row.estimated_cost),
+      0,
+    );
+  const dailyProviderCostIssue: OperatorIssueRow[] =
+    dailyProviderCostCents >= dailyCostWarningCents
+      ? [
+          {
+            id: `provider-cost:${today}`,
+            source: "provider_cost",
+            severity: dailyProviderCostCents >= dailyCostWarningCents * 2 ? "high" : "medium",
+            title: `Daily paid-generation provider cost is ${formatCreditCurrency(dailyProviderCostCents)}`,
+            detail: `Estimated/actual provider cost recorded today is at or above the ${formatCreditCurrency(dailyCostWarningCents)} operator warning threshold. Review usage before increasing paid-generation limits.`,
+            status: "open",
+            createdAt: new Date().toISOString(),
+            route: "/admin/issues",
+            rawReference: today,
+          },
+        ]
+      : [];
+
+  const lowCreditIssues = ((lowCreditResult.data ?? []) as RawUserCreditRow[]).map((row) => {
+    const balance = Number(row.balance ?? 0);
+
+    return {
+      id: `user-credit:${row.user_id}`,
+      source: "provider_cost" as const,
+      severity: balance <= 0 ? ("high" as const) : ("medium" as const),
+      title: `Generation credits below ${formatCreditCurrency(CREDIT_TOP_UP_MINIMUM_CENTS)}`,
+      detail: `Balance is ${formatCreditCurrency(balance)}. Paid image/video generation will block until the customer tops up at least ${formatCreditCurrency(CREDIT_TOP_UP_MINIMUM_CENTS)}.`,
+      status: "open" as const,
+      createdAt: row.updated_at,
+      route: "/admin/issues",
+      rawReference: row.user_id,
+    };
+  });
+
   const campaignIssues = campaigns
     .filter((row) => row.consistencyMismatch || row.consistencyMissingFields.length > 0)
     .map((row) => ({
@@ -596,11 +803,50 @@ export async function loadIssueLogRows(
       rawReference: row.campaignId,
     }));
 
-  return [...jobIssues, ...stripeIssues, ...providerIssues, ...campaignIssues]
+  const activationOperatorIssues = activationIssues.map((issue) => ({
+    ...issue,
+    source: "activation" as const,
+  }));
+  const valueReportOperatorIssues = valueReportIssues.map((issue) => ({
+    ...issue,
+    source: "value_report" as const,
+  }));
+  const billingRecoveryOperatorIssues = billingRecoveryIssues.map((issue) => ({
+    ...issue,
+    source: "billing_recovery" as const,
+  }));
+  const clientErrorOperatorIssues = clientErrorIssues.map((issue) => ({
+    ...issue,
+    source: "client_error" as const,
+  }));
+  const customerSuccessOperatorIssues = await loadCustomerSuccessIssues(campaigns, Math.min(limit, 40))
+    .then((customerSuccessIssues) =>
+      customerSuccessIssues.map((issue) => ({
+        ...issue,
+        source: "customer_success" as const,
+      })),
+    )
+    .catch(() => []);
+
+  return [
+    ...jobIssues,
+    ...stripeIssues,
+    ...providerIssues,
+    ...providerLimitIssues,
+    ...dailyProviderCostIssue,
+    ...lowCreditIssues,
+    ...campaignIssues,
+    ...activationOperatorIssues,
+    ...valueReportOperatorIssues,
+    ...billingRecoveryOperatorIssues,
+    ...clientErrorOperatorIssues,
+    ...customerSuccessOperatorIssues,
+  ]
     .sort((first, second) => {
       const firstTime = first.createdAt ? new Date(first.createdAt).getTime() : 0;
       const secondTime = second.createdAt ? new Date(second.createdAt).getTime() : 0;
       return secondTime - firstTime;
     })
-    .slice(0, limit);
+    .slice(0, limit)
+    .map(sanitizeOperatorIssue);
 }

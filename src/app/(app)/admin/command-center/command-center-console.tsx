@@ -19,8 +19,10 @@ import {
   Sparkles,
   TerminalSquare,
   Volume2,
+  ClipboardCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { CustomerSuccessChecklist } from "@/lib/services/customer-success-service";
 
 export type HudTone = "cyan" | "green" | "amber" | "blue" | "violet" | "red";
 
@@ -69,6 +71,13 @@ export type CommandCenterIssue = {
   route?: string | null;
 };
 
+const ISSUE_SOURCE_SUMMARY = [
+  { key: "client_error", label: "Client errors" },
+  { key: "provider_cost", label: "Provider cost" },
+  { key: "provider_usage", label: "Provider usage" },
+  { key: "customer_success", label: "Customer success" },
+] as const;
+
 type CommandCenterConsoleProps = {
   agents: AgentConsole[];
   issues: CommandCenterIssue[];
@@ -83,7 +92,10 @@ type CommandCenterConsoleProps = {
     stripeFailures: number;
     validationAlerts: number;
     smsAutomationEnabled: boolean;
+    customerSuccessDue: number;
+    customerSuccessAtRisk: number;
   };
+  customerSuccess: CustomerSuccessChecklist[];
   workLog: WorkLogEntry[];
 };
 
@@ -92,6 +104,7 @@ const agentIcons = {
   friday: ShieldCheck,
   edith: DatabaseZap,
   veronica: Bot,
+  pepper: ClipboardCheck,
 } as const;
 
 function pct(value: number) {
@@ -186,11 +199,16 @@ export function CommandCenterConsole({
   metrics,
   proofs,
   stats,
+  customerSuccess,
   workLog,
 }: CommandCenterConsoleProps) {
   const [activeAgentId, setActiveAgentId] = useState(agents[0]?.id ?? "");
   const activeAgent = agents.find((agent) => agent.id === activeAgentId) ?? agents[0];
   const criticalIssues = issues.filter((issue) => issue.severity === "critical" || issue.severity === "high");
+  const issueSummary = ISSUE_SOURCE_SUMMARY.map((item) => ({
+    ...item,
+    count: issues.filter((issue) => issue.source === item.key).length,
+  }));
 
   const briefing = useMemo(() => {
     const agentStatus = activeAgent
@@ -201,9 +219,10 @@ export function CommandCenterConsole({
       `Controlled beta and 100 client readiness are operator scores at ${metrics[0]?.value ?? 0} and ${metrics[1]?.value ?? 0} percent.`,
       agentStatus,
       `${criticalIssues.length} high priority issues are on radar.`,
+      `${stats.customerSuccessDue} customer-success checklists need attention.`,
       "Stripe replay and Meta paused retry proof are complete.",
     ].join(" ");
-  }, [activeAgent, criticalIssues.length, metrics]);
+  }, [activeAgent, criticalIssues.length, metrics, stats.customerSuccessDue]);
 
   function speakBriefing() {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
@@ -296,6 +315,7 @@ export function CommandCenterConsole({
               <StatPanel icon={Gauge} label="Clean plans" value={stats.cleanCampaigns} />
               <StatPanel icon={Radio} label="Lead verified" value={stats.leadVerified} />
               <StatPanel icon={ShieldCheck} label="SMS guard" value={stats.smsAutomationEnabled ? "Enabled" : "Blocked"} />
+              <StatPanel icon={ClipboardCheck} label="CS due" value={stats.customerSuccessDue} />
             </div>
           </section>
         </header>
@@ -366,6 +386,16 @@ export function CommandCenterConsole({
               </Link>
             </div>
             <div className="mt-4 space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                {issueSummary.map((item) => (
+                  <div className="rounded-2xl border border-white/8 bg-white/[0.035] px-3 py-2" key={item.key}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-xs text-cyan-50/70">{item.label}</span>
+                      <span className="font-mono text-sm font-black text-white">{item.count}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
               {issues.length > 0 ? (
                 issues.slice(0, 5).map((issue) => <IssueLine issue={issue} key={issue.id} />)
               ) : (
@@ -374,6 +404,33 @@ export function CommandCenterConsole({
                 </div>
               )}
             </div>
+          </div>
+        </section>
+
+        <section className="rounded-[28px] border border-cyan-200/18 bg-black/42 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="font-mono text-xs uppercase tracking-[0.28em] text-cyan-100/55">
+                Customer-success watchlist
+              </p>
+              <h2 className="mt-1 text-xl font-semibold tracking-[-0.04em] text-white">
+                First 25-day checklist
+              </h2>
+            </div>
+            <span className="rounded-full border border-cyan-200/20 bg-cyan-200/10 px-3 py-1.5 font-mono text-xs text-cyan-100">
+              {stats.customerSuccessAtRisk} at risk
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 xl:grid-cols-3">
+            {customerSuccess.length > 0 ? (
+              customerSuccess.slice(0, 6).map((checklist) => (
+                <CustomerSuccessCard checklist={checklist} key={checklist.campaignId} />
+              ))
+            ) : (
+              <div className="rounded-2xl border border-white/8 bg-white/[0.035] p-4 text-sm text-cyan-50/64">
+                No customer-success checklist rows are in the current watch window.
+              </div>
+            )}
           </div>
         </section>
       </div>
@@ -596,6 +653,68 @@ function IssueLine({ issue }: { issue: CommandCenterIssue }) {
         <span className="shrink-0 text-right font-mono text-[10px] text-cyan-100/45">
           {formatDateTime(issue.createdAt)}
         </span>
+      </div>
+    </div>
+  );
+}
+
+function customerSuccessTone(riskLevel: CustomerSuccessChecklist["riskLevel"]): HudTone {
+  if (riskLevel === "blocked" || riskLevel === "at_risk") {
+    return "red";
+  }
+  if (riskLevel === "watch") {
+    return "amber";
+  }
+  return "green";
+}
+
+function CustomerSuccessCard({ checklist }: { checklist: CustomerSuccessChecklist }) {
+  const tone = toneClasses(customerSuccessTone(checklist.riskLevel));
+  const dueItems = checklist.items.filter((item) => item.status !== "done").slice(0, 4);
+
+  return (
+    <div className={cn("rounded-[22px] border bg-white/[0.035] p-4", tone.border)}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-white">{checklist.organizationLabel}</p>
+          <p className="mt-1 truncate text-xs text-cyan-100/48">{checklist.userLabel}</p>
+        </div>
+        <span className={cn("rounded-full border px-2.5 py-1 font-mono text-[10px] font-bold uppercase", tone.border, tone.bg, tone.text)}>
+          {checklist.riskLevel.replace(/_/g, " ")}
+        </span>
+      </div>
+      <div className="mt-4">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs text-cyan-50/70">
+            {checklist.completedCount}/{checklist.totalCount} complete
+          </span>
+          <Link className="text-xs font-semibold text-cyan-100 underline-offset-4 hover:underline" href={checklist.route}>
+            Open
+          </Link>
+        </div>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+          <div
+            className={`h-full rounded-full bg-gradient-to-r ${tone.line}`}
+            style={{ width: pct((checklist.completedCount / checklist.totalCount) * 100) }}
+          />
+        </div>
+      </div>
+      <div className="mt-4 space-y-2">
+        {dueItems.length > 0 ? (
+          dueItems.map((item) => (
+            <div className="rounded-2xl border border-white/8 bg-black/30 px-3 py-2" key={item.key}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate text-xs font-semibold text-cyan-50">{item.label}</p>
+                <span className="font-mono text-[10px] uppercase text-cyan-100/48">{item.status}</span>
+              </div>
+              <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-cyan-50/50">{item.detail}</p>
+            </div>
+          ))
+        ) : (
+          <div className="rounded-2xl border border-emerald-300/18 bg-emerald-300/10 px-3 py-2 text-xs text-emerald-100">
+            Checklist complete in current window.
+          </div>
+        )}
       </div>
     </div>
   );

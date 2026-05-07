@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logError, logOperationalEvent } from "@/lib/logging";
 import { formatPhoneForSms, normalizePhone } from "@/lib/phone";
+import { getCampaignEntitlementsForOrganization } from "@/lib/services/campaign-entitlements";
 import { sendSms } from "@/lib/services/sms-service";
 
 type LeadRecord = {
@@ -402,6 +403,20 @@ export async function notifyAssignedAgentOfNewLead(lead: LeadRecord) {
     campaign?.business_name?.trim() ||
     campaign?.client_name?.trim() ||
     null;
+  const entitlements = await getCampaignEntitlementsForOrganization({
+    organizationId: tenantId,
+  });
+
+  if (!entitlements.canSendLeadAlerts) {
+    logOperationalEvent("lead_notification.skipped", {
+      reason: "subscription_inactive",
+      tenantId,
+      leadId: lead.id,
+      billingState: entitlements.billingState,
+    });
+    return { notified: false, reason: "subscription_inactive" };
+  }
+
   const enrichedLead = {
     ...lead,
     tenant_id: tenantId,

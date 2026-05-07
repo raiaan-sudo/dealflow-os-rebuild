@@ -1,18 +1,22 @@
 # DealFlow OS 100-Client Controlled Beta Runbook
 
-This runbook is for controlled beta operation at roughly 100 active client workspaces. It assumes production runs on Vercel, data is in Supabase, billing is Stripe, launch is Meta, and paid generation is guarded.
+This runbook is for public self-serve launch operation. PITR and off-site backup upgrades are tracked as owner-managed follow-up work rather than code GO/NO-GO blockers for the current launch gate. It assumes production runs on Vercel, data is in Supabase, billing is Stripe, launch is Meta, and paid generation is guarded.
 
 ## Current Production Targets
 
-- App: `https://dealflow-os-rebuild.vercel.app`
+- App: `https://www.agentdealflow.io`
+- Current verified production deployment: `dpl_6z7yphqnhNEFj2SobqGMafGXH9qT`
+- Current root route contract: `/` serves the public homepage with `200`. If the product decision changes back to app-gated first entry, update this runbook and expect `/` to redirect to `/login`.
 - Required public pages: `/privacy`, `/terms`, `/f/[slug]`
 - Required public webhooks: `/api/stripe/webhook`, `/api/integrations/meta/callback`, `/api/sms/twilio`
 - Public lead capture: `/api/lead-capture`
 - Operator monitor: `/admin/launch-monitor`
 - Operator command center: `/admin/command-center`
 - Operator issue radar: `/admin/issues`
+- Customer success/support runbook: `docs/customer-success-support-runbook.md`
 - Protected job runner: `/api/internal/system-jobs`
 - Required operator access env: `INTERNAL_ADMIN_EMAILS`
+- Optional billing-only override envs: `ALLOW_BILLING_ADMIN_OVERRIDE`, `BILLING_ADMIN_OVERRIDE_EMAILS`
 - Required internal runner secret: `INTERNAL_SYSTEM_JOBS_SECRET` or `CRON_SECRET`
 - Observability/alerting runbook: `docs/observability-alerting-runbook.md`
 
@@ -37,6 +41,83 @@ supabase db push --dry-run --include-all
 ```
 
 Only run `supabase db push --include-all` after the dry run lists only expected additive migrations.
+
+## Supabase PITR Recovery
+
+Current production backup state:
+
+- Physical backups are enabled and completed daily.
+- PITR is recommended for the mature public self-serve posture, but the current launch gate accepts the daily physical backup plus logical backup posture as the interim baseline.
+- PITR cannot be enabled until the project is at least on Small compute.
+- Public launch can defer PITR if daily Supabase physical backups are paired with a separate logical backup routine and owner accepts the documented same-day recovery gap.
+
+Recommended PITR target:
+
+- Compute: Small or larger.
+- Recovery window: 7 days for launch baseline, unless customer contracts require 14 or 28 days.
+- Owner cost approval: required because PITR and compute are billed add-ons.
+
+Enablement path:
+
+1. Supabase Dashboard -> Project -> Settings -> Compute and Disk.
+2. Upgrade the database compute to Small or larger.
+3. Supabase Dashboard -> Project -> Settings -> Add-ons -> Point in time recovery.
+4. Select Enable PITR.
+5. Select the approved retention window.
+6. Confirm the billing change.
+7. Verify with:
+
+```bash
+supabase backups list --project-ref fdzwbevvbqvyteapphxm -o json
+```
+
+Expected proof after enablement:
+
+- `pitr_enabled: true`
+- `physical_backup_data.earliest_physical_backup_date_unix` present
+- `physical_backup_data.latest_physical_backup_date_unix` present
+- recovery window documented in this runbook
+
+Restore runbook:
+
+1. Identify the incident timestamp in UTC from app logs, durable operator tables, and support reports.
+2. Choose a restore timestamp immediately before the corruption or destructive write.
+3. Pause write-heavy app paths or move traffic to a maintenance state before restoring.
+4. Use the Supabase Dashboard PITR restore flow or the Management API restore endpoint with `recovery_time_target_unix`.
+5. Expect database downtime during restore; duration depends on database size and WAL replay volume.
+6. After restore, re-run schema, RLS, route security, operator debt, and safe production smoke checks before reopening public traffic.
+7. Never restore over live production until the owner confirms the chosen timestamp and accepts data loss for writes after that timestamp.
+
+## Lower-Cost Backup Posture
+
+Use this posture only while the product is in controlled beta or a small customer rollout where the owner can tolerate recovery to the last backup window.
+
+Target:
+
+- Launch cap: up to about 50 closely supported client workspaces.
+- Backup frequency: daily minimum; every 6 to 12 hours during active onboarding or launch windows.
+- Storage: at least one destination outside Supabase, encrypted or access-restricted.
+- Recovery objective: restore to the most recent logical/physical backup, not an arbitrary second before an incident.
+- Current local backup proof: `.backups/supabase/fdzwbevvbqvyteapphxm-2026-05-02T195719Z` completed with `roles.sql.gz`, `schema.sql.gz`, `data.sql.gz`, and `manifest.json`.
+- Current gap: the completed backup is local only until it is copied to an approved encrypted/restricted offsite destination.
+
+Create a local logical backup:
+
+```bash
+DEALFLOW_BACKUP_ACK=production-data npm run backup:supabase
+```
+
+The command writes compressed SQL dumps and a manifest under `.backups/supabase/`. These files contain sensitive production data and are intentionally gitignored. Docker must be available because the Supabase CLI runs the matching `pg_dump` tooling in a container.
+
+After creating a backup:
+
+1. Move or sync the backup directory to the approved offsite destination.
+2. Verify the manifest SHA-256 hashes after transfer.
+3. Keep at least 7 daily backups and at least 4 weekly backups while PITR is deferred.
+4. Never paste backup contents, customer data, auth data, or prospect data into tickets or chat.
+5. Test restore on a non-production Supabase project before relying on the backup plan for public launch.
+
+This backup posture is cheaper than PITR, but it does not protect against all same-day corruption or accidental deletion. The maximum data loss is the time since the last successful backup.
 
 Required production tables/columns include:
 
@@ -66,7 +147,7 @@ Required production tables/columns include:
 2. Confirm the endpoint is:
 
 ```text
-https://dealflow-os-rebuild.vercel.app/api/stripe/webhook
+https://www.agentdealflow.io/api/stripe/webhook
 ```
 
 3. Replay the event.
@@ -75,6 +156,58 @@ https://dealflow-os-rebuild.vercel.app/api/stripe/webhook
    - `processed`: event updated billing state.
    - `ignored`: event was valid but had no actionable subscription context.
    - `failed`: event was accepted but processing failed and needs operator review.
+
+## Failed-Payment Recovery And Cancellation Intelligence
+
+Stripe remains the payment source of truth for subscription cancellation, payment method updates, and billing portal actions. DealFlow should not run a custom cancellation mutation unless a separate owner-approved Stripe API flow is designed and audited.
+
+App-side behavior:
+
+1. `past_due` and `incomplete` subscriptions enter `payment_issue`.
+   - Dashboard/settings show a payment warning.
+   - New Meta launch and optimization/autonomy are blocked.
+   - Existing funnel capture and internal lead alerts can continue during the payment-issue grace state.
+   - The CTA sends the customer to Stripe Portal to update payment method.
+2. `cancel_at_period_end = true` stays active until Stripe `current_period_end`.
+   - Do not suspend during the paid period.
+   - Operator should review the account before the period end and attempt a normal save conversation.
+3. Ended, unpaid, expired, or canceled-after-period subscriptions enter suspended/read-only.
+   - DealFlow-managed launch, funnel capture, lead alerts, optimization, and autonomy remain paused until Stripe returns to an active billing state.
+4. The local manage/cancel entry in Settings may record an optional cancellation intent in `billing_cancellation_intents` before redirecting to Stripe Portal.
+   - The reason capture must be skippable.
+   - Do not slow, hide, or block Stripe Portal access.
+   - Do not store card data, provider tokens, credentials, or secrets in the reason detail.
+5. Operator visibility:
+   - `/admin/issues` includes `billing_recovery` issues for `payment_issue`, `cancel_at_period_end`, and suspended billing states.
+   - Use captured reason detail as internal customer-success context only.
+   - Do not include private cancellation notes in external support messages unless the customer wrote them for that purpose.
+
+Owner dashboard settings to verify in Stripe before public launch:
+
+1. Dunning retry schedule is enabled and matches the desired grace policy.
+2. Customer emails for failed payments and expiring cards are enabled.
+3. Stripe Portal allows payment-method update and subscription cancellation.
+4. Portal cancellation reason settings are configured if Stripe-native reason analytics are desired.
+
+## Launch Customer-Success Operating Layer
+
+Use `/admin/command-center` before and after traffic is opened. The command center includes a customer-success watchlist for the first 25 days of each campaign:
+
+- onboarding review
+- creative QA
+- preview reviewed
+- billing active
+- Meta connected
+- assets selected
+- launch readiness
+- lead loop verified
+- day 7 check-in due
+- day 14 value proof due
+- day 25 renewal-risk review due
+
+Support feedback is categorized through the in-app feedback widget as `confusing_ux`, `billing`, `onboarding`, `creative_quality`, `meta_connect`, `lead_funnel`, `bug`, or `cancellation_refund`. The route logs the category and safe presence flags only; it does not log raw feedback text or secrets.
+
+Full customer-success SOP, canned responses, SLA expectations, escalation rules, and out-of-scope operating systems are documented in `docs/customer-success-support-runbook.md`.
 6. Replaying the same event should not double-process because `stripe_event_id` is unique.
 
 ## Meta Launch Retry Recovery
@@ -90,7 +223,7 @@ https://dealflow-os-rebuild.vercel.app/api/stripe/webhook
 3. Retry launch from the UI or route only after confirming the campaign is not actively locked.
 4. `meta_launch_locks` prevents concurrent duplicate launch attempts.
 5. All launch-created Meta objects must remain `PAUSED`.
-6. Daily budget cap must remain at or below 100 cents unless the owner explicitly approves otherwise.
+6. Daily budget cap must remain at or below 200 cents unless the owner explicitly approves otherwise.
 
 ## Lead Retry Recovery
 
@@ -113,6 +246,23 @@ https://dealflow-os-rebuild.vercel.app/api/stripe/webhook
 4. Treat `dead_lettered_at is not null` as an operator-review state. Manual retry clears dead-letter fields but does not make unsafe jobs safe.
 5. Unknown job kinds should fail loudly and should not be marked completed.
 
+## Client Error Telemetry
+
+DealFlow captures browser-side failures without a third-party browser SDK:
+
+- `ClientErrorListener` records `window.error` and `unhandledrejection`.
+- App/auth error boundaries record route render failures.
+- `/api/client-errors` is public for login-page coverage, but it is same-origin guarded, rate-limited, body-size-limited, and server-scrubbed.
+- `client_error_events` is force-RLS protected and writable only by the service role.
+- `/admin/issues` surfaces unreviewed `client_error` rows so frontend crashes enter the same operator workflow as jobs, billing, provider usage, and customer-success issues.
+
+Operator handling:
+
+1. Review `client_error` in `/admin/issues` daily and after each deployment.
+2. Treat repeated errors on `/login`, `/onboarding`, `/paywall`, `/dashboard`, `/preview`, `/settings`, or `/launch` as launch-critical until reproduced or explained.
+3. Do not paste raw stack traces into external tools unless they have already been scrubbed of tokens, cookies, payment data, provider IDs, and PII.
+4. Mark rows reviewed only after the root cause is patched, deployed, or intentionally accepted as a non-app browser/environment issue.
+
 ## Paid Generation Controls
 
 Paid media generation must not run during normal onboarding or draft creative generation.
@@ -123,6 +273,8 @@ Controls:
 - Static image generation must go through the guarded static generation route.
 - Provider usage is tracked in `provider_usage_limits`.
 - Each OpenAI image call reserves its own `provider_usage_events` row before the provider request and must be capped with `OPENAI_IMAGE_DAILY_LIMIT` during production tests.
+- Customers fund paid image/video generation through generation-credit top-ups. The minimum top-up is `$20.00`; credit purchases are separate Stripe payment-mode checkout sessions and credits are granted only after the paid Stripe webhook is processed.
+- Operator issues with source `provider_cost` mean one of three things needs review: daily provider quota is near/exceeded, daily provider cost is above the warning threshold, or a customer balance is below the minimum top-up and paid generation will block.
 - Retries should reuse existing jobs/assets where possible.
 
 Emergency disable:
@@ -132,6 +284,24 @@ Emergency disable:
 3. Leave `ALLOW_OPENAI_IMAGE_GENERATION` and `ALLOW_HEYGEN_VIDEO_GENERATION` unset or set to any value other than `true`.
 4. For a controlled image test, set `OPENAI_IMAGE_DAILY_LIMIT=1` before enabling `ALLOW_OPENAI_IMAGE_GENERATION=true`.
 5. Remove provider API keys from production only if a hard stop is required.
+
+Daily 100-client operating cadence:
+
+1. Open `/admin/issues` and filter/review `provider_cost` before enabling paid generation for the day.
+2. Check low-credit accounts before approving paid OpenAI/HeyGen proof work; do not run paid generation for accounts without funded credits.
+3. Keep `OPENAI_IMAGE_DAILY_LIMIT` and `HEYGEN_VIDEO_DAILY_LIMIT` conservative until the owner has reviewed provider quota and gross margin.
+4. Raise `OPERATOR_PROVIDER_DAILY_COST_WARNING_CENTS` only after the owner accepts the daily cost ceiling.
+
+## Dirty Worktree / Merge Closure
+
+The launch branch can be operationally ready while still being broad and dirty locally. Before merge/PR, make the review surgical:
+
+1. Run `git status --short --branch` and save the output in the PR notes.
+2. Review deletions separately from edits with `git diff --name-status` and confirm every deleted path is either proven dead, generated, ignored, or replaced.
+3. Review Supabase migration files separately and confirm the deployed production project has applied the matching migration list.
+4. Confirm no `.env*`, provider token, screenshot with private data, `node_modules.corrupt-*`, `supabase/.temp/*`, Playwright output, or generated recovery artifact is tracked.
+5. Run `npm run lint`, `npm run typecheck`, `npm run build`, `npm run smoke:offline`, `npm run routes:security`, `npm run schema:check`, `npm run rls:fixture-smoke`, and `npm run operator:debt` from the exact branch being merged.
+6. Do not normalize unrelated dirty files just to make the status cleaner. If a file is unrelated to launch, leave it for a separate review.
 
 ## Meta Emergency Disable
 
@@ -177,7 +347,7 @@ Inbound `/api/sms/twilio` must keep handling compliance keywords even when outbo
 
 Owner-only Supabase Auth settings are required before unrestricted signup:
 
-1. Create a Cloudflare Turnstile site for `dealflow-os-rebuild.vercel.app`.
+1. Create a Cloudflare Turnstile site for `www.agentdealflow.io`.
 2. Add the Turnstile keys to Vercel:
    - Vercel Dashboard → Project → Settings → Environment Variables.
    - Add `NEXT_PUBLIC_TURNSTILE_SITE_KEY` for Production and Preview.
@@ -200,7 +370,7 @@ Owner-only Supabase Auth settings are required before unrestricted signup:
    - Watch for `429` responses during the first public signup test before raising limits.
 6. Restrict OAuth redirect URLs:
    - Supabase Dashboard → Project → Authentication → URL Configuration.
-   - Site URL: `https://dealflow-os-rebuild.vercel.app`.
+   - Site URL: `https://www.agentdealflow.io`.
    - Redirect URLs: production domain plus explicitly approved Vercel preview domains only.
 7. For controlled beta, operate invite-only signup until CAPTCHA and email confirmation are enabled.
 8. Review disposable-email controls before broad public launch.
@@ -235,15 +405,16 @@ Use `/admin/issues` for durable issue records and `docs/observability-alerting-r
 - Confirm Stripe checkout route returns a session for the selected plan.
 - Check Stripe Dashboard for session errors.
 - Check `billing_subscriptions` after webhook delivery.
+- For owner demos or QA billing bypass, prefer `BILLING_ADMIN_OVERRIDE_EMAILS` with `ALLOW_BILLING_ADMIN_OVERRIDE=true` instead of adding the user to `INTERNAL_ADMIN_EMAILS`. This grants billing/launch access without granting operator admin navigation.
 
 ### Failed launch
 
 - Check dashboard/operator monitor at `/admin/launch-monitor`.
-- Confirm the signed-in operator email is included in `INTERNAL_ADMIN_EMAILS`.
+- Confirm the signed-in operator email is included in `INTERNAL_ADMIN_EMAILS`, or for billing-only demo bypass confirm the email is included in `BILLING_ADMIN_OVERRIDE_EMAILS` and `ALLOW_BILLING_ADMIN_OVERRIDE=true`.
 - Inspect `plan.launch_runtime`.
 - Inspect `meta_launch_locks`.
 - Retry only after confirming no active lock and no active Meta objects were created.
-- Escalate before retry if any Meta object is not `PAUSED`, if the budget cap is above 100 cents/day, or if the launch has already failed twice.
+- Escalate before retry if any Meta object is not `PAUSED`, if the budget cap is above 200 cents/day, or if the launch has already failed twice.
 
 ### Missing lead
 
@@ -270,6 +441,77 @@ Use `/admin/issues` for durable issue records and `docs/observability-alerting-r
 - Confirm idempotency row exists.
 - Do not manually create duplicate subscription state unless webhook recovery is impossible.
 
+### Subscription ended or unpaid
+
+- DealFlow does not hard-delete customer campaigns when billing ends.
+- Canceled subscriptions remain fully operational until Stripe `current_period_end`.
+- `past_due` and `incomplete` subscriptions enter a payment-issue grace state: existing funnels and internal alerts can keep working, but new Meta launches and optimization/autonomy are blocked.
+- Ended, unpaid, expired, or canceled-after-period subscriptions enter the suspended/read-only state:
+  - queue `subscription_suspension` system jobs from the Stripe subscription sync path
+  - pause only DealFlow-managed Meta object IDs stored in the campaign plan runtime
+  - disable public funnel lead capture before any lead row is created
+  - skip internal lead alerts, Meta lead conversion side effects, generation, sync, and optimization jobs
+  - keep the dashboard visible with a reactivation CTA
+- Suspension is idempotent. Re-running the same subscription suspension job should not duplicate system work or delete customer data.
+- Reactivation is Stripe-driven. Once billing returns to an active or valid grace state, launch/funnel/lead/job gates reopen. Operators may relaunch/resume managed Meta objects through the normal guarded launch flow.
+- Do not manually pause unrelated Meta objects. If a stored ID is missing or Meta connection is unavailable, inspect the campaign plan and `system_job_logs` before retrying.
+
+### Activation telemetry and first value
+
+- Durable activation events live in `activation_events`. Treat the table as first-value telemetry, not a product analytics junk drawer.
+- Allowed event names:
+  - `signup_session_initialized`
+  - `onboarding_started`
+  - `onboarding_step_completed`
+  - `onboarding_completed`
+  - `campaign_plan_persisted`
+  - `preview_generated_or_viewed`
+  - `paywall_viewed`
+  - `checkout_started`
+  - `checkout_completed_or_reconciled`
+  - `dashboard_viewed`
+  - `meta_connect_started`
+  - `meta_selection_completed`
+  - `launch_ready`
+- Metadata must use safe flags, enums, counts, route names, plan tiers, and IDs only. Never store raw email, phone, names, addresses, provider tokens, cookies, JWTs, API keys, credentials, or free-form customer PII in activation metadata.
+- Event writes go through `recordActivationEvent` in `src/lib/services/activation-telemetry-service.ts`. Client-side wizard events use `/api/activation/events`, which requires auth and same-origin requests.
+- Idempotency is `organization_id + event_key`. Repeated page views or retries should not create noisy duplicates for the same activation milestone.
+- The activation milestone for the pre-payment "oh shit" moment is `preview_generated_or_viewed`.
+- Operators should inspect `/admin/issues` or `/admin/command-center` for activation stalls:
+  - incomplete onboarding
+  - paid but no dashboard preview
+  - campaign generated but no Meta connect
+  - Meta connected but no launch readiness
+- Customer-success action:
+  - If onboarding is incomplete after 1 hour, inspect whether validation or campaign persistence failed.
+  - If billing is active but no dashboard preview was viewed, check the Stripe success redirect and onboarding `campaignId` handoff.
+  - If campaign generation succeeded but Meta was not started, follow up with a Meta connection checklist.
+  - If Meta selection exists but launch readiness is absent, review billing, preflight, selected creative, and launch page blocking reasons.
+
+### Weekly value reports and retention loop
+
+- Customer-facing campaign progress reports live in the dashboard as "Weekly value report".
+- Durable report snapshots live in `campaign_value_reports`.
+- Reports are deterministic and provider-free. They must not call paid AI, Meta mutation routes, Stripe, SMS, or email delivery.
+- Report contents summarize:
+  - campaign and funnel status
+  - static/video assets generated and selected creative
+  - Meta connection, launch, sync, and campaign status
+  - lead counts and lead-loop verification state without raw lead contact details
+  - spend, impressions, clicks, leads, CTR, CPL, and appointment count when available
+  - creative winner/underperformer insight when performance data exists
+  - next recommended action
+  - what DealFlow is monitoring next
+- Report snapshots are generated opportunistically when the authenticated dashboard renders. This keeps the first implementation simple and avoids background delivery side effects.
+- Operators should use `/admin/issues` for retention gaps:
+  - no saved report for a generated campaign
+  - report older than 8 days
+- Customer-success cadence:
+  - Review stale/no-report issue rows daily during launch week.
+  - For new customers, verify the first report appears after onboarding/dashboard preview.
+  - For launched campaigns, review the report before day 7 and confirm the next action is clear.
+  - Do not send email reports until a dedicated safe email integration, unsubscribe/suppression handling, and sender policy are implemented.
+
 ### Stuck generation
 
 - Check active jobs for campaign and kind.
@@ -287,8 +529,11 @@ npm run build
 npm run schema:check
 npm run plan:writes:check
 npm run plan:validate
+npm run test:activation-telemetry
+npm run test:campaign-value-report
+npm run test:subscription-lifecycle
 npm run smoke:offline
-SMOKE_BASE_URL=https://dealflow-os-rebuild.vercel.app SMOKE_TEST_FUNNEL_SLUG=<published-slug> SMOKE_TEST_CAMPAIGN_ID=<campaign-id> SMOKE_TEST_EMAIL=<unique-email> npm run smoke:staging
+SMOKE_BASE_URL=https://www.agentdealflow.io SMOKE_TEST_FUNNEL_SLUG=<published-slug> SMOKE_TEST_CAMPAIGN_ID=<campaign-id> SMOKE_TEST_EMAIL=<unique-email> npm run smoke:staging
 ```
 
 ## 100-Client Load Validation
@@ -298,8 +543,8 @@ Run only against production-safe routes. Do not point load tests at paid generat
 Recommended pre-beta profile:
 
 ```bash
-LOAD_BASE_URL=https://dealflow-os-rebuild.vercel.app LOAD_TEST_FUNNEL_SLUG=<published-slug> npm run load:routes
-LOAD_BASE_URL=https://dealflow-os-rebuild.vercel.app LOAD_TEST_ALLOW_WRITES=true LOAD_TEST_CAMPAIGN_ID=<campaign-id> npm run load:lead-capture
+LOAD_BASE_URL=https://www.agentdealflow.io LOAD_TEST_FUNNEL_SLUG=<published-slug> npm run load:routes
+LOAD_BASE_URL=https://www.agentdealflow.io LOAD_TEST_ALLOW_WRITES=true LOAD_TEST_CAMPAIGN_ID=<campaign-id> npm run load:lead-capture
 ```
 
 The lead-capture profile writes test leads. Use a published QA campaign only, keep request volume modest, and never point load tests at Stripe payment completion, paid generation, or live Meta launch routes. The script enforces the thresholds below by default and refuses more than `50` lead writes unless `LOAD_MAX_WRITE_REQUESTS` is explicitly raised for a QA campaign.

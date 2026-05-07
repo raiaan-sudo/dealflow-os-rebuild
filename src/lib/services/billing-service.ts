@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { ApiError } from "@/lib/api/route";
-import { isBillingAdminOverrideEnabled, isInternalAdminEmail } from "@/lib/env";
+import { isBillingAdminOverrideEmail, isBillingAdminOverrideEnabled, isInternalAdminEmail } from "@/lib/env";
 import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -23,6 +23,8 @@ import {
   CREDIT_TOP_UP_MINIMUM_CENTS,
   grantUserCredits,
 } from "@/lib/services/credit-service";
+import { evaluateCampaignEntitlements, type BillingLifecycleState } from "@/lib/services/campaign-entitlements";
+import { queueSubscriptionSuspensionJobsForOrganization } from "@/lib/services/subscription-suspension-service";
 import type { Database, Json } from "@/lib/supabase/types";
 
 type BillingRow = Database["public"]["Tables"]["billing_subscriptions"]["Row"];
@@ -39,12 +41,20 @@ type BillingSubscriptionWebhookApplyResult = {
 export type BillingSummary = {
   planTier: BillingPlanTier;
   subscriptionStatus: string;
+  billingState: BillingLifecycleState;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   launchAllowed: boolean;
   launchOverride: boolean;
+  canKeepFunnelLive: boolean;
+  canCaptureLeads: boolean;
+  canSendLeadAlerts: boolean;
+  canRunOptimization: boolean;
+  canRunAutonomy: boolean;
+  requiresSuspension: boolean;
+  suspensionReason: string | null;
 };
 
 const BILLING_ACTIVE_STATUSES = new Set(["active", "trialing"]);
@@ -110,13 +120,17 @@ function getStripeSubscriptionIdFromSession(session: Stripe.Checkout.Session) {
   return session.subscription?.id ?? null;
 }
 
+function normalizeCheckoutCampaignId(campaignId?: string | null) {
+  return typeof campaignId === "string" && campaignId.trim() ? campaignId.trim() : null;
+}
+
 function getBillingAdminOverrideEmail(context: Awaited<ReturnType<typeof getAppContext>>) {
   if (!context || !isBillingAdminOverrideEnabled()) {
     return null;
   }
 
   const email = context.user.email ?? context.profile?.email ?? null;
-  return isInternalAdminEmail(email) ? email : null;
+  return isBillingAdminOverrideEmail(email) || isInternalAdminEmail(email) ? email : null;
 }
 
 function logBillingAdminOverrideGrant(params: {
@@ -338,17 +352,28 @@ async function claimStripeWebhookEvent(event: Stripe.Event): Promise<StripeWebho
 function mapBillingRow(row: BillingRow | null, fallbackPlanTier: string): BillingSummary {
   const normalizedPlanTier = normalizeBillingPlanTier(row?.plan_tier ?? fallbackPlanTier);
   const subscriptionStatus = row?.status ?? "inactive";
+  const entitlements = evaluateCampaignEntitlements({
+    row,
+    fallbackPlanTier: normalizedPlanTier,
+  });
 
   return {
     planTier: normalizedPlanTier,
     subscriptionStatus,
+    billingState: entitlements.billingState,
     stripeCustomerId: row?.stripe_customer_id ?? null,
     stripeSubscriptionId: row?.stripe_subscription_id ?? null,
     currentPeriodEnd: row?.current_period_end ?? null,
     cancelAtPeriodEnd: row?.cancel_at_period_end ?? false,
-    launchAllowed:
-      BILLING_ACTIVE_STATUSES.has(subscriptionStatus) && hasFeatureAccess(normalizedPlanTier, "meta_launch"),
+    launchAllowed: entitlements.canLaunch,
     launchOverride: false,
+    canKeepFunnelLive: entitlements.canKeepFunnelLive,
+    canCaptureLeads: entitlements.canCaptureLeads,
+    canSendLeadAlerts: entitlements.canSendLeadAlerts,
+    canRunOptimization: entitlements.canRunOptimization,
+    canRunAutonomy: entitlements.canRunAutonomy,
+    requiresSuspension: entitlements.requiresSuspension,
+    suspensionReason: entitlements.suspensionReason,
   };
 }
 
@@ -406,6 +431,13 @@ export async function getBillingSummary() {
     ...summary,
     launchAllowed: summary.launchAllowed || launchOverride,
     launchOverride,
+    canKeepFunnelLive: summary.canKeepFunnelLive || launchOverride,
+    canCaptureLeads: summary.canCaptureLeads || launchOverride,
+    canSendLeadAlerts: summary.canSendLeadAlerts || launchOverride,
+    canRunOptimization: summary.canRunOptimization || launchOverride,
+    canRunAutonomy: summary.canRunAutonomy || launchOverride,
+    requiresSuspension: launchOverride ? false : summary.requiresSuspension,
+    suspensionReason: launchOverride ? null : summary.suspensionReason,
   };
 }
 
@@ -450,7 +482,11 @@ export async function assertBillingFeatureAccess(feature: BillingFeature) {
 export async function assertActiveBillingFeatureAccess(feature: BillingFeature) {
   const summary = await assertBillingFeatureAccess(feature);
 
-  if (BILLING_ACTIVE_STATUSES.has(summary.subscriptionStatus) || summary.launchOverride) {
+  if (
+    summary.launchOverride ||
+    summary.billingState === "active" ||
+    summary.billingState === "grace_period"
+  ) {
     return summary;
   }
 
@@ -472,7 +508,7 @@ export async function assertMetaLaunchBillingAccess() {
 
   throw new ApiError(
     402,
-    "An active Pro subscription is required before this campaign can launch.",
+    "An active subscription is required before this campaign can launch.",
     "billing_launch_payment_required",
   );
 }
@@ -503,23 +539,32 @@ export async function assertMetaLaunchBillingAccessForOrganization(organizationI
       ...summary,
       launchAllowed: true,
       launchOverride: true,
+      canKeepFunnelLive: true,
+      canCaptureLeads: true,
+      canSendLeadAlerts: true,
+      canRunOptimization: true,
+      canRunAutonomy: true,
+      requiresSuspension: false,
+      suspensionReason: null,
     };
   }
 
   throw new ApiError(
     402,
-    "An active Pro subscription is required before this campaign can launch.",
+    "An active subscription is required before this campaign can launch.",
     "billing_launch_payment_required",
   );
 }
 
 export async function createBillingCheckoutSession(params: {
   planTier: BillingPlanTier;
+  campaignId?: string | null;
   customerName?: string;
   customerEmail?: string;
 }) {
   const [context, supabase] = await Promise.all([getAppContext(), createClient()]);
   const stripeProvider = getStripeBillingProvider();
+  const requestedCampaignId = normalizeCheckoutCampaignId(params.campaignId);
 
   if (!context || !supabase) {
     throw new ApiError(401, "Authentication is required for checkout.", "unauthorized");
@@ -566,11 +611,15 @@ export async function createBillingCheckoutSession(params: {
     customerId = customer.id;
   }
 
-  const urls = getCheckoutUrls();
+  const urls = getCheckoutUrls({
+    campaignId: requestedCampaignId,
+    planTier: params.planTier,
+  });
   const metadata = buildStripeCheckoutMetadata({
     organizationId: context.organization.id,
     userId: context.user.id,
     planTier: params.planTier,
+    campaignId: requestedCampaignId,
   });
 
   if (
@@ -597,11 +646,17 @@ export async function createBillingCheckoutSession(params: {
     typeof existingMetadata.last_checkout_plan_tier === "string"
       ? existingMetadata.last_checkout_plan_tier
       : null;
+  const lastCheckoutCampaignId = normalizeCheckoutCampaignId(
+    typeof existingMetadata.last_checkout_campaign_id === "string"
+      ? existingMetadata.last_checkout_campaign_id
+      : null,
+  );
 
   if (
     customerId &&
     existingBillingRow?.stripe_checkout_session_id &&
     lastCheckoutPlanTier === params.planTier &&
+    lastCheckoutCampaignId === requestedCampaignId &&
     Number.isFinite(lastCheckoutCreatedAt) &&
     Date.now() - lastCheckoutCreatedAt < CHECKOUT_SESSION_REUSE_MS
   ) {
@@ -615,12 +670,14 @@ export async function createBillingCheckoutSession(params: {
       if (
         reusableSession.status === "open" &&
         reusableSession.url &&
-        sessionCustomerId === customerId
+        sessionCustomerId === customerId &&
+        normalizeCheckoutCampaignId(reusableSession.metadata?.campaign_id ?? null) === requestedCampaignId
       ) {
         logOperationalEvent("billing_checkout_session_reused", {
           organizationId: context.organization.id,
           checkoutSessionId: reusableSession.id,
           planTier: params.planTier,
+          hasCampaignId: Boolean(requestedCampaignId),
         });
         return { url: reusableSession.url, sessionId: reusableSession.id };
       }
@@ -636,7 +693,9 @@ export async function createBillingCheckoutSession(params: {
   const createCheckoutSession = async (stripeCustomerId: string) =>
     (await stripeProvider.execute({
       action: "create_checkout_session",
-      idempotencyKey: `dealflow_checkout_${context.organization.id}_${params.planTier}_${Math.floor(
+      idempotencyKey: `dealflow_checkout_${context.organization.id}_${params.planTier}_${
+        requestedCampaignId ?? "workspace"
+      }_${Math.floor(
         Date.now() / CHECKOUT_SESSION_REUSE_MS,
       )}`,
       params: {
@@ -686,6 +745,7 @@ export async function createBillingCheckoutSession(params: {
     last_checkout_session_id: session.id,
     last_checkout_session_created_at: new Date().toISOString(),
     last_checkout_plan_tier: params.planTier,
+    last_checkout_campaign_id: requestedCampaignId,
   } satisfies Json;
 
   const upsertRow: BillingInsert = {
@@ -1059,6 +1119,31 @@ export async function syncBillingSubscriptionFromStripe(
 
   if (organizationError) {
     throw new ApiError(500, organizationError.message, "organization_plan_update_failed");
+  }
+
+  const entitlementState = evaluateCampaignEntitlements({
+    row: {
+      plan_tier: subscriptionRow.plan_tier,
+      status: subscriptionRow.status ?? "inactive",
+      current_period_end: subscriptionRow.current_period_end,
+      cancel_at_period_end: subscriptionRow.cancel_at_period_end ?? false,
+    },
+    fallbackPlanTier: planTier,
+  });
+
+  if (entitlementState.requiresSuspension) {
+    await queueSubscriptionSuspensionJobsForOrganization({
+      organizationId,
+      reason: entitlementState.suspensionReason ?? "subscription_inactive",
+      source: source.eventType ?? "stripe_subscription_sync",
+    }).catch((error) => {
+      logError("subscription_suspension_queue_failed", {
+        organizationId,
+        stripeSubscriptionId: subscription.id,
+        eventId: source.eventId,
+        message: error instanceof Error ? error.message : "Unknown suspension queue failure",
+      });
+    });
   }
 
   return {

@@ -39,6 +39,7 @@
 
   html {
     color-scheme: dark;
+    overflow-x: clip;
   }
 
   body {
@@ -50,6 +51,7 @@
       radial-gradient(circle at 88% 8%, rgba(116, 199, 255, 0.18), transparent 26%),
       linear-gradient(180deg, #030712 0%, #06101d 46%, #030712 100%);
     min-height: 100vh;
+    overflow-x: clip;
   }
 
   main,
@@ -134,11 +136,11 @@
   }
 
   .df-container {
-    @apply mx-auto w-full max-w-[1180px];
+    @apply mx-auto min-w-0 w-full max-w-[1440px];
   }
 
   .df-page-stack {
-    @apply space-y-6 sm:space-y-8;
+    @apply space-y-4 sm:space-y-5;
   }
 
   .df-eyebrow {
@@ -146,7 +148,7 @@
   }
 
   .df-heading-xl {
-    @apply text-balance text-4xl font-semibold tracking-[-0.075em] text-white sm:text-6xl;
+    @apply text-balance text-4xl font-semibold text-white sm:text-5xl;
   }
 
   .df-body-muted {

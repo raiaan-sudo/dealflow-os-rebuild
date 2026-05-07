@@ -1,5 +1,5 @@
 export type CampaignInput = {
-  audience: "buyer" | "seller" | "investor" | "precon" | "luxury";
+  audience: "buyer" | "seller" | "investor" | "commercial" | "precon" | "luxury";
   location: string;
   budget: number;
   offer: string;

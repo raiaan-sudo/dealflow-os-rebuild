@@ -4,7 +4,7 @@ import { WizardSteps } from "@/components/app/wizard-steps";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
-import { StaticCreativePreviewCard } from "@/components/campaign/static-creative-preview-card";
+import { StaticCreativeSummaryCard } from "@/components/campaign/static-creative-preview-card";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { getSelectedAdIdsFromPlan, readCampaignPlanDocument } from "@/lib/services/campaign-plan-document";
@@ -18,6 +18,7 @@ import {
   validateCampaign,
 } from "@/lib/services/campaign-validation";
 import { FunnelPreview } from "@/components/funnel/funnel-preview";
+import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
 
 async function loadPersistedSelectedAdIds(campaignId: string | null) {
   if (!campaignId) {
@@ -58,7 +59,7 @@ export default async function PreviewPage({
 
   if (!plan) {
     return (
-      <PageShell className="max-w-[900px]">
+      <PageShell className="max-w-[1180px]">
         <WizardSteps current="review" />
         <PageHeader
           eyebrow="Preview"
@@ -85,7 +86,7 @@ export default async function PreviewPage({
 
   if (!validated) {
     return (
-      <PageShell className="max-w-[900px]">
+      <PageShell className="max-w-[1180px]">
         <WizardSteps current="review" />
         <PageHeader
           eyebrow="Preview"
@@ -115,56 +116,85 @@ export default async function PreviewPage({
   const expectedOutcomes = getExpectedOutcomes(previewPlan);
   const selectedAds = previewPlan.creatives.staticAds.filter((ad) => selectedAdIds.includes(ad.id));
   const campaignIdForFlow = record?.campaign.id ?? null;
+  await recordActivationEventForCurrentUser({
+    eventName: "preview_generated_or_viewed",
+    campaignId: campaignIdForFlow,
+    source: "preview_page",
+    metadata: {
+      route: "preview",
+      selectedCreativeCount: selectedAds.length,
+      mode: previewPlan.intent,
+    },
+    idempotencyKey: `preview_generated_or_viewed:${campaignIdForFlow ?? "unknown"}`,
+  }).catch(() => undefined);
 
   return (
-    <PageShell className="max-w-[900px]">
-      <WizardSteps current="review" />
-      <PageHeader
-        eyebrow="Preview"
-        title="Final preview"
-        description="Review the selected funnel and creative test set, then move into launch."
-      />
+    <PageShell className="max-w-[1360px]">
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.72fr)] xl:items-start">
+        <div className="space-y-4">
+          <WizardSteps current="review" />
+          <PageHeader
+            eyebrow="Preview"
+            title="Final preview"
+            description="Review the selected funnel and creative test set, then move into launch."
+          />
+          <section className="surface-strong rounded-df-card border border-white/10 p-4 sm:p-5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Selected funnel</p>
+                <h2 className="mt-1 text-lg font-semibold text-foreground">Landing page preview</h2>
+              </div>
+              <span className="rounded-full border border-cyan-300/20 bg-cyan-300/[0.06] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100">
+                Preview
+              </span>
+            </div>
+            <FunnelPreview
+              compact
+              plan={previewPlan}
+              expectedOutcomes={expectedOutcomes}
+              strategyWhy={getStrategyWhy(previewPlan)}
+            />
+          </section>
+        </div>
 
-      <section className="surface-strong space-y-4 rounded-df-card border border-white/10 p-6">
-        <h2 className="text-lg font-semibold text-foreground">Selected funnel</h2>
-        <FunnelPreview
-          plan={previewPlan}
-          expectedOutcomes={expectedOutcomes}
-          strategyWhy={getStrategyWhy(previewPlan)}
-        />
-      </section>
-
-      <section className="surface-strong space-y-4 rounded-df-card border border-white/10 p-6">
-        <h2 className="text-lg font-semibold text-foreground">Selected creative test set</h2>
-        {selectedAds.length > 0 ? (
-          <div className="grid gap-4 lg:grid-cols-2">
-            {selectedAds.map((selectedAd) => (
-              <StaticCreativePreviewCard
-                category={previewPlan.creativeStrategy.campaignCategory}
-                compact={selectedAds.length > 1}
-                cta={selectedAd.cta}
-                headline={selectedAd.headline}
-                imageGenerationMessage={selectedAd.imageGenerationMessage}
-                imageGenerationState={selectedAd.imageGenerationState}
-                imageUrl={selectedAd.imageUrl}
-                location={previewPlan.market}
-                key={selectedAd.id}
-                offer={previewPlan.offerSummary || previewPlan.keyOffer}
-                overlayText={selectedAd.overlayText}
-                primaryText={selectedAd.primaryText}
-                qualityGate={selectedAd.qualityGate}
-                score={selectedAd.score}
-                selectedCount={selectedAds.length}
-                visualPromptBrief={selectedAd.visualPromptBrief}
-              />
-            ))}
+        <aside className="surface-strong min-w-0 rounded-df-card border border-white/10 p-4 sm:p-5 xl:sticky xl:top-6">
+          <div className="mb-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Selected creative test set</p>
+            <h2 className="mt-1 text-lg font-semibold text-foreground">
+              {selectedAds.length > 0 ? `${selectedAds.length} creatives ready` : "Creative selection needed"}
+            </h2>
           </div>
-        ) : (
-          <div className="rounded-df-card border border-white/10 bg-white/[0.035] p-6 text-sm text-muted-foreground">
-            No saved creative test set is ready yet. Go back to creatives and choose the ads you want to test first.
-          </div>
-        )}
-      </section>
+          {selectedAds.length > 0 ? (
+            <div className="grid gap-3">
+              {selectedAds.map((selectedAd, index) => (
+                <StaticCreativeSummaryCard
+                  category={previewPlan.creativeStrategy.campaignCategory}
+                  cta={selectedAd.cta}
+                  headline={selectedAd.headline}
+                  imageGenerationMessage={selectedAd.imageGenerationMessage}
+                  imageGenerationState={selectedAd.imageGenerationState}
+                  imageUrl={selectedAd.imageUrl}
+                  location={previewPlan.market}
+                  key={selectedAd.id}
+                  offer={previewPlan.offerSummary || previewPlan.keyOffer}
+                  overlayText={selectedAd.overlayText}
+                  primaryText={selectedAd.primaryText}
+                  qualityGate={selectedAd.qualityGate}
+                  score={selectedAd.score}
+                  index={index}
+                  selected
+                  selectedCount={selectedAds.length}
+                  visualPromptBrief={selectedAd.visualPromptBrief}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-df-card border border-white/10 bg-white/[0.035] p-5 text-sm text-muted-foreground">
+              No saved creative test set is ready yet. Go back to creatives and choose the ads you want to test first.
+            </div>
+          )}
+        </aside>
+      </div>
 
       <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-between">
         <Button asChild size="lg" variant="secondary">

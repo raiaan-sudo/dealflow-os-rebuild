@@ -5,6 +5,7 @@ const phoneSource = readFileSync("src/lib/phone.ts", "utf8");
 const smsSource = readFileSync("src/lib/services/sms-service.ts", "utf8");
 const notificationSource = readFileSync("src/lib/services/internal-lead-notification-service.ts", "utf8");
 const leadCaptureSource = readFileSync("src/app/api/lead-capture/route.ts", "utf8");
+const systemJobSource = readFileSync("src/lib/services/system-job-service.ts", "utf8");
 const migrationSource = readFileSync("supabase/migrations/20260429230000_internal_sms_lead_notifications.sql", "utf8");
 const hardeningMigrationSource = readFileSync("supabase/migrations/20260430010000_public_launch_final_hardening.sql", "utf8");
 
@@ -58,7 +59,10 @@ assert.match(notificationSource, /no_eligible_agent/);
 assert.match(notificationSource, /Copy\/paste reply for/);
 assert.match(notificationSource, /params\.agent\.phone_e164/);
 assert.doesNotMatch(notificationSource, /lead\.phone_e164\)\s*;/);
-assert.match(leadCaptureSource, /safeNotifyAssignedAgentOfNewLead/);
+assert.match(leadCaptureSource, /queueLeadSideEffectsJob/);
+assert.match(systemJobSource, /kind: "lead_side_effects"/);
+assert.match(systemJobSource, /safeNotifyAssignedAgentOfNewLead/);
+assert.match(systemJobSource, /safeSendMetaLeadConversion/);
 assert.match(leadCaptureSource, /ALLOW_PUBLIC_LEAD_NO_TURNSTILE/);
 
 console.log("Internal SMS notification static tests passed.");

@@ -1,13 +1,15 @@
 # dependencies
 node_modules/
+node_modules.corrupt*/
 
 # next
 .next/
+.next.stale-*/
 out/
 
 # production
-build/
-dist/
+/build/
+/dist/
 
 # local env
 .env
@@ -29,5 +31,17 @@ pnpm-debug.log*
 # generated/test output
 coverage/
 output/
+.backups/
+.playwright-cli/
+.tmp-playwright/
+.gitignore.blocking-*
+playwright-report/
+screenshots/
+test-results/
+supabase/.temp/
 *.tsbuildinfo
+*screenshot*.png
+*screenshot*.jpg
+*screenshot*.jpeg
+*screenshot*.webp
 recovery-report.json

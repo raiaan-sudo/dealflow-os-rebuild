@@ -44,13 +44,51 @@ const {
   evaluateMediaBuyingDecision,
   selectMediaBuyerCta,
 } = require("../src/lib/optimization-engine/media-buying-rules.ts");
+const {
+  getMediaBuyerCampaignPackages,
+  selectMediaBuyerCampaignPackage,
+} = require("../src/lib/services/media-buyer-framework.ts");
 
-assert.equal(selectMediaBuyerCta("seller"), "Get My Price Update");
-assert.equal(selectMediaBuyerCta("buyer"), "Get Access");
-assert.equal(selectMediaBuyerCta("investor"), "View Available Deals");
+assert.equal(selectMediaBuyerCta("seller"), "Get My Equity Report");
+assert.equal(selectMediaBuyerCta("buyer"), "See Matching Homes");
+assert.equal(selectMediaBuyerCta("investor"), "Get Deal Flow");
 assert.equal(selectMediaBuyerCta("precon"), "View Deposit Options");
 assert.equal(selectMediaBuyerCta("luxury"), "Request Private Access");
 assert.equal(selectMediaBuyerCta("seller", { b2bAgent: true }), "See If You Qualify");
+
+for (const category of ["seller", "buyer", "investor"]) {
+  const packages = getMediaBuyerCampaignPackages(category);
+  assert.equal(packages.length, 3, `${category} should expose the media buyer top three packages`);
+  assert.equal(new Set(packages.map((campaignPackage) => campaignPackage.headline)).size, 3, `${category} headlines should be distinct`);
+  assert.equal(new Set(packages.map((campaignPackage) => campaignPackage.primaryText)).size, 3, `${category} primary text should be distinct`);
+  assert.equal(new Set(packages.map((campaignPackage) => campaignPackage.cta)).size, 3, `${category} CTAs should be distinct`);
+
+  for (const campaignPackage of packages) {
+    const combined = [
+      campaignPackage.hook,
+      campaignPackage.primaryText,
+      campaignPackage.headline,
+      campaignPackage.cta,
+      campaignPackage.funnelHeadline,
+      campaignPackage.funnelSubheadline,
+    ].join(" ");
+    assert.ok(!/payment comparison overlay|better houses options|\$600 k|guaranteed roi|no risk investment|guaranteed approval/i.test(combined), `${campaignPackage.id} has unsafe or broken copy`);
+    assert.ok(campaignPackage.complianceNotes.length > 0, `${campaignPackage.id} should carry compliance guidance`);
+  }
+}
+
+assert.equal(
+  selectMediaBuyerCampaignPackage("seller", { offer: "Pre-Listing Buyer Demand Check" })?.id,
+  "seller-buyer-demand-pressure",
+);
+assert.equal(
+  selectMediaBuyerCampaignPackage("buyer", { offer: "Affordability Breakdown" })?.id,
+  "buyer-affordability-reality-check",
+);
+assert.equal(
+  selectMediaBuyerCampaignPackage("investor", { offer: "ROI Report" })?.id,
+  "investor-roi-map-intelligence",
+);
 
 const lowBudgetStructure = buildMediaBuyingCampaignStructure(80);
 assert.equal(lowBudgetStructure.budgetModel, "CBO");
@@ -115,11 +153,12 @@ assert.ok(scaleDecision.strongMetrics.length >= 2);
 const sellerFunnel = generateFunnel({
   location: "Bradford",
   audience: "homeowners",
-  offer: "Get a 2026 price-and-demand update before you list with no obligation",
+  offer: "Home Equity Snapshot Report",
   mechanism: "pre-market positioning strategy",
   market_type: "seller",
 });
-assert.equal(sellerFunnel.cta, "Get My Price Update");
+assert.equal(sellerFunnel.cta, "Get Report");
+assert.equal(sellerFunnel.headline, "Unlock your home's current value range");
 assert.deepEqual(sellerFunnel.form_fields, ["name", "phone", "email"]);
 assert.equal(sellerFunnel.sections[0].type, "hero");
 assert.equal(sellerFunnel.sections[2].type, "proof_metrics");
@@ -129,11 +168,12 @@ assert.ok(sellerFunnel.follow_up_action.includes("5_15"));
 const investorFunnel = generateFunnel({
   location: "Montreal",
   audience: "investors",
-  offer: "Get 3 off-market properties this month that match your ROI criteria",
+  offer: "Cash Flow Deal List",
   mechanism: "micro-market analysis system",
   market_type: "investor",
 });
-assert.equal(investorFunnel.cta, "View Available Deals");
+assert.equal(investorFunnel.cta, "Get Deals");
+assert.equal(investorFunnel.headline, "View pre-screened cash flow opportunities");
 
 const preconFunnel = generateFunnel({
   location: "Austin",
@@ -147,7 +187,7 @@ assert.equal(preconFunnel.cta, "View Deposit Options");
 const creativePackage = buildCreativeSystem({
   location: "Austin",
   audience: "buyers looking for early access",
-  offer: "Get early access to 3 homes this month before they hit the market",
+  offer: "Early Access Listings",
   property_type: "homes",
   mechanism: "off-market access system",
   desired_result: "early access",
@@ -155,12 +195,20 @@ const creativePackage = buildCreativeSystem({
   market_type: "buyer",
 });
 
+const buyerStaticAds = creativePackage.staticAds.slice(0, 3);
+assert.equal(new Set(buyerStaticAds.map((ad) => ad.headline)).size, 3, "buyer static ads should present distinct media-buyer headlines");
+assert.equal(new Set(buyerStaticAds.map((ad) => ad.primaryText)).size, 3, "buyer static ads should present distinct media-buyer primary text");
+assert.ok(
+  buyerStaticAds.some((ad) => /early access listings|get early access|view homes/i.test(`${ad.headline} ${ad.primaryText} ${ad.cta}`)),
+  "selected buyer offer should drive at least one static creative",
+);
+
 assert.ok(creativePackage.videoAds.length >= 2);
 for (const video of creativePackage.videoAds) {
   assert.deepEqual(video.shotList, ["Hook", "Problem", "Mechanism", "Proof", "Offer", "CTA"]);
   assert.equal(video.script.length, 6);
   assert.ok(!/^hi,?\s+my name is/i.test(video.script[0]));
-  assert.ok(/get early access/i.test(video.script.join(" ")));
+  assert.ok(/early access listings/i.test(video.script.join(" ")));
   assert.ok(/system|process|structure|filters|screens/i.test(video.script[2]));
   assert.ok(video.qualityGate?.score >= 7, `${video.id} score ${video.qualityGate?.score}`);
   assert.equal(video.qualityGate?.accepted, true);

@@ -50,7 +50,9 @@ export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps
               Workspace
             </p>
             <div className="mt-2 space-y-2">
-              <p className="min-w-0 text-sm font-medium leading-6">{organizationName}</p>
+              <p className="min-w-0 truncate text-sm font-medium leading-6" title={organizationName}>
+                {organizationName}
+              </p>
               <Badge className="w-fit shrink-0 border-primary/20 bg-primary/10 text-primary">AI live</Badge>
             </div>
           </div>

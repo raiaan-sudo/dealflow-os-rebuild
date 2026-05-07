@@ -79,7 +79,9 @@ export function buildStaticVisualPromptBrief(
           ? "Favor one strong lived-in interior or backyard moment with just enough payment or affordability proof to support the opportunity. Avoid turning the image into a busy flyer collage."
           : category === "seller"
             ? "Favor a before-versus-after value story, neighborhood map proof, or value-update comparison with clear pricing context. Avoid generic curb-appeal-only compositions."
-        : "Favor charts, maps, and yield proof that feel like a real investor brief, not a lifestyle brochure.";
+            : category === "commercial"
+              ? "Favor clean maps, space-fit checklists, building exteriors, and operator-focused comparison panels. Avoid residential lifestyle framing and generic skyline glamour."
+              : "Favor charts, maps, and yield proof that feel like a real investor brief, not a lifestyle brochure.";
   const prompt = [
     `Create a static real estate ad visual for ${input.location}.`,
     `Audience context: ${input.audience}.`,

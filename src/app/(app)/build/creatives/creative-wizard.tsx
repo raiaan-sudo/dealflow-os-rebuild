@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { StaticCreativePreviewCard } from "@/components/campaign/static-creative-preview-card";
+import {
+  StaticCreativePreviewCard,
+  StaticCreativeSummaryCard,
+} from "@/components/campaign/static-creative-preview-card";
 import { Button } from "@/components/ui/button";
 import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
 
@@ -149,11 +152,11 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
 
   return (
     <div className="space-y-8">
-      <section className="space-y-4 rounded-2xl border border-border bg-card p-6">
+      <section className="space-y-4 rounded-2xl border border-border bg-card p-4 sm:p-5">
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-medium text-muted-foreground">Recommended test set</p>
-            <h2 className="mt-1 text-2xl font-semibold text-foreground">
+            <h2 className="mt-1 text-xl font-semibold text-foreground">
               {selectedCreatives.length} creatives selected
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -162,26 +165,52 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
             </p>
           </div>
           <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-            Test 2-6
+            Test {minSelected}-{maxSelected}
           </span>
         </div>
 
-        <StaticCreativePreviewCard
-          category={primaryCreative.category}
-          cta={primaryCreative.cta}
-          headline={primaryCreative.headline}
-          imageGenerationMessage={primaryCreative.imageGenerationMessage}
-          imageGenerationState={primaryCreative.imageGenerationState}
-          imageUrl={primaryCreative.imageUrl}
-          location={primaryCreative.location}
-          offer={primaryCreative.offer}
-          overlayText={primaryCreative.overlayText}
-          primaryText={primaryCreative.primaryText}
-          qualityGate={primaryCreative.qualityGate}
-          score={primaryCreative.score}
-          selectedCount={selectedCreatives.length}
-          visualPromptBrief={primaryCreative.visualPromptBrief}
-        />
+        <div className="grid gap-4 lg:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)]">
+          <StaticCreativePreviewCard
+            category={primaryCreative.category}
+            compact
+            cta={primaryCreative.cta}
+            headline={primaryCreative.headline}
+            imageGenerationMessage={primaryCreative.imageGenerationMessage}
+            imageGenerationState={primaryCreative.imageGenerationState}
+            imageUrl={primaryCreative.imageUrl}
+            location={primaryCreative.location}
+            offer={primaryCreative.offer}
+            overlayText={primaryCreative.overlayText}
+            primaryText={primaryCreative.primaryText}
+            qualityGate={primaryCreative.qualityGate}
+            score={primaryCreative.score}
+            selectedCount={selectedCreatives.length}
+            visualPromptBrief={primaryCreative.visualPromptBrief}
+          />
+          <div className="grid content-start gap-3">
+            {selectedCreatives.map((creative) => (
+              <StaticCreativeSummaryCard
+                angleLabel={creative.visualPromptBrief?.mechanism || creative.breakdown?.hook}
+                category={creative.category}
+                cta={creative.cta}
+                headline={creative.headline}
+                imageGenerationMessage={creative.imageGenerationMessage}
+                imageGenerationState={creative.imageGenerationState}
+                imageUrl={creative.imageUrl}
+                key={creative.id}
+                location={creative.location}
+                offer={creative.offer}
+                overlayText={creative.overlayText}
+                primaryText={creative.primaryText}
+                qualityGate={creative.qualityGate}
+                score={creative.score}
+                selected
+                selectedCount={selectedCreatives.length}
+                visualPromptBrief={creative.visualPromptBrief}
+              />
+            ))}
+          </div>
+        </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
           <Button asChild type="button" variant="secondary">
@@ -206,7 +235,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
         </details>
       </section>
 
-      <section className="rounded-2xl border border-border bg-card p-6">
+      <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-medium text-muted-foreground">Creative test queue</p>
@@ -218,13 +247,13 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
             {selectedCreatives.length}/{maxSelected} selected
           </p>
         </div>
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <div className="mt-5 grid gap-3 lg:grid-cols-2">
           {rankedCreatives.map((creative, index) => {
             const selected = selectedIds.includes(creative.id);
             return (
               <button
                 aria-pressed={selected}
-                className={`rounded-2xl border p-3 text-left transition ${
+                className={`min-w-0 rounded-2xl border p-2 text-left transition ${
                   selected
                     ? "border-primary bg-primary/10"
                     : "border-border bg-background hover:border-primary/40"
@@ -233,7 +262,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
                 onClick={() => toggleCreative(creative.id)}
                 type="button"
               >
-                <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="mb-2 flex items-center justify-between gap-3">
                   <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                     Creative {index + 1}
                   </span>
@@ -243,9 +272,9 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
                     {selected ? "Selected" : "Add"}
                   </span>
                 </div>
-                <StaticCreativePreviewCard
+                <StaticCreativeSummaryCard
+                  angleLabel={creative.visualPromptBrief?.mechanism || creative.breakdown?.hook}
                   category={creative.category}
-                  compact
                   cta={creative.cta}
                   headline={creative.headline}
                   imageGenerationMessage={creative.imageGenerationMessage}
@@ -257,6 +286,8 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
                   primaryText={creative.primaryText}
                   qualityGate={creative.qualityGate}
                   score={creative.score}
+                  selected={selected}
+                  index={index}
                   selectedCount={selectedCreatives.length}
                   visualPromptBrief={creative.visualPromptBrief}
                 />

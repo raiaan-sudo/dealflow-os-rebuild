@@ -25,6 +25,9 @@ import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 
 const requestSchema = z.object({
   campaignId: z.string().min(1),
+  metaCampaignId: z.string().min(1).optional(),
+  metaAdSetId: z.string().min(1).optional(),
+  metaCreativeId: z.string().min(1).optional(),
   testModeInterruptAfter: z.enum(["campaign", "ad_set", "creative"]).optional(),
 });
 
@@ -702,7 +705,7 @@ function maybeThrowForcedInterrupt(params: {
   }
 }
 
-export async function launchCampaignToMeta(
+async function launchCampaignToMeta(
   campaignId: string,
   resume: LaunchResumePayload = {},
   options?: {
@@ -1841,7 +1844,7 @@ export async function launchCampaignToMeta(
 
 export async function POST(request: Request) {
   assertSameOriginRequest(request);
-  const { campaignId, testModeInterruptAfter } = await parseJsonBody(request, requestSchema);
+  const { campaignId, metaCampaignId, metaAdSetId, metaCreativeId, testModeInterruptAfter } = await parseJsonBody(request, requestSchema);
   const rateLimit = await consumeRateLimit({
     key: getRateLimitKey(request, "campaign-create-launch", campaignId),
     limit: 6,
@@ -1852,7 +1855,11 @@ export async function POST(request: Request) {
     return buildRateLimitResponse(rateLimit.resetAt);
   }
 
-  return launchCampaignToMeta(campaignId, {}, {
+  return launchCampaignToMeta(campaignId, {
+    metaCampaignId,
+    metaAdSetId,
+    metaCreativeId,
+  }, {
     testModeInterruptAfter: normalizeForcedInterruptStage(testModeInterruptAfter),
   });
 }

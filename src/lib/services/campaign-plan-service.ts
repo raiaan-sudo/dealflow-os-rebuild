@@ -3,6 +3,7 @@ import { formatCurrency } from "@/lib/formatters";
 import {
   inferCampaignIntent,
   isBuyerLikeCampaignIntent,
+  isCommercialCampaignIntent,
   isInvestorCampaignIntent,
   isSellerCampaignIntent,
   type CampaignIntent,
@@ -1286,11 +1287,15 @@ export async function persistCampaignPlan(plan: CampaignPlan) {
 export function getMockLeads(plan: CampaignPlan): MockLead[] {
   const source = isSellerCampaignIntent(plan.intent)
     ? "Seller lead ads"
+    : isCommercialCampaignIntent(plan.intent)
+      ? "Commercial lead ads"
     : isInvestorCampaignIntent(plan.intent)
       ? "Investor lead ads"
       : "Buyer lead ads";
   const stages = isSellerCampaignIntent(plan.intent)
     ? ["Valuation request", "Listing call booked", "Pricing review", "Prep checklist", "Active follow-up"]
+    : isCommercialCampaignIntent(plan.intent)
+      ? ["Space inquiry", "Requirements confirmed", "Shortlist review", "Tour pending", "Active follow-up"]
     : isInvestorCampaignIntent(plan.intent)
       ? ["Deal inquiry", "Criteria confirmed", "Underwriting review", "Tour pending", "Active follow-up"]
       : ["New inquiry", "Consult booked", "Financing review", "Tour pending", "Active follow-up"];
@@ -1340,6 +1345,14 @@ function toVariantLabel(angle: StaticCreativeAsset["angle"]) {
 }
 
 export function getStrategyWhy(plan: CampaignPlan) {
+  if (isCommercialCampaignIntent(plan.intent)) {
+    return [
+      `The funnel is built to turn commercial real estate interest in ${plan.market} into qualified space-fit conversations.`,
+      "The targeting stays centered on operators, tenants, and owner-users so the campaign filters for business requirements instead of broad property curiosity.",
+      "The offer works because it promises a clearer shortlist and faster fit check before the agent spends time on mismatched opportunities.",
+    ];
+  }
+
   if (isInvestorCampaignIntent(plan.intent)) {
     return [
       `The funnel is built to surface investor-grade opportunities in ${plan.market} before the wider market competes them away.`,
@@ -1365,6 +1378,20 @@ export function getStrategyWhy(plan: CampaignPlan) {
 
 export function getExpectedOutcomes(plan: CampaignPlan): ExpectedOutcomes {
   const spendFactor = Math.max(1, Math.round(plan.monthlyBudget / 1500));
+
+  if (isCommercialCampaignIntent(plan.intent)) {
+    const baseLeads = 7 + spendFactor * 2;
+    const lowCpl = 110 + spendFactor * 5;
+    const highCpl = lowCpl + 34;
+    const lowConversion = 8 + spendFactor;
+    const highConversion = lowConversion + 3;
+
+    return {
+      leadsPerMonth: `${baseLeads}-${baseLeads + 4}`,
+      costPerLeadRange: `${formatCurrency(lowCpl)}-${formatCurrency(highCpl)}`,
+      conversionExpectation: `${lowConversion}-${highConversion}% of leads progressing into qualified commercial consultations`,
+    };
+  }
 
   if (isInvestorCampaignIntent(plan.intent)) {
     const baseLeads = 10 + spendFactor * 3;
@@ -1411,6 +1438,8 @@ export function getNextActions(plan: CampaignPlan) {
   const nextAngle = getCategoryRulePack(plan.creativeStrategy.campaignCategory).winningAngles[0] ?? "next angle";
   const firstAction = isSellerCampaignIntent(plan.intent)
     ? "Connect the ad account and publish the seller valuation campaign."
+    : isCommercialCampaignIntent(plan.intent)
+      ? "Connect the ad account and publish the commercial space-fit campaign."
     : isInvestorCampaignIntent(plan.intent)
       ? "Connect the ad account and publish the investor acquisition campaign."
       : "Connect the ad account and publish the buyer consultation campaign.";

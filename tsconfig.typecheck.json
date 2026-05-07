@@ -1,11 +1,15 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "plugins": []
+  },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
   "exclude": [
     "node_modules",
+    "node_modules.corrupt*",
     ".next",
-    "src/client/**/*",
-    "src/shared/**/*",
-    "src/server/**/*"
+    ".playwright-cli",
+    ".tmp-playwright",
+    "test-results"
   ]
 }

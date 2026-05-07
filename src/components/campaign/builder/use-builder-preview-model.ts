@@ -133,9 +133,18 @@ export function useBuilderPreviewModel(
     return [];
   }, [campaign]);
 
-  const previewHeadline = campaign.funnel.headline || "Campaign headline unavailable";
-  const previewSubheadline = campaign.funnel.subheadline || "Campaign subheadline unavailable";
-  const previewCta = campaign.funnel.cta || "Campaign CTA unavailable";
+  const previewOffer = recommendedOffer || campaign.strategy.offer;
+  const previewMarket = campaign.strategy.location || "your market";
+  const previewAudience = campaign.strategy.audience || "qualified prospects";
+  const previewHeadline =
+    campaign.funnel.headline ||
+    (previewOffer ? `${previewOffer} in ${previewMarket}` : `${previewMarket} campaign preview`);
+  const previewSubheadline =
+    campaign.funnel.subheadline ||
+    (previewOffer
+      ? `${previewOffer} for ${previewAudience} without guessing what to do next.`
+      : `A focused campaign preview for ${previewMarket}.`);
+  const previewCta = campaign.funnel.cta || (previewOffer ? "Review the offer" : "Request details");
 
   const previewAds = useMemo(() => {
     const rankedSavedAds = [...savedStaticAds]

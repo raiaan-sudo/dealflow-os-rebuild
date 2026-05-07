@@ -16,6 +16,9 @@ export type StaticAdTemplateKind =
   | "investor_roi_dashboard"
   | "investor_rent_price"
   | "investor_map_data"
+  | "commercial_space_match"
+  | "commercial_location_map"
+  | "commercial_lease_purchase"
   | "luxury_private_access"
   | "luxury_cinematic"
   | "luxury_scarcity";
@@ -85,14 +88,16 @@ const CATEGORY_LABELS: Record<CampaignCategory, string> = {
   buyer: "Buyer opportunity",
   seller: "Homeowner update",
   investor: "Investor brief",
+  commercial: "Commercial brief",
   precon: "Pre-con release",
   luxury: "Private access",
 };
 
 const CATEGORY_CTAS: Record<CampaignCategory, string> = {
-  buyer: "Get Access",
+  buyer: "See Matching Homes",
   seller: "Check Your Home Value",
-  investor: "View Available Deals",
+  investor: "Get Deal Flow",
+  commercial: "See Matching Spaces",
   precon: "Get the Full List",
   luxury: "Request Private Access",
 };
@@ -121,6 +126,12 @@ const CATEGORY_RULES: Record<CampaignCategory, string[]> = {
     "rent vs price comparison",
     "map or market data",
     "clean dashboard layout",
+  ],
+  commercial: [
+    "space-fit proof",
+    "availability map",
+    "lease or purchase comparison",
+    "operator-focused layout",
   ],
   luxury: [
     "minimal premium text",
@@ -155,7 +166,14 @@ function includesAny(value: string, patterns: RegExp[]) {
 export function normalizeStaticAdTemplateCategory(input: StaticAdTemplateInput): CampaignCategory {
   const explicit = safeText(input.category || input.visualPromptBrief?.category).toLowerCase();
 
-  if (explicit === "seller" || explicit === "buyer" || explicit === "investor" || explicit === "precon" || explicit === "luxury") {
+  if (
+    explicit === "seller" ||
+    explicit === "buyer" ||
+    explicit === "investor" ||
+    explicit === "commercial" ||
+    explicit === "precon" ||
+    explicit === "luxury"
+  ) {
     return explicit;
   }
 
@@ -180,6 +198,10 @@ export function normalizeStaticAdTemplateCategory(input: StaticAdTemplateInput):
 
   if (includesAny(haystack, [/luxury|private access|exclusive|penthouse|skyline|marble|off[- ]market network|rare opportunity/])) {
     return "luxury";
+  }
+
+  if (includesAny(haystack, [/commercial|office|retail|industrial|warehouse|mixed[- ]use|tenant|lease|owner[- ]user|sq\.?\s*ft|square feet/])) {
+    return "commercial";
   }
 
   if (includesAny(haystack, [/invest|roi|yield|cash ?flow|rent vs|rental|cap rate|undervalued/])) {
@@ -231,6 +253,12 @@ function selectTemplateKind(category: CampaignCategory, input: StaticAdTemplateI
     if (/rent|price|cash ?flow/.test(haystack)) return "investor_rent_price";
     if (/map|micro-market|area|location/.test(haystack)) return "investor_map_data";
     return "investor_roi_dashboard";
+  }
+
+  if (category === "commercial") {
+    if (/lease|purchase|owner[- ]user|buy/.test(haystack)) return "commercial_lease_purchase";
+    if (/map|area|location|corridor|trade area/.test(haystack)) return "commercial_location_map";
+    return "commercial_space_match";
   }
 
   if (/scarce|few|limited|rare/.test(haystack)) return "luxury_scarcity";
@@ -325,6 +353,7 @@ function buildEyebrow(category: CampaignCategory, location: string, templateId: 
   if (category === "seller") return `${location} homeowners`;
   if (category === "precon") return /breaking/.test(templateId) ? "Breaking news" : `${location} pre-con`;
   if (category === "investor") return `${location} investors`;
+  if (category === "commercial") return `${location} commercial`;
   if (category === "luxury") return "Private release";
   return `${location} opportunity`;
 }
@@ -333,6 +362,7 @@ function fallbackHeadline(category: CampaignCategory, location: string) {
   if (category === "seller") return `What is your ${location} home worth?`;
   if (category === "precon") return `New ${location} pre-con opportunities`;
   if (category === "investor") return `${location} deal flow brief`;
+  if (category === "commercial") return `${location} commercial space brief`;
   if (category === "luxury") return `Private access in ${location}`;
   return `New homes available in ${location}`;
 }

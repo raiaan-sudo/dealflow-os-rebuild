@@ -8,6 +8,45 @@ import {
 } from "@/lib/services/internal-launch-monitor";
 import type { OperatorIssueRow } from "@/lib/services/internal-launch-monitor";
 
+const ISSUE_SOURCE_ORDER: OperatorIssueRow["source"][] = [
+  "client_error",
+  "provider_cost",
+  "provider_usage",
+  "customer_success",
+  "system_job",
+  "stripe_webhook",
+  "billing_recovery",
+  "activation",
+  "value_report",
+  "campaign_plan",
+];
+
+const ISSUE_SOURCE_LABELS: Record<OperatorIssueRow["source"], string> = {
+  activation: "Activation",
+  billing_recovery: "Billing recovery",
+  campaign_plan: "Campaign plan",
+  client_error: "Client errors",
+  customer_success: "Customer success",
+  provider_cost: "Provider cost",
+  provider_usage: "Provider usage",
+  stripe_webhook: "Stripe webhooks",
+  system_job: "System jobs",
+  value_report: "Value reports",
+};
+
+const ISSUE_SOURCE_DETAILS: Record<OperatorIssueRow["source"], string> = {
+  activation: "Stalled setup or activation milestones that need operator follow-up.",
+  billing_recovery: "Cancellation, suspension, or recovery states that may need owner review.",
+  campaign_plan: "Campaign row and plan consistency drift before launch or optimization.",
+  client_error: "Browser errors captured from product surfaces, grouped for engineering triage.",
+  customer_success: "First-25-day onboarding, value proof, renewal-risk, and support follow-ups.",
+  provider_cost: "Paid generation credit, quota, and daily spend guardrails.",
+  provider_usage: "Failed or stale provider reservations that may block generation safely.",
+  stripe_webhook: "Failed Stripe webhook processing that can affect billing state.",
+  system_job: "Failed, dead-lettered, or expired worker jobs.",
+  value_report: "Missing or stale customer value-report proof.",
+};
+
 function severityClass(severity: OperatorIssueRow["severity"]) {
   if (severity === "critical") {
     return "border-rose-300/30 bg-rose-300/10 text-rose-100";
@@ -19,6 +58,10 @@ function severityClass(severity: OperatorIssueRow["severity"]) {
     return "border-amber-300/30 bg-amber-300/10 text-amber-100";
   }
   return "border-cyan-300/30 bg-cyan-300/10 text-cyan-100";
+}
+
+function sourceLabel(source: OperatorIssueRow["source"]) {
+  return ISSUE_SOURCE_LABELS[source] ?? source.replace(/_/g, " ");
 }
 
 function formatDateTime(value: string | null) {
@@ -68,6 +111,10 @@ export default async function IssuesPage() {
   const high = issues.filter((issue) => issue.severity === "high").length;
   const open = issues.filter((issue) => issue.status === "open").length;
   const fixPrompt = asFixPrompt(issues.slice(0, 12));
+  const groupedIssues = ISSUE_SOURCE_ORDER.map((source) => ({
+    source,
+    issues: issues.filter((issue) => issue.source === source),
+  })).filter((group) => group.issues.length > 0);
 
   return (
     <div className="relative min-h-full overflow-hidden rounded-[32px] border border-cyan-300/16 bg-[#030811] p-5 text-cyan-50 shadow-[0_0_130px_-58px_rgba(34,211,238,0.55)] sm:p-7">
@@ -89,7 +136,7 @@ export default async function IssuesPage() {
               Error / bug logs
             </h1>
             <p className="mt-4 max-w-3xl text-sm leading-7 text-cyan-100/68">
-              Aggregated operator issues from failed jobs, failed Stripe webhooks, and campaign consistency alerts.
+              Aggregated operator issues from failed jobs, failed Stripe webhooks, billing recovery states, customer-success follow-ups, activation stalls, stale value reports, and campaign consistency alerts.
               Use this page to copy a clean fix prompt when something needs to be routed back into engineering.
             </p>
             <div className="mt-5 flex flex-wrap gap-3">
@@ -136,39 +183,56 @@ export default async function IssuesPage() {
             </div>
 
             <div className="mt-4 space-y-3">
-              {issues.length > 0 ? (
-                issues.map((issue) => (
-                  <div
-                    className="rounded-2xl border border-white/8 bg-white/[0.035] p-4"
-                    key={issue.id}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase ${severityClass(issue.severity)}`}>
-                          {issue.severity}
-                        </span>
-                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 font-mono text-[10px] uppercase text-cyan-100/60">
-                          {issue.source}
-                        </span>
-                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 font-mono text-[10px] uppercase text-cyan-100/60">
-                          {issue.status}
-                        </span>
+              {groupedIssues.length > 0 ? (
+                groupedIssues.map((group) => (
+                  <section className="rounded-2xl border border-cyan-300/12 bg-white/[0.025] p-3" key={group.source}>
+                    <div className="flex flex-wrap items-start justify-between gap-3 px-1">
+                      <div>
+                        <h3 className="text-sm font-semibold text-white">{sourceLabel(group.source)}</h3>
+                        <p className="mt-1 text-xs leading-5 text-cyan-100/52">
+                          {ISSUE_SOURCE_DETAILS[group.source]}
+                        </p>
                       </div>
-                      <span className="font-mono text-[11px] text-cyan-100/45">
-                        {formatDateTime(issue.createdAt)}
+                      <span className="rounded-full border border-cyan-300/18 bg-cyan-300/10 px-2.5 py-1 font-mono text-[10px] text-cyan-100">
+                        {group.issues.length} row{group.issues.length === 1 ? "" : "s"}
                       </span>
                     </div>
-                    <p className="mt-3 text-sm font-semibold text-white">{issue.title}</p>
-                    <p className="mt-2 text-sm leading-6 text-cyan-50/64">{issue.detail}</p>
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-cyan-100/50">
-                      <span className="font-mono">ref: {issue.rawReference}</span>
-                      {issue.route ? (
-                        <Link className="text-cyan-100 underline-offset-4 hover:underline" href={issue.route}>
-                          Open context
-                        </Link>
-                      ) : null}
+                    <div className="mt-3 space-y-3">
+                      {group.issues.map((issue) => (
+                        <div
+                          className="rounded-2xl border border-white/8 bg-white/[0.035] p-4"
+                          key={issue.id}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase ${severityClass(issue.severity)}`}>
+                                {issue.severity}
+                              </span>
+                              <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 font-mono text-[10px] uppercase text-cyan-100/60">
+                                {sourceLabel(issue.source)}
+                              </span>
+                              <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 font-mono text-[10px] uppercase text-cyan-100/60">
+                                {issue.status}
+                              </span>
+                            </div>
+                            <span className="font-mono text-[11px] text-cyan-100/45">
+                              {formatDateTime(issue.createdAt)}
+                            </span>
+                          </div>
+                          <p className="mt-3 text-sm font-semibold text-white">{issue.title}</p>
+                          <p className="mt-2 text-sm leading-6 text-cyan-50/64">{issue.detail}</p>
+                          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-cyan-100/50">
+                            <span className="font-mono">ref: {issue.rawReference}</span>
+                            {issue.route ? (
+                              <Link className="text-cyan-100 underline-offset-4 hover:underline" href={issue.route}>
+                                Open context
+                              </Link>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
+                  </section>
                 ))
               ) : (
                 <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-5 text-sm text-emerald-100">

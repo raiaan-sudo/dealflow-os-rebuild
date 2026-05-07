@@ -1,4 +1,4 @@
-import type { CampaignIntent } from "@/lib/campaign-intent";
+import { isCommercialCampaignIntent, type CampaignIntent } from "@/lib/campaign-intent";
 
 export type OfferMarketType = CampaignIntent;
 
@@ -74,7 +74,7 @@ export function extractOfferData(offer: string): ExtractedOfferData {
     /((?:in\s+)?\d+\s*(?:days?|weeks?|months?)(?:\s+or\s+less)?)/i,
   );
   const audienceMatch = text.match(
-    /(first[\s-]*time buyers?|homeowners?|buyers?|sellers?|investors?|landlords?)/i,
+    /(first[\s-]*time buyers?|homeowners?|buyers?|sellers?|investors?|landlords?|tenants?|owner[-\s]*users?|business owners?)/i,
   );
   const pricingMatch = text.match(
     /(?:under|below|up to|less than|underneath|from)\s+\$?\s*(\d+(?:\.\d+)?\s*[km]?)|\$+\s*(\d+(?:\.\d+)?\s*[km]?)/i,
@@ -140,6 +140,14 @@ export function generateOfferVariations(
   const extracted = extractOfferData(rawOffer);
 
   if (!cleaned) {
+    if (isCommercialCampaignIntent(marketType)) {
+      return [
+        "See Better-Fit Commercial Spaces Faster",
+        "Get a Commercial Space Shortlist Built Around Your Requirements",
+        "Find the Right Office, Retail, or Industrial Fit Before You Waste Another Tour",
+      ];
+    }
+
     return marketType === "seller"
       ? [
           "We Guarantee Your Home Sells in 90 Days — Or We’ll Buy It",
@@ -183,6 +191,22 @@ export function generateOfferVariations(
     ];
   }
 
+  if (isCommercialCampaignIntent(marketType)) {
+    if (/lease|tenant|space|office|retail|industrial|warehouse|commercial/.test(cleaned)) {
+      return [
+        "See Better-Fit Commercial Spaces Faster",
+        "Get a Commercial Space Shortlist Built Around Your Requirements",
+        "Find the Right Office, Retail, or Industrial Fit Before You Waste Another Tour",
+      ];
+    }
+
+    return [
+      `${toTitleCase(cleaned)} Commercial Fit Brief`,
+      `See Matching Commercial Options for ${toTitleCase(cleaned)}`,
+      `Shortlist Better Commercial Options Around ${toTitleCase(cleaned)}`,
+    ];
+  }
+
   if (/off-market/.test(cleaned) && marketType !== "seller") {
     return [
       "See Off-Market Properties Before the Public Does",
@@ -207,7 +231,7 @@ function scoreOfferVariation(value: string) {
   const normalized = safeText(value).toLowerCase();
   const guarantee = /guarantee|guaranteed/.test(normalized) ? 4 : 0;
   const riskReversal = /or we['’]ll buy it|don’t pay|if your home doesn’t sell/.test(normalized) ? 5 : 0;
-  const benefit = /sell|approved|access|cashflow|qualify|buyers|under \$|\$\d/.test(normalized) ? 3 : 0;
+  const benefit = /sell|approved|access|cashflow|commercial|space|lease|shortlist|qualify|buyers|under \$|\$\d/.test(normalized) ? 3 : 0;
   const clarity = normalized.length <= 80 ? 2 : 1;
 
   return guarantee + riskReversal + benefit + clarity;

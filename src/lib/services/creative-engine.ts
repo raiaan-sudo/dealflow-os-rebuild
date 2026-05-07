@@ -32,6 +32,7 @@ import {
   evaluateOfferQuality,
   getCategorySafeOffer,
   getMediaBuyerCategoryStrategy,
+  getMediaBuyerCampaignPackages,
   type CreativeQualityEvaluation,
   type OfferQualityEvaluation,
 } from "@/lib/services/media-buyer-framework";
@@ -497,6 +498,16 @@ function buildCompliantOfferLead(offer: string, category: CampaignCreativeStrate
   return cleanOffer;
 }
 
+function cleanCreativeCopy(value: string) {
+  return shortSentence(value)
+    .replace(/\$\s*([0-9]+)\s*k/gi, "$$$1k")
+    .replace(/([0-9])\s+k\b/gi, "$1k")
+    .replace(/\bpayment comparison overlay\b/gi, "budget comparison")
+    .replace(/\bbetter houses options\b/gi, "better home options")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function ensureOfferDrivenStaticAd(
   ad: StaticCreativeAsset,
   strategy: CampaignCreativeStrategy,
@@ -508,18 +519,15 @@ function ensureOfferDrivenStaticAd(
     return ad;
   }
 
-  const headline =
-    textIncludesOffer(ad.headline, offer)
-      ? ad.headline
-      : `${offerLead}: ${shortSentence(ad.headline)}`;
+  const headline = cleanCreativeCopy(ad.headline);
   const primaryText =
     textIncludesOffer(ad.primaryText, offer)
-      ? ad.primaryText
-      : `${offerLead}. ${ad.primaryText}`;
+      ? cleanCreativeCopy(ad.primaryText)
+      : cleanCreativeCopy(`${ad.primaryText} Offer: ${offerLead}.`);
   const overlayText =
     textIncludesOffer(ad.overlayText, offer)
-      ? ad.overlayText
-      : clampOverlayLine(offerLead);
+      ? clampOverlayLine(ad.overlayText)
+      : ad.overlayText || clampOverlayLine(offerLead);
 
   return {
     ...ad,
@@ -530,6 +538,40 @@ function ensureOfferDrivenStaticAd(
       ? ad.visualConcept
       : `${ad.visualConcept} using the offer "${shortSentence(offer)}"`,
   };
+}
+
+function creativeAngleLabel(ad: StaticCreativeAsset) {
+  if (ad.id.includes("problem")) return "Problem-solution";
+  if (ad.id.includes("offer")) return "Offer-led";
+  if (ad.id.includes("authority")) return "Expert angle";
+  if (ad.id.includes("testimonial")) return "Proof story";
+  if (ad.id.includes("opportunity")) return "Opportunity";
+  return ad.angle;
+}
+
+function preventDuplicateStaticCreativeCopy(ads: StaticCreativeAsset[]) {
+  const seen = new Set<string>();
+
+  return ads.map((ad, index) => {
+    const key = normalizeForOfferMatch(`${ad.headline}|${ad.primaryText}|${ad.cta}`);
+    if (!seen.has(key)) {
+      seen.add(key);
+      return ad;
+    }
+
+    const label = creativeAngleLabel(ad);
+    const headline = cleanCreativeCopy(`${label}: ${ad.headline}`);
+    const primaryText = cleanCreativeCopy(`${ad.primaryText} This variation tests the ${label.toLowerCase()} angle.`);
+    seen.add(normalizeForOfferMatch(`${headline}|${primaryText}|${ad.cta}|${index}`));
+
+    return {
+      ...ad,
+      headline,
+      primaryText,
+      hook: cleanCreativeCopy(`${label}: ${ad.hook}`),
+      visualConcept: `${ad.visualConcept} Variation angle: ${label}.`,
+    };
+  });
 }
 
 function fillMediaBuyerPattern(pattern: string, params: {
@@ -690,6 +732,7 @@ function buildStaticCreatives(
           return (
             (strategy.campaignCategory === "seller" && /price|value|demand/.test(normalizedCta)) ||
             (strategy.campaignCategory === "investor" && /deal|yield|cash-flow/.test(normalizedCta)) ||
+            (strategy.campaignCategory === "commercial" && /space|option|fit/.test(normalizedCta)) ||
             (strategy.campaignCategory === "precon" && /deposit|timeline|entry/.test(normalizedCta)) ||
             (strategy.campaignCategory === "luxury" && /private|fits|release/.test(normalizedCta)) ||
             (strategy.campaignCategory === "buyer" && /homes|qualify|payment/.test(normalizedCta))
@@ -713,6 +756,11 @@ function buildStaticCreatives(
       trimWords(`${market} yield breakdown`, 5),
       trimWords(`Cash flow plus appreciation in ${market}`, 7),
       trimWords(`If your money is sitting still, watch this`, 8),
+    ],
+    commercial: [
+      trimWords(`${market} space-fit brief`, 5),
+      trimWords(`Compare better-fit commercial options`, 5),
+      trimWords(`Before you lease or buy in ${market}`, 8),
     ],
     precon: [
       trimWords(`Buy now. Pay later in ${market}`, 7),
@@ -744,7 +792,36 @@ function buildStaticCreatives(
     templateParams,
   });
 
+  const mediaBuyerPackageAds = getMediaBuyerCampaignPackages(strategy.campaignCategory)
+    .slice(0, 3)
+    .map((campaignPackage, index): StaticCreativeAsset => {
+      const angle = (["guarantee", "urgency", "authority"] as const)[index] ?? "opportunity";
+
+      return {
+        id: `static-${campaignPackage.id}`,
+        angle,
+        imageUrl: "",
+        imageGenerationState: "unavailable",
+        imageGenerationMessage: null,
+        imageGenerationModel: null,
+        visualConcept: `${campaignPackage.creativeDirection} Offer: ${cleanOffer}.`,
+        imagePrompt: "",
+        imagePromptConfig: null,
+        preferredImageModel: "gpt-image-1.5",
+        visualPromptBrief: null,
+        scoreBreakdown: null,
+        hook: campaignPackage.hook,
+        overlayText: campaignPackage.headline,
+        primaryText: campaignPackage.primaryText,
+        headline: campaignPackage.headline,
+        cta: campaignPackage.cta,
+        score: 0,
+        recommended: index === 0,
+      };
+    });
+
   const ads: StaticCreativeAsset[] = [
+    ...mediaBuyerPackageAds,
     {
       id: "static-problem-solution",
       angle: "guarantee",
@@ -1053,9 +1130,9 @@ function buildStaticCreatives(
       score: 0,
       recommended: false,
     },
-  ] as StaticCreativeAsset[];
+  ].slice(0, 6) as StaticCreativeAsset[];
 
-  return rankStaticCreativeAssets(
+  return preventDuplicateStaticCreativeCopy(rankStaticCreativeAssets(
     ads.map((ad): StaticCreativeAsset => {
       const visualBrief = buildStaticVisualPromptBrief({
         location: market,
@@ -1095,7 +1172,7 @@ function buildStaticCreatives(
     }),
     strategy,
     { market },
-  );
+  ));
 }
 
 async function buildVideoCreatives(brief: CreativeBrief): Promise<VideoCreativeAsset[]> {
@@ -1405,6 +1482,14 @@ function buildVideoArchetype(params: {
       problem: `The best investor opportunities usually get filtered before they look obvious to everyone else.`,
       mechanism: `${sentenceCase(mechanism)} screens markets around ROI, risk, and timing.`,
       proof: `${sentenceCase(proof)} gives you a cleaner reason to review the deal before capital moves.`,
+      offer,
+      cta,
+    },
+    commercial: {
+      hook: `If your business needs space in ${market}, the wrong shortlist can waste weeks.`,
+      problem: `Most commercial searches break down because availability, timing, and operating requirements are compared too late.`,
+      mechanism: `${sentenceCase(mechanism)} filters options around fit, location, and timing before the search gets noisy.`,
+      proof: `${sentenceCase(proof)} gives you a cleaner way to compare the right ${propertyType}.`,
       offer,
       cta,
     },

@@ -6,6 +6,7 @@ import {
   loadLaunchMonitorRows,
 } from "@/lib/services/internal-launch-monitor";
 import { getSmsOutboundPolicyStatus } from "@/lib/services/sms-service";
+import { loadCustomerSuccessChecklistRows } from "@/lib/services/customer-success-service";
 import { createAdminClient } from "@/lib/server/supabase-admin";
 import { CommandCenterConsole } from "./command-center-console";
 import type {
@@ -15,6 +16,7 @@ import type {
   ReadinessMetric,
   WorkLogEntry,
 } from "./command-center-console";
+import type { CustomerSuccessChecklist } from "@/lib/services/customer-success-service";
 
 type OpsSummary = {
   failedJobs: number;
@@ -98,6 +100,13 @@ export default async function CommandCenterPage() {
     ops.failedJobs + ops.deadLetterJobs + ops.recentStripeFailures + planMismatchCount;
   const unresolvedIssues = issues.filter((issue) => issue.status !== "resolved").length;
   const smsPolicy = getSmsOutboundPolicyStatus();
+  const customerSuccess = await loadCustomerSuccessChecklistRows(rows, 12).catch(
+    () => [] as CustomerSuccessChecklist[],
+  );
+  const customerSuccessDue = customerSuccess.filter((checklist) => checklist.dueCount > 0).length;
+  const customerSuccessAtRisk = customerSuccess.filter(
+    (checklist) => checklist.riskLevel === "blocked" || checklist.riskLevel === "at_risk",
+  ).length;
 
   const metrics: ReadinessMetric[] = [
     {
@@ -207,6 +216,25 @@ export default async function CommandCenterPage() {
         "Readiness values are labeled as operator scores or estimates when not live telemetry.",
       ],
     },
+    {
+      id: "pepper",
+      name: "PEPPER",
+      role: "Customer Success Watch",
+      status: customerSuccessDue > 0 ? "Follow-ups due" : "Checklist calm",
+      readiness: customerSuccessAtRisk > 0 ? 82 : customerSuccessDue > 0 ? 90 : 98,
+      readinessLabel: "live checklist score",
+      signal:
+        customerSuccess.length > 0
+          ? `${customerSuccessDue}/${customerSuccess.length} watched accounts have customer-success checklist items due.`
+          : "No customer-success checklist rows are currently in the watch window.",
+      tone: customerSuccessAtRisk > 0 ? "red" : customerSuccessDue > 0 ? "amber" : "green",
+      logs: [
+        "Tracks onboarding review, creative QA, preview review, billing, Meta, assets, launch readiness, and lead-loop status.",
+        "Tracks day 7 check-in, day 14 value proof, and day 25 renewal-risk review due dates.",
+        "Customer communications are not sent from this layer; operators use the runbook before contacting customers.",
+        "Rep KPIs, commissions, and EOD systems are intentionally out of scope for this launch layer.",
+      ],
+    },
   ];
 
   const proofs: ProofEvent[] = [
@@ -269,9 +297,15 @@ export default async function CommandCenterPage() {
       status: "complete",
       detail: "Cockpit HUD, clickable agents, voice briefing, proof panels, labeled readiness scores, and issue radar deployed.",
     },
+    {
+      agent: "PEPPER",
+      title: "Launch customer-success checklist",
+      status: "complete",
+      detail: "Command center surfaces due onboarding, creative, billing, Meta, lead-loop, and first-25-day customer-success follow-ups.",
+    },
   ];
 
-  const commandIssues: CommandCenterIssue[] = issues.slice(0, 8).map((issue) => ({
+  const commandIssues: CommandCenterIssue[] = issues.map((issue) => ({
     id: issue.id,
     source: issue.source,
     severity: issue.severity,
@@ -297,7 +331,10 @@ export default async function CommandCenterPage() {
         stripeFailures: ops.recentStripeFailures,
         validationAlerts: validationAlertCount,
         smsAutomationEnabled: smsPolicy.automationEnabled,
+        customerSuccessDue,
+        customerSuccessAtRisk,
       }}
+      customerSuccess={customerSuccess}
       workLog={workLog}
     />
   );

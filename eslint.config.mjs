@@ -4,12 +4,14 @@ const config = [
   {
     ignores: [
       ".next/**",
+      ".next.stale-*/**",
+      ".playwright-cli/**",
+      ".tmp-playwright/**",
       "node_modules/**",
+      "node_modules.corrupt*/**",
       "out/**",
+      "test-results/**",
       "coverage/**",
-      "src/client/**",
-      "src/server/**",
-      "src/shared/**",
     ],
   },
   ...nextCoreWebVitals,

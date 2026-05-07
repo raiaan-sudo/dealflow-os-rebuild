@@ -259,7 +259,9 @@ export function LaunchMetaSelectionPanel({
             type="button"
             variant="secondary"
             onClick={() => {
-              window.location.assign("/api/integrations/meta/connect?returnTo=%2Flaunch");
+              window.location.assign(
+                `/api/integrations/meta/connect?returnTo=${encodeURIComponent(launchReturnTo)}`,
+              );
             }}
             disabled={isPending}
           >

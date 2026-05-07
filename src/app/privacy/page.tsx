@@ -28,7 +28,8 @@ export default function PrivacyPolicyPage() {
           <p className="mt-3">
             We may collect account information such as name, email address, workspace details,
             onboarding answers, campaign settings, selected creative assets, public funnel
-            submissions, billing status, and integration metadata needed to operate the product.
+            submissions, billing status, optional cancellation feedback, and integration metadata
+            needed to operate the product.
           </p>
           <p className="mt-3">
             When a visitor submits a lead form, we collect the information they choose to provide,
@@ -58,8 +59,8 @@ export default function PrivacyPolicyPage() {
           <p className="mt-3">
             We use information to create and manage campaigns, generate previews and creative
             drafts, process lead submissions, prevent duplicate submissions, maintain billing and
-            subscription access, sync campaign state, troubleshoot errors, improve reliability, and
-            provide support. SMS information is used only to respond to the submitted request,
+            subscription access, understand cancellation or payment issues, sync campaign state,
+            troubleshoot errors, improve reliability, and provide support. SMS information is used only to respond to the submitted request,
             maintain conversation history, document consent, and honor opt-out choices.
           </p>
         </section>

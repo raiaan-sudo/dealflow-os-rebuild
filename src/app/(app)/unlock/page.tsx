@@ -7,6 +7,7 @@ import {
   getBillingSummary,
   reconcileBillingCheckoutSuccess,
 } from "@/lib/services/billing-service";
+import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
 
 export default async function UnlockPage({
   searchParams,
@@ -18,6 +19,10 @@ export default async function UnlockPage({
     typeof params.checkout === "string" && params.checkout.length > 0 ? params.checkout : null;
   const checkoutSessionId =
     typeof params.session_id === "string" && params.session_id.length > 0 ? params.session_id : null;
+  const campaignId =
+    typeof params.campaignId === "string" && params.campaignId.length > 0 ? params.campaignId : null;
+  const plan =
+    typeof params.plan === "string" && params.plan.length > 0 ? params.plan : null;
   const reconciliationError =
     checkoutState === "success" && checkoutSessionId
       ? await reconcileBillingCheckoutSuccess(checkoutSessionId)
@@ -27,6 +32,20 @@ export default async function UnlockPage({
   const billing = await getBillingSummary().catch(() => null);
   const launchAllowed = billing?.launchAllowed ?? false;
 
+  if (checkoutState === "success" && checkoutSessionId && !reconciliationError) {
+    await recordActivationEventForCurrentUser({
+      eventName: "checkout_completed_or_reconciled",
+      campaignId,
+      source: "unlock_page",
+      metadata: {
+        route: "unlock",
+        planTier: billing?.planTier ?? plan ?? "unknown",
+        launchAllowed,
+      },
+      idempotencyKey: `checkout_completed_or_reconciled:${checkoutSessionId}`,
+    }).catch(() => undefined);
+  }
+
   return (
     <PageShell>
       <PageHeader
@@ -34,7 +53,7 @@ export default async function UnlockPage({
         title={launchAllowed ? "Launch access active" : "Checkout updated"}
         description={
           launchAllowed
-            ? "This workspace can now launch campaigns to Meta."
+            ? "This workspace can now preview the saved campaign and continue toward Meta connection."
             : checkoutState === "cancelled"
               ? "Checkout was cancelled before activation completed."
               : reconciliationError
@@ -52,17 +71,36 @@ export default async function UnlockPage({
           ) : null}
           <p>Plan: {billing?.planTier ?? "starter"}</p>
           <p>Subscription status: {billing?.subscriptionStatus ?? "inactive"}</p>
+          <p>Billing state: {billing?.billingState?.replace(/_/g, " ") ?? "inactive"}</p>
+          {billing?.billingState === "payment_issue" ? (
+            <p>Payment attention: update the payment method in Settings before attempting a new launch.</p>
+          ) : null}
+          {billing?.cancelAtPeriodEnd ? (
+            <p>Cancellation: access remains active until the paid period ends.</p>
+          ) : null}
           <p>
             Launch access: {launchAllowed ? "enabled" : "not enabled yet"}
-            {billing?.launchOverride ? " (admin override)" : ""}
+            {billing?.launchOverride ? " (billing override)" : ""}
           </p>
         </div>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           <Button asChild>
-            <Link href="/launch">Go to launch</Link>
+            <Link
+              href={
+                campaignId
+                  ? `/dashboard?campaignId=${encodeURIComponent(campaignId)}`
+                  : plan
+                    ? `/dashboard?plan=${encodeURIComponent(plan)}`
+                    : "/dashboard"
+              }
+            >
+              Open dashboard preview
+            </Link>
           </Button>
           <Button asChild variant="secondary">
-            <Link href="/paywall">View billing options</Link>
+            <Link href={campaignId ? `/launch?campaignId=${encodeURIComponent(campaignId)}` : "/launch"}>
+              Continue to Meta setup
+            </Link>
           </Button>
         </div>
       </Card>

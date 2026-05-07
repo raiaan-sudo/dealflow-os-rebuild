@@ -6,6 +6,7 @@ import {
   parseRouteParams,
 } from "@/lib/api/route";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
+import { assertCampaignCanRunOptimization } from "@/lib/services/campaign-entitlements";
 import { getMetaCampaignSyncSnapshotForCampaign } from "@/lib/services/meta-campaign-sync-service";
 
 const paramsSchema = z.object({
@@ -60,7 +61,7 @@ function buildRecommendations(params: {
 
 export async function GET(
   _request: Request,
-  context: { params: Promise<Record<string, string>> | Record<string, string> },
+  context: { params: Promise<Record<string, string>> },
 ) {
   try {
     const { id } = await parseRouteParams(context.params, paramsSchema);
@@ -69,6 +70,8 @@ export async function GET(
     if (!record) {
       throw new ApiError(404, "Campaign was not found.", "campaign_not_found");
     }
+
+    await assertCampaignCanRunOptimization(id);
 
     const syncSnapshot = await getMetaCampaignSyncSnapshotForCampaign({
       campaignName: record.campaign.name,

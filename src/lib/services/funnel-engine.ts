@@ -5,6 +5,7 @@ import {
   getCategoryCtaOptions,
   selectMediaBuyerCta,
 } from "@/lib/optimization-engine/media-buying-rules";
+import { selectMediaBuyerCampaignPackage } from "@/lib/services/media-buyer-framework";
 
 export type FunnelMarketType = CampaignIntent;
 export type FunnelGoal = "lead_form" | "survey" | "book_call";
@@ -224,19 +225,15 @@ function inferFunnelCampaignCategory(input: {
     return "seller";
   }
 
+  if (input.marketType === "commercial" || /commercial|office|retail|industrial|warehouse|mixed[- ]use|tenant|lease|owner[- ]user/.test(haystack)) {
+    return "commercial";
+  }
+
   if (input.marketType === "investor" || /invest|roi|yield|cash[- ]?flow|rental|off[- ]market deal/.test(haystack)) {
     return "investor";
   }
 
   return "buyer";
-}
-
-function capitalize(value: string) {
-  if (!value) {
-    return "";
-  }
-
-  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function trimWords(value: string, maxWords: number) {
@@ -247,6 +244,27 @@ function trimWords(value: string, maxWords: number) {
   }
 
   return words.slice(0, maxWords).join(" ");
+}
+
+function cleanMarketingCopy(value: string) {
+  return safeText(value)
+    .replace(/\s+/g, " ")
+    .replace(/\$\s*([0-9]+)\s*k/gi, "$$$1k")
+    .replace(/([0-9])\s+k\b/gi, "$1k")
+    .replace(/\btoronto,\s*on\s+in\s+toronto,\s*on\b/gi, "Toronto, ON")
+    .replace(/\bpayment comparison overlay\b/gi, "budget comparison")
+    .replace(/\bbetter houses options\b/gi, "better home options")
+    .trim();
+}
+
+function conciseOfferPhrase(offer: string) {
+  return trimWords(
+    cleanMarketingCopy(offer)
+      .replace(/^get\s+/i, "")
+      .replace(/^free\s+/i, "")
+      .replace(/[.!?]+$/g, ""),
+    7,
+  );
 }
 
 function uniqueFragments(parts: string[]) {
@@ -390,42 +408,51 @@ function parseOffer(input: NormalizedInput): ParsedOffer {
 
 function buildHeadlineVariations(input: NormalizedInput, parsed: ParsedOffer) {
   const market = parsed.market || input.location;
-  const audience = safeText(parsed.audience || input.audience);
   const time = parsed.timeHorizon;
-  const promise = sentence(parsed.promise).replace(/\.$/, "");
+  const offer = conciseOfferPhrase(input.offer || parsed.promise);
 
   if (parsed.offerClass === "investor") {
     return uniqueFragments([
-      time && /guarantee/i.test(promise)
-        ? `We Guarantee You a Cash-Flow Positive ${parsed.assetType} in the Next ${time}`
-        : "",
-      `Get ${parsed.assetType} opportunities in ${market} built for cash flow`,
-      `${capitalize(audience || "Investors")}: lock in cash-flow positive deals in ${market}`,
-      `Secure a cash-flow positive ${parsed.assetType} before weaker deals waste your time`,
-    ]).map((text) => trimWords(text, 16));
+      time ? `Review cash-flow opportunities before the next ${time}` : "",
+      "Find investor opportunities with clearer numbers",
+      `${market} deal flow filtered around ${offer}`,
+      "See value-add options before weak deals waste your time",
+    ]).map((text) => trimWords(cleanMarketingCopy(text), 12));
   }
 
   if (parsed.offerClass === "approval") {
     return uniqueFragments([
-      promise,
-      `${capitalize(audience || "Buyers")} in ${market}: stop assuming you cannot qualify`,
-      `Get approved faster for the right ${parsed.assetType} in ${market}`,
-    ]).map((text) => trimWords(text, 16));
+      "Know your buying path before touring homes",
+      "Find homes that fit your approval path",
+      `${market} buyers can start with clarity`,
+    ]).map((text) => trimWords(cleanMarketingCopy(text), 12));
   }
 
   if (parsed.offerClass === "guarantee" || parsed.offerClass === "seller") {
     return uniqueFragments([
-      promise,
-      time ? `Sell your home in ${time} or less in ${market}` : "",
-      `${capitalize(audience || "Homeowners")}: stop letting your home sit in ${market}`,
-    ]).map((text) => trimWords(text, 16));
+      /value|worth|valuation/i.test(input.offer)
+        ? "See what your home could sell for"
+        : "Build a stronger sale plan before listing",
+      time ? `Plan your ${market} sale before the next ${time}` : "",
+      "Understand buyer demand before you list",
+    ]).map((text) => trimWords(cleanMarketingCopy(text), 12));
+  }
+
+  if (input.campaignCategory === "commercial") {
+    return uniqueFragments([
+      "Find commercial spaces that fit your next move",
+      `${market} options shaped around ${offer}`,
+      "Compare lease and purchase paths before touring",
+    ]).map((text) => trimWords(cleanMarketingCopy(text), 12));
   }
 
   return uniqueFragments([
-    promise,
-    `Access off-market ${parsed.assetType} in ${market}`,
-    `${capitalize(audience || "Buyers")}: get a tighter path to ${parsed.outcome} in ${market}`,
-  ]).map((text) => trimWords(text, 16));
+    /listing|shortlist|home|buyer/i.test(input.offer)
+      ? `Get a ${market} home shortlist built around your budget`
+      : "See better-fit homes before wasting weekends",
+    `Private access to better-fit ${parsed.assetType}`,
+    "Find homes that match your next move",
+  ]).map((text) => trimWords(cleanMarketingCopy(text), 12));
 }
 
 function buildSubheadlineVariations(input: NormalizedInput, parsed: ParsedOffer) {
@@ -502,7 +529,7 @@ function scoreFunnelVariation(variation: Omit<FunnelVariation, "score">, input: 
   offerAlignment += Math.min(4, matchedTokens);
 
   if (/get approved faster/.test(variation.subheadline.toLowerCase()) && parsed.offerClass === "investor") offerAlignment -= 4;
-  if (!includesOfferConcept(variation.headline, input.offer)) offerAlignment -= 3;
+  if (!includesOfferConcept(`${variation.headline} ${variation.subheadline} ${variation.cta}`, input.offer)) offerAlignment -= 1;
   if (/get access/.test(variation.cta.toLowerCase()) && parsed.offerClass === "guarantee") offerAlignment -= 1;
 
   const total = specificity + directness + promiseStrength + offerAlignment;
@@ -913,22 +940,23 @@ export function generateFunnel(input?: FunnelEngineInput | null): FunnelBlueprin
   const raw = input || {};
   const normalized = normalizeInput(raw);
   const bestVariation = pickBestFunnelVariation(normalized);
-  let headline = safeText(raw.headline) || safeText(bestVariation?.headline);
-  let subheadline = safeText(raw.subheadline) || safeText(bestVariation?.subheadline);
+  const selectedPackage = selectMediaBuyerCampaignPackage(normalized.campaignCategory, {
+    offer: normalized.offer,
+    audience: normalized.audience,
+    mechanism: normalized.mechanism,
+  });
+  let headline = safeText(raw.headline) || safeText(selectedPackage?.funnelHeadline) || safeText(bestVariation?.headline);
+  let subheadline = safeText(raw.subheadline) || safeText(selectedPackage?.funnelSubheadline) || safeText(bestVariation?.subheadline);
   let mechanism = safeText(raw.mechanism) || normalized.mechanism;
   const audience = safeText(raw.audience) || normalized.audience;
   const parsed = parseOffer(normalized);
   const cta =
     normalized.marketType === "approval" || parsed.offerClass === "approval"
       ? "See If You Qualify"
-      : selectMediaBuyerCta(normalized.campaignCategory);
+      : selectedPackage?.cta ?? selectMediaBuyerCta(normalized.campaignCategory);
 
   if (!headline) {
     headline = safeText(parseOffer(normalized).promise) || "Your campaign is ready";
-  }
-
-  if (!includesOfferConcept(headline, normalized.offer)) {
-    headline = safeText(bestVariation?.headline) || headline;
   }
 
   if (!mechanism) {
@@ -939,8 +967,8 @@ export function generateFunnel(input?: FunnelEngineInput | null): FunnelBlueprin
     subheadline = `${mechanism} for ${audience || "your audience"} in ${normalized.location}.`;
   }
 
-  headline = trimWords(headline, 18);
-  subheadline = trimWords(subheadline, 32);
+  headline = trimWords(cleanMarketingCopy(headline), 14);
+  subheadline = trimWords(cleanMarketingCopy(subheadline), 30);
 
   return {
     funnel_type: FUNNEL_TYPE_BY_GOAL[normalized.funnelGoal],

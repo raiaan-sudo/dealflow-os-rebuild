@@ -1,5 +1,6 @@
 import {
   isBuyerLikeCampaignIntent,
+  isCommercialCampaignIntent,
   isInvestorCampaignIntent,
   isSellerCampaignIntent,
 } from "@/lib/campaign-intent";
@@ -9,6 +10,7 @@ import {
   type CampaignCreativeStrategy,
 } from "@/lib/services/campaign-creative-strategy";
 import { getCategoryRulePack } from "@/lib/services/campaign-category-rule-packs";
+import { selectMediaBuyerCampaignPackage } from "@/lib/services/media-buyer-framework";
 import { fillPattern } from "@/lib/knowledge/real-estate";
 
 export type MarketingContext = {
@@ -139,14 +141,32 @@ function cleanSentenceCopy(text: string) {
   return ensureSentenceEnding(cleaned);
 }
 
+function cleanHeadlineCopy(text: string) {
+  return stripTrailingPunctuation(cleanGeneratedCopy(text));
+}
+
 export function normalizeAudienceLabel(value: string, intent: CampaignIntent) {
   const normalized = removeFiller(value).toLowerCase();
   const isSeller = isSellerCampaignIntent(intent);
   const isInvestor = isInvestorCampaignIntent(intent);
+  const isCommercial = isCommercialCampaignIntent(intent);
   const isBuyerLike = isBuyerLikeCampaignIntent(intent);
 
   if (!normalized) {
-    return isSeller ? "motivated sellers" : isInvestor ? "active investors" : "first-time buyers";
+    return isSeller
+      ? "motivated sellers"
+      : isCommercial
+        ? "commercial clients"
+        : isInvestor
+          ? "active investors"
+          : "first-time buyers";
+  }
+
+  if (isCommercial) {
+    if (/tenant|owner|business|commercial/.test(normalized)) {
+      return normalized;
+    }
+    return `${normalized} commercial clients`;
   }
 
   if (isInvestor) {
@@ -194,9 +214,14 @@ export function normalizePropertyLabel(value: string, intent: CampaignIntent) {
   const normalized = removeFiller(value).toLowerCase();
   const isSeller = isSellerCampaignIntent(intent);
   const isInvestor = isInvestorCampaignIntent(intent);
+  const isCommercial = isCommercialCampaignIntent(intent);
 
   if (!normalized) {
-    return isInvestor ? "investment properties" : isSeller ? "homes" : "condos";
+    return isCommercial ? "commercial spaces" : isInvestor ? "investment properties" : isSeller ? "homes" : "condos";
+  }
+
+  if (/commercial|office|retail|industrial|warehouse|mixed-use|mixed use|space/.test(normalized)) {
+    return normalized;
   }
 
   if (normalized.includes("condo")) {
@@ -223,11 +248,14 @@ export function normalizeOfferLabel(value: string, propertyType: string, intent:
   const creditScore = creditMatch?.[0] ?? null;
   const isSeller = isSellerCampaignIntent(intent);
   const isInvestor = isInvestorCampaignIntent(intent);
+  const isCommercial = isCommercialCampaignIntent(intent);
   const isBuyerLike = isBuyerLikeCampaignIntent(intent);
 
   if (!normalized) {
     return isSeller
       ? `Get a faster, clearer path to selling your ${singularProperty}`
+      : isCommercial
+        ? `Get a clearer shortlist of better-fit ${propertyType}`
       : isInvestor
         ? `See stronger ${propertyType} opportunities with better cash-flow potential`
         : isBuyerLike
@@ -242,6 +270,10 @@ export function normalizeOfferLabel(value: string, propertyType: string, intent:
     return cleanSentenceCopy(`Get a clearer path to stronger ${singularProperty} opportunities`);
   }
 
+  if (isCommercial) {
+    return cleanSentenceCopy(`Get a clearer path to better-fit ${propertyType}`);
+  }
+
   if (isBuyerLike) {
     return cleanSentenceCopy(`Get a clearer path to the right ${singularProperty}`);
   }
@@ -253,9 +285,16 @@ export function normalizeMechanismLabel(value: string, intent: CampaignIntent) {
   const normalized = removeFiller(value).toLowerCase();
   const isSeller = isSellerCampaignIntent(intent);
   const isInvestor = isInvestorCampaignIntent(intent);
+  const isCommercial = isCommercialCampaignIntent(intent);
 
   if (!normalized) {
-    return isSeller ? "a tailored launch system" : isInvestor ? "an investor deal-filtering system" : "a custom matching system";
+    return isSeller
+      ? "a tailored launch system"
+      : isCommercial
+        ? "a commercial space-fit analysis"
+        : isInvestor
+          ? "an investor deal-filtering system"
+          : "a custom matching system";
   }
 
   if (normalized.includes("match")) {
@@ -284,9 +323,12 @@ export function normalizePainPoint(value: string, intent: CampaignIntent) {
   const normalized = removeWeakOpeners(removeFiller(value)).toLowerCase();
   const isBuyerLike = isBuyerLikeCampaignIntent(intent);
   const isInvestor = isInvestorCampaignIntent(intent);
+  const isCommercial = isCommercialCampaignIntent(intent);
 
   if (!normalized) {
-    return isInvestor
+    return isCommercial
+      ? "Wasting time on commercial spaces that do not fit?"
+      : isInvestor
       ? "Missing the best investor deals before they disappear?"
       : isBuyerLike
       ? "Missing the best homes before they are gone?"
@@ -351,6 +393,8 @@ export function normalizePainPoints(values: string[], intent: CampaignIntent) {
 
   return isBuyerLikeCampaignIntent(intent)
     ? ["Struggling to get approved?", "Missing the best deals before they disappear?"]
+    : isCommercialCampaignIntent(intent)
+      ? ["Wasting time on spaces that do not fit?", "Unclear which locations match the operating plan?"]
     : isInvestorCampaignIntent(intent)
       ? ["Missing the best deals before they disappear?", "Unclear which opportunities are actually cash-flow positive?"]
       : ["Waiting too long to make the right move?", "Unclear about the right pricing strategy?"];
@@ -362,6 +406,8 @@ function normalizeGoal(value: string, intent: CampaignIntent) {
   if (!normalized) {
     return isSellerCampaignIntent(intent)
       ? "Get more qualified seller leads"
+      : isCommercialCampaignIntent(intent)
+        ? "Get more qualified commercial real estate leads"
       : isInvestorCampaignIntent(intent)
         ? "Get more qualified investor leads"
         : "Get more qualified buyer leads";
@@ -379,6 +425,10 @@ function inferOutcome(intent: CampaignIntent, offer: string, propertyType: strin
     }
 
     return `Find stronger investor-grade ${propertyType} with less wasted time`;
+  }
+
+  if (isCommercialCampaignIntent(intent)) {
+    return `Compare better-fit ${propertyType} with less wasted time`;
   }
 
   if (isBuyerLikeCampaignIntent(intent)) {
@@ -444,11 +494,11 @@ function buildLowFrictionCta(
   context: MarketingContext,
 ) {
   if (category === "seller") {
-    return "Get My Price Update";
+    return "Get My Equity Report";
   }
 
   if (category === "investor") {
-    return "See The Deal Breakdown";
+    return "Get Deal Flow";
   }
 
   if (category === "precon") {
@@ -566,7 +616,41 @@ export function buildMediaBuyingCopy(
     normalizedStrategy.proofStyle,
   );
   const outcome = cleanSentenceCopy(context.outcome);
-  const cta = buildLowFrictionCta(normalizedStrategy.campaignCategory, context);
+	  const cta = buildLowFrictionCta(normalizedStrategy.campaignCategory, context);
+  const selectedPackage = selectMediaBuyerCampaignPackage(normalizedStrategy.campaignCategory, {
+    offer: context.keyOffer,
+    audience: context.audience,
+    propertyType: context.propertyType,
+    mechanism: context.mechanism,
+  });
+
+  if (selectedPackage && ["seller", "buyer", "investor"].includes(normalizedStrategy.campaignCategory)) {
+    const packageHook = cleanHeadlineCopy(selectedPackage.hook);
+    const packageHeadline = cleanHeadlineCopy(selectedPackage.funnelHeadline || selectedPackage.headline);
+    const packageSubheadline = cleanSentenceCopy(
+      `${selectedPackage.funnelSubheadline} ${proof}`,
+    );
+    const packageBody = [
+      cleanSentenceCopy(selectedPackage.primaryText),
+      proof,
+      outcome,
+      selectedPackage.cta,
+    ]
+      .map((line) => ensureSentenceEnding(line))
+      .join(" ");
+
+    return {
+      hook: packageHook,
+      problem,
+      mechanism,
+      proof,
+      outcome,
+      cta: selectedPackage.cta,
+      headline: packageHeadline,
+      subheadline: packageSubheadline,
+      body: packageBody,
+    };
+  }
 
   return {
     hook,

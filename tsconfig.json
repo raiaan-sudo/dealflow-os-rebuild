@@ -38,8 +38,6 @@
   ],
   "exclude": [
     "node_modules",
-    "src/client/**/*",
-    "src/shared/**/*",
-    "src/server/**/*"
+    "node_modules.corrupt*"
   ]
 }

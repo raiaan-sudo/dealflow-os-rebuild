@@ -8,7 +8,7 @@ import {
   parseRouteParams,
 } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
-import { launchCampaignToMeta } from "@/app/api/campaigns/create/route";
+import { POST as launchCampaignCreatePost } from "@/app/api/campaigns/create/route";
 import { assertMetaLaunchBillingAccess } from "@/lib/services/billing-service";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -175,7 +175,7 @@ async function releaseMetaLaunchLock(campaignId: string, token: string) {
 
 export async function POST(
   request: Request,
-  context: { params: Promise<Record<string, string>> | Record<string, string> },
+  context: { params: Promise<Record<string, string>> },
 ) {
   try {
     assertSameOriginRequest(request);
@@ -255,12 +255,21 @@ export async function POST(
     };
 
     const launchPromise = (async () => {
-      const response = await launchCampaignToMeta(id, resumeState, {
-        testModeInterruptAfter:
-          retryBody.test_mode_interrupt_after === "ad_set"
-            ? "adset"
-            : retryBody.test_mode_interrupt_after ?? null,
-      });
+      const origin = new URL(request.url).origin;
+      const response = await launchCampaignCreatePost(new Request(`${origin}/api/campaigns/create`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin,
+        },
+        body: JSON.stringify({
+          campaignId: id,
+          metaCampaignId: resumeState.metaCampaignId ?? undefined,
+          metaAdSetId: resumeState.metaAdSetId ?? undefined,
+          metaCreativeId: resumeState.metaCreativeId ?? undefined,
+          testModeInterruptAfter: retryBody.test_mode_interrupt_after ?? undefined,
+        }),
+      }));
       const data = (await response.json().catch(() => null)) as
         | (Partial<LaunchResponsePayload> & {
             campaign?: unknown;

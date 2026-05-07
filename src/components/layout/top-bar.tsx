@@ -24,7 +24,7 @@ export function TopBar({ userName, userEmail, organizationName }: TopBarProps) {
     <header className="sticky top-0 z-30 border-b border-white/6 bg-[linear-gradient(180deg,rgba(6,10,16,0.9),rgba(6,10,16,0.62))] backdrop-blur-2xl">
       <div className="flex w-full items-center justify-between gap-4 px-4 py-3 lg:px-5">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="min-w-0">
+          <div className="min-w-0 max-w-[280px]">
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
               {organizationName}
             </p>
@@ -40,14 +40,14 @@ export function TopBar({ userName, userEmail, organizationName }: TopBarProps) {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-3 rounded-[20px] border border-white/8 bg-white/[0.04] px-3 py-1.5 lg:flex">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="hidden min-w-0 max-w-[320px] items-center gap-3 rounded-[20px] border border-white/8 bg-white/[0.04] px-3 py-1.5 lg:flex">
             <div className="flex size-9 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-sm font-semibold text-primary shadow-[0_0_22px_rgba(116,199,255,0.18)]">
               {getInitials(userName)}
             </div>
-            <div className="text-right">
-              <p className="text-sm font-medium">{userName}</p>
-              <p className="text-xs text-muted-foreground">{userEmail}</p>
+            <div className="min-w-0 text-right">
+              <p className="truncate text-sm font-medium">{userName}</p>
+              <p className="truncate text-xs text-muted-foreground">{userEmail}</p>
             </div>
           </div>
 

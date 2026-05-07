@@ -53,6 +53,22 @@ function assertExcludes(relativePath, pattern, name, detail) {
   }
 }
 
+function assertOrderedIncludes(relativePath, patterns, name, detail) {
+  const text = fileText(relativePath);
+  let cursor = -1;
+
+  for (const pattern of patterns) {
+    const index = text.indexOf(pattern, cursor + 1);
+    if (index <= cursor) {
+      fail(name, detail ?? `${relativePath} has onboarding steps out of order near ${pattern}`);
+      return;
+    }
+    cursor = index;
+  }
+
+  pass(name, detail);
+}
+
 function getEnv(name) {
   const value = process.env[name];
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
@@ -80,16 +96,21 @@ function runOfflineChecks() {
   const launchPage = "src/app/(app)/launch/page.tsx";
   const previewPage = "src/app/(app)/preview/page.tsx";
   const onboardingPage = "src/app/(app)/onboarding/page.tsx";
+  const prepaywallPreview = "src/components/onboarding/prepaywall-campaign-preview.tsx";
   const onboardingRoute = "src/app/api/onboarding/plan/route.ts";
   const leadRoute = "src/app/api/lead-capture/route.ts";
   const leadForm = "src/app/f/[slug]/lead-capture-form.tsx";
   const dashboardPage = "src/app/(app)/dashboard/page.tsx";
+  const appLayout = "src/app/(app)/layout.tsx";
+  const settingsPage = "src/app/(app)/settings/page.tsx";
+  const resultsPage = "src/app/results/page.tsx";
   const appContextService = "src/lib/services/app-context.ts";
   const metaConnect = "src/app/api/integrations/meta/connect/route.ts";
   const metaCallback = "src/app/api/integrations/meta/callback/route.ts";
   const billingCheckoutRoute = "src/app/api/billing/checkout/route.ts";
   const billingPortalRoute = "src/app/api/billing/portal/route.ts";
   const billingService = "src/lib/services/billing-service.ts";
+  const billingPlans = "src/lib/billing/plans.ts";
   const stripeService = "src/lib/integrations/stripe/service.ts";
   const stripeProvider = "src/lib/integrations/stripe/provider.ts";
   const billingWebhookMigration = "supabase/migrations/20260428140000_harden_billing_subscription_webhooks.sql";
@@ -112,6 +133,34 @@ function runOfflineChecks() {
   const sessionCostGuard = "src/lib/services/session-cost-guard.ts";
   const creditService = "src/lib/services/credit-service.ts";
   const systemJobService = "src/lib/services/system-job-service.ts";
+  const campaignEntitlements = "src/lib/services/campaign-entitlements.ts";
+  const subscriptionSuspensionService = "src/lib/services/subscription-suspension-service.ts";
+  const activationTelemetryService = "src/lib/services/activation-telemetry-service.ts";
+  const activationTelemetryRoute = "src/app/api/activation/events/route.ts";
+  const activationTelemetryMigration = "supabase/migrations/20260504183000_create_activation_events.sql";
+  const campaignValueReportBuilder = "src/lib/services/campaign-value-report-builder.ts";
+  const campaignValueReportService = "src/lib/services/campaign-value-report-service.ts";
+  const campaignValueReportMigration = "supabase/migrations/20260504190000_create_campaign_value_reports.sql";
+  const billingRecoveryService = "src/lib/services/billing-cancellation-intent-service.ts";
+  const billingCancellationIntentRoute = "src/app/api/billing/cancellation-intent/route.ts";
+  const billingCancellationIntentMigration = "supabase/migrations/20260504203000_create_billing_cancellation_intents.sql";
+  const billingCancellationIntentForm = "src/components/billing/cancellation-intent-form.tsx";
+  const customerSuccessService = "src/lib/services/customer-success-service.ts";
+  const customerSuccessMigration = "supabase/migrations/20260504210000_create_customer_success_checklists.sql";
+  const clientErrorMigration = "supabase/migrations/20260504223000_create_client_error_events.sql";
+  const clientErrorRoute = "src/app/api/client-errors/route.ts";
+  const clientErrorListener = "src/components/telemetry/client-error-listener.tsx";
+  const clientErrorService = "src/lib/services/client-error-telemetry-service.ts";
+  const commandCenterPage = "src/app/(app)/admin/command-center/page.tsx";
+  const commandCenterConsole = "src/app/(app)/admin/command-center/command-center-console.tsx";
+  const feedbackWidget = "src/components/layout/feedback-widget.tsx";
+  const staticCreativePreviewCard = "src/components/campaign/static-creative-preview-card.tsx";
+  const launchMetaSelectionPanel = "src/components/campaign/launch/launch-meta-selection-panel.tsx";
+  const feedbackRoute = "src/app/api/feedback/route.ts";
+  const safeE2eConfig = "playwright.safe.config.ts";
+  const safeE2eSpec = "tests/e2e/safe-self-serve.spec.ts";
+  const publishRoute = "src/app/api/campaigns/[id]/publish/route.ts";
+  const optimizeRoute = "src/app/api/campaigns/[id]/optimize/route.ts";
   const internalLaunchMonitor = "src/lib/services/internal-launch-monitor.ts";
   const metaExecution = "src/lib/integrations/meta/execution.ts";
   const metaLaunchService = "src/lib/services/meta-launch-service.ts";
@@ -127,10 +176,101 @@ function runOfflineChecks() {
   assertIncludes(loginForm, "redirectTo.searchParams.set(\"next\", nextPath)", "Auth redirect preservation", "OAuth sign-in keeps next path");
   assertIncludes(middleware, "pathname.startsWith(\"/f/\")", "Public funnel route", "/f/[slug] remains public");
   assertIncludes(onboardingRoute, "onboarding_idempotency_key", "Onboarding idempotency persistence", "campaign plans store onboarding idempotency key");
-  assertIncludes(onboardingPage, "Resume campaign build", "Onboarding resume UI", "resume banner exists after refresh");
-  assertIncludes(onboardingPage, "Generating funnel", "Onboarding progress step 1", "funnel progress visible");
-  assertIncludes(onboardingPage, "Generating ads and creative angles", "Onboarding progress step 2", "creative progress visible");
-  assertIncludes(onboardingPage, "Building launch-ready campaign", "Onboarding progress step 3", "campaign build progress visible");
+  assertIncludes(onboardingPage, "dealflow-guided-onboarding-v3", "Onboarding local draft persistence", "safe builder persists draft state locally without stale v2 step order");
+  assertIncludes(onboardingPage, "Step-by-step campaign builder", "Onboarding step builder UI", "safe wizard title is visible");
+  assertOrderedIncludes(
+    onboardingPage,
+    [
+      "{ key: \"intent\", label: \"Type\", title: \"Choose campaign type\" }",
+      "{ key: \"market\", label: \"Market\", title: \"Pick the city or market\" }",
+      "{ key: \"property\", label: \"Property\", title: \"Choose inventory focus\" }",
+      "{ key: \"offer\", label: \"Offer\", title: \"Shape the audience and offer\" }",
+      "{ key: \"agent\", label: \"Agent\", title: \"Identify the agent\" }",
+      "{ key: \"plan\", label: \"Plan\", title: \"Select behavior\" }",
+      "{ key: \"review\", label: \"Review\", title: \"Confirm and build\" }",
+    ],
+    "Onboarding campaign-first step order",
+    "guided onboarding starts with campaign type, then market, property, offer, agent, plan, and review",
+  );
+  assertIncludes(onboardingPage, "Buyer leads", "Onboarding buyer selection", "buyer lead type remains selectable");
+  assertIncludes(onboardingPage, "Seller leads", "Onboarding seller selection", "seller lead type remains selectable");
+  assertIncludes(onboardingPage, "Investor leads", "Onboarding investor selection", "investor campaign mode remains selectable");
+  assertIncludes(onboardingPage, "Commercial leads", "Onboarding commercial selection", "commercial campaign mode remains selectable");
+  assertIncludes(onboardingPage, "PROPERTY_TYPE_OPTIONS", "Onboarding dynamic property type options", "property options are keyed by campaign mode");
+  assertIncludes(onboardingPage, "First-time buyer homes", "Buyer property type coverage", "buyer mode has residential-specific property choices");
+  assertIncludes(onboardingPage, "Probate/estate sale", "Seller property type coverage", "seller mode has seller/listing-specific property choices");
+  assertIncludes(onboardingPage, "Cash-flow rentals", "Investor property type coverage", "investor mode has cash-flow property choices");
+  assertIncludes(onboardingPage, "Value-add properties", "Investor value-add property coverage", "investor mode includes value-add property choices");
+  assertIncludes(onboardingPage, "Duplex/triplex/fourplex", "Investor small multifamily coverage", "investor mode includes duplex/triplex/fourplex choices");
+  assertIncludes(onboardingPage, "BRRRR opportunities", "Investor BRRRR coverage", "investor mode includes BRRRR choices");
+  assertIncludes(onboardingPage, "Off-market deals", "Investor off-market coverage", "investor mode includes off-market choices");
+  assertIncludes(onboardingPage, "Industrial", "Commercial industrial coverage", "commercial mode includes industrial choices");
+  assertIncludes(onboardingPage, "Warehouse", "Commercial warehouse coverage", "commercial mode includes warehouse choices");
+  assertIncludes(onboardingPage, "Owner-user", "Commercial owner-user coverage", "commercial mode includes owner-user choices");
+  assertIncludes(onboardingPage, "Lease opportunities", "Commercial lease coverage", "commercial mode includes lease choices");
+  assertIncludes(onboardingPage, "Purchase opportunities", "Commercial purchase coverage", "commercial mode includes purchase choices");
+  assertIncludes(onboardingPage, "agentFirstName", "Onboarding agent first name", "agent first name is collected before campaign creation");
+  assertIncludes(onboardingPage, "agentLastName", "Onboarding agent last name", "agent last name is collected before campaign creation");
+  assertIncludes(onboardingPage, "agentCompanyName", "Onboarding agent company", "agent company is collected before campaign creation");
+  assertIncludes(onboardingPage, "agentPhone", "Onboarding agent phone", "agent phone is collected for internal lead alerts");
+  assertIncludes(onboardingPage, "PrepaywallCampaignPreview", "Onboarding pre-paywall preview integration", "guided onboarding shows a campaign preview before checkout");
+  assertIncludes(prepaywallPreview, "DealFlow Preview", "Pre-paywall creative watermark", "mock creative frames are visibly watermarked as previews");
+  assertIncludes(prepaywallPreview, "Full generation unlocks after checkout and credits", "Pre-paywall generation lock copy", "final generation is clearly locked until checkout and credits");
+  assertIncludes(prepaywallPreview, "Funnel assembling", "Pre-paywall funnel preview", "onboarding includes a deterministic funnel preview shell");
+  assertIncludes(prepaywallPreview, "lg:max-h-[600px]", "Pre-paywall compact height bound", "normal onboarding preview has a desktop height boundary no larger than 600px");
+  assertIncludes(prepaywallPreview, "overflow-y-auto", "Pre-paywall compact internal scroll", "bounded onboarding preview scrolls internally instead of clipping safety content");
+  assertIncludes(prepaywallPreview, "lg:grid-cols-[minmax(230px,0.95fr)_minmax(280px,1.05fr)]", "Pre-paywall compact grid", "normal onboarding preview uses a balanced compact console grid instead of a single tall stack");
+  assertIncludes(prepaywallPreview, "aspect-[16/9]", "Pre-paywall compact ad geometry", "normal onboarding uses a landscape ad mockup instead of a tall portrait frame");
+  assertIncludes(prepaywallPreview, "xl:grid-cols-[minmax(260px,0.92fr)_minmax(0,1.08fr)]", "Pre-paywall package grid", "review/paywall package preview uses a wider balanced grid");
+  assertIncludes(prepaywallPreview, "line-clamp-2", "Pre-paywall text height guard", "preview copy is clamped in compact surfaces to prevent vertical stretching");
+  assertIncludes(prepaywallPreview, "CompactLockedPill", "Pre-paywall compact locked states", "normal onboarding renders locked generation states as compact pills");
+  assertIncludes(prepaywallPreview, "HeyGen UGC video locked", "Pre-paywall HeyGen lock", "AI UGC video generation is locked before payment");
+  assertIncludes(prepaywallPreview, "AI image generation locked", "Pre-paywall image generation lock", "paid image generation is locked before payment");
+  assertIncludes(prepaywallPreview, "Full-resolution files locked", "Pre-paywall full-resolution lock", "full-resolution asset access is locked before payment");
+  assertIncludes(prepaywallPreview, "Sample CTA:", "Pre-paywall sample CTA labeling", "preview CTA is labeled as a sample lead-form action, not an app payment action");
+  assertIncludes(prepaywallPreview, "AI image locked", "Pre-paywall compact image lock", "normal onboarding uses compact locked-state pills");
+  assertIncludes(prepaywallPreview, "UGC locked", "Pre-paywall compact UGC lock", "normal onboarding uses compact locked-state pills");
+  assertIncludes(prepaywallPreview, "onContextMenu={(event) => event.preventDefault()}", "Pre-paywall context-menu guard", "preview blocks basic context-menu saving");
+  assertIncludes(prepaywallPreview, "select-none", "Pre-paywall text selection guard", "preview uses non-selectable preview framing");
+  assertExcludes(prepaywallPreview, "href=\"download\"", "Pre-paywall download link avoided", "preview component does not expose a download link");
+  assertExcludes(prepaywallPreview, ">Download<", "Pre-paywall download button avoided", "preview component does not expose a download button");
+  assertIncludes(onboardingPage, "/api/onboarding/plan", "Onboarding persisted campaign creation", "final step saves a real campaign through the onboarding API");
+  assertIncludes(onboardingPage, "/paywall?campaignId=", "Onboarding checkout handoff", "final step opens checkout with the persisted campaign id");
+  assertIncludes(onboardingPage, "Recommended audience", "Onboarding audience recommendation", "offer step recommends an audience instead of requiring agents to invent one");
+  assertIncludes(onboardingPage, "AUDIENCE_REASONS", "Onboarding audience reason copy", "offer step explains why DealFlow chose the audience");
+  assertIncludes(onboardingPage, "OFFER_SUGGESTIONS", "Onboarding offer suggestion library", "offer step provides selectable offer ideas by campaign mode");
+  assertIncludes(onboardingPage, "Curated Home List", "Buyer offer suggestion", "buyer mode includes media-buyer offer suggestions");
+  assertIncludes(onboardingPage, "Home Equity Snapshot Report", "Seller offer suggestion", "seller mode includes media-buyer offer suggestions");
+  assertIncludes(onboardingPage, "Cash Flow Deal List", "Investor offer suggestion", "investor mode includes media-buyer offer suggestions");
+  assertIncludes(onboardingPage, "Available spaces shortlist", "Commercial offer suggestion", "commercial mode includes offer suggestions");
+  assertExcludes(onboardingPage, "/api/generate-creatives", "Onboarding paid generation avoided", "safe onboarding UI does not call paid creative generation");
+  assertExcludes(onboardingPage, "/api/generate-funnel", "Onboarding funnel provider avoided", "safe onboarding UI does not call funnel generation");
+  assertExcludes(prepaywallPreview, "/api/generate-creatives", "Pre-paywall creative provider avoided", "preview component does not call paid creative generation");
+  assertExcludes(prepaywallPreview, "/api/generate-funnel", "Pre-paywall funnel provider avoided", "preview component does not call paid funnel generation");
+  assertExcludes(prepaywallPreview, "ALLOW_OPENAI_IMAGE_GENERATION", "Pre-paywall OpenAI provider avoided", "preview component does not reference paid OpenAI generation gates");
+  assertExcludes(prepaywallPreview, "ALLOW_HEYGEN_VIDEO_GENERATION", "Pre-paywall HeyGen provider avoided", "preview component does not reference paid HeyGen generation gates");
+  assertIncludes("src/lib/services/funnel-engine.ts", "cleanMarketingCopy", "Funnel copy sanitizer", "funnel copy removes awkward repeated market and spacing artifacts");
+  assertIncludes("src/lib/services/funnel-engine.ts", "trimWords(cleanMarketingCopy(headline), 14)", "Funnel headline length guard", "funnel headlines are capped instead of over-concatenating onboarding fields");
+  assertIncludes("src/lib/services/funnel-engine.ts", "conciseOfferPhrase", "Funnel offer shaping", "offer and lead magnet shape funnel copy without being dumped raw into the headline");
+  assertIncludes(creativeEngine, "preventDuplicateStaticCreativeCopy", "Creative duplicate prevention", "static creative options deterministically vary duplicate headline/body/CTA combinations");
+  assertIncludes(creativeEngine, "creativeAngleLabel", "Creative angle labels", "static creative copy receives distinct mode-specific marketing angles");
+  assertIncludes("src/components/campaign/static-creative-preview-card.tsx", "line-clamp-3", "Creative card copy clamp", "creative cards show usable previews instead of full dense body copy");
+  assertIncludes(staticCreativePreviewCard, "StaticCreativeSummaryCard", "Compact creative summary card", "selected creative lists use dense summary cards instead of tall repeated full previews");
+  assertIncludes(previewPage, "StaticCreativeSummaryCard", "Preview compact creative set", "preview page uses compact selected creative summaries");
+  assertIncludes(launchPage, "StaticCreativeSummaryCard", "Launch compact creative set", "launch page uses compact selected creative summaries");
+  assertIncludes(dashboardPage, "loadDashboardStateForCampaign", "Dashboard real route", "dashboard loads real campaign state instead of the old plan comparison demo");
+  assertExcludes(dashboardPage, "PlanAwareResultsPreview", "Dashboard demo route removed", "dashboard no longer serves the old layout behavior comparison variant");
+  assertIncludes(resultsPage, "/dashboard", "Results canonical redirect", "legacy /results routes redirect into the real dashboard path");
+  assertExcludes(resultsPage, "plan=starter", "Results plan demo redirect removed", "legacy results route no longer opens the plan comparison demo");
+  assertIncludes(appLayout, "getStageForPath", "App shell route stage", "sidebar stage label follows the current route instead of hard-coding Build");
+  assertIncludes(appLayout, "pb-20", "Workspace feedback safe space", "workspace content reserves bottom room for the feedback widget");
+  assertIncludes(feedbackWidget, "aria-modal=\"true\"", "Feedback dialog accessibility", "feedback modal is marked as a dialog");
+  assertIncludes(feedbackWidget, "max-h-[calc(100dvh-2rem)]", "Feedback modal mobile fit", "feedback modal can scroll within short viewports");
+  assertIncludes(launchMetaSelectionPanel, "encodeURIComponent(launchReturnTo)", "Meta reconnect campaign return", "Meta reconnect preserves campaign-scoped launch return path");
+  assertIncludes(settingsPage, "Generation credits", "Settings credit management", "settings surfaces credit balance and top-up controls");
+  assertIncludes(settingsPage, "Update payment method", "Settings payment management", "settings links Stripe Portal payment method management");
+  assertIncludes(onboardingRoute, "commercial", "Onboarding commercial backend defaults", "commercial real estate onboarding mode is handled server-side");
+  assertIncludes(onboardingRoute, "investor", "Onboarding investor backend defaults", "investor real estate onboarding mode is handled server-side");
   assertIncludes(appContextService, "isDemoWorkspaceSeedingEnabled", "Production demo seeding guard", "workspace demo data seeding is environment-gated");
   assertIncludes(appContextService, "fallbackOrganizationSlug", "Workspace slug collision guard", "bootstrap creates a user-owned fallback slug instead of recovering another owner workspace");
   assertIncludes(appContextService, "non-owned organization", "Workspace ownership bootstrap guard", "membership bootstrap refuses non-owned organizations");
@@ -174,6 +314,8 @@ function runOfflineChecks() {
   assertIncludes(loginForm, "captchaToken", "Signup Turnstile token support", "Supabase Auth CAPTCHA can receive a Turnstile token during account creation");
   assertIncludes(loginForm, "resetPasswordForEmail", "Forgot password support", "login page can request a Supabase password reset link");
   assertIncludes(loginForm, "PASSWORD_RECOVERY", "Password recovery completion", "login page handles Supabase recovery sessions");
+  assertIncludes(loginForm, "NEXT_PUBLIC_ENABLE_GOOGLE_AUTH", "Google auth feature gate", "Google OAuth button is hidden unless Supabase Google provider is intentionally enabled");
+  assertIncludes(loginForm, "GOOGLE_AUTH_ENABLED &&", "Google auth disabled-safe UI", "disabled Supabase Google provider cannot expose a broken OAuth button");
   assertIncludes(middleware, "https://challenges.cloudflare.com", "Turnstile CSP allowlist", "production CSP allows Cloudflare Turnstile script, frame, and verification traffic");
   assertIncludes(rateLimitHelpers, "rate_limit_unavailable", "Durable rate limiting fails closed", "production rate limiting no longer falls back to in-memory buckets");
   assertIncludes(rateLimitHelpers, "p_bucket_key", "Durable rate-limit RPC contract", "rate limiter calls the Supabase RPC with versioned parameter names");
@@ -196,6 +338,82 @@ function runOfflineChecks() {
   assertIncludes(leadRoute, "LEAD_CAPTURE_LOAD_TEST_BYPASS_ENABLED", "Lead load proof gate", "production write load proof requires an explicit env gate");
   assertIncludes(leadRoute, "x-dealflow-load-test-secret", "Lead load proof secret", "production write load proof requires a server-side secret header");
   assertIncludes(systemJobService, "lead_side_effects", "Durable lead side effects", "lead notification and CAPI work is processed by durable system jobs");
+  assertIncludes(campaignEntitlements, "evaluateCampaignEntitlements", "Subscription lifecycle policy", "billing states resolve through one campaign entitlement policy");
+  assertIncludes(campaignEntitlements, "grace_period", "Cancel-at-period-end grace", "canceled subscriptions remain operational until paid period end");
+  assertIncludes(campaignEntitlements, "payment_issue", "Payment issue grace state", "past-due workspaces warn and block launch without immediate hard suspension");
+  assertIncludes(campaignEntitlements, "requiresSuspension", "Suspension signal", "ended or unpaid billing produces a single suspension signal");
+  assertIncludes(subscriptionSuspensionService, "subscription_suspension", "Subscription suspension job", "inactive subscriptions queue idempotent campaign suspension jobs");
+  assertIncludes(subscriptionSuspensionService, "runtime.campaignId", "Managed Meta campaign target", "subscription suspension only reads stored DealFlow campaign object ids");
+  assertIncludes(subscriptionSuspensionService, "runtime.metaAdSetIds", "Managed Meta ad set target", "subscription suspension only reads stored DealFlow ad set ids");
+  assertIncludes(subscriptionSuspensionService, "runtime.metaAdIds", "Managed Meta ad target", "subscription suspension only reads stored DealFlow ad ids");
+  assertIncludes(subscriptionSuspensionService, "status: \"PAUSED\"", "Meta suspension pause action", "subscription suspension pauses instead of deleting Meta objects");
+  assertIncludes(systemJobService, "SUBSCRIPTION_GATED_JOB_KINDS", "Inactive workspace job gate", "provider and optimization jobs are skipped when billing is suspended");
+  assertIncludes(systemJobService, "runSubscriptionSuspensionJob", "Suspension worker processor", "system job worker can process subscription suspension jobs");
+  assertIncludes(leadRoute, "campaign_subscription_inactive", "Lead capture billing gate", "public lead capture rejects suspended campaigns before creating leads");
+  assertIncludes(dashboardPage, "Campaign infrastructure is paused", "Dashboard suspended state", "dashboard explains read-only reactivation state");
+  assertIncludes(publishRoute, "assertCampaignCanPublishFunnel", "Funnel publish billing gate", "inactive workspaces cannot republish suspended funnels");
+  assertIncludes(optimizeRoute, "assertCampaignCanRunOptimization", "Optimization billing gate", "optimization recommendations stop when billing is inactive");
+  assertIncludes(activationTelemetryMigration, "create table if not exists public.activation_events", "Activation telemetry durable table", "first-value events persist to Supabase");
+  assertIncludes(activationTelemetryMigration, "activation_events_org_event_key_unique", "Activation telemetry idempotency", "activation events dedupe by organization and event key");
+  assertIncludes(activationTelemetryMigration, "force row level security", "Activation telemetry RLS", "activation telemetry table is force-RLS protected");
+  assertIncludes(activationTelemetryService, "FORBIDDEN_METADATA_KEY", "Activation telemetry privacy scrubber", "activation metadata strips PII/secrets/provider tokens");
+  assertIncludes(activationTelemetryService, "recordActivationEvent", "Activation telemetry central helper", "activation writes go through one server helper");
+  assertIncludes(activationTelemetryService, "loadActivationStallIssues", "Activation stall operator summary", "operator radar can show slow activation");
+  assertIncludes(activationTelemetryRoute, "assertSameOriginRequest", "Activation telemetry same-origin guard", "client-side activation writes reject cross-site POSTs");
+  assertIncludes(activationTelemetryRoute, "getAuthenticatedContext", "Activation telemetry auth guard", "client-side activation writes require auth");
+  assertIncludes(onboardingPage, "onboarding_step_completed", "Activation onboarding step telemetry", "wizard records completed steps");
+  assertIncludes(onboardingRoute, "campaign_plan_persisted", "Activation campaign persistence telemetry", "onboarding route records campaign persistence");
+  assertIncludes(previewPage, "preview_generated_or_viewed", "Activation preview telemetry", "preview page records the pre-payment value moment");
+  assertIncludes(billingCheckoutRoute, "checkout_started", "Activation checkout telemetry", "checkout handoff is tracked safely");
+  assertIncludes(dashboardPage, "dashboard_viewed", "Activation dashboard telemetry", "dashboard preview is tracked");
+  assertIncludes(internalLaunchMonitor, "source: \"activation\"", "Activation operator radar integration", "activation stalls are included in operator issues");
+  assertIncludes(campaignValueReportMigration, "create table if not exists public.campaign_value_reports", "Campaign value report durable table", "weekly value report snapshots persist to Supabase");
+  assertIncludes(campaignValueReportMigration, "force row level security", "Campaign value report RLS", "report snapshots are force-RLS protected");
+  assertIncludes(campaignValueReportBuilder, "buildCampaignProgressReport", "Campaign value report deterministic builder", "report generation is deterministic and provider-free");
+  assertIncludes(campaignValueReportBuilder, "recentLeadStatuses", "Campaign value report PII-safe lead summary", "reports summarize lead status without raw contact details");
+  assertIncludes(campaignValueReportService, "report_table_missing", "Campaign value report migration-safe persistence", "dashboard does not break if report migration is not applied yet");
+  assertIncludes(dashboardPage, "buildAndPersistCampaignValueReport", "Dashboard value report generation", "dashboard builds and stores weekly customer value reports");
+  assertIncludes(dashboardPage, "valueReport={state.valueReport}", "Dashboard value report rendering", "dashboard passes the customer-facing report into the UI");
+  assertIncludes("src/components/dashboard/campaign-dashboard-view.tsx", "Weekly value report", "Customer-facing weekly value report UI", "dashboard shows recurring campaign progress value");
+  assertIncludes(internalLaunchMonitor, "source: \"value_report\"", "Value report operator radar integration", "operator issues include stale or missing value reports");
+  assertIncludes(billingCancellationIntentMigration, "create table if not exists public.billing_cancellation_intents", "Billing cancellation intent durable table", "local manage/cancel intent is captured before Stripe Portal");
+  assertIncludes(billingCancellationIntentMigration, "force row level security", "Billing cancellation intent RLS", "cancellation intent rows are force-RLS protected");
+  assertIncludes(billingCancellationIntentRoute, "assertSameOriginRequest", "Billing cancellation intent same-origin guard", "cancellation intent capture rejects cross-site POSTs");
+  assertIncludes(billingCancellationIntentRoute, "recordBillingCancellationIntent", "Billing cancellation intent route helper", "intent route records app-side reason without mutating Stripe subscriptions");
+  assertIncludes(billingRecoveryService, "loadBillingRecoveryIssues", "Billing recovery operator issues", "operator radar includes payment issue, cancel-at-period-end, and suspended billing states");
+  assertIncludes(billingRecoveryService, "payment_issue", "Payment issue operator signal", "past-due workspaces produce a recovery issue instead of silent churn");
+  assertIncludes(billingRecoveryService, "cancel_at_period_end", "Cancel-at-period-end operator signal", "scheduled cancellations stay visible while access remains active");
+  assertIncludes(billingRecoveryService, "requiresSuspension", "Suspended billing operator signal", "ended subscriptions surface as suspended infrastructure issues");
+  assertIncludes(billingRecoveryService, "Stripe remains the payment source of truth", "Stripe source-of-truth cancellation policy", "DealFlow records intent but does not implement custom cancellation mutation");
+  assertIncludes(billingCancellationIntentForm, "Continue to Stripe Portal", "Cancellation reason portal handoff", "settings collects an optional reason before Stripe Portal without blocking cancellation");
+  assertIncludes(billingCancellationIntentForm, "Skip reason", "Cancellation no-dark-pattern path", "customer can skip reason and still open Stripe Portal");
+  assertIncludes(internalLaunchMonitor, "source: \"billing_recovery\"", "Billing recovery operator radar integration", "payment issue and cancellation risks are included in operator issues");
+  assertIncludes(customerSuccessMigration, "create table if not exists public.customer_success_checklists", "Customer success checklist durable table", "operator completion timestamps can persist without a full business OS");
+  assertIncludes(customerSuccessMigration, "force row level security", "Customer success checklist RLS", "checklist rows are force-RLS protected");
+  assertIncludes(customerSuccessService, "loadCustomerSuccessChecklistRows", "Customer success checklist builder", "command center can derive per-campaign first-25-day checklist status");
+  assertIncludes(customerSuccessService, "day_7_check_in", "Day 7 customer success check", "checklist includes day 7 check-in due");
+  assertIncludes(customerSuccessService, "day_14_value_proof", "Day 14 customer success proof", "checklist includes day 14 value proof due");
+  assertIncludes(customerSuccessService, "day_25_renewal_risk_review", "Day 25 renewal risk review", "checklist includes day 25 renewal-risk review due");
+  assertIncludes(internalLaunchMonitor, "source: \"customer_success\"", "Customer success operator radar integration", "overdue or at-risk checklist rows appear in operator issues");
+  assertIncludes(commandCenterPage, "loadCustomerSuccessChecklistRows", "Command center customer success data", "operator command center loads customer-success checklist rows");
+  assertIncludes(commandCenterConsole, "Customer-success watchlist", "Command center customer success UI", "operator command center renders the customer-success watchlist");
+  assertIncludes(feedbackWidget, "creative_quality", "Feedback creative quality category", "customer feedback can be categorized for support routing");
+  assertIncludes(feedbackWidget, "cancellation_refund", "Feedback cancellation/refund category", "refund/cancel feedback is routed separately");
+  assertIncludes(feedbackRoute, "category: body.category", "Feedback category event logging", "feedback logs the category without raw feedback text");
+  assertIncludes(clientErrorMigration, "create table if not exists public.client_error_events", "Client error durable table", "browser crashes persist to a server-owned table");
+  assertIncludes(clientErrorMigration, "force row level security", "Client error forced RLS", "client error telemetry table is force-RLS protected");
+  assertIncludes(clientErrorRoute, "assertSameOriginRequest", "Client error same-origin guard", "browser error telemetry rejects cross-site POSTs");
+  assertIncludes(clientErrorRoute, "consumeRateLimit", "Client error rate limit", "browser error telemetry is rate limited");
+  assertIncludes(clientErrorListener, "unhandledrejection", "Unhandled rejection listener", "global browser promise rejections are captured");
+  assertIncludes(clientErrorListener, "window.addEventListener(\"error\"", "Window error listener", "global browser errors are captured");
+  assertIncludes(clientErrorService, "FORBIDDEN_TEXT_PATTERN", "Client error privacy scrubber", "browser error messages/stacks are scrubbed before persistence");
+  assertIncludes(internalLaunchMonitor, "source: \"client_error\"", "Client error operator radar integration", "browser crashes appear in operator issues");
+  assertIncludes(safeE2eConfig, "screenshot: \"off\"", "Safe E2E screenshot disabled", "browser proof avoids screenshot artifacts with private data");
+  assertIncludes(safeE2eConfig, "ALLOW_META_LIVE_LAUNCH", "Safe E2E Meta launch disabled", "browser proof starts local app with live Meta launch disabled");
+  assertIncludes(safeE2eSpec, "SAFE_E2E_QA_AUTH", "Safe E2E QA auth gate", "authenticated browser journey requires an explicit QA auth env gate");
+  assertIncludes(safeE2eSpec, "/api/internal/qa-auth-session", "Safe E2E internal auth harness", "browser proof uses the env-gated internal QA auth harness");
+  assertIncludes(safeE2eSpec, "No live provider action runs here.", "Safe E2E provider boundary assertion", "browser proof asserts onboarding warns that no live provider action runs");
+  assertIncludes("scripts/smoke-test-system.md", "npm run test:e2e:safe", "Safe browser E2E docs", "smoke documentation includes the safe browser proof command");
   assertExcludes("src/lib/services/lead-handler-service.ts", /QA_EMAIL|QA_PASSWORD/, "QA credential fallback removed", "no QA credential fallback remains in lead handler");
   assertIncludes(campaignPlanPersistence, "organization_id: params.ownerId", "Campaign persistence organization ownership", "fresh campaign rows persist organization_id for downstream jobs and billing");
   assertIncludes("scripts/check-rls-cross-tenant.mjs", "RLS_USER_A_JWT", "Cross-tenant RLS smoke script", "operator can prove User A cannot read User B fixtures");
@@ -212,14 +430,24 @@ function runOfflineChecks() {
   assertIncludes(launchRoute, "ownershipVerified", "Meta failure persistence ownership guard", "direct Meta launch route does not persist failure state before ownership is proven");
   assertIncludes(createCampaignRoute, "meta_paused_verification_failed", "Direct Meta paused verification", "direct Meta launch route verifies or restores PAUSED after create/recovery");
   assertIncludes(billingCheckoutRoute, "assertSameOriginRequest", "Billing checkout same-origin guard", "checkout route rejects cross-site POSTs");
+  assertIncludes(billingPlans, "priceLabel: \"$147/mo\"", "Starter price updated", "Starter self-serve plan is priced at $147/month");
+  assertIncludes(billingPlans, "meta_launch: \"starter\"", "Starter Meta launch access", "Starter plan grants Meta launch access while Pro remains autonomy tier");
+  assertIncludes(billingPlans, "autonomy_access: \"pro\"", "Pro autonomy access", "autonomous operator access remains Pro-gated");
+  assertIncludes(billingCheckoutRoute, "campaignId", "Checkout campaign handoff", "billing checkout accepts campaign id for post-checkout dashboard routing");
   assertIncludes(billingPortalRoute, "assertSameOriginRequest", "Billing portal same-origin guard", "portal route rejects cross-site POSTs");
   assertIncludes(stripeProvider, "create_billing_portal_session", "Stripe portal provider support", "billing portal sessions are created through the Stripe provider");
   assertIncludes(stripeService, "session_id={CHECKOUT_SESSION_ID}", "Stripe checkout success session id", "checkout success redirects carry the Stripe session id");
+  assertIncludes(stripeService, "campaignId", "Stripe checkout campaign return", "checkout success/cancel URLs preserve the campaign id");
   assertIncludes(stripeProvider, "retrieve_checkout_session", "Stripe checkout retrieval support", "checkout sessions can be verified server-side after redirect");
   assertIncludes(billingService, "reconcileBillingCheckoutSuccess", "Stripe checkout success reconciliation", "unlock success can sync subscription state if webhooks lag");
   assertIncludes(billingService, "billing_checkout_session_reused", "Stripe checkout duplicate-session reuse", "recent open checkout sessions are reused instead of duplicated");
+  assertIncludes(billingService, "last_checkout_campaign_id", "Stripe checkout campaign-scoped reuse", "recent open checkout sessions are reused only for the same campaign id");
+  assertIncludes(billingService, "reusableSession.metadata?.campaign_id", "Stripe checkout session metadata guard", "stored checkout sessions must match requested campaign metadata before reuse");
+  assertIncludes(billingService, "requestedCampaignId ?? \"workspace\"", "Stripe checkout idempotency campaign scope", "subscription checkout idempotency keys are scoped by campaign id");
   assertIncludes(billingService, "checkout_session_stale", "Stripe stale checkout reconciliation guard", "older parallel checkout sessions cannot unlock access");
   assertIncludes(envHelpers, "ALLOW_BILLING_ADMIN_OVERRIDE", "Billing admin override env gate", "internal launch override requires explicit env opt-in");
+  assertIncludes(envHelpers, "BILLING_ADMIN_OVERRIDE_EMAILS", "Billing-only override allowlist", "billing override can be scoped without granting operator admin access");
+  assertIncludes(billingService, "isBillingAdminOverrideEmail", "Billing-only override check", "billing override checks the billing-specific email allowlist before falling back to internal admins");
   assertIncludes(billingService, "billing_admin_override_launch_access_granted", "Billing admin override audit log", "override-based launch access grants are audit logged");
   assertIncludes(billingService, "apply_billing_subscription_webhook", "Stripe webhook ordering guard", "subscription sync uses DB-backed stale event protection");
   assertIncludes(billingService, "stripe_subscription_stale_event_ignored", "Stripe stale event observability", "out-of-order subscription events are logged and ignored");
@@ -227,6 +455,7 @@ function runOfflineChecks() {
   assertIncludes(billingOrderingMigration, "stripe_latest_event_id, '') < normalized_event_id", "Billing equal-timestamp ordering guard", "same-second Stripe events are ordered deterministically");
   assertIncludes(creditService, "consume_user_credits", "Atomic credit deduction", "paid generation credits are deducted through a DB RPC");
   assertIncludes(creditService, "grant_user_credits", "Credit top-up ledger", "credit grants and refunds use the append-only DB ledger");
+  assertIncludes(creditService, "CREDIT_TOP_UP_MINIMUM_CENTS = 2_000", "Credit top-up minimum", "generation credit top-ups require the intended $20 minimum");
   assertIncludes(creditService, "credits_insufficient", "Insufficient credit block", "paid generation is blocked before balances can go negative");
   assertIncludes(billingService, "checkout_kind: \"credit_top_up\"", "Stripe credit top-up checkout", "credit purchases are isolated from subscription checkout metadata");
   assertIncludes(billingService, "stripe_credit_top_up_processed", "Stripe credit top-up webhook", "paid credit checkout sessions grant credits idempotently");
@@ -255,6 +484,9 @@ function runOfflineChecks() {
   assertIncludes(systemJobService, "last_error_code", "System job error classification", "operator views can filter repeated job error classes");
   assertIncludes(systemJobService, "maxAttempts", "System job max attempts", "jobs persist an attempt ceiling for DB claim/dead-letter enforcement");
   assertIncludes(internalLaunchMonitor, "provider_usage_events", "Provider issue visibility", "operator issues include failed/stale provider usage events");
+  assertIncludes(internalLaunchMonitor, "provider_usage_limits", "Provider quota visibility", "operator issues include provider quota pressure");
+  assertIncludes(internalLaunchMonitor, "user_credits", "Generation credit visibility", "operator issues include low generation-credit balances");
+  assertIncludes(internalLaunchMonitor, '"provider_cost"', "Provider cost issue source", "provider quota, cost, and credit warnings have a durable operator source");
 
   assertIncludes(dashboardPage, "Last updated", "Dashboard last-updated state", "dashboard shows last updated timestamp");
   assertIncludes(dashboardPage, "leadLoopVerified", "Dashboard lead-loop state", "dashboard loads lead loop verification");

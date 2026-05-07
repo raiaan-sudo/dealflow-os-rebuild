@@ -49,6 +49,45 @@ What this validates:
 - QA credential fallback is removed from public lead handling
 - dashboard truth hooks exist
 
+### Safe browser E2E checks
+
+```bash
+npm run test:e2e:safe
+```
+
+Default behavior:
+
+- Starts the local app on `127.0.0.1:3100` unless `SAFE_E2E_BASE_URL` is set.
+- Uses the installed Chrome channel through Playwright.
+- Disables screenshots, videos, and traces so private session data is not persisted as artifacts.
+- Covers public login/legal pages and protected-route redirects without authentication.
+- Does not submit leads, send SMS/email, create Stripe sessions, call paid AI generation, or mutate Meta.
+
+Authenticated safe journey:
+
+```bash
+SAFE_E2E_QA_AUTH=true \
+QA_AUTH_HARNESS_ENABLED=true \
+QA_EMAIL=qa-user@example.com \
+INTERNAL_SYSTEM_JOBS_SECRET=<configured internal secret> \
+npm run test:e2e:safe
+```
+
+The authenticated path uses `/api/internal/qa-auth-session`, which is protected by the internal bearer secret and disabled unless `QA_AUTH_HARNESS_ENABLED=true`.
+
+When enabled, it validates:
+
+- QA auth session creation.
+- Onboarding page load.
+- Required-field validation.
+- Buyer, seller, investor, and commercial preview-mode rendering.
+- Starter `$147/mo` and Pro `$297/mo` paywall copy.
+- Dashboard preview reachability.
+- Launch setup reachability and blocked launch state.
+- No live provider action warning in onboarding.
+
+Do not enable the authenticated path against production unless the QA harness is intentionally enabled for a short owner-approved proof window and disabled again afterward.
+
 ### Staging checks
 
 ```bash
@@ -76,20 +115,15 @@ What this validates:
 
 ## Manual staging checks still required
 
-These still require a real browser session and real Meta account:
+These still require owner/provider dashboard proof even after the safe browser E2E check:
 
-1. Signup/login end to end with session persistence
-2. Onboarding submit twice and confirm same `campaignId`
-3. Resume onboarding after refresh
-4. Funnel generation, creative generation, and campaign build
-5. Select a non-recommended ad and confirm preview/launch match
-6. Meta OAuth connect
-7. Ad account/Page/pixel selection
-8. Preflight invalid asset block
-9. Real launch to Meta
-10. Forced interruption + retry with no duplicate Meta objects
-11. Launch success confirmation refresh
-12. Dashboard lead-loop verification after a real captured lead
+1. Real signup/login with the intended production auth provider settings.
+2. Real Stripe checkout proof in test mode or an owner-approved no-charge path.
+3. Real Meta OAuth connect.
+4. Real ad account/Page/pixel selection.
+5. Preflight invalid asset block with real Meta permissions.
+6. Final active Meta proof gate only after owner approval.
+7. Dashboard lead-loop verification after an approved QA lead-capture proof.
 
 ## Manual real Meta validation references
 

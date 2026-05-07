@@ -23,6 +23,22 @@ export type MediaBuyerCategoryStrategy = {
   antiPatterns: string[];
 };
 
+export type MediaBuyerCampaignPackage = {
+  id: string;
+  category: CampaignCategory;
+  angle: string;
+  keywords: string[];
+  hook: string;
+  primaryText: string;
+  headline: string;
+  cta: string;
+  funnelHeadline: string;
+  funnelSubheadline: string;
+  formFields: string[];
+  creativeDirection: string;
+  complianceNotes: string[];
+};
+
 export type OfferQualityEvaluation = {
   accepted: boolean;
   score: number;
@@ -69,7 +85,7 @@ export const MEDIA_BUYER_CATEGORY_STRATEGIES: Record<
   CampaignCategory,
   MediaBuyerCategoryStrategy
 > = {
-  seller: {
+	  seller: {
     category: "seller",
     psychology: [
       "fear of underpricing",
@@ -89,16 +105,20 @@ export const MEDIA_BUYER_CATEGORY_STRATEGIES: Record<
       "fear of losing money before the home is even listed",
       "worry that demand was never tested before pricing",
     ],
-    winningAngles: [
-      "sitting on more equity than expected",
-      "most sellers lose money before they list",
-      "timing the market incorrectly costs more than commission",
-    ],
-    approvedHookPatterns: [
-      "Before you sell your home in {market}, watch this.",
-      "Most homeowners in {market} are making this mistake right now.",
-      "If you're thinking about selling this year, don't list before this step.",
-    ],
+	    winningAngles: [
+	      "hidden equity check",
+	      "buyer demand before listing",
+	      "neighbor sale comparison",
+	      "market timing window",
+	      "downsizing opportunity report",
+	      "sell versus renovate decision",
+	    ],
+	    approvedHookPatterns: [
+	      "Before you list in {market}, check your true home value range.",
+	      "Buyers are shifting fast in {market}; this affects your price.",
+	      "If you're thinking about selling this year, don't list before this step.",
+	      "What your neighbor just sold for may change your next move.",
+	    ],
     forbiddenHookPatterns: [
       "what is your home worth",
       "sell your home fast",
@@ -111,18 +131,19 @@ export const MEDIA_BUYER_CATEGORY_STRATEGIES: Record<
       "demand test before listing",
       "buyer attraction plan before going live",
     ],
-    proofStyles: [
-      "price comparison overlay",
-      "equity delta proof",
-      "timing certainty proof",
-      "before-and-after sale numbers",
-    ],
-    visualLogic: [
-      "map overlays",
-      "zestimate-style comparisons",
-      "before-after price numbers",
-      "clean suburban homes",
-      "demand indicators",
+	    proofStyles: [
+	      "neighborhood sale comparison report",
+	      "equity delta proof",
+	      "timing certainty proof",
+	      "buyer demand indicators",
+	      "days-on-market trend",
+	    ],
+	    visualLogic: [
+	      "map overlays",
+	      "neighborhood sale comparison reports",
+	      "before-after price numbers",
+	      "clean suburban homes",
+	      "demand indicators",
     ],
     overlayLogic: [
       "price overlays",
@@ -130,11 +151,12 @@ export const MEDIA_BUYER_CATEGORY_STRATEGIES: Record<
       "numbers before adjectives",
       "location-led equity proof",
     ],
-    lowFrictionCtas: [
-      "Get My Price Update",
-      "See My Value Gap",
-      "Check Pre-Listing Demand",
-    ],
+	    lowFrictionCtas: [
+	      "Get My Equity Report",
+	      "Get My Price Range",
+	      "Check Pre-Listing Demand",
+	      "Check My Timing",
+	    ],
     antiPatterns: [
       "empty luxury shots",
       "pitchy agent hero visuals",
@@ -142,7 +164,7 @@ export const MEDIA_BUYER_CATEGORY_STRATEGIES: Record<
       "agent-first bragging",
     ],
   },
-  buyer: {
+	  buyer: {
     category: "buyer",
     psychology: [
       "fear of missing out",
@@ -161,32 +183,37 @@ export const MEDIA_BUYER_CATEGORY_STRATEGIES: Record<
       "getting beat before the best homes go public",
       "worrying that waiting means missing the right home",
     ],
-    winningAngles: [
-      "homes you did not know you could afford",
-      "off-market hidden inventory",
-      "buying with less down",
-    ],
-    approvedHookPatterns: [
-      "If you're looking to upsize in {market}, stop scrolling.",
-      "Most buyers don't know this about {market}.",
-      "By the time you see the listing, it may already be gone.",
-    ],
+	    winningAngles: [
+	      "hidden inventory access",
+	      "budget-matched home shortlist",
+	      "early access listings",
+	      "true buying power",
+	      "neighborhood match report",
+	      "move-up strategy",
+	    ],
+	    approvedHookPatterns: [
+	      "Most buyers do not know what they can actually afford in {market}.",
+	      "Before the best homes hit public sites, check this first.",
+	      "Here's how to get a better-fit home shortlist in {market}.",
+	      "Before they hit public sites, check this first.",
+	    ],
     forbiddenHookPatterns: [
       "new listing alert",
       "dream home",
       "attention buyers",
       "learn more",
     ],
-    mechanismStyles: [
-      "off-market access system",
-      "deal-structure matching process",
-      "property matching workflow before homes hit MLS",
-    ],
-    proofStyles: [
-      "monthly payment anchor",
-      "affordability comparison",
-      "inventory access proof",
-      "early-access proof",
+	    mechanismStyles: [
+	      "curated home shortlist",
+	      "affordability breakdown",
+	      "property matching workflow before homes hit MLS",
+	      "neighborhood match report",
+	    ],
+	    proofStyles: [
+	      "monthly payment anchor",
+	      "affordability comparison",
+	      "inventory access proof",
+	      "early-access proof",
     ],
     visualLogic: [
       "walkthrough clips",
@@ -200,11 +227,12 @@ export const MEDIA_BUYER_CATEGORY_STRATEGIES: Record<
       "under-budget callouts",
       "early-access callouts",
     ],
-    lowFrictionCtas: [
-      "Get Access",
-      "See Homes That Match",
-      "See If You Qualify",
-    ],
+	    lowFrictionCtas: [
+	      "Get My Home List",
+	      "See Homes That Match",
+	      "Check My Budget Range",
+	      "Get Early Access",
+	    ],
     antiPatterns: [
       "overly staged empty homes",
       "property-only listing ads",
@@ -348,7 +376,7 @@ export const MEDIA_BUYER_CATEGORY_STRATEGIES: Record<
       "generic empty luxury rooms",
     ],
   },
-  investor: {
+	  investor: {
     category: "investor",
     psychology: [
       "return",
@@ -366,27 +394,34 @@ export const MEDIA_BUYER_CATEGORY_STRATEGIES: Record<
       "not knowing which market actually outperforms",
       "underwriting the wrong deals",
     ],
-    winningAngles: [
-      "outperforming traditional investments",
-      "cash flow plus appreciation",
-      "data-backed opportunity",
-    ],
-    approvedHookPatterns: [
-      "If your money is sitting in the bank, watch this.",
-      "Here's what smart investors are doing in {market} right now.",
-      "This market is being overlooked.",
-    ],
+	    winningAngles: [
+	      "cash-flow screening list",
+	      "under-market properties",
+	      "rent-to-price ratio map",
+	      "cap rate breakdown by neighborhood",
+	      "off-market deals",
+	      "BRRRR-ready properties",
+	      "multifamily yield opportunities",
+	    ],
+	    approvedHookPatterns: [
+	      "Which neighborhoods actually still cash flow?",
+	      "Where investors are quietly outperforming right now.",
+	      "We pre-screen deals so you do not waste time.",
+	      "This pocket of {market} is being overlooked by most investors.",
+	    ],
     forbiddenHookPatterns: [
       "dream investment",
       "beautiful property",
       "new listing alert",
       "learn more",
     ],
-    mechanismStyles: [
-      "micro-market analysis system",
-      "undervalued-area selection process",
-      "long-term growth underwriting framework",
-    ],
+	    mechanismStyles: [
+	      "cash-flow deal screening list",
+	      "micro-market analysis system",
+	      "undervalued-area selection process",
+	      "rent-to-price ratio map",
+	      "underwritten deal sheet",
+	    ],
     proofStyles: [
       "ROI projection overlay",
       "rental yield comparison",
@@ -405,11 +440,12 @@ export const MEDIA_BUYER_CATEGORY_STRATEGIES: Record<
       "micro-market data callouts",
       "cash-flow numbers",
     ],
-    lowFrictionCtas: [
-      "View Available Deals",
-      "See Available Cash-Flow Deals",
-      "Review The Deal Breakdown",
-    ],
+	    lowFrictionCtas: [
+	      "Get Deal Flow",
+	      "See Available Cash-Flow Deals",
+	      "Review The Deal Breakdown",
+	      "See ROI Map",
+	    ],
     antiPatterns: [
       "emotional lifestyle shots",
       "generic luxury interiors",
@@ -417,14 +453,264 @@ export const MEDIA_BUYER_CATEGORY_STRATEGIES: Record<
       "property-beauty-first framing",
     ],
   },
+  commercial: {
+    category: "commercial",
+    psychology: [
+      "operational fit",
+      "timing risk",
+      "location economics",
+      "space requirement clarity",
+    ],
+    triggerConditions: [
+      "business expansion",
+      "tenant or owner-user demand",
+      "asset-specific opportunity",
+    ],
+    internalTensions: [
+      "not knowing which spaces truly fit the operating plan",
+      "worrying that lease or purchase timing will create costly friction",
+      "chasing listings that look available but fail the requirement check",
+    ],
+    winningAngles: [
+      "space-fit analysis",
+      "availability before competitors move",
+      "location economics",
+    ],
+    approvedHookPatterns: [
+      "If your business needs space in {market}, start here.",
+      "Most commercial searches in {market} miss this step.",
+      "Here's how operators are finding better-fit {propertyType} right now.",
+    ],
+    forbiddenHookPatterns: [
+      "dream office",
+      "beautiful property",
+      "generic availability",
+      "learn more",
+    ],
+    mechanismStyles: [
+      "commercial space-fit analysis",
+      "tenant and owner-user qualification workflow",
+      "market availability screening system",
+    ],
+    proofStyles: [
+      "space-fit comparison",
+      "availability map",
+      "lease versus purchase proof",
+      "operating-cost comparison",
+    ],
+    visualLogic: [
+      "clean commercial maps",
+      "office retail or industrial exteriors",
+      "space planning checklists",
+      "operator-focused dashboards",
+    ],
+    overlayLogic: [
+      "square-footage callouts",
+      "location requirement chips",
+      "availability and timing cues",
+      "lease or purchase fit labels",
+    ],
+    lowFrictionCtas: [
+      "See Matching Spaces",
+      "Review Available Options",
+      "Check Space Fit",
+    ],
+    antiPatterns: [
+      "residential lifestyle framing",
+      "generic skyline glamour",
+      "agent-first branding",
+      "vague investment promises",
+    ],
+  },
+};
+
+export const MEDIA_BUYER_CAMPAIGN_PACKAGES: Partial<Record<CampaignCategory, MediaBuyerCampaignPackage[]>> = {
+  seller: [
+    {
+      id: "seller-equity-discovery",
+      category: "seller",
+      angle: "Equity discovery",
+      keywords: ["equity", "value", "price", "worth", "snapshot", "report", "range"],
+      hook: "You might be sitting on more equity than you think.",
+      primaryText:
+        "Home values in your area have shifted recently. This report shows what your home could realistically sell for today based on local sales and buyer demand, not generic estimate sites.",
+      headline: "See Your True Home Value Range",
+      cta: "Get Report",
+      funnelHeadline: "Unlock your home's current value range",
+      funnelSubheadline: "Get a data-backed price range and buyer demand snapshot specific to your neighborhood.",
+      formFields: ["Property address", "Property type", "Selling timeline"],
+      creativeDirection: "Map blur with home pins, recent sale markers, and an equity range reveal.",
+      complianceNotes: [
+        "Use estimated range language, not exact sale-price promises.",
+        "Avoid guaranteed sale price claims.",
+      ],
+    },
+    {
+      id: "seller-buyer-demand-pressure",
+      category: "seller",
+      angle: "Buyer demand pressure",
+      keywords: ["demand", "buyers", "multiple", "pre-listing", "match"],
+      hook: "Buyer demand in your area may have shifted.",
+      primaryText:
+        "Some homeowners are seeing stronger offers depending on timing, pricing, and demand. Check what buyer interest could look like before you list.",
+      headline: "Check Buyer Demand for Your Home",
+      cta: "See Demand",
+      funnelHeadline: "See if buyers are actively looking for homes like yours",
+      funnelSubheadline: "Get a market-informed demand snapshot before making a listing decision.",
+      formFields: ["Property address", "Interest level", "Preferred timeline"],
+      creativeDirection: "Buyer avatar cluster, neighborhood map, and active-search demand overlay.",
+      complianceNotes: [
+        "Say buyer demand insights, not guaranteed buyers.",
+        "Avoid overpromising active buyers for a specific property.",
+      ],
+    },
+    {
+      id: "seller-timing-window",
+      category: "seller",
+      angle: "Timing window strategy",
+      keywords: ["timing", "window", "market", "30-day", "sell vs", "renovate", "downsizing"],
+      hook: "The selling window in your area may be changing.",
+      primaryText:
+        "Neighborhood-level conditions shift quickly. See whether now or later looks stronger based on current trends, buyer demand, and your selling timeline.",
+      headline: "Is Now the Right Time to Sell?",
+      cta: "Check Timing",
+      funnelHeadline: "Understand your optimal selling window",
+      funnelSubheadline: "Review data-backed timing signals for your exact area before deciding when to list.",
+      formFields: ["Property address", "Timeline", "Reason for interest"],
+      creativeDirection: "Timeline graph, sold-sign trend, and market shift detected overlay.",
+      complianceNotes: [
+        "Frame timing as market-informed guidance.",
+        "Avoid fear-heavy or guaranteed outcome claims.",
+      ],
+    },
+  ],
+  buyer: [
+    {
+      id: "buyer-affordability-reality-check",
+      category: "buyer",
+      angle: "Affordability reality check",
+      keywords: ["afford", "budget", "payment", "approval", "pre-approval", "range"],
+      hook: "Most buyers do not know what they can actually afford today.",
+      primaryText:
+        "Most buyers overestimate or underestimate their buying power. Get a clear breakdown of which homes match your budget in the areas you care about.",
+      headline: "See Your Real Buying Power",
+      cta: "Check Now",
+      funnelHeadline: "Understand your true budget range",
+      funnelSubheadline: "See homes and payment paths that fit your budget before wasting weekends on the wrong listings.",
+      formFields: ["Budget range", "Preferred location", "Timeline"],
+      creativeDirection: "Payment slider UI, budget-fit map pins, and simple affordability range cards.",
+      complianceNotes: [
+        "Do not imply guaranteed approval.",
+        "Keep financing language as educational and criteria-based.",
+      ],
+    },
+    {
+      id: "buyer-early-access-homes",
+      category: "buyer",
+      angle: "Early access homes",
+      keywords: ["early", "access", "private", "hidden", "off-market", "before"],
+      hook: "Before the best homes hit public sites, check this first.",
+      primaryText:
+        "Get early-access matches based on your criteria before the strongest options become obvious to every buyer in the market.",
+      headline: "Get Early Access Listings",
+      cta: "View Homes",
+      funnelHeadline: "Access homes before the general market sees them",
+      funnelSubheadline: "Get a curated preview of potential matches based on current availability and your buying criteria.",
+      formFields: ["Budget range", "Preferred areas", "Property type"],
+      creativeDirection: "Blurred listing cards, coming-soon tags, and clean map clusters.",
+      complianceNotes: [
+        "Avoid fake exclusivity claims.",
+        "Use potential matches and early-access language when inventory is not guaranteed.",
+      ],
+    },
+    {
+      id: "buyer-curated-match-list",
+      category: "buyer",
+      angle: "Curated match list",
+      keywords: ["curated", "shortlist", "home list", "matches", "neighborhood", "relocation", "move-up"],
+      hook: "Here's how to get a better-fit home shortlist without the noise.",
+      primaryText:
+        "See a shortlist of homes shaped around your budget, lifestyle, and preferred areas. Less noise, clearer matches, and a faster next step.",
+      headline: "See Your Home Matches",
+      cta: "Get List",
+      funnelHeadline: "View homes that actually match your criteria",
+      funnelSubheadline: "Get a focused home shortlist based on your preferred location, price range, and buying timeline.",
+      formFields: ["Budget range", "Locations", "Must-haves"],
+      creativeDirection: "Clean listing grid, neighborhood shortlist, and matched-home cards.",
+      complianceNotes: [
+        "Avoid implying every listed home is available.",
+        "Keep claims tied to criteria-based curation.",
+      ],
+    },
+  ],
+  investor: [
+    {
+      id: "investor-cash-flow-filter",
+      category: "investor",
+      angle: "Cash flow filter",
+      keywords: ["cash-flow", "cash flow", "rental", "yield", "deal flow", "screen"],
+      hook: "Cash-flow positive properties still exist, but they need filtering.",
+      primaryText:
+        "We filter noisy listings and surface opportunities with stronger rent-to-price fundamentals, clearer assumptions, and a better reason to underwrite.",
+      headline: "See Cash Flow Deals",
+      cta: "Get Deals",
+      funnelHeadline: "View pre-screened cash flow opportunities",
+      funnelSubheadline: "Review opportunities filtered around rent, price, and investor-fit signals before wasting time on weak deals.",
+      formFields: ["Budget range", "Investment type", "Location preference"],
+      creativeDirection: "Spreadsheet-style deal cards, rent estimates, and deal-fit score overlays.",
+      complianceNotes: [
+        "Use estimated cash-flow scenarios, not guaranteed ROI.",
+        "Do not promise passive income or no-risk investments.",
+      ],
+    },
+    {
+      id: "investor-off-market-access",
+      category: "investor",
+      angle: "Off-market access",
+      keywords: ["off-market", "pre-market", "private", "early", "alert"],
+      hook: "Some of the strongest investment opportunities do not stay public for long.",
+      primaryText:
+        "Get a private investor list shaped around your criteria so you can review pre-market and off-market opportunities before they become overexposed.",
+      headline: "Access Off-Market Deals",
+      cta: "View Deals",
+      funnelHeadline: "Get early access investor opportunities",
+      funnelSubheadline: "See private and pre-market deal flow filtered around your acquisition criteria.",
+      formFields: ["Budget range", "Location preference", "Investment type"],
+      creativeDirection: "Blurred private deal cards, investor-only list preview, and limited-data overlays.",
+      complianceNotes: [
+        "Avoid unsupported exclusive inventory claims.",
+        "Use early access and criteria-based filtering language.",
+      ],
+    },
+    {
+      id: "investor-roi-map-intelligence",
+      category: "investor",
+      angle: "ROI map intelligence",
+      keywords: ["roi", "map", "ratio", "cap rate", "rent-to-price", "hot zones", "underwritten"],
+      hook: "Where investors are quietly outperforming right now.",
+      primaryText:
+        "See rent-to-price ratios, investor pockets, and deal-fit signals so you can compare neighborhoods before committing time or capital.",
+      headline: "See ROI Hot Zones",
+      cta: "View Map",
+      funnelHeadline: "Discover high-performing investment areas",
+      funnelSubheadline: "Review market-based investment signals by area before choosing which opportunities to underwrite.",
+      formFields: ["Budget range", "Strategy", "Cash-flow goal"],
+      creativeDirection: "Heatmap, rent-to-price ratios, and investor dashboard overlays.",
+      complianceNotes: [
+        "Use market-based and estimated language.",
+        "Avoid guaranteed returns, guaranteed profit, or no-risk claims.",
+      ],
+    },
+  ],
 };
 
 const CATEGORY_SAFE_OFFERS: Record<CampaignCategory, string> = {
-  seller: "Get a price-and-demand update before you list",
-  buyer: "Get early access to homes that match your budget",
+  seller: "Get a Home Equity Snapshot Report before you list",
+  buyer: "Get a Curated Home List matched to your budget",
   precon: "View deposit and completion options before prices move",
   luxury: "Request private access to rare listings",
-  investor: "Get off-market properties matched to your ROI criteria",
+  investor: "Get a Cash Flow Deal List matched to your criteria",
+  commercial: "Get commercial spaces matched to your operating requirements",
 };
 
 function safeText(value: unknown) {
@@ -448,7 +734,7 @@ function containsAny(text: string, patterns: string[]) {
 
 function hasNumberOrQuantifier(text: string) {
   return (
-    /\d|\$|%|\b(one|two|three|four|five|six|seven|eight|nine|ten|few|multiple|under|over|below|above)\b/.test(text)
+    /\d|\$|%|\b(one|two|three|four|five|six|seven|eight|nine|ten|few|multiple|under|over|below|above|list|shortlist|range|snapshot|breakdown|report|map|early|private|curated)\b/.test(text)
   );
 }
 
@@ -479,6 +765,7 @@ function hasAudienceSpecificity(text: string, category: CampaignCategory) {
     precon: /\b(pre-con|precon|new build|deposit|completion|assignment|construction)\b/,
     luxury: /\b(luxury|private|rare|penthouse|exclusive|high-net|curated)\b/,
     investor: /\b(investor|roi|yield|cash-flow|cash flow|rental|deal|underwriting)\b/,
+    commercial: /\b(commercial|office|retail|industrial|warehouse|tenant|lease|owner-user|space|sq ft|square feet)\b/,
   };
 
   return categoryTerms[category].test(text);
@@ -511,6 +798,37 @@ export function getMediaBuyerCategoryStrategy(category: CampaignCategory) {
 
 export function getCategorySafeOffer(category: CampaignCategory) {
   return CATEGORY_SAFE_OFFERS[category];
+}
+
+export function getMediaBuyerCampaignPackages(category: CampaignCategory) {
+  return MEDIA_BUYER_CAMPAIGN_PACKAGES[category] ?? [];
+}
+
+export function selectMediaBuyerCampaignPackage(
+  category: CampaignCategory,
+  context?: {
+    offer?: string | null;
+    audience?: string | null;
+    propertyType?: string | null;
+    mechanism?: string | null;
+  },
+) {
+  const packages = getMediaBuyerCampaignPackages(category);
+  if (packages.length === 0) return null;
+
+  const haystack = normalize(
+    [context?.offer, context?.audience, context?.propertyType, context?.mechanism].filter(Boolean).join(" "),
+  );
+
+  if (!haystack) return packages[0] ?? null;
+
+  return [...packages]
+    .map((pkg, index) => ({
+      pkg,
+      index,
+      score: pkg.keywords.reduce((total, keyword) => (haystack.includes(normalize(keyword)) ? total + 1 : total), 0),
+    }))
+    .sort((left, right) => right.score - left.score || left.index - right.index)[0]?.pkg ?? packages[0] ?? null;
 }
 
 export function evaluateOfferQuality(params: {

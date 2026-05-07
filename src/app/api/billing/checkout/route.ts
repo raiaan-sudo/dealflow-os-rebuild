@@ -3,9 +3,11 @@ import { assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/ap
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { createBillingCheckoutSession } from "@/lib/services/billing-service";
 import { normalizeBillingPlanTier } from "@/lib/billing/plans";
+import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
 
 const checkoutSchema = z.object({
-  planTier: z.enum(["starter", "pro", "growth"]).default("pro"),
+  planTier: z.enum(["starter", "pro", "growth"]).default("starter"),
+  campaignId: z.string().min(1).optional(),
 });
 
 export async function POST(request: Request) {
@@ -24,7 +26,20 @@ export async function POST(request: Request) {
     const body = await parseJsonBody(request, checkoutSchema);
     const session = await createBillingCheckoutSession({
       planTier: normalizeBillingPlanTier(body.planTier),
+      campaignId: body.campaignId,
     });
+    await recordActivationEventForCurrentUser({
+      eventName: "checkout_started",
+      campaignId: body.campaignId ?? null,
+      source: "billing_checkout_route",
+      metadata: {
+        planTier: normalizeBillingPlanTier(body.planTier),
+        hasCampaignId: Boolean(body.campaignId),
+      },
+      idempotencyKey: session.sessionId
+        ? `checkout_started:${session.sessionId}`
+        : `checkout_started:${body.campaignId ?? "workspace"}:${normalizeBillingPlanTier(body.planTier)}`,
+    }).catch(() => undefined);
 
     return Response.json(session);
   } catch (error) {

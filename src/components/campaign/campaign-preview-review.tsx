@@ -225,6 +225,15 @@ export function CampaignPreviewReview({
     capitalized: true,
   });
   const systemMessage = getReviewSystemMessage(plan);
+  const offerFallback = plan.offerSummary || plan.keyOffer || plan.primaryGoal;
+  const funnelHeadline =
+    plan.funnel.headline || (offerFallback ? `${offerFallback} in ${plan.market}` : `${plan.market} campaign preview`);
+  const funnelSubheadline =
+    plan.funnel.subheadline ||
+    (offerFallback
+      ? `${offerFallback} for ${plan.audience || "qualified prospects"} without guessing what to do next.`
+      : plan.summary);
+  const funnelCta = plan.funnel.cta || (offerFallback ? "Review the offer" : "Request details");
   const adsGridClass =
     visibleAds.length <= 1
       ? "grid max-w-2xl gap-5"
@@ -445,19 +454,19 @@ export function CampaignPreviewReview({
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   Headline
                 </p>
-                <p className="mt-2 text-sm leading-6">{plan.funnel.headline || "Campaign headline unavailable"}</p>
+                <p className="mt-2 text-sm leading-6">{funnelHeadline}</p>
               </div>
               <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   Subheadline
                 </p>
-                <p className="mt-2 text-sm leading-6">{plan.funnel.subheadline || "Campaign subheadline unavailable"}</p>
+                <p className="mt-2 text-sm leading-6">{funnelSubheadline}</p>
               </div>
               <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   CTA
                 </p>
-                <p className="mt-2 text-sm leading-6">{plan.funnel.cta || "Campaign CTA unavailable"}</p>
+                <p className="mt-2 text-sm leading-6">{funnelCta}</p>
               </div>
             </div>
             <FunnelPreview

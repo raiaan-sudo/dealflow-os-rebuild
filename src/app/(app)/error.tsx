@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { reportClientError } from "@/components/telemetry/client-error-listener";
 
 type AppErrorPageProps = {
   error: Error & { digest?: string };
@@ -9,6 +11,19 @@ type AppErrorPageProps = {
 };
 
 export default function AppErrorPage({ error, reset }: AppErrorPageProps) {
+  useEffect(() => {
+    reportClientError({
+      source: "app_error_boundary",
+      errorName: error?.name ?? "AppError",
+      message: error?.message ?? "App route failed to render.",
+      stack: error?.stack,
+      severity: "high",
+      metadata: {
+        digestPresent: Boolean(error?.digest),
+      },
+    });
+  }, [error]);
+
   const rawMessage = typeof error?.message === "string" ? error.message.trim() : "";
   const normalizedMessage =
     rawMessage &&

@@ -6,7 +6,7 @@ export function PageShell({
   ...props
 }: React.ComponentProps<"div">) {
   return (
-    <div className={cn("df-container df-page-stack", className)} {...props}>
+    <div className={cn("df-container df-page-stack min-w-0", className)} {...props}>
       {children}
     </div>
   );

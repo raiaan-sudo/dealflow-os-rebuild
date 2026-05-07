@@ -2,6 +2,7 @@ export const CAMPAIGN_INTENTS = [
   "buyer",
   "seller",
   "investor",
+  "commercial",
   "approval",
   "refinance",
   "other",
@@ -48,6 +49,10 @@ export function normalizeCampaignIntent(
     return "refinance";
   }
 
+  if (/commercial|office|retail|industrial|warehouse|mixed[- ]use|lease|tenant/.test(normalized)) {
+    return "commercial";
+  }
+
   if (/invest|cash ?flow|off-market|rental|multifamily|cap rate/.test(normalized)) {
     return "investor";
   }
@@ -91,6 +96,10 @@ export function inferCampaignIntent(input: InferCampaignIntentInput): CampaignIn
     return "refinance";
   }
 
+  if (/commercial|office|retail|industrial|warehouse|mixed[- ]use|lease|tenant/.test(combined)) {
+    return "commercial";
+  }
+
   if (/invest|cash ?flow|off-market|rental|income property|multifamily|cap rate/.test(combined)) {
     return "investor";
   }
@@ -114,6 +123,10 @@ export function isInvestorCampaignIntent(intent: CampaignIntent) {
   return intent === "investor";
 }
 
+export function isCommercialCampaignIntent(intent: CampaignIntent) {
+  return intent === "commercial";
+}
+
 export function isBuyerLikeCampaignIntent(intent: CampaignIntent) {
   return intent === "buyer" || intent === "approval" || intent === "refinance" || intent === "other";
 }
@@ -134,6 +147,8 @@ export function getCampaignIntentLabel(
     label = plural ? "sellers" : "seller";
   } else if (intent === "investor") {
     label = plural ? "investors" : "investor";
+  } else if (intent === "commercial") {
+    label = plural ? "commercial clients" : "commercial client";
   } else if (intent === "approval") {
     label = plural ? "approval leads" : "approval lead";
   } else if (intent === "refinance") {
@@ -158,6 +173,10 @@ export function getCampaignIntentSummary(intent: CampaignIntent) {
 
   if (intent === "investor") {
     return "investor deal flow";
+  }
+
+  if (intent === "commercial") {
+    return "commercial real estate lead generation";
   }
 
   if (intent === "approval") {

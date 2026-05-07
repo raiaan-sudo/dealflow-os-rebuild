@@ -14,7 +14,7 @@ export function getStripePriceId(planTier: BillingPlanTier) {
   }
 
   if (planTier === "growth") {
-    return env.growthPriceId;
+    return env.growthPriceId ?? null;
   }
 
   if (planTier === "pro") {
@@ -31,7 +31,7 @@ export function getPlanTierFromPriceId(priceId?: string | null): BillingPlanTier
     return "starter";
   }
 
-  if (priceId === env.growthPriceId) {
+  if (env.growthPriceId && priceId === env.growthPriceId) {
     return "growth";
   }
 
@@ -42,12 +42,23 @@ export function getPlanTierFromPriceId(priceId?: string | null): BillingPlanTier
   return "starter";
 }
 
-export function getCheckoutUrls() {
+export function getCheckoutUrls(params?: { campaignId?: string | null; planTier?: BillingPlanTier | null }) {
   const baseUrl = getPublicAppUrl();
+  const extraQuery = new URLSearchParams();
+
+  if (params?.campaignId) {
+    extraQuery.set("campaignId", params.campaignId);
+  }
+
+  if (params?.planTier) {
+    extraQuery.set("plan", params.planTier);
+  }
+
+  const extra = extraQuery.toString();
 
   return {
-    successUrl: `${baseUrl}/unlock?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${baseUrl}/unlock?checkout=cancelled`,
+    successUrl: `${baseUrl}/unlock?checkout=success&session_id={CHECKOUT_SESSION_ID}${extra ? `&${extra}` : ""}`,
+    cancelUrl: `${baseUrl}/unlock?checkout=cancelled${extra ? `&${extra}` : ""}`,
   };
 }
 
@@ -63,10 +74,12 @@ export function buildStripeCheckoutMetadata(params: {
   organizationId: string;
   userId: string;
   planTier: BillingPlanTier;
+  campaignId?: string | null;
 }) {
   return {
     organization_id: params.organizationId,
     user_id: params.userId,
     plan_tier: normalizeBillingPlanTier(params.planTier),
+    ...(params.campaignId ? { campaign_id: params.campaignId } : {}),
   };
 }

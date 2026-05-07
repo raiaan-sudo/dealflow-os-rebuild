@@ -7,15 +7,23 @@ type FunnelPreviewProps = {
   plan: CampaignPlan;
   expectedOutcomes: ExpectedOutcomes;
   strategyWhy: string[];
+  compact?: boolean;
 };
 
-export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strategyWhy: _strategyWhy }: FunnelPreviewProps) {
+export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strategyWhy: _strategyWhy, compact = false }: FunnelPreviewProps) {
   void _expectedOutcomes;
   void _strategyWhy;
 
-  const headline = plan.funnel.headline || "Campaign headline unavailable";
-  const subheadline = plan.funnel.subheadline || "Campaign subheadline unavailable";
-  const cta = plan.funnel.cta || "Campaign CTA unavailable";
+  const offer = plan.offerSummary || plan.keyOffer || plan.primaryGoal;
+  const headline =
+    plan.funnel.headline ||
+    (offer ? `${offer} in ${plan.market}` : `${plan.market} campaign preview`);
+  const subheadline =
+    plan.funnel.subheadline ||
+    (offer
+      ? `${offer} for ${plan.audience || "qualified prospects"} without guessing what to do next.`
+      : plan.summary);
+  const cta = plan.funnel.cta || (offer ? "Review the offer" : "Request details");
   const formFields = (plan.funnel.formFields ?? ["name", "phone", "email"]).map((field) =>
     field.charAt(0).toUpperCase() + field.slice(1),
   );
@@ -205,6 +213,8 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
     );
   }
 
+  const renderedSections = compact ? sections.filter((section) => section.visible !== false).slice(0, 3) : sections;
+
   return (
     <div className="overflow-hidden rounded-[28px] border border-white/8 bg-[#eef3fb] shadow-[0_28px_90px_-48px_rgba(0,0,0,0.68)]">
       <div className="border-b border-black/6 bg-white px-4 py-3">
@@ -214,40 +224,40 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
           <div className="h-3 w-3 rounded-full bg-[#06d6a0]" />
         </div>
       </div>
-      <div className="border-b border-black/6 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.22),transparent_30%),linear-gradient(180deg,#08111e,#132338)] px-6 py-10 text-white sm:px-8 lg:py-14">
+      <div className={`border-b border-black/6 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.22),transparent_30%),linear-gradient(180deg,#08111e,#132338)] px-6 text-white sm:px-8 ${compact ? "py-7" : "py-10 lg:py-14"}`}>
         <div className="mx-auto max-w-5xl">
           <div className="inline-flex rounded-full border border-[#ff8f3a]/30 bg-[#ff8f3a]/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#ffb67d]">
             {plan.market} landing page
           </div>
-          <div className="mt-6 grid gap-10 2xl:grid-cols-[1.15fr_0.85fr] 2xl:items-start">
+          <div className={`grid gap-6 2xl:grid-cols-[1.15fr_0.85fr] 2xl:items-start ${compact ? "mt-4" : "mt-6 2xl:gap-10"}`}>
             <div>
-              <h2 className="text-4xl font-semibold tracking-[-0.06em] sm:text-6xl">{headline}</h2>
-              <p className="mt-5 max-w-2xl text-base leading-8 text-white/72">{subheadline}</p>
-              <div className="mt-7 inline-flex rounded-full bg-[#ff8f3a] px-6 py-3 text-sm font-semibold text-[#111111]">
+              <h2 className={`font-semibold tracking-[-0.04em] ${compact ? "line-clamp-2 text-2xl sm:text-3xl" : "text-4xl sm:text-6xl"}`}>{headline}</h2>
+              <p className={`max-w-2xl text-white/72 ${compact ? "mt-3 line-clamp-2 text-sm leading-6" : "mt-5 text-base leading-8"}`}>{subheadline}</p>
+              <div className={`inline-flex rounded-full bg-[#ff8f3a] text-sm font-semibold text-[#111111] ${compact ? "mt-5 px-5 py-2.5" : "mt-7 px-6 py-3"}`}>
                 {cta}
               </div>
             </div>
-            <div className="rounded-[26px] border border-white/10 bg-white/[0.08] p-5 backdrop-blur-sm">
+            <div className={`rounded-[26px] border border-white/10 bg-white/[0.08] backdrop-blur-sm ${compact ? "p-4" : "p-5"}`}>
               <p className="text-xs uppercase tracking-[0.18em] text-white/55">Quick capture</p>
-              <div className="mt-4 space-y-3">
-                {formFields.map((field) => (
+              <div className={`mt-4 grid gap-3 ${compact ? "sm:grid-cols-2" : ""}`}>
+                {formFields.slice(0, compact ? 4 : formFields.length).map((field) => (
                   <div
                     key={field}
-                    className="rounded-[16px] border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white/58"
+                    className="rounded-[16px] border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm text-white/58"
                   >
                     {field}
                   </div>
                 ))}
               </div>
-              <div className="mt-5 rounded-full bg-[#74c7ff] px-4 py-3 text-center text-sm font-semibold text-[#05111a]">
+              <div className="mt-4 rounded-full bg-[#74c7ff] px-4 py-2.5 text-center text-sm font-semibold text-[#05111a]">
                 {cta}
               </div>
             </div>
           </div>
         </div>
       </div>
-      <div className="mx-auto max-w-5xl space-y-6 px-6 py-8 sm:px-8 sm:py-10">
-        {sections.map(renderSection)}
+      <div className={`mx-auto max-w-5xl space-y-4 px-6 sm:px-8 ${compact ? "py-6" : "py-8 sm:py-10"}`}>
+        {renderedSections.map(renderSection)}
       </div>
     </div>
   );

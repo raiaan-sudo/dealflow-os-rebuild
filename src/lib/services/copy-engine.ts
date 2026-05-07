@@ -138,7 +138,7 @@ type RequiredInput = {
   urgency: string;
 };
 
-type OfferClass = "investor" | "approval" | "seller" | "first_time_buyer" | "buyer";
+type OfferClass = "investor" | "commercial" | "approval" | "seller" | "first_time_buyer" | "buyer";
 
 const gptCopyAssistantSchema = z.object({
   hook: z.string().optional(),
@@ -156,6 +156,7 @@ const CTA_BY_MARKET: Record<RequiredInput["marketType"], string> = {
   buyer: "See Homes That Match",
   seller: "Get Your Sale Plan",
   investor: "See Available Cash-Flow Deals",
+  commercial: "See Matching Spaces",
   approval: "See If You Qualify",
   refinance: "See Refinance Options",
   other: "See Available Opportunities",
@@ -611,6 +612,10 @@ function inferMarketType(params: {
     return "seller" as const;
   }
 
+  if (/commercial|office|retail|industrial|warehouse|tenant|lease|owner[- ]user/.test(audience + offer)) {
+    return "commercial" as const;
+  }
+
   if (/investor|cashflow|rental|off-market/.test(audience) || /cashflow|off-market|deal flow/.test(offer)) {
     return "investor" as const;
   }
@@ -624,6 +629,10 @@ function classifyOffer(input: RequiredInput): OfferClass {
 
   if (input.marketType === "investor" || /investor|cashflow|cash flow|off-market|rental/.test(offer + audience)) {
     return "investor";
+  }
+
+  if (input.marketType === "commercial" || /commercial|office|retail|industrial|warehouse|tenant|lease|owner[- ]user|space-fit/.test(offer + audience)) {
+    return "commercial";
   }
 
   if (/approval|approved|credit|mortgage|refinance|qualif/.test(offer + audience)) {
@@ -801,6 +810,7 @@ function buildCta(input: RequiredInput) {
   });
 
   if (category === "seller") return "Get My Sale Plan";
+  if (category === "commercial") return "See Matching Spaces";
   if (category === "investor") return "Review The Deal Breakdown";
   if (category === "precon") return "See The Deposit Plan";
   if (category === "luxury") return "Request Private Access";

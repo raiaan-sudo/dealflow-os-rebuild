@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getPublicAppUrl, getMetaEnvOrThrow } from "@/lib/env";
 import { logMetaError } from "@/lib/integrations/meta/error-mapper";
+import { recordActivationEvent } from "@/lib/services/activation-telemetry-service";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 
 const META_STATE_COOKIE = "dealflow_meta_oauth_state";
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
   const requestId = crypto.randomUUID();
 
   try {
-    await getAuthenticatedContext();
+    const auth = await getAuthenticatedContext();
 
     const requestUrl = new URL(request.url);
     const returnTo = getSafeReturnTo(requestUrl.searchParams.get("returnTo"));
@@ -54,6 +55,18 @@ export async function GET(request: Request) {
     );
     url.searchParams.set("response_type", "code");
     url.searchParams.set("state", state);
+
+    await recordActivationEvent({
+      organizationId: auth.organizationId,
+      userId: auth.userId,
+      eventName: "meta_connect_started",
+      source: "meta_connect_route",
+      metadata: {
+        route: "meta_connect",
+        returnTo: returnTo.startsWith("/launch") ? "launch" : "other",
+      },
+      idempotencyKey: `meta_connect_started:${auth.organizationId}`,
+    }).catch(() => undefined);
 
     return NextResponse.redirect(url.toString());
   } catch (error) {

@@ -71,7 +71,7 @@ const buyer = buildComposedStaticAdPreview({
 });
 assert.equal(buyer.category, "buyer");
 assert.equal(buyer.templateId, "buyer_affordability");
-assert.equal(buyer.cta, "Get Access", "vague buyer CTA is upgraded");
+assert.equal(buyer.cta, "See Matching Homes", "vague buyer CTA is upgraded");
 
 const precon = buildComposedStaticAdPreview({
   location: "Montreal",
@@ -86,11 +86,11 @@ assert.ok(precon.templateId.startsWith("precon_"));
 const investor = buildComposedStaticAdPreview({
   category: "investor",
   location: "Montreal",
-  headline: "3 off-market properties this month",
-  overlayText: "ROI brief for Montreal investors",
-  primaryText: "Review cash-flow-ready properties that match your exact ROI criteria.",
-  cta: "View Available Deals",
-});
+	  headline: "3 off-market properties this month",
+	  overlayText: "ROI brief for Montreal investors",
+	  primaryText: "Review cash-flow-ready properties that match your exact ROI criteria.",
+	  cta: "Get Deal Flow",
+	});
 assert.equal(investor.templateId, "investor_roi_dashboard");
 
 const luxury = buildComposedStaticAdPreview({

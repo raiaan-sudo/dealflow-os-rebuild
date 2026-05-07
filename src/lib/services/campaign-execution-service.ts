@@ -2,6 +2,7 @@ import { formatCurrency } from "@/lib/formatters";
 import {
   getCampaignIntentSummary,
   isBuyerLikeCampaignIntent,
+  isCommercialCampaignIntent,
   isInvestorCampaignIntent,
   isSellerCampaignIntent,
 } from "@/lib/campaign-intent";
@@ -114,6 +115,10 @@ function getObjective(plan: CampaignPlan) {
     return "Investor lead generation";
   }
 
+  if (isCommercialCampaignIntent(plan.intent)) {
+    return "Commercial real estate lead generation";
+  }
+
   return "Lead generation";
 }
 
@@ -179,6 +184,8 @@ function getNormalizedAds(plan: CampaignPlan) {
       cta: ad.cta?.trim() || (
         isSellerCampaignIntent(plan.intent)
           ? "Get My Sale Plan"
+          : isCommercialCampaignIntent(plan.intent)
+            ? "See Matching Spaces"
           : isInvestorCampaignIntent(plan.intent)
             ? "See Available Cash-Flow Deals"
             : "Get My Curated List"
@@ -198,6 +205,8 @@ function getNormalizedAds(plan: CampaignPlan) {
       body: `Reach ${plan.audience} looking for ${plan.propertyType} in ${plan.market} with ${plan.keyOffer}.`,
       cta: isSellerCampaignIntent(plan.intent)
         ? "Get My Sale Plan"
+        : isCommercialCampaignIntent(plan.intent)
+          ? "See Matching Spaces"
         : isInvestorCampaignIntent(plan.intent)
           ? "See Available Cash-Flow Deals"
           : "Get My Curated List",
@@ -210,6 +219,8 @@ function getNormalizedAds(plan: CampaignPlan) {
       body: `Show ${plan.audience} a stronger path into ${plan.propertyType} with ${plan.keyOffer}.`,
       cta: isSellerCampaignIntent(plan.intent)
         ? "Get My Home Value Plan"
+        : isCommercialCampaignIntent(plan.intent)
+          ? "Review Available Options"
         : isInvestorCampaignIntent(plan.intent)
           ? "View Investor Deals"
           : "See Homes That Match Me",
@@ -222,6 +233,8 @@ function getNormalizedAds(plan: CampaignPlan) {
       body: `Keep the message clear, specific, and built around ${plan.propertyType} demand in ${plan.market}.`,
       cta: isSellerCampaignIntent(plan.intent)
         ? "See My Plan"
+        : isCommercialCampaignIntent(plan.intent)
+          ? "Check Space Fit"
         : isInvestorCampaignIntent(plan.intent)
           ? "Review Deal Flow"
           : "Start Getting Leads",
@@ -480,6 +493,10 @@ function inferCountryCode(location: string) {
 }
 
 function getAgeRange(marketType?: FullCampaignRecord["strategy"]["market_type"]) {
+  if (marketType === "commercial") {
+    return { min: 28, max: 65 };
+  }
+
   if (marketType === "investor") {
     return { min: 28, max: 60 };
   }

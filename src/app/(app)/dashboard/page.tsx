@@ -8,6 +8,10 @@ import { CampaignDashboardView } from "@/components/dashboard/campaign-dashboard
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
+import {
+  getCampaignEntitlementsForOrganization,
+  type CampaignEntitlementSnapshot,
+} from "@/lib/services/campaign-entitlements";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import {
   getCampaignPayloadFromPlan,
@@ -40,6 +44,11 @@ import {
   persistFirstWeekSuccessState,
   type FirstWeekSuccessState,
 } from "@/lib/services/first-week-success-service";
+import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
+import {
+  buildAndPersistCampaignValueReport,
+  type CampaignValueReport,
+} from "@/lib/services/campaign-value-report-service";
 import { createClient } from "@/lib/supabase/server";
 import { evaluateAutonomy } from "@/app/api/autonomy/_shared";
 
@@ -165,6 +174,7 @@ type DashboardLoadState = {
   dashboardData: Awaited<ReturnType<typeof getDashboardData>> | null;
   creativePerformanceSummary: Awaited<ReturnType<typeof getLatestCreativePerformanceSummary>> | null;
   autonomySnapshot: Awaited<ReturnType<typeof evaluateAutonomy>>["snapshot"] | null;
+  entitlements: CampaignEntitlementSnapshot | null;
   selectedAdSummary: {
     id: string;
     headline: string;
@@ -172,6 +182,7 @@ type DashboardLoadState = {
   } | null;
   leadLoopVerified: boolean;
   firstWeekSuccess: FirstWeekSuccessState | null;
+  valueReport: CampaignValueReport | null;
   lastUpdatedAt: string;
   routeError: boolean;
 };
@@ -278,6 +289,48 @@ function DashboardFallback({ campaignId = null }: { campaignId?: string | null }
   );
 }
 
+function SubscriptionLifecycleBanner({
+  entitlements,
+}: {
+  entitlements: CampaignEntitlementSnapshot | null;
+}) {
+  if (!entitlements) {
+    return null;
+  }
+
+  if (entitlements.billingState === "payment_issue") {
+    return (
+      <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-50">
+        <p className="font-semibold">Payment attention needed</p>
+        <p className="mt-1 text-amber-50/80">
+          Existing funnel and lead alerts remain online during the grace state, but new launches
+          and optimization are paused until billing is current.
+        </p>
+        <Button asChild className="mt-3" size="sm" variant="secondary">
+          <Link href="/settings">Manage billing</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  if (!entitlements.requiresSuspension) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-foreground">
+      <p className="font-semibold">Campaign infrastructure is paused</p>
+      <p className="mt-1 text-muted-foreground">
+        This dashboard stays read-only while billing is inactive. DealFlow-managed Meta objects,
+        lead capture, alerts, and automation jobs remain paused until billing is reactivated.
+      </p>
+      <Button asChild className="mt-3" size="sm">
+        <Link href="/settings">Reactivate billing</Link>
+      </Button>
+    </div>
+  );
+}
+
 async function loadDashboardState(): Promise<DashboardLoadState> {
   return loadDashboardStateForCampaign(null);
 }
@@ -292,8 +345,9 @@ async function loadDashboardStateForCampaign(
       : null;
     const metaCampaignId = record?.runtime.campaignId ?? null;
     const resolvedCampaignId = resolvedCampaign?.campaignId ?? campaignId ?? record?.id ?? null;
+    const organizationId = resolvedCampaign?.record?.campaign.organization_id ?? null;
     const lastUpdatedAt = new Date().toISOString();
-    const [metaConnection, syncSnapshot, launchRecord, dashboardData, creativePerformanceSummary, autonomyResult, selectedAdSummary, leadLoopVerified] = await Promise.all([
+    const [metaConnection, syncSnapshot, launchRecord, dashboardData, creativePerformanceSummary, autonomyResult, entitlements, selectedAdSummary, leadLoopVerified] = await Promise.all([
       withTimeout(
         getMetaConnectionState().catch(() => getDefaultMetaConnectionState()),
         getDefaultMetaConnectionState(),
@@ -340,6 +394,13 @@ async function loadDashboardStateForCampaign(
             3_500,
           )
         : Promise.resolve(null),
+      organizationId
+        ? withTimeout(
+            getCampaignEntitlementsForOrganization({ organizationId }).catch(() => null),
+            null,
+            2_500,
+          )
+        : Promise.resolve(null),
       withTimeout(
         loadSelectedAdSummary({
           campaignId: resolvedCampaignId,
@@ -369,6 +430,43 @@ async function loadDashboardStateForCampaign(
       }).catch(() => undefined);
     }
 
+    const valueReport = record && resolvedCampaignId && organizationId
+      ? await buildAndPersistCampaignValueReport({
+          organizationId,
+          userId: resolvedCampaign?.record?.campaign.user_id ?? null,
+          plan: record,
+          metaConnection,
+          syncSnapshot,
+          launchRecord,
+          metrics: dashboardData?.metrics ?? EMPTY_DASHBOARD_METRICS,
+          recentLeads,
+          creativePerformanceSummary,
+          optimizerResult: analyzeCampaign(
+            buildOptimizerInput({
+              plan: record,
+              expectedOutcomes: getExpectedOutcomes(record),
+              syncSnapshot,
+            }),
+            {
+              creativeStrategy: record.creativeStrategy,
+              audience: record.audience,
+              market: record.market,
+              propertyType: record.propertyType,
+              keyOffer: record.keyOffer,
+              budget: Number((record.monthlyBudget / 30).toFixed(2)),
+              currentAngles: record.ads.map((ad) => ad.variant),
+              winningAngle: null,
+            },
+          ),
+          nextActions: getNextActions(record),
+          selectedAdSummary,
+          leadLoopVerified,
+          firstWeekSuccess,
+        })
+          .then((result) => result.report)
+          .catch(() => null)
+      : null;
+
     return {
       campaignId: resolvedCampaignId,
       plan: record,
@@ -378,9 +476,11 @@ async function loadDashboardStateForCampaign(
       dashboardData,
       creativePerformanceSummary,
       autonomySnapshot: autonomyResult?.snapshot ?? null,
+      entitlements,
       selectedAdSummary,
       leadLoopVerified,
       firstWeekSuccess,
+      valueReport,
       lastUpdatedAt,
       routeError: false,
     };
@@ -397,9 +497,11 @@ async function loadDashboardStateForCampaign(
       dashboardData: null,
       creativePerformanceSummary: null,
       autonomySnapshot: null,
+      entitlements: null,
       selectedAdSummary: null,
       leadLoopVerified: false,
       firstWeekSuccess: null,
+      valueReport: null,
       lastUpdatedAt: new Date().toISOString(),
       routeError: true,
     };
@@ -412,6 +514,7 @@ export default async function DashboardPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = searchParams ? await searchParams : {};
+
   const requestedCampaignId =
     typeof params.campaignId === "string" && params.campaignId.length > 0
       ? params.campaignId
@@ -424,7 +527,7 @@ export default async function DashboardPage({
 
   if (!state.plan) {
     return (
-      <PageShell>
+      <PageShell className="max-w-[1440px]">
         <PageHeader
           eyebrow="Dashboard"
           title="Dashboard"
@@ -466,15 +569,28 @@ export default async function DashboardPage({
   const recentLeads = state.dashboardData?.recentLeads ?? [];
   const recentAppointments = state.dashboardData?.recentAppointments ?? [];
   const recentDeals = state.dashboardData?.recentDeals ?? [];
+  await recordActivationEventForCurrentUser({
+    eventName: "dashboard_viewed",
+    campaignId: state.campaignId,
+    source: "dashboard_page",
+    metadata: {
+      route: "dashboard",
+      hasMetaConnection: state.metaConnection.connectionStatus === "connected",
+      hasLaunchRecord: Boolean(state.launchRecord),
+      leadCount: recentLeads.length,
+    },
+    idempotencyKey: `dashboard_viewed:${state.campaignId ?? "workspace"}`,
+  }).catch(() => undefined);
 
   return (
-    <PageShell>
+    <PageShell className="max-w-[1440px]">
       <PageHeader
         eyebrow="Dashboard"
         title="Dashboard"
         description="See campaign status, leads, spend, and the next best actions."
       />
       <p className="text-sm text-muted-foreground">{formatLastUpdated(state.lastUpdatedAt)}</p>
+      <SubscriptionLifecycleBanner entitlements={state.entitlements} />
       <CampaignDashboardView
         plan={state.plan}
         metaConnection={state.metaConnection}
@@ -492,6 +608,7 @@ export default async function DashboardPage({
         selectedAdSummary={state.selectedAdSummary}
         leadLoopVerified={state.leadLoopVerified}
         firstWeekSuccess={state.firstWeekSuccess}
+        valueReport={state.valueReport}
         renderedAt={state.lastUpdatedAt}
         optimizerResult={analyzeCampaign(
           buildOptimizerInput({
