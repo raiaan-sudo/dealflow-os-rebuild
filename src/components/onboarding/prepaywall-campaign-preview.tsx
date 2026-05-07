@@ -101,8 +101,60 @@ function lowerClean(value: string) {
   return normalizeSentence(value).toLowerCase();
 }
 
+function compactOffer(offer: string) {
+  return normalizeSentence(offer)
+    .replace(/^free\s+/i, "")
+    .replace(/\s+(strategy call|consultation|brief|report)$/i, " $1")
+    .trim();
+}
+
+function sentenceCase(value: string) {
+  const cleanValue = normalizeSentence(value);
+  return cleanValue ? `${cleanValue.charAt(0).toUpperCase()}${cleanValue.slice(1)}` : cleanValue;
+}
+
+function offerLedHeadline(mode: PrepaywallCampaignMode, offer: string, market: string, propertyType: string, audience: string) {
+  const cleanOffer = compactOffer(offer);
+
+  if (/approval|credit|mortgage|pre[-\s]?approved/i.test(cleanOffer)) {
+    return normalizeSentence(`${cleanOffer} in ${market}`);
+  }
+
+  if (/guarantee|guaranteed|90\s*days?|sale|sell/i.test(cleanOffer)) {
+    return normalizeSentence(`${cleanOffer} for ${market} homeowners`);
+  }
+
+  if (mode === "buyer") {
+    return normalizeSentence(`${sentenceCase(cleanOffer)} for ${lowerClean(audience)}`);
+  }
+
+  if (mode === "seller") {
+    return normalizeSentence(`${sentenceCase(cleanOffer)} for ${market} sellers`);
+  }
+
+  if (mode === "investor") {
+    return normalizeSentence(`${sentenceCase(cleanOffer)} for ${market} investor opportunities`);
+  }
+
+  if (mode === "commercial") {
+    return normalizeSentence(`${sentenceCase(cleanOffer)} for ${lowerClean(propertyType)} in ${market}`);
+  }
+
+  return normalizeSentence(`${sentenceCase(cleanOffer)} in ${market}`);
+}
+
 function offerCta(mode: PrepaywallCampaignMode, offer: string) {
   const normalized = offer.toLowerCase();
+  const cleanOffer = compactOffer(offer);
+
+  if (/approval|credit|mortgage|pre[-\s]?approved/i.test(normalized)) {
+    const scoreMatch = cleanOffer.match(/\b\d{3}\+?\b/);
+    return scoreMatch ? `Check My ${scoreMatch[0].replace(/\+?$/, "+")} Approval Plan` : "Check My Approval Plan";
+  }
+
+  if (/guarantee|guaranteed|90\s*days?|sale|sell/i.test(normalized)) {
+    return /90/.test(normalized) ? "Check My 90-Day Sale Plan" : "Check My Sale Plan";
+  }
 
   if (mode === "seller") {
     return /value|worth/.test(normalized) ? "Get My Value Plan" : "Get My Sale Plan";
@@ -120,7 +172,9 @@ function offerCta(mode: PrepaywallCampaignMode, offer: string) {
     return "See Matching Homes";
   }
 
-  return "Get Buyer Shortlist";
+  return cleanOffer && !/strategy call/i.test(cleanOffer)
+    ? `Get ${cleanOffer}`
+    : "Get Buyer Shortlist";
 }
 
 function buildPreviewContent(draft: PrepaywallCampaignPreviewDraft): PreviewContent {
@@ -130,15 +184,17 @@ function buildPreviewContent(draft: PrepaywallCampaignPreviewDraft): PreviewCont
   const offer = clean(draft.offer, "strategy call");
   const priceRange = clean(draft.priceRange, "target range");
   const cta = offerCta(draft.campaignMode, offer);
+  const offerHeadline = offerLedHeadline(draft.campaignMode, offer, market, propertyType, audience);
+  const offerPhrase = compactOffer(offer);
 
   if (draft.campaignMode === "seller") {
     return {
       eyebrow: `Seller demand preview • ${market}`,
-      headline: normalizeSentence(`Show ${market} homeowners what their move could be worth`),
-      primaryText: normalizeSentence(`DealFlow frames ${lowerClean(offer)} around local buyer demand, timing, and a low-pressure reason to start a seller conversation.`),
+      headline: offerHeadline,
+      primaryText: normalizeSentence(`${offerPhrase} stays front and center while DealFlow frames local demand, timing, and the next seller conversation.`),
       cta,
-      funnelHero: normalizeSentence(`See what your ${lowerClean(propertyType)} could sell for`),
-      funnelSubtitle: normalizeSentence(`${market} demand, ${priceRange}, and ${lowerClean(offer)} become a concise seller lead path.`),
+      funnelHero: offerHeadline,
+      funnelSubtitle: normalizeSentence(`${market} demand, ${priceRange}, and ${lowerClean(offerPhrase)} become one clear seller lead path.`),
       visualLabel: "Home value concept",
       proofChips: ["Homeowner timing", "Demand angle", priceRange],
       readiness: ["Seller offer mapped", "Lead form framed", "Launch checklist started"],
@@ -148,11 +204,11 @@ function buildPreviewContent(draft: PrepaywallCampaignPreviewDraft): PreviewCont
   if (draft.campaignMode === "investor") {
     return {
       eyebrow: `Investor deal-flow preview • ${market}`,
-      headline: normalizeSentence(`Find investor opportunities with a clearer deal thesis`),
-      primaryText: normalizeSentence(`DealFlow turns ${lowerClean(offer)} into a filtered investor angle with asset type, risk, and next-step criteria.`),
+      headline: offerHeadline,
+      primaryText: normalizeSentence(`${offerPhrase} becomes a filtered investor angle with asset type, risk, and next-step criteria built into the lead path.`),
       cta,
-      funnelHero: normalizeSentence(`Get a sharper ${market} investor shortlist`),
-      funnelSubtitle: normalizeSentence(`${propertyType}, ${priceRange}, and the offer are organized into a focused deal-flow request.`),
+      funnelHero: offerHeadline,
+      funnelSubtitle: normalizeSentence(`${propertyType}, ${priceRange}, and ${lowerClean(offerPhrase)} are organized into a focused deal-flow request.`),
       visualLabel: "ROI brief concept",
       proofChips: ["ROI context", propertyType, priceRange],
       readiness: ["Investor angle mapped", "Qualification path drafted", "Credit-gated assets locked"],
@@ -162,11 +218,11 @@ function buildPreviewContent(draft: PrepaywallCampaignPreviewDraft): PreviewCont
   if (draft.campaignMode === "commercial") {
     return {
       eyebrow: `Commercial shortlist preview • ${market}`,
-      headline: normalizeSentence(`Find commercial spaces that fit the next move`),
-      primaryText: normalizeSentence(`DealFlow shapes ${lowerClean(offer)} around use case, location fit, and a practical commercial intake path.`),
+      headline: offerHeadline,
+      primaryText: normalizeSentence(`${offerPhrase} stays visible while DealFlow shapes the use case, location fit, and practical commercial intake path.`),
       cta,
-      funnelHero: normalizeSentence(`Compare better-fit ${lowerClean(propertyType)} options in ${market}`),
-      funnelSubtitle: normalizeSentence(`${audience} see a clear space-fit promise before requesting the shortlist.`),
+      funnelHero: offerHeadline,
+      funnelSubtitle: normalizeSentence(`${audience} see ${lowerClean(offerPhrase)} before requesting the shortlist.`),
       visualLabel: "Space-fit concept",
       proofChips: ["Use-case fit", propertyType, priceRange],
       readiness: ["Commercial criteria mapped", "Funnel shell assembled", "Meta preflight waiting"],
@@ -175,11 +231,11 @@ function buildPreviewContent(draft: PrepaywallCampaignPreviewDraft): PreviewCont
 
   return {
     eyebrow: `Buyer access preview • ${market}`,
-    headline: normalizeSentence(`Get a ${market} home shortlist built around fit`),
-    primaryText: normalizeSentence(`DealFlow turns ${lowerClean(offer)} into a focused buyer path for ${lowerClean(audience)}.`),
+    headline: offerHeadline,
+    primaryText: normalizeSentence(`${offerPhrase} stays visible while DealFlow turns the market, budget, and inventory fit into a focused buyer path for ${lowerClean(audience)}.`),
     cta,
-    funnelHero: normalizeSentence(`See better-fit ${lowerClean(propertyType)} in ${market}`),
-    funnelSubtitle: normalizeSentence(`${priceRange}, ${lowerClean(propertyType)}, and the offer become a simple lead form promise.`),
+    funnelHero: offerHeadline,
+    funnelSubtitle: normalizeSentence(`${priceRange}, ${lowerClean(propertyType)}, and ${lowerClean(offerPhrase)} become one simple lead form promise.`),
     visualLabel: "Listing access concept",
     proofChips: ["Buyer intent", propertyType, priceRange],
     readiness: ["Buyer offer mapped", "Audience path drafted", "Preview ready for checkout"],
@@ -329,8 +385,8 @@ function MockAdPreview({
             {content.headline}
           </h4>
           <p className={cn("mt-2 text-white/62", compact ? "line-clamp-2 text-xs leading-5" : "text-sm leading-6")}>{content.primaryText}</p>
-          <div className={cn("mt-3 inline-flex rounded-full bg-white font-black text-slate-950", compact ? "px-3 py-1.5 text-[10px]" : "px-4 py-2 text-xs")}>
-            Sample CTA: {content.cta}
+          <div className={cn("mt-3 inline-flex max-w-full rounded-full bg-white font-black text-slate-950", compact ? "px-3 py-1.5 text-[10px]" : "px-4 py-2 text-xs")}>
+            <span className="truncate">{content.cta}</span>
           </div>
         </div>
       </div>
@@ -389,8 +445,8 @@ function FunnelPreviewMock({
               </div>
             ))}
           </div>
-          <div className="mt-3 rounded-full bg-white px-4 py-2 text-center text-xs font-black text-slate-950">
-            Sample CTA: {content.cta}
+          <div className="mt-3 truncate rounded-full bg-white px-4 py-2 text-center text-xs font-black text-slate-950">
+            {content.cta}
           </div>
         </div>
       </div>
@@ -413,17 +469,17 @@ export function PrepaywallCampaignPreview({
     return (
       <Card
         data-testid="prepaywall-campaign-preview"
-        className={cn("grid h-fit min-w-0 overflow-x-hidden overflow-y-auto p-4 lg:max-h-[600px]", className)}
+        className={cn("grid h-fit min-w-0 overflow-hidden p-4", className)}
       >
         <div className="grid gap-3">
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="df-eyebrow text-cyan-100/76">Campaign preview</p>
-              <h3 className="mt-1 truncate text-lg font-semibold tracking-[-0.045em] text-white">
-                DealFlow is building this from your answers
+              <h3 className="mt-1 line-clamp-2 text-lg font-semibold leading-tight tracking-[-0.045em] text-white">
+                {content.headline}
               </h3>
               <p className="mt-1 line-clamp-1 text-sm text-white/56">
-                Preview only. Full generation unlocks after checkout and credits.
+                {content.cta} is the preview action. Full generation unlocks after checkout and credits.
               </p>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-2">
@@ -432,7 +488,7 @@ export function PrepaywallCampaignPreview({
             </div>
           </div>
 
-          <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(230px,0.95fr)_minmax(280px,1.05fr)]">
+          <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(210px,0.85fr)_minmax(280px,1.15fr)]">
             <MockAdPreview content={content} draft={safeDraft} compact />
 
             <div className="grid min-w-0 content-start gap-3">
@@ -498,10 +554,10 @@ export function PrepaywallCampaignPreview({
         <div>
           <p className="df-eyebrow text-cyan-100/76">Campaign package preview</p>
           <h3 className={cn("mt-2 font-semibold tracking-[-0.05em]", compactMode ? "text-xl" : "text-2xl")}>
-            DealFlow is building this from your answers
+            {content.headline}
           </h3>
           <p className="mt-2 text-sm leading-6 text-white/58">
-            Preview only. Full generation unlocks after checkout and credits.
+            {content.cta} is the preview action. Full generation unlocks after checkout and credits.
           </p>
         </div>
         <Badge className="border-cyan-200/20 bg-cyan-300/[0.055] text-cyan-100">Watermarked</Badge>

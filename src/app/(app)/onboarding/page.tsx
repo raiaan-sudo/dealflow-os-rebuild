@@ -658,7 +658,7 @@ export default function OnboardingPage() {
 
       <StepProgress currentStep={currentStep} furthestStepIndex={furthestStepIndex} onSelect={goToStep} />
 
-      <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.82fr)]">
+      <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(560px,0.86fr)]">
         <Card className="min-w-0 p-4 sm:p-5" data-testid="onboarding-current-step-panel">
           <div className="flex items-start gap-4">
             <IconTile icon={Target} tone="cyan" />
