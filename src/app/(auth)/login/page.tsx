@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-const appLoginUrl = "https://dealflow-os-rebuild.vercel.app/login";
+const appLoginUrl = "https://app.agentdealflow.io/login";
 
 export default async function LoginPage({
   searchParams,

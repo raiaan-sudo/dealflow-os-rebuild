@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const appBaseUrl = "https://dealflow-os-rebuild.vercel.app";
+const appBaseUrl = "https://app.agentdealflow.io";
 const signinHref = `${appBaseUrl}/login`;
 const signupHref = `${appBaseUrl}/login?mode=sign-up`;
 const scrollTrackingMilestones = [25, 50, 75, 90] as const;

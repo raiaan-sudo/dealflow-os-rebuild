@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-const appBaseUrl = "https://dealflow-os-rebuild.vercel.app";
+const appBaseUrl = "https://app.agentdealflow.io";
 
 const nextConfig = {
   async redirects() {
