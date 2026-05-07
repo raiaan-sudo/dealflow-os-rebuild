@@ -253,7 +253,7 @@ async function loadLeadLoopVerified(campaignId: string | null) {
 
 function DashboardFallback({ campaignId = null }: { campaignId?: string | null }) {
   return (
-    <PageShell>
+    <PageShell className="max-w-[1680px]">
       <PageHeader
         eyebrow="Dashboard"
         title="Dashboard"
@@ -527,7 +527,7 @@ export default async function DashboardPage({
 
   if (!state.plan) {
     return (
-      <PageShell className="max-w-[1440px]">
+      <PageShell className="max-w-[1680px]">
         <PageHeader
           eyebrow="Dashboard"
           title="Dashboard"
@@ -583,7 +583,7 @@ export default async function DashboardPage({
   }).catch(() => undefined);
 
   return (
-    <PageShell className="max-w-[1440px]">
+    <PageShell className="max-w-[1680px]">
       <PageHeader
         eyebrow="Dashboard"
         title="Dashboard"

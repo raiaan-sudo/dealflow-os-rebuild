@@ -1505,10 +1505,10 @@ export function CampaignBuilderWorkspace({
     activeTab === "setup" ? 0 : activeTab === "funnel" ? 1 : 2;
   const stepMicrocopy =
     activeTab === "setup"
-      ? "Define the campaign inputs so the funnel and ad copy stay aligned from the start."
+      ? "Set the offer, market, and audience."
       : activeTab === "funnel"
-        ? "Refine the landing-page promise so the offer is clear before you move into creative."
-        : "Tighten the ads and video scripts, then move into review when the campaign looks ready.";
+        ? "Make the landing page offer obvious."
+        : "Review the creative set and move to preview.";
 
   useEffect(() => {
     const nextAssistant = generateCreativeCopyAssistant(toCopyAssistantInput(strategy));
@@ -1534,7 +1534,7 @@ export function CampaignBuilderWorkspace({
   }, [campaign, strategy]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {activeTab === "funnel" ? (
       <Card className="p-5 sm:p-6">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -1787,11 +1787,11 @@ export function CampaignBuilderWorkspace({
 
       <div
         className={[
-          "grid h-full min-h-[640px] w-full overflow-hidden rounded-[28px] border border-white/8 bg-white/[0.02]",
+          "grid h-full min-h-[640px] w-full overflow-hidden rounded-[28px] border border-white/8 bg-white/[0.02] 2xl:h-[calc(100vh-13rem)] 2xl:min-h-[760px]",
           isFunnelCanvasTab
             ? "grid-cols-1 2xl:grid-cols-[minmax(0,1.08fr)_minmax(320px,0.92fr)]"
             : isCreativesStackedTab
-              ? "grid-cols-1"
+              ? "grid-cols-1 2xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]"
             : "grid-cols-1 2xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]",
         ].join(" ")}
       >
@@ -1833,9 +1833,9 @@ export function CampaignBuilderWorkspace({
             </div>
           </>
         ) : isCreativesStackedTab ? (
-          <div className="min-w-0 overflow-hidden px-5 py-5 xl:px-6 xl:py-6">
-            <div className="h-full overflow-y-auto pr-1 xl:pr-2">
-              <div className="space-y-6">
+          <>
+            <div className="min-w-0 overflow-hidden px-5 py-5 xl:px-6 xl:py-6">
+              <div className="h-full overflow-y-auto pr-1 xl:pr-2">
                 <BuilderCreativesPanel
                   campaign={campaign}
                   campaignName={campaignName}
@@ -1864,41 +1864,26 @@ export function CampaignBuilderWorkspace({
                   setActiveTab={setActiveTab}
                   setCampaign={setCampaign}
                 />
-
-                <div className="rounded-[24px] border border-white/8 bg-black/20 p-4 sm:p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                        Preview
-                      </p>
-                      <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
-                        Preview the creative package below
-                      </h3>
-                      <p className="mt-2 text-sm leading-6 text-white/62">
-                        Scroll through the full copy workflow first, then validate the actual ad, asset, and funnel output here.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-5">
-                    <BuilderPreviewPanel
-                      previewTab={previewTab}
-                      setPreviewTab={setPreviewTab}
-                      campaign={deferredPreviewCampaign}
-                      creativeStrategy={creativeStrategy}
-                      showCreativeQa={editingMode === "advanced"}
-                      previewHeadline={previewHeadline}
-                      previewSubheadline={previewSubheadline}
-                      previewCta={previewCta}
-                      previewAds={previewAds}
-                      previewVideos={previewVideos}
-                      previewAssets={previewAssets}
-                      previewDirection={deferredPreviewDirection}
-                    />
-                  </div>
-                </div>
               </div>
             </div>
-          </div>
+
+            <div className="min-w-0 overflow-hidden border-t border-white/10 px-4 py-5 2xl:border-t-0 2xl:border-l 2xl:border-white/10 xl:px-5 xl:py-6">
+              <BuilderPreviewPanel
+                previewTab={previewTab}
+                setPreviewTab={setPreviewTab}
+                campaign={deferredPreviewCampaign}
+                creativeStrategy={creativeStrategy}
+                showCreativeQa={editingMode === "advanced"}
+                previewHeadline={previewHeadline}
+                previewSubheadline={previewSubheadline}
+                previewCta={previewCta}
+                previewAds={previewAds}
+                previewVideos={previewVideos}
+                previewAssets={previewAssets}
+                previewDirection={deferredPreviewDirection}
+              />
+            </div>
+          </>
         ) : (
           <>
             <div className="min-w-0 overflow-hidden px-5 py-5 xl:px-6 xl:py-6">
@@ -1947,23 +1932,30 @@ export function CampaignBuilderWorkspace({
         }
       />
 
-      <Card className="p-5 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+      <Card className="p-0">
+        <details className="group p-5 sm:p-6">
+          <summary className="flex cursor-pointer list-none flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
               Version History
             </p>
-            <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
-              Restore earlier campaign versions
+            <h3 className="mt-3 text-xl font-semibold tracking-[-0.03em]">
+              Restore earlier versions
             </h3>
             <p className="mt-2 text-sm leading-6 text-white/68">
-              Funnel and creative changes now create revision snapshots with source tracking so you can safely iterate and roll back.
+              Open only when you need to roll back a saved revision.
             </p>
           </div>
-          <Badge className="border-white/10 bg-white/[0.05] text-white/78">
-            {campaignRevisions.length} revisions
-          </Badge>
-        </div>
+          <div className="flex items-center gap-3">
+            <Badge className="border-white/10 bg-white/[0.05] text-white/78">
+              {campaignRevisions.length} revisions
+            </Badge>
+            <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/58">
+              <span className="group-open:hidden">Open</span>
+              <span className="hidden group-open:inline">Close</span>
+            </span>
+          </div>
+          </summary>
         {campaignRevisions.length > 0 ? (
           <div className="mt-5 grid gap-3">
             {campaignRevisions.slice(0, 8).map((revision) => (
@@ -2002,6 +1994,7 @@ export function CampaignBuilderWorkspace({
             </p>
           </div>
         )}
+        </details>
       </Card>
     </div>
   );

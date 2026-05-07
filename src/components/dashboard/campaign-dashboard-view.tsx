@@ -563,7 +563,7 @@ export function CampaignDashboardView({
         : "border-white/8 bg-white/[0.03]";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 text-[15px]">
       <p className="text-sm font-medium text-muted-foreground">{statusText}</p>
 
       {valueReport ? (

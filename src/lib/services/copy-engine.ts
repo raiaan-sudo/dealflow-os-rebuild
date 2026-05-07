@@ -220,6 +220,14 @@ function isFirstTimeBuyerAudience(input: Pick<RequiredInput, "audience" | "offer
   );
 }
 
+function isTimeboxedSellerOffer(input: Pick<RequiredInput, "offer" | "marketType">) {
+  return (
+    input.marketType === "seller" &&
+    /\b(guarantee|guaranteed|sale|sell|sold)\b/i.test(input.offer) &&
+    /\b\d{1,3}\s*(day|days|week|weeks)\b/i.test(input.offer)
+  );
+}
+
 function buildPersonaLabel(input: RequiredInput) {
   const audience = formatAudience(input.audience).replace(/-/g, " ");
   const offerClass = classifyOffer(input);
@@ -316,6 +324,10 @@ function buildHookLine(input: RequiredInput, creative?: CopyEngineCreativeInput 
   }
 
   if (offerClass === "seller") {
+    if (isTimeboxedSellerOffer(input)) {
+      return `${input.location} sellers: see if your home qualifies for ${input.offer}`;
+    }
+
     return `Homeowners in ${input.location}: do not list before you see this first`;
   }
 
@@ -720,6 +732,10 @@ function buildOfferLedPromise(input: RequiredInput) {
   }
 
   if (offerClass === "seller") {
+    if (isTimeboxedSellerOffer(input)) {
+      return `See if your home qualifies for ${offer}`;
+    }
+
     return enhanceOffer(offer, "seller") || `Sell your home faster in ${input.location}`;
   }
 
@@ -745,6 +761,10 @@ function buildTimelineHeadline(input: RequiredInput) {
   }
 
   if (input.marketType === "seller") {
+    if (isTimeboxedSellerOffer(input)) {
+      return input.offer;
+    }
+
     return `Sell Your Home in ${data.timeline} or Less`;
   }
 
@@ -779,8 +799,14 @@ function sharpenOffer(input: RequiredInput) {
     return ensureSentence(enhanceOffer(offer, "buyer") || offer);
   }
 
-  if (offerClass === "seller" && /off market buyers|buyer network/.test(normalized)) {
-    return "Access our off-market buyer network and put your home in front of serious buyers.";
+  if (offerClass === "seller") {
+    if (isTimeboxedSellerOffer(input)) {
+      return `See if your home qualifies for ${offer}.`;
+    }
+
+    if (/off market buyers|buyer network/.test(normalized)) {
+      return "Access our off-market buyer network and put your home in front of serious buyers.";
+    }
   }
 
   return ensureSentence(buildOfferLedPromise(input) || offer);
@@ -809,6 +835,7 @@ function buildCta(input: RequiredInput) {
     mechanism: input.mechanism,
   });
 
+  if (category === "seller" && isTimeboxedSellerOffer(input)) return "Check My 90-Day Sale Plan";
   if (category === "seller") return "Get My Sale Plan";
   if (category === "commercial") return "See Matching Spaces";
   if (category === "investor") return "Review The Deal Breakdown";

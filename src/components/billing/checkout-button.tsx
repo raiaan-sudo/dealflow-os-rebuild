@@ -7,10 +7,14 @@ export function CheckoutButton({
   planTier = "starter",
   campaignId = null,
   label = "Activate to launch",
+  className,
+  buttonClassName,
 }: {
   planTier?: "starter" | "pro" | "growth";
   campaignId?: string | null;
   label?: string;
+  className?: string;
+  buttonClassName?: string;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,8 +48,8 @@ export function CheckoutButton({
   }
 
   return (
-    <div className="space-y-3">
-      <Button type="button" onClick={handleCheckout} disabled={loading}>
+    <div className={["space-y-3", className].filter(Boolean).join(" ")}>
+      <Button type="button" onClick={handleCheckout} disabled={loading} className={buttonClassName}>
         {loading ? "Opening checkout..." : label}
       </Button>
       {error ? <p className="text-sm text-rose-300">{error}</p> : null}

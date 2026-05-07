@@ -214,4 +214,30 @@ for (const video of creativePackage.videoAds) {
   assert.equal(video.qualityGate?.accepted, true);
 }
 
+const sellerGuaranteePackage = buildCreativeSystem({
+  location: "Toronto, ON",
+  audience: "homeowners",
+  offer: "Guaranteed Sale in 90 days",
+  property_type: "homes",
+  mechanism: "pre-market pricing and demand plan",
+  desired_result: "sell with a clearer plan",
+  pain_points: ["pricing too late", "listing without buyer demand"],
+  market_type: "seller",
+});
+
+assert.equal(sellerGuaranteePackage.staticAds[0].cta, "Check My 90-Day Sale Plan");
+assert.ok(
+  sellerGuaranteePackage.staticAds
+    .slice(0, 3)
+    .every((ad) => /guaranteed sale|90-day sale|90 days/i.test(`${ad.headline} ${ad.overlayText} ${ad.primaryText} ${ad.cta}`)),
+  "seller guarantee offer should stay visible across static creatives",
+);
+assert.ok(
+  sellerGuaranteePackage.videoAds.every((video) =>
+    /guaranteed sale in 90 days/i.test(video.script.join(" ")) &&
+    !/Before you sell your home in Toronto, ON, watch this/i.test(video.script.join(" ")),
+  ),
+  "seller guarantee UGC scripts should preserve the offer and avoid repetitive placeholder hooks",
+);
+
 console.log("Media buying upgrade tests passed.");

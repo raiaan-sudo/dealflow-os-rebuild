@@ -497,7 +497,7 @@ export function AutoTextarea(
     }
 
     ref.current.style.height = "0px";
-    ref.current.style.height = `${ref.current.scrollHeight}px`;
+    ref.current.style.height = `${Math.min(ref.current.scrollHeight, 180)}px`;
   }, [props.value]);
 
   return (
@@ -506,7 +506,7 @@ export function AutoTextarea(
       ref={ref}
       rows={1}
       className={[
-        "min-h-[120px] w-full resize-none rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-foreground outline-none transition-all duration-200 focus-visible:border-primary/40 focus-visible:bg-white/[0.06]",
+        "max-h-[180px] min-h-[88px] w-full resize-none overflow-y-auto rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-foreground outline-none transition-all duration-200 focus-visible:border-primary/40 focus-visible:bg-white/[0.06]",
         props.className,
       ]
         .filter(Boolean)

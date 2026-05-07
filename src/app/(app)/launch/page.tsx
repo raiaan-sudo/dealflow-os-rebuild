@@ -377,7 +377,7 @@ export default async function LaunchAliasPage({
   }
 
   return (
-    <PageShell>
+    <PageShell className="max-w-[1640px]">
       <WizardSteps current="launch" />
       <PageHeader
         eyebrow="Launch"
@@ -416,8 +416,8 @@ export default async function LaunchAliasPage({
         </div>
       ) : null}
       <Card className="p-5 sm:p-7">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
-          <div className="space-y-4">
+        <div className="space-y-5">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
             <div className="surface-subtle rounded-[22px] border border-white/10 p-5">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Campaign</p>
               <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
@@ -482,8 +482,18 @@ export default async function LaunchAliasPage({
             </div>
           </div>
           <div className="surface-subtle rounded-[22px] border border-white/10 p-5">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Selected creative test set</p>
-            <div className="mt-4 grid gap-3">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Selected creative test set</p>
+                <h2 className="mt-2 text-lg font-semibold text-foreground">
+                  {selectedCreatives.length} creatives ready
+                </h2>
+              </div>
+              <span className="rounded-full border border-cyan-300/16 bg-cyan-300/[0.055] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100">
+                Side-by-side review
+              </span>
+            </div>
+            <div className="mt-4 grid items-stretch gap-4 md:grid-cols-2 2xl:grid-cols-3">
               {selectedCreatives.map((selectedCreative, index) => (
                 <StaticCreativeSummaryCard
                   category={plan.creativeStrategy.campaignCategory}

@@ -191,7 +191,7 @@ const FunnelLivePreview = memo(function FunnelLivePreview({
   const theme = useMemo(() => getPreviewDirection(direction), [direction]);
   const typography = useMemo(() => getTypographyClasses(theme), [theme]);
   const visibleSections = useMemo(
-    () => (sections || []).filter((section) => section?.visible !== false && section?.type !== "hero"),
+    () => (sections || []).filter((section) => section?.visible !== false && section?.type !== "hero").slice(0, 3),
     [sections],
   );
 
@@ -367,7 +367,7 @@ const FunnelLivePreview = memo(function FunnelLivePreview({
 
   return (
     <div
-      className="overflow-hidden rounded-[28px] border border-white/8 shadow-[0_28px_90px_-48px_rgba(0,0,0,0.68)]"
+      className="max-h-[720px] overflow-y-auto rounded-[28px] border border-white/8 shadow-[0_28px_90px_-48px_rgba(0,0,0,0.68)]"
       style={{ backgroundColor: theme.palette.panel }}
     >
       <div className="border-b border-black/6 bg-white px-4 py-3">
@@ -377,7 +377,7 @@ const FunnelLivePreview = memo(function FunnelLivePreview({
           <div className="h-3 w-3 rounded-full bg-[#06d6a0]" />
         </div>
       </div>
-      <div className="grid gap-0">
+      <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div
           className={`border-b border-black/6 lg:border-b-0 lg:border-r ${getThemeSpacingPadding(theme, "hero")}`}
           style={{
@@ -395,7 +395,7 @@ const FunnelLivePreview = memo(function FunnelLivePreview({
           >
             {(location || "your market").trim()} campaign
           </div>
-          <h2 className={`mt-5 max-w-xl text-4xl font-semibold sm:text-5xl ${typography.displayClass}`}>
+          <h2 className={`mt-5 max-w-xl text-3xl font-semibold sm:text-4xl ${typography.displayClass}`}>
             {headline || "Campaign headline unavailable"}
           </h2>
           <p className={`mt-4 max-w-[680px] text-base ${typography.bodyClass}`} style={{ color: theme.palette.mutedText }}>
@@ -433,7 +433,7 @@ const FunnelLivePreview = memo(function FunnelLivePreview({
           </div>
         </div>
       </div>
-      <div className="space-y-5 px-6 py-8 sm:px-8 sm:py-10">
+      <div className="space-y-4 px-5 py-6 sm:px-6 sm:py-7">
         {visibleSections.map(renderSection)}
       </div>
     </div>
@@ -495,7 +495,7 @@ const VideoStoryboardPreview = memo(function VideoStoryboardPreview({
   );
 
   return (
-    <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-5">
+    <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold">{title}</p>
@@ -511,34 +511,34 @@ const VideoStoryboardPreview = memo(function VideoStoryboardPreview({
           </div>
         </div>
       ) : null}
-      <div className="mt-4 grid gap-4">
-        <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
+      <div className="mt-4 grid gap-3">
+        <div className="rounded-[18px] border border-white/8 bg-black/20 p-3">
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Hook</p>
-          <p className="mt-2 text-sm leading-6">{hook || "See the strongest opportunity in your market."}</p>
+          <p className="mt-2 line-clamp-2 text-sm leading-6">{hook || "See the strongest opportunity in your market."}</p>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-[18px] border border-white/8 bg-black/20 p-3">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Script</p>
-            <div className="mt-3 space-y-3">
+            <div className="mt-3 space-y-2">
               {scriptLines.map((line, lineIndex) => (
                 <div key={`${line}-${lineIndex}`} className="rounded-[14px] bg-white/[0.03] px-3 py-2">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary/70">
                     Line {lineIndex + 1}
                   </p>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{line}</p>
+                  <p className="mt-1 line-clamp-3 text-sm leading-6 text-muted-foreground">{line}</p>
                 </div>
               ))}
             </div>
           </div>
-          <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
+          <div className="rounded-[18px] border border-white/8 bg-black/20 p-3">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Scenes</p>
-            <div className="mt-3 space-y-3">
+            <div className="mt-3 space-y-2">
               {scenes.slice(0, 3).map((scene, sceneIndex) => (
                 <div key={`${scene}-${sceneIndex}`} className="rounded-[14px] bg-white/[0.03] px-3 py-2">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary/70">
                     Scene {sceneIndex + 1}
                   </p>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{scene}</p>
+                  <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{scene}</p>
                 </div>
               ))}
             </div>
@@ -637,14 +637,14 @@ function CopyAssistantPanel({
     .sort((left, right) => right.item.score - left.item.score)[0] ?? null;
 
   return (
-    <Card className="p-6 sm:p-7">
+    <Card className="p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
             Creative Copy Assistant
           </p>
-          <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
-            Generate GPT-directed copy
+          <h3 className="mt-2 text-xl font-semibold tracking-[-0.03em]">
+            Offer-led copy set
           </h3>
         </div>
         <Button onClick={onGenerate} disabled={copyAssistantLoading}>
@@ -655,13 +655,13 @@ function CopyAssistantPanel({
         <p className="mt-4 text-sm text-rose-300">{copyAssistantError}</p>
       ) : null}
       <div className="mt-5 w-full overflow-visible">
-        <div className="space-y-4">
+        <div className="grid gap-3 lg:grid-cols-5">
           {assistantCards.map((item) => (
-            <div key={item.label} className="rounded-[20px] border border-white/8 bg-black/20 p-4">
+            <div key={item.label} className="rounded-[18px] border border-white/8 bg-black/20 p-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 {item.label}
               </p>
-              <p className="mt-2 text-sm leading-[1.5]">{item.value}</p>
+              <p className="mt-2 line-clamp-3 text-sm leading-[1.5]">{item.value}</p>
             </div>
           ))}
         </div>
@@ -722,7 +722,11 @@ function CopyAssistantPanel({
         </Button>
       </div>
       {copyAssistant ? (
-        <div className="mt-5 w-full overflow-hidden space-y-4">
+        <details className="mt-5 w-full overflow-hidden rounded-[20px] border border-white/8 bg-white/[0.025] p-4">
+          <summary className="cursor-pointer list-none text-sm font-semibold text-white">
+            View alternate copy options
+          </summary>
+          <div className="mt-4 space-y-4">
           {featuredVariation ? (
             <div className="rounded-[20px] border border-primary/15 bg-primary/[0.05] p-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -832,7 +836,8 @@ function CopyAssistantPanel({
               </div>
             </div>
           ))}
-        </div>
+          </div>
+        </details>
       ) : null}
     </Card>
   );
@@ -1984,14 +1989,14 @@ export function BuilderCreativesPanel(props: {
     applyAssistantToStaticAd,
     applyOfferVariation,
     applyAssistantAlternative,
-    handleGenerateVideo,
+  handleGenerateVideo: _handleGenerateVideo,
     handleSaveCampaign,
     setActiveTab,
     setCampaign,
   } = props;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <CopyAssistantPanel
         copyAssistant={copyAssistant}
         onGenerate={handleGenerateCopyAssistant}
@@ -2004,38 +2009,27 @@ export function BuilderCreativesPanel(props: {
         onApplyAlternative={applyAssistantAlternative}
       />
 
-      <div className="space-y-6">
+      <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
         {staticAdRows.map(({ creative, copy, index }) => (
-          <Card key={`${creative.format}-${creative.angle}-${index}`} className="p-6">
-            <div className="space-y-4">
-              <div>
+          <Card key={`${creative.format}-${creative.angle}-${index}`} className="flex h-full flex-col p-5">
+            <div className="flex h-full flex-col gap-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                   Static ad {index + 1}
                 </p>
+                  <p className="mt-1 line-clamp-2 text-sm font-semibold text-white">
+                    {copy?.headline || creative.hook || "Static creative"}
+                  </p>
+                </div>
+                {index === 0 ? (
+                  <Badge className="shrink-0 border-primary/15 bg-primary/10 text-primary">
+                    Recommended
+                  </Badge>
+                ) : null}
               </div>
               <div className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <FieldLabel>Headline</FieldLabel>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setCampaign((current) => {
-                        const improved = improveCopyText(
-                          current.copy[index]?.headline || "",
-                          "headline",
-                          toCopyAssistantInput(current.strategy),
-                        );
-                        const nextCopy = current.copy.map((item, itemIndex) =>
-                          itemIndex === index ? { ...item, headline: improved } : item,
-                        );
-                        return { ...current, copy: nextCopy };
-                      });
-                    }}
-                  >
-                    Improve this
-                  </Button>
-                </div>
+                <FieldLabel>Headline</FieldLabel>
                 <Input
                   value={copy?.headline ?? ""}
                   onChange={(event) =>
@@ -2049,28 +2043,7 @@ export function BuilderCreativesPanel(props: {
                 />
               </div>
               <div className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <FieldLabel>Hook / Overlay text</FieldLabel>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setCampaign((current) => {
-                        const improved = improveCopyText(
-                          current.creatives[index]?.hook || "",
-                          "overlay",
-                          toCopyAssistantInput(current.strategy),
-                        );
-                        const nextCreatives = current.creatives.map((item, itemIndex) =>
-                          itemIndex === index ? { ...item, hook: improved } : item,
-                        );
-                        return { ...current, creatives: nextCreatives };
-                      });
-                    }}
-                  >
-                    Improve this
-                  </Button>
-                </div>
+                <FieldLabel>Hook / Overlay text</FieldLabel>
                 <Input
                   value={creative.hook ?? ""}
                   onChange={(event) =>
@@ -2083,32 +2056,10 @@ export function BuilderCreativesPanel(props: {
                   }
                 />
               </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <FieldLabel>Primary text</FieldLabel>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setCampaign((current) => {
-                        const improvedPrimary = improveCopyText(
-                          current.copy[index]?.primary_text || "",
-                          "primary",
-                          toCopyAssistantInput(current.strategy),
-                        );
-                        const nextCopy = current.copy.map((item, itemIndex) =>
-                          itemIndex === index
-                            ? { ...item, primary_text: improvedPrimary, cta: copyAssistant?.cta ?? item.cta }
-                            : item,
-                        );
-                        return { ...current, copy: nextCopy };
-                      });
-                    }}
-                  >
-                    Improve this
-                  </Button>
-                </div>
+              <div className="min-h-0 flex-1 space-y-2">
+                <FieldLabel>Primary text</FieldLabel>
                 <AutoTextarea
+                  className="min-h-[112px]"
                   value={copy?.primary_text ?? ""}
                   onChange={(event) =>
                     setCampaign((current) => {
@@ -2120,7 +2071,28 @@ export function BuilderCreativesPanel(props: {
                   }
                 />
               </div>
-              <div className="flex justify-end">
+              <div className="mt-auto flex flex-wrap justify-between gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setCampaign((current) => {
+                      const improvedPrimary = improveCopyText(
+                        current.copy[index]?.primary_text || "",
+                        "primary",
+                        toCopyAssistantInput(current.strategy),
+                      );
+                      const nextCopy = current.copy.map((item, itemIndex) =>
+                        itemIndex === index
+                          ? { ...item, primary_text: improvedPrimary, cta: copyAssistant?.cta ?? item.cta }
+                          : item,
+                      );
+                      return { ...current, copy: nextCopy };
+                    });
+                  }}
+                >
+                  Tighten copy
+                </Button>
                 <Button size="sm" variant="secondary" onClick={() => applyAssistantToStaticAd(index)}>
                   Apply assistant
                 </Button>
@@ -2130,22 +2102,22 @@ export function BuilderCreativesPanel(props: {
         ))}
       </div>
 
-      <div className="space-y-6">
+      <div className="grid gap-4 xl:grid-cols-2">
         {videoRows.map(({ creative, copy, index }) => (
-          <Card key={`${creative.format}-${creative.angle}-video-${index}`} className="p-6">
+          <Card key={`${creative.format}-${creative.angle}-video-${index}`} className="p-5">
             <div className="space-y-4">
-              <div>
+              <div className="flex items-start justify-between gap-3">
+                <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
                   Video {index + 1}
                 </p>
-              </div>
-              <div className="space-y-2">
-                <FieldLabel>Hook</FieldLabel>
-                <Input value={creative.hook ?? ""} readOnly />
-              </div>
-              <div className="space-y-2">
-                <FieldLabel>Script</FieldLabel>
-                <AutoTextarea value={copy?.script ?? ""} readOnly />
+                  <p className="mt-1 text-sm font-semibold text-white">
+                    Script auto-built from selected static strategy
+                  </p>
+                </div>
+                <Badge className="border-primary/15 bg-primary/10 text-primary">
+                  Auto script
+                </Badge>
               </div>
               <VideoStoryboardPreview
                 title={`Video ${index + 1}`}
@@ -2168,14 +2140,8 @@ export function BuilderCreativesPanel(props: {
               {videoGenerationErrors[index] ? (
                 <p className="text-sm text-rose-300">{videoGenerationErrors[index]}</p>
               ) : null}
-              <div className="flex justify-end">
-                <Button
-                  disabled={videoGenerationIndex === index}
-                  onClick={() => handleGenerateVideo(index)}
-                  title="Uses paid generation credits and queues a HeyGen render."
-                >
-                  {videoGenerationIndex === index ? "Queueing video..." : "Generate UGC video"}
-                </Button>
+              <div className="rounded-[18px] border border-cyan-300/15 bg-cyan-300/[0.045] px-4 py-3 text-sm leading-6 text-cyan-50/78">
+                Video concepts are ready for review. Paid HeyGen rendering stays locked until billing, credits, and final launch approval are complete.
               </div>
             </div>
           </Card>
@@ -2301,7 +2267,7 @@ export const BuilderPreviewPanel = memo(function BuilderPreviewPanel({
           </div>
         </div>
 
-        <div className="mt-5 h-full overflow-y-auto overflow-x-hidden">
+        <div className="mt-5 min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           <div className="w-full min-w-0">
             {previewTab === "funnel" ? (
               <FunnelLivePreview
@@ -2338,13 +2304,13 @@ export const BuilderPreviewPanel = memo(function BuilderPreviewPanel({
                     <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                       Static creatives
                     </p>
-                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+                    <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2 2xl:grid-cols-3">
                       {previewAds.slice(0, 3).map((ad) => (
-                        <div key={ad.id} className="min-w-0 space-y-3">
-                          <div className="flex flex-wrap items-center gap-2">
+                        <div key={ad.id} className="flex min-w-0 flex-col rounded-[22px] border border-white/8 bg-white/[0.025] p-3">
+                          <div className="flex min-h-[56px] flex-wrap items-start gap-2">
                             {ad.recommended ? (
                               <Badge className="border-primary/15 bg-primary/10 text-primary">
-                                🔥 Recommended • Best performing
+                                Recommended
                               </Badge>
                             ) : null}
                             {ad.score > 0 ? (
@@ -2386,7 +2352,8 @@ export const BuilderPreviewPanel = memo(function BuilderPreviewPanel({
                           {showCreativeQa && ad.imageGenerationState === "failed" && ad.imageGenerationMessage ? (
                             <p className="text-xs leading-5 text-rose-300">{ad.imageGenerationMessage}</p>
                           ) : null}
-                          <StaticAdPreview
+                          <div className="mt-3 flex-1">
+                            <StaticAdPreview
                             businessName={`${campaign.strategy.location || "Local"} Campaign`}
                             overlayText={ad.overlayText}
                             primaryText={ad.primaryText}
@@ -2396,6 +2363,7 @@ export const BuilderPreviewPanel = memo(function BuilderPreviewPanel({
                             direction={previewDirection}
                             compact
                           />
+                          </div>
                         </div>
                       ))}
                     </div>

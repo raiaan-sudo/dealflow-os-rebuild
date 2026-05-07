@@ -129,8 +129,8 @@ export default async function PreviewPage({
   }).catch(() => undefined);
 
   return (
-    <PageShell className="max-w-[1360px]">
-      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.72fr)] xl:items-start">
+    <PageShell className="max-w-[1640px]">
+      <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1.08fr)_minmax(520px,0.92fr)] 2xl:items-start">
         <div className="space-y-4">
           <WizardSteps current="review" />
           <PageHeader
@@ -148,16 +148,18 @@ export default async function PreviewPage({
                 Preview
               </span>
             </div>
-            <FunnelPreview
-              compact
-              plan={previewPlan}
-              expectedOutcomes={expectedOutcomes}
-              strategyWhy={getStrategyWhy(previewPlan)}
-            />
+            <div className="max-h-[680px] overflow-y-auto rounded-[24px] border border-white/8">
+              <FunnelPreview
+                compact
+                plan={previewPlan}
+                expectedOutcomes={expectedOutcomes}
+                strategyWhy={getStrategyWhy(previewPlan)}
+              />
+            </div>
           </section>
         </div>
 
-        <aside className="surface-strong min-w-0 rounded-df-card border border-white/10 p-4 sm:p-5 xl:sticky xl:top-6">
+        <aside className="surface-strong min-w-0 rounded-df-card border border-white/10 p-4 sm:p-5 2xl:sticky 2xl:top-6">
           <div className="mb-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Selected creative test set</p>
             <h2 className="mt-1 text-lg font-semibold text-foreground">
@@ -165,7 +167,7 @@ export default async function PreviewPage({
             </h2>
           </div>
           {selectedAds.length > 0 ? (
-            <div className="grid gap-3">
+            <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-1">
               {selectedAds.map((selectedAd, index) => (
                 <StaticCreativeSummaryCard
                   category={previewPlan.creativeStrategy.campaignCategory}
