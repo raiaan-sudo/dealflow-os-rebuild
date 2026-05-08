@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
+import { CampaignPublishPanel } from "@/components/campaign/campaign-publish-panel";
 import { LaunchMetaSelectionPanel } from "@/components/campaign/launch/launch-meta-selection-panel";
 import { StaticCreativeSummaryCard } from "@/components/campaign/static-creative-preview-card";
 import { Card } from "@/components/ui/card";
@@ -342,6 +343,21 @@ export default async function LaunchAliasPage({
           ? "Selection required before launch"
       : "Meta connection required";
   const metaVerifiedAtText = formatVerifiedTimestamp(metaPreflight?.checkedAt);
+  const launchBlockerActions = [
+    ...(!metaLaunchReady
+      ? [
+          metaSelectionReady
+            ? "Meta selections were saved, but preflight has not passed yet. Re-save the selections or reconnect Meta if the check stays blocked."
+            : "Save the ad account, Facebook Page, and pixel in the Meta setup section.",
+        ]
+      : []),
+    ...(!publicFunnelPublished ? ["Publish the public funnel snapshot so Meta has a live destination URL."] : []),
+    ...(!providerLaunchEnabled
+      ? [
+          "The owner-controlled launch switch is off. DealFlow will not create Meta campaign objects until ALLOW_META_LIVE_LAUNCH is enabled.",
+        ]
+      : []),
+  ];
 
   if (launchRoomReady) {
     await recordActivationEventForCurrentUser({
@@ -438,6 +454,26 @@ export default async function LaunchAliasPage({
         <div className="rounded-[22px] border border-sky-400/15 bg-sky-400/10 px-5 py-4 text-sm font-medium text-sky-100">
           Admin override is active for this workspace. Launch is allowed without an active subscription.
         </div>
+      ) : null}
+      {!launchRoomReady && launchBlockerActions.length > 0 ? (
+        <Card className="border-amber-300/15 bg-amber-300/[0.055] p-5 sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-100">
+                Why launch is blocked
+              </p>
+              <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-foreground">
+                Finish these gates before launch
+              </h2>
+              <div className="mt-4 grid gap-2 text-sm leading-6 text-muted-foreground">
+                {launchBlockerActions.map((action) => (
+                  <p key={action}>- {action}</p>
+                ))}
+              </div>
+            </div>
+            <StatusPill tone="warning">Blocked</StatusPill>
+          </div>
+        </Card>
       ) : null}
       <Card className="p-5 sm:p-7">
         <div className="space-y-5">
@@ -544,6 +580,14 @@ export default async function LaunchAliasPage({
         </div>
       </Card>
       <LaunchMetaSelectionPanel connection={metaConnection} campaignId={resolvedCampaignId} />
+      {!publicFunnelPublished ? (
+        <CampaignPublishPanel
+          campaignId={savedRecord.campaign.id}
+          campaignName={plan.businessName || `${plan.market} ${intentLabel} Campaign`}
+          initialPublish={savedRecord.publish}
+          compact
+        />
+      ) : null}
       <Card className="p-5 sm:p-7">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
