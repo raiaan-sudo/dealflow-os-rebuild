@@ -41,7 +41,7 @@ export default async function BuildCreativesPage({
       : null;
 
   if (!campaignId) {
-    redirect("/onboarding");
+    redirect("/builder");
   }
 
   const activeCampaign = await resolveActiveCampaignRecord(campaignId).catch(() => null);
@@ -68,11 +68,11 @@ export default async function BuildCreativesPage({
   }
 
   if (missingArtifacts.length > 0) {
-    redirect("/onboarding");
+    redirect(`/builder?campaignId=${encodeURIComponent(campaignId)}`);
   }
 
   if (!record) {
-    redirect("/onboarding");
+    redirect("/builder");
   }
 
   const ensuredRecord = record;

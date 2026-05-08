@@ -58,13 +58,13 @@ export default async function PreviewPage({
   const selectedAdIds = await loadPersistedSelectedAdIds(resolvedCampaignId);
 
   if (!plan) {
-    redirect("/onboarding");
+    redirect("/builder");
   }
 
   const validated = validateCampaign({ plan });
 
   if (!validated) {
-    redirect(resolvedCampaignId ? `/onboarding?campaignId=${encodeURIComponent(resolvedCampaignId)}` : "/onboarding");
+    redirect(resolvedCampaignId ? `/builder?campaignId=${encodeURIComponent(resolvedCampaignId)}` : "/builder");
   }
 
   const safeCampaign = normalizeCampaign(validated);
@@ -74,7 +74,7 @@ export default async function PreviewPage({
   const campaignIdForFlow = record?.campaign.id ?? null;
 
   if (selectedAds.length === 0) {
-    redirect(campaignIdForFlow ? `/build/creatives?campaignId=${encodeURIComponent(campaignIdForFlow)}` : "/onboarding");
+    redirect(campaignIdForFlow ? `/build/creatives?campaignId=${encodeURIComponent(campaignIdForFlow)}` : "/builder");
   }
   await recordActivationEventForCurrentUser({
     eventName: "preview_generated_or_viewed",
@@ -211,8 +211,8 @@ export default async function PreviewPage({
 
       <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-between">
         <Button asChild size="lg" variant="secondary">
-          <Link href={campaignIdForFlow ? `/build/creatives?campaignId=${encodeURIComponent(campaignIdForFlow)}` : "/build/creatives"}>
-            Back
+          <Link href={campaignIdForFlow ? `/builder?campaignId=${encodeURIComponent(campaignIdForFlow)}` : "/builder"}>
+            Back to build
           </Link>
         </Button>
         <Button asChild size="lg">

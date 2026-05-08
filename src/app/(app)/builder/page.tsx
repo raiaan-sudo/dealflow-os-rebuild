@@ -184,9 +184,9 @@ function getBuilderNextAction(plan: CampaignPlan, campaignId: string, hasSelecte
   }
 
   return {
-    label: "Fix missing items",
+    label: "Continue campaign form",
     href: scoped("/builder?mode=edit"),
-    detail: "Complete the campaign details that are still missing.",
+    detail: "Continue the campaign form, then return here for the next step.",
   };
 }
 
@@ -269,7 +269,7 @@ function ActiveCampaignWorkspace({
               </div>
               <Button asChild variant="secondary">
                 <Link href={`/builder?campaignId=${encodeURIComponent(campaignId)}&mode=edit`}>
-                  Edit campaign
+                  Continue campaign form
                 </Link>
               </Button>
             </div>

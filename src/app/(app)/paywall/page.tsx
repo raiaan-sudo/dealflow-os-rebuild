@@ -15,6 +15,10 @@ import { recordActivationEventForCurrentUser } from "@/lib/services/activation-t
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 
+function buildHomeHref(campaignId: string | null) {
+  return campaignId ? `/builder?campaignId=${encodeURIComponent(campaignId)}` : "/onboarding";
+}
+
 function toPreviewCampaignMode(intent: string): PrepaywallCampaignPreviewDraft["campaignMode"] {
   if (intent === "seller" || intent === "investor" || intent === "commercial") {
     return intent;
@@ -82,6 +86,7 @@ export default async function PaywallPage({
 
   const hasServerPreview = Boolean(campaignId && persistedPreviewDraft);
   const checkoutCampaignId = hasServerPreview ? campaignId : null;
+  const backHref = buildHomeHref(checkoutCampaignId);
 
   return (
     <PageShell className="max-w-[1240px] gap-4 py-5">
@@ -151,7 +156,7 @@ export default async function PaywallPage({
                   <Link href="/onboarding">Start onboarding</Link>
                 </Button>
                 <Button asChild variant="secondary">
-                  <Link href="/onboarding">Back to onboarding</Link>
+                  <Link href="/builder">Back to build</Link>
                 </Button>
               </div>
             </Card>
@@ -167,8 +172,8 @@ export default async function PaywallPage({
 
       <div className="flex justify-end">
         <Button asChild variant="secondary">
-          <Link href={checkoutCampaignId ? `/onboarding?campaignId=${encodeURIComponent(checkoutCampaignId)}` : "/onboarding"}>
-            Back to onboarding
+          <Link href={backHref}>
+            Back to build
           </Link>
         </Button>
       </div>

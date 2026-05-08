@@ -256,13 +256,13 @@ function runOfflineChecks() {
   assertExcludes(prepaywallPreview, "/api/generate-funnel", "Pre-paywall funnel provider avoided", "preview component does not call paid funnel generation");
   assertExcludes(prepaywallPreview, "ALLOW_OPENAI_IMAGE_GENERATION", "Pre-paywall OpenAI provider avoided", "preview component does not reference paid OpenAI generation gates");
   assertExcludes(prepaywallPreview, "ALLOW_HEYGEN_VIDEO_GENERATION", "Pre-paywall HeyGen provider avoided", "preview component does not reference paid HeyGen generation gates");
-  assertIncludes(buildFunnelPage, "redirect(\"/onboarding\")", "Missing funnel route recovery", "missing funnel prerequisites send the user back to onboarding instead of a Build recovery page");
-  assertIncludes(buildCreativesPage, "redirect(\"/onboarding\")", "Missing creatives route recovery", "missing creative prerequisites send the user back to onboarding instead of a Build recovery page");
+  assertIncludes(buildFunnelPage, "redirect(campaignId ? `/builder", "Funnel route build-home redirect", "legacy funnel subroute sends users back to the Build workspace");
+  assertIncludes(buildCreativesPage, "redirect(`/builder?campaignId=", "Creatives recovery build-home redirect", "creative prerequisites send users back to the Build workspace instead of onboarding or recovery screens");
   assertIncludes(unlockPage, "redirect(creativesHref)", "Unlock creative handoff", "activated users continue into creative selection instead of dashboard or Meta setup");
-  assertIncludes(unlockPage, "redirect(campaignId ? `/onboarding", "Checkout cancel onboarding return", "cancelled checkout goes back to onboarding instead of an internal unlock status page");
-  assertIncludes(paywallPage, "Back to onboarding", "Paywall back path", "activation back controls return to the guided onboarding flow");
-  assertIncludes(previewPage, "redirect(\"/onboarding\")", "Preview missing state redirect", "review never becomes a second setup or missing-data workflow");
-  assertIncludes(previewPage, "redirect(campaignIdForFlow ? `/build/creatives", "Preview creative gate", "review sends users to post-activation creative selection when no test set is saved");
+  assertIncludes(unlockPage, "redirect(buildHref)", "Checkout cancel build return", "cancelled checkout goes back to the Build workspace instead of an internal unlock status page");
+  assertIncludes(paywallPage, "Back to build", "Paywall back path", "activation back controls return to the Build workspace when a campaign exists");
+  assertIncludes(previewPage, "redirect(\"/builder\")", "Preview missing state redirect", "review never becomes a second setup or missing-data workflow");
+  assertIncludes(previewPage, "Back to build", "Preview back path", "review back controls return to the Build workspace");
   assertIncludes(builderPage, "Choose creatives", "Builder post-activation next step", "active campaign workspace sends unselected campaigns to creative selection before review");
   assertExcludes(buildFunnelPage, "ArtifactRecoveryPanel", "Funnel technical recovery hidden", "agents do not see technical artifact recovery under Build");
   assertExcludes(buildCreativesPage, "ArtifactRecoveryPanel", "Creative technical recovery hidden", "agents do not see technical artifact recovery under Build");
@@ -270,7 +270,7 @@ function runOfflineChecks() {
   assertIncludes(buildCreativesPage, "max-w-[1500px]", "Creative build workspace width", "creative selection uses more of the desktop viewport");
   assertIncludes(creativeWizard, "Primary creative", "Creative wizard primary focus", "creative selection leads with one primary creative instead of repeated stacks");
   assertIncludes(creativeWizard, "Change selected creatives", "Creative queue collapsed", "the full creative queue is secondary by default");
-  assertIncludes(creativeWizard, "Back to onboarding", "Creative wizard onboarding return", "creative selection can return to onboarding instead of another build recovery step");
+  assertIncludes(creativeWizard, "Back to build", "Creative wizard build return", "creative selection returns to the Build workspace instead of another setup flow");
   assertIncludes("src/lib/services/funnel-engine.ts", "cleanMarketingCopy", "Funnel copy sanitizer", "funnel copy removes awkward repeated market and spacing artifacts");
   assertIncludes("src/lib/services/funnel-engine.ts", "trimWords(cleanMarketingCopy(headline), 14)", "Funnel headline length guard", "funnel headlines are capped instead of over-concatenating onboarding fields");
   assertIncludes("src/lib/services/funnel-engine.ts", "conciseOfferPhrase", "Funnel offer shaping", "offer and lead magnet shape funnel copy without being dumped raw into the headline");
@@ -489,7 +489,7 @@ function runOfflineChecks() {
   assertIncludes(paywallPage, "launchOverride={billing?.launchOverride === true}", "Paywall override handoff", "billing override state is passed into the paywall CTA");
   assertIncludes("src/components/billing/paywall-plan-selector.tsx", "Continue with billing override", "Paywall override CTA", "billing override users continue inside the app instead of opening Stripe checkout");
   assertIncludes(unlockPage, "Checkout cancelled", "Unlock cancelled state", "Stripe cancel returns to a clear cancellation state instead of an access-active page");
-  assertIncludes(unlockPage, "Return to activation", "Unlock cancelled CTA", "cancelled checkout sends the user back to activation instead of dashboard by default");
+  assertIncludes(unlockPage, "Back to build", "Unlock cancelled CTA", "cancelled checkout sends the user back to Build instead of dashboard by default");
   assertIncludes(unlockPage, "Billing override active", "Unlock override state", "billing override bypass has its own success state");
   assertIncludes(billingService, "apply_billing_subscription_webhook", "Stripe webhook ordering guard", "subscription sync uses DB-backed stale event protection");
   assertIncludes(billingService, "stripe_subscription_stale_event_ignored", "Stripe stale event observability", "out-of-order subscription events are logged and ignored");

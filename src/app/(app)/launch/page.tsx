@@ -363,19 +363,19 @@ export default async function LaunchAliasPage({
           description="Choose an ad in creatives before launch can continue."
         />
         <EmptyState
-          title="No selected creative is saved for this campaign"
-          description="Launch is blocked until a persisted creative test set exists. Go back to creatives and choose the ads you want to test."
+          title="Choose the creative test set first"
+          description="Your build workspace will send you to the next campaign step."
         />
         <div>
           <Button asChild>
             <Link
               href={
                 savedRecord?.campaign.id
-                  ? `/build/creatives?campaignId=${encodeURIComponent(savedRecord.campaign.id)}`
-                  : "/build/creatives"
+                  ? `/builder?campaignId=${encodeURIComponent(savedRecord.campaign.id)}`
+                  : "/builder"
               }
             >
-              Back to Creatives
+              Back to build
             </Link>
           </Button>
         </div>

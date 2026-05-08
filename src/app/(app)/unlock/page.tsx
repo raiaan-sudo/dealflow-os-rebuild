@@ -41,9 +41,12 @@ export default async function UnlockPage({
       : "/dashboard";
   const launchHref = campaignId ? `/launch?campaignId=${encodeURIComponent(campaignId)}` : "/launch";
   const paywallHref = `/paywall${campaignId ? `?campaignId=${encodeURIComponent(campaignId)}${plan ? `&plan=${encodeURIComponent(plan)}` : ""}` : plan ? `?plan=${encodeURIComponent(plan)}` : ""}`;
+  const buildHref = campaignId
+    ? `/builder?campaignId=${encodeURIComponent(campaignId)}`
+    : "/builder";
   const creativesHref = campaignId
     ? `/build/creatives?campaignId=${encodeURIComponent(campaignId)}`
-    : "/onboarding";
+    : buildHref;
   const title = checkoutCancelled
     ? "Checkout cancelled"
     : checkoutOverride
@@ -76,7 +79,7 @@ export default async function UnlockPage({
   }
 
   if (checkoutCancelled) {
-    redirect(campaignId ? `/onboarding?campaignId=${encodeURIComponent(campaignId)}` : "/onboarding");
+    redirect(buildHref);
   }
 
   if ((checkoutOverride || launchAllowed) && !reconciliationError) {
@@ -119,7 +122,7 @@ export default async function UnlockPage({
                 <Link href={paywallHref}>Return to activation</Link>
               </Button>
               <Button asChild variant="secondary">
-                <Link href="/onboarding">Back to onboarding</Link>
+                <Link href={buildHref}>Back to build</Link>
               </Button>
             </>
           ) : (
@@ -128,7 +131,7 @@ export default async function UnlockPage({
                 <Link href={creativesHref}>Choose creatives</Link>
               </Button>
               <Button asChild variant="secondary">
-                <Link href={paywallHref}>Return to activation</Link>
+                <Link href={buildHref}>Back to build</Link>
               </Button>
             </>
           )}

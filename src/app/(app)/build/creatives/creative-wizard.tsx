@@ -49,6 +49,7 @@ type CreativeWizardProps = {
 
 export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
   const router = useRouter();
+  const buildHref = `/builder?campaignId=${encodeURIComponent(campaignId)}`;
   const rankedCreatives = useMemo(
     () => [...creatives].sort((left, right) => (right.score ?? 0) - (left.score ?? 0)),
     [creatives],
@@ -219,8 +220,8 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
           <div className="mt-auto rounded-2xl border border-white/10 bg-black/18 p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
               <Button asChild type="button" variant="secondary">
-                <Link href={`/onboarding`}>
-                  Back to onboarding
+                <Link href={buildHref}>
+                  Back to build
                 </Link>
               </Button>
               <Button onClick={() => void handleNext()} type="button" disabled={saving || !canContinue}>
@@ -315,4 +316,4 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
       </details>
     </div>
   );
-}
+  }
