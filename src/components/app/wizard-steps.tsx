@@ -18,8 +18,8 @@ export function WizardSteps({ current }: WizardStepsProps) {
   const currentIndex = STEPS.findIndex((step) => step.key === current);
 
   return (
-    <div className="surface-subtle rounded-df-card border border-white/8 p-4 backdrop-blur-xl">
-      <div className="grid gap-3 md:grid-cols-5">
+    <div className="surface-subtle rounded-df-card border border-white/8 p-3 backdrop-blur-xl">
+      <div className="grid gap-2 md:grid-cols-5">
         {STEPS.map((step, index) => {
           const isCurrent = step.key === current;
           const isComplete = index < currentIndex;
@@ -28,7 +28,7 @@ export function WizardSteps({ current }: WizardStepsProps) {
             <div
               key={step.key}
               className={cn(
-                "rounded-2xl border px-4 py-3 transition duration-200",
+                "min-w-0 rounded-xl border px-3 py-2.5 transition duration-200",
                 isCurrent
                   ? "border-cyan-200/25 bg-[radial-gradient(circle_at_top,rgba(103,232,249,0.16),transparent_70%),rgba(116,199,255,0.08)] shadow-[0_16px_38px_-28px_rgba(103,232,249,0.6)]"
                   : isComplete
@@ -36,12 +36,12 @@ export function WizardSteps({ current }: WizardStepsProps) {
                     : "border-white/8 bg-black/10",
               )}
             >
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              <p className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                 {step.label}
               </p>
               <p
                 className={cn(
-                  "mt-2 text-sm font-semibold",
+                  "mt-1 truncate text-sm font-semibold",
                   isCurrent ? "text-primary" : "text-foreground",
                 )}
               >

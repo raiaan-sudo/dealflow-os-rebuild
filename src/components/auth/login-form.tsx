@@ -81,6 +81,7 @@ export function LoginForm({
     try {
       const nextPath = getSafeRedirectPath(redirectedFrom);
       const redirectTo = new URL(nextPath, window.location.origin);
+      redirectTo.searchParams.set("next", nextPath);
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: {

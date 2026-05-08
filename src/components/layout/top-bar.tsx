@@ -22,27 +22,27 @@ export function TopBar({ userName, userEmail, organizationName }: TopBarProps) {
 
   return (
     <header className="sticky top-0 z-30 border-b border-white/6 bg-[linear-gradient(180deg,rgba(6,10,16,0.9),rgba(6,10,16,0.62))] backdrop-blur-2xl">
-      <div className="flex w-full items-center justify-between gap-4 px-4 py-3 lg:px-5">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="min-w-0 max-w-[280px]">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+      <div className="flex w-full min-w-0 items-center justify-between gap-3 px-4 py-2.5 lg:px-4">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="min-w-0 max-w-[240px]">
+            <p className="truncate text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
               {organizationName}
             </p>
-            <p className="mt-1 truncate text-sm text-white/72">
+            <p className="mt-0.5 truncate text-sm text-white/72">
               Campaign workspace
             </p>
           </div>
         </div>
 
         <div className="hidden min-w-0 flex-1 items-center justify-center xl:flex">
-          <div className="w-full max-w-[400px]">
+          <div className="w-full max-w-[360px]">
             <SystemStatus />
           </div>
         </div>
 
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="hidden min-w-0 max-w-[320px] items-center gap-3 rounded-[20px] border border-white/8 bg-white/[0.04] px-3 py-1.5 lg:flex">
-            <div className="flex size-9 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-sm font-semibold text-primary shadow-[0_0_22px_rgba(116,199,255,0.18)]">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="hidden min-w-0 max-w-[280px] items-center gap-2.5 rounded-xl border border-white/8 bg-white/[0.04] px-2.5 py-1.5 lg:flex">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-xs font-semibold text-primary shadow-[0_0_18px_rgba(116,199,255,0.16)]">
               {getInitials(userName)}
             </div>
             <div className="min-w-0 text-right">
@@ -53,7 +53,7 @@ export function TopBar({ userName, userEmail, organizationName }: TopBarProps) {
 
           <Link
             href="/settings"
-            className="flex size-10 items-center justify-center rounded-[16px] border border-white/8 bg-white/[0.04] text-muted-foreground transition hover:border-primary/20 hover:bg-primary/[0.08] hover:text-foreground"
+            className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/8 bg-white/[0.04] text-muted-foreground transition hover:border-primary/20 hover:bg-primary/[0.08] hover:text-foreground"
           >
             <Settings className="size-4" />
           </Link>
@@ -62,7 +62,7 @@ export function TopBar({ userName, userEmail, organizationName }: TopBarProps) {
       </div>
       <nav
         aria-label="Primary mobile navigation"
-        className="flex gap-2 overflow-x-auto border-t border-white/6 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground lg:hidden"
+        className="flex min-w-0 gap-1.5 overflow-x-auto border-t border-white/6 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground lg:hidden"
       >
         {[
           { href: "/builder", label: "Build" },
@@ -81,8 +81,8 @@ export function TopBar({ userName, userEmail, organizationName }: TopBarProps) {
               href={item.href}
               className={
                 active
-                  ? "shrink-0 rounded-full border border-primary/25 bg-primary/12 px-3 py-2 text-primary"
-                  : "shrink-0 rounded-full border border-white/8 bg-white/[0.03] px-3 py-2"
+                  ? "shrink-0 rounded-full border border-primary/25 bg-primary/12 px-2.5 py-1.5 text-primary"
+                  : "shrink-0 rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1.5"
               }
             >
               {item.label}

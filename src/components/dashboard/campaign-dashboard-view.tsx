@@ -544,11 +544,6 @@ export function CampaignDashboardView({
     displayedSpend > 0 ||
     Number(liveMetrics?.impressions ?? 0) > 0 ||
     Number(liveMetrics?.clicks ?? 0) > 0;
-  const headlineMetrics = [
-    { label: "Leads", value: String(displayedLeads) },
-    { label: "Estimated CPL", value: displayedLeads > 0 ? currency(displayedCpl) : "Waiting for data" },
-    { label: "Spend", value: displayedSpend > 0 ? currency(displayedSpend) : "Waiting for data" },
-  ];
   const firstWeekLastVerifiedText = firstWeekSuccess?.lastVerifiedAt
     ? formatDateTime(firstWeekSuccess.lastVerifiedAt)
     : "Not verified yet";
@@ -561,10 +556,94 @@ export function CampaignDashboardView({
       : launchState === "live"
         ? "border-amber-400/20 bg-amber-400/10"
         : "border-white/8 bg-white/[0.03]";
+  const primaryNextAction =
+    valueReport?.nextAction ??
+    firstWeekSuccess?.nextAction ??
+    highlightedRecommendations[0]?.description ??
+    nextActions[0] ??
+    "Monitor the campaign.";
+  const primaryStatusDescription =
+    dataSourceState === "disconnected"
+      ? "Connect Meta before live results can be reported."
+      : launchState !== "live"
+        ? "Launch the campaign to begin collecting delivery data."
+        : hasMetricData
+          ? "Live results are available from synced delivery data."
+          : "Delivery is collecting; raw sync and activity details are below.";
+  const headlineMetrics = [
+    { label: "Leads", value: String(displayedLeads) },
+    { label: "Estimated CPL", value: displayedLeads > 0 ? currency(displayedCpl) : "Waiting for data" },
+    { label: "Spend", value: displayedSpend > 0 ? currency(displayedSpend) : "Waiting for data" },
+  ];
+  const guidedStatusItems = [
+    {
+      label: "Campaign status",
+      value: plan.runtime.status || statusText,
+      detail: launchRecord?.resultStatus || plan.runtime.metaPushStatus || "Not launched",
+    },
+    {
+      label: "Meta connection",
+      value: metaConnection.hasAccessToken ? "Connected" : "Not connected",
+      detail: metaConnection.accountName || "Account not selected",
+    },
+    {
+      label: "Spend",
+      value: displayedSpend > 0 ? currency(displayedSpend) : "No spend yet",
+      detail: hasLivePerformance ? "Synced from Meta" : "Saved workspace total",
+    },
+    {
+      label: "Leads",
+      value: String(displayedLeads),
+      detail: `${displayedAppointments} appointments`,
+    },
+    {
+      label: "CPL",
+      value: displayedLeads > 0 ? currency(displayedCpl) : "Pending",
+      detail: displayedLeads > 0 ? "Based on current spend" : "Waiting for first lead",
+    },
+    {
+      label: "Next action",
+      value: primaryNextAction,
+      detail: optimizerResult.status,
+    },
+  ];
 
   return (
     <div className="space-y-5 text-[15px]">
-      <p className="text-sm font-medium text-muted-foreground">{statusText}</p>
+      <Card className="rounded-[24px] p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Results dashboard</p>
+            <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{statusText}</h3>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
+              {primaryStatusDescription}
+            </p>
+          </div>
+          <MetaSyncRefreshButton campaignId={plan.id ?? null} />
+        </div>
+        <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {guidedStatusItems.map((item) => (
+            <div key={item.label} className="rounded-[18px] border border-white/8 bg-white/[0.03] p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{item.label}</p>
+              <p className="mt-3 break-words text-xl font-semibold tracking-[-0.03em] text-foreground">
+                {item.value}
+              </p>
+              <p className="mt-2 break-words text-xs leading-5 text-muted-foreground">{item.detail}</p>
+            </div>
+          ))}
+        </div>
+        {!hasMetricData ? (
+          <p className="mt-4 rounded-[18px] border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            Waiting for enough delivery data to calculate performance.
+          </p>
+        ) : null}
+      </Card>
+
+      <details className="rounded-[24px] border border-white/8 bg-card p-5">
+        <summary className="cursor-pointer text-sm font-semibold text-foreground">
+          Raw details and activity
+        </summary>
+        <div className="mt-5 space-y-5">
 
       {valueReport ? (
         <Card className="rounded-[24px] p-6">
@@ -1278,6 +1357,8 @@ export function CampaignDashboardView({
           </div>
         </Card>
       </div>
+        </div>
+      </details>
     </div>
   );
 }

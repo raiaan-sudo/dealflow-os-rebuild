@@ -17,14 +17,16 @@ type AppSidebarProps = {
 
 export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps) {
   const pathname = usePathname();
-  const stageLabel =
-    stage === "draft" || stage === "built" || stage === "paywall"
-      ? "Build"
-      : stage === "preview"
-        ? "Review"
-        : stage === "launch_ready" || stage === "launching"
-          ? "Go Live"
-          : "Results";
+  const stageState: Record<CampaignExperienceStage, { label: string; copy: string }> = {
+    draft: { label: "Build", copy: "Complete setup and generate the campaign." },
+    built: { label: "Build", copy: "Tune the campaign, then review the preview." },
+    paywall: { label: "Build", copy: "Unlock the campaign to continue review." },
+    preview: { label: "Review", copy: "Check the preview and confirm launch details." },
+    launch_ready: { label: "Go Live", copy: "Connect launch settings and start when ready." },
+    launching: { label: "Go Live", copy: "Launch is in progress. Watch for confirmation." },
+    live: { label: "Results", copy: "Track results and optimize the live campaign." },
+  };
+  const stageLabel = stageState[stage].label;
   const productNavigation = [
     { href: "/builder", label: "Build", icon: Wand2 },
     { href: "/preview", label: "Review", icon: Eye },
@@ -33,24 +35,24 @@ export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps
   ];
 
   return (
-    <aside className="hidden h-screen w-[232px] shrink-0 lg:flex xl:w-[244px]">
-      <div className="flex h-full w-full flex-col border-r border-white/6 bg-[linear-gradient(180deg,rgba(5,8,14,0.92),rgba(6,10,17,0.72))] px-3.5 py-4 backdrop-blur-2xl">
-        <div className="surface-strong rounded-[22px] px-3.5 py-3.5">
-          <div className="flex items-center gap-3">
+    <aside className="hidden h-screen w-[216px] shrink-0 lg:flex xl:w-[228px]">
+      <div className="flex h-full w-full flex-col overflow-hidden border-r border-white/6 bg-[linear-gradient(180deg,rgba(5,8,14,0.92),rgba(6,10,17,0.72))] px-3 py-3.5 backdrop-blur-2xl">
+        <div className="surface-strong rounded-[18px] px-3 py-3">
+          <div className="flex items-center gap-2.5">
             <Logo size="small" iconOnly priority className="shrink-0" />
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold tracking-[-0.02em]">DealFlow AI</p>
-              <p className="mt-1 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+              <p className="mt-0.5 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
                 {stageLabel}
               </p>
             </div>
           </div>
-          <div className="mt-3 rounded-2xl border border-white/8 bg-black/20 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(188,236,255,0.08)]">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+          <div className="mt-2.5 rounded-xl border border-white/8 bg-black/20 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(188,236,255,0.08)]">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
               Workspace
             </p>
-            <div className="mt-2 space-y-2">
-              <p className="min-w-0 truncate text-sm font-medium leading-6" title={organizationName}>
+            <div className="mt-1.5 space-y-1.5">
+              <p className="min-w-0 truncate text-sm font-medium leading-5" title={organizationName}>
                 {organizationName}
               </p>
               <Badge className="w-fit shrink-0 border-primary/20 bg-primary/10 text-primary">AI live</Badge>
@@ -58,11 +60,11 @@ export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps
           </div>
         </div>
 
-        <div className="mt-6">
-          <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+        <div className="mt-5 min-w-0">
+          <p className="px-2.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
             Product
           </p>
-          <nav className="mt-3 space-y-1.5">
+          <nav className="mt-2 space-y-1">
             {productNavigation.map((item) => {
               const isActive =
                 item.href === "/builder"
@@ -78,7 +80,7 @@ export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps
                 <Link
                   key={item.href}
                   className={cn(
-                    "group flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm transition",
+                    "group flex min-w-0 items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm transition",
                     isActive
                       ? "surface-strong border border-primary/15 text-foreground shadow-[0_18px_48px_-34px_rgba(108,184,255,0.45)]"
                       : "border border-transparent text-muted-foreground hover:border-primary/10 hover:bg-primary/[0.04] hover:text-foreground",
@@ -87,7 +89,7 @@ export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps
                 >
                   <div
                     className={cn(
-                      "flex size-8.5 items-center justify-center rounded-xl border text-muted-foreground transition",
+                      "flex size-8 shrink-0 items-center justify-center rounded-lg border text-muted-foreground transition",
                       isActive
                         ? "border-primary/25 bg-primary/12 text-primary"
                         : "border-white/8 bg-white/[0.03] group-hover:border-white/12 group-hover:text-foreground",
@@ -95,10 +97,10 @@ export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps
                   >
                     <Icon className="size-4" />
                   </div>
-                  <span className="flex-1 font-medium">{item.label}</span>
+                  <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
                   <ChevronRight
                     className={cn(
-                      "size-4 transition",
+                      "size-4 shrink-0 transition",
                       isActive ? "text-primary" : "text-transparent group-hover:text-muted-foreground",
                     )}
                   />
@@ -109,11 +111,11 @@ export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps
         </div>
 
         {isAdmin ? (
-          <div className="mt-6">
-            <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+          <div className="mt-5 min-w-0">
+            <p className="px-2.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
               Internal
             </p>
-            <nav className="mt-3 space-y-1.5">
+            <nav className="mt-2 space-y-1">
               {adminNavigation.map((item) => {
                 const isActive = pathname.startsWith(item.href);
                 const Icon = item.icon;
@@ -122,7 +124,7 @@ export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps
                   <Link
                     key={item.href}
                     className={cn(
-                      "group flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm transition",
+                      "group flex min-w-0 items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm transition",
                       isActive
                         ? "surface-strong border border-white/10 text-foreground"
                         : "border border-transparent text-muted-foreground hover:border-white/8 hover:bg-white/[0.04] hover:text-foreground",
@@ -131,7 +133,7 @@ export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps
                   >
                     <div
                       className={cn(
-                        "flex size-8.5 items-center justify-center rounded-xl border transition",
+                        "flex size-8 shrink-0 items-center justify-center rounded-lg border transition",
                         isActive
                           ? "border-primary/25 bg-primary/12 text-primary"
                           : "border-white/8 bg-white/[0.03] text-muted-foreground",
@@ -139,7 +141,7 @@ export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps
                     >
                       <Icon className="size-4" />
                     </div>
-                    <span className="flex-1 font-medium">{item.label}</span>
+                    <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
                   </Link>
                 );
               })}
@@ -147,18 +149,18 @@ export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps
           </div>
         ) : null}
 
-        <div className="surface-subtle mt-auto rounded-[22px] p-3.5">
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-2xl bg-white/[0.05]">
+        <div className="surface-subtle mt-auto rounded-[18px] p-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.05]">
               <PanelLeft className="size-4 text-primary" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-semibold">Next step</p>
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{stageLabel}</p>
+              <p className="truncate text-[10px] uppercase tracking-[0.16em] text-muted-foreground">{stageLabel}</p>
             </div>
           </div>
-          <p className="mt-3 text-sm leading-6 text-white/66">
-            Stay on one path. Build the campaign, review it, launch it, then watch the results.
+          <p className="mt-2.5 text-sm leading-5 text-white/66">
+            {stageState[stage].copy}
           </p>
         </div>
       </div>

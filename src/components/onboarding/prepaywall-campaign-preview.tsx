@@ -454,7 +454,7 @@ export function PrepaywallCampaignPreview({
     return (
       <Card
         data-testid="prepaywall-campaign-preview"
-        className={cn("grid h-fit min-w-0 overflow-x-hidden p-4", className)}
+        className={cn("grid h-fit min-w-0 overflow-x-hidden overflow-y-auto p-4 lg:max-h-[600px]", className)}
       >
         <div className="grid gap-3">
           <div className="flex min-w-0 items-start justify-between gap-3">
@@ -464,7 +464,7 @@ export function PrepaywallCampaignPreview({
                 {content.headline}
               </h3>
               <p className="mt-1 line-clamp-1 text-sm text-white/56">
-                {content.cta} is the preview action. Full generation unlocks after checkout and credits.
+                Sample CTA: {content.cta}. Full generation unlocks after checkout and credits.
               </p>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-2">
@@ -473,7 +473,7 @@ export function PrepaywallCampaignPreview({
             </div>
           </div>
 
-          <div className="grid min-w-0 gap-3 2xl:grid-cols-[minmax(190px,0.85fr)_minmax(260px,1.15fr)]">
+          <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(230px,0.95fr)_minmax(280px,1.05fr)]">
             <MockAdPreview content={content} draft={safeDraft} compact />
 
             <div className="grid min-w-0 content-start gap-3">
@@ -509,8 +509,8 @@ export function PrepaywallCampaignPreview({
 
             <div className="grid gap-2 sm:grid-cols-4">
               <CompactLockedPill icon={ImageIcon} label="Static locked" />
-              <CompactLockedPill icon={Sparkles} label="AI image locked" />
-              <CompactLockedPill icon={PlayCircle} label="UGC locked" />
+              <CompactLockedPill icon={Sparkles} label="AI image generation locked" />
+              <CompactLockedPill icon={PlayCircle} label="HeyGen UGC video locked" />
               <CompactLockedPill icon={MonitorSmartphone} label="Export locked" />
             </div>
 
@@ -542,7 +542,7 @@ export function PrepaywallCampaignPreview({
             {content.headline}
           </h3>
           <p className={cn("mt-2 text-sm text-white/58", sidecarMode ? "line-clamp-2 leading-5" : "leading-6")}>
-            {content.cta} is the preview action. Full generation unlocks after checkout and credits.
+            Sample CTA: {content.cta}. Full generation unlocks after checkout and credits.
           </p>
         </div>
         <Badge className="border-cyan-200/20 bg-cyan-300/[0.055] text-cyan-100">Watermarked</Badge>

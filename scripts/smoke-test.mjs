@@ -101,6 +101,7 @@ function runOfflineChecks() {
   const leadRoute = "src/app/api/lead-capture/route.ts";
   const leadForm = "src/app/f/[slug]/lead-capture-form.tsx";
   const dashboardPage = "src/app/(app)/dashboard/page.tsx";
+  const builderPage = "src/app/(app)/builder/page.tsx";
   const appLayout = "src/app/(app)/layout.tsx";
   const settingsPage = "src/app/(app)/settings/page.tsx";
   const resultsPage = "src/app/results/page.tsx";
@@ -258,7 +259,14 @@ function runOfflineChecks() {
   assertIncludes(staticCreativePreviewCard, "StaticCreativeSummaryCard", "Compact creative summary card", "selected creative lists use dense summary cards instead of tall repeated full previews");
   assertIncludes(previewPage, "StaticCreativeSummaryCard", "Preview compact creative set", "preview page uses compact selected creative summaries");
   assertIncludes(launchPage, "StaticCreativeSummaryCard", "Launch compact creative set", "launch page uses compact selected creative summaries");
+  assertIncludes(builderPage, "Active campaign workspace", "Builder active campaign shell", "builder defaults to the active campaign workspace when a campaign exists");
+  assertIncludes(builderPage, "You have 1 active campaign", "Builder active campaign count copy", "builder tells Starter users there is one active guided campaign");
+  assertIncludes(builderPage, "mode=edit", "Builder edit gate", "full campaign editing is explicit instead of the default existing-campaign view");
+  assertIncludes(builderPage, "new=1", "Builder secondary new campaign action", "launching another campaign is secondary and explicit");
+  assertIncludes(billingPlans, "includedActiveCampaigns: 1", "Starter campaign limit", "Starter defaults to one active guided campaign");
+  assertIncludes(billingPlans, "includedActiveCampaigns: 3", "Pro campaign limit", "Pro exposes additional active campaign slots");
   assertIncludes(dashboardPage, "loadDashboardStateForCampaign", "Dashboard real route", "dashboard loads real campaign state instead of the old plan comparison demo");
+  assertIncludes(dashboardPage, "CampaignDashboardView", "Dashboard guided results shell", "dashboard renders the compact guided results view");
   assertExcludes(dashboardPage, "PlanAwareResultsPreview", "Dashboard demo route removed", "dashboard no longer serves the old layout behavior comparison variant");
   assertIncludes(resultsPage, "/dashboard", "Results canonical redirect", "legacy /results routes redirect into the real dashboard path");
   assertExcludes(resultsPage, "plan=starter", "Results plan demo redirect removed", "legacy results route no longer opens the plan comparison demo");

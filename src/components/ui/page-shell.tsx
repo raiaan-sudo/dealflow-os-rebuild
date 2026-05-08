@@ -6,7 +6,7 @@ export function PageShell({
   ...props
 }: React.ComponentProps<"div">) {
   return (
-    <div className={cn("df-container df-page-stack min-w-0", className)} {...props}>
+    <div className={cn("df-container df-page-stack min-w-0 overflow-x-clip", className)} {...props}>
       {children}
     </div>
   );
@@ -18,7 +18,7 @@ export function SectionContainer({
   ...props
 }: React.ComponentProps<"section">) {
   return (
-    <section className={cn("df-page-stack", className)} {...props}>
+    <section className={cn("df-page-stack min-w-0 overflow-x-clip", className)} {...props}>
       {children}
     </section>
   );
