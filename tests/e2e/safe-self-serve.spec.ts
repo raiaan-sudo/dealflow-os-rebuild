@@ -110,7 +110,7 @@ test.describe("safe authenticated self-serve journey", () => {
     await expect(page.getByRole("heading", { name: /Step-by-step campaign builder/i })).toBeVisible();
     await expect(page.getByText("Choose campaign type")).toBeVisible();
     await expect(page.getByText("Campaign preview")).toBeVisible();
-    await expect(page.getByText("DealFlow Preview")).toBeVisible();
+    await expect(page.getByText("Ad preview")).toBeVisible();
     await expect(page.getByText("Funnel assembling")).toBeVisible();
     await expect(page.getByText("Full generation unlocks after checkout and credits")).toBeVisible();
     await expect(page.getByText("Offer coach")).toHaveCount(0);

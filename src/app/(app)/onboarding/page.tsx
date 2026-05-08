@@ -780,7 +780,7 @@ export default function OnboardingPage() {
       <StepProgress currentStep={currentStep} furthestStepIndex={furthestStepIndex} onSelect={goToStep} />
 
       <div className="grid min-w-0 items-stretch gap-3 xl:grid-cols-[minmax(0,0.95fr)_minmax(390px,0.72fr)]">
-        <Card className="min-w-0 p-4" data-testid="onboarding-current-step-panel">
+        <Card className="h-full min-w-0 p-4" data-testid="onboarding-current-step-panel">
           <div className="flex items-start gap-4">
             <IconTile icon={Target} tone="cyan" />
             <div>
@@ -1005,7 +1005,7 @@ export default function OnboardingPage() {
                   </div>
                 </div>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
                 {[
                   ["Agent", [draft.agentFirstName, draft.agentLastName].filter(Boolean).join(" ")],
                   ["Campaign mode", modeCopy.title],
@@ -1016,7 +1016,7 @@ export default function OnboardingPage() {
                   ["Offer", normalizedDraft.offer],
                   ["Behavior", getPlanPresentation(draft.planTier).positioning],
                 ].map(([label, value]) => (
-                  <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                  <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
                     <p className="text-xs text-white/48">{label}</p>
                     <p className="mt-1 text-sm font-semibold text-white/86">{value}</p>
                   </div>
@@ -1058,7 +1058,6 @@ export default function OnboardingPage() {
         </Card>
 
         <PrepaywallCampaignPreview
-          className={currentStep === "review" ? "xl:max-h-[560px] xl:overflow-y-auto" : ""}
           density="sidecar"
           draft={normalizedDraft}
           variant={currentStep === "review" ? "package" : "compact"}

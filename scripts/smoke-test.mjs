@@ -218,8 +218,8 @@ function runOfflineChecks() {
   assertIncludes(prepaywallPreview, "DealFlow Preview", "Pre-paywall creative watermark", "mock creative frames are visibly watermarked as previews");
   assertIncludes(prepaywallPreview, "Full generation unlocks after checkout and credits", "Pre-paywall generation lock copy", "final generation is clearly locked until checkout and credits");
   assertIncludes(prepaywallPreview, "Funnel assembling", "Pre-paywall funnel preview", "onboarding includes a deterministic funnel preview shell");
-  assertIncludes(prepaywallPreview, "lg:max-h-[600px]", "Pre-paywall compact height bound", "normal onboarding preview has a desktop height boundary no larger than 600px");
-  assertIncludes(prepaywallPreview, "overflow-y-auto", "Pre-paywall compact internal scroll", "bounded onboarding preview scrolls internally instead of clipping safety content");
+  assertIncludes(prepaywallPreview, "grid h-full min-w-0 overflow-hidden p-4", "Pre-paywall compact height bound", "normal onboarding preview stretches with the step panel instead of creating an embedded scroll area");
+  assertExcludes(prepaywallPreview, "lg:max-h-[600px]", "Pre-paywall embedded scroll removed", "onboarding preview no longer uses a fixed-height internal scroll container");
   assertIncludes(prepaywallPreview, "lg:grid-cols-[minmax(230px,0.95fr)_minmax(280px,1.05fr)]", "Pre-paywall compact grid", "normal onboarding preview uses a balanced compact console grid instead of a single tall stack");
   assertIncludes(prepaywallPreview, "aspect-[16/9]", "Pre-paywall compact ad geometry", "normal onboarding uses a landscape ad mockup instead of a tall portrait frame");
   assertIncludes(prepaywallPreview, "xl:grid-cols-[minmax(260px,0.92fr)_minmax(0,1.08fr)]", "Pre-paywall package grid", "review/paywall package preview uses a wider balanced grid");

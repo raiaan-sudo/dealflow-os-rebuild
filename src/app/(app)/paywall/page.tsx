@@ -157,7 +157,6 @@ export default async function PaywallPage({
           ) : null}
 
           <PrepaywallCampaignPreviewFromStorage
-            className="xl:max-h-[640px] xl:overflow-y-auto"
             campaignId={campaignId}
             selectedPlanTier={selectedPreviewPlanTier}
             fallbackDraft={persistedPreviewDraft}

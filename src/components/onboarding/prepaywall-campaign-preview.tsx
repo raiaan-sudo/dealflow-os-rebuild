@@ -341,8 +341,13 @@ function MockAdPreview({
       onContextMenu={(event) => event.preventDefault()}
     >
       <div className="pointer-events-none absolute inset-0 select-none bg-[linear-gradient(120deg,transparent_0%,rgba(255,255,255,0.06)_42%,transparent_74%)]" />
-      <div className="pointer-events-none absolute right-3 top-3 rounded-full border border-white/10 bg-black/35 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-white/58">
-        DealFlow Preview
+      <div className={cn(
+        "pointer-events-none absolute rounded-full border border-white/10 bg-black/35 font-black uppercase text-white/58",
+        compact
+          ? "left-3 top-3 px-2 py-0.5 text-[8px] tracking-[0.12em]"
+          : "right-3 top-3 px-2.5 py-1 text-[9px] tracking-[0.16em]",
+      )}>
+        {compact ? "Ad preview" : "DealFlow Preview"}
       </div>
 
       <div className={cn(
@@ -418,19 +423,26 @@ function FunnelPreviewMock({
           {!compact ? <PreviewChip>{draft.priceRange || "Range"}</PreviewChip> : null}
         </div>
 
-        <div className={cn("mt-3 rounded-[18px] border border-white/10 bg-white/[0.035]", compact ? "p-2.5" : "p-4")}>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/44">Lead form preview</p>
-          <div className={cn("mt-3 grid gap-2", compact ? "grid-cols-2" : "")}>
-            {(compact ? ["Name", "Phone"] : ["Name", "Email", "Phone", "Timeline"]).map((field) => (
-              <div key={field} className="rounded-xl border border-white/10 bg-black/18 px-3 py-2 text-xs text-white/46">
-                {field}
-              </div>
-            ))}
+        {compact ? (
+          <div className="mt-3 flex min-w-0 items-center gap-2 rounded-[18px] border border-white/10 bg-white/[0.035] px-3 py-2 text-xs text-white/58">
+            <span className="shrink-0 font-semibold uppercase tracking-[0.14em] text-white/44">Lead form</span>
+            <span className="min-w-0 truncate">Name · Phone · {content.cta}</span>
           </div>
-          <div className="mt-3 truncate rounded-full bg-white px-4 py-2 text-center text-xs font-black text-slate-950">
-            {content.cta}
+        ) : (
+          <div className="mt-3 rounded-[18px] border border-white/10 bg-white/[0.035] p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/44">Lead form preview</p>
+            <div className="mt-3 grid gap-2">
+              {["Name", "Email", "Phone", "Timeline"].map((field) => (
+                <div key={field} className="rounded-xl border border-white/10 bg-black/18 px-3 py-2 text-xs text-white/46">
+                  {field}
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 truncate rounded-full bg-white px-4 py-2 text-center text-xs font-black text-slate-950">
+              {content.cta}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -454,7 +466,7 @@ export function PrepaywallCampaignPreview({
     return (
       <Card
         data-testid="prepaywall-campaign-preview"
-        className={cn("grid h-fit min-w-0 overflow-x-hidden overflow-y-auto p-4 lg:max-h-[600px]", className)}
+        className={cn("grid h-full min-w-0 overflow-hidden p-4", className)}
       >
         <div className="grid gap-3">
           <div className="flex min-w-0 items-start justify-between gap-3">
@@ -550,23 +562,25 @@ export function PrepaywallCampaignPreview({
 
       <div className={cn(
         "mt-4 grid min-w-0 gap-3",
-        sidecarMode ? "lg:grid-cols-[minmax(180px,0.78fr)_minmax(240px,1fr)]" : "xl:grid-cols-[minmax(260px,0.92fr)_minmax(0,1.08fr)]",
+        sidecarMode ? "lg:grid-cols-[minmax(170px,0.72fr)_minmax(230px,1fr)]" : "xl:grid-cols-[minmax(260px,0.92fr)_minmax(0,1.08fr)]",
       )}>
         <MockAdPreview content={content} draft={safeDraft} compact={sidecarMode} />
 
         <div className="grid gap-3">
           <FunnelPreviewMock content={content} draft={safeDraft} compact={sidecarMode} />
 
-          <div className={cn("rounded-[22px] border border-white/10 bg-white/[0.03]", sidecarMode ? "p-3" : "p-4")}>
-            <div className="flex items-start gap-3">
-              <MiniIconTile icon={FileText} className={sidecarMode ? "size-8 rounded-xl" : undefined} />
-              <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/44">Copy preview</p>
-                <h4 className={cn("mt-2 font-semibold leading-tight text-white", sidecarMode ? "line-clamp-2 text-sm" : "text-lg")}>{content.headline}</h4>
-                <p className={cn("mt-2 text-white/58", sidecarMode ? "line-clamp-2 text-xs leading-5" : "text-sm leading-6")}>{content.primaryText}</p>
+          {!sidecarMode ? (
+            <div className="rounded-[22px] border border-white/10 bg-white/[0.03] p-4">
+              <div className="flex items-start gap-3">
+                <MiniIconTile icon={FileText} />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/44">Copy preview</p>
+                  <h4 className="mt-2 text-lg font-semibold leading-tight text-white">{content.headline}</h4>
+                  <p className="mt-2 text-sm leading-6 text-white/58">{content.primaryText}</p>
+                </div>
               </div>
             </div>
-          </div>
+          ) : null}
         </div>
       </div>
 
@@ -584,7 +598,7 @@ export function PrepaywallCampaignPreview({
         ))}
       </div>
 
-      <div className={cn("mt-4 rounded-[24px] border border-emerald-300/16 bg-emerald-300/[0.04]", sidecarMode ? "p-3" : "p-4")}>
+      <div className={cn("mt-3 rounded-[24px] border border-emerald-300/16 bg-emerald-300/[0.04]", sidecarMode ? "p-3" : "p-4")}>
         <div className="flex items-start gap-3">
           <MiniIconTile icon={ShieldCheck} className={cn("text-emerald-100", sidecarMode ? "size-8 rounded-xl" : "")} />
           <div className="min-w-0 flex-1">
@@ -601,7 +615,7 @@ export function PrepaywallCampaignPreview({
         </div>
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <div className={cn("mt-3 grid gap-2", sidecarMode ? "grid-cols-2" : "sm:grid-cols-2")}>
         <CompactLockedPill icon={ImageIcon} label="Static creative locked" />
         <CompactLockedPill icon={Sparkles} label="AI image locked" />
         <CompactLockedPill icon={PlayCircle} label="HeyGen UGC locked" />
