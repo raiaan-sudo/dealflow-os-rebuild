@@ -4,6 +4,12 @@ import {
   normalizeBillingPlanTier,
   type BillingPlanTier,
 } from "@/lib/billing/plans";
+import {
+  isBillingAdminOverrideEmail,
+  isBillingAdminOverrideEnabled,
+  isInternalAdminEmail,
+} from "@/lib/env";
+import { getAppContext } from "@/lib/services/app-context";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/supabase/types";
 
@@ -158,6 +164,20 @@ export async function getCampaignEntitlementsForOrganization(params: {
   });
 }
 
+async function getCurrentBillingOverrideForOrganization(organizationId: string) {
+  if (!isBillingAdminOverrideEnabled()) {
+    return false;
+  }
+
+  const context = await getAppContext().catch(() => null);
+  if (!context || context.organization.id !== organizationId) {
+    return false;
+  }
+
+  const email = context.user.email ?? context.profile?.email ?? null;
+  return isBillingAdminOverrideEmail(email) || isInternalAdminEmail(email);
+}
+
 export async function getCampaignEntitlementsForCampaign(campaignId: string) {
   const admin = createAdminClient();
 
@@ -182,7 +202,9 @@ export async function getCampaignEntitlementsForCampaign(campaignId: string) {
     throw new ApiError(404, "Campaign was not found.", "campaign_not_found");
   }
 
-  return getCampaignEntitlementsForOrganization({ organizationId });
+  const launchOverride = await getCurrentBillingOverrideForOrganization(organizationId);
+
+  return getCampaignEntitlementsForOrganization({ organizationId, launchOverride });
 }
 
 export async function getPublicFunnelEntitlements(params: {

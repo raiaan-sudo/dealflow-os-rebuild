@@ -162,6 +162,7 @@ function runOfflineChecks() {
   const commandCenterConsole = "src/app/(app)/admin/command-center/command-center-console.tsx";
   const feedbackWidget = "src/components/layout/feedback-widget.tsx";
   const staticCreativePreviewCard = "src/components/campaign/static-creative-preview-card.tsx";
+  const campaignPublishPanel = "src/components/campaign/campaign-publish-panel.tsx";
   const launchMetaSelectionPanel = "src/components/campaign/launch/launch-meta-selection-panel.tsx";
   const feedbackRoute = "src/app/api/feedback/route.ts";
   const safeE2eConfig = "playwright.safe.config.ts";
@@ -321,6 +322,11 @@ function runOfflineChecks() {
   assertIncludes(launchPage, "metaReconnectHref", "Launch Meta reconnect target", "Meta reconnect preserves the campaign-scoped launch return path from the error banner");
   assertIncludes(launchPage, "Why launch is blocked", "Launch blocker explanation", "launch page explains exactly why the launch button is disabled");
   assertIncludes(launchPage, "CampaignPublishPanel", "Launch funnel publish action", "launch page exposes the public funnel publish action when publishing is blocking launch");
+  assertIncludes(campaignPublishPanel, "router.refresh()", "Publish panel launch gate refresh", "successful publish actions refresh server-rendered launch gates");
+  assertIncludes(campaignPublishPanel, "livePublished", "Publish panel live snapshot truth", "the publish panel only marks a funnel public when a published snapshot exists");
+  assertIncludes(campaignPublishPanel, "visibleError", "Publish panel stale error guard", "stale publish errors do not remain visible after a successful live publish");
+  assertIncludes(campaignEntitlements, "getCurrentBillingOverrideForOrganization", "Campaign publish billing override", "campaign-scoped entitlements honor the current billing override for owner launch walkthroughs");
+  assertIncludes(campaignEntitlements, "launchOverride", "Campaign entitlement override propagation", "publish and launch entitlement checks receive billing override state");
   assertIncludes(launchMetaSelectionPanel, "Meta selections saved. DealFlow is checking the launch gates now.", "Meta selection save confirmation", "saving Meta assets gives immediate confirmation");
   assertIncludes(launchMetaSelectionPanel, "setIsSaving(true)", "Meta selection explicit saving state", "Meta asset save button tracks the full async save lifecycle");
   assertIncludes("src/app/(app)/launching/page.tsx", "launchIntent", "Launch start intent gate", "direct launch-room visits must return to launch gates before showing the start control");

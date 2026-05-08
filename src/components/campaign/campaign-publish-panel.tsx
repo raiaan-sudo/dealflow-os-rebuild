@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -56,6 +57,7 @@ export function CampaignPublishPanel({
   campaignName = null,
   compact = false,
 }: Props) {
+  const router = useRouter();
   const [publish, setPublish] = useState<CampaignPublishView | null>(initialPublish);
   const [slug, setSlug] = useState(initialPublish?.slug ?? "");
   const [loadingState, setLoadingState] = useState<CampaignPublishState | null>(null);
@@ -65,6 +67,9 @@ export function CampaignPublishPanel({
   useEffect(() => {
     setPublish(initialPublish);
     setSlug(initialPublish?.slug ?? "");
+    if (initialPublish?.state === "published" && initialPublish.hasPublishedSnapshot) {
+      setError(null);
+    }
   }, [initialPublish]);
 
   useEffect(() => {
@@ -137,6 +142,9 @@ export function CampaignPublishPanel({
   }, [campaignName, slug]);
 
   const livePath = publish?.slug ? `/f/${publish.slug}` : normalizedSlug ? `/f/${normalizedSlug}` : null;
+  const livePublished = publish?.state === "published" && publish.hasPublishedSnapshot;
+  const publishedWithoutSnapshot = publish?.state === "published" && !publish.hasPublishedSnapshot;
+  const visibleError = livePublished ? null : error;
 
   async function updatePublishState(nextState: CampaignPublishState) {
     if (!campaignId) {
@@ -174,6 +182,8 @@ export function CampaignPublishPanel({
 
       setPublish(data.publish);
       setSlug(data.publish.slug ?? normalizedSlug);
+      setError(null);
+      router.refresh();
     } catch (publishError) {
       setError(
         publishError instanceof Error
@@ -248,7 +258,7 @@ export function CampaignPublishPanel({
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Live URL</p>
           {livePath ? (
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              {publish?.state === "published" ? (
+              {livePublished ? (
                 <>
                   <Link href={livePath} target="_blank" className="text-sm font-semibold text-primary hover:underline">
                     {livePath}
@@ -303,8 +313,13 @@ export function CampaignPublishPanel({
       {loadingRecord ? (
         <p className="mt-4 text-sm text-muted-foreground">Loading publish state...</p>
       ) : null}
-      {error ? <p className="mt-4 text-sm text-rose-300">{error}</p> : null}
-      {publish?.state === "published" ? (
+      {visibleError ? <p className="mt-4 text-sm text-rose-300">{visibleError}</p> : null}
+      {publishedWithoutSnapshot ? (
+        <p className="mt-4 text-sm text-amber-300">
+          The funnel has a published status, but the live snapshot is not ready. Click Publish Live to rebuild the public snapshot.
+        </p>
+      ) : null}
+      {livePublished ? (
         <p className="mt-4 text-sm text-emerald-300">
           The public funnel is serving from the published snapshot only. Draft edits will not change the live page until you publish again.
         </p>
