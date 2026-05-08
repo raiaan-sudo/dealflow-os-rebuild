@@ -41,14 +41,11 @@ import { logError } from "@/lib/logging";
 import { getDashboardData, type DashboardMetrics } from "@/lib/services/dashboard-service";
 import {
   buildFirstWeekSuccessState,
-  persistFirstWeekSuccessState,
   type FirstWeekSuccessState,
 } from "@/lib/services/first-week-success-service";
 import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
-import {
-  buildAndPersistCampaignValueReport,
-  type CampaignValueReport,
-} from "@/lib/services/campaign-value-report-service";
+import { type CampaignValueReport } from "@/lib/services/campaign-value-report-service";
+import { buildCampaignProgressReport } from "@/lib/services/campaign-value-report-builder";
 import { createClient } from "@/lib/supabase/server";
 import { evaluateAutonomy } from "@/app/api/autonomy/_shared";
 
@@ -412,6 +409,12 @@ async function loadDashboardStateForCampaign(
       withTimeout(loadLeadLoopVerified(resolvedCampaignId).catch(() => false), false, 2_500),
     ]);
     const recentLeads = dashboardData?.recentLeads ?? [];
+    const publish = resolvedCampaign?.record?.publish ?? null;
+    const publicFunnelPublished = Boolean(
+      publish?.state === "published" &&
+        publish.slug &&
+        publish.hasPublishedSnapshot,
+    );
     const firstWeekSuccess = record
       ? buildFirstWeekSuccessState({
           plan: record,
@@ -420,20 +423,13 @@ async function loadDashboardStateForCampaign(
           launchRecord,
           recentLeads,
           leadLoopVerified,
+          publicFunnelPublished,
+          publicFunnelPublishedAt: publish?.publishedAt ?? null,
         })
       : null;
 
-    if (resolvedCampaignId && firstWeekSuccess) {
-      await persistFirstWeekSuccessState({
-        campaignId: resolvedCampaignId,
-        state: firstWeekSuccess,
-      }).catch(() => undefined);
-    }
-
     const valueReport = record && resolvedCampaignId && organizationId
-      ? await buildAndPersistCampaignValueReport({
-          organizationId,
-          userId: resolvedCampaign?.record?.campaign.user_id ?? null,
+      ? buildCampaignProgressReport({
           plan: record,
           metaConnection,
           syncSnapshot,
@@ -463,8 +459,6 @@ async function loadDashboardStateForCampaign(
           leadLoopVerified,
           firstWeekSuccess,
         })
-          .then((result) => result.report)
-          .catch(() => null)
       : null;
 
     return {

@@ -379,7 +379,7 @@ export function CampaignLaunchSimulator({
 
     try {
       router.push(
-        `/launching?mode=${encodeURIComponent(demoMode ? "demo" : launchMode)}&${campaignQuery}`,
+        `/launching?mode=${encodeURIComponent(demoMode ? "demo" : launchMode)}&launchIntent=ready&${campaignQuery}`,
       );
     } catch (deployError) {
       setError(

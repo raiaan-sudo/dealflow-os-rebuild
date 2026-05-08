@@ -100,9 +100,10 @@ Active drain scope:
    - unsigned `POST /api/webhooks/twilio/status` expecting `401`
 3. Confirm logs arrive in Axiom and are searchable by deployment, host, route, status, and structured event name.
 
-Current safe production probe contract as of 2026-05-06:
+Current safe production probe contract as of 2026-05-07:
 
-- Active production deployment for `www.agentdealflow.io`: `dpl_6z7yphqnhNEFj2SobqGMafGXH9qT`.
+- Active app production deployment for `app.agentdealflow.io`: `dpl_5B9ijca7t8KiqPEyh51jwVTdSUk8`.
+- Public marketing host `www.agentdealflow.io` is a separate public-site deployment; app and provider probes should target `app.agentdealflow.io`.
 - `GET /`: `200` public homepage for the current public-homepage production deployment.
 - `GET /login`: `200`.
 - `GET /onboarding`: unauthenticated redirect to login with `redirectedFrom=%2Fonboarding`.

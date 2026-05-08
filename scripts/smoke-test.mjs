@@ -260,7 +260,7 @@ function runOfflineChecks() {
   assertIncludes(previewPage, "StaticCreativeSummaryCard", "Preview compact creative set", "preview page uses compact selected creative summaries");
   assertIncludes(launchPage, "StaticCreativeSummaryCard", "Launch compact creative set", "launch page uses compact selected creative summaries");
   assertIncludes(builderPage, "Active campaign workspace", "Builder active campaign shell", "builder defaults to the active campaign workspace when a campaign exists");
-  assertIncludes(builderPage, "You have 1 active campaign", "Builder active campaign count copy", "builder tells Starter users there is one active guided campaign");
+  assertIncludes(builderPage, "activeCampaignCopy", "Builder active campaign count copy", "builder uses the real campaign count in active-campaign guidance");
   assertIncludes(builderPage, "mode=edit", "Builder edit gate", "full campaign editing is explicit instead of the default existing-campaign view");
   assertIncludes(builderPage, "new=1", "Builder secondary new campaign action", "launching another campaign is secondary and explicit");
   assertIncludes(billingPlans, "includedActiveCampaigns: 1", "Starter campaign limit", "Starter defaults to one active guided campaign");
@@ -289,6 +289,8 @@ function runOfflineChecks() {
   assertIncludes(launchPage, "loadPersistedSelectedAdIds", "Launch selected creative source", "launch loads persisted selected creative set from DB helper");
   assertIncludes(launchPage, "getSelectedAdIdsFromPlan", "Launch selected creative plan helper", "launch resolves selected creative set through typed plan helper");
   assertExcludes(launchPage, "recommended", "Launch recommended fallback removed", "launch preview does not use recommended fallback");
+  assertIncludes(launchPage, "statusLabel: budgetWasCapped ? \"Capped\"", "Launch budget cap visibility", "launch readiness shows capped budget state instead of presenting every positive cap as simply ready");
+  assertIncludes("src/app/(app)/launching/page.tsx", "launchIntent", "Launch start intent gate", "direct launch-room visits must return to launch gates before showing the start control");
 
   assertIncludes(launchRoute, "validateExistingMetaObject", "Meta object validation before reuse", "existing Meta IDs are validated before reuse");
   assertIncludes(launchRoute, "fetchMetaObjectByName", "Deterministic Meta lookup", "Meta objects are recovered by deterministic name");
@@ -380,7 +382,8 @@ function runOfflineChecks() {
   assertIncludes(campaignValueReportBuilder, "buildCampaignProgressReport", "Campaign value report deterministic builder", "report generation is deterministic and provider-free");
   assertIncludes(campaignValueReportBuilder, "recentLeadStatuses", "Campaign value report PII-safe lead summary", "reports summarize lead status without raw contact details");
   assertIncludes(campaignValueReportService, "report_table_missing", "Campaign value report migration-safe persistence", "dashboard does not break if report migration is not applied yet");
-  assertIncludes(dashboardPage, "buildAndPersistCampaignValueReport", "Dashboard value report generation", "dashboard builds and stores weekly customer value reports");
+  assertIncludes(dashboardPage, "buildCampaignProgressReport", "Dashboard value report generation", "dashboard builds the customer-facing value report without mutating data on GET");
+  assertExcludes(dashboardPage, "buildAndPersistCampaignValueReport", "Dashboard GET persistence avoided", "dashboard page load does not upsert value reports");
   assertIncludes(dashboardPage, "valueReport={state.valueReport}", "Dashboard value report rendering", "dashboard passes the customer-facing report into the UI");
   assertIncludes("src/components/dashboard/campaign-dashboard-view.tsx", "Weekly value report", "Customer-facing weekly value report UI", "dashboard shows recurring campaign progress value");
   assertIncludes(internalLaunchMonitor, "source: \"value_report\"", "Value report operator radar integration", "operator issues include stale or missing value reports");

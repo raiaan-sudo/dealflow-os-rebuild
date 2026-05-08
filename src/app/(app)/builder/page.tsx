@@ -198,6 +198,7 @@ function ActiveCampaignWorkspace({
           ? "In review"
           : "Build needed";
   const builtItems = getBuiltItems(record);
+  const activeCampaignCopy = `${campaignCount} active campaign${campaignCount === 1 ? "" : "s"}`;
 
   return (
     <div className="mx-auto w-full max-w-[1320px] space-y-4">
@@ -205,7 +206,7 @@ function ActiveCampaignWorkspace({
         eyebrow="Build"
         title="Active campaign workspace"
         description="Your current campaign stays central. Review what is built, see what is blocked, then take the next step."
-        guidance="You have 1 active campaign. Launch another only after this campaign is handled or your plan has another slot."
+        guidance={`You have ${activeCampaignCopy}. Launch another only after the current campaign is handled or your plan has another slot.`}
         action={
           <Button asChild size="lg">
             <Link href={nextAction.href}>{nextAction.label}</Link>

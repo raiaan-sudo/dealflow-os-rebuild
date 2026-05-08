@@ -118,6 +118,8 @@ export function buildFirstWeekSuccessState(params: {
   launchRecord: CampaignLaunchRecord | null;
   recentLeads: RecentLead[];
   leadLoopVerified: boolean;
+  publicFunnelPublished?: boolean;
+  publicFunnelPublishedAt?: string | null;
 }): FirstWeekSuccessState {
   const now = new Date().toISOString();
   const syncTimestamp = normalizeTimestamp(
@@ -150,7 +152,7 @@ export function buildFirstWeekSuccessState(params: {
     params.plan.runtime.status === "learning" ||
     params.plan.runtime.status === "optimizing" ||
     Boolean(params.plan.runtime.campaignId);
-  const hasFunnelLive = Boolean(params.plan.id);
+  const hasFunnelLive = params.publicFunnelPublished === true;
   const hasTrafficSignals = Boolean(
     params.syncSnapshot?.deliveryMetrics &&
       (
@@ -203,8 +205,8 @@ export function buildFirstWeekSuccessState(params: {
       status: hasFunnelLive ? "complete" : "pending",
       detail: hasFunnelLive
         ? "The public funnel is published and ready for traffic."
-        : "The public funnel is not available yet.",
-      verifiedAt: hasFunnelLive ? params.plan.createdAt : null,
+        : "Publish the public funnel before sending traffic to this campaign.",
+      verifiedAt: hasFunnelLive ? params.publicFunnelPublishedAt ?? params.plan.createdAt : null,
     },
     {
       key: "traffic_check_pending",

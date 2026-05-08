@@ -267,6 +267,10 @@ export default async function LaunchAliasPage({
   const dailyBudgetCents = Math.max(0, Math.round(dailyBudgetInput * 100));
   const budgetCapCents = getUiMetaDailyBudgetCapCents();
   const budgetCapApplied = budgetCapCents > 0;
+  const effectiveDailyBudgetCents = budgetCapApplied
+    ? Math.min(dailyBudgetCents, budgetCapCents)
+    : dailyBudgetCents;
+  const budgetWasCapped = budgetCapApplied && dailyBudgetCents > budgetCapCents;
   const launchRoomReady =
     billingLaunchAllowed &&
     metaLaunchReady &&
@@ -310,7 +314,10 @@ export default async function LaunchAliasPage({
     {
       label: "Budget cap",
       ready: budgetCapApplied,
-      detail: `Provider launch is capped at ${formatBudgetCap(budgetCapCents)}/day; requested daily budget is ${formatBudgetCap(dailyBudgetCents)}.`,
+      statusLabel: budgetWasCapped ? "Capped" : undefined,
+      detail: budgetWasCapped
+        ? `Requested daily budget is ${formatBudgetCap(dailyBudgetCents)}; the launch will use the provider cap of ${formatBudgetCap(effectiveDailyBudgetCents)}/day unless the owner raises the cap.`
+        : `Provider launch is capped at ${formatBudgetCap(budgetCapCents)}/day; requested daily budget is ${formatBudgetCap(dailyBudgetCents)}.`,
     },
     {
       label: "Launch switch",
@@ -544,8 +551,8 @@ export default async function LaunchAliasPage({
             >
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold text-foreground">{item.label}</p>
-                <span className={item.ready ? "text-sm font-semibold text-emerald-300" : "text-sm font-semibold text-amber-300"}>
-                  {item.ready ? "Ready" : "Blocked"}
+                <span className={item.ready && item.statusLabel !== "Capped" ? "text-sm font-semibold text-emerald-300" : "text-sm font-semibold text-amber-300"}>
+                  {item.statusLabel ?? (item.ready ? "Ready" : "Blocked")}
                 </span>
               </div>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.detail}</p>
@@ -576,7 +583,7 @@ export default async function LaunchAliasPage({
             </Button>
             {launchRoomReady ? (
               <Button asChild className="w-full lg:w-auto">
-                <Link href={`/launching?campaignId=${encodeURIComponent(savedRecord.campaign.id)}`}>
+                <Link href={`/launching?campaignId=${encodeURIComponent(savedRecord.campaign.id)}&launchIntent=ready`}>
                   Ready to attempt launch
                 </Link>
               </Button>

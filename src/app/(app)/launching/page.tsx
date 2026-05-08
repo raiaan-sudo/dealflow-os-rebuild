@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
@@ -132,6 +133,7 @@ export default function LaunchingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const campaignId = searchParams.get("campaignId");
+  const hasLaunchIntent = searchParams.get("launchIntent") === "ready";
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [failedStep, setFailedStep] = useState<LaunchStepKey | null>(null);
@@ -229,6 +231,9 @@ export default function LaunchingPage() {
   }, [attempt, campaignId, router]);
 
   const stepStatuses = getStepStatuses(launchState, failedStep);
+  const launchReviewHref = campaignId
+    ? `/launch?campaignId=${encodeURIComponent(campaignId)}`
+    : "/launch";
 
   return (
     <div className="mx-auto w-full max-w-[900px] space-y-8">
@@ -283,18 +288,32 @@ export default function LaunchingPage() {
             <p className="text-lg font-semibold text-foreground">
               Launch is ready, but it will not start from page load.
             </p>
-            <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
-              This prevents browser restores, shared URLs, and accidental refreshes from creating or retrying Meta objects.
-              Start launch only when you are ready to intentionally run the PAUSED Meta launch flow.
-            </p>
-            <Button
-              onClick={() => {
-                setError(null);
-                setAttempt(1);
-              }}
-            >
-              Start PAUSED launch
-            </Button>
+            {hasLaunchIntent ? (
+              <>
+                <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
+                  This prevents browser restores, shared URLs, and accidental refreshes from creating or retrying Meta objects.
+                  Start launch only when you are ready to intentionally run the PAUSED Meta launch flow.
+                </p>
+                <Button
+                  onClick={() => {
+                    setError(null);
+                    setAttempt(1);
+                  }}
+                >
+                  Start PAUSED launch
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
+                  Open the launch checklist first so billing, Meta selections, selected creative, published funnel,
+                  budget cap, and the provider launch switch are visible before any launch attempt.
+                </p>
+                <Button asChild>
+                  <Link href={launchReviewHref}>Review launch gates</Link>
+                </Button>
+              </>
+            )}
           </div>
         ) : (
           <div className="space-y-6">
