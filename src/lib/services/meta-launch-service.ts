@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/api/route";
 import { getMetaAccessToken } from "@/lib/integrations/meta/execution";
+import { getMetaDailyBudgetCapCents } from "@/lib/integrations/meta/budget-cap";
 import { fetchMetaJson } from "@/lib/integrations/meta/request";
 import type { MetaConnectionRecord } from "@/lib/integrations/meta/types";
 import type {
@@ -263,10 +264,11 @@ function forcePausedPayload<T extends Record<string, unknown>>(payload: T): T & 
 }
 
 function assertBudgetSafety(payload: BuiltMetaAdSetPayload) {
-  const configuredCap = Number.parseInt(process.env.META_DAILY_BUDGET_CAP_CENTS ?? "200", 10);
-  const capCents = Number.isFinite(configuredCap) && configuredCap > 0
-    ? Math.min(configuredCap, 200)
-    : 200;
+  const capCents = getMetaDailyBudgetCapCents();
+  if (capCents === null) {
+    return;
+  }
+
   const dailyBudget = Number(payload.daily_budget ?? 0);
   const lifetimeBudget = Number(payload.lifetime_budget ?? 0);
 

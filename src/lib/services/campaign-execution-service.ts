@@ -8,6 +8,7 @@ import {
 } from "@/lib/campaign-intent";
 import { ApiError } from "@/lib/api/route";
 import { hasMetaEnv } from "@/lib/env";
+import { getMetaDailyBudgetCapCents } from "@/lib/integrations/meta/budget-cap";
 import { createClient } from "@/lib/supabase/server";
 import type { Database, Json } from "@/lib/supabase/types";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
@@ -383,11 +384,6 @@ async function requireExecutionContext(expectedUserId?: string) {
 
 function toMinorUnits(value: number) {
   return Math.round(value * 100);
-}
-
-function getMetaBudgetCapCents() {
-  const configured = Number.parseInt(process.env.META_DAILY_BUDGET_CAP_CENTS ?? "100", 10);
-  return Number.isFinite(configured) && configured > 0 ? Math.min(configured, 100) : 100;
 }
 
 function getMetadataString(row: MarketingAccountRow | MetaConnectionRecord | null, key: string) {
@@ -810,13 +806,13 @@ export async function validateCampaignForLaunch(
     errors.push("Lifetime budget must be greater than zero.");
   }
 
-  const budgetCapCents = getMetaBudgetCapCents();
+  const budgetCapCents = getMetaDailyBudgetCapCents();
 
-  if (budgetType === "daily" && dailyBudget && toMinorUnits(dailyBudget) > budgetCapCents) {
+  if (budgetCapCents !== null && budgetType === "daily" && dailyBudget && toMinorUnits(dailyBudget) > budgetCapCents) {
     errors.push(`Daily budget must be ${budgetCapCents} cents or lower for beta launch safety.`);
   }
 
-  if (budgetType === "lifetime" && lifetimeBudget && toMinorUnits(lifetimeBudget) > budgetCapCents) {
+  if (budgetCapCents !== null && budgetType === "lifetime" && lifetimeBudget && toMinorUnits(lifetimeBudget) > budgetCapCents) {
     errors.push(`Lifetime budget must be ${budgetCapCents} cents or lower for beta launch safety.`);
   }
 

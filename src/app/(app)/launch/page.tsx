@@ -13,6 +13,7 @@ import { getCampaignIntentLabel } from "@/lib/campaign-intent";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { getIntegrationProviderState } from "@/lib/integrations/provider-registry";
+import { getMetaDailyBudgetCapCents } from "@/lib/integrations/meta/budget-cap";
 import { getSelectedAdIdsFromPlan, readCampaignPlanDocument } from "@/lib/services/campaign-plan-document";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { getBillingSummary } from "@/lib/services/billing-service";
@@ -86,18 +87,6 @@ function getBillingLaunchBlockCopy(billing: Awaited<ReturnType<typeof getBilling
   }
 
   return "Activate billing before this workspace can launch to Meta.";
-}
-
-const DEFAULT_META_DAILY_BUDGET_CAP_CENTS = 200;
-
-function getUiMetaDailyBudgetCapCents() {
-  const configuredCap = Number(process.env.META_DAILY_BUDGET_CAP_CENTS ?? DEFAULT_META_DAILY_BUDGET_CAP_CENTS);
-
-  if (!Number.isFinite(configuredCap) || configuredCap <= 0) {
-    return DEFAULT_META_DAILY_BUDGET_CAP_CENTS;
-  }
-
-  return Math.min(Math.floor(configuredCap), DEFAULT_META_DAILY_BUDGET_CAP_CENTS);
 }
 
 function formatBudgetCap(valueCents: number) {
@@ -232,12 +221,12 @@ export default async function LaunchAliasPage({
   const metaConnected =
     metaConnection.connectionStatus === "connected" &&
     Boolean(metaConnection.accountId);
-  const metaPreflightReady = metaPreflight?.ready ?? false;
   const metaSelectionReady =
     metaConnected &&
     Boolean(metaConnection.accountId) &&
     Boolean(metaConnection.pageId) &&
     Boolean(metaConnection.tracking.pixelId);
+  const metaPreflightReady = metaPreflight?.ready ?? false;
   const metaLaunchReady = metaSelectionReady && metaPreflightReady;
   const billingLaunchAllowed = billing?.launchAllowed ?? false;
   const billingOverride = billing?.launchOverride ?? false;
@@ -271,18 +260,17 @@ export default async function LaunchAliasPage({
       ? plan.runtime.budgetDailyInput
       : Math.round(plan.monthlyBudget / 30);
   const dailyBudgetCents = Math.max(0, Math.round(dailyBudgetInput * 100));
-  const budgetCapCents = getUiMetaDailyBudgetCapCents();
-  const budgetCapApplied = budgetCapCents > 0;
-  const effectiveDailyBudgetCents = budgetCapApplied
+  const budgetCapCents = getMetaDailyBudgetCapCents();
+  const budgetCapApplied = budgetCapCents !== null;
+  const effectiveDailyBudgetCents = budgetCapCents !== null
     ? Math.min(dailyBudgetCents, budgetCapCents)
     : dailyBudgetCents;
-  const budgetWasCapped = budgetCapApplied && dailyBudgetCents > budgetCapCents;
+  const budgetWasCapped = budgetCapCents !== null && dailyBudgetCents > budgetCapCents;
   const launchRoomReady =
     billingLaunchAllowed &&
     metaLaunchReady &&
     selectedCreatives.length > 0 &&
     publicFunnelPublished &&
-    budgetCapApplied &&
     providerLaunchEnabled;
   const readinessItems = [
     {
@@ -297,10 +285,19 @@ export default async function LaunchAliasPage({
     },
     {
       label: "Ad account / Page / pixel",
+      ready: metaSelectionReady,
+      detail: metaSelectionReady
+        ? "Saved selections ready"
+        : "Select and save a valid ad account, Page, and pixel",
+    },
+    {
+      label: "Meta preflight",
       ready: metaLaunchReady,
       detail: metaLaunchReady
-        ? "Saved selections passed preflight"
-        : "Select and save a valid ad account, Page, and pixel",
+        ? `Provider verified ${formatLastVerified(metaPreflight?.checkedAt)}`
+        : metaSelectionReady
+          ? "Saved selections need provider verification before launch"
+          : "Save the Meta selections first",
     },
     {
       label: "Creative selected",
@@ -318,12 +315,14 @@ export default async function LaunchAliasPage({
         : "Publish the public funnel before sending traffic",
     },
     {
-      label: "Budget cap",
-      ready: budgetCapApplied,
-      statusLabel: budgetWasCapped ? "Capped" : undefined,
+      label: "Budget",
+      ready: true,
+      statusLabel: budgetWasCapped ? "Capped" : budgetCapApplied ? undefined : "Unlimited",
       detail: budgetWasCapped
         ? `Requested daily budget is ${formatBudgetCap(dailyBudgetCents)}; the launch will use the provider cap of ${formatBudgetCap(effectiveDailyBudgetCents)}/day unless the owner raises the cap.`
-        : `Provider launch is capped at ${formatBudgetCap(budgetCapCents)}/day; requested daily budget is ${formatBudgetCap(dailyBudgetCents)}.`,
+        : budgetCapCents !== null
+          ? `Provider launch is capped at ${formatBudgetCap(budgetCapCents)}/day; requested daily budget is ${formatBudgetCap(dailyBudgetCents)}.`
+          : `No DealFlow budget cap is applied. Launch will use the requested daily budget of ${formatBudgetCap(dailyBudgetCents)}.`,
     },
     {
       label: "Launch switch",
@@ -596,8 +595,8 @@ export default async function LaunchAliasPage({
               {launchRoomReady ? "All launch gates are ready" : "Launch gates still need attention"}
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-7 text-muted-foreground">
-              Launch remains blocked until billing, Meta selections, selected creative, published funnel,
-              budget cap, and the provider launch switch all pass.
+              Launch remains blocked until billing, Meta selections, provider preflight, selected creative,
+              published funnel, and the provider launch switch all pass.
             </p>
           </div>
           <StatusPill tone={launchRoomReady ? "success" : "warning"}>

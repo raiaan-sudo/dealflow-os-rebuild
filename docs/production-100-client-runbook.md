@@ -225,7 +225,7 @@ Full customer-success SOP, canned responses, SLA expectations, escalation rules,
 3. Retry launch from the UI or route only after confirming the campaign is not actively locked.
 4. `meta_launch_locks` prevents concurrent duplicate launch attempts.
 5. All launch-created Meta objects must remain `PAUSED`.
-6. Daily budget cap must remain at or below 200 cents unless the owner explicitly approves otherwise.
+6. Daily budget cap is owner-configured. Leave `META_DAILY_BUDGET_CAP_CENTS` unset, `0`, `off`, `none`, or `unlimited` for no DealFlow cap; set a positive cent value only when an explicit launch cap is desired.
 
 ## Lead Retry Recovery
 
@@ -416,7 +416,7 @@ Use `/admin/issues` for durable issue records and `docs/observability-alerting-r
 - Inspect `plan.launch_runtime`.
 - Inspect `meta_launch_locks`.
 - Retry only after confirming no active lock and no active Meta objects were created.
-- Escalate before retry if any Meta object is not `PAUSED`, if the budget cap is above 200 cents/day, or if the launch has already failed twice.
+- Escalate before retry if any Meta object is not `PAUSED`, if a configured budget cap does not match the owner-approved launch budget policy, or if the launch has already failed twice.
 
 ### Missing lead
 

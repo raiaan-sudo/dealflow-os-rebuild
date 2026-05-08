@@ -12,6 +12,10 @@ import {
   withLaunchRuntime,
 } from "@/lib/services/campaign-plan-document";
 import { logMetaError, mapMetaError } from "@/lib/integrations/meta/error-mapper";
+import {
+  applyMetaDailyBudgetCapCents,
+  getMetaDailyBudgetCapCents,
+} from "@/lib/integrations/meta/budget-cap";
 import { fetchMetaJson } from "@/lib/integrations/meta/request";
 import {
   getMetaWorkspaceCredentials,
@@ -95,18 +99,6 @@ type CampaignPayloadRecord = {
   };
 };
 
-const DEFAULT_META_DAILY_BUDGET_CAP_CENTS = 200;
-
-function getMetaDailyBudgetCapCents() {
-  const configuredCap = Number(process.env.META_DAILY_BUDGET_CAP_CENTS ?? DEFAULT_META_DAILY_BUDGET_CAP_CENTS);
-
-  if (!Number.isFinite(configuredCap) || configuredCap <= 0) {
-    return DEFAULT_META_DAILY_BUDGET_CAP_CENTS;
-  }
-
-  return Math.min(Math.floor(configuredCap), DEFAULT_META_DAILY_BUDGET_CAP_CENTS);
-}
-
 function assertMetaLiveLaunchEnabled() {
   if (process.env.ALLOW_META_LIVE_LAUNCH !== "true") {
     throw new ApiError(
@@ -119,7 +111,10 @@ function assertMetaLiveLaunchEnabled() {
 
 function buildStageFailureMessage(rawMessage: string, stage: LaunchStage) {
   if (/budget is too low|budget must be more than/i.test(rawMessage)) {
-    return `${rawMessage} Current safety cap is ${getMetaDailyBudgetCapCents()} cents/day, so launch is blocked until you choose an ad account whose minimum fits the cap or approve a higher daily cap.`;
+    const capCents = getMetaDailyBudgetCapCents();
+    return capCents === null
+      ? `${rawMessage} No DealFlow budget cap is applied, so this is a Meta account minimum-budget requirement.`
+      : `${rawMessage} Current safety cap is ${capCents} cents/day, so launch is blocked until you choose an ad account whose minimum fits the cap or approve a higher daily cap.`;
   }
 
   const diagnostic = mapMetaError({
@@ -344,13 +339,13 @@ function normalizeObjective(value?: string | null) {
 
 function toMinorDailyBudget(value?: number | null) {
   const normalized = Number(value ?? 0);
-  const capCents = getMetaDailyBudgetCapCents();
+  const fallbackCents = getMetaDailyBudgetCapCents() ?? 200;
 
   if (!Number.isFinite(normalized) || normalized <= 0) {
-    return String(capCents);
+    return String(fallbackCents);
   }
 
-  return String(Math.min(capCents, Math.round(normalized * 100)));
+  return String(applyMetaDailyBudgetCapCents(Math.round(normalized * 100)));
 }
 
 function isPublicFunnelUrl(value: string) {

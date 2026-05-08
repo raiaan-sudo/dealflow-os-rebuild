@@ -307,7 +307,7 @@ export default function LaunchingPage() {
               <>
                 <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
                   Open the launch checklist first so billing, Meta selections, selected creative, published funnel,
-                  budget cap, and the provider launch switch are visible before any launch attempt.
+                  budget policy, and the provider launch switch are visible before any launch attempt.
                 </p>
                 <Button asChild>
                   <Link href={launchReviewHref}>Review launch gates</Link>

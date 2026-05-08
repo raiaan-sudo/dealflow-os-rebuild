@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/api/route";
 import { getMetaEnv, getPublicAppUrl } from "@/lib/env";
+import { applyMetaDailyBudgetCapCents } from "@/lib/integrations/meta/budget-cap";
 import { decryptSecret } from "@/lib/integrations/meta-crypto";
 import type { MetaConnectionRecord } from "@/lib/integrations/meta/types";
 import { fetchWithRetryServer } from "@/lib/http/fetch-with-retry-server";
@@ -97,18 +98,6 @@ function getInterestKeywords(adSet: ExecutableAdSet) {
 function getMetaObjectStatus(launchMode: "test" | "live"): "PAUSED" {
   void launchMode;
   return "PAUSED";
-}
-
-const DEFAULT_META_DAILY_BUDGET_CAP_CENTS = 200;
-
-function getMetaDailyBudgetCapCents() {
-  const configuredCap = Number(process.env.META_DAILY_BUDGET_CAP_CENTS ?? DEFAULT_META_DAILY_BUDGET_CAP_CENTS);
-
-  if (!Number.isFinite(configuredCap) || configuredCap <= 0) {
-    return DEFAULT_META_DAILY_BUDGET_CAP_CENTS;
-  }
-
-  return Math.floor(configuredCap);
 }
 
 function inferCountryCode(location: string) {
@@ -273,7 +262,7 @@ export async function mapAdSetToMetaPayload(
 
   const numericBudget = Number(adSet.budget.replace(/[^0-9.]/g, ""));
   const computedDailyBudget = Math.max(1, Math.round((numericBudget / 30) * 100));
-  const dailyBudget = Math.min(computedDailyBudget, getMetaDailyBudgetCapCents());
+  const dailyBudget = applyMetaDailyBudgetCapCents(computedDailyBudget);
   const ageRange = getAgeRange(adSet);
   const interests = await resolveMetaInterests({
     accessToken,
