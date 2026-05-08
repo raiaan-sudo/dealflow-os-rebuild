@@ -338,6 +338,7 @@ function runOfflineChecks() {
   assertIncludes(launchRoute, "validateExistingMetaObject", "Meta object validation before reuse", "existing Meta IDs are validated before reuse");
   assertIncludes(launchRoute, "fetchMetaObjectByName", "Deterministic Meta lookup", "Meta objects are recovered by deterministic name");
   assertIncludes(launchRoute, "step_status", "Step-level launch state", "launch_runtime stores step_status");
+  assertIncludes(launchRoute, "const destinationUrl = publicSlug ? expectedDestinationUrl : \"\";", "Launch destination slug fallback", "published public slug is the launch destination source of truth when saved payloads are stale");
   assertIncludes(launchRoute, "testModeInterruptAfter", "Forced interruption support", "forced interruption mode exists");
   assertIncludes(launchApiRoute, "test_mode_interrupt_after", "Forced interruption launch API", "launch route forwards interruption mode");
   assertIncludes(launchApiRoute, "assertMetaLaunchBillingAccess", "Launch billing gate", "launch route enforces subscription/admin override gate");

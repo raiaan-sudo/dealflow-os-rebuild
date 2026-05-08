@@ -840,9 +840,9 @@ async function launchCampaignToMeta(
     const expectedDestinationUrl = publicSlug
       ? `${getPublicAppUrl()}/f/${publicSlug}`
       : "";
-    const destinationUrl = storedPayload?.destination_url?.trim() ?? "";
+    const destinationUrl = publicSlug ? expectedDestinationUrl : "";
 
-    if (!publicSlug || !destinationUrl || destinationUrl !== expectedDestinationUrl || !isPublicFunnelUrl(destinationUrl)) {
+    if (!publicSlug || !destinationUrl || !isPublicFunnelUrl(destinationUrl)) {
       throw new ApiError(
         400,
         "Missing public destination URL",
