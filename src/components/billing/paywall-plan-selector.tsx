@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Check } from "lucide-react";
 import { CheckoutButton } from "@/components/billing/checkout-button";
 import {
@@ -13,13 +14,18 @@ export function PaywallPlanSelector({
   initialPlanTier,
   campaignId,
   disabled = false,
+  launchOverride = false,
 }: {
   initialPlanTier: SelectablePlanTier;
   campaignId: string | null;
   disabled?: boolean;
+  launchOverride?: boolean;
 }) {
   const [selectedTier, setSelectedTier] = useState<SelectablePlanTier>(initialPlanTier);
   const selectedPlan = getPlanPresentation(selectedTier);
+  const overrideHref = `/unlock?checkout=override&plan=${encodeURIComponent(selectedTier)}${
+    campaignId ? `&campaignId=${encodeURIComponent(campaignId)}` : ""
+  }`;
 
   return (
     <div className="space-y-5">
@@ -105,6 +111,13 @@ export function PaywallPlanSelector({
             >
               Build preview first
             </button>
+          ) : launchOverride ? (
+            <Link
+              href={overrideHref}
+              className="inline-flex w-full items-center justify-center rounded-full bg-cyan-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200 sm:min-w-[220px]"
+            >
+              Continue with billing override
+            </Link>
           ) : (
             <CheckoutButton
               campaignId={campaignId}

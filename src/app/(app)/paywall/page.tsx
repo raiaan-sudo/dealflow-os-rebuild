@@ -111,6 +111,7 @@ export default async function PaywallPage({
                 campaignId={checkoutCampaignId}
                 disabled={!hasServerPreview}
                 initialPlanTier={selectablePlanTier}
+                launchOverride={billing?.launchOverride === true}
               />
             </div>
           </Card>

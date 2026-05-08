@@ -570,6 +570,26 @@ export async function createBillingCheckoutSession(params: {
     throw new ApiError(401, "Authentication is required for checkout.", "unauthorized");
   }
 
+  const launchOverrideEmail = getBillingAdminOverrideEmail(context);
+  if (launchOverrideEmail) {
+    logBillingAdminOverrideGrant({
+      source: "billing_checkout_bypass",
+      organizationId: context.organization.id,
+      userId: context.user.id,
+      email: launchOverrideEmail,
+      planTier: params.planTier,
+      subscriptionStatus: "override",
+    });
+    const bypassParams = new URLSearchParams({
+      checkout: "override",
+      plan: params.planTier,
+    });
+    if (requestedCampaignId) {
+      bypassParams.set("campaignId", requestedCampaignId);
+    }
+    return { url: `/unlock?${bypassParams.toString()}`, sessionId: null };
+  }
+
   if (!stripeProvider.isConfigured()) {
     throw new ApiError(503, "Stripe is not configured yet.", "stripe_not_configured");
   }

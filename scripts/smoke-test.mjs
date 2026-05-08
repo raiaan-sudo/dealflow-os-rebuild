@@ -95,6 +95,7 @@ function runOfflineChecks() {
   const launchApiRoute = "src/app/api/campaigns/[id]/launch/route.ts";
   const launchPage = "src/app/(app)/launch/page.tsx";
   const previewPage = "src/app/(app)/preview/page.tsx";
+  const paywallPage = "src/app/(app)/paywall/page.tsx";
   const onboardingPage = "src/app/(app)/onboarding/page.tsx";
   const prepaywallPreview = "src/components/onboarding/prepaywall-campaign-preview.tsx";
   const onboardingRoute = "src/app/api/onboarding/plan/route.ts";
@@ -461,6 +462,9 @@ function runOfflineChecks() {
   assertIncludes(envHelpers, "BILLING_ADMIN_OVERRIDE_EMAILS", "Billing-only override allowlist", "billing override can be scoped without granting operator admin access");
   assertIncludes(billingService, "isBillingAdminOverrideEmail", "Billing-only override check", "billing override checks the billing-specific email allowlist before falling back to internal admins");
   assertIncludes(billingService, "billing_admin_override_launch_access_granted", "Billing admin override audit log", "override-based launch access grants are audit logged");
+  assertIncludes(billingService, "billing_checkout_bypass", "Billing override checkout bypass", "override users do not create live Stripe checkout sessions");
+  assertIncludes(paywallPage, "launchOverride={billing?.launchOverride === true}", "Paywall override handoff", "billing override state is passed into the paywall CTA");
+  assertIncludes("src/components/billing/paywall-plan-selector.tsx", "Continue with billing override", "Paywall override CTA", "billing override users continue inside the app instead of opening Stripe checkout");
   assertIncludes(billingService, "apply_billing_subscription_webhook", "Stripe webhook ordering guard", "subscription sync uses DB-backed stale event protection");
   assertIncludes(billingService, "stripe_subscription_stale_event_ignored", "Stripe stale event observability", "out-of-order subscription events are logged and ignored");
   assertIncludes(billingWebhookMigration, "stripe_latest_event_created", "Billing subscription event watermark", "billing rows persist latest Stripe event timestamps");
