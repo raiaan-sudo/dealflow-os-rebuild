@@ -97,6 +97,8 @@ function runOfflineChecks() {
   const previewPage = "src/app/(app)/preview/page.tsx";
   const paywallPage = "src/app/(app)/paywall/page.tsx";
   const onboardingPage = "src/app/(app)/onboarding/page.tsx";
+  const buildFunnelPage = "src/app/(app)/build/funnel/page.tsx";
+  const buildCreativesPage = "src/app/(app)/build/creatives/page.tsx";
   const prepaywallPreview = "src/components/onboarding/prepaywall-campaign-preview.tsx";
   const onboardingRoute = "src/app/api/onboarding/plan/route.ts";
   const leadRoute = "src/app/api/lead-capture/route.ts";
@@ -253,6 +255,11 @@ function runOfflineChecks() {
   assertExcludes(prepaywallPreview, "/api/generate-funnel", "Pre-paywall funnel provider avoided", "preview component does not call paid funnel generation");
   assertExcludes(prepaywallPreview, "ALLOW_OPENAI_IMAGE_GENERATION", "Pre-paywall OpenAI provider avoided", "preview component does not reference paid OpenAI generation gates");
   assertExcludes(prepaywallPreview, "ALLOW_HEYGEN_VIDEO_GENERATION", "Pre-paywall HeyGen provider avoided", "preview component does not reference paid HeyGen generation gates");
+  assertIncludes(buildFunnelPage, "redirect(\"/onboarding\")", "Missing funnel route recovery", "missing funnel prerequisites send the user back to onboarding instead of a Build recovery page");
+  assertIncludes(buildCreativesPage, "redirect(\"/onboarding\")", "Missing creatives route recovery", "missing creative prerequisites send the user back to onboarding instead of a Build recovery page");
+  assertExcludes(buildFunnelPage, "ArtifactRecoveryPanel", "Funnel technical recovery hidden", "agents do not see technical artifact recovery under Build");
+  assertExcludes(buildCreativesPage, "ArtifactRecoveryPanel", "Creative technical recovery hidden", "agents do not see technical artifact recovery under Build");
+  assertExcludes(buildCreativesPage, "Creative artifacts are missing", "Creative missing copy hidden", "missing creative artifacts no longer show as an app page");
   assertIncludes("src/lib/services/funnel-engine.ts", "cleanMarketingCopy", "Funnel copy sanitizer", "funnel copy removes awkward repeated market and spacing artifacts");
   assertIncludes("src/lib/services/funnel-engine.ts", "trimWords(cleanMarketingCopy(headline), 14)", "Funnel headline length guard", "funnel headlines are capped instead of over-concatenating onboarding fields");
   assertIncludes("src/lib/services/funnel-engine.ts", "conciseOfferPhrase", "Funnel offer shaping", "offer and lead magnet shape funnel copy without being dumped raw into the headline");

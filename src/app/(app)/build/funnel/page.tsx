@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/app/page-header";
-import { ArtifactRecoveryPanel } from "@/components/app/artifact-recovery-panel";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { Button } from "@/components/ui/button";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
@@ -74,26 +73,7 @@ export default async function BuildFunnelPage({
   }
 
   if (missingArtifacts.length > 0) {
-    return (
-      <div className="mx-auto w-full max-w-[900px] space-y-8 p-6 sm:p-8">
-        <WizardSteps current="funnel" />
-        <PageHeader
-          eyebrow="Build"
-          title="Funnel artifacts are missing"
-          description="This step needs a saved funnel and campaign payload before review can continue."
-        />
-        <ArtifactRecoveryPanel
-          campaignId={campaignId}
-          title="Recover the funnel step"
-          description="The required funnel data is missing or incomplete. Regenerate the missing artifacts below, or go back to onboarding."
-          missingArtifacts={missingArtifacts}
-          recoverySteps={[
-            ...(missingArtifacts.includes("funnel") ? (["generate-funnel"] as const) : []),
-            ...(missingArtifacts.includes("campaign payload") ? (["build-campaign"] as const) : []),
-          ]}
-        />
-      </div>
-    );
+    redirect("/onboarding");
   }
 
   if (!record) {

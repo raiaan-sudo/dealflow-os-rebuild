@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { ArtifactRecoveryPanel } from "@/components/app/artifact-recovery-panel";
 import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
@@ -69,26 +68,7 @@ export default async function BuildCreativesPage({
   }
 
   if (missingArtifacts.length > 0) {
-    return (
-      <div className="mx-auto w-full max-w-[1280px] space-y-6 p-5 sm:p-6">
-        <WizardSteps current="creatives" />
-        <PageHeader
-          eyebrow="Build"
-          title="Creative artifacts are missing"
-          description="This step needs saved creative options and a campaign payload before ad selection can continue."
-        />
-        <ArtifactRecoveryPanel
-          campaignId={campaignId}
-          title="Recover the creatives step"
-          description="The required creative data is missing or incomplete. Regenerate the missing artifacts below, or go back to onboarding."
-          missingArtifacts={missingArtifacts}
-          recoverySteps={[
-            ...(missingArtifacts.includes("creatives") ? (["generate-creatives"] as const) : []),
-            ...(missingArtifacts.includes("campaign payload") ? (["build-campaign"] as const) : []),
-          ]}
-        />
-      </div>
-    );
+    redirect("/onboarding");
   }
 
   if (!record) {
