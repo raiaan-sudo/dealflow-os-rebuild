@@ -188,6 +188,11 @@ export default async function LaunchAliasPage({
   ]);
   const plan = record ? canonicalCampaignToPlan(record) : null;
   const resolvedCampaignId = record?.campaign.id ?? requestedCampaignId;
+  const launchReturnTo = resolvedCampaignId
+    ? `/launch?campaignId=${encodeURIComponent(resolvedCampaignId)}`
+    : "/launch";
+  const metaReconnectHref = `/api/integrations/meta/connect?returnTo=${encodeURIComponent(launchReturnTo)}`;
+  const cleanLaunchHref = launchReturnTo;
   const selectedAdIds = await loadPersistedSelectedAdIds(resolvedCampaignId);
   const metaErrorCopy = getMetaQueryUiCopy(metaError, "oauth_callback");
   const discoveryIncomplete =
@@ -397,14 +402,26 @@ export default async function LaunchAliasPage({
         </div>
       ) : null}
       {metaErrorCopy ? (
-        <div className="rounded-[22px] border border-rose-400/15 bg-rose-400/10 px-5 py-4 text-sm font-medium text-rose-100">
-          <p>{metaErrorCopy.title}</p>
-          <p className="mt-2 font-normal">
-            {metaErrorCopy.message} {metaErrorCopy.action}
-          </p>
-          {metaRequestId ? (
-            <p className="mt-2 text-xs text-rose-200/80">Reference: {metaRequestId}</p>
-          ) : null}
+        <div className="rounded-[22px] border border-rose-400/15 bg-rose-400/10 px-5 py-4 text-sm text-rose-100">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="font-semibold">{metaErrorCopy.title}</p>
+              <p className="mt-2 font-normal">
+                {metaErrorCopy.message} {metaErrorCopy.action}
+              </p>
+              {metaRequestId ? (
+                <p className="mt-2 text-xs text-rose-200/80">Reference: {metaRequestId}</p>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+              <Button asChild className="w-full sm:w-auto">
+                <Link href={metaReconnectHref}>Reconnect Meta</Link>
+              </Button>
+              <Button asChild variant="secondary" className="w-full sm:w-auto">
+                <Link href={cleanLaunchHref}>Clear message</Link>
+              </Button>
+            </div>
+          </div>
         </div>
       ) : null}
       {discoveryIncomplete ? (

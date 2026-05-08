@@ -316,6 +316,9 @@ function runOfflineChecks() {
   assertIncludes(launchPage, "getSelectedAdIdsFromPlan", "Launch selected creative plan helper", "launch resolves selected creative set through typed plan helper");
   assertExcludes(launchPage, "recommended", "Launch recommended fallback removed", "launch preview does not use recommended fallback");
   assertIncludes(launchPage, "statusLabel: budgetWasCapped ? \"Capped\"", "Launch budget cap visibility", "launch readiness shows capped budget state instead of presenting every positive cap as simply ready");
+  assertIncludes(launchPage, "Reconnect Meta", "Launch Meta error reconnect CTA", "Meta OAuth failure banners provide a direct reconnect action");
+  assertIncludes(launchPage, "Clear message", "Launch Meta error clear CTA", "stale Meta OAuth failure URLs can be cleared without leaving launch");
+  assertIncludes(launchPage, "metaReconnectHref", "Launch Meta reconnect target", "Meta reconnect preserves the campaign-scoped launch return path from the error banner");
   assertIncludes("src/app/(app)/launching/page.tsx", "launchIntent", "Launch start intent gate", "direct launch-room visits must return to launch gates before showing the start control");
 
   assertIncludes(launchRoute, "validateExistingMetaObject", "Meta object validation before reuse", "existing Meta IDs are validated before reuse");
