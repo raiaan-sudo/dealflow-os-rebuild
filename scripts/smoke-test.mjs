@@ -113,6 +113,7 @@ function runOfflineChecks() {
   const appContextService = "src/lib/services/app-context.ts";
   const metaConnect = "src/app/api/integrations/meta/connect/route.ts";
   const metaCallback = "src/app/api/integrations/meta/callback/route.ts";
+  const metaOauthState = "src/lib/integrations/meta/oauth-state.ts";
   const billingCheckoutRoute = "src/app/api/billing/checkout/route.ts";
   const billingPortalRoute = "src/app/api/billing/portal/route.ts";
   const billingService = "src/lib/services/billing-service.ts";
@@ -331,7 +332,12 @@ function runOfflineChecks() {
   assertIncludes(metaLaunchService, "meta_active_status_blocked", "Direct Meta ACTIVE block", "direct Meta launch rejects active object payloads");
   assertIncludes(metaLaunchService, "status: \"paused\"", "Meta publish activation disabled", "publish step reports paused instead of activating Meta objects");
   assertIncludes(metaConnect, "value.startsWith(\"//\")", "Meta OAuth return path guard", "protocol-relative return paths are rejected");
+  assertIncludes(metaConnect, "createMetaOAuthState", "Meta OAuth signed state", "connect route sends a short-lived signed state instead of relying only on hostname cookies");
   assertIncludes(metaCallback, "resolved.origin === appOrigin", "Meta OAuth callback origin guard", "callback redirects stay on the app origin");
+  assertIncludes(metaCallback, "verifyMetaOAuthState", "Meta OAuth state fallback", "callback can safely verify state when a provider returns on an alternate app hostname");
+  assertIncludes(metaCallback, "verifiedState?.organizationId", "Meta OAuth workspace fallback", "signed state preserves workspace ownership if auth cookies are unavailable on callback host");
+  assertIncludes(metaOauthState, "timingSafeEqual", "Meta OAuth state timing-safe compare", "state signatures are compared without string equality leaks");
+  assertIncludes(metaOauthState, "STATE_TTL_MS = 10 * 60 * 1000", "Meta OAuth state expiry", "signed OAuth state is short-lived");
 
   assertExcludes(launchRoute, /accounts\[0\]|pages\[0\]|pixels\[0\]/, "No first-asset fallback in launch execution", "launch route has no accounts[0]/pages[0]/pixels[0]");
   assertIncludes(metaCallback, "asset_discovery", "Meta discovery state tracking", "callback stores partial discovery status");

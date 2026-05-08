@@ -8,6 +8,7 @@ import {
   logMetaError,
   logMetaWarning,
 } from "@/lib/integrations/meta/error-mapper";
+import { verifyMetaOAuthState } from "@/lib/integrations/meta/oauth-state";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { getAppContext } from "@/lib/services/app-context";
@@ -84,7 +85,12 @@ export async function GET(req: NextRequest) {
     const returnedState = url.searchParams.get("state");
     const cookieStore = await cookies();
     const storedState = cookieStore.get(META_STATE_COOKIE)?.value ?? null;
-    const returnTo = cookieStore.get(META_RETURN_TO_COOKIE)?.value ?? "/launch";
+    const cookieReturnTo = cookieStore.get(META_RETURN_TO_COOKIE)?.value ?? "/launch";
+    const env = getMetaEnvOrThrow();
+    const verifiedState = verifyMetaOAuthState(returnedState, env.encryptionKey);
+    const stateMatchesCookie = Boolean(returnedState && storedState && returnedState === storedState);
+    const stateVerified = stateMatchesCookie || Boolean(verifiedState);
+    const returnTo = verifiedState?.returnTo ?? cookieReturnTo;
     const redirectBase = getSafeRedirectBase(returnTo, appUrl);
     const redirectWithMetaError = (metaErrorCode: string) => {
       const nextUrl = new URL(redirectBase.toString());
@@ -103,14 +109,12 @@ export async function GET(req: NextRequest) {
       return redirectWithMetaError("no_code");
     }
 
-    if (!returnedState || !storedState || returnedState !== storedState) {
+    if (!returnedState || !stateVerified) {
       return redirectWithMetaError("invalid_state");
     }
 
     cookieStore.delete(META_STATE_COOKIE);
     cookieStore.delete(META_RETURN_TO_COOKIE);
-
-    const env = getMetaEnvOrThrow();
 
     const { response: tokenRes, data: tokenData } = await fetchMetaJson<{ access_token?: string }>(
       `https://graph.facebook.com/v18.0/oauth/access_token?` +
@@ -129,7 +133,7 @@ export async function GET(req: NextRequest) {
     }
 
     const routeSupabase = await createRouteHandlerClient();
-    const organizationId = await resolveOrganizationIdForMetaCallback();
+    const organizationId = verifiedState?.organizationId ?? (await resolveOrganizationIdForMetaCallback());
 
     if (!routeSupabase) {
       return redirectWithMetaError("supabase_unavailable");

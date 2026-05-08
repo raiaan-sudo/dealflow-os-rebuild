@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getPublicAppUrl, getMetaEnvOrThrow } from "@/lib/env";
 import { logMetaError } from "@/lib/integrations/meta/error-mapper";
+import { createMetaOAuthState } from "@/lib/integrations/meta/oauth-state";
 import { recordActivationEvent } from "@/lib/services/activation-telemetry-service";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 
@@ -29,7 +30,12 @@ export async function GET(request: Request) {
     const url = new URL("https://www.facebook.com/v18.0/dialog/oauth");
     const env = getMetaEnvOrThrow();
     const redirectUri = env.redirectUri;
-    const state = crypto.randomUUID();
+    const state = createMetaOAuthState({
+      organizationId: auth.organizationId,
+      userId: auth.userId,
+      returnTo,
+      secret: env.encryptionKey,
+    });
     const cookieStore = await cookies();
 
     cookieStore.set(META_STATE_COOKIE, state, {
