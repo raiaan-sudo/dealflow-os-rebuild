@@ -221,7 +221,8 @@ function runOfflineChecks() {
   assertIncludes(prepaywallPreview, "grid h-full min-w-0 overflow-hidden p-4", "Pre-paywall compact height bound", "normal onboarding preview stretches with the step panel instead of creating an embedded scroll area");
   assertExcludes(prepaywallPreview, "lg:max-h-[600px]", "Pre-paywall embedded scroll removed", "onboarding preview no longer uses a fixed-height internal scroll container");
   assertIncludes(prepaywallPreview, "lg:grid-cols-[minmax(230px,0.95fr)_minmax(280px,1.05fr)]", "Pre-paywall compact grid", "normal onboarding preview uses a balanced compact console grid instead of a single tall stack");
-  assertIncludes(prepaywallPreview, "aspect-[16/9]", "Pre-paywall compact ad geometry", "normal onboarding uses a landscape ad mockup instead of a tall portrait frame");
+  assertIncludes(prepaywallPreview, "flex min-h-[250px] flex-col", "Pre-paywall compact ad geometry", "normal onboarding and paywall sidecar previews let the ad mock fill its available space");
+  assertIncludes(prepaywallPreview, "min-h-[210px] flex-1", "Pre-paywall ad fill guard", "compact ad preview content expands instead of leaving a dead empty gradient area");
   assertIncludes(prepaywallPreview, "xl:grid-cols-[minmax(260px,0.92fr)_minmax(0,1.08fr)]", "Pre-paywall package grid", "review/paywall package preview uses a wider balanced grid");
   assertIncludes(prepaywallPreview, "line-clamp-2", "Pre-paywall text height guard", "preview copy is clamped in compact surfaces to prevent vertical stretching");
   assertIncludes(prepaywallPreview, "CompactLockedPill", "Pre-paywall compact locked states", "normal onboarding renders locked generation states as compact pills");

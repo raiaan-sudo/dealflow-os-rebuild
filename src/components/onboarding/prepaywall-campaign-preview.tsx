@@ -334,7 +334,7 @@ function MockAdPreview({
     <div
       className={cn(
         "relative overflow-hidden rounded-[22px] border border-white/10 bg-gradient-to-br",
-        compact ? "p-3" : "p-4",
+        compact ? "flex min-h-[250px] flex-col p-3" : "p-4",
         tones.frame,
         tones.glow,
       )}
@@ -352,7 +352,7 @@ function MockAdPreview({
 
       <div className={cn(
         "relative overflow-hidden rounded-[18px] border border-white/12 bg-black/30",
-        compact ? "mt-7 aspect-[16/9]" : "mt-8 aspect-[4/3]",
+        compact ? "mt-7 min-h-[210px] flex-1" : "mt-8 aspect-[4/3]",
       )}>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_24%_18%,rgba(255,255,255,0.24),transparent_22%),radial-gradient(circle_at_82%_8%,rgba(103,232,249,0.2),transparent_20%),linear-gradient(145deg,rgba(255,255,255,0.12),rgba(255,255,255,0.02))]" />
         <div className="absolute inset-x-3 top-3 flex items-center justify-between gap-2">
