@@ -272,7 +272,9 @@ function runOfflineChecks() {
   assertIncludes(creativeEngine, "creativeAngleLabel", "Creative angle labels", "static creative copy receives distinct mode-specific marketing angles");
   assertIncludes("src/components/campaign/static-creative-preview-card.tsx", "line-clamp-3", "Creative card copy clamp", "creative cards show usable previews instead of full dense body copy");
   assertIncludes(staticCreativePreviewCard, "StaticCreativeSummaryCard", "Compact creative summary card", "selected creative lists use dense summary cards instead of tall repeated full previews");
-  assertIncludes(previewPage, "StaticCreativeSummaryCard", "Preview compact creative set", "preview page uses compact selected creative summaries");
+  assertIncludes(previewPage, "Primary creative", "Preview primary creative summary", "preview page leads with one creative summary instead of repeated visual cards");
+  assertIncludes(previewPage, "View creative details", "Preview collapsed creative details", "preview page keeps secondary creative details collapsed by default");
+  assertIncludes(previewPage, "h-[520px] overflow-hidden", "Preview funnel height cap", "preview page caps the funnel preview instead of adding an embedded scroll area");
   assertIncludes(launchPage, "StaticCreativeSummaryCard", "Launch compact creative set", "launch page uses compact selected creative summaries");
   assertIncludes(builderPage, "Active campaign workspace", "Builder active campaign shell", "builder defaults to the active campaign workspace when a campaign exists");
   assertIncludes(builderPage, "activeCampaignCopy", "Builder active campaign count copy", "builder uses the real campaign count in active-campaign guidance");

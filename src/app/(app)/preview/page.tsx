@@ -4,7 +4,6 @@ import { WizardSteps } from "@/components/app/wizard-steps";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
-import { StaticCreativeSummaryCard } from "@/components/campaign/static-creative-preview-card";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { getSelectedAdIdsFromPlan, readCampaignPlanDocument } from "@/lib/services/campaign-plan-document";
@@ -129,8 +128,8 @@ export default async function PreviewPage({
   }).catch(() => undefined);
 
   return (
-    <PageShell className="max-w-[1640px]">
-      <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1.08fr)_minmax(520px,0.92fr)] 2xl:items-start">
+    <PageShell className="max-w-[1500px]">
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)] xl:items-start">
         <div className="space-y-4">
           <WizardSteps current="review" />
           <PageHeader
@@ -148,18 +147,19 @@ export default async function PreviewPage({
                 Preview
               </span>
             </div>
-            <div className="max-h-[680px] overflow-y-auto rounded-[24px] border border-white/8">
+            <div className="relative h-[520px] overflow-hidden rounded-[22px] border border-white/8 bg-white/[0.03]">
               <FunnelPreview
                 compact
                 plan={previewPlan}
                 expectedOutcomes={expectedOutcomes}
                 strategyWhy={getStrategyWhy(previewPlan)}
               />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#06101d] to-transparent" />
             </div>
           </section>
         </div>
 
-        <aside className="surface-strong min-w-0 rounded-df-card border border-white/10 p-4 sm:p-5 2xl:sticky 2xl:top-6">
+        <aside className="surface-strong min-w-0 rounded-df-card border border-white/10 p-4 sm:p-5 xl:sticky xl:top-6">
           <div className="mb-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Selected creative test set</p>
             <h2 className="mt-1 text-lg font-semibold text-foreground">
@@ -167,28 +167,78 @@ export default async function PreviewPage({
             </h2>
           </div>
           {selectedAds.length > 0 ? (
-            <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-1">
-              {selectedAds.map((selectedAd, index) => (
-                <StaticCreativeSummaryCard
-                  category={previewPlan.creativeStrategy.campaignCategory}
-                  cta={selectedAd.cta}
-                  headline={selectedAd.headline}
-                  imageGenerationMessage={selectedAd.imageGenerationMessage}
-                  imageGenerationState={selectedAd.imageGenerationState}
-                  imageUrl={selectedAd.imageUrl}
-                  location={previewPlan.market}
-                  key={selectedAd.id}
-                  offer={previewPlan.offerSummary || previewPlan.keyOffer}
-                  overlayText={selectedAd.overlayText}
-                  primaryText={selectedAd.primaryText}
-                  qualityGate={selectedAd.qualityGate}
-                  score={selectedAd.score}
-                  index={index}
-                  selected
-                  selectedCount={selectedAds.length}
-                  visualPromptBrief={selectedAd.visualPromptBrief}
-                />
-              ))}
+            <div className="space-y-3">
+              <div className="rounded-df-card border border-primary/30 bg-primary/[0.08] p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">
+                    Primary creative
+                  </span>
+                  <span className="rounded-full border border-cyan-300/16 bg-cyan-300/[0.055] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100">
+                    {previewPlan.creativeStrategy.campaignCategory.replaceAll("_", " ")}
+                  </span>
+                  {typeof selectedAds[0]?.score === "number" ? (
+                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-white/62">
+                      {selectedAds[0].score.toFixed(1)}/10
+                    </span>
+                  ) : null}
+                </div>
+                <h3 className="mt-3 line-clamp-2 text-base font-semibold leading-6 text-foreground">
+                  {selectedAds[0]?.headline || previewPlan.keyOffer}
+                </h3>
+                <p className="mt-2 line-clamp-3 text-sm leading-6 text-muted-foreground">
+                  {selectedAds[0]?.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
+                </p>
+                <p className="mt-3 text-sm font-semibold text-primary">
+                  CTA: {selectedAds[0]?.cta || "Learn More"}
+                </p>
+              </div>
+
+              <div className="grid gap-2">
+                {selectedAds.slice(1).map((selectedAd, index) => (
+                  <div
+                    className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[18px] border border-white/10 bg-white/[0.035] p-3"
+                    key={selectedAd.id}
+                  >
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-xs font-semibold text-foreground">
+                      {index + 2}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="line-clamp-1 text-sm font-semibold text-foreground">
+                        {selectedAd.headline || previewPlan.keyOffer}
+                      </p>
+                      <p className="line-clamp-1 text-xs text-muted-foreground">
+                        {selectedAd.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
+                      </p>
+                    </div>
+                    {typeof selectedAd.score === "number" ? (
+                      <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-white/62">
+                        {selectedAd.score.toFixed(1)}
+                      </span>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+
+              <details className="rounded-[18px] border border-white/10 bg-black/18 p-3">
+                <summary className="cursor-pointer text-sm font-semibold text-foreground">
+                  View creative details
+                </summary>
+                <div className="mt-3 grid gap-2">
+                  {selectedAds.map((selectedAd, index) => (
+                    <div className="rounded-[14px] border border-white/10 bg-white/[0.03] p-3" key={selectedAd.id}>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Creative {index + 1}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-sm font-semibold text-foreground">
+                        {selectedAd.headline || previewPlan.keyOffer}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+                        {selectedAd.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </details>
             </div>
           ) : (
             <div className="rounded-df-card border border-white/10 bg-white/[0.035] p-5 text-sm text-muted-foreground">
