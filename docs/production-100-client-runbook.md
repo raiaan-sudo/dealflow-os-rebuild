@@ -6,7 +6,7 @@ This runbook is for public self-serve launch operation. PITR and off-site backup
 
 - App/API host: `https://app.agentdealflow.io`
 - Public marketing host: `https://www.agentdealflow.io`
-- Current verified app production deployment: `dpl_5B9ijca7t8KiqPEyh51jwVTdSUk8`
+- Current verified app production deployment: confirm with `vercel inspect https://app.agentdealflow.io` before any launch decision.
 - Current root route contract: `https://app.agentdealflow.io/` serves the app public homepage with `200`; protected app routes redirect unauthenticated users to `/login`.
 - Required app public pages: `/privacy`, `/terms`, `/data-deletion`, `/f/[slug]`
 - Required app webhooks: `/api/stripe/webhook`, `/api/integrations/meta/callback`, `/api/sms/twilio`, `/api/webhooks/twilio/status`

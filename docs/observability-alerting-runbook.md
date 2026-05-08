@@ -102,7 +102,7 @@ Active drain scope:
 
 Current safe production probe contract as of 2026-05-07:
 
-- Active app production deployment for `app.agentdealflow.io`: `dpl_5B9ijca7t8KiqPEyh51jwVTdSUk8`.
+- Active app production deployment for `app.agentdealflow.io`: verify with `vercel inspect https://app.agentdealflow.io` at the start of each probe run.
 - Public marketing host `www.agentdealflow.io` is a separate public-site deployment; app and provider probes should target `app.agentdealflow.io`.
 - `GET /`: `200` public homepage for the current public-homepage production deployment.
 - `GET /login`: `200`.
