@@ -121,11 +121,6 @@ export default async function PaywallPage({
             </div>
           </Card>
 
-          {billing?.launchOverride ? (
-            <div className="rounded-[20px] border border-amber-400/20 bg-amber-400/10 p-4 text-sm text-amber-100">
-              Billing override is active for this account. Launch is allowed without payment for testing or demos.
-            </div>
-          ) : null}
           {paymentIssue ? (
             <div className="rounded-[20px] border border-amber-400/20 bg-amber-400/10 p-4 text-sm leading-6 text-amber-100">
               Stripe reports a payment issue. Update the payment method from Settings to restore live Meta launch access without creating a new checkout.

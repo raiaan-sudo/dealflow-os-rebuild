@@ -487,10 +487,10 @@ function runOfflineChecks() {
   assertIncludes(billingService, "billing_admin_override_launch_access_granted", "Billing admin override audit log", "override-based launch access grants are audit logged");
   assertIncludes(billingService, "billing_checkout_bypass", "Billing override checkout bypass", "override users do not create live Stripe checkout sessions");
   assertIncludes(paywallPage, "launchOverride={billing?.launchOverride === true}", "Paywall override handoff", "billing override state is passed into the paywall CTA");
-  assertIncludes("src/components/billing/paywall-plan-selector.tsx", "Continue with billing override", "Paywall override CTA", "billing override users continue inside the app instead of opening Stripe checkout");
+  assertIncludes("src/components/billing/paywall-plan-selector.tsx", "Activate {selectedPlan.name}", "Paywall simulated activation CTA", "billing override users see normal activation copy without opening Stripe checkout");
   assertIncludes(unlockPage, "Checkout cancelled", "Unlock cancelled state", "Stripe cancel returns to a clear cancellation state instead of an access-active page");
   assertIncludes(unlockPage, "Back to build", "Unlock cancelled CTA", "cancelled checkout sends the user back to Build instead of dashboard by default");
-  assertIncludes(unlockPage, "Billing override active", "Unlock override state", "billing override bypass has its own success state");
+  assertIncludes(unlockPage, "Campaign activated", "Unlock simulated checkout state", "billing override bypass has a confirmation state that feels like successful activation");
   assertIncludes(billingService, "apply_billing_subscription_webhook", "Stripe webhook ordering guard", "subscription sync uses DB-backed stale event protection");
   assertIncludes(billingService, "stripe_subscription_stale_event_ignored", "Stripe stale event observability", "out-of-order subscription events are logged and ignored");
   assertIncludes(billingWebhookMigration, "stripe_latest_event_created", "Billing subscription event watermark", "billing rows persist latest Stripe event timestamps");

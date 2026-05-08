@@ -116,7 +116,7 @@ export function PaywallPlanSelector({
               href={overrideHref}
               className="inline-flex w-full items-center justify-center rounded-full bg-cyan-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200 sm:min-w-[220px]"
             >
-              Continue with billing override
+              Activate {selectedPlan.name}
             </Link>
           ) : (
             <CheckoutButton

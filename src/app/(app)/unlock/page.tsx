@@ -33,13 +33,7 @@ export default async function UnlockPage({
   const billing = await getBillingSummary().catch(() => null);
   const launchAllowed = billing?.launchAllowed ?? false;
   const checkoutCancelled = checkoutState === "cancelled";
-  const checkoutOverride = checkoutState === "override";
-  const dashboardHref = campaignId
-    ? `/dashboard?campaignId=${encodeURIComponent(campaignId)}`
-    : plan
-      ? `/dashboard?plan=${encodeURIComponent(plan)}`
-      : "/dashboard";
-  const launchHref = campaignId ? `/launch?campaignId=${encodeURIComponent(campaignId)}` : "/launch";
+  const checkoutOverride = checkoutState === "override" && billing?.launchOverride === true;
   const paywallHref = `/paywall${campaignId ? `?campaignId=${encodeURIComponent(campaignId)}${plan ? `&plan=${encodeURIComponent(plan)}` : ""}` : plan ? `?plan=${encodeURIComponent(plan)}` : ""}`;
   const buildHref = campaignId
     ? `/builder?campaignId=${encodeURIComponent(campaignId)}`
@@ -50,16 +44,16 @@ export default async function UnlockPage({
   const title = checkoutCancelled
     ? "Checkout cancelled"
     : checkoutOverride
-      ? "Billing override active"
+      ? "Campaign activated"
       : launchAllowed
         ? "Launch access active"
         : "Checkout updated";
   const description = checkoutCancelled
-    ? "No payment was completed. Return to activation when you are ready, or keep reviewing the campaign package."
+    ? "No payment was completed. Return to Build when you are ready to activate the campaign."
     : checkoutOverride
-      ? "This test workspace can continue without Stripe payment. Use it to finish the owner review path."
+      ? "Launch access is confirmed. DealFlow is ready to generate the creative test set and continue the campaign path."
       : launchAllowed
-        ? "This workspace can now preview the saved campaign and continue toward Meta connection."
+        ? "Launch access is confirmed. Continue the campaign path from your Build workspace."
         : reconciliationError
           ? "Checkout returned successfully, but we could not verify the subscription yet. Refresh after Stripe finishes syncing."
           : "Billing is still processing. Refresh after Stripe finishes syncing the subscription.";
@@ -82,7 +76,7 @@ export default async function UnlockPage({
     redirect(buildHref);
   }
 
-  if ((checkoutOverride || launchAllowed) && !reconciliationError) {
+  if (launchAllowed && !checkoutOverride && !reconciliationError) {
     redirect(creativesHref);
   }
 
@@ -95,26 +89,42 @@ export default async function UnlockPage({
       />
 
       <Card className="p-6 sm:p-8">
-        <div className="space-y-4 text-sm text-muted-foreground">
-          {reconciliationError ? (
+        {checkoutOverride ? (
+          <div className="grid gap-3 text-sm text-muted-foreground sm:grid-cols-3">
+            <div className="rounded-[18px] border border-emerald-300/15 bg-emerald-300/[0.055] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-100/70">Plan</p>
+              <p className="mt-2 font-semibold text-foreground">{plan ?? billing?.planTier ?? "pro"}</p>
+            </div>
+            <div className="rounded-[18px] border border-emerald-300/15 bg-emerald-300/[0.055] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-100/70">Status</p>
+              <p className="mt-2 font-semibold text-foreground">Active</p>
+            </div>
+            <div className="rounded-[18px] border border-emerald-300/15 bg-emerald-300/[0.055] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-100/70">Next</p>
+              <p className="mt-2 font-semibold text-foreground">Choose creatives</p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4 text-sm text-muted-foreground">
+            {reconciliationError ? (
+              <p>
+                Verification status: Stripe has not confirmed this subscription for the workspace yet.
+              </p>
+            ) : null}
+            <p>Plan: {billing?.planTier ?? "starter"}</p>
+            <p>Subscription status: {billing?.subscriptionStatus ?? "inactive"}</p>
+            <p>Billing state: {billing?.billingState?.replace(/_/g, " ") ?? "inactive"}</p>
+            {billing?.billingState === "payment_issue" ? (
+              <p>Payment attention: update the payment method in Settings before attempting a new launch.</p>
+            ) : null}
+            {billing?.cancelAtPeriodEnd ? (
+              <p>Cancellation: access remains active until the paid period ends.</p>
+            ) : null}
             <p>
-              Verification status: Stripe has not confirmed this subscription for the workspace yet.
+              Launch access: {launchAllowed ? "enabled" : "not enabled yet"}
             </p>
-          ) : null}
-          <p>Plan: {billing?.planTier ?? "starter"}</p>
-          <p>Subscription status: {billing?.subscriptionStatus ?? "inactive"}</p>
-          <p>Billing state: {billing?.billingState?.replace(/_/g, " ") ?? "inactive"}</p>
-          {billing?.billingState === "payment_issue" ? (
-            <p>Payment attention: update the payment method in Settings before attempting a new launch.</p>
-          ) : null}
-          {billing?.cancelAtPeriodEnd ? (
-            <p>Cancellation: access remains active until the paid period ends.</p>
-          ) : null}
-          <p>
-            Launch access: {launchAllowed ? "enabled" : "not enabled yet"}
-            {billing?.launchOverride ? " (billing override)" : ""}
-          </p>
-        </div>
+          </div>
+        )}
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           {checkoutCancelled ? (
             <>
