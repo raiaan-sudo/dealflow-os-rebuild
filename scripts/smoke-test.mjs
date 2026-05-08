@@ -490,7 +490,16 @@ function runOfflineChecks() {
   assertIncludes("src/components/billing/paywall-plan-selector.tsx", "Activate {selectedPlan.name}", "Paywall simulated activation CTA", "billing override users see normal activation copy without opening Stripe checkout");
   assertIncludes(unlockPage, "Checkout cancelled", "Unlock cancelled state", "Stripe cancel returns to a clear cancellation state instead of an access-active page");
   assertIncludes(unlockPage, "Back to build", "Unlock cancelled CTA", "cancelled checkout sends the user back to Build instead of dashboard by default");
-  assertIncludes(unlockPage, "Campaign activated", "Unlock simulated checkout state", "billing override bypass has a confirmation state that feels like successful activation");
+  assertIncludes(unlockPage, "Welcome to DealFlow OS", "Unlock welcome activation state", "post-checkout activation feels like a customer-facing welcome handoff");
+  assertExcludes(unlockPage, "billing override", "Unlock internal override copy hidden", "post-checkout activation does not expose billing override language");
+  assertIncludes(unlockPage, "<Link href={creativesHref}>{primaryCreativeLabel}</Link>", "Unlock creative handoff CTA", "post-checkout primary CTA opens the creative generation or selection workspace");
+  assertIncludes(unlockPage, "Generate creatives", "Unlock generation CTA copy", "activation handoff can send missing-asset campaigns into creative generation");
+  assertExcludes(unlockPage, "dashboardHref", "Unlock dashboard bypass removed", "post-checkout flow does not route directly to dashboard or passive Build by default");
+  assertIncludes(builderPage, "href: scoped(\"/build/creatives\")", "Builder creative CTA target", "Builder sends unselected campaigns to the creative workspace instead of refreshing itself");
+  assertIncludes(builderPage, "Current next step", "Builder duplicate CTA removed", "campaign slots panel summarizes the next step without adding a second primary CTA loop");
+  assertIncludes(buildCreativesPage, "Generate your creative test set", "Creative generation state", "creative workspace has a customer-facing generation state when assets are not ready");
+  assertIncludes(buildCreativesPage, "GenerateCreativesPanel", "Creative generation panel", "missing creative campaigns stay on the creative workspace instead of bouncing to Builder");
+  assertExcludes(buildCreativesPage, "missingArtifacts", "Creative missing-artifact recovery removed", "customers do not see or trigger technical missing artifact recovery logic");
   assertIncludes(billingService, "apply_billing_subscription_webhook", "Stripe webhook ordering guard", "subscription sync uses DB-backed stale event protection");
   assertIncludes(billingService, "stripe_subscription_stale_event_ignored", "Stripe stale event observability", "out-of-order subscription events are logged and ignored");
   assertIncludes(billingWebhookMigration, "stripe_latest_event_created", "Billing subscription event watermark", "billing rows persist latest Stripe event timestamps");

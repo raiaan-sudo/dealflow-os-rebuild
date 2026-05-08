@@ -323,9 +323,12 @@ function ActiveCampaignWorkspace({
                   <Link href="/paywall">Upgrade for another campaign</Link>
                 </Button>
               )}
-              <Button asChild>
-                <Link href={nextAction.href}>{nextAction.label}</Link>
-              </Button>
+              <div className="rounded-[18px] border border-cyan-300/15 bg-cyan-300/[0.055] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100/70">
+                  Current next step
+                </p>
+                <p className="mt-2 text-sm font-semibold text-foreground">{nextAction.label}</p>
+              </div>
             </div>
             <p className="mt-4 text-xs leading-5 text-muted-foreground">
               New campaigns are secondary. Your active campaign stays first until it is reviewed, launched, or measured.

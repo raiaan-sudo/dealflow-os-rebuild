@@ -2,32 +2,9 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
-import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
+import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { CreativeWizard } from "./creative-wizard";
-
-async function loadStoredCampaignPayload(campaignId: string) {
-  const supabase = await createRouteHandlerClient();
-
-  if (!supabase) {
-    return null;
-  }
-
-  const { data, error } = await supabase
-    .from("campaign_plans")
-    .select("plan")
-    .eq("id", campaignId)
-    .maybeSingle();
-
-  if (error) {
-    return null;
-  }
-
-  const row = (data as { plan?: unknown } | null) ?? null;
-
-  return row?.plan && typeof row.plan === "object" && !Array.isArray(row.plan)
-    ? (row.plan as Record<string, unknown>)
-    : null;
-}
+import { GenerateCreativesPanel } from "./generate-creatives-panel";
 
 export default async function BuildCreativesPage({
   searchParams,
@@ -46,36 +23,32 @@ export default async function BuildCreativesPage({
 
   const activeCampaign = await resolveActiveCampaignRecord(campaignId).catch(() => null);
   const record = activeCampaign?.record ?? null;
-  const storedPlan = await loadStoredCampaignPayload(campaignId);
-  const campaignPayload =
-    storedPlan?.campaign_payload &&
-    typeof storedPlan.campaign_payload === "object" &&
-    !Array.isArray(storedPlan.campaign_payload)
-      ? (storedPlan.campaign_payload as Record<string, unknown>)
-      : null;
-  const missingArtifacts: string[] = [];
 
   if (!record) {
-    missingArtifacts.push("campaign record");
-  }
-
-  if (!campaignPayload) {
-    missingArtifacts.push("campaign payload");
-  }
-
-  if (!record?.creatives?.staticAds?.length) {
-    missingArtifacts.push("creatives");
-  }
-
-  if (missingArtifacts.length > 0) {
     redirect(`/builder?campaignId=${encodeURIComponent(campaignId)}`);
   }
 
-  if (!record) {
-    redirect("/builder");
-  }
-
   const ensuredRecord = record;
+  const plan = canonicalCampaignToPlan(ensuredRecord);
+
+  if (!ensuredRecord.creatives.staticAds.length) {
+    return (
+      <div className="mx-auto w-full max-w-[1320px] space-y-4 p-5 sm:p-6">
+        <WizardSteps current="creatives" />
+        <PageHeader
+          eyebrow="Build"
+          title="Generate your creative test set"
+          description="DealFlow uses the campaign you just built to prepare static ads, copy angles, and video concepts before final review."
+        />
+        <GenerateCreativesPanel
+          campaignId={ensuredRecord.campaign.id}
+          campaignName={plan.businessName || ensuredRecord.campaign.name}
+          market={plan.market}
+          offer={plan.offerSummary || plan.keyOffer}
+        />
+      </div>
+    );
+  }
 
   const creativeOptions = ensuredRecord.creatives.staticAds
     .slice()
