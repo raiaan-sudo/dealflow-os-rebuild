@@ -99,6 +99,7 @@ function runOfflineChecks() {
   const onboardingPage = "src/app/(app)/onboarding/page.tsx";
   const buildFunnelPage = "src/app/(app)/build/funnel/page.tsx";
   const buildCreativesPage = "src/app/(app)/build/creatives/page.tsx";
+  const creativeWizard = "src/app/(app)/build/creatives/creative-wizard.tsx";
   const prepaywallPreview = "src/components/onboarding/prepaywall-campaign-preview.tsx";
   const onboardingRoute = "src/app/api/onboarding/plan/route.ts";
   const leadRoute = "src/app/api/lead-capture/route.ts";
@@ -260,6 +261,10 @@ function runOfflineChecks() {
   assertExcludes(buildFunnelPage, "ArtifactRecoveryPanel", "Funnel technical recovery hidden", "agents do not see technical artifact recovery under Build");
   assertExcludes(buildCreativesPage, "ArtifactRecoveryPanel", "Creative technical recovery hidden", "agents do not see technical artifact recovery under Build");
   assertExcludes(buildCreativesPage, "Creative artifacts are missing", "Creative missing copy hidden", "missing creative artifacts no longer show as an app page");
+  assertIncludes(buildCreativesPage, "max-w-[1500px]", "Creative build workspace width", "creative selection uses more of the desktop viewport");
+  assertIncludes(creativeWizard, "Primary creative", "Creative wizard primary focus", "creative selection leads with one primary creative instead of repeated stacks");
+  assertIncludes(creativeWizard, "Change selected creatives", "Creative queue collapsed", "the full creative queue is secondary by default");
+  assertIncludes(creativeWizard, "Back to onboarding", "Creative wizard onboarding return", "creative selection can return to onboarding instead of another build recovery step");
   assertIncludes("src/lib/services/funnel-engine.ts", "cleanMarketingCopy", "Funnel copy sanitizer", "funnel copy removes awkward repeated market and spacing artifacts");
   assertIncludes("src/lib/services/funnel-engine.ts", "trimWords(cleanMarketingCopy(headline), 14)", "Funnel headline length guard", "funnel headlines are capped instead of over-concatenating onboarding fields");
   assertIncludes("src/lib/services/funnel-engine.ts", "conciseOfferPhrase", "Funnel offer shaping", "offer and lead magnet shape funnel copy without being dumped raw into the headline");

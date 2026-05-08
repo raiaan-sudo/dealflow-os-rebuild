@@ -110,7 +110,7 @@ export default async function BuildCreativesPage({
     });
 
   return (
-    <div className="mx-auto w-full max-w-[1280px] space-y-6 p-5 sm:p-6">
+    <div className="mx-auto w-full max-w-[1500px] space-y-4 p-5 sm:p-6">
       <WizardSteps current="creatives" />
       <PageHeader
         eyebrow="Build"
