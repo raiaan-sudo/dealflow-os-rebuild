@@ -2,6 +2,13 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getMetaEnv, getPublicAppUrl } from "@/lib/env";
 import { ApiError, apiFailure, parseTextBody } from "@/lib/api/route";
+import {
+  buildRateLimitResponse,
+  consumeRateLimit,
+  getHashedRateLimitIdentifier,
+  getRateLimitKey,
+  getRequestIp,
+} from "@/lib/api/rate-limit";
 import { logOperationalEvent, logWarn } from "@/lib/logging";
 
 export const runtime = "nodejs";
@@ -53,6 +60,21 @@ function getConfirmationCode(payload: MetaSignedRequestPayload, appId: string) {
     .slice(0, 16);
 }
 
+async function consumeInvalidSignedRequestBucket(request: Request) {
+  const ipHash = getHashedRateLimitIdentifier(getRequestIp(request));
+  const rateLimit = await consumeRateLimit({
+    key: getRateLimitKey(request, "meta-data-deletion:invalid-signed-request", ipHash),
+    limit: 20,
+    windowMs: 60_000,
+  });
+
+  if (rateLimit && !rateLimit.allowed) {
+    return buildRateLimitResponse(rateLimit.resetAt);
+  }
+
+  return null;
+}
+
 export async function GET() {
   const appUrl = getPublicAppUrl();
 
@@ -101,6 +123,13 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     if (error instanceof ApiError) {
+      if (error.status >= 400 && error.status < 500) {
+        const limited = await consumeInvalidSignedRequestBucket(request);
+        if (limited) {
+          return limited;
+        }
+      }
+
       logWarn("meta_data_deletion_callback_rejected", {
         code: error.code,
         status: error.status,

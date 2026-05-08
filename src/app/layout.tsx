@@ -1,6 +1,16 @@
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ClientErrorListener } from "@/components/telemetry/client-error-listener";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: {
+    default: "DealFlow OS",
+    template: "%s | DealFlow OS",
+  },
+  description:
+    "Build, preview, launch, and monitor real estate campaigns from one guided operating system.",
+};
 
 export default function RootLayout({
   children,

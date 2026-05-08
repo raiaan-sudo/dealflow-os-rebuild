@@ -218,11 +218,16 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
               Back
             </Link>
           </Button>
-          <Button onClick={() => void handleNext()} type="button" disabled={saving}>
+          <Button onClick={() => void handleNext()} type="button" disabled={saving || !canContinue}>
             {saving ? "Saving..." : "Save Test Set → Next"}
           </Button>
         </div>
-        {error ? <p className="text-sm text-rose-400">{error}</p> : null}
+        <p className={error ? "text-sm text-rose-400" : "text-sm text-muted-foreground"}>
+          {error ??
+            (rankedCreatives.length >= 2
+              ? `Select ${minSelected}-${maxSelected} creatives to continue.`
+              : "Select at least one creative to continue.")}
+        </p>
 
         <details className="rounded-2xl border border-border p-4">
           <summary className="cursor-pointer text-sm font-medium text-foreground">

@@ -4,12 +4,14 @@ This runbook is for public self-serve launch operation. PITR and off-site backup
 
 ## Current Production Targets
 
-- App: `https://www.agentdealflow.io`
-- Current verified production deployment: `dpl_6z7yphqnhNEFj2SobqGMafGXH9qT`
-- Current root route contract: `/` serves the public homepage with `200`. If the product decision changes back to app-gated first entry, update this runbook and expect `/` to redirect to `/login`.
-- Required public pages: `/privacy`, `/terms`, `/f/[slug]`
-- Required public webhooks: `/api/stripe/webhook`, `/api/integrations/meta/callback`, `/api/sms/twilio`
-- Public lead capture: `/api/lead-capture`
+- App/API host: `https://app.agentdealflow.io`
+- Public marketing host: `https://www.agentdealflow.io`
+- Current verified app production deployment: `dpl_ENDTK9JHTWru7cLihmb339XyJXDx`
+- Current root route contract: `https://app.agentdealflow.io/` serves the app public homepage with `200`; protected app routes redirect unauthenticated users to `/login`.
+- Required app public pages: `/privacy`, `/terms`, `/data-deletion`, `/f/[slug]`
+- Required app webhooks: `/api/stripe/webhook`, `/api/integrations/meta/callback`, `/api/sms/twilio`, `/api/webhooks/twilio/status`
+- Public lead capture: `https://app.agentdealflow.io/api/lead-capture`
+- Provider dashboards and webhook callbacks should point at `https://app.agentdealflow.io`, not the marketing host, unless a future DNS/project consolidation changes this contract.
 - Operator monitor: `/admin/launch-monitor`
 - Operator command center: `/admin/command-center`
 - Operator issue radar: `/admin/issues`
@@ -533,7 +535,7 @@ npm run test:activation-telemetry
 npm run test:campaign-value-report
 npm run test:subscription-lifecycle
 npm run smoke:offline
-SMOKE_BASE_URL=https://www.agentdealflow.io SMOKE_TEST_FUNNEL_SLUG=<published-slug> SMOKE_TEST_CAMPAIGN_ID=<campaign-id> SMOKE_TEST_EMAIL=<unique-email> npm run smoke:staging
+SMOKE_BASE_URL=https://app.agentdealflow.io SMOKE_TEST_FUNNEL_SLUG=<published-slug> SMOKE_TEST_CAMPAIGN_ID=<campaign-id> SMOKE_TEST_EMAIL=<unique-email> npm run smoke:staging
 ```
 
 ## 100-Client Load Validation
@@ -543,8 +545,8 @@ Run only against production-safe routes. Do not point load tests at paid generat
 Recommended pre-beta profile:
 
 ```bash
-LOAD_BASE_URL=https://www.agentdealflow.io LOAD_TEST_FUNNEL_SLUG=<published-slug> npm run load:routes
-LOAD_BASE_URL=https://www.agentdealflow.io LOAD_TEST_ALLOW_WRITES=true LOAD_TEST_CAMPAIGN_ID=<campaign-id> npm run load:lead-capture
+LOAD_BASE_URL=https://app.agentdealflow.io LOAD_TEST_FUNNEL_SLUG=<published-slug> npm run load:routes
+LOAD_BASE_URL=https://app.agentdealflow.io LOAD_TEST_ALLOW_WRITES=true LOAD_TEST_CAMPAIGN_ID=<campaign-id> npm run load:lead-capture
 ```
 
 The lead-capture profile writes test leads. Use a published QA campaign only, keep request volume modest, and never point load tests at Stripe payment completion, paid generation, or live Meta launch routes. The script enforces the thresholds below by default and refuses more than `50` lead writes unless `LOAD_MAX_WRITE_REQUESTS` is explicitly raised for a QA campaign.

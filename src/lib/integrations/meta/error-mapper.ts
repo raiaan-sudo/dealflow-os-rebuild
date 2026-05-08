@@ -169,6 +169,21 @@ function normalizeText(value: string | null | undefined) {
   return value?.trim().toLowerCase() ?? "";
 }
 
+function scrubMetaLogText(value: string | null | undefined) {
+  const text = value?.trim();
+
+  if (!text) {
+    return null;
+  }
+
+  return text
+    .replace(/\b(access_token|client_secret|appsecret_proof|code)=([^&\s]+)/gi, "$1=[redacted]")
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(/eyJ[A-Za-z0-9._-]+/g, "[redacted]")
+    .replace(/https?:\/\/\S+/gi, "[url redacted]")
+    .slice(0, 500);
+}
+
 function inferMetaErrorCategory(input: MetaErrorInput): MetaErrorCategory {
   const code = normalizeText(input.code);
   const message = normalizeText(input.message);
@@ -358,8 +373,8 @@ export function logMetaError(params: {
     requestId: params.requestId,
     category: diagnostic.category,
     code: diagnostic.code,
-    rawCode: params.code ?? null,
-    rawMessage: diagnostic.internalMessage,
+    rawCode: scrubMetaLogText(params.code) ?? null,
+    rawMessage: scrubMetaLogText(diagnostic.internalMessage),
     ...(params.extra ?? {}),
   });
 
@@ -383,8 +398,8 @@ export function logMetaWarning(params: {
     requestId: params.requestId,
     category: diagnostic.category,
     code: diagnostic.code,
-    rawCode: params.code ?? null,
-    rawMessage: diagnostic.internalMessage,
+    rawCode: scrubMetaLogText(params.code) ?? null,
+    rawMessage: scrubMetaLogText(diagnostic.internalMessage),
     ...(params.extra ?? {}),
   });
 

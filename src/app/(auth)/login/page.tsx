@@ -1,5 +1,11 @@
 import { hasSupabaseEnv } from "@/lib/env";
 import { LoginForm } from "@/components/auth/login-form";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Sign in",
+  description: "Sign in to DealFlow OS to continue your campaign workspace.",
+};
 
 export default async function LoginPage({
   searchParams,

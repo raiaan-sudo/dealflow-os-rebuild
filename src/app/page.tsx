@@ -46,12 +46,13 @@ export default function HomePage() {
           </Link>
 
           <div className="flex shrink-0 items-center gap-2">
-            <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
+            <Button asChild variant="ghost" size="sm">
               <Link href="/login">Sign in</Link>
             </Button>
             <Button asChild size="sm">
               <Link href="/dashboard">
-                Open app
+                <span className="hidden sm:inline">Open app</span>
+                <span className="sm:hidden">App</span>
                 <ArrowRight aria-hidden="true" />
               </Link>
             </Button>

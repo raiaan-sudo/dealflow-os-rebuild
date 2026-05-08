@@ -325,7 +325,7 @@ export function LoginForm({
     isPending
       ? "Please wait..."
       : mode === "sign-in"
-        ? "Launch My Campaign"
+        ? "Sign in"
         : mode === "sign-up"
           ? "Create Account"
           : mode === "reset-password"
@@ -341,9 +341,9 @@ export function LoginForm({
         <p className="df-eyebrow">
           Replace your agency
         </p>
-        <p className="mt-2 text-2xl font-semibold text-white [overflow-wrap:anywhere] sm:tracking-[-0.04em]">
+        <h1 className="mt-2 text-2xl font-semibold text-white [overflow-wrap:anywhere] sm:tracking-[-0.04em]">
           Build, launch, and optimize your ads without paying an agency
-        </p>
+        </h1>
         <p className="mt-2 text-sm leading-6 text-white/70 [overflow-wrap:anywhere]">
           Sign in to get your funnel, ads, campaign launch path, and optimization workflow in one place.
         </p>

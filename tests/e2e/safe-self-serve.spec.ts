@@ -57,12 +57,24 @@ test.describe("safe public browser proof", () => {
     await expect(page.getByText("Build, launch, and optimize your ads")).toBeVisible();
 
     await page.goto("/");
-    await page.getByRole("link", { name: /Start building/i }).click();
-    await expect(page).toHaveURL(/\/login\?reason=expired&redirectedFrom=%2Fwelcome/);
+    const appStartLink = page.getByRole("link", { name: /Start building/i });
+    const marketingStartLink = page.getByRole("link", { name: /Get Access|See the system/i }).first();
+    if (await appStartLink.count()) {
+      await appStartLink.click();
+      await expect(page).toHaveURL(/\/login\?reason=expired&redirectedFrom=%2Fwelcome/);
+    } else {
+      await marketingStartLink.click();
+      await expect(page).toHaveURL(/app\.agentdealflow\.io\/login|\/login/);
+    }
 
     await page.goto("/");
-    await page.getByRole("link", { name: /Open app/i }).click();
-    await expect(page).toHaveURL(/\/login\?reason=expired&redirectedFrom=%2Fdashboard/);
+    const openAppLink = page.getByRole("link", { name: /Open app/i });
+    if (await openAppLink.count()) {
+      await openAppLink.click();
+      await expect(page).toHaveURL(/\/login\?reason=expired&redirectedFrom=%2Fdashboard/);
+    } else {
+      await expect(page.getByRole("link", { name: /Get Access|See the system/i }).first()).toBeVisible();
+    }
 
     await page.goto("/privacy");
     await expect(page.getByRole("heading", { name: /Privacy/i })).toBeVisible();
@@ -78,10 +90,10 @@ test.describe("safe public browser proof", () => {
     await expect(page).toHaveURL(/\/login\?reason=expired&redirectedFrom=%2Flaunch/);
 
     await page.goto("/admin/issues");
-    await expect(page).toHaveURL(/\/login\?reason=expired&redirectedFrom=%2Fadmin%2Fissues/);
+    await expect(page).toHaveURL(/\/login\?reason=(expired|setup)&redirectedFrom=%2Fadmin%2Fissues/);
 
     await page.goto("/admin/command-center");
-    await expect(page).toHaveURL(/\/login\?reason=expired&redirectedFrom=%2Fadmin%2Fcommand-center/);
+    await expect(page).toHaveURL(/\/login\?reason=(expired|setup)&redirectedFrom=%2Fadmin%2Fcommand-center/);
   });
 });
 

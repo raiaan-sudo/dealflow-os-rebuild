@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/page-shell";
 import type { BillingPlanTier } from "@/lib/billing/plans";
 import { getPlanPresentation, SELECTABLE_PLAN_TIERS, type SelectablePlanTier } from "@/lib/billing/plan-presentation";
+import { normalizePhone } from "@/lib/phone";
 import { normalizeOfferForCampaign, type NormalizedOfferResult } from "@/lib/services/offer-normalization-service";
 import { cn } from "@/lib/utils";
 
@@ -302,6 +303,7 @@ function validateStep(step: OnboardingStepKey, draft: DraftState) {
     if (!draft.agentLastName.trim()) errors.agentLastName = "Add the agent last name.";
     if (!draft.agentCompanyName.trim()) errors.agentCompanyName = "Add the company or brokerage.";
     if (!draft.agentPhone.trim()) errors.agentPhone = "Add the agent phone for internal lead alerts.";
+    else if (!normalizePhone(draft.agentPhone)) errors.agentPhone = "Use a valid US or Canada phone number.";
   }
 
   if (step === "market" || step === "review") {
@@ -969,6 +971,9 @@ export default function OnboardingPage() {
               <label className="space-y-2 text-sm">
                 <span className="text-muted-foreground">SMS alert phone</span>
                 <Input value={draft.agentPhone} onChange={(event) => updateDraft({ agentPhone: event.target.value })} placeholder="(555) 555-5555" inputMode="tel" />
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Use a US or Canada number so lead alerts can be routed correctly.
+                </p>
                 {errors.agentPhone ? <p className="text-sm text-rose-400">{errors.agentPhone}</p> : null}
               </label>
             </div>

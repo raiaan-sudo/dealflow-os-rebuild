@@ -234,9 +234,22 @@ export async function consumeRateLimitBuckets(
 }
 
 export function getRequestIp(request: Request | { headers: Headers }) {
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  const realIp = request.headers.get("x-real-ip");
-  return forwardedFor?.split(",")[0]?.trim() || realIp || "anonymous";
+  const candidates = [
+    request.headers.get("x-real-ip"),
+    request.headers.get("x-vercel-forwarded-for")?.split(",")[0],
+    request.headers.get("cf-connecting-ip"),
+    request.headers.get("true-client-ip"),
+    request.headers.get("x-forwarded-for")?.split(",")[0],
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = candidate?.trim();
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return "anonymous";
 }
 
 export function getHashedRateLimitIdentifier(value: string | null | undefined) {
