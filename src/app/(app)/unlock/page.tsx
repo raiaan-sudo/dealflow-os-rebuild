@@ -31,6 +31,32 @@ export default async function UnlockPage({
       : null;
   const billing = await getBillingSummary().catch(() => null);
   const launchAllowed = billing?.launchAllowed ?? false;
+  const checkoutCancelled = checkoutState === "cancelled";
+  const checkoutOverride = checkoutState === "override";
+  const dashboardHref = campaignId
+    ? `/dashboard?campaignId=${encodeURIComponent(campaignId)}`
+    : plan
+      ? `/dashboard?plan=${encodeURIComponent(plan)}`
+      : "/dashboard";
+  const launchHref = campaignId ? `/launch?campaignId=${encodeURIComponent(campaignId)}` : "/launch";
+  const paywallHref = `/paywall${campaignId ? `?campaignId=${encodeURIComponent(campaignId)}${plan ? `&plan=${encodeURIComponent(plan)}` : ""}` : plan ? `?plan=${encodeURIComponent(plan)}` : ""}`;
+  const previewHref = campaignId ? `/preview?campaignId=${encodeURIComponent(campaignId)}` : "/preview";
+  const title = checkoutCancelled
+    ? "Checkout cancelled"
+    : checkoutOverride
+      ? "Billing override active"
+      : launchAllowed
+        ? "Launch access active"
+        : "Checkout updated";
+  const description = checkoutCancelled
+    ? "No payment was completed. Return to activation when you are ready, or keep reviewing the campaign package."
+    : checkoutOverride
+      ? "This test workspace can continue without Stripe payment. Use it to finish the owner review path."
+      : launchAllowed
+        ? "This workspace can now preview the saved campaign and continue toward Meta connection."
+        : reconciliationError
+          ? "Checkout returned successfully, but we could not verify the subscription yet. Refresh after Stripe finishes syncing."
+          : "Billing is still processing. Refresh after Stripe finishes syncing the subscription.";
 
   if (checkoutState === "success" && checkoutSessionId && !reconciliationError) {
     await recordActivationEventForCurrentUser({
@@ -50,16 +76,8 @@ export default async function UnlockPage({
     <PageShell>
       <PageHeader
         eyebrow="Billing"
-        title={launchAllowed ? "Launch access active" : "Checkout updated"}
-        description={
-          launchAllowed
-            ? "This workspace can now preview the saved campaign and continue toward Meta connection."
-            : checkoutState === "cancelled"
-              ? "Checkout was cancelled before activation completed."
-              : reconciliationError
-                ? "Checkout returned successfully, but we could not verify the subscription yet. Refresh after Stripe finishes syncing."
-              : "Billing is still processing. Refresh after Stripe finishes syncing the subscription."
-        }
+        title={title}
+        description={description}
       />
 
       <Card className="p-6 sm:p-8">
@@ -84,24 +102,25 @@ export default async function UnlockPage({
           </p>
         </div>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <Button asChild>
-            <Link
-              href={
-                campaignId
-                  ? `/dashboard?campaignId=${encodeURIComponent(campaignId)}`
-                  : plan
-                    ? `/dashboard?plan=${encodeURIComponent(plan)}`
-                    : "/dashboard"
-              }
-            >
-              Open dashboard preview
-            </Link>
-          </Button>
-          <Button asChild variant="secondary">
-            <Link href={campaignId ? `/launch?campaignId=${encodeURIComponent(campaignId)}` : "/launch"}>
-              Continue to Meta setup
-            </Link>
-          </Button>
+          {checkoutCancelled ? (
+            <>
+              <Button asChild>
+                <Link href={paywallHref}>Return to activation</Link>
+              </Button>
+              <Button asChild variant="secondary">
+                <Link href={previewHref}>Review campaign package</Link>
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button asChild>
+                <Link href={dashboardHref}>Open dashboard preview</Link>
+              </Button>
+              <Button asChild variant="secondary">
+                <Link href={launchHref}>Continue to Meta setup</Link>
+              </Button>
+            </>
+          )}
         </div>
       </Card>
     </PageShell>

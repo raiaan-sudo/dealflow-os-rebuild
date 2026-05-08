@@ -106,6 +106,7 @@ function runOfflineChecks() {
   const appLayout = "src/app/(app)/layout.tsx";
   const settingsPage = "src/app/(app)/settings/page.tsx";
   const resultsPage = "src/app/results/page.tsx";
+  const unlockPage = "src/app/(app)/unlock/page.tsx";
   const appContextService = "src/lib/services/app-context.ts";
   const metaConnect = "src/app/api/integrations/meta/connect/route.ts";
   const metaCallback = "src/app/api/integrations/meta/callback/route.ts";
@@ -465,6 +466,9 @@ function runOfflineChecks() {
   assertIncludes(billingService, "billing_checkout_bypass", "Billing override checkout bypass", "override users do not create live Stripe checkout sessions");
   assertIncludes(paywallPage, "launchOverride={billing?.launchOverride === true}", "Paywall override handoff", "billing override state is passed into the paywall CTA");
   assertIncludes("src/components/billing/paywall-plan-selector.tsx", "Continue with billing override", "Paywall override CTA", "billing override users continue inside the app instead of opening Stripe checkout");
+  assertIncludes(unlockPage, "Checkout cancelled", "Unlock cancelled state", "Stripe cancel returns to a clear cancellation state instead of an access-active page");
+  assertIncludes(unlockPage, "Return to activation", "Unlock cancelled CTA", "cancelled checkout sends the user back to activation instead of dashboard by default");
+  assertIncludes(unlockPage, "Billing override active", "Unlock override state", "billing override bypass has its own success state");
   assertIncludes(billingService, "apply_billing_subscription_webhook", "Stripe webhook ordering guard", "subscription sync uses DB-backed stale event protection");
   assertIncludes(billingService, "stripe_subscription_stale_event_ignored", "Stripe stale event observability", "out-of-order subscription events are logged and ignored");
   assertIncludes(billingWebhookMigration, "stripe_latest_event_created", "Billing subscription event watermark", "billing rows persist latest Stripe event timestamps");
