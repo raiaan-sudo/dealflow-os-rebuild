@@ -26,6 +26,7 @@ import { assertMetaLaunchBillingAccessForOrganization } from "@/lib/services/bil
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
+import { slugify } from "@/lib/utils";
 
 const requestSchema = z.object({
   campaignId: z.string().min(1),
@@ -97,6 +98,14 @@ type CampaignPayloadRecord = {
     objective?: string;
     campaign_name?: string;
   };
+};
+
+type CampaignPlanStorageRow = {
+  plan?: unknown;
+  public_slug?: string | null;
+  publish_state?: string | null;
+  published_snapshot?: unknown;
+  staged_snapshot?: unknown;
 };
 
 function assertMetaLiveLaunchEnabled() {
@@ -189,7 +198,7 @@ async function loadSavedCampaignPayload(campaignId: string): Promise<CampaignPay
 
   const { data, error } = await supabase
     .from("campaign_plans")
-    .select("plan")
+    .select("plan,public_slug,publish_state,published_snapshot,staged_snapshot")
     .eq("id", campaignId)
     .maybeSingle();
 
@@ -218,9 +227,65 @@ async function loadCampaignPlanDocument(campaignId: string) {
     throw error;
   }
 
-  const row = (data as { plan?: unknown } | null) ?? null;
+  const row = (data as CampaignPlanStorageRow | null) ?? null;
+  const document = readCampaignPlanDocument(row?.plan);
+  const publicSlug = getRecoverablePublicSlug(row, document);
 
-  return readCampaignPlanDocument(row?.plan);
+  return publicSlug && !document.public_slug
+    ? readCampaignPlanDocument({ ...document, public_slug: publicSlug })
+    : document;
+}
+
+function asRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function getNestedText(value: unknown, path: string[]) {
+  let current: unknown = value;
+
+  for (const key of path) {
+    const record = asRecord(current);
+
+    if (!record) {
+      return "";
+    }
+
+    current = record[key];
+  }
+
+  return typeof current === "string" ? current.trim() : "";
+}
+
+function getRecoverablePublicSlug(
+  row: CampaignPlanStorageRow | null,
+  document: Record<string, unknown>,
+) {
+  const publishState = typeof row?.publish_state === "string" ? row.publish_state : "";
+  const publishedSnapshot = asRecord(row?.published_snapshot);
+  const stagedSnapshot = asRecord(row?.staged_snapshot);
+  const snapshot = publishedSnapshot ?? stagedSnapshot;
+  const publishedOrStaged = publishState === "published" || publishState === "staged";
+  const candidates = [
+    typeof row?.public_slug === "string" ? row.public_slug : "",
+    typeof document.public_slug === "string" ? document.public_slug : "",
+    getNestedText(snapshot, ["publish", "slug"]),
+    getNestedText(snapshot, ["public_slug"]),
+    getNestedText(snapshot, ["slug"]),
+    publishedOrStaged ? getNestedText(snapshot, ["campaign", "name"]) : "",
+    publishedOrStaged ? getNestedText(document, ["name"]) : "",
+  ];
+
+  for (const candidate of candidates) {
+    const slug = slugify(candidate);
+
+    if (slug) {
+      return slug;
+    }
+  }
+
+  return null;
 }
 
 async function loadCampaignOwnerId(campaignId: string) {
@@ -836,7 +901,7 @@ async function launchCampaignToMeta(
       selectedStaticAd.visualConcept ??
       storedPayload?.creatives?.creative_concepts?.[0] ??
       record.plan.summary;
-    const publicSlug = record.publish.slug?.trim() ?? "";
+    const publicSlug = record.publish.slug?.trim() || currentPlan.public_slug?.trim() || "";
     const expectedDestinationUrl = publicSlug
       ? `${getPublicAppUrl()}/f/${publicSlug}`
       : "";

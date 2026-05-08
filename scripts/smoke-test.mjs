@@ -339,6 +339,8 @@ function runOfflineChecks() {
   assertIncludes(launchRoute, "fetchMetaObjectByName", "Deterministic Meta lookup", "Meta objects are recovered by deterministic name");
   assertIncludes(launchRoute, "step_status", "Step-level launch state", "launch_runtime stores step_status");
   assertIncludes(launchRoute, "const destinationUrl = publicSlug ? expectedDestinationUrl : \"\";", "Launch destination slug fallback", "published public slug is the launch destination source of truth when saved payloads are stale");
+  assertIncludes(launchRoute, "getRecoverablePublicSlug", "Launch slug recovery", "launch runtime updates recover and preserve the published slug instead of erasing it");
+  assertIncludes(launchRoute, "currentPlan.public_slug", "Launch current-plan slug source", "Meta launch can use the recovered plan slug when the canonical campaign record is stale");
   assertIncludes(launchRoute, "testModeInterruptAfter", "Forced interruption support", "forced interruption mode exists");
   assertIncludes(launchApiRoute, "test_mode_interrupt_after", "Forced interruption launch API", "launch route forwards interruption mode");
   assertIncludes(launchApiRoute, "assertMetaLaunchBillingAccess", "Launch billing gate", "launch route enforces subscription/admin override gate");
