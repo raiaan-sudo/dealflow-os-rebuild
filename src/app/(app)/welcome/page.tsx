@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, CheckCircle2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -10,8 +10,10 @@ const WELCOME_STORAGE_KEY = "dealflow-welcome-transition-v1";
 
 export default function WelcomePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [progress, setProgress] = useState(0);
   const [ready, setReady] = useState(false);
+  const forceWelcome = searchParams.get("fresh") === "1" || searchParams.get("fromAuth") === "1";
 
   const steps = useMemo(
     () => [
@@ -25,7 +27,7 @@ export default function WelcomePage() {
   useEffect(() => {
     const seen = window.localStorage.getItem(WELCOME_STORAGE_KEY) === "seen";
 
-    if (seen) {
+    if (seen && !forceWelcome) {
       router.replace("/onboarding");
       return;
     }
@@ -45,7 +47,7 @@ export default function WelcomePage() {
       window.clearInterval(progressTimer);
       window.clearTimeout(redirectTimer);
     };
-  }, [router]);
+  }, [forceWelcome, router]);
 
   if (!ready) {
     return null;

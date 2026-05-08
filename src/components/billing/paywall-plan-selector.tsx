@@ -3,39 +3,11 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
 import { CheckoutButton } from "@/components/billing/checkout-button";
-import type { BillingPlanTier } from "@/lib/billing/plans";
-import { BILLING_PLANS } from "@/lib/billing/plans";
-
-type SelectablePlanTier = Extract<BillingPlanTier, "starter" | "pro">;
-
-const PLAN_FEATURES: Record<SelectablePlanTier, string[]> = {
-  starter: [
-    "Guided campaign setup",
-    "Offer-led funnel and creative preview",
-    "Recommended optimization checklist",
-    "Meta readiness and launch gates",
-    "You approve and apply each step",
-  ],
-  pro: [
-    "Everything in Starter",
-    "Fully covered launch workspace",
-    "Self-optimizing campaign checks",
-    "Autonomous readiness monitoring",
-    "Expanded performance recommendations",
-  ],
-};
-
-const PLAN_SUMMARY: Record<SelectablePlanTier, string> = {
-  starter:
-    "Recommended for agents who want DealFlow to map the optimizations while they approve and apply the next steps.",
-  pro:
-    "For agents who want the campaign fully covered with self-optimizing checks, richer controls, and ongoing launch guidance.",
-};
-
-const PLAN_POSITIONING: Record<SelectablePlanTier, string> = {
-  starter: "Recommended optimization",
-  pro: "Fully covered + self-optimizing",
-};
+import {
+  getPlanPresentation,
+  SELECTABLE_PLAN_TIERS,
+  type SelectablePlanTier,
+} from "@/lib/billing/plan-presentation";
 
 export function PaywallPlanSelector({
   initialPlanTier,
@@ -47,13 +19,13 @@ export function PaywallPlanSelector({
   disabled?: boolean;
 }) {
   const [selectedTier, setSelectedTier] = useState<SelectablePlanTier>(initialPlanTier);
-  const selectedPlan = BILLING_PLANS[selectedTier];
+  const selectedPlan = getPlanPresentation(selectedTier);
 
   return (
     <div className="space-y-5">
       <div className="grid gap-4 lg:grid-cols-2">
-        {(["starter", "pro"] as const).map((tier) => {
-          const plan = BILLING_PLANS[tier];
+        {SELECTABLE_PLAN_TIERS.map((tier) => {
+          const plan = getPlanPresentation(tier);
           const selected = selectedTier === tier;
 
           return (
@@ -73,7 +45,7 @@ export function PaywallPlanSelector({
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-100/75">
-                    {tier === "starter" ? "Guided launch" : "Operator launch"}
+                    {plan.eyebrow}
                   </p>
                   <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-white">{plan.name}</h3>
                   <p className="mt-1 text-lg font-semibold text-cyan-100">{plan.priceLabel}</p>
@@ -91,13 +63,13 @@ export function PaywallPlanSelector({
               </div>
 
               <div className="mt-4 inline-flex w-fit rounded-full border border-cyan-300/18 bg-cyan-300/[0.06] px-3 py-1 text-xs font-semibold text-cyan-100">
-                {PLAN_POSITIONING[tier]}
+                {plan.positioning}
               </div>
 
-              <p className="mt-3 text-sm leading-6 text-white/68">{PLAN_SUMMARY[tier]}</p>
+              <p className="mt-3 text-sm leading-6 text-white/68">{plan.summary}</p>
 
               <div className="mt-5 space-y-3">
-                {PLAN_FEATURES[tier].map((feature) => (
+                {plan.features.map((feature) => (
                   <div key={feature} className="flex gap-3 text-sm leading-6 text-white/76">
                     <Check className="mt-1 h-4 w-4 shrink-0 text-cyan-200" />
                     <span>{feature}</span>
@@ -107,7 +79,7 @@ export function PaywallPlanSelector({
 
               <div className="mt-auto pt-5">
                 <span className="text-xs font-semibold uppercase tracking-[0.16em] text-white/44">
-                  {tier === "starter" ? "Guided by DealFlow, executed by you" : "DealFlow monitors and guides the full path"}
+                  {plan.footer}
                 </span>
               </div>
             </button>

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { normalizeOfferForCampaign } from "@/lib/services/offer-normalization-service";
 import { cn } from "@/lib/utils";
 
 export type PrepaywallCampaignMode = "buyer" | "seller" | "investor" | "commercial";
@@ -48,6 +49,7 @@ type PreviewContent = {
 type PrepaywallCampaignPreviewProps = {
   draft: PrepaywallCampaignPreviewDraft;
   variant?: "compact" | "package";
+  density?: "standard" | "sidecar";
   className?: string;
 };
 
@@ -102,7 +104,7 @@ function lowerClean(value: string) {
 }
 
 function compactOffer(offer: string) {
-  return normalizeSentence(offer)
+  return normalizeSentence(normalizeOfferForCampaign(offer).normalizedOffer)
     .replace(/^free\s+/i, "")
     .replace(/\s+(strategy call|consultation|brief|report)$/i, " $1")
     .trim();
@@ -144,6 +146,11 @@ function offerLedHeadline(mode: PrepaywallCampaignMode, offer: string, market: s
 }
 
 function offerCta(mode: PrepaywallCampaignMode, offer: string) {
+  const normalizedOffer = normalizeOfferForCampaign(offer, mode);
+  if (normalizedOffer.normalizedOffer) {
+    return normalizedOffer.cta;
+  }
+
   const normalized = offer.toLowerCase();
   const cleanOffer = compactOffer(offer);
 
@@ -181,7 +188,7 @@ function buildPreviewContent(draft: PrepaywallCampaignPreviewDraft): PreviewCont
   const market = clean(draft.market, "your market");
   const propertyType = clean(draft.propertyType, "selected inventory");
   const audience = clean(draft.audience, "qualified prospects");
-  const offer = clean(draft.offer, "strategy call");
+  const offer = normalizeOfferForCampaign(clean(draft.offer, "strategy call"), draft.campaignMode).normalizedOffer;
   const priceRange = clean(draft.priceRange, "target range");
   const cta = offerCta(draft.campaignMode, offer);
   const offerHeadline = offerLedHeadline(draft.campaignMode, offer, market, propertyType, audience);
@@ -432,19 +439,22 @@ function FunnelPreviewMock({
 export function PrepaywallCampaignPreview({
   draft,
   variant = "compact",
+  density = "standard",
   className,
 }: PrepaywallCampaignPreviewProps) {
   const safeDraft = { ...defaultPreviewDraft, ...draft };
+  safeDraft.offer = normalizeOfferForCampaign(safeDraft.offer, safeDraft.campaignMode).normalizedOffer;
   const content = buildPreviewContent(safeDraft);
   const agentName = [safeDraft.agentFirstName, safeDraft.agentLastName].filter(Boolean).join(" ") || "Agent not set";
   const packageMode = variant === "package";
   const compactMode = !packageMode;
+  const sidecarMode = packageMode && density === "sidecar";
 
   if (compactMode) {
     return (
       <Card
         data-testid="prepaywall-campaign-preview"
-        className={cn("grid h-fit min-w-0 overflow-hidden p-4", className)}
+        className={cn("grid h-fit min-w-0 overflow-x-hidden p-4", className)}
       >
         <div className="grid gap-3">
           <div className="flex min-w-0 items-start justify-between gap-3">
@@ -463,7 +473,7 @@ export function PrepaywallCampaignPreview({
             </div>
           </div>
 
-          <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(210px,0.85fr)_minmax(280px,1.15fr)]">
+          <div className="grid min-w-0 gap-3 2xl:grid-cols-[minmax(190px,0.85fr)_minmax(260px,1.15fr)]">
             <MockAdPreview content={content} draft={safeDraft} compact />
 
             <div className="grid min-w-0 content-start gap-3">
@@ -483,7 +493,7 @@ export function PrepaywallCampaignPreview({
           </div>
 
           <div className="grid gap-2">
-            <div className="grid gap-2 sm:grid-cols-4">
+            <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-4">
               {[
                 ["Agent", agentName],
                 ["Market", safeDraft.market || "Not set"],
@@ -520,67 +530,70 @@ export function PrepaywallCampaignPreview({
     <Card
       data-testid="prepaywall-campaign-preview"
       className={cn(
-        "h-fit overflow-hidden",
-        "p-5",
+        "h-full min-w-0 overflow-x-hidden",
+        sidecarMode ? "p-4" : "p-5",
         className,
       )}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="df-eyebrow text-cyan-100/76">Campaign package preview</p>
-          <h3 className={cn("mt-2 font-semibold tracking-[-0.05em]", compactMode ? "text-xl" : "text-2xl")}>
+          <h3 className={cn("mt-2 line-clamp-2 font-semibold tracking-[-0.05em]", sidecarMode ? "text-lg" : "text-2xl")}>
             {content.headline}
           </h3>
-          <p className="mt-2 text-sm leading-6 text-white/58">
+          <p className={cn("mt-2 text-sm text-white/58", sidecarMode ? "line-clamp-2 leading-5" : "leading-6")}>
             {content.cta} is the preview action. Full generation unlocks after checkout and credits.
           </p>
         </div>
         <Badge className="border-cyan-200/20 bg-cyan-300/[0.055] text-cyan-100">Watermarked</Badge>
       </div>
 
-      <div className="mt-4 grid min-w-0 gap-3 xl:grid-cols-[minmax(260px,0.92fr)_minmax(0,1.08fr)]">
-        <MockAdPreview content={content} draft={safeDraft} />
+      <div className={cn(
+        "mt-4 grid min-w-0 gap-3",
+        sidecarMode ? "lg:grid-cols-[minmax(180px,0.78fr)_minmax(240px,1fr)]" : "xl:grid-cols-[minmax(260px,0.92fr)_minmax(0,1.08fr)]",
+      )}>
+        <MockAdPreview content={content} draft={safeDraft} compact={sidecarMode} />
 
         <div className="grid gap-3">
-          <FunnelPreviewMock content={content} draft={safeDraft} />
+          <FunnelPreviewMock content={content} draft={safeDraft} compact={sidecarMode} />
 
-          <div className="rounded-[22px] border border-white/10 bg-white/[0.03] p-4">
+          <div className={cn("rounded-[22px] border border-white/10 bg-white/[0.03]", sidecarMode ? "p-3" : "p-4")}>
             <div className="flex items-start gap-3">
-              <MiniIconTile icon={FileText} />
-              <div>
+              <MiniIconTile icon={FileText} className={sidecarMode ? "size-8 rounded-xl" : undefined} />
+              <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/44">Copy preview</p>
-                <h4 className="mt-2 text-lg font-semibold leading-tight text-white">{content.headline}</h4>
-                <p className="mt-2 text-sm leading-6 text-white/58">{content.primaryText}</p>
+                <h4 className={cn("mt-2 font-semibold leading-tight text-white", sidecarMode ? "line-clamp-2 text-sm" : "text-lg")}>{content.headline}</h4>
+                <p className={cn("mt-2 text-white/58", sidecarMode ? "line-clamp-2 text-xs leading-5" : "text-sm leading-6")}>{content.primaryText}</p>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <div className={cn("mt-3 grid gap-2", sidecarMode ? "sm:grid-cols-4" : "sm:grid-cols-2")}>
         {[
           ["Agent", agentName],
           ["Market", safeDraft.market || "Not set"],
           ["Audience", safeDraft.audience || "Not set"],
           ["Offer", safeDraft.offer || "Not set"],
         ].map(([label, value]) => (
-          <div key={label} className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2.5">
+          <div key={label} className={cn("min-w-0 border border-white/10 bg-white/[0.035]", sidecarMode ? "rounded-full px-3 py-2" : "rounded-2xl px-3 py-2.5")}>
             <p className="text-xs text-white/46">{label}</p>
             <p className="mt-1 truncate text-sm font-semibold text-white/86">{value}</p>
           </div>
         ))}
       </div>
 
-      <div className="mt-4 rounded-[24px] border border-emerald-300/16 bg-emerald-300/[0.04] p-4">
+      <div className={cn("mt-4 rounded-[24px] border border-emerald-300/16 bg-emerald-300/[0.04]", sidecarMode ? "p-3" : "p-4")}>
         <div className="flex items-start gap-3">
-          <MiniIconTile icon={ShieldCheck} className="text-emerald-100" />
-          <div>
+          <MiniIconTile icon={ShieldCheck} className={cn("text-emerald-100", sidecarMode ? "size-8 rounded-xl" : "")} />
+          <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-white">Launch readiness summary</p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <div className={cn("mt-3 grid gap-2", sidecarMode ? "sm:grid-cols-3" : "sm:grid-cols-3")}>
               {content.readiness.map((item) => (
-                <div key={item} className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/14 px-3 py-2 text-xs text-white/64">
+                <div key={item} className="flex min-w-0 items-center gap-2 rounded-2xl border border-white/10 bg-black/14 px-3 py-2 text-xs text-white/64">
                   <BadgeCheck className="size-4 text-emerald-100" />
-                  {item}
+                  <span className="truncate">{item}</span>
                 </div>
               ))}
             </div>
@@ -595,9 +608,11 @@ export function PrepaywallCampaignPreview({
         <CompactLockedPill icon={MonitorSmartphone} label="Full-resolution files locked" />
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[18px] border border-white/10 bg-black/18 px-3 py-2.5 text-xs leading-5 text-white/54">
+      <div className="mt-3 flex items-center gap-2 rounded-[18px] border border-white/10 bg-black/18 px-3 py-2.5 text-xs leading-5 text-white/54">
         <MousePointerClick className="size-4 text-cyan-100" />
-        No provider calls run here. No Meta campaigns, SMS, leads, Stripe charge, OpenAI image, or HeyGen video is created by this preview.
+        <span className={sidecarMode ? "truncate" : ""}>
+          No provider calls run here. No Meta campaigns, SMS, leads, Stripe charge, OpenAI image, or HeyGen video is created by this preview.
+        </span>
       </div>
     </Card>
   );
@@ -607,10 +622,12 @@ export function PrepaywallCampaignPreviewFromStorage({
   selectedPlanTier,
   campaignId,
   fallbackDraft,
+  className,
 }: {
   selectedPlanTier?: "starter" | "pro";
   campaignId?: string | null;
   fallbackDraft?: PrepaywallCampaignPreviewDraft | null;
+  className?: string;
 }) {
   const [storedDraft, setStoredDraft] = useState<PrepaywallCampaignPreviewDraft | null>(null);
 
@@ -645,5 +662,5 @@ export function PrepaywallCampaignPreviewFromStorage({
     return null;
   }
 
-  return <PrepaywallCampaignPreview draft={previewDraft} variant="package" />;
+  return <PrepaywallCampaignPreview className={className} draft={previewDraft} variant="package" density="sidecar" />;
 }

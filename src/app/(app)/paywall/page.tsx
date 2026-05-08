@@ -84,7 +84,7 @@ export default async function PaywallPage({
   const checkoutCampaignId = hasServerPreview ? campaignId : null;
 
   return (
-    <PageShell className="max-w-[1480px]">
+    <PageShell className="max-w-[1240px] gap-4 py-5">
       <WizardSteps current="launch" />
       <PageHeader
         eyebrow="Activate"
@@ -96,7 +96,7 @@ export default async function PaywallPage({
         }
       />
 
-      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(540px,0.95fr)_minmax(560px,1.05fr)] xl:items-start">
+      <div className="grid min-w-0 items-stretch gap-4 xl:grid-cols-[minmax(390px,0.86fr)_minmax(460px,1fr)]">
         <div className="min-w-0 space-y-4 xl:order-2">
           <Card className="p-5 sm:p-6">
             <div>
@@ -157,6 +157,7 @@ export default async function PaywallPage({
           ) : null}
 
           <PrepaywallCampaignPreviewFromStorage
+            className="xl:max-h-[640px] xl:overflow-y-auto"
             campaignId={campaignId}
             selectedPlanTier={selectedPreviewPlanTier}
             fallbackDraft={persistedPreviewDraft}

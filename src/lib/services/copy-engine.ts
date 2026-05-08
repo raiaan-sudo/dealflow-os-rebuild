@@ -19,6 +19,7 @@ import {
   normalizeMarket,
   normalizeOffer as normalizeOfferInput,
 } from "@/lib/copy/input-normalization";
+import { normalizeOfferForCampaign, type OfferCampaignMode } from "@/lib/services/offer-normalization-service";
 
 export type CopyEngineCreativeInput = {
   hook: string;
@@ -664,7 +665,17 @@ function classifyOffer(input: RequiredInput): OfferClass {
 
 function normalizeInput(input?: CopyEngineInput | null): RequiredInput {
   const audience = normalizeAudienceInput(normalizeText(input?.audience, "qualified buyers"));
-  const offer = normalizeOfferInput(normalizeText(input?.offer, "a stronger real estate opportunity"));
+  const rawOffer = normalizeOfferInput(normalizeText(input?.offer, "a stronger real estate opportunity"));
+  const marketType = inferMarketType({
+    audience,
+    offer: rawOffer,
+    provided: input?.market_type,
+  });
+  const offerMode: OfferCampaignMode =
+    marketType === "seller" || marketType === "investor" || marketType === "commercial"
+      ? marketType
+      : "buyer";
+  const offer = normalizeOfferForCampaign(rawOffer, offerMode).normalizedOffer;
 
   return {
     creatives: Array.isArray(input?.creatives) ? input!.creatives : [],
@@ -672,11 +683,7 @@ function normalizeInput(input?: CopyEngineInput | null): RequiredInput {
     audience,
     offer,
     pricePoint: normalizeLooseInput(normalizeText(input?.price_point)),
-    marketType: inferMarketType({
-      audience,
-      offer,
-      provided: input?.market_type,
-    }),
+    marketType,
     funnelGoal: input?.funnel_goal ?? "survey",
     riskReversal: normalizeText(input?.risk_reversal),
     mechanism: normalizeText(input?.mechanism),

@@ -5,6 +5,7 @@ import { logWarn } from "@/lib/logging";
 import { normalizePhone } from "@/lib/phone";
 import { recordActivationEvent } from "@/lib/services/activation-telemetry-service";
 import { upsertAgentProfile } from "@/lib/services/internal-lead-notification-service";
+import { normalizeOfferForCampaign } from "@/lib/services/offer-normalization-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -340,11 +341,12 @@ function getRealEstateOnboardingDefaults(params: {
   goal: string;
   budget: number;
 }) {
-  const normalizedService = params.service.toLowerCase();
   const intent = getRealEstateFocus({
     focus: params.service,
     goal: params.goal,
   });
+  const normalizedOffer = normalizeOfferForCampaign(params.goal || params.service, intent).normalizedOffer;
+  const normalizedService = normalizedOffer.toLowerCase();
   const businessName = params.businessName.trim().length > 0 ? params.businessName : params.businessType;
   const priceRange = params.priceRange.trim().length > 0 ? params.priceRange : "mid-market homes";
   const propertyType =
@@ -355,10 +357,12 @@ function getRealEstateOnboardingDefaults(params: {
         ? "cash-flow properties"
         : `${priceRange} homes`);
   const serviceLabel =
-    params.goal.trim().length > 0
-      ? params.goal
-      : params.service.trim().length > 0
-        ? params.service
+    normalizedOffer.trim().length > 0
+      ? normalizedOffer
+      : params.goal.trim().length > 0
+        ? params.goal
+        : params.service.trim().length > 0
+          ? params.service
         : intent === "commercial"
 	          ? "Commercial space-fit consultation"
 	          : intent === "investor"
@@ -378,7 +382,7 @@ function getRealEstateOnboardingDefaults(params: {
       timeline: "30 days",
       audience: `Business owners, tenants, and owner-users evaluating ${propertyType} in ${params.location}`,
       propertyType,
-      keyOffer: "commercial space-fit shortlist",
+      keyOffer: serviceLabel,
       painPoints: [
         "Operators waste time on spaces that do not fit their requirements",
         "Lease and purchase timing is difficult to compare",
@@ -401,7 +405,7 @@ function getRealEstateOnboardingDefaults(params: {
       timeline: "30 days",
       audience: `Real estate investors evaluating ${propertyType} in ${params.location}`,
       propertyType,
-      keyOffer: "investor deal flow and ROI brief",
+      keyOffer: serviceLabel,
       painPoints: [
         "Investors do not know which pockets still have strong upside",
         "They waste time underwriting weak opportunities",
@@ -424,7 +428,7 @@ function getRealEstateOnboardingDefaults(params: {
       timeline: "30 days",
       audience: `Homeowners likely to sell ${priceRange} homes in ${params.location}`,
       propertyType,
-      keyOffer: "listing strategy and home value plan",
+      keyOffer: serviceLabel,
       painPoints: [
         "Homeowners are unsure what their property is worth",
         "Listing timing feels risky",
@@ -446,7 +450,7 @@ function getRealEstateOnboardingDefaults(params: {
     timeline: "30 days",
     audience: `Home buyers searching for ${priceRange} homes in ${params.location}`,
     propertyType,
-    keyOffer: "buyer consultation and curated home list",
+    keyOffer: serviceLabel,
     painPoints: [
       "Buyers do not know which homes fit their budget",
       "They miss listings because they react too late",
@@ -581,7 +585,7 @@ export async function POST(req: Request) {
     });
     const priceRange = safeText(payload?.price_range) || "mid-market homes";
     const propertyType = safeText(payload?.property_type);
-    const service =
+    const rawService =
       safeText(payload?.goal) ||
       safeText(payload?.service) ||
       (focus === "commercial"
@@ -591,6 +595,7 @@ export async function POST(req: Request) {
 	          : focus === "seller"
 	            ? "Home Equity Snapshot Report"
 	            : "Curated Home List");
+    const service = normalizeOfferForCampaign(rawService, focus).normalizedOffer;
     const budget = toMonthlyBudget(payload?.budget);
     const realEstateMode = isRealEstateBusinessType(businessType) || safeText(payload?.focus).length > 0;
     const normalizedAgentPhone = normalizePhone(agentPhone);

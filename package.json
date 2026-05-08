@@ -28,6 +28,7 @@
     "test:billing-recovery": "node ./scripts/test-billing-recovery.mjs",
     "test:customer-success": "node ./scripts/test-customer-success-layer.mjs",
     "test:provider-cost-watch": "node ./scripts/test-provider-cost-watch.mjs",
+    "test:offer-normalization": "node ./scripts/test-offer-normalization.mjs",
     "test:client-error-telemetry": "node ./scripts/test-client-error-telemetry.mjs",
     "test:e2e:safe": "playwright test --config=playwright.safe.config.ts",
     "smoke:offline": "node ./scripts/smoke-test.mjs offline",

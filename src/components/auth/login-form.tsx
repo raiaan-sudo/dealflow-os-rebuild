@@ -12,7 +12,7 @@ type LoginFormProps = {
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
 const GOOGLE_AUTH_ENABLED = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_AUTH === "true";
 const TURNSTILE_SCRIPT_ID = "cloudflare-turnstile-script";
-const DEFAULT_AUTH_REDIRECT_PATH = "/welcome";
+const DEFAULT_AUTH_REDIRECT_PATH = "/welcome?fresh=1";
 
 declare global {
   interface Window {

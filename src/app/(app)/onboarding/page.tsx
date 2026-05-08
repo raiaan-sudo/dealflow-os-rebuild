@@ -15,6 +15,7 @@ import {
   Loader2,
   Rocket,
   ShieldCheck,
+  Sparkles,
   Store,
   Target,
 } from "lucide-react";
@@ -24,7 +25,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/page-shell";
-import { BILLING_PLANS, type BillingPlanTier } from "@/lib/billing/plans";
+import type { BillingPlanTier } from "@/lib/billing/plans";
+import { getPlanPresentation, SELECTABLE_PLAN_TIERS, type SelectablePlanTier } from "@/lib/billing/plan-presentation";
+import { normalizeOfferForCampaign, type NormalizedOfferResult } from "@/lib/services/offer-normalization-service";
 import { cn } from "@/lib/utils";
 
 type CampaignMode = "buyer" | "seller" | "investor" | "commercial";
@@ -421,6 +424,101 @@ function ChoiceCard({
   );
 }
 
+function PlanChoiceCard({
+  tier,
+  active,
+  onClick,
+}: {
+  tier: SelectablePlanTier;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const plan = getPlanPresentation(tier);
+  const Icon = tier === "starter" ? Lightbulb : Rocket;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "group flex min-h-[300px] flex-col rounded-[22px] border p-4 text-left transition hover:-translate-y-0.5",
+        active
+          ? "border-cyan-200/30 bg-cyan-300/[0.075] shadow-[0_22px_70px_-48px_rgba(103,232,249,0.7)]"
+          : "border-white/10 bg-white/[0.025] hover:border-cyan-200/20 hover:bg-cyan-300/[0.045]",
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <IconTile icon={Icon} tone={active ? "cyan" : "violet"} />
+        {active ? <BadgeCheck className="size-5 text-cyan-100" /> : null}
+      </div>
+      <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100/72">{plan.eyebrow}</p>
+      <h4 className="mt-2 text-xl font-semibold tracking-[-0.05em] text-white">
+        {plan.name} {plan.priceLabel}
+      </h4>
+      <div className="mt-3 w-fit rounded-full border border-cyan-300/18 bg-cyan-300/[0.06] px-3 py-1 text-xs font-semibold text-cyan-100">
+        {plan.positioning}
+      </div>
+      <p className="mt-3 text-sm leading-6 text-white/64">{plan.summary}</p>
+      <div className="mt-4 grid gap-2">
+        {plan.features.map((feature) => (
+          <div key={feature} className="flex min-w-0 items-start gap-2 text-xs leading-5 text-white/70">
+            <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-cyan-100" />
+            <span>{feature}</span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-auto pt-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/42">
+        {plan.footer}
+      </p>
+    </button>
+  );
+}
+
+function OfferCoach({
+  insight,
+  onApply,
+}: {
+  insight: NormalizedOfferResult;
+  onApply: (offer: string) => void;
+}) {
+  return (
+    <div className="rounded-[20px] border border-cyan-200/16 bg-cyan-300/[0.045] p-3">
+      <div className="flex items-start gap-3">
+        <IconTile icon={Sparkles} tone="cyan" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-white">Offer coach</p>
+            {insight.changed ? (
+              <Badge className="border-cyan-200/20 bg-cyan-300/[0.06] text-cyan-100">Polished</Badge>
+            ) : null}
+          </div>
+          <p className="mt-2 text-sm font-semibold leading-5 text-cyan-50">{insight.normalizedOffer}</p>
+          <p className="mt-1 text-xs leading-5 text-white/58">{insight.coachNote}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onApply(insight.normalizedOffer)}
+              className="rounded-full border border-cyan-200/18 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-300/[0.09]"
+            >
+              Use polished offer
+            </button>
+            {insight.alternates.slice(0, 2).map((alternate) => (
+              <button
+                key={alternate}
+                type="button"
+                onClick={() => onApply(alternate)}
+                className="rounded-full border border-white/10 bg-black/18 px-3 py-1.5 text-xs font-semibold text-white/70 transition hover:border-cyan-200/18 hover:text-cyan-100"
+              >
+                {alternate}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
   const [hydrated, setHydrated] = useState(false);
@@ -438,6 +536,14 @@ export default function OnboardingPage() {
       : draft.campaignMode === "investor"
         ? INVESTOR_PRICE_RANGES
         : PRICE_RANGES;
+  const offerInsight = useMemo(
+    () => normalizeOfferForCampaign(draft.offer, draft.campaignMode),
+    [draft.campaignMode, draft.offer],
+  );
+  const normalizedDraft = useMemo(
+    () => ({ ...draft, offer: offerInsight.normalizedOffer }),
+    [draft, offerInsight.normalizedOffer],
+  );
 
   const stepTitle = useMemo(
     () => STEPS.find((step) => step.key === currentStep)?.title ?? "Build campaign",
@@ -531,6 +637,10 @@ export default function OnboardingPage() {
     });
   }
 
+  function applyOffer(offer: string) {
+    updateDraft({ offer: normalizeOfferForCampaign(offer, draft.campaignMode).normalizedOffer });
+  }
+
   function goToStep(step: OnboardingStepKey) {
     setCurrentStep(step);
     setErrors({});
@@ -543,7 +653,8 @@ export default function OnboardingPage() {
   }
 
   async function submitOnboarding() {
-    const nextErrors = validateStep("review", draft);
+    const preparedDraft = { ...draft, offer: normalizeOfferForCampaign(draft.offer, draft.campaignMode).normalizedOffer };
+    const nextErrors = validateStep("review", preparedDraft);
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length > 0) return;
@@ -563,15 +674,15 @@ export default function OnboardingPage() {
           agent_last_name: draft.agentLastName,
           agent_phone: draft.agentPhone,
           agent_company_name: draft.agentCompanyName,
-          market: draft.market,
-          location: draft.market,
-          focus: draft.campaignMode,
-          service: draft.offer,
-          property_type: draft.propertyType,
-          price_range: draft.priceRange,
-          budget: draft.monthlyBudget,
-          goal: draft.offer,
-          idempotencySeed: draft.idempotencySeed,
+          market: preparedDraft.market,
+          location: preparedDraft.market,
+          focus: preparedDraft.campaignMode,
+          service: preparedDraft.offer,
+          property_type: preparedDraft.propertyType,
+          price_range: preparedDraft.priceRange,
+          budget: preparedDraft.monthlyBudget,
+          goal: preparedDraft.offer,
+          idempotencySeed: preparedDraft.idempotencySeed,
         }),
       });
       const data = (await response.json().catch(() => null)) as
@@ -586,14 +697,14 @@ export default function OnboardingPage() {
       window.localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify({
-          ...draft,
+          ...preparedDraft,
           currentStep: "review",
           furthestStepIndex: STEPS.length - 1,
           campaignId,
           completedAt: new Date().toISOString(),
         }),
       );
-      router.push(`/paywall?campaignId=${encodeURIComponent(campaignId)}&plan=${draft.planTier}`);
+      router.push(`/paywall?campaignId=${encodeURIComponent(campaignId)}&plan=${preparedDraft.planTier}`);
     } catch (error) {
       setSubmitting(false);
       setErrors((current) => ({
@@ -604,10 +715,18 @@ export default function OnboardingPage() {
   }
 
   function continueFlow() {
-    const nextErrors = validateStep(currentStep, draft);
+    const preparedDraft =
+      currentStep === "offer" || currentStep === "review"
+        ? { ...draft, offer: normalizeOfferForCampaign(draft.offer, draft.campaignMode).normalizedOffer }
+        : draft;
+    const nextErrors = validateStep(currentStep, preparedDraft);
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length > 0) return;
+
+    if (preparedDraft.offer !== draft.offer) {
+      setDraft(preparedDraft);
+    }
 
     if (currentStepIndex >= STEPS.length - 1) {
       void submitOnboarding();
@@ -638,18 +757,18 @@ export default function OnboardingPage() {
   }
 
   return (
-    <PageShell className="w-full max-w-[1500px] gap-4">
-      <Card className="p-4 sm:p-5">
+    <PageShell className="w-full max-w-[1240px] gap-3 py-4 sm:py-5">
+      <Card className="p-3.5 sm:p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <Badge>Campaign setup</Badge>
               <Badge className="border-emerald-300/20 bg-emerald-300/[0.06] text-emerald-100">Safe build</Badge>
             </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-[-0.055em] sm:text-4xl">
+            <h1 className="mt-3 text-2xl font-semibold tracking-[-0.055em] sm:text-[2rem]">
               Step-by-step campaign builder
             </h1>
-            <p className="mt-2 max-w-4xl text-sm leading-6 text-white/62">
+            <p className="mt-2 max-w-3xl text-xs leading-5 text-white/62 sm:text-sm">
               One decision at a time. DealFlow recommends the strategy, updates the preview, and keeps the next click obvious.
             </p>
           </div>
@@ -658,8 +777,8 @@ export default function OnboardingPage() {
 
       <StepProgress currentStep={currentStep} furthestStepIndex={furthestStepIndex} onSelect={goToStep} />
 
-      <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(560px,0.86fr)]">
-        <Card className="min-w-0 p-4 sm:p-5" data-testid="onboarding-current-step-panel">
+      <div className="grid min-w-0 items-stretch gap-3 xl:grid-cols-[minmax(0,0.95fr)_minmax(390px,0.72fr)]">
+        <Card className="min-w-0 p-4" data-testid="onboarding-current-step-panel">
           <div className="flex items-start gap-4">
             <IconTile icon={Target} tone="cyan" />
             <div>
@@ -805,10 +924,10 @@ export default function OnboardingPage() {
                     <button
                       type="button"
                       key={offer}
-                      onClick={() => updateDraft({ offer })}
+                      onClick={() => applyOffer(offer)}
                       className={cn(
                         "rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition",
-                        draft.offer === offer
+                        offerInsight.normalizedOffer === normalizeOfferForCampaign(offer, draft.campaignMode).normalizedOffer
                           ? "border-cyan-200/28 bg-cyan-300/[0.07] text-cyan-100"
                           : "border-white/10 bg-white/[0.035] text-white/72 hover:border-cyan-200/18",
                       )}
@@ -821,10 +940,12 @@ export default function OnboardingPage() {
                   aria-label="Offer or lead magnet"
                   value={draft.offer}
                   onChange={(event) => updateDraft({ offer: event.target.value })}
+                  onBlur={() => applyOffer(draft.offer)}
                   placeholder={modeCopy.offer}
                 />
                 {errors.offer ? <p className="text-sm text-rose-400">{errors.offer}</p> : null}
               </div>
+              <OfferCoach insight={offerInsight} onApply={applyOffer} />
             </div>
           ) : null}
 
@@ -854,23 +975,15 @@ export default function OnboardingPage() {
           ) : null}
 
           {currentStep === "plan" ? (
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <ChoiceCard
-                active={draft.planTier === "starter"}
-                icon={Lightbulb}
-                title={`${BILLING_PLANS.starter.name} ${BILLING_PLANS.starter.priceLabel}`}
-                body="Guided recommendations and Meta launch access. DealFlow tells the agent what to do while execution stays manual."
-                detail="Guided self-serve launch"
-                onClick={() => updateDraft({ planTier: "starter" })}
-              />
-              <ChoiceCard
-                active={draft.planTier === "pro"}
-                icon={Rocket}
-                title={`${BILLING_PLANS.pro.name} ${BILLING_PLANS.pro.priceLabel}`}
-                body="Autonomous operator controls with evidence, guardrails, and safe monitoring for optimization decisions."
-                detail="Autonomous guardrails"
-                onClick={() => updateDraft({ planTier: "pro" })}
-              />
+            <div className="mt-6 grid items-stretch gap-4 md:grid-cols-2">
+              {SELECTABLE_PLAN_TIERS.map((tier) => (
+                <PlanChoiceCard
+                  key={tier}
+                  tier={tier}
+                  active={draft.planTier === tier}
+                  onClick={() => updateDraft({ planTier: tier })}
+                />
+              ))}
             </div>
           ) : null}
 
@@ -895,8 +1008,8 @@ export default function OnboardingPage() {
                   ["Property type", draft.propertyType],
                   ["Price/deal size", draft.priceRange],
                   ["Budget", `$${draft.monthlyBudget}/month`],
-                  ["Offer", draft.offer],
-                  ["Behavior", draft.planTier === "pro" ? "Autonomous" : "Guided"],
+                  ["Offer", normalizedDraft.offer],
+                  ["Behavior", getPlanPresentation(draft.planTier).positioning],
                 ].map(([label, value]) => (
                   <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
                     <p className="text-xs text-white/48">{label}</p>
@@ -939,7 +1052,12 @@ export default function OnboardingPage() {
           </div>
         </Card>
 
-        <PrepaywallCampaignPreview draft={draft} variant={currentStep === "review" ? "package" : "compact"} />
+        <PrepaywallCampaignPreview
+          className={currentStep === "review" ? "xl:max-h-[560px] xl:overflow-y-auto" : ""}
+          density="sidecar"
+          draft={normalizedDraft}
+          variant={currentStep === "review" ? "package" : "compact"}
+        />
       </div>
     </PageShell>
   );
