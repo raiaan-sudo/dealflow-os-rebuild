@@ -318,6 +318,9 @@ function runOfflineChecks() {
   assertExcludes(launchPage, "recommended", "Launch recommended fallback removed", "launch preview does not use recommended fallback");
   assertIncludes(launchPage, "statusLabel: budgetWasCapped ? \"Capped\" : budgetCapApplied ? undefined : \"Unlimited\"", "Launch budget policy visibility", "launch readiness shows unlimited budget policy when no cap is configured");
   assertIncludes(launchPage, "label: \"Meta preflight\"", "Launch Meta preflight visibility", "saved Meta selections and provider preflight are separate readiness gates");
+  assertIncludes(launchPage, "Save the Meta ad account, Page, and pixel before launch.", "Launch selection blocker copy", "launch does not tell users to reconnect Meta after selections are already saved");
+  assertIncludes("src/lib/integrations/meta/service.ts", "ready = accountValid && pageValid && pixelValid", "Meta preflight hard gate", "launch preflight is blocked by account, Page, or pixel validity, not missing tracking-domain setup");
+  assertExcludes("src/lib/integrations/meta/service.ts", "Configure a launch domain before Meta launch.", "Meta launch domain not hard-blocking", "missing tracking domain no longer blocks the core launch preflight");
   assertIncludes(launchPage, "Reconnect Meta", "Launch Meta error reconnect CTA", "Meta OAuth failure banners provide a direct reconnect action");
   assertIncludes(launchPage, "Clear message", "Launch Meta error clear CTA", "stale Meta OAuth failure URLs can be cleared without leaving launch");
   assertIncludes(launchPage, "metaReconnectHref", "Launch Meta reconnect target", "Meta reconnect preserves the campaign-scoped launch return path from the error banner");

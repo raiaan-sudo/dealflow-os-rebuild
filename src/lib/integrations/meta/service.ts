@@ -773,14 +773,7 @@ export async function validateMetaLaunchSelections(options?: {
       );
     }
 
-    if (!tracking.launchDomain) {
-      errors.push("Configure a launch domain before Meta launch.");
-    } else if (!tracking.domainVerified) {
-      errors.push("Verify the launch domain before Meta launch.");
-    } else if (!domainValid) {
-      errors.push("Destination URL must use the verified Meta launch domain.");
-    }
-
+    const ready = accountValid && pageValid && pixelValid;
     return {
       checkedAt,
       tokenValid: true,
@@ -790,7 +783,7 @@ export async function validateMetaLaunchSelections(options?: {
       domainValid,
       trackingValid: pixelValid && domainValid,
       errors,
-      ready: accountValid && pageValid && pixelValid && domainValid,
+      ready,
     };
   } catch (error) {
     return {

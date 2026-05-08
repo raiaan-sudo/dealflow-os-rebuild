@@ -19,11 +19,10 @@ import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { getBillingSummary } from "@/lib/services/billing-service";
 import { getMetaQueryUiCopy } from "@/lib/integrations/meta/error-mapper";
 import {
-  getDefaultMetaConnectionState,
   getMetaConnectionState,
+  getDefaultMetaConnectionState,
   validateMetaLaunchSelections,
 } from "@/lib/integrations/meta/service";
-import { getLaunchBlockingReasons, getLaunchRequirements } from "@/lib/services/launch-readiness";
 import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
 
 function withTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs: number) {
@@ -142,7 +141,7 @@ export default async function LaunchAliasPage({
     typeof params.meta_request_id === "string" && params.meta_request_id.length > 0
       ? params.meta_request_id
       : null;
-  const [record, metaConnection, metaProviderState, metaTrackingState, metaPreflight, billing] = await Promise.all([
+  const [record, metaConnection, metaProviderState, metaPreflight, billing] = await Promise.all([
     withTimeout(
       resolveActiveCampaignRecord(requestedCampaignId)
         .then((resolved) => resolved?.record ?? null)
@@ -157,11 +156,6 @@ export default async function LaunchAliasPage({
     ),
     withTimeout(
       getIntegrationProviderState("meta_marketing_api").catch(() => null),
-      null,
-      2_000,
-    ),
-    withTimeout(
-      getIntegrationProviderState("meta_tracking").catch(() => null),
       null,
       2_000,
     ),
@@ -236,14 +230,10 @@ export default async function LaunchAliasPage({
     metaPreflight === null &&
     (metaProviderState?.status.status === "connected" || metaSelectionReady || metaConnected);
   const metaSelectionInvalid = metaSelectionReady && metaPreflight !== null && !metaPreflightReady;
-  const launchRequirements = getLaunchRequirements({
-    campaignSaved: Boolean(record?.campaign.id),
-    metaConnected: metaLaunchReady,
-    metaTrackingState,
-  });
   const blockingReasons = [
+    ...(!record?.campaign.id ? ["Save the campaign first."] : []),
     ...(!billingLaunchAllowed ? ["Activate billing before launch."] : []),
-    ...getLaunchBlockingReasons(launchRequirements),
+    ...(!metaSelectionReady ? ["Save the Meta ad account, Page, and pixel before launch."] : []),
     ...(metaSelectionReady && !metaPreflightReady ? metaPreflight?.errors ?? ["Meta preflight failed."] : []),
     ...(!providerLaunchEnabled ? ["Provider launch switch is off."] : []),
   ];

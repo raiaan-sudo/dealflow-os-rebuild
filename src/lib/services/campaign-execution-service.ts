@@ -404,67 +404,15 @@ function getMetaAccountPixelId(row: MarketingAccountRow | MetaConnectionRecord |
   );
 }
 
-function normalizeLaunchDomain(value: string | null | undefined) {
-  const trimmed = value?.trim().toLowerCase().replace(/\/+$/, "");
-
-  if (!trimmed) {
-    return null;
-  }
-
-  try {
-    return new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`).hostname;
-  } catch {
-    return trimmed.split("/")[0] || null;
-  }
-}
-
-function destinationMatchesLaunchDomain(destinationUrl: string, launchDomain: string | null) {
-  if (!launchDomain) {
-    return false;
-  }
-
-  try {
-    const destinationHost = new URL(destinationUrl).hostname.toLowerCase();
-    const normalizedLaunchDomain = normalizeLaunchDomain(launchDomain);
-    return Boolean(
-      normalizedLaunchDomain &&
-        (destinationHost === normalizedLaunchDomain ||
-          destinationHost.endsWith(`.${normalizedLaunchDomain}`)),
-    );
-  } catch {
-    return false;
-  }
-}
-
 function getMetaTrackingPreflightErrors(
   metaAccount: MarketingAccountRow | MetaConnectionRecord | null,
   destinationUrl: string,
 ) {
+  void destinationUrl;
   const errors: string[] = [];
-  const launchDomain =
-    (typeof metaAccount?.launch_domain === "string" && metaAccount.launch_domain.trim().length > 0
-      ? metaAccount.launch_domain.trim()
-      : null) ?? getMetadataString(metaAccount, "launch_domain");
-  const metadata =
-    metaAccount?.connection_metadata &&
-    typeof metaAccount.connection_metadata === "object" &&
-    !Array.isArray(metaAccount.connection_metadata)
-      ? (metaAccount.connection_metadata as Record<string, unknown>)
-      : {};
-  const domainVerified =
-    metaAccount?.domain_verified === true ||
-    metadata.domain_verified === true;
 
   if (!getMetaAccountPixelId(metaAccount)) {
     errors.push("Selected Meta ad account is missing a configured pixel.");
-  }
-
-  if (!launchDomain) {
-    errors.push("Selected Meta ad account is missing a launch domain.");
-  } else if (!domainVerified) {
-    errors.push("Selected Meta launch domain is not verified.");
-  } else if (!destinationMatchesLaunchDomain(destinationUrl, launchDomain)) {
-    errors.push("Destination URL must use the verified Meta launch domain.");
   }
 
   return errors;
