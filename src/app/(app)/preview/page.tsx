@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -57,57 +58,13 @@ export default async function PreviewPage({
   const selectedAdIds = await loadPersistedSelectedAdIds(resolvedCampaignId);
 
   if (!plan) {
-    return (
-      <PageShell className="max-w-[1180px]">
-        <WizardSteps current="review" />
-        <PageHeader
-          eyebrow="Preview"
-          title="Campaign preview unavailable"
-          description="Complete onboarding first, then unlock review to see the campaign package."
-        />
-        <EmptyState
-          title="No campaign available yet"
-          description="Finish onboarding to create a campaign before opening review."
-        />
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <Button asChild>
-            <Link href="/onboarding">Start onboarding</Link>
-          </Button>
-          <Button asChild variant="secondary">
-            <Link href="/builder">Open builder</Link>
-          </Button>
-        </div>
-      </PageShell>
-    );
+    redirect("/onboarding");
   }
 
   const validated = validateCampaign({ plan });
 
   if (!validated) {
-    return (
-      <PageShell className="max-w-[1180px]">
-        <WizardSteps current="review" />
-        <PageHeader
-          eyebrow="Preview"
-          title="Campaign preview unavailable"
-          description="Some campaign details are still missing, so this review page could not load correctly."
-        />
-        <EmptyState
-          title="Preview data incomplete"
-          description="Some campaign details are missing. Update or regenerate the campaign, then return to review."
-        />
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <Button asChild>
-            <Link href={resolvedCampaignId ? `/builder?campaignId=${encodeURIComponent(resolvedCampaignId)}` : "/builder"}>
-              Open builder
-            </Link>
-          </Button>
-          <Button asChild variant="secondary">
-            <Link href="/onboarding">Restart onboarding</Link>
-          </Button>
-        </div>
-      </PageShell>
-    );
+    redirect(resolvedCampaignId ? `/onboarding?campaignId=${encodeURIComponent(resolvedCampaignId)}` : "/onboarding");
   }
 
   const safeCampaign = normalizeCampaign(validated);
@@ -115,6 +72,10 @@ export default async function PreviewPage({
   const expectedOutcomes = getExpectedOutcomes(previewPlan);
   const selectedAds = previewPlan.creatives.staticAds.filter((ad) => selectedAdIds.includes(ad.id));
   const campaignIdForFlow = record?.campaign.id ?? null;
+
+  if (selectedAds.length === 0) {
+    redirect(campaignIdForFlow ? `/build/creatives?campaignId=${encodeURIComponent(campaignIdForFlow)}` : "/onboarding");
+  }
   await recordActivationEventForCurrentUser({
     eventName: "preview_generated_or_viewed",
     campaignId: campaignIdForFlow,

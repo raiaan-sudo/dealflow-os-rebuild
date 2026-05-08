@@ -3,6 +3,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/app/page-header";
 import { CampaignBuilderWorkspace } from "@/components/campaign/campaign-builder-workspace";
 import { buildCampaignScopedPath, resolveActiveCampaignRecord } from "@/lib/paywall-access";
+import { getSelectedAdIdsFromPlan, readCampaignPlanDocument } from "@/lib/services/campaign-plan-document";
 import { getAppContext } from "@/lib/services/app-context";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -25,6 +26,28 @@ import type { CampaignPlan } from "@/lib/services/campaign-plan-service";
 import type { CreativeIdea, StaticCreativeAsset } from "@/lib/services/creative-engine";
 import type { FunnelType } from "@/lib/services/funnel-engine";
 import type { FullCampaignRecord } from "@/lib/types/campaign-records";
+import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
+
+async function loadPersistedSelectedAdIds(campaignId: string | null) {
+  if (!campaignId) {
+    return [];
+  }
+
+  const supabase = await createRouteHandlerClient();
+
+  if (!supabase) {
+    return [];
+  }
+
+  const { data } = await supabase
+    .from("campaign_plans")
+    .select("plan")
+    .eq("id", campaignId)
+    .maybeSingle();
+
+  const row = (data as { plan?: unknown } | null) ?? null;
+  return getSelectedAdIdsFromPlan(readCampaignPlanDocument(row?.plan));
+}
 
 function buildInitialStrategyFromPlan(
   strategy?: CampaignStrategyInput | null,
@@ -117,7 +140,7 @@ function buildInitialCampaignFromRecord(record?: FullCampaignRecord | null): Bui
   };
 }
 
-function getBuilderNextAction(plan: CampaignPlan, campaignId: string) {
+function getBuilderNextAction(plan: CampaignPlan, campaignId: string, hasSelectedCreativeSet: boolean) {
   const scoped = (path: string) => buildCampaignScopedPath(path, campaignId);
 
   if (plan.runtime.metaPushStatus === "published" || plan.runtime.status === "live") {
@@ -145,6 +168,14 @@ function getBuilderNextAction(plan: CampaignPlan, campaignId: string) {
   }
 
   if (plan.runtime.status === "built" || plan.runtime.status === "preview") {
+    if (!hasSelectedCreativeSet) {
+      return {
+        label: "Choose creatives",
+        href: scoped("/build/creatives"),
+        detail: "Pick the recommended creative test set. Then DealFlow will show the final review before launch.",
+      };
+    }
+
     return {
       label: "Continue review",
       href: scoped("/preview"),
@@ -176,14 +207,16 @@ function ActiveCampaignWorkspace({
   record,
   campaignCount,
   planTier,
+  hasSelectedCreativeSet,
 }: {
   record: FullCampaignRecord;
   campaignCount: number;
   planTier: BillingPlanTier;
+  hasSelectedCreativeSet: boolean;
 }) {
   const plan = canonicalCampaignToPlan(record);
   const campaignId = record.campaign.id;
-  const nextAction = getBuilderNextAction(plan, campaignId);
+  const nextAction = getBuilderNextAction(plan, campaignId, hasSelectedCreativeSet);
   const limitPolicy = getCampaignLimitPolicy(planTier);
   const canCreateAnother = canCreateAdditionalCampaign({
     planTier,
@@ -341,6 +374,7 @@ export default async function BuilderPage({
     listCampaignsForUser().catch(() => []),
     getBillingSummary().catch(() => null),
   ]);
+  const selectedAdIds = await loadPersistedSelectedAdIds(record.campaign.id).catch(() => []);
   const planTier = normalizeBillingPlanTier(
     billing?.planTier ?? context.organization.plan_tier ?? "starter",
   );
@@ -356,6 +390,7 @@ export default async function BuilderPage({
         record={record}
         campaignCount={campaignCount}
         planTier={planTier}
+        hasSelectedCreativeSet={selectedAdIds.length > 0}
       />
     );
   }

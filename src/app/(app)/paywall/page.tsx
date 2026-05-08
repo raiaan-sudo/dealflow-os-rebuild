@@ -151,7 +151,7 @@ export default async function PaywallPage({
                   <Link href="/onboarding">Start onboarding</Link>
                 </Button>
                 <Button asChild variant="secondary">
-                  <Link href="/preview">Back to preview</Link>
+                  <Link href="/onboarding">Back to onboarding</Link>
                 </Button>
               </div>
             </Card>
@@ -167,8 +167,8 @@ export default async function PaywallPage({
 
       <div className="flex justify-end">
         <Button asChild variant="secondary">
-          <Link href={checkoutCampaignId ? `/preview?campaignId=${encodeURIComponent(checkoutCampaignId)}` : "/preview"}>
-            Back to preview
+          <Link href={checkoutCampaignId ? `/onboarding?campaignId=${encodeURIComponent(checkoutCampaignId)}` : "/onboarding"}>
+            Back to onboarding
           </Link>
         </Button>
       </div>

@@ -258,6 +258,12 @@ function runOfflineChecks() {
   assertExcludes(prepaywallPreview, "ALLOW_HEYGEN_VIDEO_GENERATION", "Pre-paywall HeyGen provider avoided", "preview component does not reference paid HeyGen generation gates");
   assertIncludes(buildFunnelPage, "redirect(\"/onboarding\")", "Missing funnel route recovery", "missing funnel prerequisites send the user back to onboarding instead of a Build recovery page");
   assertIncludes(buildCreativesPage, "redirect(\"/onboarding\")", "Missing creatives route recovery", "missing creative prerequisites send the user back to onboarding instead of a Build recovery page");
+  assertIncludes(unlockPage, "redirect(creativesHref)", "Unlock creative handoff", "activated users continue into creative selection instead of dashboard or Meta setup");
+  assertIncludes(unlockPage, "redirect(campaignId ? `/onboarding", "Checkout cancel onboarding return", "cancelled checkout goes back to onboarding instead of an internal unlock status page");
+  assertIncludes(paywallPage, "Back to onboarding", "Paywall back path", "activation back controls return to the guided onboarding flow");
+  assertIncludes(previewPage, "redirect(\"/onboarding\")", "Preview missing state redirect", "review never becomes a second setup or missing-data workflow");
+  assertIncludes(previewPage, "redirect(campaignIdForFlow ? `/build/creatives", "Preview creative gate", "review sends users to post-activation creative selection when no test set is saved");
+  assertIncludes(builderPage, "Choose creatives", "Builder post-activation next step", "active campaign workspace sends unselected campaigns to creative selection before review");
   assertExcludes(buildFunnelPage, "ArtifactRecoveryPanel", "Funnel technical recovery hidden", "agents do not see technical artifact recovery under Build");
   assertExcludes(buildCreativesPage, "ArtifactRecoveryPanel", "Creative technical recovery hidden", "agents do not see technical artifact recovery under Build");
   assertExcludes(buildCreativesPage, "Creative artifacts are missing", "Creative missing copy hidden", "missing creative artifacts no longer show as an app page");

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,7 +41,9 @@ export default async function UnlockPage({
       : "/dashboard";
   const launchHref = campaignId ? `/launch?campaignId=${encodeURIComponent(campaignId)}` : "/launch";
   const paywallHref = `/paywall${campaignId ? `?campaignId=${encodeURIComponent(campaignId)}${plan ? `&plan=${encodeURIComponent(plan)}` : ""}` : plan ? `?plan=${encodeURIComponent(plan)}` : ""}`;
-  const previewHref = campaignId ? `/preview?campaignId=${encodeURIComponent(campaignId)}` : "/preview";
+  const creativesHref = campaignId
+    ? `/build/creatives?campaignId=${encodeURIComponent(campaignId)}`
+    : "/onboarding";
   const title = checkoutCancelled
     ? "Checkout cancelled"
     : checkoutOverride
@@ -70,6 +73,14 @@ export default async function UnlockPage({
       },
       idempotencyKey: `checkout_completed_or_reconciled:${checkoutSessionId}`,
     }).catch(() => undefined);
+  }
+
+  if (checkoutCancelled) {
+    redirect(campaignId ? `/onboarding?campaignId=${encodeURIComponent(campaignId)}` : "/onboarding");
+  }
+
+  if ((checkoutOverride || launchAllowed) && !reconciliationError) {
+    redirect(creativesHref);
   }
 
   return (
@@ -108,16 +119,16 @@ export default async function UnlockPage({
                 <Link href={paywallHref}>Return to activation</Link>
               </Button>
               <Button asChild variant="secondary">
-                <Link href={previewHref}>Review campaign package</Link>
+                <Link href="/onboarding">Back to onboarding</Link>
               </Button>
             </>
           ) : (
             <>
               <Button asChild>
-                <Link href={dashboardHref}>Open dashboard preview</Link>
+                <Link href={creativesHref}>Choose creatives</Link>
               </Button>
               <Button asChild variant="secondary">
-                <Link href={launchHref}>Continue to Meta setup</Link>
+                <Link href={paywallHref}>Return to activation</Link>
               </Button>
             </>
           )}
