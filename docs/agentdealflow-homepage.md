@@ -5,8 +5,8 @@ The public root route renders a software-first landing page for `agentdealflow.i
 ## Route Boundaries
 
 - `/` is the public homepage.
-- `/login` remains the auth route.
-- `/login?mode=sign-up` opens the create-account tab for homepage CTAs.
+- `/login` redirects returning users to `https://app.agentdealflow.io/login`.
+- Homepage signup/get-access CTAs route fresh users to `https://app.agentdealflow.io/onboarding`.
 - `/dashboard` and app routes remain protected by the existing proxy and app layout.
 - `/f/[slug]` remains the public customer funnel route.
 

@@ -31,7 +31,7 @@ import { cn } from "@/lib/utils";
 
 const appBaseUrl = "https://app.agentdealflow.io";
 const signinHref = `${appBaseUrl}/login`;
-const signupHref = `${appBaseUrl}/login?mode=sign-up`;
+const signupHref = `${appBaseUrl}/onboarding`;
 const scrollTrackingMilestones = [25, 50, 75, 90] as const;
 
 function trackHomepageEvent(event: string, properties: Record<string, string | number | boolean> = {}) {

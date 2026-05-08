@@ -8,7 +8,9 @@ const loginForm = readFileSync("src/components/auth/login-form.tsx", "utf8");
 const requiredHomepageSnippets = [
   "DealFlow OS",
   "Get Access",
-  "/login?mode=sign-up",
+  "https://app.agentdealflow.io",
+  "const signinHref = `${appBaseUrl}/login`;",
+  "const signupHref = `${appBaseUrl}/onboarding`;",
   "What gets installed",
   "Stop renting a service",
   "Agency vs owned system",
@@ -73,8 +75,8 @@ if (!page.includes("HomeCommandCenter")) {
   throw new Error("Root page must render the public HomeCommandCenter.");
 }
 
-if (!loginPage.includes("initialMode")) {
-  throw new Error("Login page must support homepage sign-up CTA mode.");
+if (!loginPage.includes("https://app.agentdealflow.io/login") || !loginPage.includes("redirect(query.size > 0")) {
+  throw new Error("Public login route must redirect returning users to the app login while preserving query params.");
 }
 
 if (!loginForm.includes("? \"Sign In\"")) {
@@ -87,6 +89,18 @@ if (loginForm.includes("Launch My Campaign")) {
 
 if (!homepage.includes("try {\n    track(event") || !homepage.includes("} catch {")) {
   throw new Error("Homepage CTA tracking must stay fail-open so analytics cannot block navigation.");
+}
+
+if (homepage.includes("login?mode=sign-up")) {
+  throw new Error("Homepage signup CTAs must point to the current app onboarding route, not the legacy sign-up query.");
+}
+
+if (!homepage.includes("const signupHref = `${appBaseUrl}/onboarding`;")) {
+  throw new Error("Homepage signup CTAs must land fresh users on app onboarding.");
+}
+
+if (!homepage.includes("const signinHref = `${appBaseUrl}/login`;")) {
+  throw new Error("Homepage sign-in CTA must land returning users on app login.");
 }
 
 console.log("Homepage content checks passed.");

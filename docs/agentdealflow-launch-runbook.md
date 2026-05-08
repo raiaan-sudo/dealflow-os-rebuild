@@ -6,7 +6,8 @@ This runbook is the operator checklist for the public DealFlow OS homepage at
 ## Scope
 
 - `/` serves the public homepage.
-- `/login` and `/login?mode=sign-up` serve software access.
+- `/login` redirects returning users to `https://app.agentdealflow.io/login`.
+- Homepage signup/get-access CTAs route fresh users to `https://app.agentdealflow.io/onboarding`.
 - `/dashboard`, `/builder`, `/preview`, `/launch`, `/settings`, `/paywall`, and admin routes stay protected.
 - Homepage CTAs route into software access. There is no book-call path.
 - Pricing mirrors `BILLING_PLANS` from `src/lib/billing/plans.ts`.
@@ -36,8 +37,8 @@ sessions or charges, launch Meta ads, or run production mutations.
 | Check | Expected |
 | --- | --- |
 | `GET /` | `200`, public homepage copy, no `/login` redirect |
-| `GET /login` | `200` |
-| `GET /login?mode=sign-up` | `200`, create-account mode |
+| `GET /login` | redirect to `https://app.agentdealflow.io/login` |
+| public signup CTA | navigates to `https://app.agentdealflow.io/onboarding` |
 | `GET /dashboard` | redirect to `/login` |
 | `GET /privacy` | `200` |
 | `GET /terms` | `200` |
@@ -65,7 +66,7 @@ Check:
 - No horizontal overflow.
 - Hero, operator section, pricing, FAQ, footer, and CTAs remain readable.
 - Console has no runtime errors.
-- Signup CTAs point to `/login?mode=sign-up`.
+- Signup CTAs point to `https://app.agentdealflow.io/onboarding`.
 
 ## Analytics
 
