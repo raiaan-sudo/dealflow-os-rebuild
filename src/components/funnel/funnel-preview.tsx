@@ -10,20 +10,58 @@ type FunnelPreviewProps = {
   compact?: boolean;
 };
 
+function normalizeForOfferMatch(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function hasOfferSignal(value: string, offer: string) {
+  const normalizedValue = normalizeForOfferMatch(value);
+  const offerTokens = normalizeForOfferMatch(offer)
+    .split(" ")
+    .filter((token) => token.length >= 4 && !["with", "from", "your", "that", "this"].includes(token));
+
+  if (offerTokens.length === 0) {
+    return false;
+  }
+
+  const requiredMatches = Math.min(2, offerTokens.length);
+  return offerTokens.filter((token) => normalizedValue.includes(token)).length >= requiredMatches;
+}
+
+function buildOfferCta(offer: string) {
+  if (/approval|credit/i.test(offer)) {
+    return "Check My Approval Plan";
+  }
+
+  if (/value|valuation|price/i.test(offer)) {
+    return "Check My Value";
+  }
+
+  if (/cash|invest|roi|deal/i.test(offer)) {
+    return "See Matching Deals";
+  }
+
+  return "Review My Plan";
+}
+
 export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strategyWhy: _strategyWhy, compact = false }: FunnelPreviewProps) {
   void _expectedOutcomes;
   void _strategyWhy;
 
   const offer = plan.offerSummary || plan.keyOffer || plan.primaryGoal;
-  const headline =
-    plan.funnel.headline ||
-    (offer ? `${offer} in ${plan.market}` : `${plan.market} campaign preview`);
-  const subheadline =
-    plan.funnel.subheadline ||
-    (offer
-      ? `${offer} for ${plan.audience || "qualified prospects"} without guessing what to do next.`
-      : plan.summary);
-  const cta = plan.funnel.cta || (offer ? "Review the offer" : "Request details");
+  const storedHeadline = plan.funnel.headline || "";
+  const storedSubheadline = plan.funnel.subheadline || "";
+  const shouldUseOfferHero = Boolean(offer && !hasOfferSignal(`${storedHeadline} ${storedSubheadline}`, offer));
+  const headline = shouldUseOfferHero
+    ? `${offer} in ${plan.market}`
+    : storedHeadline || (offer ? `${offer} in ${plan.market}` : `${plan.market} campaign preview`);
+  const subheadline = shouldUseOfferHero
+    ? `${offer} for ${plan.audience || "qualified prospects"} in ${plan.market}. See the stronger-fit path before wasting time on weak options.`
+    : storedSubheadline ||
+      (offer
+        ? `${offer} for ${plan.audience || "qualified prospects"} without guessing what to do next.`
+        : plan.summary);
+  const cta = shouldUseOfferHero ? buildOfferCta(offer) : plan.funnel.cta || (offer ? buildOfferCta(offer) : "Request details");
   const formFields = (plan.funnel.formFields ?? ["name", "phone", "email"]).map((field) =>
     field.charAt(0).toUpperCase() + field.slice(1),
   );
@@ -213,7 +251,8 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
     );
   }
 
-  const renderedSections = compact ? sections.filter((section) => section.visible !== false).slice(0, 3) : sections;
+  const visibleDetailSections = sections.filter((section) => section.visible !== false && section.type !== "hero");
+  const renderedSections = compact ? visibleDetailSections.slice(0, 2) : visibleDetailSections;
 
   return (
     <div className="overflow-hidden rounded-[28px] border border-white/8 bg-[#eef3fb] shadow-[0_28px_90px_-48px_rgba(0,0,0,0.68)]">

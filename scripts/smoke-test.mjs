@@ -268,6 +268,8 @@ function runOfflineChecks() {
   assertIncludes("src/lib/services/funnel-engine.ts", "cleanMarketingCopy", "Funnel copy sanitizer", "funnel copy removes awkward repeated market and spacing artifacts");
   assertIncludes("src/lib/services/funnel-engine.ts", "trimWords(cleanMarketingCopy(headline), 14)", "Funnel headline length guard", "funnel headlines are capped instead of over-concatenating onboarding fields");
   assertIncludes("src/lib/services/funnel-engine.ts", "conciseOfferPhrase", "Funnel offer shaping", "offer and lead magnet shape funnel copy without being dumped raw into the headline");
+  assertIncludes("src/components/funnel/funnel-preview.tsx", "shouldUseOfferHero", "Funnel preview offer override", "existing saved funnels render an offer-led hero when stored copy is too generic");
+  assertIncludes("src/components/funnel/funnel-preview.tsx", "section.type !== \"hero\"", "Funnel preview duplicate hero guard", "review preview does not repeat a stale hero section below the offer-led hero");
   assertIncludes(creativeEngine, "preventDuplicateStaticCreativeCopy", "Creative duplicate prevention", "static creative options deterministically vary duplicate headline/body/CTA combinations");
   assertIncludes(creativeEngine, "creativeAngleLabel", "Creative angle labels", "static creative copy receives distinct mode-specific marketing angles");
   assertIncludes("src/components/campaign/static-creative-preview-card.tsx", "line-clamp-3", "Creative card copy clamp", "creative cards show usable previews instead of full dense body copy");
