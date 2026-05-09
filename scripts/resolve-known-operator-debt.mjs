@@ -33,7 +33,8 @@ async function main() {
     .select("id,stripe_event_id,stripe_event_type,organization_id,status,error_code,payload")
     .eq("status", "failed")
     .eq("error_code", "stripe_metadata_missing")
-    .is("organization_id", null);
+    .is("organization_id", null)
+    .is("reviewed_at", null);
 
   if (stripeReadError) {
     throw new Error(`Failed to read Stripe webhook failures: ${stripeReadError.message}`);
@@ -107,6 +108,51 @@ async function main() {
   }
 
   log("Historical failed campaign_build jobs reviewed", String(safeJobRows.length));
+
+  const { data: metaSyncRows, error: metaSyncReadError } = await supabase
+    .from("system_jobs")
+    .select("id,status,kind,last_error_code,dead_lettered_at,error_message,payload")
+    .eq("kind", "meta_sync")
+    .eq("status", "failed")
+    .not("dead_lettered_at", "is", null)
+    .is("reviewed_at", null);
+
+  if (metaSyncReadError) {
+    throw new Error(`Failed to read failed Meta sync jobs: ${metaSyncReadError.message}`);
+  }
+
+  const safeMetaSyncRows = (metaSyncRows ?? []).filter((row) => {
+    const category = row.payload?.tracking?.lastErrorCategory;
+    const nonRetryable = row.payload?.tracking?.retryEligible === false;
+    const knownHistoricalError =
+      (row.last_error_code === "meta_not_connected" &&
+        row.error_message === "Connect a Meta ad account before syncing status.") ||
+      (row.last_error_code === "campaign_sync_snapshot_insert_failed" &&
+        row.error_message?.includes("public.campaign_sync_snapshots"));
+
+    return nonRetryable && knownHistoricalError && ["server_or_provider", "validation_or_access"].includes(category);
+  });
+
+  if (safeMetaSyncRows.length > 0) {
+    const { error } = await supabase
+      .from("system_jobs")
+      .update({
+        reviewed_at: now,
+        reviewed_by: REVIEWED_BY,
+        resolution_note:
+          "Reviewed as historical non-retryable meta_sync artifact from prelaunch validation; Meta sync schema and smoke checks now pass.",
+      })
+      .in(
+        "id",
+        safeMetaSyncRows.map((row) => row.id),
+      );
+
+    if (error) {
+      throw new Error(`Failed to mark Meta sync jobs reviewed: ${error.message}`);
+    }
+  }
+
+  log("Historical failed meta_sync jobs reviewed", String(safeMetaSyncRows.length));
 }
 
 main().catch((error) => {
