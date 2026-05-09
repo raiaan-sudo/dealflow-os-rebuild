@@ -44,6 +44,7 @@ const requiredMigrationFiles = [
   "20260504213000_harden_launch_ops_tables_advisors.sql",
   "20260504220000_harden_rls_and_fk_advisors.sql",
   "20260504223000_create_client_error_events.sql",
+  "20260509020000_create_meta_sync_and_optimization_tables.sql",
 ];
 
 const { loadEnvConfig } = nextEnv;
@@ -365,6 +366,41 @@ async function main() {
       .limit(1),
   );
 
+  await probeQuery("campaign_sync_snapshots table check", () =>
+    supabase
+      .from("campaign_sync_snapshots")
+      .select("id, organization_id, user_id, campaign_name, account_name, launch_mode, sync_result, meta_campaign_id, meta_ad_set_ids, meta_ad_ids, campaign_status, ad_set_statuses, ad_statuses, delivery_metrics, sync_metadata, sync_errors, synced_at, created_at")
+      .limit(1),
+  );
+
+  await probeQuery("performance_tracking table check", () =>
+    supabase
+      .from("performance_tracking")
+      .select("id, organization_id, user_id, source_snapshot_id, campaign_id, spend, impressions, clicks, ctr, leads, cpl, synced_at, created_at")
+      .limit(1),
+  );
+
+  await probeQuery("targeting_intelligence_patterns table check", () =>
+    supabase
+      .from("targeting_intelligence_patterns")
+      .select("id, organization_id, user_id, audience, location, targeting_pattern, spend, impressions, clicks, ctr, leads, cpl, performance_tag, success_count, failure_count, confidence_score, last_seen, created_at, updated_at")
+      .limit(1),
+  );
+
+  await probeQuery("campaign_action_suggestions table check", () =>
+    supabase
+      .from("campaign_action_suggestions")
+      .select("id, organization_id, user_id, sync_snapshot_id, meta_campaign_id, action_type, title, reason, expected_impact, status, context, created_at, updated_at")
+      .limit(1),
+  );
+
+  await probeQuery("campaign_draft_actions table check", () =>
+    supabase
+      .from("campaign_draft_actions")
+      .select("id, organization_id, user_id, campaign_id, action_type, source_reason, proposed_change, expected_impact, status, created_at, updated_at")
+      .limit(1),
+  );
+
   await probeQuery("leads reliability columns check", () =>
     supabase
       .from("leads")
@@ -395,6 +431,7 @@ async function main() {
     ["launch_ops_table_advisor_hardening_schema_version", "20260504213000"],
     ["rls_and_fk_advisor_hardening_schema_version", "20260504220000"],
     ["client_error_events_schema_version", "20260504223000"],
+    ["meta_sync_optimization_tables_schema_version", "20260509020000"],
   ]);
 
   for (const [key, expectedVersion] of expectedMetadataVersions) {

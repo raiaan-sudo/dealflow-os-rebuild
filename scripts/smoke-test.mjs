@@ -155,6 +155,7 @@ function runOfflineChecks() {
   const customerSuccessService = "src/lib/services/customer-success-service.ts";
   const customerSuccessMigration = "supabase/migrations/20260504210000_create_customer_success_checklists.sql";
   const clientErrorMigration = "supabase/migrations/20260504223000_create_client_error_events.sql";
+  const metaSyncOptimizationMigration = "supabase/migrations/20260509020000_create_meta_sync_and_optimization_tables.sql";
   const clientErrorRoute = "src/app/api/client-errors/route.ts";
   const clientErrorListener = "src/components/telemetry/client-error-listener.tsx";
   const clientErrorService = "src/lib/services/client-error-telemetry-service.ts";
@@ -334,6 +335,10 @@ function runOfflineChecks() {
   assertIncludes(launchMetaSelectionPanel, "Meta selections saved. DealFlow is checking the launch gates now.", "Meta selection save confirmation", "saving Meta assets gives immediate confirmation");
   assertIncludes(launchMetaSelectionPanel, "setIsSaving(true)", "Meta selection explicit saving state", "Meta asset save button tracks the full async save lifecycle");
   assertIncludes("src/app/(app)/launching/page.tsx", "launchIntent", "Launch start intent gate", "direct launch-room visits must return to launch gates before showing the start control");
+  assertIncludes("src/app/(app)/launching/page.tsx", "await syncCampaignStatus(currentCampaignId)", "Post-launch Meta confirmation", "successful launches request a fresh Meta sync before landing on the success page");
+  assertIncludes(metaSyncOptimizationMigration, "create table if not exists public.campaign_sync_snapshots", "Meta sync snapshot schema", "launch success can persist fresh Meta confirmation snapshots");
+  assertIncludes(metaSyncOptimizationMigration, "create table if not exists public.campaign_action_suggestions", "Campaign action schema", "post-sync optimization suggestions have a durable table");
+  assertIncludes(metaSyncOptimizationMigration, "campaign_sync_snapshots_member_insert", "Meta sync authenticated insert policy", "signed-in launch users can record their own sync snapshots without service-role exposure");
 
   assertIncludes(launchRoute, "validateExistingMetaObject", "Meta object validation before reuse", "existing Meta IDs are validated before reuse");
   assertIncludes(launchRoute, "fetchMetaObjectByName", "Deterministic Meta lookup", "Meta objects are recovered by deterministic name");

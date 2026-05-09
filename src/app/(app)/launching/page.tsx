@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { syncCampaignStatus } from "@/components/campaign/launch/launch-runtime-api";
 
 type LaunchStepKey = "campaign" | "ad_set" | "creative" | "ad";
 
@@ -195,6 +196,8 @@ export default function LaunchingPage() {
         }
 
         setLaunchState(data);
+
+        await syncCampaignStatus(currentCampaignId).catch(() => null);
 
         const params = new URLSearchParams();
         params.set("campaignId", currentCampaignId);
