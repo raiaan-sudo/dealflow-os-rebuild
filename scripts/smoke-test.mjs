@@ -340,7 +340,10 @@ function runOfflineChecks() {
   assertIncludes(launchRoute, "step_status", "Step-level launch state", "launch_runtime stores step_status");
   assertIncludes(launchRoute, "const destinationUrl = publicSlug ? expectedDestinationUrl : \"\";", "Launch destination slug fallback", "published public slug is the launch destination source of truth when saved payloads are stale");
   assertIncludes(launchRoute, "getRecoverablePublicSlug", "Launch slug recovery", "launch runtime updates recover and preserve the published slug instead of erasing it");
+  assertIncludes(launchRoute, ".select(\"plan,public_slug,publish_state,published_snapshot,staged_snapshot\")", "Launch slug row fields", "launch recovery loads row publish fields instead of only the stale plan JSON");
+  assertIncludes(launchRoute, "getNestedText(snapshot, [\"name\"])", "Launch snapshot name fallback", "published snapshots without publish.slug can recover the public slug from snapshot name");
   assertIncludes(launchRoute, "currentPlan.public_slug", "Launch current-plan slug source", "Meta launch can use the recovered plan slug when the canonical campaign record is stale");
+  assertIncludes(launchRoute, "persistRecoveredPublicSlug", "Launch slug self-heal", "Meta launch repairs the missing public_slug row before provider calls need the public funnel URL");
   assertIncludes(launchRoute, "testModeInterruptAfter", "Forced interruption support", "forced interruption mode exists");
   assertIncludes(launchApiRoute, "test_mode_interrupt_after", "Forced interruption launch API", "launch route forwards interruption mode");
   assertIncludes(launchApiRoute, "assertMetaLaunchBillingAccess", "Launch billing gate", "launch route enforces subscription/admin override gate");

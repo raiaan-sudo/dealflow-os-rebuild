@@ -198,7 +198,7 @@ async function loadSavedCampaignPayload(campaignId: string): Promise<CampaignPay
 
   const { data, error } = await supabase
     .from("campaign_plans")
-    .select("plan,public_slug,publish_state,published_snapshot,staged_snapshot")
+    .select("plan")
     .eq("id", campaignId)
     .maybeSingle();
 
@@ -219,7 +219,7 @@ async function loadCampaignPlanDocument(campaignId: string) {
 
   const { data, error } = await supabase
     .from("campaign_plans")
-    .select("plan")
+    .select("plan,public_slug,publish_state,published_snapshot,staged_snapshot")
     .eq("id", campaignId)
     .maybeSingle();
 
@@ -273,6 +273,7 @@ function getRecoverablePublicSlug(
     getNestedText(snapshot, ["publish", "slug"]),
     getNestedText(snapshot, ["public_slug"]),
     getNestedText(snapshot, ["slug"]),
+    publishedOrStaged ? getNestedText(snapshot, ["name"]) : "",
     publishedOrStaged ? getNestedText(snapshot, ["campaign", "name"]) : "",
     publishedOrStaged ? getNestedText(document, ["name"]) : "",
   ];
@@ -286,6 +287,31 @@ function getRecoverablePublicSlug(
   }
 
   return null;
+}
+
+async function persistRecoveredPublicSlug(
+  campaignId: string,
+  currentPlan: Record<string, unknown>,
+  publicSlug: string,
+) {
+  const supabase = createAdminClient() ?? (await createRouteHandlerClient());
+
+  if (!supabase) {
+    throw new Error("Supabase is not configured.");
+  }
+
+  const nextPlan = readCampaignPlanDocument({
+    ...currentPlan,
+    public_slug: publicSlug,
+  });
+  const { error } = await supabase
+    .from("campaign_plans")
+    .update(buildCampaignPlanCriticalFieldPatch(nextPlan) as never)
+    .eq("id", campaignId);
+
+  if (error) {
+    throw error;
+  }
 }
 
 async function loadCampaignOwnerId(campaignId: string) {
@@ -913,6 +939,10 @@ async function launchCampaignToMeta(
         "Missing public destination URL",
         "missing_public_destination_url",
       );
+    }
+
+    if (!record.publish.slug?.trim() && currentPlan.public_slug?.trim()) {
+      await persistRecoveredPublicSlug(campaignId, currentPlan, publicSlug);
     }
 
     const preflight = await validateMetaLaunchSelections({ destinationUrl });
