@@ -1,22 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { PageHeader } from "@/components/app/page-header";
+import { CheckCircle2, CircleAlert, Clock3, Loader2, Rocket, ShieldCheck, Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import { syncCampaignStatus } from "@/components/campaign/launch/launch-runtime-api";
 
-type LaunchStepKey = "campaign" | "ad_set" | "creative" | "ad";
-
+type LaunchApiStage = "campaign" | "ad_set" | "creative" | "ad";
 type LaunchStepStatus = "pending" | "active" | "success" | "failed";
-
-type LaunchStep = {
-  key: LaunchStepKey;
-  label: string;
-};
 
 type LaunchApiResponse = {
   campaign_id?: string;
@@ -24,33 +17,49 @@ type LaunchApiResponse = {
   creative_id?: string;
   ad_id?: string;
   error?: string;
-  stage?: LaunchStepKey;
+  stage?: LaunchApiStage;
 };
 
-const LAUNCH_STEPS: LaunchStep[] = [
-  { key: "campaign", label: "Creating campaign" },
-  { key: "ad_set", label: "Creating ad set" },
-  { key: "creative", label: "Creating creative" },
-  { key: "ad", label: "Creating ad" },
+type LaunchSequenceStep = {
+  key: "prepare" | "campaign" | "ad_set" | "creative" | "send_paused" | "confirm";
+  label: string;
+  description: string;
+};
+
+const LAUNCH_SEQUENCE: LaunchSequenceStep[] = [
+  {
+    key: "prepare",
+    label: "Preparing campaign",
+    description: "Checking launch intent, campaign assets, and the saved launch room.",
+  },
+  {
+    key: "campaign",
+    label: "Creating Meta campaign",
+    description: "Opening the campaign shell in Meta with DealFlow safety controls.",
+  },
+  {
+    key: "ad_set",
+    label: "Building ad set",
+    description: "Attaching budget, audience, placement, Page, pixel, and destination.",
+  },
+  {
+    key: "creative",
+    label: "Publishing creative",
+    description: "Sending the selected ad creative package into the Meta campaign.",
+  },
+  {
+    key: "send_paused",
+    label: "Sending paused launch to Meta",
+    description: "Creating the ad in PAUSED mode so delivery stays controlled.",
+  },
+  {
+    key: "confirm",
+    label: "Confirming launch record",
+    description: "Saving the launch receipt and requesting a fresh Meta status check.",
+  },
 ];
 
-function getStageDisplayLabel(step: LaunchStepKey | null) {
-  if (step === "ad_set") {
-    return "adset";
-  }
-
-  if (step === "creative") {
-    return "creative";
-  }
-
-  if (step === "ad") {
-    return "ad";
-  }
-
-  return "campaign";
-}
-
-function getNextStage(step: LaunchStepKey | null): LaunchStepKey {
+function getNextStage(step: LaunchApiStage | null): LaunchApiStage {
   if (step === "campaign") {
     return "ad_set";
   }
@@ -66,31 +75,58 @@ function getNextStage(step: LaunchStepKey | null): LaunchStepKey {
   return "campaign";
 }
 
-function getFailureTitle(step: LaunchStepKey | null) {
+function getFailureTitle(step: LaunchApiStage | null) {
   if (step === "ad_set") {
-    return "Ad set creation failed";
+    return "Ad set needs attention";
   }
 
   if (step === "creative") {
-    return "Creative creation failed";
+    return "Creative publish needs attention";
   }
 
   if (step === "ad") {
-    return "Ad creation failed";
+    return "Paused ad send needs attention";
   }
 
-  return "Campaign creation failed";
+  return "Meta campaign needs attention";
 }
 
-function getStepStatuses(payload: LaunchApiResponse | null, failedStage: LaunchStepKey | null) {
-  const statuses: Record<LaunchStepKey, LaunchStepStatus> = {
+function isAuthOrAccountError(value: string | null) {
+  return Boolean(value && /auth|oauth|token|permission|account|connect|login|session/i.test(value));
+}
+
+function getLaunchProgress(payload: LaunchApiResponse | null, failedStage: LaunchApiStage | null, attempt: number) {
+  const completed = [
+    attempt > 0 ? "prepare" : null,
+    payload?.campaign_id ? "campaign" : null,
+    payload?.adset_id ? "ad_set" : null,
+    payload?.creative_id ? "creative" : null,
+    payload?.ad_id ? "send_paused" : null,
+  ].filter(Boolean);
+  const successCount = completed.length;
+
+  if (payload?.campaign_id && payload.adset_id && payload.creative_id && payload.ad_id) {
+    return 100;
+  }
+
+  if (failedStage) {
+    return Math.max(12, Math.round((successCount / LAUNCH_SEQUENCE.length) * 100));
+  }
+
+  return Math.max(attempt > 0 ? 14 : 0, Math.round(((successCount + (attempt > 0 ? 0.5 : 0)) / LAUNCH_SEQUENCE.length) * 100));
+}
+
+function getSequenceStatuses(payload: LaunchApiResponse | null, failedStage: LaunchApiStage | null, attempt: number) {
+  const statuses: Record<LaunchSequenceStep["key"], LaunchStepStatus> = {
+    prepare: attempt > 0 ? "success" : "pending",
     campaign: "pending",
     ad_set: "pending",
     creative: "pending",
-    ad: "pending",
+    send_paused: "pending",
+    confirm: "pending",
   };
 
-  if (!payload && !failedStage) {
+  if (attempt > 0 && !payload && !failedStage) {
     statuses.campaign = "active";
     return statuses;
   }
@@ -113,21 +149,36 @@ function getStepStatuses(payload: LaunchApiResponse | null, failedStage: LaunchS
 
   if (payload?.creative_id) {
     statuses.creative = "success";
-    statuses.ad = "active";
+    statuses.send_paused = "active";
   } else if (failedStage === "creative") {
     statuses.creative = "failed";
     return statuses;
-  } else if (payload?.campaign_id && payload?.adset_id) {
-    statuses.creative = "active";
   }
 
   if (payload?.ad_id) {
-    statuses.ad = "success";
+    statuses.send_paused = "success";
+    statuses.confirm = "active";
   } else if (failedStage === "ad") {
-    statuses.ad = "failed";
+    statuses.send_paused = "failed";
   }
 
   return statuses;
+}
+
+function StepIcon({ status }: { status: LaunchStepStatus }) {
+  if (status === "success") {
+    return <CheckCircle2 className="size-4 text-emerald-200" />;
+  }
+
+  if (status === "failed") {
+    return <CircleAlert className="size-4 text-rose-200" />;
+  }
+
+  if (status === "active") {
+    return <Loader2 className="size-4 animate-spin text-cyan-100" />;
+  }
+
+  return <Clock3 className="size-4 text-muted-foreground" />;
 }
 
 export default function LaunchingPage() {
@@ -137,11 +188,11 @@ export default function LaunchingPage() {
   const hasLaunchIntent = searchParams.get("launchIntent") === "ready";
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const [failedStep, setFailedStep] = useState<LaunchStepKey | null>(null);
+  const [failedStep, setFailedStep] = useState<LaunchApiStage | null>(null);
   const [launchState, setLaunchState] = useState<LaunchApiResponse | null>(null);
   const startedAttemptRef = useRef<string | null>(null);
 
-  const lastSuccessfulStep: LaunchStepKey | null = launchState?.ad_id
+  const lastSuccessfulStep: LaunchApiStage | null = launchState?.ad_id
     ? "ad"
     : launchState?.creative_id
       ? "creative"
@@ -151,11 +202,26 @@ export default function LaunchingPage() {
           ? "campaign"
           : null;
   const resumeStage = failedStep ?? (lastSuccessfulStep ? getNextStage(lastSuccessfulStep) : null);
-  const showResumeState = Boolean(lastSuccessfulStep) || attempt > 0;
+  const showResumeState = Boolean(lastSuccessfulStep) || attempt > 1;
+  const stepStatuses = useMemo(
+    () => getSequenceStatuses(launchState, failedStep, attempt),
+    [attempt, failedStep, launchState],
+  );
+  const launchProgress = getLaunchProgress(launchState, failedStep, attempt);
+  const activeStep =
+    LAUNCH_SEQUENCE.find((step) => stepStatuses[step.key] === "active") ??
+    LAUNCH_SEQUENCE.find((step) => stepStatuses[step.key] === "pending") ??
+    LAUNCH_SEQUENCE[LAUNCH_SEQUENCE.length - 1];
+  const launchReviewHref = campaignId
+    ? `/launch?campaignId=${encodeURIComponent(campaignId)}`
+    : "/launch";
+  const reconnectHref = campaignId
+    ? `/api/integrations/meta/connect?returnTo=${encodeURIComponent(launchReviewHref)}`
+    : "/api/integrations/meta/connect?returnTo=/launch";
 
   useEffect(() => {
     if (!campaignId) {
-      setError("Missing campaign id.");
+      setError("Campaign id is missing. Return to launch settings and open this campaign again.");
       return;
     }
 
@@ -188,7 +254,7 @@ export default function LaunchingPage() {
             setFailedStep(data?.stage ?? "campaign");
           }
 
-          throw new Error(data?.error || "Launch failed.");
+          throw new Error(data?.error || "DealFlow could not complete the Meta launch sequence.");
         }
 
         if (cancelled) {
@@ -221,7 +287,7 @@ export default function LaunchingPage() {
         router.replace(`/launch-success?${params.toString()}`);
       } catch (launchError) {
         if (!cancelled) {
-          setError(launchError instanceof Error ? launchError.message : "Launch failed.");
+          setError(launchError instanceof Error ? launchError.message : "DealFlow could not complete the Meta launch sequence.");
         }
       }
     }
@@ -233,147 +299,166 @@ export default function LaunchingPage() {
     };
   }, [attempt, campaignId, router]);
 
-  const stepStatuses = getStepStatuses(launchState, failedStep);
-  const launchReviewHref = campaignId
-    ? `/launch?campaignId=${encodeURIComponent(campaignId)}`
-    : "/launch";
-
   return (
-    <div className="mx-auto w-full max-w-[900px] space-y-8">
-      <PageHeader
-        eyebrow="Launch"
-        title="Launching campaign"
-        description="Your campaign is being sent to Meta. Stay on this page while each object is created and confirmed."
-      />
-
-      <Card className="p-6 sm:p-8">
-        {error ? (
-          <div className="space-y-5">
-            <div className="inline-flex rounded-full border border-rose-400/20 bg-rose-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-rose-200">
-              Launch paused
-            </div>
-            {showResumeState ? (
-              <div className="rounded-[18px] border border-white/8 bg-white/[0.03] p-4 text-sm text-muted-foreground">
-                <p className="font-medium text-foreground">Resuming from last successful step</p>
-                <p className="mt-2">
-                  Current stage: {getStageDisplayLabel(resumeStage)}
-                </p>
-              </div>
-            ) : null}
-            <p className="text-lg font-semibold text-foreground">
-              {getFailureTitle(failedStep)}
-            </p>
-            {failedStep ? (
-              <p className="text-sm font-medium text-foreground">
-                Failed step: {LAUNCH_STEPS.find((step) => step.key === failedStep)?.label ?? "Creating campaign"}
-              </p>
-            ) : null}
-            {lastSuccessfulStep ? (
-              <p className="text-sm text-muted-foreground">
-                Last successful step: {LAUNCH_STEPS.find((step) => step.key === lastSuccessfulStep)?.label ?? "Creating campaign"}
-              </p>
-            ) : null}
-            <p className="text-sm text-rose-400">Error: {error}</p>
-            <Button
-              onClick={() => {
-                setError(null);
-                setAttempt((value) => value + 1);
-              }}
-            >
-              Retry failed step
-            </Button>
+    <div className="mx-auto flex min-h-[calc(100dvh-9rem)] w-full max-w-[1120px] items-center px-3 py-6 sm:px-6">
+      <Card className="w-full rounded-[32px] border-cyan-300/15 bg-[radial-gradient(circle_at_50%_0%,rgba(34,211,238,0.22),transparent_34%),linear-gradient(140deg,rgba(6,10,24,0.98),rgba(12,13,34,0.94))] p-5 shadow-[0_40px_140px_-80px_rgba(34,211,238,0.8)] sm:p-8">
+        <div className="mx-auto max-w-4xl text-center">
+          <div className="relative mx-auto flex size-24 items-center justify-center rounded-full border border-cyan-200/20 bg-cyan-200/10 shadow-[0_0_80px_rgba(34,211,238,0.24)]">
+            <span className="absolute inset-0 animate-ping rounded-full border border-cyan-200/20" />
+            <span className="absolute inset-3 rounded-full border border-violet-300/20" />
+            <Rocket className="relative size-10 text-cyan-100" />
           </div>
-        ) : attempt < 1 ? (
-          <div className="space-y-5">
-            <div className="inline-flex rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-amber-100">
-              Confirmation required
-            </div>
-            <p className="text-lg font-semibold text-foreground">
-              Launch is ready, but it will not start from page load.
-            </p>
-            {hasLaunchIntent ? (
-              <>
-                <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
-                  This prevents browser restores, shared URLs, and accidental refreshes from creating or retrying Meta objects.
-                  Start launch only when you are ready to intentionally run the PAUSED Meta launch flow.
-                </p>
-                <Button
-                  onClick={() => {
-                    setError(null);
-                    setAttempt(1);
-                  }}
-                >
-                  Start PAUSED launch
-                </Button>
-              </>
-            ) : (
-              <>
-                <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
-                  Open the launch checklist first so billing, Meta selections, selected creative, published funnel,
-                  budget policy, and the provider launch switch are visible before any launch attempt.
-                </p>
-                <Button asChild>
-                  <Link href={launchReviewHref}>Review launch gates</Link>
-                </Button>
-              </>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-primary">
-              <Spinner className="size-3.5" />
-              Launch in progress
-            </div>
-            {showResumeState ? (
-              <div className="rounded-[18px] border border-white/8 bg-white/[0.03] p-4 text-sm text-muted-foreground">
-                <p className="font-medium text-foreground">Resuming from last successful step</p>
-                <p className="mt-2">
-                  Current stage: {getStageDisplayLabel(resumeStage)}
-                </p>
-              </div>
-            ) : null}
-            <div className="space-y-3">
-              <div className="h-2 w-full overflow-hidden rounded-full bg-primary/10">
-                <div className="h-full w-1/3 animate-pulse rounded-full bg-primary/40" />
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {LAUNCH_STEPS.find((step) => stepStatuses[step.key] === "active")?.label ??
-                  "Waiting for launch result..."}
-              </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {LAUNCH_STEPS.map((item) => {
-                const status = stepStatuses[item.key];
-                const toneClass =
-                  status === "success"
-                    ? "text-emerald-300"
-                    : status === "failed"
-                      ? "text-rose-300"
-                      : status === "active"
-                        ? "text-foreground"
-                        : "text-muted-foreground";
 
-                return (
-                <div
-                  key={item.key}
-                  className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4"
-                >
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{item.label}</p>
-                  <p className={`mt-2 text-sm font-medium ${toneClass}`}>
-                    {status === "success"
-                      ? "✔ Success"
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-100">
+              <ShieldCheck className="size-3.5" />
+              Meta objects are created PAUSED
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100">
+              <Sparkles className="size-3.5" />
+              Premium launch sequence
+            </span>
+          </div>
+
+          <h1 className="mt-5 text-3xl font-semibold tracking-[-0.05em] text-foreground sm:text-5xl">
+            {error ? "Launch needs attention" : attempt < 1 ? "Ready to launch" : "Launching campaign"}
+          </h1>
+          <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">
+            {error
+              ? "The launch sequence paused before completion. Nothing was activated automatically; review the recovery step below and retry when ready."
+              : attempt < 1
+                ? "Start only when you intentionally want DealFlow to send the paused campaign build to Meta."
+                : "DealFlow is creating the campaign structure, sending it to Meta in PAUSED mode, and preparing the launch receipt."}
+          </p>
+        </div>
+
+        <div className="mx-auto mt-8 max-w-4xl">
+          <div className="h-3 overflow-hidden rounded-full border border-white/8 bg-white/[0.045]">
+            <div
+              className="h-full rounded-full bg-[linear-gradient(90deg,#22d3ee,#a78bfa,#34d399)] transition-all duration-700"
+              style={{ width: `${launchProgress}%` }}
+            />
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-3 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+            <span>{activeStep.label}</span>
+            <span>{launchProgress}%</span>
+          </div>
+        </div>
+
+        <div className="mx-auto mt-8 grid max-w-5xl gap-3 lg:grid-cols-3">
+          {LAUNCH_SEQUENCE.map((step) => {
+            const status = stepStatuses[step.key];
+            const active = status === "active";
+
+            return (
+              <div
+                key={step.key}
+                className={`rounded-[22px] border p-4 text-left transition-all ${
+                  active
+                    ? "border-cyan-300/35 bg-cyan-300/10 shadow-[0_24px_70px_-48px_rgba(34,211,238,0.8)]"
+                    : status === "success"
+                      ? "border-emerald-300/20 bg-emerald-300/10"
                       : status === "failed"
-                        ? "❌ Failed"
-                        : status === "active"
-                          ? "In progress"
-                          : "Waiting"}
+                        ? "border-rose-300/25 bg-rose-300/10"
+                        : "border-white/8 bg-white/[0.035]"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 rounded-full border border-white/10 bg-black/20 p-2">
+                    <StepIcon status={status} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground">{step.label}</p>
+                    <p className="mt-2 text-xs leading-5 text-muted-foreground">{step.description}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mx-auto mt-8 max-w-4xl">
+          {error ? (
+            <div className="rounded-[24px] border border-rose-300/25 bg-rose-300/10 p-5 text-left">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-rose-100">
+                    Recovery
+                  </p>
+                  <h2 className="mt-2 text-xl font-semibold text-foreground">{getFailureTitle(failedStep)}</h2>
+                  {showResumeState ? (
+                    <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                      DealFlow will continue from {resumeStage ? LAUNCH_SEQUENCE.find((step) => step.key === resumeStage)?.label ?? "the next launch step" : "the next launch step"}.
+                    </p>
+                  ) : null}
+                  <p className="mt-3 text-sm leading-6 text-rose-100">{error}</p>
+                </div>
+                <div className="flex shrink-0 flex-col gap-3 sm:flex-row lg:flex-col">
+                  <Button
+                    onClick={() => {
+                      setError(null);
+                      setAttempt((value) => value + 1);
+                    }}
+                  >
+                    Retry launch
+                  </Button>
+                  {isAuthOrAccountError(error) ? (
+                    <Button asChild variant="secondary">
+                      <Link href={reconnectHref}>Reconnect Meta</Link>
+                    </Button>
+                  ) : null}
+                  <Button asChild variant="secondary">
+                    <Link href={launchReviewHref}>Review launch settings</Link>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : attempt < 1 ? (
+            <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-5 text-left">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100">
+                    Launch confirmation
+                  </p>
+                  <h2 className="mt-2 text-xl font-semibold text-foreground">
+                    {hasLaunchIntent ? "Send this campaign to Meta in PAUSED mode" : "Review launch settings first"}
+                  </h2>
+                  <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
+                    {hasLaunchIntent
+                      ? "Browser restores and shared URLs will not start a launch. This button is the intentional launch action."
+                      : "Open the launch checklist so billing, Meta selections, creative, funnel, budget policy, and provider switch are visible before any send attempt."}
                   </p>
                 </div>
-                );
-              })}
+                {hasLaunchIntent ? (
+                  <Button
+                    size="lg"
+                    onClick={() => {
+                      setError(null);
+                      setAttempt(1);
+                    }}
+                  >
+                    Start paused launch
+                  </Button>
+                ) : (
+                  <Button asChild size="lg">
+                    <Link href={launchReviewHref}>Review launch settings</Link>
+                  </Button>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="relative overflow-hidden rounded-[24px] border border-cyan-300/20 bg-cyan-300/10 p-5 text-center">
+              <div className="pointer-events-none absolute inset-0 opacity-60">
+                <span className="absolute left-[12%] top-6 size-1 rounded-full bg-cyan-200 animate-pulse" />
+                <span className="absolute left-[78%] top-10 size-1.5 rounded-full bg-violet-200 animate-pulse" />
+                <span className="absolute left-[52%] bottom-8 size-1 rounded-full bg-emerald-200 animate-pulse" />
+              </div>
+              <p className="relative text-sm font-medium text-cyan-50">
+                Hold tight. The launch receipt opens as soon as Meta IDs are saved and the confirmation check completes.
+              </p>
+            </div>
+          )}
+        </div>
       </Card>
     </div>
   );

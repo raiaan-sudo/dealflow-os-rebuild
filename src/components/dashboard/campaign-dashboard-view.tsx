@@ -8,6 +8,16 @@ import {
 } from "@/lib/campaign-intent";
 import { Card } from "@/components/ui/card";
 import { MetaSyncRefreshButton } from "@/components/dashboard/meta-sync-refresh-button";
+import {
+  ChartLegend,
+  DashboardChartPanel,
+  DashboardVisualMarker,
+  MetricTile,
+  MiniBarChart,
+  NextActionPanel,
+  StatusPill,
+  TrendAreaChart,
+} from "@/components/dashboard/dashboard-primitives";
 import type { MetaConnectionState } from "@/lib/integrations/meta/types";
 import type { Database } from "@/lib/supabase/types";
 import type {
@@ -133,6 +143,47 @@ function isStaleSync(value: string | null | undefined, nowMs: number) {
   }
 
   return nowMs - timestamp > META_SYNC_STALE_MS;
+}
+
+function sanitizeCustomerActionText(value: string | null | undefined) {
+  return (value ?? "")
+    .replace(/\bkill rule\b/gi, "spend protection rule")
+    .replace(/\bkilling\b/gi, "stopping scale")
+    .replace(/\bkill\b/gi, "stop scaling")
+    .replace(/\bestimated local state\b/gi, "pending Meta confirmation")
+    .trim();
+}
+
+function getCustomerOptimizerLabel(value: string | null | undefined) {
+  const normalized = (value ?? "").toLowerCase();
+
+  if (normalized === "kill" || normalized.includes("pause")) {
+    return "Needs review";
+  }
+
+  if (normalized.includes("scale") || normalized.includes("healthy")) {
+    return "Ready to scale";
+  }
+
+  return "Monitoring";
+}
+
+function getStatusToneForDashboard(value: string | null | undefined): "neutral" | "success" | "warning" | "danger" | "info" | "accent" {
+  const normalized = (value ?? "").toLowerCase();
+
+  if (normalized.includes("confirmed") || normalized.includes("connected") || normalized.includes("active") || normalized.includes("live")) {
+    return "success";
+  }
+
+  if (normalized.includes("waiting") || normalized.includes("pending") || normalized.includes("collecting") || normalized.includes("review")) {
+    return "warning";
+  }
+
+  if (normalized.includes("failed") || normalized.includes("issue") || normalized.includes("missing")) {
+    return "danger";
+  }
+
+  return "accent";
 }
 
 function includesRecommendation(
@@ -556,12 +607,18 @@ export function CampaignDashboardView({
       : launchState === "live"
         ? "border-amber-400/20 bg-amber-400/10"
         : "border-white/8 bg-white/[0.03]";
-  const primaryNextAction =
+  const primaryNextAction = sanitizeCustomerActionText(
     valueReport?.nextAction ??
-    firstWeekSuccess?.nextAction ??
-    highlightedRecommendations[0]?.description ??
-    nextActions[0] ??
-    "Monitor the campaign.";
+      firstWeekSuccess?.nextAction ??
+      highlightedRecommendations[0]?.description ??
+      nextActions[0] ??
+      "Monitor the campaign.",
+  );
+  const customerOptimizerStatus = getCustomerOptimizerLabel(optimizerResult.status);
+  const customerValueReportNextAction = sanitizeCustomerActionText(valueReport?.nextAction);
+  const customerValueReportRecommendations = (valueReport?.recommendations ?? []).map(sanitizeCustomerActionText);
+  const customerOptimizerActions = optimizerResult.actions.map(sanitizeCustomerActionText);
+  const waitingForFirstDeliveryCopy = "Waiting for first delivery data";
   const primaryStatusDescription =
     dataSourceState === "disconnected"
       ? "Connect Meta before live results can be reported."
@@ -569,12 +626,58 @@ export function CampaignDashboardView({
         ? "Launch the campaign to begin collecting delivery data."
         : hasMetricData
           ? "Live results are available from synced delivery data."
-          : "Delivery is collecting; raw sync and activity details are below.";
+          : "Delivery is collecting. The dashboard is ready for the first synced Meta delivery metrics.";
   const headlineMetrics = [
     { label: "Leads", value: String(displayedLeads) },
-    { label: "Estimated CPL", value: displayedLeads > 0 ? currency(displayedCpl) : "Waiting for data" },
-    { label: "Spend", value: displayedSpend > 0 ? currency(displayedSpend) : "Waiting for data" },
+    { label: "Cost per lead", value: displayedLeads > 0 ? currency(displayedCpl) : "Pending" },
+    { label: "Spend", value: displayedSpend > 0 ? currency(displayedSpend) : "Pending" },
   ];
+  const chartPoints = hasMetricData
+    ? [
+        { label: "Launch", spend: 0, leads: 0, actual: true },
+        {
+          label: "Current",
+          spend: Number(displayedSpend.toFixed(2)),
+          leads: displayedLeads,
+          actual: true,
+        },
+      ]
+    : [
+        { label: "Day 0", spend: 0, leads: 0, actual: false },
+        { label: "First sync", spend: 0, leads: 0, actual: false },
+        { label: "First lead", spend: 0, leads: 0, actual: false },
+        { label: "Scale review", spend: 0, leads: 0, actual: false },
+      ];
+  const funnelBars = [
+    {
+      label: "Impressions",
+      value: Number(liveMetrics?.impressions ?? 0),
+      detail: hasMetricData ? "Synced from Meta" : "Pending first delivery sync",
+      tone: "info" as const,
+    },
+    {
+      label: "Clicks",
+      value: Number(liveMetrics?.clicks ?? 0),
+      detail: hasMetricData ? `${liveCtrPercent.toFixed(2)}% CTR` : "Pending first click",
+      tone: "accent" as const,
+    },
+    {
+      label: "Leads",
+      value: displayedLeads,
+      detail: displayedLeads > 0 ? "Captured lead signals" : "Pending first verified lead",
+      tone: "success" as const,
+    },
+    {
+      label: "Appointments",
+      value: displayedAppointments,
+      detail: displayedAppointments > 0 ? "Booked from lead flow" : "Pending first booking",
+      tone: "warning" as const,
+    },
+  ];
+  const maxFunnelValue = Math.max(...funnelBars.map((item) => item.value), 1);
+  const dashboardStatusTone = getStatusToneForDashboard(statusText);
+  const metaDashboardTone = metaConnection.hasAccessToken ? "success" : "warning";
+  const syncDashboardTone = getStatusToneForDashboard(syncStateLabel);
   const guidedStatusItems = [
     {
       label: "Campaign status",
@@ -604,39 +707,99 @@ export function CampaignDashboardView({
     {
       label: "Next action",
       value: primaryNextAction,
-      detail: optimizerResult.status,
+      detail: customerOptimizerStatus,
     },
   ];
 
   return (
     <div className="space-y-5 text-[15px]">
-      <Card className="rounded-[24px] p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Results dashboard</p>
-            <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{statusText}</h3>
+      <DashboardVisualMarker />
+      <Card className="rounded-[28px] border-cyan-300/15 bg-[radial-gradient(circle_at_20%_0%,rgba(34,211,238,0.18),transparent_34%),linear-gradient(135deg,rgba(9,16,32,0.98),rgba(8,13,27,0.9))] p-5 shadow-[0_32px_110px_-70px_rgba(34,211,238,0.65)] sm:p-6">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusPill tone={dashboardStatusTone}>Campaign health: {statusText}</StatusPill>
+              <StatusPill tone={metaDashboardTone}>Meta {metaConnection.hasAccessToken ? "connected" : "needs connection"}</StatusPill>
+              <StatusPill tone={syncDashboardTone}>{syncStateLabel}</StatusPill>
+              {!hasMetricData ? <StatusPill tone="warning">{waitingForFirstDeliveryCopy}</StatusPill> : null}
+            </div>
+            <h3 className="mt-4 text-2xl font-semibold tracking-[-0.04em] text-foreground sm:text-3xl">
+              {plan.businessName || "Campaign command center"}
+            </h3>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
               {primaryStatusDescription}
             </p>
           </div>
-          <MetaSyncRefreshButton campaignId={plan.id ?? null} />
+          <div className="flex shrink-0 flex-wrap gap-3">
+            <MetaSyncRefreshButton campaignId={plan.id ?? null} />
+          </div>
         </div>
-        <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {guidedStatusItems.map((item) => (
-            <div key={item.label} className="rounded-[18px] border border-white/8 bg-white/[0.03] p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{item.label}</p>
-              <p className="mt-3 break-words text-xl font-semibold tracking-[-0.03em] text-foreground">
-                {item.value}
-              </p>
-              <p className="mt-2 break-words text-xs leading-5 text-muted-foreground">{item.detail}</p>
+
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricTile
+            label="Spend"
+            value={displayedSpend > 0 ? currency(displayedSpend) : "$0"}
+            detail={hasLivePerformance ? "Synced from Meta delivery metrics" : "No synced spend yet"}
+            tone={displayedSpend > 0 ? "accent" : "neutral"}
+          />
+          <MetricTile
+            label="Leads"
+            value={String(displayedLeads)}
+            detail={displayedLeads > 0 ? `${displayedAppointments} appointments booked` : "No verified leads yet"}
+            tone={displayedLeads > 0 ? "success" : "neutral"}
+          />
+          <MetricTile
+            label="Cost per lead"
+            value={displayedLeads > 0 ? currency(displayedCpl) : "Pending"}
+            detail={displayedLeads > 0 ? "Spend divided by verified leads" : "Calculated after the first lead"}
+            tone={displayedLeads > 0 ? "success" : "warning"}
+          />
+          <MetricTile
+            label="Meta status"
+            value={String(syncSnapshot?.campaignStatus ?? (resolvedMetaCampaignId ? "Sent to Meta" : "Not launched"))}
+            detail={syncedAt ? `Last sync ${formatLastVerified(syncedAt, stableNowMs)}` : "No Meta sync yet"}
+            tone={syncDashboardTone}
+          />
+        </div>
+
+        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.75fr)]">
+          <DashboardChartPanel
+            title="Performance trend"
+            subtitle={hasMetricData ? "Actual synced snapshot values are plotted from launch baseline to the current Meta sync." : "Empty chart scaffold is shown as a launch baseline until live delivery arrives."}
+            badge={hasMetricData ? "Live data" : "Day 0 baseline"}
+          >
+            <TrendAreaChart points={chartPoints} empty={!hasMetricData} />
+            <div className="mt-4">
+              <ChartLegend />
             </div>
-          ))}
+          </DashboardChartPanel>
+
+          <DashboardChartPanel
+            title="Funnel movement"
+            subtitle="Bars stay honest: zero means DealFlow has not received that signal yet."
+            badge={hasMetricData ? "Synced" : "Pending"}
+          >
+            <MiniBarChart items={funnelBars.map((item) => ({ ...item, max: maxFunnelValue }))} />
+          </DashboardChartPanel>
         </div>
-        {!hasMetricData ? (
-          <p className="mt-4 rounded-[18px] border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-            Waiting for enough delivery data to calculate performance.
-          </p>
-        ) : null}
+
+        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+          <NextActionPanel
+            title="Next best action"
+            action={primaryNextAction}
+            detail={customerOptimizerStatus}
+            tone={hasMetricData ? "accent" : "warning"}
+          />
+          <div className="grid gap-3 md:grid-cols-3">
+            {guidedStatusItems.slice(0, 3).map((item) => (
+              <div key={item.label} className="min-w-0 rounded-[20px] border border-white/8 bg-white/[0.035] p-4">
+                <p className="truncate text-xs uppercase tracking-[0.16em] text-muted-foreground">{item.label}</p>
+                <p className="mt-3 truncate text-lg font-semibold text-foreground">{item.value}</p>
+                <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">{item.detail}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </Card>
 
       <details className="rounded-[24px] border border-white/8 bg-card p-5">
@@ -697,7 +860,7 @@ export function CampaignDashboardView({
 
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Next recommended action</p>
-              <p className="mt-3 text-lg font-semibold leading-7 text-foreground">{valueReport.nextAction}</p>
+              <p className="mt-3 text-lg font-semibold leading-7 text-foreground">{customerValueReportNextAction}</p>
               <div className="mt-4 grid gap-3 lg:grid-cols-2">
                 <div className="rounded-[16px] border border-white/8 bg-black/10 px-4 py-3">
                   <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Creative signal</p>
@@ -727,7 +890,7 @@ export function CampaignDashboardView({
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Recommendations</p>
               <div className="mt-3 space-y-2">
-                {valueReport.recommendations.map((item) => (
+                {customerValueReportRecommendations.map((item) => (
                   <p key={item} className="text-sm leading-7 text-muted-foreground">{item}</p>
                 ))}
               </div>
@@ -1051,7 +1214,7 @@ export function CampaignDashboardView({
             <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">What to do next</h3>
           </div>
           <div className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-            {optimizerResult.status}
+            {customerOptimizerStatus}
           </div>
         </div>
         <div className="mt-5 grid gap-4 lg:grid-cols-3">
@@ -1078,7 +1241,7 @@ export function CampaignDashboardView({
                 <p className="mt-3 text-sm leading-7 text-muted-foreground">{card.description}</p>
                 <div className="mt-4 rounded-[16px] border border-white/8 bg-black/10 px-3 py-2">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    {hasRealDeliveryData ? "Live recommendation" : "Estimated recommendation"}
+                    {hasRealDeliveryData ? "Live recommendation" : "Planning recommendation"}
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">{card.sourceLabel}</p>
                 </div>
@@ -1110,7 +1273,7 @@ export function CampaignDashboardView({
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Actions</p>
                 <div className="mt-3 space-y-2">
-                  {optimizerResult.actions.map((action) => (
+                  {customerOptimizerActions.map((action) => (
                     <p key={action} className="text-sm leading-7 text-muted-foreground">{action}</p>
                   ))}
                 </div>

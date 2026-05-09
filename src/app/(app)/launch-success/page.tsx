@@ -1,12 +1,15 @@
 import Link from "next/link";
-import { PageHeader } from "@/components/app/page-header";
+import { ArrowRight, CheckCircle2, Clock3, ExternalLink, ReceiptText, RotateCw, ShieldCheck } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { StatusPill } from "@/components/ui/status-pill";
 import { LaunchSuccessRecheckButton } from "@/components/campaign/launch/launch-success-recheck-button";
+import { LaunchReceiptCopyButton } from "@/components/campaign/launch/launch-receipt-copy-button";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { getMetaConnectionState, getDefaultMetaConnectionState } from "@/lib/integrations/meta/service";
 import { getMetaCampaignSyncSnapshotForCampaign } from "@/lib/services/meta-campaign-sync-service";
+import { getCampaignLaunchRecordForCampaign } from "@/lib/services/campaign-launch-audit-service";
 
 function buildMetaCampaignLink(metaCampaignId: string | null, adAccountId: string | null) {
   if (!metaCampaignId) {
@@ -31,11 +34,6 @@ function currency(value: number) {
     maximumFractionDigits: 0,
   }).format(value);
 }
-
-type SummaryItem = {
-  label: string;
-  value: string;
-};
 
 const META_CONFIRMATION_FRESHNESS_MS = 30 * 60 * 1000;
 
@@ -64,18 +62,6 @@ function isFreshMetaConfirmation(lastConfirmedAt: string | null) {
   return Date.now() - timestamp <= META_CONFIRMATION_FRESHNESS_MS;
 }
 
-function getMetaConfirmationLabel(params: { confirmedInMeta: boolean; hasFreshMetaConfirmation: boolean }) {
-  if (params.confirmedInMeta) {
-    return "Confirmed in Meta";
-  }
-
-  if (params.hasFreshMetaConfirmation) {
-    return "Partially confirmed";
-  }
-
-  return "Estimated local state";
-}
-
 function formatRelativeSyncAge(value: string | null) {
   if (!value) {
     return "No Meta sync yet";
@@ -95,6 +81,61 @@ function formatRelativeSyncAge(value: string | null) {
   return `Last Meta sync: ${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
 }
 
+function formatDateTime(value: string | null) {
+  if (!value) {
+    return "Pending";
+  }
+
+  return new Date(value).toLocaleString("en-CA", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+function maskId(value: string | null) {
+  if (!value) {
+    return "Pending";
+  }
+
+  if (value.length <= 12) {
+    return value;
+  }
+
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+function getConfirmationState(params: {
+  confirmedInMeta: boolean;
+  hasFreshMetaConfirmation: boolean;
+  hasMetaCampaignId: boolean;
+  syncErrors: unknown[];
+}) {
+  if (params.confirmedInMeta) {
+    return {
+      label: "Confirmed in Meta",
+      tone: "success" as const,
+      icon: CheckCircle2,
+      detail: "DealFlow has a fresh Meta confirmation for the campaign, ad set, and ad.",
+    };
+  }
+
+  if (params.hasMetaCampaignId && params.hasFreshMetaConfirmation && params.syncErrors.length === 0) {
+    return {
+      label: "Waiting for Meta confirmation",
+      tone: "warning" as const,
+      icon: Clock3,
+      detail: "Meta accepted the campaign ID. Ad set, ad, or delivery status may still be catching up.",
+    };
+  }
+
+  return {
+    label: "Needs recheck",
+    tone: "warning" as const,
+    icon: RotateCw,
+    detail: "Run a fresh Meta status check before treating delivery status as final.",
+  };
+}
+
 export default async function LaunchSuccessPage({
   searchParams,
 }: {
@@ -105,6 +146,10 @@ export default async function LaunchSuccessPage({
     typeof params.campaignId === "string" && params.campaignId.length > 0
       ? params.campaignId
       : null;
+  const paramMetaCampaignId =
+    typeof params.metaCampaignId === "string" && params.metaCampaignId.length > 0
+      ? params.metaCampaignId
+      : null;
   const activeCampaign = await resolveActiveCampaignRecord(campaignId).catch(() => null);
   const plan = activeCampaign?.record ? canonicalCampaignToPlan(activeCampaign.record) : null;
   const metaConnection = await getMetaConnectionState().catch(() => getDefaultMetaConnectionState());
@@ -112,10 +157,17 @@ export default async function LaunchSuccessPage({
   const persistedAdSetId = plan?.runtime.adSetId ?? plan?.runtime.metaAdSetIds?.[0] ?? null;
   const persistedAdId = plan?.runtime.adId ?? plan?.runtime.metaAdIds?.[0] ?? null;
   const resolvedSavedCampaignId = activeCampaign?.campaignId ?? campaignId ?? null;
-  const resolvedMetaCampaignId = persistedCampaignId;
+  const resolvedMetaCampaignId = persistedCampaignId ?? paramMetaCampaignId;
   const resolvedMetaAdSetId = persistedAdSetId;
   const resolvedMetaAdId = persistedAdId;
   const resolvedCampaignName = plan?.businessName ?? plan?.clientName ?? "Campaign";
+  const launchRecord =
+    plan || resolvedMetaCampaignId
+      ? await getCampaignLaunchRecordForCampaign({
+          campaignName: resolvedCampaignName,
+          metaCampaignId: resolvedMetaCampaignId,
+        }).catch(() => null)
+      : null;
   const syncSnapshot =
     plan && resolvedMetaCampaignId
       ? await getMetaCampaignSyncSnapshotForCampaign({
@@ -145,18 +197,15 @@ export default async function LaunchSuccessPage({
         ? `${currency(plan.monthlyBudget)}/month`
         : "Budget not recorded";
   const resolvedStatus =
-    plan?.runtime.metaPushStatus === "published" || plan?.runtime.status === "live"
-      ? "Live"
+    syncSnapshot?.campaignStatus ??
+    launchRecord?.resultStatus ??
+    (plan?.runtime.metaPushStatus === "published" || plan?.runtime.status === "live"
+      ? "Sent to Meta"
       : plan?.runtime.status === "launching"
         ? "Launching"
         : resolvedMetaCampaignId
           ? "Sent to Meta"
-          : "Pending";
-  const createdLocally =
-    Boolean(resolvedSavedCampaignId) &&
-    Boolean(resolvedMetaCampaignId) &&
-    Boolean(resolvedMetaAdSetId) &&
-    Boolean(resolvedMetaAdId);
+          : "Pending");
   const lastConfirmedAt = getLastConfirmedAt(syncSnapshot);
   const hasFreshMetaConfirmation = isFreshMetaConfirmation(lastConfirmedAt);
   const lastMetaSyncText = formatRelativeSyncAge(lastConfirmedAt);
@@ -167,176 +216,161 @@ export default async function LaunchSuccessPage({
     syncedAdSetStatuses.length > 0 &&
     syncedAdStatuses.length > 0 &&
     hasFreshMetaConfirmation;
-  const partiallyConfirmed =
-    Boolean(resolvedMetaCampaignId) &&
-    !confirmedInMeta &&
-    (syncSnapshot?.syncResult === "partial_success" ||
-      syncErrors.length > 0 ||
-      !hasFreshMetaConfirmation ||
-      resolvedMetaAdSetId === null ||
-      resolvedMetaAdId === null);
-  const confirmationItems = [
-    {
-      label: "Created locally",
-      value: createdLocally ? "Yes" : "Pending",
-      tone: createdLocally ? "text-emerald-300" : "text-amber-300",
-    },
-    {
-      label: "Confirmed in Meta",
-      value: confirmedInMeta ? "Yes" : "Meta confirmation pending",
-      tone: confirmedInMeta ? "text-emerald-300" : partiallyConfirmed ? "text-amber-300" : "text-muted-foreground",
-    },
-    {
-      label: "Last confirmed in Meta",
-      value: lastConfirmedAt
-        ? new Date(lastConfirmedAt).toLocaleString("en-CA", {
-            dateStyle: "medium",
-            timeStyle: "short",
-          })
-        : "No confirmation yet",
-      tone: hasFreshMetaConfirmation ? "text-emerald-300" : "text-muted-foreground",
-    },
-  ];
-  const metaConfirmationLabel = getMetaConfirmationLabel({
+  const confirmation = getConfirmationState({
     confirmedInMeta,
     hasFreshMetaConfirmation,
+    hasMetaCampaignId: Boolean(resolvedMetaCampaignId),
+    syncErrors,
   });
+  const ConfirmationIcon = confirmation.icon;
   const metaLink = buildMetaCampaignLink(resolvedMetaCampaignId, metaConnection.accountId);
-  const summaryItems: SummaryItem[] = [
+  const dashboardHref = resolvedSavedCampaignId
+    ? `/dashboard?campaignId=${encodeURIComponent(resolvedSavedCampaignId)}`
+    : "/dashboard";
+  const launchSettingsHref = resolvedSavedCampaignId
+    ? `/launch?campaignId=${encodeURIComponent(resolvedSavedCampaignId)}`
+    : "/launch";
+  const reviewHref = resolvedSavedCampaignId
+    ? `/preview?campaignId=${encodeURIComponent(resolvedSavedCampaignId)}`
+    : "/preview";
+  const launchTime =
+    launchRecord?.createdAt ??
+    plan?.runtime.launchedAt ??
+    plan?.runtime.statusUpdatedAt ??
+    lastConfirmedAt;
+  const receiptItems: Array<{ label: string; value: string }> = [
     { label: "Campaign name", value: resolvedCampaignName },
-    { label: "Ad account", value: metaConnection.accountId ?? "No ad account selected" },
+    { label: "Ad account", value: String(metaConnection.accountName ?? metaConnection.accountId ?? launchRecord?.accountName ?? "No ad account selected") },
     { label: "Budget", value: resolvedBudget },
-    { label: "Status", value: resolvedStatus },
+    { label: "Status", value: String(resolvedStatus) },
+    { label: "Launch time", value: formatDateTime(launchTime ?? null) },
   ];
-  const idItems: SummaryItem[] = [
-    { label: "Saved campaign ID", value: resolvedSavedCampaignId ?? "Pending" },
-    { label: "Meta campaign ID", value: resolvedMetaCampaignId ?? "Pending" },
-    { label: "Meta ad set ID", value: resolvedMetaAdSetId ?? "Pending" },
-    { label: "Meta ad ID", value: resolvedMetaAdId ?? "Pending" },
-  ];
-  const verificationItems: SummaryItem[] = [
-    {
-      label: "Campaign status",
-      value: String(syncSnapshot?.campaignStatus ?? plan?.runtime.metaPushStatus ?? "Pending"),
-    },
-    {
-      label: "Ad set status",
-      value: String(firstAdSetStatus || (resolvedMetaAdSetId ? "Saved locally" : "Pending")),
-    },
-    {
-      label: "Ad status",
-      value: String(firstAdStatus || (resolvedMetaAdId ? "Saved locally" : "Pending")),
-    },
+  const verificationItems = [
+    { label: "Meta campaign", value: resolvedMetaCampaignId ? maskId(resolvedMetaCampaignId) : "Pending" },
+    { label: "Ad set status", value: String(firstAdSetStatus || (resolvedMetaAdSetId ? "Sent to Meta" : "Pending")) },
+    { label: "Ad status", value: String(firstAdStatus || (resolvedMetaAdId ? "Sent to Meta" : "Pending")) },
   ];
 
   return (
-    <div className="mx-auto w-full max-w-[900px] space-y-8">
-      <PageHeader
-        eyebrow="Launch"
-        title="Campaign launched"
-        description="The campaign has been sent to Meta. Review the launch summary below, then jump into Ads Manager or the dashboard."
-      />
-
-      <Card className="rounded-[24px] p-6 sm:p-8">
-        <div className="space-y-6">
-          <div className="rounded-[20px] border border-primary/20 bg-primary/10 p-5">
-            <div className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-200">
-              Launch complete
+    <div className="mx-auto w-full max-w-[1180px] px-3 py-4 sm:px-6">
+      <Card className="rounded-[32px] border-emerald-300/20 bg-[radial-gradient(circle_at_50%_0%,rgba(52,211,153,0.18),transparent_32%),linear-gradient(140deg,rgba(6,12,24,0.98),rgba(8,13,29,0.94))] p-5 shadow-[0_44px_140px_-86px_rgba(52,211,153,0.78)] sm:p-8">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)] lg:items-start">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusPill tone="success">Campaign launched</StatusPill>
+              <StatusPill tone={confirmation.tone}>{confirmation.label}</StatusPill>
+              <StatusPill tone="info">Paused delivery control</StatusPill>
             </div>
-            <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{resolvedCampaignName}</h2>
-            <p className="mt-3 text-sm leading-7 text-muted-foreground">
-              This page now reflects the saved launch record from the database. Review the confirmation state below before treating the campaign as fully live in Meta.
-            </p>
-            <div className="mt-4 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-white/80">
-              {metaConfirmationLabel}
+            <div className="mt-6 flex items-start gap-4">
+              <span className="flex size-14 shrink-0 items-center justify-center rounded-full border border-emerald-300/20 bg-emerald-300/10 text-emerald-100">
+                <CheckCircle2 className="size-7" />
+              </span>
+              <div className="min-w-0">
+                <h1 className="text-3xl font-semibold tracking-[-0.05em] text-foreground sm:text-5xl">
+                  Campaign launched
+                </h1>
+                <p className="mt-4 max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">
+                  Your campaign is now in Meta. Delivery will begin once Meta completes review and the paused campaign is activated.
+                </p>
+              </div>
             </div>
-            {!confirmedInMeta ? (
-              <div className="mt-4 space-y-3">
-                <p className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-                  Meta confirmation is stale or incomplete. Local launch records exist, but live Meta state should be treated as estimated until a fresh sync completes.
-                </p>
-                <p className="text-sm text-muted-foreground">{lastMetaSyncText}</p>
-                <p className="text-sm text-amber-100">Use the refresh action below to request a fresh Meta confirmation.</p>
-              </div>
-            ) : (
-              <p className="mt-4 text-sm text-muted-foreground">{lastMetaSyncText}</p>
-            )}
-          </div>
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {summaryItems.map((item) => (
-              <div
-                key={item.label}
-                className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4"
-              >
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  {item.label}
-                </p>
-                <p className="mt-3 text-sm font-medium leading-6">{item.value}</p>
+            <div className="mt-7 rounded-[26px] border border-white/10 bg-white/[0.045] p-5">
+              <div className="flex items-start gap-3">
+                <span className="rounded-full border border-white/10 bg-black/20 p-2 text-emerald-100">
+                  <ConfirmationIcon className="size-5" />
+                </span>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Confirmation status
+                  </p>
+                  <h2 className="mt-2 text-xl font-semibold text-foreground">{confirmation.label}</h2>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{confirmation.detail}</p>
+                  {!confirmedInMeta ? (
+                    <p className="mt-3 text-sm leading-6 text-amber-100">
+                      {lastMetaSyncText}. Meta can take a short window to return all object statuses after a paused campaign is created.
+                    </p>
+                  ) : (
+                    <p className="mt-3 text-sm leading-6 text-emerald-100">{lastMetaSyncText}</p>
+                  )}
+                </div>
               </div>
-            ))}
-          </div>
+            </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
-            {confirmationItems.map((item) => (
-              <div
-                key={item.label}
-                className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4"
-              >
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  {item.label}
-                </p>
-                <p className={`mt-3 text-sm font-medium leading-6 ${item.tone}`}>
-                  {item.label === "Created locally" && createdLocally ? "✔ " : ""}
-                  {item.label === "Confirmed in Meta" && confirmedInMeta ? "✔ " : ""}
-                  {item.value}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            {idItems.map((item) => (
-              <div
-                key={item.label}
-                className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4"
-              >
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  {item.label}
-                </p>
-                <p className="mt-3 break-all text-sm leading-6">{item.value}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            {verificationItems.map((item) => (
-              <div
-                key={item.label}
-                className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4"
-              >
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  {item.label}
-                </p>
-                <p className="mt-3 text-sm leading-6">{item.value}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex flex-wrap gap-3 pt-2">
-            <LaunchSuccessRecheckButton campaignId={resolvedSavedCampaignId} />
-            {metaLink ? (
-              <Button asChild>
-                <Link href={metaLink} target="_blank" rel="noreferrer">
-                  View in Meta
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <Button asChild size="lg">
+                <Link href={dashboardHref}>
+                  View dashboard
+                  <ArrowRight className="size-4" />
                 </Link>
               </Button>
-            ) : null}
-            <Button asChild variant="secondary">
-              <Link href={resolvedSavedCampaignId ? `/dashboard?campaignId=${encodeURIComponent(resolvedSavedCampaignId)}` : "/dashboard"}>
-                Go to Dashboard
-              </Link>
-            </Button>
+              {metaLink ? (
+                <Button asChild size="lg" variant="secondary">
+                  <Link href={metaLink} target="_blank" rel="noreferrer">
+                    View in Meta
+                    <ExternalLink className="size-4" />
+                  </Link>
+                </Button>
+              ) : null}
+              <LaunchSuccessRecheckButton campaignId={resolvedSavedCampaignId} />
+            </div>
+            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <Button asChild variant="secondary">
+                <Link href={reviewHref}>Review campaign</Link>
+              </Button>
+              <Button asChild variant="secondary">
+                <Link href={launchSettingsHref}>Go to launch settings</Link>
+              </Button>
+            </div>
+          </div>
+
+          <div className="min-w-0 rounded-[28px] border border-white/10 bg-black/20 p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100/70">Launch receipt</p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-foreground">
+                  {resolvedCampaignName}
+                </h2>
+              </div>
+              <ReceiptText className="size-6 shrink-0 text-cyan-100" />
+            </div>
+
+            <div className="mt-5 grid gap-3">
+              {receiptItems.map((item) => (
+                <div key={item.label} className="rounded-[18px] border border-white/8 bg-white/[0.04] p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{item.label}</p>
+                  <p className="mt-2 break-words text-sm font-medium leading-6 text-foreground">{item.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 rounded-[20px] border border-cyan-300/16 bg-cyan-300/[0.06] p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Meta campaign ID</p>
+                  <p className="mt-2 break-all text-sm font-semibold text-foreground">{maskId(resolvedMetaCampaignId)}</p>
+                </div>
+                <LaunchReceiptCopyButton value={resolvedMetaCampaignId} label="Copy ID" />
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {verificationItems.map((item) => (
+                <div key={item.label} className="rounded-[18px] border border-white/8 bg-white/[0.04] p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{item.label}</p>
+                  <p className="mt-2 break-words text-sm font-medium leading-6 text-foreground">{item.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 rounded-[20px] border border-emerald-300/16 bg-emerald-300/[0.06] p-4 text-sm leading-6 text-emerald-50/90">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="mt-0.5 size-4 shrink-0" />
+                <p>
+                  DealFlow keeps the campaign paused after creation. Activation stays controlled from Meta and your launch settings.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </Card>

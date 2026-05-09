@@ -69,6 +69,20 @@ function assertOrderedIncludes(relativePath, patterns, name, detail) {
   pass(name, detail);
 }
 
+function assertOccurrenceCount(relativePath, pattern, expected, name, detail) {
+  const text = fileText(relativePath);
+  const count =
+    typeof pattern === "string"
+      ? text.split(pattern).length - 1
+      : [...text.matchAll(pattern)].length;
+
+  if (count === expected) {
+    pass(name, detail ?? `${relativePath} has ${expected} occurrence(s)`);
+  } else {
+    fail(name, `${detail ?? "unexpected occurrence count"}: expected ${expected}, got ${count}`);
+  }
+}
+
 function getEnv(name) {
   const value = process.env[name];
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
@@ -105,6 +119,8 @@ function runOfflineChecks() {
   const leadRoute = "src/app/api/lead-capture/route.ts";
   const leadForm = "src/app/f/[slug]/lead-capture-form.tsx";
   const dashboardPage = "src/app/(app)/dashboard/page.tsx";
+  const dashboardView = "src/components/dashboard/campaign-dashboard-view.tsx";
+  const dashboardPrimitives = "src/components/dashboard/dashboard-primitives.tsx";
   const builderPage = "src/app/(app)/builder/page.tsx";
   const appLayout = "src/app/(app)/layout.tsx";
   const settingsPage = "src/app/(app)/settings/page.tsx";
@@ -126,6 +142,8 @@ function runOfflineChecks() {
   const videoRoute = "src/app/api/campaigns/[id]/generate-video/route.ts";
   const staticAdsRoute = "src/app/api/campaigns/[id]/generate-static-ads/route.ts";
   const launchRuntimeApi = "src/components/campaign/launch/launch-runtime-api.ts";
+  const launchingPage = "src/app/(app)/launching/page.tsx";
+  const launchSuccessPage = "src/app/(app)/launch-success/page.tsx";
   const legacyAiProviders = "src/lib/ai/providers.ts";
   const creativeEngine = "src/lib/services/creative-engine.ts";
   const campaignPersistence = "src/lib/services/campaign-persistence.ts";
@@ -296,6 +314,18 @@ function runOfflineChecks() {
   assertIncludes(dashboardPage, "loadDashboardStateForCampaign", "Dashboard real route", "dashboard loads real campaign state instead of the old plan comparison demo");
   assertIncludes(dashboardPage, "CampaignDashboardView", "Dashboard guided results shell", "dashboard renders the compact guided results view");
   assertExcludes(dashboardPage, "PlanAwareResultsPreview", "Dashboard demo route removed", "dashboard no longer serves the old layout behavior comparison variant");
+  assertIncludes(dashboardPrimitives, "MetricTile", "Dashboard metric tile component", "dashboard visual primitives include reusable metric tiles");
+  assertIncludes(dashboardPrimitives, "DashboardChartPanel", "Dashboard chart panel component", "dashboard visual primitives include chart panels");
+  assertIncludes(dashboardPrimitives, "TrendAreaChart", "Dashboard trend chart component", "dashboard visual primitives include a lightweight SVG trend chart");
+  assertIncludes(dashboardPrimitives, "MiniBarChart", "Dashboard bar chart component", "dashboard visual primitives include a lightweight bar chart");
+  assertIncludes(dashboardView, "DashboardVisualMarker", "Dashboard visual component marker", "dashboard renders visual component markers for smoke coverage");
+  assertOccurrenceCount(dashboardView, "Waiting for first delivery data", 1, "Dashboard waiting copy appears once", "dashboard shows the no-data state once instead of repeating it");
+  assertIncludes(dashboardView, "Day 0", "Dashboard day-zero baseline", "empty dashboard charts use a Day 0 launch baseline");
+  assertIncludes(dashboardView, "Live data", "Dashboard live data label", "dashboard distinguishes live synced values when data exists");
+  assertIncludes(dashboardView, "Raw details and activity", "Dashboard raw details disclosure", "raw details remain collapsed under a disclosure");
+  assertIncludes(dashboardView, "sanitizeCustomerActionText", "Dashboard customer action sanitizer", "dashboard normalizes internal optimizer action language before display");
+  assertExcludes(dashboardView, "optimizerResult.status}", "Dashboard optimizer status hidden", "raw optimizer status is not rendered directly as next-action copy");
+  assertExcludes(dashboardView, "Estimated recommendation", "Dashboard fake live label removed", "dashboard no longer labels empty recommendations as estimated live analytics");
   assertIncludes(resultsPage, "/dashboard", "Results canonical redirect", "legacy /results routes redirect into the real dashboard path");
   assertExcludes(resultsPage, "plan=starter", "Results plan demo redirect removed", "legacy results route no longer opens the plan comparison demo");
   assertIncludes(appLayout, "getStageForPath", "App shell route stage", "sidebar stage label follows the current route instead of hard-coding Build");
@@ -334,8 +364,24 @@ function runOfflineChecks() {
   assertIncludes(campaignEntitlements, "launchOverride", "Campaign entitlement override propagation", "publish and launch entitlement checks receive billing override state");
   assertIncludes(launchMetaSelectionPanel, "Meta selections saved. DealFlow is checking the launch gates now.", "Meta selection save confirmation", "saving Meta assets gives immediate confirmation");
   assertIncludes(launchMetaSelectionPanel, "setIsSaving(true)", "Meta selection explicit saving state", "Meta asset save button tracks the full async save lifecycle");
-  assertIncludes("src/app/(app)/launching/page.tsx", "launchIntent", "Launch start intent gate", "direct launch-room visits must return to launch gates before showing the start control");
-  assertIncludes("src/app/(app)/launching/page.tsx", "await syncCampaignStatus(currentCampaignId)", "Post-launch Meta confirmation", "successful launches request a fresh Meta sync before landing on the success page");
+  assertIncludes(launchingPage, "launchIntent", "Launch start intent gate", "direct launch-room visits must return to launch gates before showing the start control");
+  assertIncludes(launchingPage, "await syncCampaignStatus(currentCampaignId)", "Post-launch Meta confirmation", "successful launches request a fresh Meta sync before landing on the success page");
+  assertIncludes(launchingPage, "Premium launch sequence", "Launching premium sequence", "launching page has an elevated customer-facing launch sequence");
+  assertIncludes(launchingPage, "Preparing campaign", "Launching step preparation", "launching page shows the preparation step");
+  assertIncludes(launchingPage, "Creating Meta campaign", "Launching step campaign", "launching page shows the Meta campaign creation step");
+  assertIncludes(launchingPage, "Building ad set", "Launching step ad set", "launching page shows the ad set creation step");
+  assertIncludes(launchingPage, "Publishing creative", "Launching step creative", "launching page shows the creative publishing step");
+  assertIncludes(launchingPage, "Sending paused launch to Meta", "Launching paused safety step", "launching page makes paused Meta launch safety visible");
+  assertIncludes(launchingPage, "Confirming launch record", "Launching confirmation step", "launching page shows the final confirmation step");
+  assertExcludes(launchingPage, /runtime state|provider payload|local record/i, "Launching internal copy hidden", "launching page does not expose internal runtime/provider copy");
+  assertIncludes(launchSuccessPage, "Your campaign is now in Meta", "Launch success customer confirmation", "launch success leads with customer-facing confirmation copy");
+  assertIncludes(launchSuccessPage, "Launch receipt", "Launch success receipt", "launch success renders a premium launch receipt");
+  assertIncludes(launchSuccessPage, "Confirmed in Meta", "Launch success confirmed status", "launch success can show confirmed Meta state");
+  assertIncludes(launchSuccessPage, "Waiting for Meta confirmation", "Launch success pending status", "launch success can show pending Meta confirmation");
+  assertIncludes(launchSuccessPage, "Needs recheck", "Launch success recheck status", "launch success can show recheck status");
+  assertIncludes(launchSuccessPage, "View in Meta", "Launch success Meta action", "launch success exposes Ads Manager handoff when a Meta campaign id exists");
+  assertIncludes(launchSuccessPage, "Go to launch settings", "Launch success settings action", "launch success keeps a secondary launch settings path");
+  assertExcludes(launchSuccessPage, "Estimated local state", "Launch success internal estimate copy hidden", "launch success does not show estimated local state by default");
   assertIncludes(metaSyncOptimizationMigration, "create table if not exists public.campaign_sync_snapshots", "Meta sync snapshot schema", "launch success can persist fresh Meta confirmation snapshots");
   assertIncludes(metaSyncOptimizationMigration, "create table if not exists public.campaign_action_suggestions", "Campaign action schema", "post-sync optimization suggestions have a durable table");
   assertIncludes(metaSyncOptimizationMigration, "campaign_sync_snapshots_member_insert", "Meta sync authenticated insert policy", "signed-in launch users can record their own sync snapshots without service-role exposure");
