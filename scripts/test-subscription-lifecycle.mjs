@@ -54,6 +54,18 @@ const sandbox = {
       return { createAdminClient: () => null };
     }
 
+    if (specifier === "@/lib/services/app-context") {
+      return { getAppContext: async () => null };
+    }
+
+    if (specifier === "@/lib/env") {
+      return {
+        isBillingAdminOverrideEmail: () => false,
+        isBillingAdminOverrideEnabled: () => false,
+        isInternalAdminEmail: () => false,
+      };
+    }
+
     throw new Error(`Unexpected import in entitlement policy test: ${specifier}`);
   },
 };

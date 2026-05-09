@@ -7,7 +7,6 @@ import {
 import {
   isBillingAdminOverrideEmail,
   isBillingAdminOverrideEnabled,
-  isInternalAdminEmail,
 } from "@/lib/env";
 import { getAppContext } from "@/lib/services/app-context";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -175,7 +174,7 @@ async function getCurrentBillingOverrideForOrganization(organizationId: string) 
   }
 
   const email = context.user.email ?? context.profile?.email ?? null;
-  return isBillingAdminOverrideEmail(email) || isInternalAdminEmail(email);
+  return isBillingAdminOverrideEmail(email);
 }
 
 export async function getCampaignEntitlementsForCampaign(campaignId: string) {

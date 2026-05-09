@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Settings } from "lucide-react";
 import { getInitials } from "@/lib/utils";
 import { SignOutButton } from "@/components/layout/sign-out-button";
@@ -11,10 +11,23 @@ type TopBarProps = {
   userName: string;
   userEmail: string;
   organizationName: string;
+  activeCampaignId?: string | null;
 };
 
-export function TopBar({ userName, userEmail, organizationName }: TopBarProps) {
+function buildCampaignScopedHref(path: string, campaignId?: string | null) {
+  if (!campaignId) {
+    return path;
+  }
+
+  const params = new URLSearchParams();
+  params.set("campaignId", campaignId);
+  return `${path}?${params.toString()}`;
+}
+
+export function TopBar({ userName, userEmail, organizationName, activeCampaignId }: TopBarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const campaignId = searchParams.get("campaignId") ?? activeCampaignId ?? null;
 
   if (pathname.startsWith("/preview")) {
     return null;
@@ -52,7 +65,7 @@ export function TopBar({ userName, userEmail, organizationName }: TopBarProps) {
           </div>
 
           <Link
-            href="/settings"
+            href={buildCampaignScopedHref("/settings", campaignId)}
             className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/8 bg-white/[0.04] text-muted-foreground transition hover:border-primary/20 hover:bg-primary/[0.08] hover:text-foreground"
           >
             <Settings className="size-4" />
@@ -78,7 +91,7 @@ export function TopBar({ userName, userEmail, organizationName }: TopBarProps) {
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={buildCampaignScopedHref(item.href, campaignId)}
               className={
                 active
                   ? "shrink-0 rounded-full border border-primary/25 bg-primary/12 px-2.5 py-1.5 text-primary"

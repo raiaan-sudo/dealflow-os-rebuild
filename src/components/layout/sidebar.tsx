@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { ChevronRight, BarChart3, Eye, PanelLeft, Rocket, Wand2 } from "lucide-react";
 import { adminNavigation } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
@@ -13,10 +13,23 @@ type AppSidebarProps = {
   organizationName: string;
   isAdmin: boolean;
   stage: CampaignExperienceStage;
+  activeCampaignId?: string | null;
 };
 
-export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps) {
+function buildCampaignScopedHref(path: string, campaignId?: string | null) {
+  if (!campaignId) {
+    return path;
+  }
+
+  const params = new URLSearchParams();
+  params.set("campaignId", campaignId);
+  return `${path}?${params.toString()}`;
+}
+
+export function AppSidebar({ organizationName, isAdmin, stage, activeCampaignId }: AppSidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const campaignId = searchParams.get("campaignId") ?? activeCampaignId ?? null;
   const stageState: Record<CampaignExperienceStage, { label: string; copy: string }> = {
     draft: { label: "Build", copy: "Complete setup and generate the campaign." },
     built: { label: "Build", copy: "Tune the campaign, then review the preview." },
@@ -85,7 +98,7 @@ export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps
                       ? "surface-strong border border-primary/15 text-foreground shadow-[0_18px_48px_-34px_rgba(108,184,255,0.45)]"
                       : "border border-transparent text-muted-foreground hover:border-primary/10 hover:bg-primary/[0.04] hover:text-foreground",
                   )}
-                  href={item.href}
+                  href={buildCampaignScopedHref(item.href, campaignId)}
                 >
                   <div
                     className={cn(

@@ -123,6 +123,9 @@ function runOfflineChecks() {
   const dashboardPrimitives = "src/components/dashboard/dashboard-primitives.tsx";
   const builderPage = "src/app/(app)/builder/page.tsx";
   const appLayout = "src/app/(app)/layout.tsx";
+  const appSidebar = "src/components/layout/sidebar.tsx";
+  const topBar = "src/components/layout/top-bar.tsx";
+  const paywallAccess = "src/lib/paywall-access.ts";
   const settingsPage = "src/app/(app)/settings/page.tsx";
   const resultsPage = "src/app/results/page.tsx";
   const unlockPage = "src/app/(app)/unlock/page.tsx";
@@ -329,6 +332,10 @@ function runOfflineChecks() {
   assertIncludes(resultsPage, "/dashboard", "Results canonical redirect", "legacy /results routes redirect into the real dashboard path");
   assertExcludes(resultsPage, "plan=starter", "Results plan demo redirect removed", "legacy results route no longer opens the plan comparison demo");
   assertIncludes(appLayout, "getStageForPath", "App shell route stage", "sidebar stage label follows the current route instead of hard-coding Build");
+  assertIncludes(appLayout, "ACTIVE_CAMPAIGN_COOKIE", "App shell active campaign source", "workspace shell reads the active campaign cookie for scoped navigation");
+  assertIncludes(appSidebar, "buildCampaignScopedHref", "Sidebar campaign-scoped navigation", "desktop product navigation preserves the active campaign id");
+  assertIncludes(topBar, "buildCampaignScopedHref", "Mobile campaign-scoped navigation", "mobile product navigation and settings preserve the active campaign id");
+  assertIncludes(paywallAccess, "const resolvedRecord = storedRecord ?? latestRecord", "Active campaign preference", "campaign resolution keeps the stored active campaign before falling back to latest");
   assertIncludes(appLayout, "pb-20", "Workspace feedback safe space", "workspace content reserves bottom room for the feedback widget");
   assertIncludes(feedbackWidget, "aria-modal=\"true\"", "Feedback dialog accessibility", "feedback modal is marked as a dialog");
   assertIncludes(feedbackWidget, "max-h-[calc(100dvh-2rem)]", "Feedback modal mobile fit", "feedback modal can scroll within short viewports");
@@ -396,6 +403,8 @@ function runOfflineChecks() {
   assertIncludes(launchRoute, "currentPlan.public_slug", "Launch current-plan slug source", "Meta launch can use the recovered plan slug when the canonical campaign record is stale");
   assertIncludes(launchRoute, "persistRecoveredPublicSlug", "Launch slug self-heal", "Meta launch repairs the missing public_slug row before provider calls need the public funnel URL");
   assertIncludes(launchRoute, "testModeInterruptAfter", "Forced interruption support", "forced interruption mode exists");
+  assertIncludes(launchRoute, "ALLOW_META_LAUNCH_INTERRUPTION_TESTS", "Legacy launch interruption guard", "legacy campaign create launch path uses the same env gate as the launch route");
+  assertIncludes(launchRoute, "handleApiError(error, \"Campaign create launch\")", "Legacy launch safe errors", "legacy campaign create launch path wraps parsing and CSRF failures in safe API errors");
   assertIncludes(launchApiRoute, "test_mode_interrupt_after", "Forced interruption launch API", "launch route forwards interruption mode");
   assertIncludes(launchApiRoute, "assertMetaLaunchBillingAccess", "Launch billing gate", "launch route enforces subscription/admin override gate");
   assertIncludes(launchApiRoute, "acquireMetaLaunchLock", "Durable Meta launch lock", "launch route uses DB-backed launch locking");
@@ -410,6 +419,8 @@ function runOfflineChecks() {
   assertIncludes(metaCallback, "resolved.origin === appOrigin", "Meta OAuth callback origin guard", "callback redirects stay on the app origin");
   assertIncludes(metaCallback, "verifyMetaOAuthState", "Meta OAuth state fallback", "callback can safely verify state when a provider returns on an alternate app hostname");
   assertIncludes(metaCallback, "verifiedState?.organizationId", "Meta OAuth workspace fallback", "signed state preserves workspace ownership if auth cookies are unavailable on callback host");
+  assertIncludes(metaCallback, "method: \"POST\"", "Meta OAuth token POST", "token exchange avoids putting app secret and code in the request URL");
+  assertIncludes(metaCallback, "application/x-www-form-urlencoded", "Meta OAuth form body", "token exchange sends credentials in an encoded form body");
   assertIncludes(metaOauthState, "timingSafeEqual", "Meta OAuth state timing-safe compare", "state signatures are compared without string equality leaks");
   assertIncludes(metaOauthState, "STATE_TTL_MS = 10 * 60 * 1000", "Meta OAuth state expiry", "signed OAuth state is short-lived");
 
@@ -420,6 +431,7 @@ function runOfflineChecks() {
   assertIncludes(leadRoute, "consumeRateLimit", "Lead capture rate limiting", "lead capture rate limiting enabled");
   assertIncludes(leadRoute, "lead-capture:campaign-ip", "Lead capture campaign+IP limit", "public lead capture rate limit is caller-aware");
   assertIncludes(leadRoute, "lead-capture:contact", "Lead capture contact limit", "public lead capture has contact-hash abuse control");
+  assertIncludes(rateLimitHelpers, "getHashedRateLimitIdentifier(getRequestIp(request))", "Rate limit fallback privacy", "default rate-limit keys hash fallback IP addresses before logging or storage");
   assertIncludes(leadRoute, "lead_spam_rejected", "Lead capture honeypot/timing guard", "public lead capture rejects obvious bot submissions");
   assertIncludes(leadRoute, "TURNSTILE_SECRET_KEY", "Lead capture Turnstile server gate", "Cloudflare Turnstile verification is enforced when the secret env var is configured");
   assertIncludes(leadRoute, "ALLOW_PUBLIC_LEAD_NO_TURNSTILE", "Lead capture Turnstile production guard", "production lead capture fails closed if Turnstile is not configured unless break-glass is set");
@@ -563,7 +575,11 @@ function runOfflineChecks() {
   assertIncludes(billingService, "checkout_session_stale", "Stripe stale checkout reconciliation guard", "older parallel checkout sessions cannot unlock access");
   assertIncludes(envHelpers, "ALLOW_BILLING_ADMIN_OVERRIDE", "Billing admin override env gate", "internal launch override requires explicit env opt-in");
   assertIncludes(envHelpers, "BILLING_ADMIN_OVERRIDE_EMAILS", "Billing-only override allowlist", "billing override can be scoped without granting operator admin access");
-  assertIncludes(billingService, "isBillingAdminOverrideEmail", "Billing-only override check", "billing override checks the billing-specific email allowlist before falling back to internal admins");
+  assertIncludes(".env.example", "INTERNAL_SYSTEM_JOBS_SECRET", "Internal runner env example", "cron runner secret is documented in the environment template");
+  assertIncludes(".env.example", "CRON_SECRET", "Vercel cron env example", "Vercel Cron secret fallback is documented in the environment template");
+  assertIncludes(billingService, "isBillingAdminOverrideEmail(email) ? email : null", "Billing-only override check", "billing override requires the billing-specific email allowlist");
+  assertExcludes(billingService, "isInternalAdminEmail(email)", "Billing override admin fallback removed", "internal admin access no longer automatically grants billing launch access");
+  assertIncludes(campaignEntitlements, "return isBillingAdminOverrideEmail(email)", "Campaign entitlement billing override", "campaign launch entitlements use the billing-specific override allowlist");
   assertIncludes(billingService, "billing_admin_override_launch_access_granted", "Billing admin override audit log", "override-based launch access grants are audit logged");
   assertIncludes(billingService, "billing_checkout_bypass", "Billing override checkout bypass", "override users do not create live Stripe checkout sessions");
   assertIncludes(paywallPage, "launchOverride={billing?.launchOverride === true}", "Paywall override handoff", "billing override state is passed into the paywall CTA");
@@ -590,6 +606,7 @@ function runOfflineChecks() {
   assertIncludes(creditService, "credits_insufficient", "Insufficient credit block", "paid generation is blocked before balances can go negative");
   assertIncludes(billingService, "checkout_kind: \"credit_top_up\"", "Stripe credit top-up checkout", "credit purchases are isolated from subscription checkout metadata");
   assertIncludes(billingService, "stripe_credit_top_up_processed", "Stripe credit top-up webhook", "paid credit checkout sessions grant credits idempotently");
+  assertIncludes(billingService, "payment_method_types: [\"card\"]", "Stripe credit top-up synchronous payment", "credit top-up checkout is card-only so delayed async payment methods do not strand credits");
   assertIncludes(creativeEngine, "provider_usage_context", "Paid static generation guard", "each generated image carries DB-backed provider usage context");
   assertIncludes(campaignPersistence, "consumeSessionCostBudget", "Paid image call guard", "server-side static generation reserves provider budget before execution");
   assertIncludes(staticAdsRoute, "idempotencyKey", "Static generation idempotency", "paid generation job creation uses idempotency key");

@@ -199,7 +199,7 @@ export default async function LaunchAliasPage({
         />
         <div>
           <Button asChild>
-            <Link href="/dashboard">Open dashboard</Link>
+            <Link href="/onboarding">Start onboarding</Link>
           </Button>
         </div>
       </PageShell>
@@ -441,7 +441,7 @@ export default async function LaunchAliasPage({
       ) : null}
       {billingOverride ? (
         <div className="rounded-[22px] border border-sky-400/15 bg-sky-400/10 px-5 py-4 text-sm font-medium text-sky-100">
-          Admin override is active for this workspace. Launch is allowed without an active subscription.
+          Launch access is active for this workspace.
         </div>
       ) : null}
       {!launchRoomReady && launchBlockerActions.length > 0 ? (
@@ -619,7 +619,7 @@ export default async function LaunchAliasPage({
             </p>
             <p className="mt-2 max-w-[720px] text-sm leading-7 text-muted-foreground">
               {launchRoomReady
-                ? `Launch stays blocked until the saved token, ad account, page, and pixel all pass preflight validation. Last verified at: ${metaVerifiedAtText}. Meta state may change before launch.`
+                ? `All launch gates passed. Start the paused Meta launch when ready. Last verified at: ${metaVerifiedAtText}. Meta state may change before launch.`
                 : blockingReasons.length > 0
                   ? `Blocked: ${blockingReasons.join(" • ")}.`
                   : billingBlockCopy}

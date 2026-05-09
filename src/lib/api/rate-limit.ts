@@ -266,7 +266,7 @@ export function getRateLimitKey(
     return `${bucket}:${identifier}`;
   }
 
-  return `${bucket}:${getRequestIp(request)}`;
+  return `${bucket}:${getHashedRateLimitIdentifier(getRequestIp(request))}`;
 }
 
 export function buildRateLimitResponse(resetAt: number) {

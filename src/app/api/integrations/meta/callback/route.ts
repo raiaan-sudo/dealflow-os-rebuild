@@ -116,13 +116,20 @@ export async function GET(req: NextRequest) {
     cookieStore.delete(META_STATE_COOKIE);
     cookieStore.delete(META_RETURN_TO_COOKIE);
 
+    const tokenBody = new URLSearchParams({
+      client_id: env.appId,
+      client_secret: env.appSecret,
+      redirect_uri: env.redirectUri,
+      code,
+    });
     const { response: tokenRes, data: tokenData } = await fetchMetaJson<{ access_token?: string }>(
-      `https://graph.facebook.com/v18.0/oauth/access_token?` +
-        `client_id=${env.appId}` +
-        `&client_secret=${env.appSecret}` +
-        `&redirect_uri=${encodeURIComponent(env.redirectUri)}` +
-        `&code=${code}`,
+      "https://graph.facebook.com/v18.0/oauth/access_token",
       {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: tokenBody,
         purpose: "oauth",
         requestId,
       },

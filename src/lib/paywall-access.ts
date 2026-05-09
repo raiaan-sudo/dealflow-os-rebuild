@@ -56,20 +56,18 @@ export async function resolveActiveCampaignRecord(
     };
   }
 
-  const latestRecord = await getLatestCampaignRecord().catch(() => null);
-  const latestCampaignId = latestRecord?.campaign.id ?? null;
-  const storedRecord =
-    storedCampaignId && storedCampaignId !== latestCampaignId
-      ? await getCampaignById(storedCampaignId).catch(() => null)
-      : null;
+  const storedRecord = storedCampaignId
+    ? await getCampaignById(storedCampaignId).catch(() => null)
+    : null;
+  const latestRecord = storedRecord ? null : await getLatestCampaignRecord().catch(() => null);
 
-  const resolvedRecord = latestRecord ?? storedRecord;
+  const resolvedRecord = storedRecord ?? latestRecord;
 
   return {
     campaignId: resolvePreferredCampaignId({
       requestedCampaignId,
       storedCampaignId: resolvedRecord?.campaign.id ?? null,
-      fallbackCampaignId: storedRecord?.campaign.id ?? null,
+      fallbackCampaignId: latestRecord?.campaign.id ?? null,
     }),
     record: resolvedRecord,
   };

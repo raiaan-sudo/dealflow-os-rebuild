@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { ApiError, assertSameOriginRequest, parseJsonBody } from "@/lib/api/route";
+import { ApiError, assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { getPublicAppUrl } from "@/lib/env";
 import {
@@ -486,7 +486,7 @@ function buildLaunchObjectKey(params: {
 }
 
 function shouldAllowForcedInterruption() {
-  return process.env.NODE_ENV !== "production" || process.env.ENABLE_META_LAUNCH_TEST_MODE === "true";
+  return process.env.ALLOW_META_LAUNCH_INTERRUPTION_TESTS === "true";
 }
 
 async function fetchMetaObjectByName(params: {
@@ -1933,23 +1933,37 @@ async function launchCampaignToMeta(
 }
 
 export async function POST(request: Request) {
-  assertSameOriginRequest(request);
-  const { campaignId, metaCampaignId, metaAdSetId, metaCreativeId, testModeInterruptAfter } = await parseJsonBody(request, requestSchema);
-  const rateLimit = await consumeRateLimit({
-    key: getRateLimitKey(request, "campaign-create-launch", campaignId),
-    limit: 6,
-    windowMs: 60_000,
-  });
+  try {
+    assertSameOriginRequest(request);
+    const { campaignId, metaCampaignId, metaAdSetId, metaCreativeId, testModeInterruptAfter } =
+      await parseJsonBody(request, requestSchema);
 
-  if (rateLimit && !rateLimit.allowed) {
-    return buildRateLimitResponse(rateLimit.resetAt);
+    if (testModeInterruptAfter && !shouldAllowForcedInterruption()) {
+      throw new ApiError(
+        403,
+        "Meta launch interruption testing is not enabled in this environment.",
+        "meta_launch_interruption_disabled",
+      );
+    }
+
+    const rateLimit = await consumeRateLimit({
+      key: getRateLimitKey(request, "campaign-create-launch", campaignId),
+      limit: 6,
+      windowMs: 60_000,
+    });
+
+    if (rateLimit && !rateLimit.allowed) {
+      return buildRateLimitResponse(rateLimit.resetAt);
+    }
+
+    return launchCampaignToMeta(campaignId, {
+      metaCampaignId,
+      metaAdSetId,
+      metaCreativeId,
+    }, {
+      testModeInterruptAfter: normalizeForcedInterruptStage(testModeInterruptAfter),
+    });
+  } catch (error) {
+    return handleApiError(error, "Campaign create launch");
   }
-
-  return launchCampaignToMeta(campaignId, {
-    metaCampaignId,
-    metaAdSetId,
-    metaCreativeId,
-  }, {
-    testModeInterruptAfter: normalizeForcedInterruptStage(testModeInterruptAfter),
-  });
 }

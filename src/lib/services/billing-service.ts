@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { ApiError } from "@/lib/api/route";
-import { isBillingAdminOverrideEmail, isBillingAdminOverrideEnabled, isInternalAdminEmail } from "@/lib/env";
+import { isBillingAdminOverrideEmail, isBillingAdminOverrideEnabled } from "@/lib/env";
 import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -130,7 +130,7 @@ function getBillingAdminOverrideEmail(context: Awaited<ReturnType<typeof getAppC
   }
 
   const email = context.user.email ?? context.profile?.email ?? null;
-  return isBillingAdminOverrideEmail(email) || isInternalAdminEmail(email) ? email : null;
+  return isBillingAdminOverrideEmail(email) ? email : null;
 }
 
 function logBillingAdminOverrideGrant(params: {
@@ -855,11 +855,12 @@ export async function createCreditTopUpCheckoutSession(params: {
     idempotencyKey: `dealflow_credit_top_up_${context.organization.id}_${context.user.id}_${amountCents}_${Math.floor(
       Date.now() / CHECKOUT_SESSION_REUSE_MS,
     )}`,
-    params: {
-      mode: "payment",
-      customer: customerId,
-      client_reference_id: context.organization.id,
-      line_items: [
+      params: {
+        mode: "payment",
+        customer: customerId,
+        client_reference_id: context.organization.id,
+        payment_method_types: ["card"],
+        line_items: [
         {
           price_data: {
             currency: "usd",

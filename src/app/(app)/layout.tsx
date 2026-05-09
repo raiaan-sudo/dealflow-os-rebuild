@@ -1,10 +1,11 @@
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { AppSidebar } from "@/components/layout/sidebar";
 import { GuidedFlowBanner } from "@/components/layout/guided-flow-banner";
 import { TopBar } from "@/components/layout/top-bar";
 import { FeedbackWidget } from "@/components/layout/feedback-widget";
 import { LeadCaptureTrigger } from "@/components/layout/lead-capture-trigger";
 import { isInternalAdminEmail } from "@/lib/env";
+import { ACTIVE_CAMPAIGN_COOKIE } from "@/lib/paywall-access";
 import { getAppContext } from "@/lib/services/app-context";
 import type { CampaignExperienceStage } from "@/lib/services/campaign-plan-service";
 
@@ -23,8 +24,10 @@ export default async function AppLayout({
   children: React.ReactNode;
 }>) {
   const headerStore = await headers();
+  const cookieStore = await cookies();
   const authState = headerStore.get("x-dealflow-auth-state");
   const pathname = headerStore.get("x-pathname") ?? "";
+  const activeCampaignId = cookieStore.get(ACTIVE_CAMPAIGN_COOKIE)?.value ?? null;
   const isFirstRunFocusRoute =
     pathname.startsWith("/campaign-built") ||
     pathname.startsWith("/welcome") ||
@@ -96,12 +99,18 @@ export default async function AppLayout({
 
   return (
     <div className="app-shell relative flex h-screen w-screen overflow-hidden bg-transparent">
-      <AppSidebar isAdmin={isAdmin} organizationName={organizationName} stage={getStageForPath(pathname)} />
+      <AppSidebar
+        activeCampaignId={activeCampaignId}
+        isAdmin={isAdmin}
+        organizationName={organizationName}
+        stage={getStageForPath(pathname)}
+      />
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <TopBar
           userName={userName}
           userEmail={userEmail}
           organizationName={organizationName}
+          activeCampaignId={activeCampaignId}
         />
         <main className="flex-1 overflow-hidden">
           <div className="flex h-full min-h-0 flex-col overflow-y-auto px-6 py-6">

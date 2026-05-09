@@ -8,19 +8,19 @@ const QA_HARNESS_ENABLED = process.env.QA_AUTH_HARNESS_ENABLED === "true";
 const modeExpectations = [
   {
     button: "Buyer leads",
-    path: "Buyer leads in the selected market",
+    previewLabel: "Buyer campaign",
   },
   {
     button: "Seller leads",
-    path: "Seller leads in the selected market",
+    previewLabel: "Seller campaign",
   },
   {
     button: "Investor leads",
-    path: "Investor prospects who want deal flow",
+    previewLabel: "Investor campaign",
   },
   {
     button: "Commercial leads",
-    path: "Commercial clients evaluating lease",
+    previewLabel: "Commercial campaign",
   },
 ];
 
@@ -108,14 +108,15 @@ test.describe("safe authenticated self-serve journey", () => {
 
     await page.goto("/onboarding");
     await expect(page.getByRole("heading", { name: /Step-by-step campaign builder/i })).toBeVisible();
-    await expect(page.getByText("Choose campaign type")).toBeVisible();
-    await expect(page.getByText("Campaign preview")).toBeVisible();
-    await expect(page.getByText("Ad preview")).toBeVisible();
-    await expect(page.getByText("Funnel assembling")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Choose campaign type" })).toBeVisible();
+    const preview = page.getByTestId("prepaywall-campaign-preview").first();
+    await expect(preview.getByText("Campaign preview")).toBeVisible();
+    await expect(preview.getByText("Ad preview")).toBeVisible();
+    await expect(preview.getByText("Funnel assembling")).toBeVisible();
     await expect(page.getByText("Full generation unlocks after checkout and credits")).toBeVisible();
     await expect(page.getByText("Offer coach")).toHaveCount(0);
-    await expect(page.getByText("AI image locked")).toBeVisible();
-    await expect(page.getByText("UGC locked")).toBeVisible();
+    await expect(preview.getByText(/AI image.*locked/i)).toBeVisible();
+    await expect(preview.getByText(/UGC.*locked/i)).toBeVisible();
     await expect(page.getByRole("button", { name: /download|export/i })).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
 
@@ -129,7 +130,10 @@ test.describe("safe authenticated self-serve journey", () => {
 
     for (const mode of modeExpectations) {
       await page.getByRole("button", { name: new RegExp(mode.button, "i") }).click();
-      await expect(page.getByText(mode.path, { exact: false })).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: new RegExp(`${mode.button}[\\s\\S]*Selected`, "i") }),
+      ).toBeVisible();
+      await expect(preview.getByText(mode.previewLabel)).toBeVisible();
     }
 
     await continueTo(page, /Continue to market/i);
@@ -138,14 +142,15 @@ test.describe("safe authenticated self-serve journey", () => {
     await page.getByLabel("City or market").fill("Austin, TX");
     await continueTo(page, /Continue to property/i);
     await expectNoHorizontalOverflow(page);
-    await expect(page.getByRole("button", { name: /Office/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Warehouse/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Owner-user/i })).toBeVisible();
-    await page.getByRole("button", { name: /Office/i }).click();
+    const officeProperty = page.getByRole("button", { name: /^Office\b/i });
+    await expect(officeProperty).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Warehouse\b/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Owner-user\b/i })).toBeVisible();
+    await officeProperty.click();
     await continueTo(page, /Continue to offer/i);
     await expectNoHorizontalOverflow(page);
     await expect(page.getByText("We chose this because", { exact: false })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Available spaces shortlist/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Available spaces shortlist", exact: true })).toBeVisible();
     await expect(page.getByText("Offer coach")).toBeVisible();
     await page.getByLabel("Recommended audience").fill("QA commercial prospects comparing launch-safe DealFlow previews");
     await page.getByLabel("Offer or lead magnet").fill("Guaranteed approvl for 600 n up credit");
@@ -153,8 +158,8 @@ test.describe("safe authenticated self-serve journey", () => {
     await expect(page.getByLabel("Offer or lead magnet")).toHaveValue("Guaranteed Approval for 600+ Credit");
     await continueTo(page, /Continue to agent/i);
     await expectNoHorizontalOverflow(page);
-    await expect(page.getByText("Add the agent first name.")).toBeVisible();
-    await expect(page.getByText("Add the company or brokerage.")).toBeVisible();
+    await expect(page.getByLabel("Agent first name")).toBeVisible();
+    await expect(page.getByLabel("Company or brokerage")).toBeVisible();
 
     await page.getByLabel("Agent first name").fill("Safe");
     await page.getByLabel("Agent last name").fill("Browser");
@@ -164,8 +169,8 @@ test.describe("safe authenticated self-serve journey", () => {
     await expectNoHorizontalOverflow(page);
     await expect(page.getByText("Starter $147/mo")).toBeVisible();
     await expect(page.getByText("Pro $297/mo")).toBeVisible();
-    await expect(page.getByText("Recommended optimization")).toBeVisible();
-    await expect(page.getByText("Fully covered + self-optimizing")).toBeVisible();
+    await expect(page.getByText("Recommended optimization").first()).toBeVisible();
+    await expect(page.getByText("Fully covered + self-optimizing").first()).toBeVisible();
     await page.getByRole("button", { name: /Starter \$147\/mo/i }).click();
     await continueTo(page, /Continue to review/i);
     await expectNoHorizontalOverflow(page);
@@ -178,12 +183,12 @@ test.describe("safe authenticated self-serve journey", () => {
     await expect(page).toHaveURL(/\/paywall\?campaignId=.*&plan=starter/);
     await expectNoHorizontalOverflow(page);
     await expect(page.getByText("Starter · $147/mo")).toBeVisible();
-    await expect(page.getByText("Recommended optimization")).toBeVisible();
+    await expect(page.getByText("Recommended optimization").first()).toBeVisible();
 
     await page.goto("/paywall?plan=pro");
     await expectNoHorizontalOverflow(page);
     await expect(page.getByText("Pro · $297/mo")).toBeVisible();
-    await expect(page.getByText("fully covered", { exact: false })).toBeVisible();
+    await expect(page.getByText("fully covered", { exact: false }).first()).toBeVisible();
     await expect(page.getByText("Campaign context needed")).toBeVisible();
     await expect(page.getByRole("button", { name: /Build preview first/i })).toBeDisabled();
 
@@ -194,8 +199,12 @@ test.describe("safe authenticated self-serve journey", () => {
 
     await page.goto("/launch");
     await expectNoHorizontalOverflow(page);
-    await expect(page.getByText(/Campaign plan not found|Final review before launch|Activate billing before launch/i).first()).toBeVisible();
-    await expect(page.getByText(/Connect Meta|Meta connection required|Build a campaign before moving into launch/i).first()).toBeVisible();
+    await expect(
+      page.getByText(/Campaign plan not found|Final review before launch|Activate billing before launch|Selected creative required/i).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByText(/Connect Meta|Meta connection required|Build a campaign before moving into launch|Choose an ad in creatives/i).first(),
+    ).toBeVisible();
 
     await expect(page.getByRole("link", { name: /Ready to attempt launch/i })).toHaveCount(0);
   });

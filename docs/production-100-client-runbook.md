@@ -412,7 +412,7 @@ Use `/admin/issues` for durable issue records and `docs/observability-alerting-r
 ### Failed launch
 
 - Check dashboard/operator monitor at `/admin/launch-monitor`.
-- Confirm the signed-in operator email is included in `INTERNAL_ADMIN_EMAILS`, or for billing-only demo bypass confirm the email is included in `BILLING_ADMIN_OVERRIDE_EMAILS` and `ALLOW_BILLING_ADMIN_OVERRIDE=true`.
+- Confirm the signed-in operator email is included in `INTERNAL_ADMIN_EMAILS` for admin navigation. Billing/launch bypass is separate: the email must be included in `BILLING_ADMIN_OVERRIDE_EMAILS` and `ALLOW_BILLING_ADMIN_OVERRIDE=true`.
 - Inspect `plan.launch_runtime`.
 - Inspect `meta_launch_locks`.
 - Retry only after confirming no active lock and no active Meta objects were created.
