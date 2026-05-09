@@ -522,14 +522,14 @@ export function PrepaywallCampaignPreview({
             <div className="grid gap-2 sm:grid-cols-4">
               <CompactLockedPill icon={ImageIcon} label="Static locked" />
               <CompactLockedPill icon={Sparkles} label="AI image generation locked" />
-              <CompactLockedPill icon={PlayCircle} label="HeyGen UGC video locked" />
+              <CompactLockedPill icon={PlayCircle} label="AI video generation locked" />
               <CompactLockedPill icon={MonitorSmartphone} label="Export locked" />
             </div>
 
             <div className="flex min-w-0 items-center gap-2 rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[11px] leading-4 text-white/52">
               <MousePointerClick className="size-3.5 shrink-0 text-cyan-100" />
               <span className="truncate">
-                No provider calls run here. No Meta, SMS, leads, Stripe charge, OpenAI image, or HeyGen video is created by this preview.
+                No provider calls run here. No Meta, SMS, leads, Stripe charge, AI image, or AI video is created by this preview.
               </span>
             </div>
           </div>
@@ -618,14 +618,14 @@ export function PrepaywallCampaignPreview({
       <div className={cn("mt-3 grid gap-2", sidecarMode ? "grid-cols-2" : "sm:grid-cols-2")}>
         <CompactLockedPill icon={ImageIcon} label="Static creative locked" />
         <CompactLockedPill icon={Sparkles} label="AI image locked" />
-        <CompactLockedPill icon={PlayCircle} label="HeyGen UGC locked" />
+        <CompactLockedPill icon={PlayCircle} label="AI video locked" />
         <CompactLockedPill icon={MonitorSmartphone} label="Full-resolution files locked" />
       </div>
 
       <div className="mt-3 flex items-center gap-2 rounded-[18px] border border-white/10 bg-black/18 px-3 py-2.5 text-xs leading-5 text-white/54">
         <MousePointerClick className="size-4 text-cyan-100" />
         <span className={sidecarMode ? "truncate" : ""}>
-          No provider calls run here. No Meta campaigns, SMS, leads, Stripe charge, OpenAI image, or HeyGen video is created by this preview.
+          No provider calls run here. No Meta campaigns, SMS, leads, Stripe charge, AI image, or AI video is created by this preview.
         </span>
       </div>
     </Card>

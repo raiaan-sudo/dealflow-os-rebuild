@@ -3,14 +3,32 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAppContext } from "@/lib/services/app-context";
 import type { Json } from "@/lib/supabase/types";
 
-type GenerationCreditBucket = "openai_image_generation" | "heygen_video_generation";
+export type GenerationCreditBucket =
+  | "image_generation"
+  | "video_generation"
+  | "openai_image_generation"
+  | "heygen_video_generation";
 
 export const CREDIT_TOP_UP_MINIMUM_CENTS = 2_000;
 
 const DEFAULT_GENERATION_CREDIT_COSTS_CENTS: Record<GenerationCreditBucket, number> = {
+  image_generation: 100,
+  video_generation: 500,
   openai_image_generation: 100,
   heygen_video_generation: 500,
 };
+
+function normalizeGenerationCreditBucket(bucket: GenerationCreditBucket) {
+  if (bucket === "openai_image_generation") {
+    return "image_generation";
+  }
+
+  if (bucket === "heygen_video_generation") {
+    return "video_generation";
+  }
+
+  return bucket;
+}
 
 function parsePositiveInt(value: string | undefined, fallback: number) {
   const parsed = Number.parseInt(value ?? "", 10);
@@ -18,12 +36,13 @@ function parsePositiveInt(value: string | undefined, fallback: number) {
 }
 
 export function getGenerationCreditCostCents(bucket: GenerationCreditBucket) {
+  const normalizedBucket = normalizeGenerationCreditBucket(bucket);
   const envName =
-    bucket === "openai_image_generation"
+    normalizedBucket === "image_generation"
       ? "IMAGE_GENERATION_CREDIT_COST_CENTS"
       : "VIDEO_GENERATION_CREDIT_COST_CENTS";
 
-  return parsePositiveInt(process.env[envName], DEFAULT_GENERATION_CREDIT_COSTS_CENTS[bucket]);
+  return parsePositiveInt(process.env[envName], DEFAULT_GENERATION_CREDIT_COSTS_CENTS[normalizedBucket]);
 }
 
 export function formatCreditCurrency(cents: number) {
@@ -31,7 +50,7 @@ export function formatCreditCurrency(cents: number) {
 }
 
 function getCreditReason(bucket: GenerationCreditBucket) {
-  return bucket === "openai_image_generation" ? "image_generation" : "video_generation";
+  return normalizeGenerationCreditBucket(bucket);
 }
 
 export async function getCreditSummaryForCurrentUser() {
@@ -67,8 +86,8 @@ export async function getCreditSummaryForCurrentUser() {
     formattedBalance: formatCreditCurrency(balance),
     minimumTopUpCents: CREDIT_TOP_UP_MINIMUM_CENTS,
     formattedMinimumTopUp: formatCreditCurrency(CREDIT_TOP_UP_MINIMUM_CENTS),
-    imageGenerationCostCents: getGenerationCreditCostCents("openai_image_generation"),
-    videoGenerationCostCents: getGenerationCreditCostCents("heygen_video_generation"),
+    imageGenerationCostCents: getGenerationCreditCostCents("image_generation"),
+    videoGenerationCostCents: getGenerationCreditCostCents("video_generation"),
     updatedAt: typeof creditRow?.updated_at === "string" ? creditRow.updated_at : null,
   };
 }
@@ -83,6 +102,7 @@ export async function consumeCreditsForGeneration(params: {
   metadata?: Record<string, unknown>;
 }) {
   const amount = getGenerationCreditCostCents(params.bucket);
+  const normalizedBucket = normalizeGenerationCreditBucket(params.bucket);
 
   if (amount <= 0) {
     return {
@@ -110,7 +130,8 @@ export async function consumeCreditsForGeneration(params: {
       params.idempotencyKey?.trim() ||
       `generation_credit:${params.bucket}:${params.referenceId}`,
     p_metadata: {
-      bucket: params.bucket,
+      bucket: normalizedBucket,
+      legacyBucket: params.bucket === normalizedBucket ? null : params.bucket,
       campaignId: params.campaignId ?? null,
       ...(params.metadata ?? {}),
     } satisfies Json,

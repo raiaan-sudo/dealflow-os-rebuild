@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { type CreativeBrief } from "@/lib/ai/creative-brief";
-import { getImageGenerationEnv, getVideoGenerationEnv } from "@/lib/env";
+import { getImageGenerationEnv, getMediaGenerationProvider, getVideoGenerationEnv } from "@/lib/env";
 import { getAvatarVideoProvider } from "@/lib/integrations/creative/avatar-provider";
 import { getImageGenerationProvider } from "@/lib/integrations/creative/image-provider";
 import { logWarn } from "@/lib/logging";
@@ -67,7 +67,7 @@ export type HeyGenVideoRequest = {
 export type HeyGenVideoResult = {
   url: string;
   providerAssetId: string | null;
-  providerName: "heygen" | null;
+  providerName: string | null;
 };
 
 function safeText(input: unknown): string {
@@ -249,17 +249,25 @@ export async function createImageAd(
   let generationMessage: string | null = null;
   let generationModel: string | null = null;
   const imageProvider = getImageGenerationProvider();
+  const mediaProvider = getMediaGenerationProvider();
+  const imageGenerationEnabled =
+    mediaProvider === "higgsfield"
+      ? process.env.ALLOW_HIGGSFIELD_IMAGE_GENERATION === "true"
+      : process.env.ALLOW_OPENAI_IMAGE_GENERATION === "true";
 
   if (imageProvider.isConfigured()) {
     let budgetReservation: { eventId: string | null | undefined } | null = null;
     try {
-      if (process.env.ALLOW_OPENAI_IMAGE_GENERATION === "true" && providerUsage) {
+      if (imageGenerationEnabled && providerUsage) {
         budgetReservation = await providerUsage.reserve();
       }
 
       const result = await imageProvider.execute({
         aspectRatio: staticAsset?.imagePromptConfig?.aspectRatio ?? "1:1",
-        model: staticAsset?.preferredImageModel ?? getImageGenerationEnv()?.model ?? "gpt-image-1.5",
+        model:
+          imageProvider.name === "higgsfield"
+            ? undefined
+            : staticAsset?.preferredImageModel ?? getImageGenerationEnv()?.model ?? "gpt-image-1.5",
         prompt:
           staticAsset?.imagePromptConfig?.prompt ??
           staticAsset?.imagePrompt ??
@@ -277,7 +285,8 @@ export async function createImageAd(
           eventId: budgetReservation?.eventId,
           status: "consumed",
           metadata: {
-            operation: "openai_image_generation",
+            operation: "image_generation",
+            provider: imageProvider.name,
             assetId: staticAsset?.hook ?? null,
             model: generationModel,
           },
@@ -289,7 +298,8 @@ export async function createImageAd(
           eventId: budgetReservation?.eventId,
           status: parsed.status === "unsupported" ? "released" : "failed",
           metadata: {
-            operation: "openai_image_generation",
+            operation: "image_generation",
+            provider: imageProvider.name,
             assetId: staticAsset?.hook ?? null,
             reason: generationMessage,
           },
@@ -302,12 +312,13 @@ export async function createImageAd(
         eventId: budgetReservation?.eventId,
         status: "failed",
         metadata: {
-          operation: "openai_image_generation",
+          operation: "image_generation",
+          provider: imageProvider.name,
           assetId: staticAsset?.hook ?? null,
           reason: generationMessage,
         },
       }).catch(() => null);
-      logWarn("OpenAI image generation failed", {
+      logWarn("AI image generation failed", {
         message: error instanceof Error ? error.message : "Unknown error",
         location: market,
         audience,
@@ -341,6 +352,10 @@ export async function createHeyGenVideo({
   let url = buildMockVideoUrl(title ?? safeScript.slice(0, 32));
   let providerAssetId: string | null = null;
   const avatarProvider = getAvatarVideoProvider();
+  const videoGenerationEnabled =
+    getMediaGenerationProvider() === "higgsfield"
+      ? process.env.ALLOW_HIGGSFIELD_VIDEO_GENERATION === "true"
+      : process.env.ALLOW_HEYGEN_VIDEO_GENERATION === "true";
 
   if (!safeScript || safeScript.length < 10) {
     return {
@@ -350,7 +365,7 @@ export async function createHeyGenVideo({
     };
   }
 
-  if (process.env.ALLOW_HEYGEN_VIDEO_GENERATION !== "true") {
+  if (!videoGenerationEnabled) {
     return {
       url,
       providerAssetId,
@@ -363,6 +378,8 @@ export async function createHeyGenVideo({
       const result = await avatarProvider.execute({
         aspectRatio: "9:16",
         script: safeScript,
+        prompt: safeScript,
+        title,
       });
       const parsed = avatarProvider.parseResult(result);
       if (parsed.providerAssetId) {
@@ -372,7 +389,7 @@ export async function createHeyGenVideo({
         url = parsed.fileUrl;
       }
     } catch (error) {
-      logWarn("HeyGen video generation threw", {
+      logWarn("AI video generation threw", {
         message: error instanceof Error ? error.message : "Unknown error",
         title,
       });
@@ -382,7 +399,7 @@ export async function createHeyGenVideo({
   return {
     url,
     providerAssetId,
-    providerName: avatarProvider.isConfigured() ? "heygen" : null,
+    providerName: avatarProvider.isConfigured() ? avatarProvider.name : null,
   };
 }
 
@@ -416,7 +433,12 @@ export async function createVideoAd(
   const voiceId = videoEnv?.voiceId ?? "";
   let videoUrl = buildMockVideoUrl(`${market}-${audience}-${offer}`);
 
-  if (process.env.ALLOW_HEYGEN_VIDEO_GENERATION === "true" && apiKey && avatarId && voiceId) {
+  const videoGenerationEnabled =
+    getMediaGenerationProvider() === "higgsfield"
+      ? process.env.ALLOW_HIGGSFIELD_VIDEO_GENERATION === "true"
+      : process.env.ALLOW_HEYGEN_VIDEO_GENERATION === "true" && Boolean(apiKey && avatarId && voiceId);
+
+  if (videoGenerationEnabled) {
     const generatedVideo = await createHeyGenVideo({
       avatar_id: avatarId,
       script: script.join("\n"),

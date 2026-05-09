@@ -61,13 +61,21 @@ export function getCreativeAssetsSchemaCompatibilityMessage(
 
 export function toVideoProviderApiError(error: unknown, operation: "start" | "check") {
   const message =
-    error instanceof Error ? error.message : safeText(error) || "HeyGen request failed.";
+    error instanceof Error ? error.message : safeText(error) || "AI video provider request failed.";
   const normalized = message.toLowerCase();
+
+  if (normalized.includes("higgsfield") || normalized.includes("hf_credentials")) {
+    return new ApiError(
+      503,
+      "AI video generation is not configured. Confirm the media provider credentials are set before generating videos.",
+      "video_provider_config_missing",
+    );
+  }
 
   if (normalized.includes("missing heygen_api_key")) {
     return new ApiError(
       503,
-      "HeyGen is not configured. Add HEYGEN_API_KEY before generating videos.",
+      "AI video generation is not configured. Add video provider credentials before generating videos.",
       "video_provider_config_missing",
     );
   }
@@ -75,7 +83,7 @@ export function toVideoProviderApiError(error: unknown, operation: "start" | "ch
   if (normalized.includes("heygen_api_key appears masked or incomplete")) {
     return new ApiError(
       503,
-      "HeyGen API key is incomplete. Paste the full live HEYGEN_API_KEY into .env.local, then restart the app.",
+      "AI video provider credentials are incomplete. Add the full live credentials, then restart the app.",
       "video_provider_config_missing",
     );
   }
@@ -83,7 +91,7 @@ export function toVideoProviderApiError(error: unknown, operation: "start" | "ch
   if (normalized.includes("unauthorized")) {
     return new ApiError(
       502,
-      "HeyGen rejected the request. Confirm the full live API key is in .env.local and restart the app before generating videos.",
+      "The AI video provider rejected the request. Confirm the full live credentials are configured before generating videos.",
       operation === "start" ? "video_provider_request_failed" : "video_provider_status_failed",
     );
   }
@@ -91,7 +99,7 @@ export function toVideoProviderApiError(error: unknown, operation: "start" | "ch
   if (normalized.includes("avatar_id") || normalized.includes("no heygen avatar")) {
     return new ApiError(
       503,
-      "HeyGen avatar setup is incomplete. Add a valid avatar ID or make one available in HeyGen.",
+      "AI video creator setup is incomplete. Add a valid creator/avatar configuration before generating videos.",
       "video_provider_avatar_missing",
     );
   }
@@ -99,7 +107,7 @@ export function toVideoProviderApiError(error: unknown, operation: "start" | "ch
   if (normalized.includes("voice_id") || normalized.includes("no heygen voice")) {
     return new ApiError(
       503,
-      "HeyGen voice setup is incomplete. Add a valid voice ID or make one available in HeyGen.",
+      "AI video voice setup is incomplete. Add a valid voice configuration before generating videos.",
       "video_provider_voice_missing",
     );
   }
@@ -107,8 +115,8 @@ export function toVideoProviderApiError(error: unknown, operation: "start" | "ch
   return new ApiError(
     502,
     operation === "start"
-      ? `HeyGen could not start the video job. ${message}`
-      : `HeyGen could not return the video status. ${message}`,
+      ? `The AI video provider could not start the video job. ${message}`
+      : `The AI video provider could not return the video status. ${message}`,
     operation === "start" ? "video_provider_request_failed" : "video_provider_status_failed",
   );
 }
@@ -128,11 +136,11 @@ export function formatVideoWorkflowErrorMessage(input: {
   }
 
   if (code === "video_provider_config_missing") {
-    return error || "HeyGen is not configured yet.";
+    return error || "AI video generation is not configured yet.";
   }
 
   if (code === "video_provider_avatar_missing" || code === "video_provider_voice_missing") {
-    return error || "HeyGen avatar or voice setup is incomplete.";
+    return error || "AI video creator or voice setup is incomplete.";
   }
 
   if (code === "video_provider_request_failed" || code === "video_provider_status_failed") {

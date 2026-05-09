@@ -110,6 +110,43 @@ export function validateImageGenerationEnv() {
   ]);
 }
 
+export function getMediaGenerationProvider() {
+  const provider = (process.env.MEDIA_GENERATION_PROVIDER ?? "openai").trim().toLowerCase();
+  return provider === "higgsfield" ? "higgsfield" : "openai";
+}
+
+export function getHiggsfieldEnv() {
+  const credentials = process.env.HF_CREDENTIALS?.trim();
+  const apiKey = process.env.HF_API_KEY?.trim();
+  const apiSecret = process.env.HF_API_SECRET?.trim();
+  const baseUrl = process.env.HIGGSFIELD_BASE_URL?.trim() || "https://platform.higgsfield.ai";
+
+  if (!credentials && (!apiKey || !apiSecret)) {
+    return null;
+  }
+
+  return {
+    credentials: credentials || `${apiKey}:${apiSecret}`,
+    apiKey: apiKey || null,
+    apiSecret: apiSecret || null,
+    baseUrl,
+    imageModel: process.env.HIGGSFIELD_IMAGE_MODEL?.trim() || "marketing_studio_image",
+    videoModel: process.env.HIGGSFIELD_VIDEO_MODEL?.trim() || "marketing_studio_video",
+    ugcVideoModel: process.env.HIGGSFIELD_UGC_VIDEO_MODEL?.trim() || "soul_cast",
+    videoFallbackModel: process.env.HIGGSFIELD_VIDEO_FALLBACK_MODEL?.trim() || "seedance_2_0",
+  };
+}
+
+export function validateHiggsfieldEnv() {
+  const env = getHiggsfieldEnv();
+
+  return validateEnv([
+    ["HF_CREDENTIALS or HF_API_KEY/HF_API_SECRET", env?.credentials],
+    ["HIGGSFIELD_IMAGE_MODEL", env?.imageModel],
+    ["HIGGSFIELD_VIDEO_MODEL", env?.videoModel],
+  ]);
+}
+
 export function getServiceRoleEnv() {
   const supabase = getSupabaseEnv();
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

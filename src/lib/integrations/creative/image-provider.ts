@@ -1,4 +1,11 @@
-import { getImageGenerationEnv, validateImageGenerationEnv } from "@/lib/env";
+import {
+  getHiggsfieldEnv,
+  getImageGenerationEnv,
+  getMediaGenerationProvider,
+  validateHiggsfieldEnv,
+  validateImageGenerationEnv,
+} from "@/lib/env";
+import { generateHiggsfieldImage } from "@/lib/ai/higgsfield";
 import type {
   ExecutionProvider,
   ProviderConfigValidation,
@@ -262,6 +269,147 @@ class OpenAiImageProvider implements ImageGenerationProvider {
   }
 }
 
+function mapAspectRatioToHiggsfield(format: CreativeAssetFormat | string | null | undefined) {
+  if (format === "9:16" || format === "16:9" || format === "4:5" || format === "1:1") {
+    return format;
+  }
+
+  return "1:1";
+}
+
+class HiggsfieldImageProvider implements ImageGenerationProvider {
+  id = "ai_image_generation";
+  label = "AI Image Generation";
+  vendor = "Higgsfield";
+  name = "higgsfield";
+
+  isConfigured() {
+    const env = getHiggsfieldEnv();
+    return getMediaGenerationProvider() === "higgsfield" && Boolean(env?.credentials);
+  }
+
+  validateConfig(): ProviderConfigValidation {
+    const validation = validateHiggsfieldEnv();
+    return {
+      configured: getMediaGenerationProvider() === "higgsfield" && validation.configured,
+      missingConfig:
+        getMediaGenerationProvider() === "higgsfield"
+          ? validation.missing
+          : ["MEDIA_GENERATION_PROVIDER=higgsfield"],
+    };
+  }
+
+  async checkStatus(): Promise<ProviderConnectionStatus> {
+    const validation = this.validateConfig();
+
+    return {
+      status: validation.configured ? "connected" : "disconnected",
+      state: validation.configured ? "configured" : "not_configured",
+      message: validation.configured
+        ? "Image generation provider is configured."
+        : "Image generation provider credentials are incomplete.",
+    };
+  }
+
+  async execute(request: ProviderRenderRequest): Promise<ProviderRenderResult> {
+    const env = getHiggsfieldEnv();
+
+    if (process.env.ALLOW_HIGGSFIELD_IMAGE_GENERATION !== "true") {
+      return {
+        ok: false,
+        providerName: this.name,
+        providerAssetId: null,
+        status: "unsupported",
+        fileUrl: null,
+        thumbnailUrl: null,
+        error: "AI image generation is disabled until the provider usage guard is explicitly enabled.",
+      };
+    }
+
+    if (!env?.credentials || getMediaGenerationProvider() !== "higgsfield") {
+      return {
+        ok: false,
+        providerName: this.name,
+        providerAssetId: null,
+        status: "unsupported",
+        fileUrl: null,
+        thumbnailUrl: null,
+        error: "AI image generation is not configured.",
+      };
+    }
+
+    if (!(request.prompt ?? "").trim()) {
+      return {
+        ok: false,
+        providerName: this.name,
+        providerAssetId: null,
+        status: "failed",
+        fileUrl: null,
+        thumbnailUrl: null,
+        error: "Image prompt is required.",
+      };
+    }
+
+    try {
+      const model = env.imageModel;
+      const result = await generateHiggsfieldImage({
+        aspectRatio: mapAspectRatioToHiggsfield(request.aspectRatio),
+        model,
+        prompt: request.prompt ?? "",
+        negativePrompt: request.negativePrompt ?? null,
+      });
+
+      return {
+        ok: result.status === "completed" && Boolean(result.fileUrl),
+        providerName: this.name,
+        providerAssetId: result.requestId,
+        status: result.status === "completed" && result.fileUrl ? "ready" : result.status,
+        fileUrl: result.fileUrl,
+        thumbnailUrl: result.thumbnailUrl ?? result.fileUrl,
+        metadata: {
+          provider: this.name,
+          model,
+          requestId: result.requestId,
+          providerStatus: result.status,
+          qualityGateStatus: result.fileUrl ? "candidate_ready" : "not_ready",
+          selectedCandidate: result.fileUrl ? true : null,
+          candidateIndex: 0,
+        },
+        error: result.fileUrl ? null : "Image provider did not return a usable asset.",
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        providerName: this.name,
+        providerAssetId: null,
+        status: "failed",
+        fileUrl: null,
+        thumbnailUrl: null,
+        metadata: {
+          provider: this.name,
+          model: env.imageModel,
+        },
+        error:
+          error instanceof Error && /credit|balance/i.test(error.message)
+            ? "Image generation could not start because provider credits are unavailable."
+            : "Image generation failed.",
+      };
+    }
+  }
+
+  parseResult(raw: ProviderRenderResult): ProviderRenderResult {
+    return raw;
+  }
+
+  async generateImage(request: ProviderRenderRequest): Promise<ProviderRenderResult> {
+    return this.execute(request);
+  }
+
+  parseFailure(error: unknown): ProviderFailure {
+    return parseImageFailure(error);
+  }
+}
+
 class UnsupportedImageProvider implements ImageGenerationProvider {
   id = "ai_image_generation";
   label = "AI Image Generation";
@@ -273,9 +421,13 @@ class UnsupportedImageProvider implements ImageGenerationProvider {
   }
 
   validateConfig(): ProviderConfigValidation {
+    const validation =
+      getMediaGenerationProvider() === "higgsfield"
+        ? validateHiggsfieldEnv()
+        : validateImageGenerationEnv();
     return {
       configured: false,
-      missingConfig: validateImageGenerationEnv().missing,
+      missingConfig: validation.missing,
     };
   }
 
@@ -313,6 +465,11 @@ class UnsupportedImageProvider implements ImageGenerationProvider {
 }
 
 export function getImageGenerationProvider(): ImageGenerationProvider {
+  const higgsfield = new HiggsfieldImageProvider();
+  if (getMediaGenerationProvider() === "higgsfield") {
+    return higgsfield.isConfigured() ? higgsfield : new UnsupportedImageProvider();
+  }
+
   const openAi = new OpenAiImageProvider();
   return openAi.isConfigured() ? openAi : new UnsupportedImageProvider();
 }

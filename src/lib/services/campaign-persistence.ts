@@ -23,6 +23,7 @@ import {
   consumeSessionCostBudget,
   markSessionCostBudgetEvent,
 } from "@/lib/services/session-cost-guard";
+import { getMediaGenerationProvider } from "@/lib/env";
 import { createAdminClient } from "@/lib/server/supabase-admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
@@ -793,12 +794,13 @@ export async function regenerateStaticCreativeAssetsForUser(
       provider_usage_context: {
         createForAsset: (asset) => {
           const runScope = options?.providerUsageRunId?.trim() || "default";
-          const idempotencyKey = `openai_image_generation:${row.organization_id ?? "org"}:${userId}:${campaignId}:${asset.id}:${asset.preferredImageModel}:${runScope}`;
+          const provider = getMediaGenerationProvider();
+          const idempotencyKey = `image_generation:${provider}:${row.organization_id ?? "org"}:${userId}:${campaignId}:${asset.id}:${asset.preferredImageModel}:${runScope}`;
 
           return {
             reserve: () =>
               consumeSessionCostBudget({
-                bucket: "openai_image_generation",
+                bucket: "image_generation",
                 userId,
                 organizationId: row.organization_id,
                 campaignId,

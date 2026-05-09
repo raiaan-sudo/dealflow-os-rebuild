@@ -3,13 +3,26 @@ import { cookies } from "next/headers";
 import { logWarn } from "@/lib/logging";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  type GenerationCreditBucket,
   consumeCreditsForGeneration,
   refundCreditsForProviderUsageEvent,
 } from "@/lib/services/credit-service";
 
-type SessionCostBucket = "openai_image_generation" | "heygen_video_generation";
+export type SessionCostBucket =
+  | "image_generation"
+  | "video_generation"
+  | "openai_image_generation"
+  | "heygen_video_generation";
 
 const SESSION_COST_LIMITS: Record<SessionCostBucket, { cookie: string; limit: number }> = {
+  image_generation: {
+    cookie: "dealflow_session_image_generations",
+    limit: 10,
+  },
+  video_generation: {
+    cookie: "dealflow_session_video_generations",
+    limit: 2,
+  },
   openai_image_generation: {
     cookie: "dealflow_session_openai_image_generations",
     limit: 10,
@@ -20,11 +33,38 @@ const SESSION_COST_LIMITS: Record<SessionCostBucket, { cookie: string; limit: nu
   },
 };
 
+function normalizeSessionCostBucket(bucket: SessionCostBucket): "image_generation" | "video_generation" {
+  if (bucket === "openai_image_generation") {
+    return "image_generation";
+  }
+
+  if (bucket === "heygen_video_generation") {
+    return "video_generation";
+  }
+
+  return bucket;
+}
+
+function getProviderForBucket(bucket: SessionCostBucket) {
+  const normalizedBucket = normalizeSessionCostBucket(bucket);
+
+  if (normalizedBucket === "image_generation") {
+    return process.env.MEDIA_GENERATION_PROVIDER === "higgsfield" ? "higgsfield" : "openai";
+  }
+
+  return process.env.MEDIA_GENERATION_PROVIDER === "higgsfield" ? "higgsfield" : "heygen";
+}
+
 function getProviderUsageLimit(bucket: SessionCostBucket) {
+  const normalizedBucket = normalizeSessionCostBucket(bucket);
   const envName =
-    bucket === "openai_image_generation"
-      ? "OPENAI_IMAGE_DAILY_LIMIT"
-      : "HEYGEN_VIDEO_DAILY_LIMIT";
+    normalizedBucket === "image_generation"
+      ? process.env.MEDIA_GENERATION_PROVIDER === "higgsfield"
+        ? "HIGGSFIELD_IMAGE_DAILY_LIMIT"
+        : "OPENAI_IMAGE_DAILY_LIMIT"
+      : process.env.MEDIA_GENERATION_PROVIDER === "higgsfield"
+        ? "HIGGSFIELD_VIDEO_DAILY_LIMIT"
+        : "HEYGEN_VIDEO_DAILY_LIMIT";
   const configured = Number.parseInt(process.env[envName] ?? "", 10);
 
   if (Number.isFinite(configured) && configured > 0) {
@@ -48,12 +88,13 @@ export async function consumeSessionCostBudget(params: {
   estimatedCost?: number | null;
 }) {
   const config = SESSION_COST_LIMITS[params.bucket];
+  const normalizedBucket = normalizeSessionCostBucket(params.bucket);
   const limit = getProviderUsageLimit(params.bucket);
   const admin = createAdminClient();
 
   if (admin) {
-    const provider = params.bucket === "openai_image_generation" ? "openai" : "heygen";
-    const operation = params.bucket;
+    const provider = getProviderForBucket(params.bucket);
+    const operation = normalizedBucket;
     const { data: reservationRaw, error: reservationError } = await (admin as any).rpc(
       "reserve_provider_usage",
       {
@@ -97,9 +138,9 @@ export async function consumeSessionCostBudget(params: {
       });
       throw new ApiError(
         429,
-        params.bucket === "openai_image_generation"
-          ? `This workspace already used the maximum ${limit} OpenAI image generation${limit === 1 ? "" : "s"} for this campaign today.`
-          : `This workspace already used the maximum ${limit} HeyGen video generation${limit === 1 ? "" : "s"} for this campaign today.`,
+        normalizedBucket === "image_generation"
+          ? `This workspace already used the maximum ${limit} AI image generation${limit === 1 ? "" : "s"} for this campaign today.`
+          : `This workspace already used the maximum ${limit} AI video generation${limit === 1 ? "" : "s"} for this campaign today.`,
         "provider_usage_limit_reached",
       );
     }
@@ -125,7 +166,7 @@ export async function consumeSessionCostBudget(params: {
 
     if (reusedExisting && eventStatus === "reserved") {
       logWarn("Provider usage guard blocked duplicate in-progress request", {
-        bucket: params.bucket,
+        bucket: normalizedBucket as GenerationCreditBucket,
         userId: params.userId,
         organizationId: params.organizationId ?? null,
         campaignId: params.campaignId ?? null,
@@ -151,13 +192,14 @@ export async function consumeSessionCostBudget(params: {
         campaignId: params.campaignId ?? null,
         referenceId: eventId ?? params.idempotencyKey ?? crypto.randomUUID(),
         idempotencyKey: eventId
-          ? `generation_credit:${params.bucket}:${eventId}`
+          ? `generation_credit:${normalizedBucket}:${eventId}`
           : params.idempotencyKey
-            ? `generation_credit:${params.bucket}:${params.idempotencyKey}`
+            ? `generation_credit:${normalizedBucket}:${params.idempotencyKey}`
             : null,
         metadata: {
           provider,
           operation,
+          legacyOperation: params.bucket === normalizedBucket ? null : params.bucket,
           estimatedCost: params.estimatedCost ?? null,
         },
       });
@@ -208,9 +250,9 @@ export async function consumeSessionCostBudget(params: {
     });
     throw new ApiError(
       429,
-      params.bucket === "openai_image_generation"
-        ? `This session already used the maximum ${limit} OpenAI image generation${limit === 1 ? "" : "s"}.`
-        : `This session already used the maximum ${limit} HeyGen video generation${limit === 1 ? "" : "s"}.`,
+      normalizedBucket === "image_generation"
+        ? `This session already used the maximum ${limit} AI image generation${limit === 1 ? "" : "s"}.`
+        : `This session already used the maximum ${limit} AI video generation${limit === 1 ? "" : "s"}.`,
       "session_cost_limit_reached",
     );
   }

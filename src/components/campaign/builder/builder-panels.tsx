@@ -2141,7 +2141,7 @@ export function BuilderCreativesPanel(props: {
                 <p className="text-sm text-rose-300">{videoGenerationErrors[index]}</p>
               ) : null}
               <div className="rounded-[18px] border border-cyan-300/15 bg-cyan-300/[0.045] px-4 py-3 text-sm leading-6 text-cyan-50/78">
-                Video concepts are ready for review. Paid HeyGen rendering stays locked until billing, credits, and final launch approval are complete.
+                Video concepts are ready for review. Paid AI video rendering stays locked until billing, credits, and final launch approval are complete.
               </div>
             </div>
           </Card>

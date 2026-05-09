@@ -1,6 +1,7 @@
 import { getAvatarVideoProvider } from "@/lib/integrations/creative/avatar-provider";
 import { getImageGenerationProvider } from "@/lib/integrations/creative/image-provider";
 import { getVoiceProvider } from "@/lib/integrations/creative/voice-provider";
+import { getMediaGenerationProvider } from "@/lib/env";
 import type { ExecutionProvider } from "@/lib/integrations/contracts";
 import { getMetaMarketingProvider, getMetaTrackingProvider } from "@/lib/integrations/meta/provider";
 import { getStripeBillingProvider } from "@/lib/integrations/stripe/provider";
@@ -66,7 +67,7 @@ const registeredProviders: RegisteredProvider[] = [
   {
     id: "ai_image_generation",
     label: "AI Image Generation",
-    vendor: "OpenAI",
+    vendor: getMediaGenerationProvider() === "higgsfield" ? "Higgsfield" : "OpenAI",
     category: "ai",
     description: "Static ad image generation for launch-ready creative assets.",
     settingsHint: "Add AI image credentials to generate live static ad images.",
@@ -76,9 +77,9 @@ const registeredProviders: RegisteredProvider[] = [
   {
     id: "ai_video_generation",
     label: "AI Video Generation",
-    vendor: "HeyGen",
+    vendor: getMediaGenerationProvider() === "higgsfield" ? "Higgsfield" : "HeyGen",
     category: "ai",
-    description: "Talking-head video generation for UGC and avatar-based ad creative.",
+    description: "Video generation for UGC-style and campaign-ready ad creative.",
     settingsHint: "Add video provider credentials to turn storyboard output into rendered video ads.",
     capabilities: ["status", "generate_video", "parse_result", "parse_failure"],
     provider: getAvatarVideoProvider(),
