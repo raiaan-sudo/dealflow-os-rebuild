@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   StaticCreativePreviewCard,
@@ -57,6 +57,7 @@ type SystemJob = {
 export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
   const router = useRouter();
   const jobStreamsRef = useRef<Map<string, EventSource>>(new Map());
+  const autoRenderStartedRef = useRef(false);
   const buildHref = `/builder?campaignId=${encodeURIComponent(campaignId)}`;
   const rankedCreatives = useMemo(
     () => [...creatives].sort((left, right) => (right.score ?? 0) - (left.score ?? 0)),
@@ -80,6 +81,10 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
   const hasGeneratedImages = rankedCreatives.some(
     (creative) => creative.imageGenerationState === "generated" && Boolean(creative.imageUrl),
   );
+  const hasAttemptedImageGeneration = rankedCreatives.some(
+    (creative) => Boolean(creative.imageGenerationMessage) || Boolean(creative.imageGenerationState),
+  );
+  const autoRenderStorageKey = `dealflow:auto-image-render:${campaignId}`;
 
   const subscribeToJob = useCallback((jobId: string) => {
     if (jobStreamsRef.current.has(jobId)) {
@@ -116,14 +121,18 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
     });
   }, [router]);
 
-  async function handleRenderImages() {
+  const queueImagePreviews = useCallback(async ({ force = false, automatic = false } = {}) => {
     if (renderingImages) {
       return;
     }
 
     setRenderingImages(true);
     setError(null);
-    setRenderMessage("Rendering image previews.");
+    setRenderMessage(
+      automatic
+        ? "Preparing image previews automatically. You can review the creative set while visuals finish."
+        : "Preparing image previews.",
+    );
 
     try {
       const response = await fetch(`/api/campaigns/${encodeURIComponent(campaignId)}/generate-static-ads`, {
@@ -132,7 +141,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          force: !allImagesMissing,
+          force,
         }),
       });
       const data = (await response.json().catch(() => null)) as
@@ -143,7 +152,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
         throw new Error(data?.error || "Image preview rendering could not start.");
       }
 
-      setRenderMessage("Image preview job queued. This page will update when the render finishes.");
+      setRenderMessage("Image previews are being prepared. This page will update when the visuals are ready.");
       subscribeToJob(data.job.id);
     } catch (renderError) {
       setRenderMessage(null);
@@ -151,7 +160,24 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
     } finally {
       setRenderingImages(false);
     }
-  }
+  }, [campaignId, renderingImages, subscribeToJob]);
+
+  useEffect(() => {
+    if (!allImagesMissing || hasGeneratedImages || autoRenderStartedRef.current) {
+      return;
+    }
+
+    if (typeof window !== "undefined" && window.sessionStorage.getItem(autoRenderStorageKey) === "started") {
+      return;
+    }
+
+    autoRenderStartedRef.current = true;
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(autoRenderStorageKey, "started");
+    }
+
+    void queueImagePreviews({ force: false, automatic: true });
+  }, [allImagesMissing, autoRenderStorageKey, hasGeneratedImages, queueImagePreviews]);
 
   function toggleCreative(creativeId: string) {
     setSelectedIds((current) => {
@@ -278,26 +304,35 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
               DealFlow will launch with the strongest selected creative and keep the set ready for rotation and optimization.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              type="button"
-              variant={hasGeneratedImages ? "secondary" : "default"}
-              onClick={() => void handleRenderImages()}
-              disabled={renderingImages}
-            >
-              {renderingImages
-                ? "Rendering image previews..."
-                : hasGeneratedImages
-                  ? "Regenerate image previews"
-                  : "Render image previews"}
-            </Button>
-            {renderMessage ? (
-              <span className="text-sm leading-6 text-muted-foreground">{renderMessage}</span>
-            ) : null}
-          </div>
+          {renderMessage || hasGeneratedImages ? (
+            <div className="flex flex-wrap items-center gap-3">
+              {hasGeneratedImages ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void queueImagePreviews({ force: true })}
+                  disabled={renderingImages}
+                >
+                  {renderingImages ? "Refreshing previews..." : "Refresh image previews"}
+                </Button>
+              ) : null}
+              {renderMessage ? (
+                <span className="text-sm leading-6 text-muted-foreground">{renderMessage}</span>
+              ) : null}
+            </div>
+          ) : null}
           {allImagesMissing ? (
             <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm leading-6 text-amber-100">
-              Your strategy, copy, and creative concepts are ready. Render image previews to replace the template backgrounds with AI-generated ad visuals.
+              Your strategy, copy, and creative concepts are ready. DealFlow is preparing image previews automatically so this step stays focused on choosing the best test set.
+              {hasAttemptedImageGeneration && !renderingImages ? (
+                <button
+                  type="button"
+                  className="ml-2 font-semibold text-amber-50 underline decoration-amber-200/50 underline-offset-4"
+                  onClick={() => void queueImagePreviews({ force: true })}
+                >
+                  Retry image previews
+                </button>
+              ) : null}
             </div>
           ) : null}
 
