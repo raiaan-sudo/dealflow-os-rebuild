@@ -144,6 +144,7 @@ function runOfflineChecks() {
   const createCampaignRoute = "src/app/api/campaigns/create/route.ts";
   const videoRoute = "src/app/api/campaigns/[id]/generate-video/route.ts";
   const staticAdsRoute = "src/app/api/campaigns/[id]/generate-static-ads/route.ts";
+  const systemJobStreamRoute = "src/app/api/system-jobs/[id]/stream/route.ts";
   const launchRuntimeApi = "src/components/campaign/launch/launch-runtime-api.ts";
   const launchingPage = "src/app/(app)/launching/page.tsx";
   const launchSuccessPage = "src/app/(app)/launch-success/page.tsx";
@@ -634,6 +635,10 @@ function runOfflineChecks() {
   assertIncludes(videoRoute, "kind: \"video_generation\"", "Video generation job route", "AI video generation is queued through the paid system job path");
   assertIncludes(videoRoute, "getCampaignById", "Video generation ownership guard", "video generation verifies campaign ownership before queueing paid work");
   assertIncludes(systemJobService, "video_generation_status", "Video generation status polling", "AI video render completion is polled by durable follow-up jobs instead of blocking the cron worker");
+  assertIncludes(staticAdsRoute, "scheduleStaticCreativeJob", "Static generation kickoff", "creative preview jobs are kicked immediately instead of relying only on cron");
+  assertIncludes(staticAdsRoute, "if (existingActiveJob)", "Static generation active-job reuse", "forced preview retries reuse active work instead of stacking duplicate paid jobs");
+  assertIncludes(systemJobStreamRoute, "MAX_STREAM_POLLS", "System job stream polling", "job streams stay open long enough for queued creative renders to complete");
+  assertIncludes(systemJobStreamRoute, "? { ...job, logs }", "System job stream payload", "job streams emit the job shape expected by UI consumers");
   assertExcludes(launchRuntimeApi, "/api/integrations/meta/deploy", "No dead Meta deploy client route", "client helpers do not call a missing Meta deploy endpoint");
   assertIncludes(avatarProvider, "ALLOW_HIGGSFIELD_VIDEO_GENERATION !== \"true\"", "Higgsfield video generation kill switch", "queued video jobs cannot call Higgsfield unless explicitly enabled");
   assertIncludes(avatarProvider, "HiggsfieldVideoProvider", "Higgsfield video provider", "AI UGC/video generation has a Higgsfield provider implementation");

@@ -166,7 +166,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
   }, [campaignId, renderingImages, subscribeToJob]);
 
   useEffect(() => {
-    if (!allImagesMissing || hasGeneratedImages || hasCreditBlocker || autoRenderStartedRef.current) {
+    if (!allImagesMissing || hasGeneratedImages || autoRenderStartedRef.current) {
       return;
     }
 
@@ -179,7 +179,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
       window.sessionStorage.setItem(autoRenderStorageKey, "started");
     }
 
-    void queueImagePreviews({ force: false, automatic: true });
+    void queueImagePreviews({ force: hasCreditBlocker, automatic: true });
   }, [allImagesMissing, autoRenderStorageKey, hasCreditBlocker, hasGeneratedImages, queueImagePreviews]);
 
   function toggleCreative(creativeId: string) {

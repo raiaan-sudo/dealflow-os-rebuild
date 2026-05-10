@@ -1,13 +1,28 @@
 import { assertSameOriginRequest, apiSuccess, handleApiError, parseOptionalJsonBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
+import { logWarn } from "@/lib/logging";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
-import { createSystemJob, listSystemJobs } from "@/lib/services/system-job-service";
+import { createSystemJob, listSystemJobs, processSystemJob } from "@/lib/services/system-job-service";
+import { after } from "next/server";
 import { z } from "zod";
 
 const bodySchema = z.object({
   force: z.boolean().optional(),
 });
+
+function scheduleStaticCreativeJob(jobId: string) {
+  after(async () => {
+    try {
+      await processSystemJob(jobId);
+    } catch (error) {
+      logWarn("Static creative generation kickoff failed", {
+        jobId,
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+}
 
 export async function POST(
   request: Request,
@@ -48,7 +63,9 @@ export async function POST(
     });
     const existingActiveJob = activeJobs[0] ?? null;
 
-    if (existingActiveJob && body.force !== true) {
+    if (existingActiveJob) {
+      scheduleStaticCreativeJob(existingActiveJob.id);
+
       return apiSuccess({
         success: true,
         campaignId,
@@ -72,6 +89,7 @@ export async function POST(
         force: body.force === true,
       },
     });
+    scheduleStaticCreativeJob(job.id);
 
     return apiSuccess({
       success: true,
