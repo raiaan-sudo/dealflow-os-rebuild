@@ -8,6 +8,7 @@ import { getAppContext } from "@/lib/services/app-context";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusPill } from "@/components/ui/status-pill";
+import { CreativeAutoPrepare } from "@/components/campaign/creative-auto-prepare";
 import { getCampaignIntentLabel } from "@/lib/campaign-intent";
 import {
   canCreateAdditionalCampaign,
@@ -217,6 +218,10 @@ function ActiveCampaignWorkspace({
   const plan = canonicalCampaignToPlan(record);
   const campaignId = record.campaign.id;
   const nextAction = getBuilderNextAction(plan, campaignId, hasSelectedCreativeSet);
+  const shouldPrepareImages =
+    nextAction.href.includes("/build/creatives") &&
+    record.creatives.staticAds.length > 0 &&
+    !record.creatives.staticAds.some((ad) => Boolean(ad.imageUrl));
   const limitPolicy = getCampaignLimitPolicy(planTier);
   const canCreateAnother = canCreateAdditionalCampaign({
     planTier,
@@ -235,6 +240,11 @@ function ActiveCampaignWorkspace({
 
   return (
     <div className="mx-auto w-full max-w-[1320px] space-y-4">
+      <CreativeAutoPrepare
+        campaignId={campaignId}
+        enabled={shouldPrepareImages}
+        storageScope="builder"
+      />
       <PageHeader
         eyebrow="Build"
         title="Active campaign workspace"

@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
 import { StatusPill } from "@/components/ui/status-pill";
+import { CreativeAutoPrepare } from "@/components/campaign/creative-auto-prepare";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import {
   getBillingSummary,
@@ -60,6 +61,13 @@ export default async function UnlockPage({
   const staticCreativeCount = activeCampaign?.record?.creatives.staticAds.length ?? 0;
   const videoConceptCount = activeCampaign?.record?.creatives.videoAds.length ?? 0;
   const hasStaticCreatives = staticCreativeCount > 0;
+  const hasGeneratedStaticImages =
+    activeCampaign?.record?.creatives.staticAds.some((ad) => Boolean(ad.imageUrl)) ?? false;
+  const shouldPrepareImages =
+    Boolean(campaignId) &&
+    hasStaticCreatives &&
+    !hasGeneratedStaticImages &&
+    (activatedByCheckout || launchAllowed);
   const paywallHref = `/paywall${campaignId ? `?campaignId=${encodeURIComponent(campaignId)}${plan ? `&plan=${encodeURIComponent(plan)}` : ""}` : plan ? `?plan=${encodeURIComponent(plan)}` : ""}`;
   const buildHref = campaignId
     ? `/builder?campaignId=${encodeURIComponent(campaignId)}`
@@ -109,6 +117,11 @@ export default async function UnlockPage({
 
   return (
     <PageShell className="max-w-[1180px] py-8">
+      <CreativeAutoPrepare
+        campaignId={campaignId}
+        enabled={shouldPrepareImages}
+        storageScope="unlock"
+      />
       <PageHeader
         eyebrow={activatedByCheckout ? "Welcome" : "Billing"}
         title={title}
