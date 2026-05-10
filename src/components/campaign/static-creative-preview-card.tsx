@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { StaticAdComposedPreview } from "@/components/campaign/static-ad-composed-preview";
 import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
@@ -54,6 +57,7 @@ export function StaticCreativePreviewCard({
   const safeHeadline = headline || offer || "Campaign creative";
   const safeCta = cta || "Learn More";
   const safeOffer = offer || safeHeadline;
+  const [fullCreativeOpen, setFullCreativeOpen] = useState(false);
 
   return (
     <div className={cn("overflow-hidden rounded-df-card border border-white/10 bg-black/20", className)}>
@@ -76,6 +80,15 @@ export function StaticCreativePreviewCard({
         visualPromptBrief={visualPromptBrief}
       />
       <div className={cn("space-y-4", compact ? "p-3" : "p-6")}>
+        {!compact ? (
+          <button
+            type="button"
+            className="inline-flex items-center rounded-full border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-foreground transition hover:border-primary/40 hover:bg-primary/10"
+            onClick={() => setFullCreativeOpen(true)}
+          >
+            View full creative
+          </button>
+        ) : null}
         {formatLabel ? (
           <span className="inline-flex rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
             {formatLabel}
@@ -98,6 +111,54 @@ export function StaticCreativePreviewCard({
           <p className="mt-1 text-sm font-semibold text-foreground">{safeCta}</p>
         </div>
       </div>
+      {fullCreativeOpen ? (
+        <div
+          aria-modal="true"
+          className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4"
+          role="dialog"
+          onClick={() => setFullCreativeOpen(false)}
+        >
+          <div
+            className="max-h-[calc(100dvh-2rem)] w-full max-w-[920px] overflow-y-auto rounded-[20px] border border-white/12 bg-background shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Full creative
+                </p>
+                <h3 className="mt-1 truncate text-sm font-semibold text-foreground">{safeHeadline}</h3>
+              </div>
+              <button
+                type="button"
+                className="shrink-0 rounded-full border border-white/12 px-3 py-2 text-xs font-semibold text-foreground transition hover:border-primary/40 hover:bg-primary/10"
+                onClick={() => setFullCreativeOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="p-4">
+              <StaticAdComposedPreview
+                category={category}
+                cta={safeCta}
+                headline={safeHeadline}
+                imageGenerationMessage={imageGenerationMessage}
+                imageGenerationState={imageGenerationState}
+                imageUrl={imageUrl}
+                location={location}
+                offer={safeOffer}
+                overlayText={overlayText}
+                primaryText={primaryText}
+                qualityGate={qualityGate}
+                score={score}
+                selectedCount={selectedCount}
+                showRawAssetState
+                visualPromptBrief={visualPromptBrief}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

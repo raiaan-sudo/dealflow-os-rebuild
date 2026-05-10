@@ -318,8 +318,12 @@ export function fitStaticAdText(input: {
 }
 
 function buildStatus(input: StaticAdTemplateInput): StaticAdTemplateStatus {
-  if (input.imageUrl) {
+  if (input.imageUrl && input.qualityGate?.accepted !== false) {
     return "final_composed";
+  }
+
+  if (input.imageUrl && input.qualityGate?.accepted === false) {
+    return "background_failed";
   }
 
   if (input.imageGenerationState === "generating") {

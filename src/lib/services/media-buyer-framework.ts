@@ -68,6 +68,8 @@ export type CreativeQualityEvaluation = {
     ctaFriction: number;
     categoryFit: number;
     antiGenericRisk: number;
+    mediaBuyerReference: number;
+    previewReadability: number;
   };
   hardFailures: string[];
   improvementHints: string[];
@@ -799,6 +801,24 @@ function containsUnsafeGuarantee(text: string) {
   return /\b(guaranteed income|guaranteed deals?|guaranteed roi|guaranteed profit|guaranteed revenue|guaranteed return)\b/.test(text);
 }
 
+function hasMediaBuyerReferenceLogic(text: string) {
+  return (
+    /\bmedia-buyer reference pattern\b/.test(text) ||
+    /\bone dominant hook area\b/.test(text) ||
+    /\bone proof area\b/.test(text) ||
+    /\bclear cta-safe\b/.test(text) ||
+    /\bdirect-response layout\b/.test(text)
+  );
+}
+
+function hasUnusablePreviewState(text: string) {
+  return /\b(unreadable|covered text|text covered|covered by overlay|awkward crop|awkward preview|cropped headline|cut off headline|low-resolution|low resolution|watermark|warped phone|distorted hands|distorted architecture)\b/.test(text);
+}
+
+function hasGenericStockRisk(text: string) {
+  return /\b(generic stock|stock photo|stock-photo|stock-photo-looking|empty luxury shot|generic empty|brochure-only|brochure style|showroom staging|generic realtor marketing)\b/.test(text);
+}
+
 function componentScore(condition: boolean, strong = 10, weak = 0) {
   return condition ? strong : weak;
 }
@@ -987,6 +1007,11 @@ export function evaluateCreativeQuality(params: {
     /\b(beautiful property|stunning home|dream home|new listing alert|luxury living|exclusive opportunity)\b/.test(combined);
   const agentFirst = /\b(top agent|award-winning agent|our team|my clients|i'm an agent|i am an agent)\b/.test(combined);
   const overlyPolished = /\b(overly polished|cinematic only|brochure|showroom|stock photo|generic luxury)\b/.test(combined);
+  const imagePrompt = normalize(safeText(params.imagePrompt));
+  const mediaBuyerReferenceReady =
+    !imagePrompt || hasMediaBuyerReferenceLogic(imagePrompt) || hasMediaBuyerReferenceLogic(combined);
+  const unusablePreviewState = hasUnusablePreviewState(combined);
+  const genericStockRisk = hasGenericStockRisk(combined);
 
   if (blockedHook) hardFailures.push("Hook matches a blocked/generic media-buyer pattern.");
   if (longIntro) hardFailures.push("Script starts with a slow self-introduction.");
@@ -994,10 +1019,16 @@ export function evaluateCreativeQuality(params: {
   if (genericPropertyFirst) hardFailures.push("Creative is property-first or generic instead of decision-point-first.");
   if (agentFirst) hardFailures.push("Creative is agent-first instead of audience-tension-first.");
   if (overlyPolished) hardFailures.push("Creative leans too polished/generic for cold traffic.");
+  if (!mediaBuyerReferenceReady) hardFailures.push("Image prompt is missing media-buyer layout reference logic.");
+  if (genericStockRisk) hardFailures.push("Creative risks looking like generic stock-photo real estate output.");
+  if (unusablePreviewState) hardFailures.push("Creative preview has a detectable readability or overlay/crop issue.");
 
   if (blockedHook) improvementHints.push("Rewrite the hook as a situation or decision moment, not an obvious marketing callout.");
   if (genericPropertyFirst) improvementHints.push("Lead with the internal tension, mechanism, or proof instead of the property itself.");
   if (agentFirst) improvementHints.push("Remove agent bragging and make the audience's decision point the opening.");
+  if (!mediaBuyerReferenceReady) improvementHints.push("Add a concrete media-buyer reference layout with hook, proof, negative space, and CTA-safe zones.");
+  if (genericStockRisk) improvementHints.push("Replace stock-photo-looking direction with a specific decision moment, proof artifact, or native UGC frame.");
+  if (unusablePreviewState) improvementHints.push("Repair the layout so text remains readable and no overlay, crop, or image artifact covers the creative.");
 
   const hasPatternInterrupt = /\b(before|most|if you|still|nobody|you don't|by the time|this is how|here's how|stop|watch|isn't for everyone)\b/.test(hook);
   const hasMechanism = hasMechanismSignal(normalize([params.mechanism, combined].join(" ")));
@@ -1029,6 +1060,8 @@ export function evaluateCreativeQuality(params: {
     ctaFriction: clampScore(hasLowFrictionStep(cta) && !/book a call|learn more|contact us/.test(cta) ? 8.5 : 4),
     categoryFit: clampScore(categoryFit ? 8.5 : 4),
     antiGenericRisk,
+    mediaBuyerReference: clampScore(mediaBuyerReferenceReady ? 9 : 2),
+    previewReadability: clampScore(unusablePreviewState ? 1.5 : 8.5),
   };
   const score = clampScore(
     (components.offerStrength +
@@ -1038,8 +1071,10 @@ export function evaluateCreativeQuality(params: {
       components.visualSpecificity +
       components.ctaFriction +
       components.categoryFit +
+      components.mediaBuyerReference +
+      components.previewReadability +
       (10 - components.antiGenericRisk)) /
-      8,
+      10,
   );
 
   if (score < 7) {

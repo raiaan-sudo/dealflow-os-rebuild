@@ -69,7 +69,10 @@ export function deriveStaticGenerationStatus(staticAds: StaticCreativeAsset[]): 
   }
 
   const generatedCount = staticAds.filter(
-    (asset) => asset.imageGenerationState === "generated" && Boolean(asset.imageUrl),
+    (asset) =>
+      asset.imageGenerationState === "generated" &&
+      Boolean(asset.imageUrl) &&
+      asset.qualityGate?.accepted !== false,
   ).length;
   const failedCount = staticAds.filter((asset) => asset.imageGenerationState === "failed").length;
   const unavailableCount = staticAds.filter(

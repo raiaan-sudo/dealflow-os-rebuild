@@ -73,6 +73,35 @@ assert.equal(buyer.category, "buyer");
 assert.equal(buyer.templateId, "buyer_affordability");
 assert.equal(buyer.cta, "See Matching Homes", "vague buyer CTA is upgraded");
 
+const generatedCreativeInput = {
+  category: "buyer",
+  location: "Austin",
+  headline: "Budget-matched homes before the weekend rush",
+  primaryText: "A curated shortlist helps buyers compare fit before the same homes get crowded.",
+  cta: "See Matching Homes",
+  imageUrl: "https://example.test/rendered-creative.png",
+  imageGenerationState: "generated",
+  qualityGate: {
+    accepted: true,
+    score: 8.2,
+  },
+};
+const generatedCreative = buildComposedStaticAdPreview(generatedCreativeInput);
+assert.equal(generatedCreative.status, "final_composed", "accepted generated images are primary creative previews");
+
+const rejectedGeneratedCreative = buildComposedStaticAdPreview({
+  ...generatedCreativeInput,
+  qualityGate: {
+    accepted: false,
+    score: 4.8,
+  },
+});
+assert.equal(
+  rejectedGeneratedCreative.status,
+  "background_failed",
+  "detectably rejected generated images are not treated as ready",
+);
+
 const precon = buildComposedStaticAdPreview({
   location: "Montreal",
   headline: "New Montreal pre-con investments have arrived",

@@ -55,6 +55,10 @@ type SystemJob = {
   error_message?: string | null;
 };
 
+function isUgcCreative(creative: CreativeOption) {
+  return /\bugc\b/i.test(`${creative.id} ${creative.formatLabel ?? ""} ${creative.breakdown?.concept ?? ""}`);
+}
+
 export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
   const router = useRouter();
   const jobStreamsRef = useRef<Map<string, EventSource>>(new Map());
@@ -110,6 +114,9 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
     : hasGeneratedImages
       ? `dealflow:auto-image-render:missing-only:${campaignId}`
     : `dealflow:auto-image-render:${campaignId}`;
+  const ugcQuotaAvailable = rankedCreatives.some(isUgcCreative);
+  const selectedUgcCount = selectedCreatives.filter(isUgcCreative).length;
+  const ugcQuotaSatisfied = !ugcQuotaAvailable || selectedUgcCount >= 1;
 
   const subscribeToJob = useCallback((jobId: string) => {
     if (jobStreamsRef.current.has(jobId)) {
@@ -238,6 +245,11 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
       return;
     }
 
+    if (!ugcQuotaSatisfied) {
+      setError("Keep at least one UGC-style concept in the selected creative set.");
+      return;
+    }
+
     setSaving(true);
     setError(null);
 
@@ -347,6 +359,16 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
                   {renderingImages ? "Refreshing previews..." : "Refresh image previews"}
                 </Button>
               ) : null}
+              {primaryCreative.imageGenerationState === "failed" ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void queueImagePreviews({ force: true, missingOnly: true })}
+                  disabled={renderingImages}
+                >
+                  {renderingImages ? "Retrying..." : "Retry failed preview"}
+                </Button>
+              ) : null}
               {renderMessage ? (
                 <span className="text-sm leading-6 text-muted-foreground">{renderMessage}</span>
               ) : null}
@@ -417,7 +439,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
             <p className={error ? "mt-3 text-sm text-rose-400" : "mt-3 text-sm text-muted-foreground"}>
               {error ??
                 (rankedCreatives.length >= 2
-                  ? `Use ${minSelected}-${maxSelected} creatives. The recommended set is already selected.`
+                  ? `Use ${minSelected}-${maxSelected} creatives. The recommended set keeps at least one UGC-style concept selected.`
                   : "Select at least one creative to continue.")}
             </p>
           </div>

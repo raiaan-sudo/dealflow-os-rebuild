@@ -190,6 +190,9 @@ function runOfflineChecks() {
   const commandCenterConsole = "src/app/(app)/admin/command-center/command-center-console.tsx";
   const feedbackWidget = "src/components/layout/feedback-widget.tsx";
   const staticCreativePreviewCard = "src/components/campaign/static-creative-preview-card.tsx";
+  const staticAdComposedPreview = "src/components/campaign/static-ad-composed-preview.tsx";
+  const staticAdTemplateRenderer = "src/lib/services/static-ad-template-renderer.ts";
+  const assetGenerationLifecycle = "src/lib/services/asset-generation-lifecycle.ts";
   const campaignPublishPanel = "src/components/campaign/campaign-publish-panel.tsx";
   const launchMetaSelectionPanel = "src/components/campaign/launch/launch-meta-selection-panel.tsx";
   const feedbackRoute = "src/app/api/feedback/route.ts";
@@ -203,6 +206,7 @@ function runOfflineChecks() {
   const imageProvider = "src/lib/integrations/creative/image-provider.ts";
   const loginForm = "src/components/auth/login-form.tsx";
   const middleware = "src/proxy.ts";
+  const selfServeScaleAudit = "docs/self-serve-scale-audit.md";
   const ciGateSource = fileExists(".github/workflows/ci.yml")
     ? ".github/workflows/ci.yml"
     : "docs/production-100-client-runbook.md";
@@ -300,7 +304,10 @@ function runOfflineChecks() {
   assertIncludes(buildCreativesPage, "max-w-[1500px]", "Creative build workspace width", "creative selection uses more of the desktop viewport");
   assertIncludes(creativeWizard, "Primary creative", "Creative wizard primary focus", "creative selection leads with one primary creative instead of repeated stacks");
   assertIncludes(creativeWizard, "Change selected creatives", "Creative queue collapsed", "the full creative queue is secondary by default");
+  assertIncludes(creativeWizard, "Keep at least one UGC-style concept", "Creative UGC quota gate", "selected creative sets must retain a UGC-style concept when available");
+  assertIncludes(creativeWizard, "Retry failed preview", "Creative retry secondary action", "retry/regenerate remains a secondary failed-state action");
   assertIncludes(creativeWizard, "Back to build", "Creative wizard build return", "creative selection returns to the Build workspace instead of another setup flow");
+  assertExcludes(creativeWizard, /OpenAI|HeyGen/i, "Creative wizard provider jargon hidden", "creative selection does not expose OpenAI or HeyGen copy to customers");
   assertIncludes("src/lib/services/funnel-engine.ts", "cleanMarketingCopy", "Funnel copy sanitizer", "funnel copy removes awkward repeated market and spacing artifacts");
   assertIncludes("src/lib/services/funnel-engine.ts", "trimWords(cleanMarketingCopy(headline), 14)", "Funnel headline length guard", "funnel headlines are capped instead of over-concatenating onboarding fields");
   assertIncludes("src/lib/services/funnel-engine.ts", "conciseOfferPhrase", "Funnel offer shaping", "offer and lead magnet shape funnel copy without being dumped raw into the headline");
@@ -318,10 +325,19 @@ function runOfflineChecks() {
   assertIncludes(campaignVisualPromptBuilder, "seller home-value comparison ad", "Seller valuation reference pattern", "seller prompts can follow home-value comparison and before-after proof patterns");
   assertIncludes(campaignVisualPromptBuilder, "buyer listing-alert and affordability collage", "Buyer listing reference pattern", "buyer prompts can follow listing-alert, affordability, and collage creative patterns");
   assertIncludes(creativeEngine, "1-2 required UGC-style concepts inside the six-ad test set", "UGC creative quota prompt", "UGC static image concepts are explicitly framed as required test-set variants");
-  assertIncludes("src/components/campaign/static-ad-composed-preview.tsx", "Showing the generated creative directly", "Generated creative visibility", "rendered Higgsfield images are shown cleanly instead of being covered by the fallback template overlay");
+  assertIncludes(staticAdComposedPreview, "Showing the generated creative directly", "Generated creative visibility", "rendered Higgsfield images are shown cleanly instead of being covered by the fallback template overlay");
+  assertIncludes(staticAdComposedPreview, "object-contain", "Generated creative uncropped", "rendered creatives are shown as the primary asset without cropping or template overlay");
+  assertExcludes(staticAdComposedPreview, "bg-gradient-to-t", "Generated creative overlay removed", "generated creative previews do not add a dark overlay across the asset");
+  assertIncludes(staticCreativePreviewCard, "View full creative", "Full creative lightbox", "creative cards expose a full-size review modal");
+  assertIncludes(staticCreativePreviewCard, "aria-modal=\"true\"", "Full creative modal accessibility", "full creative review uses a dialog modal");
   assertIncludes("src/components/campaign/static-creative-preview-card.tsx", "line-clamp-3", "Creative card copy clamp", "creative cards show usable previews instead of full dense body copy");
   assertIncludes("src/components/campaign/static-creative-preview-card.tsx", "formatLabel", "UGC concept badge", "UGC-style concepts are visibly labeled in the creative selector");
   assertIncludes(staticCreativePreviewCard, "StaticCreativeSummaryCard", "Compact creative summary card", "selected creative lists use dense summary cards instead of tall repeated full previews");
+  assertIncludes(mediaBuyerFramework, "mediaBuyerReference", "Creative media-buyer reference gate", "quality gates score concrete media-buyer layout/reference logic");
+  assertIncludes(mediaBuyerFramework, "previewReadability", "Creative readability gate", "quality gates penalize covered, unreadable, or awkward preview states");
+  assertIncludes(mediaBuyerFramework, "generic stock-photo", "Creative stock-photo penalty", "quality gates penalize generic stock-photo-looking output");
+  assertIncludes(staticAdTemplateRenderer, "qualityGate?.accepted !== false", "Rejected generated creative guard", "detectably rejected generated assets are not treated as final previews");
+  assertIncludes(assetGenerationLifecycle, "asset.qualityGate?.accepted !== false", "Generated asset lifecycle guard", "static asset lifecycle does not mark rejected generated creatives as fully generated");
   assertIncludes(previewPage, "Primary creative", "Preview primary creative summary", "preview page leads with one creative summary instead of repeated visual cards");
   assertIncludes(previewPage, "View creative details", "Preview collapsed creative details", "preview page keeps secondary creative details collapsed by default");
   assertIncludes(previewPage, "h-[520px] overflow-hidden", "Preview funnel height cap", "preview page caps the funnel preview instead of adding an embedded scroll area");
@@ -694,6 +710,12 @@ function runOfflineChecks() {
   assertIncludes("scripts/smoke-test-checklist.md", "Confirm `/preview` and `/launch` show the same selected ad.", "Manual smoke checklist", "manual staging smoke checklist exists");
   assertIncludes(productionRunbook, "Signup Abuse Controls", "Signup abuse runbook", "owner-only Supabase Auth hardening steps are documented");
   assertIncludes(productionRunbook, "Vercel Firewall / WAF Baseline", "Vercel WAF runbook", "edge bot/rate-limit rollout is documented");
+  assertIncludes(selfServeScaleAudit, "100-client readiness", "Self-serve scale audit 100", "scale audit covers 100-client readiness");
+  assertIncludes(selfServeScaleAudit, "200-client readiness", "Self-serve scale audit 200", "scale audit covers 200-client readiness");
+  assertIncludes(selfServeScaleAudit, "500-client readiness", "Self-serve scale audit 500", "scale audit covers 500-client readiness");
+  assertIncludes(selfServeScaleAudit, "1,000-client readiness", "Self-serve scale audit 1000", "scale audit covers 1,000-client readiness");
+  assertIncludes(selfServeScaleAudit, "Higgsfield spend caps", "Self-serve scale audit provider caps", "scale audit covers provider spend caps");
+  assertIncludes(selfServeScaleAudit, "RLS/auth", "Self-serve scale audit security", "scale audit covers tenant security and auth risk");
   assertIncludes(ciGateSource, "npm run lint", "CI lint gate", "pull requests run lint before merge");
   assertIncludes(ciGateSource, "npm run typecheck", "CI typecheck gate", "pull requests run TypeScript validation before merge");
   assertIncludes(ciGateSource, "npm run build", "CI build gate", "pull requests build before merge");
@@ -743,7 +765,7 @@ async function runStagingChecks() {
     fail("Lead capture rejects invalid payload", `expected 400, got ${invalidLead.response.status}`);
   }
 
-  const testSlug = getEnv("SMOKE_TEST_FUNNEL_SLUG");
+  const testSlug = getEnv("SMOKE_TEST_FUNNEL_SLUG") ?? "raiaan-realty";
   if (testSlug) {
     const funnel = await request(`${baseUrl}/f/${testSlug}`, {
       redirect: "manual",

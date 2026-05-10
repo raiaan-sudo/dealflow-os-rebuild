@@ -235,20 +235,18 @@ export function StaticAdComposedPreview({
             alt={preview.headline}
             fill
             unoptimized
-            className="object-cover"
+            className={showGeneratedAsset ? "object-contain" : "object-cover"}
             src={preview.backgroundImageUrl}
           />
         ) : (
           <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px)] bg-[size:36px_36px] opacity-20" />
         )}
-        {showGeneratedAsset ? (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/45 to-transparent" />
-        ) : (
+        {!showGeneratedAsset ? (
           <>
             <div className="absolute inset-0 bg-black/18" />
             {renderTemplateDetails(preview, compact)}
           </>
-        )}
+        ) : null}
       </div>
 
       <div className={cn("space-y-3", compact ? "p-3" : "p-4")}>

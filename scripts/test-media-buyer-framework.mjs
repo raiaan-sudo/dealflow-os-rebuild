@@ -119,4 +119,32 @@ const genericCreative = evaluateCreativeQuality({
 assert.equal(genericCreative.accepted, false);
 assert.ok(genericCreative.hardFailures.length >= 3);
 
+const weakImagePrompt = evaluateCreativeQuality({
+  category: "buyer",
+  offer: "Get 3 early-access homes this month before they hit public sites",
+  mechanism: "off-market access system",
+  audience: "Austin buyers",
+  hook: "Before the best homes hit public sites, check this first.",
+  headline: "Get early access homes in Austin",
+  primaryText:
+    "An off-market access system gives Austin buyers a clearer way to review early homes before public listing traffic shows up.",
+  overlayText: "3 early homes",
+  cta: "View Homes",
+  visualConcept: "generic stock photo of a beautiful home with awkward covered text",
+  imagePrompt: "A beautiful property photo.",
+});
+assert.equal(weakImagePrompt.accepted, false);
+assert.ok(
+  weakImagePrompt.hardFailures.some((failure) => /media-buyer layout reference/i.test(failure)),
+  "image prompts without media-buyer reference logic are blocked",
+);
+assert.ok(
+  weakImagePrompt.hardFailures.some((failure) => /stock-photo/i.test(failure)),
+  "stock-photo-looking creative direction is blocked",
+);
+assert.ok(
+  weakImagePrompt.hardFailures.some((failure) => /readability|overlay|crop/i.test(failure)),
+  "detectable covered/unreadable preview states are blocked",
+);
+
 console.log("Media buyer framework tests passed.");
