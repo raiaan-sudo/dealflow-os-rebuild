@@ -619,8 +619,10 @@ function runOfflineChecks() {
   assertIncludes(imageProvider, "ALLOW_HIGGSFIELD_IMAGE_GENERATION !== \"true\"", "Higgsfield image generation kill switch", "paid image provider returns unsupported unless explicitly enabled");
   assertIncludes(imageProvider, "HiggsfieldImageProvider", "Higgsfield image provider", "static image generation has a Higgsfield provider implementation");
   assertIncludes(higgsfieldClient, "@higgsfield/client/v2", "Official Higgsfield SDK", "Higgsfield integration uses the server-side SDK instead of MCP or CLI");
+  assertIncludes(higgsfieldClient, "resolveImageEndpoint", "Higgsfield endpoint mapping", "Higgsfield Cloud model aliases are mapped to supported API endpoints instead of being posted as URL paths");
+  assertIncludes(higgsfieldClient, "\"/v1/text2image/soul\"", "Higgsfield Cloud image endpoint", "Marketing Studio image aliases use the supported Cloud text-to-image endpoint");
   assertIncludes(higgsfieldClient, "buildImageInput", "Higgsfield model parameter mapping", "Higgsfield Cloud requests use the selected model's accepted input shape instead of a one-size-fits-all payload");
-  assertIncludes(higgsfieldClient, "resolution: \"1k\"", "Higgsfield marketing image payload", "Marketing Studio image renders send a supported resolution parameter");
+  assertIncludes(higgsfieldClient, "width_and_height", "Higgsfield image payload", "Higgsfield Cloud image renders send supported Soul text-to-image dimensions");
   assertIncludes(higgsfieldClient, "withPolling: true", "Higgsfield image polling", "image generation waits for a completed result before surfacing a file URL");
   assertIncludes(higgsfieldClient, "withPolling: false", "Higgsfield async video start", "video generation stays async and does not block the request path");
   assertIncludes(launchRoute, "assertMetaLiveLaunchEnabled", "Reachable Meta live launch kill switch", "direct Meta launch route fails closed unless ALLOW_META_LIVE_LAUNCH=true");

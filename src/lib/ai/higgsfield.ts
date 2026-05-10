@@ -62,6 +62,8 @@ type HiggsfieldImageInput = {
   enhance_prompt?: boolean;
 };
 
+const HIGGSFIELD_SOUL_TEXT_TO_IMAGE_ENDPOINT = "/v1/text2image/soul";
+
 function safeText(value: unknown) {
   return (value ?? "").toString().trim();
 }
@@ -191,11 +193,27 @@ function mapAspectRatioToSoulSize(aspectRatio: string) {
   return "1536x1536";
 }
 
-function buildImageInput(model: string, request: HiggsfieldImageRequest): HiggsfieldImageInput {
+function resolveImageEndpoint(model: string) {
+  const normalized = safeText(model);
+
+  if (
+    normalized === "marketing_studio_image" ||
+    normalized === "text2image_soul_v2" ||
+    normalized === "higgsfield_soul" ||
+    normalized === "soul_cinematic" ||
+    normalized === "soul_location"
+  ) {
+    return HIGGSFIELD_SOUL_TEXT_TO_IMAGE_ENDPOINT;
+  }
+
+  return normalized.startsWith("/") || normalized.includes("/") ? normalized : `/${normalized}`;
+}
+
+function buildImageInput(endpoint: string, request: HiggsfieldImageRequest): HiggsfieldImageInput {
   const aspectRatio = safeText(request.aspectRatio) || "1:1";
   const prompt = buildPromptWithGuardrails(request);
 
-  if (model === "/v1/text2image/soul" || model === "text2image_soul_v2") {
+  if (endpoint === HIGGSFIELD_SOUL_TEXT_TO_IMAGE_ENDPOINT) {
     return {
       prompt,
       width_and_height: mapAspectRatioToSoulSize(aspectRatio),
@@ -223,8 +241,9 @@ export async function generateHiggsfieldImage(
 
   const model = safeText(request.model) || env.imageModel;
   const client = await createClient();
-  const response = await client.subscribe(model, {
-    input: buildImageInput(model, request),
+  const endpoint = resolveImageEndpoint(model);
+  const response = await client.subscribe(endpoint, {
+    input: buildImageInput(endpoint, request),
     withPolling: true,
   });
 
