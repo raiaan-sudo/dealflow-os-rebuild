@@ -441,6 +441,18 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
 
   const activeCreativeIndex = Math.max(0, rankedCreatives.findIndex((creative) => creative.id === activeCreative.id));
   const activeCreativeSelected = selectedIds.includes(activeCreative.id);
+  const imageRenderPending = /being prepared|preparing image previews|will update/i.test(renderMessage ?? "");
+  const imageActionPending = renderingImages || imageRenderPending;
+  const imagePendingMessage = "Image preview is being prepared. This page will update when the visual is ready.";
+  const getDisplayCreative = (creative: CreativeOption): CreativeOption =>
+    imageRenderPending && creativeNeedsImageGeneration(creative)
+      ? {
+          ...creative,
+          imageGenerationState: "generating",
+          imageGenerationMessage: imagePendingMessage,
+        }
+      : creative;
+  const displayActiveCreative = getDisplayCreative(activeCreative);
 
   return (
     <div className="space-y-4">
@@ -460,21 +472,21 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
             </span>
           </div>
           <StaticCreativePreviewCard
-            category={activeCreative.category}
-            cta={activeCreative.cta}
-            headline={activeCreative.headline}
-            imageGenerationMessage={activeCreative.imageGenerationMessage}
-            imageGenerationState={activeCreative.imageGenerationState}
-            imageUrl={activeCreative.imageUrl}
-            location={activeCreative.location}
-            formatLabel={activeCreative.formatLabel}
-            offer={activeCreative.offer}
-            overlayText={activeCreative.overlayText}
-            primaryText={activeCreative.primaryText}
-            qualityGate={activeCreative.qualityGate}
-            score={activeCreative.score}
+            category={displayActiveCreative.category}
+            cta={displayActiveCreative.cta}
+            headline={displayActiveCreative.headline}
+            imageGenerationMessage={displayActiveCreative.imageGenerationMessage}
+            imageGenerationState={displayActiveCreative.imageGenerationState}
+            imageUrl={displayActiveCreative.imageUrl}
+            location={displayActiveCreative.location}
+            formatLabel={displayActiveCreative.formatLabel}
+            offer={displayActiveCreative.offer}
+            overlayText={displayActiveCreative.overlayText}
+            primaryText={displayActiveCreative.primaryText}
+            qualityGate={displayActiveCreative.qualityGate}
+            score={displayActiveCreative.score}
             selectedCount={selectedCreatives.length}
-            visualPromptBrief={activeCreative.visualPromptBrief}
+            visualPromptBrief={displayActiveCreative.visualPromptBrief}
           />
         </div>
 
@@ -494,28 +506,28 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => void queueImagePreviews({
-                    force: needsImageGeneration,
-                    missingOnly: hasMissingImages && !hasFailedOrRejectedImages,
-                  })}
-                  disabled={renderingImages}
-                >
-                  {renderingImages
-                    ? "Refreshing previews..."
-                    : needsImageGeneration
-                      ? "Regenerate previews"
-                      : "Refresh image previews"}
-                </Button>
+	                  onClick={() => void queueImagePreviews({
+	                    force: needsImageGeneration,
+	                    missingOnly: hasMissingImages && !hasFailedOrRejectedImages,
+	                  })}
+	                  disabled={imageActionPending}
+	                >
+	                  {imageActionPending
+	                    ? "Refreshing previews..."
+	                    : needsImageGeneration
+	                      ? "Regenerate previews"
+	                      : "Refresh image previews"}
+	                </Button>
               ) : null}
               {activeCreative.imageGenerationState === "failed" || activeCreative.qualityGate?.accepted === false ? (
                 <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => void queueImagePreviews({ force: true, missingOnly: false })}
-                  disabled={renderingImages}
-                >
-                  {renderingImages ? "Retrying..." : "Retry preview render"}
-                </Button>
+	                  type="button"
+	                  variant="secondary"
+	                  onClick={() => void queueImagePreviews({ force: true, missingOnly: false })}
+	                  disabled={imageActionPending}
+	                >
+	                  {imageActionPending ? "Retrying..." : "Retry preview render"}
+	                </Button>
               ) : null}
               {renderMessage ? (
                 <span className="text-sm leading-6 text-muted-foreground">{renderMessage}</span>
@@ -531,14 +543,14 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                   : "Some previews need a cleaner image render. DealFlow will keep the generated asset visible while it prepares replacements automatically."}
               {hasCreditBlocker ? (
                 <button
-                  type="button"
-                  className="ml-2 font-semibold text-amber-50 underline decoration-amber-200/50 underline-offset-4"
-                  onClick={() => void queueImagePreviews({ force: true })}
-                  disabled={renderingImages}
-                >
-                  Retry image previews
-                </button>
-              ) : hasAttemptedImageGeneration && !renderingImages ? (
+	                  type="button"
+	                  className="ml-2 font-semibold text-amber-50 underline decoration-amber-200/50 underline-offset-4"
+	                  onClick={() => void queueImagePreviews({ force: true })}
+	                  disabled={imageActionPending}
+	                >
+	                  Retry image previews
+	                </button>
+	              ) : hasAttemptedImageGeneration && !imageActionPending ? (
                 <button
                   type="button"
                   className="ml-2 font-semibold text-amber-50 underline decoration-amber-200/50 underline-offset-4"
@@ -551,28 +563,31 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
           ) : null}
 
           <div className="grid content-start gap-3">
-            {selectedCreatives.map((creative) => (
-              <StaticCreativeSummaryCard
-                angleLabel={creative.visualPromptBrief?.mechanism || creative.breakdown?.hook}
-                category={creative.category}
-                cta={creative.cta}
-                headline={creative.headline}
-                imageGenerationMessage={creative.imageGenerationMessage}
-                imageGenerationState={creative.imageGenerationState}
-                imageUrl={creative.imageUrl}
-                key={creative.id}
-                location={creative.location}
-                formatLabel={creative.formatLabel}
-                offer={creative.offer}
-                overlayText={creative.overlayText}
-                primaryText={creative.primaryText}
-                qualityGate={creative.qualityGate}
-                score={creative.score}
-                selected
-                selectedCount={selectedCreatives.length}
-                visualPromptBrief={creative.visualPromptBrief}
-              />
-            ))}
+            {selectedCreatives.map((creative) => {
+              const displayCreative = getDisplayCreative(creative);
+              return (
+                <StaticCreativeSummaryCard
+                  angleLabel={displayCreative.visualPromptBrief?.mechanism || displayCreative.breakdown?.hook}
+                  category={displayCreative.category}
+                  cta={displayCreative.cta}
+                  headline={displayCreative.headline}
+                  imageGenerationMessage={displayCreative.imageGenerationMessage}
+                  imageGenerationState={displayCreative.imageGenerationState}
+                  imageUrl={displayCreative.imageUrl}
+                  key={displayCreative.id}
+                  location={displayCreative.location}
+                  formatLabel={displayCreative.formatLabel}
+                  offer={displayCreative.offer}
+                  overlayText={displayCreative.overlayText}
+                  primaryText={displayCreative.primaryText}
+                  qualityGate={displayCreative.qualityGate}
+                  score={displayCreative.score}
+                  selected
+                  selectedCount={selectedCreatives.length}
+                  visualPromptBrief={displayCreative.visualPromptBrief}
+                />
+              );
+            })}
           </div>
 
           <div className="mt-auto rounded-2xl border border-white/10 bg-black/18 p-4">
@@ -715,6 +730,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
         </div>
         <div className="mt-5 flex gap-3 overflow-x-auto pb-2">
           {rankedCreatives.map((creative, index) => {
+            const displayCreative = getDisplayCreative(creative);
             const selected = selectedIds.includes(creative.id);
             const active = activeCreative.id === creative.id;
             return (
@@ -751,24 +767,24 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                   onClick={() => setActiveCreativeId(creative.id)}
                 >
                   <StaticCreativeSummaryCard
-                    angleLabel={creative.visualPromptBrief?.mechanism || creative.breakdown?.hook}
-                    category={creative.category}
-                    cta={creative.cta}
-                    headline={creative.headline}
-                    imageGenerationMessage={creative.imageGenerationMessage}
-                    imageGenerationState={creative.imageGenerationState}
-                    imageUrl={creative.imageUrl}
-                    location={creative.location}
-                    formatLabel={creative.formatLabel}
-                    offer={creative.offer}
-                    overlayText={creative.overlayText}
-                    primaryText={creative.primaryText}
-                    qualityGate={creative.qualityGate}
-                    score={creative.score}
+                    angleLabel={displayCreative.visualPromptBrief?.mechanism || displayCreative.breakdown?.hook}
+                    category={displayCreative.category}
+                    cta={displayCreative.cta}
+                    headline={displayCreative.headline}
+                    imageGenerationMessage={displayCreative.imageGenerationMessage}
+                    imageGenerationState={displayCreative.imageGenerationState}
+                    imageUrl={displayCreative.imageUrl}
+                    location={displayCreative.location}
+                    formatLabel={displayCreative.formatLabel}
+                    offer={displayCreative.offer}
+                    overlayText={displayCreative.overlayText}
+                    primaryText={displayCreative.primaryText}
+                    qualityGate={displayCreative.qualityGate}
+                    score={displayCreative.score}
                     selected={selected}
                     index={index}
                     selectedCount={selectedCreatives.length}
-                    visualPromptBrief={creative.visualPromptBrief}
+                    visualPromptBrief={displayCreative.visualPromptBrief}
                   />
                 </button>
               </article>
