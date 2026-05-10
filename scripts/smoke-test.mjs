@@ -308,6 +308,8 @@ function runOfflineChecks() {
   assertIncludes(creativeWizard, "Retry preview render", "Creative retry secondary action", "retry/regenerate remains a secondary failed-state action");
   assertIncludes(creativeWizard, "AI UGC video", "Creative AI UGC video panel", "creative selection exposes the AI UGC video concept and render status");
   assertIncludes(creativeWizard, "/generate-video", "Creative AI UGC video render", "creative selection can queue the campaign video render from the UGC panel");
+  assertIncludes(creativeWizard, "customerVideoMessage", "Creative video error sanitizer", "AI UGC video failures do not expose provider guard internals to customers");
+  assertIncludes(avatarProvider, "AI video rendering is not enabled for this workspace yet.", "Video disabled customer copy", "provider kill-switch failures use customer-safe copy");
   assertIncludes(creativeWizard, "imageRenderPending", "Creative retry optimistic state", "retry clicks immediately clear stale failed-copy and show a generating state while provider work runs");
   assertIncludes(creativeWizard, "Image preview is being prepared. This page will update when the visual is ready.", "Creative retry pending copy", "creative cards show immediate pending feedback instead of stale cap errors");
   assertIncludes(creativeWizard, "Back to build", "Creative wizard build return", "creative selection returns to the Build workspace instead of another setup flow");

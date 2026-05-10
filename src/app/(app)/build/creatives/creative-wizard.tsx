@@ -88,6 +88,20 @@ function creativeNeedsImageGeneration(creative: CreativeOption) {
     creative.qualityGate?.accepted === false;
 }
 
+function customerVideoMessage(message?: string | null) {
+  const text = message?.trim();
+
+  if (!text) {
+    return null;
+  }
+
+  if (/provider usage guard|explicitly enabled|generation is disabled/i.test(text)) {
+    return "AI video rendering is not enabled for this workspace yet.";
+  }
+
+  return text;
+}
+
 export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: CreativeWizardProps) {
   const router = useRouter();
   const jobStreamsRef = useRef<Map<string, EventSource>>(new Map());
@@ -675,9 +689,9 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                       : "Render AI UGC video"}
                 </Button>
               ) : null}
-              {videoMessage || primaryVideoCreative.videoGenerationMessage ? (
+              {customerVideoMessage(videoMessage || primaryVideoCreative.videoGenerationMessage) ? (
                 <span className="text-sm leading-6 text-muted-foreground">
-                  {videoMessage || primaryVideoCreative.videoGenerationMessage}
+                  {customerVideoMessage(videoMessage || primaryVideoCreative.videoGenerationMessage)}
                 </span>
               ) : null}
             </div>

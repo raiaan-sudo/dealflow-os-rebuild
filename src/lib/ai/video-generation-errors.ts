@@ -96,6 +96,18 @@ export function toVideoProviderApiError(error: unknown, operation: "start" | "ch
     );
   }
 
+  if (
+    normalized.includes("provider usage guard") ||
+    normalized.includes("explicitly enabled") ||
+    normalized.includes("generation is disabled")
+  ) {
+    return new ApiError(
+      503,
+      "AI video rendering is not enabled for this workspace yet.",
+      "video_generation_not_enabled",
+    );
+  }
+
   if (normalized.includes("avatar_id") || normalized.includes("no heygen avatar")) {
     return new ApiError(
       503,

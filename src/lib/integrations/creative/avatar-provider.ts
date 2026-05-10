@@ -267,7 +267,7 @@ class HiggsfieldVideoProvider implements AvatarVideoProvider {
         status: "unsupported",
         fileUrl: null,
         thumbnailUrl: null,
-        error: "AI video generation is disabled until the provider usage guard is explicitly enabled.",
+        error: "AI video rendering is not enabled for this workspace yet.",
       };
     }
 
