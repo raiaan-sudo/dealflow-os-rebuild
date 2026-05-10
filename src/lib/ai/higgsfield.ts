@@ -132,6 +132,26 @@ async function createClient() {
   });
 }
 
+async function createLegacyClient() {
+  const env = getHiggsfieldCredentials();
+
+  if (!env) {
+    throw new Error("Higgsfield media generation is not configured.");
+  }
+
+  const { HiggsfieldClient } = await import("@higgsfield/client");
+
+  return new HiggsfieldClient({
+    apiKey: env.apiKey ?? undefined,
+    apiSecret: env.apiSecret ?? undefined,
+    baseURL: env.baseUrl,
+    timeout: 120_000,
+    maxRetries: 1,
+    pollInterval: 2_500,
+    maxPollTime: 240_000,
+  });
+}
+
 function extractResult(
   response: HiggsfieldResponseShape,
   fallbackModel: string,
@@ -240,12 +260,15 @@ export async function generateHiggsfieldImage(
   }
 
   const model = safeText(request.model) || env.imageModel;
-  const client = await createClient();
   const endpoint = resolveImageEndpoint(model);
-  const response = await client.subscribe(endpoint, {
-    input: buildImageInput(endpoint, request),
-    withPolling: true,
-  });
+  const input = buildImageInput(endpoint, request);
+  const response =
+    endpoint === HIGGSFIELD_SOUL_TEXT_TO_IMAGE_ENDPOINT
+      ? await (await createLegacyClient()).generate(endpoint, input, { withPolling: true })
+      : await (await createClient()).subscribe(endpoint, {
+          input,
+          withPolling: true,
+        });
 
   return extractResult(response as HiggsfieldResponseShape, model);
 }
