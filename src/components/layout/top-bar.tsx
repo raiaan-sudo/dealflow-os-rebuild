@@ -66,6 +66,7 @@ export function TopBar({ userName, userEmail, organizationName, activeCampaignId
 
           <Link
             href={buildCampaignScopedHref("/settings", campaignId)}
+            aria-label="Open settings"
             className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/8 bg-white/[0.04] text-muted-foreground transition hover:border-primary/20 hover:bg-primary/[0.08] hover:text-foreground"
           >
             <Settings className="size-4" />

@@ -14,6 +14,7 @@ import {
 } from "@/lib/services/campaign-plan-document";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import { getCampaignById, updateCampaignPublishState } from "@/lib/services/campaign-persistence";
+import { assertCampaignCanPublishFunnel } from "@/lib/services/campaign-entitlements";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { runTrackedSystemJob } from "@/lib/services/system-job-service";
@@ -176,6 +177,8 @@ export async function POST(request: Request) {
             "campaign_artifacts_missing",
           );
         }
+
+        await assertCampaignCanPublishFunnel(campaignId);
 
         const publishRecord = (
           await updateCampaignPublishState({

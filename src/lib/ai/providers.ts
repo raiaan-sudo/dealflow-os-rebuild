@@ -32,6 +32,7 @@ export type ImageAdResult = {
   generationState: "generated" | "unavailable" | "failed";
   generationMessage: string | null;
   generationModel: string | null;
+  generationProvider: string | null;
 };
 
 export type ImageProviderUsageContext = {
@@ -248,6 +249,7 @@ export async function createImageAd(
   let generationState: ImageAdResult["generationState"] = "unavailable";
   let generationMessage: string | null = null;
   let generationModel: string | null = null;
+  let generationProvider: string | null = null;
   const imageProvider = getImageGenerationProvider();
   const mediaProvider = getMediaGenerationProvider();
   const imageGenerationEnabled =
@@ -255,12 +257,13 @@ export async function createImageAd(
       ? process.env.ALLOW_HIGGSFIELD_IMAGE_GENERATION === "true"
       : process.env.ALLOW_OPENAI_IMAGE_GENERATION === "true";
 
-  if (imageProvider.isConfigured()) {
+  if (imageGenerationEnabled && !providerUsage) {
+    generationState = "failed";
+    generationMessage = "AI image rendering requires an approved credit reservation.";
+  } else if (imageGenerationEnabled && imageProvider.isConfigured()) {
     let budgetReservation: { eventId: string | null | undefined } | null = null;
     try {
-      if (imageGenerationEnabled && providerUsage) {
-        budgetReservation = await providerUsage.reserve();
-      }
+      budgetReservation = await providerUsage?.reserve() ?? null;
 
       const result = await imageProvider.execute({
         aspectRatio: staticAsset?.imagePromptConfig?.aspectRatio ?? "1:1",
@@ -279,6 +282,7 @@ export async function createImageAd(
       if (parsed.fileUrl) {
         imageUrl = parsed.fileUrl;
         generationState = "generated";
+        generationProvider = imageProvider.name;
         generationModel =
           typeof parsed.metadata?.model === "string" ? parsed.metadata.model : null;
         await providerUsage?.mark({
@@ -327,7 +331,9 @@ export async function createImageAd(
   } else {
     const validation = imageProvider.validateConfig();
     generationMessage =
-      validation.missingConfig.length > 0
+      !imageGenerationEnabled
+        ? "AI image rendering is not enabled for this workspace yet."
+        : validation.missingConfig.length > 0
         ? `Image generation is not configured. Missing: ${validation.missingConfig.join(", ")}.`
         : "Image generation is not configured.";
   }
@@ -341,6 +347,7 @@ export async function createImageAd(
     generationState,
     generationMessage,
     generationModel,
+    generationProvider,
   };
 }
 

@@ -919,23 +919,7 @@ export function CampaignBuilderWorkspace({
     setBuilderError(null);
 
     try {
-      const response = await fetchWithRetry("/api/build-campaign", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(strategy),
-        retries: 1,
-        timeoutMs: 10000,
-      });
-
-      const data = (await response.json()) as BuiltCampaign | { error?: string };
-
-      if (!response.ok) {
-        throw new Error("error" in data && data.error ? data.error : "Campaign build failed.");
-      }
-
-      const built = data as BuiltCampaign;
+      const built = buildCampaign(strategy);
       replaceCampaignWithoutRevision(built);
       setCampaignRevisions([]);
       setCampaignName(`${strategy.location || "Local"} ${strategy.offer || "Campaign"}`.trim());
@@ -1498,8 +1482,16 @@ export function CampaignBuilderWorkspace({
     { key: "setup", label: "Campaign Setup" },
     { key: "funnel", label: "Funnel" },
     { key: "creatives", label: "Creatives" },
-    { key: "review", label: "Review", href: "/preview" },
-    { key: "go-live", label: "Launch", href: "/launch" },
+    {
+      key: "review",
+      label: "Review",
+      href: savedCampaignId ? `/preview?campaignId=${encodeURIComponent(savedCampaignId)}` : "/preview",
+    },
+    {
+      key: "go-live",
+      label: "Launch",
+      href: savedCampaignId ? `/launch?campaignId=${encodeURIComponent(savedCampaignId)}` : "/launch",
+    },
   ];
   const currentGuidedIndex =
     activeTab === "setup" ? 0 : activeTab === "funnel" ? 1 : 2;

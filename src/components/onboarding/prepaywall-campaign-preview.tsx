@@ -526,10 +526,10 @@ export function PrepaywallCampaignPreview({
               <CompactLockedPill icon={MonitorSmartphone} label="Export locked" />
             </div>
 
-            <div className="flex min-w-0 items-center gap-2 rounded-full border border-white/10 bg-black/18 px-3 py-2 text-[11px] leading-4 text-white/52">
+            <div className="flex min-w-0 items-start gap-2 rounded-[18px] border border-white/10 bg-black/18 px-3 py-2 text-[11px] leading-4 text-white/52">
               <MousePointerClick className="size-3.5 shrink-0 text-cyan-100" />
-              <span className="truncate">
-                No provider calls run here. No Meta, SMS, leads, Stripe charge, AI image, or AI video is created by this preview.
+              <span>
+                Nothing is sent, charged, or generated from this preview. No Meta campaign, SMS, lead, Stripe charge, AI image, or AI video is created here.
               </span>
             </div>
           </div>
@@ -624,8 +624,8 @@ export function PrepaywallCampaignPreview({
 
       <div className="mt-3 flex items-center gap-2 rounded-[18px] border border-white/10 bg-black/18 px-3 py-2.5 text-xs leading-5 text-white/54">
         <MousePointerClick className="size-4 text-cyan-100" />
-        <span className={sidecarMode ? "truncate" : ""}>
-          No provider calls run here. No Meta campaigns, SMS, leads, Stripe charge, AI image, or AI video is created by this preview.
+        <span>
+          Nothing is sent, charged, or generated from this preview. No Meta campaign, SMS, lead, Stripe charge, AI image, or AI video is created here.
         </span>
       </div>
     </Card>

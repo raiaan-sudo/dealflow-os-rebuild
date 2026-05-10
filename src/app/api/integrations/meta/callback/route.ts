@@ -89,7 +89,7 @@ export async function GET(req: NextRequest) {
     const env = getMetaEnvOrThrow();
     const verifiedState = verifyMetaOAuthState(returnedState, env.encryptionKey);
     const stateMatchesCookie = Boolean(returnedState && storedState && returnedState === storedState);
-    const stateVerified = stateMatchesCookie || Boolean(verifiedState);
+    const stateVerified = stateMatchesCookie && Boolean(verifiedState);
     const returnTo = verifiedState?.returnTo ?? cookieReturnTo;
     const redirectBase = getSafeRedirectBase(returnTo, appUrl);
     const redirectWithMetaError = (metaErrorCode: string) => {
@@ -109,7 +109,7 @@ export async function GET(req: NextRequest) {
       return redirectWithMetaError("no_code");
     }
 
-    if (!returnedState || !stateVerified) {
+    if (!returnedState || !storedState || !stateVerified) {
       return redirectWithMetaError("invalid_state");
     }
 

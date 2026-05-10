@@ -61,6 +61,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       visualConcept: asset.visualConcept,
       imagePrompt: asset.imagePrompt,
       imageGenerationState: asset.imageGenerationState,
+      imageGenerationProvider: asset.imageGenerationProvider ?? null,
       imageGenerationModel: asset.imageGenerationModel,
       imageGenerationMessage: asset.imageGenerationMessage,
       recommended: asset.recommended,
@@ -84,7 +85,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
         format: "1:1",
         generation_method: "image_generation",
         status,
-        provider_name: "openai",
+        provider_name: asset.imageGenerationProvider ?? null,
         file_url: asset.imageUrl || null,
         thumbnail_url: asset.imageUrl || null,
         metadata: {
@@ -105,7 +106,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
         format: "1:1",
         generation_method: "image_generation",
         status,
-        provider_name: "openai",
+        provider_name: asset.imageGenerationProvider ?? null,
         file_url: asset.imageUrl || null,
         thumbnail_url: asset.imageUrl || null,
         metadata: {

@@ -50,7 +50,7 @@ export default function HomePage() {
               <Link href="/login">Sign in</Link>
             </Button>
             <Button asChild size="sm">
-              <Link href="/dashboard">
+              <Link href="/dashboard" prefetch={false}>
                 <span className="hidden sm:inline">Open app</span>
                 <span className="sm:hidden">App</span>
                 <ArrowRight aria-hidden="true" />
@@ -76,7 +76,7 @@ export default function HomePage() {
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Button asChild size="lg">
-              <Link href="/welcome">
+              <Link href="/welcome" prefetch={false}>
                 Start building
                 <ArrowRight aria-hidden="true" />
               </Link>

@@ -773,7 +773,15 @@ export async function validateMetaLaunchSelections(options?: {
       );
     }
 
-    const ready = accountValid && pageValid && pixelValid;
+    if (!tracking.launchDomain) {
+      errors.push("Add a launch domain before sending campaign traffic to Meta.");
+    } else if (!tracking.domainVerified) {
+      errors.push("Verify the launch domain before sending campaign traffic to Meta.");
+    } else if (!domainValid) {
+      errors.push("The public funnel URL must match the verified launch domain before Meta launch.");
+    }
+
+    const ready = accountValid && pageValid && pixelValid && domainValid;
     return {
       checkedAt,
       tokenValid: true,

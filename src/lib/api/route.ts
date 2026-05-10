@@ -102,6 +102,16 @@ function addExpectedOrigin(expectedOrigins: Set<string>, value: string | null | 
   }
 }
 
+function addExpectedOrigins(expectedOrigins: Set<string>, value: string | null | undefined) {
+  if (!value) {
+    return;
+  }
+
+  for (const item of value.split(",")) {
+    addExpectedOrigin(expectedOrigins, item.trim());
+  }
+}
+
 function addHostOrigin(
   expectedOrigins: Set<string>,
   host: string | null,
@@ -175,6 +185,8 @@ export function assertSameOriginRequest(request: Request) {
   if (process.env.NEXT_PUBLIC_APP_URL) {
     addExpectedOrigin(expectedOrigins, process.env.NEXT_PUBLIC_APP_URL);
   }
+
+  addExpectedOrigins(expectedOrigins, process.env.TRUSTED_APP_ORIGINS);
 
   if (!isProduction) {
     addExpectedOrigin(expectedOrigins, request.url);

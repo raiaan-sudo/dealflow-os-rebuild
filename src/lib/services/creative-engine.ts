@@ -64,6 +64,7 @@ export type StaticCreativeAsset = {
   imageGenerationState: "generated" | "generating" | "unavailable" | "failed";
   imageGenerationMessage: string | null;
   imageGenerationModel: string | null;
+  imageGenerationProvider?: string | null;
   visualConcept: string;
   imagePrompt: string;
   imagePromptConfig: ImagePromptConfig | null;
@@ -1808,6 +1809,7 @@ export async function generateStaticCreativeAds(
           imageGenerationState: imageAd.generationState,
           imageGenerationMessage: imageAd.generationMessage,
           imageGenerationModel: imageAd.generationModel,
+          imageGenerationProvider: imageAd.generationProvider,
         };
       } catch (error) {
         return {
@@ -1817,6 +1819,7 @@ export async function generateStaticCreativeAds(
           imageGenerationMessage:
             error instanceof Error ? error.message : "Static image generation failed.",
           imageGenerationModel: asset.preferredImageModel,
+          imageGenerationProvider: null,
         };
       }
     }),

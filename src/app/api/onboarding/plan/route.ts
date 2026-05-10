@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { assertSameOriginRequest, parseOptionalJsonBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { logWarn } from "@/lib/logging";
+import { ACTIVE_CAMPAIGN_COOKIE } from "@/lib/paywall-access";
 import { normalizePhone } from "@/lib/phone";
 import { recordActivationEvent } from "@/lib/services/activation-telemetry-service";
 import { upsertAgentProfile } from "@/lib/services/internal-lead-notification-service";
@@ -790,7 +791,15 @@ export async function POST(req: Request) {
     }
 
     const responseBody = buildSuccessResponse(savedPlan.id);
-    return NextResponse.json(responseBody);
+    const response = NextResponse.json(responseBody);
+    response.cookies.set(ACTIVE_CAMPAIGN_COOKIE, savedPlan.id, {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30,
+    });
+
+    return response;
   } catch (error) {
     const serializedError = extractSerializableError(error);
 

@@ -315,11 +315,11 @@ export default async function LaunchAliasPage({
           : `No DealFlow budget cap is applied. Launch will use the requested daily budget of ${formatBudgetCap(dailyBudgetCents)}.`,
     },
     {
-      label: "Launch switch",
+      label: "Launch approval",
       ready: providerLaunchEnabled,
       detail: providerLaunchEnabled
-        ? "Provider launch switch is on; Meta objects are still created PAUSED."
-        : "Provider launch switch is off, so the route will not create Meta objects.",
+        ? "Final launch approval is enabled. Meta campaigns are still created paused for review."
+        : "Final launch approval is pending, so DealFlow will not create Meta campaign objects yet.",
     },
   ];
   const metaStatusText = metaLaunchReady
@@ -343,7 +343,7 @@ export default async function LaunchAliasPage({
     ...(!publicFunnelPublished ? ["Publish the public funnel snapshot so Meta has a live destination URL."] : []),
     ...(!providerLaunchEnabled
       ? [
-          "The owner-controlled launch switch is off. DealFlow will not create Meta campaign objects until ALLOW_META_LIVE_LAUNCH is enabled.",
+          "Final launch approval is pending. DealFlow will not create Meta campaign objects until the owner enables live launch approvals.",
         ]
       : []),
   ];
@@ -585,8 +585,8 @@ export default async function LaunchAliasPage({
               {launchRoomReady ? "All launch gates are ready" : "Launch gates still need attention"}
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-7 text-muted-foreground">
-              Launch remains blocked until billing, Meta selections, provider preflight, selected creative,
-              published funnel, and the provider launch switch all pass.
+              Launch remains blocked until billing, Meta selections, launch checks, selected creative,
+              published funnel, and final launch approval all pass.
             </p>
           </div>
           <StatusPill tone={launchRoomReady ? "success" : "warning"}>

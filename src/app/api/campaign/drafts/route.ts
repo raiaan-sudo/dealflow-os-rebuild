@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { NextResponse } from "next/server";
 import { assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
+import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import {
   getCampaignDraftActions,
   refreshCampaignDraftActions,
@@ -16,14 +17,35 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const campaignId = url.searchParams.get("campaignId");
-    const refresh = url.searchParams.get("refresh") === "true";
-    const drafts = refresh
-      ? await refreshCampaignDraftActions()
-      : await getCampaignDraftActions(campaignId);
+    const drafts = await getCampaignDraftActions(campaignId);
 
     return NextResponse.json({
       live: true,
       campaignId: campaignId ?? null,
+      drafts,
+    });
+  } catch (error) {
+    return handleApiError(error, "Campaign drafts");
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    assertSameOriginRequest(request);
+    const rateLimit = await consumeRateLimit({
+      key: getRateLimitKey(request, "campaign-drafts-refresh"),
+      limit: 6,
+      windowMs: 60_000,
+    });
+
+    if (rateLimit && !rateLimit.allowed) {
+      return buildRateLimitResponse(rateLimit.resetAt);
+    }
+
+    const drafts = await refreshCampaignDraftActions();
+
+    return NextResponse.json({
+      live: true,
       drafts,
     });
   } catch (error) {
