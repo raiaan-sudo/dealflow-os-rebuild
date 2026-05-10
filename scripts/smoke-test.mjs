@@ -302,10 +302,12 @@ function runOfflineChecks() {
   assertExcludes(buildCreativesPage, "ArtifactRecoveryPanel", "Creative technical recovery hidden", "agents do not see technical artifact recovery under Build");
   assertExcludes(buildCreativesPage, "Creative artifacts are missing", "Creative missing copy hidden", "missing creative artifacts no longer show as an app page");
   assertIncludes(buildCreativesPage, "max-w-[1500px]", "Creative build workspace width", "creative selection uses more of the desktop viewport");
-  assertIncludes(creativeWizard, "Primary creative", "Creative wizard primary focus", "creative selection leads with one primary creative instead of repeated stacks");
-  assertIncludes(creativeWizard, "Change selected creatives", "Creative queue collapsed", "the full creative queue is secondary by default");
+  assertIncludes(creativeWizard, "Selected creative preview", "Creative wizard primary focus", "creative selection leads with one large selected creative preview instead of repeated stacks");
+  assertIncludes(creativeWizard, "Creative carousel", "Creative carousel selector", "agents can view every generated creative and select the test set from an always-visible carousel");
   assertIncludes(creativeWizard, "Keep at least one UGC-style concept", "Creative UGC quota gate", "selected creative sets must retain a UGC-style concept when available");
-  assertIncludes(creativeWizard, "Retry failed preview", "Creative retry secondary action", "retry/regenerate remains a secondary failed-state action");
+  assertIncludes(creativeWizard, "Retry preview render", "Creative retry secondary action", "retry/regenerate remains a secondary failed-state action");
+  assertIncludes(creativeWizard, "AI UGC video", "Creative AI UGC video panel", "creative selection exposes the AI UGC video concept and render status");
+  assertIncludes(creativeWizard, "/generate-video", "Creative AI UGC video render", "creative selection can queue the campaign video render from the UGC panel");
   assertIncludes(creativeWizard, "Back to build", "Creative wizard build return", "creative selection returns to the Build workspace instead of another setup flow");
   assertExcludes(creativeWizard, /OpenAI|HeyGen/i, "Creative wizard provider jargon hidden", "creative selection does not expose OpenAI or HeyGen copy to customers");
   assertIncludes("src/lib/services/funnel-engine.ts", "cleanMarketingCopy", "Funnel copy sanitizer", "funnel copy removes awkward repeated market and spacing artifacts");
@@ -318,6 +320,7 @@ function runOfflineChecks() {
   assertIncludes(creativeEngine, "static-ugc-proof", "Static UGC concept slot", "creative test sets reserve a UGC-style proof concept inside the six static image renders");
   assertIncludes(creativeEngine, "static-ugc-walkthrough", "Static UGC walkthrough slot", "creative test sets reserve a UGC-style walkthrough/native social concept inside the six static image renders");
   assertIncludes(campaignVisualPromptBuilder, "finished, high-converting paid social creative frame", "Higgsfield prompt quality bar", "image prompts ask for polished ad-ready creative frames instead of generic real estate stock visuals");
+  assertIncludes(campaignVisualPromptBuilder, "Do not draw any readable or pseudo-readable words", "Generated image text guard", "image prompts strongly prevent garbled AI text from being baked into generated creatives");
   assertIncludes(campaignVisualPromptBuilder, "UGC-style ad frame", "UGC image prompt guidance", "UGC-style image concepts get creator POV and native social direction");
   assertIncludes(campaignVisualPromptBuilder, "Media-buyer reference pattern", "Media buyer reference prompt", "static creative prompts carry concrete media-buyer reference layouts");
   assertIncludes(campaignVisualPromptBuilder, "precon deposit, event, and construction-progress ad", "Precon reference pattern", "pre-con prompts can follow deposit, event, construction, and future-upside creative patterns");
@@ -336,7 +339,8 @@ function runOfflineChecks() {
   assertIncludes(mediaBuyerFramework, "mediaBuyerReference", "Creative media-buyer reference gate", "quality gates score concrete media-buyer layout/reference logic");
   assertIncludes(mediaBuyerFramework, "previewReadability", "Creative readability gate", "quality gates penalize covered, unreadable, or awkward preview states");
   assertIncludes(mediaBuyerFramework, "generic stock-photo", "Creative stock-photo penalty", "quality gates penalize generic stock-photo-looking output");
-  assertIncludes(staticAdTemplateRenderer, "qualityGate?.accepted !== false", "Rejected generated creative guard", "detectably rejected generated assets are not treated as final previews");
+  assertIncludes(staticAdTemplateRenderer, "Generated image is visible for review", "Generated creative review guard", "generated assets remain visible while rejected outputs are clearly marked for regeneration");
+  assertIncludes(staticCreativeAssetService, "\"requires_review\"", "Rejected generated asset persistence", "generated assets with quality concerns are persisted for review instead of being mislabeled as image failures");
   assertIncludes(assetGenerationLifecycle, "asset.qualityGate?.accepted !== false", "Generated asset lifecycle guard", "static asset lifecycle does not mark rejected generated creatives as fully generated");
   assertIncludes(previewPage, "Primary creative", "Preview primary creative summary", "preview page leads with one creative summary instead of repeated visual cards");
   assertIncludes(previewPage, "View creative details", "Preview collapsed creative details", "preview page keeps secondary creative details collapsed by default");

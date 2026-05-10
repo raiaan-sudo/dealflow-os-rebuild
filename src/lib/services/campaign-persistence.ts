@@ -185,8 +185,12 @@ function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[
       assetRows[0];
     const metadata = asObjectRecord(preferredRow.metadata);
     const imageUrl = preferredRow.file_url ?? preferredRow.thumbnail_url ?? "";
+    const qualityGate =
+      metadata?.qualityGate && typeof metadata.qualityGate === "object"
+        ? metadata.qualityGate as StaticCreativeAsset["qualityGate"]
+        : null;
     const generationState =
-      preferredRow.status === "ready" && imageUrl
+      imageUrl
         ? "generated"
         : preferredRow.status === "failed"
           ? "failed"
@@ -208,12 +212,14 @@ function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[
       imageUrl,
       imageGenerationState: generationState,
       imageGenerationMessage:
-        preferredRow.error_message ||
-        (typeof metadata?.imageGenerationMessage === "string"
-          ? metadata.imageGenerationMessage
-          : generationState === "generated"
-            ? null
-            : "This image preview is not ready yet."),
+        generationState === "generated"
+          ? qualityGate?.accepted === false
+            ? "Generated image needs review before launch."
+            : null
+          : preferredRow.error_message ||
+            (typeof metadata?.imageGenerationMessage === "string"
+              ? metadata.imageGenerationMessage
+              : "This image preview is not ready yet."),
       imageGenerationModel:
         typeof metadata?.imageGenerationModel === "string"
           ? metadata.imageGenerationModel
@@ -232,10 +238,7 @@ function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[
         metadata?.offerQuality && typeof metadata.offerQuality === "object"
           ? metadata.offerQuality as StaticCreativeAsset["offerQuality"]
           : null,
-      qualityGate:
-        metadata?.qualityGate && typeof metadata.qualityGate === "object"
-          ? metadata.qualityGate as StaticCreativeAsset["qualityGate"]
-          : null,
+      qualityGate,
       hook: typeof metadata?.overlayText === "string" ? metadata.overlayText : "",
       overlayText: typeof metadata?.overlayText === "string" ? metadata.overlayText : "",
       primaryText: typeof metadata?.primaryText === "string" ? metadata.primaryText : "",

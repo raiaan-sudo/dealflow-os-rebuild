@@ -318,12 +318,8 @@ export function fitStaticAdText(input: {
 }
 
 function buildStatus(input: StaticAdTemplateInput): StaticAdTemplateStatus {
-  if (input.imageUrl && input.qualityGate?.accepted !== false) {
+  if (input.imageUrl) {
     return "final_composed";
-  }
-
-  if (input.imageUrl && input.qualityGate?.accepted === false) {
-    return "background_failed";
   }
 
   if (input.imageGenerationState === "generating") {
@@ -339,7 +335,9 @@ function buildStatus(input: StaticAdTemplateInput): StaticAdTemplateStatus {
 
 function buildBackgroundMessage(input: StaticAdTemplateInput, status: StaticAdTemplateStatus) {
   if (status === "final_composed") {
-    return "Raw background asset composed into final ad template.";
+    return input.qualityGate?.accepted === false
+      ? "Generated image is visible for review, but this one should be regenerated before launch."
+      : "Generated image is ready for creative review.";
   }
 
   if (status === "background_generating") {

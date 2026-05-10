@@ -15,7 +15,7 @@ type StaticAdComposedPreviewProps = StaticAdTemplateInput & {
 function statusLabel(status: ReturnType<typeof buildComposedStaticAdPreview>["status"]) {
   if (status === "final_composed") return "Generated creative";
   if (status === "background_generating") return "Template ready, image generating";
-  if (status === "background_failed") return "Template ready, image failed";
+  if (status === "background_failed") return "Image needs retry";
   return "Template-ready preview";
 }
 
@@ -219,7 +219,7 @@ export function StaticAdComposedPreview({
   const preview = buildComposedStaticAdPreview(input);
   const label = statusLabel(preview.status);
   const quality = qualityLabel(preview);
-  const showGeneratedAsset = preview.status === "final_composed" && Boolean(preview.backgroundImageUrl);
+  const showGeneratedAsset = Boolean(preview.backgroundImageUrl);
 
   return (
     <div className={cn("overflow-hidden rounded-[20px] border border-white/10 bg-black/20", className)}>
@@ -283,7 +283,7 @@ export function StaticAdComposedPreview({
             </div>
           </div>
         ) : null}
-        {preview.overflowRisk ? (
+        {preview.overflowRisk && !showGeneratedAsset ? (
           <p className="text-xs leading-5 text-amber-300">
             Long copy was fitted into the template to prevent visual overflow.
           </p>

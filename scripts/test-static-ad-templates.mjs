@@ -98,8 +98,12 @@ const rejectedGeneratedCreative = buildComposedStaticAdPreview({
 });
 assert.equal(
   rejectedGeneratedCreative.status,
-  "background_failed",
-  "detectably rejected generated images are not treated as ready",
+  "final_composed",
+  "generated images remain visible even when a quality gate asks for review",
+);
+assert.equal(
+  rejectedGeneratedCreative.backgroundMessage,
+  "Generated image is visible for review, but this one should be regenerated before launch.",
 );
 
 const precon = buildComposedStaticAdPreview({

@@ -43,9 +43,32 @@ type CreativeOption = {
   };
 };
 
+type VideoCreativeOption = {
+  id: string;
+  index: number;
+  conceptType: "founder_expert" | "customer_ugc";
+  title: string;
+  hook: string;
+  script: string[];
+  shotList: string[];
+  onScreenText: string[];
+  cta: string;
+  creatorStyle: string;
+  voiceStyle: string;
+  videoUrl?: string | null;
+  videoGenerationState?: "generated" | "generating" | "failed" | "unavailable" | string | null;
+  videoGenerationMessage?: string | null;
+  qualityGate?: {
+    score?: number | null;
+    accepted?: boolean | null;
+    hardFailures?: string[] | null;
+  } | null;
+};
+
 type CreativeWizardProps = {
   campaignId: string;
   creatives: CreativeOption[];
+  videoCreatives?: VideoCreativeOption[];
 };
 
 type SystemJob = {
@@ -59,10 +82,17 @@ function isUgcCreative(creative: CreativeOption) {
   return /\bugc\b/i.test(`${creative.id} ${creative.formatLabel ?? ""} ${creative.breakdown?.concept ?? ""}`);
 }
 
-export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
+function creativeNeedsImageGeneration(creative: CreativeOption) {
+  return !creative.imageUrl ||
+    creative.imageGenerationState === "failed" ||
+    creative.qualityGate?.accepted === false;
+}
+
+export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: CreativeWizardProps) {
   const router = useRouter();
   const jobStreamsRef = useRef<Map<string, EventSource>>(new Map());
   const autoRenderStartedRef = useRef(false);
+  const autoVideoStartedRef = useRef(false);
   const buildHref = `/builder?campaignId=${encodeURIComponent(campaignId)}`;
   const rankedCreatives = useMemo(
     () => [...creatives].sort((left, right) => (right.score ?? 0) - (left.score ?? 0)),
@@ -91,34 +121,59 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>(defaultSelectedIds);
   const [saving, setSaving] = useState(false);
   const [renderingImages, setRenderingImages] = useState(false);
+  const [renderingVideo, setRenderingVideo] = useState(false);
   const [renderMessage, setRenderMessage] = useState<string | null>(null);
+  const [videoMessage, setVideoMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [activeCreativeId, setActiveCreativeId] = useState<string | null>(
+    defaultSelectedIds[0] ?? rankedCreatives[0]?.id ?? null,
+  );
   const selectedCreatives = rankedCreatives.filter((creative) => selectedIds.includes(creative.id));
   const primaryCreative = selectedCreatives[0] ?? rankedCreatives[0] ?? null;
+  const activeCreative =
+    rankedCreatives.find((creative) => creative.id === activeCreativeId) ??
+    primaryCreative;
   const canContinue = selectedCreatives.length >= minSelected && selectedCreatives.length <= maxSelected;
   const allImagesMissing = rankedCreatives.every((creative) => !creative.imageUrl);
-  const hasMissingOrFailedImages = rankedCreatives.some(
-    (creative) => !creative.imageUrl || creative.imageGenerationState === "failed",
+  const hasMissingImages = rankedCreatives.some((creative) => !creative.imageUrl);
+  const hasFailedOrRejectedImages = rankedCreatives.some(
+    (creative) => creative.imageGenerationState === "failed" || creative.qualityGate?.accepted === false,
   );
-  const hasGeneratedImages = rankedCreatives.some(
-    (creative) => creative.imageGenerationState === "generated" && Boolean(creative.imageUrl),
-  );
+  const needsImageGeneration = rankedCreatives.some(creativeNeedsImageGeneration);
+  const hasGeneratedImages = rankedCreatives.some((creative) => Boolean(creative.imageUrl));
   const hasAttemptedImageGeneration = rankedCreatives.some(
     (creative) => Boolean(creative.imageGenerationMessage) || Boolean(creative.imageGenerationState),
   );
   const hasCreditBlocker = rankedCreatives.some((creative) =>
     /insufficient credits|add at least/i.test(creative.imageGenerationMessage ?? ""),
   );
-  const autoRenderStorageKey = hasCreditBlocker
-    ? `dealflow:auto-image-render:credit-overdraft:${campaignId}`
-    : hasGeneratedImages
-      ? `dealflow:auto-image-render:missing-only:${campaignId}`
-    : `dealflow:auto-image-render:${campaignId}`;
+  const imageGenerationSignature = rankedCreatives
+    .map((creative) => [
+      creative.id,
+      creative.imageUrl ? "asset" : "missing",
+      creative.imageGenerationState ?? "none",
+      creative.qualityGate?.accepted === false ? "needs-review" : "accepted-or-pending",
+    ].join(":"))
+    .join("|");
+  const autoRenderStorageKey = `dealflow:auto-image-render:${campaignId}:${imageGenerationSignature}`;
   const ugcQuotaAvailable = rankedCreatives.some(isUgcCreative);
   const selectedUgcCount = selectedCreatives.filter(isUgcCreative).length;
   const ugcQuotaSatisfied = !ugcQuotaAvailable || selectedUgcCount >= 1;
+  const primaryVideoCreative =
+    videoCreatives.find((video) => video.conceptType === "customer_ugc") ??
+    videoCreatives[0] ??
+    null;
+  const videoNeedsGeneration = Boolean(
+    primaryVideoCreative &&
+    !primaryVideoCreative.videoUrl &&
+    primaryVideoCreative.videoGenerationState !== "generating" &&
+    primaryVideoCreative.videoGenerationState !== "generated",
+  );
+  const autoVideoStorageKey = primaryVideoCreative
+    ? `dealflow:auto-video-render:${campaignId}:${primaryVideoCreative.id}:${primaryVideoCreative.videoGenerationState ?? "none"}`
+    : null;
 
-  const subscribeToJob = useCallback((jobId: string) => {
+  const subscribeToJob = useCallback((jobId: string, surface: "image" | "video") => {
     if (jobStreamsRef.current.has(jobId)) {
       return;
     }
@@ -131,12 +186,20 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
         const job = JSON.parse((event as MessageEvent).data) as SystemJob;
 
         if (job.status === "completed") {
-          setRenderMessage("Image previews are ready.");
+          if (surface === "video") {
+            setVideoMessage("AI UGC video is ready.");
+          } else {
+            setRenderMessage("Image previews are ready.");
+          }
           source.close();
           jobStreamsRef.current.delete(jobId);
           router.refresh();
         } else if (job.status === "failed") {
-          setRenderMessage(job.error_message || "Image preview rendering failed.");
+          if (surface === "video") {
+            setVideoMessage(job.error_message || "AI UGC video rendering failed.");
+          } else {
+            setRenderMessage(job.error_message || "Image preview rendering failed.");
+          }
           source.close();
           jobStreamsRef.current.delete(jobId);
           router.refresh();
@@ -186,7 +249,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
       }
 
       setRenderMessage("Image previews are being prepared. This page will update when the visuals are ready.");
-      subscribeToJob(data.job.id);
+      subscribeToJob(data.job.id, "image");
     } catch (renderError) {
       setRenderMessage(null);
       setError(renderError instanceof Error ? renderError.message : "Image preview rendering could not start.");
@@ -195,8 +258,50 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
     }
   }, [campaignId, renderingImages, subscribeToJob]);
 
+  const queueVideoPreview = useCallback(async ({ force = false, automatic = false } = {}) => {
+    if (renderingVideo || !primaryVideoCreative) {
+      return;
+    }
+
+    setRenderingVideo(true);
+    setError(null);
+    setVideoMessage(
+      automatic
+        ? "Preparing AI UGC video automatically. You can keep choosing static creatives while it renders."
+        : "Preparing AI UGC video.",
+    );
+
+    try {
+      const response = await fetch(`/api/campaigns/${encodeURIComponent(campaignId)}/generate-video`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          creativeIndex: primaryVideoCreative.index,
+          force,
+        }),
+      });
+      const data = (await response.json().catch(() => null)) as
+        | { job?: SystemJob | null; error?: string | null }
+        | null;
+
+      if (!response.ok || !data?.job?.id) {
+        throw new Error(data?.error || "AI UGC video rendering could not start.");
+      }
+
+      setVideoMessage("AI UGC video is rendering. This page will update when it is ready.");
+      subscribeToJob(data.job.id, "video");
+    } catch (videoError) {
+      setVideoMessage(null);
+      setError(videoError instanceof Error ? videoError.message : "AI UGC video rendering could not start.");
+    } finally {
+      setRenderingVideo(false);
+    }
+  }, [campaignId, primaryVideoCreative, renderingVideo, subscribeToJob]);
+
   useEffect(() => {
-    if ((!allImagesMissing && !hasMissingOrFailedImages) || autoRenderStartedRef.current) {
+    if (!needsImageGeneration || autoRenderStartedRef.current) {
       return;
     }
 
@@ -210,13 +315,42 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
     }
 
     void queueImagePreviews({
-      force: hasCreditBlocker,
+      force: hasCreditBlocker || hasFailedOrRejectedImages,
       automatic: true,
-      missingOnly: hasGeneratedImages,
+      missingOnly: hasGeneratedImages && !hasFailedOrRejectedImages,
     });
-  }, [allImagesMissing, autoRenderStorageKey, hasCreditBlocker, hasGeneratedImages, hasMissingOrFailedImages, queueImagePreviews]);
+  }, [autoRenderStorageKey, hasCreditBlocker, hasFailedOrRejectedImages, hasGeneratedImages, needsImageGeneration, queueImagePreviews]);
+
+  useEffect(() => {
+    if (!videoNeedsGeneration || !autoVideoStorageKey || autoVideoStartedRef.current) {
+      return;
+    }
+
+    if (typeof window !== "undefined" && window.sessionStorage.getItem(autoVideoStorageKey) === "started") {
+      return;
+    }
+
+    autoVideoStartedRef.current = true;
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(autoVideoStorageKey, "started");
+    }
+
+    void queueVideoPreview({
+      automatic: true,
+      force: primaryVideoCreative?.videoGenerationState === "failed",
+    });
+  }, [autoVideoStorageKey, primaryVideoCreative?.videoGenerationState, queueVideoPreview, videoNeedsGeneration]);
+
+  useEffect(() => {
+    if (!activeCreativeId || rankedCreatives.some((creative) => creative.id === activeCreativeId)) {
+      return;
+    }
+
+    setActiveCreativeId(primaryCreative?.id ?? rankedCreatives[0]?.id ?? null);
+  }, [activeCreativeId, primaryCreative?.id, rankedCreatives]);
 
   function toggleCreative(creativeId: string) {
+    setActiveCreativeId(creativeId);
     setSelectedIds((current) => {
       if (current.includes(creativeId)) {
         return current.filter((id) => id !== creativeId);
@@ -297,7 +431,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
     }
   }
 
-  if (!primaryCreative) {
+  if (!primaryCreative || !activeCreative) {
     return (
       <div className="rounded-2xl border border-border p-6 text-sm text-muted-foreground">
         No saved creative options are ready yet. Go back and generate creatives first.
@@ -305,35 +439,42 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
     );
   }
 
+  const activeCreativeIndex = Math.max(0, rankedCreatives.findIndex((creative) => creative.id === activeCreative.id));
+  const activeCreativeSelected = selectedIds.includes(activeCreative.id);
+
   return (
     <div className="space-y-4">
       <section className="grid gap-4 rounded-2xl border border-border bg-card p-4 sm:p-5 xl:grid-cols-[minmax(420px,0.9fr)_minmax(420px,1.1fr)]">
         <div className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Primary creative</p>
-              <h2 className="mt-1 text-xl font-semibold text-foreground">Lead with the strongest ad</h2>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                Creative {activeCreativeIndex + 1}
+              </p>
+              <h2 className="mt-1 text-xl font-semibold text-foreground">
+                {activeCreativeSelected ? "Selected creative preview" : "Creative preview"}
+              </h2>
             </div>
             <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
               {selectedCreatives.length}/{maxSelected} selected
             </span>
           </div>
           <StaticCreativePreviewCard
-            category={primaryCreative.category}
-            cta={primaryCreative.cta}
-            headline={primaryCreative.headline}
-            imageGenerationMessage={primaryCreative.imageGenerationMessage}
-            imageGenerationState={primaryCreative.imageGenerationState}
-            imageUrl={primaryCreative.imageUrl}
-            location={primaryCreative.location}
-            formatLabel={primaryCreative.formatLabel}
-            offer={primaryCreative.offer}
-            overlayText={primaryCreative.overlayText}
-            primaryText={primaryCreative.primaryText}
-            qualityGate={primaryCreative.qualityGate}
-            score={primaryCreative.score}
+            category={activeCreative.category}
+            cta={activeCreative.cta}
+            headline={activeCreative.headline}
+            imageGenerationMessage={activeCreative.imageGenerationMessage}
+            imageGenerationState={activeCreative.imageGenerationState}
+            imageUrl={activeCreative.imageUrl}
+            location={activeCreative.location}
+            formatLabel={activeCreative.formatLabel}
+            offer={activeCreative.offer}
+            overlayText={activeCreative.overlayText}
+            primaryText={activeCreative.primaryText}
+            qualityGate={activeCreative.qualityGate}
+            score={activeCreative.score}
             selectedCount={selectedCreatives.length}
-            visualPromptBrief={primaryCreative.visualPromptBrief}
+            visualPromptBrief={activeCreative.visualPromptBrief}
           />
         </div>
 
@@ -347,26 +488,33 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
               DealFlow will launch with the strongest selected creative and keep the set ready for rotation and optimization.
             </p>
           </div>
-          {renderMessage || hasGeneratedImages ? (
+          {renderMessage || needsImageGeneration || hasGeneratedImages ? (
             <div className="flex flex-wrap items-center gap-3">
-              {hasGeneratedImages ? (
+              {needsImageGeneration || hasGeneratedImages ? (
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => void queueImagePreviews({ force: true, missingOnly: true })}
+                  onClick={() => void queueImagePreviews({
+                    force: needsImageGeneration,
+                    missingOnly: hasMissingImages && !hasFailedOrRejectedImages,
+                  })}
                   disabled={renderingImages}
                 >
-                  {renderingImages ? "Refreshing previews..." : "Refresh image previews"}
+                  {renderingImages
+                    ? "Refreshing previews..."
+                    : needsImageGeneration
+                      ? "Regenerate previews"
+                      : "Refresh image previews"}
                 </Button>
               ) : null}
-              {primaryCreative.imageGenerationState === "failed" ? (
+              {activeCreative.imageGenerationState === "failed" || activeCreative.qualityGate?.accepted === false ? (
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => void queueImagePreviews({ force: true, missingOnly: true })}
+                  onClick={() => void queueImagePreviews({ force: true, missingOnly: false })}
                   disabled={renderingImages}
                 >
-                  {renderingImages ? "Retrying..." : "Retry failed preview"}
+                  {renderingImages ? "Retrying..." : "Retry preview render"}
                 </Button>
               ) : null}
               {renderMessage ? (
@@ -374,11 +522,13 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
               ) : null}
             </div>
           ) : null}
-          {allImagesMissing ? (
+          {needsImageGeneration ? (
             <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm leading-6 text-amber-100">
               {hasCreditBlocker
                 ? "Your strategy, copy, and creative concepts are ready. The previous render stopped before credit overdraft was enabled."
-                : "Your strategy, copy, and creative concepts are ready. DealFlow is preparing image previews automatically so this step stays focused on choosing the best test set."}
+                : allImagesMissing
+                  ? "Your strategy, copy, and creative concepts are ready. DealFlow is preparing image previews automatically so this step stays focused on choosing the best test set."
+                  : "Some previews need a cleaner image render. DealFlow will keep the generated asset visible while it prepares replacements automatically."}
               {hasCreditBlocker ? (
                 <button
                   type="button"
@@ -432,7 +582,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
                   Back to build
                 </Link>
               </Button>
-              <Button onClick={() => void handleNext()} type="button" disabled={saving || !canContinue}>
+              <Button onClick={() => void handleNext()} type="button" disabled={saving || !canContinue || !ugcQuotaSatisfied}>
                 {saving ? "Saving..." : "Save test set"}
               </Button>
             </div>
@@ -449,54 +599,157 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
               View creative reasoning
             </summary>
             <div className="mt-4 space-y-3 text-sm text-muted-foreground">
-              <p><strong className="text-foreground">Hook:</strong> {primaryCreative.breakdown?.hook || "Not available"}</p>
-              <p><strong className="text-foreground">Concept:</strong> {primaryCreative.breakdown?.concept || "Not available"}</p>
+              <p><strong className="text-foreground">Hook:</strong> {activeCreative.breakdown?.hook || "Not available"}</p>
+              <p><strong className="text-foreground">Concept:</strong> {activeCreative.breakdown?.concept || "Not available"}</p>
             </div>
           </details>
         </div>
       </section>
 
-      <details className="rounded-2xl border border-border bg-card p-4 sm:p-5">
-        <summary className="cursor-pointer text-sm font-semibold text-foreground">
-          Change selected creatives
-        </summary>
-        <div className="mt-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Creative test queue</p>
-              <h3 className="mt-1 text-xl font-semibold text-foreground">
-                Select {minSelected}-{maxSelected} creatives
-              </h3>
+      {primaryVideoCreative ? (
+        <section className="grid gap-4 rounded-2xl border border-border bg-card p-4 sm:p-5 lg:grid-cols-[minmax(280px,0.82fr)_minmax(0,1.18fr)]">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  AI UGC video
+                </p>
+                <h3 className="mt-1 text-xl font-semibold text-foreground">{primaryVideoCreative.title}</h3>
+              </div>
+              <span className="rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
+                {primaryVideoCreative.conceptType === "customer_ugc" ? "UGC concept" : "Video concept"}
+              </span>
             </div>
-            <p className="text-sm text-muted-foreground">
-              {selectedCreatives.length}/{maxSelected} selected
-            </p>
-          </div>
-          <div className="mt-5 grid gap-3 xl:grid-cols-3">
-            {rankedCreatives.map((creative, index) => {
-              const selected = selectedIds.includes(creative.id);
-              return (
-                <button
-                  aria-pressed={selected}
-                  className={`min-w-0 rounded-2xl border p-2 text-left transition ${
-                    selected
-                      ? "border-primary bg-primary/10"
-                      : "border-border bg-background hover:border-primary/40"
-                  }`}
-                  key={creative.id}
-                  onClick={() => toggleCreative(creative.id)}
-                  type="button"
-                >
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                      Creative {index + 1}
-                    </span>
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                      selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                    }`}>
-                      {selected ? "Selected" : "Add"}
-                    </span>
+            <div className="overflow-hidden rounded-[18px] border border-white/10 bg-black/28">
+              {primaryVideoCreative.videoUrl ? (
+                <video
+                  className="aspect-video w-full bg-black object-contain"
+                  controls
+                  playsInline
+                  src={primaryVideoCreative.videoUrl}
+                />
+              ) : (
+                <div className="grid aspect-video place-items-center bg-[linear-gradient(135deg,rgba(94,234,212,0.12),rgba(139,92,246,0.12)),radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_24%)] p-5 text-center">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      {primaryVideoCreative.videoGenerationState === "generating" || renderingVideo
+                        ? "AI UGC video is rendering"
+                        : "AI UGC video concept is ready"}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      {primaryVideoCreative.hook || primaryVideoCreative.script[0] || "A short creator-style video will be generated for this campaign."}
+                    </p>
                   </div>
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              {!primaryVideoCreative.videoUrl ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void queueVideoPreview({
+                    force: primaryVideoCreative.videoGenerationState === "failed",
+                  })}
+                  disabled={renderingVideo || primaryVideoCreative.videoGenerationState === "generating"}
+                >
+                  {renderingVideo || primaryVideoCreative.videoGenerationState === "generating"
+                    ? "Rendering video..."
+                    : primaryVideoCreative.videoGenerationState === "failed"
+                      ? "Retry AI UGC video"
+                      : "Render AI UGC video"}
+                </Button>
+              ) : null}
+              {videoMessage || primaryVideoCreative.videoGenerationMessage ? (
+                <span className="text-sm leading-6 text-muted-foreground">
+                  {videoMessage || primaryVideoCreative.videoGenerationMessage}
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <div className="grid gap-3">
+            <div className="rounded-2xl border border-white/10 bg-black/18 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Script</p>
+              <div className="mt-3 space-y-2">
+                {primaryVideoCreative.script.slice(0, 6).map((line, index) => (
+                  <p className="text-sm leading-6 text-foreground" key={`${primaryVideoCreative.id}-script-${index}`}>
+                    {line}
+                  </p>
+                ))}
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-white/10 bg-black/18 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Shot list</p>
+                <ul className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
+                  {primaryVideoCreative.shotList.slice(0, 4).map((shot, index) => (
+                    <li key={`${primaryVideoCreative.id}-shot-${index}`}>{shot}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/18 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">CTA</p>
+                <p className="mt-3 text-sm font-semibold text-foreground">{primaryVideoCreative.cta}</p>
+                {typeof primaryVideoCreative.qualityGate?.score === "number" ? (
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    Creative score {primaryVideoCreative.qualityGate.score.toFixed(1)}/10
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">Creative carousel</p>
+            <h3 className="mt-1 text-xl font-semibold text-foreground">
+              View all creatives and choose {minSelected}-{maxSelected}
+            </h3>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {selectedCreatives.length}/{maxSelected} selected
+          </p>
+        </div>
+        <div className="mt-5 flex gap-3 overflow-x-auto pb-2">
+          {rankedCreatives.map((creative, index) => {
+            const selected = selectedIds.includes(creative.id);
+            const active = activeCreative.id === creative.id;
+            return (
+              <article
+                className={`min-w-[310px] max-w-[360px] rounded-2xl border p-2 transition sm:min-w-[360px] ${
+                  active
+                    ? "border-primary bg-primary/10"
+                    : selected
+                      ? "border-primary/40 bg-primary/[0.06]"
+                      : "border-border bg-background"
+                }`}
+                key={creative.id}
+              >
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    className="min-w-0 text-left text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground transition hover:text-foreground"
+                    onClick={() => setActiveCreativeId(creative.id)}
+                  >
+                    Creative {index + 1}
+                  </button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={selected ? "default" : "secondary"}
+                    onClick={() => toggleCreative(creative.id)}
+                  >
+                    {selected ? "Selected" : "Add"}
+                  </Button>
+                </div>
+                <button
+                  type="button"
+                  className="block w-full rounded-[16px] text-left"
+                  onClick={() => setActiveCreativeId(creative.id)}
+                >
                   <StaticCreativeSummaryCard
                     angleLabel={creative.visualPromptBrief?.mechanism || creative.breakdown?.hook}
                     category={creative.category}
@@ -518,11 +771,11 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
                     visualPromptBrief={creative.visualPromptBrief}
                   />
                 </button>
-              );
-            })}
-          </div>
+              </article>
+            );
+          })}
         </div>
-      </details>
+      </section>
     </div>
   );
   }

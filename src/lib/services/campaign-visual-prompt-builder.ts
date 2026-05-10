@@ -201,7 +201,8 @@ export function buildStaticVisualPromptBrief(
     mediaBuyerReferenceTail,
     `Make the result look like a finished, high-converting paid social creative frame, not a generic stock photo and not an empty template.`,
     `Use realistic composition, high instruction adherence, premium real-estate advertising quality, sharp lighting, and an obvious conversion-focused visual hierarchy.`,
-    `Leave clean negative space or panel areas where DealFlow can place copy later, but make the image itself visually complete and worth reviewing on its own. The rendered image should not be hidden behind a placeholder-style template.`,
+    `Leave clean negative space or blank panel areas where DealFlow can place real copy later, but make the image itself visually complete and worth reviewing on its own. The rendered image should not be hidden behind a placeholder-style template.`,
+    `Do not draw any readable or pseudo-readable words, letters, numbers, logo text, watermark text, fake UI labels, fake pricing, fake captions, fake form fields, or gibberish typography. Use blank blocks, icon-like shapes, maps, charts, and unlabeled proof modules instead of text.`,
     `Prefer proof cues, maps, dashboards, timelines, payment anchors, value comparisons, buyer shortlist moments, or market-decision context when the category calls for them.`,
     `Make the scene feel context-rich and believable rather than stock-perfect. Prefer lived-in realism, slight asymmetry, local cues, and decision-context details over showroom polish.`,
     ugcPromptTail,
@@ -225,7 +226,7 @@ export function buildStaticVisualPromptBrief(
       : buildVisualConcept(input),
     promptConfig: {
       prompt,
-      negativePrompt: `${listToSentence(rulePack.antiPatterns)}; rendered headline text; misspelled words; unreadable typography; poster-like typography; cheap promo graphics; distorted architecture; low-detail rooms; stock-photo perfection; spotless showroom staging; brochure-style ad layout; glossy generic realtor marketing; copied brand name; copied project logo; copied reference avatar; exact reference clone; cartoon realtor mascot; uncanny faces; extra fingers; distorted hands; warped phones; fake screenshots; watermark; logo`,
+      negativePrompt: `${listToSentence(rulePack.antiPatterns)}; rendered headline text; readable text; letters; numbers; words; pseudo text; gibberish typography; misspelled words; unreadable typography; fake UI labels; fake price labels; fake captions; logo text; poster-like typography; cheap promo graphics; distorted architecture; low-detail rooms; stock-photo perfection; spotless showroom staging; brochure-style ad layout; glossy generic realtor marketing; copied brand name; copied project logo; copied reference avatar; exact reference clone; cartoon realtor mascot; uncanny faces; extra fingers; distorted hands; warped phones; fake screenshots; watermark; logo`,
       style: "realistic",
       aspectRatio: inferAspectRatio(category),
     },

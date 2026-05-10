@@ -49,10 +49,15 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
   }
 
   const inserts = staticAds.flatMap((asset, index) => {
+    const normalizedGenerationState = asset.imageUrl
+      ? "generated"
+      : asset.imageGenerationState;
     const status =
-      asset.imageGenerationState === "generated" && asset.imageUrl
+      asset.imageUrl && asset.qualityGate?.accepted !== false
         ? "ready"
-        : asset.imageGenerationState === "failed"
+        : asset.imageUrl
+          ? "requires_review"
+          : asset.imageGenerationState === "failed"
           ? "failed"
           : "requires_review";
     const metadataBase = {
@@ -64,7 +69,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       imagePromptConfig: (asset.imagePromptConfig ?? null) as Json,
       preferredImageModel: asset.preferredImageModel,
       visualPromptBrief: (asset.visualPromptBrief ?? null) as Json,
-      imageGenerationState: asset.imageGenerationState,
+      imageGenerationState: normalizedGenerationState,
       imageGenerationProvider: asset.imageGenerationProvider ?? null,
       imageGenerationModel: asset.imageGenerationModel,
       imageGenerationMessage: asset.imageGenerationMessage,
@@ -97,6 +102,8 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
           assetError:
             status === "ready"
               ? null
+              : asset.imageUrl
+                ? "Generated creative needs review before launch."
               : asset.imageGenerationMessage ?? "Static image was not generated for this creative.",
           role: "background_image",
         } as Json,
@@ -118,6 +125,8 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
           assetError:
             status === "ready"
               ? null
+              : asset.imageUrl
+                ? "Generated creative needs review before launch."
               : asset.imageGenerationMessage ?? "Static thumbnail was not generated for this creative.",
           role: "thumbnail",
         } as Json,

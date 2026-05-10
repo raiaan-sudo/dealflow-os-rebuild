@@ -84,6 +84,25 @@ export default async function BuildCreativesPage({
         },
       };
     });
+  const videoOptions = ensuredRecord.creatives.videoAds
+    .slice(0, 3)
+    .map((video, index) => ({
+      id: video.id || `video-${index + 1}`,
+      index,
+      conceptType: video.conceptType,
+      title: video.title || `AI UGC video ${index + 1}`,
+      hook: video.hook || video.script[0] || "",
+      script: video.script,
+      shotList: video.shotList,
+      onScreenText: video.onScreenText,
+      cta: video.cta || ensuredRecord.funnel.cta || "Learn More",
+      creatorStyle: video.creatorStyle,
+      voiceStyle: video.voiceStyle,
+      videoUrl: video.videoUrl ?? null,
+      videoGenerationState: video.videoGenerationState ?? null,
+      videoGenerationMessage: video.videoGenerationMessage ?? null,
+      qualityGate: video.qualityGate ?? null,
+    }));
 
   return (
     <div className="mx-auto w-full max-w-[1500px] space-y-4 p-5 sm:p-6">
@@ -94,7 +113,7 @@ export default async function BuildCreativesPage({
         description="Select 2-6 recommended creatives. DealFlow will preserve the full test set so your launch can compare multiple angles instead of betting on one ad."
       />
 
-      <CreativeWizard campaignId={ensuredRecord.campaign.id} creatives={creativeOptions} />
+      <CreativeWizard campaignId={ensuredRecord.campaign.id} creatives={creativeOptions} videoCreatives={videoOptions} />
     </div>
   );
 }
