@@ -210,6 +210,66 @@ assert.ok(
   buyerUgcStaticAds.every((ad) => /creator POV|native social|UGC/i.test(ad.imagePrompt)),
   "UGC-style static concepts should carry explicit creator/native-social prompt guidance",
 );
+assert.ok(
+  creativePackage.staticAds.every((ad) => /Media-buyer reference pattern/i.test(ad.imagePrompt)),
+  "all static image prompts should carry a concrete media-buyer reference pattern",
+);
+assert.ok(
+  buyerUgcStaticAds.every((ad) => /1-2 required UGC-style concepts inside the six-ad test set/i.test(ad.imagePrompt)),
+  "UGC-style static concepts should be explicitly reserved inside the six-ad test set",
+);
+
+const referencePromptScenarios = [
+  {
+    label: "seller",
+    expected: /seller home-value comparison ad|seller neighborhood demand and valuation ad/i,
+    input: {
+      location: "Bradford",
+      audience: "homeowners",
+      offer: "Get a 2026 price-and-demand update before you list with no obligation",
+      property_type: "homes",
+      mechanism: "pre-market positioning strategy",
+      desired_result: "pricing confidence",
+      pain_points: ["not knowing if listing now is the right move"],
+      market_type: "seller",
+    },
+  },
+  {
+    label: "precon",
+    expected: /precon deposit, event, and construction-progress ad|precon new-build incentive ad/i,
+    input: {
+      location: "Toronto",
+      audience: "pre-con buyers",
+      offer: "View 10% deposit pre-con projects completing in 2028",
+      property_type: "pre-con condos",
+      mechanism: "phased deposit structure",
+      desired_result: "lower-entry ownership path",
+      pain_points: ["waiting until future pricing moves up"],
+      market_type: "buyer",
+    },
+  },
+  {
+    label: "investor",
+    expected: /investor ROI map and data dashboard|investor deal-analysis proof board/i,
+    input: {
+      location: "Montreal",
+      audience: "investors comparing ROI criteria",
+      offer: "Get 3 off-market properties this month that meet your exact ROI criteria",
+      property_type: "investment properties",
+      mechanism: "micro-market analysis system",
+      desired_result: "better deal flow",
+      pain_points: ["underwriting the wrong deals"],
+      market_type: "investor",
+    },
+  },
+];
+
+for (const scenario of referencePromptScenarios) {
+  const packageForScenario = buildCreativeSystem(scenario.input);
+  const prompts = packageForScenario.staticAds.map((ad) => ad.imagePrompt).join("\n");
+  assert.match(prompts, scenario.expected, `${scenario.label} prompts should use media-buyer reference layouts`);
+  assert.match(prompts, /one dominant hook area, one proof area, one clear CTA-safe/i, `${scenario.label} prompts should preserve direct-response layout zones`);
+}
 
 assert.ok(creativePackage.videoAds.length >= 2);
 for (const video of creativePackage.videoAds) {

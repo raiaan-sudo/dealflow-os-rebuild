@@ -1328,7 +1328,7 @@ function buildStaticCreatives(
         audience,
         propertyType: brief.propertyType,
         keyOffer: cleanOffer,
-        angle: ad.angle,
+        angle: `${creativeAngleLabel(ad)} - ${ad.visualConcept}`,
         strategy,
       });
       const isUgcStaticAd = /\bugc\b/i.test(`${ad.id} ${ad.visualConcept} ${ad.hook}`);
@@ -1337,7 +1337,7 @@ function buildStaticCreatives(
             ...visualBrief.promptConfig,
             prompt: [
               visualBrief.promptConfig.prompt,
-              "UGC-specific execution: make this a native social ad frame with a believable creator POV, a phone-camera or handheld walkthrough feel, a real decision moment, and enough polish for paid acquisition. The subject should feel like a real buyer/seller/investor/customer perspective, not an influencer photoshoot.",
+              "UGC-specific execution: make this a native social ad frame with a believable creator POV, a phone-camera or handheld walkthrough feel, a real decision moment, and enough polish for paid acquisition. The subject should feel like a real buyer/seller/investor/customer perspective, not an influencer photoshoot. Compose it as one of the 1-2 required UGC-style concepts inside the six-ad test set, with room for caption bars, proof chips, and a direct-response CTA.",
             ].join(" "),
           }
         : visualBrief.promptConfig;

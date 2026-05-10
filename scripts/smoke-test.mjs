@@ -310,6 +310,12 @@ function runOfflineChecks() {
   assertIncludes(creativeEngine, "static-ugc-walkthrough", "Static UGC walkthrough slot", "creative test sets reserve a UGC-style walkthrough/native social concept inside the six static image renders");
   assertIncludes(campaignVisualPromptBuilder, "finished, high-converting paid social creative frame", "Higgsfield prompt quality bar", "image prompts ask for polished ad-ready creative frames instead of generic real estate stock visuals");
   assertIncludes(campaignVisualPromptBuilder, "UGC-style ad frame", "UGC image prompt guidance", "UGC-style image concepts get creator POV and native social direction");
+  assertIncludes(campaignVisualPromptBuilder, "Media-buyer reference pattern", "Media buyer reference prompt", "static creative prompts carry concrete media-buyer reference layouts");
+  assertIncludes(campaignVisualPromptBuilder, "precon deposit, event, and construction-progress ad", "Precon reference pattern", "pre-con prompts can follow deposit, event, construction, and future-upside creative patterns");
+  assertIncludes(campaignVisualPromptBuilder, "investor ROI map and data dashboard", "Investor reference pattern", "investor prompts can follow ROI map, yield, and data-dashboard creative patterns");
+  assertIncludes(campaignVisualPromptBuilder, "seller home-value comparison ad", "Seller valuation reference pattern", "seller prompts can follow home-value comparison and before-after proof patterns");
+  assertIncludes(campaignVisualPromptBuilder, "buyer listing-alert and affordability collage", "Buyer listing reference pattern", "buyer prompts can follow listing-alert, affordability, and collage creative patterns");
+  assertIncludes(creativeEngine, "1-2 required UGC-style concepts inside the six-ad test set", "UGC creative quota prompt", "UGC static image concepts are explicitly framed as required test-set variants");
   assertIncludes("src/components/campaign/static-ad-composed-preview.tsx", "Showing the generated creative directly", "Generated creative visibility", "rendered Higgsfield images are shown cleanly instead of being covered by the fallback template overlay");
   assertIncludes("src/components/campaign/static-creative-preview-card.tsx", "line-clamp-3", "Creative card copy clamp", "creative cards show usable previews instead of full dense body copy");
   assertIncludes("src/components/campaign/static-creative-preview-card.tsx", "formatLabel", "UGC concept badge", "UGC-style concepts are visibly labeled in the creative selector");
