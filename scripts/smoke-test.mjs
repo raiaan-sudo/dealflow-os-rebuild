@@ -151,6 +151,7 @@ function runOfflineChecks() {
   const legacyAiProviders = "src/lib/ai/providers.ts";
   const higgsfieldClient = "src/lib/ai/higgsfield.ts";
   const creativeEngine = "src/lib/services/creative-engine.ts";
+  const campaignVisualPromptBuilder = "src/lib/services/campaign-visual-prompt-builder.ts";
   const campaignPersistence = "src/lib/services/campaign-persistence.ts";
   const campaignPlanPersistence = "src/lib/services/campaign-plan-persistence-service.ts";
   const directHeyGenClient = "src/lib/ai/heygen.ts";
@@ -305,7 +306,13 @@ function runOfflineChecks() {
   assertIncludes("src/components/funnel/funnel-preview.tsx", "section.type !== \"hero\"", "Funnel preview duplicate hero guard", "review preview does not repeat a stale hero section below the offer-led hero");
   assertIncludes(creativeEngine, "preventDuplicateStaticCreativeCopy", "Creative duplicate prevention", "static creative options deterministically vary duplicate headline/body/CTA combinations");
   assertIncludes(creativeEngine, "creativeAngleLabel", "Creative angle labels", "static creative copy receives distinct mode-specific marketing angles");
+  assertIncludes(creativeEngine, "static-ugc-proof", "Static UGC concept slot", "creative test sets reserve a UGC-style proof concept inside the six static image renders");
+  assertIncludes(creativeEngine, "static-ugc-walkthrough", "Static UGC walkthrough slot", "creative test sets reserve a UGC-style walkthrough/native social concept inside the six static image renders");
+  assertIncludes(campaignVisualPromptBuilder, "finished, high-converting paid social creative frame", "Higgsfield prompt quality bar", "image prompts ask for polished ad-ready creative frames instead of generic real estate stock visuals");
+  assertIncludes(campaignVisualPromptBuilder, "UGC-style ad frame", "UGC image prompt guidance", "UGC-style image concepts get creator POV and native social direction");
+  assertIncludes("src/components/campaign/static-ad-composed-preview.tsx", "Showing the generated creative directly", "Generated creative visibility", "rendered Higgsfield images are shown cleanly instead of being covered by the fallback template overlay");
   assertIncludes("src/components/campaign/static-creative-preview-card.tsx", "line-clamp-3", "Creative card copy clamp", "creative cards show usable previews instead of full dense body copy");
+  assertIncludes("src/components/campaign/static-creative-preview-card.tsx", "formatLabel", "UGC concept badge", "UGC-style concepts are visibly labeled in the creative selector");
   assertIncludes(staticCreativePreviewCard, "StaticCreativeSummaryCard", "Compact creative summary card", "selected creative lists use dense summary cards instead of tall repeated full previews");
   assertIncludes(previewPage, "Primary creative", "Preview primary creative summary", "preview page leads with one creative summary instead of repeated visual cards");
   assertIncludes(previewPage, "View creative details", "Preview collapsed creative details", "preview page keeps secondary creative details collapsed by default");

@@ -68,6 +68,7 @@ export function buildStaticVisualPromptBrief(
   const rulePack = getCategoryRulePack(input.strategy.campaignCategory);
   const category = input.strategy.campaignCategory;
   const approvalFocused = isApprovalFocusedVisual(input);
+  const ugcStyle = /contrarian|testimonial|pov|ugc|creator|customer/i.test(input.angle);
   const categoryPromptTail =
     category === "luxury"
       ? "Use a single hero composition with cinematic restraint, premium materials, skyline or view depth, and almost no infographic clutter. Keep overlays subtle, sparse, and exclusive. Avoid dashboard grids, busy comparison boards, and discount-style panels."
@@ -81,9 +82,12 @@ export function buildStaticVisualPromptBrief(
             ? "Favor a before-versus-after value story, neighborhood map proof, or value-update comparison with clear pricing context. Avoid generic curb-appeal-only compositions."
             : category === "commercial"
               ? "Favor clean maps, space-fit checklists, building exteriors, and operator-focused comparison panels. Avoid residential lifestyle framing and generic skyline glamour."
-              : "Favor charts, maps, and yield proof that feel like a real investor brief, not a lifestyle brochure.";
+        : "Favor charts, maps, and yield proof that feel like a real investor brief, not a lifestyle brochure.";
+  const ugcPromptTail = ugcStyle
+    ? "This is a UGC-style ad frame: make it feel like a polished native social creative with a relatable creator POV, phone-shot authenticity, a decision moment, and clear proof context. Show a believable creator, customer, or agent in a real home/market setting without celebrity likeness. Keep faces natural, hands normal, and the frame premium enough for paid social. Avoid cheap selfie clutter, meme styling, influencer glamour, and fake testimonial screenshots."
+    : "";
   const prompt = [
-    `Create a static real estate ad visual for ${input.location}.`,
+    `Create a premium paid-social real estate ad visual for ${input.location}.`,
     `Audience context: ${input.audience}.`,
     `Category psychology: ${approvalFocused ? "buyer approval-first" : category}.`,
     `Winning angle direction: ${listToSentence(rulePack.winningAngles)}.`,
@@ -95,13 +99,15 @@ export function buildStaticVisualPromptBrief(
     `Overlay logic to support later composition: ${listToSentence(input.strategy.overlayStyle)}.`,
     `Property focus: ${input.propertyType}. Offer focus: ${input.keyOffer}.`,
     `Creative angle: ${input.angle}.`,
-    `Use realistic composition, high instruction adherence, premium real-estate advertising quality, and leave clear visual zones for later text overlay placement.`,
-    `Design the image so later overlays can sit cleanly in obvious blank areas, comparison panels, or split-screen zones without covering key subject matter.`,
-    `Prefer numbers, proof cues, maps, dashboards, timelines, payment anchors, or value comparisons when the category calls for them.`,
+    `Make the result look like a finished, high-converting paid social creative frame, not a generic stock photo and not an empty template.`,
+    `Use realistic composition, high instruction adherence, premium real-estate advertising quality, sharp lighting, and an obvious conversion-focused visual hierarchy.`,
+    `Leave clean negative space or panel areas where DealFlow can place copy later, but make the image itself visually complete and worth reviewing on its own.`,
+    `Prefer proof cues, maps, dashboards, timelines, payment anchors, value comparisons, buyer shortlist moments, or market-decision context when the category calls for them.`,
     `Make the scene feel context-rich and believable rather than stock-perfect. Prefer lived-in realism, slight asymmetry, local cues, and decision-context details over showroom polish.`,
+    ugcPromptTail,
     categoryPromptTail,
     `Do not render final ad copy into the image itself.`,
-  ].join(" ");
+  ].filter(Boolean).join(" ");
 
   return {
     category,
@@ -118,7 +124,7 @@ export function buildStaticVisualPromptBrief(
       : buildVisualConcept(input),
     promptConfig: {
       prompt,
-      negativePrompt: `${listToSentence(rulePack.antiPatterns)}; rendered headline text; poster-like typography; cheap promo graphics; distorted architecture; low-detail rooms; stock-photo perfection; spotless showroom staging; brochure-style ad layout; glossy generic realtor marketing`,
+      negativePrompt: `${listToSentence(rulePack.antiPatterns)}; rendered headline text; misspelled words; unreadable typography; poster-like typography; cheap promo graphics; distorted architecture; low-detail rooms; stock-photo perfection; spotless showroom staging; brochure-style ad layout; glossy generic realtor marketing; uncanny faces; extra fingers; distorted hands; warped phones; fake screenshots; watermark; logo`,
       style: "realistic",
       aspectRatio: inferAspectRatio(category),
     },

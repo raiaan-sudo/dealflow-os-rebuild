@@ -202,6 +202,14 @@ assert.ok(
   buyerStaticAds.some((ad) => /early access listings|get early access|view homes/i.test(`${ad.headline} ${ad.primaryText} ${ad.cta}`)),
   "selected buyer offer should drive at least one static creative",
 );
+const buyerUgcStaticAds = creativePackage.staticAds.filter((ad) =>
+  /ugc/.test(ad.id),
+);
+assert.ok(buyerUgcStaticAds.length >= 2, "creative test set should include at least two UGC-style static concepts");
+assert.ok(
+  buyerUgcStaticAds.every((ad) => /creator POV|native social|UGC/i.test(ad.imagePrompt)),
+  "UGC-style static concepts should carry explicit creator/native-social prompt guidance",
+);
 
 assert.ok(creativePackage.videoAds.length >= 2);
 for (const video of creativePackage.videoAds) {

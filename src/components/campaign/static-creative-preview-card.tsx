@@ -27,6 +27,7 @@ type StaticCreativePreviewCardProps = {
     overlayLogic?: string[] | null;
   } | null;
   selectedCount?: number | null;
+  formatLabel?: string | null;
   className?: string;
   compact?: boolean;
 };
@@ -46,6 +47,7 @@ export function StaticCreativePreviewCard({
   qualityGate,
   visualPromptBrief,
   selectedCount,
+  formatLabel,
   className,
   compact = false,
 }: StaticCreativePreviewCardProps) {
@@ -74,6 +76,11 @@ export function StaticCreativePreviewCard({
         visualPromptBrief={visualPromptBrief}
       />
       <div className={cn("space-y-4", compact ? "p-3" : "p-6")}>
+        {formatLabel ? (
+          <span className="inline-flex rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
+            {formatLabel}
+          </span>
+        ) : null}
         <div>
           <p className="text-sm font-medium text-muted-foreground">Headline</p>
           <p className={cn("mt-1 font-semibold text-foreground", compact ? "line-clamp-2 text-sm leading-5" : "text-lg")}>
@@ -118,6 +125,7 @@ export function StaticCreativeSummaryCard({
   selectedCount,
   className,
   angleLabel,
+  formatLabel,
   selected = false,
   index,
 }: StaticCreativeSummaryCardProps) {
@@ -170,6 +178,11 @@ export function StaticCreativeSummaryCard({
           {typeof score === "number" ? (
             <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-white/62">
               {score.toFixed(1)}/10
+            </span>
+          ) : null}
+          {formatLabel ? (
+            <span className="rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-100">
+              {formatLabel}
             </span>
           ) : null}
         </div>

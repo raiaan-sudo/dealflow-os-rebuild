@@ -24,6 +24,7 @@ type CreativeOption = {
   offer?: string | null;
   category?: CampaignCategory | string | null;
   location?: string | null;
+  formatLabel?: string | null;
   qualityGate?: {
     score?: number | null;
     accepted?: boolean | null;
@@ -289,6 +290,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
             imageGenerationState={primaryCreative.imageGenerationState}
             imageUrl={primaryCreative.imageUrl}
             location={primaryCreative.location}
+            formatLabel={primaryCreative.formatLabel}
             offer={primaryCreative.offer}
             overlayText={primaryCreative.overlayText}
             primaryText={primaryCreative.primaryText}
@@ -364,6 +366,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
                 imageUrl={creative.imageUrl}
                 key={creative.id}
                 location={creative.location}
+                formatLabel={creative.formatLabel}
                 offer={creative.offer}
                 overlayText={creative.overlayText}
                 primaryText={creative.primaryText}
@@ -457,6 +460,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
                     imageGenerationState={creative.imageGenerationState}
                     imageUrl={creative.imageUrl}
                     location={creative.location}
+                    formatLabel={creative.formatLabel}
                     offer={creative.offer}
                     overlayText={creative.overlayText}
                     primaryText={creative.primaryText}

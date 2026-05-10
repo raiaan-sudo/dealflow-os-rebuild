@@ -980,6 +980,86 @@ function buildStaticCreatives(
   const ads: StaticCreativeAsset[] = [
     ...mediaBuyerPackageAds,
     {
+      id: "static-ugc-proof",
+      angle: "contrarian",
+      imageUrl: "",
+      imageGenerationState: "unavailable",
+      imageGenerationMessage: null,
+      imageGenerationModel: null,
+      visualConcept: `UGC creator proof frame showing a relatable ${audience} decision moment around ${cleanOffer}`,
+      imagePrompt: "",
+      imagePromptConfig: null,
+      preferredImageModel: "gpt-image-1.5",
+      visualPromptBrief: null,
+      scoreBreakdown: null,
+      hook:
+        approvalFocused
+          ? `POV: you stopped touring before knowing what you can actually qualify for in ${market}.`
+          : strategy.campaignCategory === "seller"
+            ? `POV: you checked demand before guessing your list price in ${market}.`
+            : strategy.campaignCategory === "investor"
+              ? `POV: you stopped chasing weak-fit deals and screened the numbers first.`
+              : `POV: you checked the real path before everyone else reacted in ${market}.`,
+      overlayText: buildOverlayText({
+        category: strategy.campaignCategory,
+        market,
+        base: approvalFocused ? "Approval-first POV" : "Real buyer POV",
+        trigger,
+        proof,
+      }),
+      primaryText: buildStructuredPrimaryText({
+        hook: `Most ${audience} in ${market} do the normal search first and ask the hard questions too late.`,
+        problem: `That makes the process feel busier than it needs to be.`,
+        outcome: `${sentenceCase(mechanism)} turns ${cleanOffer} into a clearer next step with ${proof.toLowerCase()} and a more believable reason to respond.`,
+        cta,
+      }),
+      headline: approvalFocused
+        ? `The buyer POV before the search starts`
+        : `A more believable path to ${trimWords(cleanOffer, 6)}`,
+      cta,
+      score: 0,
+      recommended: false,
+    },
+    {
+      id: "static-ugc-walkthrough",
+      angle: "opportunity",
+      imageUrl: "",
+      imageGenerationState: "unavailable",
+      imageGenerationMessage: null,
+      imageGenerationModel: null,
+      visualConcept: `UGC-style walkthrough still with native social energy and proof around ${cleanOffer}`,
+      imagePrompt: "",
+      imagePromptConfig: null,
+      preferredImageModel: "gpt-image-1.5",
+      visualPromptBrief: null,
+      scoreBreakdown: null,
+      hook:
+        approvalFocused
+          ? `This is what most ${market} buyers should check before they fall in love with a listing.`
+          : strategy.campaignCategory === "seller"
+            ? `Before listing, this is the demand signal most ${market} homeowners miss.`
+            : strategy.campaignCategory === "luxury"
+              ? `This is the quieter way serious buyers review rare ${market} inventory.`
+              : `This is the simple check most ${audience} should do before the market gets crowded.`,
+      overlayText: buildOverlayText({
+        category: strategy.campaignCategory,
+        market,
+        base: approvalFocused ? "Before you tour" : "Watch this first",
+        trigger,
+        proof,
+      }),
+      primaryText: buildStructuredPrimaryText({
+        hook: `The strongest creative should feel native to the feed, not like a generic real estate flyer.`,
+        problem: `Most ads look polished but do not make the viewer feel the problem.`,
+        outcome: `${sentenceCase(mechanism)} gives this UGC-style angle a concrete reason to care about ${cleanOffer} before the next click.`,
+        cta,
+      }),
+      headline: `UGC-style angle for ${trimWords(cleanOffer, 6)}`,
+      cta,
+      score: 0,
+      recommended: false,
+    },
+    {
       id: "static-problem-solution",
       angle: "guarantee",
       imageUrl: "",
@@ -1083,54 +1163,6 @@ function buildStaticCreatives(
           : strategy.campaignCategory === "luxury"
             ? `Rare opportunity in ${market} for the right buyer`
             : `Get the offer-driven edge before the market reacts`,
-      cta,
-      score: 0,
-      recommended: false,
-    },
-    {
-      id: "static-authority",
-      angle: "authority",
-      imageUrl: "",
-      imageGenerationState: "unavailable",
-      imageGenerationMessage: null,
-      imageGenerationModel: null,
-      visualConcept: `Authority ad positioned as an expert path to ${cleanOffer}`,
-      imagePrompt: "",
-      imagePromptConfig: null,
-      preferredImageModel: "gpt-image-1.5",
-      visualPromptBrief: null,
-      scoreBreakdown: null,
-      hook:
-        approvalFocused
-          ? `${market} buyers: there is a smarter path than guessing first.`
-        : strategy.campaignCategory === "luxury"
-          ? fillTemplate(rulePack.approvedHookStructures[0], templateParams)
-          : `${market} ${audience}: there is a smarter path to ${trimWords(cleanOffer, 6)}.`,
-      overlayText:
-        approvalFocused
-          ? "Approval-Led Strategy"
-        : strategy.campaignCategory === "luxury"
-          ? "Private Access"
-          : "Expert-Led Advantage",
-      primaryText: approvalFocused
-        ? buildStructuredPrimaryText({
-            hook: `Most ${audience} rely on broad public-market noise and hope the numbers work later.`,
-            problem: `That usually creates confusion before clarity.`,
-            outcome: `${sentenceCase(mechanism)} keeps the decision anchored in approval clarity, realistic buying power, and ${proof.toLowerCase()} so the next move feels clearer.`,
-            cta,
-          })
-        : buildStructuredPrimaryText({
-            hook: `Most ${audience} rely on broad public-market noise.`,
-            problem: `That makes it harder to spot the strongest move early.`,
-            outcome: `${sentenceCase(mechanism)} keeps the decision anchored in ${trigger.toLowerCase()}, ${tension.toLowerCase()}, and ${proof.toLowerCase()} so the next move feels clearer.`,
-            cta,
-          }),
-      headline:
-        approvalFocused
-          ? `A clearer path to buying power in ${market}`
-        : strategy.campaignCategory === "luxury"
-          ? `Private access to rare ${brief.propertyType} in ${market}`
-          : `Expert-led path to ${trimWords(cleanOffer, 6)}`,
       cta,
       score: 0,
       recommended: false,
@@ -1299,6 +1331,16 @@ function buildStaticCreatives(
         angle: ad.angle,
         strategy,
       });
+      const isUgcStaticAd = /ugc|pov|walkthrough|testimonial/i.test(`${ad.id} ${ad.visualConcept} ${ad.hook}`);
+      const imagePromptConfig = isUgcStaticAd
+        ? {
+            ...visualBrief.promptConfig,
+            prompt: [
+              visualBrief.promptConfig.prompt,
+              "UGC-specific execution: make this a native social ad frame with a believable creator POV, a phone-camera or handheld walkthrough feel, a real decision moment, and enough polish for paid acquisition. The subject should feel like a real buyer/seller/investor/customer perspective, not an influencer photoshoot.",
+            ].join(" "),
+          }
+        : visualBrief.promptConfig;
 
       const offerDrivenAd = ensureOfferDrivenStaticAd({
         ...ad,
@@ -1308,8 +1350,8 @@ function buildStaticCreatives(
         imageGenerationState: "unavailable",
         imageGenerationMessage: "Image preview has not been generated yet.",
         imageGenerationModel: null,
-        imagePrompt: visualBrief.promptConfig.prompt ?? "",
-        imagePromptConfig: visualBrief.promptConfig,
+        imagePrompt: imagePromptConfig.prompt ?? "",
+        imagePromptConfig,
         preferredImageModel: visualBrief.preferredModel,
         visualPromptBrief: visualBrief,
         visualConcept: visualBrief.visualConcept,

@@ -197,6 +197,10 @@ for (const scenario of cases) {
   assert.ok(preview.cta.length <= 34, `${scenario.category} fitted CTA length`);
   assert.ok(selectedCreatives.length >= 2 && selectedCreatives.length <= 6, `${scenario.category} selected creative count`);
   assert.ok(creativePackage.staticAds.length >= 6, `${scenario.category} static creative depth`);
+  assert.ok(
+    creativePackage.staticAds.filter((ad) => /ugc/.test(ad.id)).length >= 2,
+    `${scenario.category} UGC-style static creative coverage`,
+  );
   assert.ok(blueprint.creativePlan.totalCreatives >= 6, `${scenario.category} launch creative count`);
   assert.ok(blueprint.creativePlan.videoCreatives >= Math.ceil(blueprint.creativePlan.totalCreatives / 2), `${scenario.category} video ratio`);
   assert.ok(blueprint.audienceStrategy.retargetingPools.some((pool) => /75% video/i.test(pool)), `${scenario.category} video retargeting`);

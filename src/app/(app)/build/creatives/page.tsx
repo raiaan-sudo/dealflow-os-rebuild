@@ -70,6 +70,9 @@ export default async function BuildCreativesPage({
         imageGenerationState: ad.imageGenerationState ?? null,
         imageGenerationMessage: ad.imageGenerationMessage ?? null,
         overlayText: ad.overlayText ?? null,
+        formatLabel: /ugc|pov|creator|customer|walkthrough/i.test(`${ad.id} ${ad.visualConcept} ${ad.hook}`)
+          ? "AI UGC concept"
+          : null,
         category: ad.visualPromptBrief?.category ?? ensuredRecord.plan.creative_strategy?.campaignCategory ?? null,
         location: ensuredRecord.plan.market || null,
         qualityGate: ad.qualityGate ?? null,

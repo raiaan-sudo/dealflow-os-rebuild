@@ -13,7 +13,7 @@ type StaticAdComposedPreviewProps = StaticAdTemplateInput & {
 };
 
 function statusLabel(status: ReturnType<typeof buildComposedStaticAdPreview>["status"]) {
-  if (status === "final_composed") return "Final composed ad";
+  if (status === "final_composed") return "Generated creative";
   if (status === "background_generating") return "Template ready, image generating";
   if (status === "background_failed") return "Template ready, image failed";
   return "Template-ready preview";
@@ -219,6 +219,7 @@ export function StaticAdComposedPreview({
   const preview = buildComposedStaticAdPreview(input);
   const label = statusLabel(preview.status);
   const quality = qualityLabel(preview);
+  const showGeneratedAsset = preview.status === "final_composed" && Boolean(preview.backgroundImageUrl);
 
   return (
     <div className={cn("overflow-hidden rounded-[20px] border border-white/10 bg-black/20", className)}>
@@ -240,8 +241,14 @@ export function StaticAdComposedPreview({
         ) : (
           <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px)] bg-[size:36px_36px] opacity-20" />
         )}
-        <div className="absolute inset-0 bg-black/18" />
-        {renderTemplateDetails(preview, compact)}
+        {showGeneratedAsset ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/45 to-transparent" />
+        ) : (
+          <>
+            <div className="absolute inset-0 bg-black/18" />
+            {renderTemplateDetails(preview, compact)}
+          </>
+        )}
       </div>
 
       <div className={cn("space-y-3", compact ? "p-3" : "p-4")}>
@@ -259,7 +266,11 @@ export function StaticAdComposedPreview({
           ) : null}
         </div>
         {showRawAssetState ? (
-          <p className="text-xs leading-5 text-muted-foreground">{preview.backgroundMessage}</p>
+          <p className="text-xs leading-5 text-muted-foreground">
+            {showGeneratedAsset
+              ? "Showing the generated creative directly. Campaign copy and CTA are listed below for review."
+              : preview.backgroundMessage}
+          </p>
         ) : null}
         {!compact ? (
           <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
