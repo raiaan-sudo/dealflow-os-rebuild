@@ -128,6 +128,7 @@ export function deriveVideoGenerationStatus(videoAds: VideoCreativeAsset[]): Ass
 
 export function shouldReuseStaticGeneration(params: {
   force?: boolean;
+  missingOnly?: boolean;
   lifecycle?: AssetGenerationLifecycle | null;
   staticAds: StaticCreativeAsset[];
 }) {
@@ -137,6 +138,10 @@ export function shouldReuseStaticGeneration(params: {
 
   const lifecycle = params.lifecycle;
   const currentStatus = deriveStaticGenerationStatus(params.staticAds);
+
+  if (params.missingOnly) {
+    return currentStatus === "generated";
+  }
 
   if (lifecycle?.status === "generating") {
     return true;

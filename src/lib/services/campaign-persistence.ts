@@ -780,6 +780,7 @@ export async function regenerateStaticCreativeAssetsForUser(
   if (
     shouldReuseStaticGeneration({
       force: options?.force,
+      missingOnly: options?.missingOnly,
       lifecycle: generationState.staticAds,
       staticAds: currentRecord.creatives.staticAds,
     })

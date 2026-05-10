@@ -666,6 +666,7 @@ function runOfflineChecks() {
   assertIncludes(staticAdsRoute, "if (existingActiveJob)", "Static generation active-job reuse", "forced preview retries reuse active work instead of stacking duplicate paid jobs");
   assertIncludes(staticAdsRoute, "missingOnly", "Static missing-image retry", "partial creative retries can refill failed/missing images without regenerating the whole test set");
   assertIncludes(campaignPersistence, "reuse_static_assets", "Static generated-asset reuse", "missing-image retries preserve already generated Higgsfield assets");
+  assertIncludes("src/lib/services/asset-generation-lifecycle.ts", "params.missingOnly", "Static missing-image lifecycle bypass", "missing-image retries do not no-op just because an earlier partial render exists");
   assertIncludes(staticCreativeAssetService, "imagePromptConfig", "Static prompt metadata persistence", "saved generated assets keep prompt config and negative prompt guidance for future retries");
   assertIncludes(mediaBuyerFramework, "stripNegativePromptGuidance", "Media buyer quality scoring", "creative quality gates do not punish prompts for anti-patterns listed only as avoid guidance");
   assertIncludes(systemJobStreamRoute, "MAX_STREAM_POLLS", "System job stream polling", "job streams stay open long enough for queued creative renders to complete");
