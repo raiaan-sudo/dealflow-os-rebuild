@@ -29,14 +29,14 @@ const experienceCards = [
     icon: ClipboardList,
   },
   {
-    href: "/dashboard?plan=starter",
+    href: "/dashboard",
     label: `${BILLING_PLANS.starter.priceLabel} Results`,
     title: "Guided recommendation",
     body: "Starter opens the shared results shell with simpler recommendations and manual next-step guidance.",
     icon: Lightbulb,
   },
   {
-    href: "/dashboard?plan=pro",
+    href: "/dashboard",
     label: `${BILLING_PLANS.pro.priceLabel} Results`,
     title: "Autonomous recommendation",
     body: "Pro opens the same results shell with evidence, guardrails, and safe autonomous monitor controls.",
@@ -127,7 +127,7 @@ export default function UIDirectionPage() {
               </Link>
             </Button>
             <Button asChild variant="secondary">
-              <Link href="/dashboard?plan=pro">
+              <Link href="/dashboard">
                 Open Pro results
                 <BarChart3 className="size-4" />
               </Link>
@@ -167,14 +167,14 @@ export default function UIDirectionPage() {
           The layout is similar. The product behavior is different.
         </h2>
         <p className="mt-3 max-w-4xl text-sm leading-7 text-white/66">
-          Both plans use one results shell. Starter guides the operator; Pro exposes controlled automation behavior.
+          Both plans use one results shell. Starter guides the next step; Pro exposes controlled automation behavior.
         </p>
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
           <BehaviorCard
             plan={`${BILLING_PLANS.starter.name} ${BILLING_PLANS.starter.priceLabel}`}
             title="Guided recommendation"
             body="The app tells the user what the smartest move is. The user still executes the work manually."
-            href="/dashboard?plan=starter"
+            href="/dashboard"
             items={[
               "Recommendation says what to do next",
               "Evidence is simplified into plain language",
@@ -186,7 +186,7 @@ export default function UIDirectionPage() {
             plan={`${BILLING_PLANS.pro.name} ${BILLING_PLANS.pro.priceLabel}`}
             title="Autonomous recommendation"
             body="The app recommends the action, shows the evidence, and can arm monitoring inside controlled guardrails."
-            href="/dashboard?plan=pro"
+            href="/dashboard"
             items={[
               "Recommendation includes an automation plan",
               "Evidence is visible before any action",
@@ -208,7 +208,7 @@ export default function UIDirectionPage() {
             </p>
           </Card>
         </Link>
-        <Link href="/dashboard?plan=starter" className="block">
+        <Link href="/dashboard" className="block">
           <Card className="h-full p-5">
             <IconTile icon={MousePointer2} tone="amber" />
             <h3 className="mt-4 text-xl font-semibold tracking-[-0.04em]">Results shell</h3>
@@ -217,7 +217,7 @@ export default function UIDirectionPage() {
             </p>
           </Card>
         </Link>
-        <Link href="/dashboard?plan=pro" className="block">
+        <Link href="/dashboard" className="block">
           <Card className="h-full p-5">
             <IconTile icon={SlidersHorizontal} tone="green" />
             <h3 className="mt-4 text-xl font-semibold tracking-[-0.04em]">Plan behavior</h3>
@@ -240,7 +240,7 @@ export default function UIDirectionPage() {
             </div>
           </div>
           <Button asChild variant="secondary">
-            <Link href="/dashboard?plan=starter">
+            <Link href="/dashboard">
               Open Starter
               <CircleDollarSign className="size-4" />
             </Link>

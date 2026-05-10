@@ -91,7 +91,16 @@ function statusToneClass(tone: string) {
   return "border-white/10 bg-white/[0.04] text-muted-foreground";
 }
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const campaignId =
+    resolvedSearchParams && typeof resolvedSearchParams.campaignId === "string"
+      ? resolvedSearchParams.campaignId
+      : undefined;
   const [billing, credits, appContext] = await Promise.all([
     getBillingSummary().catch(() => null),
     getCreditSummaryForCurrentUser().catch(() => null),
@@ -218,7 +227,7 @@ export default async function SettingsPage() {
                 <div>
                   <p className="text-sm font-medium text-foreground">Manage or cancel subscription</p>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                    Cancellation and payment changes happen in Stripe Portal. DealFlow records the reason only so the operator can reduce failed-payment churn and disputes.
+                    Cancellation and payment changes happen in Stripe Portal. DealFlow records the reason only so support can reduce failed-payment churn and disputes.
                   </p>
                 </div>
                 <CancellationIntentForm />
@@ -229,7 +238,7 @@ export default async function SettingsPage() {
               <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
                 Activate a subscription before opening Stripe-hosted billing management for this workspace.
               </p>
-              <CheckoutButton planTier="pro" label="Activate billing" />
+              <CheckoutButton planTier="pro" label="Activate billing" campaignId={campaignId} />
             </div>
           )}
         </div>

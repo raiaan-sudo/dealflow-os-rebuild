@@ -1,6 +1,9 @@
 import { ApiError } from "@/lib/api/route";
 import { getMetaEnv, getPublicAppUrl } from "@/lib/env";
-import { applyMetaDailyBudgetCapCents } from "@/lib/integrations/meta/budget-cap";
+import {
+  applyMetaDailyBudgetCapCents,
+  assertMetaDailyBudgetCapConfiguredForLiveLaunch,
+} from "@/lib/integrations/meta/budget-cap";
 import { decryptSecret } from "@/lib/integrations/meta-crypto";
 import type { MetaConnectionRecord } from "@/lib/integrations/meta/types";
 import { fetchWithRetryServer } from "@/lib/http/fetch-with-retry-server";
@@ -384,6 +387,18 @@ export function getMetaExecutionMode() {
       "Live Meta launch requires ALLOW_META_LIVE_LAUNCH=true. Use sandbox mode for non-mutating validation.",
       "meta_live_launch_disabled",
     );
+  }
+
+  if (executionMode === "live") {
+    try {
+      assertMetaDailyBudgetCapConfiguredForLiveLaunch();
+    } catch {
+      throw new ApiError(
+        503,
+        "Live Meta launch requires a configured daily budget cap before campaign creation can continue.",
+        "meta_budget_cap_missing",
+      );
+    }
   }
 
   return executionMode;

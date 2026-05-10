@@ -606,7 +606,7 @@ export async function POST(req: Request) {
     }
 
     if (!normalizedAgentPhone) {
-      throw new Error("Enter a valid US or Canada phone number for internal lead alerts.");
+      throw new Error("Enter a valid US or Canada phone number for lead alerts.");
     }
 
     const idempotencyKey = buildOnboardingIdempotencyKey(createHash, {

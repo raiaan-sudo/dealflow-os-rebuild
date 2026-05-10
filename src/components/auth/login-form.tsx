@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 type LoginFormProps = {
   redirectedFrom?: string;
   reason?: string;
+  initialMode?: "sign-in" | "sign-up" | "reset-password";
   isConfigured: boolean;
 };
 
@@ -34,9 +35,10 @@ declare global {
 export function LoginForm({
   redirectedFrom,
   reason,
+  initialMode = "sign-in",
   isConfigured,
 }: LoginFormProps) {
-  const [mode, setMode] = useState<"sign-in" | "sign-up" | "reset-password" | "update-password">("sign-in");
+  const [mode, setMode] = useState<"sign-in" | "sign-up" | "reset-password" | "update-password">(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");

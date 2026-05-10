@@ -37,6 +37,19 @@ async function countRows(supabase, table, queryBuilder) {
   return count ?? 0;
 }
 
+async function countUnreviewedFailedProviderEvents(supabase) {
+  const { data, error } = await supabase
+    .from("provider_usage_events")
+    .select("id,metadata")
+    .eq("status", "failed");
+
+  if (error) {
+    throw new Error(`provider_usage_events: ${error.message}`);
+  }
+
+  return (data ?? []).filter((row) => !row.metadata?.operatorReviewedAt).length;
+}
+
 async function main() {
   const supabase = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
     auth: {
@@ -61,9 +74,7 @@ async function main() {
     countRows(supabase, "stripe_webhook_events", (query) =>
       query.eq("status", "failed").is("reviewed_at", null),
     ),
-    countRows(supabase, "provider_usage_events", (query) =>
-      query.eq("status", "failed"),
-    ),
+    countUnreviewedFailedProviderEvents(supabase),
     countRows(supabase, "provider_usage_events", (query) =>
       query
         .eq("status", "reserved")

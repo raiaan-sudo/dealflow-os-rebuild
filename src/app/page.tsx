@@ -23,7 +23,7 @@ const productPillars = [
   },
   {
     title: "Optimize",
-    description: "Use dashboard signals, recommendations, value reports, and operator issues to keep the campaign moving after launch.",
+    description: "Use dashboard signals, recommendations, value reports, and campaign health alerts to keep the campaign moving after launch.",
     icon: BarChart3,
   },
 ];
@@ -76,7 +76,7 @@ export default function HomePage() {
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Button asChild size="lg">
-              <Link href="/welcome" prefetch={false}>
+              <Link href="/login?mode=sign-up&redirectedFrom=%2Fwelcome%3Ffresh%3D1" prefetch={false}>
                 Start building
                 <ArrowRight aria-hidden="true" />
               </Link>

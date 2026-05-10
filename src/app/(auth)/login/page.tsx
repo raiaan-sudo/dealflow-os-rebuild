@@ -21,12 +21,19 @@ export default async function LoginPage({
     resolvedSearchParams && typeof resolvedSearchParams.reason === "string"
       ? resolvedSearchParams.reason
       : undefined;
+  const initialMode =
+    resolvedSearchParams && resolvedSearchParams.mode === "sign-up"
+      ? "sign-up"
+      : resolvedSearchParams && resolvedSearchParams.mode === "reset-password"
+        ? "reset-password"
+        : "sign-in";
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-[560px] items-center px-5 py-10 sm:px-6">
       <LoginForm
         redirectedFrom={redirectedFrom}
         reason={reason}
+        initialMode={initialMode}
         isConfigured={hasSupabaseEnv()}
       />
     </div>

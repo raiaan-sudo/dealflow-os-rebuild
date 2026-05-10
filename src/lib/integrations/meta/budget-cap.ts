@@ -11,6 +11,16 @@ export function getMetaDailyBudgetCapCents() {
     : null;
 }
 
+export function assertMetaDailyBudgetCapConfiguredForLiveLaunch() {
+  if (process.env.ALLOW_META_LIVE_LAUNCH !== "true") {
+    return;
+  }
+
+  if (getMetaDailyBudgetCapCents() === null) {
+    throw new Error("META_DAILY_BUDGET_CAP_CENTS must be finite when ALLOW_META_LIVE_LAUNCH=true.");
+  }
+}
+
 export function applyMetaDailyBudgetCapCents(valueCents: number) {
   const capCents = getMetaDailyBudgetCapCents();
 
@@ -20,4 +30,3 @@ export function applyMetaDailyBudgetCapCents(valueCents: number) {
 
   return Math.min(valueCents, capCents);
 }
-

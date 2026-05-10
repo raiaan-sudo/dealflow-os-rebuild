@@ -14,6 +14,7 @@ export type GenerationCreditBucket =
   | "heygen_video_generation";
 
 export const CREDIT_TOP_UP_MINIMUM_CENTS = 2_000;
+const DEFAULT_GENERATION_CREDIT_OVERDRAFT_LIMIT_CENTS = CREDIT_TOP_UP_MINIMUM_CENTS;
 
 const DEFAULT_GENERATION_CREDIT_COSTS_CENTS: Record<GenerationCreditBucket, number> = {
   image_generation: 100,
@@ -37,6 +38,13 @@ function normalizeGenerationCreditBucket(bucket: GenerationCreditBucket) {
 function parsePositiveInt(value: string | undefined, fallback: number) {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+export function getGenerationCreditOverdraftLimitCents() {
+  return parsePositiveInt(
+    process.env.GENERATION_CREDIT_OVERDRAFT_LIMIT_CENTS,
+    DEFAULT_GENERATION_CREDIT_OVERDRAFT_LIMIT_CENTS,
+  );
 }
 
 export function getGenerationCreditCostCents(bucket: GenerationCreditBucket) {
@@ -162,6 +170,29 @@ export async function consumeCreditsForGeneration(params: {
     };
   }
 
+  const overdraftLimitCents = getGenerationCreditOverdraftLimitCents();
+  const { data: creditRowRaw, error: creditFetchError } = await admin
+    .from("user_credits")
+    .select("balance")
+    .eq("user_id", params.userId)
+    .maybeSingle();
+
+  if (creditFetchError) {
+    throw new ApiError(500, creditFetchError.message, "credit_balance_fetch_failed");
+  }
+
+  const creditRow = creditRowRaw as { balance?: unknown } | null;
+  const currentBalance = typeof creditRow?.balance === "number" ? creditRow.balance : 0;
+  const nextBalance = currentBalance - amount;
+
+  if (nextBalance < -overdraftLimitCents) {
+    throw new ApiError(
+      402,
+      `Generation credits could not be reserved. Add at least ${formatCreditCurrency(CREDIT_TOP_UP_MINIMUM_CENTS)} before trying again.`,
+      "credits_insufficient",
+    );
+  }
+
   const { data: rows, error } = await (admin as any).rpc("consume_user_credits", {
     p_user_id: params.userId,
     p_organization_id: params.organizationId ?? null,
@@ -176,6 +207,7 @@ export async function consumeCreditsForGeneration(params: {
       bucket: normalizedBucket,
       legacyBucket: params.bucket === normalizedBucket ? null : params.bucket,
       campaignId: params.campaignId ?? null,
+      overdraftLimitCents,
       ...(params.metadata ?? {}),
     } satisfies Json,
   });

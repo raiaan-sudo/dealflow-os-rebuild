@@ -235,7 +235,7 @@ export default async function LaunchAliasPage({
     ...(!billingLaunchAllowed ? ["Activate billing before launch."] : []),
     ...(!metaSelectionReady ? ["Save the Meta ad account, Page, and pixel before launch."] : []),
     ...(metaSelectionReady && !metaPreflightReady ? metaPreflight?.errors ?? ["Meta preflight failed."] : []),
-    ...(!providerLaunchEnabled ? ["Provider launch switch is off."] : []),
+    ...(!providerLaunchEnabled ? ["Final launch approval is pending."] : []),
   ];
   const selectedCreatives = plan.creatives.staticAds.filter((ad) => selectedAdIds.includes(ad.id));
   const publicFunnelPublished =
@@ -309,9 +309,9 @@ export default async function LaunchAliasPage({
       ready: true,
       statusLabel: budgetWasCapped ? "Capped" : budgetCapApplied ? undefined : "Unlimited",
       detail: budgetWasCapped
-        ? `Requested daily budget is ${formatBudgetCap(dailyBudgetCents)}; the launch will use the provider cap of ${formatBudgetCap(effectiveDailyBudgetCents)}/day unless the owner raises the cap.`
+        ? `Requested daily budget is ${formatBudgetCap(dailyBudgetCents)}; the launch will use the DealFlow cap of ${formatBudgetCap(effectiveDailyBudgetCents)}/day unless support adjusts the cap.`
         : budgetCapCents !== null
-          ? `Provider launch is capped at ${formatBudgetCap(budgetCapCents)}/day; requested daily budget is ${formatBudgetCap(dailyBudgetCents)}.`
+          ? `DealFlow launch is capped at ${formatBudgetCap(budgetCapCents)}/day; requested daily budget is ${formatBudgetCap(dailyBudgetCents)}.`
           : `No DealFlow budget cap is applied. Launch will use the requested daily budget of ${formatBudgetCap(dailyBudgetCents)}.`,
     },
     {
@@ -343,7 +343,7 @@ export default async function LaunchAliasPage({
     ...(!publicFunnelPublished ? ["Publish the public funnel snapshot so Meta has a live destination URL."] : []),
     ...(!providerLaunchEnabled
       ? [
-          "Final launch approval is pending. DealFlow will not create Meta campaign objects until the owner enables live launch approvals.",
+          "Final launch approval is pending. DealFlow will not create Meta campaign objects until support enables live launch approvals.",
         ]
       : []),
   ];

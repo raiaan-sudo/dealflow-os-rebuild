@@ -61,7 +61,7 @@ test.describe("safe public browser proof", () => {
     const marketingStartLink = page.getByRole("link", { name: /Get Access|See the system/i }).first();
     if (await appStartLink.count()) {
       await appStartLink.click();
-      await expect(page).toHaveURL(/\/login\?reason=expired&redirectedFrom=%2Fwelcome/);
+      await expect(page).toHaveURL(/\/login\?mode=sign-up&redirectedFrom=%2Fwelcome%3Ffresh%3D1/);
     } else {
       await marketingStartLink.click();
       await expect(page).toHaveURL(/app\.agentdealflow\.io\/login|\/login/);

@@ -552,10 +552,10 @@ export function PlanAwareResultsPreview({
         <Link href="/onboarding" className="block">
           <SmallPanel title="Phase 1" value="Onboarding" detail="Open the safe step-by-step campaign builder." icon={Wand2} tone="violet" />
         </Link>
-        <Link href="/dashboard?plan=starter" className="block">
+        <Link href="/dashboard" className="block">
           <SmallPanel title="Phase 2" value="Results shell" detail="Open the Starter guided results state." icon={ClipboardList} tone="cyan" />
         </Link>
-        <Link href="/dashboard?plan=pro" className="block">
+        <Link href="/dashboard" className="block">
           <SmallPanel title="Phase 3" value="Plan behavior" detail="Open the Pro autonomous results state." icon={CircleDollarSign} tone="green" />
         </Link>
       </div>

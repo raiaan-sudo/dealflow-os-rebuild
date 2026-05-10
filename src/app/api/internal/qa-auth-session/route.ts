@@ -15,6 +15,13 @@ function assertQaHarnessEnabled() {
   if (process.env.QA_AUTH_HARNESS_ENABLED !== "true") {
     throw new ApiError(404, "QA auth harness is not enabled.", "qa_auth_harness_disabled");
   }
+
+  if (
+    process.env.VERCEL_ENV === "production" &&
+    process.env.QA_AUTH_HARNESS_PRODUCTION_ENABLED !== "true"
+  ) {
+    throw new ApiError(404, "QA auth harness is not enabled in production.", "qa_auth_harness_production_disabled");
+  }
 }
 
 function getQaEmail() {
@@ -135,7 +142,7 @@ export async function POST(request: Request) {
     for (const [name, value] of cookieMap) {
       response.headers.append(
         "Set-Cookie",
-        `${name}=${value}; Path=/; Max-Age=${400 * 24 * 60 * 60}; SameSite=Lax; Secure`,
+        `${name}=${value}; Path=/; Max-Age=${2 * 60 * 60}; SameSite=Lax; Secure`,
       );
     }
 

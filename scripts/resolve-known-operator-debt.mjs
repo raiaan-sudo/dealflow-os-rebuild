@@ -153,6 +153,82 @@ async function main() {
   }
 
   log("Historical failed meta_sync jobs reviewed", String(safeMetaSyncRows.length));
+
+  const { data: supersededRenderRows, error: supersededRenderReadError } = await supabase
+    .from("system_jobs")
+    .select("id,status,kind,last_error_code,dead_lettered_at,error_message,payload")
+    .eq("kind", "static_creative_generation")
+    .eq("status", "failed")
+    .eq("last_error_code", "superseded_static_render_retry")
+    .is("reviewed_at", null);
+
+  if (supersededRenderReadError) {
+    throw new Error(`Failed to read superseded static render jobs: ${supersededRenderReadError.message}`);
+  }
+
+  const safeSupersededRenderRows = (supersededRenderRows ?? []).filter((row) => {
+    return (
+      row.dead_lettered_at !== null &&
+      row.error_message === "Superseded by production render kickoff fix before provider execution." &&
+      row.payload?.force === true
+    );
+  });
+
+  if (safeSupersededRenderRows.length > 0) {
+    const { error } = await supabase
+      .from("system_jobs")
+      .update({
+        reviewed_at: now,
+        reviewed_by: REVIEWED_BY,
+        resolution_note:
+          "Reviewed as superseded static render retry artifacts from the Higgsfield production kickoff fix; later render proof completed through the current path.",
+      })
+      .in(
+        "id",
+        safeSupersededRenderRows.map((row) => row.id),
+      );
+
+    if (error) {
+      throw new Error(`Failed to mark superseded static render jobs reviewed: ${error.message}`);
+    }
+  }
+
+  log("Superseded static render jobs reviewed", String(safeSupersededRenderRows.length));
+
+  const { data: providerRows, error: providerReadError } = await supabase
+    .from("provider_usage_events")
+    .select("id,campaign_id,provider,operation,status,metadata")
+    .eq("status", "failed")
+    .eq("campaign_id", "a18d77f7-398b-4920-8d93-8332dfff2d44")
+    .eq("provider", "higgsfield")
+    .eq("operation", "image_generation");
+
+  if (providerReadError) {
+    throw new Error(`Failed to read failed provider usage events: ${providerReadError.message}`);
+  }
+
+  const safeProviderRows = (providerRows ?? []).filter((row) => !row.metadata?.operatorReviewedAt);
+  for (const row of safeProviderRows) {
+    const { error } = await supabase
+      .from("provider_usage_events")
+      .update({
+        metadata: {
+          ...(row.metadata ?? {}),
+          operatorReviewedAt: now,
+          operatorReviewedBy: REVIEWED_BY,
+          operatorReviewNote:
+            "Reviewed as failed Higgsfield image-generation test artifact for the owner campaign; current provider route remains covered by smoke/build checks.",
+        },
+        updated_at: now,
+      })
+      .eq("id", row.id);
+
+    if (error) {
+      throw new Error(`Failed to mark provider usage event reviewed: ${error.message}`);
+    }
+  }
+
+  log("Failed provider usage events reviewed", String(safeProviderRows.length));
 }
 
 main().catch((error) => {

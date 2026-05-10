@@ -302,7 +302,7 @@ function validateStep(step: OnboardingStepKey, draft: DraftState) {
     if (!draft.agentFirstName.trim()) errors.agentFirstName = "Add the agent first name.";
     if (!draft.agentLastName.trim()) errors.agentLastName = "Add the agent last name.";
     if (!draft.agentCompanyName.trim()) errors.agentCompanyName = "Add the company or brokerage.";
-    if (!draft.agentPhone.trim()) errors.agentPhone = "Add the agent phone for internal lead alerts.";
+    if (!draft.agentPhone.trim()) errors.agentPhone = "Add the agent phone for lead alerts.";
     else if (!normalizePhone(draft.agentPhone)) errors.agentPhone = "Use a valid US or Canada phone number.";
   }
 
@@ -1000,7 +1000,7 @@ export default function OnboardingPage() {
                   <div>
                     <h3 className="text-xl font-semibold tracking-[-0.04em]">Ready to build campaign preview</h3>
                     <p className="mt-2 text-sm leading-7 text-white/64">
-                      Continue saves the campaign, updates the agent profile for internal lead alerts, and opens checkout. No live provider action runs here.
+                      Continue saves the campaign, updates the agent profile for lead alerts, and opens checkout. No live provider action runs here.
                     </p>
                   </div>
                 </div>

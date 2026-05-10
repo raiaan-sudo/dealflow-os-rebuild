@@ -246,7 +246,7 @@ function runOfflineChecks() {
   assertIncludes(onboardingPage, "agentFirstName", "Onboarding agent first name", "agent first name is collected before campaign creation");
   assertIncludes(onboardingPage, "agentLastName", "Onboarding agent last name", "agent last name is collected before campaign creation");
   assertIncludes(onboardingPage, "agentCompanyName", "Onboarding agent company", "agent company is collected before campaign creation");
-  assertIncludes(onboardingPage, "agentPhone", "Onboarding agent phone", "agent phone is collected for internal lead alerts");
+  assertIncludes(onboardingPage, "agentPhone", "Onboarding agent phone", "agent phone is collected for lead alerts");
   assertIncludes(onboardingPage, "PrepaywallCampaignPreview", "Onboarding pre-paywall preview integration", "guided onboarding shows a campaign preview before checkout");
   assertIncludes(prepaywallPreview, "DealFlow Preview", "Pre-paywall creative watermark", "mock creative frames are visibly watermarked as previews");
   assertIncludes(prepaywallPreview, "Full generation unlocks after checkout and credits", "Pre-paywall generation lock copy", "final generation is clearly locked until checkout and credits");
@@ -550,6 +550,7 @@ function runOfflineChecks() {
   assertIncludes(safeE2eConfig, "ALLOW_META_LIVE_LAUNCH", "Safe E2E Meta launch disabled", "browser proof starts local app with live Meta launch disabled");
   assertIncludes(safeE2eSpec, "SAFE_E2E_QA_AUTH", "Safe E2E QA auth gate", "authenticated browser journey requires an explicit QA auth env gate");
   assertIncludes(safeE2eSpec, "/api/internal/qa-auth-session", "Safe E2E internal auth harness", "browser proof uses the env-gated internal QA auth harness");
+  assertIncludes("src/app/api/internal/qa-auth-session/route.ts", "QA_AUTH_HARNESS_PRODUCTION_ENABLED", "Production QA harness gate", "QA session minting requires a second explicit production gate");
   assertIncludes(safeE2eSpec, "No live provider action runs here.", "Safe E2E provider boundary assertion", "browser proof asserts onboarding warns that no live provider action runs");
   assertIncludes("scripts/smoke-test-system.md", "npm run test:e2e:safe", "Safe browser E2E docs", "smoke documentation includes the safe browser proof command");
   assertExcludes("src/lib/services/lead-handler-service.ts", /QA_EMAIL|QA_PASSWORD/, "QA credential fallback removed", "no QA credential fallback remains in lead handler");
@@ -585,6 +586,8 @@ function runOfflineChecks() {
   assertIncludes(billingService, "checkout_session_stale", "Stripe stale checkout reconciliation guard", "older parallel checkout sessions cannot unlock access");
   assertIncludes(envHelpers, "ALLOW_BILLING_ADMIN_OVERRIDE", "Billing admin override env gate", "internal launch override requires explicit env opt-in");
   assertIncludes(envHelpers, "BILLING_ADMIN_OVERRIDE_EMAILS", "Billing-only override allowlist", "billing override can be scoped without granting operator admin access");
+  assertIncludes(creditService, "GENERATION_CREDIT_OVERDRAFT_LIMIT_CENTS", "Credit overdraft cap env", "self-serve paid generation overdraft is capped instead of unlimited");
+  assertIncludes("supabase/migrations/20260510183000_cap_generation_credit_overdrafts.sql", "next_balance < -overdraft_limit", "DB credit overdraft cap", "database credit consumption enforces a maximum negative balance");
   assertIncludes(".env.example", "INTERNAL_SYSTEM_JOBS_SECRET", "Internal runner env example", "cron runner secret is documented in the environment template");
   assertIncludes(".env.example", "CRON_SECRET", "Vercel cron env example", "Vercel Cron secret fallback is documented in the environment template");
   assertIncludes(billingService, "isBillingAdminOverrideEmail(email) ? email : null", "Billing-only override check", "billing override requires the billing-specific email allowlist");
@@ -634,6 +637,7 @@ function runOfflineChecks() {
   assertIncludes(higgsfieldClient, "withPolling: false", "Higgsfield async video start", "video generation stays async and does not block the request path");
   assertIncludes(launchRoute, "assertMetaLiveLaunchEnabled", "Reachable Meta live launch kill switch", "direct Meta launch route fails closed unless ALLOW_META_LIVE_LAUNCH=true");
   assertIncludes("src/lib/integrations/meta/budget-cap.ts", "/^(0|none|off|unlimited)$/i", "Meta budget unlimited policy", "unset, zero, off, none, or unlimited budget cap config removes the DealFlow cap");
+  assertIncludes(metaExecution, "meta_budget_cap_missing", "Live Meta budget cap required", "live Meta launch fails closed when a finite budget cap is missing");
   assertIncludes(metaLaunchService, "getMetaDailyBudgetCapCents()", "Reachable Meta budget policy", "direct Meta launch uses the shared owner-configured budget cap policy");
   assertIncludes(sessionCostGuard, "reserve_provider_usage", "Atomic provider usage reservation", "paid-generation guard reserves provider budget through DB RPC");
   assertIncludes(sessionCostGuard, "HIGGSFIELD_IMAGE_DAILY_LIMIT", "Configurable Higgsfield image cap", "Higgsfield image generation can be capped below the default for production tests");
