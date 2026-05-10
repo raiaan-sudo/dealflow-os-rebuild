@@ -52,6 +52,7 @@ export type CreativeEngineInput = {
   provider_usage_context?: {
     createForAsset: (asset: StaticCreativeAsset) => ImageProviderUsageContext | null;
   };
+  reuse_static_assets?: StaticCreativeAsset[];
 };
 
 export type CreativeAngle = "opportunity" | "pain" | "authority" | "curiosity";
@@ -1840,8 +1841,25 @@ export async function generateStaticCreativeAds(
   const baseSystem = buildCreativeSystem(input);
   const brief = baseSystem.brief;
   const baseStaticAds = baseSystem.staticAds;
+  const reusableStaticAssets = new Map(
+    (input?.reuse_static_assets ?? [])
+      .filter((asset) => asset.imageGenerationState === "generated" && Boolean(asset.imageUrl))
+      .map((asset) => [asset.id, asset]),
+  );
   const generatedStaticAds = await Promise.all(
     baseStaticAds.map(async (asset) => {
+      const existing = reusableStaticAssets.get(asset.id);
+      if (existing) {
+        return {
+          ...asset,
+          imageUrl: existing.imageUrl,
+          imageGenerationState: "generated" as const,
+          imageGenerationMessage: null,
+          imageGenerationModel: existing.imageGenerationModel,
+          imageGenerationProvider: existing.imageGenerationProvider ?? null,
+        };
+      }
+
       try {
         const providerUsage = input?.provider_usage_context?.createForAsset(asset) ?? null;
         const imageAd = await createImageAd(brief, asset, providerUsage);

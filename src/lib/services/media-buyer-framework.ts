@@ -721,6 +721,17 @@ function normalize(value: unknown) {
   return safeText(value).toLowerCase();
 }
 
+function stripNegativePromptGuidance(value: string) {
+  return value
+    .replace(/\bavoid\b[^.?!]*(?:[.?!]|$)/gi, " ")
+    .replace(/\bdo not\b[^.?!]*(?:[.?!]|$)/gi, " ")
+    .replace(/\bnot\b\s+(?:a\s+|an\s+|the\s+)?[^.?!]*(?:[.?!]|$)/gi, " ")
+    .replace(/\bwithout\b[^.?!]*(?:[.?!]|$)/gi, " ")
+    .replace(/\bover showroom polish\b/gi, "over synthetic polish")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function clampScore(value: number) {
   return Math.max(0, Math.min(10, Number(value.toFixed(2))));
 }
@@ -951,6 +962,7 @@ export function evaluateCreativeQuality(params: {
   });
   const hook = normalize(params.hook);
   const cta = normalize(params.cta);
+  const imagePromptForScoring = stripNegativePromptGuidance(safeText(params.imagePrompt));
   const combined = normalize(
     [
       params.hook,
@@ -959,7 +971,7 @@ export function evaluateCreativeQuality(params: {
       params.overlayText,
       params.cta,
       params.visualConcept,
-      params.imagePrompt,
+      imagePromptForScoring,
       ...(params.scriptLines ?? []),
     ].join(" "),
   );

@@ -141,6 +141,22 @@ function asScoreBreakdown(value: Json | null | undefined): StaticCreativeAsset["
   return value as StaticCreativeAsset["scoreBreakdown"];
 }
 
+function asImagePromptConfig(value: Json | null | undefined): StaticCreativeAsset["imagePromptConfig"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as StaticCreativeAsset["imagePromptConfig"];
+}
+
+function asVisualPromptBrief(value: Json | null | undefined): StaticCreativeAsset["visualPromptBrief"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as StaticCreativeAsset["visualPromptBrief"];
+}
+
 function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[] {
   const grouped = new Map<string, CreativeAssetRow[]>();
 
@@ -202,11 +218,15 @@ function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[
         typeof metadata?.imageGenerationModel === "string"
           ? metadata.imageGenerationModel
           : null,
+      imageGenerationProvider:
+        typeof metadata?.imageGenerationProvider === "string"
+          ? metadata.imageGenerationProvider
+          : preferredRow.provider_name ?? null,
       visualConcept: typeof metadata?.visualConcept === "string" ? metadata.visualConcept : "",
       imagePrompt: typeof metadata?.imagePrompt === "string" ? metadata.imagePrompt : "",
-      imagePromptConfig: null,
+      imagePromptConfig: asImagePromptConfig(metadata?.imagePromptConfig),
       preferredImageModel,
-      visualPromptBrief: null,
+      visualPromptBrief: asVisualPromptBrief(metadata?.visualPromptBrief),
       scoreBreakdown: asScoreBreakdown(metadata?.scoreBreakdown),
       offerQuality:
         metadata?.offerQuality && typeof metadata.offerQuality === "object"
@@ -731,7 +751,12 @@ export async function regenerateStaticCreativeAssets(
 export async function regenerateStaticCreativeAssetsForUser(
   campaignId: string,
   userId: string,
-  options?: { force?: boolean; supabase?: PersistenceClient; providerUsageRunId?: string | null },
+  options?: {
+    force?: boolean;
+    missingOnly?: boolean;
+    supabase?: PersistenceClient;
+    providerUsageRunId?: string | null;
+  },
 ): Promise<FullCampaignRecord> {
   const supabase =
     options?.supabase ??
@@ -791,6 +816,7 @@ export async function regenerateStaticCreativeAssetsForUser(
       price_point: currentRecord.strategy.price_point,
       market_type: currentRecord.strategy.market_type,
       creative_strategy: currentRecord.plan.creative_strategy,
+      reuse_static_assets: options?.missingOnly ? currentRecord.creatives.staticAds : undefined,
       provider_usage_context: {
         createForAsset: (asset) => {
           const runScope = options?.providerUsageRunId?.trim() || "default";

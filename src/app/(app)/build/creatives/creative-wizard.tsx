@@ -65,12 +65,19 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
     [creatives],
   );
   const topCreatives = rankedCreatives.slice(0, 3);
-  const topUgcCreative = rankedCreatives.find((creative) => /\bugc\b/i.test(`${creative.id} ${creative.formatLabel ?? ""}`));
+  const topUgcCreatives = rankedCreatives
+    .filter((creative) => /\bugc\b/i.test(`${creative.id} ${creative.formatLabel ?? ""}`))
+    .slice(0, 2);
   const defaultSelectedIds = topCreatives.length > 0
     ? Array.from(
         new Set(
-          topUgcCreative && !topCreatives.some((creative) => creative.id === topUgcCreative.id)
-            ? [...topCreatives.slice(0, 2), topUgcCreative].map((creative) => creative.id)
+          topUgcCreatives.length > 0
+            ? [
+                ...topCreatives
+                  .filter((creative) => !topUgcCreatives.some((ugcCreative) => ugcCreative.id === creative.id))
+                  .slice(0, Math.max(1, 3 - topUgcCreatives.length)),
+                ...topUgcCreatives,
+              ].map((creative) => creative.id)
             : topCreatives.map((creative) => creative.id),
         ),
       )
@@ -86,6 +93,9 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
   const primaryCreative = selectedCreatives[0] ?? rankedCreatives[0] ?? null;
   const canContinue = selectedCreatives.length >= minSelected && selectedCreatives.length <= maxSelected;
   const allImagesMissing = rankedCreatives.every((creative) => !creative.imageUrl);
+  const hasMissingOrFailedImages = rankedCreatives.some(
+    (creative) => !creative.imageUrl || creative.imageGenerationState === "failed",
+  );
   const hasGeneratedImages = rankedCreatives.some(
     (creative) => creative.imageGenerationState === "generated" && Boolean(creative.imageUrl),
   );
@@ -97,6 +107,8 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
   );
   const autoRenderStorageKey = hasCreditBlocker
     ? `dealflow:auto-image-render:credit-overdraft:${campaignId}`
+    : hasGeneratedImages
+      ? `dealflow:auto-image-render:missing-only:${campaignId}`
     : `dealflow:auto-image-render:${campaignId}`;
 
   const subscribeToJob = useCallback((jobId: string) => {
@@ -134,7 +146,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
     });
   }, [router]);
 
-  const queueImagePreviews = useCallback(async ({ force = false, automatic = false } = {}) => {
+  const queueImagePreviews = useCallback(async ({ force = false, automatic = false, missingOnly = false } = {}) => {
     if (renderingImages) {
       return;
     }
@@ -155,6 +167,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
         },
         body: JSON.stringify({
           force,
+          missingOnly,
         }),
       });
       const data = (await response.json().catch(() => null)) as
@@ -176,7 +189,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
   }, [campaignId, renderingImages, subscribeToJob]);
 
   useEffect(() => {
-    if (!allImagesMissing || hasGeneratedImages || autoRenderStartedRef.current) {
+    if ((!allImagesMissing && !hasMissingOrFailedImages) || autoRenderStartedRef.current) {
       return;
     }
 
@@ -189,8 +202,12 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
       window.sessionStorage.setItem(autoRenderStorageKey, "started");
     }
 
-    void queueImagePreviews({ force: hasCreditBlocker, automatic: true });
-  }, [allImagesMissing, autoRenderStorageKey, hasCreditBlocker, hasGeneratedImages, queueImagePreviews]);
+    void queueImagePreviews({
+      force: hasCreditBlocker,
+      automatic: true,
+      missingOnly: hasGeneratedImages,
+    });
+  }, [allImagesMissing, autoRenderStorageKey, hasCreditBlocker, hasGeneratedImages, hasMissingOrFailedImages, queueImagePreviews]);
 
   function toggleCreative(creativeId: string) {
     setSelectedIds((current) => {
@@ -324,7 +341,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => void queueImagePreviews({ force: true })}
+                  onClick={() => void queueImagePreviews({ force: true, missingOnly: true })}
                   disabled={renderingImages}
                 >
                   {renderingImages ? "Refreshing previews..." : "Refresh image previews"}

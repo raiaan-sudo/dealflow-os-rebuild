@@ -9,6 +9,7 @@ import { z } from "zod";
 
 const bodySchema = z.object({
   force: z.boolean().optional(),
+  missingOnly: z.boolean().optional(),
 });
 
 function scheduleStaticCreativeJob(jobId: string) {
@@ -76,7 +77,9 @@ export async function POST(
 
     const requestScope = body.force === true
       ? `force:${crypto.randomUUID()}`
-      : `attempt:${Date.now()}`;
+      : body.missingOnly === true
+        ? `missing:${crypto.randomUUID()}`
+        : `attempt:${Date.now()}`;
     const idempotencyKey = `static_creative_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${requestScope}`;
 
     const job = await createSystemJob({
@@ -87,6 +90,7 @@ export async function POST(
       idempotencyKey,
       payload: {
         force: body.force === true,
+        missingOnly: body.missingOnly === true,
       },
     });
     scheduleStaticCreativeJob(job.id);

@@ -58,8 +58,12 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
     const metadataBase = {
       source: "static_ad",
       staticAssetId: asset.id,
+      angle: asset.angle,
       visualConcept: asset.visualConcept,
       imagePrompt: asset.imagePrompt,
+      imagePromptConfig: (asset.imagePromptConfig ?? null) as Json,
+      preferredImageModel: asset.preferredImageModel,
+      visualPromptBrief: (asset.visualPromptBrief ?? null) as Json,
       imageGenerationState: asset.imageGenerationState,
       imageGenerationProvider: asset.imageGenerationProvider ?? null,
       imageGenerationModel: asset.imageGenerationModel,

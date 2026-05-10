@@ -60,6 +60,7 @@ const SUBSCRIPTION_GATED_JOB_KINDS = new Set<SystemJobKind>([
 type SystemJobPayloadMap = {
   static_creative_generation: {
     force?: boolean;
+    missingOnly?: boolean;
   };
   video_generation: VideoGenerationJobPayload;
   video_generation_status: VideoGenerationStatusJobPayload;
@@ -726,6 +727,7 @@ export async function processSystemJob(jobId: string) {
         processingJob.user_id,
         {
           force: Boolean((processingJob.payload as SystemJobPayloadMap["static_creative_generation"])?.force),
+          missingOnly: Boolean((processingJob.payload as SystemJobPayloadMap["static_creative_generation"])?.missingOnly),
           providerUsageRunId: `${processingJob.id}:${processingJob.attempt_count ?? 0}`,
           supabase,
         },

@@ -152,6 +152,8 @@ function runOfflineChecks() {
   const higgsfieldClient = "src/lib/ai/higgsfield.ts";
   const creativeEngine = "src/lib/services/creative-engine.ts";
   const campaignVisualPromptBuilder = "src/lib/services/campaign-visual-prompt-builder.ts";
+  const staticCreativeAssetService = "src/lib/services/static-creative-asset-service.ts";
+  const mediaBuyerFramework = "src/lib/services/media-buyer-framework.ts";
   const campaignPersistence = "src/lib/services/campaign-persistence.ts";
   const campaignPlanPersistence = "src/lib/services/campaign-plan-persistence-service.ts";
   const directHeyGenClient = "src/lib/ai/heygen.ts";
@@ -660,6 +662,10 @@ function runOfflineChecks() {
   assertIncludes(systemJobService, "video_generation_status", "Video generation status polling", "AI video render completion is polled by durable follow-up jobs instead of blocking the cron worker");
   assertIncludes(staticAdsRoute, "scheduleStaticCreativeJob", "Static generation kickoff", "creative preview jobs are kicked immediately instead of relying only on cron");
   assertIncludes(staticAdsRoute, "if (existingActiveJob)", "Static generation active-job reuse", "forced preview retries reuse active work instead of stacking duplicate paid jobs");
+  assertIncludes(staticAdsRoute, "missingOnly", "Static missing-image retry", "partial creative retries can refill failed/missing images without regenerating the whole test set");
+  assertIncludes(campaignPersistence, "reuse_static_assets", "Static generated-asset reuse", "missing-image retries preserve already generated Higgsfield assets");
+  assertIncludes(staticCreativeAssetService, "imagePromptConfig", "Static prompt metadata persistence", "saved generated assets keep prompt config and negative prompt guidance for future retries");
+  assertIncludes(mediaBuyerFramework, "stripNegativePromptGuidance", "Media buyer quality scoring", "creative quality gates do not punish prompts for anti-patterns listed only as avoid guidance");
   assertIncludes(systemJobStreamRoute, "MAX_STREAM_POLLS", "System job stream polling", "job streams stay open long enough for queued creative renders to complete");
   assertIncludes(systemJobStreamRoute, "? { ...job, logs }", "System job stream payload", "job streams emit the job shape expected by UI consumers");
   assertExcludes(launchRuntimeApi, "/api/integrations/meta/deploy", "No dead Meta deploy client route", "client helpers do not call a missing Meta deploy endpoint");

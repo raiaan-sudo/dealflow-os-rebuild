@@ -215,6 +215,10 @@ assert.ok(
   "all static image prompts should carry a concrete media-buyer reference pattern",
 );
 assert.ok(
+  creativePackage.staticAds.every((ad) => ad.qualityGate?.accepted === true),
+  "media-buyer-ready static creatives should not fail quality gates because of negative prompt guidance",
+);
+assert.ok(
   buyerUgcStaticAds.every((ad) => /1-2 required UGC-style concepts inside the six-ad test set/i.test(ad.imagePrompt)),
   "UGC-style static concepts should be explicitly reserved inside the six-ad test set",
 );
