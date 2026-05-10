@@ -57,7 +57,10 @@ export async function POST(
       });
     }
 
-    const idempotencyKey = `static_creative_generation:${auth.organizationId}:${auth.userId}:${campaignId}`;
+    const requestScope = body.force === true
+      ? `force:${crypto.randomUUID()}`
+      : `attempt:${Date.now()}`;
+    const idempotencyKey = `static_creative_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${requestScope}`;
 
     const job = await createSystemJob({
       organizationId: auth.organizationId,
