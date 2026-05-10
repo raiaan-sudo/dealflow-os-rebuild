@@ -146,6 +146,13 @@ export default async function SettingsPage() {
               <div className="rounded-[18px] border border-cyan-300/16 bg-cyan-300/[0.055] p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-cyan-100/72">Balance</p>
                 <p className="mt-2 text-2xl font-semibold text-white">{credits?.formattedBalance ?? "$0.00"}</p>
+                {credits?.creditOverride ? (
+                  <p className="mt-2 text-xs font-semibold text-emerald-100">Billing override active</p>
+                ) : credits && credits.balance < 0 ? (
+                  <p className="mt-2 text-xs font-semibold text-amber-100">
+                    {credits.formattedBalanceDue} due on next top-up
+                  </p>
+                ) : null}
               </div>
               <div className="rounded-[18px] border border-white/10 bg-white/[0.035] p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Images</p>
@@ -164,7 +171,11 @@ export default async function SettingsPage() {
           <div className="mt-5">
             <CreditTopUpButton
               amountCents={credits?.minimumTopUpCents ?? 2000}
-              label={`Add ${credits?.formattedMinimumTopUp ?? "$20.00"} credits`}
+              label={
+                credits && credits.balance < 0
+                  ? `Add ${credits.formattedMinimumTopUp ?? "$20.00"} credits`
+                  : `Add ${credits?.formattedMinimumTopUp ?? "$20.00"} credits`
+              }
             />
           </div>
         </Card>

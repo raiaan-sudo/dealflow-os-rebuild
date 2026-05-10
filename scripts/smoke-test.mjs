@@ -605,7 +605,8 @@ function runOfflineChecks() {
   assertIncludes(creditService, "consume_user_credits", "Atomic credit deduction", "paid generation credits are deducted through a DB RPC");
   assertIncludes(creditService, "grant_user_credits", "Credit top-up ledger", "credit grants and refunds use the append-only DB ledger");
   assertIncludes(creditService, "CREDIT_TOP_UP_MINIMUM_CENTS = 2_000", "Credit top-up minimum", "generation credit top-ups require the intended $20 minimum");
-  assertIncludes(creditService, "credits_insufficient", "Insufficient credit block", "paid generation is blocked before balances can go negative");
+  assertIncludes(creditService, "bypassedByBillingOverride", "Credit billing override", "billing override users can test paid generation without internal credit balance friction");
+  assertIncludes("supabase/migrations/20260510014500_enable_generation_credit_overdrafts.sql", "next_balance := current_balance - p_amount", "Credit overdraft ledger", "paid generation can create a negative balance that is repaid by the next top-up");
   assertIncludes(billingService, "checkout_kind: \"credit_top_up\"", "Stripe credit top-up checkout", "credit purchases are isolated from subscription checkout metadata");
   assertIncludes(billingService, "stripe_credit_top_up_processed", "Stripe credit top-up webhook", "paid credit checkout sessions grant credits idempotently");
   assertIncludes(billingService, "payment_method_types: [\"card\"]", "Stripe credit top-up synchronous payment", "credit top-up checkout is card-only so delayed async payment methods do not strand credits");

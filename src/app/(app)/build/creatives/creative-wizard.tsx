@@ -327,15 +327,17 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
           {allImagesMissing ? (
             <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm leading-6 text-amber-100">
               {hasCreditBlocker
-                ? "Your strategy, copy, and creative concepts are ready. Add DealFlow generation credits to render the final image previews."
+                ? "Your strategy, copy, and creative concepts are ready. The previous render stopped before credit overdraft was enabled."
                 : "Your strategy, copy, and creative concepts are ready. DealFlow is preparing image previews automatically so this step stays focused on choosing the best test set."}
               {hasCreditBlocker ? (
-                <Link
+                <button
+                  type="button"
                   className="ml-2 font-semibold text-amber-50 underline decoration-amber-200/50 underline-offset-4"
-                  href="/settings"
+                  onClick={() => void queueImagePreviews({ force: true })}
+                  disabled={renderingImages}
                 >
-                  Add generation credits
-                </Link>
+                  Retry image previews
+                </button>
               ) : hasAttemptedImageGeneration && !renderingImages ? (
                 <button
                   type="button"

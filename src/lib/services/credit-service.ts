@@ -1,4 +1,8 @@
 import { ApiError } from "@/lib/api/route";
+import {
+  isBillingAdminOverrideEmail,
+  isBillingAdminOverrideEnabled,
+} from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAppContext } from "@/lib/services/app-context";
 import type { Json } from "@/lib/supabase/types";
@@ -46,11 +50,34 @@ export function getGenerationCreditCostCents(bucket: GenerationCreditBucket) {
 }
 
 export function formatCreditCurrency(cents: number) {
-  return `$${(Math.max(0, cents) / 100).toFixed(2)}`;
+  const amount = Math.abs(cents);
+  return `${cents < 0 ? "-" : ""}$${(amount / 100).toFixed(2)}`;
 }
 
 function getCreditReason(bucket: GenerationCreditBucket) {
   return normalizeGenerationCreditBucket(bucket);
+}
+
+async function getBillingOverrideEmailForUser(userId: string) {
+  if (!isBillingAdminOverrideEnabled()) {
+    return null;
+  }
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return null;
+  }
+
+  const { data } = await admin
+    .from("users")
+    .select("email")
+    .eq("id", userId)
+    .maybeSingle();
+  const row = data as { email?: unknown } | null;
+  const email = typeof row?.email === "string" ? row.email : null;
+
+  return isBillingAdminOverrideEmail(email) ? email : null;
 }
 
 export async function getCreditSummaryForCurrentUser() {
@@ -78,12 +105,17 @@ export async function getCreditSummaryForCurrentUser() {
 
   const creditRow = creditRowRaw as { balance?: unknown; updated_at?: unknown } | null;
   const balance = typeof creditRow?.balance === "number" ? creditRow.balance : 0;
+  const balanceDueCents = Math.max(0, -balance);
+  const billingOverrideEmail = await getBillingOverrideEmailForUser(context.user.id);
 
   return {
     userId: context.user.id,
     organizationId: context.organization.id,
     balance,
     formattedBalance: formatCreditCurrency(balance),
+    balanceDueCents,
+    formattedBalanceDue: formatCreditCurrency(balanceDueCents),
+    creditOverride: Boolean(billingOverrideEmail),
     minimumTopUpCents: CREDIT_TOP_UP_MINIMUM_CENTS,
     formattedMinimumTopUp: formatCreditCurrency(CREDIT_TOP_UP_MINIMUM_CENTS),
     imageGenerationCostCents: getGenerationCreditCostCents("image_generation"),
@@ -119,6 +151,17 @@ export async function consumeCreditsForGeneration(params: {
     throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
   }
 
+  const billingOverrideEmail = await getBillingOverrideEmailForUser(params.userId);
+  if (billingOverrideEmail) {
+    return {
+      amount: 0,
+      balance: null as number | null,
+      ledgerId: null as string | null,
+      reusedExisting: false,
+      bypassedByBillingOverride: true,
+    };
+  }
+
   const { data: rows, error } = await (admin as any).rpc("consume_user_credits", {
     p_user_id: params.userId,
     p_organization_id: params.organizationId ?? null,
@@ -150,7 +193,7 @@ export async function consumeCreditsForGeneration(params: {
   if (row.allowed !== true) {
     throw new ApiError(
       402,
-      `Insufficient credits. Add at least ${formatCreditCurrency(CREDIT_TOP_UP_MINIMUM_CENTS)} before running paid generation.`,
+      `Generation credits could not be reserved. Add at least ${formatCreditCurrency(CREDIT_TOP_UP_MINIMUM_CENTS)} before trying again.`,
       "credits_insufficient",
     );
   }
