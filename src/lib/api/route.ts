@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
-import { getInternalSystemJobsSecret, hasSupabaseEnv } from "@/lib/env";
+import { getInternalSystemJobSecrets, hasSupabaseEnv } from "@/lib/env";
 import { logError, logWarn } from "@/lib/logging";
 
 export class ApiError extends Error {
@@ -214,9 +214,9 @@ export function assertSameOriginRequest(request: Request) {
 }
 
 export function assertInternalSystemRequest(request: Request) {
-  const secret = getInternalSystemJobsSecret();
+  const secrets = getInternalSystemJobSecrets();
 
-  if (!secret) {
+  if (secrets.length === 0) {
     throw new ApiError(
       503,
       "Internal system job runner secret is not configured.",
@@ -226,7 +226,7 @@ export function assertInternalSystemRequest(request: Request) {
 
   const token = getBearerToken(request) ?? request.headers.get("x-internal-system-key")?.trim() ?? null;
 
-  if (!timingSafeTokenEquals(token, secret)) {
+  if (!secrets.some((secret) => timingSafeTokenEquals(token, secret))) {
     throw new ApiError(401, "Internal system authorization is required.", "internal_unauthorized");
   }
 }

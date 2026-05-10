@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { getInternalSystemJobsSecret, getSupabaseEnv } from "@/lib/env";
+import { getInternalSystemJobSecrets, getSupabaseEnv } from "@/lib/env";
 
 const PUBLIC_PATHS = new Set(["/", "/login", "/privacy", "/terms", "/data-deletion"]);
 const PUBLIC_API_PATHS = new Set([
@@ -59,15 +59,15 @@ function isInternalApiRequest(pathname: string) {
 }
 
 function isAuthorizedInternalRequest(request: NextRequest) {
-  const secret = getInternalSystemJobsSecret();
+  const secrets = getInternalSystemJobSecrets();
   const token =
     getBearerToken(request) ??
     request.headers.get("x-internal-system-key")?.trim() ??
     null;
 
   return {
-    configured: Boolean(secret),
-    authorized: timingSafeTokenEquals(token, secret),
+    configured: secrets.length > 0,
+    authorized: secrets.some((secret) => timingSafeTokenEquals(token, secret)),
   };
 }
 

@@ -169,6 +169,19 @@ export function getInternalSystemJobsSecret() {
   ).trim();
 }
 
+export function getInternalSystemJobSecrets() {
+  return Array.from(
+    new Set(
+      [
+        process.env.INTERNAL_SYSTEM_JOBS_SECRET,
+        process.env.CRON_SECRET,
+      ]
+        .map((value) => value?.trim() ?? "")
+        .filter(Boolean),
+    ),
+  );
+}
+
 export function getInternalAdminEmails() {
   return (process.env.INTERNAL_ADMIN_EMAILS ?? "")
     .split(",")

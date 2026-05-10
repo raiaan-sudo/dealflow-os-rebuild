@@ -161,7 +161,7 @@ function checkPrivateMutationGuards(routeFilesByPath, publicApiRoutes) {
 function checkInternalApiGuards(publicApiRoutes, routeFilesByPath) {
   const middleware = read(middlewarePath);
 
-  if (middleware.includes("isInternalApiRequest") && middleware.includes("getInternalSystemJobsSecret")) {
+  if (middleware.includes("isInternalApiRequest") && middleware.includes("getInternalSystemJobSecrets")) {
     pass("Internal API middleware guard", "/api/internal/* bypasses user auth only after bearer secret validation");
   } else {
     fail("Internal API middleware guard", "middleware does not contain the internal bearer-secret guard");

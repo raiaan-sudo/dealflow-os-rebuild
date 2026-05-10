@@ -599,6 +599,8 @@ function runOfflineChecks() {
   assertIncludes("supabase/migrations/20260510183000_cap_generation_credit_overdrafts.sql", "next_balance < -overdraft_limit", "DB credit overdraft cap", "database credit consumption enforces a maximum negative balance");
   assertIncludes(".env.example", "INTERNAL_SYSTEM_JOBS_SECRET", "Internal runner env example", "cron runner secret is documented in the environment template");
   assertIncludes(".env.example", "CRON_SECRET", "Vercel cron env example", "Vercel Cron secret fallback is documented in the environment template");
+  assertIncludes(envHelpers, "getInternalSystemJobSecrets", "Internal runner accepts multiple secrets", "system job runner can accept both internal runner and Vercel Cron bearer secrets");
+  assertIncludes(middleware, "getInternalSystemJobSecrets", "Internal proxy accepts multiple secrets", "internal API middleware accepts the same runner/cron secret set as the route guard");
   assertIncludes(billingService, "isBillingAdminOverrideEmail(email) ? email : null", "Billing-only override check", "billing override requires the billing-specific email allowlist");
   assertExcludes(billingService, "isInternalAdminEmail(email)", "Billing override admin fallback removed", "internal admin access no longer automatically grants billing launch access");
   assertIncludes(campaignEntitlements, "return isBillingAdminOverrideEmail(email)", "Campaign entitlement billing override", "campaign launch entitlements use the billing-specific override allowlist");

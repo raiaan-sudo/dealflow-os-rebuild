@@ -57,7 +57,7 @@ Use:
 
 - Admin UI: `/admin/command-center` and `/admin/issues`
 - Protected runner: `GET /api/internal/system-jobs` or `POST /api/internal/system-jobs`
-- Runner auth: `Authorization: Bearer <INTERNAL_SYSTEM_JOBS_SECRET>` or `x-internal-system-key`
+- Runner auth: `Authorization: Bearer <INTERNAL_SYSTEM_JOBS_SECRET>` / `<CRON_SECRET>` or `x-internal-system-key`
 
 Inspect:
 
