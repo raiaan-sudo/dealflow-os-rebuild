@@ -116,7 +116,7 @@ test.describe("safe authenticated self-serve journey", () => {
     await expect(page.getByText("Full generation unlocks after checkout and credits")).toBeVisible();
     await expect(page.getByText("Offer coach")).toHaveCount(0);
     await expect(preview.getByText(/AI image.*locked/i)).toBeVisible();
-    await expect(preview.getByText(/UGC.*locked/i)).toBeVisible();
+    await expect(preview.getByText(/AI video.*locked/i)).toBeVisible();
     await expect(page.getByRole("button", { name: /download|export/i })).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
 

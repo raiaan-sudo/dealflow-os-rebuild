@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 
+import { spawnSync } from "node:child_process";
 import nextEnv from "@next/env";
 
 nextEnv.loadEnvConfig(process.cwd());
 
-const requiredEnv = [
+const baseRequiredEnv = [
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+];
+const jwtRequiredEnv = [
   "RLS_USER_A_JWT",
   "RLS_USER_B_JWT",
 ];
@@ -33,10 +36,34 @@ function env(name) {
 }
 
 function requireEnv() {
-  const missing = requiredEnv.filter((name) => !env(name));
+  const missingBase = baseRequiredEnv.filter((name) => !env(name));
 
-  if (missing.length > 0) {
-    fail("RLS smoke env", `missing ${missing.join(", ")}`);
+  if (missingBase.length > 0) {
+    fail("RLS smoke env", `missing ${missingBase.join(", ")}`);
+    process.exitCode = 1;
+    return false;
+  }
+
+  const missingJwt = jwtRequiredEnv.filter((name) => !env(name));
+  if (missingJwt.length > 0) {
+    if (env("SUPABASE_SERVICE_ROLE_KEY") && process.env.RLS_CROSS_TENANT_STATIC_ONLY !== "true") {
+      console.log("INFO  RLS JWT env missing; creating ephemeral cross-tenant fixtures and short-lived sessions.");
+      const result = spawnSync(process.execPath, ["./scripts/run-rls-fixture-smoke.mjs"], {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          RLS_CROSS_TENANT_STATIC_ONLY: "true",
+        },
+        encoding: "utf8",
+        stdio: "inherit",
+      });
+      process.exit(result.status ?? 1);
+    }
+
+    fail(
+      "RLS smoke env",
+      `missing ${missingJwt.join(", ")} and SUPABASE_SERVICE_ROLE_KEY is unavailable for ephemeral session mode`,
+    );
     process.exitCode = 1;
     return false;
   }

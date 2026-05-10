@@ -556,6 +556,7 @@ function runOfflineChecks() {
   assertExcludes("src/lib/services/lead-handler-service.ts", /QA_EMAIL|QA_PASSWORD/, "QA credential fallback removed", "no QA credential fallback remains in lead handler");
   assertIncludes(campaignPlanPersistence, "organization_id: params.ownerId", "Campaign persistence organization ownership", "fresh campaign rows persist organization_id for downstream jobs and billing");
   assertIncludes("scripts/check-rls-cross-tenant.mjs", "RLS_USER_A_JWT", "Cross-tenant RLS smoke script", "operator can prove User A cannot read User B fixtures");
+  assertIncludes("scripts/check-rls-cross-tenant.mjs", "run-rls-fixture-smoke.mjs", "Ephemeral RLS JWT mode", "cross-tenant RLS proof can mint short-lived fixture sessions instead of requiring static JWT secrets");
   assertIncludes("scripts/check-rls-cross-tenant.mjs", "expectRpcDenied", "Internal RPC denial smoke script", "operator can prove internal RPCs are not executable by anon/authenticated clients");
 
   assertIncludes(apiRouteHelpers, "assertSameOriginRequest", "Same-origin mutation guard helper", "sensitive authenticated POST routes can reject cross-site requests");
