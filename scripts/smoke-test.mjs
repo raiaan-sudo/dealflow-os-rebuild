@@ -672,6 +672,8 @@ function runOfflineChecks() {
   assertIncludes(metaLaunchService, "getMetaDailyBudgetCapCents()", "Reachable Meta budget policy", "direct Meta launch uses the shared owner-configured budget cap policy");
   assertIncludes(sessionCostGuard, "reserve_provider_usage", "Atomic provider usage reservation", "paid-generation guard reserves provider budget through DB RPC");
   assertIncludes(sessionCostGuard, "HIGGSFIELD_IMAGE_DAILY_LIMIT", "Configurable Higgsfield image cap", "Higgsfield image generation can be capped below the default for production tests");
+  assertIncludes(sessionCostGuard, "DURABLE_PROVIDER_USAGE_LIMITS", "Durable provider cap default", "production provider caps allow a full six-creative render plus retries without falling back to the browser-session limit");
+  assertIncludes(sessionCostGuard, "maximum: 120", "Durable provider cap ceiling", "production provider caps still have a hard upper safety ceiling");
   assertIncludes(sessionCostGuard, "image_generation", "Generic image generation bucket", "paid image reservations use a provider-neutral operation bucket");
   assertIncludes(creditService, "legacyBucket", "Legacy credit bucket compatibility", "old OpenAI/HeyGen credit metadata remains understandable after provider migration");
   assertIncludes(sessionCostGuard, "provider_usage_idempotency_consumed", "Paid generation duplicate-spend guard", "consumed provider usage reservations fail closed instead of calling the provider again");

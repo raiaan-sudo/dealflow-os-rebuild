@@ -33,6 +33,17 @@ const SESSION_COST_LIMITS: Record<SessionCostBucket, { cookie: string; limit: nu
   },
 };
 
+const DURABLE_PROVIDER_USAGE_LIMITS: Record<"image_generation" | "video_generation", { default: number; maximum: number }> = {
+  image_generation: {
+    default: 30,
+    maximum: 120,
+  },
+  video_generation: {
+    default: 4,
+    maximum: 12,
+  },
+};
+
 function normalizeSessionCostBucket(bucket: SessionCostBucket): "image_generation" | "video_generation" {
   if (bucket === "openai_image_generation") {
     return "image_generation";
@@ -55,7 +66,7 @@ function getProviderForBucket(bucket: SessionCostBucket) {
   return process.env.MEDIA_GENERATION_PROVIDER === "higgsfield" ? "higgsfield" : "heygen";
 }
 
-function getProviderUsageLimit(bucket: SessionCostBucket) {
+function getProviderUsageLimit(bucket: SessionCostBucket, options: { durableGuard?: boolean } = {}) {
   const normalizedBucket = normalizeSessionCostBucket(bucket);
   const envName =
     normalizedBucket === "image_generation"
@@ -66,12 +77,17 @@ function getProviderUsageLimit(bucket: SessionCostBucket) {
         ? "HIGGSFIELD_VIDEO_DAILY_LIMIT"
         : "HEYGEN_VIDEO_DAILY_LIMIT";
   const configured = Number.parseInt(process.env[envName] ?? "", 10);
+  const durableLimit = DURABLE_PROVIDER_USAGE_LIMITS[normalizedBucket];
 
   if (Number.isFinite(configured) && configured > 0) {
-    return Math.min(configured, SESSION_COST_LIMITS[bucket].limit);
+    return options.durableGuard
+      ? Math.min(configured, durableLimit.maximum)
+      : Math.min(configured, SESSION_COST_LIMITS[bucket].limit);
   }
 
-  return SESSION_COST_LIMITS[bucket].limit;
+  return options.durableGuard
+    ? durableLimit.default
+    : SESSION_COST_LIMITS[bucket].limit;
 }
 
 function parseCount(value: string | undefined) {
@@ -89,8 +105,8 @@ export async function consumeSessionCostBudget(params: {
 }) {
   const config = SESSION_COST_LIMITS[params.bucket];
   const normalizedBucket = normalizeSessionCostBucket(params.bucket);
-  const limit = getProviderUsageLimit(params.bucket);
   const admin = createAdminClient();
+  const limit = getProviderUsageLimit(params.bucket, { durableGuard: Boolean(admin) });
 
   if (admin) {
     const provider = getProviderForBucket(params.bucket);
