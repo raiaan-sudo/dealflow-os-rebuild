@@ -84,6 +84,9 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
   const hasAttemptedImageGeneration = rankedCreatives.some(
     (creative) => Boolean(creative.imageGenerationMessage) || Boolean(creative.imageGenerationState),
   );
+  const hasCreditBlocker = rankedCreatives.some((creative) =>
+    /insufficient credits|add at least/i.test(creative.imageGenerationMessage ?? ""),
+  );
   const autoRenderStorageKey = `dealflow:auto-image-render:${campaignId}`;
 
   const subscribeToJob = useCallback((jobId: string) => {
@@ -163,7 +166,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
   }, [campaignId, renderingImages, subscribeToJob]);
 
   useEffect(() => {
-    if (!allImagesMissing || hasGeneratedImages || autoRenderStartedRef.current) {
+    if (!allImagesMissing || hasGeneratedImages || hasCreditBlocker || autoRenderStartedRef.current) {
       return;
     }
 
@@ -177,7 +180,7 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
     }
 
     void queueImagePreviews({ force: false, automatic: true });
-  }, [allImagesMissing, autoRenderStorageKey, hasGeneratedImages, queueImagePreviews]);
+  }, [allImagesMissing, autoRenderStorageKey, hasCreditBlocker, hasGeneratedImages, queueImagePreviews]);
 
   function toggleCreative(creativeId: string) {
     setSelectedIds((current) => {
@@ -323,8 +326,17 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
           ) : null}
           {allImagesMissing ? (
             <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm leading-6 text-amber-100">
-              Your strategy, copy, and creative concepts are ready. DealFlow is preparing image previews automatically so this step stays focused on choosing the best test set.
-              {hasAttemptedImageGeneration && !renderingImages ? (
+              {hasCreditBlocker
+                ? "Your strategy, copy, and creative concepts are ready. Add DealFlow generation credits to render the final image previews."
+                : "Your strategy, copy, and creative concepts are ready. DealFlow is preparing image previews automatically so this step stays focused on choosing the best test set."}
+              {hasCreditBlocker ? (
+                <Link
+                  className="ml-2 font-semibold text-amber-50 underline decoration-amber-200/50 underline-offset-4"
+                  href="/settings"
+                >
+                  Add generation credits
+                </Link>
+              ) : hasAttemptedImageGeneration && !renderingImages ? (
                 <button
                   type="button"
                   className="ml-2 font-semibold text-amber-50 underline decoration-amber-200/50 underline-offset-4"
