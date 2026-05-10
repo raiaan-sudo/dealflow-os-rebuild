@@ -555,6 +555,8 @@ export function CampaignPreviewReview({
                 headline={ad.headline}
                 imageGenerationMessage={ad.imageGenerationMessage}
                 imageGenerationState={ad.imageGenerationState}
+                imagePrompt={ad.imagePrompt}
+                imagePromptConfig={ad.imagePromptConfig}
                 imageUrl={ad.imageUrl}
                 location={plan.market}
                 offer={plan.offerSummary || plan.keyOffer}

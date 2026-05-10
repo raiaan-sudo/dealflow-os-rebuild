@@ -69,6 +69,8 @@ export default async function BuildCreativesPage({
         imageUrl: ad.imageUrl ?? null,
         imageGenerationState: ad.imageGenerationState ?? null,
         imageGenerationMessage: ad.imageGenerationMessage ?? null,
+        imagePrompt: ad.imagePrompt ?? null,
+        imagePromptConfig: ad.imagePromptConfig ?? null,
         overlayText: ad.overlayText ?? null,
         formatLabel: /\bugc\b/i.test(`${ad.id} ${ad.visualConcept} ${ad.hook}`)
           ? "AI UGC concept"

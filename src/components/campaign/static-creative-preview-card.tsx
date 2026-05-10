@@ -15,6 +15,11 @@ type StaticCreativePreviewCardProps = {
   imageUrl?: string | null;
   imageGenerationState?: "generated" | "generating" | "unavailable" | "failed" | string | null;
   imageGenerationMessage?: string | null;
+  imagePrompt?: string | null;
+  imagePromptConfig?: {
+    prompt?: string | null;
+    negativePrompt?: string | null;
+  } | null;
   overlayText?: string | null;
   score?: number | null;
   qualityGate?: {
@@ -24,6 +29,8 @@ type StaticCreativePreviewCardProps = {
   } | null;
   visualPromptBrief?: {
     category?: CampaignCategory | string | null;
+    visualAssetContract?: string | null;
+    visualAssetRole?: string | null;
     proofStyle?: string | null;
     mechanism?: string | null;
     visualLogic?: string[] | null;
@@ -45,6 +52,8 @@ export function StaticCreativePreviewCard({
   imageUrl,
   imageGenerationState,
   imageGenerationMessage,
+  imagePrompt,
+  imagePromptConfig,
   overlayText,
   score,
   qualityGate,
@@ -68,6 +77,8 @@ export function StaticCreativePreviewCard({
         headline={safeHeadline}
         imageGenerationMessage={imageGenerationMessage}
         imageGenerationState={imageGenerationState}
+        imagePrompt={imagePrompt}
+        imagePromptConfig={imagePromptConfig}
         imageUrl={imageUrl}
         location={location}
         offer={safeOffer}
@@ -144,6 +155,8 @@ export function StaticCreativePreviewCard({
                 headline={safeHeadline}
                 imageGenerationMessage={imageGenerationMessage}
                 imageGenerationState={imageGenerationState}
+                imagePrompt={imagePrompt}
+                imagePromptConfig={imagePromptConfig}
                 imageUrl={imageUrl}
                 location={location}
                 offer={safeOffer}
@@ -179,6 +192,8 @@ export function StaticCreativeSummaryCard({
   imageUrl,
   imageGenerationState,
   imageGenerationMessage,
+  imagePrompt,
+  imagePromptConfig,
   overlayText,
   score,
   qualityGate,
@@ -216,6 +231,8 @@ export function StaticCreativeSummaryCard({
           headline={safeHeadline}
           imageGenerationMessage={imageGenerationMessage}
           imageGenerationState={imageGenerationState}
+          imagePrompt={imagePrompt}
+          imagePromptConfig={imagePromptConfig}
           imageUrl={imageUrl}
           location={location}
           offer={safeOffer}

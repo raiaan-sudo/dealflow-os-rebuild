@@ -190,11 +190,23 @@ function buildPromptWithGuardrails(request: HiggsfieldImageRequest | HiggsfieldV
   const prompt = safeText("script" in request ? request.prompt || request.script : request.prompt);
   const negativePrompt =
     "negativePrompt" in request ? safeText(request.negativePrompt) : "";
+  const imageGuardrails = [
+    prompt,
+    "Generate a clean text-free photographic background asset only.",
+    "DealFlow will add the exact headline, proof, CTA, and layout after generation.",
+    "Do not create a finished ad, flyer, poster, collage, infographic, dashboard, UI screen, card stack, pricing table, chart, map label, CTA button, logo, watermark, or typography.",
+    "No readable text, pseudo-text, glyphs, fake words, fake numbers, fake UI labels, fake captions, fake pricing, or document/screen text.",
+    negativePrompt ? `Avoid: ${negativePrompt}.` : null,
+  ];
+
+  if (!("script" in request)) {
+    return imageGuardrails.filter(Boolean).join(" ");
+  }
 
   return [
     prompt,
-    "Create polished paid social ad creative for a real estate lead generation campaign.",
-    "Use realistic composition, clean commercial lighting, premium but believable styling, and no embedded text.",
+    "Create a polished native social AI UGC video for a real estate lead generation campaign.",
+    "Use realistic composition, clean commercial lighting, premium but believable styling, and no provider/internal jargon.",
     negativePrompt ? `Avoid: ${negativePrompt}.` : null,
   ]
     .filter(Boolean)
@@ -239,7 +251,7 @@ function buildImageInput(endpoint: string, request: HiggsfieldImageRequest): Hig
       width_and_height: mapAspectRatioToSoulSize(aspectRatio),
       quality: "1080p",
       batch_size: 1,
-      enhance_prompt: true,
+      enhance_prompt: false,
     };
   }
 

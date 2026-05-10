@@ -27,6 +27,7 @@ import {
   rankStaticCreativeAssets,
   type CreativeScoreBreakdown,
 } from "@/lib/services/creative-scoring-service";
+import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
 import {
   evaluateCreativeQuality,
   evaluateOfferQuality,
@@ -1338,7 +1339,7 @@ function buildStaticCreatives(
             ...visualBrief.promptConfig,
             prompt: [
               visualBrief.promptConfig.prompt,
-              "UGC-specific execution: make this a native social ad frame with a believable creator POV, a phone-camera or handheld walkthrough feel, a real decision moment, and enough polish for paid acquisition. The subject should feel like a real buyer/seller/investor/customer perspective, not an influencer photoshoot. Compose it as one of the 1-2 required UGC-style concepts inside the six-ad test set, with room for caption bars, proof chips, and a direct-response CTA.",
+              "UGC-specific source image execution: make this a native social background still with a believable creator POV, a phone-camera or handheld walkthrough feel, and a real decision moment. The subject should feel like a real buyer/seller/investor/customer perspective, not an influencer photoshoot. This fills one of the 1-2 required UGC-style concepts inside the six-ad test set, but DealFlow will add caption bars, proof chips, and CTA text after generation.",
             ].join(" "),
           }
         : visualBrief.promptConfig;
@@ -1843,7 +1844,10 @@ export async function generateStaticCreativeAds(
   const baseStaticAds = baseSystem.staticAds;
   const reusableStaticAssets = new Map(
     (input?.reuse_static_assets ?? [])
-      .filter((asset) => asset.imageGenerationState === "generated" && Boolean(asset.imageUrl))
+      .filter((asset) =>
+        asset.imageGenerationState === "generated" &&
+        evaluateStaticVisualAssetDecision(asset).usable
+      )
       .map((asset) => [asset.id, asset]),
   );
   const generatedStaticAds = await Promise.all(

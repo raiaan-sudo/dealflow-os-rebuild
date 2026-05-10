@@ -430,6 +430,9 @@ export async function runVideoGenerationJob(params: {
     providerVideo = avatarProvider.parseResult(await avatarProvider.execute({
       script: params.payload.scriptText,
       prompt: [
+        "Create a polished native UGC-style vertical video for a real estate lead generation campaign.",
+        "Show a believable creator/customer/agent in a real home or market setting with natural phone-camera energy.",
+        "Use the provided script as spoken direction only. Do not render captions, lower thirds, pricing cards, UI screens, logos, watermarks, fake documents, or on-screen text inside the video.",
         params.payload.title,
         params.payload.hook,
         params.payload.body,

@@ -3,6 +3,7 @@ import { ApiError } from "@/lib/api/route";
 import { generateStaticCreativeAds, type StaticCreativeAsset } from "@/lib/services/creative-engine";
 import type { CampaignStrategyInput } from "@/lib/services/campaign-orchestrator";
 import type { CampaignCreativeStrategy } from "@/lib/services/campaign-creative-strategy";
+import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
 import type { Database, Json } from "@/lib/supabase/types";
 
 type PersistStaticCreativeAssetsParams = {
@@ -49,11 +50,14 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
   }
 
   const inserts = staticAds.flatMap((asset, index) => {
-    const normalizedGenerationState = asset.imageUrl
+    const visualDecision = evaluateStaticVisualAssetDecision(asset);
+    const normalizedGenerationState = asset.imageUrl && visualDecision.usable
       ? "generated"
-      : asset.imageGenerationState;
+      : asset.imageUrl
+        ? "failed"
+        : asset.imageGenerationState;
     const status =
-      asset.imageUrl && asset.qualityGate?.accepted !== false
+      asset.imageUrl && visualDecision.usable
         ? "ready"
         : asset.imageUrl
           ? "requires_review"
@@ -69,6 +73,8 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       imagePromptConfig: (asset.imagePromptConfig ?? null) as Json,
       preferredImageModel: asset.preferredImageModel,
       visualPromptBrief: (asset.visualPromptBrief ?? null) as Json,
+      visualAssetContract: asset.visualPromptBrief?.visualAssetContract ?? null,
+      visualAssetRole: asset.visualPromptBrief?.visualAssetRole ?? null,
       imageGenerationState: normalizedGenerationState,
       imageGenerationProvider: asset.imageGenerationProvider ?? null,
       imageGenerationModel: asset.imageGenerationModel,
@@ -103,7 +109,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
             status === "ready"
               ? null
               : asset.imageUrl
-                ? "Generated creative needs review before launch."
+                ? visualDecision.reason ?? "Generated background needs review before launch."
               : asset.imageGenerationMessage ?? "Static image was not generated for this creative.",
           role: "background_image",
         } as Json,
@@ -126,7 +132,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
             status === "ready"
               ? null
               : asset.imageUrl
-                ? "Generated creative needs review before launch."
+                ? visualDecision.reason ?? "Generated background needs review before launch."
               : asset.imageGenerationMessage ?? "Static thumbnail was not generated for this creative.",
           role: "thumbnail",
         } as Json,

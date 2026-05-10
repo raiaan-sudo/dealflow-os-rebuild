@@ -272,7 +272,8 @@ for (const scenario of referencePromptScenarios) {
   const packageForScenario = buildCreativeSystem(scenario.input);
   const prompts = packageForScenario.staticAds.map((ad) => ad.imagePrompt).join("\n");
   assert.match(prompts, scenario.expected, `${scenario.label} prompts should use media-buyer reference layouts`);
-  assert.match(prompts, /one dominant hook area, one proof area, one clear CTA-safe/i, `${scenario.label} prompts should preserve direct-response layout zones`);
+  assert.match(prompts, /text-free background asset only/i, `${scenario.label} prompts should use the text-free background contract`);
+  assert.match(prompts, /DealFlow will place exact text later/i, `${scenario.label} prompts should reserve layout and copy for deterministic composition`);
 }
 
 assert.ok(creativePackage.videoAds.length >= 2);

@@ -18,6 +18,7 @@ import {
 } from "@/lib/services/asset-generation-lifecycle";
 import { debugLog } from "@/lib/debug";
 import { generateStaticCreativeAds, type StaticCreativeAsset } from "@/lib/services/creative-engine";
+import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
 import { persistStaticCreativeAssets } from "@/lib/services/static-creative-asset-service";
 import {
   consumeSessionCostBudget,
@@ -189,18 +190,11 @@ function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[
       metadata?.qualityGate && typeof metadata.qualityGate === "object"
         ? metadata.qualityGate as StaticCreativeAsset["qualityGate"]
         : null;
-    const generationState =
-      imageUrl
-        ? "generated"
-        : preferredRow.status === "failed"
-          ? "failed"
-          : "unavailable";
     const preferredImageModel =
       metadata?.preferredImageModel === "gpt-image-1"
         ? "gpt-image-1"
         : "gpt-image-1.5";
-
-    return {
+    const assetDraft = {
       id: key,
       angle:
         metadata?.angle === "guarantee" ||
@@ -210,16 +204,11 @@ function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[
           ? metadata.angle
           : "opportunity",
       imageUrl,
-      imageGenerationState: generationState,
+      imageGenerationState: imageUrl ? "generated" : "unavailable",
       imageGenerationMessage:
-        generationState === "generated"
-          ? qualityGate?.accepted === false
-            ? "Generated image needs review before launch."
-            : null
-          : preferredRow.error_message ||
-            (typeof metadata?.imageGenerationMessage === "string"
-              ? metadata.imageGenerationMessage
-              : "This image preview is not ready yet."),
+        typeof metadata?.imageGenerationMessage === "string"
+          ? metadata.imageGenerationMessage
+          : null,
       imageGenerationModel:
         typeof metadata?.imageGenerationModel === "string"
           ? metadata.imageGenerationModel
@@ -246,6 +235,28 @@ function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[
       cta: typeof metadata?.cta === "string" ? metadata.cta : "",
       score: typeof metadata?.score === "number" ? metadata.score : 0,
       recommended: metadata?.recommended === true,
+    } satisfies StaticCreativeAsset;
+    const visualDecision = evaluateStaticVisualAssetDecision(assetDraft);
+    const generationState =
+      imageUrl
+        ? visualDecision.usable
+          ? "generated"
+          : "failed"
+        : preferredRow.status === "failed"
+          ? "failed"
+          : "unavailable";
+
+    return {
+      ...assetDraft,
+      imageGenerationState: generationState,
+      imageGenerationMessage:
+        generationState === "generated"
+          ? null
+          : preferredRow.error_message ||
+            visualDecision.reason ||
+            (typeof metadata?.imageGenerationMessage === "string"
+              ? metadata.imageGenerationMessage
+              : "This image preview is not ready yet."),
     } satisfies StaticCreativeAsset;
   });
 }

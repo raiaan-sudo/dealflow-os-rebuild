@@ -13,8 +13,9 @@ type StaticAdComposedPreviewProps = StaticAdTemplateInput & {
 };
 
 function statusLabel(status: ReturnType<typeof buildComposedStaticAdPreview>["status"]) {
-  if (status === "final_composed") return "Generated creative";
+  if (status === "final_composed") return "Composed creative";
   if (status === "background_generating") return "Template ready, image generating";
+  if (status === "background_rejected") return "Image rejected, template ready";
   if (status === "background_failed") return "Image needs retry";
   return "Template-ready preview";
 }
@@ -176,6 +177,39 @@ function renderTemplateDetails(preview: ReturnType<typeof buildComposedStaticAdP
     );
   }
 
+  if (preview.category === "buyer") {
+    return (
+      <div className="absolute inset-0 flex flex-col p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="rounded-full border border-white/70 bg-white/90 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-slate-950 shadow-sm">
+            {preview.eyebrow}
+          </div>
+        </div>
+        <div className="mt-auto space-y-3">
+          {preview.proofChips.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {preview.proofChips.slice(0, 3).map((chip, index) => (
+                <span key={`${chip}-${index}`} className="rounded-full bg-white/92 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-black shadow-sm">
+                  {chip}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <div className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-[22px] border border-black/12 bg-white px-4 py-3 text-black shadow-[0_16px_36px_-22px_rgba(0,0,0,0.5)]">
+            <div className="min-w-0">
+              <p className={cn("break-words font-black leading-tight", compact ? "text-sm" : "text-xl")}>
+                {preview.headline}
+              </p>
+            </div>
+            <div className="rounded-full border border-black/12 px-3 py-2 text-xs font-black">
+              {preview.cta}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="absolute inset-0 flex flex-col p-4">
       <div className="flex items-start justify-between gap-3">
@@ -219,7 +253,6 @@ export function StaticAdComposedPreview({
   const preview = buildComposedStaticAdPreview(input);
   const label = statusLabel(preview.status);
   const quality = qualityLabel(preview);
-  const showGeneratedAsset = Boolean(preview.backgroundImageUrl);
 
   return (
     <div className={cn("overflow-hidden rounded-[20px] border border-white/10 bg-black/20", className)}>
@@ -235,18 +268,14 @@ export function StaticAdComposedPreview({
             alt={preview.headline}
             fill
             unoptimized
-            className={showGeneratedAsset ? "object-contain" : "object-cover"}
+            className="object-cover"
             src={preview.backgroundImageUrl}
           />
         ) : (
           <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px)] bg-[size:36px_36px] opacity-20" />
         )}
-        {!showGeneratedAsset ? (
-          <>
-            <div className="absolute inset-0 bg-black/18" />
-            {renderTemplateDetails(preview, compact)}
-          </>
-        ) : null}
+        <div className="absolute inset-0 bg-black/18" />
+        {renderTemplateDetails(preview, compact)}
       </div>
 
       <div className={cn("space-y-3", compact ? "p-3" : "p-4")}>
@@ -265,9 +294,7 @@ export function StaticAdComposedPreview({
         </div>
         {showRawAssetState ? (
           <p className="text-xs leading-5 text-muted-foreground">
-            {showGeneratedAsset
-              ? "Showing the generated creative directly. Campaign copy and CTA are listed below for review."
-              : preview.backgroundMessage}
+            {preview.backgroundMessage}
           </p>
         ) : null}
         {!compact ? (
@@ -283,7 +310,7 @@ export function StaticAdComposedPreview({
             </div>
           </div>
         ) : null}
-        {preview.overflowRisk && !showGeneratedAsset ? (
+        {preview.overflowRisk ? (
           <p className="text-xs leading-5 text-amber-300">
             Long copy was fitted into the template to prevent visual overflow.
           </p>

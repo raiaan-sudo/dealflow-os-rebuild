@@ -1,4 +1,7 @@
 import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
+import {
+  evaluateStaticVisualAssetDecision,
+} from "@/lib/services/static-creative-visual-qa";
 
 export type StaticAdTemplateKind =
   | "seller_value_map"
@@ -27,6 +30,7 @@ export type StaticAdTemplateStatus =
   | "final_composed"
   | "template_fallback"
   | "background_generating"
+  | "background_rejected"
   | "background_failed";
 
 export type StaticAdTemplateInput = {
@@ -37,8 +41,15 @@ export type StaticAdTemplateInput = {
   imageUrl?: string | null;
   imageGenerationState?: string | null;
   imageGenerationMessage?: string | null;
+  imagePrompt?: string | null;
+  imagePromptConfig?: {
+    prompt?: string | null;
+    negativePrompt?: string | null;
+  } | null;
   visualPromptBrief?: {
     category?: CampaignCategory | string | null;
+    visualAssetContract?: string | null;
+    visualAssetRole?: string | null;
     proofStyle?: string | null;
     mechanism?: string | null;
     visualLogic?: string[] | null;
@@ -319,7 +330,7 @@ export function fitStaticAdText(input: {
 
 function buildStatus(input: StaticAdTemplateInput): StaticAdTemplateStatus {
   if (input.imageUrl) {
-    return "final_composed";
+    return evaluateStaticVisualAssetDecision(input).usable ? "final_composed" : "background_rejected";
   }
 
   if (input.imageGenerationState === "generating") {
@@ -335,13 +346,15 @@ function buildStatus(input: StaticAdTemplateInput): StaticAdTemplateStatus {
 
 function buildBackgroundMessage(input: StaticAdTemplateInput, status: StaticAdTemplateStatus) {
   if (status === "final_composed") {
-    return input.qualityGate?.accepted === false
-      ? "Generated image is visible for review, but this one should be regenerated before launch."
-      : "Generated image is ready for creative review.";
+    return "DealFlow composed this creative with a text-free generated background and exact app-rendered copy.";
   }
 
   if (status === "background_generating") {
     return input.imageGenerationMessage || "Background is still generating; final layout is ready.";
+  }
+
+  if (status === "background_rejected") {
+    return evaluateStaticVisualAssetDecision(input).reason || "Generated background was withheld from the launch preview.";
   }
 
   if (status === "background_failed") {
@@ -375,6 +388,7 @@ export function buildComposedStaticAdPreview(input: StaticAdTemplateInput): Comp
   const location = titleCase(safeText(input.location) || "Your Market");
   const numbers = extractNumberTokens(input);
   const status = buildStatus(input);
+  const backgroundDecision = evaluateStaticVisualAssetDecision(input);
   const safeCta = VAGUE_CTA_PATTERN.test(safeText(input.cta)) || !safeText(input.cta)
     ? CATEGORY_CTAS[category]
     : safeText(input.cta);
@@ -406,7 +420,7 @@ export function buildComposedStaticAdPreview(input: StaticAdTemplateInput): Comp
     category,
     status,
     aspectRatio: category === "luxury" ? "16:9" : "1:1",
-    backgroundImageUrl: safeText(input.imageUrl) || null,
+    backgroundImageUrl: backgroundDecision.usable ? safeText(input.imageUrl) || null : null,
     rawBackgroundAvailable: Boolean(input.imageUrl),
     location,
     eyebrow: buildEyebrow(category, location, templateId),

@@ -79,8 +79,14 @@ const generatedCreativeInput = {
   headline: "Budget-matched homes before the weekend rush",
   primaryText: "A curated shortlist helps buyers compare fit before the same homes get crowded.",
   cta: "See Matching Homes",
-  imageUrl: "https://example.test/rendered-creative.png",
+  imageUrl: "https://example.test/background.png",
   imageGenerationState: "generated",
+  imagePrompt: "TEXT-FREE BACKGROUND ASSET ONLY. Warm buyer reviewing homes in Austin.",
+  visualPromptBrief: {
+    category: "buyer",
+    visualAssetContract: "text_free_background_v2",
+    visualAssetRole: "text_free_background",
+  },
   qualityGate: {
     accepted: true,
     score: 8.2,
@@ -88,6 +94,10 @@ const generatedCreativeInput = {
 };
 const generatedCreative = buildComposedStaticAdPreview(generatedCreativeInput);
 assert.equal(generatedCreative.status, "final_composed", "accepted generated images are primary creative previews");
+assert.equal(
+  generatedCreative.backgroundMessage,
+  "DealFlow composed this creative with a text-free generated background and exact app-rendered copy.",
+);
 
 const rejectedGeneratedCreative = buildComposedStaticAdPreview({
   ...generatedCreativeInput,
@@ -98,13 +108,17 @@ const rejectedGeneratedCreative = buildComposedStaticAdPreview({
 });
 assert.equal(
   rejectedGeneratedCreative.status,
-  "final_composed",
-  "generated images remain visible even when a quality gate asks for review",
+  "background_rejected",
+  "rejected generated images are withheld from the launch preview",
 );
-assert.equal(
-  rejectedGeneratedCreative.backgroundMessage,
-  "Generated image is visible for review, but this one should be regenerated before launch.",
-);
+
+const legacyGeneratedCreative = buildComposedStaticAdPreview({
+  ...generatedCreativeInput,
+  imagePrompt: "Make the result look like a finished, high-converting paid social creative frame.",
+  visualPromptBrief: null,
+});
+assert.equal(legacyGeneratedCreative.status, "background_rejected");
+assert.equal(legacyGeneratedCreative.backgroundImageUrl, null);
 
 const precon = buildComposedStaticAdPreview({
   location: "Montreal",

@@ -804,15 +804,18 @@ function containsUnsafeGuarantee(text: string) {
 function hasMediaBuyerReferenceLogic(text: string) {
   return (
     /\bmedia-buyer reference pattern\b/.test(text) ||
+    /\bmedia-buyer source imagery logic\b/.test(text) ||
+    /\btext-free background asset only\b/.test(text) ||
     /\bone dominant hook area\b/.test(text) ||
     /\bone proof area\b/.test(text) ||
     /\bclear cta-safe\b/.test(text) ||
-    /\bdirect-response layout\b/.test(text)
+    /\bdirect-response layout\b/.test(text) ||
+    /\bdealflow will place exact text later\b/.test(text)
   );
 }
 
 function hasUnusablePreviewState(text: string) {
-  return /\b(unreadable|covered text|text covered|covered by overlay|awkward crop|awkward preview|cropped headline|cut off headline|low-resolution|low resolution|watermark|warped phone|distorted hands|distorted architecture)\b/.test(text);
+  return /\b(unreadable|gibberish|pseudo text|pseudo-readable|fake text|fake ui|fake pricing|covered text|text covered|covered by overlay|awkward crop|awkward preview|cropped headline|cut off headline|low-resolution|low resolution|watermark|warped phone|distorted hands|distorted architecture)\b/.test(text);
 }
 
 function hasGenericStockRisk(text: string) {

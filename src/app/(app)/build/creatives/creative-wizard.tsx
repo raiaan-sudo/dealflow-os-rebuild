@@ -9,6 +9,7 @@ import {
 } from "@/components/campaign/static-creative-preview-card";
 import { Button } from "@/components/ui/button";
 import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
+import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
 
 type CreativeOption = {
   id: string;
@@ -20,6 +21,11 @@ type CreativeOption = {
   imageUrl?: string | null;
   imageGenerationState?: string | null;
   imageGenerationMessage?: string | null;
+  imagePrompt?: string | null;
+  imagePromptConfig?: {
+    prompt?: string | null;
+    negativePrompt?: string | null;
+  } | null;
   overlayText?: string | null;
   offer?: string | null;
   category?: CampaignCategory | string | null;
@@ -32,6 +38,8 @@ type CreativeOption = {
   } | null;
   visualPromptBrief?: {
     category?: CampaignCategory | string | null;
+    visualAssetContract?: string | null;
+    visualAssetRole?: string | null;
     proofStyle?: string | null;
     mechanism?: string | null;
     visualLogic?: string[] | null;
@@ -85,7 +93,7 @@ function isUgcCreative(creative: CreativeOption) {
 function creativeNeedsImageGeneration(creative: CreativeOption) {
   return !creative.imageUrl ||
     creative.imageGenerationState === "failed" ||
-    creative.qualityGate?.accepted === false;
+    !evaluateStaticVisualAssetDecision(creative).usable;
 }
 
 function customerVideoMessage(message?: string | null) {
@@ -151,7 +159,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
   const allImagesMissing = rankedCreatives.every((creative) => !creative.imageUrl);
   const hasMissingImages = rankedCreatives.some((creative) => !creative.imageUrl);
   const hasFailedOrRejectedImages = rankedCreatives.some(
-    (creative) => creative.imageGenerationState === "failed" || creative.qualityGate?.accepted === false,
+    (creative) => creative.imageGenerationState === "failed" || !evaluateStaticVisualAssetDecision(creative).usable,
   );
   const needsImageGeneration = rankedCreatives.some(creativeNeedsImageGeneration);
   const hasGeneratedImages = rankedCreatives.some((creative) => Boolean(creative.imageUrl));
@@ -164,7 +172,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
   const imageGenerationSignature = rankedCreatives
     .map((creative) => [
       creative.id,
-      creative.imageUrl ? "asset" : "missing",
+      evaluateStaticVisualAssetDecision(creative).usable ? "usable-background" : "needs-background",
       creative.imageGenerationState ?? "none",
       creative.qualityGate?.accepted === false ? "needs-review" : "accepted-or-pending",
     ].join(":"))
@@ -491,6 +499,8 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
             headline={displayActiveCreative.headline}
             imageGenerationMessage={displayActiveCreative.imageGenerationMessage}
             imageGenerationState={displayActiveCreative.imageGenerationState}
+            imagePrompt={displayActiveCreative.imagePrompt}
+            imagePromptConfig={displayActiveCreative.imagePromptConfig}
             imageUrl={displayActiveCreative.imageUrl}
             location={displayActiveCreative.location}
             formatLabel={displayActiveCreative.formatLabel}
@@ -554,7 +564,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                 ? "Your strategy, copy, and creative concepts are ready. The previous render stopped before credit overdraft was enabled."
                 : allImagesMissing
                   ? "Your strategy, copy, and creative concepts are ready. DealFlow is preparing image previews automatically so this step stays focused on choosing the best test set."
-                  : "Some previews need a cleaner image render. DealFlow will keep the generated asset visible while it prepares replacements automatically."}
+                  : "Some previews need a cleaner text-free background. DealFlow will withhold unusable renders and prepare replacements automatically."}
               {hasCreditBlocker ? (
                 <button
 	                  type="button"
@@ -587,6 +597,8 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                   headline={displayCreative.headline}
                   imageGenerationMessage={displayCreative.imageGenerationMessage}
                   imageGenerationState={displayCreative.imageGenerationState}
+                  imagePrompt={displayCreative.imagePrompt}
+                  imagePromptConfig={displayCreative.imagePromptConfig}
                   imageUrl={displayCreative.imageUrl}
                   key={displayCreative.id}
                   location={displayCreative.location}
@@ -787,6 +799,8 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                     headline={displayCreative.headline}
                     imageGenerationMessage={displayCreative.imageGenerationMessage}
                     imageGenerationState={displayCreative.imageGenerationState}
+                    imagePrompt={displayCreative.imagePrompt}
+                    imagePromptConfig={displayCreative.imagePromptConfig}
                     imageUrl={displayCreative.imageUrl}
                     location={displayCreative.location}
                     formatLabel={displayCreative.formatLabel}
