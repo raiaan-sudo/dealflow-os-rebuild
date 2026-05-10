@@ -619,6 +619,8 @@ function runOfflineChecks() {
   assertIncludes(imageProvider, "ALLOW_HIGGSFIELD_IMAGE_GENERATION !== \"true\"", "Higgsfield image generation kill switch", "paid image provider returns unsupported unless explicitly enabled");
   assertIncludes(imageProvider, "HiggsfieldImageProvider", "Higgsfield image provider", "static image generation has a Higgsfield provider implementation");
   assertIncludes(higgsfieldClient, "@higgsfield/client/v2", "Official Higgsfield SDK", "Higgsfield integration uses the server-side SDK instead of MCP or CLI");
+  assertIncludes(higgsfieldClient, "buildImageInput", "Higgsfield model parameter mapping", "Higgsfield Cloud requests use the selected model's accepted input shape instead of a one-size-fits-all payload");
+  assertIncludes(higgsfieldClient, "resolution: \"1k\"", "Higgsfield marketing image payload", "Marketing Studio image renders send a supported resolution parameter");
   assertIncludes(higgsfieldClient, "withPolling: true", "Higgsfield image polling", "image generation waits for a completed result before surfacing a file URL");
   assertIncludes(higgsfieldClient, "withPolling: false", "Higgsfield async video start", "video generation stays async and does not block the request path");
   assertIncludes(launchRoute, "assertMetaLiveLaunchEnabled", "Reachable Meta live launch kill switch", "direct Meta launch route fails closed unless ALLOW_META_LIVE_LAUNCH=true");
@@ -632,6 +634,7 @@ function runOfflineChecks() {
   assertIncludes(sessionCostGuard, "consumeCreditsForGeneration", "Provider usage credit coupling", "provider reservations consume credits before paid calls execute");
   assertIncludes(sessionCostGuard, "refundCreditsForProviderUsageEvent", "Credit refund coupling", "released or failed paid calls refund reserved credits");
   assertIncludes(legacyAiProviders, "providerUsage?.mark", "Provider usage ledger transitions", "paid-generation reservations are marked consumed/released after the provider call");
+  assertIncludes(legacyAiProviders, "providerJobWasCreated", "Provider usage pre-job release", "provider attempts that fail before a provider job id is returned release the daily reservation");
   assertIncludes(videoRoute, "kind: \"video_generation\"", "Video generation job route", "AI video generation is queued through the paid system job path");
   assertIncludes(videoRoute, "getCampaignById", "Video generation ownership guard", "video generation verifies campaign ownership before queueing paid work");
   assertIncludes(systemJobService, "video_generation_status", "Video generation status polling", "AI video render completion is polled by durable follow-up jobs instead of blocking the cron worker");

@@ -298,9 +298,11 @@ export async function createImageAd(
       } else {
         generationState = parsed.status === "unsupported" ? "unavailable" : "failed";
         generationMessage = parsed.error ?? "Image generation did not return a usable asset.";
+        const providerJobWasCreated =
+          typeof parsed.providerAssetId === "string" && parsed.providerAssetId.trim().length > 0;
         await providerUsage?.mark({
           eventId: budgetReservation?.eventId,
-          status: parsed.status === "unsupported" ? "released" : "failed",
+          status: parsed.status === "unsupported" || !providerJobWasCreated ? "released" : "failed",
           metadata: {
             operation: "image_generation",
             provider: imageProvider.name,

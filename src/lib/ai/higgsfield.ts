@@ -52,6 +52,16 @@ type HiggsfieldResponseShape = {
   }>;
 };
 
+type HiggsfieldImageInput = {
+  prompt: string;
+  aspect_ratio?: string;
+  resolution?: "1k" | "2k" | "4k";
+  width_and_height?: string;
+  quality?: "720p" | "1080p";
+  batch_size?: 1 | 4;
+  enhance_prompt?: boolean;
+};
+
 function safeText(value: unknown) {
   return (value ?? "").toString().trim();
 }
@@ -169,6 +179,39 @@ function buildPromptWithGuardrails(request: HiggsfieldImageRequest | HiggsfieldV
     .join(" ");
 }
 
+function mapAspectRatioToSoulSize(aspectRatio: string) {
+  if (aspectRatio === "9:16" || aspectRatio === "4:5") {
+    return "1536x2048";
+  }
+
+  if (aspectRatio === "16:9") {
+    return "2048x1152";
+  }
+
+  return "1536x1536";
+}
+
+function buildImageInput(model: string, request: HiggsfieldImageRequest): HiggsfieldImageInput {
+  const aspectRatio = safeText(request.aspectRatio) || "1:1";
+  const prompt = buildPromptWithGuardrails(request);
+
+  if (model === "/v1/text2image/soul" || model === "text2image_soul_v2") {
+    return {
+      prompt,
+      width_and_height: mapAspectRatioToSoulSize(aspectRatio),
+      quality: "1080p",
+      batch_size: 1,
+      enhance_prompt: true,
+    };
+  }
+
+  return {
+    prompt,
+    aspect_ratio: aspectRatio,
+    resolution: "1k",
+  };
+}
+
 export async function generateHiggsfieldImage(
   request: HiggsfieldImageRequest,
 ): Promise<HiggsfieldGenerationResult> {
@@ -181,11 +224,7 @@ export async function generateHiggsfieldImage(
   const model = safeText(request.model) || env.imageModel;
   const client = await createClient();
   const response = await client.subscribe(model, {
-    input: {
-      prompt: buildPromptWithGuardrails(request),
-      aspect_ratio: safeText(request.aspectRatio) || "1:1",
-      enhance_prompt: true,
-    },
+    input: buildImageInput(model, request),
     withPolling: true,
   });
 

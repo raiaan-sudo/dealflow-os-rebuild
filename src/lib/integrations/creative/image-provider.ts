@@ -6,6 +6,7 @@ import {
   validateImageGenerationEnv,
 } from "@/lib/env";
 import { generateHiggsfieldImage } from "@/lib/ai/higgsfield";
+import { logWarn } from "@/lib/logging";
 import type {
   ExecutionProvider,
   ProviderConfigValidation,
@@ -378,6 +379,12 @@ class HiggsfieldImageProvider implements ImageGenerationProvider {
         error: result.fileUrl ? null : "Image provider did not return a usable asset.",
       };
     } catch (error) {
+      logWarn("Higgsfield image generation failed", {
+        message: getErrorMessage(error),
+        errorName: error instanceof Error ? error.name : typeof error,
+        model: env.imageModel,
+      });
+
       return {
         ok: false,
         providerName: this.name,
