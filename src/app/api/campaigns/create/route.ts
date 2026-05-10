@@ -24,6 +24,7 @@ import {
 } from "@/lib/integrations/meta/service";
 import { assertMetaLaunchBillingAccessForOrganization } from "@/lib/services/billing-service";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
+import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { slugify } from "@/lib/utils";
@@ -883,7 +884,7 @@ async function launchCampaignToMeta(
       throw new ApiError(400, "Missing selected Meta assets", "missing_selected_meta_assets");
     }
 
-    const selectedAdId = storedPayload?.selected_ad_id ?? null;
+    const selectedAdId = storedPayload?.selected_ad_id ?? storedPayload?.selected_ad_ids?.[0] ?? null;
 
     if (!selectedAdId) {
       throw new ApiError(
@@ -901,6 +902,16 @@ async function launchCampaignToMeta(
         400,
         "The selected ad could not be found in the saved campaign creatives.",
         "selected_ad_not_found",
+      );
+    }
+
+    const selectedImageDecision = evaluateStaticVisualAssetDecision(selectedStaticAd);
+
+    if (!selectedImageDecision.usable) {
+      throw new ApiError(
+        400,
+        "The selected creative image is still rendering or needs regeneration before launch.",
+        "selected_ad_image_not_launch_ready",
       );
     }
 
@@ -955,7 +966,7 @@ async function launchCampaignToMeta(
       );
     }
 
-    const adImageUrl = selectedStaticAd.imageUrl || null;
+    const adImageUrl = selectedImageDecision.usable ? selectedStaticAd.imageUrl || null : null;
     const campaignMetaName = buildDeterministicMetaName({
       organizationId: workspaceId,
       campaignId,

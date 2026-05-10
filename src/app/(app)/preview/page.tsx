@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
-import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
@@ -19,6 +18,21 @@ import {
 } from "@/lib/services/campaign-validation";
 import { FunnelPreview } from "@/components/funnel/funnel-preview";
 import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
+import { StaticCreativeSummaryCard } from "@/components/campaign/static-creative-preview-card";
+
+function customerVideoMessage(message?: string | null) {
+  const text = message?.trim();
+
+  if (!text) {
+    return null;
+  }
+
+  if (/provider usage guard|explicitly enabled|provider|higgsfield|heygen|openai|configured|credentials/i.test(text)) {
+    return "AI video rendering is not ready yet.";
+  }
+
+  return text;
+}
 
 async function loadPersistedSelectedAdIds(campaignId: string | null) {
   if (!campaignId) {
@@ -71,6 +85,7 @@ export default async function PreviewPage({
   const previewPlan = safeCampaign.plan;
   const expectedOutcomes = getExpectedOutcomes(previewPlan);
   const selectedAds = previewPlan.creatives.staticAds.filter((ad) => selectedAdIds.includes(ad.id));
+  const videoAds = previewPlan.creatives.videoAds;
   const campaignIdForFlow = record?.campaign.id ?? null;
 
   if (selectedAds.length === 0) {
@@ -129,83 +144,98 @@ export default async function PreviewPage({
           </div>
           {selectedAds.length > 0 ? (
             <div className="space-y-3">
-              <div className="rounded-df-card border border-primary/30 bg-primary/[0.08] p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">
-                    Primary creative
-                  </span>
-                  <span className="rounded-full border border-cyan-300/16 bg-cyan-300/[0.055] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100">
-                    {previewPlan.creativeStrategy.campaignCategory.replaceAll("_", " ")}
-                  </span>
-                  {typeof selectedAds[0]?.score === "number" ? (
-                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-white/62">
-                      {selectedAds[0].score.toFixed(1)}/10
-                    </span>
-                  ) : null}
-                </div>
-                <h3 className="mt-3 line-clamp-2 text-base font-semibold leading-6 text-foreground">
-                  {selectedAds[0]?.headline || previewPlan.keyOffer}
-                </h3>
-                <p className="mt-2 line-clamp-3 text-sm leading-6 text-muted-foreground">
-                  {selectedAds[0]?.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
+              <div className="rounded-df-card border border-primary/30 bg-primary/[0.08] p-3">
+                <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">
+                  Primary creative
                 </p>
-                <p className="mt-3 text-sm font-semibold text-primary">
-                  CTA: {selectedAds[0]?.cta || "Learn More"}
-                </p>
+                <StaticCreativeSummaryCard
+                  angleLabel={selectedAds[0]?.angle}
+                  category={previewPlan.creativeStrategy.campaignCategory}
+                  className="border-primary/35 bg-black/18"
+                  cta={selectedAds[0]?.cta || "Learn More"}
+                  headline={selectedAds[0]?.headline || previewPlan.keyOffer}
+                  imageGenerationMessage={selectedAds[0]?.imageGenerationMessage}
+                  imageGenerationState={selectedAds[0]?.imageGenerationState}
+                  imagePrompt={selectedAds[0]?.imagePrompt}
+                  imagePromptConfig={selectedAds[0]?.imagePromptConfig}
+                  imageUrl={selectedAds[0]?.imageUrl}
+                  index={0}
+                  location={previewPlan.market}
+                  offer={previewPlan.keyOffer}
+                  overlayText={selectedAds[0]?.overlayText}
+                  primaryText={selectedAds[0]?.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
+                  qualityGate={selectedAds[0]?.qualityGate}
+                  score={selectedAds[0]?.score}
+                  selected
+                  selectedCount={selectedAds.length}
+                  visualPromptBrief={selectedAds[0]?.visualPromptBrief}
+                />
               </div>
 
               <div className="grid gap-2">
                 {selectedAds.slice(1).map((selectedAd, index) => (
-                  <div
-                    className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-[18px] border border-white/10 bg-white/[0.035] p-3"
+                  <StaticCreativeSummaryCard
+                    angleLabel={selectedAd.angle}
+                    category={previewPlan.creativeStrategy.campaignCategory}
+                    cta={selectedAd.cta || "Learn More"}
+                    headline={selectedAd.headline || previewPlan.keyOffer}
+                    imageGenerationMessage={selectedAd.imageGenerationMessage}
+                    imageGenerationState={selectedAd.imageGenerationState}
+                    imagePrompt={selectedAd.imagePrompt}
+                    imagePromptConfig={selectedAd.imagePromptConfig}
+                    imageUrl={selectedAd.imageUrl}
+                    index={index + 1}
                     key={selectedAd.id}
-                  >
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-xs font-semibold text-foreground">
-                      {index + 2}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="line-clamp-1 text-sm font-semibold text-foreground">
-                        {selectedAd.headline || previewPlan.keyOffer}
-                      </p>
-                      <p className="line-clamp-1 text-xs text-muted-foreground">
-                        {selectedAd.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
-                      </p>
-                    </div>
-                    {typeof selectedAd.score === "number" ? (
-                      <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-white/62">
-                        {selectedAd.score.toFixed(1)}
-                      </span>
-                    ) : null}
-                  </div>
+                    location={previewPlan.market}
+                    offer={previewPlan.keyOffer}
+                    overlayText={selectedAd.overlayText}
+                    primaryText={selectedAd.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
+                    qualityGate={selectedAd.qualityGate}
+                    score={selectedAd.score}
+                    selectedCount={selectedAds.length}
+                    visualPromptBrief={selectedAd.visualPromptBrief}
+                  />
                 ))}
               </div>
-
-              <details className="rounded-[18px] border border-white/10 bg-black/18 p-3">
-                <summary className="cursor-pointer text-sm font-semibold text-foreground">
-                  View creative details
-                </summary>
-                <div className="mt-3 grid gap-2">
-                  {selectedAds.map((selectedAd, index) => (
-                    <div className="rounded-[14px] border border-white/10 bg-white/[0.03] p-3" key={selectedAd.id}>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                        Creative {index + 1}
-                      </p>
-                      <p className="mt-1 line-clamp-2 text-sm font-semibold text-foreground">
-                        {selectedAd.headline || previewPlan.keyOffer}
-                      </p>
-                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
-                        {selectedAd.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </details>
             </div>
           ) : (
             <div className="rounded-df-card border border-white/10 bg-white/[0.035] p-5 text-sm text-muted-foreground">
               No saved creative test set is ready yet. Go back to creatives and choose the ads you want to test first.
             </div>
           )}
+          {videoAds.length > 0 ? (
+            <section className="mt-5 border-t border-white/10 pt-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                AI UGC video concepts
+              </p>
+              <div className="mt-3 grid gap-3">
+                {videoAds.map((video, index) => (
+                  <div className="rounded-[18px] border border-white/10 bg-white/[0.035] p-3" key={video.id}>
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <p className="line-clamp-1 text-sm font-semibold text-foreground">
+                        Video {index + 1}: {video.title || video.hook}
+                      </p>
+                      <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        {video.videoUrl ? "Ready" : "Rendering"}
+                      </span>
+                    </div>
+                    {video.videoUrl ? (
+                      <video
+                        className="aspect-video w-full rounded-[14px] border border-white/10 bg-black object-cover"
+                        controls
+                        playsInline
+                        src={video.videoUrl}
+                      />
+                    ) : (
+                      <div className="grid aspect-video place-items-center rounded-[14px] border border-dashed border-white/12 bg-black/22 p-4 text-center text-sm text-muted-foreground">
+                        {customerVideoMessage(video.videoGenerationMessage) ?? "AI video rendering is not ready yet."}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
         </aside>
       </div>
 

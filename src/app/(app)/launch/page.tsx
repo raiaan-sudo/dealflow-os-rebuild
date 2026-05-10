@@ -18,6 +18,7 @@ import { getSelectedAdIdsFromPlan, readCampaignPlanDocument } from "@/lib/servic
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { getBillingSummary } from "@/lib/services/billing-service";
 import { getMetaQueryUiCopy } from "@/lib/integrations/meta/error-mapper";
+import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
 import {
   getMetaConnectionState,
   getDefaultMetaConnectionState,
@@ -238,12 +239,18 @@ export default async function LaunchAliasPage({
     ...(!providerLaunchEnabled ? ["Final launch approval is pending."] : []),
   ];
   const selectedCreatives = plan.creatives.staticAds.filter((ad) => selectedAdIds.includes(ad.id));
+  const selectedCreativeMediaReady =
+    selectedCreatives.length > 0 &&
+    selectedCreatives.every((ad) => evaluateStaticVisualAssetDecision(ad).usable);
   const publicFunnelPublished =
     savedRecord.publish.state === "published" &&
     Boolean(savedRecord.publish.slug) &&
     savedRecord.publish.hasPublishedSnapshot;
   if (!publicFunnelPublished) {
     blockingReasons.push("Publish the public funnel before launch.");
+  }
+  if (!selectedCreativeMediaReady) {
+    blockingReasons.push("Finish rendering clean creative images before launch.");
   }
   const dailyBudgetInput =
     plan.runtime.budgetDailyInput && plan.runtime.budgetDailyInput > 0
@@ -259,7 +266,7 @@ export default async function LaunchAliasPage({
   const launchRoomReady =
     billingLaunchAllowed &&
     metaLaunchReady &&
-    selectedCreatives.length > 0 &&
+    selectedCreativeMediaReady &&
     publicFunnelPublished &&
     providerLaunchEnabled;
   const readinessItems = [
@@ -284,18 +291,20 @@ export default async function LaunchAliasPage({
       label: "Meta preflight",
       ready: metaLaunchReady,
       detail: metaLaunchReady
-        ? `Provider verified ${formatLastVerified(metaPreflight?.checkedAt)}`
+        ? `Meta checks verified ${formatLastVerified(metaPreflight?.checkedAt)}`
         : metaSelectionReady
-          ? "Saved selections need provider verification before launch"
+          ? "Saved selections need Meta verification before launch"
           : "Save the Meta selections first",
     },
     {
-      label: "Creative selected",
-      ready: selectedCreatives.length > 0,
+      label: "Creative media ready",
+      ready: selectedCreativeMediaReady,
       detail:
-        selectedCreatives.length > 0
-          ? `${selectedCreatives.length} selected creative${selectedCreatives.length === 1 ? "" : "s"} saved`
-          : "Choose the creative test set first",
+        selectedCreativeMediaReady
+          ? `${selectedCreatives.length} launch-ready creative${selectedCreatives.length === 1 ? "" : "s"} saved`
+          : selectedCreatives.length > 0
+            ? "Regenerate selected creatives until clean image renders are ready"
+            : "Choose the creative test set first",
     },
     {
       label: "Funnel published",
@@ -535,7 +544,9 @@ export default async function LaunchAliasPage({
               <div>
                 <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Selected creative test set</p>
                 <h2 className="mt-2 text-lg font-semibold text-foreground">
-                  {selectedCreatives.length} creatives ready
+                  {selectedCreativeMediaReady
+                    ? `${selectedCreatives.length} creatives ready`
+                    : `${selectedCreatives.length} selected, rendering needed`}
                 </h2>
               </div>
               <span className="rounded-full border border-cyan-300/16 bg-cyan-300/[0.055] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100">

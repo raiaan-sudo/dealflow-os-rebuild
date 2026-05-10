@@ -147,6 +147,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
   const [renderMessage, setRenderMessage] = useState<string | null>(null);
   const [videoMessage, setVideoMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fullVideoOpen, setFullVideoOpen] = useState(false);
   const [activeCreativeId, setActiveCreativeId] = useState<string | null>(
     defaultSelectedIds[0] ?? rankedCreatives[0]?.id ?? null,
   );
@@ -185,6 +186,10 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
     videoCreatives.find((video) => video.conceptType === "customer_ugc") ??
     videoCreatives[0] ??
     null;
+  const [activeVideoId, setActiveVideoId] = useState<string | null>(primaryVideoCreative?.id ?? null);
+  const activeVideoCreative =
+    videoCreatives.find((video) => video.id === activeVideoId) ??
+    primaryVideoCreative;
   const videoNeedsGeneration = Boolean(
     primaryVideoCreative &&
     !primaryVideoCreative.videoUrl &&
@@ -209,7 +214,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
 
         if (job.status === "completed") {
           if (surface === "video") {
-            setVideoMessage("AI UGC video is ready.");
+            setVideoMessage("AI UGC video render is processing. This page will update when the video file is ready.");
           } else {
             setRenderMessage("Image previews are ready.");
           }
@@ -280,11 +285,22 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
     }
   }, [campaignId, renderingImages, subscribeToJob]);
 
-  const queueVideoPreview = useCallback(async ({ force = false, automatic = false } = {}) => {
-    if (renderingVideo || !primaryVideoCreative) {
+  const queueVideoPreview = useCallback(async ({
+    force = false,
+    automatic = false,
+    video,
+  }: {
+    force?: boolean;
+    automatic?: boolean;
+    video?: VideoCreativeOption | null;
+  } = {}) => {
+    const selectedVideo = video ?? activeVideoCreative;
+
+    if (renderingVideo || !selectedVideo) {
       return;
     }
 
+    setActiveVideoId(selectedVideo.id);
     setRenderingVideo(true);
     setError(null);
     setVideoMessage(
@@ -300,7 +316,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          creativeIndex: primaryVideoCreative.index,
+          creativeIndex: selectedVideo.index,
           force,
         }),
       });
@@ -320,7 +336,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
     } finally {
       setRenderingVideo(false);
     }
-  }, [campaignId, primaryVideoCreative, renderingVideo, subscribeToJob]);
+  }, [activeVideoCreative, campaignId, renderingVideo, setActiveVideoId, subscribeToJob]);
 
   useEffect(() => {
     if (!needsImageGeneration || autoRenderStartedRef.current) {
@@ -360,8 +376,17 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
     void queueVideoPreview({
       automatic: true,
       force: primaryVideoCreative?.videoGenerationState === "failed",
+      video: primaryVideoCreative,
     });
-  }, [autoVideoStorageKey, primaryVideoCreative?.videoGenerationState, queueVideoPreview, videoNeedsGeneration]);
+  }, [autoVideoStorageKey, primaryVideoCreative, queueVideoPreview, videoNeedsGeneration]);
+
+  useEffect(() => {
+    if (!activeVideoId || videoCreatives.some((video) => video.id === activeVideoId)) {
+      return;
+    }
+
+    setActiveVideoId(primaryVideoCreative?.id ?? videoCreatives[0]?.id ?? null);
+  }, [activeVideoId, primaryVideoCreative?.id, videoCreatives]);
 
   useEffect(() => {
     if (!activeCreativeId || rankedCreatives.some((creative) => creative.id === activeCreativeId)) {
@@ -647,7 +672,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
         </div>
       </section>
 
-      {primaryVideoCreative ? (
+      {activeVideoCreative ? (
         <section className="grid gap-4 rounded-2xl border border-border bg-card p-4 sm:p-5 lg:grid-cols-[minmax(280px,0.82fr)_minmax(0,1.18fr)]">
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -655,65 +680,103 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   AI UGC video
                 </p>
-                <h3 className="mt-1 text-xl font-semibold text-foreground">{primaryVideoCreative.title}</h3>
+                <h3 className="mt-1 text-xl font-semibold text-foreground">{activeVideoCreative.title}</h3>
               </div>
               <span className="rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
-                {primaryVideoCreative.conceptType === "customer_ugc" ? "UGC concept" : "Video concept"}
+                {activeVideoCreative.conceptType === "customer_ugc" ? "UGC concept" : "Video concept"}
               </span>
             </div>
             <div className="overflow-hidden rounded-[18px] border border-white/10 bg-black/28">
-              {primaryVideoCreative.videoUrl ? (
+              {activeVideoCreative.videoUrl ? (
                 <video
                   className="aspect-video w-full bg-black object-contain"
                   controls
                   playsInline
-                  src={primaryVideoCreative.videoUrl}
+                  src={activeVideoCreative.videoUrl}
                 />
               ) : (
                 <div className="grid aspect-video place-items-center bg-[linear-gradient(135deg,rgba(94,234,212,0.12),rgba(139,92,246,0.12)),radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_24%)] p-5 text-center">
                   <div>
                     <p className="text-sm font-semibold text-foreground">
-                      {primaryVideoCreative.videoGenerationState === "generating" || renderingVideo
+                      {activeVideoCreative.videoGenerationState === "generating" || renderingVideo
                         ? "AI UGC video is rendering"
                         : "AI UGC video concept is ready"}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                      {primaryVideoCreative.hook || primaryVideoCreative.script[0] || "A short creator-style video will be generated for this campaign."}
+                      {activeVideoCreative.hook || activeVideoCreative.script[0] || "A short creator-style video will be generated for this campaign."}
                     </p>
                   </div>
                 </div>
               )}
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              {!primaryVideoCreative.videoUrl ? (
+              {activeVideoCreative.videoUrl ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setFullVideoOpen(true)}
+                >
+                  View full video
+                </Button>
+              ) : (
                 <Button
                   type="button"
                   variant="secondary"
                   onClick={() => void queueVideoPreview({
-                    force: primaryVideoCreative.videoGenerationState === "failed",
+                    force: activeVideoCreative.videoGenerationState === "failed",
+                    video: activeVideoCreative,
                   })}
-                  disabled={renderingVideo || primaryVideoCreative.videoGenerationState === "generating"}
+                  disabled={renderingVideo || activeVideoCreative.videoGenerationState === "generating"}
                 >
-                  {renderingVideo || primaryVideoCreative.videoGenerationState === "generating"
+                  {renderingVideo || activeVideoCreative.videoGenerationState === "generating"
                     ? "Rendering video..."
-                    : primaryVideoCreative.videoGenerationState === "failed"
+                    : activeVideoCreative.videoGenerationState === "failed"
                       ? "Retry AI UGC video"
                       : "Render AI UGC video"}
                 </Button>
-              ) : null}
-              {customerVideoMessage(videoMessage || primaryVideoCreative.videoGenerationMessage) ? (
+              )}
+              {customerVideoMessage(videoMessage || activeVideoCreative.videoGenerationMessage) ? (
                 <span className="text-sm leading-6 text-muted-foreground">
-                  {customerVideoMessage(videoMessage || primaryVideoCreative.videoGenerationMessage)}
+                  {customerVideoMessage(videoMessage || activeVideoCreative.videoGenerationMessage)}
                 </span>
               ) : null}
             </div>
+            {videoCreatives.length > 1 ? (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {videoCreatives.map((video, index) => {
+                  const active = video.id === activeVideoCreative.id;
+                  return (
+                    <button
+                      key={video.id}
+                      type="button"
+                      className={`min-w-[180px] rounded-2xl border px-3 py-3 text-left transition ${
+                        active
+                          ? "border-emerald-300/35 bg-emerald-300/[0.08]"
+                          : "border-white/10 bg-black/18 hover:border-white/20"
+                      }`}
+                      onClick={() => setActiveVideoId(video.id)}
+                    >
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        Video {index + 1}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-foreground">
+                        {video.title}
+                      </p>
+                      <p className="mt-2 text-[11px] text-muted-foreground">
+                        {video.videoUrl ? "Ready to watch" : video.videoGenerationState === "generating" ? "Rendering" : "Ready to render"}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
           <div className="grid gap-3">
             <div className="rounded-2xl border border-white/10 bg-black/18 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Script</p>
               <div className="mt-3 space-y-2">
-                {primaryVideoCreative.script.slice(0, 6).map((line, index) => (
-                  <p className="text-sm leading-6 text-foreground" key={`${primaryVideoCreative.id}-script-${index}`}>
+                {activeVideoCreative.script.slice(0, 6).map((line, index) => (
+                  <p className="text-sm leading-6 text-foreground" key={`${activeVideoCreative.id}-script-${index}`}>
                     {line}
                   </p>
                 ))}
@@ -723,22 +786,57 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
               <div className="rounded-2xl border border-white/10 bg-black/18 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Shot list</p>
                 <ul className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
-                  {primaryVideoCreative.shotList.slice(0, 4).map((shot, index) => (
-                    <li key={`${primaryVideoCreative.id}-shot-${index}`}>{shot}</li>
+                  {activeVideoCreative.shotList.slice(0, 4).map((shot, index) => (
+                    <li key={`${activeVideoCreative.id}-shot-${index}`}>{shot}</li>
                   ))}
                 </ul>
               </div>
               <div className="rounded-2xl border border-white/10 bg-black/18 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">CTA</p>
-                <p className="mt-3 text-sm font-semibold text-foreground">{primaryVideoCreative.cta}</p>
-                {typeof primaryVideoCreative.qualityGate?.score === "number" ? (
+                <p className="mt-3 text-sm font-semibold text-foreground">{activeVideoCreative.cta}</p>
+                {typeof activeVideoCreative.qualityGate?.score === "number" ? (
                   <p className="mt-3 text-sm text-muted-foreground">
-                    Creative score {primaryVideoCreative.qualityGate.score.toFixed(1)}/10
+                    Creative score {activeVideoCreative.qualityGate.score.toFixed(1)}/10
                   </p>
                 ) : null}
               </div>
             </div>
           </div>
+          {fullVideoOpen && activeVideoCreative.videoUrl ? (
+            <div
+              aria-modal="true"
+              className="fixed inset-0 z-50 grid place-items-center bg-black/85 p-4"
+              role="dialog"
+              onClick={() => setFullVideoOpen(false)}
+            >
+              <div
+                className="w-full max-w-5xl overflow-hidden rounded-[20px] border border-white/12 bg-background shadow-2xl"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      Full AI UGC video
+                    </p>
+                    <h3 className="mt-1 truncate text-sm font-semibold text-foreground">{activeVideoCreative.title}</h3>
+                  </div>
+                  <button
+                    type="button"
+                    className="shrink-0 rounded-full border border-white/12 px-3 py-2 text-xs font-semibold text-foreground transition hover:border-primary/40 hover:bg-primary/10"
+                    onClick={() => setFullVideoOpen(false)}
+                  >
+                    Close
+                  </button>
+                </div>
+                <video
+                  className="max-h-[calc(100dvh-7rem)] w-full bg-black object-contain"
+                  controls
+                  playsInline
+                  src={activeVideoCreative.videoUrl}
+                />
+              </div>
+            </div>
+          ) : null}
         </section>
       ) : null}
 

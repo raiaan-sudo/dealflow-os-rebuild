@@ -51,7 +51,7 @@ export async function GET(
           encoder.encode(
             `event: job\ndata: ${JSON.stringify({
               status: "failed",
-              error_message: "Image preview rendering is still taking longer than expected. Refresh this page to check again.",
+              error_message: "Creative rendering is still taking longer than expected. Refresh this page to check again.",
             })}\n\n`,
           ),
         );

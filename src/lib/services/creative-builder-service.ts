@@ -34,6 +34,8 @@ import type {
 import { getImageGenerationProvider } from "@/lib/integrations/creative/image-provider";
 import { getVoiceProvider } from "@/lib/integrations/creative/voice-provider";
 import { getAvatarVideoProvider } from "@/lib/integrations/creative/avatar-provider";
+import type { StaticCreativeAsset } from "@/lib/services/creative-engine";
+import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
 
 type SupabaseClient = NonNullable<Awaited<ReturnType<typeof createClient>>>;
 
@@ -57,6 +59,32 @@ type AssetBuildArtifacts = {
 
 const MANUAL_MEDIA_BUCKET = "creative-assets";
 type ManualCreativeAssetKind = "video" | "image" | "thumbnail";
+
+function isLaunchReadyStaticImageAsset(asset: CreativeAsset) {
+  const metadata =
+    asset.metadata && typeof asset.metadata === "object" && !Array.isArray(asset.metadata)
+      ? (asset.metadata as Record<string, unknown>)
+      : {};
+  const source = typeof metadata.source === "string" ? metadata.source : null;
+  const generationMethod = typeof asset.generation_method === "string" ? asset.generation_method : null;
+  const isStaticGeneratedAsset =
+    source === "static_ad" ||
+    (generationMethod === "image_generation" && (asset.asset_type === "image_frame" || asset.asset_type === "thumbnail"));
+
+  if (!isStaticGeneratedAsset) {
+    return true;
+  }
+
+  const decision = evaluateStaticVisualAssetDecision({
+    imageUrl: asset.file_url ?? asset.thumbnail_url,
+    imagePrompt: typeof metadata.imagePrompt === "string" ? metadata.imagePrompt : null,
+    imagePromptConfig: (metadata.imagePromptConfig ?? null) as StaticCreativeAsset["imagePromptConfig"],
+    visualPromptBrief: (metadata.visualPromptBrief ?? null) as StaticCreativeAsset["visualPromptBrief"],
+    qualityGate: (metadata.qualityGate ?? null) as StaticCreativeAsset["qualityGate"],
+  });
+
+  return decision.usable;
+}
 
 function mapFormatDefault(formats?: CreativeAssetFormat[] | null): CreativeAssetFormat[] {
   return formats && formats.length > 0 ? formats : ["9:16"];
@@ -1072,7 +1100,8 @@ export async function getLaunchReadyCreativeMedia(
         asset.status === "ready" &&
         Boolean(asset.file_url || asset.thumbnail_url) &&
         asset.asset_type !== "render_blueprint" &&
-        asset.asset_type !== "audio_voiceover",
+        asset.asset_type !== "audio_voiceover" &&
+        isLaunchReadyStaticImageAsset(asset),
     )
     .map((asset) => ({
       creativeId: asset.creative_id,

@@ -13,6 +13,8 @@ import {
   withSelectedAdIds,
 } from "@/lib/services/campaign-plan-document";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
+import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
+import type { StaticCreativeAsset } from "@/lib/services/creative-engine";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 
 const paramsSchema = z.object({
@@ -23,6 +25,24 @@ const bodySchema = z.object({
   selectedAdId: z.string().min(1).optional(),
   selectedAdIds: z.array(z.string().min(1)).min(1).max(6).optional(),
 });
+
+function readStaticAdsFromPlan(value: unknown): StaticCreativeAsset[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+
+  const record = value as Record<string, unknown>;
+  const creatives = record.creatives && typeof record.creatives === "object" && !Array.isArray(record.creatives)
+    ? record.creatives as Record<string, unknown>
+    : null;
+  const staticAds = Array.isArray(record.staticAds)
+    ? record.staticAds
+    : Array.isArray(creatives?.staticAds)
+      ? creatives.staticAds
+      : [];
+
+  return staticAds as StaticCreativeAsset[];
+}
 
 export async function POST(
   request: Request,
@@ -75,6 +95,23 @@ export async function POST(
     }
 
     const existingSelectedAdIds = getSelectedAdIdsFromPlan(currentPlan);
+    const staticAds = readStaticAdsFromPlan(currentPlan);
+    const staticAdById = new Map(staticAds.map((ad) => [ad.id, ad]));
+    const missingIds = selectedAdIds.filter((selectedId) => !staticAdById.has(selectedId));
+
+    if (missingIds.length > 0) {
+      throw new ApiError(400, "One or more selected creatives are no longer available.", "selected_ad_not_found");
+    }
+
+    const rejectedIds = selectedAdIds.filter((selectedId) => {
+      const ad = staticAdById.get(selectedId);
+      return !ad || ad.qualityGate?.accepted === false ||
+        (Boolean(ad.imageUrl) && !evaluateStaticVisualAssetDecision(ad).usable);
+    });
+
+    if (rejectedIds.length > 0) {
+      throw new ApiError(400, "Regenerate the selected creative before saving it to the launch set.", "selected_ad_not_launch_safe");
+    }
 
     if (
       existingSelectedAdIds.length === selectedAdIds.length &&
