@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   StaticCreativePreviewCard,
@@ -47,8 +47,16 @@ type CreativeWizardProps = {
   creatives: CreativeOption[];
 };
 
+type SystemJob = {
+  id: string;
+  kind?: string | null;
+  status?: string | null;
+  error_message?: string | null;
+};
+
 export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
   const router = useRouter();
+  const jobStreamsRef = useRef<Map<string, EventSource>>(new Map());
   const buildHref = `/builder?campaignId=${encodeURIComponent(campaignId)}`;
   const rankedCreatives = useMemo(
     () => [...creatives].sort((left, right) => (right.score ?? 0) - (left.score ?? 0)),
@@ -62,10 +70,88 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
   const maxSelected = Math.min(6, rankedCreatives.length);
   const [selectedIds, setSelectedIds] = useState<string[]>(defaultSelectedIds);
   const [saving, setSaving] = useState(false);
+  const [renderingImages, setRenderingImages] = useState(false);
+  const [renderMessage, setRenderMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const selectedCreatives = rankedCreatives.filter((creative) => selectedIds.includes(creative.id));
   const primaryCreative = selectedCreatives[0] ?? rankedCreatives[0] ?? null;
   const canContinue = selectedCreatives.length >= minSelected && selectedCreatives.length <= maxSelected;
+  const allImagesMissing = rankedCreatives.every((creative) => !creative.imageUrl);
+  const hasGeneratedImages = rankedCreatives.some(
+    (creative) => creative.imageGenerationState === "generated" && Boolean(creative.imageUrl),
+  );
+
+  const subscribeToJob = useCallback((jobId: string) => {
+    if (jobStreamsRef.current.has(jobId)) {
+      return;
+    }
+
+    const source = new EventSource(`/api/system-jobs/${encodeURIComponent(jobId)}/stream`);
+    jobStreamsRef.current.set(jobId, source);
+
+    source.addEventListener("job", (event) => {
+      try {
+        const job = JSON.parse((event as MessageEvent).data) as SystemJob;
+
+        if (job.status === "completed") {
+          setRenderMessage("Image previews are ready.");
+          source.close();
+          jobStreamsRef.current.delete(jobId);
+          router.refresh();
+        } else if (job.status === "failed") {
+          setRenderMessage(job.error_message || "Image preview rendering failed.");
+          source.close();
+          jobStreamsRef.current.delete(jobId);
+          router.refresh();
+        }
+      } catch {
+        source.close();
+        jobStreamsRef.current.delete(jobId);
+      }
+    });
+
+    source.addEventListener("error", () => {
+      source.close();
+      jobStreamsRef.current.delete(jobId);
+    });
+  }, [router]);
+
+  async function handleRenderImages() {
+    if (renderingImages) {
+      return;
+    }
+
+    setRenderingImages(true);
+    setError(null);
+    setRenderMessage("Rendering image previews.");
+
+    try {
+      const response = await fetch(`/api/campaigns/${encodeURIComponent(campaignId)}/generate-static-ads`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          force: !allImagesMissing,
+        }),
+      });
+      const data = (await response.json().catch(() => null)) as
+        | { job?: SystemJob | null; error?: string | null }
+        | null;
+
+      if (!response.ok || !data?.job?.id) {
+        throw new Error(data?.error || "Image preview rendering could not start.");
+      }
+
+      setRenderMessage("Image preview job queued. This page will update when the render finishes.");
+      subscribeToJob(data.job.id);
+    } catch (renderError) {
+      setRenderMessage(null);
+      setError(renderError instanceof Error ? renderError.message : "Image preview rendering could not start.");
+    } finally {
+      setRenderingImages(false);
+    }
+  }
 
   function toggleCreative(creativeId: string) {
     setSelectedIds((current) => {
@@ -192,6 +278,28 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
               DealFlow will launch with the strongest selected creative and keep the set ready for rotation and optimization.
             </p>
           </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              variant={hasGeneratedImages ? "secondary" : "default"}
+              onClick={() => void handleRenderImages()}
+              disabled={renderingImages}
+            >
+              {renderingImages
+                ? "Rendering image previews..."
+                : hasGeneratedImages
+                  ? "Regenerate image previews"
+                  : "Render image previews"}
+            </Button>
+            {renderMessage ? (
+              <span className="text-sm leading-6 text-muted-foreground">{renderMessage}</span>
+            ) : null}
+          </div>
+          {allImagesMissing ? (
+            <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm leading-6 text-amber-100">
+              Your strategy, copy, and creative concepts are ready. Render image previews to replace the template backgrounds with AI-generated ad visuals.
+            </div>
+          ) : null}
 
           <div className="grid content-start gap-3">
             {selectedCreatives.map((creative) => (
