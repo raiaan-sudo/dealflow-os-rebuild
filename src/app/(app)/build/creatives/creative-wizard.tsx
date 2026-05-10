@@ -65,8 +65,15 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
     [creatives],
   );
   const topCreatives = rankedCreatives.slice(0, 3);
+  const topUgcCreative = rankedCreatives.find((creative) => /\bugc\b/i.test(`${creative.id} ${creative.formatLabel ?? ""}`));
   const defaultSelectedIds = topCreatives.length > 0
-    ? topCreatives.map((creative) => creative.id)
+    ? Array.from(
+        new Set(
+          topUgcCreative && !topCreatives.some((creative) => creative.id === topUgcCreative.id)
+            ? [...topCreatives.slice(0, 2), topUgcCreative].map((creative) => creative.id)
+            : topCreatives.map((creative) => creative.id),
+        ),
+      )
     : rankedCreatives.slice(0, 1).map((creative) => creative.id);
   const minSelected = Math.min(2, rankedCreatives.length);
   const maxSelected = Math.min(6, rankedCreatives.length);

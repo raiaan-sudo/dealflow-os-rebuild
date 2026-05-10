@@ -1331,7 +1331,7 @@ function buildStaticCreatives(
         angle: ad.angle,
         strategy,
       });
-      const isUgcStaticAd = /ugc|pov|walkthrough|testimonial/i.test(`${ad.id} ${ad.visualConcept} ${ad.hook}`);
+      const isUgcStaticAd = /\bugc\b/i.test(`${ad.id} ${ad.visualConcept} ${ad.hook}`);
       const imagePromptConfig = isUgcStaticAd
         ? {
             ...visualBrief.promptConfig,
