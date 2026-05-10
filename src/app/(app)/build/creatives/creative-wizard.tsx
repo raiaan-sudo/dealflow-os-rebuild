@@ -87,7 +87,9 @@ export function CreativeWizard({ campaignId, creatives }: CreativeWizardProps) {
   const hasCreditBlocker = rankedCreatives.some((creative) =>
     /insufficient credits|add at least/i.test(creative.imageGenerationMessage ?? ""),
   );
-  const autoRenderStorageKey = `dealflow:auto-image-render:${campaignId}`;
+  const autoRenderStorageKey = hasCreditBlocker
+    ? `dealflow:auto-image-render:credit-overdraft:${campaignId}`
+    : `dealflow:auto-image-render:${campaignId}`;
 
   const subscribeToJob = useCallback((jobId: string) => {
     if (jobStreamsRef.current.has(jobId)) {
