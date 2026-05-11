@@ -305,6 +305,8 @@ function runOfflineChecks() {
   assertIncludes(buildCreativesPage, "max-w-[1500px]", "Creative build workspace width", "creative selection uses more of the desktop viewport");
   assertIncludes(creativeWizard, "Selected creative preview", "Creative wizard primary focus", "creative selection leads with one large selected creative preview instead of repeated stacks");
   assertIncludes(creativeWizard, "Creative carousel", "Creative carousel selector", "agents can view every generated creative and select the test set from an always-visible carousel");
+  assertIncludes(creativeWizard, "Click any card to view it large above", "Creative carousel inspection cue", "creative carousel tells users how to inspect the full creative");
+  assertIncludes(creativeWizard, "snap-x", "Creative carousel readable cards", "creative carousel uses full preview cards instead of compressed summary-only tiles");
   assertIncludes(creativeWizard, "Keep at least one UGC-style concept", "Creative UGC quota gate", "selected creative sets must retain a UGC-style concept when available");
   assertIncludes(creativeWizard, "Retry preview render", "Creative retry secondary action", "retry/regenerate remains a secondary failed-state action");
   assertIncludes(creativeWizard, "AI UGC video", "Creative AI UGC video panel", "creative selection exposes the AI UGC video concept and render status");
@@ -339,6 +341,8 @@ function runOfflineChecks() {
   assertIncludes(creativeEngine, "1-2 required UGC-style concepts inside the six-ad test set", "UGC creative quota prompt", "UGC static image concepts are explicitly framed as required test-set variants");
   assertIncludes(staticAdComposedPreview, "Composed creative", "Generated creative composition", "rendered images are used as text-free backgrounds while DealFlow composes exact copy and CTA");
   assertIncludes(staticAdComposedPreview, "object-cover", "Generated background crop", "generated backgrounds fill deterministic media-buyer templates without raw baked-text layouts");
+  assertIncludes(staticAdComposedPreview, "Using a clean composed preview while the generated image refreshes.", "Generated rejection customer copy", "rejected generated backgrounds do not expose internal QA language to customers");
+  assertExcludes(staticAdComposedPreview, "Image rejected, template ready", "Generated rejection jargon removed", "creative previews do not expose rejected-image internal labels");
   assertExcludes(staticAdComposedPreview, "bg-gradient-to-t", "Generated creative overlay removed", "generated creative previews do not add a dark overlay across the asset");
   assertIncludes(staticAdTemplateRenderer, "background_rejected", "Legacy generated asset rejection", "old full-ad rasters and rejected outputs are withheld from the happy path");
   assertIncludes(staticCreativePreviewCard, "View full creative", "Full creative lightbox", "creative cards expose a full-size review modal");

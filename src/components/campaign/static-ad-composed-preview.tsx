@@ -15,7 +15,7 @@ type StaticAdComposedPreviewProps = StaticAdTemplateInput & {
 function statusLabel(status: ReturnType<typeof buildComposedStaticAdPreview>["status"]) {
   if (status === "final_composed") return "Composed creative";
   if (status === "background_generating") return "Template ready, image generating";
-  if (status === "background_rejected") return "Image rejected, template ready";
+  if (status === "background_rejected") return "Template preview";
   if (status === "background_failed") return "Image needs retry";
   return "Template-ready preview";
 }
@@ -27,7 +27,7 @@ function qualityLabel(preview: ReturnType<typeof buildComposedStaticAdPreview>) 
 
   const score = preview.qualityScore.toFixed(1);
   if (preview.qualityAccepted === false) {
-    return `Needs work ${score}/10`;
+    return `Reviewing ${score}/10`;
   }
 
   return `Quality ${score}/10`;
@@ -274,7 +274,7 @@ export function StaticAdComposedPreview({
         ) : (
           <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px)] bg-[size:36px_36px] opacity-20" />
         )}
-        <div className="absolute inset-0 bg-black/18" />
+        {preview.backgroundImageUrl ? <div className="absolute inset-0 bg-black/8" /> : null}
         {renderTemplateDetails(preview, compact)}
       </div>
 
@@ -294,7 +294,9 @@ export function StaticAdComposedPreview({
         </div>
         {showRawAssetState ? (
           <p className="text-xs leading-5 text-muted-foreground">
-            {preview.backgroundMessage}
+            {preview.status === "background_rejected"
+              ? "Using a clean composed preview while the generated image refreshes."
+              : preview.backgroundMessage}
           </p>
         ) : null}
         {!compact ? (

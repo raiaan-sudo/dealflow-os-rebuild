@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   StaticCreativePreviewCard,
-  StaticCreativeSummaryCard,
 } from "@/components/campaign/static-creative-preview-card";
 import { Button } from "@/components/ui/button";
 import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
@@ -103,8 +102,8 @@ function customerVideoMessage(message?: string | null) {
     return null;
   }
 
-  if (/provider usage guard|explicitly enabled|generation is disabled/i.test(text)) {
-    return "AI video rendering is not enabled for this workspace yet.";
+  if (/provider usage guard|explicitly enabled|generation is disabled|provider|configured|credentials/i.test(text)) {
+    return "AI video rendering needs another attempt before it can be watched.";
   }
 
   return text;
@@ -491,6 +490,11 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
   const imageRenderPending = /being prepared|preparing image previews|will update/i.test(renderMessage ?? "");
   const imageActionPending = renderingImages || imageRenderPending;
   const imagePendingMessage = "Image preview is being prepared. This page will update when the visual is ready.";
+  const imageStatusMessage = needsImageGeneration
+    ? allImagesMissing
+      ? "Creating the full visual set now. The cards below stay visible while final images render."
+      : "Refreshing a few visuals. You can keep reviewing the composed previews below."
+    : renderMessage;
   const getDisplayCreative = (creative: CreativeOption): CreativeOption =>
     imageRenderPending && creativeNeedsImageGeneration(creative)
       ? {
@@ -579,7 +583,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
 	                </Button>
               ) : null}
               {renderMessage ? (
-                <span className="text-sm leading-6 text-muted-foreground">{renderMessage}</span>
+                <span className="text-sm leading-6 text-muted-foreground">{imageStatusMessage}</span>
               ) : null}
             </div>
           ) : null}
@@ -587,9 +591,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
             <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm leading-6 text-amber-100">
               {hasCreditBlocker
                 ? "Your strategy, copy, and creative concepts are ready. The previous render stopped before credit overdraft was enabled."
-                : allImagesMissing
-                  ? "Your strategy, copy, and creative concepts are ready. DealFlow is preparing image previews automatically so this step stays focused on choosing the best test set."
-                  : "Some previews need a cleaner text-free background. DealFlow will withhold unusable renders and prepare replacements automatically."}
+                : imageStatusMessage}
               {hasCreditBlocker ? (
                 <button
 	                  type="button"
@@ -611,14 +613,15 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
             </div>
           ) : null}
 
-          <div className="grid content-start gap-3">
+          <div className="grid content-start gap-3 sm:grid-cols-2 xl:grid-cols-1">
             {selectedCreatives.map((creative) => {
               const displayCreative = getDisplayCreative(creative);
               return (
-                <StaticCreativeSummaryCard
-                  angleLabel={displayCreative.visualPromptBrief?.mechanism || displayCreative.breakdown?.hook}
+                <StaticCreativePreviewCard
                   category={displayCreative.category}
+                  compact
                   cta={displayCreative.cta}
+                  formatLabel={displayCreative.formatLabel}
                   headline={displayCreative.headline}
                   imageGenerationMessage={displayCreative.imageGenerationMessage}
                   imageGenerationState={displayCreative.imageGenerationState}
@@ -627,13 +630,11 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                   imageUrl={displayCreative.imageUrl}
                   key={displayCreative.id}
                   location={displayCreative.location}
-                  formatLabel={displayCreative.formatLabel}
                   offer={displayCreative.offer}
                   overlayText={displayCreative.overlayText}
                   primaryText={displayCreative.primaryText}
                   qualityGate={displayCreative.qualityGate}
                   score={displayCreative.score}
-                  selected
                   selectedCount={selectedCreatives.length}
                   visualPromptBrief={displayCreative.visualPromptBrief}
                 />
@@ -849,17 +850,17 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
             </h3>
           </div>
           <p className="text-sm text-muted-foreground">
-            {selectedCreatives.length}/{maxSelected} selected
+            Click any card to view it large above. {selectedCreatives.length}/{maxSelected} selected.
           </p>
         </div>
-        <div className="mt-5 flex gap-3 overflow-x-auto pb-2">
+        <div className="mt-5 flex snap-x gap-4 overflow-x-auto pb-3">
           {rankedCreatives.map((creative, index) => {
             const displayCreative = getDisplayCreative(creative);
             const selected = selectedIds.includes(creative.id);
             const active = activeCreative.id === creative.id;
             return (
               <article
-                className={`min-w-[310px] max-w-[360px] rounded-2xl border p-2 transition sm:min-w-[360px] ${
+                className={`min-w-[min(84vw,430px)] max-w-[430px] snap-start rounded-2xl border p-3 transition ${
                   active
                     ? "border-primary bg-primary/10"
                     : selected
@@ -890,10 +891,11 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                   className="block w-full rounded-[16px] text-left"
                   onClick={() => setActiveCreativeId(creative.id)}
                 >
-                  <StaticCreativeSummaryCard
-                    angleLabel={displayCreative.visualPromptBrief?.mechanism || displayCreative.breakdown?.hook}
+                  <StaticCreativePreviewCard
                     category={displayCreative.category}
+                    compact
                     cta={displayCreative.cta}
+                    formatLabel={displayCreative.formatLabel}
                     headline={displayCreative.headline}
                     imageGenerationMessage={displayCreative.imageGenerationMessage}
                     imageGenerationState={displayCreative.imageGenerationState}
@@ -901,14 +903,11 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                     imagePromptConfig={displayCreative.imagePromptConfig}
                     imageUrl={displayCreative.imageUrl}
                     location={displayCreative.location}
-                    formatLabel={displayCreative.formatLabel}
                     offer={displayCreative.offer}
                     overlayText={displayCreative.overlayText}
                     primaryText={displayCreative.primaryText}
                     qualityGate={displayCreative.qualityGate}
                     score={displayCreative.score}
-                    selected={selected}
-                    index={index}
                     selectedCount={selectedCreatives.length}
                     visualPromptBrief={displayCreative.visualPromptBrief}
                   />
