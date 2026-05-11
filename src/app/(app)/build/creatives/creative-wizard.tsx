@@ -112,6 +112,20 @@ function customerVideoMessage(message?: string | null) {
   return text;
 }
 
+function customerImageMessage(message?: string | null) {
+  const text = message?.trim();
+
+  if (!text) {
+    return null;
+  }
+
+  if (/provider usage guard|explicitly enabled|generation is disabled|provider|configured|credentials|api key|schema|rpc/i.test(text)) {
+    return "Image preview rendering needs another attempt.";
+  }
+
+  return text;
+}
+
 function getImageLimitMessage(creatives: CreativeOption[]) {
   const blockedCreative = creatives.find((creative) =>
     /maximum \d+ AI image generation|maximum \d+ AI image generations|daily image generation limit|provider_usage_limit_reached|session already used the maximum/i.test(
@@ -122,6 +136,47 @@ function getImageLimitMessage(creatives: CreativeOption[]) {
   return blockedCreative
     ? "Daily image generation limit reached for this campaign. Instant composed previews stay available; try again after the daily limit resets or have the owner intentionally raise the image cap."
     : null;
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function getStaticPreviewStatusMessage(creatives: CreativeOption[]) {
+  if (creatives.length === 0) {
+    return null;
+  }
+
+  const readyCount = creatives.filter(
+    (creative) =>
+      creative.imageGenerationState === "generated" &&
+      Boolean(creative.imageUrl) &&
+      evaluateStaticVisualAssetDecision(creative).usable,
+  ).length;
+  const failedCount = creatives.filter(
+    (creative) =>
+      creative.imageGenerationState === "failed" ||
+      creative.qualityGate?.accepted === false,
+  ).length;
+  const missingCount = creatives.filter(
+    (creative) =>
+      !creative.imageUrl &&
+      creative.imageGenerationState !== "failed" &&
+      creative.qualityGate?.accepted !== false,
+  ).length;
+
+  if (readyCount === creatives.length) {
+    return "Image previews are ready.";
+  }
+
+  const remainingParts = [
+    failedCount > 0 ? pluralize(failedCount, "needs another attempt", "need another attempt") : null,
+    missingCount > 0 ? pluralize(missingCount, "is still missing", "are still missing") : null,
+  ].filter(Boolean);
+
+  return `${readyCount} of ${creatives.length} image previews are ready. ${
+    remainingParts.length > 0 ? remainingParts.join(" and ") : "The remaining previews need another attempt."
+  }`;
 }
 
 export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: CreativeWizardProps) {
@@ -172,7 +227,6 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
     primaryCreative;
   const canContinue = selectedCreatives.length >= minSelected && selectedCreatives.length <= maxSelected;
   const allImagesMissing = rankedCreatives.every((creative) => !creative.imageUrl);
-  const hasMissingImages = rankedCreatives.some((creative) => !creative.imageUrl);
   const hasFailedOrRejectedImages = rankedCreatives.some(
     (creative) => creative.imageGenerationState === "failed" || !evaluateStaticVisualAssetDecision(creative).usable,
   );
@@ -231,16 +285,17 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
           if (surface === "video") {
             setVideoMessage("AI UGC video render is processing. This page will update when the video file is ready.");
           } else {
-            setRenderMessage(getImageLimitMessage(job.result?.staticAds ?? []) ?? "Image previews are ready.");
+            const staticAds = job.result?.staticAds ?? [];
+            setRenderMessage(getImageLimitMessage(staticAds) ?? getStaticPreviewStatusMessage(staticAds) ?? "Image previews are ready.");
           }
           source.close();
           jobStreamsRef.current.delete(jobId);
           router.refresh();
         } else if (job.status === "failed") {
           if (surface === "video") {
-            setVideoMessage(job.error_message || "AI UGC video rendering failed.");
+            setVideoMessage(customerVideoMessage(job.error_message) || "AI UGC video rendering failed.");
           } else {
-            setRenderMessage(job.error_message || "Image preview rendering failed.");
+            setRenderMessage(customerImageMessage(job.error_message) || "Image preview rendering failed.");
           }
           source.close();
           jobStreamsRef.current.delete(jobId);
@@ -294,7 +349,10 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
       subscribeToJob(data.job.id, "image");
     } catch (renderError) {
       setRenderMessage(null);
-      setError(renderError instanceof Error ? renderError.message : "Image preview rendering could not start.");
+      setError(
+        customerImageMessage(renderError instanceof Error ? renderError.message : null) ??
+          "Image preview rendering could not start.",
+      );
     } finally {
       setRenderingImages(false);
     }
@@ -343,11 +401,14 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
         throw new Error(data?.error || "AI UGC video rendering could not start.");
       }
 
-      setVideoMessage("AI UGC video is rendering. This page will update when it is ready.");
+      setVideoMessage("AI UGC video render is processing. This page will update when the video file is ready.");
       subscribeToJob(data.job.id, "video");
     } catch (videoError) {
       setVideoMessage(null);
-      setError(videoError instanceof Error ? videoError.message : "AI UGC video rendering could not start.");
+      setError(
+        customerVideoMessage(videoError instanceof Error ? videoError.message : null) ??
+          "AI UGC video rendering could not start.",
+      );
     } finally {
       setRenderingVideo(false);
     }
@@ -576,30 +637,30 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                 <Button
                   type="button"
                   variant="secondary"
-	                  onClick={() => void queueImagePreviews({
-	                    force: needsImageGeneration,
-	                    missingOnly: hasMissingImages && !hasFailedOrRejectedImages,
-	                  })}
-	                  disabled={imageActionPending || Boolean(imageLimitMessage)}
-	                >
-	                  {imageLimitMessage
-	                    ? "Daily image limit reached"
-	                    : imageActionPending
-	                    ? "Refreshing previews..."
-	                    : needsImageGeneration
-	                      ? "Regenerate previews"
-	                      : "Refresh image previews"}
-	                </Button>
+                  onClick={() => void queueImagePreviews({
+                    force: hasCreditBlocker,
+                    missingOnly: true,
+                  })}
+                  disabled={imageActionPending || Boolean(imageLimitMessage)}
+                >
+                  {imageLimitMessage
+                    ? "Daily image limit reached"
+                    : imageActionPending
+                    ? "Refreshing previews..."
+                    : needsImageGeneration
+                      ? "Refresh unfinished previews"
+                      : "Refresh image previews"}
+                </Button>
               ) : null}
               {activeCreative.imageGenerationState === "failed" || activeCreative.qualityGate?.accepted === false ? (
                 <Button
-	                  type="button"
-	                  variant="secondary"
-	                  onClick={() => void queueImagePreviews({ force: true, missingOnly: false })}
-	                  disabled={imageActionPending || Boolean(imageLimitMessage)}
-	                >
-	                  {imageLimitMessage ? "Daily image limit reached" : imageActionPending ? "Retrying..." : "Retry preview render"}
-	                </Button>
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void queueImagePreviews({ missingOnly: true })}
+                  disabled={imageActionPending || Boolean(imageLimitMessage)}
+                >
+                  {imageLimitMessage ? "Daily image limit reached" : imageActionPending ? "Retrying..." : "Retry preview render"}
+                </Button>
               ) : null}
               {renderMessage ? (
                 <span className="text-sm leading-6 text-muted-foreground">{imageStatusMessage}</span>
@@ -613,18 +674,18 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                 : imageStatusMessage}
               {hasCreditBlocker ? (
                 <button
-	                  type="button"
-	                  className="ml-2 font-semibold text-amber-50 underline decoration-amber-200/50 underline-offset-4"
-	                  onClick={() => void queueImagePreviews({ force: true })}
-	                  disabled={imageActionPending}
-	                >
-	                  Retry image previews
-	                </button>
-	              ) : hasAttemptedImageGeneration && !imageActionPending && !imageLimitMessage ? (
+                  type="button"
+                  className="ml-2 font-semibold text-amber-50 underline decoration-amber-200/50 underline-offset-4"
+                  onClick={() => void queueImagePreviews({ force: true, missingOnly: true })}
+                  disabled={imageActionPending}
+                >
+                  Retry image previews
+                </button>
+              ) : hasAttemptedImageGeneration && !imageActionPending && !imageLimitMessage ? (
                 <button
                   type="button"
                   className="ml-2 font-semibold text-amber-50 underline decoration-amber-200/50 underline-offset-4"
-                  onClick={() => void queueImagePreviews({ force: true })}
+                  onClick={() => void queueImagePreviews({ missingOnly: true })}
                 >
                   Retry image previews
                 </button>
@@ -775,6 +836,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                           : "border-white/10 bg-black/18 hover:border-white/20"
                       }`}
                       onClick={() => setActiveVideoId(video.id)}
+                      aria-label={`View ${video.title}`}
                     >
                       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                         Video {index + 1}
@@ -842,6 +904,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                   </div>
                   <button
                     type="button"
+                    aria-label="Close full video"
                     className="shrink-0 rounded-full border border-white/12 px-3 py-2 text-xs font-semibold text-foreground transition hover:border-primary/40 hover:bg-primary/10"
                     onClick={() => setFullVideoOpen(false)}
                   >

@@ -1,15 +1,31 @@
 import { assertSameOriginRequest, handleApiError, parseOptionalJsonBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
+import { logWarn } from "@/lib/logging";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
-import { createSystemJob } from "@/lib/services/system-job-service";
+import { createSystemJob, listSystemJobs, processSystemJob } from "@/lib/services/system-job-service";
+import type { SystemJobRecord } from "@/lib/services/system-job-service";
 import type { VideoGenerationJobPayload } from "@/lib/services/video-generation-job";
+import { after } from "next/server";
 import { z } from "zod";
 
 const bodySchema = z.object({
   creativeIndex: z.number().int().min(0).max(9).default(0),
   force: z.boolean().optional(),
 });
+
+function scheduleVideoGenerationJob(jobId: string) {
+  after(async () => {
+    try {
+      await processSystemJob(jobId);
+    } catch (error) {
+      logWarn("Video generation kickoff failed", {
+        jobId,
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+}
 
 export async function POST(
   request: Request,
@@ -47,6 +63,38 @@ export async function POST(
 
     if (!selectedVideo) {
       return Response.json({ error: "Video creative was not found for this campaign." }, { status: 404 });
+    }
+
+    if (body.force !== true) {
+      const activeJobs = (await listSystemJobs({
+        userId: auth.userId,
+        campaignId,
+        kind: "video_generation",
+        statuses: ["pending", "processing"],
+      })) as SystemJobRecord<"video_generation">[];
+      const existingActiveJob =
+        activeJobs.find((job) => job.payload.creativeIndex === body.creativeIndex) ?? null;
+
+      if (existingActiveJob) {
+        scheduleVideoGenerationJob(existingActiveJob.id);
+
+        return Response.json({
+          success: true,
+          campaignId,
+          job: existingActiveJob,
+          reusedExistingJob: true,
+          status: existingActiveJob.status,
+          video: {
+            hook: selectedVideo.hook,
+            script: selectedVideo.script,
+            scenes: selectedVideo.shotList.map((text, index) => ({
+              id: `scene-${index + 1}`,
+              text,
+            })),
+            url: selectedVideo.videoUrl ?? "",
+          },
+        });
+      }
     }
 
     const scriptLines = (selectedCopy?.script || selectedVideo.script.join("\n"))
@@ -92,6 +140,7 @@ export async function POST(
       payload,
       maxAttempts: 1,
     });
+    scheduleVideoGenerationJob(job.id);
 
     return Response.json({
       success: true,

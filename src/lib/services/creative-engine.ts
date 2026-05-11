@@ -1836,6 +1836,53 @@ export function buildCreativeSystem(input?: CreativeEngineInput | null): Creativ
   };
 }
 
+export function hasUsableStaticCreativeImage(asset: StaticCreativeAsset | null | undefined) {
+  if (!asset?.imageUrl) {
+    return false;
+  }
+
+  return evaluateStaticVisualAssetDecision(asset).usable;
+}
+
+function preserveStaticCreativeImage(
+  asset: StaticCreativeAsset,
+  existing: StaticCreativeAsset,
+): StaticCreativeAsset {
+  return {
+    ...asset,
+    imageUrl: existing.imageUrl,
+    imageGenerationState: "generated",
+    imageGenerationMessage: null,
+    imageGenerationModel: existing.imageGenerationModel ?? asset.imageGenerationModel,
+    imageGenerationProvider: existing.imageGenerationProvider ?? asset.imageGenerationProvider ?? null,
+    qualityGate: asset.qualityGate ?? existing.qualityGate ?? null,
+  };
+}
+
+export function mergeStaticCreativeImageResults(
+  nextAssets: StaticCreativeAsset[],
+  previousAssets?: StaticCreativeAsset[] | null,
+): StaticCreativeAsset[] {
+  const reusableStaticAssets = new Map(
+    (previousAssets ?? [])
+      .filter(hasUsableStaticCreativeImage)
+      .map((asset) => [asset.id, asset]),
+  );
+
+  if (reusableStaticAssets.size === 0) {
+    return nextAssets;
+  }
+
+  return nextAssets.map((asset) => {
+    if (hasUsableStaticCreativeImage(asset)) {
+      return asset;
+    }
+
+    const existing = reusableStaticAssets.get(asset.id);
+    return existing ? preserveStaticCreativeImage(asset, existing) : asset;
+  });
+}
+
 export async function generateStaticCreativeAds(
   input?: CreativeEngineInput | null,
 ): Promise<StaticCreativeAsset[]> {
@@ -1844,10 +1891,7 @@ export async function generateStaticCreativeAds(
   const baseStaticAds = baseSystem.staticAds;
   const reusableStaticAssets = new Map(
     (input?.reuse_static_assets ?? [])
-      .filter((asset) =>
-        asset.imageGenerationState === "generated" &&
-        evaluateStaticVisualAssetDecision(asset).usable
-      )
+      .filter(hasUsableStaticCreativeImage)
       .map((asset) => [asset.id, asset]),
   );
   const generatedStaticAds = await Promise.all(
@@ -1889,8 +1933,12 @@ export async function generateStaticCreativeAds(
     }),
   );
   const normalized = normalizeInput(input);
+  const mergedStaticAds = mergeStaticCreativeImageResults(
+    generatedStaticAds,
+    input?.reuse_static_assets,
+  );
 
-  return rankStaticCreativeAssets(generatedStaticAds, normalized.creativeStrategy, {
+  return rankStaticCreativeAssets(mergedStaticAds, normalized.creativeStrategy, {
     market: normalized.location,
   });
 }

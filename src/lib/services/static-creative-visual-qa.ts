@@ -25,11 +25,11 @@ function safeText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function normalizedPrompt(input: StaticVisualContractInput) {
+function normalizedPrompt(input: StaticVisualContractInput, options?: { includeNegativePrompt?: boolean }) {
   return [
     input.imagePrompt,
     input.imagePromptConfig?.prompt,
-    input.imagePromptConfig?.negativePrompt,
+    options?.includeNegativePrompt ? input.imagePromptConfig?.negativePrompt : null,
   ]
     .map((value) => safeText(value).toLowerCase())
     .filter(Boolean)

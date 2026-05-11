@@ -314,10 +314,18 @@ function runOfflineChecks() {
   assertIncludes(creativeWizard, "/generate-video", "Creative AI UGC video render", "creative selection can queue the campaign video render from the UGC panel");
   assertIncludes(creativeWizard, "View full video", "Creative video fullscreen", "AI UGC video renders can be watched in a full-screen review modal");
   assertIncludes(creativeWizard, "activeVideoId", "Creative video carousel state", "AI UGC video concepts have a selectable carousel instead of a single hidden primary");
+  assertIncludes(creativeWizard, "aria-label={`View ${video.title}`}", "Creative video carousel labels", "video carousel cards expose labeled controls for smoke and accessibility coverage");
+  assertIncludes(creativeWizard, "aria-label=\"Close full video\"", "Creative video fullscreen close label", "full-screen video review has an explicit close control");
   assertIncludes(creativeWizard, "customerVideoMessage", "Creative video error sanitizer", "AI UGC video failures do not expose provider guard internals to customers");
   assertIncludes(avatarProvider, "AI video rendering is not enabled for this workspace yet.", "Video disabled customer copy", "provider kill-switch failures use customer-safe copy");
   assertIncludes(creativeWizard, "imageRenderPending", "Creative retry optimistic state", "retry clicks immediately clear stale failed-copy and show a generating state while provider work runs");
   assertIncludes(creativeWizard, "Image preview is being prepared. This page will update when the visual is ready.", "Creative retry pending copy", "creative cards show immediate pending feedback instead of stale cap errors");
+  assertIncludes(creativeWizard, "getStaticPreviewStatusMessage", "Creative partial-count copy", "completed image jobs report ready/missing/failed counts instead of generic ready copy");
+  assertIncludes(creativeWizard, "of ${creatives.length} image previews are ready", "Creative partial-count wording", "partial image generation copy exposes counts when some previews still need work");
+  assertIncludes(creativeWizard, "customerImageMessage", "Creative image error sanitizer", "image preview failures do not expose provider or infrastructure wording to customers");
+  assertIncludes(creativeWizard, "missingOnly: true", "Creative retry refill payload", "creative retry payloads refill unfinished previews without full creative regeneration");
+  assertExcludes(creativeWizard, "missingOnly: false", "Creative retry full regeneration avoided", "creative retry controls do not request full static regeneration");
+  assertExcludes(creativeWizard, "Regenerate previews", "Creative retry full-regenerate copy removed", "customer-facing retry copy does not imply a full regenerate");
   assertIncludes(creativeWizard, "Daily image generation limit reached for this campaign.", "Creative image cap copy", "creative retries show a clear daily-limit state instead of pretending renders are still running");
   assertIncludes(creativeWizard, "Daily image limit reached", "Creative image cap button state", "retry buttons are disabled when the campaign image cap is exhausted");
   assertIncludes(creativeWizard, "AI UGC video render is processing. This page will update when the video file is ready.", "Creative video async copy", "video job completion does not claim playable video is ready before a file URL exists");
@@ -711,6 +719,8 @@ function runOfflineChecks() {
   assertIncludes(legacyAiProviders, "providerJobWasCreated", "Provider usage pre-job release", "provider attempts that fail before a provider job id is returned release the daily reservation");
   assertIncludes(videoRoute, "kind: \"video_generation\"", "Video generation job route", "AI video generation is queued through the paid system job path");
   assertIncludes(videoRoute, "getCampaignById", "Video generation ownership guard", "video generation verifies campaign ownership before queueing paid work");
+  assertIncludes(videoRoute, "processSystemJob(jobId)", "Video generation immediate kickoff", "video generation jobs are started immediately after queueing like static creative jobs");
+  assertIncludes(videoRoute, "reusedExistingJob", "Video generation active job reuse", "active pending or processing video jobs are reused for the same creative when safe");
   assertIncludes(systemJobService, "video_generation_status", "Video generation status polling", "AI video render completion is polled by durable follow-up jobs instead of blocking the cron worker");
   assertIncludes(staticAdsRoute, "scheduleStaticCreativeJob", "Static generation kickoff", "creative preview jobs are kicked immediately instead of relying only on cron");
   assertIncludes(staticAdsRoute, "if (existingActiveJob)", "Static generation active-job reuse", "forced preview retries reuse active work instead of stacking duplicate paid jobs");

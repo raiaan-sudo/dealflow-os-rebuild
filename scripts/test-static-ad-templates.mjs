@@ -42,6 +42,17 @@ const {
   fitStaticAdText,
   normalizeStaticAdTemplateCategory,
 } = require("../src/lib/services/static-ad-template-renderer.ts");
+const {
+  evaluateStaticVisualAssetDecision,
+} = require("../src/lib/services/static-creative-visual-qa.ts");
+const {
+  buildCreativeSystem,
+  generateStaticCreativeAds,
+  mergeStaticCreativeImageResults,
+} = require("../src/lib/services/creative-engine.ts");
+
+process.env.ALLOW_OPENAI_IMAGE_GENERATION = "false";
+process.env.ALLOW_HIGGSFIELD_IMAGE_GENERATION = "false";
 
 const seller = buildComposedStaticAdPreview({
   category: "seller",
@@ -169,5 +180,112 @@ assert.equal(fitted.overflowRisk, true);
 assert.ok(fitted.headline.length <= 72);
 assert.ok(fitted.overlayText.length <= 82);
 assert.ok(fitted.cta.length <= 34);
+
+const contractBrief = {
+  visualAssetContract: "text_free_background_v2",
+  visualAssetRole: "text_free_background",
+};
+
+assert.deepEqual(
+  evaluateStaticVisualAssetDecision({
+    imageUrl: "https://example.test/text-free-background.png",
+    imagePrompt: "TEXT-FREE BACKGROUND ASSET ONLY. Warm buyer reviewing homes in Austin.",
+    imagePromptConfig: {
+      prompt: "TEXT-FREE BACKGROUND ASSET ONLY. Clean photography with negative space.",
+      negativePrompt:
+        "finished paid social; ad creative frame; proof modules; dashboard grids; brochure-style ad layout; poster-like typography; cta-safe bottom",
+    },
+    visualPromptBrief: contractBrief,
+    qualityGate: { accepted: true },
+  }),
+  { usable: true, reason: null },
+  "negative prompt legacy terms should not reject valid text-free background assets",
+);
+
+const legacyFullAdDecision = evaluateStaticVisualAssetDecision({
+  imageUrl: "https://example.test/legacy-full-ad.png",
+  imagePrompt:
+    "TEXT-FREE BACKGROUND ASSET ONLY, but make a finished paid social ad creative frame with proof modules and a CTA-safe bottom.",
+  visualPromptBrief: contractBrief,
+  qualityGate: { accepted: true },
+});
+assert.equal(legacyFullAdDecision.usable, false, "legacy full-ad prompt instructions are still rejected");
+
+const generatedAsset = {
+  ...generatedCreativeInput,
+  id: "static-preserved",
+  angle: "opportunity",
+  imagePromptConfig: {
+    prompt: generatedCreativeInput.imagePrompt,
+    negativePrompt: "poster-like typography; brochure-style ad layout; proof modules",
+  },
+  preferredImageModel: "gpt-image-1.5",
+  scoreBreakdown: null,
+  hook: generatedCreativeInput.headline,
+  overlayText: generatedCreativeInput.headline,
+  visualConcept: "Austin buyer source photo",
+  score: 8,
+  recommended: true,
+};
+const downgradedAsset = {
+  ...generatedAsset,
+  imageUrl: "",
+  imageGenerationState: "failed",
+  imageGenerationMessage: "provider timeout",
+  imageGenerationModel: "gpt-image-1.5",
+  imageGenerationProvider: null,
+};
+const mergedAssets = mergeStaticCreativeImageResults([downgradedAsset], [generatedAsset]);
+assert.equal(mergedAssets[0].imageUrl, generatedAsset.imageUrl);
+assert.equal(mergedAssets[0].imageGenerationState, "generated");
+assert.equal(mergedAssets[0].imageGenerationMessage, null);
+
+const generationInput = {
+  location: "Austin",
+  audience: "first-time buyers",
+  offer: "approval-first home shortlist",
+  property_type: "homes",
+  mechanism: "approval-first matching",
+  desired_result: "more qualified buyer conversations",
+  market_type: "buyer",
+};
+const baseStaticAds = buildCreativeSystem(generationInput).staticAds;
+const reusableStaticAds = baseStaticAds.slice(0, -1).map((asset) => ({
+  ...asset,
+  imageUrl: `https://example.test/${asset.id}.png`,
+  imageGenerationState: "generated",
+  imageGenerationMessage: null,
+  imageGenerationModel: "gpt-image-1.5",
+  imageGenerationProvider: "higgsfield",
+  qualityGate: {
+    ...(asset.qualityGate ?? {}),
+    accepted: true,
+  },
+  imagePromptConfig: {
+    ...asset.imagePromptConfig,
+    negativePrompt: `${asset.imagePromptConfig?.negativePrompt ?? ""}; proof modules; poster-like typography`,
+  },
+}));
+const requestedAssetIds = [];
+const missingOnlyStaticAds = await generateStaticCreativeAds({
+  ...generationInput,
+  reuse_static_assets: reusableStaticAds,
+  provider_usage_context: {
+    createForAsset: (asset) => {
+      requestedAssetIds.push(asset.id);
+      return null;
+    },
+  },
+});
+assert.deepEqual(
+  requestedAssetIds,
+  [baseStaticAds.at(-1).id],
+  "missing-only retries should only request provider generation for assets without a usable preserved image",
+);
+for (const reusable of reusableStaticAds) {
+  const result = missingOnlyStaticAds.find((asset) => asset.id === reusable.id);
+  assert.equal(result?.imageUrl, reusable.imageUrl, `preserved image for ${reusable.id}`);
+  assert.equal(result?.imageGenerationState, "generated", `preserved state for ${reusable.id}`);
+}
 
 console.log("Static ad template tests passed.");

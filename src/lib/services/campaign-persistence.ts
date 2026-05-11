@@ -17,7 +17,11 @@ import {
   startAssetGenerationLifecycle,
 } from "@/lib/services/asset-generation-lifecycle";
 import { debugLog } from "@/lib/debug";
-import { generateStaticCreativeAds, type StaticCreativeAsset } from "@/lib/services/creative-engine";
+import {
+  generateStaticCreativeAds,
+  mergeStaticCreativeImageResults,
+  type StaticCreativeAsset,
+} from "@/lib/services/creative-engine";
 import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
 import { persistStaticCreativeAssets } from "@/lib/services/static-creative-asset-service";
 import {
@@ -262,7 +266,7 @@ function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[
 }
 
 async function loadStaticCreativeAssets(
-  supabase: NonNullable<Awaited<ReturnType<typeof createRouteHandlerClient>>>,
+  supabase: PersistenceClient,
   userId: string,
   campaignId: string,
 ) {
@@ -784,9 +788,18 @@ export async function regenerateStaticCreativeAssetsForUser(
   const row = await loadCampaignPlanRowForUser(supabase, userId, campaignId);
   const campaign = mapCampaignRow(row);
   const savedDocument = getSavedCampaignDocumentFromRow(row);
+  const persistedStaticAds = await loadStaticCreativeAssets(supabase, userId, campaignId);
+  const savedStaticAds = Array.isArray(savedDocument?.staticAds)
+    ? (savedDocument.staticAds as StaticCreativeAsset[])
+    : [];
+  const currentStaticAds =
+    savedStaticAds.length > 0
+      ? mergeStaticCreativeImageResults(savedStaticAds, persistedStaticAds)
+      : persistedStaticAds;
   const currentRecord = normalizeCanonicalCampaign({
     campaign,
     savedDocument,
+    staticAds: currentStaticAds.length > 0 ? currentStaticAds : undefined,
     publish: mapPublishRecord(row),
   });
   const generationState = readPersistedAssetGenerationState(savedDocument?.assetGeneration);
@@ -824,14 +837,14 @@ export async function regenerateStaticCreativeAssetsForUser(
   }
 
   try {
-    const staticAds = await generateStaticCreativeAds({
+    const generatedStaticAds = await generateStaticCreativeAds({
       location: currentRecord.strategy.location,
       audience: currentRecord.strategy.audience,
       offer: currentRecord.strategy.offer,
       price_point: currentRecord.strategy.price_point,
       market_type: currentRecord.strategy.market_type,
       creative_strategy: currentRecord.plan.creative_strategy,
-      reuse_static_assets: options?.missingOnly ? currentRecord.creatives.staticAds : undefined,
+      reuse_static_assets: currentRecord.creatives.staticAds,
       provider_usage_context: {
         createForAsset: (asset) => {
           const runScope = options?.providerUsageRunId?.trim() || "default";
@@ -852,6 +865,10 @@ export async function regenerateStaticCreativeAssetsForUser(
         },
       },
     });
+    const staticAds = mergeStaticCreativeImageResults(
+      generatedStaticAds,
+      currentRecord.creatives.staticAds,
+    );
 
     await persistStaticCreativeAssets({
       supabase,
