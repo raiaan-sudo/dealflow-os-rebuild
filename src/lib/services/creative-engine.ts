@@ -280,7 +280,12 @@ function localVisual(input: RequiredCreativeInput) {
 
 function trimWords(value: string, maxWords: number) {
   const words = safeText(value).split(/\s+/).filter(Boolean);
-  return words.length <= maxWords ? words.join(" ") : words.slice(0, maxWords).join(" ");
+  const trimmed = words.length <= maxWords ? words.join(" ") : words.slice(0, maxWords).join(" ");
+
+  return trimmed
+    .replace(/[,:;/-]+$/g, "")
+    .replace(/\s+\b(?:through|with|for|to|and|or|of|by|via|using|delivered|a|an|the)\b\.?$/i, "")
+    .trim();
 }
 
 function shortSentence(value: string) {
