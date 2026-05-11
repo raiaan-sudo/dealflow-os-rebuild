@@ -208,6 +208,7 @@ function runOfflineChecks() {
   const loginForm = "src/components/auth/login-form.tsx";
   const middleware = "src/proxy.ts";
   const selfServeScaleAudit = "docs/self-serve-scale-audit.md";
+  const creativeGenerationDocs = "docs/creative-generation-system.md";
   const ciGateSource = fileExists(".github/workflows/ci.yml")
     ? ".github/workflows/ci.yml"
     : "docs/production-100-client-runbook.md";
@@ -341,8 +342,10 @@ function runOfflineChecks() {
   assertIncludes(creativeEngine, "1-2 required UGC-style concepts inside the six-ad test set", "UGC creative quota prompt", "UGC static image concepts are explicitly framed as required test-set variants");
   assertIncludes(staticAdComposedPreview, "Composed creative", "Generated creative composition", "rendered images are used as text-free backgrounds while DealFlow composes exact copy and CTA");
   assertIncludes(staticAdComposedPreview, "object-cover", "Generated background crop", "generated backgrounds fill deterministic media-buyer templates without raw baked-text layouts");
-  assertIncludes(staticAdComposedPreview, "Using a clean composed preview while the generated image refreshes.", "Generated rejection customer copy", "rejected generated backgrounds do not expose internal QA language to customers");
+  assertIncludes(staticAdComposedPreview, "renderInstantVisualScene", "Instant creative visual scene", "creatives render a complete visual layout even when generated imagery is missing");
+  assertIncludes(staticAdComposedPreview, "Showing an instant composed preview. Final generated imagery can refresh in the background.", "Generated rejection customer copy", "missing or rejected generated backgrounds do not expose internal QA language to customers");
   assertExcludes(staticAdComposedPreview, "Image rejected, template ready", "Generated rejection jargon removed", "creative previews do not expose rejected-image internal labels");
+  assertExcludes(staticAdComposedPreview, "No generated background image is available yet.", "Blank missing-background copy removed", "creative cards do not tell users the card is missing a background");
   assertExcludes(staticAdComposedPreview, "bg-gradient-to-t", "Generated creative overlay removed", "generated creative previews do not add a dark overlay across the asset");
   assertIncludes(staticAdTemplateRenderer, "background_rejected", "Legacy generated asset rejection", "old full-ad rasters and rejected outputs are withheld from the happy path");
   assertIncludes(staticCreativePreviewCard, "View full creative", "Full creative lightbox", "creative cards expose a full-size review modal");
@@ -746,6 +749,7 @@ function runOfflineChecks() {
   assertIncludes(selfServeScaleAudit, "1,000-client readiness", "Self-serve scale audit 1000", "scale audit covers 1,000-client readiness");
   assertIncludes(selfServeScaleAudit, "Higgsfield spend caps", "Self-serve scale audit provider caps", "scale audit covers provider spend caps");
   assertIncludes(selfServeScaleAudit, "RLS/auth", "Self-serve scale audit security", "scale audit covers tenant security and auth risk");
+  assertIncludes(creativeGenerationDocs, "instant composed preview", "Creative generation UX contract doc", "creative generation docs require complete previews without waiting for generated imagery");
   assertIncludes(ciGateSource, "npm run lint", "CI lint gate", "pull requests run lint before merge");
   assertIncludes(ciGateSource, "npm run typecheck", "CI typecheck gate", "pull requests run TypeScript validation before merge");
   assertIncludes(ciGateSource, "npm run build", "CI build gate", "pull requests build before merge");

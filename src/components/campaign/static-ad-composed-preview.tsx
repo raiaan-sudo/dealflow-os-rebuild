@@ -14,10 +14,10 @@ type StaticAdComposedPreviewProps = StaticAdTemplateInput & {
 
 function statusLabel(status: ReturnType<typeof buildComposedStaticAdPreview>["status"]) {
   if (status === "final_composed") return "Composed creative";
-  if (status === "background_generating") return "Template ready, image generating";
+  if (status === "background_generating") return "Composed preview";
   if (status === "background_rejected") return "Template preview";
-  if (status === "background_failed") return "Image needs retry";
-  return "Template-ready preview";
+  if (status === "background_failed") return "Composed preview";
+  return "Composed preview";
 }
 
 function qualityLabel(preview: ReturnType<typeof buildComposedStaticAdPreview>) {
@@ -71,6 +71,174 @@ function ctaClass(category: ReturnType<typeof buildComposedStaticAdPreview>["cat
   if (category === "commercial") return "border-blue-200/70 bg-blue-600 text-white";
   if (category === "buyer") return "border-[#111111]/15 bg-white text-[#111111]";
   return "border-[#111111]/15 bg-white text-[#111111]";
+}
+
+function proofItems(preview: ReturnType<typeof buildComposedStaticAdPreview>) {
+  if (preview.proofChips.length > 0) {
+    return preview.proofChips;
+  }
+
+  if (preview.category === "buyer") return ["Budget fit", "New matches", "Fast shortlist"];
+  if (preview.category === "seller") return ["Value range", "Demand signal", "Next move"];
+  if (preview.category === "investor") return ["Yield", "Rent", "Entry"];
+  if (preview.category === "commercial") return ["Size", "Location", "Use fit"];
+  if (preview.category === "precon") return ["Deposit", "Timeline", "Release"];
+  return ["Private", "Scarce", "Curated"];
+}
+
+function visualTile(className: string, label: string, sublabel?: string) {
+  return (
+    <div className={cn("relative overflow-hidden rounded-[18px] border border-white/35 shadow-sm", className)}>
+      <div className="absolute inset-x-0 bottom-0 bg-white/88 px-3 py-2 text-slate-950">
+        <p className="text-[9px] font-black uppercase tracking-[0.14em]">{label}</p>
+        {sublabel ? <p className="mt-0.5 text-[10px] font-semibold text-slate-600">{sublabel}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function renderInstantVisualScene(preview: ReturnType<typeof buildComposedStaticAdPreview>, compact: boolean) {
+  const items = proofItems(preview);
+
+  if (preview.category === "buyer") {
+    return (
+      <div className="absolute inset-0 p-4">
+        <div className="grid h-[62%] grid-cols-[1.05fr_0.95fr] gap-3">
+          {visualTile(
+            "bg-[linear-gradient(135deg,#8b6f47_0%,#d9c6a8_48%,#edf7ee_49%,#bde0c4_100%)]",
+            "Kitchen",
+            "warm interior",
+          )}
+          <div className="grid gap-3">
+            {visualTile(
+              "bg-[linear-gradient(135deg,#85b5ff_0%,#cfe5ff_45%,#76a66a_46%,#4f8f46_100%)]",
+              "Backyard",
+              "family space",
+            )}
+            <div className="rounded-[18px] border border-white/45 bg-white/90 p-3 text-slate-950 shadow-sm">
+              <div className="h-2 w-20 rounded-full bg-slate-300" />
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {items.slice(0, 3).map((item, index) => (
+                  <div key={`${item}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-2 text-center">
+                    <p className="text-[10px] font-black leading-tight">{item}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="absolute bottom-[23%] right-5 w-[34%] rounded-[18px] border border-slate-950/10 bg-white/92 p-3 text-slate-950 shadow-lg">
+          <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Shortlist</p>
+          <div className="mt-2 space-y-1.5">
+            {[0, 1, 2].map((item) => (
+              <div key={item} className="grid grid-cols-[1fr_auto] gap-2 rounded-lg bg-slate-100 px-2 py-1.5">
+                <span className="h-2 rounded-full bg-slate-300" />
+                <span className="h-2 w-8 rounded-full bg-emerald-300" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (preview.category === "seller") {
+    return (
+      <div className="absolute inset-0 p-4">
+        <div className="grid h-[66%] grid-cols-[0.9fr_1.1fr] gap-3">
+          {visualTile(
+            "bg-[linear-gradient(135deg,#c9d7c5_0%,#f6f2e8_44%,#b46c43_45%,#8f4f2e_100%)]",
+            "Street",
+            "local demand",
+          )}
+          <div className="rounded-[18px] border border-slate-950/10 bg-white/90 p-3 text-slate-950 shadow-sm">
+            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Value movement</p>
+            <div className="mt-4 flex h-24 items-end gap-3">
+              {items.slice(0, 3).map((item, index) => (
+                <div key={`${item}-${index}`} className="flex flex-1 flex-col items-center gap-2">
+                  <div className={cn("w-full rounded-t-xl bg-red-500", index === 0 ? "h-10" : index === 1 ? "h-16" : "h-24")} />
+                  <p className="text-[10px] font-black">{item}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (preview.category === "precon") {
+    return (
+      <div className="absolute inset-0 p-4">
+        <div className="grid h-[66%] grid-cols-2 gap-3">
+          {visualTile(
+            "bg-[linear-gradient(135deg,#dbeafe_0%,#f8fafc_42%,#94a3b8_43%,#475569_100%)]",
+            "Today",
+            "current market",
+          )}
+          {visualTile(
+            "bg-[linear-gradient(135deg,#111827_0%,#334155_44%,#f97316_45%,#facc15_100%)]",
+            "Future",
+            "completion path",
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (preview.category === "investor") {
+    return (
+      <div className="absolute inset-0 p-4">
+        <div className="grid h-[66%] grid-cols-[1fr_0.85fr] gap-3">
+          <div className="rounded-[18px] border border-emerald-200/25 bg-slate-950/75 p-3 text-white shadow-sm">
+            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-emerald-200">Market map</p>
+            <div className="relative mt-3 h-32 rounded-xl bg-[radial-gradient(circle_at_35%_38%,#22c55e_0_7%,transparent_8%),radial-gradient(circle_at_70%_62%,#facc15_0_6%,transparent_7%),linear-gradient(135deg,#164e63,#052e2b)]">
+              <div className="absolute left-4 top-5 h-12 w-20 rounded-full border border-white/20" />
+              <div className="absolute bottom-4 right-5 h-10 w-16 rounded-full border border-white/20" />
+            </div>
+          </div>
+          <div className="grid gap-2">
+            {items.slice(0, 3).map((item, index) => (
+              <div key={`${item}-${index}`} className="rounded-[16px] border border-emerald-200/20 bg-white/92 p-3 text-slate-950">
+                <p className="text-[9px] font-black uppercase tracking-[0.14em] text-emerald-700">Metric</p>
+                <p className="mt-1 text-sm font-black">{item}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (preview.category === "commercial") {
+    return (
+      <div className="absolute inset-0 p-4">
+        <div className="grid h-[66%] grid-cols-[1.1fr_0.9fr] gap-3">
+          {visualTile(
+            "bg-[linear-gradient(135deg,#dbe4ee_0%,#f8fafc_42%,#64748b_43%,#1e293b_100%)]",
+            "Space",
+            "fit check",
+          )}
+          <div className="rounded-[18px] border border-blue-200/25 bg-white/92 p-3 text-slate-950 shadow-sm">
+            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-blue-700">Requirements</p>
+            <div className="mt-3 space-y-2">
+              {items.slice(0, 3).map((item, index) => (
+                <div key={`${item}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black">
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="absolute inset-0 p-4">
+      <div className="h-[66%] rounded-[22px] border border-[#d6c08f]/30 bg-[linear-gradient(135deg,#0f0f0f_0%,#2d2a22_52%,#d6c08f_100%)] shadow-sm" />
+    </div>
+  );
 }
 
 function renderTemplateDetails(preview: ReturnType<typeof buildComposedStaticAdPreview>, compact: boolean) {
@@ -272,7 +440,7 @@ export function StaticAdComposedPreview({
             src={preview.backgroundImageUrl}
           />
         ) : (
-          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px)] bg-[size:36px_36px] opacity-20" />
+          renderInstantVisualScene(preview, compact)
         )}
         {preview.backgroundImageUrl ? <div className="absolute inset-0 bg-black/8" /> : null}
         {renderTemplateDetails(preview, compact)}
@@ -294,9 +462,9 @@ export function StaticAdComposedPreview({
         </div>
         {showRawAssetState ? (
           <p className="text-xs leading-5 text-muted-foreground">
-            {preview.status === "background_rejected"
-              ? "Using a clean composed preview while the generated image refreshes."
-              : preview.backgroundMessage}
+            {preview.status === "final_composed"
+              ? preview.backgroundMessage
+              : "Showing an instant composed preview. Final generated imagery can refresh in the background."}
           </p>
         ) : null}
         {!compact ? (

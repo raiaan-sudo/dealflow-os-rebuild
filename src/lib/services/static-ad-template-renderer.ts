@@ -350,18 +350,18 @@ function buildBackgroundMessage(input: StaticAdTemplateInput, status: StaticAdTe
   }
 
   if (status === "background_generating") {
-    return input.imageGenerationMessage || "Background is still generating; final layout is ready.";
+    return input.imageGenerationMessage || "Final generated imagery is rendering; instant composed preview remains available.";
   }
 
   if (status === "background_rejected") {
-    return evaluateStaticVisualAssetDecision(input).reason || "Generated background was withheld from the launch preview.";
+    return evaluateStaticVisualAssetDecision(input).reason || "Generated imagery is refreshing; instant composed preview remains available.";
   }
 
   if (status === "background_failed") {
-    return input.imageGenerationMessage || "Background generation failed; deterministic template is still usable.";
+    return input.imageGenerationMessage || "Final generated imagery needs retry; instant composed preview remains available.";
   }
 
-  return "No raw background yet; deterministic template preview is shown.";
+  return "Instant composed preview is shown while generated imagery is unavailable.";
 }
 
 function buildEyebrow(category: CampaignCategory, location: string, templateId: StaticAdTemplateKind) {
