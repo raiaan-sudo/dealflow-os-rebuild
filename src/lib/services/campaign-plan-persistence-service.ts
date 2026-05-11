@@ -319,6 +319,22 @@ export function getCampaignPlanConsistencyStatus(
   };
 }
 
+function preserveExistingCriticalFieldsForPlanUpdate(
+  normalizedPlan: ReturnType<typeof readCampaignPlanDocument>,
+  existingRow: CampaignPlanRow,
+) {
+  const existing = readCriticalFieldsFromRow(existingRow);
+
+  if (!normalizedPlan.public_slug && existing.public_slug) {
+    return readCampaignPlanDocument({
+      ...normalizedPlan,
+      public_slug: existing.public_slug,
+    });
+  }
+
+  return normalizedPlan;
+}
+
 export async function persistCampaignPlanDocumentUpdate(params: {
   supabase: CampaignPlanClient;
   campaignId: string;
@@ -345,6 +361,21 @@ export async function persistCampaignPlanDocumentUpdate(params: {
     throw error;
   }
 
+  const writeClient = createAdminClient() ?? params.supabase;
+  const existingRow =
+    params.existingRow ??
+    (await loadCampaignPlanRecordForPersistence({
+      supabase: writeClient,
+      campaignId: params.campaignId,
+      userId: params.userId ?? null,
+    }));
+
+  if (!existingRow) {
+    throw new Error("Campaign plan row could not be found for persistence.");
+  }
+
+  normalizedPlan = preserveExistingCriticalFieldsForPlanUpdate(normalizedPlan, existingRow);
+
   let patch;
 
   try {
@@ -357,18 +388,6 @@ export async function persistCampaignPlanDocumentUpdate(params: {
       error: error instanceof Error ? error.message : "Unknown critical field patch failure",
     });
     throw error;
-  }
-  const writeClient = createAdminClient() ?? params.supabase;
-  const existingRow =
-    params.existingRow ??
-    (await loadCampaignPlanRecordForPersistence({
-      supabase: writeClient,
-      campaignId: params.campaignId,
-      userId: params.userId ?? null,
-    }));
-
-  if (!existingRow) {
-    throw new Error("Campaign plan row could not be found for persistence.");
   }
 
   const previousValues = readCriticalFieldsFromRow(existingRow);
