@@ -552,7 +552,7 @@ export const MEDIA_BUYER_CAMPAIGN_PACKAGES: Partial<Record<CampaignCategory, Med
       category: "seller",
       angle: "Buyer demand pressure",
       keywords: ["demand", "buyers", "multiple", "pre-listing", "match"],
-      hook: "Buyer demand in your area may have shifted.",
+      hook: "Before you list, check how buyer demand has shifted.",
       primaryText:
         "Some homeowners are seeing stronger offers depending on timing, pricing, and demand. Check what buyer interest could look like before you list.",
       headline: "Check Buyer Demand for Your Home",
@@ -832,7 +832,7 @@ export const MEDIA_BUYER_CAMPAIGN_PACKAGES: Partial<Record<CampaignCategory, Med
       primaryText:
         "Request a curated private-access review shaped around your preferred area, property style, timing, and fit.",
       headline: "Request Private Access",
-      cta: "Request Access",
+      cta: "Request Private Access",
       funnelHeadline: "Request a private-access review",
       funnelSubheadline: "See rare-fit opportunities and private review paths shaped around your buying criteria.",
       formFields: ["Preferred area", "Property style", "Target range"],
