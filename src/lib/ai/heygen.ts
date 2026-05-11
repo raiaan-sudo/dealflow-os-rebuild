@@ -72,6 +72,53 @@ async function parseJsonSafe(response: Response) {
   return (await response.json().catch(() => null)) as Record<string, unknown> | null;
 }
 
+function getNestedRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function sanitizeProviderDiagnosticText(value: unknown) {
+  const text = safeText(value)
+    .replace(/https?:\/\/\S+/gi, "[redacted_url]")
+    .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, "[redacted_email]")
+    .replace(/\b(sk|pk|rk|key|token|bearer)_[A-Za-z0-9_-]{12,}\b/gi, "[redacted_secret]")
+    .replace(/\bBearer\s+[A-Za-z0-9._-]{12,}\b/gi, "Bearer [redacted_secret]")
+    .trim();
+
+  return text ? text.slice(0, 240) : null;
+}
+
+function buildSafeHeyGenDiagnostic(params: {
+  videoId: string | null;
+  status: string | null;
+  data: Record<string, unknown> | null;
+}) {
+  const payload = getNestedRecord(params.data?.data) ?? params.data ?? {};
+  const errorValue = getNestedRecord(payload.error);
+
+  return {
+    provider: "heygen",
+    videoId: params.videoId,
+    providerStatus: params.status,
+    hasVideoUrl: Boolean(
+      safeText(payload.video_url) ||
+        safeText(payload.url) ||
+        safeText(getNestedRecord(payload.video)?.url),
+    ),
+    hasThumbnailUrl: Boolean(
+      safeText(payload.thumbnail_url) ||
+        safeText(payload.cover_url),
+    ),
+    errorCode: sanitizeProviderDiagnosticText(errorValue?.code),
+    errorMessage:
+      sanitizeProviderDiagnosticText(payload.error_message) ||
+      sanitizeProviderDiagnosticText(errorValue?.message) ||
+      sanitizeProviderDiagnosticText(params.data?.message) ||
+      null,
+  };
+}
+
 function looksMaskedApiKey(value: string | null | undefined) {
   const normalized = safeText(value);
   return normalized.startsWith("...") || normalized.includes("***");
@@ -288,7 +335,14 @@ export async function createHeyGenVideo(request: HeyGenCreateRequest) {
       null,
     avatarId,
     voiceId,
-    raw: data,
+    raw: buildSafeHeyGenDiagnostic({
+      videoId,
+      status:
+        safeText(data?.data && (data.data as Record<string, unknown>).status) ||
+        safeText(data?.status) ||
+        null,
+      data,
+    }),
   } satisfies HeyGenCreateResult;
 }
 
@@ -352,6 +406,10 @@ export async function getHeyGenVideoStatus(videoId: string) {
       safeText(payload.error_message) ||
       safeText(data?.message) ||
       null,
-    raw: data,
+    raw: buildSafeHeyGenDiagnostic({
+      videoId: normalizedVideoId,
+      status,
+      data,
+    }),
   } satisfies HeyGenVideoStatusResult;
 }

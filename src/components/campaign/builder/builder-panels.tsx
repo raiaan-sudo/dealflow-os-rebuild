@@ -1680,7 +1680,7 @@ export function BuilderFunnelPanel({
                                           <div>
                                             <p className="text-sm font-semibold">{asset.asset_type.replaceAll("_", " ")}</p>
                                             <p className="mt-1 text-xs text-white/55">
-                                              {asset.provider_name || "manual_upload"} · {asset.status}
+                                              {asset.generation_method?.replaceAll("_", " ") || "manual upload"} · {asset.status}
                                             </p>
                                           </div>
                                           <div className="flex flex-wrap gap-2">
@@ -2134,7 +2134,7 @@ export function BuilderCreativesPanel(props: {
               />
               {generatedVideos[index]?.status === "processing" ? (
                 <p className="text-sm text-primary">
-                  Video generation is queued. The finished render will appear here when the provider job completes.
+                  Video generation is queued. The finished render will appear here when the render job completes.
                 </p>
               ) : null}
               {videoGenerationErrors[index] ? (

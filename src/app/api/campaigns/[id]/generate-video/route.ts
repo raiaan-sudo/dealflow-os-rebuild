@@ -65,36 +65,34 @@ export async function POST(
       return Response.json({ error: "Video creative was not found for this campaign." }, { status: 404 });
     }
 
-    if (body.force !== true) {
-      const activeJobs = (await listSystemJobs({
-        userId: auth.userId,
+    const activeJobs = (await listSystemJobs({
+      userId: auth.userId,
+      campaignId,
+      kind: "video_generation",
+      statuses: ["pending", "processing"],
+    })) as SystemJobRecord<"video_generation">[];
+    const existingActiveJob =
+      activeJobs.find((job) => job.payload.creativeIndex === body.creativeIndex) ?? null;
+
+    if (existingActiveJob) {
+      scheduleVideoGenerationJob(existingActiveJob.id);
+
+      return Response.json({
+        success: true,
         campaignId,
-        kind: "video_generation",
-        statuses: ["pending", "processing"],
-      })) as SystemJobRecord<"video_generation">[];
-      const existingActiveJob =
-        activeJobs.find((job) => job.payload.creativeIndex === body.creativeIndex) ?? null;
-
-      if (existingActiveJob) {
-        scheduleVideoGenerationJob(existingActiveJob.id);
-
-        return Response.json({
-          success: true,
-          campaignId,
-          job: existingActiveJob,
-          reusedExistingJob: true,
-          status: existingActiveJob.status,
-          video: {
-            hook: selectedVideo.hook,
-            script: selectedVideo.script,
-            scenes: selectedVideo.shotList.map((text, index) => ({
-              id: `scene-${index + 1}`,
-              text,
-            })),
-            url: selectedVideo.videoUrl ?? "",
-          },
-        });
-      }
+        job: existingActiveJob,
+        reusedExistingJob: true,
+        status: existingActiveJob.status,
+        video: {
+          hook: selectedVideo.hook,
+          script: selectedVideo.script,
+          scenes: selectedVideo.shotList.map((text, index) => ({
+            id: `scene-${index + 1}`,
+            text,
+          })),
+          url: selectedVideo.videoUrl ?? "",
+        },
+      });
     }
 
     const scriptLines = (selectedCopy?.script || selectedVideo.script.join("\n"))

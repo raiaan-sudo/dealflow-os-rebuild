@@ -1894,44 +1894,45 @@ export async function generateStaticCreativeAds(
       .filter(hasUsableStaticCreativeImage)
       .map((asset) => [asset.id, asset]),
   );
-  const generatedStaticAds = await Promise.all(
-    baseStaticAds.map(async (asset) => {
-      const existing = reusableStaticAssets.get(asset.id);
-      if (existing) {
-        return {
-          ...asset,
-          imageUrl: existing.imageUrl,
-          imageGenerationState: "generated" as const,
-          imageGenerationMessage: null,
-          imageGenerationModel: existing.imageGenerationModel,
-          imageGenerationProvider: existing.imageGenerationProvider ?? null,
-        };
-      }
+  const generatedStaticAds: StaticCreativeAsset[] = [];
 
-      try {
-        const providerUsage = input?.provider_usage_context?.createForAsset(asset) ?? null;
-        const imageAd = await createImageAd(brief, asset, providerUsage);
-        return {
-          ...asset,
-          imageUrl: imageAd.imageUrl ?? "",
-          imageGenerationState: imageAd.generationState,
-          imageGenerationMessage: imageAd.generationMessage,
-          imageGenerationModel: imageAd.generationModel,
-          imageGenerationProvider: imageAd.generationProvider,
-        };
-      } catch (error) {
-        return {
-          ...asset,
-          imageUrl: "",
-          imageGenerationState: "failed" as const,
-          imageGenerationMessage:
-            error instanceof Error ? error.message : "Static image generation failed.",
-          imageGenerationModel: asset.preferredImageModel,
-          imageGenerationProvider: null,
-        };
-      }
-    }),
-  );
+  for (const asset of baseStaticAds) {
+    const existing = reusableStaticAssets.get(asset.id);
+    if (existing) {
+      generatedStaticAds.push({
+        ...asset,
+        imageUrl: existing.imageUrl,
+        imageGenerationState: "generated" as const,
+        imageGenerationMessage: null,
+        imageGenerationModel: existing.imageGenerationModel,
+        imageGenerationProvider: existing.imageGenerationProvider ?? null,
+      });
+      continue;
+    }
+
+    try {
+      const providerUsage = input?.provider_usage_context?.createForAsset(asset) ?? null;
+      const imageAd = await createImageAd(brief, asset, providerUsage);
+      generatedStaticAds.push({
+        ...asset,
+        imageUrl: imageAd.imageUrl ?? "",
+        imageGenerationState: imageAd.generationState,
+        imageGenerationMessage: imageAd.generationMessage,
+        imageGenerationModel: imageAd.generationModel,
+        imageGenerationProvider: imageAd.generationProvider,
+      });
+    } catch (error) {
+      generatedStaticAds.push({
+        ...asset,
+        imageUrl: "",
+        imageGenerationState: "failed" as const,
+        imageGenerationMessage:
+          error instanceof Error ? error.message : "Static image generation failed.",
+        imageGenerationModel: asset.preferredImageModel,
+        imageGenerationProvider: null,
+      });
+    }
+  }
   const normalized = normalizeInput(input);
   const mergedStaticAds = mergeStaticCreativeImageResults(
     generatedStaticAds,

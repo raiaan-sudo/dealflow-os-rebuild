@@ -122,6 +122,7 @@ function runOfflineChecks() {
   const dashboardView = "src/components/dashboard/campaign-dashboard-view.tsx";
   const dashboardPrimitives = "src/components/dashboard/dashboard-primitives.tsx";
   const builderPage = "src/app/(app)/builder/page.tsx";
+  const builderPanels = "src/components/campaign/builder/builder-panels.tsx";
   const appLayout = "src/app/(app)/layout.tsx";
   const appSidebar = "src/components/layout/sidebar.tsx";
   const topBar = "src/components/layout/top-bar.tsx";
@@ -307,6 +308,8 @@ function runOfflineChecks() {
   assertIncludes(creativeWizard, "Selected creative preview", "Creative wizard primary focus", "creative selection leads with one large selected creative preview instead of repeated stacks");
   assertIncludes(creativeWizard, "Creative carousel", "Creative carousel selector", "agents can view every generated creative and select the test set from an always-visible carousel");
   assertIncludes(creativeWizard, "Click any card to view it large above", "Creative carousel inspection cue", "creative carousel tells users how to inspect the full creative");
+  assertExcludes(builderPanels, "provider job completes", "Builder video provider jargon hidden", "builder video status copy does not expose provider-job language to customers");
+  assertExcludes(builderPanels, "asset.provider_name", "Builder asset provider names hidden", "builder asset rows avoid exposing raw provider names in customer-facing copy");
   assertIncludes(creativeWizard, "snap-x", "Creative carousel readable cards", "creative carousel uses full preview cards instead of compressed summary-only tiles");
   assertIncludes(creativeWizard, "Keep at least one UGC-style concept", "Creative UGC quota gate", "selected creative sets must retain a UGC-style concept when available");
   assertIncludes(creativeWizard, "Retry preview render", "Creative retry secondary action", "retry/regenerate remains a secondary failed-state action");
@@ -722,10 +725,12 @@ function runOfflineChecks() {
   assertIncludes(videoRoute, "getCampaignById", "Video generation ownership guard", "video generation verifies campaign ownership before queueing paid work");
   assertIncludes(videoRoute, "processSystemJob(jobId)", "Video generation immediate kickoff", "video generation jobs are started immediately after queueing like static creative jobs");
   assertIncludes(videoRoute, "reusedExistingJob", "Video generation active job reuse", "active pending or processing video jobs are reused for the same creative when safe");
+  assertExcludes(videoRoute, "body.force !== true", "Video retry duplicate paid job guard", "forced video retries still reuse active video jobs instead of stacking duplicate provider calls");
   assertIncludes(systemJobService, "video_generation_status", "Video generation status polling", "AI video render completion is polled by durable follow-up jobs instead of blocking the cron worker");
   assertIncludes(staticAdsRoute, "scheduleStaticCreativeJob", "Static generation kickoff", "creative preview jobs are kicked immediately instead of relying only on cron");
   assertIncludes(staticAdsRoute, "if (existingActiveJob)", "Static generation active-job reuse", "forced preview retries reuse active work instead of stacking duplicate paid jobs");
   assertIncludes(staticAdsRoute, "missingOnly", "Static missing-image retry", "partial creative retries can refill failed/missing images without regenerating the whole test set");
+  assertExcludes(creativeEngine, "Promise.all(\n    baseStaticAds", "Static image sequential provider calls", "static image generation no longer launches all provider calls at once when quota is tight");
   assertIncludes(campaignPersistence, "reuse_static_assets", "Static generated-asset reuse", "missing-image retries preserve already generated Higgsfield assets");
   assertIncludes("src/lib/services/asset-generation-lifecycle.ts", "params.missingOnly", "Static missing-image lifecycle bypass", "missing-image retries do not no-op just because an earlier partial render exists");
   assertIncludes(staticCreativeAssetService, "imagePromptConfig", "Static prompt metadata persistence", "saved generated assets keep prompt config and negative prompt guidance for future retries");
@@ -738,6 +743,8 @@ function runOfflineChecks() {
   assertIncludes(avatarProvider, "ALLOW_HIGGSFIELD_VIDEO_GENERATION !== \"true\"", "Higgsfield video generation kill switch", "queued video jobs cannot call Higgsfield unless explicitly enabled");
   assertIncludes(avatarProvider, "HiggsfieldVideoProvider", "Higgsfield video provider", "AI UGC/video generation has a Higgsfield provider implementation");
   assertIncludes(legacyAiProviders, "ALLOW_HIGGSFIELD_VIDEO_GENERATION", "Legacy helper Higgsfield guard", "older AI helper paths respect the Higgsfield video generation gate");
+  assertIncludes(directHeyGenClient, "buildSafeHeyGenDiagnostic", "HeyGen safe diagnostic shape", "legacy HeyGen status persistence stores sanitized diagnostics instead of raw provider responses");
+  assertExcludes(directHeyGenClient, "raw: data", "HeyGen raw payload persistence avoided", "legacy HeyGen helper does not persist full provider response payloads");
   assertIncludes(directHeyGenClient, "ALLOW_HEYGEN_VIDEO_GENERATION", "Legacy HeyGen direct client kill switch", "retained legacy HeyGen helper remains disabled unless explicitly enabled");
   assertIncludes(systemJobService, "claim_next_system_job", "Atomic system job claim", "system job worker uses DB-backed SKIP LOCKED claim RPC");
   assertIncludes(systemJobService, "replayFailedPublicLeadCapture", "Lead retry job processor", "lead capture retry jobs replay or fail instead of silently completing");

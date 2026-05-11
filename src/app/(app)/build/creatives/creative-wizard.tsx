@@ -119,7 +119,10 @@ function customerImageMessage(message?: string | null) {
     return null;
   }
 
-  if (/provider usage guard|explicitly enabled|generation is disabled|provider|configured|credentials|api key|schema|rpc/i.test(text)) {
+  if (
+    /provider usage guard|explicitly enabled|generation is disabled|provider|configured|credentials|api key|schema|rpc/i.test(text) ||
+    /open\s*ai|higgs?field|hey\s*gen|gpt-image|model|timed?\s*out|timeout|api\.|https?:\/\//i.test(text)
+  ) {
     return "Image preview rendering needs another attempt.";
   }
 
