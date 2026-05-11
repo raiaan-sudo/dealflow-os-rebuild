@@ -158,6 +158,7 @@ function runOfflineChecks() {
   const campaignPersistence = "src/lib/services/campaign-persistence.ts";
   const campaignPlanPersistence = "src/lib/services/campaign-plan-persistence-service.ts";
   const directHeyGenClient = "src/lib/ai/heygen.ts";
+  const videoGenerationErrors = "src/lib/ai/video-generation-errors.ts";
   const avatarProvider = "src/lib/integrations/creative/avatar-provider.ts";
   const apiRouteHelpers = "src/lib/api/route.ts";
   const rateLimitHelpers = "src/lib/api/rate-limit.ts";
@@ -743,6 +744,8 @@ function runOfflineChecks() {
   assertIncludes(avatarProvider, "ALLOW_HIGGSFIELD_VIDEO_GENERATION !== \"true\"", "Higgsfield video generation kill switch", "queued video jobs cannot call Higgsfield unless explicitly enabled");
   assertIncludes(avatarProvider, "HiggsfieldVideoProvider", "Higgsfield video provider", "AI UGC/video generation has a Higgsfield provider implementation");
   assertIncludes(legacyAiProviders, "ALLOW_HIGGSFIELD_VIDEO_GENERATION", "Legacy helper Higgsfield guard", "older AI helper paths respect the Higgsfield video generation gate");
+  assertIncludes(videoGenerationErrors, "AI video rendering could not start. Review the operator diagnostics", "Video error safe fallback", "arbitrary upstream video-provider error text is not returned as customer/API copy");
+  assertExcludes(videoGenerationErrors, "`The AI video provider could not start the video job. ${message}`", "Video raw error fallback removed", "video generation errors do not interpolate raw upstream provider messages into customer/API copy");
   assertIncludes(directHeyGenClient, "buildSafeHeyGenDiagnostic", "HeyGen safe diagnostic shape", "legacy HeyGen status persistence stores sanitized diagnostics instead of raw provider responses");
   assertExcludes(directHeyGenClient, "raw: data", "HeyGen raw payload persistence avoided", "legacy HeyGen helper does not persist full provider response payloads");
   assertIncludes(directHeyGenClient, "ALLOW_HEYGEN_VIDEO_GENERATION", "Legacy HeyGen direct client kill switch", "retained legacy HeyGen helper remains disabled unless explicitly enabled");

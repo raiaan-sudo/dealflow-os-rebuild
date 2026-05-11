@@ -91,7 +91,7 @@ export function toVideoProviderApiError(error: unknown, operation: "start" | "ch
   if (normalized.includes("unauthorized")) {
     return new ApiError(
       502,
-      "The AI video provider rejected the request. Confirm the full live credentials are configured before generating videos.",
+      "AI video rendering could not start because the renderer rejected the request. Confirm the full live credentials are configured before generating videos.",
       operation === "start" ? "video_provider_request_failed" : "video_provider_status_failed",
     );
   }
@@ -127,8 +127,8 @@ export function toVideoProviderApiError(error: unknown, operation: "start" | "ch
   return new ApiError(
     502,
     operation === "start"
-      ? `The AI video provider could not start the video job. ${message}`
-      : `The AI video provider could not return the video status. ${message}`,
+      ? "AI video rendering could not start. Review the operator diagnostics, then try again."
+      : "AI video rendering status could not be confirmed. Review the operator diagnostics, then try again.",
     operation === "start" ? "video_provider_request_failed" : "video_provider_status_failed",
   );
 }
@@ -156,7 +156,7 @@ export function formatVideoWorkflowErrorMessage(input: {
   }
 
   if (code === "video_provider_request_failed" || code === "video_provider_status_failed") {
-    return error || "The video provider failed to respond cleanly.";
+    return error || "AI video rendering did not complete cleanly.";
   }
 
   return error || "Video generation failed.";
