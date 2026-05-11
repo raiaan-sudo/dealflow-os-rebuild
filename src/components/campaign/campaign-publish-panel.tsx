@@ -260,7 +260,7 @@ export function CampaignPublishPanel({
             <div className="mt-3 flex flex-wrap items-center gap-3">
               {livePublished ? (
                 <>
-                  <Link href={livePath} target="_blank" className="text-sm font-semibold text-primary hover:underline">
+                  <Link href={livePath} target="_blank" rel="noreferrer" className="text-sm font-semibold text-primary hover:underline">
                     {livePath}
                   </Link>
                   <Badge className="border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
