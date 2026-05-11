@@ -120,6 +120,7 @@ function runOfflineChecks() {
   const leadForm = "src/app/f/[slug]/lead-capture-form.tsx";
   const dashboardPage = "src/app/(app)/dashboard/page.tsx";
   const dashboardView = "src/components/dashboard/campaign-dashboard-view.tsx";
+  const autonomyActionsFeed = "src/components/dashboard/autonomy-actions-feed.tsx";
   const dashboardPrimitives = "src/components/dashboard/dashboard-primitives.tsx";
   const builderPage = "src/app/(app)/builder/page.tsx";
   const builderPanels = "src/components/campaign/builder/builder-panels.tsx";
@@ -401,6 +402,9 @@ function runOfflineChecks() {
   assertIncludes(dashboardView, "Raw details and activity", "Dashboard raw details disclosure", "raw details remain collapsed under a disclosure");
   assertIncludes(dashboardView, "sanitizeCustomerActionText", "Dashboard customer action sanitizer", "dashboard normalizes internal optimizer action language before display");
   assertExcludes(dashboardView, "optimizerResult.status}", "Dashboard optimizer status hidden", "raw optimizer status is not rendered directly as next-action copy");
+  assertExcludes(autonomyActionsFeed, "provider adapter", "Dashboard provider adapter copy hidden", "dashboard action feed avoids provider-adapter jargon");
+  assertExcludes(autonomyActionsFeed, "missing provider state", "Dashboard missing-provider copy hidden", "dashboard action feed explains blocked actions without provider-state jargon");
+  assertExcludes(autonomyActionsFeed, "Mutation {", "Dashboard mutation copy hidden", "dashboard action feed labels platform updates without mutation jargon");
   assertExcludes(dashboardView, "Estimated recommendation", "Dashboard fake live label removed", "dashboard no longer labels empty recommendations as estimated live analytics");
   assertIncludes(resultsPage, "/dashboard", "Results canonical redirect", "legacy /results routes redirect into the real dashboard path");
   assertExcludes(resultsPage, "plan=starter", "Results plan demo redirect removed", "legacy results route no longer opens the plan comparison demo");
@@ -619,7 +623,7 @@ function runOfflineChecks() {
   assertIncludes(safeE2eSpec, "SAFE_E2E_QA_AUTH", "Safe E2E QA auth gate", "authenticated browser journey requires an explicit QA auth env gate");
   assertIncludes(safeE2eSpec, "/api/internal/qa-auth-session", "Safe E2E internal auth harness", "browser proof uses the env-gated internal QA auth harness");
   assertIncludes("src/app/api/internal/qa-auth-session/route.ts", "QA_AUTH_HARNESS_PRODUCTION_ENABLED", "Production QA harness gate", "QA session minting requires a second explicit production gate");
-  assertIncludes(safeE2eSpec, "No live provider action runs here.", "Safe E2E provider boundary assertion", "browser proof asserts onboarding warns that no live provider action runs");
+  assertIncludes(safeE2eSpec, "No live ad, payment, message, or media action runs here.", "Safe E2E live-action boundary assertion", "browser proof asserts onboarding warns that no live ad, payment, message, or media action runs");
   assertIncludes("scripts/smoke-test-system.md", "npm run test:e2e:safe", "Safe browser E2E docs", "smoke documentation includes the safe browser proof command");
   assertExcludes("src/lib/services/lead-handler-service.ts", /QA_EMAIL|QA_PASSWORD/, "QA credential fallback removed", "no QA credential fallback remains in lead handler");
   assertIncludes(campaignPlanPersistence, "organization_id: params.ownerId", "Campaign persistence organization ownership", "fresh campaign rows persist organization_id for downstream jobs and billing");
@@ -629,6 +633,8 @@ function runOfflineChecks() {
 
   assertIncludes(apiRouteHelpers, "assertSameOriginRequest", "Same-origin mutation guard helper", "sensitive authenticated POST routes can reject cross-site requests");
   assertIncludes(apiRouteHelpers, "if (!candidate)", "Same-origin missing-header rejection", "same-origin guard rejects unsafe requests that omit Origin and Referer");
+  assertIncludes(apiRouteHelpers, "error.status >= 500", "Production 5xx API redaction", "production server errors do not return raw database or provider failure messages");
+  assertIncludes(apiRouteHelpers, "!error.code.startsWith(\"video_\")", "Video safe-error exception", "video rendering keeps curated safe blocker copy while other 5xx messages are redacted in production");
   assertIncludes(middleware, "script-src-attr 'none'", "CSP inline attribute hardening", "production CSP blocks inline event-handler attributes");
   assertIncludes(middleware, "upgrade-insecure-requests", "CSP production upgrade directive", "production CSP upgrades insecure subresource requests");
   assertIncludes(middleware, "isProduction ? [] : [\"'unsafe-eval'\"]", "CSP production unsafe-eval removal", "unsafe-eval is only permitted outside production");

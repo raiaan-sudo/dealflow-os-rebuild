@@ -1000,7 +1000,7 @@ export default function OnboardingPage() {
                   <div>
                     <h3 className="text-xl font-semibold tracking-[-0.04em]">Ready to build campaign preview</h3>
                     <p className="mt-2 text-sm leading-7 text-white/64">
-                      Continue saves the campaign, updates the agent profile for lead alerts, and opens checkout. No live provider action runs here.
+                      Continue saves the campaign, updates the agent profile for lead alerts, and opens checkout. No live ad, payment, message, or media action runs here.
                     </p>
                   </div>
                 </div>

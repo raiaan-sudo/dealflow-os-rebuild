@@ -202,7 +202,7 @@ function CampaignHeader({ mode }: { mode: "guided" | "autonomous" }) {
             Toronto seller demand campaign
           </h3>
           <p className="mt-2 text-sm leading-6 text-white/64">
-            Live demo-style signals with all launch and provider side effects disabled in this preview.
+            Live demo-style signals with all launch and generation side effects disabled in this preview.
           </p>
         </div>
         <Badge className="border-emerald-300/20 bg-emerald-300/[0.06] text-emerald-100">
@@ -365,7 +365,7 @@ function AutonomousRecommendation() {
           </div>
           {armed ? (
             <div className="mt-4 rounded-2xl border border-emerald-300/18 bg-emerald-300/[0.045] p-3 text-sm text-emerald-100">
-              Safe monitor armed for this preview. No live provider action was triggered.
+              Safe monitor armed for this preview. No live launch or generation action was triggered.
             </div>
           ) : null}
           {guardrailsOpen ? (

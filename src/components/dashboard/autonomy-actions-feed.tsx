@@ -48,6 +48,22 @@ function getExecutionQueueCopy(mode: AutonomyMode) {
   return "These execution actions were generated from the latest sync cycle and are eligible to run automatically.";
 }
 
+function formatExecutionModeLabel(mode?: string | null) {
+  if (!mode) {
+    return null;
+  }
+
+  if (mode === "sandbox" || mode === "test") {
+    return "test mode";
+  }
+
+  if (mode === "live") {
+    return "live mode";
+  }
+
+  return mode.replace(/[_-]+/g, " ");
+}
+
 function renderExecutionAction(
   action: ClosedLoopAutonomyAction,
   label: string,
@@ -98,8 +114,10 @@ function renderRecentEntry(entry: AutonomyFeedEntry) {
     typeof entry.actualOutcome?.revenueDelta === "number" ? entry.actualOutcome.revenueDelta : null;
   const providerMutationId =
     typeof entry.guardrailSummary?.mutationId === "string" ? entry.guardrailSummary.mutationId : null;
-  const providerMode =
-    typeof entry.guardrailSummary?.mode === "string" ? entry.guardrailSummary.mode : null;
+  const executionMode =
+    typeof entry.guardrailSummary?.mode === "string"
+      ? formatExecutionModeLabel(entry.guardrailSummary.mode)
+      : null;
   const blockedReason =
     typeof entry.guardrailSummary?.blockedReason === "string"
       ? entry.guardrailSummary.blockedReason
@@ -168,8 +186,8 @@ function renderRecentEntry(entry: AutonomyFeedEntry) {
             </>
           ) : (
             <div className="mt-2 flex flex-wrap gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-              {providerMode ? <span>{providerMode}</span> : null}
-              {providerMutationId ? <span>Mutation {providerMutationId}</span> : null}
+              {executionMode ? <span>{executionMode}</span> : null}
+              {providerMutationId ? <span>Update {providerMutationId}</span> : null}
               {typeof entry.guardrailSummary?.applied === "boolean" ? (
                 <span>{entry.guardrailSummary.applied ? "applied" : "not applied"}</span>
               ) : null}
@@ -273,7 +291,7 @@ export function AutonomyActionsFeed({
               Executed
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Actions the provider adapter actually applied.
+              Actions the ad platform actually applied.
             </p>
           </div>
           {appliedExecutionActions.slice(0, 4).map((action) => renderExecutionAction(action, "executed"))}
@@ -287,7 +305,7 @@ export function AutonomyActionsFeed({
               Blocked
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Actions the system refused to run because of guardrails, duplicate protection, or missing provider state.
+              Actions the system refused to run because of guardrails, duplicate protection, or missing ad platform state.
             </p>
           </div>
           {blockedExecutionActions.slice(0, 4).map((action) => renderExecutionAction(action, "blocked"))}

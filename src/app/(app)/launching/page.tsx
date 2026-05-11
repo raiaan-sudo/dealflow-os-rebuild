@@ -426,7 +426,7 @@ export default function LaunchingPage() {
                   <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
                     {hasLaunchIntent
                       ? "Browser restores and shared URLs will not start a launch. This button is the intentional launch action."
-                      : "Open the launch checklist so billing, Meta selections, creative, funnel, budget policy, and provider switch are visible before any send attempt."}
+                      : "Open the launch checklist so billing, Meta selections, creative, funnel, budget policy, and media generation controls are visible before any send attempt."}
                   </p>
                 </div>
                 {hasLaunchIntent ? (

@@ -486,7 +486,12 @@ export function handleApiError(error: unknown, context: string) {
       });
     }
 
-    return apiFailure(error.message, error.code, error.status, { requestId });
+    const safeProductionMessage =
+      isProduction && error.status >= 500 && !error.code.startsWith("video_")
+        ? "Unexpected server error."
+        : error.message;
+
+    return apiFailure(safeProductionMessage, error.code, error.status, { requestId });
   }
 
   const message = error instanceof Error ? error.message : "Unexpected server error.";

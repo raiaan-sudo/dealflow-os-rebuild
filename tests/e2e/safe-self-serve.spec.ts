@@ -178,7 +178,7 @@ test.describe("safe authenticated self-serve journey", () => {
     await expect(page.getByText("Ready to build campaign preview")).toBeVisible();
     await expect(page.getByText("Launch readiness summary")).toBeVisible();
     await expect(page.getByText("Full-resolution files locked")).toBeVisible();
-    await expect(page.getByText("No live provider action runs here.")).toBeVisible();
+    await expect(page.getByText("No live ad, payment, message, or media action runs here.")).toBeVisible();
     await continueTo(page, /Continue to checkout/i);
     await expect(page).toHaveURL(/\/paywall\?campaignId=.*&plan=starter/);
     await expectNoHorizontalOverflow(page);

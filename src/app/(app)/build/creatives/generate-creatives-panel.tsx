@@ -92,7 +92,7 @@ export function GenerateCreativesPanel({
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-foreground">Safe campaign creative prep</p>
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  Static concepts and scripts are prepared here. Full AI media generation remains locked until generation credits and provider activation are enabled.
+                  Static concepts and scripts are prepared here. Full AI media generation remains locked until generation credits and media rendering access are enabled.
                 </p>
               </div>
             </div>
