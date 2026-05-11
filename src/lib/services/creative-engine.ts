@@ -24,10 +24,17 @@ import {
   type StaticVisualPromptBrief,
 } from "@/lib/services/campaign-visual-prompt-builder";
 import {
+  evaluateStaticCreativeImageQa,
+  getCustomerSafeImageQaMessage,
+} from "@/lib/services/static-creative-image-qa";
+import {
   rankStaticCreativeAssets,
   type CreativeScoreBreakdown,
 } from "@/lib/services/creative-scoring-service";
-import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
+import {
+  evaluateStaticVisualAssetDecision,
+  type StaticCreativeImageQaResult,
+} from "@/lib/services/static-creative-visual-qa";
 import {
   evaluateCreativeQuality,
   evaluateOfferQuality,
@@ -72,6 +79,7 @@ export type StaticCreativeAsset = {
   imagePromptConfig: ImagePromptConfig | null;
   preferredImageModel: OpenAiImageModel;
   visualPromptBrief: StaticVisualPromptBrief | null;
+  imageQa?: StaticCreativeImageQaResult | null;
   scoreBreakdown: CreativeScoreBreakdown | null;
   hook: string;
   overlayText: string;
@@ -1855,6 +1863,7 @@ function preserveStaticCreativeImage(
     imageGenerationMessage: null,
     imageGenerationModel: existing.imageGenerationModel ?? asset.imageGenerationModel,
     imageGenerationProvider: existing.imageGenerationProvider ?? asset.imageGenerationProvider ?? null,
+    imageQa: existing.imageQa ?? asset.imageQa ?? null,
     qualityGate: asset.qualityGate ?? existing.qualityGate ?? null,
   };
 }
@@ -1887,6 +1896,7 @@ export async function generateStaticCreativeAds(
   input?: CreativeEngineInput | null,
 ): Promise<StaticCreativeAsset[]> {
   const baseSystem = buildCreativeSystem(input);
+  const normalized = normalizeInput(input);
   const brief = baseSystem.brief;
   const baseStaticAds = baseSystem.staticAds;
   const reusableStaticAssets = new Map(
@@ -1906,6 +1916,7 @@ export async function generateStaticCreativeAds(
         imageGenerationMessage: null,
         imageGenerationModel: existing.imageGenerationModel,
         imageGenerationProvider: existing.imageGenerationProvider ?? null,
+        imageQa: existing.imageQa ?? null,
       });
       continue;
     }
@@ -1913,13 +1924,36 @@ export async function generateStaticCreativeAds(
     try {
       const providerUsage = input?.provider_usage_context?.createForAsset(asset) ?? null;
       const imageAd = await createImageAd(brief, asset, providerUsage);
+      const imageQa = imageAd.imageUrl
+        ? await evaluateStaticCreativeImageQa({
+            imageUrl: imageAd.imageUrl,
+            campaignId: "creative-system-preview",
+            creativeId: asset.id,
+            prompt: asset.imagePrompt,
+            negativePrompt: asset.imagePromptConfig?.negativePrompt ?? undefined,
+            campaignContext: {
+              market: normalized.location,
+              campaignType: normalized.marketType,
+              audience: normalized.audience,
+              offer: normalized.offer,
+              propertyType: normalized.propertyType,
+              cta: asset.cta,
+            },
+          })
+        : null;
+      const qaMessage = getCustomerSafeImageQaMessage(imageQa);
+      const imageAccepted =
+        Boolean(imageAd.imageUrl) &&
+        imageAd.generationState === "generated" &&
+        (!imageQa || imageQa.decision === "accept");
       generatedStaticAds.push({
         ...asset,
         imageUrl: imageAd.imageUrl ?? "",
-        imageGenerationState: imageAd.generationState,
-        imageGenerationMessage: imageAd.generationMessage,
+        imageGenerationState: imageAccepted ? "generated" : imageAd.imageUrl ? "failed" : imageAd.generationState,
+        imageGenerationMessage: imageAccepted ? imageAd.generationMessage : qaMessage ?? imageAd.generationMessage,
         imageGenerationModel: imageAd.generationModel,
         imageGenerationProvider: imageAd.generationProvider,
+        imageQa,
       });
     } catch (error) {
       generatedStaticAds.push({
@@ -1933,7 +1967,6 @@ export async function generateStaticCreativeAds(
       });
     }
   }
-  const normalized = normalizeInput(input);
   const mergedStaticAds = mergeStaticCreativeImageResults(
     generatedStaticAds,
     input?.reuse_static_assets,

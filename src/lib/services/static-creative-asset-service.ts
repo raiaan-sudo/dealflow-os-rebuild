@@ -75,6 +75,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       visualPromptBrief: (asset.visualPromptBrief ?? null) as Json,
       visualAssetContract: asset.visualPromptBrief?.visualAssetContract ?? null,
       visualAssetRole: asset.visualPromptBrief?.visualAssetRole ?? null,
+      imageQa: (asset.imageQa ?? null) as Json,
       imageGenerationState: normalizedGenerationState,
       imageGenerationProvider: asset.imageGenerationProvider ?? null,
       imageGenerationModel: asset.imageGenerationModel,

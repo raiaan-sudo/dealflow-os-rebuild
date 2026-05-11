@@ -137,7 +137,7 @@ function getImageLimitMessage(creatives: CreativeOption[]) {
   );
 
   return blockedCreative
-    ? "Daily image generation limit reached for this campaign. Instant composed previews stay available; try again after the daily limit resets or have the owner intentionally raise the image cap."
+    ? "Daily image refresh limit reached for this campaign. Instant composed previews stay available; try again after the daily limit resets."
     : null;
 }
 
@@ -286,7 +286,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
 
         if (job.status === "completed") {
           if (surface === "video") {
-            setVideoMessage("AI UGC video render is processing. This page will update when the video file is ready.");
+            setVideoMessage("Video preview is processing. This page will update when it is ready.");
           } else {
             const staticAds = job.result?.staticAds ?? [];
             setRenderMessage(getImageLimitMessage(staticAds) ?? getStaticPreviewStatusMessage(staticAds) ?? "Image previews are ready.");
@@ -296,7 +296,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
           router.refresh();
         } else if (job.status === "failed") {
           if (surface === "video") {
-            setVideoMessage(customerVideoMessage(job.error_message) || "AI UGC video rendering failed.");
+            setVideoMessage(customerVideoMessage(job.error_message) || "Video preview rendering failed.");
           } else {
             setRenderMessage(customerImageMessage(job.error_message) || "Image preview rendering failed.");
           }
@@ -381,8 +381,8 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
     setError(null);
     setVideoMessage(
       automatic
-        ? "Preparing AI UGC video automatically. You can keep choosing static creatives while it renders."
-        : "Preparing AI UGC video.",
+        ? "Preparing video preview automatically. You can keep choosing static creatives while it renders."
+        : "Preparing video preview.",
     );
 
     try {
@@ -401,16 +401,16 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
         | null;
 
       if (!response.ok || !data?.job?.id) {
-        throw new Error(data?.error || "AI UGC video rendering could not start.");
+        throw new Error(data?.error || "Video preview rendering could not start.");
       }
 
-      setVideoMessage("AI UGC video render is processing. This page will update when the video file is ready.");
+      setVideoMessage("Video preview is processing. This page will update when it is ready.");
       subscribeToJob(data.job.id, "video");
     } catch (videoError) {
       setVideoMessage(null);
       setError(
         customerVideoMessage(videoError instanceof Error ? videoError.message : null) ??
-          "AI UGC video rendering could not start.",
+          "Video preview rendering could not start.",
       );
     } finally {
       setRenderingVideo(false);
@@ -506,7 +506,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
     }
 
     if (!ugcQuotaSatisfied) {
-      setError("Keep at least one UGC-style concept in the selected creative set.");
+      setError("Keep at least one native-style concept in the selected creative set.");
       return;
     }
 
@@ -739,7 +739,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
             <p className={error ? "mt-3 text-sm text-rose-400" : "mt-3 text-sm text-muted-foreground"}>
               {error ??
                 (rankedCreatives.length >= 2
-                  ? `Use ${minSelected}-${maxSelected} creatives. The recommended set keeps at least one UGC-style concept selected.`
+                  ? `Use ${minSelected}-${maxSelected} creatives. The recommended set keeps at least one native-style concept selected.`
                   : "Select at least one creative to continue.")}
             </p>
           </div>
@@ -762,12 +762,12 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  AI UGC video
+                  Video preview
                 </p>
                 <h3 className="mt-1 text-xl font-semibold text-foreground">{activeVideoCreative.title}</h3>
               </div>
               <span className="rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
-                {activeVideoCreative.conceptType === "customer_ugc" ? "UGC concept" : "Video concept"}
+                {activeVideoCreative.conceptType === "customer_ugc" ? "Native-style concept" : "Video concept"}
               </span>
             </div>
             <div className="overflow-hidden rounded-[18px] border border-white/10 bg-black/28">
@@ -783,8 +783,8 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                   <div>
                     <p className="text-sm font-semibold text-foreground">
                       {activeVideoCreative.videoGenerationState === "generating" || renderingVideo
-                        ? "AI UGC video is rendering"
-                        : "AI UGC video concept is ready"}
+                        ? "Video preview is rendering"
+                        : "Video preview concept is ready"}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">
                       {activeVideoCreative.hook || activeVideoCreative.script[0] || "A short creator-style video will be generated for this campaign."}
@@ -815,8 +815,8 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                   {renderingVideo || activeVideoCreative.videoGenerationState === "generating"
                     ? "Rendering video..."
                     : activeVideoCreative.videoGenerationState === "failed"
-                      ? "Retry AI UGC video"
-                      : "Render AI UGC video"}
+                      ? "Retry video preview"
+                      : "Render video preview"}
                 </Button>
               )}
               {customerVideoMessage(videoMessage || activeVideoCreative.videoGenerationMessage) ? (
@@ -901,7 +901,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                 <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
                   <div className="min-w-0">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                      Full AI UGC video
+                      Full video preview
                     </p>
                     <h3 className="mt-1 truncate text-sm font-semibold text-foreground">{activeVideoCreative.title}</h3>
                   </div>

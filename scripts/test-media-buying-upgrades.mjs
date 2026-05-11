@@ -56,7 +56,7 @@ assert.equal(selectMediaBuyerCta("precon"), "View Deposit Options");
 assert.equal(selectMediaBuyerCta("luxury"), "Request Private Access");
 assert.equal(selectMediaBuyerCta("seller", { b2bAgent: true }), "See If You Qualify");
 
-for (const category of ["seller", "buyer", "investor"]) {
+for (const category of ["seller", "buyer", "investor", "precon", "commercial", "luxury"]) {
   const packages = getMediaBuyerCampaignPackages(category);
   assert.equal(packages.length, 3, `${category} should expose the media buyer top three packages`);
   assert.equal(new Set(packages.map((campaignPackage) => campaignPackage.headline)).size, 3, `${category} headlines should be distinct`);
@@ -254,7 +254,7 @@ const referencePromptScenarios = [
   },
   {
     label: "investor",
-    expected: /investor ROI map and data dashboard|investor deal-analysis proof board/i,
+    expected: /investor property-decision source photo|investor underwriting-moment source photo/i,
     input: {
       location: "Montreal",
       audience: "investors comparing ROI criteria",

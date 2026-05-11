@@ -66,6 +66,14 @@ export type StaticAdTemplateInput = {
     accepted?: boolean | null;
     hardFailures?: string[] | null;
   } | null;
+  imageQa?: {
+    usable?: boolean | null;
+    decision?: "accept" | "reject" | "review" | string | null;
+    reasons?: string[] | null;
+    textDensity?: number | null;
+    layoutRisk?: number | null;
+    detectedTextSamples?: string[] | null;
+  } | null;
   offerQuality?: {
     score?: number | null;
     accepted?: boolean | null;
@@ -354,7 +362,7 @@ function buildBackgroundMessage(input: StaticAdTemplateInput, status: StaticAdTe
   }
 
   if (status === "background_rejected") {
-    return evaluateStaticVisualAssetDecision(input).reason || "Generated imagery is refreshing; instant composed preview remains available.";
+    return "This visual needs a cleaner background. Preview is using the composed layout while the image refreshes.";
   }
 
   if (status === "background_failed") {

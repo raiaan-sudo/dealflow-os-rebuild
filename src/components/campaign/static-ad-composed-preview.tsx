@@ -15,22 +15,25 @@ type StaticAdComposedPreviewProps = StaticAdTemplateInput & {
 function statusLabel(status: ReturnType<typeof buildComposedStaticAdPreview>["status"]) {
   if (status === "final_composed") return "Composed creative";
   if (status === "background_generating") return "Composed preview";
-  if (status === "background_rejected") return "Template preview";
+  if (status === "background_rejected") return "Composed preview";
   if (status === "background_failed") return "Composed preview";
   return "Composed preview";
 }
 
 function qualityLabel(preview: ReturnType<typeof buildComposedStaticAdPreview>) {
-  if (typeof preview.qualityScore !== "number") {
-    return "Quality pending";
+  if (preview.status === "final_composed") {
+    return "Image ready";
   }
 
-  const score = preview.qualityScore.toFixed(1);
-  if (preview.qualityAccepted === false) {
-    return `Reviewing ${score}/10`;
+  if (preview.status === "background_generating") {
+    return "Image preparing";
   }
 
-  return `Quality ${score}/10`;
+  if (preview.status === "background_rejected") {
+    return "Cleaner image preparing";
+  }
+
+  return "Image refresh available";
 }
 
 function backgroundClass(category: ReturnType<typeof buildComposedStaticAdPreview>["category"]) {
@@ -464,7 +467,7 @@ export function StaticAdComposedPreview({
           <p className="text-xs leading-5 text-muted-foreground">
             {preview.status === "final_composed"
               ? preview.backgroundMessage
-              : "Showing an instant composed preview. Final generated imagery can refresh in the background."}
+              : preview.backgroundMessage}
           </p>
         ) : null}
         {!compact ? (

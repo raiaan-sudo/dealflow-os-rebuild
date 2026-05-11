@@ -24,6 +24,7 @@
     "test:media-buying-upgrades": "node ./scripts/test-media-buying-upgrades.mjs",
     "test:media-buyer-regression": "node ./scripts/regress-media-buyer-integration.mjs",
     "test:static-ad-templates": "node ./scripts/test-static-ad-templates.mjs",
+    "test:static-creative-image-qa": "node ./scripts/test-static-creative-image-qa.mjs",
     "test:campaign-value-report": "node ./scripts/test-campaign-value-report.mjs",
     "test:billing-recovery": "node ./scripts/test-billing-recovery.mjs",
     "test:customer-success": "node ./scripts/test-customer-success-layer.mjs",

@@ -112,15 +112,25 @@ assert.equal(
 
 const rejectedGeneratedCreative = buildComposedStaticAdPreview({
   ...generatedCreativeInput,
-  qualityGate: {
-    accepted: false,
-    score: 4.8,
+  imageQa: {
+    usable: false,
+    decision: "reject",
+    reasons: ["text_heavy", "provider_returned_finished_ad"],
+    textDensity: 0.22,
+    layoutRisk: 0.91,
+    detectedTextSamples: ["GET HOMES NOW", "XQZ PLOM"],
   },
 });
 assert.equal(
   rejectedGeneratedCreative.status,
   "background_rejected",
   "rejected generated images are withheld from the launch preview",
+);
+assert.equal(rejectedGeneratedCreative.backgroundImageUrl, null);
+assert.equal(
+  rejectedGeneratedCreative.backgroundMessage,
+  "This visual needs a cleaner background. Preview is using the composed layout while the image refreshes.",
+  "rejected image state uses customer-safe copy",
 );
 
 const legacyGeneratedCreative = buildComposedStaticAdPreview({
@@ -229,16 +239,25 @@ const generatedAsset = {
 };
 const downgradedAsset = {
   ...generatedAsset,
-  imageUrl: "",
+  imageUrl: "https://example.test/bad-flyer.png",
   imageGenerationState: "failed",
-  imageGenerationMessage: "provider timeout",
+  imageGenerationMessage: "This visual needs a cleaner background. Preview is using the composed layout while the image refreshes.",
   imageGenerationModel: "gpt-image-1.5",
   imageGenerationProvider: null,
+  imageQa: {
+    usable: false,
+    decision: "reject",
+    reasons: ["flyer_or_brochure_layout", "gibberish_text_detected"],
+    textDensity: 0.31,
+    layoutRisk: 0.88,
+    detectedTextSamples: ["QZX PLOM"],
+  },
 };
 const mergedAssets = mergeStaticCreativeImageResults([downgradedAsset], [generatedAsset]);
 assert.equal(mergedAssets[0].imageUrl, generatedAsset.imageUrl);
 assert.equal(mergedAssets[0].imageGenerationState, "generated");
 assert.equal(mergedAssets[0].imageGenerationMessage, null);
+assert.notEqual(mergedAssets[0].imageUrl, downgradedAsset.imageUrl, "bad retry does not overwrite previous good image");
 
 const generationInput = {
   location: "Austin",

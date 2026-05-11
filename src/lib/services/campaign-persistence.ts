@@ -226,6 +226,10 @@ function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[
       imagePromptConfig: asImagePromptConfig(metadata?.imagePromptConfig),
       preferredImageModel,
       visualPromptBrief: asVisualPromptBrief(metadata?.visualPromptBrief),
+      imageQa:
+        metadata?.imageQa && typeof metadata.imageQa === "object"
+          ? metadata.imageQa as StaticCreativeAsset["imageQa"]
+          : null,
       scoreBreakdown: asScoreBreakdown(metadata?.scoreBreakdown),
       offerQuality:
         metadata?.offerQuality && typeof metadata.offerQuality === "object"

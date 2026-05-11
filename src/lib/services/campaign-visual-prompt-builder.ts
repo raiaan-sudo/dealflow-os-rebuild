@@ -42,6 +42,30 @@ function listToSentence(values: string[]) {
   return values.filter(Boolean).join("; ");
 }
 
+function providerSafeVisualPhrase(value: string) {
+  return safeText(value)
+    .replace(/\bdashboards?\b/gi, "decision context")
+    .replace(/\bcharts?\b/gi, "market context")
+    .replace(/\btables?\b/gi, "structured context")
+    .replace(/\bspreadsheets?\b/gi, "analysis moment")
+    .replace(/\bmaps?\b/gi, "neighborhood context")
+    .replace(/\boverlays?\b/gi, "proof cues")
+    .replace(/\bcards?\b/gi, "visual cues")
+    .replace(/\bgrids?\b/gi, "simple composition")
+    .replace(/\bui\b/gi, "real-world")
+    .replace(/\bcta\b/gi, "next-step")
+    .replace(/\bbuttons?\b/gi, "next-step cue")
+    .replace(/\blisting sheet\b/gi, "property context")
+    .replace(/\bflyer\b/gi, "photo")
+    .replace(/\bbrochure\b/gi, "photo")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function providerSafeList(values: string[]) {
+  return listToSentence(values.map(providerSafeVisualPhrase).filter(Boolean));
+}
+
 function inferAspectRatio(category: CampaignCategory): ImagePromptConfig["aspectRatio"] {
   return category === "luxury" ? "16:9" : "1:1";
 }
@@ -78,9 +102,9 @@ function inferMediaBuyerReferencePattern(input: BuildStaticVisualPromptInput) {
   }
 
   if (category === "investor") {
-    return /map|area|micro|yield|rent|roi|cash/.test(haystack)
-      ? "investor ROI map and data dashboard"
-      : "investor deal-analysis proof board";
+    return /area|micro|yield|rent|roi|cash/.test(haystack)
+      ? "investor property-decision source photo"
+      : "investor underwriting-moment source photo";
   }
 
   if (category === "seller") {
@@ -118,8 +142,8 @@ function buildMediaBuyerReferenceTail(pattern: string, category: CampaignCategor
     return `${shared} Reference pattern: new-build source photo with home exterior, new-build interiors, buyer walkthrough, or area context. Keep it sharp, realistic, and not a brochure render.`;
   }
 
-  if (pattern === "investor ROI map and data dashboard" || pattern === "investor deal-analysis proof board") {
-    return `${shared} Reference pattern: investor source photo with city, building, neighborhood, laptop/tablet analysis moment, or property context. Avoid map pins, rent/price/yield cards, ROI panels, charts, and underwriting text inside the image.`;
+  if (pattern === "investor property-decision source photo" || pattern === "investor underwriting-moment source photo") {
+    return `${shared} Reference pattern: investor source photo with city, building, neighborhood, laptop/tablet analysis moment, or property context. Avoid map pins, rent/price/yield cards, ROI panels, charts, dashboards, spreadsheets, and underwriting text inside the image.`;
   }
 
   if (pattern === "seller home-value comparison ad") {
@@ -161,6 +185,34 @@ function isApprovalFocusedVisual(input: BuildStaticVisualPromptInput) {
     && /approv|qualif|credit|mortgage|pre-approv|down payment|deposit|financ/.test(haystack);
 }
 
+function buildSourcePhotoDirection(category: CampaignCategory, approvalFocused: boolean) {
+  if (category === "luxury") {
+    return "single premium property or lifestyle photograph with cinematic depth, natural materials, and clean negative space";
+  }
+
+  if (category === "precon") {
+    return "construction, development, new-build exterior, sales-center walkthrough, or buyer consultation source photography";
+  }
+
+  if (approvalFocused) {
+    return "buyer consultation, warm family decision moment, or buyers reviewing homes on a device with unreadable screens";
+  }
+
+  if (category === "buyer") {
+    return "warm lived-in interior, kitchen, backyard, walkthrough, or buyer home-review moment";
+  }
+
+  if (category === "seller") {
+    return "homeowner, neighborhood, property exterior, pre-listing decision, or local curb context";
+  }
+
+  if (category === "commercial") {
+    return "commercial building exterior, operator walkthrough, tenant tour, or space-fit decision moment";
+  }
+
+  return "investor decision moment, building context, neighborhood exterior, or laptop/tablet analysis moment with unreadable screens";
+}
+
 export function buildStaticVisualPromptBrief(
   input: BuildStaticVisualPromptInput,
 ): StaticVisualPromptBrief {
@@ -170,6 +222,7 @@ export function buildStaticVisualPromptBrief(
   const ugcStyle = /contrarian|testimonial|pov|ugc|creator|customer/i.test(input.angle);
   const mediaBuyerReferencePattern = inferMediaBuyerReferencePattern(input);
   const mediaBuyerReferenceTail = buildMediaBuyerReferenceTail(mediaBuyerReferencePattern, category);
+  const sourcePhotoDirection = buildSourcePhotoDirection(category, approvalFocused);
   const categoryPromptTail =
     category === "luxury"
       ? "Use a single cinematic property or lifestyle source photo with restraint, premium materials, skyline or view depth, and no infographic elements."
@@ -194,13 +247,13 @@ export function buildStaticVisualPromptBrief(
     `Market: ${input.location}.`,
     `Audience context: ${input.audience}.`,
     `Category psychology: ${approvalFocused ? "buyer approval-first" : category}.`,
-    `Winning angle direction: ${listToSentence(rulePack.winningAngles)}.`,
-    `Trigger condition: ${safeText(input.strategy.triggerCondition) || rulePack.triggerConditions[0] || "market opportunity"}.`,
+    `Winning angle direction: ${providerSafeList(rulePack.winningAngles)}.`,
+    `Trigger condition: ${providerSafeVisualPhrase(safeText(input.strategy.triggerCondition) || rulePack.triggerConditions[0] || "market opportunity")}.`,
     `Internal tension: ${safeText(input.strategy.internalTension) || "uncertainty about the right move"}.`,
-    `Mechanism to visualize: ${safeText(input.strategy.mechanism)}.`,
-    `Proof style to imply: ${safeText(input.strategy.proofStyle) || rulePack.proofStyles[0] || "certainty"}.`,
-    `Primary visual logic: ${listToSentence(input.strategy.visualLogic)}.`,
-    `Overlay logic to support later composition: ${listToSentence(input.strategy.overlayStyle)}.`,
+    `Mechanism to visualize: ${providerSafeVisualPhrase(safeText(input.strategy.mechanism))}.`,
+    `Proof style to imply: ${providerSafeVisualPhrase(safeText(input.strategy.proofStyle) || rulePack.proofStyles[0] || "certainty")}.`,
+    `Source-photo direction: ${sourcePhotoDirection}.`,
+    `DealFlow will render the campaign proof, badges, chips, CTA, and offer labels after generation; do not place those elements in the provider image.`,
     `Property focus: ${input.propertyType}. Offer focus: ${input.keyOffer}.`,
     `Creative angle: ${input.angle}.`,
     `Media-buyer reference pattern: ${mediaBuyerReferencePattern}.`,

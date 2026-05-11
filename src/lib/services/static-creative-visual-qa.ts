@@ -1,5 +1,38 @@
 export const STATIC_CREATIVE_BACKGROUND_CONTRACT = "text_free_background_v2";
 
+export type StaticCreativeImageQaDecision = "accept" | "reject" | "review";
+
+export type StaticCreativeImageQaReason =
+  | "text_heavy"
+  | "gibberish_text_detected"
+  | "fake_ad_layout"
+  | "flyer_or_brochure_layout"
+  | "ui_or_dashboard_layout"
+  | "chart_or_table_detected"
+  | "listing_sheet_detected"
+  | "button_or_fake_cta_detected"
+  | "provider_returned_finished_ad"
+  | "image_fetch_failed"
+  | "qa_timeout";
+
+export type StaticCreativeImageQaResult = {
+  usable: boolean;
+  decision: StaticCreativeImageQaDecision;
+  reasons: StaticCreativeImageQaReason[];
+  textDensity?: number;
+  layoutRisk?: number;
+  detectedTextSamples?: string[];
+};
+
+type StaticCreativeImageQaMetadata = {
+  usable?: boolean | null;
+  decision?: StaticCreativeImageQaDecision | string | null;
+  reasons?: string[] | null;
+  textDensity?: number | null;
+  layoutRisk?: number | null;
+  detectedTextSamples?: string[] | null;
+};
+
 type StaticVisualContractInput = {
   imageUrl?: string | null;
   imagePrompt?: string | null;
@@ -14,6 +47,7 @@ type StaticVisualContractInput = {
   qualityGate?: {
     accepted?: boolean | null;
   } | null;
+  imageQa?: StaticCreativeImageQaMetadata | null;
 };
 
 export type StaticVisualAssetDecision = {
@@ -68,6 +102,13 @@ export function evaluateStaticVisualAssetDecision(
     return {
       usable: false,
       reason: "This generated visual failed the creative quality gate and must be regenerated.",
+    };
+  }
+
+  if (input.imageQa && (input.imageQa.usable === false || input.imageQa.decision !== "accept")) {
+    return {
+      usable: false,
+      reason: "This visual needs a cleaner background before it can be used as a launch-ready creative.",
     };
   }
 
