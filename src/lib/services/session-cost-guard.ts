@@ -310,6 +310,34 @@ export async function markSessionCostBudgetEvent(params: {
     return;
   }
 
+  const { data: existingEventRaw, error: existingEventError } = await admin
+    .from("provider_usage_events")
+    .select("id,organization_id,user_id,campaign_id,provider,operation,usage_date,status")
+    .eq("id", params.eventId)
+    .maybeSingle();
+
+  if (existingEventError) {
+    throw new ApiError(500, existingEventError.message, "provider_usage_event_fetch_failed");
+  }
+
+  const existingEvent =
+    existingEventRaw as {
+      organization_id: string | null;
+      user_id: string | null;
+      campaign_id: string | null;
+      provider: string | null;
+      operation: string | null;
+      usage_date: string | null;
+      status: string | null;
+    } | null;
+  const shouldReleaseUsageCount =
+    params.status === "released" &&
+    existingEvent?.status === "reserved" &&
+    Boolean(existingEvent.user_id) &&
+    Boolean(existingEvent.provider) &&
+    Boolean(existingEvent.operation) &&
+    Boolean(existingEvent.usage_date);
+
   const { error } = await admin
     .from("provider_usage_events")
     .update({
@@ -321,6 +349,50 @@ export async function markSessionCostBudgetEvent(params: {
 
   if (error) {
     throw new ApiError(500, error.message, "provider_usage_event_update_failed");
+  }
+
+  if (shouldReleaseUsageCount && existingEvent) {
+    const userId = existingEvent.user_id;
+    const provider = existingEvent.provider;
+    const operation = existingEvent.operation;
+    const usageDate = existingEvent.usage_date;
+
+    if (userId && provider && operation && usageDate) {
+      let usageLimitQuery = (admin as any)
+        .from("provider_usage_limits")
+        .select("id,usage_count")
+        .eq("user_id", userId)
+        .eq("provider", provider)
+        .eq("operation", operation)
+        .eq("usage_date", usageDate);
+
+      usageLimitQuery = existingEvent.campaign_id
+        ? usageLimitQuery.eq("campaign_id", existingEvent.campaign_id)
+        : usageLimitQuery.is("campaign_id", null);
+
+      const { data: usageLimitRows, error: usageLimitReadError } = await usageLimitQuery.limit(1);
+
+      if (usageLimitReadError) {
+        throw new ApiError(500, usageLimitReadError.message, "provider_usage_limit_fetch_failed");
+      }
+
+      const usageLimit = Array.isArray(usageLimitRows)
+        ? usageLimitRows[0] as { id?: string | null; usage_count?: number | null } | null
+        : null;
+      if (usageLimit?.id) {
+        const { error: usageLimitUpdateError } = await admin
+          .from("provider_usage_limits")
+          .update({
+            usage_count: Math.max(Number(usageLimit.usage_count ?? 0) - 1, 0),
+            updated_at: new Date().toISOString(),
+          } as never)
+          .eq("id", usageLimit.id);
+
+        if (usageLimitUpdateError) {
+          throw new ApiError(500, usageLimitUpdateError.message, "provider_usage_limit_release_failed");
+        }
+      }
+    }
   }
 
   if (params.status === "released" || params.status === "failed") {

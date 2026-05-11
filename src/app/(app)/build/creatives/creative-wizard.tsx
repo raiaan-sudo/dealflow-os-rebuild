@@ -83,6 +83,9 @@ type SystemJob = {
   kind?: string | null;
   status?: string | null;
   error_message?: string | null;
+  result?: {
+    staticAds?: CreativeOption[] | null;
+  } | null;
 };
 
 function isUgcCreative(creative: CreativeOption) {
@@ -107,6 +110,18 @@ function customerVideoMessage(message?: string | null) {
   }
 
   return text;
+}
+
+function getImageLimitMessage(creatives: CreativeOption[]) {
+  const blockedCreative = creatives.find((creative) =>
+    /maximum \d+ AI image generation|maximum \d+ AI image generations|daily image generation limit|provider_usage_limit_reached|session already used the maximum/i.test(
+      creative.imageGenerationMessage ?? "",
+    ),
+  );
+
+  return blockedCreative
+    ? "Daily image generation limit reached for this campaign. Instant composed previews stay available; try again after the daily limit resets or have the owner intentionally raise the image cap."
+    : null;
 }
 
 export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: CreativeWizardProps) {
@@ -169,6 +184,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
   const hasCreditBlocker = rankedCreatives.some((creative) =>
     /insufficient credits|add at least/i.test(creative.imageGenerationMessage ?? ""),
   );
+  const imageLimitMessage = getImageLimitMessage(rankedCreatives);
   const imageGenerationSignature = rankedCreatives
     .map((creative) => [
       creative.id,
@@ -215,7 +231,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
           if (surface === "video") {
             setVideoMessage("AI UGC video render is processing. This page will update when the video file is ready.");
           } else {
-            setRenderMessage("Image previews are ready.");
+            setRenderMessage(getImageLimitMessage(job.result?.staticAds ?? []) ?? "Image previews are ready.");
           }
           source.close();
           jobStreamsRef.current.delete(jobId);
@@ -491,9 +507,10 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
   const imageActionPending = renderingImages || imageRenderPending;
   const imagePendingMessage = "Image preview is being prepared. This page will update when the visual is ready.";
   const imageStatusMessage = needsImageGeneration
-    ? allImagesMissing
+    ? imageLimitMessage ??
+      (allImagesMissing
       ? "Creating the full visual set now. The cards below stay visible while final images render."
-      : "Refreshing a few visuals. You can keep reviewing the composed previews below."
+      : "Refreshing a few visuals. You can keep reviewing the composed previews below.")
     : renderMessage;
   const getDisplayCreative = (creative: CreativeOption): CreativeOption =>
     imageRenderPending && creativeNeedsImageGeneration(creative)
@@ -563,9 +580,11 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
 	                    force: needsImageGeneration,
 	                    missingOnly: hasMissingImages && !hasFailedOrRejectedImages,
 	                  })}
-	                  disabled={imageActionPending}
+	                  disabled={imageActionPending || Boolean(imageLimitMessage)}
 	                >
-	                  {imageActionPending
+	                  {imageLimitMessage
+	                    ? "Daily image limit reached"
+	                    : imageActionPending
 	                    ? "Refreshing previews..."
 	                    : needsImageGeneration
 	                      ? "Regenerate previews"
@@ -577,9 +596,9 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
 	                  type="button"
 	                  variant="secondary"
 	                  onClick={() => void queueImagePreviews({ force: true, missingOnly: false })}
-	                  disabled={imageActionPending}
+	                  disabled={imageActionPending || Boolean(imageLimitMessage)}
 	                >
-	                  {imageActionPending ? "Retrying..." : "Retry preview render"}
+	                  {imageLimitMessage ? "Daily image limit reached" : imageActionPending ? "Retrying..." : "Retry preview render"}
 	                </Button>
               ) : null}
               {renderMessage ? (
@@ -601,7 +620,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
 	                >
 	                  Retry image previews
 	                </button>
-	              ) : hasAttemptedImageGeneration && !imageActionPending ? (
+	              ) : hasAttemptedImageGeneration && !imageActionPending && !imageLimitMessage ? (
                 <button
                   type="button"
                   className="ml-2 font-semibold text-amber-50 underline decoration-amber-200/50 underline-offset-4"

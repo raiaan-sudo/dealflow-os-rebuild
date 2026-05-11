@@ -318,6 +318,8 @@ function runOfflineChecks() {
   assertIncludes(avatarProvider, "AI video rendering is not enabled for this workspace yet.", "Video disabled customer copy", "provider kill-switch failures use customer-safe copy");
   assertIncludes(creativeWizard, "imageRenderPending", "Creative retry optimistic state", "retry clicks immediately clear stale failed-copy and show a generating state while provider work runs");
   assertIncludes(creativeWizard, "Image preview is being prepared. This page will update when the visual is ready.", "Creative retry pending copy", "creative cards show immediate pending feedback instead of stale cap errors");
+  assertIncludes(creativeWizard, "Daily image generation limit reached for this campaign.", "Creative image cap copy", "creative retries show a clear daily-limit state instead of pretending renders are still running");
+  assertIncludes(creativeWizard, "Daily image limit reached", "Creative image cap button state", "retry buttons are disabled when the campaign image cap is exhausted");
   assertIncludes(creativeWizard, "AI UGC video render is processing. This page will update when the video file is ready.", "Creative video async copy", "video job completion does not claim playable video is ready before a file URL exists");
   assertExcludes(creativeWizard, "AI UGC video is ready.", "Creative video premature ready copy removed", "video generation does not claim a playable render before the finished URL is available");
   assertIncludes(creativeWizard, "Back to build", "Creative wizard build return", "creative selection returns to the Build workspace instead of another setup flow");
@@ -704,6 +706,7 @@ function runOfflineChecks() {
   assertIncludes(sessionCostGuard, "provider_usage_idempotency_consumed", "Paid generation duplicate-spend guard", "consumed provider usage reservations fail closed instead of calling the provider again");
   assertIncludes(sessionCostGuard, "consumeCreditsForGeneration", "Provider usage credit coupling", "provider reservations consume credits before paid calls execute");
   assertIncludes(sessionCostGuard, "refundCreditsForProviderUsageEvent", "Credit refund coupling", "released or failed paid calls refund reserved credits");
+  assertIncludes(sessionCostGuard, "provider_usage_limit_release_failed", "Released provider usage cap refund", "released provider attempts decrement the durable usage counter instead of exhausting the daily image cap");
   assertIncludes(legacyAiProviders, "providerUsage?.mark", "Provider usage ledger transitions", "paid-generation reservations are marked consumed/released after the provider call");
   assertIncludes(legacyAiProviders, "providerJobWasCreated", "Provider usage pre-job release", "provider attempts that fail before a provider job id is returned release the daily reservation");
   assertIncludes(videoRoute, "kind: \"video_generation\"", "Video generation job route", "AI video generation is queued through the paid system job path");
