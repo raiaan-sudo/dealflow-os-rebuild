@@ -1,6 +1,7 @@
 export const STATIC_CREATIVE_BACKGROUND_CONTRACT = "text_free_background_v2";
 
 export type StaticCreativeImageQaDecision = "accept" | "reject" | "review";
+export type StaticCreativeImageQaMode = "background_only" | "finished_ad";
 
 export type StaticCreativeImageQaReason =
   | "text_heavy"
@@ -12,12 +13,17 @@ export type StaticCreativeImageQaReason =
   | "listing_sheet_detected"
   | "button_or_fake_cta_detected"
   | "provider_returned_finished_ad"
+  | "finished_ad_text_unverified"
+  | "required_cta_missing"
+  | "required_offer_missing"
+  | "brand_misspelled"
   | "image_fetch_failed"
   | "qa_timeout";
 
 export type StaticCreativeImageQaResult = {
   usable: boolean;
   decision: StaticCreativeImageQaDecision;
+  mode?: StaticCreativeImageQaMode;
   reasons: StaticCreativeImageQaReason[];
   textDensity?: number;
   layoutRisk?: number;
@@ -27,6 +33,7 @@ export type StaticCreativeImageQaResult = {
 type StaticCreativeImageQaMetadata = {
   usable?: boolean | null;
   decision?: StaticCreativeImageQaDecision | string | null;
+  mode?: StaticCreativeImageQaMode | string | null;
   reasons?: string[] | null;
   textDensity?: number | null;
   layoutRisk?: number | null;
@@ -110,6 +117,20 @@ export function evaluateStaticVisualAssetDecision(
     return {
       usable: false,
       reason: "This visual needs a cleaner background before it can be used as a launch-ready creative.",
+    };
+  }
+
+  if (input.imageQa?.mode === "finished_ad") {
+    if (input.storageNormalized === false) {
+      return {
+        usable: false,
+        reason: "This visual needs to be stored in DealFlow before it can be used as a launch-ready creative.",
+      };
+    }
+
+    return {
+      usable: true,
+      reason: null,
     };
   }
 

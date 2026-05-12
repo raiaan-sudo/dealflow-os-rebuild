@@ -20,8 +20,14 @@ import { debugLog } from "@/lib/debug";
 import {
   generateStaticCreativeAds,
   mergeStaticCreativeImageResults,
+  type CreativeEngineInput,
   type StaticCreativeAsset,
 } from "@/lib/services/creative-engine";
+import {
+  getApprovedCreativeIntakeGenerationContext,
+  hasSameCreativeIntakeGenerationContext,
+  isCreativeChatIntakeEnabled,
+} from "@/lib/services/creative-chat-intake-service";
 import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
 import { persistStaticCreativeAssets } from "@/lib/services/static-creative-asset-service";
 import {
@@ -786,6 +792,7 @@ export async function regenerateStaticCreativeAssetsForUser(
     force?: boolean;
     missingOnly?: boolean;
     maxGenerations?: number;
+    creativeIntake?: CreativeEngineInput["creative_intake"];
     supabase?: PersistenceClient;
     providerUsageRunId?: string | null;
   },
@@ -802,6 +809,31 @@ export async function regenerateStaticCreativeAssetsForUser(
   const row = await loadCampaignPlanRowForUser(supabase, userId, campaignId);
   const campaign = mapCampaignRow(row);
   const savedDocument = getSavedCampaignDocumentFromRow(row);
+  const durableCreativeIntake = isCreativeChatIntakeEnabled()
+    ? getApprovedCreativeIntakeGenerationContext(savedDocument)
+    : options?.creativeIntake ?? null;
+
+  if (isCreativeChatIntakeEnabled()) {
+    if (!durableCreativeIntake || durableCreativeIntake.generationPhase !== "static") {
+      throw new ApiError(
+        409,
+        "Review and approve the static creative brief before rendering paid image previews.",
+        "creative_brief_review_required",
+      );
+    }
+
+    if (
+      options?.creativeIntake &&
+      !hasSameCreativeIntakeGenerationContext(options.creativeIntake, durableCreativeIntake)
+    ) {
+      throw new ApiError(
+        409,
+        "The queued static creative job no longer matches the approved creative brief.",
+        "creative_brief_version_mismatch",
+      );
+    }
+  }
+
   const persistedStaticAds = await loadStaticCreativeAssets(supabase, userId, campaignId);
   const savedStaticAds = Array.isArray(savedDocument?.staticAds)
     ? (savedDocument.staticAds as StaticCreativeAsset[])
@@ -861,6 +893,8 @@ export async function regenerateStaticCreativeAssetsForUser(
       campaign_id: campaignId,
       reuse_static_assets: currentRecord.creatives.staticAds,
       max_static_image_generations: options?.maxGenerations,
+      creative_intake: durableCreativeIntake,
+      force: options?.force === true,
       provider_usage_context: {
         createForAsset: (asset) => {
           const runScope = options?.providerUsageRunId?.trim() || "default";

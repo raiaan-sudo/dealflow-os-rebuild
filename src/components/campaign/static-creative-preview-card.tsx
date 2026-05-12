@@ -124,6 +124,11 @@ export function StaticCreativePreviewCard({
           <p className="text-sm font-medium text-muted-foreground">CTA</p>
           <p className="mt-1 text-sm font-semibold text-foreground">{safeCta}</p>
         </div>
+        {!compact ? (
+          <p className="rounded-2xl border border-cyan-300/14 bg-cyan-300/[0.055] px-3 py-2 text-xs leading-5 text-cyan-100">
+            Full-resolution available through launch workflow, not direct download.
+          </p>
+        ) : null}
       </div>
       {fullCreativeOpen ? (
         <div

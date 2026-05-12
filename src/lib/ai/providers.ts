@@ -1,27 +1,19 @@
 // @ts-nocheck
 import { type CreativeBrief } from "@/lib/ai/creative-brief";
+import {
+  selectAvatarProfile,
+  selectVoiceProfile,
+  type AvatarProfile,
+  type VoiceProfile,
+} from "@/lib/ai/avatar-profile";
 import { getImageGenerationEnv, getMediaGenerationProvider, getVideoGenerationEnv } from "@/lib/env";
 import { getAvatarVideoProvider } from "@/lib/integrations/creative/avatar-provider";
 import { getImageGenerationProvider } from "@/lib/integrations/creative/image-provider";
 import { logWarn } from "@/lib/logging";
 import type { StaticCreativeAsset } from "@/lib/services/creative-engine";
 
-export type AvatarProfile = {
-  id: "young_agent" | "trusted_expert" | "ugc_casual";
-  genderPresentation: string;
-  ageRange: string;
-  stylePersona: string;
-  energy: string;
-  nicheFit: string;
-};
-
-export type VoiceProfile = {
-  id: "confident" | "friendly" | "authoritative";
-  tone: string;
-  accent: string;
-  speed: string;
-  authorityLevel: string;
-};
+export type { AvatarProfile, VoiceProfile } from "@/lib/ai/avatar-profile";
+export { selectAvatarProfile, selectVoiceProfile } from "@/lib/ai/avatar-profile";
 
 export type ImageAdResult = {
   imageUrl: string | null;
@@ -88,77 +80,6 @@ function toSlug(value: string) {
 
 function buildMockVideoUrl(seed = "generated-video") {
   return `/mock-assets/video/${toSlug(seed) || "generated-video"}.mp4`;
-}
-
-function defaultAvatarProfile(brief: CreativeBrief): AvatarProfile {
-  if (/first|new|starter/i.test(brief.audience)) {
-    return {
-      id: "young_agent",
-      genderPresentation: "approachable professional",
-      ageRange: "26-34",
-      stylePersona: "young local agent",
-      energy: "upbeat",
-      nicheFit: `${brief.audience} in ${brief.location}`,
-    };
-  }
-
-  if (/investor|investment|cashflow/i.test(brief.audience)) {
-    return {
-      id: "trusted_expert",
-      genderPresentation: "polished professional",
-      ageRange: "35-50",
-      stylePersona: "trusted real estate expert",
-      energy: "calm and decisive",
-      nicheFit: `${brief.audience} in ${brief.location}`,
-    };
-  }
-
-  return {
-    id: "ugc_casual",
-    genderPresentation: "friendly relatable",
-    ageRange: "28-40",
-    stylePersona: "casual UGC creator",
-    energy: "warm and conversational",
-    nicheFit: `${brief.audience} in ${brief.location}`,
-  };
-}
-
-function defaultVoiceProfile(brief: CreativeBrief): VoiceProfile {
-  if (/first|new|starter/i.test(brief.audience)) {
-    return {
-      id: "friendly",
-      tone: "friendly and reassuring",
-      accent: "local neutral",
-      speed: "medium",
-      authorityLevel: "medium",
-    };
-  }
-
-  if (/investor|investment|cashflow/i.test(brief.audience)) {
-    return {
-      id: "authoritative",
-      tone: "authoritative and sharp",
-      accent: "local neutral",
-      speed: "measured",
-      authorityLevel: "high",
-    };
-  }
-
-  return {
-    id: "confident",
-    tone: "confident and clear",
-    accent: "local neutral",
-    speed: "medium",
-    authorityLevel: brief.scriptStyle === "authority" ? "high" : "medium",
-  };
-}
-
-export function selectAvatarProfile(brief: CreativeBrief): AvatarProfile {
-  return defaultAvatarProfile(brief);
-}
-
-export function selectVoiceProfile(brief: CreativeBrief): VoiceProfile {
-  return defaultVoiceProfile(brief);
 }
 
 function buildStoryboardScript(creativeBrief: CreativeBrief) {
@@ -253,7 +174,7 @@ export async function createImageAd(
   const imageProvider = getImageGenerationProvider();
   const mediaProvider = getMediaGenerationProvider();
   const imageGenerationEnabled =
-    mediaProvider === "higgsfield"
+    mediaProvider === "higgsfield" || mediaProvider === "higgsfield_marketing_studio"
       ? process.env.ALLOW_HIGGSFIELD_IMAGE_GENERATION === "true"
       : process.env.ALLOW_OPENAI_IMAGE_GENERATION === "true";
 
@@ -265,17 +186,29 @@ export async function createImageAd(
     try {
       budgetReservation = await providerUsage?.reserve() ?? null;
 
+      const configuredPrompt = staticAsset?.imagePromptConfig?.prompt ?? staticAsset?.imagePrompt ?? null;
+      const configuredNegativePrompt = staticAsset?.imagePromptConfig?.negativePrompt ?? null;
+      const marketingStudioPrompt = configuredPrompt ?? [
+        `Create a finished, launch-ready real estate paid social ad for ${audience} in ${market}.`,
+        `Headline: ${staticAsset?.headline || hook}.`,
+        `Offer: ${offer}.`,
+        `Body: ${staticAsset?.primaryText || creativeBrief.visualDirection}.`,
+        `CTA: ${staticAsset?.cta || "Get My List"}.`,
+        "Use clean professional layout, readable typography, real-estate branding direction, strong CTA hierarchy, and no fake dashboard, listing sheet, chart, table, UI screenshot, gibberish, or misspelled text.",
+      ].join(" ");
+      const backgroundOnlyPrompt =
+        configuredPrompt ??
+        `A modern real estate ad image for ${audience} in ${market}. Scene: ${creativeBrief.visualDirection}. Style: clean, bright, premium, realistic. No text in image.`;
       const result = await imageProvider.execute({
         aspectRatio: staticAsset?.imagePromptConfig?.aspectRatio ?? "1:1",
         model:
-          imageProvider.name === "higgsfield"
+          imageProvider.name === "higgsfield" || imageProvider.name === "higgsfield_marketing_studio"
             ? undefined
             : staticAsset?.preferredImageModel ?? getImageGenerationEnv()?.model ?? "gpt-image-1.5",
-        prompt:
-          staticAsset?.imagePromptConfig?.prompt ??
-          staticAsset?.imagePrompt ??
-          `A modern real estate ad image for ${audience} in ${market}. Scene: ${creativeBrief.visualDirection}. Style: clean, bright, premium, realistic. No text in image.`,
-        negativePrompt: staticAsset?.imagePromptConfig?.negativePrompt ?? null,
+        prompt: imageProvider.name === "higgsfield_marketing_studio" ? marketingStudioPrompt : backgroundOnlyPrompt,
+        negativePrompt: imageProvider.name === "higgsfield_marketing_studio"
+          ? configuredNegativePrompt ?? "gibberish text; misspelled brand names; fake dashboard; listing sheet; chart; table; UI screenshot; unreadable typography"
+          : configuredNegativePrompt,
       });
       const parsed = imageProvider.parseResult(result);
 
@@ -362,7 +295,7 @@ export async function createHeyGenVideo({
   let providerAssetId: string | null = null;
   const avatarProvider = getAvatarVideoProvider();
   const videoGenerationEnabled =
-    getMediaGenerationProvider() === "higgsfield"
+    getMediaGenerationProvider() === "higgsfield" || getMediaGenerationProvider() === "higgsfield_marketing_studio"
       ? process.env.ALLOW_HIGGSFIELD_VIDEO_GENERATION === "true"
       : process.env.ALLOW_HEYGEN_VIDEO_GENERATION === "true";
 
@@ -443,7 +376,7 @@ export async function createVideoAd(
   let videoUrl = buildMockVideoUrl(`${market}-${audience}-${offer}`);
 
   const videoGenerationEnabled =
-    getMediaGenerationProvider() === "higgsfield"
+    getMediaGenerationProvider() === "higgsfield" || getMediaGenerationProvider() === "higgsfield_marketing_studio"
       ? process.env.ALLOW_HIGGSFIELD_VIDEO_GENERATION === "true"
       : process.env.ALLOW_HEYGEN_VIDEO_GENERATION === "true" && Boolean(apiKey && avatarId && voiceId);
 

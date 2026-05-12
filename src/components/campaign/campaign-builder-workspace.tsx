@@ -51,7 +51,6 @@ import type {
   BuiltCampaign,
   CampaignStrategyInput,
 } from "@/lib/services/campaign-orchestrator";
-import { buildCampaign } from "@/lib/services/campaign-orchestrator";
 import type { StaticCreativeAsset } from "@/lib/services/creative-engine";
 import type { FullCampaignRecord, SaveCampaignResult } from "@/lib/types/campaign-records";
 import type { CreativeAsset } from "@/lib/types/creative-assets";
@@ -119,6 +118,120 @@ function createInitialStrategy(strategy?: CampaignStrategyInput): CampaignStrate
     market_type: strategy?.market_type || "buyer",
     funnel_goal: strategy?.funnel_goal || "survey",
   };
+}
+
+function buildCampaign(input?: CampaignStrategyInput | null): BuiltCampaign {
+  const strategy = createInitialStrategy(input ?? undefined);
+  const market = strategy.location || "your market";
+  const audience = strategy.audience || "qualified prospects";
+  const offer = strategy.offer || "a stronger next step";
+  const cta = /seller/i.test(`${audience} ${offer}`)
+    ? "Get My Sale Plan"
+    : /investor/i.test(`${audience} ${offer}`)
+      ? "See Matching Deals"
+      : "See My Options";
+  const headline = `${offer} in ${market}`;
+  const primaryText = `A focused campaign for ${audience} in ${market} built around ${offer}.`;
+  const staticItems = [
+    ["static-direct", "Direct response static ad", "Clear offer and CTA hierarchy"],
+    ["static-local", "Local expert static ad", "Market-specific trust and proof"],
+    ["static-proof", "Proof-led static ad", "Simple proof point and next step"],
+    ["static-native", "Native-style static ad", "Organic-feeling visual with paid-social structure"],
+  ].map(([id, title, concept], index) => ({
+    id,
+    kind: "static",
+    angle: index === 1 ? "authority" : index === 2 ? "opportunity" : "curiosity",
+    format: index === 3 ? "ugc" : "montage",
+    title,
+    hook: headline,
+    overlayText: headline,
+    primaryText,
+    headline,
+    cta,
+    score: 8.2 - (index * 0.1),
+    recommended: index === 0,
+    concept,
+    visualDirection: `${concept} for ${audience} in ${market}`,
+    imagePrompt: "",
+    scriptLines: [],
+    sceneDescriptions: [],
+    onScreenText: [headline, cta],
+    assetRefs: { imageUrl: null, videoUrl: null, thumbnailUrl: null, voiceUrl: null },
+  }));
+  const videoItems = [
+    ["video-expert", "Local expert UGC video", "founder / local expert"],
+    ["video-customer", "Customer POV UGC video", "customer / relatable UGC"],
+  ].map(([id, title, creatorStyle], index) => ({
+    id,
+    kind: "video",
+    angle: index === 0 ? "authority" : "curiosity",
+    format: "ugc",
+    title,
+    hook: headline,
+    overlayText: headline,
+    primaryText,
+    headline,
+    cta,
+    score: 8 - (index * 0.1),
+    recommended: index === 0,
+    concept: title,
+    visualDirection: `${creatorStyle} concept for ${audience} in ${market}`,
+    imagePrompt: "",
+    scriptLines: [headline, primaryText, cta],
+    sceneDescriptions: ["Hook", "Offer", "CTA"],
+    onScreenText: [headline, cta],
+    assetRefs: { imageUrl: null, videoUrl: null, thumbnailUrl: null, voiceUrl: null },
+    creatorStyle,
+    voiceStyle: index === 0 ? "clear and direct" : "warm and conversational",
+  }));
+
+  return {
+    strategy,
+    items: [...staticItems, ...videoItems],
+    creatives: staticItems.map((item) => ({
+      hook: item.hook,
+      angle: item.angle === "authority" ? "authority" : "curiosity",
+      format: item.format,
+      concept: item.concept,
+      visual_direction: item.visualDirection,
+    })),
+    copy: staticItems.map((item) => ({
+      hook: item.hook,
+      primary_text: item.primaryText,
+      script: "",
+      headline: item.headline,
+      cta: item.cta,
+    })),
+    funnel: {
+      funnel_type: strategy.funnel_goal === "lead_form" ? "landing_page_form" : strategy.funnel_goal === "book_call" ? "landing_page_book_call" : "landing_page_survey",
+      headline,
+      subheadline: primaryText,
+      cta,
+      sections: [
+        {
+          id: "hero",
+          type: "hero",
+          variant: "direct",
+          title: headline,
+          content: [primaryText],
+          visible: true,
+          style: { spacing: "comfortable", width: "content", align: "left", theme: "dark" },
+        },
+        {
+          id: "form",
+          type: "form",
+          variant: "lead_capture",
+          title: cta,
+          content: [`Share your details to review ${offer}.`],
+          visible: true,
+          style: { spacing: "comfortable", width: "content", align: "left", theme: "accent" },
+        },
+      ],
+      form_fields: ["Name", "Phone", "Email"],
+      follow_up_action: "Review the lead and follow up manually.",
+      optimization_notes: [],
+    },
+  } as BuiltCampaign;
 }
 
 function createInitialCampaign(strategy?: CampaignStrategyInput): BuiltCampaign {
@@ -474,7 +587,13 @@ function VideoStoryboardPreview({
         <div className="mt-4 rounded-[20px] border border-primary/15 bg-primary/[0.05] p-4">
           <p className="text-xs uppercase tracking-[0.18em] text-primary/80">Video preview</p>
           <div className="mt-3 overflow-hidden rounded-[18px] border border-white/8 bg-black/30">
-            <video src={videoUrl} controls className="aspect-[9/16] w-full bg-black object-cover" />
+            <video
+              src={videoUrl}
+              controls
+              controlsList="nodownload noplaybackrate"
+              disablePictureInPicture
+              className="aspect-[9/16] w-full bg-black object-cover"
+            />
           </div>
         </div>
       ) : null}

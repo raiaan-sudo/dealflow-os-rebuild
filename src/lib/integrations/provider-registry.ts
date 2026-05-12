@@ -67,7 +67,7 @@ const registeredProviders: RegisteredProvider[] = [
   {
     id: "ai_image_generation",
     label: "AI Image Generation",
-    vendor: getMediaGenerationProvider() === "higgsfield" ? "Higgsfield" : "OpenAI",
+    vendor: getMediaGenerationProvider() === "higgsfield" || getMediaGenerationProvider() === "higgsfield_marketing_studio" ? "Higgsfield" : "OpenAI",
     category: "ai",
     description: "Static ad image generation for launch-ready creative assets.",
     settingsHint: "Add AI image credentials to generate live static ad images.",
@@ -77,7 +77,7 @@ const registeredProviders: RegisteredProvider[] = [
   {
     id: "ai_video_generation",
     label: "AI Video Generation",
-    vendor: getMediaGenerationProvider() === "higgsfield" ? "Higgsfield" : "HeyGen",
+    vendor: getMediaGenerationProvider() === "higgsfield" || getMediaGenerationProvider() === "higgsfield_marketing_studio" ? "Higgsfield" : "HeyGen",
     category: "ai",
     description: "Video generation for UGC-style and campaign-ready ad creative.",
     settingsHint: "Add video provider credentials to turn storyboard output into rendered video ads.",

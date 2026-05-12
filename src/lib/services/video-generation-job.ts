@@ -9,6 +9,12 @@ import { getAvatarVideoProvider } from "@/lib/integrations/creative/avatar-provi
 import { getSavedCampaignDocumentFromRow } from "@/lib/services/canonical-campaign";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import type { VideoCreativeAsset } from "@/lib/services/creative-engine";
+import {
+  getApprovedCreativeIntakeGenerationContext,
+  hasSameCreativeIntakeGenerationContext,
+  isCreativeChatIntakeEnabled,
+  type CreativeIntakeGenerationContext,
+} from "@/lib/services/creative-chat-intake-service";
 import type { Database, Json } from "@/lib/supabase/types";
 import type { CreativeAsset } from "@/lib/types/creative-assets";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -37,6 +43,7 @@ export type VideoGenerationJobPayload = {
   audience: string | null;
   location: string | null;
   force: boolean;
+  creativeIntake?: CreativeIntakeGenerationContext | null;
 };
 
 export type VideoGenerationStatusJobPayload = {
@@ -96,6 +103,63 @@ function mergeVideoAdState(
 
   next.push(nextVideo);
   return next;
+}
+
+function buildCreativeIntakeAssetMetadata(
+  creativeIntake?: CreativeIntakeGenerationContext | null,
+) {
+  if (!creativeIntake) {
+    return {
+      creativeIntakePromptVersionUsed: null,
+      creativeIntakeGenerationContext: null,
+    };
+  }
+
+  return {
+    creativeIntakePromptVersionUsed: creativeIntake.promptVersion,
+    creativeIntakeGenerationContext: {
+      version: creativeIntake.version,
+      conversationId: creativeIntake.conversationId,
+      campaignId: creativeIntake.campaignId,
+      revisionNumber: creativeIntake.revisionNumber,
+      approvedAt: creativeIntake.approvedAt,
+      outputMode: creativeIntake.outputMode,
+      generationPhase: creativeIntake.generationPhase,
+      promptVersionCreatedAt: creativeIntake.promptVersion.createdAt,
+    },
+  };
+}
+
+function resolveDurableVideoCreativeIntake(
+  savedDocument: unknown,
+  payloadContext?: CreativeIntakeGenerationContext | null,
+) {
+  if (!isCreativeChatIntakeEnabled()) {
+    return payloadContext ?? null;
+  }
+
+  const durableCreativeIntake = getApprovedCreativeIntakeGenerationContext(savedDocument);
+
+  if (!durableCreativeIntake || durableCreativeIntake.generationPhase !== "ugc_video") {
+    throw new ApiError(
+      409,
+      "Review and approve the video creative brief before rendering paid video previews.",
+      "creative_brief_review_required",
+    );
+  }
+
+  if (
+    payloadContext &&
+    !hasSameCreativeIntakeGenerationContext(payloadContext, durableCreativeIntake)
+  ) {
+    throw new ApiError(
+      409,
+      "The queued video creative job no longer matches the approved creative brief.",
+      "creative_brief_version_mismatch",
+    );
+  }
+
+  return durableCreativeIntake;
 }
 
 async function loadCampaignPlanRow(
@@ -304,6 +368,7 @@ export async function runVideoGenerationJob(params: {
 }) {
   const row = await loadCampaignPlanRow(params.supabase, params.userId, params.campaignId);
   const savedDocument = getSavedCampaignDocumentFromRow(row) ?? {};
+  const creativeIntake = resolveDurableVideoCreativeIntake(savedDocument, params.payload.creativeIntake);
   const existingVideoAds = Array.isArray(savedDocument.videoAds)
     ? (savedDocument.videoAds as VideoCreativeAsset[])
     : [];
@@ -380,6 +445,7 @@ export async function runVideoGenerationJob(params: {
           avatarId: params.payload.avatarProfileId,
           voiceId: params.payload.voiceProfile,
           unavailableReason: "AI video generation is not configured yet.",
+          ...buildCreativeIntakeAssetMetadata(creativeIntake),
         } as Json,
       } as never)
       .select("*")
@@ -427,9 +493,10 @@ export async function runVideoGenerationJob(params: {
   let providerVideo;
 
   try {
+    const approvedPrompt = creativeIntake?.promptVersion.generatedPrompt ?? null;
     providerVideo = avatarProvider.parseResult(await avatarProvider.execute({
       script: params.payload.scriptText,
-      prompt: [
+      prompt: approvedPrompt ?? [
         "Create a polished native UGC-style vertical video for a real estate lead generation campaign.",
         "Show a believable creator/customer/agent in a real home or market setting with natural phone-camera energy.",
         "Use the provided script as spoken direction only. Do not render captions, lower thirds, pricing cards, UI screens, logos, watermarks, fake documents, or on-screen text inside the video.",
@@ -495,6 +562,7 @@ export async function runVideoGenerationJob(params: {
         providerStatus: providerVideo.status,
         providerMetadata: providerVideo.metadata ?? null,
         qualityGateStatus: providerVideo.fileUrl ? "candidate_ready" : "processing",
+        ...buildCreativeIntakeAssetMetadata(creativeIntake),
       } as Json,
     } as never)
     .select("*")

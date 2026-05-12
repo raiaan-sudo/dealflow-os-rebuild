@@ -523,7 +523,7 @@ export function PrepaywallCampaignPreview({
               <CompactLockedPill icon={ImageIcon} label="Static locked" />
               <CompactLockedPill icon={Sparkles} label="AI image generation locked" />
               <CompactLockedPill icon={PlayCircle} label="AI video generation locked" />
-              <CompactLockedPill icon={MonitorSmartphone} label="Export locked" />
+              <CompactLockedPill icon={MonitorSmartphone} label="Full-resolution locked" />
             </div>
 
             <div className="flex min-w-0 items-start gap-2 rounded-[18px] border border-white/10 bg-black/18 px-3 py-2 text-[11px] leading-4 text-white/52">

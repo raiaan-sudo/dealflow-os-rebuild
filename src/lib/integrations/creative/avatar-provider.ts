@@ -229,15 +229,18 @@ class HiggsfieldVideoProvider implements AvatarVideoProvider {
 
   isConfigured() {
     const env = getHiggsfieldEnv();
-    return getMediaGenerationProvider() === "higgsfield" && Boolean(env?.credentials);
+    const provider = getMediaGenerationProvider();
+    return (provider === "higgsfield" || provider === "higgsfield_marketing_studio") && Boolean(env?.credentials);
   }
 
   validateConfig(): ProviderConfigValidation {
     const validation = validateHiggsfieldEnv();
+    const provider = getMediaGenerationProvider();
+    const higgsfieldSelected = provider === "higgsfield" || provider === "higgsfield_marketing_studio";
     return {
-      configured: getMediaGenerationProvider() === "higgsfield" && validation.configured,
+      configured: higgsfieldSelected && validation.configured,
       missingConfig:
-        getMediaGenerationProvider() === "higgsfield"
+        higgsfieldSelected
           ? validation.missing
           : ["MEDIA_GENERATION_PROVIDER=higgsfield"],
     };
@@ -271,7 +274,8 @@ class HiggsfieldVideoProvider implements AvatarVideoProvider {
       };
     }
 
-    if (!env?.credentials || getMediaGenerationProvider() !== "higgsfield") {
+    const provider = getMediaGenerationProvider();
+    if (!env?.credentials || (provider !== "higgsfield" && provider !== "higgsfield_marketing_studio")) {
       return {
         ok: false,
         providerName: this.name,
@@ -354,7 +358,8 @@ class HiggsfieldVideoProvider implements AvatarVideoProvider {
 
 export function getAvatarVideoProvider(): AvatarVideoProvider {
   const higgsfield = new HiggsfieldVideoProvider();
-  if (getMediaGenerationProvider() === "higgsfield") {
+  const provider = getMediaGenerationProvider();
+  if (provider === "higgsfield" || provider === "higgsfield_marketing_studio") {
     return higgsfield.isConfigured() ? higgsfield : new UnsupportedAvatarProvider();
   }
 

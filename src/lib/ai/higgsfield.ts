@@ -1,5 +1,9 @@
+import { accessSync, constants as fsConstants } from "node:fs";
+import { execFile } from "node:child_process";
+import path from "node:path";
 import {
   getHiggsfieldEnv,
+  getHiggsfieldMarketingStudioEnv,
   getMediaGenerationProvider,
   validateHiggsfieldEnv,
 } from "@/lib/env";
@@ -63,9 +67,170 @@ type HiggsfieldImageInput = {
 };
 
 const HIGGSFIELD_SOUL_TEXT_TO_IMAGE_ENDPOINT = "/v1/text2image/soul";
+const HIGGSFIELD_MARKETING_STUDIO_IMAGE_MODEL = "marketing_studio_image";
+
+export type HiggsfieldCliReadiness = {
+  enabled: boolean;
+  ready: boolean;
+  mode: "cli" | "api_adapter";
+  cliPath: string;
+  resolvedPath: string | null;
+  reason: string | null;
+  mcpStatus: "future_only";
+};
+
+function isHiggsfieldProviderSelected() {
+  const provider = getMediaGenerationProvider();
+  return provider === "higgsfield" || provider === "higgsfield_marketing_studio";
+}
 
 function safeText(value: unknown) {
   return (value ?? "").toString().trim();
+}
+
+function resolveExecutablePath(command: string) {
+  const value = safeText(command);
+
+  if (!value) {
+    return null;
+  }
+
+  const candidates = value.includes("/")
+    ? [value]
+    : (process.env.PATH ?? "")
+        .split(path.delimiter)
+        .filter(Boolean)
+        .map((entry) => path.join(entry, value));
+
+  for (const candidate of candidates) {
+    try {
+      accessSync(candidate, fsConstants.X_OK);
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+export function buildHiggsfieldCliEnvironment(sourceEnv: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const allowedKeys = new Set([
+    "NODE_ENV",
+    "PATH",
+    "HOME",
+    "TMPDIR",
+    "HF_CREDENTIALS",
+    "HF_API_KEY",
+    "HF_API_SECRET",
+    "HIGGSFIELD_BASE_URL",
+    "HIGGSFIELD_CONFIG_HOME",
+    "HIGGSFIELD_CACHE_DIR",
+    "HIGGSFIELD_OUTPUT_DIR",
+    "MARKETING_STUDIO_WORKER_OUTPUT_DIR",
+  ]);
+  const env: NodeJS.ProcessEnv = {
+    NODE_ENV: sourceEnv.NODE_ENV ?? "production",
+  };
+
+  for (const key of allowedKeys) {
+    const value = sourceEnv[key];
+    if (typeof value === "string" && value.trim()) {
+      env[key] = value;
+    }
+  }
+
+  return env;
+}
+
+export function getHiggsfieldMarketingStudioCliReadiness(): HiggsfieldCliReadiness {
+  const studioEnv = getHiggsfieldMarketingStudioEnv();
+  const resolvedPath = resolveExecutablePath(studioEnv.cliPath);
+  const mode = studioEnv.mode === "cli" ? "cli" : "api_adapter";
+
+  if (mode !== "cli") {
+    return {
+      enabled: studioEnv.cliEnabled,
+      ready: false,
+      mode,
+      cliPath: studioEnv.cliPath,
+      resolvedPath,
+      reason: "Higgsfield Marketing Studio API adapter mode is future-only until an official endpoint is configured.",
+      mcpStatus: "future_only",
+    };
+  }
+
+  if (!studioEnv.cliEnabled) {
+    return {
+      enabled: false,
+      ready: false,
+      mode,
+      cliPath: studioEnv.cliPath,
+      resolvedPath,
+      reason: "HIGGSFIELD_CLI_ENABLED must be true for Marketing Studio generation.",
+      mcpStatus: "future_only",
+    };
+  }
+
+  if (!resolvedPath) {
+    return {
+      enabled: true,
+      ready: false,
+      mode,
+      cliPath: studioEnv.cliPath,
+      resolvedPath: null,
+      reason: "HIGGSFIELD_CLI_PATH was not found or is not executable.",
+      mcpStatus: "future_only",
+    };
+  }
+
+  return {
+    enabled: true,
+    ready: true,
+    mode,
+    cliPath: studioEnv.cliPath,
+    resolvedPath,
+    reason: null,
+    mcpStatus: "future_only",
+  };
+}
+
+export async function checkHiggsfieldMarketingStudioReadiness(): Promise<HiggsfieldCliReadiness> {
+  const readiness = getHiggsfieldMarketingStudioCliReadiness();
+
+  if (!readiness.ready || !readiness.resolvedPath) {
+    return readiness;
+  }
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      execFile(
+        readiness.resolvedPath ?? readiness.cliPath,
+        ["--version"],
+        {
+          timeout: 8_000,
+          maxBuffer: 128 * 1024,
+          encoding: "utf8",
+          env: buildHiggsfieldCliEnvironment(),
+        },
+        (error: Error | null) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        },
+      );
+    });
+  } catch {
+    return {
+      ...readiness,
+      ready: false,
+      reason: "Higgsfield Marketing Studio CLI version check failed.",
+    };
+  }
+
+  return readiness;
 }
 
 function normalizeStatus(value: unknown): HiggsfieldGenerationStatus {
@@ -87,7 +252,7 @@ function normalizeStatus(value: unknown): HiggsfieldGenerationStatus {
 function getHiggsfieldCredentials() {
   const env = getHiggsfieldEnv();
 
-  if (getMediaGenerationProvider() !== "higgsfield") {
+  if (!isHiggsfieldProviderSelected()) {
     return null;
   }
 
@@ -103,10 +268,24 @@ export function isHiggsfieldConfigured() {
 }
 
 export function getHiggsfieldConfigValidation() {
-  if (getMediaGenerationProvider() !== "higgsfield") {
+  const studioEnv = getHiggsfieldMarketingStudioEnv();
+
+  if (!isHiggsfieldProviderSelected()) {
     return {
       configured: false,
-      missing: ["MEDIA_GENERATION_PROVIDER=higgsfield"],
+      missing: ["MEDIA_GENERATION_PROVIDER=higgsfield or higgsfield_marketing_studio"],
+    };
+  }
+
+  if (
+    getMediaGenerationProvider() === "higgsfield_marketing_studio" &&
+    studioEnv.enabled &&
+    studioEnv.mode === "cli" &&
+    studioEnv.cliEnabled
+  ) {
+    return {
+      configured: true,
+      missing: [],
     };
   }
 
@@ -228,8 +407,11 @@ function mapAspectRatioToSoulSize(aspectRatio: string) {
 function resolveImageEndpoint(model: string) {
   const normalized = safeText(model);
 
+  if (normalized === HIGGSFIELD_MARKETING_STUDIO_IMAGE_MODEL) {
+    throw new Error("Marketing Studio image generation is available only through the verified CLI provider path.");
+  }
+
   if (
-    normalized === "marketing_studio_image" ||
     normalized === "text2image_soul_v2" ||
     normalized === "higgsfield_soul" ||
     normalized === "soul_cinematic" ||
@@ -238,7 +420,11 @@ function resolveImageEndpoint(model: string) {
     return HIGGSFIELD_SOUL_TEXT_TO_IMAGE_ENDPOINT;
   }
 
-  return normalized.startsWith("/") || normalized.includes("/") ? normalized : `/${normalized}`;
+  if (normalized.startsWith("/") || normalized.includes("/")) {
+    return normalized;
+  }
+
+  throw new Error("Higgsfield image model must be a supported alias or explicit endpoint path.");
 }
 
 function buildImageInput(endpoint: string, request: HiggsfieldImageRequest): HiggsfieldImageInput {
@@ -283,6 +469,252 @@ export async function generateHiggsfieldImage(
         });
 
   return extractResult(response as HiggsfieldResponseShape, model);
+}
+
+type HiggsfieldCliAssetCandidate = {
+  value: string;
+  score: number;
+  path: string;
+};
+
+function looksLikeHttpUrl(value: string) {
+  return /^https?:\/\//i.test(value);
+}
+
+function looksLikeLocalFilePath(value: string) {
+  return value.startsWith("file://") || value.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(value);
+}
+
+function looksLikeImageReference(value: string) {
+  return /\.(png|jpe?g|webp|gif)(?:[?#].*)?$/i.test(value);
+}
+
+function collectCliAssetCandidates(
+  value: unknown,
+  pathLabel = "$",
+  candidates: HiggsfieldCliAssetCandidate[] = [],
+) {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+
+    if (!trimmed) {
+      return candidates;
+    }
+
+    const isUrl = looksLikeHttpUrl(trimmed);
+    const isLocal = looksLikeLocalFilePath(trimmed);
+
+    if (isUrl || isLocal) {
+      const normalizedPath = pathLabel.toLowerCase();
+      const score =
+        (looksLikeImageReference(trimmed) ? 50 : 0) +
+        (/download|file|image|output|asset|result|url/.test(normalizedPath) ? 20 : 0) +
+        (/thumb|thumbnail/.test(normalizedPath) ? -5 : 0) +
+        (/status|page|web|dashboard/.test(normalizedPath) ? -25 : 0) +
+        (isLocal ? 15 : 0);
+
+      candidates.push({
+        value: trimmed,
+        score,
+        path: pathLabel,
+      });
+      return candidates;
+    }
+
+    for (const match of trimmed.matchAll(/https?:\/\/[^\s"',)]+/gi)) {
+      const url = match[0];
+      candidates.push({
+        value: url,
+        score:
+          (looksLikeImageReference(url) ? 45 : 0) +
+          (/download|file|image|output|asset|result|url/.test(pathLabel.toLowerCase()) ? 15 : 0),
+        path: pathLabel,
+      });
+    }
+
+    return candidates;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => collectCliAssetCandidates(item, `${pathLabel}[${index}]`, candidates));
+    return candidates;
+  }
+
+  if (value && typeof value === "object") {
+    for (const [key, nextValue] of Object.entries(value)) {
+      collectCliAssetCandidates(nextValue, `${pathLabel}.${key}`, candidates);
+    }
+  }
+
+  return candidates;
+}
+
+function findCliRequestId(value: unknown): string | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const id = findCliRequestId(item);
+
+      if (id) {
+        return id;
+      }
+    }
+
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const direct =
+    (typeof record.id === "string" ? record.id : null) ??
+    (typeof record.request_id === "string" ? record.request_id : null) ??
+    (typeof record.requestId === "string" ? record.requestId : null) ??
+    (typeof record.generation_id === "string" ? record.generation_id : null) ??
+    (typeof record.generationId === "string" ? record.generationId : null) ??
+    null;
+
+  if (direct) {
+    return direct;
+  }
+
+  for (const nextValue of Object.values(record)) {
+    const id = findCliRequestId(nextValue);
+
+    if (id) {
+      return id;
+    }
+  }
+
+  return null;
+}
+
+export function extractHiggsfieldCliGenerationAssets(value: unknown): {
+  fileUrl: string | null;
+  thumbnailUrl: string | null;
+  requestId: string | null;
+} {
+  const candidates = collectCliAssetCandidates(value)
+    .filter((candidate, index, all) => all.findIndex((item) => item.value === candidate.value) === index)
+    .sort((a, b) => b.score - a.score);
+  const primary = candidates[0]?.value ?? null;
+  const thumbnail =
+    candidates.find((candidate) => /thumb|thumbnail/i.test(candidate.path))?.value ??
+    candidates.find((candidate) => candidate.value !== primary)?.value ??
+    primary;
+
+  return {
+    fileUrl: primary,
+    thumbnailUrl: thumbnail ?? null,
+    requestId: findCliRequestId(value),
+  };
+}
+
+async function generateMarketingStudioImageWithCli(
+  request: HiggsfieldImageRequest,
+  model: string,
+): Promise<HiggsfieldGenerationResult> {
+  const cliReadiness = await checkHiggsfieldMarketingStudioReadiness();
+
+  if (!cliReadiness.ready || !cliReadiness.resolvedPath) {
+    throw new Error(cliReadiness.reason ?? "Higgsfield Marketing Studio CLI is not ready.");
+  }
+  const cliPath = cliReadiness.resolvedPath;
+
+  const args = [
+    "--json",
+    "generate",
+    "create",
+    model,
+    "--prompt",
+    request.prompt,
+    "--wait",
+  ];
+
+  if (request.aspectRatio) {
+    args.push("--aspect_ratio", request.aspectRatio);
+  }
+
+  const runCli = (nextArgs: string[], timeout = 240_000) => new Promise<string>((resolve, reject) => {
+    execFile(
+      cliPath,
+      nextArgs,
+      {
+        timeout,
+        maxBuffer: 1024 * 1024,
+        encoding: "utf8",
+        env: buildHiggsfieldCliEnvironment(),
+      },
+      (error: Error | null, nextStdout: string) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(nextStdout);
+      },
+    );
+  });
+  const stdout = await runCli(args);
+  let parsed: unknown = stdout;
+
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    parsed = stdout;
+  }
+
+  let extracted = extractHiggsfieldCliGenerationAssets(parsed);
+
+  if (!extracted.fileUrl && extracted.requestId) {
+    const lookupStdout = await runCli(["--json", "generate", "get", extracted.requestId], 30_000);
+    let lookupParsed: unknown = lookupStdout;
+
+    try {
+      lookupParsed = JSON.parse(lookupStdout);
+    } catch {
+      lookupParsed = lookupStdout;
+    }
+
+    const lookupExtracted = extractHiggsfieldCliGenerationAssets(lookupParsed);
+    extracted = {
+      fileUrl: lookupExtracted.fileUrl,
+      thumbnailUrl: lookupExtracted.thumbnailUrl,
+      requestId: lookupExtracted.requestId ?? extracted.requestId,
+    };
+  }
+
+  return {
+    requestId: extracted.requestId,
+    status: extracted.fileUrl ? "completed" : "unknown",
+    fileUrl: extracted.fileUrl,
+    thumbnailUrl: extracted.thumbnailUrl,
+    providerModel: model,
+    rawStatus: "cli",
+  };
+}
+
+export async function generateHiggsfieldMarketingStudioImage(
+  request: HiggsfieldImageRequest,
+): Promise<HiggsfieldGenerationResult> {
+  const env = getHiggsfieldCredentials();
+  const studioEnv = getHiggsfieldMarketingStudioEnv();
+
+  const model = safeText(request.model) || env?.imageModel || HIGGSFIELD_MARKETING_STUDIO_IMAGE_MODEL;
+  const cliReadiness = await checkHiggsfieldMarketingStudioReadiness();
+
+  if (studioEnv.mode === "cli" && cliReadiness.ready) {
+    return generateMarketingStudioImageWithCli(request, model);
+  }
+
+  if (!env) {
+    throw new Error("Higgsfield Marketing Studio generation is not configured.");
+  }
+
+  throw new Error(
+    cliReadiness.reason ??
+      "Higgsfield Marketing Studio API adapter mode is future-only until an official endpoint is configured.",
+  );
 }
 
 export async function createHiggsfieldVideo(

@@ -4,9 +4,11 @@ import { logWarn } from "@/lib/logging";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import {
+  getApprovedCreativeIntakeGenerationContext,
+  hasSameCreativeIntakeGenerationContext,
   isCreativeChatIntakeEnabled,
-  isCreativeIntakeApproved,
 } from "@/lib/services/creative-chat-intake-service";
+import { isMarketingStudioStaticGenerationPayload } from "@/lib/services/marketing-studio-worker-contract";
 import { createSystemJob, listSystemJobs, processSystemJob } from "@/lib/services/system-job-service";
 import { after } from "next/server";
 import { z } from "zod";
@@ -19,7 +21,18 @@ const bodySchema = z.object({
   maxGenerations: z.number().int().min(1).max(6).optional(),
 });
 
-function scheduleStaticCreativeJob(jobId: string) {
+function scheduleStaticCreativeJob(
+  jobId: string,
+  payload?: { creativeIntake?: unknown } | null,
+) {
+  if (isMarketingStudioStaticGenerationPayload(payload)) {
+    logWarn("Static creative generation deferred to Marketing Studio worker", {
+      jobId,
+      runtime: "marketing_studio_cli_worker",
+    });
+    return;
+  }
+
   after(async () => {
     try {
       await processSystemJob(jobId);
@@ -53,6 +66,8 @@ export async function POST(
       return Response.json({ error: "Campaign not found." }, { status: 404 });
     }
 
+    let creativeIntakeContext = null;
+
     if (isCreativeChatIntakeEnabled()) {
       const { data, error } = await auth.supabase
         .from("campaign_plans")
@@ -70,11 +85,23 @@ export async function POST(
         return Response.json({ error: "Campaign not found." }, { status: 404 });
       }
 
-      if (!isCreativeIntakeApproved(intakeRow.plan)) {
+      creativeIntakeContext = getApprovedCreativeIntakeGenerationContext(intakeRow.plan);
+
+      if (!creativeIntakeContext) {
         return Response.json(
           {
             error: "Review and approve the creative brief before rendering paid image previews.",
             code: "creative_brief_review_required",
+          },
+          { status: 409 },
+        );
+      }
+
+      if (creativeIntakeContext.generationPhase !== "static") {
+        return Response.json(
+          {
+            error: "The approved creative brief is scoped to video generation. Approve a static creative brief before rendering image previews.",
+            code: "creative_generation_phase_mismatch",
           },
           { status: 409 },
         );
@@ -99,10 +126,17 @@ export async function POST(
       kind: "static_creative_generation",
       statuses: ["pending", "processing"],
     });
-    const existingActiveJob = activeJobs[0] ?? null;
+    const existingActiveJob =
+      activeJobs.find((job) => {
+        const payload = job.payload as { creativeIntake?: typeof creativeIntakeContext };
+        return (
+          !creativeIntakeContext ||
+          hasSameCreativeIntakeGenerationContext(payload.creativeIntake, creativeIntakeContext)
+        );
+      }) ?? null;
 
     if (existingActiveJob) {
-      scheduleStaticCreativeJob(existingActiveJob.id);
+      scheduleStaticCreativeJob(existingActiveJob.id, existingActiveJob.payload as { creativeIntake?: unknown });
 
       return apiSuccess({
         success: true,
@@ -128,10 +162,11 @@ export async function POST(
       payload: {
         force: body.force === true,
         missingOnly: body.missingOnly === true,
+        creativeIntake: creativeIntakeContext,
         ...(maxGenerations ? { maxGenerations } : {}),
       },
     });
-    scheduleStaticCreativeJob(job.id);
+    scheduleStaticCreativeJob(job.id, job.payload as { creativeIntake?: unknown });
 
     return apiSuccess({
       success: true,

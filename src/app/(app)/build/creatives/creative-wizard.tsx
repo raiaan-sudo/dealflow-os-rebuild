@@ -80,6 +80,8 @@ type CreativeWizardProps = {
   videoCreatives?: VideoCreativeOption[];
 };
 
+type StudioPhase = "static_ads" | "ugc_videos";
+
 type SystemJob = {
   id: string;
   kind?: string | null;
@@ -225,10 +227,13 @@ export function CreativeWizard({
   const [saving, setSaving] = useState(false);
   const [renderingImages, setRenderingImages] = useState(false);
   const [renderingVideo, setRenderingVideo] = useState(false);
+  const [activeImageJobId, setActiveImageJobId] = useState<string | null>(null);
+  const [activeVideoJobId, setActiveVideoJobId] = useState<string | null>(null);
   const [renderMessage, setRenderMessage] = useState<string | null>(null);
   const [videoMessage, setVideoMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fullVideoOpen, setFullVideoOpen] = useState(false);
+  const [activePhase, setActivePhase] = useState<StudioPhase>("static_ads");
   const [activeCreativeId, setActiveCreativeId] = useState<string | null>(
     defaultSelectedIds[0] ?? rankedCreatives[0]?.id ?? null,
   );
@@ -279,6 +284,19 @@ export function CreativeWizard({
 
     const source = new EventSource(`/api/system-jobs/${encodeURIComponent(jobId)}/stream`);
     jobStreamsRef.current.set(jobId, source);
+    if (surface === "video") {
+      setActiveVideoJobId(jobId);
+    } else {
+      setActiveImageJobId(jobId);
+    }
+
+    const clearActiveJob = () => {
+      if (surface === "video") {
+        setActiveVideoJobId((current) => current === jobId ? null : current);
+      } else {
+        setActiveImageJobId((current) => current === jobId ? null : current);
+      }
+    };
 
     source.addEventListener("job", (event) => {
       try {
@@ -293,6 +311,7 @@ export function CreativeWizard({
           }
           source.close();
           jobStreamsRef.current.delete(jobId);
+          clearActiveJob();
           router.refresh();
         } else if (job.status === "failed") {
           if (surface === "video") {
@@ -302,17 +321,20 @@ export function CreativeWizard({
           }
           source.close();
           jobStreamsRef.current.delete(jobId);
+          clearActiveJob();
           router.refresh();
         }
       } catch {
         source.close();
         jobStreamsRef.current.delete(jobId);
+        clearActiveJob();
       }
     });
 
     source.addEventListener("error", () => {
       source.close();
       jobStreamsRef.current.delete(jobId);
+      clearActiveJob();
     });
   }, [router]);
 
@@ -416,6 +438,15 @@ export function CreativeWizard({
       setRenderingVideo(false);
     }
   }, [activeVideoCreative, campaignId, renderingVideo, setActiveVideoId, subscribeToJob]);
+
+  useEffect(() => {
+    const streams = jobStreamsRef.current;
+
+    return () => {
+      streams.forEach((source) => source.close());
+      streams.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (!videoNeedsGeneration || autoVideoStartedRef.current) {
@@ -539,15 +570,16 @@ export function CreativeWizard({
 
   const activeCreativeIndex = Math.max(0, rankedCreatives.findIndex((creative) => creative.id === activeCreative.id));
   const activeCreativeSelected = selectedIds.includes(activeCreative.id);
-  const imageRenderPending = /being prepared|preparing image previews|will update/i.test(renderMessage ?? "");
-  const imageActionPending = renderingImages || imageRenderPending;
+  const imageRenderPending = renderingImages || Boolean(activeImageJobId);
+  const imageActionPending = renderingImages || Boolean(activeImageJobId);
+  const videoActionPending = renderingVideo || Boolean(activeVideoJobId);
   const imagePendingMessage = "Image preview is being prepared. This page will update when the visual is ready.";
   const imageStatusMessage = needsImageGeneration
     ? imageLimitMessage ??
       (allImagesMissing
       ? "Creating the full visual set now. The cards below stay visible while final images render."
       : "A few visuals need cleaner backgrounds. You can keep reviewing the composed previews below.")
-    : renderMessage;
+    : null;
   const getDisplayCreative = (creative: CreativeOption): CreativeOption =>
     imageRenderPending && creativeNeedsImageGeneration(creative)
       ? {
@@ -557,10 +589,73 @@ export function CreativeWizard({
         }
       : creative;
   const displayActiveCreative = getDisplayCreative(activeCreative);
+  const currentPhaseLabel = activePhase === "static_ads" ? "Static Ads" : "UGC Videos";
 
   return (
     <div className="space-y-4">
-      <section className="grid gap-4 rounded-2xl border border-border bg-card p-4 sm:p-5 xl:grid-cols-[minmax(420px,0.9fr)_minmax(420px,1.1fr)]">
+      <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Creative review workspace
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold text-foreground">
+              Choose the launch test set from the approved brief
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              The creative brief approval is saved in the intake step. Static ads are image-based launch variants; UGC videos are separate creator-style video concepts for review.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.07] px-4 py-3 text-sm leading-6 text-emerald-100 lg:max-w-md">
+            Approved brief source: saved creative intake. This screen only selects creatives, reviews variants, and starts explicit preview renders.
+          </div>
+          <div className="rounded-2xl border border-cyan-300/18 bg-cyan-300/[0.06] px-4 py-3 text-sm leading-6 text-cyan-100 lg:max-w-md">
+            Full-resolution creative files stay inside DealFlow. Preview, approve, request revisions, and use assets through the launch workflow.
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-2" role="tablist" aria-label="Creative Studio phases">
+          {([
+            ["static_ads", "Static Ads", "Native-style static ads and composed image variants"],
+            ["ugc_videos", "UGC Videos", "Creator-style scripts and video preview renders"],
+          ] as const).map(([phase, label, description]) => {
+            const active = activePhase === phase;
+            return (
+              <button
+                key={phase}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                className={`rounded-2xl border px-4 py-3 text-left transition ${
+                  active
+                    ? "border-primary/50 bg-primary/12 text-foreground"
+                    : "border-white/10 bg-black/18 text-muted-foreground hover:border-white/20"
+                }`}
+                onClick={() => setActivePhase(phase)}
+              >
+                <span className="block text-sm font-semibold">{label}</span>
+                <span className="mt-1 block text-xs leading-5">{description}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-white/10 bg-black/18 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            {currentPhaseLabel} review
+          </p>
+          <h3 className="mt-1 text-lg font-semibold text-foreground">
+            {activePhase === "static_ads" ? "Static ads are the launch test set" : "UGC videos are supporting review assets"}
+          </h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+            {activePhase === "static_ads"
+              ? "Pick one primary creative for the default preview and keep the remaining selected ads as review variants for launch comparison."
+              : "Review UGC video scripts and rendered previews separately from the native-style static ads. Video review does not change the saved static launch set."}
+          </p>
+        </div>
+      </section>
+
+      <section className={`${activePhase === "static_ads" ? "grid" : "hidden"} gap-4 rounded-2xl border border-border bg-card p-4 sm:p-5 xl:grid-cols-[minmax(420px,0.9fr)_minmax(420px,1.1fr)]`}>
         <div className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -605,11 +700,11 @@ export function CreativeWizard({
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               {savedSelectionMatchesCurrent
-                ? "DealFlow will use this saved creative set once every launch gate is ready."
-                : "This is a draft recommendation. Save the test set before launch can continue."}
+                ? "DealFlow will use the first saved ad as the primary creative and keep the rest as review variants once every launch gate is ready."
+                : "This is a draft recommendation. Save the primary creative and review variants before launch can continue."}
             </p>
           </div>
-          {renderMessage || needsImageGeneration || hasGeneratedImages ? (
+          {needsImageGeneration || hasGeneratedImages ? (
             <div className="flex flex-wrap items-center gap-3">
               {needsImageGeneration || hasGeneratedImages ? (
                 <Button
@@ -640,9 +735,11 @@ export function CreativeWizard({
                   {imageLimitMessage ? "Daily image limit reached" : imageActionPending ? "Retrying..." : "Retry preview render"}
                 </Button>
               ) : null}
-              {renderMessage ? (
-                <span className="text-sm leading-6 text-muted-foreground">{imageStatusMessage}</span>
-              ) : null}
+            </div>
+          ) : null}
+          {renderMessage ? (
+            <div className="rounded-2xl border border-cyan-300/16 bg-cyan-300/[0.055] px-4 py-3 text-sm leading-6 text-cyan-100" aria-live="polite">
+              {renderMessage}
             </div>
           ) : null}
           {needsImageGeneration ? (
@@ -672,31 +769,35 @@ export function CreativeWizard({
           ) : null}
 
           <div className="grid content-start gap-3 sm:grid-cols-2 xl:grid-cols-1">
-            {selectedCreatives.map((creative) => {
+            {selectedCreatives.map((creative, index) => {
               const displayCreative = getDisplayCreative(creative);
               return (
-                <StaticCreativePreviewCard
-                  category={displayCreative.category}
-                  compact
-                  cta={displayCreative.cta}
-                  formatLabel={displayCreative.formatLabel}
-                  headline={displayCreative.headline}
-                  imageGenerationMessage={displayCreative.imageGenerationMessage}
-                  imageGenerationState={displayCreative.imageGenerationState}
-                  imagePrompt={displayCreative.imagePrompt}
-                  imagePromptConfig={displayCreative.imagePromptConfig}
-                  imageUrl={displayCreative.imageUrl}
-                  storageNormalized={displayCreative.storageNormalized}
-                  key={displayCreative.id}
-                  location={displayCreative.location}
-                  offer={displayCreative.offer}
-                  overlayText={displayCreative.overlayText}
-                  primaryText={displayCreative.primaryText}
-                  qualityGate={displayCreative.qualityGate}
-                  score={displayCreative.score}
-                  selectedCount={selectedCreatives.length}
-                  visualPromptBrief={displayCreative.visualPromptBrief}
-                />
+                <div className="space-y-2" key={displayCreative.id}>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    {index === 0 ? "Primary creative" : `Review variant ${index}`}
+                  </p>
+                  <StaticCreativePreviewCard
+                    category={displayCreative.category}
+                    compact
+                    cta={displayCreative.cta}
+                    formatLabel={displayCreative.formatLabel}
+                    headline={displayCreative.headline}
+                    imageGenerationMessage={displayCreative.imageGenerationMessage}
+                    imageGenerationState={displayCreative.imageGenerationState}
+                    imagePrompt={displayCreative.imagePrompt}
+                    imagePromptConfig={displayCreative.imagePromptConfig}
+                    imageUrl={displayCreative.imageUrl}
+                    storageNormalized={displayCreative.storageNormalized}
+                    location={displayCreative.location}
+                    offer={displayCreative.offer}
+                    overlayText={displayCreative.overlayText}
+                    primaryText={displayCreative.primaryText}
+                    qualityGate={displayCreative.qualityGate}
+                    score={displayCreative.score}
+                    selectedCount={selectedCreatives.length}
+                    visualPromptBrief={displayCreative.visualPromptBrief}
+                  />
+                </div>
               );
             })}
           </div>
@@ -736,18 +837,18 @@ export function CreativeWizard({
         </div>
       </section>
 
-      {activeVideoCreative ? (
+      {activePhase === "ugc_videos" && activeVideoCreative ? (
         <section className="grid gap-4 rounded-2xl border border-border bg-card p-4 sm:p-5 lg:grid-cols-[minmax(280px,0.82fr)_minmax(0,1.18fr)]">
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  Video preview
+                  UGC video preview
                 </p>
                 <h3 className="mt-1 text-xl font-semibold text-foreground">{activeVideoCreative.title}</h3>
               </div>
               <span className="rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
-                {activeVideoCreative.conceptType === "customer_ugc" ? "Native-style concept" : "Video concept"}
+                {activeVideoCreative.conceptType === "customer_ugc" ? "UGC video concept" : "Video concept"}
               </span>
             </div>
             <div className="overflow-hidden rounded-[18px] border border-white/10 bg-black/28">
@@ -755,6 +856,8 @@ export function CreativeWizard({
                 <video
                   className="aspect-video w-full bg-black object-contain"
                   controls
+                  controlsList="nodownload noplaybackrate"
+                  disablePictureInPicture
                   playsInline
                   src={activeVideoCreative.videoUrl}
                 />
@@ -762,7 +865,7 @@ export function CreativeWizard({
                 <div className="grid aspect-video place-items-center bg-[linear-gradient(135deg,rgba(94,234,212,0.12),rgba(139,92,246,0.12)),radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_24%)] p-5 text-center">
                   <div>
                     <p className="text-sm font-semibold text-foreground">
-                      {activeVideoCreative.videoGenerationState === "generating" || renderingVideo
+                      {activeVideoCreative.videoGenerationState === "generating" || videoActionPending
                         ? "Video preview is rendering"
                         : "Video preview concept is ready"}
                     </p>
@@ -790,9 +893,9 @@ export function CreativeWizard({
                     force: activeVideoCreative.videoGenerationState === "failed",
                     video: activeVideoCreative,
                   })}
-                  disabled={renderingVideo || activeVideoCreative.videoGenerationState === "generating"}
+                  disabled={videoActionPending || activeVideoCreative.videoGenerationState === "generating"}
                 >
-                  {renderingVideo || activeVideoCreative.videoGenerationState === "generating"
+                  {videoActionPending || activeVideoCreative.videoGenerationState === "generating"
                     ? "Rendering video..."
                     : activeVideoCreative.videoGenerationState === "failed"
                       ? "Retry video preview"
@@ -828,7 +931,7 @@ export function CreativeWizard({
                         {video.title}
                       </p>
                       <p className="mt-2 text-[11px] text-muted-foreground">
-                        {video.videoUrl ? "Ready to watch" : video.videoGenerationState === "generating" ? "Rendering" : "Ready to render"}
+                        {video.videoUrl ? "Ready to watch" : video.id === activeVideoId && activeVideoJobId ? "Rendering" : video.videoGenerationState === "generating" ? "Rendering" : "Ready to render"}
                       </p>
                     </button>
                   );
@@ -897,6 +1000,8 @@ export function CreativeWizard({
                 <video
                   className="max-h-[calc(100dvh-7rem)] w-full bg-black object-contain"
                   controls
+                  controlsList="nodownload noplaybackrate"
+                  disablePictureInPicture
                   playsInline
                   src={activeVideoCreative.videoUrl}
                 />
@@ -906,7 +1011,7 @@ export function CreativeWizard({
         </section>
       ) : null}
 
-      <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+      <section className={`${activePhase === "static_ads" ? "block" : "hidden"} rounded-2xl border border-border bg-card p-4 sm:p-5`}>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-medium text-muted-foreground">Creative carousel</p>
@@ -948,7 +1053,11 @@ export function CreativeWizard({
                     variant={selected ? "default" : "secondary"}
                     onClick={() => toggleCreative(creative.id)}
                   >
-                    {selected ? "Selected" : "Add"}
+                    {selected
+                      ? selectedIds[0] === creative.id
+                        ? "Primary creative"
+                        : "Review variant"
+                      : "Add to review set"}
                   </Button>
                 </div>
                 <button
@@ -985,4 +1094,4 @@ export function CreativeWizard({
       </section>
     </div>
   );
-  }
+}

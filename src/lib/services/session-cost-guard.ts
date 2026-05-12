@@ -58,22 +58,26 @@ function normalizeSessionCostBucket(bucket: SessionCostBucket): "image_generatio
 
 function getProviderForBucket(bucket: SessionCostBucket) {
   const normalizedBucket = normalizeSessionCostBucket(bucket);
+  const mediaProvider = process.env.MEDIA_GENERATION_PROVIDER;
+  const higgsfieldSelected = mediaProvider === "higgsfield" || mediaProvider === "higgsfield_marketing_studio";
 
   if (normalizedBucket === "image_generation") {
-    return process.env.MEDIA_GENERATION_PROVIDER === "higgsfield" ? "higgsfield" : "openai";
+    return higgsfieldSelected ? "higgsfield" : "openai";
   }
 
-  return process.env.MEDIA_GENERATION_PROVIDER === "higgsfield" ? "higgsfield" : "heygen";
+  return higgsfieldSelected ? "higgsfield" : "heygen";
 }
 
 function getProviderUsageLimit(bucket: SessionCostBucket, options: { durableGuard?: boolean } = {}) {
   const normalizedBucket = normalizeSessionCostBucket(bucket);
+  const mediaProvider = process.env.MEDIA_GENERATION_PROVIDER;
+  const higgsfieldSelected = mediaProvider === "higgsfield" || mediaProvider === "higgsfield_marketing_studio";
   const envName =
     normalizedBucket === "image_generation"
-      ? process.env.MEDIA_GENERATION_PROVIDER === "higgsfield"
+      ? higgsfieldSelected
         ? "HIGGSFIELD_IMAGE_DAILY_LIMIT"
         : "OPENAI_IMAGE_DAILY_LIMIT"
-      : process.env.MEDIA_GENERATION_PROVIDER === "higgsfield"
+      : higgsfieldSelected
         ? "HIGGSFIELD_VIDEO_DAILY_LIMIT"
         : "HEYGEN_VIDEO_DAILY_LIMIT";
   const configured = Number.parseInt(process.env[envName] ?? "", 10);

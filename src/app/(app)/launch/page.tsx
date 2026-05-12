@@ -86,7 +86,7 @@ function getBillingLaunchBlockCopy(billing: Awaited<ReturnType<typeof getBilling
     return "This subscription is scheduled to cancel. Launch remains available during the paid period, but reactivation is required after the period ends.";
   }
 
-  return "Activate billing before this workspace can launch to Meta. The launch button stays disabled and no provider-side launch runs until billing is active.";
+  return "Activate billing before this workspace can launch to Meta. The launch button stays disabled and no live ad launch runs until billing is active.";
 }
 
 function formatBudgetCap(valueCents: number) {
@@ -560,6 +560,9 @@ export default async function LaunchAliasPage({
                     ? `${selectedCreatives.length} creatives ready`
                     : `${selectedCreatives.length} selected, rendering needed`}
                 </h2>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  The first saved ad is the primary creative. The rest stay as review variants for comparison before launch.
+                </p>
               </div>
               <span className="rounded-full border border-cyan-300/16 bg-cyan-300/[0.055] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100">
                 Side-by-side review
@@ -567,28 +570,32 @@ export default async function LaunchAliasPage({
             </div>
             <div className="mt-4 grid items-stretch gap-4 md:grid-cols-2 2xl:grid-cols-3">
               {selectedCreatives.map((selectedCreative, index) => (
-                <StaticCreativeSummaryCard
-                  category={plan.creativeStrategy.campaignCategory}
-                  cta={selectedCreative.cta}
-                  headline={selectedCreative.headline}
-                  imageGenerationMessage={selectedCreative.imageGenerationMessage}
-                  imageGenerationState={selectedCreative.imageGenerationState}
-                  imagePrompt={selectedCreative.imagePrompt}
-                  imagePromptConfig={selectedCreative.imagePromptConfig}
-                  imageUrl={selectedCreative.imageUrl}
-                  storageNormalized={selectedCreative.storageNormalized}
-                  location={plan.market}
-                  key={selectedCreative.id}
-                  offer={plan.offerSummary || plan.keyOffer}
-                  overlayText={selectedCreative.overlayText}
-                  primaryText={selectedCreative.primaryText}
-                  qualityGate={selectedCreative.qualityGate}
-                  score={selectedCreative.score}
-                  index={index}
-                  selected
-                  selectedCount={selectedCreatives.length}
-                  visualPromptBrief={selectedCreative.visualPromptBrief}
-                />
+                <div className="space-y-2" key={selectedCreative.id}>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    {index === 0 ? "Primary creative" : `Review variant ${index}`}
+                  </p>
+                  <StaticCreativeSummaryCard
+                    category={plan.creativeStrategy.campaignCategory}
+                    cta={selectedCreative.cta}
+                    headline={selectedCreative.headline}
+                    imageGenerationMessage={selectedCreative.imageGenerationMessage}
+                    imageGenerationState={selectedCreative.imageGenerationState}
+                    imagePrompt={selectedCreative.imagePrompt}
+                    imagePromptConfig={selectedCreative.imagePromptConfig}
+                    imageUrl={selectedCreative.imageUrl}
+                    storageNormalized={selectedCreative.storageNormalized}
+                    location={plan.market}
+                    offer={plan.offerSummary || plan.keyOffer}
+                    overlayText={selectedCreative.overlayText}
+                    primaryText={selectedCreative.primaryText}
+                    qualityGate={selectedCreative.qualityGate}
+                    score={selectedCreative.score}
+                    index={index}
+                    selected
+                    selectedCount={selectedCreatives.length}
+                    visualPromptBrief={selectedCreative.visualPromptBrief}
+                  />
+                </div>
               ))}
             </div>
           </div>

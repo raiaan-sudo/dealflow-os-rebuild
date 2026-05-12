@@ -4,15 +4,13 @@ import {
   type CreativeBrief,
 } from "@/lib/ai/creative-brief";
 import type { ImagePromptConfig } from "@/lib/types/creative-assets";
+import type { ImageProviderUsageContext } from "@/lib/ai/providers";
 import {
-  createImageAd,
-  createVideoAd,
   selectAvatarProfile,
   selectVoiceProfile,
-  type ImageProviderUsageContext,
   type AvatarProfile,
   type VoiceProfile,
-} from "@/lib/ai/providers";
+} from "@/lib/ai/avatar-profile";
 import type { CampaignCreativeStrategy } from "@/lib/services/campaign-creative-strategy";
 import {
   buildDefaultCreativeStrategy,
@@ -24,13 +22,10 @@ import {
   type StaticVisualPromptBrief,
 } from "@/lib/services/campaign-visual-prompt-builder";
 import {
-  evaluateStaticCreativeImageQa,
-  getCustomerSafeImageQaMessage,
-} from "@/lib/services/static-creative-image-qa";
-import {
   rankStaticCreativeAssets,
   type CreativeScoreBreakdown,
 } from "@/lib/services/creative-scoring-service";
+import type { CreativeIntakeGenerationContext } from "@/lib/services/creative-chat-intake-service";
 import {
   evaluateStaticVisualAssetDecision,
   type StaticCreativeImageQaResult,
@@ -63,6 +58,8 @@ export type CreativeEngineInput = {
   };
   reuse_static_assets?: StaticCreativeAsset[];
   max_static_image_generations?: number;
+  creative_intake?: CreativeIntakeGenerationContext | null;
+  force?: boolean;
 };
 
 export type CreativeAngle = "opportunity" | "pain" | "authority" | "curiosity";
@@ -83,12 +80,14 @@ export type StaticCreativeAsset = {
   preferredImageModel: OpenAiImageModel;
   visualPromptBrief: StaticVisualPromptBrief | null;
   imageQa?: StaticCreativeImageQaResult | null;
+  creativeIntake?: CreativeIntakeGenerationContext | null;
   scoreBreakdown: CreativeScoreBreakdown | null;
   hook: string;
   overlayText: string;
   primaryText: string;
   headline: string;
   cta: string;
+  offer?: string | null;
   score: number;
   recommended: boolean;
   offerQuality?: OfferQualityEvaluation | null;
@@ -1393,6 +1392,7 @@ function buildStaticCreatives(
 }
 
 async function buildVideoCreatives(brief: CreativeBrief): Promise<VideoCreativeAsset[]> {
+  const { createVideoAd } = await import("@/lib/ai/providers");
   const market = toTitleCase(brief.location);
   const strategy = preserveExplicitConsumerAudienceCategory(buildDefaultCreativeStrategy({
     intent: inferCampaignIntent({
@@ -1860,6 +1860,42 @@ export function hasUsableStaticCreativeImage(asset: StaticCreativeAsset | null |
   return evaluateStaticVisualAssetDecision(asset).usable;
 }
 
+function hasImageFetchFailedQa(asset: StaticCreativeAsset | null | undefined) {
+  const reasons = Array.isArray(asset?.imageQa?.reasons) ? asset.imageQa.reasons : [];
+  return reasons.includes("image_fetch_failed");
+}
+
+function isStaleFailedProviderImage(asset: StaticCreativeAsset | null | undefined) {
+  return Boolean(
+    asset?.imageUrl &&
+      asset.storageNormalized !== true &&
+      (
+        asset.imageGenerationState === "failed" ||
+        asset.imageQa?.decision === "reject" ||
+        hasImageFetchFailedQa(asset)
+      ),
+  );
+}
+
+function shouldDropStaleProviderImageForRetry(
+  asset: StaticCreativeAsset | null | undefined,
+  creativeIntake?: CreativeIntakeGenerationContext | null,
+) {
+  return creativeIntake?.outputMode === "finished_ad" && isStaleFailedProviderImage(asset);
+}
+
+function stripStaleProviderImageForRetry(asset: StaticCreativeAsset): StaticCreativeAsset {
+  return {
+    ...asset,
+    imageUrl: "",
+    storageNormalized: false,
+    imageGenerationState: asset.imageGenerationState === "generated" ? "failed" : asset.imageGenerationState,
+    imageGenerationMessage:
+      asset.imageGenerationMessage ??
+      "This finished-ad visual needs a fresh render before it can be reviewed.",
+  };
+}
+
 function preserveStaticCreativeImage(
   asset: StaticCreativeAsset,
   existing: StaticCreativeAsset,
@@ -1900,15 +1936,50 @@ export function mergeStaticCreativeImageResults(
   });
 }
 
+function applyCreativeIntakePromptToStaticAsset(
+  asset: StaticCreativeAsset,
+  creativeIntake?: CreativeIntakeGenerationContext | null,
+): StaticCreativeAsset {
+  if (!creativeIntake || creativeIntake.generationPhase !== "static") {
+    return asset;
+  }
+
+  const promptVersion = creativeIntake.promptVersion;
+  const imagePromptConfig = asset.imagePromptConfig
+    ? {
+        ...asset.imagePromptConfig,
+        prompt: promptVersion.generatedPrompt,
+        negativePrompt: promptVersion.negativePrompt,
+      }
+    : {
+        aspectRatio: "1:1" as const,
+        prompt: promptVersion.generatedPrompt,
+        negativePrompt: promptVersion.negativePrompt,
+      };
+
+  return {
+    ...asset,
+    cta: creativeIntake.requiredCta ?? asset.cta,
+    offer: creativeIntake.requiredOffer ?? asset.offer,
+    imagePrompt: promptVersion.generatedPrompt,
+    imagePromptConfig,
+    creativeIntake,
+  };
+}
+
 export async function generateStaticCreativeAds(
   input?: CreativeEngineInput | null,
 ): Promise<StaticCreativeAsset[]> {
   const baseSystem = buildCreativeSystem(input);
   const normalized = normalizeInput(input);
   const brief = baseSystem.brief;
-  const baseStaticAds = baseSystem.staticAds;
+  const creativeIntake = input?.creative_intake ?? null;
+  const baseStaticAds = baseSystem.staticAds.map((asset) =>
+    applyCreativeIntakePromptToStaticAsset(asset, creativeIntake),
+  );
   const reusableStaticAssets = new Map(
     (input?.reuse_static_assets ?? [])
+      .filter(() => input?.force !== true)
       .filter(hasUsableStaticCreativeImage)
       .map((asset) => [asset.id, asset]),
   );
@@ -1926,6 +1997,10 @@ export async function generateStaticCreativeAds(
             const leftPrevious = previousStaticAssets.get(left.id);
             const rightPrevious = previousStaticAssets.get(right.id);
             const priority = (previous?: StaticCreativeAsset) => {
+              if (shouldDropStaleProviderImageForRetry(previous, creativeIntake)) {
+                return -1;
+              }
+
               if (previous?.imageGenerationState === "failed" || previous?.imageQa?.decision === "reject") {
                 return 1;
               }
@@ -1966,21 +2041,25 @@ export async function generateStaticCreativeAds(
 
     if (!boundedGenerationAssetIds.has(asset.id)) {
       const previous = previousStaticAssets.get(asset.id);
+      const carryForwardPrevious =
+        shouldDropStaleProviderImageForRetry(previous, creativeIntake) && previous
+          ? stripStaleProviderImageForRetry(previous)
+          : previous;
 
       generatedStaticAds.push(
-        previous
+        carryForwardPrevious
           ? {
               ...asset,
-              imageUrl: previous.imageUrl ?? "",
-              storageNormalized: previous.storageNormalized ?? null,
-              imageGenerationState: previous.imageGenerationState ?? "unavailable",
+              imageUrl: carryForwardPrevious.imageUrl ?? "",
+              storageNormalized: carryForwardPrevious.storageNormalized ?? null,
+              imageGenerationState: carryForwardPrevious.imageGenerationState ?? "unavailable",
               imageGenerationMessage:
-                previous.imageGenerationMessage ??
+                carryForwardPrevious.imageGenerationMessage ??
                 "A cleaner image is being prepared for this creative.",
-              imageGenerationModel: previous.imageGenerationModel ?? asset.preferredImageModel,
-              imageGenerationProvider: previous.imageGenerationProvider ?? null,
-              imageQa: previous.imageQa ?? null,
-              qualityGate: asset.qualityGate ?? previous.qualityGate ?? null,
+              imageGenerationModel: carryForwardPrevious.imageGenerationModel ?? asset.preferredImageModel,
+              imageGenerationProvider: carryForwardPrevious.imageGenerationProvider ?? null,
+              imageQa: carryForwardPrevious.imageQa ?? null,
+              qualityGate: asset.qualityGate ?? carryForwardPrevious.qualityGate ?? null,
             }
           : {
               ...asset,
@@ -1997,21 +2076,29 @@ export async function generateStaticCreativeAds(
 
     try {
       const providerUsage = input?.provider_usage_context?.createForAsset(asset) ?? null;
+      const { createImageAd } = await import("@/lib/ai/providers");
+      const { evaluateStaticCreativeImageQa, getCustomerSafeImageQaMessage } = await import(
+        "@/lib/services/static-creative-image-qa"
+      );
       const imageAd = await createImageAd(brief, asset, providerUsage);
+      const qaMode =
+        creativeIntake?.outputMode ??
+        (imageAd.generationProvider === "higgsfield_marketing_studio" ? "finished_ad" : "background_only");
       const imageQa = imageAd.imageUrl
         ? await evaluateStaticCreativeImageQa({
             imageUrl: imageAd.imageUrl,
             campaignId: input?.campaign_id || "creative-system-preview",
             creativeId: asset.id,
+            mode: qaMode,
             prompt: asset.imagePrompt,
             negativePrompt: asset.imagePromptConfig?.negativePrompt ?? undefined,
             campaignContext: {
-              market: normalized.location,
+              market: creativeIntake?.market ?? normalized.location,
               campaignType: normalized.marketType,
-              audience: normalized.audience,
-              offer: normalized.offer,
+              audience: creativeIntake?.targetAudience ?? normalized.audience,
+              offer: creativeIntake?.requiredOffer ?? normalized.offer,
               propertyType: normalized.propertyType,
-              cta: asset.cta,
+              cta: creativeIntake?.requiredCta ?? asset.cta,
             },
           })
         : null;

@@ -1,13 +1,17 @@
 import { inflateSync } from "node:zlib";
 import type {
+  StaticCreativeImageQaMode,
   StaticCreativeImageQaReason,
   StaticCreativeImageQaResult,
 } from "@/lib/services/static-creative-visual-qa";
+import { inspectFinishedAdWithVisionQa } from "@/lib/services/finished-ad-vision-qa";
+import { fetchStaticCreativeProviderImage } from "@/lib/services/static-creative-storage-normalization";
 
 export type StaticCreativeImageQaInput = {
   imageUrl: string;
   campaignId: string;
   creativeId?: string;
+  mode?: StaticCreativeImageQaMode;
   prompt?: string;
   negativePrompt?: string;
   campaignContext?: {
@@ -32,10 +36,11 @@ type AnalyzeResult = {
   layoutRisk: number;
   detectedTextSamples: string[];
   reasons: StaticCreativeImageQaReason[];
+  textInspectionAvailable?: boolean;
 };
 
+const BACKGROUND_ONLY_QA_MODE: StaticCreativeImageQaMode = "background_only";
 const MAX_IMAGE_BYTES = 4_000_000;
-const FETCH_TIMEOUT_MS = 5_000;
 const PNG_SIGNATURE = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
 
 function assertServerSide() {
@@ -60,11 +65,18 @@ function clamp01(value: number) {
   return Math.max(0, Math.min(1, value));
 }
 
+function normalizeQaMode(value: StaticCreativeImageQaInput["mode"]): StaticCreativeImageQaMode {
+  return value === "finished_ad" ? "finished_ad" : BACKGROUND_ONLY_QA_MODE;
+}
+
 function hasNegation(sentence: string) {
   return /\b(do not|don't|dont|avoid|never|no|without|not a|not an|not the)\b/i.test(sentence);
 }
 
-function collectPromptRiskReasons(input: StaticCreativeImageQaInput): StaticCreativeImageQaReason[] {
+function collectPromptRiskReasons(
+  input: StaticCreativeImageQaInput,
+  mode: StaticCreativeImageQaMode,
+): StaticCreativeImageQaReason[] {
   const prompt = safeText(input.prompt);
   if (!prompt) {
     return [];
@@ -81,7 +93,10 @@ function collectPromptRiskReasons(input: StaticCreativeImageQaInput): StaticCrea
       continue;
     }
 
-    if (/\b(final ad|finished ad|paid social creative|ad layout|poster|campaign graphic)\b/i.test(sentence)) {
+    if (
+      mode === "background_only" &&
+      /\b(final ad|finished ad|paid social creative|ad layout|poster|campaign graphic)\b/i.test(sentence)
+    ) {
       reasons.push("provider_returned_finished_ad", "fake_ad_layout");
     }
 
@@ -109,90 +124,42 @@ function collectPromptRiskReasons(input: StaticCreativeImageQaInput): StaticCrea
   return uniq(reasons);
 }
 
-function decodeDataUri(uri: string): FetchedImage {
-  const match = /^data:([^;,]+)(;base64)?,(.*)$/i.exec(uri);
-  if (!match) {
-    return { ok: false };
+function filterReasonsForMode(
+  reasons: StaticCreativeImageQaReason[],
+  mode: StaticCreativeImageQaMode,
+): StaticCreativeImageQaReason[] {
+  if (mode === "background_only") {
+    return uniq(reasons);
   }
 
-  const contentType = match[1].toLowerCase();
-  if (!contentType.startsWith("image/")) {
-    return { ok: false, contentType };
-  }
-
-  const raw = match[3] ?? "";
-  const bytes = match[2]
-    ? Buffer.from(raw, "base64")
-    : Buffer.from(decodeURIComponent(raw), "utf8");
-
-  if (bytes.byteLength > MAX_IMAGE_BYTES) {
-    return { ok: false, contentType };
-  }
-
-  return { ok: true, contentType, bytes };
+  return uniq(reasons.filter((reason) => (
+    reason === "gibberish_text_detected" ||
+    reason === "ui_or_dashboard_layout" ||
+    reason === "chart_or_table_detected" ||
+    reason === "listing_sheet_detected" ||
+    reason === "finished_ad_text_unverified" ||
+    reason === "required_cta_missing" ||
+    reason === "required_offer_missing" ||
+    reason === "brand_misspelled" ||
+    reason === "image_fetch_failed" ||
+    reason === "qa_timeout"
+  )));
 }
 
 async function fetchImageBytes(url: string): Promise<FetchedImage> {
-  if (url.startsWith("data:")) {
-    return decodeDataUri(url);
-  }
-
-  let parsed: URL;
   try {
-    parsed = new URL(url);
-  } catch {
-    return { ok: false };
-  }
-
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    return { ok: false };
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: { Accept: "image/png,image/jpeg,image/webp,image/svg+xml" },
+    const fetched = await fetchStaticCreativeProviderImage(url, {
+      maxBytes: MAX_IMAGE_BYTES,
+      accept: "image/png,image/jpeg,image/webp,image/svg+xml",
+      errorPrefix: "Generated image QA",
     });
-    const contentType = response.headers.get("content-type")?.split(";")[0]?.toLowerCase() ?? "";
 
-    if (!response.ok || !contentType.startsWith("image/")) {
-      return { ok: false, contentType };
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) {
-      return { ok: false, contentType };
-    }
-
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      if (value) {
-        total += value.byteLength;
-        if (total > MAX_IMAGE_BYTES) {
-          controller.abort();
-          return { ok: false, contentType };
-        }
-        chunks.push(value);
-      }
-    }
-
-    return { ok: true, contentType, bytes: Buffer.concat(chunks) };
+    return { ok: true, contentType: fetched.contentType, bytes: fetched.bytes };
   } catch (error) {
     return {
       ok: false,
-      timeout: error instanceof Error && error.name === "AbortError",
+      timeout: error instanceof Error && /timed out/i.test(error.message),
     };
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -273,6 +240,7 @@ function analyzeSvg(bytes: Uint8Array): AnalyzeResult {
     layoutRisk,
     detectedTextSamples: samples,
     reasons: uniq(reasons),
+    textInspectionAvailable: true,
   };
 }
 
@@ -383,7 +351,7 @@ function parsePng(bytes: Uint8Array) {
 function analyzePng(bytes: Uint8Array): AnalyzeResult {
   const png = parsePng(bytes);
   if (!png) {
-    return { textDensity: 0, layoutRisk: 0, detectedTextSamples: [], reasons: [] };
+    return { textDensity: 0, layoutRisk: 0, detectedTextSamples: [], reasons: [], textInspectionAvailable: false };
   }
 
   const { width, height, luma } = png;
@@ -448,7 +416,7 @@ function analyzePng(bytes: Uint8Array): AnalyzeResult {
     reasons.push("fake_ad_layout");
   }
 
-  return { textDensity, layoutRisk, detectedTextSamples: [], reasons: uniq(reasons) };
+  return { textDensity, layoutRisk, detectedTextSamples: [], reasons: uniq(reasons), textInspectionAvailable: false };
 }
 
 function analyzeImage(bytes: Uint8Array, contentType: string): AnalyzeResult {
@@ -460,7 +428,116 @@ function analyzeImage(bytes: Uint8Array, contentType: string): AnalyzeResult {
     return analyzePng(bytes);
   }
 
-  return { textDensity: 0, layoutRisk: 0, detectedTextSamples: [], reasons: [] };
+  return { textDensity: 0, layoutRisk: 0, detectedTextSamples: [], reasons: [], textInspectionAvailable: false };
+}
+
+async function analyzeFinishedAdImageWithVision(
+  input: StaticCreativeImageQaInput,
+  fetched: FetchedImage,
+  fallbackAnalysis: AnalyzeResult,
+): Promise<AnalyzeResult> {
+  if (fallbackAnalysis.textInspectionAvailable || !fetched.bytes || !fetched.contentType) {
+    return fallbackAnalysis;
+  }
+
+  const vision = await inspectFinishedAdWithVisionQa({
+    bytes: fetched.bytes,
+    contentType: fetched.contentType,
+    prompt: input.prompt,
+    campaignContext: input.campaignContext,
+  });
+  const fallbackReasons = vision.available
+    ? fallbackAnalysis.reasons.filter((reason) => reason === "gibberish_text_detected")
+    : fallbackAnalysis.reasons;
+
+  return {
+    textDensity: fallbackAnalysis.textDensity,
+    layoutRisk: fallbackAnalysis.layoutRisk,
+    detectedTextSamples: vision.textSamples,
+    reasons: uniq([...fallbackReasons, ...vision.reasons]),
+    textInspectionAvailable: vision.available,
+  };
+}
+
+function normalizedForSearch(value: string) {
+  return safeText(value).toLowerCase().replace(/[^a-z0-9+]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function requiredPhrasePresent(samples: string[], phrase: string) {
+  const normalizedPhrase = normalizedForSearch(phrase);
+  if (!normalizedPhrase) {
+    return true;
+  }
+
+  const haystack = normalizedForSearch(samples.join(" "));
+  const words = normalizedPhrase
+    .split(" ")
+    .filter((word) => word.length > 1)
+    .filter((word) => ![
+      "the",
+      "and",
+      "with",
+      "that",
+      "your",
+      "you",
+      "may",
+      "for",
+      "from",
+      "into",
+      "this",
+      "what",
+      "options",
+      "available",
+      "buyers",
+    ].includes(word));
+  if (words.length === 0) {
+    return true;
+  }
+
+  const requiredNumericTokens = words.filter((word) => /\d/.test(word));
+  if (requiredNumericTokens.some((word) => !haystack.includes(word.replace(/\+$/, "")))) {
+    return false;
+  }
+
+  const matched = words.filter((word) => haystack.includes(word.replace(/\+$/, ""))).length;
+  return matched / words.length >= 0.55;
+}
+
+function detectBrandMisspelling(samples: string[], prompt?: string) {
+  const sourcePrompt = prompt ?? "";
+  if (/\bre\s*\/\s*max\b/i.test(sourcePrompt)) {
+    return !samples.some((sample) => /\bre\s*\/\s*max\b/i.test(sample));
+  }
+
+  if (/royal\s+lepage/i.test(sourcePrompt)) {
+    return !samples.some((sample) => /royal\s+lepage/i.test(sample));
+  }
+
+  return false;
+}
+
+function collectFinishedAdSemanticReasons(input: StaticCreativeImageQaInput, analysis: AnalyzeResult) {
+  const reasons: StaticCreativeImageQaReason[] = [];
+  const samples = analysis.detectedTextSamples;
+
+  if (!analysis.textInspectionAvailable || samples.length === 0) {
+    reasons.push("finished_ad_text_unverified");
+    return reasons;
+  }
+
+  if (!requiredPhrasePresent(samples, input.campaignContext?.cta ?? "")) {
+    reasons.push("required_cta_missing");
+  }
+
+  if (!requiredPhrasePresent(samples, input.campaignContext?.offer ?? "")) {
+    reasons.push("required_offer_missing");
+  }
+
+  if (detectBrandMisspelling(samples, input.prompt)) {
+    reasons.push("brand_misspelled");
+  }
+
+  return reasons;
 }
 
 export async function evaluateStaticCreativeImageQa(
@@ -468,38 +545,46 @@ export async function evaluateStaticCreativeImageQa(
 ): Promise<StaticCreativeImageQaResult> {
   assertServerSide();
 
-  const promptReasons = collectPromptRiskReasons(input);
+  const mode = normalizeQaMode(input.mode);
+  const promptReasons = collectPromptRiskReasons(input, mode);
   const fetched = await fetchImageBytes(input.imageUrl);
 
   if (!fetched.ok || !fetched.bytes) {
     const reason: StaticCreativeImageQaReason = fetched.timeout ? "qa_timeout" : "image_fetch_failed";
+    const reasons = filterReasonsForMode([...promptReasons, reason], mode);
     return {
       usable: false,
       decision: "reject",
-      reasons: uniq([...promptReasons, reason]),
+      mode,
+      reasons,
       textDensity: 0,
       layoutRisk: promptReasons.length > 0 ? 0.7 : 0,
       detectedTextSamples: [],
     };
   }
 
-  const analysis = analyzeImage(fetched.bytes, fetched.contentType ?? "");
-  const reasons = uniq([...promptReasons, ...analysis.reasons]);
+  const rawAnalysis = analyzeImage(fetched.bytes, fetched.contentType ?? "");
+  const analysis = mode === "finished_ad"
+    ? await analyzeFinishedAdImageWithVision(input, fetched, rawAnalysis)
+    : rawAnalysis;
+  const semanticReasons = mode === "finished_ad" ? collectFinishedAdSemanticReasons(input, analysis) : [];
+  const reasons = filterReasonsForMode([...promptReasons, ...analysis.reasons, ...semanticReasons], mode);
 
-  if (analysis.textDensity > 0.12 && !reasons.includes("text_heavy")) {
+  if (mode === "background_only" && analysis.textDensity > 0.12 && !reasons.includes("text_heavy")) {
     reasons.push("text_heavy");
   }
 
-  if (analysis.layoutRisk > 0.78 && !reasons.includes("fake_ad_layout")) {
+  if (mode === "background_only" && analysis.layoutRisk > 0.78 && !reasons.includes("fake_ad_layout")) {
     reasons.push("fake_ad_layout");
   }
 
   const reject = reasons.length > 0;
-  const review = !reject && (analysis.textDensity > 0.075 || analysis.layoutRisk > 0.58);
+  const review = mode === "background_only" && !reject && (analysis.textDensity > 0.075 || analysis.layoutRisk > 0.58);
 
   return {
     usable: !reject && !review,
     decision: reject ? "reject" : review ? "review" : "accept",
+    mode,
     reasons: reject ? reasons : [],
     textDensity: Number(analysis.textDensity.toFixed(4)),
     layoutRisk: Number(analysis.layoutRisk.toFixed(4)),

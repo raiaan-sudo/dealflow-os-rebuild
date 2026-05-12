@@ -26,6 +26,8 @@
     "test:media-buyer-regression": "node ./scripts/regress-media-buyer-integration.mjs",
     "test:static-ad-templates": "node ./scripts/test-static-ad-templates.mjs",
     "test:static-creative-image-qa": "node ./scripts/test-static-creative-image-qa.mjs",
+    "test:higgsfield-provider-selection": "node ./scripts/test-higgsfield-provider-selection.mjs",
+    "test:marketing-studio-worker": "node ./scripts/test-marketing-studio-worker.mjs",
     "test:static-creative-storage": "node ./scripts/test-static-creative-storage-normalization.mjs",
     "test:creative-chat-intake": "node ./scripts/test-creative-chat-intake.mjs",
     "test:manual-creative-upload": "node ./scripts/test-manual-creative-upload-validation.mjs",
@@ -43,7 +45,8 @@
     "load:lead-capture": "node ./scripts/load-test.mjs lead-capture",
     "test:internal-sms": "node ./scripts/test-internal-sms-notifications.mjs",
     "test:subscription-lifecycle": "node ./scripts/test-subscription-lifecycle.mjs",
-    "test:activation-telemetry": "node ./scripts/test-activation-telemetry.mjs"
+    "test:activation-telemetry": "node ./scripts/test-activation-telemetry.mjs",
+    "worker:marketing-studio": "node ./scripts/run-marketing-studio-worker.mjs"
   },
   "dependencies": {
     "@higgsfield/client": "^0.2.1",

@@ -1,17 +1,23 @@
 import { lookup } from "node:dns/promises";
+import { stat, readFile } from "node:fs/promises";
 import net from "node:net";
+import os from "node:os";
+import path from "node:path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseEnv } from "@/lib/env";
 import type { Database } from "@/lib/supabase/types";
 
 export const STATIC_CREATIVE_STORAGE_BUCKET = "creative-assets";
 
-const MAX_PROVIDER_IMAGE_BYTES = 5_000_000;
+export const MAX_STATIC_CREATIVE_PROVIDER_IMAGE_BYTES = 5_000_000;
 const FETCH_TIMEOUT_MS = 5_000;
 const MAX_PROVIDER_REDIRECTS = 3;
+const MAX_STORAGE_NORMALIZATION_ATTEMPTS = 2;
 const DEFAULT_PROVIDER_IMAGE_HOSTS = [
   "platform.higgsfield.ai",
   "*.higgsfield.ai",
+  "d8j0ntlcm91z4.cloudfront.net",
+  "d3u0tzju9qaucj.cloudfront.net",
   "api.openai.com",
   "*.openai.com",
   "*.oaiusercontent.com",
@@ -34,6 +40,11 @@ export type StaticCreativeStorageNormalizationInput = {
   creativeId: string;
   generationBatchId: string;
   providerUrl: string;
+};
+
+export type StaticCreativeProviderImageFetchResult = {
+  bytes: Buffer;
+  contentType: string;
 };
 
 function safeText(value: unknown) {
@@ -170,7 +181,7 @@ export async function validateStaticCreativeProviderImageUrlForStorage(url: stri
   await assertSafeProviderImageFetchUrl(parsed);
 }
 
-function extensionForContentType(contentType: string) {
+export function extensionForStaticCreativeImageContentType(contentType: string) {
   if (contentType.includes("png")) {
     return "png";
   }
@@ -190,7 +201,7 @@ function extensionForContentType(contentType: string) {
   return "bin";
 }
 
-function decodeDataUri(uri: string) {
+function decodeDataUri(uri: string, maxBytes = MAX_STATIC_CREATIVE_PROVIDER_IMAGE_BYTES) {
   const match = /^data:([^;,]+)(;base64)?,(.*)$/i.exec(uri);
 
   if (!match) {
@@ -207,23 +218,135 @@ function decodeDataUri(uri: string) {
     ? Buffer.from(match[3] ?? "", "base64")
     : Buffer.from(decodeURIComponent(match[3] ?? ""), "utf8");
 
-  if (bytes.byteLength > MAX_PROVIDER_IMAGE_BYTES) {
+  if (bytes.byteLength > maxBytes) {
     throw new Error("Generated image is too large to store.");
   }
 
   return { bytes, contentType };
 }
 
-async function fetchProviderImage(url: string) {
+function isLocalGeneratedImageSource(value: string) {
+  return value.startsWith("file://") || value.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(value);
+}
+
+function localGeneratedImageRoots() {
+  return Array.from(
+    new Set(
+      [
+        process.env.MARKETING_STUDIO_WORKER_OUTPUT_DIR,
+        process.env.HIGGSFIELD_OUTPUT_DIR,
+        process.env.HIGGSFIELD_CACHE_DIR,
+        process.env.TMPDIR,
+        os.tmpdir(),
+      ]
+        .map((value) => safeText(value))
+        .filter(Boolean)
+        .map((value) => path.resolve(value)),
+    ),
+  );
+}
+
+function resolveLocalGeneratedImagePath(source: string) {
+  let resolved: string;
+
+  if (source.startsWith("file://")) {
+    resolved = path.resolve(new URL(source).pathname);
+  } else {
+    resolved = path.resolve(source);
+  }
+
+  const roots = localGeneratedImageRoots();
+
+  if (
+    roots.length === 0 ||
+    !roots.some((root) => resolved === root || resolved.startsWith(`${root}${path.sep}`))
+  ) {
+    throw new Error("Generated image file path is outside the approved worker output directories.");
+  }
+
+  return resolved;
+}
+
+export function detectStaticCreativeImageContentType(bytes: Buffer) {
+  if (bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+    return "image/png";
+  }
+
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return "image/jpeg";
+  }
+
+  if (
+    bytes.length >= 12 &&
+    bytes.subarray(0, 4).toString("ascii") === "RIFF" &&
+    bytes.subarray(8, 12).toString("ascii") === "WEBP"
+  ) {
+    return "image/webp";
+  }
+
+  if (
+    bytes.length >= 6 &&
+    (bytes.subarray(0, 6).toString("ascii") === "GIF87a" ||
+      bytes.subarray(0, 6).toString("ascii") === "GIF89a")
+  ) {
+    return "image/gif";
+  }
+
+  return null;
+}
+
+async function readLocalGeneratedImageFile(
+  source: string,
+  maxBytes = MAX_STATIC_CREATIVE_PROVIDER_IMAGE_BYTES,
+): Promise<StaticCreativeProviderImageFetchResult> {
+  const filePath = resolveLocalGeneratedImagePath(source);
+  const fileStat = await stat(filePath);
+
+  if (!fileStat.isFile()) {
+    throw new Error("Generated image file path was not a file.");
+  }
+
+  if (fileStat.size <= 0 || fileStat.size > maxBytes) {
+    throw new Error("Generated image file is too large to store.");
+  }
+
+  const bytes = await readFile(filePath);
+  const contentType = detectStaticCreativeImageContentType(bytes);
+
+  if (!contentType) {
+    throw new Error("Generated image file was not a supported image type.");
+  }
+
+  return {
+    bytes,
+    contentType,
+  };
+}
+
+export async function fetchStaticCreativeProviderImage(
+  url: string,
+  options?: {
+    maxBytes?: number;
+    accept?: string;
+    errorPrefix?: string;
+  },
+): Promise<StaticCreativeProviderImageFetchResult> {
+  const maxBytes = options?.maxBytes ?? MAX_STATIC_CREATIVE_PROVIDER_IMAGE_BYTES;
+  const errorPrefix = options?.errorPrefix ?? "Generated image";
+
   if (url.startsWith("data:")) {
-    return decodeDataUri(url);
+    return decodeDataUri(url, maxBytes);
+  }
+
+  if (isLocalGeneratedImageSource(url)) {
+    return readLocalGeneratedImageFile(url, maxBytes);
   }
 
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    throw new Error("Generated image URL was invalid.");
+    throw new Error(`${errorPrefix} URL was invalid.`);
   }
 
   await assertSafeProviderImageFetchUrl(parsed);
@@ -242,6 +365,7 @@ async function fetchProviderImage(url: string) {
         redirect: "manual",
         headers: {
           Accept: "image/png,image/jpeg,image/webp,image/gif",
+          ...(options?.accept ? { Accept: options.accept } : {}),
         },
       });
 
@@ -252,26 +376,26 @@ async function fetchProviderImage(url: string) {
       const location = response.headers.get("location");
 
       if (!location || redirectCount === MAX_PROVIDER_REDIRECTS) {
-        throw new Error("Generated image storage fetch redirected too many times.");
+        throw new Error(`${errorPrefix} fetch redirected too many times.`);
       }
 
       fetchUrl = new URL(location, fetchUrl);
     }
 
     if (!response) {
-      throw new Error("Generated image could not be fetched for storage.");
+      throw new Error(`${errorPrefix} could not be fetched.`);
     }
 
     const contentType = response.headers.get("content-type")?.split(";")[0]?.toLowerCase() ?? "";
 
     if (!response.ok || !contentType.startsWith("image/")) {
-      throw new Error("Generated image could not be fetched for storage.");
+      throw new Error(`${errorPrefix} could not be fetched.`);
     }
 
     const reader = response.body?.getReader();
 
     if (!reader) {
-      throw new Error("Generated image response was empty.");
+      throw new Error(`${errorPrefix} response was empty.`);
     }
 
     const chunks: Uint8Array[] = [];
@@ -287,9 +411,9 @@ async function fetchProviderImage(url: string) {
       if (value) {
         total += value.byteLength;
 
-        if (total > MAX_PROVIDER_IMAGE_BYTES) {
+        if (total > maxBytes) {
           controller.abort();
-          throw new Error("Generated image is too large to store.");
+          throw new Error(`${errorPrefix} is too large.`);
         }
 
         chunks.push(value);
@@ -302,7 +426,9 @@ async function fetchProviderImage(url: string) {
     };
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Generated image storage fetch timed out.");
+      const timeoutError = new Error("Generated image storage fetch timed out.");
+      timeoutError.name = "AbortError";
+      throw timeoutError;
     }
 
     throw error;
@@ -338,21 +464,49 @@ export async function normalizeStaticCreativeProviderImage(
     };
   }
 
-  const fetched = await fetchProviderImage(providerUrl);
-  const extension = extensionForContentType(fetched.contentType);
+  let fetched: StaticCreativeProviderImageFetchResult | null = null;
+  let fetchError: unknown = null;
+
+  for (let attempt = 1; attempt <= MAX_STORAGE_NORMALIZATION_ATTEMPTS; attempt += 1) {
+    try {
+      fetched = await fetchStaticCreativeProviderImage(providerUrl, {
+        errorPrefix: "Generated image storage",
+      });
+      fetchError = null;
+      break;
+    } catch (error) {
+      fetchError = error;
+    }
+  }
+
+  if (!fetched) {
+    throw fetchError instanceof Error ? fetchError : new Error("Generated image could not be fetched for storage.");
+  }
+
+  const extension = extensionForStaticCreativeImageContentType(fetched.contentType);
 
   if (extension === "bin") {
     throw new Error("Generated image type is not supported for storage.");
   }
 
   const storagePath = buildStoragePath(params, extension);
-  const { error: uploadError } = await params.supabase.storage
-    .from(STATIC_CREATIVE_STORAGE_BUCKET)
-    .upload(storagePath, fetched.bytes, {
-      cacheControl: "31536000",
-      contentType: fetched.contentType,
-      upsert: false,
-    });
+  let uploadError: unknown = null;
+
+  for (let attempt = 1; attempt <= MAX_STORAGE_NORMALIZATION_ATTEMPTS; attempt += 1) {
+    const result = await params.supabase.storage
+      .from(STATIC_CREATIVE_STORAGE_BUCKET)
+      .upload(storagePath, fetched.bytes, {
+        cacheControl: "31536000",
+        contentType: fetched.contentType,
+        upsert: attempt > 1,
+      });
+
+    uploadError = result.error;
+
+    if (!uploadError) {
+      break;
+    }
+  }
 
   if (uploadError) {
     throw new Error("Generated image could not be stored durably.");

@@ -258,6 +258,8 @@ const FunnelLivePreview = memo(function FunnelLivePreview({
               <video
                 src={section.media.url}
                 controls
+                controlsList="nodownload noplaybackrate"
+                disablePictureInPicture
                 poster={section.media.thumbnailUrl ?? undefined}
                 className="aspect-video w-full bg-black object-cover"
               />
@@ -507,7 +509,13 @@ const VideoStoryboardPreview = memo(function VideoStoryboardPreview({
         <div className="mt-4 rounded-[20px] border border-primary/15 bg-primary/[0.05] p-4">
           <p className="text-xs uppercase tracking-[0.18em] text-primary/80">Video preview</p>
           <div className="mt-3 overflow-hidden rounded-[18px] border border-white/8 bg-black/30">
-            <video src={videoUrl} controls className="aspect-[9/16] w-full bg-black object-cover" />
+            <video
+              src={videoUrl}
+              controls
+              controlsList="nodownload noplaybackrate"
+              disablePictureInPicture
+              className="aspect-[9/16] w-full bg-black object-cover"
+            />
           </div>
         </div>
       ) : null}

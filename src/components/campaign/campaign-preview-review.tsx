@@ -695,6 +695,8 @@ export function CampaignPreviewReview({
                         <video
                           src={video.videoUrl}
                           controls
+                          controlsList="nodownload noplaybackrate"
+                          disablePictureInPicture
                           playsInline
                           preload="metadata"
                           className="aspect-[9/16] w-full bg-black object-cover"

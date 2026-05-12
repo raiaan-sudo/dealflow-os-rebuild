@@ -1,11 +1,16 @@
 import {
+  getHiggsfieldMarketingStudioEnv,
   getHiggsfieldEnv,
   getImageGenerationEnv,
   getMediaGenerationProvider,
   validateHiggsfieldEnv,
   validateImageGenerationEnv,
 } from "@/lib/env";
-import { generateHiggsfieldImage } from "@/lib/ai/higgsfield";
+import {
+  generateHiggsfieldImage,
+  generateHiggsfieldMarketingStudioImage,
+  getHiggsfieldMarketingStudioCliReadiness,
+} from "@/lib/ai/higgsfield";
 import { logWarn } from "@/lib/logging";
 import type {
   ExecutionProvider,
@@ -278,6 +283,10 @@ function mapAspectRatioToHiggsfield(format: CreativeAssetFormat | string | null 
   return "1:1";
 }
 
+function isHiggsfieldImageGenerationEnabled() {
+  return process.env.ALLOW_HIGGSFIELD_IMAGE_GENERATION === "true";
+}
+
 class HiggsfieldImageProvider implements ImageGenerationProvider {
   id = "ai_image_generation";
   label = "AI Image Generation";
@@ -286,15 +295,19 @@ class HiggsfieldImageProvider implements ImageGenerationProvider {
 
   isConfigured() {
     const env = getHiggsfieldEnv();
-    return getMediaGenerationProvider() === "higgsfield" && Boolean(env?.credentials);
+    const provider = getMediaGenerationProvider();
+    return (provider === "higgsfield" || provider === "higgsfield_marketing_studio") && Boolean(env?.credentials);
   }
 
   validateConfig(): ProviderConfigValidation {
     const validation = validateHiggsfieldEnv();
+    const provider = getMediaGenerationProvider();
+    const higgsfieldSelected = provider === "higgsfield" || provider === "higgsfield_marketing_studio";
+
     return {
-      configured: getMediaGenerationProvider() === "higgsfield" && validation.configured,
+      configured: higgsfieldSelected && validation.configured,
       missingConfig:
-        getMediaGenerationProvider() === "higgsfield"
+        higgsfieldSelected
           ? validation.missing
           : ["MEDIA_GENERATION_PROVIDER=higgsfield"],
     };
@@ -302,20 +315,29 @@ class HiggsfieldImageProvider implements ImageGenerationProvider {
 
   async checkStatus(): Promise<ProviderConnectionStatus> {
     const validation = this.validateConfig();
+    const usageGuardEnabled = isHiggsfieldImageGenerationEnabled();
 
     return {
-      status: validation.configured ? "connected" : "disconnected",
+      status: validation.configured && usageGuardEnabled ? "connected" : "disconnected",
       state: validation.configured ? "configured" : "not_configured",
-      message: validation.configured
-        ? "Image generation provider is configured."
+      message: validation.configured && !usageGuardEnabled
+        ? "Image generation provider is configured but disabled by the usage guard."
+        : validation.configured
+        ? "Image generation provider is configured and enabled."
         : "Image generation provider credentials are incomplete.",
+      metadata: validation.configured
+        ? {
+            usageGuardEnabled,
+            model: getHiggsfieldEnv()?.imageModel ?? null,
+          }
+        : undefined,
     };
   }
 
   async execute(request: ProviderRenderRequest): Promise<ProviderRenderResult> {
     const env = getHiggsfieldEnv();
 
-    if (process.env.ALLOW_HIGGSFIELD_IMAGE_GENERATION !== "true") {
+    if (!isHiggsfieldImageGenerationEnabled()) {
       return {
         ok: false,
         providerName: this.name,
@@ -327,7 +349,8 @@ class HiggsfieldImageProvider implements ImageGenerationProvider {
       };
     }
 
-    if (!env?.credentials || getMediaGenerationProvider() !== "higgsfield") {
+    const provider = getMediaGenerationProvider();
+    if (!env?.credentials || (provider !== "higgsfield" && provider !== "higgsfield_marketing_studio")) {
       return {
         ok: false,
         providerName: this.name,
@@ -417,6 +440,190 @@ class HiggsfieldImageProvider implements ImageGenerationProvider {
   }
 }
 
+class HiggsfieldMarketingStudioImageProvider extends HiggsfieldImageProvider {
+  label = "Higgsfield Marketing Studio";
+  vendor = "Higgsfield";
+  name = "higgsfield_marketing_studio";
+
+  isConfigured() {
+    const env = getHiggsfieldEnv();
+    const studio = getHiggsfieldMarketingStudioEnv();
+    const cliReadiness = getHiggsfieldMarketingStudioCliReadiness();
+    return (
+      getMediaGenerationProvider() === "higgsfield_marketing_studio" &&
+      (Boolean(env?.credentials) || studio.mode === "cli") &&
+      studio.enabled &&
+      cliReadiness.ready
+    );
+  }
+
+  validateConfig(): ProviderConfigValidation {
+    const validation = validateHiggsfieldEnv();
+    const studio = getHiggsfieldMarketingStudioEnv();
+    const cliReadiness = getHiggsfieldMarketingStudioCliReadiness();
+    const credentialMissing = studio.mode === "cli" ? [] : validation.missing;
+    const missingConfig = [
+      ...(getMediaGenerationProvider() === "higgsfield_marketing_studio"
+        ? credentialMissing
+        : ["MEDIA_GENERATION_PROVIDER=higgsfield_marketing_studio"]),
+      ...(studio.enabled ? [] : ["HIGGSFIELD_MARKETING_STUDIO_ENABLED=true"]),
+      ...(studio.mode === "cli" ? [] : ["HIGGSFIELD_MARKETING_STUDIO_MODE=cli"]),
+      ...(studio.cliEnabled ? [] : ["HIGGSFIELD_CLI_ENABLED=true"]),
+      ...(cliReadiness.ready ? [] : ["HIGGSFIELD_CLI_PATH=<installed executable>"]),
+    ];
+
+    return {
+      configured:
+        getMediaGenerationProvider() === "higgsfield_marketing_studio" &&
+        (validation.configured || studio.mode === "cli") &&
+        studio.enabled &&
+        cliReadiness.ready,
+      missingConfig,
+    };
+  }
+
+  async checkStatus(): Promise<ProviderConnectionStatus> {
+    const validation = this.validateConfig();
+    const usageGuardEnabled = isHiggsfieldImageGenerationEnabled();
+    const studio = getHiggsfieldMarketingStudioEnv();
+    const cliReadiness = getHiggsfieldMarketingStudioCliReadiness();
+
+    return {
+      status: validation.configured && usageGuardEnabled ? "connected" : "disconnected",
+      state: validation.configured ? "configured" : "not_configured",
+      message: validation.configured && !usageGuardEnabled
+        ? "Higgsfield Marketing Studio is configured but disabled by the usage guard."
+        : validation.configured
+        ? "Higgsfield Marketing Studio is configured and enabled."
+        : cliReadiness.reason ?? "Higgsfield Marketing Studio credentials or gates are incomplete.",
+      metadata: {
+        usageGuardEnabled,
+        marketingStudioEnabled: studio.enabled,
+        cliEnabled: cliReadiness.enabled,
+        cliReady: cliReadiness.ready,
+        cliPath: cliReadiness.cliPath,
+        cliResolved: Boolean(cliReadiness.resolvedPath),
+        mcpStatus: cliReadiness.mcpStatus,
+        mode: studio.mode,
+        model: getHiggsfieldEnv()?.imageModel ?? "marketing_studio_image",
+      },
+    };
+  }
+
+  async execute(request: ProviderRenderRequest): Promise<ProviderRenderResult> {
+    const env = getHiggsfieldEnv();
+
+    if (!isHiggsfieldImageGenerationEnabled()) {
+      return {
+        ok: false,
+        providerName: this.name,
+        providerAssetId: null,
+        status: "unsupported",
+        fileUrl: null,
+        thumbnailUrl: null,
+        error: "AI image generation is disabled until the provider usage guard is explicitly enabled.",
+      };
+    }
+
+    if (getMediaGenerationProvider() !== "higgsfield_marketing_studio") {
+      return {
+        ok: false,
+        providerName: this.name,
+        providerAssetId: null,
+        status: "unsupported",
+        fileUrl: null,
+        thumbnailUrl: null,
+        error: "Higgsfield Marketing Studio generation is not configured.",
+      };
+    }
+
+    const studio = getHiggsfieldMarketingStudioEnv();
+    const cliReadiness = getHiggsfieldMarketingStudioCliReadiness();
+
+    if (studio.enabled !== true) {
+      return {
+        ok: false,
+        providerName: this.name,
+        providerAssetId: null,
+        status: "unsupported",
+        fileUrl: null,
+        thumbnailUrl: null,
+        error: "Higgsfield Marketing Studio generation is disabled.",
+      };
+    }
+
+    if (!cliReadiness.ready) {
+      return {
+        ok: false,
+        providerName: this.name,
+        providerAssetId: null,
+        status: "unsupported",
+        fileUrl: null,
+        thumbnailUrl: null,
+        metadata: {
+          provider: this.name,
+          mode: studio.mode,
+          cliEnabled: cliReadiness.enabled,
+          cliReady: cliReadiness.ready,
+          mcpStatus: cliReadiness.mcpStatus,
+        },
+        error: cliReadiness.reason ?? "Higgsfield Marketing Studio CLI is not ready.",
+      };
+    }
+
+    try {
+      const model = env?.imageModel || "marketing_studio_image";
+      const result = await generateHiggsfieldMarketingStudioImage({
+        aspectRatio: mapAspectRatioToHiggsfield(request.aspectRatio),
+        model,
+        prompt: request.prompt ?? "",
+        negativePrompt: request.negativePrompt ?? null,
+      });
+
+      return {
+        ok: result.status === "completed" && Boolean(result.fileUrl),
+        providerName: this.name,
+        providerAssetId: result.requestId,
+        status: result.status === "completed" && result.fileUrl ? "ready" : result.status,
+        fileUrl: result.fileUrl,
+        thumbnailUrl: result.thumbnailUrl ?? result.fileUrl,
+        metadata: {
+          provider: this.name,
+          model,
+          requestId: result.requestId,
+          providerStatus: result.status,
+          outputMode: "finished_ad",
+          qualityGateStatus: result.fileUrl ? "candidate_ready" : "not_ready",
+        },
+        error: result.fileUrl ? null : "Higgsfield Marketing Studio did not return a usable asset.",
+      };
+    } catch (error) {
+      logWarn("Higgsfield Marketing Studio image generation failed", {
+        message: getErrorMessage(error),
+        errorName: error instanceof Error ? error.name : typeof error,
+        model: env?.imageModel ?? "marketing_studio_image",
+      });
+
+      return {
+        ok: false,
+        providerName: this.name,
+        providerAssetId: null,
+        status: "failed",
+        fileUrl: null,
+        thumbnailUrl: null,
+        metadata: {
+          provider: this.name,
+          model: env?.imageModel ?? "marketing_studio_image",
+        },
+        error:
+          error instanceof Error && /credit|balance/i.test(error.message)
+            ? "Image generation could not start because provider credits are unavailable."
+            : "Image generation failed.",
+      };
+    }
+  }
+}
+
 class UnsupportedImageProvider implements ImageGenerationProvider {
   id = "ai_image_generation";
   label = "AI Image Generation";
@@ -472,6 +679,11 @@ class UnsupportedImageProvider implements ImageGenerationProvider {
 }
 
 export function getImageGenerationProvider(): ImageGenerationProvider {
+  const marketingStudio = new HiggsfieldMarketingStudioImageProvider();
+  if (getMediaGenerationProvider() === "higgsfield_marketing_studio") {
+    return marketingStudio;
+  }
+
   const higgsfield = new HiggsfieldImageProvider();
   if (getMediaGenerationProvider() === "higgsfield") {
     return higgsfield.isConfigured() ? higgsfield : new UnsupportedImageProvider();

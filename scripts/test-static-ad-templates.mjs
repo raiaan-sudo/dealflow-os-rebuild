@@ -307,6 +307,43 @@ for (const reusable of reusableStaticAds) {
   assert.equal(result?.imageGenerationState, "generated", `preserved state for ${reusable.id}`);
 }
 
+const forcedRequestedAssetIds = [];
+const allReusableStaticAds = baseStaticAds.map((asset) => ({
+  ...asset,
+  imageUrl: `https://example.test/ready-${asset.id}.png`,
+  storageNormalized: true,
+  imageGenerationState: "generated",
+  imageGenerationMessage: null,
+  imageGenerationModel: "gpt-image-1.5",
+  imageGenerationProvider: "higgsfield",
+  qualityGate: {
+    ...(asset.qualityGate ?? {}),
+    accepted: true,
+  },
+}));
+const forcedStaticAds = await generateStaticCreativeAds({
+  ...generationInput,
+  force: true,
+  max_static_image_generations: 1,
+  reuse_static_assets: allReusableStaticAds,
+  provider_usage_context: {
+    createForAsset: (asset) => {
+      forcedRequestedAssetIds.push(asset.id);
+      return null;
+    },
+  },
+});
+assert.deepEqual(
+  forcedRequestedAssetIds,
+  [baseStaticAds[0].id],
+  "force:true should bypass reusable-image selection and request a fresh provider generation",
+);
+assert.equal(
+  forcedStaticAds.find((asset) => asset.id === allReusableStaticAds[0].id)?.imageUrl,
+  allReusableStaticAds[0].imageUrl,
+  "failed forced refresh preserves the previous good image after provider failure",
+);
+
 const boundedRequestedAssetIds = [];
 await generateStaticCreativeAds({
   ...generationInput,
@@ -384,5 +421,97 @@ assert.deepEqual(
   baseStaticAds.slice(2, 4).map((asset) => asset.id),
   "bounded static retries should try never-attempted missing backgrounds before failed no-image attempts",
 );
+
+const finishedAdCreativeIntake = {
+  version: 1,
+  conversationId: "finished-ad-retry-test",
+  campaignId: "campaign-test",
+  revisionNumber: 1,
+  approvedAt: "2026-05-12T00:00:00.000Z",
+  outputMode: "finished_ad",
+  generationPhase: "static",
+  promptVersion: {
+    revisionNumber: 1,
+    generatedPrompt: "Create one finished paid-social real estate ad raster with the required CTA.",
+    negativePrompt: "gibberish; fake dashboard; listing sheet",
+    sanitizedPreview: "Create one finished paid-social real estate ad raster with the required CTA.",
+    createdAt: "2026-05-12T00:00:00.000Z",
+  },
+};
+const staleImageFetchFailedAsset = {
+  ...baseStaticAds[0],
+  imageUrl: "https://example.test/stale-failed-provider-output.png",
+  storageNormalized: false,
+  imageGenerationState: "failed",
+  imageGenerationMessage: "Generated finished-ad output could not be stored durably.",
+  imageGenerationModel: "marketing_studio_image",
+  imageGenerationProvider: "higgsfield_marketing_studio",
+  imageQa: {
+    mode: "finished_ad",
+    usable: false,
+    decision: "reject",
+    reasons: ["image_fetch_failed"],
+    textDensity: 0,
+    layoutRisk: 0,
+    detectedTextSamples: [],
+  },
+};
+const secondStaleImageFetchFailedAsset = {
+  ...baseStaticAds[1],
+  imageUrl: "https://example.test/second-stale-failed-provider-output.png",
+  storageNormalized: false,
+  imageGenerationState: "failed",
+  imageGenerationMessage: "Generated finished-ad output could not be stored durably.",
+  imageGenerationModel: "marketing_studio_image",
+  imageGenerationProvider: "higgsfield_marketing_studio",
+  imageQa: {
+    mode: "finished_ad",
+    usable: false,
+    decision: "reject",
+    reasons: ["image_fetch_failed"],
+    textDensity: 0,
+    layoutRisk: 0,
+    detectedTextSamples: [],
+  },
+};
+const finishedAdRequestedAssetIds = [];
+const finishedAdRetryResult = await generateStaticCreativeAds({
+  ...generationInput,
+  max_static_image_generations: 1,
+  creative_intake: finishedAdCreativeIntake,
+  reuse_static_assets: [
+    staleImageFetchFailedAsset,
+    secondStaleImageFetchFailedAsset,
+    {
+      ...baseStaticAds[2],
+      imageUrl: "",
+      imageGenerationState: "unavailable",
+      imageGenerationMessage: "A cleaner image is being prepared for this creative.",
+    },
+  ],
+  provider_usage_context: {
+    createForAsset: (asset) => {
+      finishedAdRequestedAssetIds.push(asset.id);
+      return null;
+    },
+  },
+});
+assert.deepEqual(
+  finishedAdRequestedAssetIds,
+  [baseStaticAds[0].id],
+  "finished_ad capped retries force a fresh provider attempt for stale image_fetch_failed concepts",
+);
+const firstFinishedAdResult = finishedAdRetryResult.find((asset) => asset.id === baseStaticAds[0].id);
+assert.equal(firstFinishedAdResult?.imageUrl, "", "fresh finished_ad retry does not reuse the stale provider URL");
+assert.notEqual(firstFinishedAdResult?.imageUrl, staleImageFetchFailedAsset.imageUrl);
+const secondFinishedAdResult = finishedAdRetryResult.find((asset) => asset.id === baseStaticAds[1].id);
+assert.equal(
+  secondFinishedAdResult?.imageUrl,
+  "",
+  "finished_ad carry-forward strips stale image_fetch_failed provider URLs when not regenerated",
+);
+assert.notEqual(secondFinishedAdResult?.imageUrl, secondStaleImageFetchFailedAsset.imageUrl);
+assert.equal(secondFinishedAdResult?.imageGenerationState, "failed");
+assert.equal(secondFinishedAdResult?.imageQa?.decision, "reject");
 
 console.log("Static ad template tests passed.");

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import Module from "node:module";
+import os from "node:os";
 import path from "node:path";
 import ts from "typescript";
 import { createRequire } from "node:module";
@@ -85,6 +87,10 @@ await assert.rejects(
 );
 await validateStaticCreativeProviderImageUrlForStorage("https://example.com/generated.png");
 
+process.env.STATIC_CREATIVE_PROVIDER_IMAGE_HOSTS = "d8j0ntlcm91z4.cloudfront.net";
+await validateStaticCreativeProviderImageUrlForStorage("https://d8j0ntlcm91z4.cloudfront.net/user/generated.png");
+process.env.STATIC_CREATIVE_PROVIDER_IMAGE_HOSTS = "example.com,api.openai.com";
+
 const legacyProviderVisual = {
   imageUrl: "https://example.com/legacy-provider.png",
   storageNormalized: false,
@@ -134,7 +140,7 @@ await assert.rejects(
 );
 globalThis.fetch = originalFetch;
 
-function fakeSupabase({ uploadFails = false, insertFails = false } = {}) {
+function fakeSupabase({ uploadFails = false, uploadFailuresRemaining = uploadFails ? Number.POSITIVE_INFINITY : 0, insertFails = false } = {}) {
   const operations = [];
 
   return {
@@ -154,7 +160,8 @@ function fakeSupabase({ uploadFails = false, insertFails = false } = {}) {
               upsert: options.upsert,
             });
 
-            if (uploadFails) {
+            if (uploadFailuresRemaining > 0) {
+              uploadFailuresRemaining -= 1;
               return { error: new Error("upload failed") };
             }
 
@@ -273,6 +280,68 @@ assert.equal(normalized.contentType, "image/png");
 assert.ok(normalized.byteSize > 0);
 assert.equal(storageDb.operations.some((item) => item.op === "upload"), true);
 
+const retryUploadDb = fakeSupabase({ uploadFailuresRemaining: 1 });
+const retryNormalized = await normalizeStaticCreativeProviderImage({
+  supabase: retryUploadDb,
+  userId: "user-test",
+  campaignId: "campaign-test",
+  creativeId: "campaign-test-creative-retry",
+  generationBatchId: "batch-retry",
+  providerUrl: providerDataUri,
+});
+assert.match(retryNormalized.durableUrl, /\/storage\/v1\/object\/public\/creative-assets\//);
+assert.equal(
+  retryUploadDb.operations.filter((item) => item.op === "upload").length,
+  2,
+  "storage normalization retries a transient upload failure once",
+);
+assert.equal(
+  retryUploadDb.operations.filter((item) => item.op === "upload")[1].upsert,
+  true,
+  "retry upload uses upsert to recover from partial transient writes",
+);
+
+const localOutputDir = await mkdtemp(path.join(os.tmpdir(), "dealflow-static-creative-"));
+const previousWorkerOutputDir = process.env.MARKETING_STUDIO_WORKER_OUTPUT_DIR;
+process.env.MARKETING_STUDIO_WORKER_OUTPUT_DIR = localOutputDir;
+const localPngPath = path.join(localOutputDir, "higgsfield-output.png");
+await writeFile(localPngPath, Buffer.from(providerDataUri.split(",")[1], "base64"));
+try {
+  const localDb = fakeSupabase();
+  const localNormalized = await normalizeStaticCreativeProviderImage({
+    supabase: localDb,
+    userId: "user-test",
+    campaignId: "campaign-test",
+    creativeId: "campaign-test-creative-local",
+    generationBatchId: "batch-local",
+    providerUrl: localPngPath,
+  });
+  assert.match(localNormalized.durableUrl, /\/storage\/v1\/object\/public\/creative-assets\//);
+  assert.match(localNormalized.storagePath, /^user-test\/campaign-test\/generated-static\/campaign-test-creative-local\/batch-local\.png$/);
+  assert.equal(localNormalized.contentType, "image/png");
+  assert.equal(localDb.operations.some((item) => item.op === "upload"), true);
+
+  await assert.rejects(
+    () => normalizeStaticCreativeProviderImage({
+      supabase: fakeSupabase(),
+      userId: "user-test",
+      campaignId: "campaign-test",
+      creativeId: "campaign-test-creative-local-blocked",
+      generationBatchId: "batch-local",
+      providerUrl: path.join(repoRoot, "package.json"),
+    }),
+    /outside the approved worker output directories|supported image type/,
+    "arbitrary local files are not accepted as generated images",
+  );
+} finally {
+  if (previousWorkerOutputDir === undefined) {
+    delete process.env.MARKETING_STUDIO_WORKER_OUTPUT_DIR;
+  } else {
+    process.env.MARKETING_STUDIO_WORKER_OUTPUT_DIR = previousWorkerOutputDir;
+  }
+  await rm(localOutputDir, { recursive: true, force: true });
+}
+
 const successfulDb = fakeSupabase();
 await persistStaticCreativeAssets({
   supabase: successfulDb,
@@ -292,6 +361,49 @@ assert.equal(imageFrame.metadata.storageBucket, "creative-assets");
 assert.equal(imageFrame.metadata.storageNormalized, true);
 assert.equal(successfulDb.operations.some((item) => item.op === "delete"), true, "all-ready replacement can clean old rows");
 
+const finishedAdDb = fakeSupabase();
+await persistStaticCreativeAssets({
+  supabase: finishedAdDb,
+  userId: "user-test",
+  campaignId: "campaign-test",
+  staticAds: [
+    {
+      ...buildAsset(),
+      storageNormalized: false,
+      imagePrompt: "MARKETING STUDIO FINISHED AD CREATIVE. Required CTA text: Check My Options.",
+      imagePromptConfig: {
+        prompt: "MARKETING STUDIO FINISHED AD CREATIVE. Required CTA text: Check My Options.",
+        negativePrompt: "charts; tables; dashboard",
+        aspectRatio: "1:1",
+      },
+      visualPromptBrief: null,
+      imageQa: {
+        mode: "finished_ad",
+        usable: true,
+        decision: "accept",
+        reasons: [],
+        textDensity: 0.42,
+        layoutRisk: 0.2,
+        detectedTextSamples: ["Check My Options"],
+      },
+      qualityGate: {
+        accepted: false,
+        score: 6,
+        hardFailures: ["Legacy composed-background quality gate does not apply to accepted finished_ad rasters."],
+      },
+    },
+  ],
+});
+const finishedAdInsert = finishedAdDb.operations.find((item) => item.op === "insert");
+assert.ok(
+  finishedAdDb.operations.some((item) => item.op === "upload"),
+  "accepted finished_ad provider rasters are normalized before final launch readiness",
+);
+assert.equal(finishedAdInsert.rows[0].status, "ready");
+assert.match(finishedAdInsert.rows[0].file_url, /\/storage\/v1\/object\/public\/creative-assets\//);
+assert.equal(finishedAdInsert.rows[0].metadata.imageQa.decision, "accept");
+assert.equal(finishedAdInsert.rows[0].metadata.storageNormalized, true);
+
 const uploadFailDb = fakeSupabase({ uploadFails: true });
 await persistStaticCreativeAssets({
   supabase: uploadFailDb,
@@ -306,6 +418,9 @@ assert.equal(failedInsert.rows[0].file_url, null);
 assert.equal(failedInsert.rows[0].thumbnail_url, null);
 assert.equal(failedInsert.rows[0].metadata.provider_original_url, providerDataUri);
 assert.equal(failedInsert.rows[0].metadata.storageNormalized, false);
+assert.equal(failedInsert.rows[0].metadata.imageQa.usable, false);
+assert.equal(failedInsert.rows[0].metadata.imageQa.decision, "reject");
+assert.ok(failedInsert.rows[0].metadata.imageQa.reasons.includes("image_fetch_failed"));
 assert.equal(
   uploadFailDb.operations.some((item) => item.op === "delete"),
   false,

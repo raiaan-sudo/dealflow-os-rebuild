@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 
 const repoRoot = process.cwd();
 const originalResolve = Module._resolveFilename;
+process.env.STATIC_CREATIVE_PROVIDER_IMAGE_HOSTS = "example.com,api.openai.com";
 
 Module._resolveFilename = function resolveFilename(request, parent, isMain, options) {
   if (request.startsWith("@/")) {
@@ -88,6 +89,7 @@ const flyer = await qa(
   `,
 );
 assert.equal(flyer.decision, "reject", "text-heavy flyer rejected");
+assert.equal(flyer.mode, "background_only", "background-only QA remains the default");
 assert.ok(flyer.reasons.includes("text_heavy"));
 assert.ok(flyer.reasons.includes("button_or_fake_cta_detected"));
 
@@ -174,6 +176,220 @@ const promptRisk = await qa(
 assert.equal(promptRisk.decision, "reject", "provider finished-ad prompt risk rejected");
 assert.ok(promptRisk.reasons.includes("provider_returned_finished_ad"));
 
+const cleanFinishedAd = await qa(
+  "clean-finished-ad",
+  `
+    <rect width="512" height="512" fill="#f7f3eb"/>
+    <rect x="28" y="28" width="456" height="456" rx="18" fill="#ffffff"/>
+    <rect x="48" y="58" width="416" height="220" rx="14" fill="#d9e8d5"/>
+    <circle cx="374" cy="154" r="76" fill="#a8c4e8"/>
+    <text x="56" y="332" font-size="34">See Homes That Match</text>
+    <text x="56" y="372" font-size="18">Private shortlist for qualified buyers</text>
+    <rect x="56" y="410" width="178" height="42" rx="21" fill="#183a2b"/>
+    <text x="86" y="437" font-size="18" fill="#fff">Learn More</text>
+  `,
+  {
+    mode: "finished_ad",
+    prompt: "Create a finished paid social creative with a clean headline, offer, and CTA.",
+    campaignContext: {
+      cta: "Learn More",
+      offer: "Private shortlist",
+    },
+  },
+);
+assert.equal(cleanFinishedAd.decision, "accept", "clean finished ad accepted in finished_ad QA mode");
+assert.equal(cleanFinishedAd.mode, "finished_ad");
+
+const missingRequiredCta = await qa(
+  "finished-ad-missing-cta",
+  `
+    <rect width="512" height="512" fill="#f7f3eb"/>
+    <text x="56" y="332" font-size="34">See Homes That Match</text>
+    <text x="56" y="372" font-size="18">Private shortlist for qualified buyers</text>
+  `,
+  {
+    mode: "finished_ad",
+    prompt: "Create a finished paid social creative.",
+    campaignContext: {
+      cta: "Learn More",
+      offer: "Private shortlist",
+    },
+  },
+);
+assert.equal(missingRequiredCta.decision, "reject", "finished_ad missing required CTA rejected");
+assert.ok(missingRequiredCta.reasons.includes("required_cta_missing"));
+
+const misspelledBrand = await qa(
+  "finished-ad-misspelled-brand",
+  `
+    <rect width="512" height="512" fill="#f7f3eb"/>
+    <text x="56" y="92" font-size="28">REMAX Realty</text>
+    <text x="56" y="332" font-size="34">See Homes That Match</text>
+    <text x="86" y="437" font-size="18">Learn More</text>
+  `,
+  {
+    mode: "finished_ad",
+    prompt: "Create a finished RE/MAX paid social creative.",
+    campaignContext: {
+      cta: "Learn More",
+    },
+  },
+);
+assert.equal(misspelledBrand.decision, "reject", "finished_ad misspelled brokerage rejected");
+assert.ok(misspelledBrand.reasons.includes("brand_misspelled"));
+
+const finishedAdGibberish = await qa(
+  "finished-ad-gibberish",
+  `
+    <rect width="512" height="512" fill="#fff"/>
+    <text x="42" y="150" font-size="36">XQZ PLOM BRRT GLIP</text>
+    <text x="42" y="210" font-size="28">ZXQ CVBNM QWER</text>
+  `,
+  {
+    mode: "finished_ad",
+    prompt: "Create a finished paid social creative.",
+  },
+);
+assert.equal(finishedAdGibberish.decision, "reject", "finished_ad QA still rejects gibberish text");
+assert.ok(finishedAdGibberish.reasons.includes("gibberish_text_detected"));
+
+const opaqueFinishedAd = await evaluateStaticCreativeImageQa({
+  campaignId: "test-campaign",
+  creativeId: "opaque-finished-ad",
+  imageUrl: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2w==",
+  mode: "finished_ad",
+  prompt: "Create a finished paid social creative.",
+});
+assert.equal(opaqueFinishedAd.decision, "reject", "uninspectable finished_ad raster fails closed");
+assert.ok(opaqueFinishedAd.reasons.includes("finished_ad_text_unverified"));
+
+const previousVisionEnabled = process.env.FINISHED_AD_VISION_QA_ENABLED;
+const previousAiKey = process.env.AI_API_KEY;
+const previousOpenAiKey = process.env.OPENAI_API_KEY;
+const previousAiModel = process.env.AI_MODEL;
+const originalFetchForVision = globalThis.fetch;
+
+process.env.FINISHED_AD_VISION_QA_ENABLED = "true";
+process.env.AI_API_KEY = "test-vision-key";
+process.env.OPENAI_API_KEY = "";
+process.env.AI_MODEL = "gpt-4o-mini";
+
+globalThis.fetch = async () =>
+  new Response(JSON.stringify({
+    choices: [
+      {
+        message: {
+          content: JSON.stringify({
+            readableTextSamples: ["Private shortlist", "Learn More"],
+            hasGibberish: false,
+            hasFakeUi: false,
+            hasListingOrDashboard: false,
+            hasChartOrTable: false,
+            brandMisspelled: false,
+            requiredCtaPresent: true,
+            requiredOfferPresent: true,
+          }),
+        },
+      },
+    ],
+  }), { status: 200, headers: { "content-type": "application/json" } });
+const visionAccepted = await evaluateStaticCreativeImageQa({
+  campaignId: "test-campaign",
+  creativeId: "vision-accepted-finished-ad",
+  imageUrl: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2w==",
+  mode: "finished_ad",
+  prompt: "Create a finished paid social creative.",
+  campaignContext: {
+    cta: "Learn More",
+    offer: "Private shortlist",
+  },
+});
+assert.equal(visionAccepted.decision, "accept", "vision-inspected JPEG finished_ad can be accepted");
+assert.deepEqual(visionAccepted.detectedTextSamples, ["Private shortlist", "Learn More"]);
+
+globalThis.fetch = async () =>
+  new Response(JSON.stringify({
+    choices: [
+      {
+        message: {
+          content: JSON.stringify({
+            readableTextSamples: [
+              "YOUR FIRST TORONTO HOME IS CLOSER THAN YOU THINK",
+              "See if you may qualify with a 600+ credit score",
+              "CHECK MY OPTIONS",
+            ],
+            hasGibberish: false,
+            hasFakeUi: false,
+            hasListingOrDashboard: false,
+            hasChartOrTable: false,
+            brandMisspelled: false,
+            requiredCtaPresent: true,
+            requiredOfferPresent: true,
+          }),
+        },
+      },
+    ],
+  }), { status: 200, headers: { "content-type": "application/json" } });
+const visionAcceptedSoftenedCredit = await evaluateStaticCreativeImageQa({
+  campaignId: "test-campaign",
+  creativeId: "vision-accepted-credit-finished-ad",
+  imageUrl: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2w==",
+  mode: "finished_ad",
+  prompt: "Create a finished paid social creative with CTA Check My Options.",
+  campaignContext: {
+    cta: "Check My Options",
+    offer: "See if you may qualify with 600+ credit",
+  },
+});
+assert.equal(
+  visionAcceptedSoftenedCredit.decision,
+  "accept",
+  "finished_ad QA accepts semantically equivalent softened credit offer text",
+);
+
+globalThis.fetch = async () =>
+  new Response(JSON.stringify({
+    choices: [
+      {
+        message: {
+          content: JSON.stringify({
+            readableTextSamples: ["Private shortlist"],
+            hasGibberish: false,
+            hasFakeUi: false,
+            hasListingOrDashboard: false,
+            hasChartOrTable: false,
+            brandMisspelled: false,
+            requiredCtaPresent: false,
+            requiredOfferPresent: true,
+          }),
+        },
+      },
+    ],
+  }), { status: 200, headers: { "content-type": "application/json" } });
+const visionMissingCta = await evaluateStaticCreativeImageQa({
+  campaignId: "test-campaign",
+  creativeId: "vision-missing-cta-finished-ad",
+  imageUrl: "data:image/png;base64,iVBORw0KGgo=",
+  mode: "finished_ad",
+  prompt: "Create a finished paid social creative.",
+  campaignContext: {
+    cta: "Learn More",
+    offer: "Private shortlist",
+  },
+});
+assert.equal(visionMissingCta.decision, "reject", "vision QA rejects finished_ad missing required CTA");
+assert.ok(visionMissingCta.reasons.includes("required_cta_missing"));
+
+globalThis.fetch = originalFetchForVision;
+if (previousVisionEnabled === undefined) delete process.env.FINISHED_AD_VISION_QA_ENABLED;
+else process.env.FINISHED_AD_VISION_QA_ENABLED = previousVisionEnabled;
+if (previousAiKey === undefined) delete process.env.AI_API_KEY;
+else process.env.AI_API_KEY = previousAiKey;
+if (previousOpenAiKey === undefined) delete process.env.OPENAI_API_KEY;
+else process.env.OPENAI_API_KEY = previousOpenAiKey;
+if (previousAiModel === undefined) delete process.env.AI_MODEL;
+else process.env.AI_MODEL = previousAiModel;
+
 const fetchFailed = await evaluateStaticCreativeImageQa({
   campaignId: "test-campaign",
   creativeId: "bad-url",
@@ -182,5 +398,37 @@ const fetchFailed = await evaluateStaticCreativeImageQa({
 });
 assert.equal(fetchFailed.decision, "reject", "unsafe or failed image fetch rejected");
 assert.ok(fetchFailed.reasons.includes("image_fetch_failed"));
+
+for (const [label, url] of [
+  ["http", "http://example.com/provider-image.png"],
+  ["localhost", "https://localhost/provider-image.png"],
+  ["metadata", "https://169.254.169.254/latest/meta-data/provider-image.png"],
+  ["evil-substring", "https://evil.test/storage/v1/object/public/creative-assets/provider-image.png"],
+]) {
+  const unsafe = await evaluateStaticCreativeImageQa({
+    campaignId: "test-campaign",
+    creativeId: `unsafe-${label}`,
+    imageUrl: url,
+    prompt: "TEXT-FREE BACKGROUND ASSET ONLY. Clean photo.",
+  });
+  assert.equal(unsafe.decision, "reject", `${label} QA fetch rejected`);
+  assert.ok(unsafe.reasons.includes("image_fetch_failed"));
+}
+
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async () =>
+  new Response(null, {
+    status: 302,
+    headers: { location: "https://127.0.0.1/private.png" },
+  });
+const redirectPrivate = await evaluateStaticCreativeImageQa({
+  campaignId: "test-campaign",
+  creativeId: "redirect-private",
+  imageUrl: "https://example.com/provider-redirect.png",
+  prompt: "TEXT-FREE BACKGROUND ASSET ONLY. Clean photo.",
+});
+globalThis.fetch = originalFetch;
+assert.equal(redirectPrivate.decision, "reject", "redirect-to-private QA fetch rejected");
+assert.ok(redirectPrivate.reasons.includes("image_fetch_failed"));
 
 console.log("Static creative image QA tests passed.");

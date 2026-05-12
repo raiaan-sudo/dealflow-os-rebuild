@@ -14,6 +14,7 @@ const creditService = read("src/lib/services/credit-service.ts");
 const creditTopUpButton = read("src/components/billing/credit-top-up-button.tsx");
 const settingsPage = read("src/app/(app)/settings/page.tsx");
 const billingService = read("src/lib/services/billing-service.ts");
+const envExample = read(".env.example");
 const internalLaunchMonitor = read("src/lib/services/internal-launch-monitor.ts");
 const observabilityRunbook = read("docs/observability-alerting-runbook.md");
 const productionRunbook = read("docs/production-100-client-runbook.md");
@@ -35,6 +36,22 @@ assert.ok(
 assert.ok(
   billingService.includes("CREDIT_TOP_UP_MINIMUM_CENTS"),
   "Stripe credit checkout must use the canonical minimum",
+);
+assert.ok(
+  creditService.includes("bypassedByQaGenerationCreditOverride"),
+  "QA generation credit override can bypass generation-credit friction only through the scoped operator path",
+);
+assert.ok(
+  creditService.includes("qa_generation_credit_override_granted"),
+  "QA generation credit override grants are audit logged",
+);
+assert.ok(
+  creditService.includes("isQaGenerationCreditOverrideCampaign(params.campaignId)"),
+  "QA generation credit override requires a scoped campaign id allowlist",
+);
+assert.ok(
+  creditService.includes("isQaGenerationCreditOverrideEmail(email)"),
+  "QA generation credit override requires an explicit email allowlist",
 );
 
 assert.ok(
@@ -69,6 +86,10 @@ assert.ok(
 assert.ok(
   productionRunbook.includes("$20.00"),
   "production runbook must document the $20 credit minimum",
+);
+assert.ok(
+  envExample.includes("ALLOW_QA_GENERATION_CREDIT_OVERRIDE=false"),
+  "QA generation credit override is documented as disabled by default",
 );
 
 console.log("PASS provider cost and credit watch assertions");

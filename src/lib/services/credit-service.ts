@@ -2,7 +2,11 @@ import { ApiError } from "@/lib/api/route";
 import {
   isBillingAdminOverrideEmail,
   isBillingAdminOverrideEnabled,
+  isQaGenerationCreditOverrideCampaign,
+  isQaGenerationCreditOverrideEmail,
+  isQaGenerationCreditOverrideEnabled,
 } from "@/lib/env";
+import { logOperationalEvent } from "@/lib/logging";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAppContext } from "@/lib/services/app-context";
 import type { Json } from "@/lib/supabase/types";
@@ -88,6 +92,34 @@ async function getBillingOverrideEmailForUser(userId: string) {
   return isBillingAdminOverrideEmail(email) ? email : null;
 }
 
+async function getQaGenerationCreditOverrideForUser(params: {
+  userId: string;
+  campaignId?: string | null;
+}) {
+  if (
+    !isQaGenerationCreditOverrideEnabled() ||
+    !isQaGenerationCreditOverrideCampaign(params.campaignId)
+  ) {
+    return null;
+  }
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return null;
+  }
+
+  const { data } = await admin
+    .from("users")
+    .select("email")
+    .eq("id", params.userId)
+    .maybeSingle();
+  const row = data as { email?: unknown } | null;
+  const email = typeof row?.email === "string" ? row.email : null;
+
+  return isQaGenerationCreditOverrideEmail(email) ? email : null;
+}
+
 export async function getCreditSummaryForCurrentUser() {
   const context = await getAppContext();
 
@@ -115,6 +147,10 @@ export async function getCreditSummaryForCurrentUser() {
   const balance = typeof creditRow?.balance === "number" ? creditRow.balance : 0;
   const balanceDueCents = Math.max(0, -balance);
   const billingOverrideEmail = await getBillingOverrideEmailForUser(context.user.id);
+  const qaGenerationCreditOverrideEmail = await getQaGenerationCreditOverrideForUser({
+    userId: context.user.id,
+    campaignId: null,
+  });
 
   return {
     userId: context.user.id,
@@ -124,6 +160,7 @@ export async function getCreditSummaryForCurrentUser() {
     balanceDueCents,
     formattedBalanceDue: formatCreditCurrency(balanceDueCents),
     creditOverride: Boolean(billingOverrideEmail),
+    qaGenerationCreditOverride: Boolean(qaGenerationCreditOverrideEmail),
     minimumTopUpCents: CREDIT_TOP_UP_MINIMUM_CENTS,
     formattedMinimumTopUp: formatCreditCurrency(CREDIT_TOP_UP_MINIMUM_CENTS),
     imageGenerationCostCents: getGenerationCreditCostCents("image_generation"),
@@ -167,6 +204,29 @@ export async function consumeCreditsForGeneration(params: {
       ledgerId: null as string | null,
       reusedExisting: false,
       bypassedByBillingOverride: true,
+    };
+  }
+
+  const qaGenerationCreditOverrideEmail = await getQaGenerationCreditOverrideForUser({
+    userId: params.userId,
+    campaignId: params.campaignId ?? null,
+  });
+  if (qaGenerationCreditOverrideEmail) {
+    logOperationalEvent("qa_generation_credit_override_granted", {
+      userId: params.userId,
+      organizationId: params.organizationId ?? null,
+      campaignId: params.campaignId ?? null,
+      email: qaGenerationCreditOverrideEmail,
+      bucket: normalizedBucket,
+      referenceId: params.referenceId,
+    });
+
+    return {
+      amount: 0,
+      balance: null as number | null,
+      ledgerId: null as string | null,
+      reusedExisting: false,
+      bypassedByQaGenerationCreditOverride: true,
     };
   }
 

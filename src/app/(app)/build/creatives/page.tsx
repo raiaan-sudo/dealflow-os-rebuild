@@ -137,7 +137,7 @@ export default async function BuildCreativesPage({
         imagePromptConfig: ad.imagePromptConfig ?? null,
         overlayText: ad.overlayText ?? null,
         formatLabel: /\bugc\b/i.test(`${ad.id} ${ad.visualConcept} ${ad.hook}`)
-          ? "AI UGC concept"
+          ? "Native-style static ad"
           : null,
         category: ad.visualPromptBrief?.category ?? ensuredRecord.plan.creative_strategy?.campaignCategory ?? null,
         location: ensuredRecord.plan.market || null,
@@ -156,7 +156,7 @@ export default async function BuildCreativesPage({
       id: video.id || `video-${index + 1}`,
       index,
       conceptType: video.conceptType,
-      title: video.title || `AI UGC video ${index + 1}`,
+      title: video.title || `UGC video ${index + 1}`,
       hook: video.hook || video.script[0] || "",
       script: video.script,
       shotList: video.shotList,

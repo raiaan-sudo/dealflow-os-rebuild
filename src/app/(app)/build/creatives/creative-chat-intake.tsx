@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, MessageSquareText, PencilLine, ShieldCheck } from "lucide-react";
+import { BadgeCheck, FileCheck2, MessageSquareText, PencilLine, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -46,7 +46,7 @@ const brandOptions = [
 ] as const;
 
 const styleOptions = [
-  ["ugc", "UGC"],
+  ["ugc", "Native-style static ad"],
   ["bold_poster_ad", "Bold poster ad"],
   ["luxury", "Luxury"],
   ["local_expert", "Local expert"],
@@ -71,6 +71,8 @@ function defaultAnswers(defaults: CreativeIntakeCampaignDefaults): CreativeIntak
     cta: defaults.cta ?? "See My Options",
     platformPlacement: "Meta feed and story placements",
     propertyType: defaults.propertyType ?? "",
+    outputMode: "finished_ad",
+    generationPhase: "static",
   };
 }
 
@@ -270,6 +272,31 @@ export function CreativeChatIntake({
               </label>
             </div>
 
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-2 text-sm">
+                <span className="text-muted-foreground">Primary call to action</span>
+                <Input value={answers.cta ?? ""} onChange={(event) => updateAnswer({ cta: event.target.value })} placeholder="Book a free consult" />
+              </label>
+              <label className="space-y-2 text-sm">
+                <span className="text-muted-foreground">Placement plan</span>
+                <Input
+                  value={answers.platformPlacement ?? ""}
+                  onChange={(event) => updateAnswer({ platformPlacement: event.target.value })}
+                  placeholder="Meta feed, story, and reels"
+                />
+              </label>
+            </div>
+
+            <ChoiceGroup
+              label="Static ad output"
+              value={answers.outputMode}
+              options={[
+                ["finished_ad", "Customer-ready static ad"],
+                ["background_only", "Text-free visual background"],
+              ] as const}
+              onChange={(outputMode) => updateAnswer({ outputMode: outputMode as CreativeIntakeAnswers["outputMode"] })}
+            />
+
             <ChoiceGroup
               label="What creative style do you want?"
               value={answers.creativeStyle}
@@ -322,10 +349,16 @@ export function CreativeChatIntake({
             <SummaryRow label="Market" value={answers.market} />
             <SummaryRow label="Style" value={getAnswerLabel(answers.creativeStyle, styleOptions)} />
             <SummaryRow label="CTA" value={answers.cta || defaults.cta || "See My Options"} />
+            <SummaryRow label="Placement" value={answers.platformPlacement} />
+            <SummaryRow label="Output mode" value={answers.outputMode === "background_only" ? "Text-free visual background" : "DealFlow composed static ad"} />
+          </div>
+          <div className="mt-5 rounded-[20px] border border-emerald-300/16 bg-emerald-300/[0.055] p-4 text-sm leading-6 text-muted-foreground">
+            <FileCheck2 className="mb-3 size-4 text-emerald-100" />
+            This is the brief review step before generation. Save a draft to preserve the inputs, then approve only when the direction is ready.
           </div>
           <div className="mt-5 rounded-[20px] border border-cyan-300/16 bg-cyan-300/[0.055] p-4 text-sm leading-6 text-muted-foreground">
             <PencilLine className="mb-3 size-4 text-cyan-100" />
-            No provider image or video call runs from this intake. Paid rendering stays blocked until the brief is approved.
+            No image or video render starts from this intake. Paid rendering stays blocked until the brief is approved.
           </div>
         </aside>
       </div>

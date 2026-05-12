@@ -41,6 +41,8 @@ export type CreativeIntakeStyle =
   | "simple_direct_response";
 
 export type CreativeIntakeApprovalStatus = "draft" | "approved" | "revision_requested";
+export type CreativeIntakeOutputMode = "finished_ad" | "background_only";
+export type CreativeIntakeGenerationPhase = "static" | "ugc_video";
 
 export type CreativeIntakeAnswers = {
   targetAudience?: CreativeIntakeTargetAudience;
@@ -55,6 +57,8 @@ export type CreativeIntakeAnswers = {
   cta?: string | null;
   platformPlacement?: string | null;
   propertyType?: string | null;
+  outputMode?: CreativeIntakeOutputMode;
+  generationPhase?: CreativeIntakeGenerationPhase;
 };
 
 export type CreativeIntakeBrief = {
@@ -69,6 +73,8 @@ export type CreativeIntakeBrief = {
   mustUseCopy: string[];
   complianceNotes: string[];
   softenedClaims: string[];
+  outputMode: CreativeIntakeOutputMode;
+  generationPhase: CreativeIntakeGenerationPhase;
   completion: {
     complete: boolean;
     missing: string[];
@@ -81,6 +87,22 @@ export type CreativeIntakePromptVersion = {
   negativePrompt: string;
   sanitizedPreview: string;
   createdAt: string;
+};
+
+export type CreativeIntakeGenerationContext = {
+  version: number;
+  conversationId: string;
+  campaignId: string;
+  revisionNumber: number;
+  approvedAt: string | null;
+  outputMode: CreativeIntakeOutputMode;
+  generationPhase: CreativeIntakeGenerationPhase;
+  requiredOffer?: string | null;
+  requiredCta?: string | null;
+  market?: string | null;
+  targetAudience?: string | null;
+  brokerageBrand?: string | null;
+  promptVersion: CreativeIntakePromptVersion;
 };
 
 export type CreativeIntakeMessage = {
@@ -172,6 +194,8 @@ export const creativeIntakeAnswersSchema = z.object({
   cta: z.string().max(80).nullable().optional(),
   platformPlacement: z.string().max(120).nullable().optional(),
   propertyType: z.string().max(160).nullable().optional(),
+  outputMode: z.enum(["finished_ad", "background_only"]).optional(),
+  generationPhase: z.enum(["static", "ugc_video"]).optional(),
 });
 
 function safeText(value: unknown) {
@@ -280,6 +304,8 @@ export function buildCreativeIntakeBrief(
   const creativeStyle = answers.creativeStyle ? styleLabels[answers.creativeStyle] : "";
   const propertyType = safeText(answers.propertyType) || safeText(defaults.propertyType) || "real estate";
   const platformPlacement = safeText(answers.platformPlacement) || "Meta feed and story placements";
+  const outputMode = answers.outputMode === "background_only" ? "background_only" : "finished_ad";
+  const generationPhase = answers.generationPhase === "ugc_video" ? "ugc_video" : "static";
   const missing = [
     targetAudience ? null : "target_audience",
     softenedOffer.text ? null : "offer",
@@ -309,6 +335,8 @@ export function buildCreativeIntakeBrief(
       ...softenedCta.softenedClaims,
       ...softenedConstraints.softenedClaims,
     ],
+    outputMode,
+    generationPhase,
     completion: {
       complete: missing.length === 0,
       missing,
@@ -320,7 +348,28 @@ export function buildCreativeIntakePromptVersion(
   brief: CreativeIntakeBrief,
   revisionNumber: number,
 ): CreativeIntakePromptVersion {
-  const generatedPrompt = [
+  const generatedPrompt = brief.outputMode === "finished_ad"
+    ? [
+      "MARKETING STUDIO FINISHED AD CREATIVE.",
+      "Create ONE polished finished real-estate social ad poster, not a chart, not a dashboard, not a listing sheet, not a web/app UI screenshot.",
+      "Use a clean premium poster layout: large hero photo or lifestyle image, bold readable headline, concise supporting offer line, and one clear CTA button or CTA bar.",
+      `Market/city text that should appear: ${brief.market}.`,
+      `Audience text context: ${brief.targetAudience}.`,
+      `Required offer text that must be readable in the final raster: ${brief.offer}.`,
+      `Required CTA text that must be readable in the final raster: ${brief.cta}.`,
+      `Brokerage or brand direction: ${brief.brokerageBrand}.`,
+      `Property focus: ${brief.propertyType}.`,
+      `Creative style: ${brief.creativeStyle}.`,
+      `Placement: ${brief.platformPlacement}.`,
+      brief.mustUseCopy.length > 0 ? `Must-use copy: ${brief.mustUseCopy.join("; ")}.` : null,
+      "The final image should look like a high-performing real estate Facebook/Instagram ad made in a marketing studio, with no spreadsheet/table/grid/data-panel visuals.",
+      "Use clean typography, realistic real estate imagery, clear text hierarchy, and a direct-response CTA. Keep text short enough to be legible at mobile feed size.",
+      "Do not create gibberish, pseudo text, misspell the brokerage, invent fake MLS/listing sheets, show dashboards, charts, tables, app UI, landing pages, data panels, unreadable pricing cards, or broken text.",
+      brief.complianceNotes.length > 0
+        ? `Compliance guidance: ${brief.complianceNotes.join("; ")}.`
+        : null,
+    ].filter(Boolean).join(" ")
+    : [
     "TEXT-FREE BACKGROUND ASSET ONLY.",
     "Create realistic premium real-estate source photography for DealFlow to compose into a finished ad later.",
     `Market: ${brief.market}.`,
@@ -338,16 +387,16 @@ export function buildCreativeIntakePromptVersion(
       : null,
   ].filter(Boolean).join(" ");
   const negativePrompt = [
-    "text",
-    "letters",
-    "numbers",
+    brief.outputMode === "finished_ad" ? null : "text",
+    brief.outputMode === "finished_ad" ? null : "letters",
+    brief.outputMode === "finished_ad" ? null : "numbers",
     "gibberish typography",
     "logo text",
     "watermark",
-    "finished ad",
-    "flyer",
-    "brochure",
-    "poster",
+    brief.outputMode === "finished_ad" ? null : "finished ad",
+    brief.outputMode === "finished_ad" ? null : "flyer",
+    brief.outputMode === "finished_ad" ? null : "brochure",
+    brief.outputMode === "finished_ad" ? null : "poster",
     "dashboard",
     "UI screenshot",
     "chart",
@@ -357,17 +406,18 @@ export function buildCreativeIntakePromptVersion(
     "fake caption",
     "fake price",
     "fake form fields",
-  ].join("; ");
+  ].filter(Boolean).join("; ");
 
   return {
     revisionNumber,
     generatedPrompt,
     negativePrompt,
     sanitizedPreview: [
-      `${brief.creativeStyle} background for ${brief.targetAudience} in ${brief.market}`,
+      `${brief.creativeStyle} creative for ${brief.targetAudience} in ${brief.market}`,
       `Offer: ${brief.offer}`,
       `Brand direction: ${brief.brokerageBrand}`,
-      `CTA DealFlow will render: ${brief.cta}`,
+      brief.outputMode === "finished_ad" ? `CTA in raster: ${brief.cta}` : `CTA DealFlow will render: ${brief.cta}`,
+      `Mode: ${brief.outputMode}`,
     ].join(" | "),
     createdAt: nowIso(),
   };
@@ -443,11 +493,56 @@ export function readCreativeChatIntakeFromPlan(planValue: unknown): CreativeChat
 }
 
 export function isCreativeIntakeApproved(planValue: unknown) {
+  return Boolean(getApprovedCreativeIntakeGenerationContext(planValue));
+}
+
+export function getApprovedCreativeIntakeGenerationContext(
+  planValue: unknown,
+): CreativeIntakeGenerationContext | null {
   const intake = readCreativeChatIntakeFromPlan(planValue);
+
+  if (
+    intake?.approvalStatus !== "approved" ||
+    intake.brief?.completion.complete !== true ||
+    !intake.promptVersion?.generatedPrompt
+  ) {
+    return null;
+  }
+
+  return {
+    version: intake.version,
+    conversationId: intake.conversationId,
+    campaignId: intake.campaignId,
+    revisionNumber: intake.revisionNumber,
+    approvedAt: intake.approvedAt ?? null,
+    outputMode: intake.brief.outputMode,
+    generationPhase: intake.brief.generationPhase,
+    requiredOffer: intake.brief.offer,
+    requiredCta: intake.brief.cta,
+    market: intake.brief.market,
+    targetAudience: intake.brief.targetAudience,
+    brokerageBrand: intake.brief.brokerageBrand,
+    promptVersion: intake.promptVersion,
+  };
+}
+
+export function hasSameCreativeIntakeGenerationContext(
+  left?: CreativeIntakeGenerationContext | null,
+  right?: CreativeIntakeGenerationContext | null,
+) {
   return Boolean(
-    intake?.approvalStatus === "approved" &&
-    intake.brief?.completion.complete === true &&
-    intake.promptVersion?.generatedPrompt,
+    left &&
+    right &&
+    left.version === right.version &&
+    left.conversationId === right.conversationId &&
+    left.revisionNumber === right.revisionNumber &&
+    left.outputMode === right.outputMode &&
+    left.generationPhase === right.generationPhase &&
+    (left.requiredOffer ?? null) === (right.requiredOffer ?? null) &&
+    (left.requiredCta ?? null) === (right.requiredCta ?? null) &&
+    left.promptVersion.revisionNumber === right.promptVersion.revisionNumber &&
+    left.promptVersion.createdAt === right.promptVersion.createdAt &&
+    left.promptVersion.generatedPrompt === right.promptVersion.generatedPrompt,
   );
 }
 

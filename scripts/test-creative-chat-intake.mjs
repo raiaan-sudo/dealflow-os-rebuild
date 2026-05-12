@@ -54,18 +54,47 @@ const {
   buildCreativeIntakeBrief,
   buildCreativeIntakePromptVersion,
   createCreativeIntakeState,
+  getApprovedCreativeIntakeGenerationContext,
+  hasSameCreativeIntakeGenerationContext,
   isCreativeIntakeApproved,
   mergeCreativeChatIntakeIntoPlan,
   softenRegulatedClaims,
 } = require("../src/lib/services/creative-chat-intake-service.ts");
 const {
+  generateStaticCreativeAds,
+} = require("../src/lib/services/creative-engine.ts");
+const {
   persistStaticCreativeAssets,
 } = require("../src/lib/services/static-creative-asset-service.ts");
 
 const creativeChatIntakeUi = fs.readFileSync("src/app/(app)/build/creatives/creative-chat-intake.tsx", "utf8");
+const creativeWizardUi = fs.readFileSync("src/app/(app)/build/creatives/creative-wizard.tsx", "utf8");
+const staticAdsRoute = fs.readFileSync("src/app/api/campaigns/[id]/generate-static-ads/route.ts", "utf8");
+const videoRoute = fs.readFileSync("src/app/api/campaigns/[id]/generate-video/route.ts", "utf8");
+const prepaywallPreviewUi = fs.readFileSync("src/components/onboarding/prepaywall-campaign-preview.tsx", "utf8");
+const staticCreativePreviewCardUi = fs.readFileSync("src/components/campaign/static-creative-preview-card.tsx", "utf8");
+const previewPageUi = fs.readFileSync("src/app/(app)/preview/page.tsx", "utf8");
+const selectAdRoute = fs.readFileSync("src/app/api/campaigns/[id]/select-ad/route.ts", "utf8");
 assert.match(creativeChatIntakeUi, /Draft recovered from your last session/);
 assert.match(creativeChatIntakeUi, /Paid rendering stays blocked until the updated brief is approved/);
 assert.match(creativeChatIntakeUi, /aria-pressed/);
+assert.match(creativeWizardUi, /Primary creative/);
+assert.match(creativeWizardUi, /Review variant/);
+assert.match(creativeWizardUi, /Add to review set/);
+assert.match(creativeWizardUi, /Full-resolution creative files stay inside DealFlow/);
+assert.match(staticCreativePreviewCardUi, /Full-resolution available through launch workflow, not direct download/);
+assert.match(selectAdRoute, /assertCampaignCanLaunch/);
+assert.match(creativeWizardUi, /controlsList="nodownload noplaybackrate"/);
+assert.match(previewPageUi, /controlsList="nodownload noplaybackrate"/);
+assert.doesNotMatch(creativeWizardUi, /Download|Save Image|Open original|Copy URL|Export/);
+assert.doesNotMatch(creativeChatIntakeUi, /Download|Save Image|Open original|Copy URL|Export/);
+assert.doesNotMatch(prepaywallPreviewUi, /Export locked/);
+assert.match(staticAdsRoute, /getApprovedCreativeIntakeGenerationContext/);
+assert.match(staticAdsRoute, /generationPhase !== "static"/);
+assert.match(staticAdsRoute, /creativeIntake: creativeIntakeContext/);
+assert.match(videoRoute, /getApprovedCreativeIntakeGenerationContext/);
+assert.match(videoRoute, /generationPhase !== "ugc_video"/);
+assert.match(videoRoute, /creativeIntake: creativeIntakeContext/);
 
 const defaults = {
   campaignId: "campaign-test",
@@ -92,6 +121,8 @@ const answers = {
   constraints: "Avoid guarantees. Qualification is subject to lender review.",
   cta: "Check Buying Power",
   propertyType: "Detached homes",
+  outputMode: "background_only",
+  generationPhase: "static",
 };
 const brief = buildCreativeIntakeBrief(answers, defaults);
 assert.equal(brief.completion.complete, true, "complete intake brief is accepted");
@@ -104,6 +135,17 @@ assert.match(prompt.generatedPrompt, /DealFlow will render the actual headline, 
 assert.doesNotMatch(prompt.generatedPrompt, /create a finished ad/i);
 assert.match(prompt.negativePrompt, /gibberish typography/);
 assert.match(prompt.sanitizedPreview, /Check Buying Power/);
+assert.match(prompt.sanitizedPreview, /background_only/);
+
+const finishedAdBrief = buildCreativeIntakeBrief({
+  ...answers,
+  outputMode: "finished_ad",
+}, defaults);
+const finishedAdPrompt = buildCreativeIntakePromptVersion(finishedAdBrief, 3);
+assert.match(finishedAdPrompt.generatedPrompt, /MARKETING STUDIO FINISHED AD CREATIVE/);
+assert.match(finishedAdPrompt.generatedPrompt, /Required CTA text that must be readable in the final raster: Check Buying Power/);
+assert.match(finishedAdPrompt.generatedPrompt, /not a chart, not a dashboard, not a listing sheet/);
+assert.doesNotMatch(finishedAdPrompt.negativePrompt, /finished ad/);
 
 const state = createCreativeIntakeState({
   campaignId: defaults.campaignId,
@@ -117,6 +159,13 @@ const approvedState = {
 };
 const plan = mergeCreativeChatIntakeIntoPlan({ version: 3, lead_loop_verified: false }, approvedState);
 assert.equal(isCreativeIntakeApproved(plan), true, "approved complete intake gates paid generation");
+const approvedContext = getApprovedCreativeIntakeGenerationContext(plan);
+assert.equal(approvedContext.outputMode, "background_only");
+assert.equal(approvedContext.generationPhase, "static");
+assert.equal(approvedContext.requiredCta, "Check Buying Power");
+assert.equal(approvedContext.requiredOffer, "options may be available for buyers with 600+ credit");
+assert.equal(approvedContext.promptVersion.generatedPrompt, prompt.generatedPrompt);
+assert.equal(hasSameCreativeIntakeGenerationContext(approvedContext, approvedContext), true);
 const revisionPlan = mergeCreativeChatIntakeIntoPlan(plan, {
   ...approvedState,
   approvalStatus: "revision_requested",
@@ -143,6 +192,30 @@ assert.equal(
   approvedState.promptVersion.generatedPrompt,
   "revision history preserves the previous generated prompt",
 );
+assert.equal(
+  getApprovedCreativeIntakeGenerationContext(revisionPlan),
+  null,
+  "revision removes the durable approved generation context",
+);
+
+const promptedStaticAds = await generateStaticCreativeAds({
+  campaign_id: defaults.campaignId,
+  location: defaults.market,
+  audience: defaults.audience,
+  offer: defaults.offer,
+  property_type: defaults.propertyType,
+  market_type: defaults.campaignType,
+  creative_intake: approvedContext,
+  max_static_image_generations: 1,
+});
+assert.equal(
+  promptedStaticAds[0].imagePrompt,
+  prompt.generatedPrompt,
+  "approved intake prompt replaces the generated static image prompt",
+);
+assert.equal(promptedStaticAds[0].imagePromptConfig.prompt, prompt.generatedPrompt);
+assert.equal(promptedStaticAds[0].imagePromptConfig.negativePrompt, prompt.negativePrompt);
+assert.equal(promptedStaticAds[0].creativeIntake.outputMode, "background_only");
 
 function buildAsset() {
   return {
@@ -182,6 +255,7 @@ function buildAsset() {
       },
     },
     imageQa: { usable: true, decision: "accept", reasons: [] },
+    creativeIntake: approvedContext,
     scoreBreakdown: null,
     hook: "See matched homes",
     overlayText: "See matched homes",
@@ -244,6 +318,12 @@ assert.deepEqual(
 );
 assert.equal(successfulDb.operations[0].rows[0].status, "ready");
 assert.equal(successfulDb.operations[0].rows[0].metadata.generationBatchId.length > 0, true);
+assert.equal(
+  successfulDb.operations[0].rows[0].metadata.creativeIntakePromptVersionUsed.generatedPrompt,
+  prompt.generatedPrompt,
+);
+assert.equal(successfulDb.operations[0].rows[0].metadata.creativeIntakeGenerationContext.outputMode, "background_only");
+assert.equal(successfulDb.operations[0].rows[0].metadata.creativeIntakeGenerationContext.generationPhase, "static");
 
 const failingDb = fakeSupabase({ insertFails: true });
 await assert.rejects(

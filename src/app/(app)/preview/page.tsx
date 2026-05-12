@@ -172,31 +172,36 @@ export default async function PreviewPage({
                 />
               </div>
 
-              <div className="grid gap-2">
-                {selectedAds.slice(1).map((selectedAd, index) => (
-                  <StaticCreativeSummaryCard
-                    angleLabel={selectedAd.angle}
-                    category={previewPlan.creativeStrategy.campaignCategory}
-                    cta={selectedAd.cta || "Learn More"}
-                    headline={selectedAd.headline || previewPlan.keyOffer}
-                    imageGenerationMessage={selectedAd.imageGenerationMessage}
-                    imageGenerationState={selectedAd.imageGenerationState}
-                    imagePrompt={selectedAd.imagePrompt}
-                    imagePromptConfig={selectedAd.imagePromptConfig}
-                    imageUrl={selectedAd.imageUrl}
-                    index={index + 1}
-                    key={selectedAd.id}
-                    location={previewPlan.market}
-                    offer={previewPlan.keyOffer}
-                    overlayText={selectedAd.overlayText}
-                    primaryText={selectedAd.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
-                    qualityGate={selectedAd.qualityGate}
-                    score={selectedAd.score}
-                    selectedCount={selectedAds.length}
-                    visualPromptBrief={selectedAd.visualPromptBrief}
-                  />
-                ))}
-              </div>
+              {selectedAds.length > 1 ? (
+                <div className="grid gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    Review variants
+                  </p>
+                  {selectedAds.slice(1).map((selectedAd, index) => (
+                    <StaticCreativeSummaryCard
+                      angleLabel={selectedAd.angle}
+                      category={previewPlan.creativeStrategy.campaignCategory}
+                      cta={selectedAd.cta || "Learn More"}
+                      headline={selectedAd.headline || previewPlan.keyOffer}
+                      imageGenerationMessage={selectedAd.imageGenerationMessage}
+                      imageGenerationState={selectedAd.imageGenerationState}
+                      imagePrompt={selectedAd.imagePrompt}
+                      imagePromptConfig={selectedAd.imagePromptConfig}
+                      imageUrl={selectedAd.imageUrl}
+                      index={index + 1}
+                      key={selectedAd.id}
+                      location={previewPlan.market}
+                      offer={previewPlan.keyOffer}
+                      overlayText={selectedAd.overlayText}
+                      primaryText={selectedAd.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
+                      qualityGate={selectedAd.qualityGate}
+                      score={selectedAd.score}
+                      selectedCount={selectedAds.length}
+                      visualPromptBrief={selectedAd.visualPromptBrief}
+                    />
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="rounded-df-card border border-white/10 bg-white/[0.035] p-5 text-sm text-muted-foreground">
@@ -206,7 +211,7 @@ export default async function PreviewPage({
           {videoAds.length > 0 ? (
             <section className="mt-5 border-t border-white/10 pt-5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                AI UGC video concepts
+                UGC video concepts
               </p>
               <div className="mt-3 grid gap-3">
                 {videoAds.map((video, index) => (
@@ -223,6 +228,8 @@ export default async function PreviewPage({
                       <video
                         className="aspect-video w-full rounded-[14px] border border-white/10 bg-black object-cover"
                         controls
+                        controlsList="nodownload noplaybackrate"
+                        disablePictureInPicture
                         playsInline
                         src={video.videoUrl}
                       />

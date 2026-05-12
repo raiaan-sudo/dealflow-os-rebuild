@@ -11,6 +11,13 @@ import {
   type VideoGenerationStatusJobPayload,
   runVideoGenerationJob,
 } from "@/lib/services/video-generation-job";
+import {
+  isMarketingStudioStaticGenerationJob,
+  MARKETING_STUDIO_WORKER_DEFERRED_UNTIL,
+  MARKETING_STUDIO_WORKER_RUNTIME,
+  shouldDeferMarketingStudioStaticGenerationToWorker,
+} from "@/lib/services/marketing-studio-worker-contract";
+import type { CreativeIntakeGenerationContext } from "@/lib/services/creative-chat-intake-service";
 import type { SubscriptionSuspensionJobPayload } from "@/lib/services/subscription-suspension-service";
 
 type SystemJobRow = Database["public"]["Tables"]["system_jobs"]["Row"];
@@ -62,6 +69,7 @@ type SystemJobPayloadMap = {
     force?: boolean;
     missingOnly?: boolean;
     maxGenerations?: number;
+    creativeIntake?: CreativeIntakeGenerationContext | null;
   };
   video_generation: VideoGenerationJobPayload;
   video_generation_status: VideoGenerationStatusJobPayload;
@@ -292,6 +300,10 @@ export async function createSystemJob<K extends SystemJobKind>(params: {
   maxAttempts?: number;
 }) {
   const supabase = params.supabase ?? getJobClient();
+  const deferToMarketingStudioWorker = isMarketingStudioStaticGenerationJob({
+    kind: params.kind,
+    payload: params.payload,
+  });
 
   if (params.idempotencyKey?.trim()) {
     const { data: existingRaw, error: existingError } = await supabase
@@ -322,6 +334,7 @@ export async function createSystemJob<K extends SystemJobKind>(params: {
       payload: (params.payload ?? {}) as Json,
       idempotency_key: params.idempotencyKey?.trim() || null,
       max_attempts: params.maxAttempts ?? MAX_SYSTEM_JOB_RETRIES + 1,
+      next_run_at: deferToMarketingStudioWorker ? MARKETING_STUDIO_WORKER_DEFERRED_UNTIL : null,
     } as never)
     .select("*")
     .single();
@@ -354,7 +367,15 @@ export async function createSystemJob<K extends SystemJobKind>(params: {
   await appendSystemJobLog({
     supabase,
     jobId: insertedJob.id,
-    message: `${params.kind.replace(/_/g, " ")} job queued.`,
+    message: deferToMarketingStudioWorker
+      ? "Marketing Studio finished-ad render queued for the dedicated CLI worker."
+      : `${params.kind.replace(/_/g, " ")} job queued.`,
+    details: deferToMarketingStudioWorker
+      ? {
+          runtime: MARKETING_STUDIO_WORKER_RUNTIME,
+          deferredUntil: MARKETING_STUDIO_WORKER_DEFERRED_UNTIL,
+        } as Json
+      : undefined,
   });
 
   return parseSystemJob(insertedJob) as SystemJobRecord<K>;
@@ -692,6 +713,34 @@ export async function processSystemJob(jobId: string) {
     return job;
   }
 
+  if (shouldDeferMarketingStudioStaticGenerationToWorker({
+    kind: job.kind,
+    payload: job.payload,
+  })) {
+    const deferredJob = await updateSystemJob(supabase, jobId, {
+      status: "pending",
+      started_at: null,
+      completed_at: null,
+      error_message: null,
+      last_error_code: null,
+      locked_by: null,
+      locked_until: null,
+      next_run_at: MARKETING_STUDIO_WORKER_DEFERRED_UNTIL,
+    });
+
+    await appendSystemJobLog({
+      supabase,
+      jobId,
+      message: "Marketing Studio finished-ad render deferred to the dedicated CLI worker.",
+      details: {
+        runtime: MARKETING_STUDIO_WORKER_RUNTIME,
+        deferredUntil: MARKETING_STUDIO_WORKER_DEFERRED_UNTIL,
+      } as Json,
+    });
+
+    return deferredJob;
+  }
+
   const processingJob =
     job.status === "processing"
       ? job
@@ -733,6 +782,8 @@ export async function processSystemJob(jobId: string) {
             typeof (processingJob.payload as SystemJobPayloadMap["static_creative_generation"])?.maxGenerations === "number"
               ? (processingJob.payload as SystemJobPayloadMap["static_creative_generation"]).maxGenerations
               : undefined,
+          creativeIntake:
+            (processingJob.payload as SystemJobPayloadMap["static_creative_generation"])?.creativeIntake ?? null,
           providerUsageRunId: `${processingJob.id}:${processingJob.attempt_count ?? 0}`,
           supabase,
         },

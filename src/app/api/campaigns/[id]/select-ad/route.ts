@@ -8,6 +8,7 @@ import {
   parseRouteParams,
 } from "@/lib/api/route";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
+import { assertCampaignCanLaunch } from "@/lib/services/campaign-entitlements";
 import {
   getSelectedAdIdsFromPlan,
   withSelectedAdIds,
@@ -93,6 +94,8 @@ export async function POST(
     if (selectedAdIds.length === 0) {
       throw new ApiError(400, "Select at least one creative before continuing.", "selected_ads_missing");
     }
+
+    await assertCampaignCanLaunch(id);
 
     const existingSelectedAdIds = getSelectedAdIdsFromPlan(currentPlan);
     const staticAds = readStaticAdsFromPlan(currentPlan);

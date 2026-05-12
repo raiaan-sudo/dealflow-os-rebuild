@@ -110,8 +110,14 @@ export function validateImageGenerationEnv() {
   ]);
 }
 
-export function getMediaGenerationProvider() {
+export type MediaGenerationProvider = "openai" | "higgsfield" | "higgsfield_marketing_studio";
+
+export function getMediaGenerationProvider(): MediaGenerationProvider {
   const provider = (process.env.MEDIA_GENERATION_PROVIDER ?? "openai").trim().toLowerCase();
+  if (provider === "higgsfield_marketing_studio" || provider === "higgsfield-marketing-studio") {
+    return "higgsfield_marketing_studio";
+  }
+
   return provider === "higgsfield" ? "higgsfield" : "openai";
 }
 
@@ -134,6 +140,20 @@ export function getHiggsfieldEnv() {
     videoModel: process.env.HIGGSFIELD_VIDEO_MODEL?.trim() || "marketing_studio_video",
     ugcVideoModel: process.env.HIGGSFIELD_UGC_VIDEO_MODEL?.trim() || "soul_cast",
     videoFallbackModel: process.env.HIGGSFIELD_VIDEO_FALLBACK_MODEL?.trim() || "seedance_2_0",
+  };
+}
+
+export function getHiggsfieldMarketingStudioEnv() {
+  const env = getHiggsfieldEnv();
+  const mode = (process.env.HIGGSFIELD_MARKETING_STUDIO_MODE ?? "cli").trim().toLowerCase();
+
+  return {
+    ...env,
+    enabled: process.env.HIGGSFIELD_MARKETING_STUDIO_ENABLED === "true",
+    cliEnabled: process.env.HIGGSFIELD_CLI_ENABLED === "true",
+    cliPath: process.env.HIGGSFIELD_CLI_PATH?.trim() || "higgsfield",
+    mcpFutureOnly: true,
+    mode: mode === "cli" ? "cli" : "api_adapter",
   };
 }
 
@@ -214,6 +234,40 @@ export function isBillingAdminOverrideEmail(email?: string | null) {
 
 export function isBillingAdminOverrideEnabled() {
   return process.env.ALLOW_BILLING_ADMIN_OVERRIDE === "true";
+}
+
+export function getQaGenerationCreditOverrideEmails() {
+  return (process.env.QA_GENERATION_CREDIT_OVERRIDE_EMAILS ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function getQaGenerationCreditOverrideCampaignIds() {
+  return (process.env.QA_GENERATION_CREDIT_OVERRIDE_CAMPAIGN_IDS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+export function isQaGenerationCreditOverrideEmail(email?: string | null) {
+  if (!email) {
+    return false;
+  }
+
+  return getQaGenerationCreditOverrideEmails().includes(email.toLowerCase());
+}
+
+export function isQaGenerationCreditOverrideCampaign(campaignId?: string | null) {
+  if (!campaignId) {
+    return false;
+  }
+
+  return getQaGenerationCreditOverrideCampaignIds().includes(campaignId);
+}
+
+export function isQaGenerationCreditOverrideEnabled() {
+  return process.env.ALLOW_QA_GENERATION_CREDIT_OVERRIDE === "true";
 }
 
 export function getMetaEnv() {

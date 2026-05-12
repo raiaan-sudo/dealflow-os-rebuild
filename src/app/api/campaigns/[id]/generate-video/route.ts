@@ -4,8 +4,9 @@ import { logWarn } from "@/lib/logging";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import {
+  getApprovedCreativeIntakeGenerationContext,
+  hasSameCreativeIntakeGenerationContext,
   isCreativeChatIntakeEnabled,
-  isCreativeIntakeApproved,
 } from "@/lib/services/creative-chat-intake-service";
 import { getAvatarVideoProvider } from "@/lib/integrations/creative/avatar-provider";
 import { createSystemJob, listSystemJobs, processSystemJob } from "@/lib/services/system-job-service";
@@ -69,6 +70,8 @@ export async function POST(
       return Response.json({ error: "Campaign not found." }, { status: 404 });
     }
 
+    let creativeIntakeContext = null;
+
     if (isCreativeChatIntakeEnabled()) {
       const { data, error } = await auth.supabase
         .from("campaign_plans")
@@ -86,11 +89,23 @@ export async function POST(
         return Response.json({ error: "Campaign not found." }, { status: 404 });
       }
 
-      if (!isCreativeIntakeApproved(intakeRow.plan)) {
+      creativeIntakeContext = getApprovedCreativeIntakeGenerationContext(intakeRow.plan);
+
+      if (!creativeIntakeContext) {
         return Response.json(
           {
             error: "Review and approve the creative brief before rendering paid video previews.",
             code: "creative_brief_review_required",
+          },
+          { status: 409 },
+        );
+      }
+
+      if (creativeIntakeContext.generationPhase !== "ugc_video") {
+        return Response.json(
+          {
+            error: "The approved creative brief is scoped to static image generation. Approve a video creative brief before rendering video previews.",
+            code: "creative_generation_phase_mismatch",
           },
           { status: 409 },
         );
@@ -133,7 +148,11 @@ export async function POST(
       statuses: ["pending", "processing"],
     })) as SystemJobRecord<"video_generation">[];
     const existingActiveJob =
-      activeJobs.find((job) => job.payload.creativeIndex === body.creativeIndex) ?? null;
+      activeJobs.find((job) =>
+        job.payload.creativeIndex === body.creativeIndex &&
+        (!creativeIntakeContext ||
+          hasSameCreativeIntakeGenerationContext(job.payload.creativeIntake, creativeIntakeContext)),
+      ) ?? null;
 
     if (existingActiveJob) {
       scheduleVideoGenerationJob(existingActiveJob.id);
@@ -185,6 +204,7 @@ export async function POST(
       audience: campaign.strategy.audience ?? campaign.campaign.audience ?? null,
       location: campaign.strategy.location ?? campaign.campaign.location ?? null,
       force: body.force === true,
+      creativeIntake: creativeIntakeContext,
     };
 
     const job = await createSystemJob({

@@ -24,6 +24,7 @@ type GenerateAndPersistParams = {
   strategy: CampaignStrategyInput;
   creativeStrategy?: CampaignCreativeStrategy | null;
   providerUsageContext?: CreativeEngineInput["provider_usage_context"];
+  creativeIntake?: CreativeEngineInput["creative_intake"];
 };
 
 function buildStaticCreativeId(campaignId: string, index: number) {
@@ -49,6 +50,24 @@ function buildStorageMetadata(
   };
 }
 
+function evaluatePreStorageStaticVisualDecision(asset: StaticCreativeAsset) {
+  return evaluateStaticVisualAssetDecision({
+    ...asset,
+    storageNormalized:
+      asset.storageNormalized === false && asset.imageUrl
+        ? null
+        : asset.storageNormalized,
+  });
+}
+
+function hasAcceptedFinishedAdImageQa(asset: StaticCreativeAsset) {
+  return (
+    asset.imageQa?.mode === "finished_ad" &&
+    asset.imageQa.usable !== false &&
+    asset.imageQa.decision === "accept"
+  );
+}
+
 export async function persistStaticCreativeAssets(params: PersistStaticCreativeAssetsParams) {
   const staticAds = Array.isArray(params.staticAds) ? params.staticAds : [];
 
@@ -61,14 +80,14 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
   let allInsertedCreativesAreReady = true;
 
   for (const [index, asset] of staticAds.entries()) {
-    const visualDecision = evaluateStaticVisualAssetDecision(asset);
+    const visualDecision = evaluatePreStorageStaticVisualDecision(asset);
     const providerOriginalUrl = asset.imageUrl || null;
     const creativeId = buildStaticCreativeId(params.campaignId, index);
     const copyId = buildStaticCopyId(params.campaignId, index);
     let durableImage: StaticCreativeStorageNormalizationResult | null = null;
     let normalizationError: string | null = null;
 
-    if (asset.imageUrl && visualDecision.usable) {
+    if (asset.imageUrl && (visualDecision.usable || hasAcceptedFinishedAdImageQa(asset))) {
       try {
         durableImage = await normalizeStaticCreativeProviderImage({
           supabase: params.supabase,
@@ -84,6 +103,24 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
     }
 
     const readyUrl = durableImage?.durableUrl ?? null;
+    const persistedImageQa =
+      asset.imageUrl && !readyUrl && normalizationError
+        ? {
+            ...((asset.imageQa ?? {}) as Record<string, unknown>),
+            usable: false,
+            decision: "reject",
+            reasons: Array.from(
+              new Set([
+                ...(
+                  Array.isArray(asset.imageQa?.reasons)
+                    ? asset.imageQa.reasons
+                    : []
+                ),
+                "image_fetch_failed",
+              ]),
+            ),
+          }
+        : asset.imageQa ?? null;
     const normalizedGenerationState = readyUrl
       ? "generated"
       : asset.imageUrl
@@ -93,9 +130,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       readyUrl
         ? "ready"
         : asset.imageUrl
-          ? normalizationError
-            ? "failed"
-            : "requires_review"
+          ? "failed"
           : asset.imageGenerationState === "failed"
           ? "failed"
           : "requires_review";
@@ -111,7 +146,20 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       visualPromptBrief: (asset.visualPromptBrief ?? null) as Json,
       visualAssetContract: asset.visualPromptBrief?.visualAssetContract ?? null,
       visualAssetRole: asset.visualPromptBrief?.visualAssetRole ?? null,
-      imageQa: (asset.imageQa ?? null) as Json,
+      imageQa: persistedImageQa as Json,
+      creativeIntakePromptVersionUsed: (asset.creativeIntake?.promptVersion ?? null) as Json,
+      creativeIntakeGenerationContext: asset.creativeIntake
+        ? ({
+            version: asset.creativeIntake.version,
+            conversationId: asset.creativeIntake.conversationId,
+            campaignId: asset.creativeIntake.campaignId,
+            revisionNumber: asset.creativeIntake.revisionNumber,
+            approvedAt: asset.creativeIntake.approvedAt,
+            outputMode: asset.creativeIntake.outputMode,
+            generationPhase: asset.creativeIntake.generationPhase,
+            promptVersionCreatedAt: asset.creativeIntake.promptVersion.createdAt,
+          } as Json)
+        : null,
       imageGenerationState: normalizedGenerationState,
       imageGenerationProvider: asset.imageGenerationProvider ?? null,
       imageGenerationModel: asset.imageGenerationModel,
@@ -225,6 +273,7 @@ export async function generateAndPersistStaticCreativeAssets(params: GenerateAnd
     market_type: params.strategy.market_type,
     creative_strategy: params.creativeStrategy ?? undefined,
     provider_usage_context: params.providerUsageContext,
+    creative_intake: params.creativeIntake ?? null,
   });
 
   return await persistStaticCreativeAssets({
