@@ -61,6 +61,7 @@ type BillingStatus = {
   campaignCount: number;
   canCreateAdditionalCampaign: boolean;
   hasUnlimitedCampaigns: boolean;
+  canUseExistingLaunchAccess: boolean;
   campaignLimitLabel: string;
 };
 
@@ -546,7 +547,7 @@ export default function OnboardingPage() {
   const [isNewCampaignFlow, setIsNewCampaignFlow] = useState(false);
   const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null);
   const canUseExistingLaunchAccess =
-    billingStatus?.launchAllowed === true &&
+    billingStatus?.canUseExistingLaunchAccess === true &&
     (!isNewCampaignFlow || billingStatus.canCreateAdditionalCampaign);
   const visibleSteps = useMemo(
     () => (canUseExistingLaunchAccess ? STEPS.filter((step) => step.key !== "plan") : STEPS),
@@ -1095,8 +1096,8 @@ export default function OnboardingPage() {
                     "Launch access",
                     canUseExistingLaunchAccess
                       ? billingStatus?.hasUnlimitedCampaigns
-                        ? "Active Pro access: unlimited campaign slots"
-                        : "Active plan: campaign slot available"
+                        ? "Pro access: unlimited campaign slots"
+                        : "Existing plan: campaign slot available"
                       : getPlanPresentation(draft.planTier).positioning,
                   ],
                 ].map(([label, value]) => (

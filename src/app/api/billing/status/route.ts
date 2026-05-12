@@ -23,6 +23,8 @@ export async function GET() {
         activeCampaignCount: campaignCount,
       });
     const hasUnlimitedCampaigns = billing.launchOverride || limitPolicy.includedActiveCampaigns === null;
+    const canUseExistingLaunchAccess =
+      billing.launchAllowed || billing.launchOverride || hasUnlimitedCampaigns;
 
     return Response.json(
       {
@@ -34,6 +36,7 @@ export async function GET() {
         campaignCount,
         canCreateAdditionalCampaign: canCreateAnother,
         hasUnlimitedCampaigns,
+        canUseExistingLaunchAccess,
         campaignLimitLabel: hasUnlimitedCampaigns ? "Unlimited active campaigns" : limitPolicy.label,
       },
       {

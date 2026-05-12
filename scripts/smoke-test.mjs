@@ -289,6 +289,7 @@ function runOfflineChecks() {
   assertIncludes(onboardingPage, "/build/creatives?campaignId=", "Onboarding active-plan handoff", "active subscribers continue to creative selection instead of a second checkout");
   assertIncludes(onboardingPage, "Continue to creatives", "Onboarding active-plan CTA", "active subscribers see a creative handoff instead of checkout copy");
   assertIncludes(billingStatusRoute, "canCreateAdditionalCampaign", "Billing status campaign-slot gate", "onboarding receives the current campaign-slot entitlement");
+  assertIncludes(billingStatusRoute, "canUseExistingLaunchAccess", "Billing status existing launch access", "Pro and override campaign slots do not open a duplicate checkout");
   assertIncludes(onboardingPage, "Recommended audience", "Onboarding audience recommendation", "offer step recommends an audience instead of requiring agents to invent one");
   assertIncludes(onboardingPage, "AUDIENCE_REASONS", "Onboarding audience reason copy", "offer step explains why DealFlow chose the audience");
   assertIncludes(onboardingPage, "OFFER_SUGGESTIONS", "Onboarding offer suggestion library", "offer step provides selectable offer ideas by campaign mode");
