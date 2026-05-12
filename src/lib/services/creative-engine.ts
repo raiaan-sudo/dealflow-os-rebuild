@@ -62,6 +62,7 @@ export type CreativeEngineInput = {
     createForAsset: (asset: StaticCreativeAsset) => ImageProviderUsageContext | null;
   };
   reuse_static_assets?: StaticCreativeAsset[];
+  max_static_image_generations?: number;
 };
 
 export type CreativeAngle = "opportunity" | "pain" | "authority" | "curiosity";
@@ -1911,6 +1912,13 @@ export async function generateStaticCreativeAds(
       .filter(hasUsableStaticCreativeImage)
       .map((asset) => [asset.id, asset]),
   );
+  const previousStaticAssets = new Map(
+    (input?.reuse_static_assets ?? []).map((asset) => [asset.id, asset]),
+  );
+  const maxStaticImageGenerations = Number.isFinite(input?.max_static_image_generations)
+    ? Math.min(Math.max(Math.trunc(input?.max_static_image_generations ?? 0), 1), baseStaticAds.length)
+    : Number.POSITIVE_INFINITY;
+  let attemptedStaticImageGenerations = 0;
   const generatedStaticAds: StaticCreativeAsset[] = [];
 
   for (const asset of baseStaticAds) {
@@ -1927,6 +1935,39 @@ export async function generateStaticCreativeAds(
       });
       continue;
     }
+
+    if (attemptedStaticImageGenerations >= maxStaticImageGenerations) {
+      const previous = previousStaticAssets.get(asset.id);
+
+      generatedStaticAds.push(
+        previous
+          ? {
+              ...asset,
+              imageUrl: previous.imageUrl ?? "",
+              storageNormalized: previous.storageNormalized ?? null,
+              imageGenerationState: previous.imageGenerationState ?? "unavailable",
+              imageGenerationMessage:
+                previous.imageGenerationMessage ??
+                "A cleaner image is being prepared for this creative.",
+              imageGenerationModel: previous.imageGenerationModel ?? asset.preferredImageModel,
+              imageGenerationProvider: previous.imageGenerationProvider ?? null,
+              imageQa: previous.imageQa ?? null,
+              qualityGate: asset.qualityGate ?? previous.qualityGate ?? null,
+            }
+          : {
+              ...asset,
+              imageUrl: "",
+              storageNormalized: false,
+              imageGenerationState: "unavailable" as const,
+              imageGenerationMessage: "A cleaner image is being prepared for this creative.",
+              imageGenerationModel: asset.preferredImageModel,
+              imageGenerationProvider: null,
+            },
+      );
+      continue;
+    }
+
+    attemptedStaticImageGenerations += 1;
 
     try {
       const providerUsage = input?.provider_usage_context?.createForAsset(asset) ?? null;

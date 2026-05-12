@@ -61,6 +61,7 @@ type SystemJobPayloadMap = {
   static_creative_generation: {
     force?: boolean;
     missingOnly?: boolean;
+    maxGenerations?: number;
   };
   video_generation: VideoGenerationJobPayload;
   video_generation_status: VideoGenerationStatusJobPayload;
@@ -728,6 +729,10 @@ export async function processSystemJob(jobId: string) {
         {
           force: Boolean((processingJob.payload as SystemJobPayloadMap["static_creative_generation"])?.force),
           missingOnly: Boolean((processingJob.payload as SystemJobPayloadMap["static_creative_generation"])?.missingOnly),
+          maxGenerations:
+            typeof (processingJob.payload as SystemJobPayloadMap["static_creative_generation"])?.maxGenerations === "number"
+              ? (processingJob.payload as SystemJobPayloadMap["static_creative_generation"]).maxGenerations
+              : undefined,
           providerUsageRunId: `${processingJob.id}:${processingJob.attempt_count ?? 0}`,
           supabase,
         },

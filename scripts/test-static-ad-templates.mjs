@@ -307,4 +307,21 @@ for (const reusable of reusableStaticAds) {
   assert.equal(result?.imageGenerationState, "generated", `preserved state for ${reusable.id}`);
 }
 
+const boundedRequestedAssetIds = [];
+await generateStaticCreativeAds({
+  ...generationInput,
+  max_static_image_generations: 2,
+  provider_usage_context: {
+    createForAsset: (asset) => {
+      boundedRequestedAssetIds.push(asset.id);
+      return null;
+    },
+  },
+});
+assert.deepEqual(
+  boundedRequestedAssetIds,
+  baseStaticAds.slice(0, 2).map((asset) => asset.id),
+  "bounded static retries should only request the configured number of provider generations",
+);
+
 console.log("Static ad template tests passed.");

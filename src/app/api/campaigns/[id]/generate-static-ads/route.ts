@@ -14,6 +14,7 @@ import { z } from "zod";
 const bodySchema = z.object({
   force: z.boolean().optional(),
   missingOnly: z.boolean().optional(),
+  maxGenerations: z.number().int().min(1).max(6).optional(),
 });
 
 function scheduleStaticCreativeJob(jobId: string) {
@@ -88,6 +89,8 @@ export async function POST(
       return buildRateLimitResponse(rateLimit.resetAt);
     }
 
+    const maxGenerations = body.maxGenerations ?? (body.missingOnly === true ? 2 : undefined);
+
     const activeJobs = await listSystemJobs({
       userId: auth.userId,
       campaignId,
@@ -123,6 +126,7 @@ export async function POST(
       payload: {
         force: body.force === true,
         missingOnly: body.missingOnly === true,
+        ...(maxGenerations ? { maxGenerations } : {}),
       },
     });
     scheduleStaticCreativeJob(job.id);

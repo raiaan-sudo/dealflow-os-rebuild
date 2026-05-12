@@ -785,6 +785,7 @@ export async function regenerateStaticCreativeAssetsForUser(
   options?: {
     force?: boolean;
     missingOnly?: boolean;
+    maxGenerations?: number;
     supabase?: PersistenceClient;
     providerUsageRunId?: string | null;
   },
@@ -859,6 +860,7 @@ export async function regenerateStaticCreativeAssetsForUser(
       creative_strategy: currentRecord.plan.creative_strategy,
       campaign_id: campaignId,
       reuse_static_assets: currentRecord.creatives.staticAds,
+      max_static_image_generations: options?.maxGenerations,
       provider_usage_context: {
         createForAsset: (asset) => {
           const runScope = options?.providerUsageRunId?.trim() || "default";
