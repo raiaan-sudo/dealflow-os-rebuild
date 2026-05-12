@@ -596,7 +596,7 @@ export async function resetStaleProcessingSystemJobs(staleAfterMs = 10 * 60_000)
       next_run_at: new Date().toISOString(),
     } as never)
     .eq("status", "processing")
-    .or(`locked_until.lte.${new Date().toISOString()},started_at.lt.${staleBefore}`)
+    .lt("started_at", staleBefore)
     .select("id");
 
   if (error) {

@@ -805,6 +805,8 @@ function runOfflineChecks() {
   assertExcludes(directHeyGenClient, "raw: data", "HeyGen raw payload persistence avoided", "legacy HeyGen helper does not persist full provider response payloads");
   assertIncludes(directHeyGenClient, "ALLOW_HEYGEN_VIDEO_GENERATION", "Legacy HeyGen direct client kill switch", "retained legacy HeyGen helper remains disabled unless explicitly enabled");
   assertIncludes(systemJobService, "claim_next_system_job", "Atomic system job claim", "system job worker uses DB-backed SKIP LOCKED claim RPC");
+  assertIncludes(systemJobService, '.lt("started_at", staleBefore)', "Long-running job stale guard", "provider polling jobs are not reset only because their short lease expired");
+  assertExcludes(systemJobService, "locked_until.lte.", "Lease-only stale reset avoided", "long-running provider jobs cannot be duplicated by lease expiry alone");
   assertIncludes(systemJobService, "replayFailedPublicLeadCapture", "Lead retry job processor", "lead capture retry jobs replay or fail instead of silently completing");
   assertIncludes(systemJobService, "dead_lettered_at: null", "Manual retry clears dead-letter", "operator retry can make dead-lettered jobs claimable again");
   assertIncludes(systemJobService, "dead_letter_reason", "System job dead-letter state", "failed jobs preserve dead-letter reason");
