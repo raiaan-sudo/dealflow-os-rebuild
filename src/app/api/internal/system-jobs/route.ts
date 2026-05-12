@@ -10,6 +10,7 @@ import { runSystemJobWorkerBatch } from "@/lib/services/system-job-service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 800;
 
 const runnerInputSchema = z.object({
   maxCycles: z.number().int().min(1).max(5).optional(),

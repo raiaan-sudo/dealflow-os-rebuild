@@ -11,6 +11,8 @@ import { createSystemJob, listSystemJobs, processSystemJob } from "@/lib/service
 import { after } from "next/server";
 import { z } from "zod";
 
+export const maxDuration = 800;
+
 const bodySchema = z.object({
   force: z.boolean().optional(),
   missingOnly: z.boolean().optional(),
