@@ -58,6 +58,12 @@ const {
 const {
   persistStaticCreativeAssets,
 } = require("../src/lib/services/static-creative-asset-service.ts");
+const {
+  evaluateStaticVisualAssetDecision,
+} = require("../src/lib/services/static-creative-visual-qa.ts");
+const {
+  buildComposedStaticAdPreview,
+} = require("../src/lib/services/static-ad-template-renderer.ts");
 
 const providerDataUri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
 const appOwnedUrl = "https://supabase.example.test/storage/v1/object/public/creative-assets/user-test/campaign-test/generated-static/static-1/existing.png";
@@ -78,6 +84,33 @@ await assert.rejects(
   /host is not approved|blocked network/,
 );
 await validateStaticCreativeProviderImageUrlForStorage("https://example.com/generated.png");
+
+const legacyProviderVisual = {
+  imageUrl: "https://example.com/legacy-provider.png",
+  storageNormalized: false,
+  imagePrompt: "TEXT-FREE BACKGROUND ASSET ONLY. Realistic photo.",
+  visualPromptBrief: {
+    visualAssetContract: "text_free_background_v2",
+    visualAssetRole: "text_free_background",
+  },
+  qualityGate: { accepted: true },
+  imageQa: { usable: true, decision: "accept", reasons: [] },
+};
+assert.equal(
+  evaluateStaticVisualAssetDecision(legacyProviderVisual).usable,
+  false,
+  "legacy provider URLs are readable for audit but not launch-ready until normalized into app-owned storage",
+);
+const legacyPreview = buildComposedStaticAdPreview({
+  ...legacyProviderVisual,
+  headline: "See Homes That Match",
+  primaryText: "Get a focused buyer shortlist.",
+  cta: "See Homes That Match",
+  category: "buyer",
+  location: "Toronto, ON",
+});
+assert.equal(legacyPreview.status, "background_rejected");
+assert.equal(legacyPreview.backgroundImageUrl, null, "legacy provider raster is not rendered as primary creative");
 
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async () =>

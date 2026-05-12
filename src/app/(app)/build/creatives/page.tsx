@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
+import { getSelectedAdIdsFromPlan } from "@/lib/services/campaign-plan-document";
 import {
   isCreativeChatIntakeEnabled,
   readCreativeChatIntakeFromPlan,
@@ -38,8 +39,9 @@ export default async function BuildCreativesPage({
   const ensuredRecord = record;
   const plan = canonicalCampaignToPlan(ensuredRecord);
   const creativeIntakeEnabled = isCreativeChatIntakeEnabled();
-  const supabase = creativeIntakeEnabled ? await createClient() : null;
+  const supabase = await createClient();
   let intakePlanValue: unknown = null;
+  let persistedSelectedAdIds: string[] = [];
   if (supabase) {
     const { data } = await supabase
       .from("campaign_plans")
@@ -47,6 +49,7 @@ export default async function BuildCreativesPage({
       .eq("id", ensuredRecord.campaign.id)
       .maybeSingle() as { data: { plan?: unknown } | null; error: Error | null };
     intakePlanValue = data?.plan ?? null;
+    persistedSelectedAdIds = getSelectedAdIdsFromPlan(intakePlanValue);
   }
   const creativeIntake = readCreativeChatIntakeFromPlan(intakePlanValue);
   const creativeIntakeApproved =
@@ -127,6 +130,7 @@ export default async function BuildCreativesPage({
         score: ad.score ?? 0,
         recommended: ad.recommended ?? false,
         imageUrl: ad.imageUrl ?? null,
+        storageNormalized: ad.storageNormalized ?? null,
         imageGenerationState: ad.imageGenerationState ?? null,
         imageGenerationMessage: ad.imageGenerationMessage ?? null,
         imagePrompt: ad.imagePrompt ?? null,
@@ -183,7 +187,12 @@ export default async function BuildCreativesPage({
         />
       ) : null}
 
-      <CreativeWizard campaignId={ensuredRecord.campaign.id} creatives={creativeOptions} videoCreatives={videoOptions} />
+      <CreativeWizard
+        campaignId={ensuredRecord.campaign.id}
+        creatives={creativeOptions}
+        persistedSelectedAdIds={persistedSelectedAdIds}
+        videoCreatives={videoOptions}
+      />
     </div>
   );
 }

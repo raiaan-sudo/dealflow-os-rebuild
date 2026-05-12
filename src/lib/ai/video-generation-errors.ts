@@ -127,8 +127,8 @@ export function toVideoProviderApiError(error: unknown, operation: "start" | "ch
   return new ApiError(
     502,
     operation === "start"
-      ? "AI video rendering could not start. Review the operator diagnostics, then try again."
-      : "AI video rendering status could not be confirmed. Review the operator diagnostics, then try again.",
+      ? "Video preview is temporarily unavailable. Your campaign can continue with static creatives while we resolve video rendering."
+      : "Video preview status is temporarily unavailable. Your campaign can continue with static creatives while we resolve video rendering.",
     operation === "start" ? "video_provider_request_failed" : "video_provider_status_failed",
   );
 }
@@ -156,7 +156,7 @@ export function formatVideoWorkflowErrorMessage(input: {
   }
 
   if (code === "video_provider_request_failed" || code === "video_provider_status_failed") {
-    return error || "AI video rendering did not complete cleanly.";
+    return "Video preview is temporarily unavailable. Your campaign can continue with static creatives while we resolve video rendering.";
   }
 
   return error || "Video generation failed.";

@@ -13,6 +13,7 @@ type StaticCreativePreviewCardProps = {
   category?: CampaignCategory | string | null;
   location?: string | null;
   imageUrl?: string | null;
+  storageNormalized?: boolean | null;
   imageGenerationState?: "generated" | "generating" | "unavailable" | "failed" | string | null;
   imageGenerationMessage?: string | null;
   imagePrompt?: string | null;
@@ -50,6 +51,7 @@ export function StaticCreativePreviewCard({
   category,
   location,
   imageUrl,
+  storageNormalized,
   imageGenerationState,
   imageGenerationMessage,
   imagePrompt,
@@ -80,6 +82,7 @@ export function StaticCreativePreviewCard({
         imagePrompt={imagePrompt}
         imagePromptConfig={imagePromptConfig}
         imageUrl={imageUrl}
+        storageNormalized={storageNormalized}
         location={location}
         offer={safeOffer}
         overlayText={overlayText}
@@ -158,6 +161,7 @@ export function StaticCreativePreviewCard({
                 imagePrompt={imagePrompt}
                 imagePromptConfig={imagePromptConfig}
                 imageUrl={imageUrl}
+                storageNormalized={storageNormalized}
                 location={location}
                 offer={safeOffer}
                 overlayText={overlayText}
@@ -190,6 +194,7 @@ export function StaticCreativeSummaryCard({
   category,
   location,
   imageUrl,
+  storageNormalized,
   imageGenerationState,
   imageGenerationMessage,
   imagePrompt,
@@ -234,6 +239,7 @@ export function StaticCreativeSummaryCard({
           imagePrompt={imagePrompt}
           imagePromptConfig={imagePromptConfig}
           imageUrl={imageUrl}
+          storageNormalized={storageNormalized}
           location={location}
           offer={safeOffer}
           overlayText={overlayText}

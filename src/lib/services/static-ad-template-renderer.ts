@@ -39,6 +39,7 @@ export type StaticAdTemplateInput = {
   location?: string | null;
   offer?: string | null;
   imageUrl?: string | null;
+  storageNormalized?: boolean | null;
   imageGenerationState?: string | null;
   imageGenerationMessage?: string | null;
   imagePrompt?: string | null;

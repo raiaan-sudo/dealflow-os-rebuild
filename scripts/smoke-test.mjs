@@ -341,12 +341,9 @@ function runOfflineChecks() {
   assertIncludes(creativeWizard, "of ${creatives.length} image previews are ready", "Creative partial-count wording", "partial image generation copy exposes counts when some previews still need work");
   assertIncludes(creativeWizard, "customerImageMessage", "Creative image error sanitizer", "image preview failures do not expose provider or infrastructure wording to customers");
   assertIncludes(creativeWizard, "missingOnly: true", "Creative retry refill payload", "creative retry payloads refill unfinished previews without full creative regeneration");
-  assertIncludes(
-    creativeWizard,
-    "missingOnly: hasGeneratedImages || hasFailedOrRejectedImages",
-    "Creative auto-refresh refill payload",
-    "automatic creative preview refresh preserves accepted images and refills only unfinished or rejected previews",
-  );
+  assertIncludes(creativeWizard, "Draft selection only. Launch remains blocked until this set is saved.", "Creative draft selection copy", "creative page distinguishes recommended draft selections from saved launch selections");
+  assertExcludes(creativeWizard, "automatic: true", "Creative paid auto-render avoided", "creative page load does not automatically queue paid image or video provider work");
+  assertIncludes(creativeWizard, "A few visuals need cleaner backgrounds.", "Creative non-auto refresh copy", "creative page does not imply provider refresh is running before a user-triggered retry");
   assertExcludes(creativeWizard, "missingOnly: false", "Creative retry full regeneration avoided", "creative retry controls do not request full static regeneration");
   assertExcludes(creativeWizard, "Regenerate previews", "Creative retry full-regenerate copy removed", "customer-facing retry copy does not imply a full regenerate");
   assertIncludes(creativeWizard, "Daily image refresh limit reached for this campaign.", "Creative image cap copy", "creative retries show a clear daily-limit state instead of pretending renders are still running");
@@ -801,7 +798,8 @@ function runOfflineChecks() {
   assertIncludes(avatarProvider, "ALLOW_HIGGSFIELD_VIDEO_GENERATION !== \"true\"", "Higgsfield video generation kill switch", "queued video jobs cannot call Higgsfield unless explicitly enabled");
   assertIncludes(avatarProvider, "HiggsfieldVideoProvider", "Higgsfield video provider", "AI UGC/video generation has a Higgsfield provider implementation");
   assertIncludes(legacyAiProviders, "ALLOW_HIGGSFIELD_VIDEO_GENERATION", "Legacy helper Higgsfield guard", "older AI helper paths respect the Higgsfield video generation gate");
-  assertIncludes(videoGenerationErrors, "AI video rendering could not start. Review the operator diagnostics", "Video error safe fallback", "arbitrary upstream video-provider error text is not returned as customer/API copy");
+  assertIncludes(videoGenerationErrors, "Video preview is temporarily unavailable. Your campaign can continue with static creatives while we resolve video rendering.", "Video error safe fallback", "arbitrary upstream video-provider error text is not returned as customer/API copy");
+  assertExcludes(videoGenerationErrors, "Review the operator diagnostics", "Video operator diagnostics hidden", "operator diagnostics are not exposed in customer-facing video errors");
   assertExcludes(videoGenerationErrors, "`The AI video provider could not start the video job. ${message}`", "Video raw error fallback removed", "video generation errors do not interpolate raw upstream provider messages into customer/API copy");
   assertIncludes(directHeyGenClient, "buildSafeHeyGenDiagnostic", "HeyGen safe diagnostic shape", "legacy HeyGen status persistence stores sanitized diagnostics instead of raw provider responses");
   assertExcludes(directHeyGenClient, "raw: data", "HeyGen raw payload persistence avoided", "legacy HeyGen helper does not persist full provider response payloads");

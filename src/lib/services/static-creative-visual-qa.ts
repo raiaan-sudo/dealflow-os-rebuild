@@ -35,6 +35,7 @@ type StaticCreativeImageQaMetadata = {
 
 type StaticVisualContractInput = {
   imageUrl?: string | null;
+  storageNormalized?: boolean | null;
   imagePrompt?: string | null;
   imagePromptConfig?: {
     prompt?: string | null;
@@ -116,6 +117,13 @@ export function evaluateStaticVisualAssetDecision(
     return {
       usable: false,
       reason: "This visual was generated before the text-free background contract and was withheld from the launch preview.",
+    };
+  }
+
+  if (input.storageNormalized === false) {
+    return {
+      usable: false,
+      reason: "This visual needs to be stored in DealFlow before it can be used as a launch-ready creative.",
     };
   }
 

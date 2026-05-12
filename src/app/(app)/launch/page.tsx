@@ -576,6 +576,7 @@ export default async function LaunchAliasPage({
                   imagePrompt={selectedCreative.imagePrompt}
                   imagePromptConfig={selectedCreative.imagePromptConfig}
                   imageUrl={selectedCreative.imageUrl}
+                  storageNormalized={selectedCreative.storageNormalized}
                   location={plan.market}
                   key={selectedCreative.id}
                   offer={plan.offerSummary || plan.keyOffer}

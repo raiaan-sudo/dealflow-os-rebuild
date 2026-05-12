@@ -71,6 +71,7 @@ export type StaticCreativeAsset = {
   id: string;
   angle: "guarantee" | "urgency" | "contrarian" | "opportunity" | "authority";
   imageUrl: string;
+  storageNormalized?: boolean | null;
   imageGenerationState: "generated" | "generating" | "unavailable" | "failed";
   imageGenerationMessage: string | null;
   imageGenerationModel: string | null;

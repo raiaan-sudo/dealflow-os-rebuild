@@ -147,6 +147,9 @@ function isLaunchReadyStaticImageAsset(asset: CreativeAsset) {
 
   const decision = evaluateStaticVisualAssetDecision({
     imageUrl: asset.file_url ?? asset.thumbnail_url,
+    storageNormalized:
+      metadata.storageNormalized === true ||
+      (metadata.storageNormalizationReusedExistingAppAsset === true && typeof metadata.storagePath === "string"),
     imagePrompt: typeof metadata.imagePrompt === "string" ? metadata.imagePrompt : null,
     imagePromptConfig: (metadata.imagePromptConfig ?? null) as StaticCreativeAsset["imagePromptConfig"],
     visualPromptBrief: (metadata.visualPromptBrief ?? null) as StaticCreativeAsset["visualPromptBrief"],

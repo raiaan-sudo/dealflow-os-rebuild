@@ -18,6 +18,7 @@ type CreativeOption = {
   score: number;
   recommended?: boolean;
   imageUrl?: string | null;
+  storageNormalized?: boolean | null;
   imageGenerationState?: string | null;
   imageGenerationMessage?: string | null;
   imagePrompt?: string | null;
@@ -75,6 +76,7 @@ type VideoCreativeOption = {
 type CreativeWizardProps = {
   campaignId: string;
   creatives: CreativeOption[];
+  persistedSelectedAdIds?: string[];
   videoCreatives?: VideoCreativeOption[];
 };
 
@@ -105,8 +107,8 @@ function customerVideoMessage(message?: string | null) {
     return null;
   }
 
-  if (/provider usage guard|explicitly enabled|generation is disabled|provider|configured|credentials/i.test(text)) {
-    return "AI video rendering needs another attempt before it can be watched.";
+  if (/operator diagnostics|provider usage guard|explicitly enabled|generation is disabled|provider|configured|credentials/i.test(text)) {
+    return "Video preview is temporarily unavailable. Your campaign can continue with static creatives while we resolve video rendering.";
   }
 
   return text;
@@ -182,10 +184,14 @@ function getStaticPreviewStatusMessage(creatives: CreativeOption[]) {
   }`;
 }
 
-export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: CreativeWizardProps) {
+export function CreativeWizard({
+  campaignId,
+  creatives,
+  persistedSelectedAdIds = [],
+  videoCreatives = [],
+}: CreativeWizardProps) {
   const router = useRouter();
   const jobStreamsRef = useRef<Map<string, EventSource>>(new Map());
-  const autoRenderStartedRef = useRef(false);
   const autoVideoStartedRef = useRef(false);
   const buildHref = `/builder?campaignId=${encodeURIComponent(campaignId)}`;
   const rankedCreatives = useMemo(
@@ -196,7 +202,9 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
   const topUgcCreatives = rankedCreatives
     .filter((creative) => /\bugc\b/i.test(`${creative.id} ${creative.formatLabel ?? ""}`))
     .slice(0, 2);
-  const defaultSelectedIds = topCreatives.length > 0
+  const availableIds = new Set(rankedCreatives.map((creative) => creative.id));
+  const savedSelectedIds = persistedSelectedAdIds.filter((id) => availableIds.has(id)).slice(0, 6);
+  const recommendedSelectedIds = topCreatives.length > 0
     ? Array.from(
         new Set(
           topUgcCreatives.length > 0
@@ -210,6 +218,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
         ),
       )
     : rankedCreatives.slice(0, 1).map((creative) => creative.id);
+  const defaultSelectedIds = savedSelectedIds.length > 0 ? savedSelectedIds : recommendedSelectedIds;
   const minSelected = Math.min(2, rankedCreatives.length);
   const maxSelected = Math.min(6, rankedCreatives.length);
   const [selectedIds, setSelectedIds] = useState<string[]>(defaultSelectedIds);
@@ -229,10 +238,13 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
     rankedCreatives.find((creative) => creative.id === activeCreativeId) ??
     primaryCreative;
   const canContinue = selectedCreatives.length >= minSelected && selectedCreatives.length <= maxSelected;
+  const selectedMediaReady =
+    selectedCreatives.length > 0 &&
+    selectedCreatives.every((creative) => evaluateStaticVisualAssetDecision(creative).usable);
+  const savedSelectionMatchesCurrent =
+    savedSelectedIds.length === selectedIds.length &&
+    savedSelectedIds.every((selectedId, index) => selectedId === selectedIds[index]);
   const allImagesMissing = rankedCreatives.every((creative) => !creative.imageUrl);
-  const hasFailedOrRejectedImages = rankedCreatives.some(
-    (creative) => creative.imageGenerationState === "failed" || !evaluateStaticVisualAssetDecision(creative).usable,
-  );
   const needsImageGeneration = rankedCreatives.some(creativeNeedsImageGeneration);
   const hasGeneratedImages = rankedCreatives.some((creative) => Boolean(creative.imageUrl));
   const hasAttemptedImageGeneration = rankedCreatives.some(
@@ -242,15 +254,6 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
     /insufficient credits|add at least/i.test(creative.imageGenerationMessage ?? ""),
   );
   const imageLimitMessage = getImageLimitMessage(rankedCreatives);
-  const imageGenerationSignature = rankedCreatives
-    .map((creative) => [
-      creative.id,
-      evaluateStaticVisualAssetDecision(creative).usable ? "usable-background" : "needs-background",
-      creative.imageGenerationState ?? "none",
-      creative.qualityGate?.accepted === false ? "needs-review" : "accepted-or-pending",
-    ].join(":"))
-    .join("|");
-  const autoRenderStorageKey = `dealflow:auto-image-render:${campaignId}:${imageGenerationSignature}`;
   const ugcQuotaAvailable = rankedCreatives.some(isUgcCreative);
   const selectedUgcCount = selectedCreatives.filter(isUgcCreative).length;
   const ugcQuotaSatisfied = !ugcQuotaAvailable || selectedUgcCount >= 1;
@@ -268,9 +271,6 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
     primaryVideoCreative.videoGenerationState !== "generating" &&
     primaryVideoCreative.videoGenerationState !== "generated",
   );
-  const autoVideoStorageKey = primaryVideoCreative
-    ? `dealflow:auto-video-render:${campaignId}:${primaryVideoCreative.id}:${primaryVideoCreative.videoGenerationState ?? "none"}`
-    : null;
 
   const subscribeToJob = useCallback((jobId: string, surface: "image" | "video") => {
     if (jobStreamsRef.current.has(jobId)) {
@@ -418,46 +418,13 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
   }, [activeVideoCreative, campaignId, renderingVideo, setActiveVideoId, subscribeToJob]);
 
   useEffect(() => {
-    if (!needsImageGeneration || autoRenderStartedRef.current) {
-      return;
-    }
-
-    if (typeof window !== "undefined" && window.sessionStorage.getItem(autoRenderStorageKey) === "started") {
-      return;
-    }
-
-    autoRenderStartedRef.current = true;
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem(autoRenderStorageKey, "started");
-    }
-
-    void queueImagePreviews({
-      force: hasCreditBlocker || hasFailedOrRejectedImages,
-      automatic: true,
-      missingOnly: hasGeneratedImages || hasFailedOrRejectedImages,
-    });
-  }, [autoRenderStorageKey, hasCreditBlocker, hasFailedOrRejectedImages, hasGeneratedImages, needsImageGeneration, queueImagePreviews]);
-
-  useEffect(() => {
-    if (!videoNeedsGeneration || !autoVideoStorageKey || autoVideoStartedRef.current) {
-      return;
-    }
-
-    if (typeof window !== "undefined" && window.sessionStorage.getItem(autoVideoStorageKey) === "started") {
+    if (!videoNeedsGeneration || autoVideoStartedRef.current) {
       return;
     }
 
     autoVideoStartedRef.current = true;
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem(autoVideoStorageKey, "started");
-    }
-
-    void queueVideoPreview({
-      automatic: true,
-      force: primaryVideoCreative?.videoGenerationState === "failed",
-      video: primaryVideoCreative,
-    });
-  }, [autoVideoStorageKey, primaryVideoCreative, queueVideoPreview, videoNeedsGeneration]);
+    setVideoMessage("Video preview is temporarily unavailable. Your campaign can continue with static creatives while we resolve video rendering.");
+  }, [videoNeedsGeneration]);
 
   useEffect(() => {
     if (!activeVideoId || videoCreatives.some((video) => video.id === activeVideoId)) {
@@ -507,6 +474,11 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
 
     if (!ugcQuotaSatisfied) {
       setError("Keep at least one native-style concept in the selected creative set.");
+      return;
+    }
+
+    if (!selectedMediaReady) {
+      setError("Refresh unfinished previews before saving this launch set.");
       return;
     }
 
@@ -574,7 +546,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
     ? imageLimitMessage ??
       (allImagesMissing
       ? "Creating the full visual set now. The cards below stay visible while final images render."
-      : "Refreshing a few visuals. You can keep reviewing the composed previews below.")
+      : "A few visuals need cleaner backgrounds. You can keep reviewing the composed previews below.")
     : renderMessage;
   const getDisplayCreative = (creative: CreativeOption): CreativeOption =>
     imageRenderPending && creativeNeedsImageGeneration(creative)
@@ -600,7 +572,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
               </h2>
             </div>
             <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-              {selectedCreatives.length}/{maxSelected} selected
+              {selectedCreatives.length}/{maxSelected} {savedSelectionMatchesCurrent ? "saved" : "draft"}
             </span>
           </div>
           <StaticCreativePreviewCard
@@ -612,6 +584,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
             imagePrompt={displayActiveCreative.imagePrompt}
             imagePromptConfig={displayActiveCreative.imagePromptConfig}
             imageUrl={displayActiveCreative.imageUrl}
+            storageNormalized={displayActiveCreative.storageNormalized}
             location={displayActiveCreative.location}
             formatLabel={displayActiveCreative.formatLabel}
             offer={displayActiveCreative.offer}
@@ -628,10 +601,12 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
           <div>
             <p className="text-sm font-medium text-muted-foreground">Recommended test set</p>
             <h2 className="mt-1 text-2xl font-semibold text-foreground">
-              {selectedCreatives.length} creatives selected
+              {selectedCreatives.length} creatives {savedSelectionMatchesCurrent ? "saved" : "drafted"}
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              DealFlow will launch with the strongest selected creative and keep the set ready for rotation and optimization.
+              {savedSelectionMatchesCurrent
+                ? "DealFlow will use this saved creative set once every launch gate is ready."
+                : "This is a draft recommendation. Save the test set before launch can continue."}
             </p>
           </div>
           {renderMessage || needsImageGeneration || hasGeneratedImages ? (
@@ -711,6 +686,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                   imagePrompt={displayCreative.imagePrompt}
                   imagePromptConfig={displayCreative.imagePromptConfig}
                   imageUrl={displayCreative.imageUrl}
+                  storageNormalized={displayCreative.storageNormalized}
                   key={displayCreative.id}
                   location={displayCreative.location}
                   offer={displayCreative.offer}
@@ -732,15 +708,19 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                   Back to build
                 </Link>
               </Button>
-              <Button onClick={() => void handleNext()} type="button" disabled={saving || !canContinue || !ugcQuotaSatisfied}>
+              <Button onClick={() => void handleNext()} type="button" disabled={saving || !canContinue || !ugcQuotaSatisfied || !selectedMediaReady}>
                 {saving ? "Saving..." : "Save test set"}
               </Button>
             </div>
             <p className={error ? "mt-3 text-sm text-rose-400" : "mt-3 text-sm text-muted-foreground"}>
               {error ??
-                (rankedCreatives.length >= 2
-                  ? `Use ${minSelected}-${maxSelected} creatives. The recommended set keeps at least one native-style concept selected.`
-                  : "Select at least one creative to continue.")}
+                (!selectedMediaReady
+                  ? "Refresh unfinished previews before saving this launch set."
+                  : !savedSelectionMatchesCurrent
+                    ? "Draft selection only. Launch remains blocked until this set is saved."
+                    : rankedCreatives.length >= 2
+                      ? `Use ${minSelected}-${maxSelected} creatives. The recommended set keeps at least one native-style concept selected.`
+                      : "Select at least one creative to continue.")}
             </p>
           </div>
 
@@ -987,6 +967,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
                     imagePrompt={displayCreative.imagePrompt}
                     imagePromptConfig={displayCreative.imagePromptConfig}
                     imageUrl={displayCreative.imageUrl}
+                    storageNormalized={displayCreative.storageNormalized}
                     location={displayCreative.location}
                     offer={displayCreative.offer}
                     overlayText={displayCreative.overlayText}

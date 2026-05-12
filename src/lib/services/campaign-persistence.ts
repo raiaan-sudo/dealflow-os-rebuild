@@ -194,6 +194,9 @@ function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[
       assetRows[0];
     const metadata = asObjectRecord(preferredRow.metadata);
     const imageUrl = preferredRow.file_url ?? preferredRow.thumbnail_url ?? "";
+    const storageNormalized =
+      metadata?.storageNormalized === true ||
+      (metadata?.storageNormalizationReusedExistingAppAsset === true && typeof metadata?.storagePath === "string");
     const qualityGate =
       metadata?.qualityGate && typeof metadata.qualityGate === "object"
         ? metadata.qualityGate as StaticCreativeAsset["qualityGate"]
@@ -212,6 +215,7 @@ function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[
           ? metadata.angle
           : "opportunity",
       imageUrl,
+      storageNormalized,
       imageGenerationState: imageUrl ? "generated" : "unavailable",
       imageGenerationMessage:
         typeof metadata?.imageGenerationMessage === "string"
