@@ -398,7 +398,9 @@ function runOfflineChecks() {
   assertIncludes(builderPage, "Active campaign workspace", "Builder active campaign shell", "builder defaults to the active campaign workspace when a campaign exists");
   assertIncludes(builderPage, "activeCampaignCopy", "Builder active campaign count copy", "builder uses the real campaign count in active-campaign guidance");
   assertIncludes(builderPage, "mode=edit", "Builder edit gate", "full campaign editing is explicit instead of the default existing-campaign view");
-  assertIncludes(builderPage, "new=1", "Builder secondary new campaign action", "launching another campaign is secondary and explicit");
+  assertIncludes(builderPage, "/onboarding?new=1", "Builder secondary new campaign action", "launching another campaign opens the guided onboarding form");
+  assertIncludes(builderPage, "redirect(\"/onboarding?new=1\")", "Builder new-campaign route redirect", "/builder?new=1 cannot render the advanced builder workspace");
+  assertIncludes(onboardingPage, "window.localStorage.removeItem(STORAGE_KEY)", "Onboarding fresh campaign reset", "fresh campaign onboarding clears stale saved setup state");
   assertIncludes(billingPlans, "includedActiveCampaigns: 1", "Starter campaign limit", "Starter defaults to one active guided campaign");
   assertIncludes(billingPlans, "includedActiveCampaigns: 3", "Pro campaign limit", "Pro exposes additional active campaign slots");
   assertIncludes(dashboardPage, "loadDashboardStateForCampaign", "Dashboard real route", "dashboard loads real campaign state instead of the old plan comparison demo");

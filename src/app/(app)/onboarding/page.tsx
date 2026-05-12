@@ -553,6 +553,16 @@ export default function OnboardingPage() {
   );
 
   useEffect(() => {
+    const shouldStartFresh = new URLSearchParams(window.location.search).get("new") === "1";
+    if (shouldStartFresh) {
+      window.localStorage.removeItem(STORAGE_KEY);
+      setDraft({ ...DEFAULT_DRAFT, idempotencySeed: createIdempotencySeed() });
+      setCurrentStep("intent");
+      setFurthestStepIndex(0);
+      setHydrated(true);
+      return;
+    }
+
     const raw = window.localStorage.getItem(STORAGE_KEY);
     let nextDraft = { ...DEFAULT_DRAFT, idempotencySeed: createIdempotencySeed() };
 

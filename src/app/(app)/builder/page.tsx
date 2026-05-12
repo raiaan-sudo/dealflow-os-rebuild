@@ -326,7 +326,7 @@ function ActiveCampaignWorkspace({
             <div className="mt-5 flex flex-col gap-3">
               {canCreateAnother ? (
                 <Button asChild variant="secondary">
-                  <Link href="/builder?new=1">Launch another campaign</Link>
+                  <Link href="/onboarding?new=1">Launch another campaign</Link>
                 </Button>
               ) : (
                 <Button asChild variant="secondary">
@@ -383,6 +383,11 @@ export default async function BuilderPage({
       : null;
   const wantsNewCampaign = resolvedSearchParams?.new === "1";
   const wantsEditMode = modeParam === "edit";
+
+  if (wantsNewCampaign) {
+    redirect("/onboarding?new=1");
+  }
+
   const [campaigns, billing] = await Promise.all([
     listCampaignsForUser().catch(() => []),
     getBillingSummary().catch(() => null),
