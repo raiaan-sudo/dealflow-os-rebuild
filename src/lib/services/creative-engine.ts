@@ -47,6 +47,7 @@ import {
 import { selectMediaBuyerCta } from "@/lib/optimization-engine/media-buying-rules";
 
 export type CreativeEngineInput = {
+  campaign_id?: string;
   location: string;
   audience: string;
   offer: string;
@@ -1932,7 +1933,7 @@ export async function generateStaticCreativeAds(
       const imageQa = imageAd.imageUrl
         ? await evaluateStaticCreativeImageQa({
             imageUrl: imageAd.imageUrl,
-            campaignId: "creative-system-preview",
+            campaignId: input?.campaign_id || "creative-system-preview",
             creativeId: asset.id,
             prompt: asset.imagePrompt,
             negativePrompt: asset.imagePromptConfig?.negativePrompt ?? undefined,

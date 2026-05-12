@@ -3,6 +3,10 @@ import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib
 import { logWarn } from "@/lib/logging";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
+import {
+  isCreativeChatIntakeEnabled,
+  isCreativeIntakeApproved,
+} from "@/lib/services/creative-chat-intake-service";
 import { createSystemJob, listSystemJobs, processSystemJob } from "@/lib/services/system-job-service";
 import { after } from "next/server";
 import { z } from "zod";
@@ -44,6 +48,34 @@ export async function POST(
 
     if (!campaign) {
       return Response.json({ error: "Campaign not found." }, { status: 404 });
+    }
+
+    if (isCreativeChatIntakeEnabled()) {
+      const { data, error } = await auth.supabase
+        .from("campaign_plans")
+        .select("plan,user_id,organization_id")
+        .eq("id", campaignId)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      const intakeRow = data as { plan?: unknown; user_id?: string | null; organization_id?: string | null } | null;
+
+      if (!intakeRow || (intakeRow.user_id !== auth.userId && intakeRow.organization_id !== auth.organizationId)) {
+        return Response.json({ error: "Campaign not found." }, { status: 404 });
+      }
+
+      if (!isCreativeIntakeApproved(intakeRow.plan)) {
+        return Response.json(
+          {
+            error: "Review and approve the creative brief before rendering paid image previews.",
+            code: "creative_brief_review_required",
+          },
+          { status: 409 },
+        );
+      }
     }
 
     const rateLimit = await consumeRateLimit({

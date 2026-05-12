@@ -48,15 +48,21 @@ assert.match(form, /Skip reason/);
 assert.match(form, /\/api\/billing\/cancellation-intent/);
 assert.match(form, /\/api\/billing\/portal/);
 assert.match(form, /Stripe Portal remains the cancellation/);
+assert.match(form, /support a recovery signal/);
+assert.match(form, /Do not include card numbers, passwords, or private credentials/);
 
 assert.match(settings, /Payment method needs attention/);
 assert.match(settings, /Subscription scheduled to cancel/);
 assert.match(settings, /Subscription inactive/);
 assert.match(settings, /CancellationIntentForm/);
 assert.match(settings, /Update payment method/);
+assert.match(settings, /support can help recover the workspace/);
+assert.match(settings, /Need help before cancelling/);
 
 assert.match(launchPage, /Update the payment method in Stripe Portal before launching/);
 assert.match(launchPage, /Billing is inactive/);
+assert.match(launchPage, /Billing recovery is required before launch/);
+assert.match(launchPage, /No Meta launch will run until these gates pass/);
 assert.match(paywallPage, /Open billing settings/);
 assert.match(paywallPage, /payment issue/);
 assert.match(paywallPage, /Billing is inactive/);

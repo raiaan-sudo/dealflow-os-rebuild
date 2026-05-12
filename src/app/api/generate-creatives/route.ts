@@ -18,6 +18,11 @@ import { persistCampaignPlan } from "@/lib/services/campaign-plan-service";
 import { buildCreativeSystem } from "@/lib/services/creative-engine";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
+import {
+  isCreativeChatIntakeEnabled,
+  isCreativeIntakeApproved,
+  readCreativeChatIntakeFromPlan,
+} from "@/lib/services/creative-chat-intake-service";
 import { runTrackedSystemJob } from "@/lib/services/system-job-service";
 import {
   buildRateLimitResponse,
@@ -129,14 +134,27 @@ export async function POST(request: Request) {
         }
 
         const plan = canonicalCampaignToPlan(record);
+        const { data: intakeRowData } = isCreativeChatIntakeEnabled()
+          ? await auth.supabase
+              .from("campaign_plans")
+              .select("plan")
+              .eq("id", campaignId)
+              .maybeSingle()
+          : { data: null };
+        const intakeRow = intakeRowData as { plan?: unknown } | null;
+        const intake = readCreativeChatIntakeFromPlan(intakeRow?.plan);
+        const approvedIntake = isCreativeIntakeApproved(intakeRow?.plan)
+          ? intake
+          : null;
+        const approvedBrief = approvedIntake?.brief ?? null;
         // Onboarding must not trigger paid image/video generation. This endpoint
         // builds launch-review copy and creative drafts only; paid asset
         // generation stays behind explicit asset-generation routes with guards.
         const creativePackage = buildCreativeSystem({
-          location: plan.market,
-          audience: plan.audience,
-          offer: plan.offerSummary || plan.keyOffer,
-          property_type: plan.propertyType,
+          location: approvedBrief?.market || plan.market,
+          audience: approvedBrief?.targetAudience || plan.audience,
+          offer: approvedBrief?.offer || plan.offerSummary || plan.keyOffer,
+          property_type: approvedBrief?.propertyType || plan.propertyType,
           mechanism: plan.mechanism,
           desired_result: plan.primaryGoal,
           pain_points: plan.painPoints,

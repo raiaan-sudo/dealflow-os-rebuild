@@ -70,6 +70,9 @@ export function CancellationIntentForm() {
 
   return (
     <div className="rounded-[20px] border border-white/10 bg-white/[0.035] p-4">
+      <p className="mb-4 text-sm leading-6 text-muted-foreground">
+        Use this only if you intend to manage or cancel billing in Stripe. Sharing the reason first gives support a recovery signal, but it never blocks access to Stripe Portal.
+      </p>
       <div className="space-y-3">
         <div>
           <label className="text-sm font-medium text-foreground" htmlFor="billing-cancel-reason">
@@ -94,6 +97,7 @@ export function CancellationIntentForm() {
             Optional detail
           </label>
           <textarea
+            aria-describedby="billing-cancel-detail-help"
             className="mt-2 min-h-24 w-full resize-y rounded-2xl border border-white/10 bg-black/25 px-3 py-3 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-cyan-200/35 focus:ring-2 focus:ring-cyan-200/15"
             disabled={loading}
             id="billing-cancel-detail"
@@ -102,6 +106,9 @@ export function CancellationIntentForm() {
             placeholder="One sentence is enough."
             value={reasonDetail}
           />
+          <p id="billing-cancel-detail-help" className="mt-2 text-xs leading-5 text-muted-foreground">
+            Do not include card numbers, passwords, or private credentials.
+          </p>
         </div>
       </div>
       <div className="mt-4 flex flex-col gap-3 sm:flex-row">
@@ -115,7 +122,7 @@ export function CancellationIntentForm() {
       <p className="mt-3 text-xs leading-5 text-muted-foreground">
         Stripe Portal remains the cancellation and payment-method surface. This short note helps DealFlow understand churn without delaying access to Stripe.
       </p>
-      {error ? <p className="mt-3 text-sm text-rose-300">{error}</p> : null}
+      {error ? <p className="mt-3 text-sm text-rose-300" aria-live="assertive">{error}</p> : null}
     </div>
   );
 }

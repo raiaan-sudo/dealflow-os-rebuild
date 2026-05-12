@@ -59,7 +59,7 @@ function getBillingStatusCopy(billing: Awaited<ReturnType<typeof getBillingSumma
     return {
       tone: "warning",
       title: "Subscription scheduled to cancel",
-      detail: `Access stays active until ${formatPeriodEnd(billing.currentPeriodEnd)}. Stripe Portal remains available for changes or reactivation.`,
+      detail: `Access stays active until ${formatPeriodEnd(billing.currentPeriodEnd)}. Stripe Portal remains available for changes or reactivation, and support can help recover the workspace before the paid period ends.`,
     };
   }
 
@@ -227,10 +227,13 @@ export default async function SettingsPage({
                 <div>
                   <p className="text-sm font-medium text-foreground">Manage or cancel subscription</p>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                    Cancellation and payment changes happen in Stripe Portal. DealFlow records the reason only so support can reduce failed-payment churn and disputes.
+                    Cancellation and payment changes happen in Stripe Portal. DealFlow records the reason only so support can reduce failed-payment churn and disputes. If the issue is lead quality, setup, or a temporary pause, leave a note here before opening Stripe so support has the context to help.
                   </p>
                 </div>
                 <CancellationIntentForm />
+                <div className="rounded-[20px] border border-cyan-300/16 bg-cyan-300/[0.055] p-4 text-sm leading-6 text-cyan-100">
+                  Need help before cancelling? Keep the subscription active and contact support with the campaign name, billing email, and what outcome you expected. Stripe Portal is still the only place to cancel or reactivate billing.
+                </div>
               </div>
             </div>
           ) : (

@@ -114,6 +114,8 @@ function runOfflineChecks() {
   const buildFunnelPage = "src/app/(app)/build/funnel/page.tsx";
   const buildCreativesPage = "src/app/(app)/build/creatives/page.tsx";
   const creativeWizard = "src/app/(app)/build/creatives/creative-wizard.tsx";
+  const creativeChatIntake = "src/app/(app)/build/creatives/creative-chat-intake.tsx";
+  const creativeIntakeRoute = "src/app/api/campaigns/[id]/creative-intake/route.ts";
   const prepaywallPreview = "src/components/onboarding/prepaywall-campaign-preview.tsx";
   const onboardingRoute = "src/app/api/onboarding/plan/route.ts";
   const leadRoute = "src/app/api/lead-capture/route.ts";
@@ -157,6 +159,8 @@ function runOfflineChecks() {
   const creativeEngine = "src/lib/services/creative-engine.ts";
   const campaignVisualPromptBuilder = "src/lib/services/campaign-visual-prompt-builder.ts";
   const staticCreativeAssetService = "src/lib/services/static-creative-asset-service.ts";
+  const staticCreativeStorageNormalization = "src/lib/services/static-creative-storage-normalization.ts";
+  const creativeChatIntakeService = "src/lib/services/creative-chat-intake-service.ts";
   const mediaBuyerFramework = "src/lib/services/media-buyer-framework.ts";
   const campaignPersistence = "src/lib/services/campaign-persistence.ts";
   const campaignPlanPersistence = "src/lib/services/campaign-plan-persistence-service.ts";
@@ -306,7 +310,7 @@ function runOfflineChecks() {
   assertIncludes(buildFunnelPage, "redirect(campaignId ? `/builder", "Funnel route build-home redirect", "legacy funnel subroute sends users back to the Build workspace");
   assertIncludes(buildCreativesPage, "redirect(`/builder?campaignId=", "Creatives recovery build-home redirect", "creative prerequisites send users back to the Build workspace instead of onboarding or recovery screens");
   assertIncludes(unlockPage, "redirect(creativesHref)", "Unlock creative handoff", "activated users continue into creative selection instead of dashboard or Meta setup");
-  assertIncludes(unlockPage, "redirect(buildHref)", "Checkout cancel build return", "cancelled checkout goes back to the Build workspace instead of an internal unlock status page");
+  assertIncludes(unlockPage, "Checkout cancelled", "Checkout cancel recovery state", "cancelled checkout stays on a clear recovery screen instead of silently redirecting");
   assertIncludes(paywallPage, "Back to build", "Paywall back path", "activation back controls return to the Build workspace when a campaign exists");
   assertIncludes(previewPage, "redirect(\"/builder\")", "Preview missing state redirect", "review never becomes a second setup or missing-data workflow");
   assertIncludes(previewPage, "Back to build", "Preview back path", "review back controls return to the Build workspace");
@@ -381,6 +385,21 @@ function runOfflineChecks() {
   assertIncludes(staticCreativeImageQa, "\"text_heavy\"", "Static image QA text rejection", "text-heavy provider rasters are rejected before launch-ready preview");
   assertIncludes(staticCreativeImageQa, "\"provider_returned_finished_ad\"", "Static image QA finished-ad rejection", "finished-ad/provider-layout artifacts are rejected before ready state");
   assertIncludes(staticCreativeImageQa, "MAX_IMAGE_BYTES", "Static image QA fetch guard", "image QA fetches are bounded and do not log provider URLs or payloads");
+  assertIncludes(staticCreativeStorageNormalization, "STATIC_CREATIVE_STORAGE_BUCKET = \"creative-assets\"", "Static generated asset storage bucket", "generated static images normalize into the app-owned creative-assets bucket");
+  assertIncludes(staticCreativeStorageNormalization, "MAX_PROVIDER_IMAGE_BYTES", "Static generated asset fetch guard", "provider image fetches are bounded before app-owned storage upload");
+  assertIncludes(staticCreativeAssetService, "provider_original_url", "Static provider URL audit metadata", "provider URLs are preserved only as metadata during generated static persistence");
+  assertIncludes(staticCreativeAssetService, "file_url: readyUrl", "Static durable file URL persistence", "ready generated static assets use the durable app-owned URL as file_url");
+  assertIncludes(staticCreativeAssetService, "allInsertedCreativesAreReady", "Static accepted asset preservation", "failed normalization does not clean up existing accepted generated assets");
+  assertIncludes(creativeChatIntake, "Review the creative direction before paid rendering", "Creative chat intake UI", "guided intake collects creative direction before paid image or video rendering");
+  assertIncludes(creativeChatIntake, "No provider image or video call runs from this intake", "Creative intake provider boundary", "creative chat intake explains that paid provider calls wait for approval");
+  assertExcludes(creativeChatIntake, "/generate-static-ads", "Creative intake no image provider trigger", "creative chat intake does not directly queue static provider rendering");
+  assertExcludes(creativeChatIntake, "/generate-video", "Creative intake no video provider trigger", "creative chat intake does not directly queue video provider rendering");
+  assertIncludes(creativeIntakeRoute, "assertSameOriginRequest", "Creative intake same-origin guard", "creative intake writes reject cross-site POSTs");
+  assertIncludes(creativeIntakeRoute, "getAuthenticatedContext", "Creative intake auth guard", "creative intake requires an authenticated workspace user");
+  assertIncludes(staticAdsRoute, "creative_brief_review_required", "Static generation brief gate", "paid static image rendering can require a reviewed creative brief");
+  assertIncludes(videoRoute, "creative_brief_review_required", "Video generation brief gate", "paid video rendering can require a reviewed creative brief");
+  assertIncludes(creativeChatIntakeService, "TEXT-FREE BACKGROUND ASSET ONLY", "Creative intake prompt contract", "creative chat prompt builder preserves the background-only provider contract");
+  assertIncludes(creativeChatIntakeService, "softenRegulatedClaims", "Creative intake claim softening", "creative chat intake softens risky approval and credit claims before prompt generation");
   assertIncludes(staticCreativePreviewCard, "View full creative", "Full creative lightbox", "creative cards expose a full-size review modal");
   assertIncludes(staticCreativePreviewCard, "aria-modal=\"true\"", "Full creative modal accessibility", "full creative review uses a dialog modal");
   assertIncludes("src/components/campaign/static-creative-preview-card.tsx", "line-clamp-3", "Creative card copy clamp", "creative cards show usable previews instead of full dense body copy");
@@ -526,6 +545,8 @@ function runOfflineChecks() {
   assertIncludes(metaCallback, "verifiedState?.organizationId", "Meta OAuth workspace fallback", "signed state preserves workspace ownership if auth cookies are unavailable on callback host");
   assertIncludes(metaCallback, "method: \"POST\"", "Meta OAuth token POST", "token exchange avoids putting app secret and code in the request URL");
   assertIncludes(metaCallback, "application/x-www-form-urlencoded", "Meta OAuth form body", "token exchange sends credentials in an encoded form body");
+  assertIncludes(metaCallback, "preservedConnectionMetadata", "Meta reconnect metadata preservation", "callback preserves selected Meta asset metadata before refreshing the OAuth token");
+  assertIncludes(metaCallback, "...preservedConnectionMetadata", "Meta token refresh metadata merge", "token refresh does not wipe selected account, Page, pixel, or discovery metadata");
   assertIncludes(metaOauthState, "timingSafeEqual", "Meta OAuth state timing-safe compare", "state signatures are compared without string equality leaks");
   assertIncludes(metaOauthState, "STATE_TTL_MS = 10 * 60 * 1000", "Meta OAuth state expiry", "signed OAuth state is short-lived");
 
@@ -756,6 +777,8 @@ function runOfflineChecks() {
   assertIncludes(sessionCostGuard, "provider_usage_limit_release_failed", "Released provider usage cap refund", "released provider attempts decrement the durable usage counter instead of exhausting the daily image cap");
   assertIncludes(legacyAiProviders, "providerUsage?.mark", "Provider usage ledger transitions", "paid-generation reservations are marked consumed/released after the provider call");
   assertIncludes(legacyAiProviders, "providerJobWasCreated", "Provider usage pre-job release", "provider attempts that fail before a provider job id is returned release the daily reservation");
+  assertIncludes(videoRoute, "getVideoProviderReadiness", "Video generation provider preflight", "disabled or unconfigured video providers are blocked before queueing jobs");
+  assertOrderedIncludes(videoRoute, ["if (!videoProviderReadiness.ready)", "const activeJobs"], "Video generation disabled-job guard", "video jobs are not queued when the provider kill switch is off");
   assertIncludes(videoRoute, "kind: \"video_generation\"", "Video generation job route", "AI video generation is queued through the paid system job path");
   assertIncludes(videoRoute, "getCampaignById", "Video generation ownership guard", "video generation verifies campaign ownership before queueing paid work");
   assertIncludes(videoRoute, "processSystemJob(jobId)", "Video generation immediate kickoff", "video generation jobs are started immediately after queueing like static creative jobs");

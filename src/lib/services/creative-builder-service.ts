@@ -59,6 +59,76 @@ type AssetBuildArtifacts = {
 
 const MANUAL_MEDIA_BUCKET = "creative-assets";
 type ManualCreativeAssetKind = "video" | "image" | "thumbnail";
+type VerifiedManualMediaType = {
+  contentType: string;
+  extension: string;
+};
+
+function startsWithBytes(bytes: Uint8Array, signature: number[]) {
+  return signature.every((value, index) => bytes[index] === value);
+}
+
+function asciiAt(bytes: Uint8Array, start: number, length: number) {
+  return Array.from(bytes.slice(start, start + length))
+    .map((value) => String.fromCharCode(value))
+    .join("");
+}
+
+export function detectManualCreativeMediaType(bytes: Uint8Array, kind: ManualCreativeAssetKind): VerifiedManualMediaType {
+  if (startsWithBytes(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
+    return { contentType: "image/png", extension: "png" };
+  }
+
+  if (startsWithBytes(bytes, [0xff, 0xd8, 0xff])) {
+    return { contentType: "image/jpeg", extension: "jpg" };
+  }
+
+  if (asciiAt(bytes, 0, 6) === "GIF87a" || asciiAt(bytes, 0, 6) === "GIF89a") {
+    return { contentType: "image/gif", extension: "gif" };
+  }
+
+  if (asciiAt(bytes, 0, 4) === "RIFF" && asciiAt(bytes, 8, 4) === "WEBP") {
+    return { contentType: "image/webp", extension: "webp" };
+  }
+
+  if (kind === "video") {
+    if (asciiAt(bytes, 4, 4) === "ftyp") {
+      const brand = asciiAt(bytes, 8, 4).toLowerCase();
+      return {
+        contentType: brand.includes("qt") ? "video/quicktime" : "video/mp4",
+        extension: brand.includes("qt") ? "mov" : "mp4",
+      };
+    }
+
+    if (startsWithBytes(bytes, [0x1a, 0x45, 0xdf, 0xa3])) {
+      return { contentType: "video/webm", extension: "webm" };
+    }
+  }
+
+  throw new ApiError(415, "Creative asset bytes do not match a supported media type.", "creative_asset_type_unsupported");
+}
+
+async function verifyManualCreativeFile(params: {
+  file: File;
+  kind: ManualCreativeAssetKind;
+  allowedTypes: Set<string>;
+}) {
+  const bytes = new Uint8Array(await params.file.arrayBuffer());
+  const detected = detectManualCreativeMediaType(bytes.slice(0, 32), params.kind);
+
+  if (!params.allowedTypes.has(detected.contentType)) {
+    throw new ApiError(415, "Creative asset type is not supported.", "creative_asset_type_unsupported");
+  }
+
+  if (params.file.type && params.file.type !== detected.contentType) {
+    throw new ApiError(415, "Creative asset type does not match the uploaded file.", "creative_asset_type_mismatch");
+  }
+
+  return {
+    bytes,
+    ...detected,
+  };
+}
 
 function isLaunchReadyStaticImageAsset(asset: CreativeAsset) {
   const metadata =
@@ -1140,24 +1210,21 @@ export async function uploadManualCreativeAsset(params: {
     throw new ApiError(404, "Campaign not found.", "not_found");
   }
 
-  const extension = params.file.name.includes(".")
-    ? params.file.name.split(".").pop()?.toLowerCase() || "bin"
-    : params.file.type.includes("png")
-      ? "png"
-      : params.file.type.includes("jpeg") || params.file.type.includes("jpg")
-        ? "jpg"
-        : params.file.type.includes("webp")
-          ? "webp"
-          : params.file.type.includes("mp4")
-            ? "mp4"
-            : "bin";
+  const verifiedFile = await verifyManualCreativeFile({
+    file: params.file,
+    kind: params.kind,
+    allowedTypes: params.kind === "video"
+      ? new Set(["video/mp4", "video/quicktime", "video/webm"])
+      : new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]),
+  });
+  const extension = verifiedFile.extension;
   const storagePath = `${userId}/${params.campaignId}/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
 
   const { error: uploadError } = await supabase.storage
     .from(MANUAL_MEDIA_BUCKET)
-    .upload(storagePath, params.file, {
+    .upload(storagePath, verifiedFile.bytes, {
       cacheControl: "3600",
-      contentType: params.file.type || undefined,
+      contentType: verifiedFile.contentType,
       upsert: false,
     });
 
@@ -1193,7 +1260,7 @@ export async function uploadManualCreativeAsset(params: {
         storageBucket: MANUAL_MEDIA_BUCKET,
         storagePath,
         originalFileName: params.file.name,
-        mimeType: params.file.type || null,
+        mimeType: verifiedFile.contentType,
       } as Json,
     } as never)
     .select("*")

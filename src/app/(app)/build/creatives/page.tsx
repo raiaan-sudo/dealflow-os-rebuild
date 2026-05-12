@@ -3,6 +3,13 @@ import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
+import {
+  isCreativeChatIntakeEnabled,
+  readCreativeChatIntakeFromPlan,
+  type CreativeIntakeCampaignDefaults,
+} from "@/lib/services/creative-chat-intake-service";
+import { createClient } from "@/lib/supabase/server";
+import { CreativeChatIntake } from "./creative-chat-intake";
 import { CreativeWizard } from "./creative-wizard";
 import { GenerateCreativesPanel } from "./generate-creatives-panel";
 
@@ -30,6 +37,51 @@ export default async function BuildCreativesPage({
 
   const ensuredRecord = record;
   const plan = canonicalCampaignToPlan(ensuredRecord);
+  const creativeIntakeEnabled = isCreativeChatIntakeEnabled();
+  const supabase = creativeIntakeEnabled ? await createClient() : null;
+  let intakePlanValue: unknown = null;
+  if (supabase) {
+    const { data } = await supabase
+      .from("campaign_plans")
+      .select("plan")
+      .eq("id", ensuredRecord.campaign.id)
+      .maybeSingle() as { data: { plan?: unknown } | null; error: Error | null };
+    intakePlanValue = data?.plan ?? null;
+  }
+  const creativeIntake = readCreativeChatIntakeFromPlan(intakePlanValue);
+  const creativeIntakeApproved =
+    creativeIntake?.approvalStatus === "approved" &&
+    creativeIntake.brief?.completion.complete === true &&
+    Boolean(creativeIntake.promptVersion?.generatedPrompt);
+  const creativeIntakeDefaults: CreativeIntakeCampaignDefaults = {
+    campaignId: ensuredRecord.campaign.id,
+    market: plan.market,
+    audience: plan.audience,
+    offer: plan.offerSummary || plan.keyOffer,
+    propertyType: plan.propertyType,
+    campaignType: plan.intent,
+    cta: ensuredRecord.funnel.cta || plan.funnel?.cta || null,
+    brand: plan.businessName,
+  };
+
+  if (creativeIntakeEnabled && !creativeIntakeApproved) {
+    return (
+      <div className="mx-auto w-full max-w-[1320px] space-y-4 p-5 sm:p-6">
+        <WizardSteps current="creatives" />
+        <PageHeader
+          eyebrow="Build"
+          title="Shape the creative direction"
+          description="Review the structured creative brief before DealFlow prepares paid image or video renders."
+        />
+        <CreativeChatIntake
+          campaignId={ensuredRecord.campaign.id}
+          defaults={creativeIntakeDefaults}
+          initialIntake={creativeIntake}
+          mode="gate"
+        />
+      </div>
+    );
+  }
 
   if (!ensuredRecord.creatives.staticAds.length) {
     return (
@@ -46,6 +98,14 @@ export default async function BuildCreativesPage({
           market={plan.market}
           offer={plan.offerSummary || plan.keyOffer}
         />
+        {creativeIntakeEnabled ? (
+          <CreativeChatIntake
+            campaignId={ensuredRecord.campaign.id}
+            defaults={creativeIntakeDefaults}
+            initialIntake={creativeIntake}
+            mode="compact"
+          />
+        ) : null}
       </div>
     );
   }
@@ -114,6 +174,14 @@ export default async function BuildCreativesPage({
         title="Choose your creative test set"
         description="Select 2-6 recommended creatives. DealFlow will preserve the full test set so your launch can compare multiple angles instead of betting on one ad."
       />
+      {creativeIntakeEnabled ? (
+        <CreativeChatIntake
+          campaignId={ensuredRecord.campaign.id}
+          defaults={creativeIntakeDefaults}
+          initialIntake={creativeIntake}
+          mode="compact"
+        />
+      ) : null}
 
       <CreativeWizard campaignId={ensuredRecord.campaign.id} creatives={creativeOptions} videoCreatives={videoOptions} />
     </div>

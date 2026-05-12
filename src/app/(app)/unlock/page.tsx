@@ -9,6 +9,11 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { CreativeAutoPrepare } from "@/components/campaign/creative-auto-prepare";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import {
+  isCreativeChatIntakeEnabled,
+  readCreativeChatIntakeFromPlan,
+} from "@/lib/services/creative-chat-intake-service";
+import { createClient } from "@/lib/supabase/server";
+import {
   getBillingSummary,
   reconcileBillingCheckoutSuccess,
 } from "@/lib/services/billing-service";
@@ -63,10 +68,30 @@ export default async function UnlockPage({
   const hasStaticCreatives = staticCreativeCount > 0;
   const hasGeneratedStaticImages =
     activeCampaign?.record?.creatives.staticAds.some((ad) => Boolean(ad.imageUrl)) ?? false;
+  const creativeIntakeEnabled = isCreativeChatIntakeEnabled();
+  const supabase = creativeIntakeEnabled && campaignId ? await createClient() : null;
+  let intakePlanValue: unknown = null;
+  if (supabase && campaignId) {
+    const { data } = await supabase
+      .from("campaign_plans")
+      .select("plan")
+      .eq("id", campaignId)
+      .maybeSingle() as { data: { plan?: unknown } | null; error: Error | null };
+    intakePlanValue = data?.plan ?? null;
+  }
+  const creativeIntake = readCreativeChatIntakeFromPlan(intakePlanValue);
+  const creativeIntakeApproved =
+    !creativeIntakeEnabled ||
+    (
+      creativeIntake?.approvalStatus === "approved" &&
+      creativeIntake.brief?.completion.complete === true &&
+      Boolean(creativeIntake.promptVersion?.generatedPrompt)
+    );
   const shouldPrepareImages =
     Boolean(campaignId) &&
     hasStaticCreatives &&
     !hasGeneratedStaticImages &&
+    creativeIntakeApproved &&
     (activatedByCheckout || launchAllowed);
   const paywallHref = `/paywall${campaignId ? `?campaignId=${encodeURIComponent(campaignId)}${plan ? `&plan=${encodeURIComponent(plan)}` : ""}` : plan ? `?plan=${encodeURIComponent(plan)}` : ""}`;
   const buildHref = campaignId
@@ -84,7 +109,7 @@ export default async function UnlockPage({
         ? "Launch access active"
         : "Checkout updated";
   const description = checkoutCancelled
-    ? "No payment was completed. Return to Build when you are ready to activate the campaign."
+    ? "No payment was completed and nothing was launched. You can return to activation, review the campaign, or keep building before trying again."
     : activatedByCheckout
       ? "Your campaign workspace is active. DealFlow is ready to prepare the creative test set and move you into final review."
       : launchAllowed
@@ -107,11 +132,7 @@ export default async function UnlockPage({
     }).catch(() => undefined);
   }
 
-  if (checkoutCancelled) {
-    redirect(buildHref);
-  }
-
-  if (launchAllowed && !activatedByCheckout && !reconciliationError) {
+  if (!checkoutCancelled && launchAllowed && !activatedByCheckout && !reconciliationError) {
     redirect(creativesHref);
   }
 
@@ -130,7 +151,51 @@ export default async function UnlockPage({
       />
 
       <Card className="p-6 sm:p-8">
-        {activatedByCheckout ? (
+        {checkoutCancelled ? (
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <section className="min-w-0 rounded-[26px] border border-amber-300/16 bg-amber-300/[0.055] p-5 sm:p-6">
+              <StatusPill tone="warning">Not activated</StatusPill>
+              <h2 className="mt-4 text-2xl font-semibold tracking-[-0.04em] text-foreground">
+                Checkout was cancelled before payment.
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+                Your campaign draft is still available. DealFlow did not activate launch access, generate new paid media from this page, or create any Meta campaign objects.
+              </p>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                {[
+                  "Campaign draft preserved",
+                  "No subscription change confirmed",
+                  "No Meta launch attempted",
+                  "Activation can be retried",
+                ].map((item) => (
+                  <div
+                    className="flex min-w-0 items-center gap-3 rounded-[18px] border border-white/10 bg-black/18 p-3 text-sm font-medium text-foreground"
+                    key={item}
+                  >
+                    <CheckCircle2 className="size-4 shrink-0 text-amber-100" />
+                    <span className="min-w-0 line-clamp-1">{item}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <aside className="min-w-0 rounded-[26px] border border-white/10 bg-black/18 p-5 sm:p-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Recovery</p>
+              <h3 className="mt-3 text-xl font-semibold text-foreground">Continue when you are ready</h3>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                Return to activation to complete checkout, or go back to Build if you want to adjust the campaign first.
+              </p>
+              <div className="mt-5 flex flex-col gap-3">
+                <Button asChild size="lg">
+                  <Link href={paywallHref}>Return to activation</Link>
+                </Button>
+                <Button asChild variant="secondary">
+                  <Link href={buildHref}>Back to Build</Link>
+                </Button>
+              </div>
+            </aside>
+          </div>
+        ) : activatedByCheckout ? (
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
             <section className="min-w-0 rounded-[26px] border border-cyan-300/16 bg-cyan-300/[0.055] p-5 sm:p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">

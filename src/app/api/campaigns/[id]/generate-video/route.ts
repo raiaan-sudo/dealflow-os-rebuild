@@ -3,6 +3,11 @@ import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib
 import { logWarn } from "@/lib/logging";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
+import {
+  isCreativeChatIntakeEnabled,
+  isCreativeIntakeApproved,
+} from "@/lib/services/creative-chat-intake-service";
+import { getAvatarVideoProvider } from "@/lib/integrations/creative/avatar-provider";
 import { createSystemJob, listSystemJobs, processSystemJob } from "@/lib/services/system-job-service";
 import type { SystemJobRecord } from "@/lib/services/system-job-service";
 import type { VideoGenerationJobPayload } from "@/lib/services/video-generation-job";
@@ -27,6 +32,22 @@ function scheduleVideoGenerationJob(jobId: string) {
   });
 }
 
+function getVideoProviderReadiness() {
+  const provider = getAvatarVideoProvider();
+  const validation = provider.validateConfig();
+  const generationEnabled =
+    provider.name === "higgsfield"
+      ? process.env.ALLOW_HIGGSFIELD_VIDEO_GENERATION === "true"
+      : provider.name === "heygen"
+        ? process.env.ALLOW_HEYGEN_VIDEO_GENERATION === "true"
+        : false;
+
+  return {
+    provider,
+    ready: validation.configured && generationEnabled,
+  };
+}
+
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
@@ -48,6 +69,34 @@ export async function POST(
       return Response.json({ error: "Campaign not found." }, { status: 404 });
     }
 
+    if (isCreativeChatIntakeEnabled()) {
+      const { data, error } = await auth.supabase
+        .from("campaign_plans")
+        .select("plan,user_id,organization_id")
+        .eq("id", campaignId)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      const intakeRow = data as { plan?: unknown; user_id?: string | null; organization_id?: string | null } | null;
+
+      if (!intakeRow || (intakeRow.user_id !== auth.userId && intakeRow.organization_id !== auth.organizationId)) {
+        return Response.json({ error: "Campaign not found." }, { status: 404 });
+      }
+
+      if (!isCreativeIntakeApproved(intakeRow.plan)) {
+        return Response.json(
+          {
+            error: "Review and approve the creative brief before rendering paid video previews.",
+            code: "creative_brief_review_required",
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const rateLimit = await consumeRateLimit({
       key: getRateLimitKey(request, "generate-video", `${auth.organizationId}:${auth.userId}:${campaignId}`),
       limit: 6,
@@ -63,6 +112,18 @@ export async function POST(
 
     if (!selectedVideo) {
       return Response.json({ error: "Video creative was not found for this campaign." }, { status: 404 });
+    }
+
+    const videoProviderReadiness = getVideoProviderReadiness();
+
+    if (!videoProviderReadiness.ready) {
+      return Response.json(
+        {
+          error: "Video previews are saved as a concept for now. Static creatives can still be reviewed and launched.",
+          code: "video_generation_disabled",
+        },
+        { status: 409 },
+      );
     }
 
     const activeJobs = (await listSystemJobs({

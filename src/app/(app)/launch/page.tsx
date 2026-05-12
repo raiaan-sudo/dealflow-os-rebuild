@@ -71,7 +71,7 @@ function formatVerifiedTimestamp(value: string | null | undefined) {
 
 function getBillingLaunchBlockCopy(billing: Awaited<ReturnType<typeof getBillingSummary>> | null) {
   if (!billing) {
-    return "Activate billing before this workspace can launch to Meta.";
+    return "Activate billing before this workspace can launch to Meta. No Meta campaign objects will be created until launch access is active.";
   }
 
   if (billing.billingState === "payment_issue") {
@@ -86,7 +86,7 @@ function getBillingLaunchBlockCopy(billing: Awaited<ReturnType<typeof getBilling
     return "This subscription is scheduled to cancel. Launch remains available during the paid period, but reactivation is required after the period ends.";
   }
 
-  return "Activate billing before this workspace can launch to Meta.";
+  return "Activate billing before this workspace can launch to Meta. The launch button stays disabled and no provider-side launch runs until billing is active.";
 }
 
 function formatBudgetCap(valueCents: number) {
@@ -342,6 +342,15 @@ export default async function LaunchAliasPage({
       : "Meta connection required";
   const metaVerifiedAtText = formatVerifiedTimestamp(metaPreflight?.checkedAt);
   const launchBlockerActions = [
+    ...(!billingLaunchAllowed
+      ? [
+          billing?.billingState === "payment_issue"
+            ? "Update the payment method in Settings, then return here after Stripe confirms recovery."
+            : billing?.requiresSuspension
+              ? "Reactivate billing in Settings before DealFlow resumes launch, funnel capture, alerts, or optimization."
+              : "Activate billing from Settings or the activation page before attempting launch.",
+        ]
+      : []),
     ...(!metaLaunchReady
       ? [
           metaSelectionReady
@@ -445,7 +454,7 @@ export default async function LaunchAliasPage({
       ) : null}
       {!billingLaunchAllowed ? (
         <div className="rounded-[22px] border border-amber-400/15 bg-amber-400/10 px-5 py-4 text-sm font-medium text-amber-100">
-          Your campaign is ready. {billingBlockCopy}
+          Billing recovery is required before launch. {billingBlockCopy}
         </div>
       ) : null}
       {billingOverride ? (
@@ -468,6 +477,9 @@ export default async function LaunchAliasPage({
                   <p key={action}>- {action}</p>
                 ))}
               </div>
+              <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                This page is a recovery checklist while blocked. DealFlow will not call Meta launch actions until every gate below is ready.
+              </p>
             </div>
             <StatusPill tone="warning">Blocked</StatusPill>
           </div>
@@ -634,7 +646,7 @@ export default async function LaunchAliasPage({
               {launchRoomReady
                 ? `All launch gates passed. Start the paused Meta launch when ready. Last verified at: ${metaVerifiedAtText}. Meta state may change before launch.`
                 : blockingReasons.length > 0
-                  ? `Blocked: ${blockingReasons.join(" • ")}.`
+                  ? `Blocked: ${blockingReasons.join(" • ")}. No Meta launch will run until these gates pass.`
                   : billingBlockCopy}
             </p>
           </div>
@@ -658,7 +670,7 @@ export default async function LaunchAliasPage({
               </Button>
             ) : (
               <Button className="w-full lg:w-auto" disabled>
-                Ready to attempt launch
+                Launch blocked
               </Button>
             )}
           </div>

@@ -1,12 +1,16 @@
 import { cookies, headers } from "next/headers";
+import Link from "next/link";
+import { Settings } from "lucide-react";
 import { AppSidebar } from "@/components/layout/sidebar";
 import { GuidedFlowBanner } from "@/components/layout/guided-flow-banner";
 import { TopBar } from "@/components/layout/top-bar";
 import { FeedbackWidget } from "@/components/layout/feedback-widget";
 import { LeadCaptureTrigger } from "@/components/layout/lead-capture-trigger";
+import { SignOutButton } from "@/components/layout/sign-out-button";
 import { isInternalAdminEmail } from "@/lib/env";
 import { ACTIVE_CAMPAIGN_COOKIE } from "@/lib/paywall-access";
 import { getAppContext } from "@/lib/services/app-context";
+import { getInitials } from "@/lib/utils";
 import type { CampaignExperienceStage } from "@/lib/services/campaign-plan-service";
 
 function getStageForPath(pathname: string): CampaignExperienceStage {
@@ -16,6 +20,16 @@ function getStageForPath(pathname: string): CampaignExperienceStage {
   if (pathname.startsWith("/paywall")) return "paywall";
   if (pathname.startsWith("/builder") || pathname.startsWith("/build")) return "built";
   return "built";
+}
+
+function buildCampaignScopedHref(path: string, campaignId?: string | null) {
+  if (!campaignId) {
+    return path;
+  }
+
+  const params = new URLSearchParams();
+  params.set("campaignId", campaignId);
+  return `${path}?${params.toString()}`;
 }
 
 export default async function AppLayout({
@@ -89,6 +103,27 @@ export default async function AppLayout({
 
     return (
       <div className="relative min-h-screen w-screen overflow-hidden bg-transparent">
+        <header className="pointer-events-none fixed inset-x-0 top-0 z-30 flex justify-end px-4 py-3 sm:px-6">
+          <div className="pointer-events-auto flex max-w-full items-center gap-2 rounded-2xl border border-white/8 bg-black/40 px-2.5 py-2 shadow-[0_18px_60px_-36px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
+            <div className="hidden min-w-0 items-center gap-2 sm:flex">
+              <div className="grid size-7 shrink-0 place-items-center rounded-full border border-primary/20 bg-primary/10 text-[10px] font-semibold text-primary">
+                {getInitials(userName)}
+              </div>
+              <div className="min-w-0">
+                <p className="max-w-[150px] truncate text-xs font-semibold text-foreground">{userName}</p>
+                <p className="max-w-[150px] truncate text-[10px] text-muted-foreground">{userEmail}</p>
+              </div>
+            </div>
+            <Link
+              href={buildCampaignScopedHref("/settings", activeCampaignId)}
+              aria-label="Open settings"
+              className="grid size-9 shrink-0 place-items-center rounded-xl border border-white/8 bg-white/[0.04] text-muted-foreground transition hover:border-primary/20 hover:bg-primary/[0.08] hover:text-foreground"
+            >
+              <Settings className="size-4" />
+            </Link>
+            <SignOutButton />
+          </div>
+        </header>
         <main className="min-h-screen px-5 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
           {children}
         </main>

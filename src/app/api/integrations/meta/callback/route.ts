@@ -74,6 +74,12 @@ function getMetaErrorMessage(value: unknown, fallback: string) {
   return fallback;
 }
 
+function getConnectionMetadata(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
 export async function GET(req: NextRequest) {
   const requestId = crypto.randomUUID();
 
@@ -186,6 +192,7 @@ export async function GET(req: NextRequest) {
       external_account_id?: string | null;
       connection_metadata?: unknown;
     } | null) ?? null;
+    const preservedConnectionMetadata = getConnectionMetadata(existingRow?.connection_metadata);
 
     const tokenPayload = {
       organization_id: organizationId,
@@ -198,6 +205,7 @@ export async function GET(req: NextRequest) {
       last_sync_at: now,
       token_last_synced_at: now,
       connection_metadata: {
+        ...preservedConnectionMetadata,
         provider: "meta",
         auth_flow: "oauth",
       },
@@ -251,10 +259,7 @@ export async function GET(req: NextRequest) {
         typeof storedMarketingRow?.id === "string" ? storedMarketingRow.id : null;
     }
 
-    const existingMetadata =
-      storedMarketingRow?.connection_metadata && typeof storedMarketingRow.connection_metadata === "object"
-        ? (storedMarketingRow.connection_metadata as Record<string, unknown>)
-        : {};
+    const existingMetadata = getConnectionMetadata(storedMarketingRow?.connection_metadata);
     const selectedExternalAccountId =
       typeof existingMetadata.selected_external_account_id === "string"
         ? existingMetadata.selected_external_account_id

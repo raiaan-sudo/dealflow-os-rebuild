@@ -184,7 +184,11 @@ function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[
     const preferredRow =
       assetRows.find((row) => {
         const metadata = asObjectRecord(row.metadata);
-        return metadata?.role === "background_image";
+        return metadata?.role === "background_image" && row.status === "ready" && Boolean(row.file_url);
+      }) ??
+      assetRows.find((row) => {
+        const metadata = asObjectRecord(row.metadata);
+        return metadata?.role === "background_image" && Boolean(row.file_url);
       }) ??
       assetRows.find((row) => row.file_url) ??
       assetRows[0];
@@ -280,7 +284,8 @@ async function loadStaticCreativeAssets(
       .select("*")
       .eq("campaign_id", campaignId)
       .eq("user_id", userId)
-      .eq("generation_method", "image_generation");
+      .eq("generation_method", "image_generation")
+      .order("created_at", { ascending: false });
 
     if (error) {
       throw error;
@@ -848,6 +853,7 @@ export async function regenerateStaticCreativeAssetsForUser(
       price_point: currentRecord.strategy.price_point,
       market_type: currentRecord.strategy.market_type,
       creative_strategy: currentRecord.plan.creative_strategy,
+      campaign_id: campaignId,
       reuse_static_assets: currentRecord.creatives.staticAds,
       provider_usage_context: {
         createForAsset: (asset) => {

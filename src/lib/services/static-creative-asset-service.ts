@@ -1,9 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/api/route";
-import { generateStaticCreativeAds, type StaticCreativeAsset } from "@/lib/services/creative-engine";
+import { generateStaticCreativeAds, type CreativeEngineInput, type StaticCreativeAsset } from "@/lib/services/creative-engine";
 import type { CampaignStrategyInput } from "@/lib/services/campaign-orchestrator";
 import type { CampaignCreativeStrategy } from "@/lib/services/campaign-creative-strategy";
 import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
+import {
+  normalizeStaticCreativeProviderImage,
+  type StaticCreativeStorageNormalizationResult,
+} from "@/lib/services/static-creative-storage-normalization";
 import type { Database, Json } from "@/lib/supabase/types";
 
 type PersistStaticCreativeAssetsParams = {
@@ -19,6 +23,7 @@ type GenerateAndPersistParams = {
   campaignId: string;
   strategy: CampaignStrategyInput;
   creativeStrategy?: CampaignCreativeStrategy | null;
+  providerUsageContext?: CreativeEngineInput["provider_usage_context"];
 };
 
 function buildStaticCreativeId(campaignId: string, index: number) {
@@ -29,6 +34,21 @@ function buildStaticCopyId(campaignId: string, index: number) {
   return `${campaignId}-copy-${index}`;
 }
 
+function buildStorageMetadata(
+  result: StaticCreativeStorageNormalizationResult | null,
+  providerOriginalUrl: string | null,
+) {
+  return {
+    provider_original_url: providerOriginalUrl,
+    storageBucket: result?.storageBucket ?? null,
+    storagePath: result?.storagePath ?? null,
+    storageContentType: result?.contentType ?? null,
+    storageByteSize: result?.byteSize ?? null,
+    storageNormalized: Boolean(result?.durableUrl),
+    storageNormalizationReusedExistingAppAsset: result?.reusedExistingAppAsset ?? false,
+  };
+}
+
 export async function persistStaticCreativeAssets(params: PersistStaticCreativeAssetsParams) {
   const staticAds = Array.isArray(params.staticAds) ? params.staticAds : [];
 
@@ -36,34 +56,50 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
     return [];
   }
 
-  try {
-    await params.supabase
-      .from("creative_assets")
-      .delete()
-      .eq("campaign_id", params.campaignId)
-      .eq("user_id", params.userId)
-      .eq("generation_method", "image_generation")
-      .in("asset_type", ["image_frame", "thumbnail"])
-      .like("creative_id", `${params.campaignId}-creative-%`);
-  } catch {
-    // Ignore cleanup failure and continue with fresh inserts.
-  }
+  const generationBatchId = crypto.randomUUID();
+  const inserts: Array<Database["public"]["Tables"]["creative_assets"]["Insert"]> = [];
+  let allInsertedCreativesAreReady = true;
 
-  const inserts = staticAds.flatMap((asset, index) => {
+  for (const [index, asset] of staticAds.entries()) {
     const visualDecision = evaluateStaticVisualAssetDecision(asset);
-    const normalizedGenerationState = asset.imageUrl && visualDecision.usable
+    const providerOriginalUrl = asset.imageUrl || null;
+    const creativeId = buildStaticCreativeId(params.campaignId, index);
+    const copyId = buildStaticCopyId(params.campaignId, index);
+    let durableImage: StaticCreativeStorageNormalizationResult | null = null;
+    let normalizationError: string | null = null;
+
+    if (asset.imageUrl && visualDecision.usable) {
+      try {
+        durableImage = await normalizeStaticCreativeProviderImage({
+          supabase: params.supabase,
+          userId: params.userId,
+          campaignId: params.campaignId,
+          creativeId,
+          generationBatchId,
+          providerUrl: asset.imageUrl,
+        });
+      } catch {
+        normalizationError = "Generated background could not be stored durably. A cleaner image is being prepared.";
+      }
+    }
+
+    const readyUrl = durableImage?.durableUrl ?? null;
+    const normalizedGenerationState = readyUrl
       ? "generated"
       : asset.imageUrl
         ? "failed"
         : asset.imageGenerationState;
     const status =
-      asset.imageUrl && visualDecision.usable
+      readyUrl
         ? "ready"
         : asset.imageUrl
-          ? "requires_review"
+          ? normalizationError
+            ? "failed"
+            : "requires_review"
           : asset.imageGenerationState === "failed"
           ? "failed"
           : "requires_review";
+    allInsertedCreativesAreReady = allInsertedCreativesAreReady && status === "ready";
     const metadataBase = {
       source: "static_ad",
       staticAssetId: asset.id,
@@ -89,57 +125,59 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       headline: asset.headline,
       primaryText: asset.primaryText,
       cta: asset.cta,
+      generationBatchId,
+      ...buildStorageMetadata(durableImage, providerOriginalUrl),
     } satisfies Record<string, Json | string | number | boolean | null>;
 
-    return [
+    inserts.push(
       {
         user_id: params.userId,
         campaign_id: params.campaignId,
-        creative_id: buildStaticCreativeId(params.campaignId, index),
-        copy_id: buildStaticCopyId(params.campaignId, index),
+        creative_id: creativeId,
+        copy_id: copyId,
         asset_type: "image_frame",
         format: "1:1",
         generation_method: "image_generation",
         status,
         provider_name: asset.imageGenerationProvider ?? null,
-        file_url: asset.imageUrl || null,
-        thumbnail_url: asset.imageUrl || null,
+        file_url: readyUrl,
+        thumbnail_url: readyUrl,
         metadata: {
           ...metadataBase,
           assetError:
             status === "ready"
               ? null
-              : asset.imageUrl
+              : normalizationError ?? (asset.imageUrl
                 ? visualDecision.reason ?? "Generated background needs review before launch."
-              : asset.imageGenerationMessage ?? "Static image was not generated for this creative.",
+                : asset.imageGenerationMessage ?? "Static image was not generated for this creative."),
           role: "background_image",
         } as Json,
       },
       {
         user_id: params.userId,
         campaign_id: params.campaignId,
-        creative_id: buildStaticCreativeId(params.campaignId, index),
-        copy_id: buildStaticCopyId(params.campaignId, index),
+        creative_id: creativeId,
+        copy_id: copyId,
         asset_type: "thumbnail",
         format: "1:1",
         generation_method: "image_generation",
         status,
         provider_name: asset.imageGenerationProvider ?? null,
-        file_url: asset.imageUrl || null,
-        thumbnail_url: asset.imageUrl || null,
+        file_url: readyUrl,
+        thumbnail_url: readyUrl,
         metadata: {
           ...metadataBase,
           assetError:
             status === "ready"
               ? null
-              : asset.imageUrl
+              : normalizationError ?? (asset.imageUrl
                 ? visualDecision.reason ?? "Generated background needs review before launch."
-              : asset.imageGenerationMessage ?? "Static thumbnail was not generated for this creative.",
+                : asset.imageGenerationMessage ?? "Static thumbnail was not generated for this creative."),
           role: "thumbnail",
         } as Json,
       },
-    ];
-  });
+    );
+  }
 
   const { data, error } = await params.supabase
     .from("creative_assets")
@@ -150,17 +188,43 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
     throw new ApiError(500, error.message, "creative_asset_persist_failed");
   }
 
-  return Array.isArray(data) ? data : [];
+  const insertedRows = Array.isArray(data) ? data as Array<Record<string, unknown>> : [];
+  const insertedIds = insertedRows
+    .map((row) => (typeof row.id === "string" ? row.id : ""))
+    .filter(Boolean);
+
+  if (insertedIds.length > 0) {
+    try {
+      if (allInsertedCreativesAreReady) {
+        await params.supabase
+          .from("creative_assets")
+          .delete()
+          .eq("campaign_id", params.campaignId)
+          .eq("user_id", params.userId)
+          .eq("generation_method", "image_generation")
+          .in("asset_type", ["image_frame", "thumbnail"])
+          .like("creative_id", `${params.campaignId}-creative-%`)
+          .not("id", "in", `(${insertedIds.join(",")})`);
+      }
+    } catch {
+      // Cleanup is deliberately best-effort. New rows are already written, and
+      // loaders prefer the newest rows so old accepted assets are not lost.
+    }
+  }
+
+  return insertedRows;
 }
 
 export async function generateAndPersistStaticCreativeAssets(params: GenerateAndPersistParams) {
   const staticAds = await generateStaticCreativeAds({
+    campaign_id: params.campaignId,
     location: params.strategy.location,
     audience: params.strategy.audience,
     offer: params.strategy.offer,
     price_point: params.strategy.price_point,
     market_type: params.strategy.market_type,
     creative_strategy: params.creativeStrategy ?? undefined,
+    provider_usage_context: params.providerUsageContext,
   });
 
   return await persistStaticCreativeAssets({
