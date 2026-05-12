@@ -1918,7 +1918,35 @@ export async function generateStaticCreativeAds(
   const maxStaticImageGenerations = Number.isFinite(input?.max_static_image_generations)
     ? Math.min(Math.max(Math.trunc(input?.max_static_image_generations ?? 0), 1), baseStaticAds.length)
     : Number.POSITIVE_INFINITY;
-  let attemptedStaticImageGenerations = 0;
+  const generationCandidateAssets = baseStaticAds.filter((asset) => !reusableStaticAssets.has(asset.id));
+  const boundedGenerationAssetIds = new Set(
+    (Number.isFinite(maxStaticImageGenerations)
+      ? [...generationCandidateAssets]
+          .sort((left, right) => {
+            const leftPrevious = previousStaticAssets.get(left.id);
+            const rightPrevious = previousStaticAssets.get(right.id);
+            const priority = (previous?: StaticCreativeAsset) => {
+              if (!previous?.imageUrl) {
+                return 0;
+              }
+
+              if (previous.imageGenerationState === "unavailable") {
+                return 0;
+              }
+
+              if (previous.imageGenerationState === "failed" || previous.imageQa?.decision === "reject") {
+                return 1;
+              }
+
+              return 2;
+            };
+
+            return priority(leftPrevious) - priority(rightPrevious);
+          })
+          .slice(0, maxStaticImageGenerations)
+      : generationCandidateAssets
+    ).map((asset) => asset.id),
+  );
   const generatedStaticAds: StaticCreativeAsset[] = [];
 
   for (const asset of baseStaticAds) {
@@ -1936,7 +1964,7 @@ export async function generateStaticCreativeAds(
       continue;
     }
 
-    if (attemptedStaticImageGenerations >= maxStaticImageGenerations) {
+    if (!boundedGenerationAssetIds.has(asset.id)) {
       const previous = previousStaticAssets.get(asset.id);
 
       generatedStaticAds.push(
@@ -1966,8 +1994,6 @@ export async function generateStaticCreativeAds(
       );
       continue;
     }
-
-    attemptedStaticImageGenerations += 1;
 
     try {
       const providerUsage = input?.provider_usage_context?.createForAsset(asset) ?? null;

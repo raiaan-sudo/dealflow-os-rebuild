@@ -324,4 +324,34 @@ assert.deepEqual(
   "bounded static retries should only request the configured number of provider generations",
 );
 
+const boundedPriorityRequestedAssetIds = [];
+await generateStaticCreativeAds({
+  ...generationInput,
+  max_static_image_generations: 2,
+  reuse_static_assets: [
+    {
+      ...baseStaticAds[0],
+      imageUrl: "https://example.test/rejected-full-ad.png",
+      imageGenerationState: "failed",
+      imageGenerationProvider: "higgsfield",
+      imageQa: {
+        usable: false,
+        decision: "reject",
+        reasons: ["provider_returned_finished_ad", "gibberish_text_detected"],
+      },
+    },
+  ],
+  provider_usage_context: {
+    createForAsset: (asset) => {
+      boundedPriorityRequestedAssetIds.push(asset.id);
+      return null;
+    },
+  },
+});
+assert.deepEqual(
+  boundedPriorityRequestedAssetIds,
+  baseStaticAds.slice(1, 3).map((asset) => asset.id),
+  "bounded static retries should prioritize missing backgrounds before retrying already rejected rasters",
+);
+
 console.log("Static ad template tests passed.");
