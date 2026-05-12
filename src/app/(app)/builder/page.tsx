@@ -208,11 +208,13 @@ function ActiveCampaignWorkspace({
   record,
   campaignCount,
   planTier,
+  billingLaunchOverride,
   hasSelectedCreativeSet,
 }: {
   record: FullCampaignRecord;
   campaignCount: number;
   planTier: BillingPlanTier;
+  billingLaunchOverride: boolean;
   hasSelectedCreativeSet: boolean;
 }) {
   const plan = canonicalCampaignToPlan(record);
@@ -223,10 +225,13 @@ function ActiveCampaignWorkspace({
     record.creatives.staticAds.length > 0 &&
     !record.creatives.staticAds.some((ad) => Boolean(ad.imageUrl));
   const limitPolicy = getCampaignLimitPolicy(planTier);
-  const canCreateAnother = canCreateAdditionalCampaign({
-    planTier,
-    activeCampaignCount: campaignCount,
-  });
+  const billingOverride = billingLaunchOverride;
+  const canCreateAnother =
+    billingOverride ||
+    canCreateAdditionalCampaign({
+      planTier,
+      activeCampaignCount: campaignCount,
+    });
   const statusLabel =
     plan.runtime.metaPushStatus === "published" || plan.runtime.status === "live"
       ? "Live"
@@ -237,6 +242,11 @@ function ActiveCampaignWorkspace({
           : "Build needed";
   const builtItems = getBuiltItems(record);
   const activeCampaignCopy = `${campaignCount} active campaign${campaignCount === 1 ? "" : "s"}`;
+  const hasUnlimitedCampaignSlots = billingOverride || limitPolicy.includedActiveCampaigns === null;
+  const campaignSlotCopy =
+    hasUnlimitedCampaignSlots
+      ? `${campaignCount} active, unlimited included`
+      : `${campaignCount} of ${limitPolicy.includedActiveCampaigns} active`;
 
   return (
     <div className="mx-auto w-full max-w-[1320px] space-y-4">
@@ -316,12 +326,14 @@ function ActiveCampaignWorkspace({
               Campaign slots
             </p>
             <p className="mt-3 text-lg font-semibold">
-              {campaignCount} of {limitPolicy.includedActiveCampaigns} active
+              {campaignSlotCopy}
             </p>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {planTier === "starter"
+              {billingOverride
+                ? "Billing override includes additional QA campaign slots without opening checkout."
+                : planTier === "starter"
                 ? "Starter keeps one guided campaign active so the launch path stays focused."
-                : `${limitPolicy.label}. The current campaign remains the primary workspace.`}
+                : "Pro includes unlimited campaign slots. The current campaign remains the primary workspace."}
             </p>
             <div className="mt-5 flex flex-col gap-3">
               {canCreateAnother ? (
@@ -397,10 +409,12 @@ export default async function BuilderPage({
     billing?.planTier ?? context.organization.plan_tier ?? "starter",
   );
   const campaignCount = Math.max(campaigns.length, record ? 1 : 0);
-  const canCreateAnother = canCreateAdditionalCampaign({
-    planTier,
-    activeCampaignCount: campaignCount,
-  });
+  const canCreateAnother =
+    billing?.launchOverride === true ||
+    canCreateAdditionalCampaign({
+      planTier,
+      activeCampaignCount: campaignCount,
+    });
 
   if (record && !wantsEditMode && (!wantsNewCampaign || !canCreateAnother)) {
     return (
@@ -408,6 +422,7 @@ export default async function BuilderPage({
         record={record}
         campaignCount={campaignCount}
         planTier={planTier}
+        billingLaunchOverride={billing?.launchOverride === true}
         hasSelectedCreativeSet={selectedAdIds.length > 0}
       />
     );

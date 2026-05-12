@@ -52,6 +52,18 @@ type DraftState = {
 
 type FieldErrors = Partial<Record<keyof DraftState | "submit", string>>;
 
+type BillingStatus = {
+  planTier: BillingPlanTier;
+  billingState: string;
+  subscriptionStatus: string;
+  launchAllowed: boolean;
+  launchOverride: boolean;
+  campaignCount: number;
+  canCreateAdditionalCampaign: boolean;
+  hasUnlimitedCampaigns: boolean;
+  campaignLimitLabel: string;
+};
+
 const STORAGE_KEY = "dealflow-guided-onboarding-v3";
 
 const STEPS: { key: OnboardingStepKey; label: string; title: string }[] = [
@@ -327,14 +339,16 @@ function validateStep(step: OnboardingStepKey, draft: DraftState) {
 function StepProgress({
   currentStep,
   furthestStepIndex,
+  steps,
   onSelect,
 }: {
   currentStep: OnboardingStepKey;
   furthestStepIndex: number;
+  steps: typeof STEPS;
   onSelect: (step: OnboardingStepKey) => void;
 }) {
-  const currentIndex = STEPS.findIndex((step) => step.key === currentStep);
-  const progress = Math.round(((currentIndex + 1) / STEPS.length) * 100);
+  const currentIndex = Math.max(steps.findIndex((step) => step.key === currentStep), 0);
+  const progress = Math.round(((currentIndex + 1) / steps.length) * 100);
 
   return (
     <Card className="p-3 sm:p-4">
@@ -346,7 +360,7 @@ function StepProgress({
         <div className="h-full rounded-full bg-[linear-gradient(90deg,#7c5cff,#55d5ff)] transition-all" style={{ width: `${progress}%` }} />
       </div>
       <div className="mt-3 grid gap-2 md:grid-cols-4 xl:grid-cols-7">
-        {STEPS.map((step, index) => {
+        {steps.map((step, index) => {
           const active = step.key === currentStep;
           const available = index <= furthestStepIndex;
 
@@ -529,7 +543,16 @@ export default function OnboardingPage() {
   const [draft, setDraft] = useState<DraftState>(DEFAULT_DRAFT);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
-  const currentStepIndex = STEPS.findIndex((step) => step.key === currentStep);
+  const [isNewCampaignFlow, setIsNewCampaignFlow] = useState(false);
+  const [billingStatus, setBillingStatus] = useState<BillingStatus | null>(null);
+  const canUseExistingLaunchAccess =
+    billingStatus?.launchAllowed === true &&
+    (!isNewCampaignFlow || billingStatus.canCreateAdditionalCampaign);
+  const visibleSteps = useMemo(
+    () => (canUseExistingLaunchAccess ? STEPS.filter((step) => step.key !== "plan") : STEPS),
+    [canUseExistingLaunchAccess],
+  );
+  const currentStepIndex = Math.max(visibleSteps.findIndex((step) => step.key === currentStep), 0);
   const modeCopy = MODE_DEFAULTS[draft.campaignMode];
   const propertyTypeOptions = PROPERTY_TYPE_OPTIONS[draft.campaignMode];
   const priceRangeOptions =
@@ -548,12 +571,13 @@ export default function OnboardingPage() {
   );
 
   const stepTitle = useMemo(
-    () => STEPS.find((step) => step.key === currentStep)?.title ?? "Build campaign",
-    [currentStep],
+    () => visibleSteps.find((step) => step.key === currentStep)?.title ?? "Build campaign",
+    [currentStep, visibleSteps],
   );
 
   useEffect(() => {
     const shouldStartFresh = new URLSearchParams(window.location.search).get("new") === "1";
+    setIsNewCampaignFlow(shouldStartFresh);
     if (shouldStartFresh) {
       window.localStorage.removeItem(STORAGE_KEY);
       setDraft({ ...DEFAULT_DRAFT, idempotencySeed: createIdempotencySeed() });
@@ -597,6 +621,43 @@ export default function OnboardingPage() {
 
     setHydrated(true);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadBillingStatus() {
+      try {
+        const response = await fetch("/api/billing/status", {
+          headers: {
+            Accept: "application/json",
+          },
+        });
+        const data = (await response.json().catch(() => null)) as BillingStatus | null;
+        if (!cancelled && response.ok && data) {
+          setBillingStatus(data);
+          if (data.planTier === "pro" || data.planTier === "growth") {
+            setDraft((current) => ({ ...current, planTier: "pro" }));
+          }
+        }
+      } catch {
+        // Billing status improves routing for active subscribers but must not block onboarding.
+      }
+    }
+
+    void loadBillingStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (canUseExistingLaunchAccess && currentStep === "plan") {
+      const reviewIndex = visibleSteps.findIndex((step) => step.key === "review");
+      setCurrentStep("review");
+      setFurthestStepIndex((current) => Math.max(current, reviewIndex));
+    }
+  }, [canUseExistingLaunchAccess, currentStep, visibleSteps]);
 
   useEffect(() => {
     if (!hydrated || !draft.idempotencySeed) return;
@@ -660,7 +721,7 @@ export default function OnboardingPage() {
 
   function goBack() {
     if (currentStepIndex > 0) {
-      goToStep(STEPS[currentStepIndex - 1].key);
+      goToStep(visibleSteps[currentStepIndex - 1].key);
     }
   }
 
@@ -711,12 +772,16 @@ export default function OnboardingPage() {
         JSON.stringify({
           ...preparedDraft,
           currentStep: "review",
-          furthestStepIndex: STEPS.length - 1,
+          furthestStepIndex: visibleSteps.length - 1,
           campaignId,
           completedAt: new Date().toISOString(),
         }),
       );
-      router.push(`/paywall?campaignId=${encodeURIComponent(campaignId)}&plan=${preparedDraft.planTier}`);
+      router.push(
+        canUseExistingLaunchAccess
+          ? `/build/creatives?campaignId=${encodeURIComponent(campaignId)}`
+          : `/paywall?campaignId=${encodeURIComponent(campaignId)}&plan=${preparedDraft.planTier}`,
+      );
     } catch (error) {
       setSubmitting(false);
       setErrors((current) => ({
@@ -740,7 +805,7 @@ export default function OnboardingPage() {
       setDraft(preparedDraft);
     }
 
-    if (currentStepIndex >= STEPS.length - 1) {
+    if (currentStepIndex >= visibleSteps.length - 1) {
       void submitOnboarding();
       return;
     }
@@ -756,7 +821,7 @@ export default function OnboardingPage() {
         planTier: draft.planTier,
       },
     });
-    goToStep(STEPS[nextIndex].key);
+    goToStep(visibleSteps[nextIndex].key);
   }
 
   function resetDraft() {
@@ -787,7 +852,7 @@ export default function OnboardingPage() {
         </div>
       </Card>
 
-      <StepProgress currentStep={currentStep} furthestStepIndex={furthestStepIndex} onSelect={goToStep} />
+      <StepProgress currentStep={currentStep} furthestStepIndex={furthestStepIndex} steps={visibleSteps} onSelect={goToStep} />
 
       <div className="grid min-w-0 items-stretch gap-3 xl:grid-cols-[minmax(0,0.95fr)_minmax(390px,0.72fr)]">
         <Card className="h-full min-w-0 p-4" data-testid="onboarding-current-step-panel">
@@ -1010,7 +1075,9 @@ export default function OnboardingPage() {
                   <div>
                     <h3 className="text-xl font-semibold tracking-[-0.04em]">Ready to build campaign preview</h3>
                     <p className="mt-2 text-sm leading-7 text-white/64">
-                      Continue saves the campaign, updates the agent profile for lead alerts, and opens checkout. No live ad, payment, message, or media action runs here.
+                      {canUseExistingLaunchAccess
+                        ? "Continue saves the campaign, updates the agent profile for lead alerts, and opens creative selection. No live ad, payment, message, or media action runs here."
+                        : "Continue saves the campaign, updates the agent profile for lead alerts, and opens checkout. No live ad, payment, message, or media action runs here."}
                     </p>
                   </div>
                 </div>
@@ -1024,7 +1091,14 @@ export default function OnboardingPage() {
                   ["Price/deal size", draft.priceRange],
                   ["Budget", `$${draft.monthlyBudget}/month`],
                   ["Offer", normalizedDraft.offer],
-                  ["Behavior", getPlanPresentation(draft.planTier).positioning],
+                  [
+                    "Launch access",
+                    canUseExistingLaunchAccess
+                      ? billingStatus?.hasUnlimitedCampaigns
+                        ? "Active Pro access: unlimited campaign slots"
+                        : "Active plan: campaign slot available"
+                      : getPlanPresentation(draft.planTier).positioning,
+                  ],
                 ].map(([label, value]) => (
                   <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
                     <p className="text-xs text-white/48">{label}</p>
@@ -1053,12 +1127,12 @@ export default function OnboardingPage() {
                   </>
                 ) : currentStep === "review" ? (
                   <>
-                    Continue to checkout
-                    <BarChart3 className="size-4" />
+                    {canUseExistingLaunchAccess ? "Continue to creatives" : "Continue to checkout"}
+                    {canUseExistingLaunchAccess ? <ArrowRight className="size-4" /> : <BarChart3 className="size-4" />}
                   </>
                 ) : (
                   <>
-                    Continue to {STEPS[currentStepIndex + 1]?.label.toLowerCase()}
+                    Continue to {visibleSteps[currentStepIndex + 1]?.label.toLowerCase()}
                     <ArrowRight className="size-4" />
                   </>
                 )}

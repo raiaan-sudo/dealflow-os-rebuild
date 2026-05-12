@@ -137,8 +137,10 @@ function runOfflineChecks() {
   const metaOauthState = "src/lib/integrations/meta/oauth-state.ts";
   const billingCheckoutRoute = "src/app/api/billing/checkout/route.ts";
   const billingPortalRoute = "src/app/api/billing/portal/route.ts";
+  const billingStatusRoute = "src/app/api/billing/status/route.ts";
   const billingService = "src/lib/services/billing-service.ts";
   const billingPlans = "src/lib/billing/plans.ts";
+  const planPresentation = "src/lib/billing/plan-presentation.ts";
   const stripeService = "src/lib/integrations/stripe/service.ts";
   const stripeProvider = "src/lib/integrations/stripe/provider.ts";
   const billingWebhookMigration = "supabase/migrations/20260428140000_harden_billing_subscription_webhooks.sql";
@@ -283,6 +285,10 @@ function runOfflineChecks() {
   assertExcludes(prepaywallPreview, ">Download<", "Pre-paywall download button avoided", "preview component does not expose a download button");
   assertIncludes(onboardingPage, "/api/onboarding/plan", "Onboarding persisted campaign creation", "final step saves a real campaign through the onboarding API");
   assertIncludes(onboardingPage, "/paywall?campaignId=", "Onboarding checkout handoff", "final step opens checkout with the persisted campaign id");
+  assertIncludes(onboardingPage, "/api/billing/status", "Onboarding billing status", "guided onboarding checks existing launch access before showing checkout");
+  assertIncludes(onboardingPage, "/build/creatives?campaignId=", "Onboarding active-plan handoff", "active subscribers continue to creative selection instead of a second checkout");
+  assertIncludes(onboardingPage, "Continue to creatives", "Onboarding active-plan CTA", "active subscribers see a creative handoff instead of checkout copy");
+  assertIncludes(billingStatusRoute, "canCreateAdditionalCampaign", "Billing status campaign-slot gate", "onboarding receives the current campaign-slot entitlement");
   assertIncludes(onboardingPage, "Recommended audience", "Onboarding audience recommendation", "offer step recommends an audience instead of requiring agents to invent one");
   assertIncludes(onboardingPage, "AUDIENCE_REASONS", "Onboarding audience reason copy", "offer step explains why DealFlow chose the audience");
   assertIncludes(onboardingPage, "OFFER_SUGGESTIONS", "Onboarding offer suggestion library", "offer step provides selectable offer ideas by campaign mode");
@@ -402,7 +408,8 @@ function runOfflineChecks() {
   assertIncludes(builderPage, "redirect(\"/onboarding?new=1\")", "Builder new-campaign route redirect", "/builder?new=1 cannot render the advanced builder workspace");
   assertIncludes(onboardingPage, "window.localStorage.removeItem(STORAGE_KEY)", "Onboarding fresh campaign reset", "fresh campaign onboarding clears stale saved setup state");
   assertIncludes(billingPlans, "includedActiveCampaigns: 1", "Starter campaign limit", "Starter defaults to one active guided campaign");
-  assertIncludes(billingPlans, "includedActiveCampaigns: 3", "Pro campaign limit", "Pro exposes additional active campaign slots");
+  assertIncludes(billingPlans, "includedActiveCampaigns: null", "Pro unlimited campaign limit", "Pro exposes unlimited active campaign slots");
+  assertIncludes(planPresentation, "Unlimited active campaigns", "Pro unlimited plan copy", "Pro plan copy tells users additional campaigns are included");
   assertIncludes(dashboardPage, "loadDashboardStateForCampaign", "Dashboard real route", "dashboard loads real campaign state instead of the old plan comparison demo");
   assertIncludes(dashboardPage, "CampaignDashboardView", "Dashboard guided results shell", "dashboard renders the compact guided results view");
   assertExcludes(dashboardPage, "PlanAwareResultsPreview", "Dashboard demo route removed", "dashboard no longer serves the old layout behavior comparison variant");

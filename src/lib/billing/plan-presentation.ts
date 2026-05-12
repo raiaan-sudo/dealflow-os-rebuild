@@ -39,6 +39,7 @@ export const PLAN_PRESENTATION: Record<SelectablePlanTier, PlanPresentation> = {
     summary: "DealFlow keeps the launch fully covered with self-optimizing checks and richer launch guidance.",
     features: [
       "Everything in Starter",
+      "Unlimited active campaigns",
       "Fully covered launch workspace",
       "Self-optimizing campaign checks",
       "Autonomous readiness monitoring",

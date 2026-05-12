@@ -1,7 +1,7 @@
 export type BillingPlanTier = "starter" | "pro" | "growth";
 export type BillingFeature = "meta_launch" | "campaign_data_import" | "autonomy_access";
 export type CampaignLimitPolicy = {
-  includedActiveCampaigns: number;
+  includedActiveCampaigns: number | null;
   canRequestAdditionalSlots: boolean;
   label: string;
 };
@@ -44,14 +44,14 @@ export const CAMPAIGN_LIMITS: Record<BillingPlanTier, CampaignLimitPolicy> = {
     label: "1 active guided campaign",
   },
   pro: {
-    includedActiveCampaigns: 3,
-    canRequestAdditionalSlots: true,
-    label: "Up to 3 active campaigns",
+    includedActiveCampaigns: null,
+    canRequestAdditionalSlots: false,
+    label: "Unlimited active campaigns",
   },
   growth: {
-    includedActiveCampaigns: 10,
-    canRequestAdditionalSlots: true,
-    label: "Up to 10 active campaigns",
+    includedActiveCampaigns: null,
+    canRequestAdditionalSlots: false,
+    label: "Unlimited active campaigns",
   },
 };
 
@@ -79,5 +79,9 @@ export function canCreateAdditionalCampaign(params: {
   activeCampaignCount: number;
 }) {
   const policy = getCampaignLimitPolicy(params.planTier);
+  if (policy.includedActiveCampaigns === null) {
+    return true;
+  }
+
   return params.activeCampaignCount < policy.includedActiveCampaigns;
 }
