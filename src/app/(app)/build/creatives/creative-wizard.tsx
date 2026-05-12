@@ -434,7 +434,7 @@ export function CreativeWizard({ campaignId, creatives, videoCreatives = [] }: C
     void queueImagePreviews({
       force: hasCreditBlocker || hasFailedOrRejectedImages,
       automatic: true,
-      missingOnly: hasGeneratedImages && !hasFailedOrRejectedImages,
+      missingOnly: hasGeneratedImages || hasFailedOrRejectedImages,
     });
   }, [autoRenderStorageKey, hasCreditBlocker, hasFailedOrRejectedImages, hasGeneratedImages, needsImageGeneration, queueImagePreviews]);
 

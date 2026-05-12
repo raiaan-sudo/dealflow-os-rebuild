@@ -330,6 +330,12 @@ function runOfflineChecks() {
   assertIncludes(creativeWizard, "of ${creatives.length} image previews are ready", "Creative partial-count wording", "partial image generation copy exposes counts when some previews still need work");
   assertIncludes(creativeWizard, "customerImageMessage", "Creative image error sanitizer", "image preview failures do not expose provider or infrastructure wording to customers");
   assertIncludes(creativeWizard, "missingOnly: true", "Creative retry refill payload", "creative retry payloads refill unfinished previews without full creative regeneration");
+  assertIncludes(
+    creativeWizard,
+    "missingOnly: hasGeneratedImages || hasFailedOrRejectedImages",
+    "Creative auto-refresh refill payload",
+    "automatic creative preview refresh preserves accepted images and refills only unfinished or rejected previews",
+  );
   assertExcludes(creativeWizard, "missingOnly: false", "Creative retry full regeneration avoided", "creative retry controls do not request full static regeneration");
   assertExcludes(creativeWizard, "Regenerate previews", "Creative retry full-regenerate copy removed", "customer-facing retry copy does not imply a full regenerate");
   assertIncludes(creativeWizard, "Daily image refresh limit reached for this campaign.", "Creative image cap copy", "creative retries show a clear daily-limit state instead of pretending renders are still running");
