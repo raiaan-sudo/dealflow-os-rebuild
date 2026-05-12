@@ -1926,16 +1926,16 @@ export async function generateStaticCreativeAds(
             const leftPrevious = previousStaticAssets.get(left.id);
             const rightPrevious = previousStaticAssets.get(right.id);
             const priority = (previous?: StaticCreativeAsset) => {
+              if (previous?.imageGenerationState === "failed" || previous?.imageQa?.decision === "reject") {
+                return 1;
+              }
+
               if (!previous?.imageUrl) {
                 return 0;
               }
 
               if (previous.imageGenerationState === "unavailable") {
                 return 0;
-              }
-
-              if (previous.imageGenerationState === "failed" || previous.imageQa?.decision === "reject") {
-                return 1;
               }
 
               return 2;

@@ -354,4 +354,35 @@ assert.deepEqual(
   "bounded static retries should prioritize missing backgrounds before retrying already rejected rasters",
 );
 
+const boundedFailedNoImageRequestedAssetIds = [];
+await generateStaticCreativeAds({
+  ...generationInput,
+  max_static_image_generations: 2,
+  reuse_static_assets: [
+    {
+      ...baseStaticAds[0],
+      imageUrl: "",
+      imageGenerationState: "failed",
+      imageGenerationMessage: "Image generation failed.",
+    },
+    {
+      ...baseStaticAds[1],
+      imageUrl: "",
+      imageGenerationState: "failed",
+      imageGenerationMessage: "Image generation failed.",
+    },
+  ],
+  provider_usage_context: {
+    createForAsset: (asset) => {
+      boundedFailedNoImageRequestedAssetIds.push(asset.id);
+      return null;
+    },
+  },
+});
+assert.deepEqual(
+  boundedFailedNoImageRequestedAssetIds,
+  baseStaticAds.slice(2, 4).map((asset) => asset.id),
+  "bounded static retries should try never-attempted missing backgrounds before failed no-image attempts",
+);
+
 console.log("Static ad template tests passed.");
