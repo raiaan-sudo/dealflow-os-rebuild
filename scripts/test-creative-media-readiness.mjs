@@ -7,6 +7,15 @@ import { createRequire } from "node:module";
 
 const repoRoot = process.cwd();
 const originalResolve = Module._resolveFilename;
+const originalLoad = Module._load;
+
+Module._load = function load(request, parent, isMain) {
+  if (request === "server-only") {
+    return {};
+  }
+
+  return originalLoad.call(this, request, parent, isMain);
+};
 
 Module._resolveFilename = function resolveFilename(request, parent, isMain, options) {
   if (request.startsWith("@/")) {
@@ -50,6 +59,10 @@ const {
 const {
   buildComposedStaticAdPreview,
 } = require("../src/lib/services/static-ad-template-renderer.ts");
+const {
+  mapStaticCreativeAssets,
+  mapVideoCreativeAssets,
+} = require("../src/lib/services/campaign-persistence.ts");
 
 function readyStatic(id) {
   return {
@@ -105,6 +118,130 @@ const blockedSelection = getStaticCreativeReadiness(creatives, ["primary", "fail
 assert.equal(blockedSelection.selectedBlockedCount, 1);
 assert.equal(blockedSelection.allSelectedReady, false);
 assert.match(blockedSelection.issueLabel ?? "", /1 selected creative needs retry before launch/);
+
+const stalePlanSelectedIds = ["primary", "review-1", "review-2"];
+const productionLikeCreativeAssets = [
+  {
+    id: "newer-failed-primary",
+    campaign_id: "campaign-1",
+    creative_id: "campaign-1-creative-0",
+    asset_type: "image_frame",
+    status: "failed",
+    file_url: null,
+    thumbnail_url: null,
+    provider_name: "gpt-image-1.5",
+    provider_asset_id: null,
+    copy_id: null,
+    error_message: null,
+    created_at: "2026-05-13T04:02:31.000Z",
+    updated_at: "2026-05-13T04:02:31.000Z",
+    metadata: {
+      source: "static_ad",
+      staticAssetId: "primary",
+      role: "background_image",
+      storageNormalized: false,
+      qualityGate: { accepted: false },
+      imageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
+      imagePrompt: "Text-free background asset only for a real estate ad.",
+      visualPromptBrief: {
+        visualAssetContract: "text_free_background_v2",
+        visualAssetRole: "text_free_background",
+      },
+      imageGenerationMessage: "A cleaner image is being prepared for this creative.",
+    },
+  },
+  {
+    id: "older-ready-primary",
+    campaign_id: "campaign-1",
+    creative_id: "campaign-1-creative-0",
+    asset_type: "image_frame",
+    status: "ready",
+    file_url: "https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/primary.png",
+    thumbnail_url: "https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/primary-thumb.png",
+    provider_name: "gpt-image-1.5",
+    provider_asset_id: "asset-primary",
+    copy_id: null,
+    error_message: null,
+    created_at: "2026-05-13T03:56:30.000Z",
+    updated_at: "2026-05-13T03:56:30.000Z",
+    metadata: {
+      source: "static_ad",
+      staticAssetId: "primary",
+      role: "background_image",
+      storageNormalized: true,
+      qualityGate: { accepted: true },
+      imageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
+      imagePrompt: "Text-free background asset only for a real estate ad.",
+      imagePromptConfig: { prompt: "Text-free background asset only for a real estate ad." },
+      visualPromptBrief: {
+        visualAssetContract: "text_free_background_v2",
+        visualAssetRole: "text_free_background",
+      },
+    },
+  },
+  {
+    id: "ready-review-1",
+    campaign_id: "campaign-1",
+    creative_id: "campaign-1-creative-1",
+    asset_type: "image_frame",
+    status: "ready",
+    file_url: "https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/review-1.png",
+    thumbnail_url: null,
+    provider_name: "gpt-image-1.5",
+    provider_asset_id: "asset-review-1",
+    copy_id: null,
+    error_message: null,
+    created_at: "2026-05-13T03:56:30.000Z",
+    updated_at: "2026-05-13T03:56:30.000Z",
+    metadata: {
+      source: "static_ad",
+      staticAssetId: "review-1",
+      role: "background_image",
+      storageNormalized: true,
+      qualityGate: { accepted: true },
+      imageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
+      imagePrompt: "Text-free background asset only for a real estate ad.",
+      visualPromptBrief: {
+        visualAssetContract: "text_free_background_v2",
+        visualAssetRole: "text_free_background",
+      },
+    },
+  },
+  {
+    id: "ready-review-2",
+    campaign_id: "campaign-1",
+    creative_id: "campaign-1-creative-2",
+    asset_type: "image_frame",
+    status: "ready",
+    file_url: "https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/review-2.png",
+    thumbnail_url: null,
+    provider_name: "gpt-image-1.5",
+    provider_asset_id: "asset-review-2",
+    copy_id: null,
+    error_message: null,
+    created_at: "2026-05-13T03:56:30.000Z",
+    updated_at: "2026-05-13T03:56:30.000Z",
+    metadata: {
+      source: "static_ad",
+      staticAssetId: "review-2",
+      role: "background_image",
+      storageNormalized: true,
+      qualityGate: { accepted: true },
+      imageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
+      imagePrompt: "Text-free background asset only for a real estate ad.",
+      visualPromptBrief: {
+        visualAssetContract: "text_free_background_v2",
+        visualAssetRole: "text_free_background",
+      },
+    },
+  },
+];
+const productionMappedStatic = mapStaticCreativeAssets(productionLikeCreativeAssets);
+const productionStaticReadiness = getStaticCreativeReadiness(productionMappedStatic, stalePlanSelectedIds);
+assert.equal(productionStaticReadiness.selectedReadyCount, 3);
+assert.equal(productionStaticReadiness.selectedBlockedCount, 0);
+assert.equal(productionStaticReadiness.readyLabel, "3 selected launch-ready previews");
+assert.equal(productionMappedStatic.find((asset) => asset.id === "primary")?.imageGenerationState, "generated");
 
 const fallbackPreview = buildComposedStaticAdPreview({
   headline: "Toronto seller plan",
@@ -174,6 +311,43 @@ assert.deepEqual(
     mode: "deterministic_provenance",
   },
 );
+
+const productionMappedVideo = mapVideoCreativeAssets([
+  {
+    id: "video-row-1",
+    campaign_id: "campaign-1",
+    creative_id: "video-ugc-launch-proof",
+    copy_id: "copy-1",
+    asset_type: "ugc_video",
+    status: "ready",
+    file_url: readyVideo.videoUrl,
+    thumbnail_url: null,
+    provider_name: readyVideo.providerName,
+    provider_asset_id: readyVideo.providerAssetId,
+    error_message: null,
+    created_at: "2026-05-13T05:08:46.000Z",
+    updated_at: "2026-05-13T05:08:46.000Z",
+    metadata: {
+      storageNormalized: true,
+      storageBucket: "creative-assets",
+      storagePath: "user/campaign/video.mp4",
+      storageContentType: "video/mp4",
+      storageByteSize: 7_533_116,
+      sourceStaticAssetId: "primary",
+      sourceImageUrl: readyVideo.sourceImageUrl,
+      promptSource: "campaign_specific_fallback",
+      promptHash: "prompt-hash",
+      scriptHash: "script-hash",
+      promptUsed: readyVideo.promptUsed,
+      campaignSpecificContext: readyVideo.campaignSpecificContext,
+      videoQualityGate: readyVideo.videoQualityGate,
+    },
+  },
+  ...productionLikeCreativeAssets,
+]);
+assert.equal(productionMappedVideo.length, 1);
+assert.equal(isLaunchReadyVideoCreative(productionMappedVideo[0]), true);
+assert.equal(getVideoReadinessLabel(productionMappedVideo[0]), "Campaign-specific UGC ready");
 
 const reviewOnlyVideo = {
   ...readyVideo,

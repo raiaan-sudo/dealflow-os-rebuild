@@ -181,7 +181,7 @@ function assetErrorMessage(row: CreativeAssetRow, metadata: Record<string, Json>
         : null;
 }
 
-function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[] {
+export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[] {
   const grouped = new Map<string, CreativeAssetRow[]>();
 
   for (const row of rows) {
@@ -201,6 +201,11 @@ function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[
 
   return Array.from(grouped.entries()).map(([key, assetRows]) => {
     const preferredRow =
+      assetRows.find((row) => {
+        const metadata = asObjectRecord(row.metadata);
+        return metadata?.role === "background_image" && isAcceptedSourceStaticRow(row);
+      }) ??
+      assetRows.find(isAcceptedSourceStaticRow) ??
       assetRows.find((row) => {
         const metadata = asObjectRecord(row.metadata);
         return metadata?.role === "background_image" && row.status === "ready" && Boolean(row.file_url);
@@ -358,7 +363,7 @@ function sourceStaticAccepted(rows: CreativeAssetRow[], sourceStaticAssetId: str
   });
 }
 
-function mapVideoCreativeAssets(rows: CreativeAssetRow[]): VideoCreativeAsset[] {
+export function mapVideoCreativeAssets(rows: CreativeAssetRow[]): VideoCreativeAsset[] {
   const videoRows = rows.filter((row) =>
     ["talking_head_video", "ugc_video", "montage_video", "video"].includes(String(row.asset_type ?? "")),
   );
