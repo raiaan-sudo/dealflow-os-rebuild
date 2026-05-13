@@ -58,6 +58,7 @@ export type CreativeEngineInput = {
   };
   reuse_static_assets?: StaticCreativeAsset[];
   max_static_image_generations?: number;
+  selected_static_asset_ids?: string[];
   creative_intake?: CreativeIntakeGenerationContext | null;
   force?: boolean;
 };
@@ -2022,6 +2023,12 @@ export async function generateStaticCreativeAds(
   const previousStaticAssets = new Map(
     (input?.reuse_static_assets ?? []).map((asset) => [asset.id, asset]),
   );
+  const selectedStaticAssetOrder = new Map(
+    (input?.selected_static_asset_ids ?? [])
+      .map((id) => id.trim())
+      .filter(Boolean)
+      .map((id, index) => [id, index]),
+  );
   const maxStaticImageGenerations = Number.isFinite(input?.max_static_image_generations)
     ? Math.min(Math.max(Math.trunc(input?.max_static_image_generations ?? 0), 1), baseStaticAds.length)
     : Number.POSITIVE_INFINITY;
@@ -2032,6 +2039,16 @@ export async function generateStaticCreativeAds(
           .sort((left, right) => {
             const leftPrevious = previousStaticAssets.get(left.id);
             const rightPrevious = previousStaticAssets.get(right.id);
+            const leftSelectedOrder = selectedStaticAssetOrder.get(left.id);
+            const rightSelectedOrder = selectedStaticAssetOrder.get(right.id);
+
+            if (leftSelectedOrder !== undefined || rightSelectedOrder !== undefined) {
+              return (
+                (leftSelectedOrder ?? Number.MAX_SAFE_INTEGER) -
+                (rightSelectedOrder ?? Number.MAX_SAFE_INTEGER)
+              );
+            }
+
             const priority = (previous?: StaticCreativeAsset) => {
               if (shouldDropStaleProviderImageForRetry(previous, creativeIntake)) {
                 return -1;

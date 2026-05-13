@@ -8,10 +8,42 @@ import { createRequire } from "node:module";
 const repoRoot = process.cwd();
 const originalResolve = Module._resolveFilename;
 const originalLoad = Module._load;
+const generatedImageProviderCalls = [];
 
 Module._load = function load(request, parent, isMain) {
   if (request === "server-only") {
     return {};
+  }
+
+  if (request === "@/lib/ai/providers") {
+    return {
+      createImageAd: async (_brief, asset) => {
+        generatedImageProviderCalls.push(asset.id);
+        return {
+          imageUrl: `https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/${asset.id}.png`,
+          overlayText: asset.hook,
+          headline: asset.headline,
+          primaryText: asset.primaryText,
+          cta: asset.cta,
+          generationState: "generated",
+          generationMessage: null,
+          generationModel: "test-image-model",
+          generationProvider: "test-provider",
+        };
+      },
+    };
+  }
+
+  if (request === "@/lib/services/static-creative-image-qa") {
+    return {
+      evaluateStaticCreativeImageQa: async () => ({
+        usable: true,
+        decision: "accept",
+        mode: "background_only",
+        reasons: [],
+      }),
+      getCustomerSafeImageQaMessage: () => null,
+    };
   }
 
   return originalLoad.call(this, request, parent, isMain);
@@ -63,6 +95,9 @@ const {
   mapStaticCreativeAssets,
   mapVideoCreativeAssets,
 } = require("../src/lib/services/campaign-persistence.ts");
+const {
+  generateStaticCreativeAds,
+} = require("../src/lib/services/creative-engine.ts");
 
 function readyStatic(id) {
   return {
@@ -118,6 +153,45 @@ const blockedSelection = getStaticCreativeReadiness(creatives, ["primary", "fail
 assert.equal(blockedSelection.selectedBlockedCount, 1);
 assert.equal(blockedSelection.allSelectedReady, false);
 assert.match(blockedSelection.issueLabel ?? "", /1 selected creative needs retry before launch/);
+
+const allFailedSelection = getStaticCreativeReadiness([
+  { ...readyStatic("selected-primary"), imageUrl: "", imageGenerationState: "failed", qualityGate: { accepted: false } },
+  { ...readyStatic("selected-ugc-proof"), imageUrl: "", imageGenerationState: "failed", qualityGate: { accepted: false } },
+  { ...readyStatic("selected-ugc-walkthrough"), imageUrl: "", imageGenerationState: "failed", qualityGate: { accepted: false } },
+], ["selected-primary", "selected-ugc-proof", "selected-ugc-walkthrough"]);
+assert.equal(allFailedSelection.selectedReadyCount, 0);
+assert.equal(allFailedSelection.selectedBlockedCount, 3);
+assert.equal(allFailedSelection.allSelectedReady, false);
+assert.match(getStaticPreviewStatusMessage(allFailedSelection), /0 selected launch-ready previews; 3 recommended/);
+assert.match(getStaticPreviewStatusMessage(allFailedSelection), /3 selected creatives need retry before launch/);
+
+process.env.ALLOW_OPENAI_IMAGE_GENERATION = "true";
+process.env.OPENAI_API_KEY = "test-openai-key";
+const selectedStaticProofIds = [
+  "static-buyer-affordability-reality-check",
+  "static-ugc-proof",
+  "static-ugc-walkthrough",
+];
+const selectedSetGeneratedStaticAds = await generateStaticCreativeAds({
+  location: "Toronto, ON",
+  audience: "home buyers searching for $600k-$900k homes in Toronto, ON",
+  offer: "Under-market Deals",
+  market_type: "buyer",
+  max_static_image_generations: 3,
+  selected_static_asset_ids: selectedStaticProofIds,
+  provider_usage_context: {
+    createForAsset: () => ({
+      reserve: async () => ({ eventId: null }),
+      mark: async () => null,
+    }),
+  },
+});
+assert.deepEqual(generatedImageProviderCalls.slice(0, 3), selectedStaticProofIds);
+const selectedStaticById = new Map(selectedSetGeneratedStaticAds.map((asset) => [asset.id, asset]));
+for (const selectedId of selectedStaticProofIds) {
+  assert.equal(selectedStaticById.get(selectedId)?.imageGenerationState, "generated");
+  assert.match(selectedStaticById.get(selectedId)?.imageUrl ?? "", /creative-assets/);
+}
 
 const stalePlanSelectedIds = ["primary", "review-1", "review-2"];
 const productionLikeCreativeAssets = [
@@ -410,5 +484,15 @@ for (const [name, source] of [
 assert.doesNotMatch(creativeWizardSource, /Ready to render/);
 assert.doesNotMatch(creativeWizardSource, /Video preview concept is ready/);
 assert.doesNotMatch(creativeWizardSource, /Video concept is ready/);
+assert.match(
+  fs.readFileSync("src/lib/paywall-access.ts", "utf8"),
+  /if \(requestedCampaignId\) \{\s*return \{\s*campaignId: requestedCampaignId,\s*record: null,/s,
+  "requested campaign IDs must not silently fall back to another owner's campaign",
+);
+assert.match(
+  fs.readFileSync("src/lib/services/campaign-persistence.ts", "utf8"),
+  /selected_static_asset_ids: generationPreferredStaticAssetIds/,
+  "capped static regeneration must target the selected or default launch set",
+);
 
 console.log("creative media readiness regression checks passed");

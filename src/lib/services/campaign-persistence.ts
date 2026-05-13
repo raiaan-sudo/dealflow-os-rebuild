@@ -8,6 +8,7 @@ import {
   type SavedCampaignDocument,
 } from "@/lib/services/canonical-campaign";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
+import { getSelectedAdIdsFromPlan } from "@/lib/services/campaign-plan-document";
 import { getAppContext } from "@/lib/services/app-context";
 import {
   completeAssetGenerationLifecycle,
@@ -54,6 +55,39 @@ type PersistenceClient =
   | SupabaseClient<Database>;
 
 type CampaignPublishSnapshot = SavedCampaignDocument;
+
+function isUgcStaticCreative(asset: Pick<StaticCreativeAsset, "id"> & { formatLabel?: string | null }) {
+  return /\bugc\b/i.test(`${asset.id} ${asset.formatLabel ?? ""}`);
+}
+
+function getDefaultLaunchStaticAssetIds(staticAds: StaticCreativeAsset[]) {
+  const rankedCreatives = [...staticAds].sort((left, right) => {
+    const readinessDelta =
+      Number(evaluateStaticVisualAssetDecision(right).usable) -
+      Number(evaluateStaticVisualAssetDecision(left).usable);
+
+    return readinessDelta || (right.score ?? 0) - (left.score ?? 0);
+  });
+  const topCreatives = rankedCreatives.slice(0, 3);
+  const topUgcCreatives = rankedCreatives.filter(isUgcStaticCreative).slice(0, 2);
+
+  if (topCreatives.length === 0) {
+    return rankedCreatives.slice(0, 1).map((creative) => creative.id);
+  }
+
+  return Array.from(
+    new Set(
+      topUgcCreatives.length > 0
+        ? [
+            ...topCreatives
+              .filter((creative) => !topUgcCreatives.some((ugcCreative) => ugcCreative.id === creative.id))
+              .slice(0, Math.max(1, 3 - topUgcCreatives.length)),
+            ...topUgcCreatives,
+          ].map((creative) => creative.id)
+        : topCreatives.map((creative) => creative.id),
+    ),
+  );
+}
 
 function isMissingPublishSchemaError(error: unknown) {
   if (!error || typeof error !== "object") {
@@ -1089,6 +1123,11 @@ export async function regenerateStaticCreativeAssetsForUser(
     videoAds: persistedVideoAds.length > 0 ? persistedVideoAds : undefined,
     publish: mapPublishRecord(row),
   });
+  const selectedStaticAssetIds = getSelectedAdIdsFromPlan(savedDocument);
+  const generationPreferredStaticAssetIds =
+    selectedStaticAssetIds.length > 0
+      ? selectedStaticAssetIds
+      : getDefaultLaunchStaticAssetIds(currentRecord.creatives.staticAds);
   const generationState = readPersistedAssetGenerationState(savedDocument?.assetGeneration);
 
   if (
@@ -1134,6 +1173,7 @@ export async function regenerateStaticCreativeAssetsForUser(
       campaign_id: campaignId,
       reuse_static_assets: currentRecord.creatives.staticAds,
       max_static_image_generations: options?.maxGenerations,
+      selected_static_asset_ids: generationPreferredStaticAssetIds,
       creative_intake: durableCreativeIntake,
       force: options?.force === true,
       provider_usage_context: {
