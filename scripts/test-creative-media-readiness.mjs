@@ -43,6 +43,7 @@ const {
   getStaticPreviewStatusMessage,
   getVideoReadinessLabel,
   getVideoReadinessMessage,
+  evaluateGeneratedVideoQualityGate,
   isLaunchReadyVideoCreative,
   isPlayableVideoCreative,
 } = require("../src/lib/services/creative-media-readiness.ts");
@@ -162,6 +163,17 @@ assert.equal(isPlayableVideoCreative(readyVideo), true);
 assert.equal(isLaunchReadyVideoCreative(readyVideo), true);
 assert.equal(getVideoReadinessLabel(readyVideo), "Campaign-specific UGC ready");
 assert.match(getVideoReadinessMessage(readyVideo), /Campaign-specific app-owned UGC video is ready/);
+assert.deepEqual(
+  evaluateGeneratedVideoQualityGate(readyVideo, new Date("2026-05-13T00:00:00.000Z")),
+  {
+    accepted: true,
+    usable: true,
+    decision: "accept",
+    reasons: [],
+    evaluatedAt: "2026-05-13T00:00:00.000Z",
+    mode: "deterministic_provenance",
+  },
+);
 
 const reviewOnlyVideo = {
   ...readyVideo,
@@ -175,6 +187,20 @@ assert.equal(isPlayableVideoCreative(reviewOnlyVideo), true);
 assert.equal(isLaunchReadyVideoCreative(reviewOnlyVideo), false);
 assert.equal(getVideoReadinessLabel(reviewOnlyVideo), "Playable review sample");
 assert.match(getVideoReadinessMessage(reviewOnlyVideo), /missing campaign-specific prompt/);
+
+const promptSourceOnlyVideo = {
+  ...readyVideo,
+  id: "prompt-source-only-video",
+  promptUsed: null,
+  promptHash: null,
+  promptSource: "campaign_specific_fallback",
+};
+assert.equal(isLaunchReadyVideoCreative(promptSourceOnlyVideo), false);
+assert.match(getVideoReadinessMessage(promptSourceOnlyVideo), /missing campaign-specific prompt/);
+assert.deepEqual(
+  evaluateGeneratedVideoQualityGate(promptSourceOnlyVideo, new Date("2026-05-13T00:00:00.000Z")).reasons,
+  ["missing_prompt_provenance"],
+);
 
 const sampleVideo = {
   ...readyVideo,

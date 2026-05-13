@@ -27,6 +27,8 @@ import {
   isAppOwnedCreativeAssetUrl,
   normalizeGeneratedVideoProviderFile,
 } from "@/lib/services/static-creative-storage-normalization";
+import { evaluateGeneratedVideoQualityGate } from "@/lib/services/creative-media-readiness";
+import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
 
 type VideoPersistenceClient = SupabaseClient<Database>;
 type CampaignPlanRow = Database["public"]["Tables"]["campaign_plans"]["Row"];
@@ -97,15 +99,150 @@ function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function getVideoSourceImageUrl(savedDocument: unknown, selectedIndex: number) {
-  const record = savedDocument && typeof savedDocument === "object"
-    ? (savedDocument as Record<string, unknown>)
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function asStaticPromptConfig(value: unknown): StaticCreativeAsset["imagePromptConfig"] {
+  return asRecord(value) as StaticCreativeAsset["imagePromptConfig"];
+}
+
+function asStaticVisualPromptBrief(value: unknown): StaticCreativeAsset["visualPromptBrief"] {
+  return asRecord(value) as StaticCreativeAsset["visualPromptBrief"];
+}
+
+function asStaticImageQa(value: unknown): StaticCreativeAsset["imageQa"] {
+  return asRecord(value) as StaticCreativeAsset["imageQa"];
+}
+
+function asStaticQualityGate(value: unknown): StaticCreativeAsset["qualityGate"] {
+  return asRecord(value) as StaticCreativeAsset["qualityGate"];
+}
+
+function readSelectedStaticIds(savedDocument: unknown) {
+  const record = asRecord(savedDocument) ?? {};
+  const direct = Array.isArray(record.selected_ad_ids)
+    ? record.selected_ad_ids
+    : [];
+  const payload = asRecord(record.campaign_payload);
+  const nested = Array.isArray(payload?.selected_ad_ids)
+    ? payload.selected_ad_ids
+    : [];
+
+  return [...direct, ...nested]
+    .map((value) => typeof value === "string" ? value.trim() : "")
+    .filter(Boolean)
+    .filter((value, index, all) => all.indexOf(value) === index);
+}
+
+function staticAssetIdForRow(row: CreativeAsset) {
+  const metadata = asRecord(row.metadata);
+  return (
+    (typeof metadata?.staticAssetId === "string" && metadata.staticAssetId.trim()) ||
+    row.creative_id ||
+    row.id
+  );
+}
+
+function isLaunchReadyStaticSourceRow(row: CreativeAsset) {
+  const metadata = asRecord(row.metadata);
+  const imageUrl = row.file_url ?? row.thumbnail_url ?? "";
+  const storageNormalized =
+    metadata?.storageNormalized === true ||
+    (metadata?.storageNormalizationReusedExistingAppAsset === true &&
+      typeof metadata?.storagePath === "string");
+
+  if (metadata?.source !== "static_ad" || row.status !== "ready" || !imageUrl) {
+    return false;
+  }
+
+  if (!isAppOwnedCreativeAssetUrl(imageUrl)) {
+    return false;
+  }
+
+  return evaluateStaticVisualAssetDecision({
+    imageUrl,
+    storageNormalized,
+    imagePrompt: typeof metadata?.imagePrompt === "string" ? metadata.imagePrompt : "",
+    imagePromptConfig: asStaticPromptConfig(metadata?.imagePromptConfig),
+    visualPromptBrief: asStaticVisualPromptBrief(metadata?.visualPromptBrief),
+    qualityGate: asStaticQualityGate(metadata?.qualityGate),
+    imageQa: asStaticImageQa(metadata?.imageQa),
+  }).usable;
+}
+
+async function getLaunchReadyStaticVideoSource(params: {
+  supabase: VideoPersistenceClient;
+  userId: string;
+  campaignId: string;
+  savedDocument: unknown;
+  selectedIndex: number;
+}) {
+  const { data, error } = await params.supabase
+    .from("creative_assets")
+    .select("*")
+    .eq("campaign_id", params.campaignId)
+    .eq("user_id", params.userId)
+    .order("created_at", { ascending: false });
+
+  if (error || !Array.isArray(data)) {
+    return null;
+  }
+
+  const selectedIds = readSelectedStaticIds(params.savedDocument);
+  const readyRows = (data as CreativeAsset[])
+    .filter(isLaunchReadyStaticSourceRow)
+    .map((row) => ({
+      row,
+      staticAssetId: staticAssetIdForRow(row),
+      imageUrl: row.file_url ?? row.thumbnail_url ?? "",
+    }))
+    .filter((candidate) => candidate.imageUrl);
+  const selectedIndexById = new Map(selectedIds.map((id, index) => [id, index]));
+  const selectedReadyRows = readyRows
+    .filter((candidate) => selectedIndexById.has(candidate.staticAssetId))
+    .sort((left, right) =>
+      (selectedIndexById.get(left.staticAssetId) ?? Number.MAX_SAFE_INTEGER) -
+      (selectedIndexById.get(right.staticAssetId) ?? Number.MAX_SAFE_INTEGER),
+    );
+  const selectedCandidate = selectedReadyRows[params.selectedIndex] ?? selectedReadyRows[0] ?? null;
+  const fallbackCandidate = readyRows[params.selectedIndex] ?? readyRows[0] ?? null;
+  const chosen = selectedCandidate ?? fallbackCandidate;
+
+  if (!chosen) {
+    return null;
+  }
+
+  return {
+    imageUrl: chosen.imageUrl,
+    staticAssetId: chosen.staticAssetId,
+    accepted: true,
+  };
+}
+
+async function getVideoSourceImageUrl(params: {
+  supabase: VideoPersistenceClient;
+  userId: string;
+  campaignId: string;
+  savedDocument: unknown;
+  selectedIndex: number;
+}) {
+  const readyStaticSource = await getLaunchReadyStaticVideoSource(params);
+
+  if (readyStaticSource) {
+    return readyStaticSource;
+  }
+
+  const record = params.savedDocument && typeof params.savedDocument === "object"
+    ? (params.savedDocument as Record<string, unknown>)
     : {};
   const staticAds = Array.isArray(record.staticAds)
     ? (record.staticAds as StaticCreativeAsset[])
     : [];
   const candidates = [
-    staticAds[selectedIndex],
+    staticAds[params.selectedIndex],
     ...staticAds,
   ].filter(Boolean);
 
@@ -121,6 +258,7 @@ function getVideoSourceImageUrl(savedDocument: unknown, selectedIndex: number) {
       return {
         imageUrl,
         staticAssetId: asset.id,
+        accepted: true,
       };
     }
   }
@@ -440,7 +578,13 @@ export async function runVideoGenerationJob(params: {
 
   const avatarProvider = getAvatarVideoProvider();
   const defaultState = createDefaultVideoState(params.payload);
-  const videoSourceImage = getVideoSourceImageUrl(savedDocument, params.payload.creativeIndex);
+  const videoSourceImage = await getVideoSourceImageUrl({
+    supabase: params.supabase,
+    userId: params.userId,
+    campaignId: params.campaignId,
+    savedDocument,
+    selectedIndex: params.payload.creativeIndex,
+  });
 
   if (!avatarProvider.isConfigured()) {
     const unavailableState: VideoCreativeAsset = {
@@ -755,6 +899,39 @@ export async function runVideoGenerationJob(params: {
   }
 
   const durableVideoUrl = durableVideo?.durableUrl ?? providerVideo.fileUrl ?? null;
+  const campaignSpecificContext = {
+    campaignId: params.campaignId,
+    creativeId: params.payload.creativeId,
+    copyId: params.payload.copyId,
+    audience: params.payload.audience,
+    location: params.payload.location,
+    offer: params.payload.body,
+    cta: params.payload.cta,
+    persona: params.payload.avatarProfileId ?? "provider_default_avatar",
+  };
+  const videoQualityGate = durableVideoUrl
+    ? evaluateGeneratedVideoQualityGate({
+        id: params.payload.creativeId ?? `video-${params.payload.creativeIndex}`,
+        videoUrl: durableVideoUrl,
+        videoGenerationState: "generated",
+        providerName: avatarProvider.name,
+        providerAssetId: providerVideo.providerAssetId,
+        providerStatus: providerVideo.status,
+        storageNormalized: true,
+        storageBucket: durableVideo?.storageBucket ?? null,
+        storagePath: durableVideo?.storagePath ?? null,
+        storageContentType: durableVideo?.contentType ?? null,
+        storageByteSize: durableVideo?.byteSize ?? null,
+        sourceStaticAssetId: videoSourceImage.staticAssetId,
+        sourceImageUrl: videoSourceImage.imageUrl,
+        sourceStaticAccepted: videoSourceImage.accepted,
+        promptUsed,
+        promptSource,
+        promptHash,
+        scriptHash,
+        campaignSpecificContext,
+      })
+    : null;
 
   const { data: insertedAssetRaw, error } = await params.supabase
     .from("creative_assets")
@@ -783,6 +960,7 @@ export async function runVideoGenerationJob(params: {
         provider_original_url: providerVideo.fileUrl ?? null,
         sourceStaticAssetId: videoSourceImage.staticAssetId,
         sourceImageUrl: videoSourceImage.imageUrl,
+        sourceStaticAccepted: videoSourceImage.accepted,
         promptUsed,
         promptSource,
         promptHash,
@@ -791,24 +969,8 @@ export async function runVideoGenerationJob(params: {
         location: params.payload.location,
         offer: params.payload.body,
         persona: params.payload.avatarProfileId ?? "provider_default_avatar",
-        campaignSpecificContext: {
-          campaignId: params.campaignId,
-          creativeId: params.payload.creativeId,
-          copyId: params.payload.copyId,
-          audience: params.payload.audience,
-          location: params.payload.location,
-          offer: params.payload.body,
-          cta: params.payload.cta,
-          persona: params.payload.avatarProfileId ?? "provider_default_avatar",
-        },
-        videoQualityGate: durableVideoUrl
-          ? {
-              accepted: false,
-              usable: false,
-              decision: "review",
-              reasons: ["video_qa_required"],
-            }
-          : null,
+        campaignSpecificContext,
+        videoQualityGate,
         storageNormalized: Boolean(durableVideoUrl),
         storageBucket: durableVideo?.storageBucket ?? null,
         storagePath: durableVideo?.storagePath ?? null,
@@ -880,29 +1042,13 @@ export async function runVideoGenerationJob(params: {
     storageByteSize: durableVideo?.byteSize ?? null,
     sourceStaticAssetId: videoSourceImage.staticAssetId,
     sourceImageUrl: videoSourceImage.imageUrl,
-    sourceStaticAccepted: true,
+    sourceStaticAccepted: videoSourceImage.accepted,
     promptUsed,
     promptSource,
     promptHash,
     scriptHash,
-    campaignSpecificContext: {
-      campaignId: params.campaignId,
-      creativeId: params.payload.creativeId,
-      copyId: params.payload.copyId,
-      audience: params.payload.audience,
-      location: params.payload.location,
-      offer: params.payload.body,
-      cta: params.payload.cta,
-      persona: params.payload.avatarProfileId ?? "provider_default_avatar",
-    },
-    videoQualityGate: durableVideoUrl
-      ? {
-          accepted: false,
-          usable: false,
-          decision: "review",
-          reasons: ["video_qa_required"],
-        }
-      : null,
+    campaignSpecificContext,
+    videoQualityGate,
   };
 
   await persistVideoAdsToCampaignPlan({
@@ -1185,10 +1331,52 @@ export async function pollVideoGenerationStatusJob(params: {
     };
   }
 
+  const existingMetadata = asRecord(asset.metadata) ?? {};
+  const nextVideoQualityGate = evaluateGeneratedVideoQualityGate({
+    id: asset.creative_id ?? asset.id,
+    videoUrl: durableVideo.durableUrl,
+    videoGenerationState: "generated",
+    providerName: asset.provider_name ?? params.payload.providerName ?? null,
+    providerAssetId: params.payload.providerAssetId,
+    providerStatus: finalStatus.status,
+    storageNormalized: true,
+    storageBucket: durableVideo.storageBucket,
+    storagePath: durableVideo.storagePath,
+    storageContentType: durableVideo.contentType,
+    storageByteSize: durableVideo.byteSize,
+    sourceStaticAssetId:
+      typeof existingMetadata.sourceStaticAssetId === "string"
+        ? existingMetadata.sourceStaticAssetId
+        : null,
+    sourceImageUrl:
+      typeof existingMetadata.sourceImageUrl === "string"
+        ? existingMetadata.sourceImageUrl
+        : null,
+    sourceStaticAccepted: existingMetadata.sourceStaticAccepted === true,
+    promptUsed:
+      typeof existingMetadata.promptUsed === "string"
+        ? existingMetadata.promptUsed
+        : null,
+    promptSource:
+      typeof existingMetadata.promptSource === "string"
+        ? existingMetadata.promptSource
+        : null,
+    promptHash:
+      typeof existingMetadata.promptHash === "string"
+        ? existingMetadata.promptHash
+        : null,
+    scriptHash:
+      typeof existingMetadata.scriptHash === "string"
+        ? existingMetadata.scriptHash
+        : null,
+    campaignSpecificContext:
+      existingMetadata.campaignSpecificContext &&
+      typeof existingMetadata.campaignSpecificContext === "object"
+        ? existingMetadata.campaignSpecificContext as VideoCreativeAsset["campaignSpecificContext"]
+        : null,
+  });
   const nextMetadata = {
-    ...(typeof asset.metadata === "object" && asset.metadata
-      ? (asset.metadata as Record<string, unknown>)
-      : {}),
+    ...existingMetadata,
     providerStatus: finalStatus.status,
     providerRaw: finalStatus.raw,
     provider_original_url: finalStatus.videoUrl,
@@ -1198,6 +1386,7 @@ export async function pollVideoGenerationStatusJob(params: {
     storageContentType: durableVideo.contentType,
     storageByteSize: durableVideo.byteSize,
     qualityGateStatus: "candidate_ready",
+    videoQualityGate: nextVideoQualityGate,
     providerError: null,
     providerErrorCode: null,
   } satisfies Record<string, unknown>;

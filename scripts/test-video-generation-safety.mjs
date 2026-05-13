@@ -25,6 +25,8 @@ assert.match(videoJob, /providerUsageRunId/, "video generation accepts a provide
 assert.match(videoJob, /isAppOwnedCreativeAssetUrl/, "video generation requires an app-owned source static creative");
 assert.match(videoJob, /sourceStaticAssetId/, "video provider metadata preserves source static creative id internally");
 assert.match(videoJob, /normalizeGeneratedVideoProviderFile/, "completed videos normalize into app-owned storage");
+assert.match(videoJob, /evaluateGeneratedVideoQualityGate/, "completed videos run deterministic video QA before launch readiness");
+assert.match(videoJob, /sourceStaticAccepted: videoSourceImage\.accepted/, "video QA is tied to an accepted source static creative");
 assert.match(videoJob, /status: "released"[\s\S]{0,240}providerJobCreated: false/, "pre-provider failures release provider usage instead of creating failed debt");
 assert.match(videoJob, /status: "failed"[\s\S]{0,240}failureMode: "provider_start_failed"/, "failed provider starts are non-ready customer states");
 assert.doesNotMatch(videoJob, /error_message: params\.message/, "video failure persistence does not write nonexistent creative_assets.error_message");
@@ -32,6 +34,7 @@ assert.match(videoJob, /SAFE_VIDEO_FAILURE_MESSAGE/, "customer-facing video fail
 assert.match(videoJob, /VIDEO_STATUS_POLL_MAX_ATTEMPTS = 12/, "video status polling allows async provider renders to resolve without dead-lettering after one poll");
 assert.match(videoJob, /max_attempts: VIDEO_STATUS_POLL_MAX_ATTEMPTS/, "queued video status jobs use the async polling attempt ceiling");
 assert.match(videoJob, /providerError: null,[\s\S]{0,80}providerErrorCode: null/, "successful video completion clears stale failed-render diagnostics");
+assert.doesNotMatch(videoJob, /reasons: \\["video_qa_required"\\]/, "completed videos are not permanently forced into review-only state after passing deterministic QA");
 
 assert.match(higgsfield, /HIGGSFIELD_IMAGE_TO_VIDEO_ENDPOINT = "\/v1\/image2video\/dop"/, "Higgsfield video uses supported image-to-video endpoint");
 assert.match(higgsfield, /input_images/, "Higgsfield video sends source image input");

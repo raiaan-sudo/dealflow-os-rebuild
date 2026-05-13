@@ -24,7 +24,7 @@ type StaticCreativeReadinessInput = {
   } | null;
 };
 
-type VideoCreativeReadinessInput = {
+export type VideoCreativeReadinessInput = {
   id?: string | null;
   videoUrl?: string | null;
   videoGenerationState?: string | null;
@@ -64,6 +64,15 @@ type VideoCreativeReadinessInput = {
     reasons?: string[] | null;
   } | null;
   sampleOnly?: boolean | null;
+};
+
+export type VideoQualityGateDecision = {
+  accepted: boolean;
+  usable: boolean;
+  decision: "accept" | "review";
+  reasons: string[];
+  evaluatedAt: string;
+  mode: "deterministic_provenance";
 };
 
 export type StaticCreativeReadiness = {
@@ -202,10 +211,9 @@ function hasProviderError(video: VideoCreativeReadinessInput) {
 
 function hasPromptProvenance(video: VideoCreativeReadinessInput) {
   return Boolean(
-    video.promptHash ||
-    video.promptUsed ||
-    video.promptSource === "creative_intake" ||
-    video.promptSource === "campaign_specific_fallback",
+    (video.promptHash || video.promptUsed) &&
+      (video.promptSource === "creative_intake" ||
+        video.promptSource === "campaign_specific_fallback"),
   );
 }
 
@@ -227,6 +235,72 @@ function looksLikeSampleVideo(video: VideoCreativeReadinessInput) {
   ].filter(Boolean).join(" ");
 
   return video.sampleOnly === true || /\b(sample|demo|mock|placeholder|template)\b/i.test(value);
+}
+
+export function evaluateGeneratedVideoQualityGate(
+  video: VideoCreativeReadinessInput,
+  now = new Date(),
+): VideoQualityGateDecision {
+  const reasons: string[] = [];
+
+  if (!isPlayableVideoCreative(video)) {
+    reasons.push("missing_playable_video");
+  }
+
+  if (looksLikeSampleVideo(video)) {
+    reasons.push("sample_or_template_video");
+  }
+
+  if (video.storageNormalized !== true || video.storageBucket !== "creative-assets") {
+    reasons.push("storage_not_normalized");
+  }
+
+  if (!/^video\/mp4\b/i.test(video.storageContentType ?? "")) {
+    reasons.push("missing_mp4_storage_metadata");
+  }
+
+  if (typeof video.storageByteSize !== "number" || video.storageByteSize <= 0) {
+    reasons.push("missing_storage_size");
+  }
+
+  if (!video.providerName || !video.providerAssetId) {
+    reasons.push("missing_provider_provenance");
+  }
+
+  if (hasProviderError(video)) {
+    reasons.push("provider_reported_issue");
+  }
+
+  if (!video.sourceStaticAssetId || !video.sourceImageUrl) {
+    reasons.push("missing_source_static_asset");
+  }
+
+  if (video.sourceStaticAccepted !== true) {
+    reasons.push("source_static_not_accepted");
+  }
+
+  if (!hasPromptProvenance(video)) {
+    reasons.push("missing_prompt_provenance");
+  }
+
+  if (!video.scriptHash) {
+    reasons.push("missing_script_hash");
+  }
+
+  if (!video.campaignSpecificContext?.campaignId) {
+    reasons.push("missing_campaign_context");
+  }
+
+  const accepted = reasons.length === 0;
+
+  return {
+    accepted,
+    usable: accepted,
+    decision: accepted ? "accept" : "review",
+    reasons,
+    evaluatedAt: now.toISOString(),
+    mode: "deterministic_provenance",
+  };
 }
 
 export function getVideoLaunchReadinessReason(video: VideoCreativeReadinessInput | null | undefined) {
