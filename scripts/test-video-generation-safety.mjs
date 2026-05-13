@@ -35,6 +35,9 @@ assert.match(higgsfield, /input_images/, "Higgsfield video sends source image in
 assert.match(higgsfield, /inputImageUrl/, "Higgsfield video request requires source image URL");
 assert.match(higgsfield, /"dop-turbo"/, "Higgsfield video defaults to supported DoP model");
 assert.doesNotMatch(higgsfield, /aspect_ratio:[\s\S]{0,120}title:[\s\S]{0,120}withPolling: false/, "Higgsfield video no longer sends unsupported text-only video payload");
+assert.match(avatarProvider, /inputImageUrl: typeof request\.inputImageUrl === "string" \? request\.inputImageUrl : null/, "Higgsfield avatar provider forwards the selected static source image URL");
+assert.match(avatarProvider, /safeProviderDiagnostic/, "Higgsfield avatar provider preserves sanitized internal provider diagnostics");
+assert.match(avatarProvider, /providerError: diagnostic/, "sanitized Higgsfield provider diagnostics stay in internal metadata");
 
 assert.match(storageNormalization, /MAX_STATIC_CREATIVE_PROVIDER_VIDEO_BYTES/, "video storage normalization has an explicit byte limit");
 assert.match(storageNormalization, /contentTypePrefix\?: "image\/" \| "video\/"/, "provider fetcher validates video content type");

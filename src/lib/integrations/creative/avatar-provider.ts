@@ -31,6 +31,16 @@ function parseAvatarFailure(error: unknown): ProviderFailure {
   };
 }
 
+function safeProviderDiagnostic(error: unknown) {
+  const rawMessage = error instanceof Error ? error.message : String(error ?? "");
+  const message = rawMessage
+    .replace(/https?:\/\/\S+/g, "[redacted-url]")
+    .replace(/\b[A-Za-z0-9_-]{24,}\b/g, "[redacted-token]")
+    .trim();
+
+  return message || "AI video generation failed.";
+}
+
 class UnsupportedAvatarProvider implements AvatarVideoProvider {
   id = "ai_video_generation";
   label = "AI Video Generation";
@@ -306,6 +316,7 @@ class HiggsfieldVideoProvider implements AvatarVideoProvider {
         prompt: request.prompt ?? script,
         script,
         title: typeof request.title === "string" ? request.title : null,
+        inputImageUrl: typeof request.inputImageUrl === "string" ? request.inputImageUrl : null,
       });
 
       return {
@@ -324,6 +335,8 @@ class HiggsfieldVideoProvider implements AvatarVideoProvider {
         error: null,
       };
     } catch (error) {
+      const diagnostic = safeProviderDiagnostic(error);
+
       return {
         ok: false,
         providerName: this.name,
@@ -334,11 +347,12 @@ class HiggsfieldVideoProvider implements AvatarVideoProvider {
         metadata: {
           provider: this.name,
           model: env.videoModel,
+          providerError: diagnostic,
         },
         error:
-          error instanceof Error && /credit|balance/i.test(error.message)
+          /credit|balance/i.test(diagnostic)
             ? "Video generation could not start because provider credits are unavailable."
-            : "AI video generation failed.",
+            : diagnostic,
       };
     }
   }
