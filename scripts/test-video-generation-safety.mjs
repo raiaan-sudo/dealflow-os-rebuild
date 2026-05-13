@@ -28,6 +28,8 @@ assert.match(videoJob, /normalizeGeneratedVideoProviderFile/, "completed videos 
 assert.match(videoJob, /evaluateGeneratedVideoQualityGate/, "completed videos run deterministic video QA before launch readiness");
 assert.match(videoJob, /sourceStaticAccepted: videoSourceImage\.accepted/, "video QA is tied to an accepted source static creative");
 assert.match(videoJob, /buildVideoProductQualityGate/, "completed videos persist UGC product-quality gate metadata");
+assert.match(videoJob, /videoProductQualityGate: existingVideoProductQualityGate/, "async video status completion reuses accepted product-quality gate in deterministic QA");
+assert.match(videoJob, /videoPatch: \{[\s\S]*videoQualityGate: nextVideoQualityGate,[\s\S]*videoProductQualityGate: existingVideoProductQualityGate/, "async video status completion persists launch-ready QA metadata back into the campaign plan");
 assert.match(videoJob, /hook in the first 1-2 seconds/, "UGC prompts require an immediate hook");
 assert.match(videoJob, /specific buyer pain or market problem/, "UGC prompts require a campaign-specific market problem");
 assert.match(videoJob, /relatable creator\/agent POV/, "UGC prompts require a creator or agent point of view");

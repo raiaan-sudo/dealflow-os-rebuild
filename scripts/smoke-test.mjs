@@ -511,6 +511,7 @@ function runOfflineChecks() {
   assertIncludes(campaignPublishPanel, "router.refresh()", "Publish panel launch gate refresh", "successful publish actions refresh server-rendered launch gates");
   assertIncludes(campaignPublishPanel, "livePublished", "Publish panel live snapshot truth", "the publish panel only marks a funnel public when a published snapshot exists");
   assertIncludes(campaignPublishPanel, "visibleError", "Publish panel stale error guard", "stale publish errors do not remain visible after a successful live publish");
+  assertIncludes(campaignPublishPanel, "timeZone: \"UTC\"", "Publish panel hydration-stable timestamps", "client publish timestamps render the same text during SSR and browser hydration");
   assertIncludes(campaignPublishPanel, "rel=\"noreferrer\"", "Publish panel external link isolation", "published funnel links opened in a new tab do not retain opener access");
   assertIncludes(campaignEntitlements, "getCurrentBillingOverrideForOrganization", "Campaign publish billing override", "campaign-scoped entitlements honor the current billing override for owner launch walkthroughs");
   assertIncludes(campaignEntitlements, "launchOverride", "Campaign entitlement override propagation", "publish and launch entitlement checks receive billing override state");

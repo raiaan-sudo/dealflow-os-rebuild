@@ -40,6 +40,7 @@ function formatTimestamp(value: string | null) {
   return new Date(value).toLocaleString("en-CA", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: "UTC",
   });
 }
 

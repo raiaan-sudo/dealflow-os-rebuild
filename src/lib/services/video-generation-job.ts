@@ -428,6 +428,7 @@ async function persistVideoStateToCampaignPlan(params: {
   status: "generated" | "failed";
   videoUrl: string | null;
   message: string | null;
+  videoPatch?: Partial<VideoCreativeAsset>;
 }) {
   const row = await loadCampaignPlanRow(params.supabase, params.userId, params.campaignId);
   const savedDocument = getSavedCampaignDocumentFromRow(row) ?? {};
@@ -438,6 +439,7 @@ async function persistVideoStateToCampaignPlan(params: {
     video.providerAssetId === params.providerAssetId
       ? {
           ...video,
+          ...(params.videoPatch ?? {}),
           videoUrl: params.videoUrl ?? undefined,
           videoGenerationState: params.status,
           videoGenerationMessage: params.message,
@@ -1092,6 +1094,7 @@ export async function runVideoGenerationJob(params: {
     scriptHash,
     campaignSpecificContext,
     videoQualityGate,
+    videoProductQualityGate,
   };
 
   await persistVideoAdsToCampaignPlan({
@@ -1375,6 +1378,12 @@ export async function pollVideoGenerationStatusJob(params: {
   }
 
   const existingMetadata = asRecord(asset.metadata) ?? {};
+  const existingVideoProductQualityGate =
+    existingMetadata.videoProductQualityGate &&
+    typeof existingMetadata.videoProductQualityGate === "object" &&
+    !Array.isArray(existingMetadata.videoProductQualityGate)
+      ? existingMetadata.videoProductQualityGate as VideoCreativeAsset["videoProductQualityGate"]
+      : null;
   const nextVideoQualityGate = evaluateGeneratedVideoQualityGate({
     id: asset.creative_id ?? asset.id,
     videoUrl: durableVideo.durableUrl,
@@ -1417,6 +1426,7 @@ export async function pollVideoGenerationStatusJob(params: {
       typeof existingMetadata.campaignSpecificContext === "object"
         ? existingMetadata.campaignSpecificContext as VideoCreativeAsset["campaignSpecificContext"]
         : null,
+    videoProductQualityGate: existingVideoProductQualityGate,
   });
   const nextMetadata = {
     ...existingMetadata,
@@ -1463,6 +1473,48 @@ export async function pollVideoGenerationStatusJob(params: {
     status: "generated",
     videoUrl: durableVideo.durableUrl,
     message: null,
+    videoPatch: {
+      providerName: asset.provider_name ?? params.payload.providerName ?? null,
+      providerAssetId: params.payload.providerAssetId,
+      providerStatus: finalStatus.status,
+      storageNormalized: true,
+      storageBucket: durableVideo.storageBucket,
+      storagePath: durableVideo.storagePath,
+      storageContentType: durableVideo.contentType,
+      storageByteSize: durableVideo.byteSize,
+      sourceStaticAssetId:
+        typeof existingMetadata.sourceStaticAssetId === "string"
+          ? existingMetadata.sourceStaticAssetId
+          : null,
+      sourceImageUrl:
+        typeof existingMetadata.sourceImageUrl === "string"
+          ? existingMetadata.sourceImageUrl
+          : null,
+      sourceStaticAccepted: existingMetadata.sourceStaticAccepted === true,
+      promptUsed:
+        typeof existingMetadata.promptUsed === "string"
+          ? existingMetadata.promptUsed
+          : null,
+      promptSource:
+        typeof existingMetadata.promptSource === "string"
+          ? existingMetadata.promptSource
+          : null,
+      promptHash:
+        typeof existingMetadata.promptHash === "string"
+          ? existingMetadata.promptHash
+          : null,
+      scriptHash:
+        typeof existingMetadata.scriptHash === "string"
+          ? existingMetadata.scriptHash
+          : null,
+      campaignSpecificContext:
+        existingMetadata.campaignSpecificContext &&
+        typeof existingMetadata.campaignSpecificContext === "object"
+          ? existingMetadata.campaignSpecificContext as VideoCreativeAsset["campaignSpecificContext"]
+          : null,
+      videoQualityGate: nextVideoQualityGate,
+      videoProductQualityGate: existingVideoProductQualityGate,
+    },
   });
 
   await markSessionCostBudgetEvent({
