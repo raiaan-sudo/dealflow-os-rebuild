@@ -185,6 +185,7 @@ export default async function BuildCreativesPage({
       scriptHash: video.scriptHash ?? null,
       campaignSpecificContext: video.campaignSpecificContext ?? null,
       videoQualityGate: video.videoQualityGate ?? null,
+      videoProductQualityGate: video.videoProductQualityGate ?? null,
       videoQa: video.videoQa ?? null,
       sampleOnly: video.sampleOnly ?? null,
       qualityGate: video.qualityGate ?? null,

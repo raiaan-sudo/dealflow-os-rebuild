@@ -438,6 +438,16 @@ assert.equal(productionMappedVideo.length, 1);
 assert.equal(isLaunchReadyVideoCreative(productionMappedVideo[0]), true);
 assert.equal(getVideoReadinessLabel(productionMappedVideo[0]), "Campaign-specific UGC ready");
 
+const buildCreativePageSource = fs.readFileSync(
+  path.join(repoRoot, "src/app/(app)/build/creatives/page.tsx"),
+  "utf8",
+);
+assert.match(
+  buildCreativePageSource,
+  /videoProductQualityGate:\s*video\.videoProductQualityGate\s*\?\?\s*null/,
+  "Build Creative Studio must serialize videoProductQualityGate so launch-ready UGC does not fall back to review samples",
+);
+
 const reviewOnlyVideo = {
   ...readyVideo,
   id: "review-only-video",
