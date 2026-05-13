@@ -1130,6 +1130,8 @@ export async function pollVideoGenerationStatusJob(params: {
     storageContentType: durableVideo.contentType,
     storageByteSize: durableVideo.byteSize,
     qualityGateStatus: "candidate_ready",
+    providerError: null,
+    providerErrorCode: null,
   } satisfies Record<string, unknown>;
 
   const { data: updatedAssetRaw, error: updateError } = await params.supabase
