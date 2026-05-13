@@ -53,10 +53,7 @@ function buildStorageMetadata(
 function evaluatePreStorageStaticVisualDecision(asset: StaticCreativeAsset) {
   return evaluateStaticVisualAssetDecision({
     ...asset,
-    storageNormalized:
-      asset.storageNormalized === false && asset.imageUrl
-        ? null
-        : asset.storageNormalized,
+    storageNormalized: asset.imageUrl ? true : asset.storageNormalized,
   });
 }
 

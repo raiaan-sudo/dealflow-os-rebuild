@@ -547,13 +547,13 @@ function runOfflineChecks() {
   assertIncludes(launchRoute, "getNestedText(snapshot, [\"name\"])", "Launch snapshot name fallback", "published snapshots without publish.slug can recover the public slug from snapshot name");
   assertIncludes(launchRoute, "currentPlan.public_slug", "Launch current-plan slug source", "Meta launch can use the recovered plan slug when the canonical campaign record is stale");
   assertIncludes(launchRoute, "persistRecoveredPublicSlug", "Launch slug self-heal", "Meta launch repairs the missing public_slug row before provider calls need the public funnel URL");
-  assertIncludes(launchRoute, "evaluateStaticVisualAssetDecision", "Launch image quality gate", "Meta launch refuses selected images that fail the text-free background contract");
+  assertIncludes(launchRoute, "getStaticCreativeReadiness", "Launch image quality gate", "Meta launch refuses selected images that fail the text-free background contract");
   assertIncludes(launchRoute, "selected_ad_image_not_launch_ready", "Launch bad image failure code", "Meta launch fails closed when the selected creative image is not launch-ready");
   assertIncludes(selectAdRoute, "selected_ad_not_launch_safe", "Select-ad image quality gate", "creative selection rejects generated images that are unsafe for launch");
-  assertIncludes(selectAdRoute, "evaluateStaticVisualAssetDecision", "Select-ad visual contract", "creative selection applies the same text-free generated image contract before saving launch choices");
+  assertIncludes(selectAdRoute, "isLaunchReadyStaticCreative", "Select-ad visual contract", "creative selection applies the same text-free generated image contract before saving launch choices");
   assertIncludes(selectAdRoute, "assertCampaignCanLaunch", "Select-ad billing entitlement gate", "inactive or unpaid customers cannot approve a creative launch set");
   assertIncludes(creativeWizard, "Full-resolution creative files stay inside DealFlow", "Creative no-download policy copy", "customer creative workspace explains raw creative files stay inside DealFlow");
-  assertIncludes(staticCreativePreviewCard, "Full-resolution available through launch workflow, not direct download", "Creative direct-download copy", "customer preview cards avoid presenting generated files as downloadable assets");
+  assertIncludes(staticCreativePreviewCard, "Full-resolution creative files stay inside DealFlow and are used through the launch workflow", "Creative direct-file copy", "customer preview cards avoid presenting generated files as raw files");
   assertExcludes(creativeWizard, /Download|Save Image|Open original|Copy URL|Export/, "Creative wizard download affordances absent", "customer creative workspace does not expose direct download/export/copy-url actions");
   assertIncludes(creativeWizard, "controlsList=\"nodownload noplaybackrate\"", "Creative video no-download controls", "customer video previews request native controls without download affordances");
   assertIncludes(previewPage, "controlsList=\"nodownload noplaybackrate\"", "Preview video no-download controls", "customer preview page requests native controls without download affordances");

@@ -15,7 +15,7 @@ import {
 } from "@/lib/services/campaign-plan-document";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
-import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
+import { isLaunchReadyStaticCreative } from "@/lib/services/creative-media-readiness";
 import type { StaticCreativeAsset } from "@/lib/services/creative-engine";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 
@@ -112,7 +112,7 @@ export async function POST(
 
     const rejectedIds = selectedAdIds.filter((selectedId) => {
       const ad = staticAdById.get(selectedId);
-      return !ad || ad.qualityGate?.accepted === false || !evaluateStaticVisualAssetDecision(ad).usable;
+      return !ad || !isLaunchReadyStaticCreative(ad);
     });
 
     if (rejectedIds.length > 0) {

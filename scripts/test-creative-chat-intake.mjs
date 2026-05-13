@@ -82,9 +82,9 @@ assert.match(creativeWizardUi, /Primary creative/);
 assert.match(creativeWizardUi, /Review variant/);
 assert.match(creativeWizardUi, /Add to review set/);
 assert.match(creativeWizardUi, /Full-resolution creative files stay inside DealFlow/);
-assert.match(staticCreativePreviewCardUi, /Full-resolution available through launch workflow, not direct download/);
+assert.match(staticCreativePreviewCardUi, /Full-resolution creative files stay inside DealFlow and are used through the launch workflow/);
 assert.match(selectAdRoute, /assertCampaignCanLaunch/);
-assert.match(selectAdRoute, /!evaluateStaticVisualAssetDecision\(ad\)\.usable/);
+assert.match(selectAdRoute, /!isLaunchReadyStaticCreative\(ad\)/);
 assert.doesNotMatch(selectAdRoute, /Boolean\(ad\.imageUrl\) && !evaluateStaticVisualAssetDecision/);
 assert.match(creativeChatIntakeUi, /Customer-ready static ad/);
 assert.match(creativeChatIntakeUi, /Output mode" value=\{answers\.outputMode === "background_only" \? "Text-free visual background" : "Customer-ready static ad"\}/);
@@ -93,6 +93,7 @@ assert.match(launchPageUi, /Return to Creatives and refresh unfinished previews/
 assert.match(creativeWizardUi, /controlsList="nodownload noplaybackrate"/);
 assert.match(previewPageUi, /controlsList="nodownload noplaybackrate"/);
 assert.doesNotMatch(creativeWizardUi, /Download|Save Image|Open original|Copy URL|Export/);
+assert.doesNotMatch(staticCreativePreviewCardUi, /Download|Save Image|Open original|Copy URL|Export/);
 assert.doesNotMatch(creativeChatIntakeUi, /Download|Save Image|Open original|Copy URL|Export/);
 assert.doesNotMatch(prepaywallPreviewUi, /Export locked/);
 assert.match(staticAdsRoute, /getApprovedCreativeIntakeGenerationContext/);
@@ -228,6 +229,7 @@ function buildAsset() {
     id: "static-1",
     angle: "opportunity",
     imageUrl: "https://supabase.example.test/storage/v1/object/public/creative-assets/user-test/campaign-test/generated-static/static-1/existing.png",
+    storageNormalized: true,
     imageGenerationState: "generated",
     imageGenerationMessage: null,
     imageGenerationModel: "marketing_studio_image",

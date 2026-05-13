@@ -105,7 +105,43 @@ export type VideoCreativeAsset = {
   videoUrl?: string;
   videoGenerationState?: "generated" | "generating" | "failed" | "unavailable";
   videoGenerationMessage?: string | null;
+  providerName?: string | null;
   providerAssetId?: string | null;
+  providerStatus?: string | null;
+  storageNormalized?: boolean | null;
+  storageBucket?: string | null;
+  storagePath?: string | null;
+  storageContentType?: string | null;
+  storageByteSize?: number | null;
+  sourceStaticAssetId?: string | null;
+  sourceImageUrl?: string | null;
+  sourceStaticAccepted?: boolean | null;
+  promptUsed?: string | null;
+  promptSource?: string | null;
+  promptHash?: string | null;
+  scriptHash?: string | null;
+  campaignSpecificContext?: {
+    campaignId?: string | null;
+    creativeId?: string | null;
+    copyId?: string | null;
+    audience?: string | null;
+    location?: string | null;
+    offer?: string | null;
+    cta?: string | null;
+    persona?: string | null;
+  } | null;
+  videoQualityGate?: {
+    accepted?: boolean | null;
+    usable?: boolean | null;
+    decision?: string | null;
+    reasons?: string[] | null;
+  } | null;
+  videoQa?: {
+    usable?: boolean | null;
+    decision?: string | null;
+    reasons?: string[] | null;
+  } | null;
+  sampleOnly?: boolean | null;
   cta: string;
   creatorStyle: string;
   voiceStyle: string;

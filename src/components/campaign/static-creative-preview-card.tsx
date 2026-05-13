@@ -28,6 +28,15 @@ type StaticCreativePreviewCardProps = {
     accepted?: boolean | null;
     hardFailures?: string[] | null;
   } | null;
+  imageQa?: {
+    usable?: boolean | null;
+    decision?: "accept" | "reject" | "review" | string | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+    textDensity?: number | null;
+    layoutRisk?: number | null;
+    detectedTextSamples?: string[] | null;
+  } | null;
   visualPromptBrief?: {
     category?: CampaignCategory | string | null;
     visualAssetContract?: string | null;
@@ -59,6 +68,7 @@ export function StaticCreativePreviewCard({
   overlayText,
   score,
   qualityGate,
+  imageQa,
   visualPromptBrief,
   selectedCount,
   formatLabel,
@@ -88,6 +98,7 @@ export function StaticCreativePreviewCard({
         overlayText={overlayText}
         primaryText={primaryText}
         qualityGate={qualityGate}
+        imageQa={imageQa}
         score={score}
         selectedCount={selectedCount}
         showRawAssetState={!compact}
@@ -126,7 +137,7 @@ export function StaticCreativePreviewCard({
         </div>
         {!compact ? (
           <p className="rounded-2xl border border-cyan-300/14 bg-cyan-300/[0.055] px-3 py-2 text-xs leading-5 text-cyan-100">
-            Full-resolution available through launch workflow, not direct download.
+            Full-resolution creative files stay inside DealFlow and are used through the launch workflow.
           </p>
         ) : null}
       </div>
@@ -172,6 +183,7 @@ export function StaticCreativePreviewCard({
                 overlayText={overlayText}
                 primaryText={primaryText}
                 qualityGate={qualityGate}
+                imageQa={imageQa}
                 score={score}
                 selectedCount={selectedCount}
                 showRawAssetState
@@ -207,6 +219,7 @@ export function StaticCreativeSummaryCard({
   overlayText,
   score,
   qualityGate,
+  imageQa,
   visualPromptBrief,
   selectedCount,
   className,
@@ -250,6 +263,7 @@ export function StaticCreativeSummaryCard({
           overlayText={overlayText}
           primaryText={primaryText}
           qualityGate={qualityGate}
+          imageQa={imageQa}
           score={score}
           selectedCount={selectedCount}
           showRawAssetState={false}

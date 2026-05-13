@@ -91,6 +91,7 @@ const generatedCreativeInput = {
   primaryText: "A curated shortlist helps buyers compare fit before the same homes get crowded.",
   cta: "See Matching Homes",
   imageUrl: "https://example.test/background.png",
+  storageNormalized: true,
   imageGenerationState: "generated",
   imagePrompt: "TEXT-FREE BACKGROUND ASSET ONLY. Warm buyer reviewing homes in Austin.",
   visualPromptBrief: {
@@ -199,6 +200,7 @@ const contractBrief = {
 assert.deepEqual(
   evaluateStaticVisualAssetDecision({
     imageUrl: "https://example.test/text-free-background.png",
+    storageNormalized: true,
     imagePrompt: "TEXT-FREE BACKGROUND ASSET ONLY. Warm buyer reviewing homes in Austin.",
     imagePromptConfig: {
       prompt: "TEXT-FREE BACKGROUND ASSET ONLY. Clean photography with negative space.",
@@ -214,6 +216,7 @@ assert.deepEqual(
 
 const legacyFullAdDecision = evaluateStaticVisualAssetDecision({
   imageUrl: "https://example.test/legacy-full-ad.png",
+  storageNormalized: true,
   imagePrompt:
     "TEXT-FREE BACKGROUND ASSET ONLY, but make a finished paid social ad creative frame with proof modules and a CTA-safe bottom.",
   visualPromptBrief: contractBrief,
@@ -272,6 +275,7 @@ const baseStaticAds = buildCreativeSystem(generationInput).staticAds;
 const reusableStaticAds = baseStaticAds.slice(0, -1).map((asset) => ({
   ...asset,
   imageUrl: `https://example.test/${asset.id}.png`,
+  storageNormalized: true,
   imageGenerationState: "generated",
   imageGenerationMessage: null,
   imageGenerationModel: "gpt-image-1.5",

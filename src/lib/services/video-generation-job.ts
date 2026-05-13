@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { ApiError, retryRouteStep } from "@/lib/api/route";
 import { getHeyGenVideoStatus } from "@/lib/ai/heygen";
 import { getHiggsfieldGenerationStatus } from "@/lib/ai/higgsfield";
@@ -91,6 +92,10 @@ function createDefaultVideoState(payload: VideoGenerationJobPayload): VideoCreat
 const SAFE_VIDEO_FAILURE_MESSAGE =
   "Video preview is temporarily unavailable. Your campaign can continue reviewing static creatives while we finish video rendering.";
 const VIDEO_STATUS_POLL_MAX_ATTEMPTS = 12;
+
+function sha256(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
 
 function getVideoSourceImageUrl(savedDocument: unknown, selectedIndex: number) {
   const record = savedDocument && typeof savedDocument === "object"
@@ -566,22 +571,27 @@ export async function runVideoGenerationJob(params: {
     idempotencyKey: `video_generation:${avatarProvider.name}:${row.organization_id ?? "org"}:${params.userId}:${params.campaignId}:${params.payload.creativeIndex}:${params.providerUsageRunId ?? "default"}`,
   });
 
+  const approvedPrompt = creativeIntake?.promptVersion.generatedPrompt ?? null;
+  const fallbackPrompt = [
+    "Create a polished native UGC-style vertical video for a real estate lead generation campaign.",
+    "Show a believable creator/customer/agent in a real home or market setting with natural phone-camera energy.",
+    "Use the provided script as spoken direction only. Do not render captions, lower thirds, pricing cards, UI screens, logos, watermarks, fake documents, or on-screen text inside the video.",
+    params.payload.title,
+    params.payload.hook,
+    params.payload.body,
+    params.payload.cta,
+    params.payload.scriptText,
+  ].filter(Boolean).join("\n");
+  const promptUsed = approvedPrompt ?? fallbackPrompt;
+  const promptSource = approvedPrompt ? "creative_intake" : "campaign_specific_fallback";
+  const promptHash = sha256(promptUsed);
+  const scriptHash = sha256(params.payload.scriptText);
   let providerVideo;
 
   try {
-    const approvedPrompt = creativeIntake?.promptVersion.generatedPrompt ?? null;
     providerVideo = avatarProvider.parseResult(await avatarProvider.execute({
       script: params.payload.scriptText,
-      prompt: approvedPrompt ?? [
-        "Create a polished native UGC-style vertical video for a real estate lead generation campaign.",
-        "Show a believable creator/customer/agent in a real home or market setting with natural phone-camera energy.",
-        "Use the provided script as spoken direction only. Do not render captions, lower thirds, pricing cards, UI screens, logos, watermarks, fake documents, or on-screen text inside the video.",
-        params.payload.title,
-        params.payload.hook,
-        params.payload.body,
-        params.payload.cta,
-        params.payload.scriptText,
-      ].filter(Boolean).join("\n"),
+      prompt: promptUsed,
       title: params.payload.title,
       aspectRatio: "9:16",
       avatarId: params.payload.avatarProfileId ?? undefined,
@@ -773,6 +783,32 @@ export async function runVideoGenerationJob(params: {
         provider_original_url: providerVideo.fileUrl ?? null,
         sourceStaticAssetId: videoSourceImage.staticAssetId,
         sourceImageUrl: videoSourceImage.imageUrl,
+        promptUsed,
+        promptSource,
+        promptHash,
+        scriptHash,
+        audience: params.payload.audience,
+        location: params.payload.location,
+        offer: params.payload.body,
+        persona: params.payload.avatarProfileId ?? "provider_default_avatar",
+        campaignSpecificContext: {
+          campaignId: params.campaignId,
+          creativeId: params.payload.creativeId,
+          copyId: params.payload.copyId,
+          audience: params.payload.audience,
+          location: params.payload.location,
+          offer: params.payload.body,
+          cta: params.payload.cta,
+          persona: params.payload.avatarProfileId ?? "provider_default_avatar",
+        },
+        videoQualityGate: durableVideoUrl
+          ? {
+              accepted: false,
+              usable: false,
+              decision: "review",
+              reasons: ["video_qa_required"],
+            }
+          : null,
         storageNormalized: Boolean(durableVideoUrl),
         storageBucket: durableVideo?.storageBucket ?? null,
         storagePath: durableVideo?.storagePath ?? null,
@@ -834,7 +870,39 @@ export async function runVideoGenerationJob(params: {
       durableVideoUrl
         ? null
         : "Generating video. This can take a minute while the render job completes.",
+    providerName: avatarProvider.name,
     providerAssetId: providerVideo.providerAssetId,
+    providerStatus: providerVideo.status,
+    storageNormalized: Boolean(durableVideoUrl),
+    storageBucket: durableVideo?.storageBucket ?? null,
+    storagePath: durableVideo?.storagePath ?? null,
+    storageContentType: durableVideo?.contentType ?? null,
+    storageByteSize: durableVideo?.byteSize ?? null,
+    sourceStaticAssetId: videoSourceImage.staticAssetId,
+    sourceImageUrl: videoSourceImage.imageUrl,
+    sourceStaticAccepted: true,
+    promptUsed,
+    promptSource,
+    promptHash,
+    scriptHash,
+    campaignSpecificContext: {
+      campaignId: params.campaignId,
+      creativeId: params.payload.creativeId,
+      copyId: params.payload.copyId,
+      audience: params.payload.audience,
+      location: params.payload.location,
+      offer: params.payload.body,
+      cta: params.payload.cta,
+      persona: params.payload.avatarProfileId ?? "provider_default_avatar",
+    },
+    videoQualityGate: durableVideoUrl
+      ? {
+          accepted: false,
+          usable: false,
+          decision: "review",
+          reasons: ["video_qa_required"],
+        }
+      : null,
   };
 
   await persistVideoAdsToCampaignPlan({

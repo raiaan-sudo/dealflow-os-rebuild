@@ -24,7 +24,7 @@ import {
 } from "@/lib/integrations/meta/service";
 import { assertMetaLaunchBillingAccessForOrganization } from "@/lib/services/billing-service";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
-import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
+import { getStaticCreativeReadiness, isLaunchReadyStaticCreative } from "@/lib/services/creative-media-readiness";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { slugify } from "@/lib/utils";
@@ -884,7 +884,13 @@ async function launchCampaignToMeta(
       throw new ApiError(400, "Missing selected Meta assets", "missing_selected_meta_assets");
     }
 
-    const selectedAdId = storedPayload?.selected_ad_id ?? storedPayload?.selected_ad_ids?.[0] ?? null;
+    const selectedAdIds = Array.from(
+      new Set([
+        ...(Array.isArray(storedPayload?.selected_ad_ids) ? storedPayload.selected_ad_ids : []),
+        ...(storedPayload?.selected_ad_id ? [storedPayload.selected_ad_id] : []),
+      ].map((value) => String(value).trim()).filter(Boolean)),
+    );
+    const selectedAdId = selectedAdIds[0] ?? null;
 
     if (!selectedAdId) {
       throw new ApiError(
@@ -894,10 +900,13 @@ async function launchCampaignToMeta(
       );
     }
 
-    const selectedStaticAd =
-      record.creatives.staticAds.find((ad) => ad.id === selectedAdId) ?? null;
+    const staticAdById = new Map(record.creatives.staticAds.map((ad) => [ad.id, ad]));
+    const selectedStaticAds = selectedAdIds
+      .map((id) => staticAdById.get(id) ?? null)
+      .filter((ad): ad is NonNullable<typeof ad> => Boolean(ad));
+    const selectedStaticAd = selectedStaticAds[0] ?? null;
 
-    if (!selectedStaticAd) {
+    if (!selectedStaticAd || selectedStaticAds.length !== selectedAdIds.length) {
       throw new ApiError(
         400,
         "The selected ad could not be found in the saved campaign creatives.",
@@ -905,12 +914,12 @@ async function launchCampaignToMeta(
       );
     }
 
-    const selectedImageDecision = evaluateStaticVisualAssetDecision(selectedStaticAd);
+    const staticReadiness = getStaticCreativeReadiness(record.creatives.staticAds, selectedAdIds);
 
-    if (!selectedImageDecision.usable) {
+    if (!staticReadiness.allSelectedReady || selectedStaticAds.some((ad) => !isLaunchReadyStaticCreative(ad))) {
       throw new ApiError(
         400,
-        "The selected creative image is still rendering or needs regeneration before launch.",
+        "One or more selected creative images are still rendering or need regeneration before launch.",
         "selected_ad_image_not_launch_ready",
       );
     }
@@ -966,7 +975,7 @@ async function launchCampaignToMeta(
       );
     }
 
-    const adImageUrl = selectedImageDecision.usable ? selectedStaticAd.imageUrl || null : null;
+    const adImageUrl = selectedStaticAd.imageUrl || null;
     const campaignMetaName = buildDeterministicMetaName({
       organizationId: workspaceId,
       campaignId,

@@ -22,6 +22,7 @@ import {
   getStaticCreativeReadiness,
   getVideoReadinessLabel,
   getVideoReadinessMessage,
+  isLaunchReadyVideoCreative,
   isPlayableVideoCreative,
 } from "@/lib/services/creative-media-readiness";
 import {
@@ -247,8 +248,8 @@ export default async function LaunchAliasPage({
   const staticReadiness = getStaticCreativeReadiness(plan.creatives.staticAds, selectedAdIds);
   const selectedCreativeMediaReady =
     staticReadiness.allSelectedReady;
-  const playableVideos = plan.creatives.videoAds.filter(isPlayableVideoCreative);
-  const videoMediaReady = playableVideos.length > 0;
+  const launchReadyVideos = plan.creatives.videoAds.filter(isLaunchReadyVideoCreative);
+  const videoMediaReady = launchReadyVideos.length > 0;
   const publicFunnelPublished =
     savedRecord.publish.state === "published" &&
     Boolean(savedRecord.publish.slug) &&
@@ -260,7 +261,7 @@ export default async function LaunchAliasPage({
     blockingReasons.push("Finish rendering clean creative images before launch.");
   }
   if (!videoMediaReady) {
-    blockingReasons.push("Finish rendering the video preview before launch.");
+    blockingReasons.push("Approve a campaign-specific UGC video before launch.");
   }
   const dailyBudgetInput =
     plan.runtime.budgetDailyInput && plan.runtime.budgetDailyInput > 0
@@ -312,7 +313,7 @@ export default async function LaunchAliasPage({
       ready: selectedCreativeMediaReady,
       detail:
         selectedCreativeMediaReady
-          ? `${staticReadiness.selectionLabel}; ${staticReadiness.readyLabel}`
+          ? `${staticReadiness.selectionLabel}; ${staticReadiness.selectedReadyLabel}`
           : selectedCreatives.length > 0
             ? "Regenerate selected creatives until clean image renders are ready"
             : "Choose the creative test set first",
@@ -321,8 +322,8 @@ export default async function LaunchAliasPage({
       label: "Video preview ready",
       ready: videoMediaReady,
       detail: videoMediaReady
-        ? `${playableVideos.length} playable app-owned video ${playableVideos.length === 1 ? "preview is" : "previews are"} ready`
-        : "Render a playable app-owned video preview before launch",
+        ? `${launchReadyVideos.length} campaign-specific UGC video ${launchReadyVideos.length === 1 ? "preview is" : "previews are"} launch-ready`
+        : "Render or approve a campaign-specific UGC video before launch",
     },
     {
       label: "Funnel published",
@@ -381,7 +382,7 @@ export default async function LaunchAliasPage({
       ? ["Return to Creatives and refresh unfinished previews before saving the launch set again."]
       : []),
     ...(!videoMediaReady
-      ? ["Return to Creatives and render the video preview before launch."]
+      ? ["Return to Creatives and render or approve a campaign-specific UGC video before launch."]
       : []),
     ...(!providerLaunchEnabled
       ? [
@@ -585,7 +586,7 @@ export default async function LaunchAliasPage({
                     : `${selectedCreatives.length} selected, rendering needed`}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  The first saved ad is the primary creative. The rest stay as review variants for comparison before launch. {staticReadiness.readyLabel}
+                  The first saved ad is the primary creative. The rest stay as review variants for comparison before launch. {staticReadiness.selectedReadyLabel}
                 </p>
               </div>
               <span className="rounded-full border border-cyan-300/16 bg-cyan-300/[0.055] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100">
@@ -613,6 +614,7 @@ export default async function LaunchAliasPage({
                     overlayText={selectedCreative.overlayText}
                     primaryText={selectedCreative.primaryText}
                     qualityGate={selectedCreative.qualityGate}
+                    imageQa={selectedCreative.imageQa}
                     score={selectedCreative.score}
                     index={index}
                     selected
@@ -628,7 +630,7 @@ export default async function LaunchAliasPage({
                   <div>
                     <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Video preview</p>
                     <h3 className="mt-2 text-sm font-semibold text-foreground">
-                      {videoMediaReady ? "Playable video is ready" : "Video render needed"}
+                      {videoMediaReady ? "Campaign-specific UGC is ready" : "Video review needed"}
                     </h3>
                   </div>
                   <span className={videoMediaReady ? "text-sm font-semibold text-emerald-300" : "text-sm font-semibold text-amber-300"}>

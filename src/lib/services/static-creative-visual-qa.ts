@@ -121,7 +121,7 @@ export function evaluateStaticVisualAssetDecision(
   }
 
   if (input.imageQa?.mode === "finished_ad") {
-    if (input.storageNormalized === false) {
+    if (input.storageNormalized !== true) {
       return {
         usable: false,
         reason: "This visual needs to be stored in DealFlow before it can be used as a launch-ready creative.",
@@ -141,7 +141,7 @@ export function evaluateStaticVisualAssetDecision(
     };
   }
 
-  if (input.storageNormalized === false) {
+  if (input.storageNormalized !== true) {
     return {
       usable: false,
       reason: "This visual needs to be stored in DealFlow before it can be used as a launch-ready creative.",

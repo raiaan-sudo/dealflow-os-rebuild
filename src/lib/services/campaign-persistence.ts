@@ -300,6 +300,64 @@ function videoConceptType(assetType: string | null | undefined): VideoCreativeAs
   return assetType === "talking_head_video" ? "founder_expert" : "customer_ugc";
 }
 
+function asVideoQualityGate(value: Json | null | undefined): VideoCreativeAsset["videoQualityGate"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as VideoCreativeAsset["videoQualityGate"];
+}
+
+function metadataString(metadata: Record<string, Json> | null, key: string) {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function metadataNumber(metadata: Record<string, Json> | null, key: string) {
+  const value = metadata?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function isAcceptedSourceStaticRow(row: CreativeAssetRow) {
+  const metadata = asObjectRecord(row.metadata);
+  const imageUrl = row.file_url ?? row.thumbnail_url ?? "";
+  const assetDraft = {
+    imageUrl,
+    storageNormalized:
+      metadata?.storageNormalized === true ||
+      (metadata?.storageNormalizationReusedExistingAppAsset === true && typeof metadata?.storagePath === "string"),
+    imagePrompt: typeof metadata?.imagePrompt === "string" ? metadata.imagePrompt : "",
+    imagePromptConfig: asImagePromptConfig(metadata?.imagePromptConfig),
+    visualPromptBrief: asVisualPromptBrief(metadata?.visualPromptBrief),
+    qualityGate:
+      metadata?.qualityGate && typeof metadata.qualityGate === "object"
+        ? metadata.qualityGate as StaticCreativeAsset["qualityGate"]
+        : null,
+    imageQa:
+      metadata?.imageQa && typeof metadata.imageQa === "object"
+        ? metadata.imageQa as StaticCreativeAsset["imageQa"]
+        : null,
+  };
+
+  return row.status === "ready" && evaluateStaticVisualAssetDecision(assetDraft).usable;
+}
+
+function sourceStaticAccepted(rows: CreativeAssetRow[], sourceStaticAssetId: string | null) {
+  if (!sourceStaticAssetId) {
+    return false;
+  }
+
+  return rows.some((row) => {
+    const metadata = asObjectRecord(row.metadata);
+    const staticAssetId =
+      (typeof metadata?.staticAssetId === "string" && metadata.staticAssetId.trim()) ||
+      row.creative_id ||
+      null;
+
+    return staticAssetId === sourceStaticAssetId && isAcceptedSourceStaticRow(row);
+  });
+}
+
 function mapVideoCreativeAssets(rows: CreativeAssetRow[]): VideoCreativeAsset[] {
   const videoRows = rows.filter((row) =>
     ["talking_head_video", "ugc_video", "montage_video", "video"].includes(String(row.asset_type ?? "")),
@@ -333,6 +391,18 @@ function mapVideoCreativeAssets(rows: CreativeAssetRow[]): VideoCreativeAsset[] 
       .filter(Boolean);
     const errorMessage = assetErrorMessage(row, metadata);
     const conceptType = videoConceptType(row.asset_type);
+    const promptVersion = metadata?.creativeIntakePromptVersionUsed && typeof metadata.creativeIntakePromptVersionUsed === "object"
+      ? metadata.creativeIntakePromptVersionUsed as Record<string, Json>
+      : null;
+    const intakeContext = metadata?.creativeIntakeGenerationContext && typeof metadata.creativeIntakeGenerationContext === "object"
+      ? metadata.creativeIntakeGenerationContext as Record<string, Json>
+      : null;
+    const promptUsed =
+      metadataString(metadata, "promptUsed") ??
+      metadataString(metadata, "generationPrompt") ??
+      (typeof promptVersion?.generatedPrompt === "string" ? promptVersion.generatedPrompt : null);
+    const sourceStaticAssetId = metadataString(metadata, "sourceStaticAssetId");
+    const storageByteSize = metadataNumber(metadata, "storageByteSize");
 
     return {
       id: row.creative_id || row.id,
@@ -361,7 +431,39 @@ function mapVideoCreativeAssets(rows: CreativeAssetRow[]): VideoCreativeAsset[] 
         status === "ready" && fileUrl
           ? null
           : errorMessage ?? "This video preview is not ready yet.",
+      providerName: row.provider_name ?? null,
       providerAssetId: row.provider_asset_id ?? null,
+      providerStatus: metadataString(metadata, "providerStatus"),
+      storageNormalized: metadata?.storageNormalized === true,
+      storageBucket: metadataString(metadata, "storageBucket"),
+      storagePath: metadataString(metadata, "storagePath"),
+      storageContentType: metadataString(metadata, "storageContentType"),
+      storageByteSize,
+      sourceStaticAssetId,
+      sourceImageUrl: metadataString(metadata, "sourceImageUrl"),
+      sourceStaticAccepted: sourceStaticAccepted(rows, sourceStaticAssetId),
+      promptUsed,
+      promptSource: metadataString(metadata, "promptSource"),
+      promptHash: metadataString(metadata, "promptHash"),
+      scriptHash: metadataString(metadata, "scriptHash"),
+      campaignSpecificContext:
+        metadata?.campaignSpecificContext && typeof metadata.campaignSpecificContext === "object"
+          ? metadata.campaignSpecificContext as VideoCreativeAsset["campaignSpecificContext"]
+          : {
+              campaignId:
+                typeof intakeContext?.campaignId === "string" ? intakeContext.campaignId : row.campaign_id,
+              audience: metadataString(metadata, "audience"),
+              location: metadataString(metadata, "location"),
+              offer: metadataString(metadata, "offer"),
+              cta: typeof metadata?.cta === "string" ? metadata.cta : null,
+              persona: metadataString(metadata, "persona"),
+            },
+      videoQualityGate: asVideoQualityGate(metadata?.videoQualityGate),
+      videoQa:
+        metadata?.videoQa && typeof metadata.videoQa === "object"
+          ? metadata.videoQa as VideoCreativeAsset["videoQa"]
+          : null,
+      sampleOnly: metadata?.sampleOnly === true,
       cta: typeof metadata?.cta === "string" && metadata.cta.trim() ? metadata.cta : "Learn More",
       creatorStyle: conceptType === "founder_expert" ? "polished expert walkthrough" : "native creator-style walkthrough",
       voiceStyle: "clear and direct",
@@ -417,7 +519,6 @@ async function loadVideoCreativeAssets(
       .from("creative_assets")
       .select("*")
       .eq("campaign_id", campaignId)
-      .in("asset_type", ["talking_head_video", "ugc_video", "montage_video", "video"])
       .order("created_at", { ascending: false });
 
     if (error) {

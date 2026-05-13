@@ -43,6 +43,7 @@ const {
   getStaticPreviewStatusMessage,
   getVideoReadinessLabel,
   getVideoReadinessMessage,
+  isLaunchReadyVideoCreative,
   isPlayableVideoCreative,
 } = require("../src/lib/services/creative-media-readiness.ts");
 const {
@@ -90,11 +91,13 @@ const creatives = [
 
 const oneSelected = getStaticCreativeReadiness(creatives, ["primary"]);
 assert.equal(oneSelected.selectionLabel, "1 primary creative selected");
-assert.equal(oneSelected.readyLabel, "3 launch-ready previews available");
+assert.equal(oneSelected.readyLabel, "1 selected launch-ready preview");
+assert.equal(oneSelected.availableReadyLabel, "3 launch-ready previews available");
+assert.equal(oneSelected.selectedReadyLabel, "1 selected launch-ready preview");
 assert.equal(oneSelected.selectedBlockedCount, 0);
 assert.equal(oneSelected.retryCount, 2);
 assert.equal(oneSelected.missingCount, 1);
-assert.match(getStaticPreviewStatusMessage(oneSelected), /3 launch-ready previews available; 3 recommended/);
+assert.match(getStaticPreviewStatusMessage(oneSelected), /1 selected launch-ready preview; 3 recommended/);
 assert.match(getStaticPreviewStatusMessage(oneSelected), /optional variants need retry/);
 
 const blockedSelection = getStaticCreativeReadiness(creatives, ["primary", "failed-1"]);
@@ -124,12 +127,62 @@ assert.equal(rejectedPreview.status, "background_rejected");
 assert.doesNotMatch(rejectedPreview.backgroundMessage, /provider\.example|https?:\/\//);
 
 const readyVideo = {
+  id: "campaign-video",
   videoUrl: "https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/video.mp4",
   videoGenerationState: "generated",
+  providerName: "higgsfield",
+  providerAssetId: "provider-job-1",
+  storageNormalized: true,
+  storageBucket: "creative-assets",
+  storagePath: "user/campaign/video.mp4",
+  storageContentType: "video/mp4",
+  storageByteSize: 7_533_116,
+  sourceStaticAssetId: "primary",
+  sourceImageUrl: "https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/primary.png",
+  sourceStaticAccepted: true,
+  promptUsed: "Campaign a18d77f7 Toronto buyer UGC prompt with offer and CTA.",
+  promptSource: "campaign_specific_fallback",
+  promptHash: "prompt-hash",
+  scriptHash: "script-hash",
+  campaignSpecificContext: {
+    campaignId: "a18d77f7-398b-4920-8d93-8332dfff2d44",
+    audience: "Toronto buyers",
+    location: "Toronto, ON",
+    offer: "matching homes",
+    cta: "See Matching Homes",
+  },
+  videoQualityGate: {
+    accepted: true,
+    usable: true,
+    decision: "accept",
+    reasons: [],
+  },
 };
 assert.equal(isPlayableVideoCreative(readyVideo), true);
-assert.equal(getVideoReadinessLabel(readyVideo), "Playable video ready");
-assert.match(getVideoReadinessMessage(readyVideo), /app-owned video preview is ready/);
+assert.equal(isLaunchReadyVideoCreative(readyVideo), true);
+assert.equal(getVideoReadinessLabel(readyVideo), "Campaign-specific UGC ready");
+assert.match(getVideoReadinessMessage(readyVideo), /Campaign-specific app-owned UGC video is ready/);
+
+const reviewOnlyVideo = {
+  ...readyVideo,
+  id: "review-only-video",
+  promptUsed: null,
+  promptSource: null,
+  promptHash: null,
+  videoQualityGate: { accepted: false, usable: false, decision: "review", reasons: ["video_qa_required"] },
+};
+assert.equal(isPlayableVideoCreative(reviewOnlyVideo), true);
+assert.equal(isLaunchReadyVideoCreative(reviewOnlyVideo), false);
+assert.equal(getVideoReadinessLabel(reviewOnlyVideo), "Playable review sample");
+assert.match(getVideoReadinessMessage(reviewOnlyVideo), /missing campaign-specific prompt/);
+
+const sampleVideo = {
+  ...readyVideo,
+  id: "demo-sample-video",
+  sampleOnly: true,
+};
+assert.equal(isLaunchReadyVideoCreative(sampleVideo), false);
+assert.match(getVideoReadinessMessage(sampleVideo), /sample\/template/);
 
 const conceptOnlyVideo = {
   videoUrl: "",
@@ -156,5 +209,6 @@ for (const [name, source] of [
 
 assert.doesNotMatch(creativeWizardSource, /Ready to render/);
 assert.doesNotMatch(creativeWizardSource, /Video preview concept is ready/);
+assert.doesNotMatch(creativeWizardSource, /Video concept is ready/);
 
 console.log("creative media readiness regression checks passed");

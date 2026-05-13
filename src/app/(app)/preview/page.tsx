@@ -23,6 +23,7 @@ import {
   getStaticCreativeReadiness,
   getVideoReadinessLabel,
   getVideoReadinessMessage,
+  isLaunchReadyVideoCreative,
   isPlayableVideoCreative,
 } from "@/lib/services/creative-media-readiness";
 
@@ -90,9 +91,15 @@ export default async function PreviewPage({
   const safeCampaign = normalizeCampaign(validated);
   const previewPlan = safeCampaign.plan;
   const expectedOutcomes = getExpectedOutcomes(previewPlan);
-  const selectedAds = previewPlan.creatives.staticAds.filter((ad) => selectedAdIds.includes(ad.id));
+  const selectedAds = previewPlan.creatives.staticAds
+    .filter((ad) => selectedAdIds.includes(ad.id))
+    .sort((left, right) => selectedAdIds.indexOf(left.id) - selectedAdIds.indexOf(right.id));
   const videoAds = previewPlan.creatives.videoAds;
   const staticReadiness = getStaticCreativeReadiness(previewPlan.creatives.staticAds, selectedAdIds);
+  const selectedStaticMediaReady = staticReadiness.allSelectedReady;
+  const launchReadyVideoCount = videoAds.filter(isLaunchReadyVideoCreative).length;
+  const videoMediaReady = launchReadyVideoCount > 0;
+  const mediaReadyForLaunch = selectedStaticMediaReady && videoMediaReady;
   const campaignIdForFlow = record?.campaign.id ?? null;
 
   if (selectedAds.length === 0) {
@@ -150,8 +157,13 @@ export default async function PreviewPage({
             </h2>
             {selectedAds.length > 0 ? (
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                {staticReadiness.readyLabel}
+                {staticReadiness.selectedReadyLabel}
                 {staticReadiness.issueLabel ? `; ${staticReadiness.issueLabel}` : ""}
+              </p>
+            ) : null}
+            {selectedAds.length > 0 && !selectedStaticMediaReady ? (
+              <p className="mt-2 rounded-[14px] border border-amber-300/18 bg-amber-300/[0.08] px-3 py-2 text-sm leading-6 text-amber-100">
+                Selected creative media is not launch-ready yet. Return to Creative Studio and refresh the selected previews before launch.
               </p>
             ) : null}
           </div>
@@ -172,12 +184,14 @@ export default async function PreviewPage({
                   imagePrompt={selectedAds[0]?.imagePrompt}
                   imagePromptConfig={selectedAds[0]?.imagePromptConfig}
                   imageUrl={selectedAds[0]?.imageUrl}
+                  storageNormalized={selectedAds[0]?.storageNormalized}
                   index={0}
                   location={previewPlan.market}
                   offer={previewPlan.keyOffer}
                   overlayText={selectedAds[0]?.overlayText}
                   primaryText={selectedAds[0]?.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
                   qualityGate={selectedAds[0]?.qualityGate}
+                  imageQa={selectedAds[0]?.imageQa}
                   score={selectedAds[0]?.score}
                   selected
                   selectedCount={selectedAds.length}
@@ -201,6 +215,7 @@ export default async function PreviewPage({
                       imagePrompt={selectedAd.imagePrompt}
                       imagePromptConfig={selectedAd.imagePromptConfig}
                       imageUrl={selectedAd.imageUrl}
+                      storageNormalized={selectedAd.storageNormalized}
                       index={index + 1}
                       key={selectedAd.id}
                       location={previewPlan.market}
@@ -208,6 +223,7 @@ export default async function PreviewPage({
                       overlayText={selectedAd.overlayText}
                       primaryText={selectedAd.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
                       qualityGate={selectedAd.qualityGate}
+                      imageQa={selectedAd.imageQa}
                       score={selectedAd.score}
                       selectedCount={selectedAds.length}
                       visualPromptBrief={selectedAd.visualPromptBrief}
@@ -257,6 +273,11 @@ export default async function PreviewPage({
                   </div>
                 ))}
               </div>
+              {!videoMediaReady ? (
+                <p className="mt-3 rounded-[14px] border border-amber-300/18 bg-amber-300/[0.08] px-3 py-2 text-sm leading-6 text-amber-100">
+                  Video is review-only until campaign-specific prompt, source, and QA metadata are accepted for launch.
+                </p>
+              ) : null}
             </section>
           ) : null}
         </aside>
@@ -268,11 +289,17 @@ export default async function PreviewPage({
             Back to build
           </Link>
         </Button>
-        <Button asChild size="lg">
-          <Link href={campaignIdForFlow ? `/launch?campaignId=${encodeURIComponent(campaignIdForFlow)}` : "/launch"}>
-            Next → Launch
-          </Link>
-        </Button>
+        {mediaReadyForLaunch ? (
+          <Button asChild size="lg">
+            <Link href={campaignIdForFlow ? `/launch?campaignId=${encodeURIComponent(campaignIdForFlow)}` : "/launch"}>
+              Next → Launch
+            </Link>
+          </Button>
+        ) : (
+          <Button size="lg" disabled>
+            Media review needed
+          </Button>
+        )}
       </div>
     </PageShell>
   );
