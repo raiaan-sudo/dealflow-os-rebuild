@@ -359,6 +359,9 @@ export default async function LaunchAliasPage({
         ]
       : []),
     ...(!publicFunnelPublished ? ["Publish the public funnel snapshot so Meta has a live destination URL."] : []),
+    ...(!selectedCreativeMediaReady
+      ? ["Return to Creatives and refresh unfinished previews before saving the launch set again."]
+      : []),
     ...(!providerLaunchEnabled
       ? [
           "Final launch approval is pending. DealFlow will not create Meta campaign objects until support enables live launch approvals.",

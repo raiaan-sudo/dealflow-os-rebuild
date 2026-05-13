@@ -5,6 +5,7 @@ const migration = readFileSync(
   "supabase/migrations/20260512010000_scope_provider_usage_idempotency.sql",
   "utf8",
 );
+const sessionCostGuard = readFileSync("src/lib/services/session-cost-guard.ts", "utf8");
 
 assert.match(migration, /drop index if exists public\.provider_usage_events_idempotency_unique/);
 assert.match(migration, /provider_usage_events_scoped_idempotency_unique/);
@@ -16,6 +17,16 @@ assert.doesNotMatch(
   migration,
   /from public\.provider_usage_events\s*\n\s*where idempotency_key = p_idempotency_key;\s*\n/s,
   "provider usage idempotency lookup must not be globally scoped",
+);
+assert.match(
+  sessionCostGuard,
+  /catch \(error\)[\s\S]*markSessionCostBudgetEvent\({[\s\S]*status: "released"/,
+  "credit reservation failures release provider usage through the shared counter-decrement path",
+);
+assert.doesNotMatch(
+  sessionCostGuard,
+  /catch \(error\)[\s\S]{0,250}\.from\("provider_usage_events"\)[\s\S]{0,160}\.update\(\{[\s\S]{0,80}status: "released"/,
+  "credit reservation failure path must not directly update provider events without releasing usage count",
 );
 
 console.log("Provider usage idempotency scope tests passed.");

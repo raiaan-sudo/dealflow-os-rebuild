@@ -108,8 +108,7 @@ export async function POST(
 
     const rejectedIds = selectedAdIds.filter((selectedId) => {
       const ad = staticAdById.get(selectedId);
-      return !ad || ad.qualityGate?.accepted === false ||
-        (Boolean(ad.imageUrl) && !evaluateStaticVisualAssetDecision(ad).usable);
+      return !ad || ad.qualityGate?.accepted === false || !evaluateStaticVisualAssetDecision(ad).usable;
     });
 
     if (rejectedIds.length > 0) {

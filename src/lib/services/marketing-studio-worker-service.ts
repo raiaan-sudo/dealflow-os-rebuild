@@ -12,6 +12,7 @@ import {
 } from "@/lib/services/marketing-studio-worker-contract";
 import {
   appendSystemJobLog,
+  claimSystemJobByIdForWorker,
   processSystemJob,
   type SystemJobRecord,
 } from "@/lib/services/system-job-service";
@@ -169,16 +170,29 @@ export async function runMarketingStudioWorkerBatch(params?: {
   const processedJobIds: string[] = [];
 
   for (const job of jobs) {
-    await appendSystemJobLog({
+    const workerId = `${MARKETING_STUDIO_WORKER_RUNTIME}:${crypto.randomUUID()}`;
+    const claimedJob = await claimSystemJobByIdForWorker({
       supabase,
       jobId: job.id,
+      workerId,
+      ignoreNextRunAt: true,
+    });
+
+    if (!claimedJob) {
+      continue;
+    }
+
+    await appendSystemJobLog({
+      supabase,
+      jobId: claimedJob.id,
       message: "Marketing Studio CLI worker claimed finished-ad render.",
       details: {
         runtime: MARKETING_STUDIO_WORKER_RUNTIME,
+        workerId,
       } as Json,
     });
 
-    const processed = await processSystemJob(job.id);
+    const processed = await processSystemJob(claimedJob.id);
     processedJobIds.push(processed.id);
   }
 

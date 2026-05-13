@@ -230,6 +230,9 @@ function runOfflineChecks() {
 
   assertIncludes(loginForm, "redirectTo.searchParams.set(\"next\", nextPath)", "Auth redirect preservation", "OAuth sign-in keeps next path");
   assertIncludes(middleware, "pathname.startsWith(\"/f/\")", "Public funnel route", "/f/[slug] remains public");
+  assertIncludes(middleware, "\"/robots.txt\"", "Public robots route", "robots.txt remains crawler-visible");
+  assertIncludes(middleware, "\"/sitemap.xml\"", "Public sitemap route", "sitemap.xml remains crawler-visible");
+  assertIncludes(middleware, "\"/opengraph-image\"", "Public Open Graph image route", "social preview image remains public");
   assertIncludes(onboardingRoute, "onboarding_idempotency_key", "Onboarding idempotency persistence", "campaign plans store onboarding idempotency key");
   assertIncludes(onboardingPage, "dealflow-guided-onboarding-v3", "Onboarding local draft persistence", "safe builder persists draft state locally without stale v2 step order");
   assertIncludes(onboardingPage, "Step-by-step campaign builder", "Onboarding step builder UI", "safe wizard title is visible");
@@ -722,6 +725,8 @@ function runOfflineChecks() {
   assertIncludes(createCampaignRoute, "meta_paused_verification_failed", "Direct Meta paused verification", "direct Meta launch route verifies or restores PAUSED after create/recovery");
   assertIncludes(billingCheckoutRoute, "assertSameOriginRequest", "Billing checkout same-origin guard", "checkout route rejects cross-site POSTs");
   assertIncludes(billingPlans, "priceLabel: \"$147/mo\"", "Starter price updated", "Starter self-serve plan is priced at $147/month");
+  assertIncludes(billingPlans, "priceLabel: \"$297/mo\"", "Pro price contract", "Pro self-serve plan is priced at $297/month");
+  assertExcludes(billingPlans, "priceLabel: \"$97/mo\"", "Legacy Starter price removed", "old Starter pricing is not treated as the public pricing contract");
   assertIncludes(billingPlans, "meta_launch: \"starter\"", "Starter Meta launch access", "Starter plan grants Meta launch access while Pro remains autonomy tier");
   assertIncludes(billingPlans, "autonomy_access: \"pro\"", "Pro autonomy access", "autonomous operator access remains Pro-gated");
   assertIncludes(billingCheckoutRoute, "campaignId", "Checkout campaign handoff", "billing checkout accepts campaign id for post-checkout dashboard routing");
@@ -807,6 +812,7 @@ function runOfflineChecks() {
   assertIncludes(creditService, "legacyBucket", "Legacy credit bucket compatibility", "old OpenAI/HeyGen credit metadata remains understandable after provider migration");
   assertIncludes(sessionCostGuard, "provider_usage_idempotency_consumed", "Paid generation duplicate-spend guard", "consumed provider usage reservations fail closed instead of calling the provider again");
   assertIncludes(sessionCostGuard, "consumeCreditsForGeneration", "Provider usage credit coupling", "provider reservations consume credits before paid calls execute");
+  assertIncludes(sessionCostGuard, "markSessionCostBudgetEvent({", "Credit failure quota release", "failed credit reservations release provider usage through the shared counter-decrement path");
   assertIncludes(sessionCostGuard, "refundCreditsForProviderUsageEvent", "Credit refund coupling", "released or failed paid calls refund reserved credits");
   assertIncludes(sessionCostGuard, "provider_usage_limit_release_failed", "Released provider usage cap refund", "released provider attempts decrement the durable usage counter instead of exhausting the daily image cap");
   assertIncludes(legacyAiProviders, "providerUsage?.mark", "Provider usage ledger transitions", "paid-generation reservations are marked consumed/released after the provider call");
@@ -815,11 +821,11 @@ function runOfflineChecks() {
   assertOrderedIncludes(videoRoute, ["if (!videoProviderReadiness.ready)", "const activeJobs"], "Video generation disabled-job guard", "video jobs are not queued when the provider kill switch is off");
   assertIncludes(videoRoute, "kind: \"video_generation\"", "Video generation job route", "AI video generation is queued through the paid system job path");
   assertIncludes(videoRoute, "getCampaignById", "Video generation ownership guard", "video generation verifies campaign ownership before queueing paid work");
-  assertIncludes(videoRoute, "processSystemJob(jobId)", "Video generation immediate kickoff", "video generation jobs are started immediately after queueing like static creative jobs");
+  assertExcludes(videoRoute, "processSystemJob", "Video generation enqueue-only route", "video routes cannot process paid provider jobs without an atomic worker claim");
   assertIncludes(videoRoute, "reusedExistingJob", "Video generation active job reuse", "active pending or processing video jobs are reused for the same creative when safe");
   assertExcludes(videoRoute, "body.force !== true", "Video retry duplicate paid job guard", "forced video retries still reuse active video jobs instead of stacking duplicate provider calls");
   assertIncludes(systemJobService, "video_generation_status", "Video generation status polling", "AI video render completion is polled by durable follow-up jobs instead of blocking the cron worker");
-  assertIncludes(staticAdsRoute, "scheduleStaticCreativeJob", "Static generation kickoff", "creative preview jobs are kicked immediately instead of relying only on cron");
+  assertExcludes(staticAdsRoute, "processSystemJob", "Static generation enqueue-only route", "static creative routes cannot process paid provider jobs without an atomic worker claim");
   assertIncludes(staticAdsRoute, "if (existingActiveJob)", "Static generation active-job reuse", "forced preview retries reuse active work instead of stacking duplicate paid jobs");
   assertIncludes(staticAdsRoute, "missingOnly", "Static missing-image retry", "partial creative retries can refill failed/missing images without regenerating the whole test set");
   assertExcludes(creativeEngine, "Promise.all(\n    baseStaticAds", "Static image sequential provider calls", "static image generation no longer launches all provider calls at once when quota is tight");
@@ -842,9 +848,13 @@ function runOfflineChecks() {
   assertExcludes(directHeyGenClient, "raw: data", "HeyGen raw payload persistence avoided", "legacy HeyGen helper does not persist full provider response payloads");
   assertIncludes(directHeyGenClient, "ALLOW_HEYGEN_VIDEO_GENERATION", "Legacy HeyGen direct client kill switch", "retained legacy HeyGen helper remains disabled unless explicitly enabled");
   assertIncludes(systemJobService, "claim_next_system_job", "Atomic system job claim", "system job worker uses DB-backed SKIP LOCKED claim RPC");
+  assertIncludes(systemJobService, "system_job_not_claimed", "Claim required before job processing", "direct job processing fails unless an active worker lease exists");
+  assertIncludes(systemJobService, "claimSystemJobByIdForWorker", "Marketing Studio worker claim", "dedicated worker jobs are claimed before finished-ad processing");
+  assertIncludes("src/app/api/internal/system-jobs/route.ts", "min(6 * 60_000)", "Internal runner stale floor", "generic runners cannot request a stale reset shorter than the active lease plus buffer");
   assertIncludes(systemJobService, '.lt("started_at", staleBefore)', "Long-running job stale guard", "provider polling jobs are not reset only because their short lease expired");
-  assertExcludes(systemJobService, "locked_until.lte.", "Lease-only stale reset avoided", "long-running provider jobs cannot be duplicated by lease expiry alone");
+  assertIncludes(systemJobService, "locked_until.lt", "Active lease stale reset guard", "valid future worker leases are not reset by generic runners");
   assertIncludes(systemJobService, "replayFailedPublicLeadCapture", "Lead retry job processor", "lead capture retry jobs replay or fail instead of silently completing");
+  assertIncludes(systemJobService, "sideEffectJobId", "Lead retry side-effect recovery", "lead capture retries enqueue missed notification and CAPI side effects idempotently");
   assertIncludes(systemJobService, "dead_lettered_at: null", "Manual retry clears dead-letter", "operator retry can make dead-lettered jobs claimable again");
   assertIncludes(systemJobService, "dead_letter_reason", "System job dead-letter state", "failed jobs preserve dead-letter reason");
   assertIncludes(systemJobService, "last_error_code", "System job error classification", "operator views can filter repeated job error classes");
@@ -917,7 +927,7 @@ async function runStagingChecks() {
     fail("Lead capture rejects invalid payload", `expected 400, got ${invalidLead.response.status}`);
   }
 
-  const testSlug = getEnv("SMOKE_TEST_FUNNEL_SLUG") ?? "raiaan-realty";
+  const testSlug = getEnv("SMOKE_TEST_FUNNEL_SLUG") ?? "raiaan-broker-toronto-on-ccbfbfce";
   if (testSlug) {
     const funnel = await request(`${baseUrl}/f/${testSlug}`, {
       redirect: "manual",

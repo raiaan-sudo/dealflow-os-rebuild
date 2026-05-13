@@ -350,7 +350,7 @@ export function CreativeChatIntake({
             <SummaryRow label="Style" value={getAnswerLabel(answers.creativeStyle, styleOptions)} />
             <SummaryRow label="CTA" value={answers.cta || defaults.cta || "See My Options"} />
             <SummaryRow label="Placement" value={answers.platformPlacement} />
-            <SummaryRow label="Output mode" value={answers.outputMode === "background_only" ? "Text-free visual background" : "DealFlow composed static ad"} />
+            <SummaryRow label="Output mode" value={answers.outputMode === "background_only" ? "Text-free visual background" : "Customer-ready static ad"} />
           </div>
           <div className="mt-5 rounded-[20px] border border-emerald-300/16 bg-emerald-300/[0.055] p-4 text-sm leading-6 text-muted-foreground">
             <FileCheck2 className="mb-3 size-4 text-emerald-100" />

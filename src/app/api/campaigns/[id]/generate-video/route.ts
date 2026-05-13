@@ -9,10 +9,9 @@ import {
   isCreativeChatIntakeEnabled,
 } from "@/lib/services/creative-chat-intake-service";
 import { getAvatarVideoProvider } from "@/lib/integrations/creative/avatar-provider";
-import { createSystemJob, listSystemJobs, processSystemJob } from "@/lib/services/system-job-service";
+import { createSystemJob, listSystemJobs } from "@/lib/services/system-job-service";
 import type { SystemJobRecord } from "@/lib/services/system-job-service";
 import type { VideoGenerationJobPayload } from "@/lib/services/video-generation-job";
-import { after } from "next/server";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -21,15 +20,9 @@ const bodySchema = z.object({
 });
 
 function scheduleVideoGenerationJob(jobId: string) {
-  after(async () => {
-    try {
-      await processSystemJob(jobId);
-    } catch (error) {
-      logWarn("Video generation kickoff failed", {
-        jobId,
-        message: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
+  logWarn("Video generation queued for claimed worker processing", {
+    jobId,
+    runtime: "system_job_worker",
   });
 }
 

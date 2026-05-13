@@ -56,6 +56,9 @@ export type SystemJobWorkerBatchResult = {
 };
 
 const MAX_SYSTEM_JOB_RETRIES = 1;
+const SYSTEM_JOB_LEASE_MS = 5 * 60_000;
+const SYSTEM_JOB_STALE_BUFFER_MS = 60_000;
+const MIN_STALE_PROCESSING_RESET_MS = SYSTEM_JOB_LEASE_MS + SYSTEM_JOB_STALE_BUFFER_MS;
 const SUBSCRIPTION_GATED_JOB_KINDS = new Set<SystemJobKind>([
   "static_creative_generation",
   "video_generation",
@@ -212,6 +215,15 @@ function parseSystemJob(row: SystemJobRow) {
     correlationId: tracking?.correlationId ?? null,
     lastErrorCategory: tracking?.lastErrorCategory ?? null,
   } as SystemJobRecord;
+}
+
+function hasActiveProcessingLease(job: SystemJobRecord) {
+  if (job.status !== "processing" || !job.locked_by || !job.locked_until) {
+    return false;
+  }
+
+  const lockedUntil = Date.parse(job.locked_until);
+  return Number.isFinite(lockedUntil) && lockedUntil > Date.now();
 }
 
 function isTransientJobError(error: unknown) {
@@ -574,7 +586,7 @@ export async function claimNextPendingSystemJob() {
   const workerId = `vercel:${process.env.VERCEL_REGION ?? "local"}:${crypto.randomUUID()}`;
   const { data, error } = await (supabase as any).rpc("claim_next_system_job", {
     p_worker_id: workerId,
-    p_lease_ms: 5 * 60_000,
+    p_lease_ms: SYSTEM_JOB_LEASE_MS,
   });
 
   if (error) {
@@ -602,9 +614,62 @@ export async function claimNextPendingSystemJob() {
   return claimedJob;
 }
 
+export async function claimSystemJobByIdForWorker(params: {
+  jobId: string;
+  workerId: string;
+  supabase?: SystemJobClient;
+  ignoreNextRunAt?: boolean;
+}) {
+  const supabase = params.supabase ?? getJobClient();
+  const now = new Date();
+  const lockedUntil = new Date(now.getTime() + SYSTEM_JOB_LEASE_MS).toISOString();
+  let query = supabase
+    .from("system_jobs")
+    .update({
+      status: "processing",
+      started_at: now.toISOString(),
+      locked_by: params.workerId,
+      locked_until: lockedUntil,
+      error_message: null,
+      last_error_code: null,
+    } as never)
+    .eq("id", params.jobId)
+    .eq("status", "pending");
+
+  if (params.ignoreNextRunAt !== true) {
+    query = query.or(`next_run_at.is.null,next_run_at.lte.${now.toISOString()}`);
+  }
+
+  const { data, error } = await query.select("*").maybeSingle();
+
+  if (error) {
+    throw new ApiError(500, error.message, "system_job_claim_failed");
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const claimedJob = parseSystemJob(data as SystemJobRow);
+
+  await appendSystemJobLog({
+    supabase,
+    jobId: claimedJob.id,
+    message: `${claimedJob.kind.replace(/_/g, " ")} job claimed by worker.`,
+    details: {
+      workerId: params.workerId,
+      lockedUntil: claimedJob.locked_until ?? null,
+    } as Json,
+  });
+
+  return claimedJob;
+}
+
 export async function resetStaleProcessingSystemJobs(staleAfterMs = 10 * 60_000) {
   const supabase = getJobClient();
-  const staleBefore = new Date(Date.now() - staleAfterMs).toISOString();
+  const effectiveStaleAfterMs = Math.max(staleAfterMs, MIN_STALE_PROCESSING_RESET_MS);
+  const now = new Date().toISOString();
+  const staleBefore = new Date(Date.now() - effectiveStaleAfterMs).toISOString();
   const { data, error } = await supabase
     .from("system_jobs")
     .update({
@@ -618,6 +683,7 @@ export async function resetStaleProcessingSystemJobs(staleAfterMs = 10 * 60_000)
     } as never)
     .eq("status", "processing")
     .lt("started_at", staleBefore)
+    .or(`locked_until.is.null,locked_until.lt.${now}`)
     .select("id");
 
   if (error) {
@@ -711,6 +777,14 @@ export async function processSystemJob(jobId: string) {
 
   if (job.status === "completed") {
     return job;
+  }
+
+  if (!hasActiveProcessingLease(job)) {
+    throw new ApiError(
+      409,
+      "System job must be atomically claimed before processing.",
+      "system_job_not_claimed",
+    );
   }
 
   if (shouldDeferMarketingStudioStaticGenerationToWorker({
@@ -864,19 +938,57 @@ export async function processSystemJob(jobId: string) {
           billingState: entitlementContext.entitlements.billingState,
         } as Json;
       } else {
-      const { replayFailedPublicLeadCapture } = await import("@/lib/services/lead-handler-service");
-      const replayResult = await replayFailedPublicLeadCapture({
-        ...payload.leadCapture,
-        source: payload.source,
-        requestId: payload.requestId,
-        reason: payload.reason,
-      });
+        const { replayFailedPublicLeadCapture } = await import("@/lib/services/lead-handler-service");
+        const replayResult = await replayFailedPublicLeadCapture({
+          ...payload.leadCapture,
+          source: payload.source,
+          requestId: payload.requestId,
+          reason: payload.reason,
+        });
 
-      result = {
-        ...replayResult,
-        requestId: payload.requestId,
-        retryReason: payload.reason,
-      } as Json;
+        let sideEffectJobId: string | null = null;
+        if (replayResult.leadId && replayResult.campaignId && replayResult.organizationId) {
+          const sideEffectJob = await queueLeadSideEffectsJob({
+            organizationId: replayResult.organizationId,
+            userId: processingJob.user_id,
+            campaignId: replayResult.campaignId,
+            payload: {
+              requestId: payload.requestId,
+              lead: {
+                id: replayResult.leadId,
+                organization_id: replayResult.organizationId,
+                campaign_id: replayResult.campaignId,
+                name: payload.leadCapture.name,
+                email: payload.leadCapture.email,
+                phone: payload.leadCapture.phone,
+                phone_raw: payload.leadCapture.phone,
+                source: payload.source,
+                utm_source: payload.leadCapture.utmSource,
+                utm_medium: payload.leadCapture.utmMedium,
+                utm_campaign: payload.leadCapture.utmCampaign,
+                ad_id: payload.leadCapture.adId,
+                landing_page_url: payload.leadCapture.landingPageUrl,
+              },
+              metaConversion: {
+                organizationId: replayResult.organizationId,
+                leadId: replayResult.leadId,
+                campaignId: replayResult.campaignId,
+                eventSourceUrl: payload.leadCapture.landingPageUrl ?? payload.leadCapture.consentUrl,
+                name: payload.leadCapture.name,
+                email: payload.leadCapture.email,
+                phone: payload.leadCapture.phone,
+              },
+            },
+          });
+          sideEffectJobId = sideEffectJob.id;
+        }
+
+        result = {
+          ...replayResult,
+          requestId: payload.requestId,
+          retryReason: payload.reason,
+          sideEffectJobId,
+        } as Json;
       }
     } else if (result === undefined && processingJob.kind === "lead_side_effects") {
       const payload = processingJob.payload as SystemJobPayloadMap["lead_side_effects"];

@@ -185,6 +185,12 @@ assert.equal(minimalEnv.OPENAI_API_KEY, undefined, "worker CLI child env exclude
 
 const systemJobService = fs.readFileSync("src/lib/services/system-job-service.ts", "utf8");
 assert.match(systemJobService, /MARKETING_STUDIO_WORKER_DEFERRED_UNTIL/);
+assert.match(systemJobService, /SYSTEM_JOB_LEASE_MS = 5 \* 60_000/);
+assert.match(systemJobService, /MIN_STALE_PROCESSING_RESET_MS = SYSTEM_JOB_LEASE_MS \+ SYSTEM_JOB_STALE_BUFFER_MS/);
+assert.match(systemJobService, /hasActiveProcessingLease/);
+assert.match(systemJobService, /system_job_not_claimed/);
+assert.match(systemJobService, /locked_until\.is\.null,locked_until\.lt/);
+assert.match(systemJobService, /claimSystemJobByIdForWorker/);
 assert.match(
   systemJobService,
   /const deferToMarketingStudioWorker = isMarketingStudioStaticGenerationJob/,
@@ -199,7 +205,11 @@ assert.doesNotMatch(
 
 const generateStaticAdsRoute = fs.readFileSync("src/app/api/campaigns/[id]/generate-static-ads/route.ts", "utf8");
 assert.match(generateStaticAdsRoute, /isMarketingStudioStaticGenerationPayload/);
-assert.match(generateStaticAdsRoute, /return;\s*\}\s*after/s);
+assert.doesNotMatch(generateStaticAdsRoute, /processSystemJob/);
+assert.match(generateStaticAdsRoute, /queued for claimed worker processing/);
+const generateVideoRoute = fs.readFileSync("src/app/api/campaigns/[id]/generate-video/route.ts", "utf8");
+assert.doesNotMatch(generateVideoRoute, /processSystemJob/);
+assert.match(generateVideoRoute, /queued for claimed worker processing/);
 
 const workerScript = fs.readFileSync("scripts/run-marketing-studio-worker.mjs", "utf8");
 assert.match(workerScript, /marketing_studio_worker\.readiness/);
@@ -209,6 +219,8 @@ const workerService = fs.readFileSync("src/lib/services/marketing-studio-worker-
 assert.match(workerService, /\.eq\("kind", "static_creative_generation"\)/);
 assert.match(workerService, /isMarketingStudioStaticGenerationPayload/);
 assert.match(workerService, /FINISHED_AD_VISION_QA_ENABLED=true/);
+assert.match(workerService, /claimSystemJobByIdForWorker/);
+assert.match(workerService, /ignoreNextRunAt: true/);
 
 assert.equal(MARKETING_STUDIO_WORKER_DEFERRED_UNTIL, "2099-01-01T00:00:00.000Z");
 

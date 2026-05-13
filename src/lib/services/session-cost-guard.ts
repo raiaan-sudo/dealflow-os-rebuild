@@ -225,17 +225,14 @@ export async function consumeSessionCostBudget(params: {
       });
     } catch (error) {
       if (eventId) {
-        await admin
-          .from("provider_usage_events")
-          .update({
-            status: "released",
-            metadata: {
-              creditReservation: "failed",
-              reason: error instanceof Error ? error.message : "Credit reservation failed.",
-            },
-            updated_at: new Date().toISOString(),
-          } as never)
-          .eq("id", eventId);
+        await markSessionCostBudgetEvent({
+          eventId,
+          status: "released",
+          metadata: {
+            creditReservation: "failed",
+            reason: error instanceof Error ? error.message : "Credit reservation failed.",
+          },
+        });
       }
 
       throw error;

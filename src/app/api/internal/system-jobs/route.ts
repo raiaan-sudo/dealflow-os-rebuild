@@ -14,7 +14,7 @@ export const maxDuration = 800;
 
 const runnerInputSchema = z.object({
   maxCycles: z.number().int().min(1).max(5).optional(),
-  staleAfterMs: z.number().int().min(60_000).max(60 * 60_000).optional(),
+  staleAfterMs: z.number().int().min(6 * 60_000).max(60 * 60_000).optional(),
 }).strict();
 
 type RunnerInput = z.infer<typeof runnerInputSchema>;

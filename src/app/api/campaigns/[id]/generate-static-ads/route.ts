@@ -9,8 +9,7 @@ import {
   isCreativeChatIntakeEnabled,
 } from "@/lib/services/creative-chat-intake-service";
 import { isMarketingStudioStaticGenerationPayload } from "@/lib/services/marketing-studio-worker-contract";
-import { createSystemJob, listSystemJobs, processSystemJob } from "@/lib/services/system-job-service";
-import { after } from "next/server";
+import { createSystemJob, listSystemJobs } from "@/lib/services/system-job-service";
 import { z } from "zod";
 
 export const maxDuration = 800;
@@ -33,15 +32,9 @@ function scheduleStaticCreativeJob(
     return;
   }
 
-  after(async () => {
-    try {
-      await processSystemJob(jobId);
-    } catch (error) {
-      logWarn("Static creative generation kickoff failed", {
-        jobId,
-        message: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
+  logWarn("Static creative generation queued for claimed worker processing", {
+    jobId,
+    runtime: "system_job_worker",
   });
 }
 
