@@ -369,6 +369,20 @@ const readyVideo = {
     decision: "accept",
     reasons: [],
   },
+  videoProductQualityGate: {
+    accepted: true,
+    usable: true,
+    decision: "accept",
+    reasons: [],
+    checks: {
+      hook: true,
+      marketProblem: true,
+      creatorPointOfView: true,
+      mechanism: true,
+      sourceRelevance: true,
+      cta: true,
+    },
+  },
 };
 assert.equal(isPlayableVideoCreative(readyVideo), true);
 assert.equal(isLaunchReadyVideoCreative(readyVideo), true);
@@ -415,6 +429,7 @@ const productionMappedVideo = mapVideoCreativeAssets([
       promptUsed: readyVideo.promptUsed,
       campaignSpecificContext: readyVideo.campaignSpecificContext,
       videoQualityGate: readyVideo.videoQualityGate,
+      videoProductQualityGate: readyVideo.videoProductQualityGate,
     },
   },
   ...productionLikeCreativeAssets,
@@ -458,6 +473,31 @@ const sampleVideo = {
 assert.equal(isLaunchReadyVideoCreative(sampleVideo), false);
 assert.match(getVideoReadinessMessage(sampleVideo), /sample\/template/);
 
+const lowQualityUgcVideo = {
+  ...readyVideo,
+  id: "generic-ugc-video",
+  videoProductQualityGate: {
+    accepted: false,
+    usable: false,
+    decision: "review",
+    reasons: ["generic_creator_output"],
+    checks: {
+      hook: true,
+      marketProblem: false,
+      creatorPointOfView: false,
+      mechanism: false,
+      sourceRelevance: false,
+      cta: true,
+    },
+  },
+};
+assert.equal(isLaunchReadyVideoCreative(lowQualityUgcVideo), false);
+assert.match(getVideoReadinessMessage(lowQualityUgcVideo), /UGC product-quality QA/);
+assert.deepEqual(
+  evaluateGeneratedVideoQualityGate(lowQualityUgcVideo, new Date("2026-05-13T00:00:00.000Z")).reasons,
+  ["missing_product_quality_acceptance"],
+);
+
 const conceptOnlyVideo = {
   videoUrl: "",
   videoGenerationState: "unavailable",
@@ -470,6 +510,7 @@ assert.doesNotMatch(getVideoReadinessMessage(conceptOnlyVideo), /preview is read
 const creativeWizardSource = fs.readFileSync("src/app/(app)/build/creatives/creative-wizard.tsx", "utf8");
 const previewSource = fs.readFileSync("src/app/(app)/preview/page.tsx", "utf8");
 const launchSource = fs.readFileSync("src/app/(app)/launch/page.tsx", "utf8");
+const customerVideoPlayerSource = fs.readFileSync("src/components/campaign/customer-video-player.tsx", "utf8");
 
 for (const [name, source] of [
   ["Creative Studio", creativeWizardSource],
@@ -480,6 +521,10 @@ for (const [name, source] of [
   assert.match(source, /controlsList="nodownload noplaybackrate"/, `${name} video controls disable download`);
   assert.match(source, /disablePictureInPicture/, `${name} disables picture-in-picture`);
 }
+assert.match(customerVideoPlayerSource, /controls=\{false\}/, "customer video player must not expose native video controls");
+assert.match(customerVideoPlayerSource, /onContextMenu=\{\(event\) => event\.preventDefault\(\)\}/, "customer video player suppresses context-menu raw file actions");
+assert.match(creativeWizardSource, /draft concept\{draftCreatives\.length === 1 \? "" : "s"\} need regeneration/, "Creative Studio separates draft concepts from launch-ready carousel");
+assert.match(creativeWizardSource, /selectedCount=\{selected \? selectedCreatives\.length : null\}/, "retry cards cannot inherit selected count badges");
 
 assert.doesNotMatch(creativeWizardSource, /Ready to render/);
 assert.doesNotMatch(creativeWizardSource, /Video preview concept is ready/);

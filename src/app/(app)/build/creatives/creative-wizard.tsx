@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   StaticCreativePreviewCard,
 } from "@/components/campaign/static-creative-preview-card";
+import { CustomerVideoPlayer } from "@/components/campaign/customer-video-player";
 import { Button } from "@/components/ui/button";
 import {
   getStaticCreativeReadiness,
@@ -114,6 +115,20 @@ type VideoCreativeOption = {
     usable?: boolean | null;
     decision?: string | null;
     reasons?: string[] | null;
+  } | null;
+  videoProductQualityGate?: {
+    accepted?: boolean | null;
+    usable?: boolean | null;
+    decision?: string | null;
+    reasons?: string[] | null;
+    checks?: {
+      hook?: boolean | null;
+      marketProblem?: boolean | null;
+      creatorPointOfView?: boolean | null;
+      mechanism?: boolean | null;
+      sourceRelevance?: boolean | null;
+      cta?: boolean | null;
+    } | null;
   } | null;
   videoQa?: {
     usable?: boolean | null;
@@ -255,6 +270,10 @@ export function CreativeWizard({
     defaultSelectedIds[0] ?? rankedCreatives[0]?.id ?? null,
   );
   const selectedCreatives = rankedCreatives.filter((creative) => selectedIds.includes(creative.id));
+  const launchReadyCreatives = rankedCreatives.filter(isLaunchReadyStaticCreative);
+  const draftCreatives = rankedCreatives.filter((creative) => !isLaunchReadyStaticCreative(creative));
+  const selectableCreatives = launchReadyCreatives.length > 0 ? launchReadyCreatives : rankedCreatives;
+  const carouselMaxSelected = Math.min(maxSelected, Math.max(minSelected, launchReadyCreatives.length || rankedCreatives.length));
   const staticReadiness = getStaticCreativeReadiness(rankedCreatives, selectedIds);
   const primaryCreative = selectedCreatives[0] ?? rankedCreatives[0] ?? null;
   const activeCreative =
@@ -714,7 +733,7 @@ export function CreativeWizard({
             qualityGate={displayActiveCreative.qualityGate}
             imageQa={displayActiveCreative.imageQa}
             score={displayActiveCreative.score}
-            selectedCount={selectedCreatives.length}
+            selectedCount={activeCreativeSelected && isLaunchReadyStaticCreative(activeCreative) ? staticReadiness.selectedReadyCount : null}
             visualPromptBrief={displayActiveCreative.visualPromptBrief}
           />
         </div>
@@ -827,7 +846,7 @@ export function CreativeWizard({
                     qualityGate={displayCreative.qualityGate}
                     imageQa={displayCreative.imageQa}
                     score={displayCreative.score}
-                    selectedCount={selectedCreatives.length}
+                    selectedCount={isLaunchReadyStaticCreative(creative) ? staticReadiness.selectedReadyCount : null}
                     visualPromptBrief={displayCreative.visualPromptBrief}
                   />
                 </div>
@@ -894,14 +913,14 @@ export function CreativeWizard({
             </div>
             <div className="mx-auto w-full max-w-[360px] overflow-hidden rounded-[18px] border border-white/10 bg-black/28">
               {isPlayableVideoCreative(activeVideoCreative) ? (
-                <video
-                  className="aspect-[9/16] max-h-[70dvh] w-full bg-black object-contain"
-                  controls
+                <CustomerVideoPlayer
+                  className="border-0"
+                  videoClassName="aspect-[9/16] max-h-[70dvh] w-full bg-black object-contain"
                   controlsList="nodownload noplaybackrate"
                   disablePictureInPicture
                   playsInline
-                  preload="metadata"
-                  src={activeVideoCreative.videoUrl ?? undefined}
+                  src={activeVideoCreative.videoUrl}
+                  title={activeVideoCreative.title}
                 />
               ) : (
                 <div className="grid aspect-[9/16] place-items-center bg-[linear-gradient(135deg,rgba(94,234,212,0.12),rgba(139,92,246,0.12)),radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_24%)] p-5 text-center">
@@ -1037,14 +1056,14 @@ export function CreativeWizard({
                     Close
                   </button>
                 </div>
-                <video
-                  className="mx-auto max-h-[calc(100dvh-7rem)] w-full max-w-[520px] bg-black object-contain"
-                  controls
+                <CustomerVideoPlayer
+                  className="mx-auto border-0"
+                  videoClassName="max-h-[calc(100dvh-7rem)] w-full max-w-[520px] bg-black object-contain"
                   controlsList="nodownload noplaybackrate"
                   disablePictureInPicture
                   playsInline
-                  preload="metadata"
-                  src={activeVideoCreative.videoUrl ?? undefined}
+                  src={activeVideoCreative.videoUrl}
+                  title={activeVideoCreative.title}
                 />
               </div>
             </div>
@@ -1057,15 +1076,24 @@ export function CreativeWizard({
           <div>
             <p className="text-sm font-medium text-muted-foreground">Creative carousel</p>
             <h3 className="mt-1 text-xl font-semibold text-foreground">
-              View all creatives and choose {minSelected}-{maxSelected}
+              {launchReadyCreatives.length > 0
+                ? `${staticReadiness.selectedReadyLabel} selected`
+                : `View all creatives and choose ${minSelected}-${maxSelected}`}
             </h3>
           </div>
           <p className="text-sm text-muted-foreground">
-            Click any card to view it large above. {selectedCreatives.length}/{maxSelected} selected.
+            Click any card to view it large above. Launch-ready cards are shown first. {selectedCreatives.length}/{carouselMaxSelected} selected.
           </p>
         </div>
+        {draftCreatives.length > 0 && launchReadyCreatives.length > 0 ? (
+          <p className="mt-3 rounded-[14px] border border-amber-300/16 bg-amber-300/[0.075] px-3 py-2 text-sm leading-6 text-amber-100">
+            Showing {launchReadyCreatives.length} launch-ready candidate{launchReadyCreatives.length === 1 ? "" : "s"}.
+            {" "}
+            {draftCreatives.length} draft concept{draftCreatives.length === 1 ? "" : "s"} need regeneration and are separated below.
+          </p>
+        ) : null}
         <div className="mt-5 flex snap-x gap-4 overflow-x-auto pb-3">
-          {rankedCreatives.map((creative, index) => {
+          {selectableCreatives.map((creative, index) => {
             const displayCreative = getDisplayCreative(creative);
             const selected = selectedIds.includes(creative.id);
             const active = activeCreative.id === creative.id;
@@ -1125,7 +1153,7 @@ export function CreativeWizard({
                     qualityGate={displayCreative.qualityGate}
                     imageQa={displayCreative.imageQa}
                     score={displayCreative.score}
-                    selectedCount={selectedCreatives.length}
+                    selectedCount={selected ? selectedCreatives.length : null}
                     visualPromptBrief={displayCreative.visualPromptBrief}
                   />
                 </button>
@@ -1133,6 +1161,72 @@ export function CreativeWizard({
             );
           })}
         </div>
+        {draftCreatives.length > 0 ? (
+          <details className="mt-4 rounded-2xl border border-white/10 bg-black/14 p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-foreground">
+              {draftCreatives.length} draft concept{draftCreatives.length === 1 ? "" : "s"} need regeneration
+            </summary>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              These concepts are not launch-ready and are not selectable as final launch media until accepted app-owned imagery is generated.
+            </p>
+            <div className="mt-4 grid gap-4 lg:grid-cols-3">
+              {draftCreatives.map((creative, index) => {
+                const displayCreative = getDisplayCreative(creative);
+                const active = activeCreative.id === creative.id;
+
+                return (
+                  <article
+                    className={`rounded-2xl border p-3 transition ${
+                      active ? "border-amber-300/35 bg-amber-300/[0.06]" : "border-white/10 bg-background/70"
+                    }`}
+                    key={creative.id}
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        className="min-w-0 text-left text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground transition hover:text-foreground"
+                        onClick={() => setActiveCreativeId(creative.id)}
+                      >
+                        Draft concept {index + 1}
+                      </button>
+                      <span className="rounded-full border border-amber-300/20 bg-amber-300/[0.08] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-100">
+                        Needs regeneration
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="block w-full rounded-[16px] text-left"
+                      onClick={() => setActiveCreativeId(creative.id)}
+                    >
+                      <StaticCreativePreviewCard
+                        category={displayCreative.category}
+                        compact
+                        cta={displayCreative.cta}
+                        formatLabel={displayCreative.formatLabel}
+                        headline={displayCreative.headline}
+                        imageGenerationMessage={displayCreative.imageGenerationMessage}
+                        imageGenerationState={displayCreative.imageGenerationState}
+                        imagePrompt={displayCreative.imagePrompt}
+                        imagePromptConfig={displayCreative.imagePromptConfig}
+                        imageUrl={displayCreative.imageUrl}
+                        storageNormalized={displayCreative.storageNormalized}
+                        location={displayCreative.location}
+                        offer={displayCreative.offer}
+                        overlayText={displayCreative.overlayText}
+                        primaryText={displayCreative.primaryText}
+                        qualityGate={displayCreative.qualityGate}
+                        imageQa={displayCreative.imageQa}
+                        score={displayCreative.score}
+                        selectedCount={null}
+                        visualPromptBrief={displayCreative.visualPromptBrief}
+                      />
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          </details>
+        ) : null}
       </section>
     </div>
   );

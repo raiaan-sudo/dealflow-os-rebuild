@@ -99,6 +99,36 @@ function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function buildVideoProductQualityGate(params: {
+  promptUsed: string;
+  scriptText: string;
+  body: string;
+  cta: string;
+  sourceStaticAccepted: boolean;
+}) {
+  const text = `${params.promptUsed}\n${params.scriptText}\n${params.body}\n${params.cta}`.toLowerCase();
+  const checks = {
+    hook: /\b(first|before|if you|stop|don'?t|most buyers|closer than|private|600\+|approved|approval)\b/.test(text),
+    marketProblem: /\b(buyer|buyers|market|listing|approval|credit|afford|public search|competition|crowded|toronto|home)\b/.test(text),
+    creatorPointOfView: /\b(i|me|my|agent|creator|walkthrough|show you|here'?s|let me)\b/.test(text),
+    mechanism: /\b(shortlist|options|qualify|qualification|matching|private listings|approval path|strategy|help|get better)\b/.test(text),
+    sourceRelevance: params.sourceStaticAccepted,
+    cta: Boolean(params.cta.trim()) && /\b(get|see|check|book|start|request|tap|learn)\b/.test(params.cta.toLowerCase()),
+  };
+  const failed = Object.entries(checks)
+    .filter(([, accepted]) => !accepted)
+    .map(([key]) => `${key}_missing`);
+  const accepted = failed.length === 0;
+
+  return {
+    accepted,
+    usable: accepted,
+    decision: accepted ? "accept" : "review",
+    reasons: failed,
+    checks,
+  };
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -718,8 +748,12 @@ export async function runVideoGenerationJob(params: {
   const approvedPrompt = creativeIntake?.promptVersion.generatedPrompt ?? null;
   const fallbackPrompt = [
     "Create a polished native UGC-style vertical video for a real estate lead generation campaign.",
-    "Show a believable creator/customer/agent in a real home or market setting with natural phone-camera energy.",
-    "Use the provided script as spoken direction only. Do not render captions, lower thirds, pricing cards, UI screens, logos, watermarks, fake documents, or on-screen text inside the video.",
+    "Structure: hook in the first 1-2 seconds, specific buyer pain or market problem, relatable creator/agent POV, clear mechanism, source-creative visual relevance, and a direct CTA.",
+    "Show a believable creator/customer/agent in a real home or market setting with natural phone-camera energy, not a generic stock talking-head clip.",
+    "Mechanism should explain how the buyer gets better options, a shortlist, qualification help, or early access before public search feels crowded.",
+    "Use the accepted static source image as visual context and keep the setting aligned with the campaign market, offer, audience, and CTA.",
+    "Do not use fake documents, fake UI, fake testimonials, unsupported guarantees, readable pricing cards, logos, watermarks, or on-screen text inside the video.",
+    "Use the provided script as spoken direction only.",
     params.payload.title,
     params.payload.hook,
     params.payload.body,
@@ -730,6 +764,13 @@ export async function runVideoGenerationJob(params: {
   const promptSource = approvedPrompt ? "creative_intake" : "campaign_specific_fallback";
   const promptHash = sha256(promptUsed);
   const scriptHash = sha256(params.payload.scriptText);
+  const videoProductQualityGate = buildVideoProductQualityGate({
+    promptUsed,
+    scriptText: params.payload.scriptText,
+    body: params.payload.body,
+    cta: params.payload.cta,
+    sourceStaticAccepted: videoSourceImage.accepted,
+  });
   let providerVideo;
 
   try {
@@ -930,6 +971,7 @@ export async function runVideoGenerationJob(params: {
         promptHash,
         scriptHash,
         campaignSpecificContext,
+        videoProductQualityGate,
       })
     : null;
 
@@ -971,6 +1013,7 @@ export async function runVideoGenerationJob(params: {
         persona: params.payload.avatarProfileId ?? "provider_default_avatar",
         campaignSpecificContext,
         videoQualityGate,
+        videoProductQualityGate,
         storageNormalized: Boolean(durableVideoUrl),
         storageBucket: durableVideo?.storageBucket ?? null,
         storagePath: durableVideo?.storagePath ?? null,

@@ -347,6 +347,14 @@ function asVideoQualityGate(value: Json | null | undefined): VideoCreativeAsset[
   return value as VideoCreativeAsset["videoQualityGate"];
 }
 
+function asVideoProductQualityGate(value: Json | null | undefined): VideoCreativeAsset["videoProductQualityGate"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as VideoCreativeAsset["videoProductQualityGate"];
+}
+
 function metadataString(metadata: Record<string, Json> | null, key: string) {
   const value = metadata?.[key];
   return typeof value === "string" && value.trim() ? value : null;
@@ -498,6 +506,7 @@ export function mapVideoCreativeAssets(rows: CreativeAssetRow[]): VideoCreativeA
               persona: metadataString(metadata, "persona"),
             },
       videoQualityGate: asVideoQualityGate(metadata?.videoQualityGate),
+      videoProductQualityGate: asVideoProductQualityGate(metadata?.videoProductQualityGate),
       videoQa:
         metadata?.videoQa && typeof metadata.videoQa === "object"
           ? metadata.videoQa as VideoCreativeAsset["videoQa"]

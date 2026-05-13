@@ -137,6 +137,20 @@ export type VideoCreativeAsset = {
     decision?: string | null;
     reasons?: string[] | null;
   } | null;
+  videoProductQualityGate?: {
+    accepted?: boolean | null;
+    usable?: boolean | null;
+    decision?: string | null;
+    reasons?: string[] | null;
+    checks?: {
+      hook?: boolean | null;
+      marketProblem?: boolean | null;
+      creatorPointOfView?: boolean | null;
+      mechanism?: boolean | null;
+      sourceRelevance?: boolean | null;
+      cta?: boolean | null;
+    } | null;
+  } | null;
   videoQa?: {
     usable?: boolean | null;
     decision?: string | null;

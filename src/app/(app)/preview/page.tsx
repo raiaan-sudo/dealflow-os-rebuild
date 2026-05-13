@@ -18,6 +18,7 @@ import {
 } from "@/lib/services/campaign-validation";
 import { FunnelPreview } from "@/components/funnel/funnel-preview";
 import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
+import { CustomerVideoPlayer } from "@/components/campaign/customer-video-player";
 import { StaticCreativeSummaryCard } from "@/components/campaign/static-creative-preview-card";
 import {
   getStaticCreativeReadiness,
@@ -257,14 +258,13 @@ export default async function PreviewPage({
                     </div>
                     {isPlayableVideoCreative(video) ? (
                       <div className="mx-auto max-w-[280px] overflow-hidden rounded-[14px] border border-white/10 bg-black">
-                        <video
-                          className="aspect-[9/16] w-full bg-black object-contain"
-                          controls
+                        <CustomerVideoPlayer
+                          className="border-0"
                           controlsList="nodownload noplaybackrate"
                           disablePictureInPicture
                           playsInline
-                          preload="metadata"
                           src={video.videoUrl}
+                          title={video.title || video.hook}
                         />
                       </div>
                     ) : (

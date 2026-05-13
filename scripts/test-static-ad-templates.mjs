@@ -108,7 +108,7 @@ const generatedCreative = buildComposedStaticAdPreview(generatedCreativeInput);
 assert.equal(generatedCreative.status, "final_composed", "accepted generated images are primary creative previews");
 assert.equal(
   generatedCreative.backgroundMessage,
-  "DealFlow composed this creative with a text-free generated background and exact app-rendered copy.",
+  "Launch-ready app-owned creative with accepted text-free generated background imagery and exact app-rendered copy.",
 );
 
 const rejectedGeneratedCreative = buildComposedStaticAdPreview({

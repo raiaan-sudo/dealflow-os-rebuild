@@ -27,6 +27,13 @@ assert.match(videoJob, /sourceStaticAssetId/, "video provider metadata preserves
 assert.match(videoJob, /normalizeGeneratedVideoProviderFile/, "completed videos normalize into app-owned storage");
 assert.match(videoJob, /evaluateGeneratedVideoQualityGate/, "completed videos run deterministic video QA before launch readiness");
 assert.match(videoJob, /sourceStaticAccepted: videoSourceImage\.accepted/, "video QA is tied to an accepted source static creative");
+assert.match(videoJob, /buildVideoProductQualityGate/, "completed videos persist UGC product-quality gate metadata");
+assert.match(videoJob, /hook in the first 1-2 seconds/, "UGC prompts require an immediate hook");
+assert.match(videoJob, /specific buyer pain or market problem/, "UGC prompts require a campaign-specific market problem");
+assert.match(videoJob, /relatable creator\/agent POV/, "UGC prompts require a creator or agent point of view");
+assert.match(videoJob, /buyer gets better options, a shortlist, qualification help, or early access/, "UGC prompts require a clear buyer mechanism");
+assert.match(videoJob, /accepted static source image as visual context/, "UGC prompts require source-static relevance");
+assert.match(videoJob, /Do not use fake documents, fake UI, fake testimonials, unsupported guarantees/, "UGC prompts block unsupported claims and fake artifacts");
 assert.match(videoJob, /status: "released"[\s\S]{0,240}providerJobCreated: false/, "pre-provider failures release provider usage instead of creating failed debt");
 assert.match(videoJob, /status: "failed"[\s\S]{0,240}failureMode: "provider_start_failed"/, "failed provider starts are non-ready customer states");
 assert.doesNotMatch(videoJob, /error_message: params\.message/, "video failure persistence does not write nonexistent creative_assets.error_message");

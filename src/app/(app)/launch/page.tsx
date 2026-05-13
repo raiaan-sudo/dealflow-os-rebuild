@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { CampaignPublishPanel } from "@/components/campaign/campaign-publish-panel";
 import { LaunchMetaSelectionPanel } from "@/components/campaign/launch/launch-meta-selection-panel";
+import { CustomerVideoPlayer } from "@/components/campaign/customer-video-player";
 import { StaticCreativeSummaryCard } from "@/components/campaign/static-creative-preview-card";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -651,14 +652,13 @@ export default async function LaunchAliasPage({
                       </div>
                       {isPlayableVideoCreative(video) ? (
                         <div className="mx-auto max-w-[240px] overflow-hidden rounded-[14px] border border-white/10 bg-black">
-                          <video
-                            className="aspect-[9/16] w-full bg-black object-contain"
-                            controls
+                          <CustomerVideoPlayer
+                            className="border-0"
                             controlsList="nodownload noplaybackrate"
                             disablePictureInPicture
                             playsInline
-                            preload="metadata"
                             src={video.videoUrl}
+                            title={video.title || video.hook}
                           />
                         </div>
                       ) : (

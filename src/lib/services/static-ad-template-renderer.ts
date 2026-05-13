@@ -361,7 +361,7 @@ function buildBackgroundMessage(input: StaticAdTemplateInput, status: StaticAdTe
       : null;
 
   if (status === "final_composed") {
-    return "DealFlow composed this creative with a text-free generated background and exact app-rendered copy.";
+    return "Launch-ready app-owned creative with accepted text-free generated background imagery and exact app-rendered copy.";
   }
 
   if (status === "background_generating") {

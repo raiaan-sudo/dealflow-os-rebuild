@@ -58,6 +58,20 @@ export type VideoCreativeReadinessInput = {
     decision?: string | null;
     reasons?: string[] | null;
   } | null;
+  videoProductQualityGate?: {
+    accepted?: boolean | null;
+    usable?: boolean | null;
+    decision?: string | null;
+    reasons?: string[] | null;
+    checks?: {
+      hook?: boolean | null;
+      marketProblem?: boolean | null;
+      creatorPointOfView?: boolean | null;
+      mechanism?: boolean | null;
+      sourceRelevance?: boolean | null;
+      cta?: boolean | null;
+    } | null;
+  } | null;
   videoQa?: {
     usable?: boolean | null;
     decision?: string | null;
@@ -226,6 +240,22 @@ function hasAcceptedVideoQa(video: VideoCreativeReadinessInput) {
   );
 }
 
+function hasAcceptedProductQualityGate(video: VideoCreativeReadinessInput) {
+  const gate = video.videoProductQualityGate;
+  const checks = gate?.checks;
+
+  return Boolean(
+    gate?.accepted === true &&
+      gate?.usable !== false &&
+      checks?.hook === true &&
+      checks?.marketProblem === true &&
+      checks?.creatorPointOfView === true &&
+      checks?.mechanism === true &&
+      checks?.sourceRelevance === true &&
+      checks?.cta === true,
+  );
+}
+
 function looksLikeSampleVideo(video: VideoCreativeReadinessInput) {
   const value = [
     video.id,
@@ -291,6 +321,10 @@ export function evaluateGeneratedVideoQualityGate(
     reasons.push("missing_campaign_context");
   }
 
+  if (!hasAcceptedProductQualityGate(video)) {
+    reasons.push("missing_product_quality_acceptance");
+  }
+
   const accepted = reasons.length === 0;
 
   return {
@@ -354,6 +388,10 @@ export function getVideoLaunchReadinessReason(video: VideoCreativeReadinessInput
 
   if (!hasAcceptedVideoQa(video)) {
     return "The playable video is review-only until video QA accepts it for launch.";
+  }
+
+  if (!hasAcceptedProductQualityGate(video)) {
+    return "The playable video is review-only until UGC product-quality QA confirms the hook, market problem, creator POV, mechanism, source relevance, and CTA.";
   }
 
   return null;
