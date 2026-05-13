@@ -271,9 +271,19 @@ export function CreativeWizard({
   );
   const selectedCreatives = rankedCreatives.filter((creative) => selectedIds.includes(creative.id));
   const launchReadyCreatives = rankedCreatives.filter(isLaunchReadyStaticCreative);
+  const selectedLaunchReadyCreatives = selectedCreatives.filter(isLaunchReadyStaticCreative);
+  const selectedLaunchReadyIds = new Set(selectedLaunchReadyCreatives.map((creative) => creative.id));
+  const unselectedLaunchReadyCreatives = launchReadyCreatives.filter(
+    (creative) => !selectedLaunchReadyIds.has(creative.id),
+  );
   const draftCreatives = rankedCreatives.filter((creative) => !isLaunchReadyStaticCreative(creative));
-  const selectableCreatives = launchReadyCreatives.length > 0 ? launchReadyCreatives : rankedCreatives;
-  const carouselMaxSelected = Math.min(maxSelected, Math.max(minSelected, launchReadyCreatives.length || rankedCreatives.length));
+  const selectableCreatives =
+    selectedLaunchReadyCreatives.length > 0
+      ? selectedLaunchReadyCreatives
+      : launchReadyCreatives.length > 0
+        ? launchReadyCreatives
+        : rankedCreatives;
+  const carouselMaxSelected = Math.min(maxSelected, Math.max(minSelected, selectableCreatives.length || rankedCreatives.length));
   const staticReadiness = getStaticCreativeReadiness(rankedCreatives, selectedIds);
   const primaryCreative = selectedCreatives[0] ?? rankedCreatives[0] ?? null;
   const activeCreative =
@@ -1082,14 +1092,15 @@ export function CreativeWizard({
             </h3>
           </div>
           <p className="text-sm text-muted-foreground">
-            Click any card to view it large above. Launch-ready cards are shown first. {selectedCreatives.length}/{carouselMaxSelected} selected.
+            Click any card to view it large above. Selected launch-ready cards are shown first. {selectedLaunchReadyCreatives.length || selectedCreatives.length}/{carouselMaxSelected} selected.
           </p>
         </div>
         {draftCreatives.length > 0 && launchReadyCreatives.length > 0 ? (
           <p className="mt-3 rounded-[14px] border border-amber-300/16 bg-amber-300/[0.075] px-3 py-2 text-sm leading-6 text-amber-100">
-            Showing {launchReadyCreatives.length} launch-ready candidate{launchReadyCreatives.length === 1 ? "" : "s"}.
+            Showing {selectedLaunchReadyCreatives.length || launchReadyCreatives.length} selected launch-ready candidate{(selectedLaunchReadyCreatives.length || launchReadyCreatives.length) === 1 ? "" : "s"}.
             {" "}
             {draftCreatives.length} draft concept{draftCreatives.length === 1 ? "" : "s"} need regeneration and are separated below.
+            {unselectedLaunchReadyCreatives.length > 0 ? ` ${unselectedLaunchReadyCreatives.length} optional launch-ready candidate${unselectedLaunchReadyCreatives.length === 1 ? "" : "s"} can be added after review.` : ""}
           </p>
         ) : null}
         <div className="mt-5 flex snap-x gap-4 overflow-x-auto pb-3">
