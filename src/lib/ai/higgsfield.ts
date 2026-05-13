@@ -806,11 +806,11 @@ export async function createHiggsfieldVideo(
 
   const requestedModel = safeText(request.model) || env.videoModel;
   const { endpoint, model } = resolveVideoEndpointAndModel(requestedModel);
-  const client = await createClient();
-  const response = await client.subscribe(endpoint, {
-    input: buildVideoInput(request, model),
-    withPolling: false,
-  });
+  const response = await (await createLegacyClient()).generate(
+    endpoint,
+    buildVideoInput(request, model),
+    { withPolling: false },
+  );
 
   return extractResult(response as HiggsfieldResponseShape, endpoint);
 }

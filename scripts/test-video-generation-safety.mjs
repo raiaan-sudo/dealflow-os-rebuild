@@ -34,6 +34,7 @@ assert.match(higgsfield, /HIGGSFIELD_IMAGE_TO_VIDEO_ENDPOINT = "\/v1\/image2vide
 assert.match(higgsfield, /input_images/, "Higgsfield video sends source image input");
 assert.match(higgsfield, /inputImageUrl/, "Higgsfield video request requires source image URL");
 assert.match(higgsfield, /"dop-turbo"/, "Higgsfield video defaults to supported DoP model");
+assert.match(higgsfield, /createLegacyClient\(\)\)\.generate\(\s*endpoint,\s*buildVideoInput\(request, model\),\s*\{ withPolling: false \}/, "Higgsfield DoP video uses the provider endpoint shape that wraps input as params");
 assert.doesNotMatch(higgsfield, /aspect_ratio:[\s\S]{0,120}title:[\s\S]{0,120}withPolling: false/, "Higgsfield video no longer sends unsupported text-only video payload");
 assert.match(avatarProvider, /inputImageUrl: typeof request\.inputImageUrl === "string" \? request\.inputImageUrl : null/, "Higgsfield avatar provider forwards the selected static source image URL");
 assert.match(avatarProvider, /safeProviderDiagnostic/, "Higgsfield avatar provider preserves sanitized internal provider diagnostics");
