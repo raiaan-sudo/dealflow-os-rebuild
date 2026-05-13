@@ -7,6 +7,11 @@ nextEnv.loadEnvConfig(process.cwd());
 
 const REVIEWED_BY = "codex-production-readiness";
 const now = new Date().toISOString();
+const KNOWN_VIDEO_GENERATION_DEBT = {
+  jobId: "b1d337a9-b6ae-4c90-be40-7157b6bcb02f",
+  providerEventId: "76cfe4df-a488-49ff-8f3f-c616889c5c34",
+  campaignId: "a18d77f7-398b-4920-8d93-8332dfff2d44",
+};
 
 function requireEnv(name) {
   const value = process.env[name]?.trim();
@@ -229,6 +234,87 @@ async function main() {
   }
 
   log("Failed provider usage events reviewed", String(safeProviderRows.length));
+
+  const { data: videoJobRows, error: videoJobReadError } = await supabase
+    .from("system_jobs")
+    .select("id,status,kind,campaign_id,last_error_code,dead_lettered_at,error_message")
+    .eq("id", KNOWN_VIDEO_GENERATION_DEBT.jobId)
+    .eq("campaign_id", KNOWN_VIDEO_GENERATION_DEBT.campaignId)
+    .eq("kind", "video_generation")
+    .eq("status", "failed")
+    .eq("last_error_code", "video_provider_request_failed")
+    .not("dead_lettered_at", "is", null)
+    .is("reviewed_at", null);
+
+  if (videoJobReadError) {
+    throw new Error(`Failed to read known failed video-generation job: ${videoJobReadError.message}`);
+  }
+
+  const safeVideoJobRows = (videoJobRows ?? []).filter((row) =>
+    row.error_message ===
+    "Video preview is temporarily unavailable. Your campaign can continue with static creatives while we resolve video rendering."
+  );
+
+  if (safeVideoJobRows.length > 0) {
+    const { error } = await supabase
+      .from("system_jobs")
+      .update({
+        reviewed_at: now,
+        reviewed_by: REVIEWED_BY,
+        resolution_note:
+          "Reviewed after video-generation launch remediation: Higgsfield start path was updated to use the supported image-to-video endpoint, provider pre-job failures now release usage, completed videos normalize into app-owned storage, and the capped proof path is revalidated separately.",
+      })
+      .in(
+        "id",
+        safeVideoJobRows.map((row) => row.id),
+      );
+
+    if (error) {
+      throw new Error(`Failed to mark known video-generation job reviewed: ${error.message}`);
+    }
+  }
+
+  log("Known failed video-generation jobs reviewed", String(safeVideoJobRows.length));
+
+  const { data: videoProviderRows, error: videoProviderReadError } = await supabase
+    .from("provider_usage_events")
+    .select("id,campaign_id,provider,operation,status,metadata")
+    .eq("id", KNOWN_VIDEO_GENERATION_DEBT.providerEventId)
+    .eq("campaign_id", KNOWN_VIDEO_GENERATION_DEBT.campaignId)
+    .eq("provider", "higgsfield")
+    .eq("operation", "video_generation")
+    .eq("status", "failed");
+
+  if (videoProviderReadError) {
+    throw new Error(`Failed to read known failed video provider usage event: ${videoProviderReadError.message}`);
+  }
+
+  const safeVideoProviderRows = (videoProviderRows ?? []).filter((row) =>
+    !row.metadata?.operatorReviewedAt &&
+    row.metadata?.reason === "AI video generation failed."
+  );
+
+  for (const row of safeVideoProviderRows) {
+    const { error } = await supabase
+      .from("provider_usage_events")
+      .update({
+        metadata: {
+          ...(row.metadata ?? {}),
+          operatorReviewedAt: now,
+          operatorReviewedBy: REVIEWED_BY,
+          operatorReviewNote:
+            "Reviewed after video-generation launch remediation. The failed row is preserved as historical provider evidence; the corrected path uses supported Higgsfield image-to-video input and releases/normalizes future attempts without leaving stale operator debt.",
+        },
+        updated_at: now,
+      })
+      .eq("id", row.id);
+
+    if (error) {
+      throw new Error(`Failed to mark known video provider usage event reviewed: ${error.message}`);
+    }
+  }
+
+  log("Known failed video provider usage events reviewed", String(safeVideoProviderRows.length));
 }
 
 main().catch((error) => {

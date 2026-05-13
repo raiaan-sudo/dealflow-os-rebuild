@@ -873,6 +873,7 @@ export async function processSystemJob(jobId: string) {
         userId: processingJob.user_id,
         campaignId: processingJob.campaign_id ?? "",
         payload: processingJob.payload as SystemJobPayloadMap["video_generation"],
+        providerUsageRunId: `${processingJob.id}:${processingJob.attempt_count ?? 0}`,
       });
 
       result = output as unknown as Json;

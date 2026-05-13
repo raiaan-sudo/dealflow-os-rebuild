@@ -131,6 +131,15 @@ async function verifyManualCreativeFile(params: {
 }
 
 function isLaunchReadyStaticImageAsset(asset: CreativeAsset) {
+  if (
+    asset.asset_type === "ugc_video" ||
+    asset.asset_type === "talking_head_video" ||
+    asset.asset_type === "montage_video" ||
+    asset.asset_type === "video"
+  ) {
+    return false;
+  }
+
   const metadata =
     asset.metadata && typeof asset.metadata === "object" && !Array.isArray(asset.metadata)
       ? (asset.metadata as Record<string, unknown>)

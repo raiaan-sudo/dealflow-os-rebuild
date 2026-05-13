@@ -32,6 +32,7 @@
     "test:creative-chat-intake": "node ./scripts/test-creative-chat-intake.mjs",
     "test:manual-creative-upload": "node ./scripts/test-manual-creative-upload-validation.mjs",
     "test:provider-usage-idempotency": "node ./scripts/test-provider-usage-idempotency-scope.mjs",
+    "test:video-generation-safety": "node ./scripts/test-video-generation-safety.mjs",
     "test:campaign-value-report": "node ./scripts/test-campaign-value-report.mjs",
     "test:billing-recovery": "node ./scripts/test-billing-recovery.mjs",
     "test:customer-success": "node ./scripts/test-customer-success-layer.mjs",

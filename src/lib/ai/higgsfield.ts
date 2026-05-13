@@ -38,6 +38,7 @@ export type HiggsfieldVideoRequest = {
   title?: string | null;
   aspectRatio?: string | null;
   model?: string | null;
+  inputImageUrl?: string | null;
 };
 
 type HiggsfieldResponseShape = {
@@ -66,8 +67,24 @@ type HiggsfieldImageInput = {
   enhance_prompt?: boolean;
 };
 
+type HiggsfieldVideoInput = {
+  model: "dop-lite" | "dop-turbo" | "dop-standard";
+  prompt: string;
+  input_images: Array<{
+    type: "image_url";
+    image_url: string;
+  }>;
+  motions?: Array<{
+    id: string;
+    strength: number;
+  }>;
+  enhance_prompt?: boolean;
+};
+
 const HIGGSFIELD_SOUL_TEXT_TO_IMAGE_ENDPOINT = "/v1/text2image/soul";
+const HIGGSFIELD_IMAGE_TO_VIDEO_ENDPOINT = "/v1/image2video/dop";
 const HIGGSFIELD_MARKETING_STUDIO_IMAGE_MODEL = "marketing_studio_image";
+const DEFAULT_HIGGSFIELD_VIDEO_MODEL = "dop-turbo";
 
 export type HiggsfieldCliReadiness = {
   enabled: boolean;
@@ -448,6 +465,67 @@ function buildImageInput(endpoint: string, request: HiggsfieldImageRequest): Hig
   };
 }
 
+function resolveVideoEndpointAndModel(model: string) {
+  const normalized = safeText(model);
+
+  if (normalized === HIGGSFIELD_IMAGE_TO_VIDEO_ENDPOINT) {
+    return {
+      endpoint: HIGGSFIELD_IMAGE_TO_VIDEO_ENDPOINT,
+      model: DEFAULT_HIGGSFIELD_VIDEO_MODEL,
+    };
+  }
+
+  if (
+    normalized === "dop-lite" ||
+    normalized === "dop-turbo" ||
+    normalized === "dop-standard"
+  ) {
+    return {
+      endpoint: HIGGSFIELD_IMAGE_TO_VIDEO_ENDPOINT,
+      model: normalized,
+    };
+  }
+
+  if (
+    !normalized ||
+    normalized === "marketing_studio_video" ||
+    normalized === "ugc_video" ||
+    normalized === "soul_cast" ||
+    normalized === "seedance_2_0"
+  ) {
+    return {
+      endpoint: HIGGSFIELD_IMAGE_TO_VIDEO_ENDPOINT,
+      model: DEFAULT_HIGGSFIELD_VIDEO_MODEL,
+    };
+  }
+
+  if (normalized.startsWith("/")) {
+    throw new Error("Higgsfield video endpoint is not supported for DealFlow UGC generation.");
+  }
+
+  throw new Error("Higgsfield video model must be a supported DealFlow alias or DoP model.");
+}
+
+function buildVideoInput(request: HiggsfieldVideoRequest, model: string): HiggsfieldVideoInput {
+  const inputImageUrl = safeText(request.inputImageUrl);
+
+  if (!inputImageUrl) {
+    throw new Error("Higgsfield image-to-video generation requires a ready source creative image.");
+  }
+
+  return {
+    model: model as HiggsfieldVideoInput["model"],
+    prompt: buildPromptWithGuardrails(request),
+    input_images: [
+      {
+        type: "image_url",
+        image_url: inputImageUrl,
+      },
+    ],
+    enhance_prompt: true,
+  };
+}
+
 export async function generateHiggsfieldImage(
   request: HiggsfieldImageRequest,
 ): Promise<HiggsfieldGenerationResult> {
@@ -726,19 +804,15 @@ export async function createHiggsfieldVideo(
     throw new Error("Higgsfield video generation is not configured.");
   }
 
-  const model = safeText(request.model) || env.videoModel;
+  const requestedModel = safeText(request.model) || env.videoModel;
+  const { endpoint, model } = resolveVideoEndpointAndModel(requestedModel);
   const client = await createClient();
-  const response = await client.subscribe(model, {
-    input: {
-      prompt: buildPromptWithGuardrails(request),
-      aspect_ratio: safeText(request.aspectRatio) || "9:16",
-      title: safeText(request.title) || "Campaign video ad",
-      enhance_prompt: true,
-    },
+  const response = await client.subscribe(endpoint, {
+    input: buildVideoInput(request, model),
     withPolling: false,
   });
 
-  return extractResult(response as HiggsfieldResponseShape, model);
+  return extractResult(response as HiggsfieldResponseShape, endpoint);
 }
 
 export async function getHiggsfieldGenerationStatus(

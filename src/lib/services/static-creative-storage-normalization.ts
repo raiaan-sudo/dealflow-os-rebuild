@@ -10,6 +10,7 @@ import type { Database } from "@/lib/supabase/types";
 export const STATIC_CREATIVE_STORAGE_BUCKET = "creative-assets";
 
 export const MAX_STATIC_CREATIVE_PROVIDER_IMAGE_BYTES = 5_000_000;
+export const MAX_STATIC_CREATIVE_PROVIDER_VIDEO_BYTES = 100_000_000;
 const FETCH_TIMEOUT_MS = 5_000;
 const MAX_PROVIDER_REDIRECTS = 3;
 const MAX_STORAGE_NORMALIZATION_ATTEMPTS = 2;
@@ -328,17 +329,25 @@ export async function fetchStaticCreativeProviderImage(
   options?: {
     maxBytes?: number;
     accept?: string;
+    contentTypePrefix?: "image/" | "video/";
     errorPrefix?: string;
   },
 ): Promise<StaticCreativeProviderImageFetchResult> {
   const maxBytes = options?.maxBytes ?? MAX_STATIC_CREATIVE_PROVIDER_IMAGE_BYTES;
   const errorPrefix = options?.errorPrefix ?? "Generated image";
+  const contentTypePrefix = options?.contentTypePrefix ?? "image/";
 
   if (url.startsWith("data:")) {
+    if (contentTypePrefix !== "image/") {
+      throw new Error(`${errorPrefix} URL was invalid.`);
+    }
     return decodeDataUri(url, maxBytes);
   }
 
   if (isLocalGeneratedImageSource(url)) {
+    if (contentTypePrefix !== "image/") {
+      throw new Error(`${errorPrefix} URL was invalid.`);
+    }
     return readLocalGeneratedImageFile(url, maxBytes);
   }
 
@@ -388,7 +397,7 @@ export async function fetchStaticCreativeProviderImage(
 
     const contentType = response.headers.get("content-type")?.split(";")[0]?.toLowerCase() ?? "";
 
-    if (!response.ok || !contentType.startsWith("image/")) {
+    if (!response.ok || !contentType.startsWith(contentTypePrefix)) {
       throw new Error(`${errorPrefix} could not be fetched.`);
     }
 
@@ -518,6 +527,92 @@ export async function normalizeStaticCreativeProviderImage(
 
   if (!data.publicUrl) {
     throw new Error("Generated image storage URL could not be created.");
+  }
+
+  return {
+    durableUrl: data.publicUrl,
+    storageBucket: STATIC_CREATIVE_STORAGE_BUCKET,
+    storagePath,
+    contentType: fetched.contentType,
+    byteSize: fetched.bytes.byteLength,
+    reusedExistingAppAsset: false,
+  };
+}
+
+function extensionForGeneratedVideoContentType(contentType: string) {
+  if (contentType.includes("mp4") || contentType.includes("mpeg")) {
+    return "mp4";
+  }
+
+  if (contentType.includes("webm")) {
+    return "webm";
+  }
+
+  if (contentType.includes("quicktime") || contentType.includes("mov")) {
+    return "mov";
+  }
+
+  return "bin";
+}
+
+function buildVideoStoragePath(params: StaticCreativeStorageNormalizationInput, extension: string) {
+  const safeCreativeId = params.creativeId.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 120) || "creative";
+  const safeBatchId = params.generationBatchId.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80);
+
+  return `${params.userId}/${params.campaignId}/generated-video/${safeCreativeId}/${safeBatchId}.${extension}`;
+}
+
+export async function normalizeGeneratedVideoProviderFile(
+  params: StaticCreativeStorageNormalizationInput,
+): Promise<StaticCreativeStorageNormalizationResult> {
+  const providerUrl = safeText(params.providerUrl);
+
+  if (!providerUrl) {
+    throw new Error("Generated video URL was missing.");
+  }
+
+  if (isAppOwnedCreativeAssetUrl(providerUrl)) {
+    return {
+      durableUrl: providerUrl,
+      storageBucket: STATIC_CREATIVE_STORAGE_BUCKET,
+      storagePath: null,
+      contentType: null,
+      byteSize: null,
+      reusedExistingAppAsset: true,
+    };
+  }
+
+  const fetched = await fetchStaticCreativeProviderImage(providerUrl, {
+    maxBytes: MAX_STATIC_CREATIVE_PROVIDER_VIDEO_BYTES,
+    accept: "video/mp4,video/webm,video/quicktime",
+    contentTypePrefix: "video/",
+    errorPrefix: "Generated video storage",
+  });
+  const extension = extensionForGeneratedVideoContentType(fetched.contentType);
+
+  if (extension === "bin") {
+    throw new Error("Generated video type is not supported for storage.");
+  }
+
+  const storagePath = buildVideoStoragePath(params, extension);
+  const result = await params.supabase.storage
+    .from(STATIC_CREATIVE_STORAGE_BUCKET)
+    .upload(storagePath, fetched.bytes, {
+      cacheControl: "31536000",
+      contentType: fetched.contentType,
+      upsert: false,
+    });
+
+  if (result.error) {
+    throw new Error("Generated video could not be stored durably.");
+  }
+
+  const { data } = params.supabase.storage
+    .from(STATIC_CREATIVE_STORAGE_BUCKET)
+    .getPublicUrl(storagePath);
+
+  if (!data.publicUrl) {
+    throw new Error("Generated video storage URL could not be created.");
   }
 
   return {

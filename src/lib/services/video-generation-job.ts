@@ -8,7 +8,7 @@ import {
 import { getAvatarVideoProvider } from "@/lib/integrations/creative/avatar-provider";
 import { getSavedCampaignDocumentFromRow } from "@/lib/services/canonical-campaign";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
-import type { VideoCreativeAsset } from "@/lib/services/creative-engine";
+import type { StaticCreativeAsset, VideoCreativeAsset } from "@/lib/services/creative-engine";
 import {
   getApprovedCreativeIntakeGenerationContext,
   hasSameCreativeIntakeGenerationContext,
@@ -22,6 +22,10 @@ import {
   consumeSessionCostBudget,
   markSessionCostBudgetEvent,
 } from "@/lib/services/session-cost-guard";
+import {
+  isAppOwnedCreativeAssetUrl,
+  normalizeGeneratedVideoProviderFile,
+} from "@/lib/services/static-creative-storage-normalization";
 
 type VideoPersistenceClient = SupabaseClient<Database>;
 type CampaignPlanRow = Database["public"]["Tables"]["campaign_plans"]["Row"];
@@ -82,6 +86,40 @@ function createDefaultVideoState(payload: VideoGenerationJobPayload): VideoCreat
       authorityLevel: "high",
     },
   };
+}
+
+const SAFE_VIDEO_FAILURE_MESSAGE =
+  "Video preview is temporarily unavailable. Your campaign can continue reviewing static creatives while we finish video rendering.";
+
+function getVideoSourceImageUrl(savedDocument: unknown, selectedIndex: number) {
+  const record = savedDocument && typeof savedDocument === "object"
+    ? (savedDocument as Record<string, unknown>)
+    : {};
+  const staticAds = Array.isArray(record.staticAds)
+    ? (record.staticAds as StaticCreativeAsset[])
+    : [];
+  const candidates = [
+    staticAds[selectedIndex],
+    ...staticAds,
+  ].filter(Boolean);
+
+  for (const asset of candidates) {
+    const imageUrl = typeof asset.imageUrl === "string" ? asset.imageUrl.trim() : "";
+
+    if (
+      imageUrl &&
+      asset.imageGenerationState === "generated" &&
+      asset.qualityGate?.accepted !== false &&
+      isAppOwnedCreativeAssetUrl(imageUrl)
+    ) {
+      return {
+        imageUrl,
+        staticAssetId: asset.id,
+      };
+    }
+  }
+
+  return null;
 }
 
 function mergeVideoAdState(
@@ -280,7 +318,6 @@ async function persistVideoFailure(params: {
     .update({
       status: "failed",
       metadata: nextMetadata as Json,
-      error_message: params.message,
     } as never)
     .eq("id", params.assetId)
     .eq("user_id", params.userId);
@@ -365,6 +402,7 @@ export async function runVideoGenerationJob(params: {
   userId: string;
   campaignId: string;
   payload: VideoGenerationJobPayload;
+  providerUsageRunId?: string | null;
 }) {
   const row = await loadCampaignPlanRow(params.supabase, params.userId, params.campaignId);
   const savedDocument = getSavedCampaignDocumentFromRow(row) ?? {};
@@ -396,6 +434,7 @@ export async function runVideoGenerationJob(params: {
 
   const avatarProvider = getAvatarVideoProvider();
   const defaultState = createDefaultVideoState(params.payload);
+  const videoSourceImage = getVideoSourceImageUrl(savedDocument, params.payload.creativeIndex);
 
   if (!avatarProvider.isConfigured()) {
     const unavailableState: VideoCreativeAsset = {
@@ -482,12 +521,48 @@ export async function runVideoGenerationJob(params: {
     };
   }
 
+  if (!videoSourceImage) {
+    const unavailableState: VideoCreativeAsset = {
+      ...(existingVideo ?? defaultState),
+      hook: params.payload.hook,
+      script: params.payload.scriptLines,
+      shotList: params.payload.scenes.map((scene) => scene.text),
+      videoUrl: undefined,
+      videoGenerationState: "unavailable",
+      videoGenerationMessage: "Render a ready static creative first, then retry the UGC video preview.",
+      providerAssetId: null,
+    };
+
+    await persistVideoAdsToCampaignPlan({
+      supabase: params.supabase,
+      userId: params.userId,
+      campaignId: params.campaignId,
+      videoAds: mergeVideoAdState(
+        existingVideoAds,
+        unavailableState,
+        params.payload.creativeIndex,
+      ),
+    });
+
+    return {
+      assetId: null,
+      providerAssetId: null,
+      status: "requires_static_source",
+      video: {
+        url: "",
+        hook: params.payload.hook,
+        script: params.payload.scriptLines,
+        scenes: params.payload.scenes.map((scene) => scene.text),
+      },
+    };
+  }
+
   const budgetReservation = await consumeSessionCostBudget({
     bucket: "video_generation",
     userId: params.userId,
     organizationId: row.organization_id,
     campaignId: params.campaignId,
-    idempotencyKey: `video_generation:${avatarProvider.name}:${row.organization_id ?? "org"}:${params.userId}:${params.campaignId}:${params.payload.creativeIndex}`,
+    idempotencyKey: `video_generation:${avatarProvider.name}:${row.organization_id ?? "org"}:${params.userId}:${params.campaignId}:${params.payload.creativeIndex}:${params.providerUsageRunId ?? "default"}`,
   });
 
   let providerVideo;
@@ -514,28 +589,161 @@ export async function runVideoGenerationJob(params: {
         scenes: params.payload.scenes,
         audience: params.payload.audience,
         location: params.payload.location,
+        sourceStaticAssetId: videoSourceImage.staticAssetId,
       },
+      inputImageUrl: videoSourceImage.imageUrl,
     }));
 
     if (!providerVideo.ok || !providerVideo.providerAssetId) {
-      throw new ApiError(
-        502,
-        providerVideo.error ?? "AI video generation could not start.",
-        "video_generation_start_failed",
-      );
+      await markSessionCostBudgetEvent({
+        eventId: budgetReservation.eventId,
+        status: "released",
+        metadata: {
+          operation: "video_generation",
+          provider: avatarProvider.name,
+          reason: providerVideo.error ?? "AI video generation could not start.",
+          providerJobCreated: false,
+        },
+      }).catch(() => null);
+
+      const failedState: VideoCreativeAsset = {
+        ...(existingVideo ?? defaultState),
+        hook: params.payload.hook,
+        script: params.payload.scriptLines,
+        shotList: params.payload.scenes.map((scene) => scene.text),
+        videoUrl: undefined,
+        videoGenerationState: "failed",
+        videoGenerationMessage: SAFE_VIDEO_FAILURE_MESSAGE,
+        providerAssetId: null,
+      };
+
+      await persistVideoAdsToCampaignPlan({
+        supabase: params.supabase,
+        userId: params.userId,
+        campaignId: params.campaignId,
+        videoAds: mergeVideoAdState(existingVideoAds, failedState, params.payload.creativeIndex),
+      });
+
+      return {
+        assetId: null,
+        providerAssetId: null,
+        providerUsageEventId: budgetReservation.eventId,
+        status: "failed",
+        failureMode: "provider_start_failed",
+        video: {
+          url: "",
+          hook: params.payload.hook,
+          script: params.payload.scriptLines,
+          scenes: params.payload.scenes.map((scene) => scene.text),
+        },
+      };
     }
   } catch (error) {
     await markSessionCostBudgetEvent({
       eventId: budgetReservation.eventId,
-      status: "failed",
+      status: "released",
       metadata: {
         operation: "video_generation",
         provider: avatarProvider.name,
         reason: error instanceof Error ? error.message : "Video generation failed to start.",
+        providerJobCreated: false,
       },
     }).catch(() => null);
-    throw toVideoProviderApiError(error, "start");
+
+    const failedState: VideoCreativeAsset = {
+      ...(existingVideo ?? defaultState),
+      hook: params.payload.hook,
+      script: params.payload.scriptLines,
+      shotList: params.payload.scenes.map((scene) => scene.text),
+      videoUrl: undefined,
+      videoGenerationState: "failed",
+      videoGenerationMessage: SAFE_VIDEO_FAILURE_MESSAGE,
+      providerAssetId: null,
+    };
+
+    await persistVideoAdsToCampaignPlan({
+      supabase: params.supabase,
+      userId: params.userId,
+      campaignId: params.campaignId,
+      videoAds: mergeVideoAdState(existingVideoAds, failedState, params.payload.creativeIndex),
+    });
+
+    return {
+      assetId: null,
+      providerAssetId: null,
+      providerUsageEventId: budgetReservation.eventId,
+      status: "failed",
+      failureMode: toVideoProviderApiError(error, "start").code,
+      video: {
+        url: "",
+        hook: params.payload.hook,
+        script: params.payload.scriptLines,
+        scenes: params.payload.scenes.map((scene) => scene.text),
+      },
+    };
   }
+
+  let durableVideo:
+    | Awaited<ReturnType<typeof normalizeGeneratedVideoProviderFile>>
+    | null = null;
+
+  if (providerVideo.fileUrl) {
+    try {
+      durableVideo = await normalizeGeneratedVideoProviderFile({
+        supabase: params.supabase,
+        userId: params.userId,
+        campaignId: params.campaignId,
+        creativeId: params.payload.creativeId ?? `video-${params.payload.creativeIndex}`,
+        generationBatchId: providerVideo.providerAssetId,
+        providerUrl: providerVideo.fileUrl,
+      });
+    } catch (error) {
+      await markSessionCostBudgetEvent({
+        eventId: budgetReservation.eventId,
+        status: "released",
+        metadata: {
+          operation: "video_generation",
+          provider: avatarProvider.name,
+          providerAssetId: providerVideo.providerAssetId,
+          reason: error instanceof Error ? error.message : "Generated video could not be stored durably.",
+        },
+      }).catch(() => null);
+
+      const failedState: VideoCreativeAsset = {
+        ...(existingVideo ?? defaultState),
+        hook: params.payload.hook,
+        script: params.payload.scriptLines,
+        shotList: params.payload.scenes.map((scene) => scene.text),
+        videoUrl: undefined,
+        videoGenerationState: "failed",
+        videoGenerationMessage: SAFE_VIDEO_FAILURE_MESSAGE,
+        providerAssetId: providerVideo.providerAssetId,
+      };
+
+      await persistVideoAdsToCampaignPlan({
+        supabase: params.supabase,
+        userId: params.userId,
+        campaignId: params.campaignId,
+        videoAds: mergeVideoAdState(existingVideoAds, failedState, params.payload.creativeIndex),
+      });
+
+      return {
+        assetId: null,
+        providerAssetId: providerVideo.providerAssetId,
+        providerUsageEventId: budgetReservation.eventId,
+        status: "failed",
+        failureMode: "video_storage_normalization_failed",
+        video: {
+          url: "",
+          hook: params.payload.hook,
+          script: params.payload.scriptLines,
+          scenes: params.payload.scenes.map((scene) => scene.text),
+        },
+      };
+    }
+  }
+
+  const durableVideoUrl = durableVideo?.durableUrl ?? providerVideo.fileUrl ?? null;
 
   const { data: insertedAssetRaw, error } = await params.supabase
     .from("creative_assets")
@@ -547,10 +755,10 @@ export async function runVideoGenerationJob(params: {
       asset_type: params.payload.creativeFormat === "ugc" ? "ugc_video" : "talking_head_video",
       format: "9:16",
       generation_method: "avatar_provider",
-      status: providerVideo.fileUrl ? "ready" : "generating",
+      status: durableVideoUrl ? "ready" : "generating",
       provider_name: avatarProvider.name,
       provider_asset_id: providerVideo.providerAssetId,
-      file_url: providerVideo.fileUrl ?? null,
+      file_url: durableVideoUrl,
       thumbnail_url: providerVideo.thumbnailUrl ?? null,
       metadata: {
         hook: params.payload.hook,
@@ -561,7 +769,15 @@ export async function runVideoGenerationJob(params: {
         provider: avatarProvider.name,
         providerStatus: providerVideo.status,
         providerMetadata: providerVideo.metadata ?? null,
-        qualityGateStatus: providerVideo.fileUrl ? "candidate_ready" : "processing",
+        provider_original_url: providerVideo.fileUrl ?? null,
+        sourceStaticAssetId: videoSourceImage.staticAssetId,
+        sourceImageUrl: videoSourceImage.imageUrl,
+        storageNormalized: Boolean(durableVideoUrl),
+        storageBucket: durableVideo?.storageBucket ?? null,
+        storagePath: durableVideo?.storagePath ?? null,
+        storageContentType: durableVideo?.contentType ?? null,
+        storageByteSize: durableVideo?.byteSize ?? null,
+        qualityGateStatus: durableVideoUrl ? "candidate_ready" : "processing",
         ...buildCreativeIntakeAssetMetadata(creativeIntake),
       } as Json,
     } as never)
@@ -611,10 +827,10 @@ export async function runVideoGenerationJob(params: {
     hook: params.payload.hook,
     script: params.payload.scriptLines,
     shotList: params.payload.scenes.map((scene) => scene.text),
-    videoUrl: providerVideo.fileUrl ?? undefined,
-    videoGenerationState: providerVideo.fileUrl ? "generated" : "generating",
+    videoUrl: durableVideoUrl ?? undefined,
+    videoGenerationState: durableVideoUrl ? "generated" : "generating",
     videoGenerationMessage:
-      providerVideo.fileUrl
+      durableVideoUrl
         ? null
         : "Generating video. This can take a minute while the render job completes.",
     providerAssetId: providerVideo.providerAssetId,
@@ -627,7 +843,7 @@ export async function runVideoGenerationJob(params: {
     videoAds: mergeVideoAdState(existingVideoAds, queuedVideoState, params.payload.creativeIndex),
   });
 
-  if (providerVideo.fileUrl) {
+  if (durableVideoUrl) {
     await markSessionCostBudgetEvent({
       eventId: budgetReservation.eventId,
       status: "consumed",
@@ -653,10 +869,10 @@ export async function runVideoGenerationJob(params: {
   return {
     assetId: insertedAsset.id,
     providerAssetId: providerVideo.providerAssetId,
-    status: providerVideo.fileUrl ? "completed" : "processing",
+    status: durableVideoUrl ? "completed" : "processing",
     asset: insertedAsset,
     video: {
-      url: providerVideo.fileUrl ?? "",
+      url: durableVideoUrl ?? "",
       hook: params.payload.hook,
       script: params.payload.scriptLines,
       scenes: params.payload.scenes.map((scene) => scene.text),
@@ -724,7 +940,53 @@ export async function pollVideoGenerationStatusJob(params: {
       );
     }
   } catch (error) {
-    throw toVideoProviderApiError(error, "check");
+    const pollAttempt = params.payload.pollAttempt ?? 0;
+
+    if (pollAttempt < 8) {
+      return {
+        assetId: asset.id,
+        providerAssetId: params.payload.providerAssetId,
+        status: "processing",
+        providerStatus: "status_unavailable",
+        videoUrl: null,
+      };
+    }
+
+    const failure = toVideoProviderApiError(error, "check");
+
+    await persistVideoFailure({
+      supabase: params.supabase,
+      userId: params.userId,
+      campaignId: params.campaignId,
+      assetId: asset.id,
+      providerAssetId: params.payload.providerAssetId,
+      insertedAssetMetadata: asset.metadata,
+      code: failure.code,
+      message: SAFE_VIDEO_FAILURE_MESSAGE,
+      raw: {
+        provider: asset.provider_name ?? params.payload.providerName ?? "unknown",
+        providerStatus: "status_unavailable",
+      },
+    });
+
+    await markSessionCostBudgetEvent({
+      eventId: params.payload.providerUsageEventId,
+      status: "released",
+      metadata: {
+        operation: "video_generation",
+        provider: asset.provider_name ?? params.payload.providerName ?? "unknown",
+        providerAssetId: params.payload.providerAssetId,
+        reason: failure.code,
+      },
+    }).catch(() => null);
+
+    return {
+      assetId: asset.id,
+      providerAssetId: params.payload.providerAssetId,
+      status: "failed",
+      providerStatus: "status_unavailable",
+      videoUrl: null,
+    };
   }
 
   if (
@@ -743,7 +1005,7 @@ export async function pollVideoGenerationStatusJob(params: {
   }
 
   if (finalStatus.status === "failed") {
-    const failureMessage = finalStatus.error ?? "Video generation failed.";
+    const failureMessage = finalStatus.error ?? SAFE_VIDEO_FAILURE_MESSAGE;
 
     await persistVideoFailure({
       supabase: params.supabase,
@@ -753,13 +1015,13 @@ export async function pollVideoGenerationStatusJob(params: {
       providerAssetId: params.payload.providerAssetId,
       insertedAssetMetadata: asset.metadata,
       code: "video_generation_failed",
-      message: failureMessage,
+      message: SAFE_VIDEO_FAILURE_MESSAGE,
       raw: finalStatus.raw,
     });
 
     await markSessionCostBudgetEvent({
       eventId: params.payload.providerUsageEventId,
-      status: "failed",
+      status: "released",
       metadata: {
         operation: "video_generation",
         provider: asset.provider_name ?? params.payload.providerName ?? "unknown",
@@ -768,15 +1030,90 @@ export async function pollVideoGenerationStatusJob(params: {
       },
     }).catch(() => null);
 
-    throw new ApiError(502, failureMessage, "video_generation_failed");
+    return {
+      assetId: asset.id,
+      providerAssetId: params.payload.providerAssetId,
+      status: "failed",
+      providerStatus: finalStatus.status,
+      videoUrl: null,
+    };
   }
 
   if (!finalStatus.videoUrl) {
-    throw new ApiError(
-      502,
-      "AI video provider reported completion without a video URL.",
-      "video_generation_missing_url",
-    );
+    await persistVideoFailure({
+      supabase: params.supabase,
+      userId: params.userId,
+      campaignId: params.campaignId,
+      assetId: asset.id,
+      providerAssetId: params.payload.providerAssetId,
+      insertedAssetMetadata: asset.metadata,
+      code: "video_generation_missing_url",
+      message: SAFE_VIDEO_FAILURE_MESSAGE,
+      raw: finalStatus.raw,
+    });
+
+    await markSessionCostBudgetEvent({
+      eventId: params.payload.providerUsageEventId,
+      status: "released",
+      metadata: {
+        operation: "video_generation",
+        provider: asset.provider_name ?? params.payload.providerName ?? "unknown",
+        providerAssetId: params.payload.providerAssetId,
+        reason: "video_generation_missing_url",
+      },
+    }).catch(() => null);
+
+    return {
+      assetId: asset.id,
+      providerAssetId: params.payload.providerAssetId,
+      status: "failed",
+      providerStatus: finalStatus.status,
+      videoUrl: null,
+    };
+  }
+
+  let durableVideo: Awaited<ReturnType<typeof normalizeGeneratedVideoProviderFile>>;
+
+  try {
+    durableVideo = await normalizeGeneratedVideoProviderFile({
+      supabase: params.supabase,
+      userId: params.userId,
+      campaignId: params.campaignId,
+      creativeId: asset.creative_id ?? asset.id,
+      generationBatchId: params.payload.providerAssetId,
+      providerUrl: finalStatus.videoUrl,
+    });
+  } catch (error) {
+    await persistVideoFailure({
+      supabase: params.supabase,
+      userId: params.userId,
+      campaignId: params.campaignId,
+      assetId: asset.id,
+      providerAssetId: params.payload.providerAssetId,
+      insertedAssetMetadata: asset.metadata,
+      code: "video_storage_normalization_failed",
+      message: SAFE_VIDEO_FAILURE_MESSAGE,
+      raw: finalStatus.raw,
+    });
+
+    await markSessionCostBudgetEvent({
+      eventId: params.payload.providerUsageEventId,
+      status: "released",
+      metadata: {
+        operation: "video_generation",
+        provider: asset.provider_name ?? params.payload.providerName ?? "unknown",
+        providerAssetId: params.payload.providerAssetId,
+        reason: error instanceof Error ? error.message : "Generated video could not be stored durably.",
+      },
+    }).catch(() => null);
+
+    return {
+      assetId: asset.id,
+      providerAssetId: params.payload.providerAssetId,
+      status: "failed",
+      providerStatus: finalStatus.status,
+      videoUrl: null,
+    };
   }
 
   const nextMetadata = {
@@ -785,6 +1122,12 @@ export async function pollVideoGenerationStatusJob(params: {
       : {}),
     providerStatus: finalStatus.status,
     providerRaw: finalStatus.raw,
+    provider_original_url: finalStatus.videoUrl,
+    storageNormalized: true,
+    storageBucket: durableVideo.storageBucket,
+    storagePath: durableVideo.storagePath,
+    storageContentType: durableVideo.contentType,
+    storageByteSize: durableVideo.byteSize,
     qualityGateStatus: "candidate_ready",
   } satisfies Record<string, unknown>;
 
@@ -792,7 +1135,7 @@ export async function pollVideoGenerationStatusJob(params: {
     .from("creative_assets")
     .update({
       status: "ready",
-      file_url: finalStatus.videoUrl,
+      file_url: durableVideo.durableUrl,
       thumbnail_url: finalStatus.thumbnailUrl,
       metadata: nextMetadata as Json,
     } as never)
@@ -815,7 +1158,7 @@ export async function pollVideoGenerationStatusJob(params: {
     campaignId: params.campaignId,
     providerAssetId: params.payload.providerAssetId,
     status: "generated",
-    videoUrl: finalStatus.videoUrl,
+    videoUrl: durableVideo.durableUrl,
     message: null,
   });
 
@@ -834,6 +1177,6 @@ export async function pollVideoGenerationStatusJob(params: {
     providerAssetId: params.payload.providerAssetId,
     status: "completed",
     asset: updatedAssetRaw as CreativeAsset,
-    videoUrl: finalStatus.videoUrl,
+    videoUrl: durableVideo.durableUrl,
   };
 }
