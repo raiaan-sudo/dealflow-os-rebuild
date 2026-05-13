@@ -97,7 +97,9 @@ export default async function PreviewPage({
   const videoAds = previewPlan.creatives.videoAds;
   const staticReadiness = getStaticCreativeReadiness(previewPlan.creatives.staticAds, selectedAdIds);
   const selectedStaticMediaReady = staticReadiness.allSelectedReady;
-  const launchReadyVideoCount = videoAds.filter(isLaunchReadyVideoCreative).length;
+  const launchReadyVideos = videoAds.filter(isLaunchReadyVideoCreative);
+  const displayVideoAds = launchReadyVideos.length > 0 ? launchReadyVideos : videoAds;
+  const launchReadyVideoCount = launchReadyVideos.length;
   const videoMediaReady = launchReadyVideoCount > 0;
   const mediaReadyForLaunch = selectedStaticMediaReady && videoMediaReady;
   const campaignIdForFlow = record?.campaign.id ?? null;
@@ -237,13 +239,13 @@ export default async function PreviewPage({
               No saved creative test set is ready yet. Go back to creatives and choose the ads you want to test first.
             </div>
           )}
-          {videoAds.length > 0 ? (
+          {displayVideoAds.length > 0 ? (
             <section className="mt-5 border-t border-white/10 pt-5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 UGC video concepts
               </p>
               <div className="mt-3 grid gap-3">
-                {videoAds.map((video, index) => (
+                {displayVideoAds.map((video, index) => (
                   <div className="rounded-[18px] border border-white/10 bg-white/[0.035] p-3" key={video.id}>
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                       <p className="line-clamp-1 text-sm font-semibold text-foreground">

@@ -280,13 +280,16 @@ export function CreativeWizard({
   const ugcQuotaAvailable = rankedCreatives.some(isUgcCreative);
   const selectedUgcCount = selectedCreatives.filter(isUgcCreative).length;
   const ugcQuotaSatisfied = !ugcQuotaAvailable || selectedUgcCount >= 1;
+  const launchReadyVideoCreatives = videoCreatives.filter(isLaunchReadyVideoCreative);
+  const reviewableVideoCreatives =
+    launchReadyVideoCreatives.length > 0 ? launchReadyVideoCreatives : videoCreatives;
   const primaryVideoCreative =
-    videoCreatives.find((video) => video.conceptType === "customer_ugc") ??
-    videoCreatives[0] ??
+    reviewableVideoCreatives.find((video) => video.conceptType === "customer_ugc") ??
+    reviewableVideoCreatives[0] ??
     null;
   const [activeVideoId, setActiveVideoId] = useState<string | null>(primaryVideoCreative?.id ?? null);
   const activeVideoCreative =
-    videoCreatives.find((video) => video.id === activeVideoId) ??
+    reviewableVideoCreatives.find((video) => video.id === activeVideoId) ??
     primaryVideoCreative;
   const videoNeedsGeneration = Boolean(
     primaryVideoCreative &&
@@ -480,12 +483,12 @@ export function CreativeWizard({
   }, [videoNeedsGeneration]);
 
   useEffect(() => {
-    if (!activeVideoId || videoCreatives.some((video) => video.id === activeVideoId)) {
+    if (!activeVideoId || reviewableVideoCreatives.some((video) => video.id === activeVideoId)) {
       return;
     }
 
-    setActiveVideoId(primaryVideoCreative?.id ?? videoCreatives[0]?.id ?? null);
-  }, [activeVideoId, primaryVideoCreative?.id, videoCreatives]);
+    setActiveVideoId(primaryVideoCreative?.id ?? reviewableVideoCreatives[0]?.id ?? null);
+  }, [activeVideoId, primaryVideoCreative?.id, reviewableVideoCreatives]);
 
   useEffect(() => {
     if (!activeCreativeId || rankedCreatives.some((creative) => creative.id === activeCreativeId)) {
@@ -945,9 +948,9 @@ export function CreativeWizard({
                 </span>
               ) : null}
             </div>
-            {videoCreatives.length > 1 ? (
+            {reviewableVideoCreatives.length > 1 ? (
               <div className="flex gap-2 overflow-x-auto pb-1">
-                {videoCreatives.map((video, index) => {
+                {reviewableVideoCreatives.map((video, index) => {
                   const active = video.id === activeVideoCreative.id;
                   return (
                     <button

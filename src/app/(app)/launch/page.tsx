@@ -249,6 +249,7 @@ export default async function LaunchAliasPage({
   const selectedCreativeMediaReady =
     staticReadiness.allSelectedReady;
   const launchReadyVideos = plan.creatives.videoAds.filter(isLaunchReadyVideoCreative);
+  const displayVideoAds = launchReadyVideos.length > 0 ? launchReadyVideos : plan.creatives.videoAds;
   const videoMediaReady = launchReadyVideos.length > 0;
   const publicFunnelPublished =
     savedRecord.publish.state === "published" &&
@@ -624,7 +625,7 @@ export default async function LaunchAliasPage({
                 </div>
               ))}
             </div>
-            {plan.creatives.videoAds.length > 0 ? (
+            {displayVideoAds.length > 0 ? (
               <div className="mt-5 border-t border-white/10 pt-5">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
@@ -638,7 +639,7 @@ export default async function LaunchAliasPage({
                   </span>
                 </div>
                 <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {plan.creatives.videoAds.map((video, index) => (
+                  {displayVideoAds.map((video, index) => (
                     <div className="rounded-[18px] border border-white/10 bg-black/18 p-3" key={video.id}>
                       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                         <p className="line-clamp-1 text-sm font-semibold text-foreground">
