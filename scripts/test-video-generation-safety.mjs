@@ -29,6 +29,8 @@ assert.match(videoJob, /status: "released"[\s\S]{0,240}providerJobCreated: false
 assert.match(videoJob, /status: "failed"[\s\S]{0,240}failureMode: "provider_start_failed"/, "failed provider starts are non-ready customer states");
 assert.doesNotMatch(videoJob, /error_message: params\.message/, "video failure persistence does not write nonexistent creative_assets.error_message");
 assert.match(videoJob, /SAFE_VIDEO_FAILURE_MESSAGE/, "customer-facing video failure copy is centralized and safe");
+assert.match(videoJob, /VIDEO_STATUS_POLL_MAX_ATTEMPTS = 12/, "video status polling allows async provider renders to resolve without dead-lettering after one poll");
+assert.match(videoJob, /max_attempts: VIDEO_STATUS_POLL_MAX_ATTEMPTS/, "queued video status jobs use the async polling attempt ceiling");
 
 assert.match(higgsfield, /HIGGSFIELD_IMAGE_TO_VIDEO_ENDPOINT = "\/v1\/image2video\/dop"/, "Higgsfield video uses supported image-to-video endpoint");
 assert.match(higgsfield, /input_images/, "Higgsfield video sends source image input");

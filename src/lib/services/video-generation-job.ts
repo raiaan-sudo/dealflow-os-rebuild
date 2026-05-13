@@ -90,6 +90,7 @@ function createDefaultVideoState(payload: VideoGenerationJobPayload): VideoCreat
 
 const SAFE_VIDEO_FAILURE_MESSAGE =
   "Video preview is temporarily unavailable. Your campaign can continue reviewing static creatives while we finish video rendering.";
+const VIDEO_STATUS_POLL_MAX_ATTEMPTS = 12;
 
 function getVideoSourceImageUrl(savedDocument: unknown, selectedIndex: number) {
   const record = savedDocument && typeof savedDocument === "object"
@@ -358,7 +359,7 @@ async function queueVideoStatusPollJob(params: {
       pollAttempt: 0,
     } satisfies VideoGenerationStatusJobPayload,
     idempotency_key: idempotencyKey,
-    max_attempts: 1,
+    max_attempts: VIDEO_STATUS_POLL_MAX_ATTEMPTS,
     next_run_at: new Date(Date.now() + 60_000).toISOString(),
   } as never);
 
