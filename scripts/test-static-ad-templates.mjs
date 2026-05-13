@@ -214,6 +214,18 @@ assert.deepEqual(
   "negative prompt legacy terms should not reject valid text-free background assets",
 );
 
+assert.equal(
+  evaluateStaticVisualAssetDecision({
+    imageUrl: "https://example.test/unaccepted-background.png",
+    storageNormalized: true,
+    imagePrompt: "TEXT-FREE BACKGROUND ASSET ONLY. Warm buyer reviewing homes in Austin.",
+    visualPromptBrief: contractBrief,
+    imageQa: { usable: true, decision: "accept", reasons: [] },
+  }).usable,
+  false,
+  "static assets cannot be launch-ready until the creative quality gate is explicitly accepted",
+);
+
 const legacyFullAdDecision = evaluateStaticVisualAssetDecision({
   imageUrl: "https://example.test/legacy-full-ad.png",
   storageNormalized: true,

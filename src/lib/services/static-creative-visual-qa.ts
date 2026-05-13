@@ -106,10 +106,10 @@ export function evaluateStaticVisualAssetDecision(
     };
   }
 
-  if (input.qualityGate?.accepted === false) {
+  if (input.qualityGate?.accepted !== true) {
     return {
       usable: false,
-      reason: "This generated visual failed the creative quality gate and must be regenerated.",
+      reason: "This generated visual has not passed the creative quality gate yet and must be regenerated.",
     };
   }
 
