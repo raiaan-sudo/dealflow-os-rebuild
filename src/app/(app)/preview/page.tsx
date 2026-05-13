@@ -19,6 +19,12 @@ import {
 import { FunnelPreview } from "@/components/funnel/funnel-preview";
 import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
 import { StaticCreativeSummaryCard } from "@/components/campaign/static-creative-preview-card";
+import {
+  getStaticCreativeReadiness,
+  getVideoReadinessLabel,
+  getVideoReadinessMessage,
+  isPlayableVideoCreative,
+} from "@/lib/services/creative-media-readiness";
 
 function customerVideoMessage(message?: string | null) {
   const text = message?.trim();
@@ -86,6 +92,7 @@ export default async function PreviewPage({
   const expectedOutcomes = getExpectedOutcomes(previewPlan);
   const selectedAds = previewPlan.creatives.staticAds.filter((ad) => selectedAdIds.includes(ad.id));
   const videoAds = previewPlan.creatives.videoAds;
+  const staticReadiness = getStaticCreativeReadiness(previewPlan.creatives.staticAds, selectedAdIds);
   const campaignIdForFlow = record?.campaign.id ?? null;
 
   if (selectedAds.length === 0) {
@@ -139,8 +146,14 @@ export default async function PreviewPage({
           <div className="mb-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Selected creative test set</p>
             <h2 className="mt-1 text-lg font-semibold text-foreground">
-              {selectedAds.length > 0 ? `${selectedAds.length} creatives ready` : "Creative selection needed"}
+              {selectedAds.length > 0 ? staticReadiness.selectionLabel : "Creative selection needed"}
             </h2>
+            {selectedAds.length > 0 ? (
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {staticReadiness.readyLabel}
+                {staticReadiness.issueLabel ? `; ${staticReadiness.issueLabel}` : ""}
+              </p>
+            ) : null}
           </div>
           {selectedAds.length > 0 ? (
             <div className="space-y-3">
@@ -221,21 +234,24 @@ export default async function PreviewPage({
                         Video {index + 1}: {video.title || video.hook}
                       </p>
                       <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                        {video.videoUrl ? "Ready" : "Rendering"}
+                        {getVideoReadinessLabel(video)}
                       </span>
                     </div>
-                    {video.videoUrl ? (
-                      <video
-                        className="aspect-video w-full rounded-[14px] border border-white/10 bg-black object-cover"
-                        controls
-                        controlsList="nodownload noplaybackrate"
-                        disablePictureInPicture
-                        playsInline
-                        src={video.videoUrl}
-                      />
+                    {isPlayableVideoCreative(video) ? (
+                      <div className="mx-auto max-w-[280px] overflow-hidden rounded-[14px] border border-white/10 bg-black">
+                        <video
+                          className="aspect-[9/16] w-full bg-black object-contain"
+                          controls
+                          controlsList="nodownload noplaybackrate"
+                          disablePictureInPicture
+                          playsInline
+                          preload="metadata"
+                          src={video.videoUrl}
+                        />
+                      </div>
                     ) : (
                       <div className="grid aspect-video place-items-center rounded-[14px] border border-dashed border-white/12 bg-black/22 p-4 text-center text-sm text-muted-foreground">
-                        {customerVideoMessage(video.videoGenerationMessage) ?? "AI video rendering is not ready yet."}
+                        {customerVideoMessage(video.videoGenerationMessage) ?? getVideoReadinessMessage(video)}
                       </div>
                     )}
                   </div>

@@ -13,16 +13,16 @@ type StaticAdComposedPreviewProps = StaticAdTemplateInput & {
 };
 
 function statusLabel(status: ReturnType<typeof buildComposedStaticAdPreview>["status"]) {
-  if (status === "final_composed") return "Composed creative";
-  if (status === "background_generating") return "Composed preview";
-  if (status === "background_rejected") return "Composed preview";
-  if (status === "background_failed") return "Composed preview";
-  return "Composed preview";
+  if (status === "final_composed") return "Launch-ready creative";
+  if (status === "background_generating") return "Draft concept";
+  if (status === "background_rejected") return "Retry needed";
+  if (status === "background_failed") return "Retry needed";
+  return "Draft concept";
 }
 
 function qualityLabel(preview: ReturnType<typeof buildComposedStaticAdPreview>) {
   if (preview.status === "final_composed") {
-    return "Image ready";
+    return "Launch-ready image";
   }
 
   if (preview.status === "background_generating") {
@@ -30,10 +30,10 @@ function qualityLabel(preview: ReturnType<typeof buildComposedStaticAdPreview>) 
   }
 
   if (preview.status === "background_rejected") {
-    return "Cleaner image preparing";
+    return "Not launch-ready";
   }
 
-  return "Image refresh available";
+  return "Refresh available";
 }
 
 function backgroundClass(category: ReturnType<typeof buildComposedStaticAdPreview>["category"]) {

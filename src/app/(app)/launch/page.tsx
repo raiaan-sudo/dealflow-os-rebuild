@@ -18,7 +18,12 @@ import { getSelectedAdIdsFromPlan, readCampaignPlanDocument } from "@/lib/servic
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { getBillingSummary } from "@/lib/services/billing-service";
 import { getMetaQueryUiCopy } from "@/lib/integrations/meta/error-mapper";
-import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
+import {
+  getStaticCreativeReadiness,
+  getVideoReadinessLabel,
+  getVideoReadinessMessage,
+  isPlayableVideoCreative,
+} from "@/lib/services/creative-media-readiness";
 import {
   getMetaConnectionState,
   getDefaultMetaConnectionState,
@@ -239,9 +244,11 @@ export default async function LaunchAliasPage({
     ...(!providerLaunchEnabled ? ["Final launch approval is pending."] : []),
   ];
   const selectedCreatives = plan.creatives.staticAds.filter((ad) => selectedAdIds.includes(ad.id));
+  const staticReadiness = getStaticCreativeReadiness(plan.creatives.staticAds, selectedAdIds);
   const selectedCreativeMediaReady =
-    selectedCreatives.length > 0 &&
-    selectedCreatives.every((ad) => evaluateStaticVisualAssetDecision(ad).usable);
+    staticReadiness.allSelectedReady;
+  const playableVideos = plan.creatives.videoAds.filter(isPlayableVideoCreative);
+  const videoMediaReady = playableVideos.length > 0;
   const publicFunnelPublished =
     savedRecord.publish.state === "published" &&
     Boolean(savedRecord.publish.slug) &&
@@ -251,6 +258,9 @@ export default async function LaunchAliasPage({
   }
   if (!selectedCreativeMediaReady) {
     blockingReasons.push("Finish rendering clean creative images before launch.");
+  }
+  if (!videoMediaReady) {
+    blockingReasons.push("Finish rendering the video preview before launch.");
   }
   const dailyBudgetInput =
     plan.runtime.budgetDailyInput && plan.runtime.budgetDailyInput > 0
@@ -267,6 +277,7 @@ export default async function LaunchAliasPage({
     billingLaunchAllowed &&
     metaLaunchReady &&
     selectedCreativeMediaReady &&
+    videoMediaReady &&
     publicFunnelPublished &&
     providerLaunchEnabled;
   const readinessItems = [
@@ -301,10 +312,17 @@ export default async function LaunchAliasPage({
       ready: selectedCreativeMediaReady,
       detail:
         selectedCreativeMediaReady
-          ? `${selectedCreatives.length} launch-ready creative${selectedCreatives.length === 1 ? "" : "s"} saved`
+          ? `${staticReadiness.selectionLabel}; ${staticReadiness.readyLabel}`
           : selectedCreatives.length > 0
             ? "Regenerate selected creatives until clean image renders are ready"
             : "Choose the creative test set first",
+    },
+    {
+      label: "Video preview ready",
+      ready: videoMediaReady,
+      detail: videoMediaReady
+        ? `${playableVideos.length} playable app-owned video ${playableVideos.length === 1 ? "preview is" : "previews are"} ready`
+        : "Render a playable app-owned video preview before launch",
     },
     {
       label: "Funnel published",
@@ -361,6 +379,9 @@ export default async function LaunchAliasPage({
     ...(!publicFunnelPublished ? ["Publish the public funnel snapshot so Meta has a live destination URL."] : []),
     ...(!selectedCreativeMediaReady
       ? ["Return to Creatives and refresh unfinished previews before saving the launch set again."]
+      : []),
+    ...(!videoMediaReady
+      ? ["Return to Creatives and render the video preview before launch."]
       : []),
     ...(!providerLaunchEnabled
       ? [
@@ -560,11 +581,11 @@ export default async function LaunchAliasPage({
                 <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Selected creative test set</p>
                 <h2 className="mt-2 text-lg font-semibold text-foreground">
                   {selectedCreativeMediaReady
-                    ? `${selectedCreatives.length} creatives ready`
+                    ? staticReadiness.selectionLabel
                     : `${selectedCreatives.length} selected, rendering needed`}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  The first saved ad is the primary creative. The rest stay as review variants for comparison before launch.
+                  The first saved ad is the primary creative. The rest stay as review variants for comparison before launch. {staticReadiness.readyLabel}
                 </p>
               </div>
               <span className="rounded-full border border-cyan-300/16 bg-cyan-300/[0.055] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100">
@@ -601,6 +622,52 @@ export default async function LaunchAliasPage({
                 </div>
               ))}
             </div>
+            {plan.creatives.videoAds.length > 0 ? (
+              <div className="mt-5 border-t border-white/10 pt-5">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Video preview</p>
+                    <h3 className="mt-2 text-sm font-semibold text-foreground">
+                      {videoMediaReady ? "Playable video is ready" : "Video render needed"}
+                    </h3>
+                  </div>
+                  <span className={videoMediaReady ? "text-sm font-semibold text-emerald-300" : "text-sm font-semibold text-amber-300"}>
+                    {videoMediaReady ? "Ready" : "Blocked"}
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {plan.creatives.videoAds.map((video, index) => (
+                    <div className="rounded-[18px] border border-white/10 bg-black/18 p-3" key={video.id}>
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <p className="line-clamp-1 text-sm font-semibold text-foreground">
+                          Video {index + 1}: {video.title || video.hook}
+                        </p>
+                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                          {getVideoReadinessLabel(video)}
+                        </span>
+                      </div>
+                      {isPlayableVideoCreative(video) ? (
+                        <div className="mx-auto max-w-[240px] overflow-hidden rounded-[14px] border border-white/10 bg-black">
+                          <video
+                            className="aspect-[9/16] w-full bg-black object-contain"
+                            controls
+                            controlsList="nodownload noplaybackrate"
+                            disablePictureInPicture
+                            playsInline
+                            preload="metadata"
+                            src={video.videoUrl}
+                          />
+                        </div>
+                      ) : (
+                        <div className="grid aspect-video place-items-center rounded-[14px] border border-dashed border-white/12 bg-black/22 p-4 text-center text-sm text-muted-foreground">
+                          {getVideoReadinessMessage(video)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </Card>

@@ -346,7 +346,7 @@ function runOfflineChecks() {
   assertIncludes(creativeWizard, "activeVideoJobId", "Creative video active-job state", "video preview progress stays visible while an active render job is streaming");
   assertIncludes(creativeWizard, "Image preview is being prepared. This page will update when the visual is ready.", "Creative retry pending copy", "creative cards show immediate pending feedback instead of stale cap errors");
   assertIncludes(creativeWizard, "getStaticPreviewStatusMessage", "Creative partial-count copy", "completed image jobs report ready/missing/failed counts instead of generic ready copy");
-  assertIncludes(creativeWizard, "of ${creatives.length} image previews are ready", "Creative partial-count wording", "partial image generation copy exposes counts when some previews still need work");
+  assertIncludes("src/lib/services/creative-media-readiness.ts", "launch-ready previews available", "Creative partial-count wording", "partial image generation copy exposes counts without treating optional failed variants as launch blockers");
   assertIncludes(creativeWizard, "customerImageMessage", "Creative image error sanitizer", "image preview failures do not expose provider or infrastructure wording to customers");
   assertIncludes(creativeWizard, "missingOnly: true", "Creative retry refill payload", "creative retry payloads refill unfinished previews without full creative regeneration");
   assertIncludes(creativeWizard, "Draft selection only. Launch remains blocked until this set is saved.", "Creative draft selection copy", "creative page distinguishes recommended draft selections from saved launch selections");
@@ -357,7 +357,7 @@ function runOfflineChecks() {
   assertExcludes(creativeWizard, "Approve UGC questions", "Creative local UGC approval removed", "creative wizard does not keep an in-memory UGC approval button");
   assertExcludes(creativeWizard, "provider rendering stays off", "Creative provider copy hidden", "creative wizard avoids customer-facing provider terminology");
   assertExcludes(creativeWizard, "automatic: true", "Creative paid auto-render avoided", "creative page load does not automatically queue paid image or video provider work");
-  assertIncludes(creativeWizard, "A few visuals need cleaner backgrounds.", "Creative non-auto refresh copy", "creative page does not imply provider refresh is running before a user-triggered retry");
+  assertIncludes(creativeWizard, "optional previews need another attempt", "Creative non-auto refresh copy", "creative page does not imply provider refresh is running before a user-triggered retry");
   assertExcludes(creativeWizard, "missingOnly: false", "Creative retry full regeneration avoided", "creative retry controls do not request full static regeneration");
   assertExcludes(creativeWizard, "Regenerate previews", "Creative retry full-regenerate copy removed", "customer-facing retry copy does not imply a full regenerate");
   assertIncludes(creativeWizard, "Daily image refresh limit reached for this campaign.", "Creative image cap copy", "creative retries show a clear daily-limit state instead of pretending renders are still running");
@@ -384,7 +384,7 @@ function runOfflineChecks() {
   assertIncludes(campaignVisualPromptBuilder, "seller home-value comparison ad", "Seller valuation reference pattern", "seller prompts can follow home-value comparison and before-after proof patterns");
   assertIncludes(campaignVisualPromptBuilder, "buyer listing-alert and affordability collage", "Buyer listing reference pattern", "buyer prompts can follow listing-alert, affordability, and collage creative patterns");
   assertIncludes(creativeEngine, "1-2 required UGC-style concepts inside the six-ad test set", "UGC creative quota prompt", "UGC static image concepts are explicitly framed as required test-set variants");
-  assertIncludes(staticAdComposedPreview, "Composed creative", "Generated creative composition", "rendered images are used as text-free backgrounds while DealFlow composes exact copy and CTA");
+  assertIncludes(staticAdComposedPreview, "Launch-ready creative", "Generated creative composition", "rendered images are used as text-free backgrounds while DealFlow composes exact copy and CTA");
   assertIncludes(staticAdComposedPreview, "object-cover", "Generated background crop", "generated backgrounds fill deterministic media-buyer templates without raw baked-text layouts");
   assertIncludes(staticAdComposedPreview, "renderInstantVisualScene", "Instant creative visual scene", "creatives render a complete visual layout even when generated imagery is missing");
   assertIncludes(staticAdTemplateRenderer, "This visual needs a cleaner background", "Generated rejection customer copy", "missing or rejected generated backgrounds do not expose internal QA language to customers");

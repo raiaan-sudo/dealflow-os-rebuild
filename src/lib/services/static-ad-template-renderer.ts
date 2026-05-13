@@ -354,23 +354,29 @@ function buildStatus(input: StaticAdTemplateInput): StaticAdTemplateStatus {
 }
 
 function buildBackgroundMessage(input: StaticAdTemplateInput, status: StaticAdTemplateStatus) {
+  const customerSafeImageMessage =
+    input.imageGenerationMessage &&
+    !/provider usage guard|explicitly enabled|generation is disabled|provider|configured|credentials|api key|schema|rpc|open\s*ai|higgs?field|hey\s*gen|gpt-image|model|timed?\s*out|timeout|api\.|https?:\/\//i.test(input.imageGenerationMessage)
+      ? input.imageGenerationMessage
+      : null;
+
   if (status === "final_composed") {
     return "DealFlow composed this creative with a text-free generated background and exact app-rendered copy.";
   }
 
   if (status === "background_generating") {
-    return input.imageGenerationMessage || "Final generated imagery is rendering; instant composed preview remains available.";
+    return customerSafeImageMessage || "Final generated imagery is rendering; draft concept remains visible.";
   }
 
   if (status === "background_rejected") {
-    return "This visual needs a cleaner background. Preview is using the composed layout while the image refreshes.";
+    return "This visual needs a cleaner background before it can be used as launch-ready media.";
   }
 
   if (status === "background_failed") {
-    return input.imageGenerationMessage || "Final generated imagery needs retry; instant composed preview remains available.";
+    return customerSafeImageMessage || "Final generated imagery needs retry before this can be used as launch-ready media.";
   }
 
-  return "Instant composed preview is shown while generated imagery is unavailable.";
+  return "Draft concept is shown while launch-ready generated imagery is unavailable.";
 }
 
 function buildEyebrow(category: CampaignCategory, location: string, templateId: StaticAdTemplateKind) {

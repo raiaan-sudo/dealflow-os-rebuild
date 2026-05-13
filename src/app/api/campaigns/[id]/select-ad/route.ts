@@ -13,6 +13,7 @@ import {
   getSelectedAdIdsFromPlan,
   withSelectedAdIds,
 } from "@/lib/services/campaign-plan-document";
+import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
 import type { StaticCreativeAsset } from "@/lib/services/creative-engine";
@@ -98,7 +99,10 @@ export async function POST(
     await assertCampaignCanLaunch(id);
 
     const existingSelectedAdIds = getSelectedAdIdsFromPlan(currentPlan);
-    const staticAds = readStaticAdsFromPlan(currentPlan);
+    const hydratedRecord = await getCampaignById(id);
+    const staticAds = hydratedRecord?.creatives.staticAds.length
+      ? hydratedRecord.creatives.staticAds
+      : readStaticAdsFromPlan(currentPlan);
     const staticAdById = new Map(staticAds.map((ad) => [ad.id, ad]));
     const missingIds = selectedAdIds.filter((selectedId) => !staticAdById.has(selectedId));
 

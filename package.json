@@ -33,6 +33,7 @@
     "test:manual-creative-upload": "node ./scripts/test-manual-creative-upload-validation.mjs",
     "test:provider-usage-idempotency": "node ./scripts/test-provider-usage-idempotency-scope.mjs",
     "test:video-generation-safety": "node ./scripts/test-video-generation-safety.mjs",
+    "test:creative-media-readiness": "node ./scripts/test-creative-media-readiness.mjs",
     "test:campaign-value-report": "node ./scripts/test-campaign-value-report.mjs",
     "test:billing-recovery": "node ./scripts/test-billing-recovery.mjs",
     "test:customer-success": "node ./scripts/test-customer-success-layer.mjs",

@@ -7,6 +7,13 @@ import {
   StaticCreativePreviewCard,
 } from "@/components/campaign/static-creative-preview-card";
 import { Button } from "@/components/ui/button";
+import {
+  getStaticCreativeReadiness,
+  getStaticPreviewStatusMessage,
+  getVideoReadinessLabel,
+  getVideoReadinessMessage,
+  isPlayableVideoCreative,
+} from "@/lib/services/creative-media-readiness";
 import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
 import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
 
@@ -145,47 +152,6 @@ function getImageLimitMessage(creatives: CreativeOption[]) {
     : null;
 }
 
-function pluralize(count: number, singular: string, plural = `${singular}s`) {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
-function getStaticPreviewStatusMessage(creatives: CreativeOption[]) {
-  if (creatives.length === 0) {
-    return null;
-  }
-
-  const readyCount = creatives.filter(
-    (creative) =>
-      creative.imageGenerationState === "generated" &&
-      Boolean(creative.imageUrl) &&
-      evaluateStaticVisualAssetDecision(creative).usable,
-  ).length;
-  const failedCount = creatives.filter(
-    (creative) =>
-      creative.imageGenerationState === "failed" ||
-      creative.qualityGate?.accepted === false,
-  ).length;
-  const missingCount = creatives.filter(
-    (creative) =>
-      !creative.imageUrl &&
-      creative.imageGenerationState !== "failed" &&
-      creative.qualityGate?.accepted !== false,
-  ).length;
-
-  if (readyCount === creatives.length) {
-    return "Image previews are ready.";
-  }
-
-  const remainingParts = [
-    failedCount > 0 ? pluralize(failedCount, "needs another attempt", "need another attempt") : null,
-    missingCount > 0 ? pluralize(missingCount, "is still missing", "are still missing") : null,
-  ].filter(Boolean);
-
-  return `${readyCount} of ${creatives.length} image previews are ready. ${
-    remainingParts.length > 0 ? remainingParts.join(" and ") : "The remaining previews need another attempt."
-  }`;
-}
-
 export function CreativeWizard({
   campaignId,
   creatives,
@@ -238,14 +204,14 @@ export function CreativeWizard({
     defaultSelectedIds[0] ?? rankedCreatives[0]?.id ?? null,
   );
   const selectedCreatives = rankedCreatives.filter((creative) => selectedIds.includes(creative.id));
+  const staticReadiness = getStaticCreativeReadiness(rankedCreatives, selectedIds);
   const primaryCreative = selectedCreatives[0] ?? rankedCreatives[0] ?? null;
   const activeCreative =
     rankedCreatives.find((creative) => creative.id === activeCreativeId) ??
     primaryCreative;
   const canContinue = selectedCreatives.length >= minSelected && selectedCreatives.length <= maxSelected;
   const selectedMediaReady =
-    selectedCreatives.length > 0 &&
-    selectedCreatives.every((creative) => evaluateStaticVisualAssetDecision(creative).usable);
+    staticReadiness.allSelectedReady;
   const savedSelectionMatchesCurrent =
     savedSelectedIds.length === selectedIds.length &&
     savedSelectedIds.every((selectedId, index) => selectedId === selectedIds[index]);
@@ -307,7 +273,11 @@ export function CreativeWizard({
             setVideoMessage("Video preview is processing. This page will update when it is ready.");
           } else {
             const staticAds = job.result?.staticAds ?? [];
-            setRenderMessage(getImageLimitMessage(staticAds) ?? getStaticPreviewStatusMessage(staticAds) ?? "Image previews are ready.");
+            setRenderMessage(
+              getImageLimitMessage(staticAds) ??
+                getStaticPreviewStatusMessage(getStaticCreativeReadiness(staticAds, selectedIds)) ??
+                "Image previews are ready.",
+            );
           }
           source.close();
           jobStreamsRef.current.delete(jobId);
@@ -336,7 +306,7 @@ export function CreativeWizard({
       jobStreamsRef.current.delete(jobId);
       clearActiveJob();
     });
-  }, [router]);
+  }, [router, selectedIds]);
 
   const queueImagePreviews = useCallback(async ({ force = false, automatic = false, missingOnly = false } = {}) => {
     if (renderingImages) {
@@ -454,7 +424,7 @@ export function CreativeWizard({
     }
 
     autoVideoStartedRef.current = true;
-    setVideoMessage("Video preview is temporarily unavailable. Your campaign can continue with static creatives while we resolve video rendering.");
+    setVideoMessage("Video concept is ready. Render the preview before treating it as playable media.");
   }, [videoNeedsGeneration]);
 
   useEffect(() => {
@@ -578,7 +548,8 @@ export function CreativeWizard({
     ? imageLimitMessage ??
       (allImagesMissing
       ? "Creating the full visual set now. The cards below stay visible while final images render."
-      : "A few visuals need cleaner backgrounds. You can keep reviewing the composed previews below.")
+      : getStaticPreviewStatusMessage(staticReadiness) ??
+        "Some optional previews need another attempt. Launch-ready selected previews stay available.")
     : null;
   const getDisplayCreative = (creative: CreativeOption): CreativeOption =>
     imageRenderPending && creativeNeedsImageGeneration(creative)
@@ -667,7 +638,7 @@ export function CreativeWizard({
               </h2>
             </div>
             <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-              {selectedCreatives.length}/{maxSelected} {savedSelectionMatchesCurrent ? "saved" : "draft"}
+              {selectedCreatives.length}/{maxSelected} selected
             </span>
           </div>
           <StaticCreativePreviewCard
@@ -696,13 +667,18 @@ export function CreativeWizard({
           <div>
             <p className="text-sm font-medium text-muted-foreground">Recommended test set</p>
             <h2 className="mt-1 text-2xl font-semibold text-foreground">
-              {selectedCreatives.length} creatives {savedSelectionMatchesCurrent ? "saved" : "drafted"}
+              {staticReadiness.selectionLabel}
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               {savedSelectionMatchesCurrent
-                ? "DealFlow will use the first saved ad as the primary creative and keep the rest as review variants once every launch gate is ready."
-                : "This is a draft recommendation. Save the primary creative and review variants before launch can continue."}
+                ? `${staticReadiness.readyLabel}. DealFlow will use the first saved ad as the primary creative and keep the rest as review variants once every launch gate is ready.`
+                : `${staticReadiness.readyLabel}. Save the primary creative and review variants before launch can continue.`}
             </p>
+            {staticReadiness.issueLabel ? (
+              <p className={staticReadiness.selectedBlockedCount > 0 ? "mt-2 text-sm leading-6 text-amber-200" : "mt-2 text-sm leading-6 text-muted-foreground"}>
+                {staticReadiness.issueLabel}
+              </p>
+            ) : null}
           </div>
           {needsImageGeneration || hasGeneratedImages ? (
             <div className="flex flex-wrap items-center gap-3">
@@ -816,7 +792,9 @@ export function CreativeWizard({
             <p className={error ? "mt-3 text-sm text-rose-400" : "mt-3 text-sm text-muted-foreground"}>
               {error ??
                 (!selectedMediaReady
-                  ? "Refresh unfinished previews before saving this launch set."
+                  ? staticReadiness.selectedBlockedCount > 0
+                    ? "Refresh selected previews before saving this launch set."
+                    : "Select launch-ready previews before saving this launch set."
                   : !savedSelectionMatchesCurrent
                     ? "Draft selection only. Launch remains blocked until this set is saved."
                     : rankedCreatives.length >= 2
@@ -848,36 +826,35 @@ export function CreativeWizard({
                 <h3 className="mt-1 text-xl font-semibold text-foreground">{activeVideoCreative.title}</h3>
               </div>
               <span className="rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
-                {activeVideoCreative.conceptType === "customer_ugc" ? "UGC video concept" : "Video concept"}
+                {getVideoReadinessLabel(activeVideoCreative)}
               </span>
             </div>
-            <div className="overflow-hidden rounded-[18px] border border-white/10 bg-black/28">
-              {activeVideoCreative.videoUrl ? (
+            <div className="mx-auto w-full max-w-[360px] overflow-hidden rounded-[18px] border border-white/10 bg-black/28">
+              {isPlayableVideoCreative(activeVideoCreative) ? (
                 <video
-                  className="aspect-video w-full bg-black object-contain"
+                  className="aspect-[9/16] max-h-[70dvh] w-full bg-black object-contain"
                   controls
                   controlsList="nodownload noplaybackrate"
                   disablePictureInPicture
                   playsInline
-                  src={activeVideoCreative.videoUrl}
+                  preload="metadata"
+                  src={activeVideoCreative.videoUrl ?? undefined}
                 />
               ) : (
-                <div className="grid aspect-video place-items-center bg-[linear-gradient(135deg,rgba(94,234,212,0.12),rgba(139,92,246,0.12)),radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_24%)] p-5 text-center">
+                <div className="grid aspect-[9/16] place-items-center bg-[linear-gradient(135deg,rgba(94,234,212,0.12),rgba(139,92,246,0.12)),radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_24%)] p-5 text-center">
                   <div>
                     <p className="text-sm font-semibold text-foreground">
-                      {activeVideoCreative.videoGenerationState === "generating" || videoActionPending
-                        ? "Video preview is rendering"
-                        : "Video preview concept is ready"}
+                      {videoActionPending ? "Rendering" : getVideoReadinessLabel(activeVideoCreative)}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                      {activeVideoCreative.hook || activeVideoCreative.script[0] || "A short creator-style video will be generated for this campaign."}
+                      {getVideoReadinessMessage(activeVideoCreative)}
                     </p>
                   </div>
                 </div>
               )}
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              {activeVideoCreative.videoUrl ? (
+              {isPlayableVideoCreative(activeVideoCreative) ? (
                 <Button
                   type="button"
                   variant="secondary"
@@ -931,7 +908,7 @@ export function CreativeWizard({
                         {video.title}
                       </p>
                       <p className="mt-2 text-[11px] text-muted-foreground">
-                        {video.videoUrl ? "Ready to watch" : video.id === activeVideoId && activeVideoJobId ? "Rendering" : video.videoGenerationState === "generating" ? "Rendering" : "Ready to render"}
+                        {video.id === activeVideoId && activeVideoJobId ? "Rendering" : getVideoReadinessLabel(video)}
                       </p>
                     </button>
                   );
@@ -970,7 +947,7 @@ export function CreativeWizard({
               </div>
             </div>
           </div>
-          {fullVideoOpen && activeVideoCreative.videoUrl ? (
+          {fullVideoOpen && isPlayableVideoCreative(activeVideoCreative) ? (
             <div
               aria-modal="true"
               className="fixed inset-0 z-50 grid place-items-center bg-black/85 p-4"
@@ -998,12 +975,13 @@ export function CreativeWizard({
                   </button>
                 </div>
                 <video
-                  className="max-h-[calc(100dvh-7rem)] w-full bg-black object-contain"
+                  className="mx-auto max-h-[calc(100dvh-7rem)] w-full max-w-[520px] bg-black object-contain"
                   controls
                   controlsList="nodownload noplaybackrate"
                   disablePictureInPicture
                   playsInline
-                  src={activeVideoCreative.videoUrl}
+                  preload="metadata"
+                  src={activeVideoCreative.videoUrl ?? undefined}
                 />
               </div>
             </div>

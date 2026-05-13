@@ -22,6 +22,7 @@ import {
   mergeStaticCreativeImageResults,
   type CreativeEngineInput,
   type StaticCreativeAsset,
+  type VideoCreativeAsset,
 } from "@/lib/services/creative-engine";
 import {
   getApprovedCreativeIntakeGenerationContext,
@@ -168,6 +169,18 @@ function asVisualPromptBrief(value: Json | null | undefined): StaticCreativeAsse
   return value as StaticCreativeAsset["visualPromptBrief"];
 }
 
+function assetErrorMessage(row: CreativeAssetRow, metadata: Record<string, Json> | null) {
+  const rowError = "error_message" in row ? row.error_message : null;
+
+  return typeof rowError === "string" && rowError.trim()
+    ? rowError
+    : typeof metadata?.providerError === "string" && metadata.providerError.trim()
+      ? metadata.providerError
+      : typeof metadata?.imageGenerationMessage === "string" && metadata.imageGenerationMessage.trim()
+        ? metadata.imageGenerationMessage
+        : null;
+}
+
 function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[] {
   const grouped = new Map<string, CreativeAssetRow[]>();
 
@@ -274,12 +287,101 @@ function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[
       imageGenerationMessage:
         generationState === "generated"
           ? null
-          : preferredRow.error_message ||
+          : assetErrorMessage(preferredRow, metadata) ||
             visualDecision.reason ||
             (typeof metadata?.imageGenerationMessage === "string"
               ? metadata.imageGenerationMessage
               : "This image preview is not ready yet."),
     } satisfies StaticCreativeAsset;
+  });
+}
+
+function videoConceptType(assetType: string | null | undefined): VideoCreativeAsset["conceptType"] {
+  return assetType === "talking_head_video" ? "founder_expert" : "customer_ugc";
+}
+
+function mapVideoCreativeAssets(rows: CreativeAssetRow[]): VideoCreativeAsset[] {
+  const videoRows = rows.filter((row) =>
+    ["talking_head_video", "ugc_video", "montage_video", "video"].includes(String(row.asset_type ?? "")),
+  );
+
+  return videoRows.map((row, index): VideoCreativeAsset => {
+    const metadata = asObjectRecord(row.metadata);
+    const status = String(row.status ?? "").toLowerCase();
+    const fileUrl = typeof row.file_url === "string" ? row.file_url.trim() : "";
+    const scriptText = typeof metadata?.scriptText === "string" ? metadata.scriptText : "";
+    const scenes = Array.isArray(metadata?.scenes) ? metadata.scenes : [];
+    const script = scriptText
+      ? scriptText.split(/\n+/).map((line) => line.trim()).filter(Boolean)
+      : [
+          typeof metadata?.hook === "string" ? metadata.hook : "",
+          typeof metadata?.body === "string" ? metadata.body : "",
+          typeof metadata?.cta === "string" ? metadata.cta : "",
+        ].filter(Boolean);
+    const shotList = scenes
+      .map((scene) => {
+        if (typeof scene === "string") {
+          return scene;
+        }
+
+        if (scene && typeof scene === "object" && "text" in scene && typeof scene.text === "string") {
+          return scene.text;
+        }
+
+        return "";
+      })
+      .filter(Boolean);
+    const errorMessage = assetErrorMessage(row, metadata);
+    const conceptType = videoConceptType(row.asset_type);
+
+    return {
+      id: row.creative_id || row.id,
+      conceptType,
+      title:
+        typeof metadata?.title === "string" && metadata.title.trim()
+          ? metadata.title
+          : conceptType === "founder_expert"
+            ? "Founder-style video preview"
+            : `UGC video ${index + 1}`,
+      hook: typeof metadata?.hook === "string" ? metadata.hook : script[0] ?? "",
+      script,
+      shotList,
+      onScreenText: [
+        typeof metadata?.hook === "string" ? metadata.hook : "",
+        typeof metadata?.cta === "string" ? metadata.cta : "",
+      ].filter(Boolean),
+      videoUrl: status === "ready" && fileUrl ? fileUrl : undefined,
+      videoGenerationState:
+        status === "ready" && fileUrl
+          ? "generated"
+          : status === "failed"
+            ? "failed"
+            : "generating",
+      videoGenerationMessage:
+        status === "ready" && fileUrl
+          ? null
+          : errorMessage ?? "This video preview is not ready yet.",
+      providerAssetId: row.provider_asset_id ?? null,
+      cta: typeof metadata?.cta === "string" && metadata.cta.trim() ? metadata.cta : "Learn More",
+      creatorStyle: conceptType === "founder_expert" ? "polished expert walkthrough" : "native creator-style walkthrough",
+      voiceStyle: "clear and direct",
+      avatarProfile: {
+        id: "trusted_expert",
+        genderPresentation: "polished professional",
+        ageRange: "30-45",
+        stylePersona: "trusted real estate expert",
+        energy: "calm and decisive",
+        nicheFit: "",
+      },
+      voiceProfile: {
+        id: "authoritative",
+        tone: "authoritative and clear",
+        accent: "local neutral",
+        speed: "measured",
+        authorityLevel: "high",
+      },
+      qualityGate: null,
+    };
   });
 }
 
@@ -293,8 +395,6 @@ async function loadStaticCreativeAssets(
       .from("creative_assets")
       .select("*")
       .eq("campaign_id", campaignId)
-      .eq("user_id", userId)
-      .eq("generation_method", "image_generation")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -302,6 +402,29 @@ async function loadStaticCreativeAssets(
     }
 
     return mapStaticCreativeAssets(Array.isArray(data) ? (data as CreativeAssetRow[]) : []);
+  } catch {
+    return [];
+  }
+}
+
+async function loadVideoCreativeAssets(
+  supabase: PersistenceClient,
+  userId: string,
+  campaignId: string,
+) {
+  try {
+    const { data, error } = await supabase
+      .from("creative_assets")
+      .select("*")
+      .eq("campaign_id", campaignId)
+      .in("asset_type", ["talking_head_video", "ugc_video", "montage_video", "video"])
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    return mapVideoCreativeAssets(Array.isArray(data) ? (data as CreativeAssetRow[]) : []);
   } catch {
     return [];
   }
@@ -723,12 +846,16 @@ export async function getCampaignOptimizations(campaignId: string) {
 export async function getCampaignById(campaignId: string): Promise<FullCampaignRecord | null> {
   const { supabase, row, campaign } = await assertCampaignOwnership(campaignId);
   const savedDocument = getSavedCampaignDocumentFromRow(row);
-  const staticAds = await loadStaticCreativeAssets(supabase, campaign.user_id, campaignId);
+  const [staticAds, videoAds] = await Promise.all([
+    loadStaticCreativeAssets(supabase, campaign.user_id, campaignId),
+    loadVideoCreativeAssets(supabase, campaign.user_id, campaignId),
+  ]);
 
   return normalizeCanonicalCampaign({
     campaign,
     savedDocument,
     staticAds,
+    videoAds: videoAds.length > 0 ? videoAds : undefined,
     publish: mapPublishRecord(row),
   });
 }
@@ -765,11 +892,15 @@ export async function getLatestCampaignRecord(): Promise<FullCampaignRecord | nu
   }
 
   const row = data as CampaignPlanRow;
-  const staticAds = await loadStaticCreativeAssets(supabase, userId, row.id);
+  const [staticAds, videoAds] = await Promise.all([
+    loadStaticCreativeAssets(supabase, userId, row.id),
+    loadVideoCreativeAssets(supabase, userId, row.id),
+  ]);
   return normalizeCanonicalCampaign({
     campaign: mapCampaignRow(row),
     savedDocument: getSavedCampaignDocumentFromRow(row),
     staticAds,
+    videoAds: videoAds.length > 0 ? videoAds : undefined,
     publish: mapPublishRecord(row),
   });
 }
@@ -834,7 +965,10 @@ export async function regenerateStaticCreativeAssetsForUser(
     }
   }
 
-  const persistedStaticAds = await loadStaticCreativeAssets(supabase, userId, campaignId);
+  const [persistedStaticAds, persistedVideoAds] = await Promise.all([
+    loadStaticCreativeAssets(supabase, userId, campaignId),
+    loadVideoCreativeAssets(supabase, userId, campaignId),
+  ]);
   const savedStaticAds = Array.isArray(savedDocument?.staticAds)
     ? (savedDocument.staticAds as StaticCreativeAsset[])
     : [];
@@ -846,6 +980,7 @@ export async function regenerateStaticCreativeAssetsForUser(
     campaign,
     savedDocument,
     staticAds: currentStaticAds.length > 0 ? currentStaticAds : undefined,
+    videoAds: persistedVideoAds.length > 0 ? persistedVideoAds : undefined,
     publish: mapPublishRecord(row),
   });
   const generationState = readPersistedAssetGenerationState(savedDocument?.assetGeneration);

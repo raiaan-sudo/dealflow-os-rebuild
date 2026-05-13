@@ -129,7 +129,7 @@ assert.equal(
 assert.equal(rejectedGeneratedCreative.backgroundImageUrl, null);
 assert.equal(
   rejectedGeneratedCreative.backgroundMessage,
-  "This visual needs a cleaner background. Preview is using the composed layout while the image refreshes.",
+  "This visual needs a cleaner background before it can be used as launch-ready media.",
   "rejected image state uses customer-safe copy",
 );
 
