@@ -53,6 +53,7 @@ Module._extensions[".ts"] = function loadTs(module, filename) {
 
 const require = createRequire(import.meta.url);
 const {
+  extractGeneratedVideoDurationSeconds,
   fetchStaticCreativeProviderImage,
   isAppOwnedCreativeAssetUrl,
   normalizeStaticCreativeProviderImage,
@@ -87,6 +88,28 @@ await assert.rejects(
   /host is not approved|blocked network/,
 );
 await validateStaticCreativeProviderImageUrlForStorage("https://example.com/generated.png");
+
+function mp4Box(type, payload) {
+  const header = Buffer.alloc(8);
+  header.writeUInt32BE(payload.byteLength + 8, 0);
+  header.write(type, 4, 4, "ascii");
+  return Buffer.concat([header, payload]);
+}
+
+function fixtureMp4WithDuration(seconds) {
+  const ftyp = mp4Box("ftyp", Buffer.from("isom0000isomiso2", "ascii"));
+  const mvhd = Buffer.alloc(100);
+  mvhd[0] = 0;
+  mvhd.writeUInt32BE(1000, 12);
+  mvhd.writeUInt32BE(seconds * 1000, 16);
+  return Buffer.concat([ftyp, mp4Box("moov", mp4Box("mvhd", mvhd))]);
+}
+
+assert.equal(
+  extractGeneratedVideoDurationSeconds(fixtureMp4WithDuration(18), "video/mp4"),
+  18,
+  "MP4 duration metadata is extracted without ffprobe before launch readiness evaluation",
+);
 
 process.env.STATIC_CREATIVE_PROVIDER_IMAGE_HOSTS = "d8j0ntlcm91z4.cloudfront.net";
 await validateStaticCreativeProviderImageUrlForStorage("https://d8j0ntlcm91z4.cloudfront.net/user/generated.png");

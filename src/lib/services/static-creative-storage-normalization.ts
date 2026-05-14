@@ -31,6 +31,7 @@ export type StaticCreativeStorageNormalizationResult = {
   storagePath: string | null;
   contentType: string | null;
   byteSize: number | null;
+  durationSeconds?: number | null;
   reusedExistingAppAsset: boolean;
 };
 
@@ -321,6 +322,188 @@ export function detectGeneratedVideoContentType(bytes: Buffer) {
   }
 
   return null;
+}
+
+function readMp4BoxSize(bytes: Buffer, offset: number) {
+  if (offset + 8 > bytes.length) {
+    return null;
+  }
+
+  const size32 = bytes.readUInt32BE(offset);
+  const type = bytes.subarray(offset + 4, offset + 8).toString("ascii");
+
+  if (size32 === 1) {
+    if (offset + 16 > bytes.length) {
+      return null;
+    }
+
+    const size64 = bytes.readBigUInt64BE(offset + 8);
+
+    if (size64 > BigInt(Number.MAX_SAFE_INTEGER)) {
+      return null;
+    }
+
+    return { size: Number(size64), headerSize: 16, type };
+  }
+
+  if (size32 === 0) {
+    return { size: bytes.length - offset, headerSize: 8, type };
+  }
+
+  return { size: size32, headerSize: 8, type };
+}
+
+function extractMp4DurationSeconds(bytes: Buffer) {
+  const stack: Array<{ start: number; end: number }> = [{ start: 0, end: bytes.length }];
+  const containerTypes = new Set(["moov", "trak", "mdia", "minf", "stbl", "edts", "udta", "meta"]);
+
+  while (stack.length > 0) {
+    const range = stack.pop();
+
+    if (!range) {
+      break;
+    }
+
+    let offset = range.start;
+
+    while (offset + 8 <= range.end) {
+      const box = readMp4BoxSize(bytes, offset);
+
+      if (!box || box.size < box.headerSize || offset + box.size > range.end) {
+        break;
+      }
+
+      const contentStart = offset + box.headerSize;
+      const contentEnd = offset + box.size;
+
+      if (box.type === "mvhd" && contentStart + 20 <= contentEnd) {
+        const version = bytes[contentStart];
+
+        if (version === 1 && contentStart + 32 <= contentEnd) {
+          const timescale = bytes.readUInt32BE(contentStart + 20);
+          const duration = bytes.readBigUInt64BE(contentStart + 24);
+
+          if (timescale > 0) {
+            return Number(duration) / timescale;
+          }
+        }
+
+        if (version === 0 && contentStart + 20 <= contentEnd) {
+          const timescale = bytes.readUInt32BE(contentStart + 12);
+          const duration = bytes.readUInt32BE(contentStart + 16);
+
+          if (timescale > 0) {
+            return duration / timescale;
+          }
+        }
+      }
+
+      if (containerTypes.has(box.type)) {
+        const childStart = box.type === "meta" ? contentStart + 4 : contentStart;
+
+        if (childStart < contentEnd) {
+          stack.push({ start: childStart, end: contentEnd });
+        }
+      }
+
+      offset += box.size;
+    }
+  }
+
+  return null;
+}
+
+function readEbmlVint(bytes: Buffer, offset: number) {
+  if (offset >= bytes.length) {
+    return null;
+  }
+
+  const first = bytes[offset];
+  let mask = 0x80;
+  let length = 1;
+
+  while (length <= 8 && (first & mask) === 0) {
+    mask >>= 1;
+    length += 1;
+  }
+
+  if (length > 8 || offset + length > bytes.length) {
+    return null;
+  }
+
+  let value = BigInt(first & (mask - 1));
+
+  for (let index = 1; index < length; index += 1) {
+    value = (value << BigInt(8)) | BigInt(bytes[offset + index]);
+  }
+
+  if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
+    return null;
+  }
+
+  return { length, value: Number(value) };
+}
+
+function extractWebmDurationSeconds(bytes: Buffer) {
+  let timecodeScale = 1_000_000;
+
+  for (let offset = 0; offset < bytes.length - 4; offset += 1) {
+    if (bytes[offset] === 0x2a && bytes[offset + 1] === 0xd7 && bytes[offset + 2] === 0xb1) {
+      const size = readEbmlVint(bytes, offset + 3);
+
+      if (size && size.value > 0 && size.value <= 8) {
+        const valueStart = offset + 3 + size.length;
+        let value = 0;
+
+        for (let index = 0; index < size.value && valueStart + index < bytes.length; index += 1) {
+          value = (value << 8) | bytes[valueStart + index];
+        }
+
+        if (value > 0) {
+          timecodeScale = value;
+        }
+      }
+    }
+
+    if (bytes[offset] === 0x44 && bytes[offset + 1] === 0x89) {
+      const size = readEbmlVint(bytes, offset + 2);
+
+      if (!size || (size.value !== 4 && size.value !== 8)) {
+        continue;
+      }
+
+      const valueStart = offset + 2 + size.length;
+
+      if (valueStart + size.value > bytes.length) {
+        continue;
+      }
+
+      const durationUnits =
+        size.value === 4
+          ? bytes.readFloatBE(valueStart)
+          : bytes.readDoubleBE(valueStart);
+
+      if (Number.isFinite(durationUnits) && durationUnits > 0) {
+        return (durationUnits * timecodeScale) / 1_000_000_000;
+      }
+    }
+  }
+
+  return null;
+}
+
+export function extractGeneratedVideoDurationSeconds(bytes: Buffer, contentType: string) {
+  const detectedType = contentType || detectGeneratedVideoContentType(bytes) || "";
+  const duration =
+    /video\/(mp4|quicktime)|mpeg|mov/i.test(detectedType)
+      ? extractMp4DurationSeconds(bytes)
+      : /video\/webm/i.test(detectedType)
+        ? extractWebmDurationSeconds(bytes)
+        : null;
+
+  return typeof duration === "number" && Number.isFinite(duration) && duration > 0
+    ? Math.round(duration * 1000) / 1000
+    : null;
 }
 
 async function readLocalGeneratedImageFile(
@@ -644,6 +827,7 @@ export async function normalizeGeneratedVideoProviderFile(
       storagePath: null,
       contentType: null,
       byteSize: null,
+      durationSeconds: null,
       reusedExistingAppAsset: true,
     };
   }
@@ -687,6 +871,7 @@ export async function normalizeGeneratedVideoProviderFile(
     storagePath,
     contentType: fetched.contentType,
     byteSize: fetched.bytes.byteLength,
+    durationSeconds: extractGeneratedVideoDurationSeconds(fetched.bytes, fetched.contentType),
     reusedExistingAppAsset: false,
   };
 }

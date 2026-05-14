@@ -26,6 +26,7 @@ import type { Database } from "@/lib/supabase/types";
 type CampaignPlanRow = Database["public"]["Tables"]["campaign_plans"]["Row"];
 
 export type SavedCampaignDocument = {
+  [key: string]: unknown;
   name?: unknown;
   plan?: Record<string, unknown> | null;
   strategy?: Partial<CampaignStrategyInput> | null;
@@ -202,6 +203,12 @@ function adaptModernPersistedPlanDocument(value: Record<string, unknown>): Saved
     creatives: value.creatives,
     staticAds: creatives?.staticAds,
     videoAds: creatives?.videoAds,
+    creative_chat_intake: value.creative_chat_intake,
+    selected_ad_id: value.selected_ad_id,
+    selected_ad_ids: value.selected_ad_ids,
+    selected_ugc_video_id: value.selected_ugc_video_id,
+    selected_ugc_video_ids: value.selected_ugc_video_ids,
+    campaign_payload: value.campaign_payload,
     assetGeneration: value.assetGeneration,
     items: value.items,
     copy: value.copy,

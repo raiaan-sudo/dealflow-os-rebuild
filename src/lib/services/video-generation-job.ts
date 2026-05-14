@@ -975,6 +975,7 @@ export async function runVideoGenerationJob(params: {
         storagePath: durableVideo?.storagePath ?? null,
         storageContentType: durableVideo?.contentType ?? null,
         storageByteSize: durableVideo?.byteSize ?? null,
+        durationSeconds: durableVideo?.durationSeconds ?? null,
         targetDurationSeconds: params.payload.targetDurationSeconds ?? 15,
         sourceStaticAssetId: videoSourceImage.staticAssetId,
         sourceImageUrl: videoSourceImage.imageUrl,
@@ -1032,6 +1033,7 @@ export async function runVideoGenerationJob(params: {
         storagePath: durableVideo?.storagePath ?? null,
         storageContentType: durableVideo?.contentType ?? null,
         storageByteSize: durableVideo?.byteSize ?? null,
+        durationSeconds: durableVideo?.durationSeconds ?? null,
         targetDurationSeconds: params.payload.targetDurationSeconds ?? 15,
         qualityGateStatus: durableVideoUrl ? "candidate_ready" : "processing",
         ...buildCreativeIntakeAssetMetadata(creativeIntake),
@@ -1097,6 +1099,7 @@ export async function runVideoGenerationJob(params: {
     storagePath: durableVideo?.storagePath ?? null,
     storageContentType: durableVideo?.contentType ?? null,
     storageByteSize: durableVideo?.byteSize ?? null,
+    durationSeconds: durableVideo?.durationSeconds ?? null,
     targetDurationSeconds: params.payload.targetDurationSeconds ?? 15,
     sourceStaticAssetId: videoSourceImage.staticAssetId,
     sourceImageUrl: videoSourceImage.imageUrl,
@@ -1409,6 +1412,7 @@ export async function pollVideoGenerationStatusJob(params: {
     storagePath: durableVideo.storagePath,
     storageContentType: durableVideo.contentType,
     storageByteSize: durableVideo.byteSize,
+    durationSeconds: durableVideo.durationSeconds ?? null,
     sourceStaticAssetId:
       typeof existingMetadata.sourceStaticAssetId === "string"
         ? existingMetadata.sourceStaticAssetId
@@ -1451,6 +1455,7 @@ export async function pollVideoGenerationStatusJob(params: {
     storagePath: durableVideo.storagePath,
     storageContentType: durableVideo.contentType,
     storageByteSize: durableVideo.byteSize,
+    durationSeconds: durableVideo.durationSeconds ?? null,
     qualityGateStatus: "candidate_ready",
     videoQualityGate: nextVideoQualityGate,
     providerError: null,
@@ -1495,6 +1500,7 @@ export async function pollVideoGenerationStatusJob(params: {
       storagePath: durableVideo.storagePath,
       storageContentType: durableVideo.contentType,
       storageByteSize: durableVideo.byteSize,
+      durationSeconds: durableVideo.durationSeconds ?? null,
       sourceStaticAssetId:
         typeof existingMetadata.sourceStaticAssetId === "string"
           ? existingMetadata.sourceStaticAssetId

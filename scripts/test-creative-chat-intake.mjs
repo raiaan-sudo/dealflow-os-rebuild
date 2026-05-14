@@ -67,6 +67,9 @@ const {
 const {
   persistStaticCreativeAssets,
 } = require("../src/lib/services/static-creative-asset-service.ts");
+const {
+  getSavedCampaignDocumentFromRow,
+} = require("../src/lib/services/canonical-campaign.ts");
 
 const creativeChatIntakeUi = fs.readFileSync("src/app/(app)/build/creatives/creative-chat-intake.tsx", "utf8");
 const creativeWizardUi = fs.readFileSync("src/app/(app)/build/creatives/creative-wizard.tsx", "utf8");
@@ -262,6 +265,22 @@ assert.equal(approvedContext.requiredCta, "Check Buying Power");
 assert.equal(approvedContext.requiredOffer, "options may be available for buyers with 600+ credit");
 assert.equal(approvedContext.promptVersion.generatedPrompt, prompt.generatedPrompt);
 assert.equal(hasSameCreativeIntakeGenerationContext(approvedContext, approvedContext), true);
+const adaptedModernDocument = getSavedCampaignDocumentFromRow({
+  id: defaults.campaignId,
+  plan: {
+    version: 3,
+    market: defaults.market,
+    audience: defaults.audience,
+    offer_summary: defaults.offer,
+    property_type: defaults.propertyType,
+    creative_chat_intake: approvedState,
+  },
+});
+assert.equal(
+  getApprovedCreativeIntakeGenerationContext(adaptedModernDocument)?.promptVersion.generatedPrompt,
+  prompt.generatedPrompt,
+  "canonical campaign reads preserve approved creative intake for worker-owned generation jobs",
+);
 const revisionPlan = mergeCreativeChatIntakeIntoPlan(plan, {
   ...approvedState,
   approvalStatus: "revision_requested",
