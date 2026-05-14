@@ -904,6 +904,7 @@ function stripNegativePromptGuidance(value: string) {
   return value
     .replace(/\bavoid\b[^.?!]*(?:[.?!]|$)/gi, " ")
     .replace(/\bdo not\b[^.?!]*(?:[.?!]|$)/gi, " ")
+    .replace(/\bno\s+(?:fake|gibberish|pseudo|unreadable|tiny|cropped|overlapping|distorted|watermark|dashboard|ui|listing|table|chart|logo|guaranteed)[^.?!]*(?:[.?!]|$)/gi, " ")
     .replace(/\bnot\b\s+(?:a\s+|an\s+|the\s+)?[^.?!]*(?:[.?!]|$)/gi, " ")
     .replace(/\bwithout\b[^.?!]*(?:[.?!]|$)/gi, " ")
     .replace(/\bover showroom polish\b/gi, "over synthetic polish")

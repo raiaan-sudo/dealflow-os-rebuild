@@ -50,6 +50,9 @@ const {
   generateStaticCreativeAds,
   mergeStaticCreativeImageResults,
 } = require("../src/lib/services/creative-engine.ts");
+const {
+  evaluateCreativeQuality,
+} = require("../src/lib/services/media-buyer-framework.ts");
 
 process.env.ALLOW_OPENAI_IMAGE_GENERATION = "false";
 process.env.ALLOW_HIGGSFIELD_IMAGE_GENERATION = "false";
@@ -109,6 +112,64 @@ assert.equal(generatedCreative.status, "final_composed", "accepted generated ima
 assert.equal(
   generatedCreative.backgroundMessage,
   "Launch-ready app-owned creative with accepted text-free generated background imagery and exact app-rendered copy.",
+);
+
+const finishedAdPromptQuality = evaluateCreativeQuality({
+  category: "buyer",
+  offer: "Get 3 private shortlist homes this week before public sites",
+  mechanism: "private access matching system",
+  audience: "Toronto buyers",
+  hook: "Before public search gets crowded, check this first.",
+  headline: "Toronto homes matched this week",
+  primaryText: "A private access matching system helps Toronto buyers review 3 shortlist homes this week before public search gets crowded.",
+  overlayText: "3 private homes this week",
+  cta: "See Matching Homes This Week",
+  visualConcept: "buyer listing-alert and affordability collage with clean direct-response layout",
+  imagePrompt:
+    "MARKETING STUDIO FINISHED AD CREATIVE. Use one dominant hook area, one proof area, and a clear CTA-safe zone. No fake dashboard, no fake listing sheet, no app UI, no gibberish, no tiny text.",
+});
+assert.equal(
+  finishedAdPromptQuality.accepted,
+  true,
+  "finished-ad prompt contract with timing and prohibition wording is accepted",
+);
+
+const missingTimingQuality = evaluateCreativeQuality({
+  category: "buyer",
+  offer: "Private buyer shortlist",
+  mechanism: "private access matching system",
+  audience: "Toronto buyers",
+  hook: "Before public search gets crowded, check this first.",
+  headline: "Toronto homes matched privately",
+  primaryText: "A private access matching system helps Toronto buyers review shortlist homes before public search gets crowded.",
+  overlayText: "Private buyer shortlist",
+  cta: "See Matching Homes",
+  visualConcept: "buyer listing-alert and affordability collage with clean direct-response layout",
+  imagePrompt: "MARKETING STUDIO FINISHED AD CREATIVE. Use one dominant hook area and a clear CTA-safe zone.",
+});
+assert.equal(missingTimingQuality.accepted, false, "product-quality gate still rejects missing timing context");
+assert.ok(
+  missingTimingQuality.hardFailures.some((failure) => /timeframe|timing/i.test(failure)),
+  "missing timing maps to an actionable hard failure",
+);
+
+const overlayCropQuality = evaluateCreativeQuality({
+  category: "buyer",
+  offer: "Get 3 private shortlist homes this week before public sites",
+  mechanism: "private access matching system",
+  audience: "Toronto buyers",
+  hook: "Before public search gets crowded, check this first.",
+  headline: "Toronto homes matched this week",
+  primaryText: "A private access matching system helps Toronto buyers review 3 shortlist homes this week before public search gets crowded.",
+  overlayText: "3 private homes this week",
+  cta: "See Matching Homes This Week",
+  visualConcept: "generic stock photo with awkward crop and covered text over the CTA",
+  imagePrompt: "MARKETING STUDIO FINISHED AD CREATIVE. Use one dominant hook area and a clear CTA-safe zone.",
+});
+assert.equal(overlayCropQuality.accepted, false, "product-quality gate still rejects overlay/crop/readability defects");
+assert.ok(
+  overlayCropQuality.hardFailures.some((failure) => /readability|overlay|crop/i.test(failure)),
+  "overlay/crop defect maps to an actionable hard failure",
 );
 
 const rejectedGeneratedCreative = buildComposedStaticAdPreview({

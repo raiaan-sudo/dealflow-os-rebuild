@@ -242,6 +242,35 @@ function splitConstraints(value: string) {
     .slice(0, 8);
 }
 
+function hasTimingContext(value: string) {
+  return /\b(today|now|daily|weekly|this week|this month|month|monthly|year|days?|weeks?|30|60|90|202\d|completion|deadline|before|early)\b/i.test(value);
+}
+
+function hasLowRiskAccessContext(value: string) {
+  return /\b(preview|review|private access|early access|may qualify|qualify|no obligation)\b/i.test(value);
+}
+
+function addFinishedAdTimingContext(
+  value: string,
+  fallback: string,
+  options?: { ensureLowRiskAccess?: boolean },
+) {
+  let text = safeText(value);
+  const timing = safeText(fallback) || "this week";
+
+  if (!text) {
+    return text;
+  }
+
+  if (options?.ensureLowRiskAccess && !hasLowRiskAccessContext(text)) {
+    text = `Preview ${text.charAt(0).toLowerCase()}${text.slice(1)}`;
+  }
+
+  return hasTimingContext(text)
+    ? text
+    : `${text} ${timing}`.replace(/\s+/g, " ").trim();
+}
+
 export function softenRegulatedClaims(value: string) {
   let text = safeText(value);
   const softenedClaims: string[] = [];
@@ -306,9 +335,15 @@ export function buildCreativeIntakeBrief(
   const platformPlacement = safeText(answers.platformPlacement) || "Meta feed and story placements";
   const outputMode = answers.outputMode === "background_only" ? "background_only" : "finished_ad";
   const generationPhase = answers.generationPhase === "ugc_video" ? "ugc_video" : "static";
+  const offer = outputMode === "finished_ad"
+    ? addFinishedAdTimingContext(softenedOffer.text, "this week", { ensureLowRiskAccess: true })
+    : softenedOffer.text;
+  const cta = outputMode === "finished_ad"
+    ? addFinishedAdTimingContext(softenedCta.text, "this week")
+    : softenedCta.text;
   const missing = [
     targetAudience ? null : "target_audience",
-    softenedOffer.text ? null : "offer",
+    offer ? null : "offer",
     market ? null : "market",
     brokerageBrand ? null : "brokerage_brand",
     creativeStyle ? null : "creative_style",
@@ -316,13 +351,13 @@ export function buildCreativeIntakeBrief(
 
   return {
     targetAudience,
-    offer: softenedOffer.text,
+    offer,
     market,
     brokerageBrand,
     propertyType,
     creativeStyle,
     platformPlacement,
-    cta: softenedCta.text,
+    cta,
     mustUseCopy: splitConstraints(softenedConstraints.text).filter((item) => !/disclaim|not guarantee|subject to/i.test(item)),
     complianceNotes: [
       ...splitConstraints(softenedConstraints.text).filter((item) => /disclaim|not guarantee|subject to|may qualify|approval|credit/i.test(item)),
@@ -352,7 +387,9 @@ export function buildCreativeIntakePromptVersion(
     ? [
       "MARKETING STUDIO FINISHED AD CREATIVE.",
       "Create ONE polished finished real-estate social ad poster, not a chart, not a dashboard, not a listing sheet, not a web/app UI screenshot.",
-      "Use a clean premium poster layout: large hero photo or lifestyle image, bold readable headline, concise supporting offer line, and one clear CTA button or CTA bar.",
+      "Use a clean premium poster layout with this exact hierarchy: short headline, clear timed offer, one concise proof/support line, and one clear CTA button or CTA bar.",
+      "Media-buyer reference layout: one dominant hook area, one proof area, strong negative space, and a clear CTA-safe zone.",
+      "Keep all text large and mobile-feed readable. Use generous safe margins on all sides, no tiny text, no cropped CTA, no overlapping panels, and no text over busy image detail.",
       `Market/city text that should appear: ${brief.market}.`,
       `Audience text context: ${brief.targetAudience}.`,
       `Required offer text that must be readable in the final raster: ${brief.offer}.`,
@@ -364,7 +401,8 @@ export function buildCreativeIntakePromptVersion(
       brief.mustUseCopy.length > 0 ? `Must-use copy: ${brief.mustUseCopy.join("; ")}.` : null,
       "The final image should look like a high-performing real estate Facebook/Instagram ad made in a marketing studio, with no spreadsheet/table/grid/data-panel visuals.",
       "Use clean typography, realistic real estate imagery, clear text hierarchy, and a direct-response CTA. Keep text short enough to be legible at mobile feed size.",
-      "Do not create gibberish, pseudo text, misspell the brokerage, invent fake MLS/listing sheets, show dashboards, charts, tables, app UI, landing pages, data panels, unreadable pricing cards, or broken text.",
+      "Do not create gibberish, pseudo text, misspell the brokerage, invent fake MLS/listing sheets, show dashboards, charts, tables, app UI, landing pages, data panels, tiny text, unreadable pricing cards, or broken text.",
+      "Do not invent logos, guaranteed-approval claims, guaranteed financing, or any compliance-sensitive promise beyond the required offer text.",
       brief.complianceNotes.length > 0
         ? `Compliance guidance: ${brief.complianceNotes.join("; ")}.`
         : null,
@@ -402,7 +440,7 @@ export function buildCreativeIntakePromptVersion(
     "chart",
     "table",
     "listing sheet",
-    "CTA button",
+    brief.outputMode === "finished_ad" ? null : "CTA button",
     "fake caption",
     "fake price",
     "fake form fields",

@@ -693,6 +693,55 @@ function cleanCreativeCopy(value: string) {
     .trim();
 }
 
+function hasStaticTimingContext(value: string) {
+  return /\b(today|now|daily|weekly|this week|this month|month|monthly|year|days?|weeks?|30|60|90|202\d|completion|deadline|before|early)\b/i.test(value);
+}
+
+function hasStaticLowRiskAccessContext(value: string) {
+  return /\b(preview|review|private access|early access|may qualify|qualify|no obligation)\b/i.test(value);
+}
+
+function addFinishedAdDefaultTiming(
+  value: string,
+  fallback = "this week",
+  options?: { ensureLowRiskAccess?: boolean },
+) {
+  let text = cleanCreativeCopy(value);
+
+  if (!text) {
+    return text;
+  }
+
+  if (options?.ensureLowRiskAccess && !hasStaticLowRiskAccessContext(text)) {
+    text = cleanCreativeCopy(`Preview ${text.charAt(0).toLowerCase()}${text.slice(1)}`);
+  }
+
+  return hasStaticTimingContext(text) ? text : cleanCreativeCopy(`${text} ${fallback}`);
+}
+
+function buildFinishedAdPromptContract(params: {
+  prompt: string;
+  market: string;
+  audience: string;
+  offer: string;
+  cta: string;
+  brand?: string | null;
+}) {
+  return [
+    params.prompt,
+    "Finished-ad quality contract:",
+    "Use a clean hierarchy with one short headline, one clear timed offer, one minimal support line, and one CTA.",
+    "Media-buyer reference layout: one dominant hook area, one proof area, strong negative space, and a clear CTA-safe zone.",
+    `Timed offer that must be readable: ${params.offer}.`,
+    `CTA that must be readable and uncropped: ${params.cta}.`,
+    `Market and audience context: ${params.market}; ${params.audience}.`,
+    params.brand ? `Brand text, if used, must be spelled exactly: ${params.brand}.` : null,
+    "Keep all live text large enough for mobile social feed viewing with generous safe margins.",
+    "Leave clean padding around the headline and CTA; do not place text over busy image detail.",
+    "No tiny text, cropped CTA, overlapping panels, fake dashboard, fake table, fake listing sheet, app UI, gibberish, invented logo, guaranteed-approval claim, or guaranteed-financing claim.",
+  ].filter(Boolean).join(" ");
+}
+
 function ensureOfferDrivenStaticAd(
   ad: StaticCreativeAsset,
   strategy: CampaignCreativeStrategy,
@@ -1989,6 +2038,7 @@ export function mergeStaticCreativeImageResults(
 
 function applyCreativeIntakePromptToStaticAsset(
   asset: StaticCreativeAsset,
+  normalized: RequiredCreativeInput,
   creativeIntake?: CreativeIntakeGenerationContext | null,
 ): StaticCreativeAsset {
   if (!creativeIntake || creativeIntake.generationPhase !== "static") {
@@ -1996,23 +2046,90 @@ function applyCreativeIntakePromptToStaticAsset(
   }
 
   const promptVersion = creativeIntake.promptVersion;
+  const finishedAdMode = creativeIntake.outputMode === "finished_ad";
+  const timedOffer = finishedAdMode
+    ? addFinishedAdDefaultTiming(creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer, "this week", {
+        ensureLowRiskAccess: true,
+      })
+    : creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer;
+  const timedCta = finishedAdMode
+    ? addFinishedAdDefaultTiming(creativeIntake.requiredCta ?? asset.cta)
+    : creativeIntake.requiredCta ?? asset.cta;
+  const prompt = finishedAdMode
+    ? buildFinishedAdPromptContract({
+        prompt: promptVersion.generatedPrompt,
+        market: creativeIntake.market ?? normalized.location,
+        audience: creativeIntake.targetAudience ?? normalized.audience,
+        offer: timedOffer,
+        cta: timedCta,
+        brand: creativeIntake.brokerageBrand,
+      })
+    : promptVersion.generatedPrompt;
+  const negativePrompt = finishedAdMode
+    ? [
+        promptVersion.negativePrompt,
+        "tiny text",
+        "cropped CTA",
+        "overlapping panels",
+        "fake dashboard",
+        "fake listing sheet",
+        "fake UI",
+        "gibberish",
+        "invented logo",
+        "guaranteed approval",
+      ].filter(Boolean).join("; ")
+    : promptVersion.negativePrompt;
   const imagePromptConfig = asset.imagePromptConfig
     ? {
         ...asset.imagePromptConfig,
-        prompt: promptVersion.generatedPrompt,
-        negativePrompt: promptVersion.negativePrompt,
+        prompt,
+        negativePrompt,
       }
     : {
         aspectRatio: "1:1" as const,
-        prompt: promptVersion.generatedPrompt,
-        negativePrompt: promptVersion.negativePrompt,
+        prompt,
+        negativePrompt,
       };
+  const primaryText = finishedAdMode
+    ? cleanCreativeCopy(`${asset.primaryText} ${timedOffer}. ${timedCta}.`)
+    : asset.primaryText;
+  const headline = finishedAdMode
+    ? trimWords(cleanCreativeCopy(asset.headline), 10)
+    : asset.headline;
+  const overlayText = finishedAdMode
+    ? clampOverlayLine(timedOffer)
+    : asset.overlayText;
+  const offerQuality = evaluateOfferQuality({
+    category: normalized.creativeStrategy.campaignCategory,
+    offer: timedOffer,
+    mechanism: normalized.creativeStrategy.mechanism,
+    audience: creativeIntake.targetAudience ?? normalized.audience,
+    cta: timedCta,
+  });
+  const qualityGate = evaluateCreativeQuality({
+    category: normalized.creativeStrategy.campaignCategory,
+    offer: timedOffer,
+    mechanism: normalized.creativeStrategy.mechanism,
+    audience: creativeIntake.targetAudience ?? normalized.audience,
+    hook: asset.hook,
+    primaryText,
+    headline,
+    overlayText,
+    cta: timedCta,
+    visualConcept: asset.visualConcept,
+    imagePrompt: prompt,
+  });
 
   return {
     ...asset,
-    cta: creativeIntake.requiredCta ?? asset.cta,
-    offer: creativeIntake.requiredOffer ?? asset.offer,
-    imagePrompt: promptVersion.generatedPrompt,
+    cta: timedCta,
+    offer: timedOffer,
+    headline,
+    overlayText,
+    primaryText,
+    offerQuality,
+    qualityGate,
+    imagePrompt: prompt,
     imagePromptConfig,
     creativeIntake,
   };
@@ -2021,12 +2138,12 @@ function applyCreativeIntakePromptToStaticAsset(
 export async function generateStaticCreativeAds(
   input?: CreativeEngineInput | null,
 ): Promise<StaticCreativeAsset[]> {
-  const baseSystem = buildCreativeSystem(input);
   const normalized = normalizeInput(input);
+  const baseSystem = buildCreativeSystem(input);
   const brief = baseSystem.brief;
   const creativeIntake = input?.creative_intake ?? null;
   const baseStaticAds = baseSystem.staticAds.map((asset) =>
-    applyCreativeIntakePromptToStaticAsset(asset, creativeIntake),
+    applyCreativeIntakePromptToStaticAsset(asset, normalized, creativeIntake),
   );
   const reusableStaticAssets = new Map(
     (input?.reuse_static_assets ?? [])

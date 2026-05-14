@@ -150,9 +150,17 @@ const finishedAdBrief = buildCreativeIntakeBrief({
 }, defaults);
 const finishedAdPrompt = buildCreativeIntakePromptVersion(finishedAdBrief, 3);
 assert.match(finishedAdPrompt.generatedPrompt, /MARKETING STUDIO FINISHED AD CREATIVE/);
-assert.match(finishedAdPrompt.generatedPrompt, /Required CTA text that must be readable in the final raster: Check Buying Power/);
+assert.match(finishedAdBrief.offer, /this week/i, "finished-ad brief adds safe timing context to the offer");
+assert.match(finishedAdBrief.cta, /this week/i, "finished-ad brief adds safe timing context to the CTA");
+assert.match(finishedAdPrompt.generatedPrompt, /Required CTA text that must be readable in the final raster: Check Buying Power this week/);
+assert.match(finishedAdPrompt.generatedPrompt, /short headline, clear timed offer, one concise proof\/support line, and one clear CTA/);
+assert.match(finishedAdPrompt.generatedPrompt, /one dominant hook area, one proof area, strong negative space, and a clear CTA-safe zone/);
+assert.match(finishedAdPrompt.generatedPrompt, /generous safe margins/);
+assert.match(finishedAdPrompt.generatedPrompt, /no tiny text, no cropped CTA, no overlapping panels/i);
 assert.match(finishedAdPrompt.generatedPrompt, /not a chart, not a dashboard, not a listing sheet/);
+assert.match(finishedAdPrompt.generatedPrompt, /Do not invent logos, guaranteed-approval claims, guaranteed financing/);
 assert.doesNotMatch(finishedAdPrompt.negativePrompt, /finished ad/);
+assert.doesNotMatch(finishedAdPrompt.negativePrompt, /CTA button/);
 
 const state = createCreativeIntakeState({
   campaignId: defaults.campaignId,
@@ -223,6 +231,47 @@ assert.equal(
 assert.equal(promptedStaticAds[0].imagePromptConfig.prompt, prompt.generatedPrompt);
 assert.equal(promptedStaticAds[0].imagePromptConfig.negativePrompt, prompt.negativePrompt);
 assert.equal(promptedStaticAds[0].creativeIntake.outputMode, "background_only");
+
+const finishedAdContext = {
+  version: 1,
+  conversationId: "finished-ad-contract-test",
+  campaignId: defaults.campaignId,
+  revisionNumber: 1,
+  approvedAt: "2026-05-14T00:00:00.000Z",
+  outputMode: "finished_ad",
+  generationPhase: "static",
+  requiredOffer: "Private buyer shortlist",
+  requiredCta: "Book a 15-minute buyer strategy call",
+  market: defaults.market,
+  targetAudience: defaults.audience,
+  brokerageBrand: defaults.brand,
+  promptVersion: {
+    revisionNumber: 1,
+    generatedPrompt:
+      "MARKETING STUDIO FINISHED AD CREATIVE. Create one finished paid-social real estate ad raster with a clear headline, offer, and CTA.",
+    negativePrompt: "gibberish; fake dashboard; listing sheet",
+    sanitizedPreview: "Finished-ad proof prompt",
+    createdAt: "2026-05-14T00:00:00.000Z",
+  },
+};
+const finishedAdStaticAds = await generateStaticCreativeAds({
+  campaign_id: defaults.campaignId,
+  location: defaults.market,
+  audience: defaults.audience,
+  offer: defaults.offer,
+  property_type: defaults.propertyType,
+  market_type: defaults.campaignType,
+  creative_intake: finishedAdContext,
+  max_static_image_generations: 0,
+});
+assert.match(finishedAdStaticAds[0].offer, /this week/i, "finished-ad static copy gets a timing fallback");
+assert.match(finishedAdStaticAds[0].cta, /this week/i, "finished-ad CTA gets a timing fallback");
+assert.match(finishedAdStaticAds[0].imagePrompt, /Finished-ad quality contract/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /Timed offer that must be readable: Preview private buyer shortlist this week/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /one dominant hook area, one proof area, strong negative space, and a clear CTA-safe zone/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /generous safe margins/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /No tiny text, cropped CTA, overlapping panels/);
+assert.equal(finishedAdStaticAds[0].qualityGate.accepted, true, "finished-ad static prompt contract passes product-quality preflight");
 
 function buildAsset() {
   return {
