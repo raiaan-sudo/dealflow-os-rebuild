@@ -2,6 +2,12 @@
 
 For Codex proof, validation, and final-report standards, start with `AGENTS.md`, `docs/validation-runbook.md`, `docs/production-proof-checklist.md`, and the prompt templates in `docs/codex-prompts/`.
 
+For outbound campaign copy, cold call scripts, SMS sequences, voicemail,
+objection handling, scoring rubrics, and media-buyer feedback intake, use
+`docs/outbound-copy-os/`. That system is docs/workflow/tooling only and must not
+trigger provider generation, live SMS, calls, forms, Meta launches, Stripe
+charges, or production data mutation.
+
 ## Customer preview contract
 
 Creative selection must always show a complete visual creative. Customers should never see a mostly blank gradient, raw provider state, rejected-image language, or a missing-background message as the primary experience.

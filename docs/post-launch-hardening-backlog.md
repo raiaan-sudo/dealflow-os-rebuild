@@ -63,3 +63,8 @@ This backlog is not a launch blocker by default. Promote items to blockers only 
 - Continue market-specific copy tuning after launch.
 - Preserve accepted funnel URL behavior.
 - Avoid treating copy polish as a technical launch blocker unless conversion-critical or compliance-risky.
+- Maintain `docs/outbound-copy-os/` as the durable source for cold call, SMS,
+  voicemail, objection, offer, scoring, media-buyer feedback, and field-results
+  copy improvements.
+- Run `npm run copy:validate` after updating outbound copy workflows or prompt
+  templates.

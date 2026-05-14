@@ -103,6 +103,26 @@ npm run rls:cross-tenant
 npm run rls:fixture-smoke
 ```
 
+## Outbound Copy OS
+
+Use this for docs-only cold call, SMS, voicemail, objection, offer, and
+copy-scoring work. It is print-only and must not send messages, create
+campaigns, run provider generation, or mutate production data.
+
+```bash
+npm run copy:validate
+```
+
+Primary docs:
+
+- `docs/outbound-copy-os/README.md`
+- `docs/outbound-copy-os/compliance-guardrails.md`
+- `docs/outbound-copy-os/cold-call-framework.md`
+- `docs/outbound-copy-os/cold-sms-framework.md`
+- `docs/outbound-copy-os/copy-scoring-rubric.md`
+- `docs/outbound-copy-os/prompts/`
+- `docs/outbound-copy-os/examples/`
+
 ## Artifacts
 
 - Playwright safe proof output: `test-results/`

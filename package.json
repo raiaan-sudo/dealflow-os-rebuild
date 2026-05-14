@@ -11,6 +11,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "copy:validate": "node ./scripts/outbound-copy/print-copy-os-checklist.mjs",
     "plan:validate": "node ./scripts/validate-campaign-plan-document.mjs",
     "plan:writes:check": "node ./scripts/check-campaign-plan-write-paths.mjs",
     "schema:check": "node ./scripts/check-required-schema.mjs",
