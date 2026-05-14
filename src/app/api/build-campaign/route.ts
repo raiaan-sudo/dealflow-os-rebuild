@@ -31,6 +31,8 @@ const requestSchema = z.object({
 type CampaignPayloadRecord = {
   selected_ad_id?: string;
   selected_ad_ids?: string[];
+  selected_ugc_video_id?: string;
+  selected_ugc_video_ids?: string[];
   campaign_id?: string;
   destination_url?: string;
   business_profile?: Record<string, unknown>;
@@ -206,6 +208,12 @@ export async function POST(request: Request) {
             ? existingPayload.selected_ad_ids.map(String).filter(Boolean).slice(0, 6)
             : existingPayload?.selected_ad_id
               ? [existingPayload.selected_ad_id]
+              : undefined,
+          selected_ugc_video_id: existingPayload?.selected_ugc_video_id,
+          selected_ugc_video_ids: Array.isArray(existingPayload?.selected_ugc_video_ids)
+            ? existingPayload.selected_ugc_video_ids.map(String).filter(Boolean).slice(0, 3)
+            : existingPayload?.selected_ugc_video_id
+              ? [existingPayload.selected_ugc_video_id]
               : undefined,
           destination_url: destinationUrl,
           business_profile: {

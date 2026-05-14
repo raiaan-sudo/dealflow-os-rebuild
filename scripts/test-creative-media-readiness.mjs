@@ -87,6 +87,7 @@ const {
   evaluateGeneratedVideoQualityGate,
   isLaunchReadyVideoCreative,
   isPlayableVideoCreative,
+  STATIC_LAUNCH_MIN_CREATIVE_COUNT,
 } = require("../src/lib/services/creative-media-readiness.ts");
 const {
   buildComposedStaticAdPreview,
@@ -144,10 +145,12 @@ assert.equal(oneSelected.readyLabel, "1 selected launch-ready preview");
 assert.equal(oneSelected.availableReadyLabel, "3 launch-ready previews available");
 assert.equal(oneSelected.selectedReadyLabel, "1 selected launch-ready preview");
 assert.equal(oneSelected.selectedBlockedCount, 0);
+assert.equal(oneSelected.selectedMinimumMet, false);
+assert.equal(oneSelected.allSelectedReady, false);
 assert.equal(oneSelected.retryCount, 2);
 assert.equal(oneSelected.missingCount, 1);
-assert.match(getStaticPreviewStatusMessage(oneSelected), /1 selected launch-ready preview; 3 recommended/);
-assert.match(getStaticPreviewStatusMessage(oneSelected), /optional variants need retry/);
+assert.match(getStaticPreviewStatusMessage(oneSelected), /1 selected launch-ready preview; 6 recommended/);
+assert.match(getStaticPreviewStatusMessage(oneSelected), /4 launch-ready static ads required/);
 
 const blockedSelection = getStaticCreativeReadiness(creatives, ["primary", "failed-1"]);
 assert.equal(blockedSelection.selectedBlockedCount, 1);
@@ -162,8 +165,20 @@ const allFailedSelection = getStaticCreativeReadiness([
 assert.equal(allFailedSelection.selectedReadyCount, 0);
 assert.equal(allFailedSelection.selectedBlockedCount, 3);
 assert.equal(allFailedSelection.allSelectedReady, false);
-assert.match(getStaticPreviewStatusMessage(allFailedSelection), /0 selected launch-ready previews; 3 recommended/);
+assert.match(getStaticPreviewStatusMessage(allFailedSelection), /0 selected launch-ready previews; 4 recommended/);
 assert.match(getStaticPreviewStatusMessage(allFailedSelection), /3 selected creatives need retry before launch/);
+
+const fourSelected = getStaticCreativeReadiness([
+  readyStatic("primary"),
+  readyStatic("review-1"),
+  readyStatic("review-2"),
+  readyStatic("review-3"),
+  readyStatic("review-4"),
+], ["primary", "review-1", "review-2", "review-3"]);
+assert.equal(fourSelected.minimumRequiredCount, STATIC_LAUNCH_MIN_CREATIVE_COUNT);
+assert.equal(fourSelected.selectedMinimumMet, true);
+assert.equal(fourSelected.allSelectedReady, true);
+assert.match(getStaticPreviewStatusMessage(fourSelected), /4 selected launch-ready previews; 5 recommended/);
 
 process.env.ALLOW_OPENAI_IMAGE_GENERATION = "true";
 process.env.OPENAI_API_KEY = "test-openai-key";
@@ -314,6 +329,8 @@ const productionMappedStatic = mapStaticCreativeAssets(productionLikeCreativeAss
 const productionStaticReadiness = getStaticCreativeReadiness(productionMappedStatic, stalePlanSelectedIds);
 assert.equal(productionStaticReadiness.selectedReadyCount, 3);
 assert.equal(productionStaticReadiness.selectedBlockedCount, 0);
+assert.equal(productionStaticReadiness.selectedMinimumMet, false);
+assert.equal(productionStaticReadiness.allSelectedReady, false);
 assert.equal(productionStaticReadiness.readyLabel, "3 selected launch-ready previews");
 assert.equal(productionMappedStatic.find((asset) => asset.id === "primary")?.imageGenerationState, "generated");
 
@@ -349,6 +366,7 @@ const readyVideo = {
   storagePath: "user/campaign/video.mp4",
   storageContentType: "video/mp4",
   storageByteSize: 7_533_116,
+  targetDurationSeconds: 20,
   sourceStaticAssetId: "primary",
   sourceImageUrl: "https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/primary.png",
   sourceStaticAccepted: true,
@@ -381,6 +399,7 @@ const readyVideo = {
       mechanism: true,
       sourceRelevance: true,
       cta: true,
+      duration: true,
     },
   },
 };
@@ -421,6 +440,7 @@ const productionMappedVideo = mapVideoCreativeAssets([
       storagePath: "user/campaign/video.mp4",
       storageContentType: "video/mp4",
       storageByteSize: 7_533_116,
+      targetDurationSeconds: 20,
       sourceStaticAssetId: "primary",
       sourceImageUrl: readyVideo.sourceImageUrl,
       promptSource: "campaign_specific_fallback",
@@ -498,6 +518,7 @@ const lowQualityUgcVideo = {
       mechanism: false,
       sourceRelevance: false,
       cta: true,
+      duration: true,
     },
   },
 };
@@ -506,6 +527,18 @@ assert.match(getVideoReadinessMessage(lowQualityUgcVideo), /UGC product-quality 
 assert.deepEqual(
   evaluateGeneratedVideoQualityGate(lowQualityUgcVideo, new Date("2026-05-13T00:00:00.000Z")).reasons,
   ["missing_product_quality_acceptance"],
+);
+
+const tooShortUgcVideo = {
+  ...readyVideo,
+  id: "too-short-ugc-video",
+  durationSeconds: 5,
+};
+assert.equal(isLaunchReadyVideoCreative(tooShortUgcVideo), false);
+assert.match(getVideoReadinessMessage(tooShortUgcVideo), /too short/);
+assert.deepEqual(
+  evaluateGeneratedVideoQualityGate(tooShortUgcVideo, new Date("2026-05-13T00:00:00.000Z")).reasons,
+  ["video_duration_too_short"],
 );
 
 const conceptOnlyVideo = {
@@ -535,6 +568,10 @@ assert.match(customerVideoPlayerSource, /controls=\{false\}/, "customer video pl
 assert.match(customerVideoPlayerSource, /onContextMenu=\{\(event\) => event\.preventDefault\(\)\}/, "customer video player suppresses context-menu raw file actions");
 assert.match(creativeWizardSource, /draft concept\{draftCreatives\.length === 1 \? "" : "s"\} need regeneration/, "Creative Studio separates draft concepts from launch-ready carousel");
 assert.match(creativeWizardSource, /selectedCount=\{selected \? selectedCreatives\.length : null\}/, "retry cards cannot inherit selected count badges");
+assert.match(creativeWizardSource, /selectedUgcVideoIds/, "Creative Studio persists selected UGC launch video IDs");
+assert.match(creativeWizardSource, /Select UGC for launch/, "Creative Studio lets UGC videos be selected like static creatives");
+assert.match(previewSource, /getSelectedUgcVideoIdsFromPlan/, "Preview consumes persisted selected UGC video IDs");
+assert.match(launchSource, /getSelectedUgcVideoIdsFromPlan/, "Launch consumes persisted selected UGC video IDs");
 
 assert.doesNotMatch(creativeWizardSource, /Ready to render/);
 assert.doesNotMatch(creativeWizardSource, /Video preview concept is ready/);

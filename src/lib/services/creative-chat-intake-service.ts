@@ -59,6 +59,29 @@ export type CreativeIntakeAnswers = {
   propertyType?: string | null;
   outputMode?: CreativeIntakeOutputMode;
   generationPhase?: CreativeIntakeGenerationPhase;
+  targetDurationSeconds?: number | null;
+  creatorPersona?: string | null;
+  hookAngle?: string | null;
+  visualStyle?: string | null;
+  pacing?: string | null;
+  cameraStyle?: string | null;
+  captionOverlayStyle?: string | null;
+  referenceExamples?: string | null;
+  goodBadExamples?: string | null;
+  mustUseLanguage?: string | null;
+  mustAvoid?: string | null;
+  selectedUgcConceptId?: string | null;
+  ugcDefaultStyleAccepted?: boolean;
+};
+
+export type CreativeIntakeUgcConcept = {
+  id: string;
+  title: string;
+  hook: string;
+  script: string;
+  shotList: string[];
+  overlayPlan: string;
+  cta: string;
 };
 
 export type CreativeIntakeBrief = {
@@ -75,6 +98,22 @@ export type CreativeIntakeBrief = {
   softenedClaims: string[];
   outputMode: CreativeIntakeOutputMode;
   generationPhase: CreativeIntakeGenerationPhase;
+  ugcStyleBrief?: {
+    targetDurationSeconds: number;
+    creatorPersona: string;
+    hookAngle: string;
+    visualStyle: string;
+    pacing: string;
+    cameraStyle: string;
+    captionOverlayStyle: string;
+    referenceExamples: string[];
+    goodBadExamples: string[];
+    mustUseLanguage: string[];
+    mustAvoid: string[];
+    defaultStyleAccepted: boolean;
+    selectedConceptId: string | null;
+    concepts: CreativeIntakeUgcConcept[];
+  };
   completion: {
     complete: boolean;
     missing: string[];
@@ -102,6 +141,7 @@ export type CreativeIntakeGenerationContext = {
   market?: string | null;
   targetAudience?: string | null;
   brokerageBrand?: string | null;
+  ugcStyleBrief?: CreativeIntakeBrief["ugcStyleBrief"] | null;
   promptVersion: CreativeIntakePromptVersion;
 };
 
@@ -196,6 +236,19 @@ export const creativeIntakeAnswersSchema = z.object({
   propertyType: z.string().max(160).nullable().optional(),
   outputMode: z.enum(["finished_ad", "background_only"]).optional(),
   generationPhase: z.enum(["static", "ugc_video"]).optional(),
+  targetDurationSeconds: z.coerce.number().int().min(15).max(30).nullable().optional(),
+  creatorPersona: z.string().max(220).nullable().optional(),
+  hookAngle: z.string().max(220).nullable().optional(),
+  visualStyle: z.string().max(260).nullable().optional(),
+  pacing: z.string().max(180).nullable().optional(),
+  cameraStyle: z.string().max(180).nullable().optional(),
+  captionOverlayStyle: z.string().max(220).nullable().optional(),
+  referenceExamples: z.string().max(1200).nullable().optional(),
+  goodBadExamples: z.string().max(1200).nullable().optional(),
+  mustUseLanguage: z.string().max(800).nullable().optional(),
+  mustAvoid: z.string().max(800).nullable().optional(),
+  selectedUgcConceptId: z.string().max(120).nullable().optional(),
+  ugcDefaultStyleAccepted: z.boolean().optional(),
 });
 
 function safeText(value: unknown) {
@@ -242,6 +295,14 @@ function splitConstraints(value: string) {
     .slice(0, 8);
 }
 
+function splitReferenceLines(value: string) {
+  return value
+    .split(/[\n]+/)
+    .map((item) => safeText(item))
+    .filter(Boolean)
+    .slice(0, 5);
+}
+
 function hasTimingContext(value: string) {
   return /\b(today|now|daily|weekly|this week|this month|month|monthly|year|days?|weeks?|30|60|90|202\d|completion|deadline|before|early)\b/i.test(value);
 }
@@ -269,6 +330,71 @@ function addFinishedAdTimingContext(
   return hasTimingContext(text)
     ? text
     : `${text} ${timing}`.replace(/\s+/g, " ").trim();
+}
+
+export function buildUgcConceptOptions(params: {
+  market: string;
+  targetAudience: string;
+  offer: string;
+  cta: string;
+  persona: string;
+  hookAngle: string;
+  pacing: string;
+  captionOverlayStyle: string;
+}): CreativeIntakeUgcConcept[] {
+  const market = safeText(params.market) || "your local market";
+  const audience = safeText(params.targetAudience) || "buyers";
+  const offer = safeText(params.offer) || "review options this week";
+  const cta = safeText(params.cta) || "Book a 15-minute strategy call this week";
+  const persona = safeText(params.persona) || "trusted local real estate guide";
+  const hookAngle = safeText(params.hookAngle) || "buyers miss options before they hit public search";
+  const pacing = safeText(params.pacing) || "fast hook, clear middle, calm CTA";
+  const overlays = safeText(params.captionOverlayStyle) || "large readable captions";
+
+  return [
+    {
+      id: "ugc-concept-market-myth",
+      title: "Market myth opener",
+      hook: `Most ${audience.toLowerCase()} in ${market} are missing homes before they ever hit their search alerts.`,
+      script: `${persona} opens with the market myth, explains the buyer pain in plain language, shows how DealFlow filters matching homes and affordability context, then invites viewers to ${cta.toLowerCase()}.`,
+      shotList: [
+        "Creator opens direct-to-camera with a strong two-second hook.",
+        "Cut to natural home or neighborhood context tied to the market.",
+        "Show simple, readable captions for the mechanism and offer.",
+        "Close with the CTA delivered calmly and clearly.",
+      ],
+      overlayPlan: `${overlays}; no tiny captions, no fake dashboards, no cropped CTA.`,
+      cta,
+    },
+    {
+      id: "ugc-concept-affordability-reality-check",
+      title: "Affordability reality check",
+      hook: `If your budget feels tight in ${market}, the next move is not guessing. It is checking the right matches this week.`,
+      script: `${persona} frames the affordability problem, softens any qualification language, explains the ${offer.toLowerCase()} mechanism, and makes the viewer feel they can take one low-pressure next step.`,
+      shotList: [
+        "Creator starts with the affordability pain point.",
+        "Cut to phone-camera walkthrough energy, not a polished stock montage.",
+        "Use one proof/support caption and one CTA caption.",
+        "End with the offer and the CTA in the final three seconds.",
+      ],
+      overlayPlan: `${overlays}; keep copy sparse and mobile-feed readable.`,
+      cta,
+    },
+    {
+      id: "ugc-concept-private-shortlist",
+      title: "Private shortlist walkthrough",
+      hook: `Before you scroll another listing site, get a sharper ${market} shortlist built around what actually fits.`,
+      script: `${persona} uses ${pacing.toLowerCase()} to walk through the private shortlist angle, connects it to ${audience.toLowerCase()}, and closes with the campaign CTA without sounding like a generic sample ad.`,
+      shotList: [
+        "Creator opens in a natural real estate setting.",
+        "Show movement through a home, street, or desk setup for context.",
+        "Caption the shortlist mechanism and the timing context.",
+        "End direct-to-camera with the CTA.",
+      ],
+      overlayPlan: `${overlays}; no listing-sheet UI, no fake app screens, no gibberish text.`,
+      cta,
+    },
+  ];
 }
 
 export function softenRegulatedClaims(value: string) {
@@ -335,18 +461,63 @@ export function buildCreativeIntakeBrief(
   const platformPlacement = safeText(answers.platformPlacement) || "Meta feed and story placements";
   const outputMode = answers.outputMode === "background_only" ? "background_only" : "finished_ad";
   const generationPhase = answers.generationPhase === "ugc_video" ? "ugc_video" : "static";
+  const targetDurationSeconds =
+    typeof answers.targetDurationSeconds === "number" && Number.isFinite(answers.targetDurationSeconds)
+      ? Math.min(30, Math.max(15, Math.round(answers.targetDurationSeconds)))
+      : 20;
   const offer = outputMode === "finished_ad"
     ? addFinishedAdTimingContext(softenedOffer.text, "this week", { ensureLowRiskAccess: true })
     : softenedOffer.text;
   const cta = outputMode === "finished_ad"
     ? addFinishedAdTimingContext(softenedCta.text, "this week")
     : softenedCta.text;
+  const ugcReferenceExamples = splitReferenceLines(answers.referenceExamples ?? "");
+  const ugcDefaultStyleAccepted = answers.ugcDefaultStyleAccepted === true;
+  const selectedUgcConceptId = safeText(answers.selectedUgcConceptId) || null;
+  const ugcPersona = safeText(answers.creatorPersona) || "trusted local real estate agent or relatable buyer guide";
+  const ugcHookAngle = safeText(answers.hookAngle) || "first two seconds call out the buyer pain directly";
+  const ugcPacing = safeText(answers.pacing) || "fast hook, clear middle, calm CTA";
+  const ugcCaptionOverlayStyle = safeText(answers.captionOverlayStyle) || "large readable captions only when useful";
+  const ugcConcepts = buildUgcConceptOptions({
+    market,
+    targetAudience,
+    offer,
+    cta,
+    persona: ugcPersona,
+    hookAngle: ugcHookAngle,
+    pacing: ugcPacing,
+    captionOverlayStyle: ugcCaptionOverlayStyle,
+  });
+  const ugcStyleBrief = generationPhase === "ugc_video"
+    ? {
+        targetDurationSeconds,
+        creatorPersona: ugcPersona,
+        hookAngle: ugcHookAngle,
+        visualStyle: safeText(answers.visualStyle) || "native vertical social video with real homebuyer context",
+        pacing: ugcPacing,
+        cameraStyle: safeText(answers.cameraStyle) || "phone-camera creator POV with natural movement",
+        captionOverlayStyle: ugcCaptionOverlayStyle,
+        referenceExamples: ugcReferenceExamples,
+        goodBadExamples: splitReferenceLines(answers.goodBadExamples ?? ""),
+        mustUseLanguage: splitConstraints(safeText(answers.mustUseLanguage)),
+        mustAvoid: splitConstraints(safeText(answers.mustAvoid)),
+        defaultStyleAccepted: ugcDefaultStyleAccepted,
+        selectedConceptId: selectedUgcConceptId,
+        concepts: ugcConcepts,
+      }
+    : undefined;
   const missing = [
     targetAudience ? null : "target_audience",
     offer ? null : "offer",
     market ? null : "market",
     brokerageBrand ? null : "brokerage_brand",
     creativeStyle ? null : "creative_style",
+    generationPhase === "ugc_video" && ugcReferenceExamples.length === 0 && !ugcDefaultStyleAccepted
+      ? "ugc_reference_or_default_style_acceptance"
+      : null,
+    generationPhase === "ugc_video" && !ugcConcepts.some((concept) => concept.id === selectedUgcConceptId)
+      ? "selected_ugc_concept"
+      : null,
   ].filter((item): item is string => Boolean(item));
 
   return {
@@ -372,6 +543,7 @@ export function buildCreativeIntakeBrief(
     ],
     outputMode,
     generationPhase,
+    ugcStyleBrief,
     completion: {
       complete: missing.length === 0,
       missing,
@@ -383,7 +555,43 @@ export function buildCreativeIntakePromptVersion(
   brief: CreativeIntakeBrief,
   revisionNumber: number,
 ): CreativeIntakePromptVersion {
-  const generatedPrompt = brief.outputMode === "finished_ad"
+  const selectedUgcConcept = brief.ugcStyleBrief?.concepts.find(
+    (concept) => concept.id === brief.ugcStyleBrief?.selectedConceptId,
+  ) ?? null;
+  const generatedPrompt = brief.generationPhase === "ugc_video" && brief.ugcStyleBrief
+    ? [
+      "MARKETING STUDIO AI UGC VIDEO BRIEF.",
+      "Create multiple customer-ready UGC video concepts before rendering. Do not spend provider credits until the user selects a concept and explicitly starts rendering.",
+      `Target duration: ${brief.ugcStyleBrief.targetDurationSeconds} seconds, within the 15-30 second launch-quality range. Do not create a 5-second sample, teaser, reused stock clip, or placeholder.`,
+      "Structure every concept with a strong first 2-second hook, a clear buyer or seller pain point, a simple mechanism, a believable creator/agent POV, and a direct CTA.",
+      `Market/city context: ${brief.market}.`,
+      `Audience: ${brief.targetAudience}.`,
+      `Offer: ${brief.offer}.`,
+      `CTA: ${brief.cta}.`,
+      `Creator/agent persona: ${brief.ugcStyleBrief.creatorPersona}.`,
+      `Hook angle: ${brief.ugcStyleBrief.hookAngle}.`,
+      `Visual style: ${brief.ugcStyleBrief.visualStyle}.`,
+      `Pacing: ${brief.ugcStyleBrief.pacing}.`,
+      `Camera style: ${brief.ugcStyleBrief.cameraStyle}.`,
+      `Caption/overlay style: ${brief.ugcStyleBrief.captionOverlayStyle}.`,
+      selectedUgcConcept
+        ? `Selected pre-render concept: ${selectedUgcConcept.title}. Hook: ${selectedUgcConcept.hook}. Script: ${selectedUgcConcept.script}. Shot list: ${selectedUgcConcept.shotList.join(" / ")}. Overlay plan: ${selectedUgcConcept.overlayPlan}.`
+        : "No UGC concept is selected; keep the brief in revision and do not render.",
+      brief.ugcStyleBrief.referenceExamples.length > 0
+        ? `Reference examples: ${brief.ugcStyleBrief.referenceExamples.join(" | ")}.`
+        : "Reference examples: user accepted the default native social UGC style.",
+      brief.ugcStyleBrief.goodBadExamples.length > 0
+        ? `Good/bad output notes: ${brief.ugcStyleBrief.goodBadExamples.join(" | ")}.`
+        : null,
+      brief.ugcStyleBrief.mustUseLanguage.length > 0
+        ? `Must-use language: ${brief.ugcStyleBrief.mustUseLanguage.join("; ")}.`
+        : null,
+      brief.ugcStyleBrief.mustAvoid.length > 0
+        ? `Must-avoid constraints: ${brief.ugcStyleBrief.mustAvoid.join("; ")}.`
+        : null,
+      "Reject generic creator output, awkward pacing, tiny overlays, mismatched CTAs, fake dashboards, fake listing sheets, unsupported guarantees, fake testimonials, invented logos, and anything that looks like a sample clip.",
+    ].filter(Boolean).join(" ")
+    : brief.outputMode === "finished_ad"
     ? [
       "MARKETING STUDIO FINISHED AD CREATIVE.",
       "Create ONE polished finished real-estate social ad poster, not a chart, not a dashboard, not a listing sheet, not a web/app UI screenshot.",
@@ -455,7 +663,12 @@ export function buildCreativeIntakePromptVersion(
       `Offer: ${brief.offer}`,
       `Brand direction: ${brief.brokerageBrand}`,
       brief.outputMode === "finished_ad" ? `CTA in raster: ${brief.cta}` : `CTA DealFlow will render: ${brief.cta}`,
+      brief.generationPhase === "ugc_video" && brief.ugcStyleBrief
+        ? `UGC duration: ${brief.ugcStyleBrief.targetDurationSeconds}s`
+        : null,
+      selectedUgcConcept ? `Selected UGC concept: ${selectedUgcConcept.title}` : null,
       `Mode: ${brief.outputMode}`,
+      `Phase: ${brief.generationPhase}`,
     ].join(" | "),
     createdAt: nowIso(),
   };
@@ -494,6 +707,8 @@ function buildMessagesFromAnswers(answers: CreativeIntakeAnswers): CreativeIntak
     ["What brokerage or brand should this match?", resolveAnswerLabel(answers.brokerageBrand, brandLabels, answers.customBrokerageBrand)],
     ["What city or market is this for?", safeText(answers.market)],
     ["What creative style do you want?", answers.creativeStyle ? styleLabels[answers.creativeStyle] : ""],
+    ["What are you creating now?", answers.generationPhase === "ugc_video" ? "AI UGC video ads" : "Static ads"],
+    ["Which UGC concept is selected?", safeText(answers.selectedUgcConceptId ?? "")],
     ["Any must-have copy or compliance constraints?", safeText(answers.constraints)],
   ].filter(([, answer]) => Boolean(answer));
 
@@ -560,6 +775,7 @@ export function getApprovedCreativeIntakeGenerationContext(
     market: intake.brief.market,
     targetAudience: intake.brief.targetAudience,
     brokerageBrand: intake.brief.brokerageBrand,
+    ugcStyleBrief: intake.brief.ugcStyleBrief ?? null,
     promptVersion: intake.promptVersion,
   };
 }
@@ -578,6 +794,7 @@ export function hasSameCreativeIntakeGenerationContext(
     left.generationPhase === right.generationPhase &&
     (left.requiredOffer ?? null) === (right.requiredOffer ?? null) &&
     (left.requiredCta ?? null) === (right.requiredCta ?? null) &&
+    JSON.stringify(left.ugcStyleBrief ?? null) === JSON.stringify(right.ugcStyleBrief ?? null) &&
     left.promptVersion.revisionNumber === right.promptVersion.revisionNumber &&
     left.promptVersion.createdAt === right.promptVersion.createdAt &&
     left.promptVersion.generatedPrompt === right.promptVersion.generatedPrompt,

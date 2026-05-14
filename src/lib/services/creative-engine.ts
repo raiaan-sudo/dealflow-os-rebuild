@@ -114,6 +114,8 @@ export type VideoCreativeAsset = {
   storagePath?: string | null;
   storageContentType?: string | null;
   storageByteSize?: number | null;
+  durationSeconds?: number | null;
+  targetDurationSeconds?: number | null;
   sourceStaticAssetId?: string | null;
   sourceImageUrl?: string | null;
   sourceStaticAccepted?: boolean | null;
@@ -149,6 +151,7 @@ export type VideoCreativeAsset = {
       mechanism?: boolean | null;
       sourceRelevance?: boolean | null;
       cta?: boolean | null;
+      duration?: boolean | null;
     } | null;
   } | null;
   videoQa?: {

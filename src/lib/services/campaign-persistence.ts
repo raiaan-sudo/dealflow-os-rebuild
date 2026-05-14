@@ -31,6 +31,10 @@ import {
   isCreativeChatIntakeEnabled,
 } from "@/lib/services/creative-chat-intake-service";
 import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
+import {
+  STATIC_LAUNCH_MAX_CREATIVE_COUNT,
+  STATIC_LAUNCH_MIN_CREATIVE_COUNT,
+} from "@/lib/services/creative-media-readiness";
 import { persistStaticCreativeAssets } from "@/lib/services/static-creative-asset-service";
 import {
   consumeSessionCostBudget,
@@ -68,7 +72,11 @@ function getDefaultLaunchStaticAssetIds(staticAds: StaticCreativeAsset[]) {
 
     return readinessDelta || (right.score ?? 0) - (left.score ?? 0);
   });
-  const topCreatives = rankedCreatives.slice(0, 3);
+  const targetCount =
+    rankedCreatives.length >= STATIC_LAUNCH_MIN_CREATIVE_COUNT
+      ? Math.min(STATIC_LAUNCH_MAX_CREATIVE_COUNT, rankedCreatives.length)
+      : rankedCreatives.length;
+  const topCreatives = rankedCreatives.slice(0, targetCount);
   const topUgcCreatives = rankedCreatives.filter(isUgcStaticCreative).slice(0, 2);
 
   if (topCreatives.length === 0) {
@@ -81,7 +89,7 @@ function getDefaultLaunchStaticAssetIds(staticAds: StaticCreativeAsset[]) {
         ? [
             ...topCreatives
               .filter((creative) => !topUgcCreatives.some((ugcCreative) => ugcCreative.id === creative.id))
-              .slice(0, Math.max(1, 3 - topUgcCreatives.length)),
+              .slice(0, Math.max(1, targetCount - topUgcCreatives.length)),
             ...topUgcCreatives,
           ].map((creative) => creative.id)
         : topCreatives.map((creative) => creative.id),
@@ -486,6 +494,8 @@ export function mapVideoCreativeAssets(rows: CreativeAssetRow[]): VideoCreativeA
       storagePath: metadataString(metadata, "storagePath"),
       storageContentType: metadataString(metadata, "storageContentType"),
       storageByteSize,
+      durationSeconds: metadataNumber(metadata, "durationSeconds"),
+      targetDurationSeconds: metadataNumber(metadata, "targetDurationSeconds"),
       sourceStaticAssetId,
       sourceImageUrl: metadataString(metadata, "sourceImageUrl"),
       sourceStaticAccepted: sourceStaticAccepted(rows, sourceStaticAssetId),

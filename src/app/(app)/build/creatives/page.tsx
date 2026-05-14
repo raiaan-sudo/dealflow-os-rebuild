@@ -3,7 +3,10 @@ import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
-import { getSelectedAdIdsFromPlan } from "@/lib/services/campaign-plan-document";
+import {
+  getSelectedAdIdsFromPlan,
+  getSelectedUgcVideoIdsFromPlan,
+} from "@/lib/services/campaign-plan-document";
 import {
   isCreativeChatIntakeEnabled,
   readCreativeChatIntakeFromPlan,
@@ -39,9 +42,11 @@ export default async function BuildCreativesPage({
   const ensuredRecord = record;
   const plan = canonicalCampaignToPlan(ensuredRecord);
   const creativeIntakeEnabled = isCreativeChatIntakeEnabled();
+  const editCreativeBrief = params.creativeBrief === "edit";
   const supabase = await createClient();
   let intakePlanValue: unknown = null;
   let persistedSelectedAdIds: string[] = [];
+  let persistedSelectedUgcVideoIds: string[] = [];
   if (supabase) {
     const { data } = await supabase
       .from("campaign_plans")
@@ -50,6 +55,7 @@ export default async function BuildCreativesPage({
       .maybeSingle() as { data: { plan?: unknown } | null; error: Error | null };
     intakePlanValue = data?.plan ?? null;
     persistedSelectedAdIds = getSelectedAdIdsFromPlan(intakePlanValue);
+    persistedSelectedUgcVideoIds = getSelectedUgcVideoIdsFromPlan(intakePlanValue);
   }
   const creativeIntake = readCreativeChatIntakeFromPlan(intakePlanValue);
   const creativeIntakeApproved =
@@ -67,7 +73,7 @@ export default async function BuildCreativesPage({
     brand: plan.businessName,
   };
 
-  if (creativeIntakeEnabled && !creativeIntakeApproved) {
+  if (creativeIntakeEnabled && (!creativeIntakeApproved || editCreativeBrief)) {
     return (
       <div className="mx-auto w-full max-w-[1320px] space-y-4 p-5 sm:p-6">
         <WizardSteps current="creatives" />
@@ -176,6 +182,8 @@ export default async function BuildCreativesPage({
       storagePath: video.storagePath ?? null,
       storageContentType: video.storageContentType ?? null,
       storageByteSize: video.storageByteSize ?? null,
+      durationSeconds: video.durationSeconds ?? null,
+      targetDurationSeconds: video.targetDurationSeconds ?? null,
       sourceStaticAssetId: video.sourceStaticAssetId ?? null,
       sourceImageUrl: video.sourceImageUrl ?? null,
       sourceStaticAccepted: video.sourceStaticAccepted ?? null,
@@ -197,7 +205,7 @@ export default async function BuildCreativesPage({
       <PageHeader
         eyebrow="Build"
         title="Choose your creative test set"
-        description="Select 2-6 recommended creatives. DealFlow will preserve the full test set so your launch can compare multiple angles instead of betting on one ad."
+        description="Select 4-6 launch-ready static ads and one approved AI UGC video. DealFlow preserves the full launch package across Preview and Launch."
       />
       {creativeIntakeEnabled ? (
         <CreativeChatIntake
@@ -212,6 +220,7 @@ export default async function BuildCreativesPage({
         campaignId={ensuredRecord.campaign.id}
         creatives={creativeOptions}
         persistedSelectedAdIds={persistedSelectedAdIds}
+        persistedSelectedUgcVideoIds={persistedSelectedUgcVideoIds}
         videoCreatives={videoOptions}
       />
     </div>

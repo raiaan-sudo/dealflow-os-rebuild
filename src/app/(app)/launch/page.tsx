@@ -15,7 +15,11 @@ import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { getIntegrationProviderState } from "@/lib/integrations/provider-registry";
 import { getMetaDailyBudgetCapCents } from "@/lib/integrations/meta/budget-cap";
-import { getSelectedAdIdsFromPlan, readCampaignPlanDocument } from "@/lib/services/campaign-plan-document";
+import {
+  getSelectedAdIdsFromPlan,
+  getSelectedUgcVideoIdsFromPlan,
+  readCampaignPlanDocument,
+} from "@/lib/services/campaign-plan-document";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { getBillingSummary } from "@/lib/services/billing-service";
 import { getMetaQueryUiCopy } from "@/lib/integrations/meta/error-mapper";
@@ -105,15 +109,15 @@ function formatBudgetCap(valueCents: number) {
   }).format(valueCents / 100);
 }
 
-async function loadPersistedSelectedAdIds(campaignId: string | null) {
+async function loadPersistedLaunchMediaSelection(campaignId: string | null) {
   if (!campaignId) {
-    return [];
+    return { selectedAdIds: [], selectedUgcVideoIds: [] };
   }
 
   const supabase = await createRouteHandlerClient();
 
   if (!supabase) {
-    return [];
+    return { selectedAdIds: [], selectedUgcVideoIds: [] };
   }
 
   const { data } = await supabase
@@ -123,7 +127,12 @@ async function loadPersistedSelectedAdIds(campaignId: string | null) {
     .maybeSingle();
 
   const row = (data as { plan?: unknown } | null) ?? null;
-  return getSelectedAdIdsFromPlan(readCampaignPlanDocument(row?.plan));
+  const plan = readCampaignPlanDocument(row?.plan);
+
+  return {
+    selectedAdIds: getSelectedAdIdsFromPlan(plan),
+    selectedUgcVideoIds: getSelectedUgcVideoIdsFromPlan(plan),
+  };
 }
 
 export default async function LaunchAliasPage({
@@ -185,7 +194,9 @@ export default async function LaunchAliasPage({
     : "/launch";
   const metaReconnectHref = `/api/integrations/meta/connect?returnTo=${encodeURIComponent(launchReturnTo)}`;
   const cleanLaunchHref = launchReturnTo;
-  const selectedAdIds = await loadPersistedSelectedAdIds(resolvedCampaignId);
+  const launchMediaSelection = await loadPersistedLaunchMediaSelection(resolvedCampaignId);
+  const selectedAdIds = launchMediaSelection.selectedAdIds;
+  const selectedUgcVideoIds = launchMediaSelection.selectedUgcVideoIds;
   const metaErrorCopy = getMetaQueryUiCopy(metaError, "oauth_callback");
   const discoveryIncomplete =
     metaWarning === "asset_discovery_incomplete"
@@ -249,8 +260,22 @@ export default async function LaunchAliasPage({
   const staticReadiness = getStaticCreativeReadiness(plan.creatives.staticAds, selectedAdIds);
   const selectedCreativeMediaReady =
     staticReadiness.allSelectedReady;
-  const launchReadyVideos = plan.creatives.videoAds.filter(isLaunchReadyVideoCreative);
-  const displayVideoAds = launchReadyVideos.length > 0 ? launchReadyVideos : plan.creatives.videoAds;
+  const selectedUgcVideos = selectedUgcVideoIds.length > 0
+    ? plan.creatives.videoAds
+        .filter((video) => selectedUgcVideoIds.includes(video.id))
+        .sort((left, right) => selectedUgcVideoIds.indexOf(left.id) - selectedUgcVideoIds.indexOf(right.id))
+    : [];
+  const launchReadyVideos = selectedUgcVideos.filter(
+    (video) => video.conceptType === "customer_ugc" && isLaunchReadyVideoCreative(video),
+  );
+  const fallbackDisplayVideos = plan.creatives.videoAds.filter(
+    (video) => video.conceptType === "customer_ugc" && isLaunchReadyVideoCreative(video),
+  );
+  const displayVideoAds = selectedUgcVideos.length > 0
+    ? selectedUgcVideos
+    : fallbackDisplayVideos.length > 0
+      ? fallbackDisplayVideos
+      : plan.creatives.videoAds;
   const videoMediaReady = launchReadyVideos.length > 0;
   const publicFunnelPublished =
     savedRecord.publish.state === "published" &&

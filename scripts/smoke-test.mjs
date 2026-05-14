@@ -409,11 +409,11 @@ function runOfflineChecks() {
   assertIncludes(staticCreativeStorageBackfillAudit, "STATIC_CREATIVE_STORAGE_BACKFILL_ACK=owner-approved-production-backfill", "Static storage backfill apply gate", "legacy provider-url backfill apply mode requires explicit owner approval");
   assertIncludes(staticCreativeStorageBackfillAudit, "alreadyNormalizedRowsSkipped", "Static storage backfill idempotency", "legacy provider-url backfill skips already-normalized rows");
   assertIncludes(staticCreativeStorageBackfillAudit, "rollbackPlan", "Static storage backfill rollback plan", "legacy provider-url backfill reports rollback guidance before mutation");
-  assertIncludes(creativeChatIntake, "Review the creative direction before paid rendering", "Creative chat intake UI", "guided intake collects creative direction before paid image or video rendering");
+  assertIncludes(creativeChatIntake, "Build the Marketing Studio brief before paid rendering", "Creative chat intake UI", "guided intake collects creative direction before paid image or video rendering");
   assertIncludes(creativeChatIntake, "No image or video render starts from this intake", "Creative intake render boundary", "creative chat intake explains that paid render work waits for approval");
   assertIncludes(creativeChatIntake, "Native-style static ad", "Creative intake static style copy", "creative intake separates native-style static ads from UGC video concepts");
   assertExcludes(creativeChatIntake, "Higgsfield", "Creative intake provider name hidden", "creative intake does not expose provider names to customers");
-  assertExcludes(creativeChatIntake, "Marketing Studio", "Creative intake platform name hidden", "creative intake does not expose internal provider platform names to customers");
+  assertIncludes(creativeChatIntake, "Open Marketing Studio chat", "Creative intake Marketing Studio surface", "creative intake exposes DealFlow's customer-facing Marketing Studio without provider names");
   assertExcludes(creativeChatIntake, "/generate-static-ads", "Creative intake no image provider trigger", "creative chat intake does not directly queue static provider rendering");
   assertExcludes(creativeChatIntake, "/generate-video", "Creative intake no video provider trigger", "creative chat intake does not directly queue video provider rendering");
   assertIncludes(creativeIntakeRoute, "assertSameOriginRequest", "Creative intake same-origin guard", "creative intake writes reject cross-site POSTs");
@@ -438,7 +438,7 @@ function runOfflineChecks() {
   assertIncludes(assetGenerationLifecycle, "asset.qualityGate?.accepted !== false", "Generated asset lifecycle guard", "static asset lifecycle does not mark rejected generated creatives as fully generated");
   assertIncludes(previewPage, "StaticCreativeSummaryCard", "Preview rendered creative cards", "preview page shows rendered creative visuals instead of text-only summaries");
   assertIncludes(previewPage, "Review variants", "Preview review variant label", "preview page separates the primary creative from review variants");
-  assertIncludes(previewPage, "UGC video concepts", "Preview video concept review", "preview page surfaces UGC video concepts before launch");
+  assertIncludes(previewPage, "Selected UGC video ads", "Preview video concept review", "preview page surfaces selected UGC video ads before launch");
   assertIncludes(previewPage, "playsInline", "Preview playable videos", "preview page can play finished AI UGC videos inline");
   assertIncludes(previewPage, "customerVideoMessage", "Preview video copy sanitizer", "preview page hides provider jargon from video render messages");
   assertIncludes(previewPage, "h-[520px] overflow-hidden", "Preview funnel height cap", "preview page caps the funnel preview instead of adding an embedded scroll area");
@@ -493,9 +493,9 @@ function runOfflineChecks() {
   assertIncludes(appContextService, "non-owned organization", "Workspace ownership bootstrap guard", "membership bootstrap refuses non-owned organizations");
   assertIncludes(membershipPolicyMigration, "drop policy if exists organization_memberships_insert_self", "Membership self-join policy removed", "authenticated users cannot self-join arbitrary organizations");
 
-  assertIncludes(previewPage, "loadPersistedSelectedAdIds", "Preview selected creative source", "preview loads persisted selected creative set from DB helper");
+  assertIncludes(previewPage, "loadPersistedLaunchMediaSelection", "Preview selected creative source", "preview loads persisted selected creative and UGC video sets from DB helper");
   assertIncludes(previewPage, "getSelectedAdIdsFromPlan", "Preview selected creative plan helper", "preview resolves selected creative set through typed plan helper");
-  assertIncludes(launchPage, "loadPersistedSelectedAdIds", "Launch selected creative source", "launch loads persisted selected creative set from DB helper");
+  assertIncludes(launchPage, "loadPersistedLaunchMediaSelection", "Launch selected creative source", "launch loads persisted selected creative and UGC video sets from DB helper");
   assertIncludes(launchPage, "getSelectedAdIdsFromPlan", "Launch selected creative plan helper", "launch resolves selected creative set through typed plan helper");
   assertExcludes(launchPage, "recommended", "Launch recommended fallback removed", "launch preview does not use recommended fallback");
   assertIncludes(launchPage, "statusLabel: budgetWasCapped ? \"Capped\" : budgetCapApplied ? undefined : \"Unlimited\"", "Launch budget policy visibility", "launch readiness shows unlimited budget policy when no cap is configured");

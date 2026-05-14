@@ -1,4 +1,7 @@
 import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
+export const STATIC_LAUNCH_MIN_CREATIVE_COUNT = 4;
+export const STATIC_LAUNCH_MAX_CREATIVE_COUNT = 6;
+
 type StaticCreativeReadinessInput = {
   id: string;
   imageUrl?: string | null;
@@ -37,6 +40,8 @@ export type VideoCreativeReadinessInput = {
   storagePath?: string | null;
   storageContentType?: string | null;
   storageByteSize?: number | null;
+  durationSeconds?: number | null;
+  targetDurationSeconds?: number | null;
   sourceStaticAssetId?: string | null;
   sourceImageUrl?: string | null;
   sourceStaticAccepted?: boolean | null;
@@ -70,6 +75,7 @@ export type VideoCreativeReadinessInput = {
       mechanism?: boolean | null;
       sourceRelevance?: boolean | null;
       cta?: boolean | null;
+      duration?: boolean | null;
     } | null;
   } | null;
   videoQa?: {
@@ -99,6 +105,8 @@ export type StaticCreativeReadiness = {
   selectedBlockedCount: number;
   optionalIssueCount: number;
   recommendedRequiredCount: number;
+  minimumRequiredCount: number;
+  selectedMinimumMet: boolean;
   allSelectedReady: boolean;
   selectedReadyLabel: string;
   availableReadyLabel: string;
@@ -150,7 +158,12 @@ export function getStaticCreativeReadiness(
   ).length;
   const selectedReadyCount = selectedCreatives.filter(isLaunchReadyStaticCreative).length;
   const selectedBlockedCount = selectedCreatives.length - selectedReadyCount;
-  const recommendedRequiredCount = Math.min(3, creatives.length);
+  const minimumRequiredCount = STATIC_LAUNCH_MIN_CREATIVE_COUNT;
+  const recommendedRequiredCount =
+    creatives.length >= STATIC_LAUNCH_MIN_CREATIVE_COUNT
+      ? Math.min(STATIC_LAUNCH_MAX_CREATIVE_COUNT, creatives.length)
+      : STATIC_LAUNCH_MIN_CREATIVE_COUNT;
+  const selectedMinimumMet = selectedReadyCount >= minimumRequiredCount;
   const optionalIssueCount = Math.max(0, retryCount + missingCount - selectedBlockedCount);
   const selectedReadyLabel =
     selectedReadyCount === 1
@@ -171,7 +184,9 @@ export function getStaticCreativeReadiness(
     selectedBlockedCount,
     optionalIssueCount,
     recommendedRequiredCount,
-    allSelectedReady: selectedCreatives.length > 0 && selectedBlockedCount === 0,
+    minimumRequiredCount,
+    selectedMinimumMet,
+    allSelectedReady: selectedCreatives.length > 0 && selectedBlockedCount === 0 && selectedMinimumMet,
     selectedReadyLabel,
     availableReadyLabel,
     selectionLabel:
@@ -182,6 +197,8 @@ export function getStaticCreativeReadiness(
     issueLabel:
       selectedBlockedCount > 0
         ? `${selectedBlockedCount} selected ${selectedBlockedCount === 1 ? "creative needs" : "creatives need"} retry before launch`
+        : selectedCreatives.length > 0 && !selectedMinimumMet
+          ? `${minimumRequiredCount} launch-ready static ads required; select ${Math.max(0, minimumRequiredCount - selectedReadyCount)} more`
         : optionalIssueCount > 0
           ? `${optionalIssueCount} optional ${optionalIssueCount === 1 ? "variant needs" : "variants need"} retry`
           : null,
@@ -203,6 +220,10 @@ export function getStaticPreviewStatusMessage(readiness: StaticCreativeReadiness
     : `${readyText}.`;
 
   if (readiness.selectedBlockedCount > 0) {
+    return `${base} ${readiness.issueLabel}.`;
+  }
+
+  if (readiness.selectedCount > 0 && !readiness.selectedMinimumMet) {
     return `${base} ${readiness.issueLabel}.`;
   }
 
@@ -252,7 +273,8 @@ function hasAcceptedProductQualityGate(video: VideoCreativeReadinessInput) {
       checks?.creatorPointOfView === true &&
       checks?.mechanism === true &&
       checks?.sourceRelevance === true &&
-      checks?.cta === true,
+      checks?.cta === true &&
+      checks?.duration !== false,
   );
 }
 
@@ -295,6 +317,10 @@ export function evaluateGeneratedVideoQualityGate(
 
   if (typeof video.storageByteSize !== "number" || video.storageByteSize <= 0) {
     reasons.push("missing_storage_size");
+  }
+
+  if (typeof video.durationSeconds === "number" && video.durationSeconds < 15) {
+    reasons.push("video_duration_too_short");
   }
 
   if (!video.providerName || !video.providerAssetId) {
@@ -364,6 +390,10 @@ export function getVideoLaunchReadinessReason(video: VideoCreativeReadinessInput
 
   if (typeof video.storageByteSize !== "number" || video.storageByteSize <= 0) {
     return "The playable video is missing verified file size metadata.";
+  }
+
+  if (typeof video.durationSeconds === "number" && video.durationSeconds < 15) {
+    return "The playable video is too short for launch-quality UGC; render a 15-30 second version before launch.";
   }
 
   if (!video.providerName || !video.providerAssetId) {

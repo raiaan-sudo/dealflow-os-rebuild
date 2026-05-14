@@ -87,6 +87,12 @@ assert.match(selectAdRoute, /assertCampaignCanLaunch/);
 assert.match(selectAdRoute, /!isLaunchReadyStaticCreative\(ad\)/);
 assert.doesNotMatch(selectAdRoute, /Boolean\(ad\.imageUrl\) && !evaluateStaticVisualAssetDecision/);
 assert.match(creativeChatIntakeUi, /Customer-ready static ad/);
+assert.match(creativeChatIntakeUi, /AI UGC video ads/);
+assert.match(creativeChatIntakeUi, /Reference examples, links, screenshots, or notes/);
+assert.match(creativeChatIntakeUi, /Open Marketing Studio chat/);
+assert.match(creativeChatIntakeUi, /Pre-render UGC concepts/);
+assert.match(creativeChatIntakeUi, /Select concept/);
+assert.match(creativeChatIntakeUi, /Marketing Studio chat log/);
 assert.match(creativeChatIntakeUi, /Output mode" value=\{answers\.outputMode === "background_only" \? "Text-free visual background" : "Customer-ready static ad"\}/);
 const launchPageUi = fs.readFileSync("src/app/(app)/launch/page.tsx", "utf8");
 assert.match(launchPageUi, /Return to Creatives and refresh unfinished previews/);
@@ -161,6 +167,74 @@ assert.match(finishedAdPrompt.generatedPrompt, /not a chart, not a dashboard, no
 assert.match(finishedAdPrompt.generatedPrompt, /Do not invent logos, guaranteed-approval claims, guaranteed financing/);
 assert.doesNotMatch(finishedAdPrompt.negativePrompt, /finished ad/);
 assert.doesNotMatch(finishedAdPrompt.negativePrompt, /CTA button/);
+
+const ugcBriefNeedsReference = buildCreativeIntakeBrief({
+  ...answers,
+  outputMode: "finished_ad",
+  generationPhase: "ugc_video",
+  targetDurationSeconds: 20,
+  creatorPersona: "Toronto buyer agent guide",
+  hookAngle: "Most buyers miss options before they hit public search",
+  visualStyle: "native vertical creator POV",
+  pacing: "fast hook, clear explanation, direct CTA",
+  cameraStyle: "phone-camera walkthrough",
+  captionOverlayStyle: "large readable captions",
+  referenceExamples: "",
+  ugcDefaultStyleAccepted: false,
+}, defaults);
+assert.equal(ugcBriefNeedsReference.completion.complete, false);
+assert.ok(ugcBriefNeedsReference.completion.missing.includes("ugc_reference_or_default_style_acceptance"));
+assert.ok(ugcBriefNeedsReference.completion.missing.includes("selected_ugc_concept"));
+
+const ugcBriefNeedsConcept = buildCreativeIntakeBrief({
+  ...answers,
+  outputMode: "finished_ad",
+  generationPhase: "ugc_video",
+  targetDurationSeconds: 20,
+  creatorPersona: "Toronto buyer agent guide",
+  hookAngle: "Most buyers miss options before they hit public search",
+  visualStyle: "native vertical creator POV",
+  pacing: "fast hook, clear explanation, direct CTA",
+  cameraStyle: "phone-camera walkthrough",
+  captionOverlayStyle: "large readable captions",
+  referenceExamples: "Reference 1: agent explains buyer options in a car",
+  selectedUgcConceptId: "",
+}, defaults);
+assert.equal(ugcBriefNeedsConcept.completion.complete, false);
+assert.ok(ugcBriefNeedsConcept.completion.missing.includes("selected_ugc_concept"));
+
+const ugcBrief = buildCreativeIntakeBrief({
+  ...answers,
+  outputMode: "finished_ad",
+  generationPhase: "ugc_video",
+  targetDurationSeconds: 20,
+  creatorPersona: "Toronto buyer agent guide",
+  hookAngle: "Most buyers miss options before they hit public search",
+  visualStyle: "native vertical creator POV",
+  pacing: "fast hook, clear explanation, direct CTA",
+  cameraStyle: "phone-camera walkthrough",
+  captionOverlayStyle: "large readable captions",
+  referenceExamples: "Reference 1: agent explains buyer options in a car\nReference 2: creator walks through homes",
+  goodBadExamples: "Good: natural creator energy\nBad: generic 5s stock clip",
+  mustUseLanguage: "Book a 15-minute buyer strategy call this week",
+  mustAvoid: "No fake dashboards. No guaranteed approval.",
+  selectedUgcConceptId: "ugc-concept-affordability-reality-check",
+}, defaults);
+assert.equal(ugcBrief.completion.complete, true);
+assert.equal(ugcBrief.ugcStyleBrief.targetDurationSeconds, 20);
+assert.equal(ugcBrief.ugcStyleBrief.referenceExamples.length, 2);
+assert.equal(ugcBrief.ugcStyleBrief.selectedConceptId, "ugc-concept-affordability-reality-check");
+assert.equal(ugcBrief.ugcStyleBrief.concepts.length, 3);
+const ugcPrompt = buildCreativeIntakePromptVersion(ugcBrief, 4);
+assert.match(ugcPrompt.generatedPrompt, /MARKETING STUDIO AI UGC VIDEO BRIEF/);
+assert.match(ugcPrompt.generatedPrompt, /15-30 second launch-quality range/);
+assert.match(ugcPrompt.generatedPrompt, /Do not create a 5-second sample/);
+assert.match(ugcPrompt.generatedPrompt, /Creator\/agent persona: Toronto buyer agent guide/);
+assert.match(ugcPrompt.generatedPrompt, /Selected pre-render concept: Affordability reality check/);
+assert.match(ugcPrompt.sanitizedPreview, /Selected UGC concept: Affordability reality check/);
+assert.match(ugcPrompt.generatedPrompt, /Reference examples:/);
+assert.match(ugcPrompt.generatedPrompt, /Must-avoid constraints:/);
+assert.match(ugcPrompt.sanitizedPreview, /UGC duration: 20s/);
 
 const state = createCreativeIntakeState({
   campaignId: defaults.campaignId,

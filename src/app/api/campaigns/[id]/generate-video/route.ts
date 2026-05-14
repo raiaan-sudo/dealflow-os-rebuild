@@ -197,6 +197,7 @@ export async function POST(
       audience: campaign.strategy.audience ?? campaign.campaign.audience ?? null,
       location: campaign.strategy.location ?? campaign.campaign.location ?? null,
       force: body.force === true,
+      targetDurationSeconds: creativeIntakeContext?.ugcStyleBrief?.targetDurationSeconds ?? 20,
       creativeIntake: creativeIntakeContext,
     };
 

@@ -7,6 +7,8 @@ const campaignPayloadSchema = z
   .object({
     selected_ad_id: z.string().trim().min(1).nullable().optional(),
     selected_ad_ids: z.array(z.string().trim().min(1)).max(6).optional(),
+    selected_ugc_video_id: z.string().trim().min(1).nullable().optional(),
+    selected_ugc_video_ids: z.array(z.string().trim().min(1)).max(3).optional(),
     destination_url: z.string().trim().min(1).nullable().optional(),
   })
   .passthrough();
@@ -46,6 +48,8 @@ const campaignPlanDocumentSchema = z
     version: z.coerce.number().int().min(1).default(CURRENT_CAMPAIGN_PLAN_VERSION),
     selected_ad_id: z.string().trim().min(1).nullable().optional(),
     selected_ad_ids: z.array(z.string().trim().min(1)).max(6).optional(),
+    selected_ugc_video_id: z.string().trim().min(1).nullable().optional(),
+    selected_ugc_video_ids: z.array(z.string().trim().min(1)).max(3).optional(),
     lead_loop_verified: z.boolean().optional().default(false),
     launch_status: z.string().trim().min(1).nullable().optional(),
     public_slug: z.string().trim().min(1).nullable().optional(),
@@ -73,7 +77,7 @@ function normalizeSelectedAdId(value: unknown) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
-function normalizeSelectedAdIds(value: unknown) {
+function normalizeSelectedIds(value: unknown, max: number) {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -84,7 +88,15 @@ function normalizeSelectedAdIds(value: unknown) {
         .map((item) => normalizeSelectedAdId(item))
         .filter((item): item is string => Boolean(item)),
     ),
-  ).slice(0, 6);
+  ).slice(0, max);
+}
+
+function normalizeSelectedAdIds(value: unknown) {
+  return normalizeSelectedIds(value, 6);
+}
+
+function normalizeSelectedUgcVideoIds(value: unknown) {
+  return normalizeSelectedIds(value, 3);
 }
 
 function normalizeOptionalText(value: unknown) {
@@ -151,6 +163,16 @@ function migrateCampaignPlanDocument(value: Record<string, unknown>) {
     ...(selectedAdIds.length > 0 ? selectedAdIds : payloadSelectedAdIds),
     ...(selectedAdId ? [selectedAdId] : []),
   ].filter((item, index, list) => list.indexOf(item) === index).slice(0, 6);
+  const selectedUgcVideoId =
+    normalizeSelectedAdId(value.selected_ugc_video_id) ??
+    normalizeSelectedAdId(currentPayload?.selected_ugc_video_id) ??
+    null;
+  const selectedUgcVideoIds = normalizeSelectedUgcVideoIds(value.selected_ugc_video_ids);
+  const payloadSelectedUgcVideoIds = normalizeSelectedUgcVideoIds(currentPayload?.selected_ugc_video_ids);
+  const mergedSelectedUgcVideoIds = [
+    ...(selectedUgcVideoIds.length > 0 ? selectedUgcVideoIds : payloadSelectedUgcVideoIds),
+    ...(selectedUgcVideoId ? [selectedUgcVideoId] : []),
+  ].filter((item, index, list) => list.indexOf(item) === index).slice(0, 3);
 
   return {
     ...value,
@@ -160,6 +182,8 @@ function migrateCampaignPlanDocument(value: Record<string, unknown>) {
         : CURRENT_CAMPAIGN_PLAN_VERSION,
     selected_ad_id: selectedAdId,
     selected_ad_ids: mergedSelectedAdIds,
+    selected_ugc_video_id: selectedUgcVideoId,
+    selected_ugc_video_ids: mergedSelectedUgcVideoIds,
     launch_status: deriveLaunchStatusFromPlanValue(value),
     public_slug: derivePublicSlugFromPlanValue(value),
     runtime: currentRuntime ?? undefined,
@@ -170,6 +194,8 @@ function migrateCampaignPlanDocument(value: Record<string, unknown>) {
           ...currentPayload,
           ...(selectedAdId ? { selected_ad_id: selectedAdId } : {}),
           ...(mergedSelectedAdIds.length > 0 ? { selected_ad_ids: mergedSelectedAdIds } : {}),
+          ...(selectedUgcVideoId ? { selected_ugc_video_id: selectedUgcVideoId } : {}),
+          ...(mergedSelectedUgcVideoIds.length > 0 ? { selected_ugc_video_ids: mergedSelectedUgcVideoIds } : {}),
         }
       : undefined,
     lead_loop_verified: hasLeadLoopVerified ? value.lead_loop_verified : false,
@@ -233,6 +259,27 @@ export function getSelectedAdIdsFromPlan(value: unknown) {
   ].filter((item, index, list) => list.indexOf(item) === index);
 
   return ids.slice(0, 6);
+}
+
+export function getSelectedUgcVideoIdFromPlan(value: unknown) {
+  const plan = readCampaignPlanDocument(value);
+  return normalizeSelectedAdId(plan.selected_ugc_video_id) ??
+    normalizeSelectedAdId(plan.campaign_payload?.selected_ugc_video_id) ??
+    null;
+}
+
+export function getSelectedUgcVideoIdsFromPlan(value: unknown) {
+  const plan = readCampaignPlanDocument(value);
+  const ids = [
+    ...normalizeSelectedUgcVideoIds(plan.selected_ugc_video_ids),
+    ...normalizeSelectedUgcVideoIds(plan.campaign_payload?.selected_ugc_video_ids),
+    ...(normalizeSelectedAdId(plan.selected_ugc_video_id) ? [normalizeSelectedAdId(plan.selected_ugc_video_id) as string] : []),
+    ...(normalizeSelectedAdId(plan.campaign_payload?.selected_ugc_video_id)
+      ? [normalizeSelectedAdId(plan.campaign_payload?.selected_ugc_video_id) as string]
+      : []),
+  ].filter((item, index, list) => list.indexOf(item) === index);
+
+  return ids.slice(0, 3);
 }
 
 export function getLeadLoopVerifiedFromPlan(value: unknown) {
@@ -313,6 +360,33 @@ export function withSelectedAdIds(current: unknown, selectedAdIds: string[]) {
       ...(getCampaignPayloadFromPlan(current) ?? {}),
       selected_ad_id: primarySelectedAdId || null,
       selected_ad_ids: normalizedIds,
+    },
+  });
+}
+
+export function withSelectedLaunchMedia(
+  current: unknown,
+  selection: {
+    selectedAdIds: string[];
+    selectedUgcVideoIds?: string[];
+  },
+) {
+  const normalizedAdIds = normalizeSelectedAdIds(selection.selectedAdIds);
+  const primarySelectedAdId = normalizedAdIds[0] ?? "";
+  const normalizedUgcVideoIds = normalizeSelectedUgcVideoIds(selection.selectedUgcVideoIds ?? []);
+  const primarySelectedUgcVideoId = normalizedUgcVideoIds[0] ?? "";
+
+  return mergeCampaignPlanDocument(current, {
+    selected_ad_ids: normalizedAdIds,
+    selected_ad_id: primarySelectedAdId || null,
+    selected_ugc_video_ids: normalizedUgcVideoIds,
+    selected_ugc_video_id: primarySelectedUgcVideoId || null,
+    campaign_payload: {
+      ...(getCampaignPayloadFromPlan(current) ?? {}),
+      selected_ad_id: primarySelectedAdId || null,
+      selected_ad_ids: normalizedAdIds,
+      selected_ugc_video_id: primarySelectedUgcVideoId || null,
+      selected_ugc_video_ids: normalizedUgcVideoIds,
     },
   });
 }

@@ -16,6 +16,8 @@ import {
   isLaunchReadyStaticCreative,
   isLaunchReadyVideoCreative,
   isPlayableVideoCreative,
+  STATIC_LAUNCH_MAX_CREATIVE_COUNT,
+  STATIC_LAUNCH_MIN_CREATIVE_COUNT,
 } from "@/lib/services/creative-media-readiness";
 import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
 import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
@@ -93,6 +95,8 @@ type VideoCreativeOption = {
   storagePath?: string | null;
   storageContentType?: string | null;
   storageByteSize?: number | null;
+  durationSeconds?: number | null;
+  targetDurationSeconds?: number | null;
   sourceStaticAssetId?: string | null;
   sourceImageUrl?: string | null;
   sourceStaticAccepted?: boolean | null;
@@ -128,6 +132,7 @@ type VideoCreativeOption = {
       mechanism?: boolean | null;
       sourceRelevance?: boolean | null;
       cta?: boolean | null;
+      duration?: boolean | null;
     } | null;
   } | null;
   videoQa?: {
@@ -147,6 +152,7 @@ type CreativeWizardProps = {
   campaignId: string;
   creatives: CreativeOption[];
   persistedSelectedAdIds?: string[];
+  persistedSelectedUgcVideoIds?: string[];
   videoCreatives?: VideoCreativeOption[];
 };
 
@@ -219,6 +225,7 @@ export function CreativeWizard({
   campaignId,
   creatives,
   persistedSelectedAdIds = [],
+  persistedSelectedUgcVideoIds = [],
   videoCreatives = [],
 }: CreativeWizardProps) {
   const router = useRouter();
@@ -232,7 +239,11 @@ export function CreativeWizard({
     }),
     [creatives],
   );
-  const topCreatives = rankedCreatives.slice(0, 3);
+  const recommendedStaticCount =
+    rankedCreatives.length >= STATIC_LAUNCH_MIN_CREATIVE_COUNT
+      ? Math.min(STATIC_LAUNCH_MAX_CREATIVE_COUNT, rankedCreatives.length)
+      : rankedCreatives.length;
+  const topCreatives = rankedCreatives.slice(0, recommendedStaticCount);
   const topUgcCreatives = rankedCreatives
     .filter((creative) => /\bugc\b/i.test(`${creative.id} ${creative.formatLabel ?? ""}`))
     .slice(0, 2);
@@ -245,7 +256,7 @@ export function CreativeWizard({
             ? [
                 ...topCreatives
                   .filter((creative) => !topUgcCreatives.some((ugcCreative) => ugcCreative.id === creative.id))
-                  .slice(0, Math.max(1, 3 - topUgcCreatives.length)),
+                  .slice(0, Math.max(1, recommendedStaticCount - topUgcCreatives.length)),
                 ...topUgcCreatives,
               ].map((creative) => creative.id)
             : topCreatives.map((creative) => creative.id),
@@ -253,8 +264,10 @@ export function CreativeWizard({
       )
     : rankedCreatives.slice(0, 1).map((creative) => creative.id);
   const defaultSelectedIds = savedSelectedIds.length > 0 ? savedSelectedIds : recommendedSelectedIds;
-  const minSelected = Math.min(2, rankedCreatives.length);
-  const maxSelected = Math.min(6, rankedCreatives.length);
+  const minSelected = rankedCreatives.length >= STATIC_LAUNCH_MIN_CREATIVE_COUNT
+    ? STATIC_LAUNCH_MIN_CREATIVE_COUNT
+    : rankedCreatives.length;
+  const maxSelected = Math.min(STATIC_LAUNCH_MAX_CREATIVE_COUNT, rankedCreatives.length);
   const [selectedIds, setSelectedIds] = useState<string[]>(defaultSelectedIds);
   const [saving, setSaving] = useState(false);
   const [renderingImages, setRenderingImages] = useState(false);
@@ -312,14 +325,26 @@ export function CreativeWizard({
   const launchReadyVideoCreatives = videoCreatives.filter(isLaunchReadyVideoCreative);
   const reviewableVideoCreatives =
     launchReadyVideoCreatives.length > 0 ? launchReadyVideoCreatives : videoCreatives;
+  const savedSelectedUgcVideoIds = persistedSelectedUgcVideoIds
+    .filter((id) => videoCreatives.some((video) => video.id === id))
+    .slice(0, 3);
   const primaryVideoCreative =
+    reviewableVideoCreatives.find((video) => savedSelectedUgcVideoIds.includes(video.id)) ??
+    reviewableVideoCreatives.find((video) => video.conceptType === "customer_ugc" && isLaunchReadyVideoCreative(video)) ??
     reviewableVideoCreatives.find((video) => video.conceptType === "customer_ugc") ??
     reviewableVideoCreatives[0] ??
     null;
+  const [selectedUgcVideoIds, setSelectedUgcVideoIds] = useState<string[]>(savedSelectedUgcVideoIds);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(primaryVideoCreative?.id ?? null);
   const activeVideoCreative =
     reviewableVideoCreatives.find((video) => video.id === activeVideoId) ??
     primaryVideoCreative;
+  const selectedUgcVideos = videoCreatives.filter((video) => selectedUgcVideoIds.includes(video.id));
+  const selectedLaunchReadyUgcVideos = selectedUgcVideos.filter(
+    (video) => video.conceptType === "customer_ugc" && isLaunchReadyVideoCreative(video),
+  );
+  const videoSelectionRequired = true;
+  const selectedUgcReady = !videoSelectionRequired || selectedLaunchReadyUgcVideos.length > 0;
   const videoNeedsGeneration = Boolean(
     primaryVideoCreative &&
     !primaryVideoCreative.videoUrl &&
@@ -543,6 +568,12 @@ export function CreativeWizard({
     setError(null);
   }
 
+  function selectUgcVideo(video: VideoCreativeOption) {
+    setActiveVideoId(video.id);
+    setSelectedUgcVideoIds(isLaunchReadyVideoCreative(video) && video.conceptType === "customer_ugc" ? [video.id] : []);
+    setError(null);
+  }
+
   async function handleNext() {
     if (saving) {
       return;
@@ -550,9 +581,9 @@ export function CreativeWizard({
 
     if (!canContinue || !primaryCreative) {
       setError(
-        rankedCreatives.length >= 2
-          ? `Select ${minSelected}-${maxSelected} creatives to continue.`
-          : "Select at least one creative to continue.",
+        rankedCreatives.length >= STATIC_LAUNCH_MIN_CREATIVE_COUNT
+          ? `Select ${STATIC_LAUNCH_MIN_CREATIVE_COUNT}-${maxSelected} launch-ready static ads to continue.`
+          : `${STATIC_LAUNCH_MIN_CREATIVE_COUNT} launch-ready static ads are required. Refresh or generate more static ads before launch.`,
       );
       return;
     }
@@ -564,6 +595,12 @@ export function CreativeWizard({
 
     if (!selectedMediaReady) {
       setError("Refresh unfinished previews before saving this launch set.");
+      return;
+    }
+
+    if (!selectedUgcReady) {
+      setError("Select one launch-ready AI UGC video before saving the launch package.");
+      setActivePhase("ugc_videos");
       return;
     }
 
@@ -581,6 +618,8 @@ export function CreativeWizard({
           body: JSON.stringify({
             selectedAdId: primaryCreative.id,
             selectedAdIds: selectedCreatives.map((creative) => creative.id),
+            selectedUgcVideoId: selectedLaunchReadyUgcVideos[0]?.id,
+            selectedUgcVideoIds: selectedLaunchReadyUgcVideos.map((video) => video.id),
           }),
         },
       );
@@ -598,12 +637,18 @@ export function CreativeWizard({
         typeof data?.selected_ad_id === "string" && data.selected_ad_id.length > 0
           ? data.selected_ad_id
           : primaryCreative.id;
+      const persistedSelectedUgcVideoIds = Array.isArray(data?.selected_ugc_video_ids)
+        ? data.selected_ugc_video_ids.map(String).filter(Boolean)
+        : [];
 
       const params = new URLSearchParams();
       params.set("campaignId", campaignId);
       params.set("selectedAdId", persistedSelectedAdId);
       if (persistedSelectedAdIds.length > 0) {
         params.set("selectedAdIds", persistedSelectedAdIds.join(","));
+      }
+      if (persistedSelectedUgcVideoIds.length > 0) {
+        params.set("selectedUgcVideoIds", persistedSelectedUgcVideoIds.join(","));
       }
 
       router.push(`/preview?${params.toString()}`);
@@ -658,7 +703,7 @@ export function CreativeWizard({
               Choose the launch test set from the approved brief
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              The creative brief approval is saved in the intake step. Static ads are image-based launch variants; UGC videos are separate creator-style video concepts for review.
+              The creative brief approval is saved in the intake step. Select 4-6 static ads and one launch-ready AI UGC video for the final launch package.
             </p>
           </div>
           <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.07] px-4 py-3 text-sm leading-6 text-emerald-100 lg:max-w-md">
@@ -700,17 +745,17 @@ export function CreativeWizard({
             {currentPhaseLabel} review
           </p>
           <h3 className="mt-1 text-lg font-semibold text-foreground">
-            {activePhase === "static_ads" ? "Static ads are the launch test set" : "UGC videos are supporting review assets"}
+            {activePhase === "static_ads" ? "Static ads are the launch test set" : "AI UGC videos are selectable launch ads"}
           </h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
             {activePhase === "static_ads"
-              ? "Pick one primary creative for the default preview and keep the remaining selected ads as review variants for launch comparison."
-              : "Review UGC video scripts and rendered previews separately from the native-style static ads. Video review does not change the saved static launch set."}
+              ? `Pick ${STATIC_LAUNCH_MIN_CREATIVE_COUNT}-${maxSelected} launch-ready static ads. Draft/retry concepts do not count toward the saved launch package.`
+              : "Review scripts, render only when the brief is ready, and select one launch-ready campaign-specific UGC video for Preview and Launch."}
           </p>
         </div>
       </section>
 
-      <section className={`${activePhase === "static_ads" ? "grid" : "hidden"} gap-4 rounded-2xl border border-border bg-card p-4 sm:p-5 xl:grid-cols-[minmax(420px,0.9fr)_minmax(420px,1.1fr)]`}>
+      <section className={`${activePhase === "static_ads" ? "grid" : "hidden"} gap-4 rounded-2xl border border-border bg-card p-4 sm:p-5 lg:grid-cols-[minmax(340px,0.82fr)_minmax(420px,1.18fr)]`}>
         <div className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -756,8 +801,8 @@ export function CreativeWizard({
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               {savedSelectionMatchesCurrent
-                ? `${staticReadiness.selectedReadyLabel}. DealFlow will use the first saved ad as the primary creative and keep the rest as review variants once every launch gate is ready.`
-                : `${staticReadiness.selectedReadyLabel}. Save the primary creative and review variants before launch can continue.`}
+                ? `${staticReadiness.selectedReadyLabel}. DealFlow will use the first saved ad as the primary creative and keep the rest as static launch variants once every launch gate is ready.`
+                : `${staticReadiness.selectedReadyLabel}. Save 4-6 static ads plus one approved UGC video before launch can continue.`}
             </p>
             {staticReadiness.issueLabel ? (
               <p className={staticReadiness.selectedBlockedCount > 0 ? "mt-2 text-sm leading-6 text-amber-200" : "mt-2 text-sm leading-6 text-muted-foreground"}>
@@ -829,7 +874,7 @@ export function CreativeWizard({
             </div>
           ) : null}
 
-          <div className="grid content-start gap-3 sm:grid-cols-2 xl:grid-cols-1">
+          <div className="grid content-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {selectedCreatives.map((creative, index) => {
               const displayCreative = getDisplayCreative(creative);
               return (
@@ -871,8 +916,8 @@ export function CreativeWizard({
                   Back to build
                 </Link>
               </Button>
-              <Button onClick={() => void handleNext()} type="button" disabled={saving || !canContinue || !ugcQuotaSatisfied || !selectedMediaReady}>
-                {saving ? "Saving..." : "Save test set"}
+              <Button onClick={() => void handleNext()} type="button" disabled={saving || !canContinue || !ugcQuotaSatisfied || !selectedMediaReady || !selectedUgcReady}>
+                {saving ? "Saving..." : "Save launch package"}
               </Button>
             </div>
             <p className={error ? "mt-3 text-sm text-rose-400" : "mt-3 text-sm text-muted-foreground"}>
@@ -884,7 +929,9 @@ export function CreativeWizard({
                   : !savedSelectionMatchesCurrent
                     ? "Draft selection only. Launch remains blocked until this set is saved."
                     : rankedCreatives.length >= 2
-                      ? `Use ${minSelected}-${maxSelected} creatives. The recommended set keeps at least one native-style concept selected.`
+                      ? selectedUgcReady
+                        ? `Use ${STATIC_LAUNCH_MIN_CREATIVE_COUNT}-${maxSelected} static ads. The recommended set keeps at least one native-style concept selected.`
+                        : "Select a launch-ready AI UGC video before saving the launch package."
                       : "Select at least one creative to continue.")}
             </p>
           </div>
@@ -971,6 +1018,19 @@ export function CreativeWizard({
                       : "Render video preview"}
                 </Button>
               )}
+              {isLaunchReadyVideoCreative(activeVideoCreative) && activeVideoCreative.conceptType === "customer_ugc" ? (
+                <Button
+                  type="button"
+                  variant={selectedUgcVideoIds.includes(activeVideoCreative.id) ? "default" : "secondary"}
+                  onClick={() => selectUgcVideo(activeVideoCreative)}
+                >
+                  {selectedUgcVideoIds.includes(activeVideoCreative.id) ? "Selected for launch" : "Select UGC for launch"}
+                </Button>
+              ) : (
+                <span className="rounded-full border border-amber-300/20 bg-amber-300/[0.08] px-3 py-2 text-xs font-semibold text-amber-100">
+                  Review-only until product QA accepts
+                </span>
+              )}
               {customerVideoMessage(videoMessage || activeVideoCreative.videoGenerationMessage) ? (
                 <span className="text-sm leading-6 text-muted-foreground">
                   {customerVideoMessage(videoMessage || activeVideoCreative.videoGenerationMessage)}
@@ -990,7 +1050,12 @@ export function CreativeWizard({
                           ? "border-emerald-300/35 bg-emerald-300/[0.08]"
                           : "border-white/10 bg-black/18 hover:border-white/20"
                       }`}
-                      onClick={() => setActiveVideoId(video.id)}
+                      onClick={() => {
+                        setActiveVideoId(video.id);
+                        if (isLaunchReadyVideoCreative(video) && video.conceptType === "customer_ugc") {
+                          setSelectedUgcVideoIds([video.id]);
+                        }
+                      }}
                       aria-label={`View ${video.title}`}
                     >
                       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
@@ -1000,7 +1065,11 @@ export function CreativeWizard({
                         {video.title}
                       </p>
                       <p className={isLaunchReadyVideoCreative(video) ? "mt-2 text-[11px] text-emerald-200" : "mt-2 text-[11px] text-muted-foreground"}>
-                        {video.id === activeVideoId && activeVideoJobId ? "Rendering" : getVideoReadinessLabel(video)}
+                        {selectedUgcVideoIds.includes(video.id)
+                          ? "Selected UGC"
+                          : video.id === activeVideoId && activeVideoJobId
+                            ? "Rendering"
+                            : getVideoReadinessLabel(video)}
                       </p>
                     </button>
                   );

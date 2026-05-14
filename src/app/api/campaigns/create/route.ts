@@ -8,6 +8,7 @@ import {
   buildCampaignPlanCriticalFieldPatch,
   getCampaignPayloadFromPlan,
   getLaunchRuntimeFromPlan,
+  getSelectedUgcVideoIdsFromPlan,
   readCampaignPlanDocument,
   withLaunchRuntime,
 } from "@/lib/services/campaign-plan-document";
@@ -71,6 +72,8 @@ type PersistedLaunchState = {
 type CampaignPayloadRecord = {
   selected_ad_id?: string;
   selected_ad_ids?: string[];
+  selected_ugc_video_id?: string;
+  selected_ugc_video_ids?: string[];
   destination_url?: string;
   business_profile?: {
     business_name?: string;
@@ -928,10 +931,19 @@ async function launchCampaignToMeta(
       );
     }
 
-    if (!record.creatives.videoAds.some((video) => isLaunchReadyVideoCreative(video))) {
+    const selectedUgcVideoIds = getSelectedUgcVideoIdsFromPlan(currentPlan);
+    const selectedUgcVideos = selectedUgcVideoIds
+      .map((id) => record.creatives.videoAds.find((video) => video.id === id) ?? null)
+      .filter((video): video is NonNullable<typeof video> => Boolean(video));
+
+    if (
+      selectedUgcVideoIds.length === 0 ||
+      selectedUgcVideos.length !== selectedUgcVideoIds.length ||
+      selectedUgcVideos.some((video) => video.conceptType !== "customer_ugc" || !isLaunchReadyVideoCreative(video))
+    ) {
       throw new ApiError(
         400,
-        "Campaign-specific app-owned UGC video is not launch-ready yet.",
+        "Select one campaign-specific app-owned UGC video before launch.",
         "ugc_video_not_launch_ready",
       );
     }

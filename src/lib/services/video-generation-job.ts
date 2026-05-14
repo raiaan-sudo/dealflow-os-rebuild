@@ -50,6 +50,7 @@ export type VideoGenerationJobPayload = {
   audience: string | null;
   location: string | null;
   force: boolean;
+  targetDurationSeconds?: number | null;
   creativeIntake?: CreativeIntakeGenerationContext | null;
 };
 
@@ -105,8 +106,13 @@ function buildVideoProductQualityGate(params: {
   body: string;
   cta: string;
   sourceStaticAccepted: boolean;
+  targetDurationSeconds?: number | null;
 }) {
   const text = `${params.promptUsed}\n${params.scriptText}\n${params.body}\n${params.cta}`.toLowerCase();
+  const targetDurationSeconds =
+    typeof params.targetDurationSeconds === "number" && Number.isFinite(params.targetDurationSeconds)
+      ? params.targetDurationSeconds
+      : null;
   const checks = {
     hook: /\b(first|before|if you|stop|don'?t|most buyers|closer than|private|600\+|approved|approval)\b/.test(text),
     marketProblem: /\b(buyer|buyers|market|listing|approval|credit|afford|public search|competition|crowded|toronto|home)\b/.test(text),
@@ -114,6 +120,7 @@ function buildVideoProductQualityGate(params: {
     mechanism: /\b(shortlist|options|qualify|qualification|matching|private listings|approval path|strategy|help|get better)\b/.test(text),
     sourceRelevance: params.sourceStaticAccepted,
     cta: Boolean(params.cta.trim()) && /\b(get|see|check|book|start|request|tap|learn)\b/.test(params.cta.toLowerCase()),
+    duration: targetDurationSeconds === null || targetDurationSeconds >= 15,
   };
   const failed = Object.entries(checks)
     .filter(([, accepted]) => !accepted)
@@ -337,6 +344,7 @@ function buildCreativeIntakeAssetMetadata(
       approvedAt: creativeIntake.approvedAt,
       outputMode: creativeIntake.outputMode,
       generationPhase: creativeIntake.generationPhase,
+      ugcStyleBrief: creativeIntake.ugcStyleBrief ?? null,
       promptVersionCreatedAt: creativeIntake.promptVersion.createdAt,
     },
   };
@@ -750,6 +758,7 @@ export async function runVideoGenerationJob(params: {
   const approvedPrompt = creativeIntake?.promptVersion.generatedPrompt ?? null;
   const fallbackPrompt = [
     "Create a polished native UGC-style vertical video for a real estate lead generation campaign.",
+    "Target duration is 15-30 seconds. Do not render a 5-second sample, teaser, or generic placeholder clip.",
     "Structure: hook in the first 1-2 seconds, specific buyer pain or market problem, relatable creator/agent POV, clear mechanism, source-creative visual relevance, and a direct CTA.",
     "Show a believable creator/customer/agent in a real home or market setting with natural phone-camera energy, not a generic stock talking-head clip.",
     "Mechanism should explain how the buyer gets better options, a shortlist, qualification help, or early access before public search feels crowded.",
@@ -772,6 +781,7 @@ export async function runVideoGenerationJob(params: {
     body: params.payload.body,
     cta: params.payload.cta,
     sourceStaticAccepted: videoSourceImage.accepted,
+    targetDurationSeconds: params.payload.targetDurationSeconds ?? 15,
   });
   let providerVideo;
 
@@ -965,6 +975,7 @@ export async function runVideoGenerationJob(params: {
         storagePath: durableVideo?.storagePath ?? null,
         storageContentType: durableVideo?.contentType ?? null,
         storageByteSize: durableVideo?.byteSize ?? null,
+        targetDurationSeconds: params.payload.targetDurationSeconds ?? 15,
         sourceStaticAssetId: videoSourceImage.staticAssetId,
         sourceImageUrl: videoSourceImage.imageUrl,
         sourceStaticAccepted: videoSourceImage.accepted,
@@ -1021,6 +1032,7 @@ export async function runVideoGenerationJob(params: {
         storagePath: durableVideo?.storagePath ?? null,
         storageContentType: durableVideo?.contentType ?? null,
         storageByteSize: durableVideo?.byteSize ?? null,
+        targetDurationSeconds: params.payload.targetDurationSeconds ?? 15,
         qualityGateStatus: durableVideoUrl ? "candidate_ready" : "processing",
         ...buildCreativeIntakeAssetMetadata(creativeIntake),
       } as Json,
@@ -1085,6 +1097,7 @@ export async function runVideoGenerationJob(params: {
     storagePath: durableVideo?.storagePath ?? null,
     storageContentType: durableVideo?.contentType ?? null,
     storageByteSize: durableVideo?.byteSize ?? null,
+    targetDurationSeconds: params.payload.targetDurationSeconds ?? 15,
     sourceStaticAssetId: videoSourceImage.staticAssetId,
     sourceImageUrl: videoSourceImage.imageUrl,
     sourceStaticAccepted: videoSourceImage.accepted,

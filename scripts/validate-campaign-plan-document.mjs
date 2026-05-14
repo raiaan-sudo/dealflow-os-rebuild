@@ -36,12 +36,14 @@ const {
   getLaunchStatusFromPlan,
   getPublicSlugFromPlan,
   getSelectedAdIdFromPlan,
+  getSelectedUgcVideoIdsFromPlan,
   mergeCampaignPlanDocument,
   readCampaignPlanDocument,
   safeParseCampaignPlanDocument,
   withLaunchRuntime,
   withLeadLoopVerified,
   withSelectedAdId,
+  withSelectedLaunchMedia,
 } = loadTypeScriptCommonJsModule("../src/lib/services/campaign-plan-document.ts");
 
 function testLegacyPlanDefaults() {
@@ -84,8 +86,14 @@ function testCriticalHelpersStayInSync() {
 
   const withSelection = withSelectedAdId(initial, "ad_123");
   assert.equal(getSelectedAdIdFromPlan(withSelection), "ad_123");
+  const withLaunchMedia = withSelectedLaunchMedia(withSelection, {
+    selectedAdIds: ["ad_123", "ad_456"],
+    selectedUgcVideoIds: ["ugc_video_1"],
+  });
+  assert.deepEqual(getSelectedUgcVideoIdsFromPlan(withLaunchMedia), ["ugc_video_1"]);
+  assert.deepEqual(withLaunchMedia.campaign_payload?.selected_ugc_video_ids, ["ugc_video_1"]);
 
-  const withLeadLoop = withLeadLoopVerified(withSelection);
+  const withLeadLoop = withLeadLoopVerified(withLaunchMedia);
   assert.equal(getLeadLoopVerifiedFromPlan(withLeadLoop), true);
 
   const withRuntime = withLaunchRuntime(

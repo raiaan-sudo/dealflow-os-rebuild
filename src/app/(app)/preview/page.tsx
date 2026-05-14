@@ -6,7 +6,11 @@ import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
-import { getSelectedAdIdsFromPlan, readCampaignPlanDocument } from "@/lib/services/campaign-plan-document";
+import {
+  getSelectedAdIdsFromPlan,
+  getSelectedUgcVideoIdsFromPlan,
+  readCampaignPlanDocument,
+} from "@/lib/services/campaign-plan-document";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import {
   getExpectedOutcomes,
@@ -42,15 +46,15 @@ function customerVideoMessage(message?: string | null) {
   return text;
 }
 
-async function loadPersistedSelectedAdIds(campaignId: string | null) {
+async function loadPersistedLaunchMediaSelection(campaignId: string | null) {
   if (!campaignId) {
-    return [];
+    return { selectedAdIds: [], selectedUgcVideoIds: [] };
   }
 
   const supabase = await createRouteHandlerClient();
 
   if (!supabase) {
-    return [];
+    return { selectedAdIds: [], selectedUgcVideoIds: [] };
   }
 
   const { data } = await supabase
@@ -60,7 +64,12 @@ async function loadPersistedSelectedAdIds(campaignId: string | null) {
     .maybeSingle();
 
   const row = (data as { plan?: unknown } | null) ?? null;
-  return getSelectedAdIdsFromPlan(readCampaignPlanDocument(row?.plan));
+  const plan = readCampaignPlanDocument(row?.plan);
+
+  return {
+    selectedAdIds: getSelectedAdIdsFromPlan(plan),
+    selectedUgcVideoIds: getSelectedUgcVideoIdsFromPlan(plan),
+  };
 }
 
 export default async function PreviewPage({
@@ -77,7 +86,9 @@ export default async function PreviewPage({
   let record = activeCampaign?.record ?? null;
   let plan = record ? canonicalCampaignToPlan(record) : null;
   const resolvedCampaignId = record?.campaign.id ?? campaignId;
-  const selectedAdIds = await loadPersistedSelectedAdIds(resolvedCampaignId);
+  const launchMediaSelection = await loadPersistedLaunchMediaSelection(resolvedCampaignId);
+  const selectedAdIds = launchMediaSelection.selectedAdIds;
+  const selectedUgcVideoIds = launchMediaSelection.selectedUgcVideoIds;
 
   if (!plan) {
     redirect("/builder");
@@ -98,9 +109,21 @@ export default async function PreviewPage({
   const videoAds = previewPlan.creatives.videoAds;
   const staticReadiness = getStaticCreativeReadiness(previewPlan.creatives.staticAds, selectedAdIds);
   const selectedStaticMediaReady = staticReadiness.allSelectedReady;
-  const launchReadyVideos = videoAds.filter(isLaunchReadyVideoCreative);
-  const displayVideoAds = launchReadyVideos.length > 0 ? launchReadyVideos : videoAds;
-  const launchReadyVideoCount = launchReadyVideos.length;
+  const selectedUgcVideos = selectedUgcVideoIds.length > 0
+    ? videoAds
+        .filter((video) => selectedUgcVideoIds.includes(video.id))
+        .sort((left, right) => selectedUgcVideoIds.indexOf(left.id) - selectedUgcVideoIds.indexOf(right.id))
+    : [];
+  const selectedLaunchReadyVideos = selectedUgcVideos.filter(
+    (video) => video.conceptType === "customer_ugc" && isLaunchReadyVideoCreative(video),
+  );
+  const launchReadyVideos = videoAds.filter((video) => video.conceptType === "customer_ugc" && isLaunchReadyVideoCreative(video));
+  const displayVideoAds = selectedUgcVideos.length > 0
+    ? selectedUgcVideos
+    : launchReadyVideos.length > 0
+      ? launchReadyVideos
+      : videoAds;
+  const launchReadyVideoCount = selectedLaunchReadyVideos.length;
   const videoMediaReady = launchReadyVideoCount > 0;
   const mediaReadyForLaunch = selectedStaticMediaReady && videoMediaReady;
   const campaignIdForFlow = record?.campaign.id ?? null;
@@ -243,7 +266,7 @@ export default async function PreviewPage({
           {displayVideoAds.length > 0 ? (
             <section className="mt-5 border-t border-white/10 pt-5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                UGC video concepts
+                Selected UGC video ads
               </p>
               <div className="mt-3 grid gap-3">
                 {displayVideoAds.map((video, index) => (
@@ -278,6 +301,7 @@ export default async function PreviewPage({
               {!videoMediaReady ? (
                 <p className="mt-3 rounded-[14px] border border-amber-300/18 bg-amber-300/[0.08] px-3 py-2 text-sm leading-6 text-amber-100">
                   Video is review-only until campaign-specific prompt, source, and QA metadata are accepted for launch.
+                  {selectedUgcVideoIds.length === 0 ? " Choose an approved UGC video in Creative Studio before launch." : ""}
                 </p>
               ) : null}
             </section>

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BadgeCheck, FileCheck2, MessageSquareText, PencilLine, ShieldCheck } from "lucide-react";
@@ -11,6 +12,7 @@ import type {
   CreativeChatIntakeState,
   CreativeIntakeAnswers,
   CreativeIntakeCampaignDefaults,
+  CreativeIntakeUgcConcept,
 } from "@/lib/services/creative-chat-intake-service";
 
 type CreativeChatIntakeProps = {
@@ -73,11 +75,71 @@ function defaultAnswers(defaults: CreativeIntakeCampaignDefaults): CreativeIntak
     propertyType: defaults.propertyType ?? "",
     outputMode: "finished_ad",
     generationPhase: "static",
+    targetDurationSeconds: 20,
+    creatorPersona: "Trusted local agent / buyer guide",
+    hookAngle: "Call out the buyer pain in the first two seconds",
+    visualStyle: "Native vertical social video with real Toronto homebuyer context",
+    pacing: "Fast hook, clear mechanism, calm CTA",
+    cameraStyle: "Phone-camera creator POV",
+    captionOverlayStyle: "Large readable captions only when useful",
+    referenceExamples: "",
+    goodBadExamples: "",
+    mustUseLanguage: "",
+    mustAvoid: "No fake dashboards, fake listing sheets, guaranteed approval claims, tiny captions, or generic stock clips",
+    selectedUgcConceptId: "",
+    ugcDefaultStyleAccepted: false,
   };
 }
 
 function getAnswerLabel(value: string | null | undefined, options: readonly (readonly [string, string])[]) {
   return options.find(([key]) => key === value)?.[1] ?? value ?? "Not set";
+}
+
+function buildClientUgcConceptOptions(
+  answers: CreativeIntakeAnswers,
+  defaults: CreativeIntakeCampaignDefaults,
+): CreativeIntakeUgcConcept[] {
+  const market = answers.market?.trim() || defaults.market?.trim() || "your local market";
+  const audience = answers.targetAudience === "custom"
+    ? answers.customAudience?.trim() || "buyers"
+    : getAnswerLabel(answers.targetAudience, audienceOptions).toLowerCase();
+  const offer = answers.offer === "custom"
+    ? answers.customOffer?.trim() || defaults.offer?.trim() || "review options this week"
+    : getAnswerLabel(answers.offer, offerOptions).toLowerCase();
+  const cta = answers.cta?.trim() || defaults.cta?.trim() || "Book a 15-minute strategy call this week";
+  const persona = answers.creatorPersona?.trim() || "trusted local real estate guide";
+  const pacing = answers.pacing?.trim() || "fast hook, clear middle, calm CTA";
+  const overlays = answers.captionOverlayStyle?.trim() || "large readable captions";
+
+  return [
+    {
+      id: "ugc-concept-market-myth",
+      title: "Market myth opener",
+      hook: `Most ${audience} in ${market} are missing homes before they ever hit their search alerts.`,
+      script: `${persona} opens with the market myth, explains the buyer pain, shows the matching mechanism, and closes with ${cta}.`,
+      shotList: ["Direct-to-camera hook", "Local home or street context", "Readable mechanism caption", "Clear CTA close"],
+      overlayPlan: `${overlays}; no tiny captions or fake dashboards.`,
+      cta,
+    },
+    {
+      id: "ugc-concept-affordability-reality-check",
+      title: "Affordability reality check",
+      hook: `If your budget feels tight in ${market}, stop guessing and check the right matches this week.`,
+      script: `${persona} frames the affordability pain, explains ${offer}, and makes the next step feel low-pressure.`,
+      shotList: ["Affordability hook", "Phone-camera walkthrough", "One proof caption", "Final CTA caption"],
+      overlayPlan: `${overlays}; keep copy sparse and feed-readable.`,
+      cta,
+    },
+    {
+      id: "ugc-concept-private-shortlist",
+      title: "Private shortlist walkthrough",
+      hook: `Before you scroll another listing site, get a sharper ${market} shortlist built around what actually fits.`,
+      script: `${persona} uses ${pacing.toLowerCase()} to explain the shortlist angle and close without sounding like a generic sample ad.`,
+      shotList: ["Natural real estate setting", "Movement through context", "Shortlist mechanism caption", "Direct-to-camera CTA"],
+      overlayPlan: `${overlays}; no listing-sheet UI, fake app screens, or gibberish text.`,
+      cta,
+    },
+  ];
 }
 
 export function CreativeChatIntake({
@@ -100,6 +162,11 @@ export function CreativeChatIntake({
   const savedDraft = initialIntake?.approvalStatus === "draft" && Boolean(initialIntake?.updatedAt);
   const brief = initialIntake?.brief ?? null;
   const promptPreview = initialIntake?.promptVersion?.sanitizedPreview ?? null;
+  const ugcConceptOptions = useMemo(() => {
+    return answers.generationPhase === "ugc_video"
+      ? buildClientUgcConceptOptions(answers, defaults)
+      : [];
+  }, [answers, defaults]);
   const complete = useMemo(() => {
     return Boolean(
       answers.targetAudience &&
@@ -109,9 +176,16 @@ export function CreativeChatIntake({
       answers.brokerageBrand &&
       (answers.brokerageBrand !== "custom" || answers.customBrokerageBrand?.trim()) &&
       answers.market?.trim() &&
-      answers.creativeStyle,
+      answers.creativeStyle &&
+      (
+        answers.generationPhase !== "ugc_video" ||
+        Boolean(
+          (answers.referenceExamples?.trim() || answers.ugcDefaultStyleAccepted) &&
+          ugcConceptOptions.some((concept) => concept.id === answers.selectedUgcConceptId)
+        )
+      ),
     );
-  }, [answers]);
+  }, [answers, ugcConceptOptions]);
 
   function updateAnswer(next: Partial<CreativeIntakeAnswers>) {
     setAnswers((current) => ({ ...current, ...next }));
@@ -192,6 +266,11 @@ export function CreativeChatIntake({
                 Revise
               </Button>
             </div>
+            <Button asChild type="button" variant="secondary" className="mt-3 w-full">
+              <Link href={`/build/creatives?campaignId=${encodeURIComponent(campaignId)}&creativeBrief=edit`}>
+                Open Marketing Studio chat
+              </Link>
+            </Button>
             {notice ? <p className="mt-2 text-sm text-emerald-200" aria-live="polite">{notice}</p> : null}
             {error ? <p className="mt-2 text-sm text-rose-300" aria-live="assertive">{error}</p> : null}
           </div>
@@ -213,10 +292,10 @@ export function CreativeChatIntake({
                 Creative chat intake
               </p>
               <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-foreground">
-                Review the creative direction before paid rendering
+                Build the Marketing Studio brief before paid rendering
               </h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Answer the short prompts once. DealFlow turns them into a structured brief and only renders paid media after approval.
+                Create or revise the static and AI UGC direction here. DealFlow turns it into a structured provider brief and only renders paid media after approval.
               </p>
             </div>
           </div>
@@ -288,6 +367,20 @@ export function CreativeChatIntake({
             </div>
 
             <ChoiceGroup
+              label="What are you creating now?"
+              value={answers.generationPhase}
+              options={[
+                ["static", "Static ads"],
+                ["ugc_video", "AI UGC video ads"],
+              ] as const}
+              onChange={(generationPhase) => updateAnswer({
+                generationPhase: generationPhase as CreativeIntakeAnswers["generationPhase"],
+                creativeStyle: generationPhase === "ugc_video" ? "ugc" : answers.creativeStyle,
+                selectedUgcConceptId: generationPhase === "ugc_video" ? answers.selectedUgcConceptId : "",
+              })}
+            />
+
+            <ChoiceGroup
               label="Static ad output"
               value={answers.outputMode}
               options={[
@@ -303,6 +396,104 @@ export function CreativeChatIntake({
               options={styleOptions}
               onChange={(creativeStyle) => updateAnswer({ creativeStyle: creativeStyle as CreativeIntakeAnswers["creativeStyle"] })}
             />
+
+            {answers.generationPhase === "ugc_video" ? (
+              <div className="grid gap-4 rounded-[22px] border border-cyan-300/14 bg-cyan-300/[0.045] p-4">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">AI UGC style brief</p>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    Save references or explicitly accept the default style before rendering. This keeps weak 5-second samples out of the launch package.
+                  </p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="space-y-2 text-sm">
+                    <span className="text-muted-foreground">Target length</span>
+                    <Input
+                      type="number"
+                      min={15}
+                      max={30}
+                      value={answers.targetDurationSeconds ?? 20}
+                      onChange={(event) => updateAnswer({ targetDurationSeconds: Number(event.target.value) })}
+                    />
+                  </label>
+                  <label className="space-y-2 text-sm">
+                    <span className="text-muted-foreground">Creator / agent persona</span>
+                    <Input value={answers.creatorPersona ?? ""} onChange={(event) => updateAnswer({ creatorPersona: event.target.value })} placeholder="Trusted local agent / buyer guide" />
+                  </label>
+                  <label className="space-y-2 text-sm">
+                    <span className="text-muted-foreground">Hook angle</span>
+                    <Input value={answers.hookAngle ?? ""} onChange={(event) => updateAnswer({ hookAngle: event.target.value })} placeholder="Most buyers miss homes that fit their budget" />
+                  </label>
+                  <label className="space-y-2 text-sm">
+                    <span className="text-muted-foreground">Visual style</span>
+                    <Input value={answers.visualStyle ?? ""} onChange={(event) => updateAnswer({ visualStyle: event.target.value })} placeholder="Native vertical social, Toronto home context" />
+                  </label>
+                  <label className="space-y-2 text-sm">
+                    <span className="text-muted-foreground">Pacing</span>
+                    <Input value={answers.pacing ?? ""} onChange={(event) => updateAnswer({ pacing: event.target.value })} placeholder="Fast hook, clear middle, calm CTA" />
+                  </label>
+                  <label className="space-y-2 text-sm">
+                    <span className="text-muted-foreground">Camera style</span>
+                    <Input value={answers.cameraStyle ?? ""} onChange={(event) => updateAnswer({ cameraStyle: event.target.value })} placeholder="Phone-camera creator POV" />
+                  </label>
+                </div>
+                <label className="space-y-2 text-sm">
+                  <span className="text-muted-foreground">Caption / overlay style</span>
+                  <Input value={answers.captionOverlayStyle ?? ""} onChange={(event) => updateAnswer({ captionOverlayStyle: event.target.value })} placeholder="Large readable captions, no tiny text" />
+                </label>
+                <label className="space-y-2 text-sm">
+                  <span className="text-muted-foreground">Reference examples, links, screenshots, or notes</span>
+                  <textarea
+                    aria-label="UGC reference examples"
+                    className="min-h-[88px] w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-cyan-200/30"
+                    value={answers.referenceExamples ?? ""}
+                    onChange={(event) => updateAnswer({ referenceExamples: event.target.value })}
+                    placeholder="Paste 2-5 reference links or describe what good AI UGC should look like"
+                  />
+                </label>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="space-y-2 text-sm">
+                    <span className="text-muted-foreground">Good / bad output notes</span>
+                    <textarea
+                      aria-label="Good and bad UGC output notes"
+                      className="min-h-[88px] w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-cyan-200/30"
+                      value={answers.goodBadExamples ?? ""}
+                      onChange={(event) => updateAnswer({ goodBadExamples: event.target.value })}
+                      placeholder="Good: natural creator. Bad: stock-looking 5s clip."
+                    />
+                  </label>
+                  <label className="space-y-2 text-sm">
+                    <span className="text-muted-foreground">Must-use language</span>
+                    <textarea
+                      aria-label="UGC must-use language"
+                      className="min-h-[88px] w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-cyan-200/30"
+                      value={answers.mustUseLanguage ?? ""}
+                      onChange={(event) => updateAnswer({ mustUseLanguage: event.target.value })}
+                      placeholder="Book a 15-minute buyer strategy call this week"
+                    />
+                  </label>
+                </div>
+                <label className="space-y-2 text-sm">
+                  <span className="text-muted-foreground">Must-avoid constraints</span>
+                  <textarea
+                    aria-label="UGC must-avoid constraints"
+                    className="min-h-[88px] w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-cyan-200/30"
+                    value={answers.mustAvoid ?? ""}
+                    onChange={(event) => updateAnswer({ mustAvoid: event.target.value })}
+                    placeholder="No sample clips, fake creator claims, fake dashboards, or guaranteed approval"
+                  />
+                </label>
+                <label className="flex items-start gap-3 rounded-2xl border border-white/10 bg-black/18 p-3 text-sm leading-6 text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={answers.ugcDefaultStyleAccepted === true}
+                    onChange={(event) => updateAnswer({ ugcDefaultStyleAccepted: event.target.checked })}
+                  />
+                  <span>I do not have references yet; use DealFlow&apos;s default 15-30 second native social UGC style for this campaign.</span>
+                </label>
+              </div>
+            ) : null}
 
             <label className="space-y-2 text-sm">
               <span className="text-muted-foreground">Must-have text, disclaimer, or claim constraints</span>
@@ -325,7 +516,7 @@ export function CreativeChatIntake({
             </div>
             {!complete ? (
               <p className="text-sm leading-6 text-muted-foreground">
-                Complete the required audience, offer, brand, market, and style fields before approving. Saving a draft will not unlock paid rendering.
+                Complete the required audience, offer, brand, market, style, and UGC reference/default-style fields, then select one UGC concept before approving. Saving a draft will not unlock paid rendering.
               </p>
             ) : null}
             {notice ? (
@@ -351,7 +542,75 @@ export function CreativeChatIntake({
             <SummaryRow label="CTA" value={answers.cta || defaults.cta || "See My Options"} />
             <SummaryRow label="Placement" value={answers.platformPlacement} />
             <SummaryRow label="Output mode" value={answers.outputMode === "background_only" ? "Text-free visual background" : "Customer-ready static ad"} />
+            <SummaryRow label="Studio mode" value={answers.generationPhase === "ugc_video" ? "AI UGC video ads" : "Static ads"} />
+            {answers.generationPhase === "ugc_video" ? (
+              <>
+                <SummaryRow label="UGC length" value={`${answers.targetDurationSeconds ?? 20}s target`} />
+                <SummaryRow label="UGC persona" value={answers.creatorPersona} />
+                <SummaryRow label="References" value={answers.referenceExamples?.trim() ? "Reference notes saved" : answers.ugcDefaultStyleAccepted ? "Default style accepted" : "Reference needed"} />
+                <SummaryRow
+                  label="Selected concept"
+                  value={ugcConceptOptions.find((concept) => concept.id === answers.selectedUgcConceptId)?.title ?? "Select a concept before rendering"}
+                />
+              </>
+            ) : null}
           </div>
+          {answers.generationPhase === "ugc_video" ? (
+            <div className="mt-5 rounded-[20px] border border-cyan-300/16 bg-cyan-300/[0.055] p-4">
+              <p className="text-sm font-semibold text-foreground">Pre-render UGC concepts</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Choose the script DealFlow should render. These concepts are saved with the brief and do not spend provider credits.
+              </p>
+              <div className="mt-4 grid gap-3">
+                {ugcConceptOptions.map((concept) => {
+                  const selected = answers.selectedUgcConceptId === concept.id;
+                  return (
+                    <button
+                      key={concept.id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => updateAnswer({ selectedUgcConceptId: concept.id })}
+                      className={cn(
+                        "rounded-[18px] border p-3 text-left transition",
+                        selected
+                          ? "border-cyan-200/40 bg-cyan-300/[0.12]"
+                          : "border-white/10 bg-white/[0.035] hover:border-cyan-200/24",
+                      )}
+                    >
+                      <span className="text-sm font-semibold text-foreground">{concept.title}</span>
+                      <span className="mt-2 block text-xs leading-5 text-cyan-50/78">{concept.hook}</span>
+                      <span className="mt-2 block text-xs leading-5 text-muted-foreground">{concept.script}</span>
+                      <span className="mt-3 inline-flex rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
+                        {selected ? "Selected for render" : "Select concept"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+          {initialIntake?.messages?.length ? (
+            <div className="mt-5 rounded-[20px] border border-white/10 bg-white/[0.035] p-4">
+              <p className="text-sm font-semibold text-foreground">Marketing Studio chat log</p>
+              <div className="mt-3 grid max-h-64 gap-2 overflow-y-auto pr-1">
+                {initialIntake.messages.slice(-8).map((message) => (
+                  <div
+                    key={message.id}
+                    className={cn(
+                      "rounded-2xl px-3 py-2 text-xs leading-5",
+                      message.role === "user"
+                        ? "bg-cyan-300/[0.1] text-cyan-50"
+                        : message.role === "assistant"
+                          ? "bg-white/[0.055] text-muted-foreground"
+                          : "bg-emerald-300/[0.08] text-emerald-100",
+                    )}
+                  >
+                    {message.content}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div className="mt-5 rounded-[20px] border border-emerald-300/16 bg-emerald-300/[0.055] p-4 text-sm leading-6 text-muted-foreground">
             <FileCheck2 className="mb-3 size-4 text-emerald-100" />
             This is the brief review step before generation. Save a draft to preserve the inputs, then approve only when the direction is ready.
