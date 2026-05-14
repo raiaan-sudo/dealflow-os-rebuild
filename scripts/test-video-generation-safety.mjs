@@ -12,6 +12,7 @@ const resolveDebt = fs.readFileSync("scripts/resolve-known-operator-debt.mjs", "
 const creativeWizard = fs.readFileSync("src/app/(app)/build/creatives/creative-wizard.tsx", "utf8");
 const previewPage = fs.readFileSync("src/app/(app)/preview/page.tsx", "utf8");
 const videoErrors = fs.readFileSync("src/lib/ai/video-generation-errors.ts", "utf8");
+const launchCreateRoute = fs.readFileSync("src/app/api/campaigns/create/route.ts", "utf8");
 
 assert.match(videoRoute, /getVideoProviderReadiness/, "video route preflights provider readiness");
 assert.ok(
@@ -46,12 +47,18 @@ assert.match(videoJob, /providerError: null,[\s\S]{0,80}providerErrorCode: null/
 assert.doesNotMatch(videoJob, /reasons: \\["video_qa_required"\\]/, "completed videos are not permanently forced into review-only state after passing deterministic QA");
 
 assert.match(higgsfield, /HIGGSFIELD_IMAGE_TO_VIDEO_ENDPOINT = "\/v1\/image2video\/dop"/, "Higgsfield video uses supported image-to-video endpoint");
+assert.match(higgsfield, /HIGGSFIELD_MARKETING_STUDIO_VIDEO_MODEL = "marketing_studio_video"/, "Marketing Studio video CLI model is explicit");
+assert.match(higgsfield, /generateHiggsfieldMarketingStudioVideo/, "Marketing Studio CLI UGC video helper exists");
+assert.match(higgsfield, /"--mode",\s*"ugc"/, "Marketing Studio CLI UGC video uses UGC mode");
+assert.match(higgsfield, /"--start-image"/, "Marketing Studio CLI UGC video requires an accepted static source input");
 assert.match(higgsfield, /input_images/, "Higgsfield video sends source image input");
 assert.match(higgsfield, /inputImageUrl/, "Higgsfield video request requires source image URL");
 assert.match(higgsfield, /"dop-turbo"/, "Higgsfield video defaults to supported DoP model");
 assert.match(higgsfield, /createLegacyClient\(\)\)\.generate\(\s*endpoint,\s*buildVideoInput\(request, model\),\s*\{ withPolling: false \}/, "Higgsfield DoP video uses the provider endpoint shape that wraps input as params");
 assert.doesNotMatch(higgsfield, /aspect_ratio:[\s\S]{0,120}title:[\s\S]{0,120}withPolling: false/, "Higgsfield video no longer sends unsupported text-only video payload");
 assert.match(avatarProvider, /inputImageUrl: typeof request\.inputImageUrl === "string" \? request\.inputImageUrl : null/, "Higgsfield avatar provider forwards the selected static source image URL");
+assert.match(avatarProvider, /class HiggsfieldMarketingStudioVideoProvider/, "Marketing Studio has a dedicated CLI video provider adapter");
+assert.match(avatarProvider, /getMediaGenerationFallbackProvider/, "explicit API\/SDK fallback remains available for Marketing Studio video");
 assert.match(avatarProvider, /safeProviderDiagnostic/, "Higgsfield avatar provider preserves sanitized internal provider diagnostics");
 assert.match(avatarProvider, /providerError: diagnostic/, "sanitized Higgsfield provider diagnostics stay in internal metadata");
 
@@ -72,5 +79,7 @@ assert.match(resolveDebt, /operatorReviewedAt/, "known failed provider event is 
 assert.match(creativeWizard, /customerVideoMessage/, "creative wizard sanitizes video failure messages");
 assert.match(previewPage, /customerVideoMessage/, "preview page sanitizes video failure messages");
 assert.doesNotMatch(videoErrors, /Review the operator diagnostics/, "operator diagnostics are not exposed in video errors");
+assert.match(launchCreateRoute, /isLaunchReadyVideoCreative/, "launch API enforces video readiness server-side");
+assert.match(launchCreateRoute, /ugc_video_not_launch_ready/, "launch API blocks non-ready UGC video with a distinct error code");
 
 console.log("Video generation safety tests passed.");

@@ -51,25 +51,32 @@ const {
   getImageGenerationProvider,
 } = require("../src/lib/integrations/creative/image-provider.ts");
 const {
+  getAvatarVideoProvider,
+} = require("../src/lib/integrations/creative/avatar-provider.ts");
+const {
   extractHiggsfieldCliGenerationAssets,
   generateHiggsfieldImage,
   generateHiggsfieldMarketingStudioImage,
+  generateHiggsfieldMarketingStudioVideo,
   getHiggsfieldConfigValidation,
   isHiggsfieldConfigured,
 } = require("../src/lib/ai/higgsfield.ts");
 
 function resetEnv() {
   delete process.env.MEDIA_GENERATION_PROVIDER;
+  delete process.env.MEDIA_GENERATION_FALLBACK_PROVIDER;
   delete process.env.HF_CREDENTIALS;
   delete process.env.HF_API_KEY;
   delete process.env.HF_API_SECRET;
   delete process.env.HIGGSFIELD_IMAGE_MODEL;
   delete process.env.HIGGSFIELD_VIDEO_MODEL;
+  delete process.env.HIGGSFIELD_UGC_VIDEO_MODEL;
   delete process.env.HIGGSFIELD_MARKETING_STUDIO_ENABLED;
   delete process.env.HIGGSFIELD_CLI_ENABLED;
   delete process.env.HIGGSFIELD_CLI_PATH;
   delete process.env.HIGGSFIELD_MARKETING_STUDIO_MODE;
   delete process.env.ALLOW_HIGGSFIELD_IMAGE_GENERATION;
+  delete process.env.ALLOW_HIGGSFIELD_VIDEO_GENERATION;
   delete process.env.ALLOW_OPENAI_IMAGE_GENERATION;
   delete process.env.OPENAI_API_KEY;
 }
@@ -144,6 +151,7 @@ assert.equal(getImageGenerationProvider().name, "unsupported", "missing credenti
 process.env.HF_CREDENTIALS = "test-key:test-secret";
 process.env.HIGGSFIELD_IMAGE_MODEL = "marketing_studio_image";
 process.env.HIGGSFIELD_VIDEO_MODEL = "marketing_studio_video";
+process.env.HIGGSFIELD_UGC_VIDEO_MODEL = "marketing_studio_video";
 process.env.ALLOW_HIGGSFIELD_IMAGE_GENERATION = "false";
 
 const validation = getHiggsfieldConfigValidation();
@@ -179,6 +187,7 @@ process.env.MEDIA_GENERATION_PROVIDER = "higgsfield_marketing_studio";
 process.env.HF_CREDENTIALS = "test-key:test-secret";
 process.env.HIGGSFIELD_IMAGE_MODEL = "marketing_studio_image";
 process.env.HIGGSFIELD_VIDEO_MODEL = "marketing_studio_video";
+process.env.HIGGSFIELD_UGC_VIDEO_MODEL = "marketing_studio_video";
 process.env.HIGGSFIELD_MARKETING_STUDIO_ENABLED = "true";
 process.env.HIGGSFIELD_CLI_ENABLED = "true";
 process.env.HIGGSFIELD_CLI_PATH = process.execPath;
@@ -200,11 +209,38 @@ const marketingBlocked = await marketingStudio.execute({
 assert.equal(marketingBlocked.ok, false, "Marketing Studio calls stay blocked unless explicitly enabled");
 assert.equal(marketingBlocked.status, "unsupported");
 
+process.env.ALLOW_HIGGSFIELD_VIDEO_GENERATION = "false";
+const marketingStudioVideo = getAvatarVideoProvider();
+assert.equal(marketingStudioVideo.name, "higgsfield_marketing_studio", "Marketing Studio video is preferred when CLI gates are configured");
+const marketingStudioVideoStatus = await marketingStudioVideo.checkStatus();
+assert.equal(marketingStudioVideoStatus.status, "disconnected", "Marketing Studio video remains disconnected while paid usage guard is disabled");
+assert.equal(marketingStudioVideoStatus.metadata?.cliReady, true);
+assert.equal(marketingStudioVideoStatus.metadata?.model, "marketing_studio_video");
+const marketingVideoBlocked = await marketingStudioVideo.execute({
+  prompt: "Campaign-specific Toronto buyer UGC video.",
+  script: "If you're shopping in Toronto, this shortlist helps you compare better options.",
+  inputImageUrl: "https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/source.png",
+});
+assert.equal(marketingVideoBlocked.ok, false, "Marketing Studio video calls stay blocked unless explicitly enabled");
+assert.equal(marketingVideoBlocked.status, "unsupported");
+
+await assert.rejects(
+  () => generateHiggsfieldMarketingStudioVideo({
+    prompt: "Campaign-specific Toronto buyer UGC video.",
+    script: "If you're shopping in Toronto, this shortlist helps you compare better options.",
+    inputImageUrl: "https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/source.png",
+    model: "soul_cast",
+  }),
+  /marketing_studio_video|CLI|not ready/i,
+  "Marketing Studio CLI video refuses unsupported UGC model aliases instead of faking support",
+);
+
 resetEnv();
 process.env.MEDIA_GENERATION_PROVIDER = "higgsfield_marketing_studio";
 process.env.HF_CREDENTIALS = "test-key:test-secret";
 process.env.HIGGSFIELD_IMAGE_MODEL = "marketing_studio_image";
 process.env.HIGGSFIELD_VIDEO_MODEL = "marketing_studio_video";
+process.env.HIGGSFIELD_UGC_VIDEO_MODEL = "marketing_studio_video";
 process.env.HIGGSFIELD_MARKETING_STUDIO_ENABLED = "true";
 process.env.HIGGSFIELD_CLI_ENABLED = "false";
 process.env.HIGGSFIELD_MARKETING_STUDIO_MODE = "api_adapter";
@@ -230,6 +266,19 @@ await assert.rejects(
   /future-only|CLI|not ready/i,
   "Marketing Studio API mode direct helper fails closed before provider calls",
 );
+
+resetEnv();
+process.env.MEDIA_GENERATION_PROVIDER = "higgsfield_marketing_studio";
+process.env.MEDIA_GENERATION_FALLBACK_PROVIDER = "higgsfield";
+process.env.HF_CREDENTIALS = "test-key:test-secret";
+process.env.HIGGSFIELD_IMAGE_MODEL = "marketing_studio_image";
+process.env.HIGGSFIELD_VIDEO_MODEL = "marketing_studio_video";
+process.env.HIGGSFIELD_UGC_VIDEO_MODEL = "soul_cast";
+process.env.HIGGSFIELD_MARKETING_STUDIO_ENABLED = "true";
+process.env.HIGGSFIELD_CLI_ENABLED = "false";
+process.env.ALLOW_HIGGSFIELD_VIDEO_GENERATION = "false";
+const fallbackVideoProvider = getAvatarVideoProvider();
+assert.equal(fallbackVideoProvider.name, "higgsfield", "API/SDK video fallback remains selectable when Marketing Studio CLI video is unavailable and explicitly configured");
 
 resetEnv();
 process.env.MEDIA_GENERATION_PROVIDER = "openai";

@@ -1,4 +1,5 @@
 import type { CreativeIntakeGenerationContext } from "@/lib/services/creative-chat-intake-service";
+import { getMediaGenerationProvider } from "@/lib/env";
 
 export const MARKETING_STUDIO_WORKER_RUNTIME = "marketing_studio_cli_worker";
 export const MARKETING_STUDIO_WORKER_DEFERRED_UNTIL = "2099-01-01T00:00:00.000Z";
@@ -44,12 +45,49 @@ export function isMarketingStudioStaticGenerationJob(params: {
   );
 }
 
+export function isMarketingStudioVideoGenerationPayload(
+  payload: unknown,
+): payload is StaticCreativeGenerationPayload {
+  if (!isRecord(payload)) {
+    return false;
+  }
+
+  const creativeIntake = payload.creativeIntake;
+
+  if (!isRecord(creativeIntake)) {
+    return false;
+  }
+
+  return creativeIntake.generationPhase === "ugc_video";
+}
+
+export function isMarketingStudioVideoGenerationJob(params: {
+  kind?: string | null;
+  payload?: unknown;
+}) {
+  return (
+    params.kind === "video_generation" &&
+    (getMediaGenerationProvider() === "higgsfield_marketing_studio" ||
+      isMarketingStudioVideoGenerationPayload(params.payload))
+  );
+}
+
+export function isMarketingStudioWorkerOwnedJob(params: {
+  kind?: string | null;
+  payload?: unknown;
+}) {
+  return (
+    isMarketingStudioStaticGenerationJob(params) ||
+    isMarketingStudioVideoGenerationJob(params)
+  );
+}
+
 export function shouldDeferMarketingStudioStaticGenerationToWorker(params: {
   kind?: string | null;
   payload?: unknown;
 }) {
   return (
-    isMarketingStudioStaticGenerationJob(params) &&
+    isMarketingStudioWorkerOwnedJob(params) &&
     !isMarketingStudioWorkerRuntimeEnabled()
   );
 }

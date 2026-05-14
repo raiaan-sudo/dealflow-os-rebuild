@@ -1,11 +1,18 @@
 import {
   getHiggsfieldEnv,
+  getHiggsfieldMarketingStudioEnv,
+  getMediaGenerationFallbackProvider,
   getMediaGenerationProvider,
   getVideoGenerationEnv,
   validateHiggsfieldEnv,
   validateVideoGenerationEnv,
 } from "@/lib/env";
-import { createHiggsfieldVideo } from "@/lib/ai/higgsfield";
+import {
+  createHiggsfieldVideo,
+  generateHiggsfieldMarketingStudioVideo,
+  getHiggsfieldMarketingStudioCliReadiness,
+} from "@/lib/ai/higgsfield";
+import { logWarn } from "@/lib/logging";
 import type {
   ExecutionProvider,
   ProviderConfigValidation,
@@ -370,10 +377,189 @@ class HiggsfieldVideoProvider implements AvatarVideoProvider {
   }
 }
 
+class HiggsfieldMarketingStudioVideoProvider extends HiggsfieldVideoProvider {
+  label = "Higgsfield Marketing Studio Video";
+  vendor = "Higgsfield";
+  name = "higgsfield_marketing_studio";
+
+  isConfigured() {
+    const studio = getHiggsfieldMarketingStudioEnv();
+    const cli = getHiggsfieldMarketingStudioCliReadiness();
+
+    return (
+      getMediaGenerationProvider() === "higgsfield_marketing_studio" &&
+      studio.enabled &&
+      studio.mode === "cli" &&
+      studio.cliEnabled &&
+      cli.ready
+    );
+  }
+
+  validateConfig(): ProviderConfigValidation {
+    const studio = getHiggsfieldMarketingStudioEnv();
+    const cli = getHiggsfieldMarketingStudioCliReadiness();
+    const missingConfig = [
+      getMediaGenerationProvider() === "higgsfield_marketing_studio"
+        ? null
+        : "MEDIA_GENERATION_PROVIDER=higgsfield_marketing_studio",
+      studio.enabled ? null : "HIGGSFIELD_MARKETING_STUDIO_ENABLED=true",
+      studio.mode === "cli" ? null : "HIGGSFIELD_MARKETING_STUDIO_MODE=cli",
+      studio.cliEnabled ? null : "HIGGSFIELD_CLI_ENABLED=true",
+      cli.ready ? null : cli.reason ?? "HIGGSFIELD_CLI_PATH=<installed executable>",
+      studio.ugcVideoModel === "marketing_studio_video"
+        ? null
+        : "HIGGSFIELD_UGC_VIDEO_MODEL=marketing_studio_video",
+    ].filter(Boolean) as string[];
+
+    return {
+      configured: missingConfig.length === 0,
+      missingConfig,
+    };
+  }
+
+  async checkStatus(): Promise<ProviderConnectionStatus> {
+    const validation = this.validateConfig();
+    const studio = getHiggsfieldMarketingStudioEnv();
+    const cli = getHiggsfieldMarketingStudioCliReadiness();
+    const usageGuardEnabled = process.env.ALLOW_HIGGSFIELD_VIDEO_GENERATION === "true";
+
+    return {
+      status: validation.configured && usageGuardEnabled ? "connected" : "disconnected",
+      state: validation.configured ? "configured" : "not_configured",
+      message: validation.configured && !usageGuardEnabled
+        ? "Higgsfield Marketing Studio video is configured but disabled by the usage guard."
+        : validation.configured
+          ? "Higgsfield Marketing Studio video is configured and enabled."
+          : cli.reason ?? "Higgsfield Marketing Studio video CLI gates are incomplete.",
+      metadata: {
+        usageGuardEnabled,
+        marketingStudioEnabled: studio.enabled,
+        cliEnabled: cli.enabled,
+        cliReady: cli.ready,
+        mode: studio.mode,
+        model: studio.ugcVideoModel,
+        fallbackProvider: getMediaGenerationFallbackProvider(),
+      },
+    };
+  }
+
+  async execute(request: ProviderRenderRequest): Promise<ProviderRenderResult> {
+    const studio = getHiggsfieldMarketingStudioEnv();
+    const script = (request.script ?? request.prompt ?? "").trim();
+
+    if (process.env.ALLOW_HIGGSFIELD_VIDEO_GENERATION !== "true") {
+      return {
+        ok: false,
+        providerName: this.name,
+        providerAssetId: null,
+        status: "unsupported",
+        fileUrl: null,
+        thumbnailUrl: null,
+        error: "AI video rendering is not enabled for this workspace yet.",
+      };
+    }
+
+    if (!this.isConfigured()) {
+      return {
+        ok: false,
+        providerName: this.name,
+        providerAssetId: null,
+        status: "unsupported",
+        fileUrl: null,
+        thumbnailUrl: null,
+        metadata: {
+          provider: this.name,
+          mode: studio.mode,
+          fallbackProvider: getMediaGenerationFallbackProvider(),
+        },
+        error: "Higgsfield Marketing Studio CLI video is not ready.",
+      };
+    }
+
+    if (!script) {
+      return {
+        ok: false,
+        providerName: this.name,
+        providerAssetId: null,
+        status: "failed",
+        fileUrl: null,
+        thumbnailUrl: null,
+        error: "Script is required for AI video generation.",
+      };
+    }
+
+    try {
+      const result = await generateHiggsfieldMarketingStudioVideo({
+        aspectRatio: request.aspectRatio ?? "9:16",
+        model: studio.ugcVideoModel,
+        prompt: request.prompt ?? script,
+        script,
+        title: typeof request.title === "string" ? request.title : null,
+        inputImageUrl: typeof request.inputImageUrl === "string" ? request.inputImageUrl : null,
+      });
+
+      return {
+        ok: result.status === "completed" && Boolean(result.fileUrl),
+        providerName: this.name,
+        providerAssetId: result.requestId,
+        status: result.status === "completed" && result.fileUrl ? "ready" : "failed",
+        fileUrl: result.fileUrl,
+        thumbnailUrl: result.thumbnailUrl,
+        metadata: {
+          provider: this.name,
+          model: studio.ugcVideoModel,
+          requestId: result.requestId,
+          providerStatus: result.status,
+          generationLane: "marketing_studio_cli_video",
+        },
+        error: result.fileUrl ? null : "Higgsfield Marketing Studio video did not return a usable asset.",
+      };
+    } catch (error) {
+      const diagnostic = safeProviderDiagnostic(error);
+
+      return {
+        ok: false,
+        providerName: this.name,
+        providerAssetId: null,
+        status: "failed",
+        fileUrl: null,
+        thumbnailUrl: null,
+        metadata: {
+          provider: this.name,
+          model: studio.ugcVideoModel,
+          providerError: diagnostic,
+          generationLane: "marketing_studio_cli_video",
+        },
+        error:
+          /credit|balance/i.test(diagnostic)
+            ? "Video generation could not start because provider credits are unavailable."
+            : diagnostic,
+      };
+    }
+  }
+}
+
 export function getAvatarVideoProvider(): AvatarVideoProvider {
+  const marketingStudio = new HiggsfieldMarketingStudioVideoProvider();
   const higgsfield = new HiggsfieldVideoProvider();
   const provider = getMediaGenerationProvider();
-  if (provider === "higgsfield" || provider === "higgsfield_marketing_studio") {
+
+  if (provider === "higgsfield_marketing_studio") {
+    if (marketingStudio.isConfigured()) {
+      return marketingStudio;
+    }
+
+    if (getMediaGenerationFallbackProvider() === "higgsfield" && higgsfield.isConfigured()) {
+      logWarn("Higgsfield Marketing Studio video falling back to API/SDK provider", {
+        fallbackProvider: "higgsfield",
+      });
+      return higgsfield;
+    }
+
+    return new UnsupportedAvatarProvider();
+  }
+
+  if (provider === "higgsfield") {
     return higgsfield.isConfigured() ? higgsfield : new UnsupportedAvatarProvider();
   }
 

@@ -24,7 +24,11 @@ import {
 } from "@/lib/integrations/meta/service";
 import { assertMetaLaunchBillingAccessForOrganization } from "@/lib/services/billing-service";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
-import { getStaticCreativeReadiness, isLaunchReadyStaticCreative } from "@/lib/services/creative-media-readiness";
+import {
+  getStaticCreativeReadiness,
+  isLaunchReadyStaticCreative,
+  isLaunchReadyVideoCreative,
+} from "@/lib/services/creative-media-readiness";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { slugify } from "@/lib/utils";
@@ -921,6 +925,14 @@ async function launchCampaignToMeta(
         400,
         "One or more selected creative images are still rendering or need regeneration before launch.",
         "selected_ad_image_not_launch_ready",
+      );
+    }
+
+    if (!record.creatives.videoAds.some((video) => isLaunchReadyVideoCreative(video))) {
+      throw new ApiError(
+        400,
+        "Campaign-specific app-owned UGC video is not launch-ready yet.",
+        "ugc_video_not_launch_ready",
       );
     }
 

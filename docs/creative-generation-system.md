@@ -17,27 +17,30 @@ If a generated image fails its selected mode contract or the quality gate, it ca
 
 Marketing Studio finished-ad rasters require `FINISHED_AD_VISION_QA_ENABLED=true` plus an OpenAI-compatible vision model configured by `FINISHED_AD_VISION_QA_MODEL` or `AI_VISION_MODEL`. If vision QA is unavailable, JPEG/PNG finished ads fail closed with `finished_ad_text_unverified`; SVG fixtures can still be inspected deterministically by the built-in text parser. Provider names and raw provider diagnostics remain internal.
 
-The Higgsfield Marketing Studio CLI is allowed only through the explicit CLI provider path. Generic API mode must fail closed unless an official API endpoint/schema is verified. Vercel/serverless runtime support is not assumed; CLI generation should run only in a proven worker/operator runtime with bounded jobs and minimal allowlisted environment variables.
+The Higgsfield Marketing Studio CLI is allowed only through the explicit CLI provider path. Generic API mode must fail closed unless an official API endpoint/schema is verified. Vercel/serverless runtime support is not assumed; CLI generation should run only in a proven worker/operator runtime with bounded jobs and minimal allowlisted environment variables. The preferred premium static lane is `higgsfield_marketing_studio` finished-ad CLI generation; the preferred premium UGC lane is `higgsfield_marketing_studio` CLI video generation when `HIGGSFIELD_UGC_VIDEO_MODEL=marketing_studio_video`. The existing Higgsfield API/SDK DoP video path remains the explicit fallback through `MEDIA_GENERATION_FALLBACK_PROVIDER=higgsfield`.
 
 ## Marketing Studio worker architecture
 
-Marketing Studio finished-ad generation is intentionally split from the Vercel/internal system-job runner:
+Marketing Studio finished-ad and UGC video generation are intentionally split from the Vercel/internal system-job runner:
 
-1. The app queues `static_creative_generation` jobs as usual.
-2. If the approved creative intake has `outputMode: "finished_ad"` and `generationPhase: "static"`, the job is marked pending with `next_run_at=2099-01-01T00:00:00.000Z` and logged as deferred to `marketing_studio_cli_worker`.
+1. The app queues `static_creative_generation` and `video_generation` jobs as usual.
+2. If the approved creative intake has `outputMode: "finished_ad"` and `generationPhase: "static"`, or the video job is owned by `MEDIA_GENERATION_PROVIDER=higgsfield_marketing_studio`, the job is marked pending with `next_run_at=2099-01-01T00:00:00.000Z` and logged as deferred to `marketing_studio_cli_worker`.
 3. Vercel `after()` kickoff and the internal `/api/internal/system-jobs` runner do not execute that job. This prevents serverless timeouts, unsupported CLI execution, and operator-debt failures.
 4. A dedicated operator/worker process runs `npm run worker:marketing-studio -- --max-jobs=1` or `npm run worker:marketing-studio -- --poll --max-jobs=1 --interval-ms=30000`.
 5. The worker performs readiness checks before claiming work:
    - `MARKETING_STUDIO_WORKER_ENABLED=true`
    - `MEDIA_GENERATION_PROVIDER=higgsfield_marketing_studio`
+   - `MEDIA_GENERATION_FALLBACK_PROVIDER=higgsfield` when API/SDK fallback is allowed
    - `ALLOW_HIGGSFIELD_IMAGE_GENERATION=true`
+   - `ALLOW_HIGGSFIELD_VIDEO_GENERATION=true`
    - `HIGGSFIELD_MARKETING_STUDIO_ENABLED=true`
    - `HIGGSFIELD_MARKETING_STUDIO_MODE=cli`
    - `HIGGSFIELD_CLI_ENABLED=true`
+   - `HIGGSFIELD_UGC_VIDEO_MODEL=marketing_studio_video`
    - executable `HIGGSFIELD_CLI_PATH`
    - `FINISHED_AD_VISION_QA_ENABLED=true`
    - `AI_API_KEY` or `OPENAI_API_KEY`
-6. The worker claims only eligible Marketing Studio finished-ad static jobs, runs the existing generation pipeline, normalizes accepted provider output into app-owned `creative-assets` storage, runs finished-ad vision QA, and writes job status/result back through `system_jobs`.
+6. The worker claims only eligible Marketing Studio static/video jobs, runs the existing generation pipeline, normalizes accepted provider output into app-owned `creative-assets` storage, runs finished-ad or video provenance/product QA, and writes job status/result back through `system_jobs`.
 7. The CLI child process receives only the Higgsfield allowlisted environment: `NODE_ENV`, `PATH`, `HOME`, `TMPDIR`, `HF_CREDENTIALS`, `HF_API_KEY`, `HF_API_SECRET`, `HIGGSFIELD_BASE_URL`, `HIGGSFIELD_CONFIG_HOME`, `HIGGSFIELD_CACHE_DIR`, `HIGGSFIELD_OUTPUT_DIR`, and `MARKETING_STUDIO_WORKER_OUTPUT_DIR`. It must not receive full `process.env`.
 
 Use `npm run worker:marketing-studio -- --dry-run` for readiness and eligible-job proof. Do not run the worker with provider guards enabled against production until the owner has approved one capped live proof.

@@ -7,7 +7,7 @@ import type { Database, Json } from "@/lib/supabase/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   MARKETING_STUDIO_WORKER_RUNTIME,
-  isMarketingStudioStaticGenerationPayload,
+  isMarketingStudioWorkerOwnedJob,
   isMarketingStudioWorkerRuntimeEnabled,
 } from "@/lib/services/marketing-studio-worker-contract";
 import {
@@ -27,10 +27,12 @@ export type MarketingStudioWorkerReadiness = {
     workerEnabled: boolean;
     providerSelected: boolean;
     usageGuardEnabled: boolean;
+    videoUsageGuardEnabled: boolean;
     studioEnabled: boolean;
     cliMode: boolean;
     cliEnabled: boolean;
     cliReady: boolean;
+    ugcVideoModelConfigured: boolean;
     visionQaEnabled: boolean;
     visionQaConfigured: boolean;
   };
@@ -56,7 +58,7 @@ function getWorkerClient() {
 }
 
 function parseJob(row: SystemJobRow) {
-  return row as unknown as SystemJobRecord<"static_creative_generation">;
+  return row as unknown as SystemJobRecord;
 }
 
 function isExpiredLease(value: string | null) {
@@ -71,10 +73,12 @@ export async function getMarketingStudioWorkerReadiness(): Promise<MarketingStud
     workerEnabled: isMarketingStudioWorkerRuntimeEnabled(),
     providerSelected: getMediaGenerationProvider() === "higgsfield_marketing_studio",
     usageGuardEnabled: process.env.ALLOW_HIGGSFIELD_IMAGE_GENERATION === "true",
+    videoUsageGuardEnabled: process.env.ALLOW_HIGGSFIELD_VIDEO_GENERATION === "true",
     studioEnabled: studio.enabled === true,
     cliMode: studio.mode === "cli",
     cliEnabled: studio.cliEnabled === true,
     cliReady: cli.ready === true,
+    ugcVideoModelConfigured: studio.ugcVideoModel === "marketing_studio_video",
     visionQaEnabled: process.env.FINISHED_AD_VISION_QA_ENABLED === "true",
     visionQaConfigured: Boolean(ai),
   };
@@ -82,10 +86,12 @@ export async function getMarketingStudioWorkerReadiness(): Promise<MarketingStud
     checks.workerEnabled ? null : "MARKETING_STUDIO_WORKER_ENABLED=true",
     checks.providerSelected ? null : "MEDIA_GENERATION_PROVIDER=higgsfield_marketing_studio",
     checks.usageGuardEnabled ? null : "ALLOW_HIGGSFIELD_IMAGE_GENERATION=true",
+    checks.videoUsageGuardEnabled ? null : "ALLOW_HIGGSFIELD_VIDEO_GENERATION=true",
     checks.studioEnabled ? null : "HIGGSFIELD_MARKETING_STUDIO_ENABLED=true",
     checks.cliMode ? null : "HIGGSFIELD_MARKETING_STUDIO_MODE=cli",
     checks.cliEnabled ? null : "HIGGSFIELD_CLI_ENABLED=true",
     checks.cliReady ? null : cli.reason ?? "HIGGSFIELD_CLI_PATH executable readiness",
+    checks.ugcVideoModelConfigured ? null : "HIGGSFIELD_UGC_VIDEO_MODEL=marketing_studio_video",
     checks.visionQaEnabled ? null : "FINISHED_AD_VISION_QA_ENABLED=true",
     checks.visionQaConfigured ? null : "AI_API_KEY or OPENAI_API_KEY",
   ].filter(Boolean) as string[];
@@ -107,7 +113,7 @@ export async function listEligibleMarketingStudioWorkerJobs(params?: {
   const { data, error } = await supabase
     .from("system_jobs")
     .select("*")
-    .eq("kind", "static_creative_generation")
+    .in("kind", ["static_creative_generation", "video_generation"])
     .in("status", ["pending", "processing"])
     .is("dead_lettered_at", null)
     .order("created_at", { ascending: true })
@@ -120,7 +126,7 @@ export async function listEligibleMarketingStudioWorkerJobs(params?: {
   return ((Array.isArray(data) ? data : []) as SystemJobRow[])
     .map(parseJob)
     .filter((job) => {
-      if (!isMarketingStudioStaticGenerationPayload(job.payload)) {
+      if (!isMarketingStudioWorkerOwnedJob({ kind: job.kind, payload: job.payload })) {
         return false;
       }
 
@@ -185,7 +191,9 @@ export async function runMarketingStudioWorkerBatch(params?: {
     await appendSystemJobLog({
       supabase,
       jobId: claimedJob.id,
-      message: "Marketing Studio CLI worker claimed finished-ad render.",
+      message: claimedJob.kind === "video_generation"
+        ? "Marketing Studio CLI worker claimed UGC video render."
+        : "Marketing Studio CLI worker claimed finished-ad render.",
       details: {
         runtime: MARKETING_STUDIO_WORKER_RUNTIME,
         workerId,

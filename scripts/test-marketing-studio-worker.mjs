@@ -65,6 +65,7 @@ function resetEnv() {
     "MARKETING_STUDIO_WORKER_ENABLED",
     "MEDIA_GENERATION_PROVIDER",
     "ALLOW_HIGGSFIELD_IMAGE_GENERATION",
+    "ALLOW_HIGGSFIELD_VIDEO_GENERATION",
     "HIGGSFIELD_MARKETING_STUDIO_ENABLED",
     "HIGGSFIELD_MARKETING_STUDIO_MODE",
     "HIGGSFIELD_CLI_ENABLED",
@@ -74,6 +75,7 @@ function resetEnv() {
     "HF_API_SECRET",
     "HIGGSFIELD_IMAGE_MODEL",
     "HIGGSFIELD_VIDEO_MODEL",
+    "HIGGSFIELD_UGC_VIDEO_MODEL",
     "FINISHED_AD_VISION_QA_ENABLED",
     "AI_API_KEY",
     "OPENAI_API_KEY",
@@ -142,15 +144,31 @@ assert.equal(
   "background-only fallback jobs stay on the existing safe path",
 );
 
+delete process.env.MARKETING_STUDIO_WORKER_ENABLED;
+assert.equal(
+  shouldDeferMarketingStudioStaticGenerationToWorker({
+    kind: "video_generation",
+    payload: {
+      creativeIntake: {
+        generationPhase: "ugc_video",
+      },
+    },
+  }),
+  true,
+  "Marketing Studio UGC video jobs are deferred outside worker runtime",
+);
+
 resetEnv();
 const notReady = await getMarketingStudioWorkerReadiness();
 assert.equal(notReady.ready, false);
 assert.ok(notReady.missing.includes("MARKETING_STUDIO_WORKER_ENABLED=true"));
 assert.ok(notReady.missing.includes("FINISHED_AD_VISION_QA_ENABLED=true"));
+assert.ok(notReady.missing.includes("ALLOW_HIGGSFIELD_VIDEO_GENERATION=true"));
 
 process.env.MARKETING_STUDIO_WORKER_ENABLED = "true";
 process.env.MEDIA_GENERATION_PROVIDER = "higgsfield_marketing_studio";
 process.env.ALLOW_HIGGSFIELD_IMAGE_GENERATION = "true";
+process.env.ALLOW_HIGGSFIELD_VIDEO_GENERATION = "true";
 process.env.HIGGSFIELD_MARKETING_STUDIO_ENABLED = "true";
 process.env.HIGGSFIELD_MARKETING_STUDIO_MODE = "cli";
 process.env.HIGGSFIELD_CLI_ENABLED = "true";
@@ -158,6 +176,7 @@ process.env.HIGGSFIELD_CLI_PATH = process.execPath;
 process.env.HF_CREDENTIALS = "test-key:test-secret";
 process.env.HIGGSFIELD_IMAGE_MODEL = "marketing_studio_image";
 process.env.HIGGSFIELD_VIDEO_MODEL = "marketing_studio_video";
+process.env.HIGGSFIELD_UGC_VIDEO_MODEL = "marketing_studio_video";
 process.env.FINISHED_AD_VISION_QA_ENABLED = "true";
 process.env.OPENAI_API_KEY = "test-key";
 process.env.OPENAI_BASE_URL = "https://api.openai.com/v1";
@@ -193,8 +212,8 @@ assert.match(systemJobService, /locked_until\.is\.null,locked_until\.lt/);
 assert.match(systemJobService, /claimSystemJobByIdForWorker/);
 assert.match(
   systemJobService,
-  /const deferToMarketingStudioWorker = isMarketingStudioStaticGenerationJob/,
-  "Marketing Studio jobs are queued as deferred even when the dedicated worker env is enabled",
+  /const deferToMarketingStudioWorker = isMarketingStudioWorkerOwnedJob/,
+  "Marketing Studio static and video jobs are queued as deferred even when the dedicated worker env is enabled",
 );
 assert.match(systemJobService, /status: "pending"[\s\S]*next_run_at: MARKETING_STUDIO_WORKER_DEFERRED_UNTIL/);
 assert.doesNotMatch(
@@ -216,8 +235,8 @@ assert.match(workerScript, /marketing_studio_worker\.readiness/);
 assert.match(workerScript, /runMarketingStudioWorkerBatch/);
 
 const workerService = fs.readFileSync("src/lib/services/marketing-studio-worker-service.ts", "utf8");
-assert.match(workerService, /\.eq\("kind", "static_creative_generation"\)/);
-assert.match(workerService, /isMarketingStudioStaticGenerationPayload/);
+assert.match(workerService, /\.in\("kind", \["static_creative_generation", "video_generation"\]\)/);
+assert.match(workerService, /isMarketingStudioWorkerOwnedJob/);
 assert.match(workerService, /FINISHED_AD_VISION_QA_ENABLED=true/);
 assert.match(workerService, /claimSystemJobByIdForWorker/);
 assert.match(workerService, /ignoreNextRunAt: true/);

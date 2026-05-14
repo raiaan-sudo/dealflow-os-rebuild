@@ -1,5 +1,7 @@
 import { accessSync, constants as fsConstants } from "node:fs";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 import {
   getHiggsfieldEnv,
@@ -7,6 +9,7 @@ import {
   getMediaGenerationProvider,
   validateHiggsfieldEnv,
 } from "@/lib/env";
+import { fetchStaticCreativeProviderImage } from "@/lib/services/static-creative-storage-normalization";
 
 export type HiggsfieldGenerationStatus =
   | "queued"
@@ -84,6 +87,7 @@ type HiggsfieldVideoInput = {
 const HIGGSFIELD_SOUL_TEXT_TO_IMAGE_ENDPOINT = "/v1/text2image/soul";
 const HIGGSFIELD_IMAGE_TO_VIDEO_ENDPOINT = "/v1/image2video/dop";
 const HIGGSFIELD_MARKETING_STUDIO_IMAGE_MODEL = "marketing_studio_image";
+const HIGGSFIELD_MARKETING_STUDIO_VIDEO_MODEL = "marketing_studio_video";
 const DEFAULT_HIGGSFIELD_VIDEO_MODEL = "dop-turbo";
 
 export type HiggsfieldCliReadiness = {
@@ -567,6 +571,10 @@ function looksLikeImageReference(value: string) {
   return /\.(png|jpe?g|webp|gif)(?:[?#].*)?$/i.test(value);
 }
 
+function looksLikeVideoReference(value: string) {
+  return /\.(mp4|webm|mov|m4v)(?:[?#].*)?$/i.test(value);
+}
+
 function collectCliAssetCandidates(
   value: unknown,
   pathLabel = "$",
@@ -585,8 +593,9 @@ function collectCliAssetCandidates(
     if (isUrl || isLocal) {
       const normalizedPath = pathLabel.toLowerCase();
       const score =
+        (looksLikeVideoReference(trimmed) ? 55 : 0) +
         (looksLikeImageReference(trimmed) ? 50 : 0) +
-        (/download|file|image|output|asset|result|url/.test(normalizedPath) ? 20 : 0) +
+        (/download|file|image|video|output|asset|result|url/.test(normalizedPath) ? 20 : 0) +
         (/thumb|thumbnail/.test(normalizedPath) ? -5 : 0) +
         (/status|page|web|dashboard/.test(normalizedPath) ? -25 : 0) +
         (isLocal ? 15 : 0);
@@ -604,8 +613,9 @@ function collectCliAssetCandidates(
       candidates.push({
         value: url,
         score:
+          (looksLikeVideoReference(url) ? 50 : 0) +
           (looksLikeImageReference(url) ? 45 : 0) +
-          (/download|file|image|output|asset|result|url/.test(pathLabel.toLowerCase()) ? 15 : 0),
+          (/download|file|image|video|output|asset|result|url/.test(pathLabel.toLowerCase()) ? 15 : 0),
         path: pathLabel,
       });
     }
@@ -772,6 +782,119 @@ async function generateMarketingStudioImageWithCli(
   };
 }
 
+function extensionForCliImageInput(contentType: string) {
+  if (contentType.includes("png")) {
+    return "png";
+  }
+
+  if (contentType.includes("jpeg") || contentType.includes("jpg")) {
+    return "jpg";
+  }
+
+  if (contentType.includes("webp")) {
+    return "webp";
+  }
+
+  return "img";
+}
+
+async function prepareMarketingStudioCliImageInput(inputImageUrl: string) {
+  const source = safeText(inputImageUrl);
+
+  if (!source) {
+    throw new Error("Higgsfield Marketing Studio video requires a ready static source image.");
+  }
+
+  if (looksLikeLocalFilePath(source)) {
+    return source.startsWith("file://") ? new URL(source).pathname : source;
+  }
+
+  const fetched = await fetchStaticCreativeProviderImage(source, {
+    accept: "image/png,image/jpeg,image/webp",
+    contentTypePrefix: "image/",
+    errorPrefix: "Marketing Studio video source image",
+  });
+  const outputDir = await mkdtemp(path.join(os.tmpdir(), "dealflow-higgsfield-source-"));
+  const filePath = path.join(outputDir, `source.${extensionForCliImageInput(fetched.contentType)}`);
+  await writeFile(filePath, fetched.bytes);
+  return filePath;
+}
+
+async function generateMarketingStudioVideoWithCli(
+  request: HiggsfieldVideoRequest,
+  model: string,
+): Promise<HiggsfieldGenerationResult> {
+  const cliReadiness = await checkHiggsfieldMarketingStudioReadiness();
+
+  if (!cliReadiness.ready || !cliReadiness.resolvedPath) {
+    throw new Error(cliReadiness.reason ?? "Higgsfield Marketing Studio CLI is not ready.");
+  }
+
+  if (!safeText(request.inputImageUrl)) {
+    throw new Error("Higgsfield Marketing Studio video requires a ready static source image.");
+  }
+
+  const cliPath = cliReadiness.resolvedPath;
+  const sourceImagePath = await prepareMarketingStudioCliImageInput(request.inputImageUrl ?? "");
+  const args = [
+    "--json",
+    "generate",
+    "create",
+    model,
+    "--prompt",
+    buildPromptWithGuardrails(request),
+    "--aspect_ratio",
+    safeText(request.aspectRatio) || "9:16",
+    "--duration",
+    "15",
+    "--mode",
+    "ugc",
+    "--resolution",
+    "720p",
+    "--start-image",
+    sourceImagePath,
+    "--wait",
+  ];
+
+  const stdout = await new Promise<string>((resolve, reject) => {
+    execFile(
+      cliPath,
+      args,
+      {
+        timeout: 15 * 60_000,
+        maxBuffer: 2 * 1024 * 1024,
+        encoding: "utf8",
+        env: buildHiggsfieldCliEnvironment(),
+      },
+      (error: Error | null, nextStdout: string) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(nextStdout);
+      },
+    );
+  });
+  let parsed: unknown = stdout;
+
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    parsed = stdout;
+  }
+
+  const extracted = extractHiggsfieldCliGenerationAssets(parsed);
+
+  return {
+    requestId: extracted.requestId,
+    status: extracted.fileUrl ? "completed" : "unknown",
+    fileUrl: extracted.fileUrl,
+    thumbnailUrl: extracted.thumbnailUrl,
+    providerModel: model,
+    rawStatus: "cli",
+  };
+}
+
 export async function generateHiggsfieldMarketingStudioImage(
   request: HiggsfieldImageRequest,
 ): Promise<HiggsfieldGenerationResult> {
@@ -792,6 +915,28 @@ export async function generateHiggsfieldMarketingStudioImage(
   throw new Error(
     cliReadiness.reason ??
       "Higgsfield Marketing Studio API adapter mode is future-only until an official endpoint is configured.",
+  );
+}
+
+export async function generateHiggsfieldMarketingStudioVideo(
+  request: HiggsfieldVideoRequest,
+): Promise<HiggsfieldGenerationResult> {
+  const studioEnv = getHiggsfieldMarketingStudioEnv();
+  const env = getHiggsfieldEnv();
+  const model = safeText(request.model) || env?.ugcVideoModel || HIGGSFIELD_MARKETING_STUDIO_VIDEO_MODEL;
+  const cliReadiness = await checkHiggsfieldMarketingStudioReadiness();
+
+  if (studioEnv.mode === "cli" && cliReadiness.ready) {
+    if (model !== HIGGSFIELD_MARKETING_STUDIO_VIDEO_MODEL) {
+      throw new Error("Higgsfield Marketing Studio CLI video requires HIGGSFIELD_UGC_VIDEO_MODEL=marketing_studio_video.");
+    }
+
+    return generateMarketingStudioVideoWithCli(request, model);
+  }
+
+  throw new Error(
+    cliReadiness.reason ??
+      "Higgsfield Marketing Studio video API adapter mode is future-only until an official endpoint is configured.",
   );
 }
 

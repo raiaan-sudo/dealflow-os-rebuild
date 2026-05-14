@@ -121,6 +121,24 @@ export function getMediaGenerationProvider(): MediaGenerationProvider {
   return provider === "higgsfield" ? "higgsfield" : "openai";
 }
 
+export function getMediaGenerationFallbackProvider(): MediaGenerationProvider | null {
+  const provider = (process.env.MEDIA_GENERATION_FALLBACK_PROVIDER ?? "").trim().toLowerCase();
+
+  if (!provider) {
+    return null;
+  }
+
+  if (provider === "higgsfield_marketing_studio" || provider === "higgsfield-marketing-studio") {
+    return "higgsfield_marketing_studio";
+  }
+
+  if (provider === "higgsfield") {
+    return "higgsfield";
+  }
+
+  return provider === "openai" ? "openai" : null;
+}
+
 export function getHiggsfieldEnv() {
   const credentials = process.env.HF_CREDENTIALS?.trim();
   const apiKey = process.env.HF_API_KEY?.trim();

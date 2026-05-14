@@ -296,6 +296,33 @@ export function detectStaticCreativeImageContentType(bytes: Buffer) {
   return null;
 }
 
+export function detectGeneratedVideoContentType(bytes: Buffer) {
+  if (
+    bytes.length >= 12 &&
+    bytes.subarray(4, 8).toString("ascii") === "ftyp"
+  ) {
+    const brand = bytes.subarray(8, 12).toString("ascii").toLowerCase();
+
+    if (brand.includes("qt")) {
+      return "video/quicktime";
+    }
+
+    return "video/mp4";
+  }
+
+  if (
+    bytes.length >= 4 &&
+    bytes[0] === 0x1a &&
+    bytes[1] === 0x45 &&
+    bytes[2] === 0xdf &&
+    bytes[3] === 0xa3
+  ) {
+    return "video/webm";
+  }
+
+  return null;
+}
+
 async function readLocalGeneratedImageFile(
   source: string,
   maxBytes = MAX_STATIC_CREATIVE_PROVIDER_IMAGE_BYTES,
@@ -316,6 +343,34 @@ async function readLocalGeneratedImageFile(
 
   if (!contentType) {
     throw new Error("Generated image file was not a supported image type.");
+  }
+
+  return {
+    bytes,
+    contentType,
+  };
+}
+
+async function readLocalGeneratedVideoFile(
+  source: string,
+  maxBytes = MAX_STATIC_CREATIVE_PROVIDER_VIDEO_BYTES,
+): Promise<StaticCreativeProviderImageFetchResult> {
+  const filePath = resolveLocalGeneratedImagePath(source);
+  const fileStat = await stat(filePath);
+
+  if (!fileStat.isFile()) {
+    throw new Error("Generated video file path was not a file.");
+  }
+
+  if (fileStat.size <= 0 || fileStat.size > maxBytes) {
+    throw new Error("Generated video file is too large to store.");
+  }
+
+  const bytes = await readFile(filePath);
+  const contentType = detectGeneratedVideoContentType(bytes);
+
+  if (!contentType) {
+    throw new Error("Generated video file was not a supported video type.");
   }
 
   return {
@@ -346,7 +401,7 @@ export async function fetchStaticCreativeProviderImage(
 
   if (isLocalGeneratedImageSource(url)) {
     if (contentTypePrefix !== "image/") {
-      throw new Error(`${errorPrefix} URL was invalid.`);
+      return readLocalGeneratedVideoFile(url, maxBytes);
     }
     return readLocalGeneratedImageFile(url, maxBytes);
   }

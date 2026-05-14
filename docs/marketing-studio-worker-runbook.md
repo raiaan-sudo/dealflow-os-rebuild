@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The Marketing Studio worker runs Higgsfield CLI finished-ad generation outside Vercel/serverless. Vercel can queue and display job state, but the CLI path belongs in a long-running operator or worker runtime where binaries, auth, longer timeouts, local cache, and structured logs are controllable.
+The Marketing Studio worker runs Higgsfield CLI finished-ad and UGC video generation outside Vercel/serverless. Vercel can queue and display job state, but the CLI path belongs in a long-running operator or worker runtime where binaries, auth, longer timeouts, local cache, and structured logs are controllable.
 
 ## Runtime
 
@@ -26,10 +26,14 @@ Do not paste secret values into logs or tickets. Configure values through the ho
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `MARKETING_STUDIO_WORKER_ENABLED`
 - `MEDIA_GENERATION_PROVIDER`
+- `MEDIA_GENERATION_FALLBACK_PROVIDER`
 - `ALLOW_HIGGSFIELD_IMAGE_GENERATION`
+- `ALLOW_HIGGSFIELD_VIDEO_GENERATION`
 - `HF_CREDENTIALS` or `HF_API_KEY` and `HF_API_SECRET`
 - `HIGGSFIELD_BASE_URL`
 - `HIGGSFIELD_IMAGE_MODEL`
+- `HIGGSFIELD_VIDEO_MODEL`
+- `HIGGSFIELD_UGC_VIDEO_MODEL`
 - `HIGGSFIELD_MARKETING_STUDIO_ENABLED`
 - `HIGGSFIELD_MARKETING_STUDIO_MODE`
 - `HIGGSFIELD_CLI_ENABLED`
@@ -69,12 +73,12 @@ npm run worker:marketing-studio -- --poll --max-jobs=1 --interval-ms=30000
 
 ## Job flow
 
-1. The app creates a `system_jobs` row with `kind=static_creative_generation`.
-2. If `payload.creativeIntake.outputMode` is `finished_ad` and `payload.creativeIntake.generationPhase` is `static`, the row is left `pending` and deferred with `next_run_at=2099-01-01T00:00:00.000Z`.
+1. The app creates a `system_jobs` row with `kind=static_creative_generation` or `kind=video_generation`.
+2. If the static payload has `payload.creativeIntake.outputMode = "finished_ad"` and `payload.creativeIntake.generationPhase = "static"`, or the video lane is selected through `MEDIA_GENERATION_PROVIDER=higgsfield_marketing_studio`, the row is left `pending` and deferred with `next_run_at=2099-01-01T00:00:00.000Z`.
 3. The Vercel route kickoff does not call `processSystemJob` for that payload.
 4. The generic internal runner will not naturally claim the deferred job. If it ever receives one by ID, `processSystemJob` re-defers it instead of failing or dead-lettering.
-5. The worker lists pending/expired Marketing Studio finished-ad jobs directly and processes only those payloads.
-6. The existing static creative generation pipeline runs through the Marketing Studio provider, storage normalization, finished-ad QA, asset persistence, and job completion.
+5. The worker lists pending/expired Marketing Studio static or video jobs directly and processes only those payloads.
+6. Static generation runs through the Marketing Studio provider, storage normalization, finished-ad QA, asset persistence, and job completion. Video generation runs through the Marketing Studio CLI UGC provider when `HIGGSFIELD_UGC_VIDEO_MODEL=marketing_studio_video`; otherwise it fails closed or uses the explicit `MEDIA_GENERATION_FALLBACK_PROVIDER=higgsfield` API/SDK fallback when configured.
 
 ## Asset and QA contract
 
@@ -90,6 +94,16 @@ Marketing Studio finished-ad output is not launch-ready until all of these are t
 
 If vision QA is disabled, unavailable, or cannot inspect the JPEG/PNG/WebP, the finished ad fails closed and remains non-ready.
 
+Marketing Studio UGC video output is not launch-ready until all of these are true:
+
+- a ready, accepted static source creative exists in app-owned `creative-assets` storage;
+- the CLI returns a provider job/result id and a playable video file;
+- the video is copied into app-owned `creative-assets` storage;
+- provider original URL remains metadata only;
+- prompt hash, script hash, source static asset id, and campaign context are persisted;
+- deterministic video provenance QA passes;
+- UGC product-quality QA confirms hook, market problem, creator POV, mechanism, source relevance, and CTA.
+
 The Higgsfield CLI `generate create --wait` path returns result URLs rather than a separate generic asset-download command. If a future CLI version writes local files, the worker accepts only files under `MARKETING_STUDIO_WORKER_OUTPUT_DIR`, `HIGGSFIELD_OUTPUT_DIR`, `HIGGSFIELD_CACHE_DIR`, or the process temp directory. Remote provider URLs are fetched through the hardened static creative fetcher and must match `STATIC_CREATIVE_PROVIDER_IMAGE_HOSTS` or the built-in approved provider CDN hosts.
 
 ## Operator debt
@@ -102,7 +116,7 @@ Before the first capped live proof:
 
 1. `npm run worker:marketing-studio -- --dry-run` reports ready.
 2. `higgsfield --version` succeeds in the worker runtime.
-3. A safe model/capability command confirms `marketing_studio_image` without spending generation credits.
+3. Safe model/capability commands confirm `marketing_studio_image` and `marketing_studio_video` without spending generation credits.
 4. `FINISHED_AD_VISION_QA_ENABLED=true` and the vision provider are configured.
 5. `npm run operator:debt` is clean.
 6. Owner approves one capped QA campaign generation count.

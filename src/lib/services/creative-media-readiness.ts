@@ -267,6 +267,10 @@ function looksLikeSampleVideo(video: VideoCreativeReadinessInput) {
   return video.sampleOnly === true || /\b(sample|demo|mock|placeholder|template)\b/i.test(value);
 }
 
+function hasSupportedLaunchVideoContentType(contentType?: string | null) {
+  return /^(video\/mp4|video\/webm|video\/quicktime)\b/i.test(contentType ?? "");
+}
+
 export function evaluateGeneratedVideoQualityGate(
   video: VideoCreativeReadinessInput,
   now = new Date(),
@@ -285,8 +289,8 @@ export function evaluateGeneratedVideoQualityGate(
     reasons.push("storage_not_normalized");
   }
 
-  if (!/^video\/mp4\b/i.test(video.storageContentType ?? "")) {
-    reasons.push("missing_mp4_storage_metadata");
+  if (!hasSupportedLaunchVideoContentType(video.storageContentType)) {
+    reasons.push("missing_supported_video_storage_metadata");
   }
 
   if (typeof video.storageByteSize !== "number" || video.storageByteSize <= 0) {
@@ -354,8 +358,8 @@ export function getVideoLaunchReadinessReason(video: VideoCreativeReadinessInput
     return "The playable video is not normalized into DealFlow creative storage.";
   }
 
-  if (!/^video\/mp4\b/i.test(video.storageContentType ?? "")) {
-    return "The playable video is missing verified MP4 storage metadata.";
+  if (!hasSupportedLaunchVideoContentType(video.storageContentType)) {
+    return "The playable video is missing verified MP4/WebM/QuickTime storage metadata.";
   }
 
   if (typeof video.storageByteSize !== "number" || video.storageByteSize <= 0) {

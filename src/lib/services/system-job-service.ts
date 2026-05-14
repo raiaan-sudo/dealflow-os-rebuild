@@ -12,6 +12,7 @@ import {
   runVideoGenerationJob,
 } from "@/lib/services/video-generation-job";
 import {
+  isMarketingStudioWorkerOwnedJob,
   isMarketingStudioStaticGenerationJob,
   MARKETING_STUDIO_WORKER_DEFERRED_UNTIL,
   MARKETING_STUDIO_WORKER_RUNTIME,
@@ -312,7 +313,7 @@ export async function createSystemJob<K extends SystemJobKind>(params: {
   maxAttempts?: number;
 }) {
   const supabase = params.supabase ?? getJobClient();
-  const deferToMarketingStudioWorker = isMarketingStudioStaticGenerationJob({
+  const deferToMarketingStudioWorker = isMarketingStudioWorkerOwnedJob({
     kind: params.kind,
     payload: params.payload,
   });
@@ -623,16 +624,17 @@ export async function claimSystemJobByIdForWorker(params: {
   const supabase = params.supabase ?? getJobClient();
   const now = new Date();
   const lockedUntil = new Date(now.getTime() + SYSTEM_JOB_LEASE_MS).toISOString();
+  const claimPatch = {
+    status: "processing",
+    started_at: now.toISOString(),
+    locked_by: params.workerId,
+    locked_until: lockedUntil,
+    error_message: null,
+    last_error_code: null,
+  } satisfies Database["public"]["Tables"]["system_jobs"]["Update"];
   let query = supabase
     .from("system_jobs")
-    .update({
-      status: "processing",
-      started_at: now.toISOString(),
-      locked_by: params.workerId,
-      locked_until: lockedUntil,
-      error_message: null,
-      last_error_code: null,
-    } as never)
+    .update(claimPatch as never)
     .eq("id", params.jobId)
     .eq("status", "pending");
 
@@ -640,10 +642,27 @@ export async function claimSystemJobByIdForWorker(params: {
     query = query.or(`next_run_at.is.null,next_run_at.lte.${now.toISOString()}`);
   }
 
-  const { data, error } = await query.select("*").maybeSingle();
+  let { data, error } = await query.select("*").maybeSingle();
 
   if (error) {
     throw new ApiError(500, error.message, "system_job_claim_failed");
+  }
+
+  if (!data) {
+    const processingQuery = supabase
+      .from("system_jobs")
+      .update(claimPatch as never)
+      .eq("id", params.jobId)
+      .eq("status", "processing")
+      .not("locked_until", "is", null)
+      .lte("locked_until", now.toISOString());
+    const processingResult = await processingQuery.select("*").maybeSingle();
+
+    if (processingResult.error) {
+      throw new ApiError(500, processingResult.error.message, "system_job_claim_failed");
+    }
+
+    data = processingResult.data;
   }
 
   if (!data) {
@@ -684,13 +703,27 @@ export async function resetStaleProcessingSystemJobs(staleAfterMs = 10 * 60_000)
     .eq("status", "processing")
     .lt("started_at", staleBefore)
     .or(`locked_until.is.null,locked_until.lt.${now}`)
-    .select("id");
+    .select("id, kind, payload");
 
   if (error) {
     throw new ApiError(500, error.message, "system_job_stale_reset_failed");
   }
 
-  const resetRows = (Array.isArray(data) ? data : []) as Array<{ id: string }>;
+  const resetRows = (Array.isArray(data) ? data : []) as Array<{
+    id: string;
+    kind?: string | null;
+    payload?: unknown;
+  }>;
+
+  await Promise.all(
+    resetRows
+      .filter((row) => isMarketingStudioWorkerOwnedJob({ kind: row.kind, payload: row.payload }))
+      .map((row) =>
+        updateSystemJob(supabase, row.id, {
+          next_run_at: MARKETING_STUDIO_WORKER_DEFERRED_UNTIL,
+        }).catch(() => null),
+      ),
+  );
 
   await Promise.all(
     resetRows.map((row) =>
