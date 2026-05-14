@@ -167,6 +167,10 @@ export function getHiggsfieldMarketingStudioEnv() {
 
   return {
     ...env,
+    imageModel: env?.imageModel ?? process.env.HIGGSFIELD_IMAGE_MODEL?.trim() ?? "marketing_studio_image",
+    videoModel: env?.videoModel ?? process.env.HIGGSFIELD_VIDEO_MODEL?.trim() ?? "marketing_studio_video",
+    ugcVideoModel: env?.ugcVideoModel ?? process.env.HIGGSFIELD_UGC_VIDEO_MODEL?.trim() ?? "soul_cast",
+    videoFallbackModel: env?.videoFallbackModel ?? process.env.HIGGSFIELD_VIDEO_FALLBACK_MODEL?.trim() ?? "seedance_2_0",
     enabled: process.env.HIGGSFIELD_MARKETING_STUDIO_ENABLED === "true",
     cliEnabled: process.env.HIGGSFIELD_CLI_ENABLED === "true",
     cliPath: process.env.HIGGSFIELD_CLI_PATH?.trim() || "higgsfield",
