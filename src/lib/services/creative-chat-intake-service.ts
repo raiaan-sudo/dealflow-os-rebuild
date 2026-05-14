@@ -265,8 +265,8 @@ function messageId() {
 
 export function isCreativeChatIntakeEnabled() {
   return (
-    process.env.CREATIVE_CHAT_INTAKE_ENABLED === "true" ||
-    process.env.NEXT_PUBLIC_ENABLE_CREATIVE_CHAT_INTAKE === "true"
+    process.env.CREATIVE_CHAT_INTAKE_ENABLED !== "false" &&
+    process.env.NEXT_PUBLIC_ENABLE_CREATIVE_CHAT_INTAKE !== "false"
   );
 }
 

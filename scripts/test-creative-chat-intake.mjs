@@ -56,6 +56,7 @@ const {
   createCreativeIntakeState,
   getApprovedCreativeIntakeGenerationContext,
   hasSameCreativeIntakeGenerationContext,
+  isCreativeChatIntakeEnabled,
   isCreativeIntakeApproved,
   mergeCreativeChatIntakeIntoPlan,
   softenRegulatedClaims,
@@ -75,6 +76,12 @@ const prepaywallPreviewUi = fs.readFileSync("src/components/onboarding/prepaywal
 const staticCreativePreviewCardUi = fs.readFileSync("src/components/campaign/static-creative-preview-card.tsx", "utf8");
 const previewPageUi = fs.readFileSync("src/app/(app)/preview/page.tsx", "utf8");
 const selectAdRoute = fs.readFileSync("src/app/api/campaigns/[id]/select-ad/route.ts", "utf8");
+delete process.env.CREATIVE_CHAT_INTAKE_ENABLED;
+delete process.env.NEXT_PUBLIC_ENABLE_CREATIVE_CHAT_INTAKE;
+assert.equal(isCreativeChatIntakeEnabled(), true);
+process.env.CREATIVE_CHAT_INTAKE_ENABLED = "false";
+assert.equal(isCreativeChatIntakeEnabled(), false);
+delete process.env.CREATIVE_CHAT_INTAKE_ENABLED;
 assert.match(creativeChatIntakeUi, /Draft recovered from your last session/);
 assert.match(creativeChatIntakeUi, /Paid rendering stays blocked until the updated brief is approved/);
 assert.match(creativeChatIntakeUi, /aria-pressed/);
