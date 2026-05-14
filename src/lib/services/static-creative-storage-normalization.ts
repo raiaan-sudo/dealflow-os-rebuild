@@ -413,7 +413,11 @@ export async function fetchStaticCreativeProviderImage(
     throw new Error(`${errorPrefix} URL was invalid.`);
   }
 
-  await assertSafeProviderImageFetchUrl(parsed);
+  const appOwnedCreativeAsset = isAppOwnedCreativeAssetUrl(url);
+
+  if (!appOwnedCreativeAsset) {
+    await assertSafeProviderImageFetchUrl(parsed);
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -423,7 +427,14 @@ export async function fetchStaticCreativeProviderImage(
     let response: Response | null = null;
 
     for (let redirectCount = 0; redirectCount <= MAX_PROVIDER_REDIRECTS; redirectCount += 1) {
-      await assertSafeProviderImageFetchUrl(fetchUrl);
+      if (appOwnedCreativeAsset) {
+        if (!isAppOwnedCreativeAssetUrl(fetchUrl.toString())) {
+          throw new Error(`${errorPrefix} app-owned storage fetch redirected outside creative-assets.`);
+        }
+      } else {
+        await assertSafeProviderImageFetchUrl(fetchUrl);
+      }
+
       response = await fetch(fetchUrl, {
         signal: controller.signal,
         redirect: "manual",

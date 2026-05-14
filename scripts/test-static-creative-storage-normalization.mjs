@@ -53,6 +53,7 @@ Module._extensions[".ts"] = function loadTs(module, filename) {
 
 const require = createRequire(import.meta.url);
 const {
+  fetchStaticCreativeProviderImage,
   isAppOwnedCreativeAssetUrl,
   normalizeStaticCreativeProviderImage,
   validateStaticCreativeProviderImageUrlForStorage,
@@ -137,6 +138,40 @@ await assert.rejects(
   }),
   /host is not approved|blocked network/,
   "redirect-to-private URLs are blocked before storage",
+);
+globalThis.fetch = originalFetch;
+
+globalThis.fetch = async (url) => {
+  assert.equal(String(url), appOwnedUrl, "app-owned creative source is fetched directly");
+  return new Response(Buffer.from("not-a-real-png-but-content-type-is-guarded-by-test"), {
+    status: 200,
+    headers: {
+      "content-type": "image/png",
+    },
+  });
+};
+const appOwnedFetch = await fetchStaticCreativeProviderImage(appOwnedUrl, {
+  accept: "image/png,image/jpeg,image/webp",
+  contentTypePrefix: "image/",
+  errorPrefix: "Marketing Studio video source image",
+});
+assert.equal(appOwnedFetch.contentType, "image/png");
+assert.ok(appOwnedFetch.bytes.length > 0);
+globalThis.fetch = async () =>
+  new Response(null, {
+    status: 302,
+    headers: {
+      location: "https://evil.test/storage/v1/object/public/creative-assets/user-test/stolen.png",
+    },
+  });
+await assert.rejects(
+  () => fetchStaticCreativeProviderImage(appOwnedUrl, {
+    accept: "image/png,image/jpeg,image/webp",
+    contentTypePrefix: "image/",
+    errorPrefix: "Marketing Studio video source image",
+  }),
+  /redirected outside creative-assets/,
+  "app-owned creative source fetches cannot redirect to another host",
 );
 globalThis.fetch = originalFetch;
 
