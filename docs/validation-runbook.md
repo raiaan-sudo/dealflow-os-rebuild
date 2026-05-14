@@ -1,0 +1,118 @@
+# DealFlow Validation Runbook
+
+Use this runbook to choose the smallest validation suite that honestly proves the change. Do not report skipped commands as passing.
+
+## Runtime
+
+- Required runtime: Node 20.
+- Preferred local switch: `source /Users/raiaanreza/.nvm/nvm.sh && nvm use 20.20.2`.
+- Always record `node -v` in final reports for launch, provider, deployment, or security work.
+
+## Core Commands
+
+```bash
+node -v
+npm run operator:debt
+npm run smoke:offline
+npm run routes:security
+npm run schema:check
+npm run lint
+npm run typecheck
+npm run build
+npm audit --omit=dev --audit-level=high
+git diff --check
+git diff | rg -i "(api[_-]?key|secret|token|password|authorization:|bearer |sk_live|sk_test|hf_[a-z0-9])"
+```
+
+The secret-pattern scan passes when the `rg` command finds no matches.
+
+## Creative And Provider Commands
+
+```bash
+npm run test:creative-media-readiness
+npm run test:creative-chat-intake
+npm run test:video-generation-safety
+npm run test:marketing-studio-worker
+npm run test:higgsfield-provider-selection
+npm run test:static-creative-storage
+npm run test:static-creative-image-qa
+npm run test:static-ad-templates
+```
+
+Run these for Marketing Studio, Higgsfield, static creative, UGC video, storage, QA, Build / Preview / Launch readiness, or customer media control changes.
+
+## Billing, Meta, SMS, Security, And Cost Commands
+
+```bash
+npm run test:provider-cost-watch
+npm run test:provider-usage-idempotency
+npm run test:billing-recovery
+npm run test:subscription-lifecycle
+npm run test:internal-sms
+npm run rls:cross-tenant
+npm run rls:fixture-smoke
+```
+
+RLS tests may require configured Supabase service env names and fixture safety. If unavailable, mark them skipped with the missing env names only.
+
+## When To Run Full Suite
+
+Run the full relevant suite when:
+
+- Deploying production.
+- Claiming controlled beta or public self-serve readiness.
+- Touching auth, billing, Meta, jobs, provider, storage, launch, or campaign persistence.
+- Fixing a bug that previously caused a false PASS.
+- Changing shared types, schema assumptions, or route guards.
+
+## When To Run Focused Suite
+
+Focused validation is acceptable for docs-only changes, isolated copy changes, or narrow test-only changes. Still run:
+
+- `node -v`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build` when feasible
+- `git diff --check`
+- diff secret-pattern scan
+
+## Skipped Command Classification
+
+Use one of these labels:
+
+- `skipped - not relevant`: command covers untouched area.
+- `skipped - missing env`: list env names only.
+- `skipped - unsafe`: would create real-world side effects.
+- `skipped - unavailable tooling`: explain missing binary/package.
+- `skipped - user scope`: outside explicit request.
+
+Never write `pass` for a skipped command.
+
+## Safe Production Smoke Endpoints
+
+Use read-only GETs and intentionally invalid/unsigned POSTs only:
+
+```text
+GET /
+GET /login
+GET /privacy
+GET /terms
+GET /data-deletion
+GET /dashboard
+GET /f/raiaan-broker-toronto-on-ccbfbfce
+GET /robots.txt
+GET /sitemap.xml
+GET /opengraph-image
+invalid POST /api/lead-capture
+unsigned POST /api/stripe/webhook
+unsigned POST /api/webhooks/twilio/status
+unauthenticated /api/internal/system-jobs
+```
+
+Expected headers to verify:
+
+- Content-Security-Policy present.
+- Strict-Transport-Security present.
+- X-Frame-Options present, normally `DENY`.
+- X-Content-Type-Options `nosniff`.
+- Referrer-Policy present.

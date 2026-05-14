@@ -1,5 +1,7 @@
 # Creative Generation System
 
+For Codex proof, validation, and final-report standards, start with `AGENTS.md`, `docs/validation-runbook.md`, `docs/production-proof-checklist.md`, and the prompt templates in `docs/codex-prompts/`.
+
 ## Customer preview contract
 
 Creative selection must always show a complete visual creative. Customers should never see a mostly blank gradient, raw provider state, rejected-image language, or a missing-background message as the primary experience.

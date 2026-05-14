@@ -1,5 +1,7 @@
 # Marketing Studio Worker Runbook
 
+For future capped proof prompts, use `docs/codex-prompts/marketing-studio-cli-proof.md`. For validation and production proof standards, use `docs/validation-runbook.md` and `docs/production-proof-checklist.md`.
+
 ## Purpose
 
 The Marketing Studio worker runs Higgsfield CLI finished-ad and UGC video generation outside Vercel/serverless. Vercel can queue and display job state, but the CLI path belongs in a long-running operator or worker runtime where binaries, auth, longer timeouts, local cache, and structured logs are controllable.

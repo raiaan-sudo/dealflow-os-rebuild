@@ -1,0 +1,130 @@
+# Codex Command Index
+
+Use Node 20 for every command.
+
+```bash
+source /Users/raiaanreza/.nvm/nvm.sh && nvm use 20.20.2
+node -v
+```
+
+## Common Validation
+
+```bash
+npm run operator:debt
+npm run routes:security
+npm run smoke:offline
+npm run schema:check
+npm run lint
+npm run typecheck
+npm run build
+npm audit --omit=dev --audit-level=high
+git diff --check
+git diff | rg -i "(api[_-]?key|secret|token|password|authorization:|bearer |sk_live|sk_test|hf_[a-z0-9])"
+```
+
+## Creative And Provider
+
+```bash
+npm run test:creative-media-readiness
+npm run test:creative-chat-intake
+npm run test:video-generation-safety
+npm run test:marketing-studio-worker
+npm run test:higgsfield-provider-selection
+npm run test:static-creative-storage
+npm run test:static-creative-image-qa
+npm run test:static-ad-templates
+npm run test:provider-cost-watch
+npm run test:provider-usage-idempotency
+```
+
+## Worker Dry-Run
+
+Use env names only in reports. Do not print values.
+
+```bash
+MARKETING_STUDIO_WORKER_ENABLED=true \
+MEDIA_GENERATION_PROVIDER=higgsfield_marketing_studio \
+HIGGSFIELD_MARKETING_STUDIO_ENABLED=true \
+HIGGSFIELD_MARKETING_STUDIO_MODE=cli \
+HIGGSFIELD_CLI_ENABLED=true \
+HIGGSFIELD_CLI_PATH="<path>" \
+HIGGSFIELD_CONFIG_HOME="<config-home>" \
+HIGGSFIELD_CACHE_DIR="<cache-dir>" \
+HIGGSFIELD_UGC_VIDEO_MODEL=marketing_studio_video \
+ALLOW_HIGGSFIELD_IMAGE_GENERATION=true \
+ALLOW_HIGGSFIELD_VIDEO_GENERATION=true \
+FINISHED_AD_VISION_QA_ENABLED=true \
+npm run worker:marketing-studio -- --dry-run
+```
+
+## Capped Marketing Studio Worker Proof
+
+Only run after explicit authorization.
+
+```bash
+npm run worker:marketing-studio -- --max-jobs=1
+```
+
+Rules:
+
+- Confirm exactly one eligible scoped job first.
+- No automatic retry.
+- Stop on first outcome.
+- Record job ID, provider usage event ID, provider job/result ID, asset ID, storage path, and QA/provenance.
+
+## Safe Production Smoke
+
+Use read-only GETs and intentionally invalid/unsigned POST probes:
+
+```text
+GET https://app.agentdealflow.io/
+GET https://app.agentdealflow.io/login
+GET https://app.agentdealflow.io/privacy
+GET https://app.agentdealflow.io/terms
+GET https://app.agentdealflow.io/data-deletion
+GET https://app.agentdealflow.io/dashboard
+GET https://app.agentdealflow.io/f/raiaan-broker-toronto-on-ccbfbfce
+GET https://app.agentdealflow.io/robots.txt
+GET https://app.agentdealflow.io/sitemap.xml
+GET https://app.agentdealflow.io/opengraph-image
+invalid POST https://app.agentdealflow.io/api/lead-capture
+unsigned POST https://app.agentdealflow.io/api/stripe/webhook
+unsigned POST https://app.agentdealflow.io/api/webhooks/twilio/status
+unauthenticated GET https://app.agentdealflow.io/api/internal/system-jobs
+```
+
+## Billing, Meta, SMS, And RLS
+
+```bash
+npm run test:billing-recovery
+npm run test:subscription-lifecycle
+npm run test:internal-sms
+npm run rls:cross-tenant
+npm run rls:fixture-smoke
+```
+
+## Artifacts
+
+- Playwright safe proof output: `test-results/`
+- Vercel deployment inspect output: CLI terminal or Vercel project page.
+- Generated screenshots should be placed under a task-specific temp or artifact directory, not committed unless requested.
+
+## Env Names
+
+Mention env names only, never values. Common proof env names:
+
+- `MARKETING_STUDIO_WORKER_ENABLED`
+- `MEDIA_GENERATION_PROVIDER`
+- `MEDIA_GENERATION_FALLBACK_PROVIDER`
+- `HIGGSFIELD_MARKETING_STUDIO_ENABLED`
+- `HIGGSFIELD_MARKETING_STUDIO_MODE`
+- `HIGGSFIELD_CLI_ENABLED`
+- `HIGGSFIELD_CLI_PATH`
+- `HIGGSFIELD_CONFIG_HOME`
+- `HIGGSFIELD_CACHE_DIR`
+- `HIGGSFIELD_UGC_VIDEO_MODEL`
+- `ALLOW_HIGGSFIELD_IMAGE_GENERATION`
+- `ALLOW_HIGGSFIELD_VIDEO_GENERATION`
+- `FINISHED_AD_VISION_QA_ENABLED`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `INTERNAL_SYSTEM_JOBS_SECRET`

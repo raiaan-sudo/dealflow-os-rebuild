@@ -48,7 +48,8 @@
     "test:internal-sms": "node ./scripts/test-internal-sms-notifications.mjs",
     "test:subscription-lifecycle": "node ./scripts/test-subscription-lifecycle.mjs",
     "test:activation-telemetry": "node ./scripts/test-activation-telemetry.mjs",
-    "worker:marketing-studio": "node ./scripts/run-marketing-studio-worker.mjs"
+    "worker:marketing-studio": "node ./scripts/run-marketing-studio-worker.mjs",
+    "launch:validate": "node ./scripts/print-launch-validation-plan.mjs"
   },
   "dependencies": {
     "@higgsfield/client": "^0.2.1",
