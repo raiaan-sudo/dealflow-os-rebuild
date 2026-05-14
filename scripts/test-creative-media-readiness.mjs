@@ -366,6 +366,7 @@ const readyVideo = {
   storagePath: "user/campaign/video.mp4",
   storageContentType: "video/mp4",
   storageByteSize: 7_533_116,
+  durationSeconds: 20,
   targetDurationSeconds: 20,
   sourceStaticAssetId: "primary",
   sourceImageUrl: "https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/primary.png",
@@ -440,6 +441,7 @@ const productionMappedVideo = mapVideoCreativeAssets([
       storagePath: "user/campaign/video.mp4",
       storageContentType: "video/mp4",
       storageByteSize: 7_533_116,
+      durationSeconds: 20,
       targetDurationSeconds: 20,
       sourceStaticAssetId: "primary",
       sourceImageUrl: readyVideo.sourceImageUrl,
@@ -539,6 +541,18 @@ assert.match(getVideoReadinessMessage(tooShortUgcVideo), /too short/);
 assert.deepEqual(
   evaluateGeneratedVideoQualityGate(tooShortUgcVideo, new Date("2026-05-13T00:00:00.000Z")).reasons,
   ["video_duration_too_short"],
+);
+
+const missingDurationUgcVideo = {
+  ...readyVideo,
+  id: "missing-duration-ugc-video",
+  durationSeconds: null,
+};
+assert.equal(isLaunchReadyVideoCreative(missingDurationUgcVideo), false);
+assert.match(getVideoReadinessMessage(missingDurationUgcVideo), /missing verified duration metadata/);
+assert.deepEqual(
+  evaluateGeneratedVideoQualityGate(missingDurationUgcVideo, new Date("2026-05-13T00:00:00.000Z")).reasons,
+  ["missing_video_duration_metadata"],
 );
 
 const conceptOnlyVideo = {

@@ -293,6 +293,10 @@ function hasSupportedLaunchVideoContentType(contentType?: string | null) {
   return /^(video\/mp4|video\/webm|video\/quicktime)\b/i.test(contentType ?? "");
 }
 
+function hasLaunchQualityDuration(video: VideoCreativeReadinessInput) {
+  return typeof video.durationSeconds === "number" && Number.isFinite(video.durationSeconds) && video.durationSeconds >= 15;
+}
+
 export function evaluateGeneratedVideoQualityGate(
   video: VideoCreativeReadinessInput,
   now = new Date(),
@@ -319,7 +323,9 @@ export function evaluateGeneratedVideoQualityGate(
     reasons.push("missing_storage_size");
   }
 
-  if (typeof video.durationSeconds === "number" && video.durationSeconds < 15) {
+  if (typeof video.durationSeconds !== "number" || !Number.isFinite(video.durationSeconds)) {
+    reasons.push("missing_video_duration_metadata");
+  } else if (!hasLaunchQualityDuration(video)) {
     reasons.push("video_duration_too_short");
   }
 
@@ -392,7 +398,11 @@ export function getVideoLaunchReadinessReason(video: VideoCreativeReadinessInput
     return "The playable video is missing verified file size metadata.";
   }
 
-  if (typeof video.durationSeconds === "number" && video.durationSeconds < 15) {
+  if (typeof video.durationSeconds !== "number" || !Number.isFinite(video.durationSeconds)) {
+    return "The playable video is missing verified duration metadata; confirm it is a 15-30 second UGC ad before launch.";
+  }
+
+  if (!hasLaunchQualityDuration(video)) {
     return "The playable video is too short for launch-quality UGC; render a 15-30 second version before launch.";
   }
 
