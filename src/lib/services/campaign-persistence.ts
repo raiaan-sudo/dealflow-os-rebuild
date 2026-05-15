@@ -703,9 +703,16 @@ function getRuntimeFromPlanRow(row: CampaignPlanRow): Partial<CampaignRuntime> |
   const launch = plan?.launch && typeof plan.launch === "object" && !Array.isArray(plan.launch)
     ? (plan.launch as Record<string, unknown>)
     : null;
+  const nestedPlan = plan?.plan && typeof plan.plan === "object" && !Array.isArray(plan.plan)
+    ? (plan.plan as Record<string, unknown>)
+    : null;
   const launchRuntime =
     launch?.runtime && typeof launch.runtime === "object" && !Array.isArray(launch.runtime)
       ? launch.runtime
+      : null;
+  const nestedPlanRuntime =
+    nestedPlan?.runtime && typeof nestedPlan.runtime === "object" && !Array.isArray(nestedPlan.runtime)
+      ? nestedPlan.runtime
       : null;
   const rootRuntime =
     plan?.runtime && typeof plan.runtime === "object" && !Array.isArray(plan.runtime)
@@ -716,7 +723,7 @@ function getRuntimeFromPlanRow(row: CampaignPlanRow): Partial<CampaignRuntime> |
       ? plan.launch_runtime
       : null;
 
-  return (launchRuntime ?? rootRuntime ?? legacyRuntime) as Partial<CampaignRuntime> | null;
+  return (launchRuntime ?? nestedPlanRuntime ?? rootRuntime ?? legacyRuntime) as Partial<CampaignRuntime> | null;
 }
 
 function buildPublicSlug(record: FullCampaignRecord, requestedSlug?: string | null) {
