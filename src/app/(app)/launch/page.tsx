@@ -248,7 +248,21 @@ export default async function LaunchAliasPage({
   const metaVerificationTimedOut =
     metaPreflight === null &&
     (metaProviderState?.status.status === "connected" || metaSelectionReady || metaConnected);
-  const metaSelectionInvalid = metaSelectionReady && metaPreflight !== null && !metaPreflightReady;
+  const metaSelectionInvalid =
+    metaSelectionReady &&
+    metaPreflight !== null &&
+    !metaPreflightReady &&
+    (
+      !metaPreflight.tokenValid ||
+      !metaPreflight.accountValid ||
+      !metaPreflight.pageValid ||
+      !metaPreflight.pixelValid
+    );
+  const metaTrackingPreflightBlocked =
+    metaSelectionReady &&
+    metaPreflight !== null &&
+    !metaPreflightReady &&
+    !metaSelectionInvalid;
   const blockingReasons = [
     ...(!record?.campaign.id ? ["Save the campaign first."] : []),
     ...(!billingLaunchAllowed ? ["Activate billing before launch."] : []),
@@ -332,7 +346,9 @@ export default async function LaunchAliasPage({
       detail: metaLaunchReady
         ? `Meta checks verified ${formatLastVerified(metaPreflight?.checkedAt)}`
         : metaSelectionReady
-          ? "Saved selections need Meta verification before launch"
+          ? (metaPreflight?.errors?.length ?? 0) > 0
+            ? metaPreflight?.errors.join(" ")
+            : "Saved selections need Meta verification before launch"
           : "Save the Meta selections first",
     },
     {
@@ -383,6 +399,8 @@ export default async function LaunchAliasPage({
       ? "Meta unavailable, try again"
       : metaSelectionInvalid
         ? "Meta selection invalid"
+        : metaTrackingPreflightBlocked
+          ? "Meta preflight blocked"
         : metaConnected
           ? "Selection required before launch"
       : "Meta connection required";
@@ -400,7 +418,9 @@ export default async function LaunchAliasPage({
     ...(!metaLaunchReady
       ? [
           metaSelectionReady
-            ? "Meta selections were saved, but preflight has not passed yet. Re-save the selections or reconnect Meta if the check stays blocked."
+            ? metaSelectionInvalid
+              ? "Meta selections were saved, but Meta can no longer verify the selected ad account, Page, or pixel. Re-save the selections or reconnect Meta if the check stays blocked."
+              : "Meta selections were saved, but launch preflight has not passed yet. Add or verify the launch domain and publish the public funnel before attempting launch."
             : "Save the ad account, Facebook Page, and pixel in the Meta setup section.",
         ]
       : []),
@@ -572,6 +592,8 @@ export default async function LaunchAliasPage({
                   ? "Meta is slow right now. We retried automatically, but validation still timed out. Try again or refresh this page."
                   : metaSelectionInvalid
                     ? "The saved Meta selection is no longer valid. Re-select the ad account, Page, and pixel before launch."
+                    : metaTrackingPreflightBlocked
+                      ? "The saved Meta selections are valid, but launch preflight is blocked by tracking, domain, or destination requirements."
                     : launchRoomReady
                   ? "Preflight passed. Save the Meta selections below, then use the launch button to attempt launch."
                   : `Before launch: ${blockingReasons.join(" • ")}.`}

@@ -142,9 +142,20 @@ export function CampaignPublishPanel({
     return slugify(campaignName || "");
   }, [campaignName, slug]);
 
-  const livePath = publish?.slug ? `/f/${publish.slug}` : normalizedSlug ? `/f/${normalizedSlug}` : null;
-  const livePublished = publish?.state === "published" && publish.hasPublishedSnapshot;
-  const publishedWithoutSnapshot = publish?.state === "published" && !publish.hasPublishedSnapshot;
+  const persistedSlug = publish?.slug ? slugify(publish.slug) : null;
+  const preparedPath = normalizedSlug ? `/f/${normalizedSlug}` : null;
+  const livePath = persistedSlug ? `/f/${persistedSlug}` : null;
+  const livePublished =
+    publish?.state === "published" &&
+    publish.hasPublishedSnapshot &&
+    Boolean(persistedSlug);
+  const publishedWithoutSnapshot =
+    publish?.state === "published" &&
+    !publish.hasPublishedSnapshot;
+  const publishedWithoutPublicSlug =
+    publish?.state === "published" &&
+    publish.hasPublishedSnapshot &&
+    !persistedSlug;
   const visibleError = livePublished ? null : error;
 
   async function updatePublishState(nextState: CampaignPublishState) {
@@ -234,7 +245,9 @@ export function CampaignPublishPanel({
         </div>
         <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Slug</p>
-          <p className="mt-3 break-words text-sm font-semibold">{publish?.slug ?? (normalizedSlug || "Not set")}</p>
+          <p className="mt-3 break-words text-sm font-semibold">
+            {persistedSlug ?? (publish?.state === "published" ? "Not set" : normalizedSlug || "Not set")}
+          </p>
         </div>
         <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Staged</p>
@@ -277,9 +290,18 @@ export function CampaignPublishPanel({
                 </>
               )}
             </div>
+          ) : preparedPath && publish?.state !== "published" ? (
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <span className="text-sm font-semibold text-muted-foreground">{preparedPath}</span>
+              <Badge className="border-white/10 bg-white/[0.06] text-muted-foreground">
+                Not live yet
+              </Badge>
+            </div>
           ) : (
             <p className="mt-3 text-sm leading-7 text-muted-foreground">
-              Add or accept a slug to prepare the public URL.
+              {publishedWithoutPublicSlug
+                ? "No live public URL is available until a slug is saved and the funnel is republished."
+                : "Add or accept a slug to prepare the public URL."}
             </p>
           )}
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
@@ -318,6 +340,11 @@ export function CampaignPublishPanel({
       {publishedWithoutSnapshot ? (
         <p className="mt-4 text-sm text-amber-300">
           The funnel has a published status, but the live snapshot is not ready. Click Publish Live to rebuild the public snapshot.
+        </p>
+      ) : null}
+      {publishedWithoutPublicSlug ? (
+        <p className="mt-4 text-sm text-amber-300">
+          The funnel has a published status and snapshot, but no saved public slug. Billing must be active before this can be republished with a real live URL.
         </p>
       ) : null}
       {livePublished ? (

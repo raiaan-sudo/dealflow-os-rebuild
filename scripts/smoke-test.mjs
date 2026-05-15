@@ -504,12 +504,15 @@ function runOfflineChecks() {
   assertIncludes("src/lib/integrations/meta/service.ts", "ready = accountValid && pageValid && pixelValid", "Meta preflight hard gate", "launch preflight is blocked by account, Page, or pixel validity, not missing tracking-domain setup");
   assertExcludes("src/lib/integrations/meta/service.ts", "Configure a launch domain before Meta launch.", "Meta launch domain not hard-blocking", "missing tracking domain no longer blocks the core launch preflight");
   assertIncludes(launchPage, "Reconnect Meta", "Launch Meta error reconnect CTA", "Meta OAuth failure banners provide a direct reconnect action");
+  assertIncludes(launchPage, "metaTrackingPreflightBlocked", "Launch Meta tracking blocker copy", "launch distinguishes invalid Meta selections from domain or destination preflight blockers");
+  assertIncludes(launchPage, "Add or verify the launch domain and publish the public funnel", "Launch Meta domain blocker action", "launch tells owners to fix tracking/domain/funnel state instead of reselecting valid Meta assets");
   assertIncludes(launchPage, "Clear message", "Launch Meta error clear CTA", "stale Meta OAuth failure URLs can be cleared without leaving launch");
   assertIncludes(launchPage, "metaReconnectHref", "Launch Meta reconnect target", "Meta reconnect preserves the campaign-scoped launch return path from the error banner");
   assertIncludes(launchPage, "Why launch is blocked", "Launch blocker explanation", "launch page explains exactly why the launch button is disabled");
   assertIncludes(launchPage, "CampaignPublishPanel", "Launch funnel publish action", "launch page exposes the public funnel publish action when publishing is blocking launch");
   assertIncludes(campaignPublishPanel, "router.refresh()", "Publish panel launch gate refresh", "successful publish actions refresh server-rendered launch gates");
-  assertIncludes(campaignPublishPanel, "livePublished", "Publish panel live snapshot truth", "the publish panel only marks a funnel public when a published snapshot exists");
+  assertIncludes(campaignPublishPanel, "Boolean(persistedSlug)", "Publish panel live slug truth", "the publish panel only marks a funnel public when a persisted slug and published snapshot exist");
+  assertIncludes(campaignPublishPanel, "publishedWithoutPublicSlug", "Publish panel missing slug guard", "published campaigns without public_slug show a repair state instead of a fake live URL");
   assertIncludes(campaignPublishPanel, "visibleError", "Publish panel stale error guard", "stale publish errors do not remain visible after a successful live publish");
   assertIncludes(campaignPublishPanel, "timeZone: \"UTC\"", "Publish panel hydration-stable timestamps", "client publish timestamps render the same text during SSR and browser hydration");
   assertIncludes(campaignPublishPanel, "rel=\"noreferrer\"", "Publish panel external link isolation", "published funnel links opened in a new tab do not retain opener access");
