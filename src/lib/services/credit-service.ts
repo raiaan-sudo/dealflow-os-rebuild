@@ -1,9 +1,12 @@
 import { ApiError } from "@/lib/api/route";
 import {
+  getQaGenerationCreditOverrideCampaignIds,
+  getQaGenerationCreditOverrideEmails,
+  getQaGenerationCreditOverrideMaxCents,
+  getQaGenerationCreditOverrideOrgIds,
+  getQaGenerationCreditOverrideUserIds,
   isBillingAdminOverrideEmail,
   isBillingAdminOverrideEnabled,
-  isQaGenerationCreditOverrideCampaign,
-  isQaGenerationCreditOverrideEmail,
   isQaGenerationCreditOverrideEnabled,
 } from "@/lib/env";
 import { logOperationalEvent } from "@/lib/logging";
@@ -25,6 +28,11 @@ const DEFAULT_GENERATION_CREDIT_COSTS_CENTS: Record<GenerationCreditBucket, numb
   video_generation: 500,
   openai_image_generation: 100,
   heygen_video_generation: 500,
+};
+
+export type QaGenerationCreditOverrideMatch = {
+  matchedBy: "email" | "user_id" | "organization_id" | "campaign_id";
+  maxCents: number | null;
 };
 
 function normalizeGenerationCreditBucket(bucket: GenerationCreditBucket) {
@@ -70,6 +78,69 @@ function getCreditReason(bucket: GenerationCreditBucket) {
   return normalizeGenerationCreditBucket(bucket);
 }
 
+function normalizeList(values?: string[] | null, options: { lowercase?: boolean } = {}) {
+  return new Set(
+    (values ?? [])
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .map((value) => (options.lowercase ? value.toLowerCase() : value)),
+  );
+}
+
+export function evaluateQaGenerationCreditOverride(params: {
+  enabled: boolean;
+  amountCents: number;
+  email?: string | null;
+  userId?: string | null;
+  organizationId?: string | null;
+  campaignId?: string | null;
+  emails?: string[] | null;
+  userIds?: string[] | null;
+  organizationIds?: string[] | null;
+  campaignIds?: string[] | null;
+  maxCents?: number | null;
+}): QaGenerationCreditOverrideMatch | null {
+  if (!params.enabled) {
+    return null;
+  }
+
+  const maxCents =
+    typeof params.maxCents === "number" && Number.isFinite(params.maxCents) && params.maxCents > 0
+      ? Math.floor(params.maxCents)
+      : null;
+
+  if (maxCents !== null && params.amountCents > maxCents) {
+    return null;
+  }
+
+  const emails = normalizeList(params.emails, { lowercase: true });
+  const userIds = normalizeList(params.userIds);
+  const organizationIds = normalizeList(params.organizationIds);
+  const campaignIds = normalizeList(params.campaignIds);
+  const email = params.email?.trim().toLowerCase() ?? "";
+  const userId = params.userId?.trim() ?? "";
+  const organizationId = params.organizationId?.trim() ?? "";
+  const campaignId = params.campaignId?.trim() ?? "";
+
+  if (email && emails.has(email)) {
+    return { matchedBy: "email", maxCents };
+  }
+
+  if (userId && userIds.has(userId)) {
+    return { matchedBy: "user_id", maxCents };
+  }
+
+  if (organizationId && organizationIds.has(organizationId)) {
+    return { matchedBy: "organization_id", maxCents };
+  }
+
+  if (campaignId && campaignIds.has(campaignId)) {
+    return { matchedBy: "campaign_id", maxCents };
+  }
+
+  return null;
+}
+
 async function getBillingOverrideEmailForUser(userId: string) {
   if (!isBillingAdminOverrideEnabled()) {
     return null;
@@ -94,12 +165,11 @@ async function getBillingOverrideEmailForUser(userId: string) {
 
 async function getQaGenerationCreditOverrideForUser(params: {
   userId: string;
+  organizationId?: string | null;
   campaignId?: string | null;
+  amountCents: number;
 }) {
-  if (
-    !isQaGenerationCreditOverrideEnabled() ||
-    !isQaGenerationCreditOverrideCampaign(params.campaignId)
-  ) {
+  if (!isQaGenerationCreditOverrideEnabled()) {
     return null;
   }
 
@@ -117,7 +187,19 @@ async function getQaGenerationCreditOverrideForUser(params: {
   const row = data as { email?: unknown } | null;
   const email = typeof row?.email === "string" ? row.email : null;
 
-  return isQaGenerationCreditOverrideEmail(email) ? email : null;
+  return evaluateQaGenerationCreditOverride({
+    enabled: true,
+    amountCents: params.amountCents,
+    email,
+    userId: params.userId,
+    organizationId: params.organizationId ?? null,
+    campaignId: params.campaignId ?? null,
+    emails: getQaGenerationCreditOverrideEmails(),
+    userIds: getQaGenerationCreditOverrideUserIds(),
+    organizationIds: getQaGenerationCreditOverrideOrgIds(),
+    campaignIds: getQaGenerationCreditOverrideCampaignIds(),
+    maxCents: getQaGenerationCreditOverrideMaxCents(),
+  });
 }
 
 export async function getCreditSummaryForCurrentUser() {
@@ -147,9 +229,11 @@ export async function getCreditSummaryForCurrentUser() {
   const balance = typeof creditRow?.balance === "number" ? creditRow.balance : 0;
   const balanceDueCents = Math.max(0, -balance);
   const billingOverrideEmail = await getBillingOverrideEmailForUser(context.user.id);
-  const qaGenerationCreditOverrideEmail = await getQaGenerationCreditOverrideForUser({
+  const qaGenerationCreditOverride = await getQaGenerationCreditOverrideForUser({
     userId: context.user.id,
+    organizationId: context.organization.id,
     campaignId: null,
+    amountCents: getGenerationCreditCostCents("video_generation"),
   });
 
   return {
@@ -160,7 +244,7 @@ export async function getCreditSummaryForCurrentUser() {
     balanceDueCents,
     formattedBalanceDue: formatCreditCurrency(balanceDueCents),
     creditOverride: Boolean(billingOverrideEmail),
-    qaGenerationCreditOverride: Boolean(qaGenerationCreditOverrideEmail),
+    qaGenerationCreditOverride: Boolean(qaGenerationCreditOverride),
     minimumTopUpCents: CREDIT_TOP_UP_MINIMUM_CENTS,
     formattedMinimumTopUp: formatCreditCurrency(CREDIT_TOP_UP_MINIMUM_CENTS),
     imageGenerationCostCents: getGenerationCreditCostCents("image_generation"),
@@ -207,18 +291,22 @@ export async function consumeCreditsForGeneration(params: {
     };
   }
 
-  const qaGenerationCreditOverrideEmail = await getQaGenerationCreditOverrideForUser({
+  const qaGenerationCreditOverride = await getQaGenerationCreditOverrideForUser({
     userId: params.userId,
+    organizationId: params.organizationId ?? null,
     campaignId: params.campaignId ?? null,
+    amountCents: amount,
   });
-  if (qaGenerationCreditOverrideEmail) {
+  if (qaGenerationCreditOverride) {
     logOperationalEvent("qa_generation_credit_override_granted", {
       userId: params.userId,
       organizationId: params.organizationId ?? null,
       campaignId: params.campaignId ?? null,
-      email: qaGenerationCreditOverrideEmail,
       bucket: normalizedBucket,
       referenceId: params.referenceId,
+      amountCents: amount,
+      matchedBy: qaGenerationCreditOverride.matchedBy,
+      maxCents: qaGenerationCreditOverride.maxCents,
     });
 
     return {
@@ -227,6 +315,7 @@ export async function consumeCreditsForGeneration(params: {
       ledgerId: null as string | null,
       reusedExisting: false,
       bypassedByQaGenerationCreditOverride: true,
+      creditOverrideMatchedBy: qaGenerationCreditOverride.matchedBy,
     };
   }
 

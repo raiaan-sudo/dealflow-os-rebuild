@@ -50,8 +50,11 @@ Do not paste secret values into logs or tickets. Configure values through the ho
 - `AI_BASE_URL` or `OPENAI_BASE_URL`
 - `FINISHED_AD_VISION_QA_MODEL` or `AI_VISION_MODEL`
 - Optional scoped QA credit proof only: `ALLOW_QA_GENERATION_CREDIT_OVERRIDE`,
-  `QA_GENERATION_CREDIT_OVERRIDE_EMAILS`, and
-  `QA_GENERATION_CREDIT_OVERRIDE_CAMPAIGN_IDS`
+  `QA_GENERATION_CREDIT_OVERRIDE_EMAILS`,
+  `QA_GENERATION_CREDIT_OVERRIDE_USER_IDS`,
+  `QA_GENERATION_CREDIT_OVERRIDE_ORG_IDS`,
+  `QA_GENERATION_CREDIT_OVERRIDE_CAMPAIGN_IDS`, and
+  `QA_GENERATION_CREDIT_OVERRIDE_MAX_CENTS`
 
 ## Local commands
 
@@ -124,9 +127,14 @@ Before the first capped live proof:
 6. Owner approves one capped QA campaign generation count.
 
 If the scoped QA campaign has exhausted its generation-credit overdraft, use
-the QA credit override only for the proof user and proof campaign. The override
-must stay disabled by default, must list the exact QA/operator email, must list
-the exact campaign id, and emits `qa_generation_credit_override_granted` for the
-operator audit trail. Do not use this override for normal customer generation.
+the QA credit override only for the proof user, organization, or campaign. This
+override bypasses only DealFlow's internal generation-credit ledger; it does not
+prove that external Higgsfield CLI/API credits exist, and it does not disable
+provider usage events, spend counters, or reservation release/consume behavior.
+The override must stay disabled by default, must use an explicit allowlist, may
+set `QA_GENERATION_CREDIT_OVERRIDE_MAX_CENTS` as a per-reservation ceiling, and
+emits `qa_generation_credit_override_granted` with the matched allowlist type for
+the operator audit trail. Do not use this override for normal customer
+generation.
 
 Do not use this worker for broad campaign retries until the capped proof has produced an app-owned, vision-QA-accepted finished ad and operator debt remains clean.

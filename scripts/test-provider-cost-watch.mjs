@@ -46,12 +46,43 @@ assert.ok(
   "QA generation credit override grants are audit logged",
 );
 assert.ok(
-  creditService.includes("isQaGenerationCreditOverrideCampaign(params.campaignId)"),
-  "QA generation credit override requires a scoped campaign id allowlist",
+  creditService.includes("evaluateQaGenerationCreditOverride"),
+  "QA generation credit override matching must stay isolated in a testable evaluator",
 );
 assert.ok(
-  creditService.includes("isQaGenerationCreditOverrideEmail(email)"),
-  "QA generation credit override requires an explicit email allowlist",
+  creditService.includes('matchedBy: "email"'),
+  "QA generation credit override supports an explicit email allowlist",
+);
+assert.ok(
+  creditService.includes('matchedBy: "user_id"'),
+  "QA generation credit override supports an explicit user id allowlist",
+);
+assert.ok(
+  creditService.includes('matchedBy: "organization_id"'),
+  "QA generation credit override supports an explicit organization id allowlist",
+);
+assert.ok(
+  creditService.includes('matchedBy: "campaign_id"'),
+  "QA generation credit override supports an explicit campaign id allowlist",
+);
+assert.ok(
+  creditService.includes("params.amountCents > maxCents"),
+  "QA generation credit override respects a configured per-reservation maximum",
+);
+assert.doesNotMatch(
+  creditService,
+  /qa_generation_credit_override_granted[\s\S]{0,320}email:/,
+  "QA generation credit override audit metadata must not log allowlist email values",
+);
+assert.match(
+  creditService,
+  /if \(nextBalance < -overdraftLimitCents\)[\s\S]{0,220}"credits_insufficient"/,
+  "normal non-allowlisted generation still blocks on the standard overdraft limit",
+);
+assert.match(
+  creditService,
+  /getQaGenerationCreditOverrideForUser\({[\s\S]*amountCents: amount,[\s\S]*}\)/,
+  "QA generation credit override evaluation uses the actual requested reservation amount",
 );
 
 assert.ok(
@@ -90,6 +121,18 @@ assert.ok(
 assert.ok(
   envExample.includes("ALLOW_QA_GENERATION_CREDIT_OVERRIDE=false"),
   "QA generation credit override is documented as disabled by default",
+);
+assert.ok(
+  envExample.includes("QA_GENERATION_CREDIT_OVERRIDE_USER_IDS="),
+  "QA generation credit override user id allowlist is documented",
+);
+assert.ok(
+  envExample.includes("QA_GENERATION_CREDIT_OVERRIDE_ORG_IDS="),
+  "QA generation credit override organization id allowlist is documented",
+);
+assert.ok(
+  envExample.includes("QA_GENERATION_CREDIT_OVERRIDE_MAX_CENTS="),
+  "QA generation credit override max cents guard is documented",
 );
 
 console.log("PASS provider cost and credit watch assertions");

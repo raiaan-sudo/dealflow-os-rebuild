@@ -265,11 +265,31 @@ export function getQaGenerationCreditOverrideEmails() {
     .filter(Boolean);
 }
 
+export function getQaGenerationCreditOverrideUserIds() {
+  return (process.env.QA_GENERATION_CREDIT_OVERRIDE_USER_IDS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+export function getQaGenerationCreditOverrideOrgIds() {
+  return (process.env.QA_GENERATION_CREDIT_OVERRIDE_ORG_IDS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 export function getQaGenerationCreditOverrideCampaignIds() {
   return (process.env.QA_GENERATION_CREDIT_OVERRIDE_CAMPAIGN_IDS ?? "")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
+}
+
+export function getQaGenerationCreditOverrideMaxCents() {
+  const parsed = Number.parseInt(process.env.QA_GENERATION_CREDIT_OVERRIDE_MAX_CENTS ?? "", 10);
+
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 export function isQaGenerationCreditOverrideEmail(email?: string | null) {
@@ -278,6 +298,22 @@ export function isQaGenerationCreditOverrideEmail(email?: string | null) {
   }
 
   return getQaGenerationCreditOverrideEmails().includes(email.toLowerCase());
+}
+
+export function isQaGenerationCreditOverrideUser(userId?: string | null) {
+  if (!userId) {
+    return false;
+  }
+
+  return getQaGenerationCreditOverrideUserIds().includes(userId);
+}
+
+export function isQaGenerationCreditOverrideOrg(organizationId?: string | null) {
+  if (!organizationId) {
+    return false;
+  }
+
+  return getQaGenerationCreditOverrideOrgIds().includes(organizationId);
 }
 
 export function isQaGenerationCreditOverrideCampaign(campaignId?: string | null) {
