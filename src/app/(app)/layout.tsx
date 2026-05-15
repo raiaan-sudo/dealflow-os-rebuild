@@ -4,7 +4,7 @@ import { Settings } from "lucide-react";
 import { AppSidebar } from "@/components/layout/sidebar";
 import { GuidedFlowBanner } from "@/components/layout/guided-flow-banner";
 import { TopBar } from "@/components/layout/top-bar";
-import { FeedbackWidget } from "@/components/layout/feedback-widget";
+import { SupportWidget } from "@/components/layout/support-widget";
 import { LeadCaptureTrigger } from "@/components/layout/lead-capture-trigger";
 import { SignOutButton } from "@/components/layout/sign-out-button";
 import { isInternalAdminEmail } from "@/lib/env";
@@ -127,7 +127,7 @@ export default async function AppLayout({
         <main className="min-h-screen px-5 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
           {children}
         </main>
-        <FeedbackWidget />
+        <SupportWidget activeCampaignId={activeCampaignId} />
       </div>
     );
   }
@@ -156,7 +156,7 @@ export default async function AppLayout({
           </div>
         </main>
         <LeadCaptureTrigger defaultName="" defaultEmail="" />
-        <FeedbackWidget />
+        <SupportWidget activeCampaignId={activeCampaignId} />
       </div>
     </div>
   );

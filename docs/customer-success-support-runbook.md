@@ -2,6 +2,47 @@
 
 This is the minimum viable operating layer for launch. It prevents early self-serve customers from disappearing into support chaos without building a full internal business OS.
 
+## Client-Facing Support V1
+
+Authenticated customers now have one native `Support` button in the DealFlow app shell. It is not rendered on public funnels or unauthenticated marketing pages. The button opens a modal with a category dropdown, required message field, detected campaign context when available, loading/error/success states, and a returned Freshdesk ticket ID when ticket creation succeeds.
+
+Support V1 creates Freshdesk tickets server-side only:
+
+- Route: `POST /api/support/ticket`
+- Freshdesk endpoint: `POST https://<FRESHDESK_DOMAIN>/api/v2/tickets`
+- Auth: Basic auth with `FRESHDESK_API_KEY` as username and `X` as password
+- Required env names: `FRESHDESK_DOMAIN`, `FRESHDESK_API_KEY`
+- Optional env names: `FRESHDESK_PRODUCT_ID`, `FRESHDESK_GROUP_ID`
+
+The Freshdesk key must never appear in browser code, browser responses, logs, support ticket descriptions, screenshots, docs, or final reports. If Freshdesk env is missing or Freshdesk returns an unsafe/provider failure, customers see: `Support is temporarily unavailable. Please try again shortly.`
+
+Customer-facing categories:
+
+- `contact_support`: Contact support
+- `report_bug`: Report a bug
+- `billing_help`: Billing help
+- `campaign_not_working`: Campaign not working
+- `meta_connection_issue`: Meta/Facebook connection issue
+- `creative_generation_issue`: Creative generation issue
+- `ai_ugc_video_issue`: AI UGC video issue
+- `launch_issue`: Launch issue
+- `lead_delivery_issue`: Lead delivery issue
+- `login_account_issue`: Login/account issue
+- `other`: Other
+
+Ticket context includes only safe fields: category, submitted notes, user email/user ID, organization ID/name, authorized campaign ID/name/slug/status, plan tier, billing state, launch override metadata, current URL, route, browser user agent, client `data-dpl-id`, server deploy/commit identifiers when available, and timestamps.
+
+Ticket context must never include cookies, tokens, auth headers, API keys, signed media URLs, provider URLs, raw image/video URLs, Stripe payment details, browser storage, sensitive logs, or unrelated tenant data. `src/lib/support/support-ticket.ts` redacts credential-like strings, signed URLs, provider/media URLs, and long token-like values before payload creation.
+
+Safe QA procedure:
+
+1. Run `npm run test:support-freshdesk`.
+2. Run route/security and build validation.
+3. Verify the Support button appears only after authentication.
+4. Open the modal and confirm categories, required message validation, and campaign context.
+5. Confirm browser JS/HTML/network responses do not contain `FRESHDESK_API_KEY` or secret values.
+6. Create exactly one QA ticket only when Freshdesk production env is configured and the owner explicitly approves the QA ticket. Mark the subject/message as QA.
+
 ## Support Categories
 
 Use these categories everywhere support feedback is triaged:

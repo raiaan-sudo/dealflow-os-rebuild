@@ -50,6 +50,7 @@
     "test:subscription-lifecycle": "node ./scripts/test-subscription-lifecycle.mjs",
     "test:activation-telemetry": "node ./scripts/test-activation-telemetry.mjs",
     "test:launch-budget-tracking-safety": "node ./scripts/test-launch-budget-tracking-safety.mjs",
+    "test:support-freshdesk": "node ./scripts/test-support-freshdesk.mjs",
     "meta:tracking:sync-readiness": "node ./scripts/sync-meta-tracking-readiness.mjs",
     "worker:marketing-studio": "node ./scripts/run-marketing-studio-worker.mjs",
     "launch:validate": "node ./scripts/print-launch-validation-plan.mjs"
