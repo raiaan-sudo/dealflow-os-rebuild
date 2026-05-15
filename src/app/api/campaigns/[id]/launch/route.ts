@@ -9,7 +9,7 @@ import {
 } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { POST as launchCampaignCreatePost } from "@/app/api/campaigns/create/route";
-import { assertMetaLaunchBillingAccess } from "@/lib/services/billing-service";
+import { assertCampaignCanLaunch } from "@/lib/services/campaign-entitlements";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
@@ -179,8 +179,8 @@ export async function POST(
 ) {
   try {
     assertSameOriginRequest(request);
-    await assertMetaLaunchBillingAccess();
     const { id } = await parseRouteParams(context.params, paramsSchema);
+    await assertCampaignCanLaunch(id);
     const record = await getCampaignById(id);
 
     if (!record) {

@@ -23,7 +23,7 @@ import {
   validateMetaLaunchSelections,
   type MetaWorkspaceCredentials,
 } from "@/lib/integrations/meta/service";
-import { assertMetaLaunchBillingAccessForOrganization } from "@/lib/services/billing-service";
+import { assertCampaignCanLaunch } from "@/lib/services/campaign-entitlements";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import {
   getStaticCreativeReadiness,
@@ -320,33 +320,6 @@ async function persistRecoveredPublicSlug(
   if (error) {
     throw error;
   }
-}
-
-async function loadCampaignOwnerId(campaignId: string) {
-  const supabase = createAdminClient();
-
-  if (!supabase) {
-    throw new Error("Supabase service role is not configured.");
-  }
-
-  const { data, error } = await supabase
-    .from("campaign_plans")
-    .select("owner_id")
-    .eq("id", campaignId)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  const row = data as { owner_id?: string | null } | null;
-  const ownerId = typeof row?.owner_id === "string" ? row.owner_id : null;
-
-  if (!ownerId) {
-    throw new ApiError(404, "Campaign plan was not found.", "campaign_plan_not_found");
-  }
-
-  return ownerId;
 }
 
 function getPersistedLaunchState(plan: Record<string, unknown>): PersistedLaunchState | null {
@@ -829,8 +802,7 @@ async function launchCampaignToMeta(
     }
 
     ownershipVerified = true;
-    const campaignOwnerId = await loadCampaignOwnerId(campaignId);
-    await assertMetaLaunchBillingAccessForOrganization(campaignOwnerId);
+    await assertCampaignCanLaunch(campaignId);
     assertMetaLiveLaunchEnabled();
     const credentials: MetaWorkspaceCredentials = await getMetaWorkspaceCredentials();
     const storedPayload = await loadSavedCampaignPayload(campaignId);

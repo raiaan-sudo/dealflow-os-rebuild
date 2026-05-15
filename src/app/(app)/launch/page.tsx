@@ -21,7 +21,7 @@ import {
   readCampaignPlanDocument,
 } from "@/lib/services/campaign-plan-document";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
-import { getBillingSummary } from "@/lib/services/billing-service";
+import { getBillingSummary, getBillingSummaryForCampaign } from "@/lib/services/billing-service";
 import { getMetaQueryUiCopy } from "@/lib/integrations/meta/error-mapper";
 import {
   getStaticCreativeReadiness,
@@ -158,7 +158,7 @@ export default async function LaunchAliasPage({
     typeof params.meta_request_id === "string" && params.meta_request_id.length > 0
       ? params.meta_request_id
       : null;
-  const [record, metaConnection, metaProviderState, metaPreflight, billing] = await Promise.all([
+  const [record, metaConnection, metaProviderState, metaPreflight] = await Promise.all([
     withTimeout(
       resolveActiveCampaignRecord(requestedCampaignId)
         .then((resolved) => resolved?.record ?? null)
@@ -181,17 +181,19 @@ export default async function LaunchAliasPage({
       null,
       5_000,
     ),
-    withTimeout(
-      getBillingSummary().catch(() => null),
-      null,
-      2_500,
-    ),
   ]);
   const plan = record ? canonicalCampaignToPlan(record) : null;
   const resolvedCampaignId = record?.campaign.id ?? requestedCampaignId;
   const launchReturnTo = resolvedCampaignId
     ? `/launch?campaignId=${encodeURIComponent(resolvedCampaignId)}`
     : "/launch";
+  const billing = await withTimeout(
+    resolvedCampaignId
+      ? getBillingSummaryForCampaign(resolvedCampaignId).catch(() => null)
+      : getBillingSummary().catch(() => null),
+    null,
+    2_500,
+  );
   const metaReconnectHref = `/api/integrations/meta/connect?returnTo=${encodeURIComponent(launchReturnTo)}`;
   const cleanLaunchHref = launchReturnTo;
   const launchMediaSelection = await loadPersistedLaunchMediaSelection(resolvedCampaignId);
@@ -243,7 +245,13 @@ export default async function LaunchAliasPage({
   const metaLaunchReady = metaSelectionReady && metaPreflightReady;
   const billingLaunchAllowed = billing?.launchAllowed ?? false;
   const billingOverride = billing?.launchOverride ?? false;
+  const billingQaOverride = billing?.launchOverrideSource === "qa_billing_acceptance";
   const billingBlockCopy = getBillingLaunchBlockCopy(billing);
+  const billingReadyDetail = billingQaOverride
+    ? "Owner/test billing acceptance override is active. No Stripe subscription is being claimed for this proof."
+    : billingOverride
+      ? "Internal billing override is active. No Stripe subscription is being claimed for this proof."
+      : "Launch access active";
   const providerLaunchEnabled = process.env.ALLOW_META_LIVE_LAUNCH === "true";
   const metaVerificationTimedOut =
     metaPreflight === null &&
@@ -326,7 +334,7 @@ export default async function LaunchAliasPage({
     {
       label: "Billing",
       ready: billingLaunchAllowed,
-      detail: billingLaunchAllowed ? "Launch access active" : billingBlockCopy,
+      detail: billingLaunchAllowed ? billingReadyDetail : billingBlockCopy,
     },
     {
       label: "Meta connection",
@@ -531,7 +539,9 @@ export default async function LaunchAliasPage({
       ) : null}
       {billingOverride ? (
         <div className="rounded-[22px] border border-sky-400/15 bg-sky-400/10 px-5 py-4 text-sm font-medium text-sky-100">
-          Launch access is active for this workspace.
+          {billingQaOverride
+            ? "Owner/test billing acceptance is active for this campaign. Stripe subscription status is unchanged and no live charge is being claimed."
+            : "Launch access is active for this workspace through an internal billing override."}
         </div>
       ) : null}
       {!launchRoomReady && launchBlockerActions.length > 0 ? (

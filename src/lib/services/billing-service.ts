@@ -23,7 +23,12 @@ import {
   CREDIT_TOP_UP_MINIMUM_CENTS,
   grantUserCredits,
 } from "@/lib/services/credit-service";
-import { evaluateCampaignEntitlements, type BillingLifecycleState } from "@/lib/services/campaign-entitlements";
+import {
+  evaluateCampaignEntitlements,
+  getQaBillingAcceptanceOverrideMatch,
+  type BillingLaunchOverrideSource,
+  type BillingLifecycleState,
+} from "@/lib/services/campaign-entitlements";
 import { queueSubscriptionSuspensionJobsForOrganization } from "@/lib/services/subscription-suspension-service";
 import type { Database, Json } from "@/lib/supabase/types";
 
@@ -48,6 +53,8 @@ export type BillingSummary = {
   cancelAtPeriodEnd: boolean;
   launchAllowed: boolean;
   launchOverride: boolean;
+  launchOverrideSource: BillingLaunchOverrideSource;
+  launchOverrideMatchedBy: string[];
   canKeepFunnelLive: boolean;
   canCaptureLeads: boolean;
   canSendLeadAlerts: boolean;
@@ -148,6 +155,26 @@ function logBillingAdminOverrideGrant(params: {
     email: params.email,
     planTier: params.planTier,
     subscriptionStatus: params.subscriptionStatus,
+  });
+}
+
+function logQaBillingAcceptanceOverrideGrant(params: {
+  source: string;
+  organizationId: string;
+  userId: string | null;
+  campaignId: string | null;
+  planTier: BillingPlanTier;
+  subscriptionStatus: string;
+  matchedBy: string[];
+}) {
+  logOperationalEvent("qa_billing_acceptance_override_launch_access_granted", {
+    source: params.source,
+    organizationId: params.organizationId,
+    userId: params.userId,
+    campaignId: params.campaignId,
+    planTier: params.planTier,
+    subscriptionStatus: params.subscriptionStatus,
+    matchedBy: params.matchedBy,
   });
 }
 
@@ -367,6 +394,8 @@ function mapBillingRow(row: BillingRow | null, fallbackPlanTier: string): Billin
     cancelAtPeriodEnd: row?.cancel_at_period_end ?? false,
     launchAllowed: entitlements.canLaunch,
     launchOverride: false,
+    launchOverrideSource: null,
+    launchOverrideMatchedBy: [],
     canKeepFunnelLive: entitlements.canKeepFunnelLive,
     canCaptureLeads: entitlements.canCaptureLeads,
     canSendLeadAlerts: entitlements.canSendLeadAlerts,
@@ -431,6 +460,8 @@ export async function getBillingSummary() {
     ...summary,
     launchAllowed: summary.launchAllowed || launchOverride,
     launchOverride,
+    launchOverrideSource: launchOverride ? "billing_admin_email" : null,
+    launchOverrideMatchedBy: launchOverride ? ["email"] : [],
     canKeepFunnelLive: summary.canKeepFunnelLive || launchOverride,
     canCaptureLeads: summary.canCaptureLeads || launchOverride,
     canSendLeadAlerts: summary.canSendLeadAlerts || launchOverride,
@@ -459,6 +490,112 @@ export async function getBillingSummaryForOrganization(organizationId: string) {
   }
 
   return mapBillingRow((data as BillingRow | null) ?? null, "starter");
+}
+
+export async function getBillingSummaryForCampaign(campaignId: string) {
+  const [context, admin] = await Promise.all([getAppContext().catch(() => null), Promise.resolve(createAdminClient())]);
+
+  if (!admin) {
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+  }
+
+  const { data: campaign, error: campaignError } = await admin
+    .from("campaign_plans")
+    .select("id,organization_id,user_id")
+    .eq("id", campaignId)
+    .maybeSingle();
+
+  if (campaignError) {
+    throw new ApiError(500, campaignError.message, "campaign_billing_lookup_failed");
+  }
+
+  const campaignRow = campaign as {
+    id?: string | null;
+    organization_id?: string | null;
+    user_id?: string | null;
+  } | null;
+
+  if (!campaignRow?.organization_id) {
+    throw new ApiError(404, "Campaign was not found.", "campaign_not_found");
+  }
+
+  if (context && context.organization.id !== campaignRow.organization_id) {
+    throw new ApiError(403, "Campaign billing is not available for this workspace.", "campaign_billing_forbidden");
+  }
+
+  const { data: billingRow, error: billingError } = await admin
+    .from("billing_subscriptions")
+    .select("*")
+    .eq("organization_id", campaignRow.organization_id)
+    .maybeSingle();
+
+  if (billingError) {
+    throw new ApiError(500, billingError.message, "billing_subscription_fetch_failed");
+  }
+
+  const summary = mapBillingRow((billingRow as BillingRow | null) ?? null, "starter");
+  const email =
+    context && context.organization.id === campaignRow.organization_id
+      ? context.user.email ?? context.profile?.email ?? null
+      : null;
+  const adminOverrideEmail = getBillingAdminOverrideEmail(context);
+  const adminOverride =
+    Boolean(adminOverrideEmail) &&
+    context?.organization.id === campaignRow.organization_id;
+  const qaOverride = getQaBillingAcceptanceOverrideMatch({
+    email,
+    userId: campaignRow.user_id,
+    organizationId: campaignRow.organization_id,
+    campaignId: campaignRow.id,
+    planTier: summary.planTier,
+  });
+  const launchOverride = adminOverride || qaOverride.matched;
+  const launchOverrideSource: BillingLaunchOverrideSource = adminOverride
+    ? "billing_admin_email"
+    : qaOverride.matched
+      ? "qa_billing_acceptance"
+      : null;
+  const launchOverrideMatchedBy = adminOverride
+    ? ["email"]
+    : qaOverride.matchedBy;
+
+  if (launchOverride && !summary.launchAllowed) {
+    if (launchOverrideSource === "billing_admin_email") {
+      logBillingAdminOverrideGrant({
+        source: "campaign_billing_summary",
+        organizationId: campaignRow.organization_id,
+        userId: context?.user.id ?? "unknown",
+        email: adminOverrideEmail,
+        planTier: summary.planTier,
+        subscriptionStatus: summary.subscriptionStatus,
+      });
+    } else if (launchOverrideSource === "qa_billing_acceptance") {
+      logQaBillingAcceptanceOverrideGrant({
+        source: "campaign_billing_summary",
+        organizationId: campaignRow.organization_id,
+        userId: campaignRow.user_id ?? null,
+        campaignId: campaignRow.id ?? null,
+        planTier: summary.planTier,
+        subscriptionStatus: summary.subscriptionStatus,
+        matchedBy: launchOverrideMatchedBy,
+      });
+    }
+  }
+
+  return {
+    ...summary,
+    launchAllowed: summary.launchAllowed || launchOverride,
+    launchOverride,
+    launchOverrideSource,
+    launchOverrideMatchedBy,
+    canKeepFunnelLive: summary.canKeepFunnelLive || launchOverride,
+    canCaptureLeads: summary.canCaptureLeads || launchOverride,
+    canSendLeadAlerts: summary.canSendLeadAlerts || launchOverride,
+    canRunOptimization: summary.canRunOptimization || launchOverride,
+    canRunAutonomy: summary.canRunAutonomy || launchOverride,
+    requiresSuspension: launchOverride ? false : summary.requiresSuspension,
+    suspensionReason: launchOverride ? null : summary.suspensionReason,
+  };
 }
 
 export async function assertBillingFeatureAccess(feature: BillingFeature) {

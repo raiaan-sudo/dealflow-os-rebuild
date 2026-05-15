@@ -5,8 +5,14 @@ import {
   type BillingPlanTier,
 } from "@/lib/billing/plans";
 import {
+  getQaBillingAcceptanceOverridePlanTiers,
   isBillingAdminOverrideEmail,
   isBillingAdminOverrideEnabled,
+  isQaBillingAcceptanceOverrideCampaign,
+  isQaBillingAcceptanceOverrideEmail,
+  isQaBillingAcceptanceOverrideEnabled,
+  isQaBillingAcceptanceOverrideOrg,
+  isQaBillingAcceptanceOverrideUser,
 } from "@/lib/env";
 import { getAppContext } from "@/lib/services/app-context";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -28,6 +34,8 @@ export type CampaignEntitlementSnapshot = {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   launchOverride: boolean;
+  launchOverrideSource: BillingLaunchOverrideSource;
+  launchOverrideMatchedBy: string[];
   canPreview: boolean;
   canLaunch: boolean;
   canKeepFunnelLive: boolean;
@@ -40,6 +48,11 @@ export type CampaignEntitlementSnapshot = {
   suspensionReason: string | null;
 };
 
+export type BillingLaunchOverrideSource =
+  | "billing_admin_email"
+  | "qa_billing_acceptance"
+  | null;
+
 type EvaluationInput = {
   row?: Pick<
     BillingRow,
@@ -47,6 +60,8 @@ type EvaluationInput = {
   > | null;
   fallbackPlanTier?: string | null;
   launchOverride?: boolean;
+  launchOverrideSource?: BillingLaunchOverrideSource;
+  launchOverrideMatchedBy?: string[];
   now?: Date;
 };
 
@@ -79,6 +94,8 @@ export function evaluateCampaignEntitlements(input: EvaluationInput): CampaignEn
   const periodEndMs = parseTime(currentPeriodEnd);
   const hasUnexpiredPaidPeriod = typeof periodEndMs === "number" && periodEndMs > now.getTime();
   const launchOverride = input.launchOverride === true;
+  const launchOverrideSource = launchOverride ? input.launchOverrideSource ?? null : null;
+  const launchOverrideMatchedBy = launchOverride ? input.launchOverrideMatchedBy ?? [] : [];
 
   let billingState: BillingLifecycleState = "read_only";
   let suspensionReason: string | null = "subscription_inactive";
@@ -122,6 +139,8 @@ export function evaluateCampaignEntitlements(input: EvaluationInput): CampaignEn
     currentPeriodEnd,
     cancelAtPeriodEnd,
     launchOverride,
+    launchOverrideSource,
+    launchOverrideMatchedBy,
     canPreview: true,
     canLaunch: (paidLaunchAccess || launchOverride) && launchFeatureAllowed,
     canKeepFunnelLive: operationalAccess || launchOverride,
@@ -135,10 +154,59 @@ export function evaluateCampaignEntitlements(input: EvaluationInput): CampaignEn
   };
 }
 
+type QaBillingAcceptanceOverrideInput = {
+  email?: string | null;
+  userId?: string | null;
+  organizationId?: string | null;
+  campaignId?: string | null;
+  planTier?: string | null;
+};
+
+export type QaBillingAcceptanceOverrideMatch = {
+  matched: boolean;
+  source: "qa_billing_acceptance" | null;
+  matchedBy: string[];
+  planTier: BillingPlanTier;
+};
+
+export function getQaBillingAcceptanceOverrideMatch(
+  input: QaBillingAcceptanceOverrideInput,
+): QaBillingAcceptanceOverrideMatch {
+  const planTier = normalizeBillingPlanTier(input.planTier ?? "starter");
+
+  if (!isQaBillingAcceptanceOverrideEnabled()) {
+    return { matched: false, source: null, matchedBy: [], planTier };
+  }
+
+  const allowedPlanTiers = getQaBillingAcceptanceOverridePlanTiers()
+    .map((value) => normalizeBillingPlanTier(value));
+  if (allowedPlanTiers.length > 0 && !allowedPlanTiers.includes(planTier)) {
+    return { matched: false, source: null, matchedBy: [], planTier };
+  }
+
+  const matchedBy = [
+    ...(isQaBillingAcceptanceOverrideEmail(input.email) ? ["email"] : []),
+    ...(isQaBillingAcceptanceOverrideUser(input.userId) ? ["user_id"] : []),
+    ...(isQaBillingAcceptanceOverrideOrg(input.organizationId) ? ["organization_id"] : []),
+    ...(isQaBillingAcceptanceOverrideCampaign(input.campaignId) ? ["campaign_id"] : []),
+  ];
+
+  return {
+    matched: matchedBy.length > 0,
+    source: matchedBy.length > 0 ? "qa_billing_acceptance" : null,
+    matchedBy,
+    planTier,
+  };
+}
 export async function getCampaignEntitlementsForOrganization(params: {
   organizationId: string;
   fallbackPlanTier?: string | null;
   launchOverride?: boolean;
+  launchOverrideSource?: BillingLaunchOverrideSource;
+  launchOverrideMatchedBy?: string[];
+  campaignId?: string | null;
+  userId?: string | null;
+  email?: string | null;
 }) {
   const admin = createAdminClient();
 
@@ -156,25 +224,86 @@ export async function getCampaignEntitlementsForOrganization(params: {
     throw new ApiError(500, error.message, "billing_subscription_fetch_failed");
   }
 
+  const billingRow =
+    (data as Pick<BillingRow, "plan_tier" | "status" | "current_period_end" | "cancel_at_period_end"> | null) ?? null;
+  const qaOverride = getQaBillingAcceptanceOverrideMatch({
+    email: params.email,
+    userId: params.userId,
+    organizationId: params.organizationId,
+    campaignId: params.campaignId,
+    planTier: billingRow?.plan_tier ?? params.fallbackPlanTier,
+  });
+  const launchOverride = params.launchOverride === true || qaOverride.matched;
+  const launchOverrideSource =
+    params.launchOverrideSource ??
+    (qaOverride.matched ? qaOverride.source : null);
+  const launchOverrideMatchedBy =
+    params.launchOverrideMatchedBy ??
+    (qaOverride.matched ? qaOverride.matchedBy : []);
+
   return evaluateCampaignEntitlements({
-    row: (data as Pick<BillingRow, "plan_tier" | "status" | "current_period_end" | "cancel_at_period_end"> | null) ?? null,
+    row: billingRow,
     fallbackPlanTier: params.fallbackPlanTier,
-    launchOverride: params.launchOverride,
+    launchOverride,
+    launchOverrideSource,
+    launchOverrideMatchedBy,
   });
 }
 
-async function getCurrentBillingOverrideForOrganization(organizationId: string) {
-  if (!isBillingAdminOverrideEnabled()) {
-    return false;
-  }
-
+async function getCurrentBillingOverrideForOrganization(params: {
+  organizationId: string;
+  campaignId?: string | null;
+  userId?: string | null;
+  planTier?: string | null;
+}) {
   const context = await getAppContext().catch(() => null);
-  if (!context || context.organization.id !== organizationId) {
-    return false;
+  if (!isBillingAdminOverrideEnabled()) {
+    const qaOverride = getQaBillingAcceptanceOverrideMatch({
+      email:
+        context && context.organization.id === params.organizationId
+          ? context.user.email ?? context.profile?.email ?? null
+          : null,
+      userId: params.userId,
+      organizationId: params.organizationId,
+      campaignId: params.campaignId,
+      planTier: params.planTier,
+    });
+    return {
+      launchOverride: qaOverride.matched,
+      launchOverrideSource: qaOverride.source,
+      launchOverrideMatchedBy: qaOverride.matchedBy,
+      email: null,
+    };
   }
 
-  const email = context.user.email ?? context.profile?.email ?? null;
-  return isBillingAdminOverrideEmail(email);
+  if (context && context.organization.id === params.organizationId) {
+    const email = context.user.email ?? context.profile?.email ?? null;
+    if (isBillingAdminOverrideEmail(email)) {
+      return {
+        launchOverride: true,
+        launchOverrideSource: "billing_admin_email" as const,
+        launchOverrideMatchedBy: ["email"],
+        email,
+      };
+    }
+  }
+
+  const qaOverride = getQaBillingAcceptanceOverrideMatch({
+    email:
+      context && context.organization.id === params.organizationId
+        ? context.user.email ?? context.profile?.email ?? null
+        : null,
+    userId: params.userId,
+    organizationId: params.organizationId,
+    campaignId: params.campaignId,
+    planTier: params.planTier,
+  });
+  return {
+    launchOverride: qaOverride.matched,
+    launchOverrideSource: qaOverride.source,
+    launchOverrideMatchedBy: qaOverride.matchedBy,
+    email: null,
+  };
 }
 
 export async function getCampaignEntitlementsForCampaign(campaignId: string) {
@@ -186,7 +315,7 @@ export async function getCampaignEntitlementsForCampaign(campaignId: string) {
 
   const { data, error } = await admin
     .from("campaign_plans")
-    .select("organization_id")
+    .select("organization_id,user_id")
     .eq("id", campaignId)
     .maybeSingle();
 
@@ -194,16 +323,27 @@ export async function getCampaignEntitlementsForCampaign(campaignId: string) {
     throw new ApiError(500, error.message, "campaign_entitlement_lookup_failed");
   }
 
-  const row = data as { organization_id?: string | null } | null;
+  const row = data as { organization_id?: string | null; user_id?: string | null } | null;
   const organizationId = row?.organization_id ?? null;
 
   if (!organizationId) {
     throw new ApiError(404, "Campaign was not found.", "campaign_not_found");
   }
 
-  const launchOverride = await getCurrentBillingOverrideForOrganization(organizationId);
+  const launchOverride = await getCurrentBillingOverrideForOrganization({
+    organizationId,
+    campaignId,
+    userId: row?.user_id ?? null,
+  });
 
-  return getCampaignEntitlementsForOrganization({ organizationId, launchOverride });
+  return getCampaignEntitlementsForOrganization({
+    organizationId,
+    campaignId,
+    userId: row?.user_id ?? null,
+    launchOverride: launchOverride.launchOverride,
+    launchOverrideSource: launchOverride.launchOverrideSource,
+    launchOverrideMatchedBy: launchOverride.launchOverrideMatchedBy,
+  });
 }
 
 export async function getPublicFunnelEntitlements(params: {
@@ -243,6 +383,7 @@ export async function getPublicFunnelEntitlements(params: {
 
   const entitlements = await getCampaignEntitlementsForOrganization({
     organizationId: row.organization_id,
+    campaignId: row.id,
   });
 
   return {

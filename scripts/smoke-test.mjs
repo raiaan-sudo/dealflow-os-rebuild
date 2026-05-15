@@ -565,7 +565,7 @@ function runOfflineChecks() {
   assertIncludes(launchRoute, "ALLOW_META_LAUNCH_INTERRUPTION_TESTS", "Legacy launch interruption guard", "legacy campaign create launch path uses the same env gate as the launch route");
   assertIncludes(launchRoute, "handleApiError(error, \"Campaign create launch\")", "Legacy launch safe errors", "legacy campaign create launch path wraps parsing and CSRF failures in safe API errors");
   assertIncludes(launchApiRoute, "test_mode_interrupt_after", "Forced interruption launch API", "launch route forwards interruption mode");
-  assertIncludes(launchApiRoute, "assertMetaLaunchBillingAccess", "Launch billing gate", "launch route enforces subscription/admin override gate");
+  assertIncludes(launchApiRoute, "assertCampaignCanLaunch(id)", "Launch billing gate", "launch route enforces campaign-scoped subscription/admin override gate");
   assertIncludes(launchApiRoute, "acquireMetaLaunchLock", "Durable Meta launch lock", "launch route uses DB-backed launch locking");
   assertIncludes(launchApiRoute, "ALLOW_META_LAUNCH_INTERRUPTION_TESTS", "Interruption guard", "forced interruption is env-gated");
   assertIncludes(metaExecution, "return \"PAUSED\"", "Meta objects remain paused", "shared Meta execution mapper never emits ACTIVE during beta");
@@ -747,6 +747,9 @@ function runOfflineChecks() {
   assertIncludes(billingService, "checkout_session_stale", "Stripe stale checkout reconciliation guard", "older parallel checkout sessions cannot unlock access");
   assertIncludes(envHelpers, "ALLOW_BILLING_ADMIN_OVERRIDE", "Billing admin override env gate", "internal launch override requires explicit env opt-in");
   assertIncludes(envHelpers, "BILLING_ADMIN_OVERRIDE_EMAILS", "Billing-only override allowlist", "billing override can be scoped without granting operator admin access");
+  assertIncludes(envHelpers, "ALLOW_QA_BILLING_ACCEPTANCE_OVERRIDE", "QA billing acceptance env gate", "owner/test billing acceptance requires explicit env opt-in");
+  assertIncludes(envHelpers, "QA_BILLING_ACCEPTANCE_OVERRIDE_CAMPAIGN_IDS", "QA billing campaign allowlist", "owner/test billing acceptance can be scoped to a single campaign");
+  assertIncludes(envHelpers, "QA_BILLING_ACCEPTANCE_OVERRIDE_PLAN_TIERS", "QA billing plan allowlist", "owner/test billing acceptance is constrained by explicit plan tier");
   assertIncludes(creditService, "GENERATION_CREDIT_OVERDRAFT_LIMIT_CENTS", "Credit overdraft cap env", "self-serve paid generation overdraft is capped instead of unlimited");
   assertIncludes("supabase/migrations/20260510183000_cap_generation_credit_overdrafts.sql", "next_balance < -overdraft_limit", "DB credit overdraft cap", "database credit consumption enforces a maximum negative balance");
   assertIncludes(".env.example", "INTERNAL_SYSTEM_JOBS_SECRET", "Internal runner env example", "cron runner secret is documented in the environment template");
@@ -755,8 +758,13 @@ function runOfflineChecks() {
   assertIncludes(middleware, "getInternalSystemJobSecrets", "Internal proxy accepts multiple secrets", "internal API middleware accepts the same runner/cron secret set as the route guard");
   assertIncludes(billingService, "isBillingAdminOverrideEmail(email) ? email : null", "Billing-only override check", "billing override requires the billing-specific email allowlist");
   assertExcludes(billingService, "isInternalAdminEmail(email)", "Billing override admin fallback removed", "internal admin access no longer automatically grants billing launch access");
-  assertIncludes(campaignEntitlements, "return isBillingAdminOverrideEmail(email)", "Campaign entitlement billing override", "campaign launch entitlements use the billing-specific override allowlist");
+  assertIncludes(campaignEntitlements, "isBillingAdminOverrideEmail(email)", "Campaign entitlement billing override", "campaign launch entitlements use the billing-specific override allowlist");
+  assertIncludes(campaignEntitlements, "qa_billing_acceptance", "QA billing acceptance entitlement source", "owner/test billing acceptance is auditable and distinct from Stripe-active billing");
+  assertIncludes(campaignEntitlements, "getQaBillingAcceptanceOverrideMatch", "QA billing acceptance matcher", "normal billing remains separate from scoped owner/test overrides");
   assertIncludes(billingService, "billing_admin_override_launch_access_granted", "Billing admin override audit log", "override-based launch access grants are audit logged");
+  assertIncludes(billingService, "qa_billing_acceptance_override_launch_access_granted", "QA billing acceptance audit log", "owner/test billing override grants are audit logged without faking Stripe subscriptions");
+  assertIncludes(launchApiRoute, "assertCampaignCanLaunch(id)", "Campaign-scoped launch billing gate", "launch route applies campaign-scoped owner/test billing acceptance");
+  assertIncludes(launchPage, "Owner/test billing acceptance is active for this campaign", "Launch billing override copy", "launch page distinguishes owner/test acceptance from real Stripe subscription state");
   assertIncludes(billingService, "billing_checkout_bypass", "Billing override checkout bypass", "override users do not create live Stripe checkout sessions");
   assertIncludes(paywallPage, "launchOverride={billing?.launchOverride === true}", "Paywall override handoff", "billing override state is passed into the paywall CTA");
   assertIncludes("src/components/billing/paywall-plan-selector.tsx", "Activate {selectedPlan.name}", "Paywall simulated activation CTA", "billing override users see normal activation copy without opening Stripe checkout");

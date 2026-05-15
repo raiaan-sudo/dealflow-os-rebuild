@@ -21,6 +21,14 @@ const transpiled = ts.transpileModule(source, {
 });
 
 const exportsObject = {};
+const envMock = {
+  qaBillingEnabled: false,
+  qaBillingEmails: [],
+  qaBillingUserIds: [],
+  qaBillingOrgIds: [],
+  qaBillingCampaignIds: [],
+  qaBillingPlanTiers: [],
+};
 const sandbox = {
   exports: exportsObject,
   module: { exports: exportsObject },
@@ -63,6 +71,12 @@ const sandbox = {
         isBillingAdminOverrideEmail: () => false,
         isBillingAdminOverrideEnabled: () => false,
         isInternalAdminEmail: () => false,
+        getQaBillingAcceptanceOverridePlanTiers: () => envMock.qaBillingPlanTiers,
+        isQaBillingAcceptanceOverrideCampaign: (campaignId) => envMock.qaBillingCampaignIds.includes(campaignId),
+        isQaBillingAcceptanceOverrideEmail: (email) => envMock.qaBillingEmails.includes(String(email).toLowerCase()),
+        isQaBillingAcceptanceOverrideEnabled: () => envMock.qaBillingEnabled,
+        isQaBillingAcceptanceOverrideOrg: (organizationId) => envMock.qaBillingOrgIds.includes(organizationId),
+        isQaBillingAcceptanceOverrideUser: (userId) => envMock.qaBillingUserIds.includes(userId),
       };
     }
 
@@ -74,7 +88,7 @@ vm.runInNewContext(transpiled.outputText, sandbox, {
   filename: "campaign-entitlements.ts",
 });
 
-const { evaluateCampaignEntitlements } = sandbox.module.exports;
+const { evaluateCampaignEntitlements, getQaBillingAcceptanceOverrideMatch } = sandbox.module.exports;
 const now = new Date("2026-05-04T12:00:00.000Z");
 const future = "2026-06-04T12:00:00.000Z";
 const past = "2026-04-04T12:00:00.000Z";
@@ -127,6 +141,48 @@ const override = evaluateCampaignEntitlements({
 assert.equal(override.billingState, "active");
 assert.equal(override.canLaunch, true);
 assert.equal(override.requiresSuspension, false);
+assert.equal(override.launchOverrideSource, null);
+
+const normalCheckoutStarted = evaluateCampaignEntitlements({
+  row: row("checkout_started", { plan_tier: "pro", current_period_end: null }),
+  now,
+});
+assert.equal(normalCheckoutStarted.billingState, "read_only");
+assert.equal(normalCheckoutStarted.canLaunch, false);
+
+envMock.qaBillingEnabled = true;
+envMock.qaBillingCampaignIds = ["campaign-qa"];
+envMock.qaBillingPlanTiers = ["pro"];
+const matchedQaBilling = getQaBillingAcceptanceOverrideMatch({
+  campaignId: "campaign-qa",
+  organizationId: "org-qa",
+  userId: "user-qa",
+  email: "owner@example.test",
+  planTier: "pro",
+});
+assert.equal(matchedQaBilling.matched, true);
+assert.deepEqual(Array.from(matchedQaBilling.matchedBy), ["campaign_id"]);
+const wrongPlanQaBilling = getQaBillingAcceptanceOverrideMatch({
+  campaignId: "campaign-qa",
+  planTier: "starter",
+});
+assert.equal(wrongPlanQaBilling.matched, false);
+const unlistedQaBilling = getQaBillingAcceptanceOverrideMatch({
+  campaignId: "campaign-other",
+  planTier: "pro",
+});
+assert.equal(unlistedQaBilling.matched, false);
+const qaAccepted = evaluateCampaignEntitlements({
+  row: row("checkout_started", { plan_tier: "pro", current_period_end: null }),
+  launchOverride: matchedQaBilling.matched,
+  launchOverrideSource: matchedQaBilling.source,
+  launchOverrideMatchedBy: matchedQaBilling.matchedBy,
+  now,
+});
+assert.equal(qaAccepted.billingState, "active");
+assert.equal(qaAccepted.canLaunch, true);
+assert.equal(qaAccepted.launchOverrideSource, "qa_billing_acceptance");
+assert.deepEqual(Array.from(qaAccepted.launchOverrideMatchedBy), ["campaign_id"]);
 
 assert.match(suspensionSource, /collectManagedMetaObjects/);
 assert.match(suspensionSource, /runtime\.campaignId/);

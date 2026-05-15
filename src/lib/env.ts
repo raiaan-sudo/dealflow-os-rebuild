@@ -258,6 +258,77 @@ export function isBillingAdminOverrideEnabled() {
   return process.env.ALLOW_BILLING_ADMIN_OVERRIDE === "true";
 }
 
+export function getQaBillingAcceptanceOverrideEmails() {
+  return (process.env.QA_BILLING_ACCEPTANCE_OVERRIDE_EMAILS ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function getQaBillingAcceptanceOverrideUserIds() {
+  return (process.env.QA_BILLING_ACCEPTANCE_OVERRIDE_USER_IDS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+export function getQaBillingAcceptanceOverrideOrgIds() {
+  return (process.env.QA_BILLING_ACCEPTANCE_OVERRIDE_ORG_IDS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+export function getQaBillingAcceptanceOverrideCampaignIds() {
+  return (process.env.QA_BILLING_ACCEPTANCE_OVERRIDE_CAMPAIGN_IDS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+export function getQaBillingAcceptanceOverridePlanTiers() {
+  return (process.env.QA_BILLING_ACCEPTANCE_OVERRIDE_PLAN_TIERS ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function isQaBillingAcceptanceOverrideEmail(email?: string | null) {
+  if (!email) {
+    return false;
+  }
+
+  return getQaBillingAcceptanceOverrideEmails().includes(email.toLowerCase());
+}
+
+export function isQaBillingAcceptanceOverrideUser(userId?: string | null) {
+  if (!userId) {
+    return false;
+  }
+
+  return getQaBillingAcceptanceOverrideUserIds().includes(userId);
+}
+
+export function isQaBillingAcceptanceOverrideOrg(organizationId?: string | null) {
+  if (!organizationId) {
+    return false;
+  }
+
+  return getQaBillingAcceptanceOverrideOrgIds().includes(organizationId);
+}
+
+export function isQaBillingAcceptanceOverrideCampaign(campaignId?: string | null) {
+  if (!campaignId) {
+    return false;
+  }
+
+  return getQaBillingAcceptanceOverrideCampaignIds().includes(campaignId);
+}
+
+export function isQaBillingAcceptanceOverrideEnabled() {
+  return process.env.ALLOW_QA_BILLING_ACCEPTANCE_OVERRIDE === "true";
+}
+
 export function getQaGenerationCreditOverrideEmails() {
   return (process.env.QA_GENERATION_CREDIT_OVERRIDE_EMAILS ?? "")
     .split(",")
