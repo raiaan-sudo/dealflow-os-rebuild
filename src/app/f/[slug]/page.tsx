@@ -34,7 +34,11 @@ export default async function PublicFunnelPage({
 
   const organizationId = record.campaign.organization_id ?? null;
   const entitlements = organizationId
-    ? await getCampaignEntitlementsForOrganization({ organizationId }).catch(() => null)
+    ? await getCampaignEntitlementsForOrganization({
+        organizationId,
+        campaignId: record.campaign.id,
+        userId: record.campaign.user_id,
+      }).catch(() => null)
     : null;
   const leadCaptureActive = entitlements?.canCaptureLeads !== false;
   const visibleSections = record.funnel.sections.filter((section) => section.visible !== false);

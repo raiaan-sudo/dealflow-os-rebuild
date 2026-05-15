@@ -213,6 +213,7 @@ function runOfflineChecks() {
   const safeE2eConfig = "playwright.safe.config.ts";
   const safeE2eSpec = "tests/e2e/safe-self-serve.spec.ts";
   const publishRoute = "src/app/api/campaigns/[id]/publish/route.ts";
+  const publicFunnelPage = "src/app/f/[slug]/page.tsx";
   const optimizeRoute = "src/app/api/campaigns/[id]/optimize/route.ts";
   const internalLaunchMonitor = "src/lib/services/internal-launch-monitor.ts";
   const metaExecution = "src/lib/integrations/meta/execution.ts";
@@ -761,6 +762,7 @@ function runOfflineChecks() {
   assertIncludes(campaignEntitlements, "isBillingAdminOverrideEmail(email)", "Campaign entitlement billing override", "campaign launch entitlements use the billing-specific override allowlist");
   assertIncludes(campaignEntitlements, "qa_billing_acceptance", "QA billing acceptance entitlement source", "owner/test billing acceptance is auditable and distinct from Stripe-active billing");
   assertIncludes(campaignEntitlements, "getQaBillingAcceptanceOverrideMatch", "QA billing acceptance matcher", "normal billing remains separate from scoped owner/test overrides");
+  assertIncludes(publicFunnelPage, "campaignId: record.campaign.id", "Public funnel campaign billing override", "public funnel lead capture can honor campaign-scoped owner/test billing acceptance without broad org access");
   assertIncludes(billingService, "billing_admin_override_launch_access_granted", "Billing admin override audit log", "override-based launch access grants are audit logged");
   assertIncludes(billingService, "qa_billing_acceptance_override_launch_access_granted", "QA billing acceptance audit log", "owner/test billing override grants are audit logged without faking Stripe subscriptions");
   assertIncludes(launchApiRoute, "assertCampaignCanLaunch(id)", "Campaign-scoped launch billing gate", "launch route applies campaign-scoped owner/test billing acceptance");
