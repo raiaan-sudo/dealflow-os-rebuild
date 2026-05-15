@@ -61,8 +61,24 @@ assertIncludes(
 );
 assertIncludes(
   launchCreateRoute,
+  "published_funnel_snapshot_stale",
+  "direct launch route fails closed when the live public funnel snapshot is stale",
+);
+assertIncludes(
+  launchCreateRoute,
+  "assertPublishedFunnelSnapshotMatchesCurrentPlan",
+  "direct launch route verifies the public funnel snapshot before Meta object creation",
+);
+assertIncludes(
+  launchCreateRoute,
   "applyMetaDailyBudgetCapCents(Math.round(normalized * 100))",
   "direct launch route caps daily budget payload",
+);
+assertOrder(
+  launchCreateRoute,
+  "assertPublishedFunnelSnapshotMatchesCurrentPlan({",
+  "const preflight = await validateMetaLaunchSelections({ destinationUrl });",
+  "public funnel snapshot consistency is checked before Meta preflight and object creation",
 );
 assertOrder(
   launchCreateRoute,
@@ -90,6 +106,16 @@ assertIncludes(
   launchPage,
   "Tracking / live activation",
   "launch UI separates tracking live-activation state",
+);
+assertIncludes(
+  launchPage,
+  "publicFunnelSnapshotMatchesCurrentPlan",
+  "launch UI checks that the published public funnel snapshot matches the current campaign plan",
+);
+assertIncludes(
+  launchPage,
+  "Republish the public funnel because the live snapshot no longer matches the current campaign plan.",
+  "launch UI blocks stale published funnels instead of showing a false-ready funnel gate",
 );
 assertIncludes(
   launchPage,

@@ -308,6 +308,68 @@ function getRecoverablePublicSlug(
   return null;
 }
 
+function normalizeFunnelComparisonText(value: unknown) {
+  return typeof value === "string" ? value.trim().replace(/\s+/g, " ").toLowerCase() : "";
+}
+
+function getFunnelSnapshotSignature(value: unknown) {
+  const record = asRecord(value);
+  const campaign = asRecord(record?.campaign);
+  const funnel = asRecord(record?.funnel) ?? asRecord(campaign?.funnel);
+
+  if (!funnel) {
+    return null;
+  }
+
+  return [
+    normalizeFunnelComparisonText(funnel.headline),
+    normalizeFunnelComparisonText(funnel.subheadline),
+    normalizeFunnelComparisonText(funnel.cta),
+  ].join("|");
+}
+
+function assertPublishedFunnelSnapshotMatchesCurrentPlan(params: {
+  currentPlan: Record<string, unknown>;
+  publishedSnapshot: unknown;
+}) {
+  const currentSignature = getFunnelSnapshotSignature(params.currentPlan);
+  const publishedSignature = getFunnelSnapshotSignature(params.publishedSnapshot);
+
+  if (!currentSignature || !publishedSignature || currentSignature !== publishedSignature) {
+    throw new ApiError(
+      400,
+      "The public funnel snapshot is stale. Republish the funnel before sending campaign traffic to Meta.",
+      "published_funnel_snapshot_stale",
+    );
+  }
+}
+
+async function loadPublicFunnelPublishState(campaignId: string) {
+  const supabase = createAdminClient() ?? (await createRouteHandlerClient());
+
+  if (!supabase) {
+    throw new Error("Supabase is not configured.");
+  }
+
+  const { data, error } = await supabase
+    .from("campaign_plans")
+    .select("public_slug,publish_state,published_snapshot")
+    .eq("id", campaignId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const row = (data as Pick<CampaignPlanStorageRow, "public_slug" | "publish_state" | "published_snapshot"> | null) ?? null;
+
+  return {
+    publicSlug: typeof row?.public_slug === "string" ? row.public_slug.trim() : "",
+    publishState: typeof row?.publish_state === "string" ? row.publish_state : "",
+    publishedSnapshot: row?.published_snapshot ?? null,
+  };
+}
+
 async function persistRecoveredPublicSlug(
   campaignId: string,
   currentPlan: Record<string, unknown>,
@@ -818,6 +880,7 @@ async function launchCampaignToMeta(
     const credentials: MetaWorkspaceCredentials = await getMetaWorkspaceCredentials();
     const storedPayload = await loadSavedCampaignPayload(campaignId);
     const currentPlan = await loadCampaignPlanDocument(campaignId);
+    const publicFunnelState = await loadPublicFunnelPublishState(campaignId);
     const persistedLaunchState = getPersistedLaunchState(currentPlan);
     persistedLaunchStateForFailure = persistedLaunchState;
 
@@ -954,7 +1017,7 @@ async function launchCampaignToMeta(
       selectedStaticAd.visualConcept ??
       storedPayload?.creatives?.creative_concepts?.[0] ??
       record.plan.summary;
-    const publicSlug = record.publish.slug?.trim() || currentPlan.public_slug?.trim() || "";
+    const publicSlug = publicFunnelState.publicSlug || record.publish.slug?.trim() || currentPlan.public_slug?.trim() || "";
     const expectedDestinationUrl = publicSlug
       ? `${getPublicAppUrl()}/f/${publicSlug}`
       : "";
@@ -967,6 +1030,19 @@ async function launchCampaignToMeta(
         "missing_public_destination_url",
       );
     }
+
+    if (publicFunnelState.publishState !== "published" || !publicFunnelState.publishedSnapshot) {
+      throw new ApiError(
+        400,
+        "Publish the public funnel before sending campaign traffic to Meta.",
+        "public_funnel_not_published",
+      );
+    }
+
+    assertPublishedFunnelSnapshotMatchesCurrentPlan({
+      currentPlan,
+      publishedSnapshot: publicFunnelState.publishedSnapshot,
+    });
 
     if (!record.publish.slug?.trim() && currentPlan.public_slug?.trim()) {
       await persistRecoveredPublicSlug(campaignId, currentPlan, publicSlug);

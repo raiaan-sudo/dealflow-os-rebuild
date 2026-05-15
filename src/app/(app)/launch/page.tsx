@@ -85,6 +85,42 @@ function getPublicFunnelDestinationUrl(slug: string | null | undefined) {
   }
 }
 
+function asPlainRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function normalizeFunnelText(value: unknown) {
+  return typeof value === "string" ? value.trim().replace(/\s+/g, " ").toLowerCase() : "";
+}
+
+function getFunnelSnapshotSignature(value: unknown) {
+  const record = asPlainRecord(value);
+  const campaign = asPlainRecord(record?.campaign);
+  const funnel = asPlainRecord(record?.funnel) ?? asPlainRecord(campaign?.funnel);
+
+  if (!funnel) {
+    return null;
+  }
+
+  return [
+    normalizeFunnelText(funnel.headline),
+    normalizeFunnelText(funnel.subheadline),
+    normalizeFunnelText(funnel.cta),
+  ].join("|");
+}
+
+function publishedFunnelSnapshotMatchesCurrentPlan(params: {
+  currentPlan: unknown;
+  publishedSnapshot: unknown;
+}) {
+  const currentSignature = getFunnelSnapshotSignature(params.currentPlan);
+  const publishedSignature = getFunnelSnapshotSignature(params.publishedSnapshot);
+
+  return Boolean(currentSignature && publishedSignature && currentSignature === publishedSignature);
+}
+
 function formatVerifiedTimestamp(value: string | null | undefined) {
   if (!value) {
     return "Not verified yet";
@@ -127,27 +163,39 @@ function formatBudgetCap(valueCents: number) {
 
 async function loadPersistedLaunchMediaSelection(campaignId: string | null) {
   if (!campaignId) {
-    return { selectedAdIds: [], selectedUgcVideoIds: [] };
+    return {
+      selectedAdIds: [],
+      selectedUgcVideoIds: [],
+      publicFunnelSnapshotMatchesCurrentPlan: false,
+    };
   }
 
   const supabase = await createRouteHandlerClient();
 
   if (!supabase) {
-    return { selectedAdIds: [], selectedUgcVideoIds: [] };
+    return {
+      selectedAdIds: [],
+      selectedUgcVideoIds: [],
+      publicFunnelSnapshotMatchesCurrentPlan: false,
+    };
   }
 
   const { data } = await supabase
     .from("campaign_plans")
-    .select("plan")
+    .select("plan,published_snapshot")
     .eq("id", campaignId)
     .maybeSingle();
 
-  const row = (data as { plan?: unknown } | null) ?? null;
+  const row = (data as { plan?: unknown; published_snapshot?: unknown } | null) ?? null;
   const plan = readCampaignPlanDocument(row?.plan);
 
   return {
     selectedAdIds: getSelectedAdIdsFromPlan(plan),
     selectedUgcVideoIds: getSelectedUgcVideoIdsFromPlan(plan),
+    publicFunnelSnapshotMatchesCurrentPlan: publishedFunnelSnapshotMatchesCurrentPlan({
+      currentPlan: plan,
+      publishedSnapshot: row?.published_snapshot,
+    }),
   };
 }
 
@@ -217,6 +265,7 @@ export default async function LaunchAliasPage({
   const launchMediaSelection = await loadPersistedLaunchMediaSelection(resolvedCampaignId);
   const selectedAdIds = launchMediaSelection.selectedAdIds;
   const selectedUgcVideoIds = launchMediaSelection.selectedUgcVideoIds;
+  const publicFunnelSnapshotCurrent = launchMediaSelection.publicFunnelSnapshotMatchesCurrentPlan;
   const metaErrorCopy = getMetaQueryUiCopy(metaError, "oauth_callback");
   const discoveryIncomplete =
     metaWarning === "asset_discovery_incomplete"
@@ -321,9 +370,14 @@ export default async function LaunchAliasPage({
   const publicFunnelPublished =
     savedRecord.publish.state === "published" &&
     Boolean(savedRecord.publish.slug) &&
-    savedRecord.publish.hasPublishedSnapshot;
+    savedRecord.publish.hasPublishedSnapshot &&
+    publicFunnelSnapshotCurrent;
   if (!publicFunnelPublished) {
-    blockingReasons.push("Publish the public funnel before launch.");
+    blockingReasons.push(
+      savedRecord.publish.state === "published" && savedRecord.publish.hasPublishedSnapshot && !publicFunnelSnapshotCurrent
+        ? "Republish the public funnel because the live snapshot no longer matches the current campaign plan."
+        : "Publish the public funnel before launch.",
+    );
   }
   if (!selectedCreativeMediaReady) {
     blockingReasons.push("Finish rendering clean creative images before launch.");
@@ -406,6 +460,8 @@ export default async function LaunchAliasPage({
       ready: publicFunnelPublished,
       detail: publicFunnelPublished
         ? `Published at /f/${savedRecord.publish.slug}`
+        : savedRecord.publish.state === "published" && savedRecord.publish.hasPublishedSnapshot && !publicFunnelSnapshotCurrent
+          ? "The public funnel is published, but its live snapshot is stale. Republish before sending paid traffic."
         : "Publish the public funnel before sending traffic",
     },
     {

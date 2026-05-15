@@ -110,6 +110,25 @@ No lead form was submitted.
 
 The app host and campaign funnel served the expected deployment marker. The marketing aliases were not modified during this pass.
 
+Follow-up full launch audit found a launch-blocking content/source-of-truth mismatch:
+
+- The current campaign plan is buyer-focused: headline `Understand your true budget range`, CTA `Check Now`, audience `home buyers searching for $600k-$900k homes in toronto, on`.
+- The live `published_snapshot` and `staged_snapshot` for `/f/raiaan-realty` are stale seller-focused copy from an older `jj` / `homeowners ready to list` plan.
+- The public route correctly renders from `published_snapshot`, so the live paid destination currently shows seller/homeowner copy while the selected Meta audience and launch creatives are buyer-focused.
+- No lead was submitted and no Meta object was changed during the audit.
+
+Safety remediation added after this finding:
+
+- Launch UI now treats a stale published funnel snapshot as blocked and tells the operator to republish before sending paid traffic.
+- The direct Meta launch creation route now fails closed with `published_funnel_snapshot_stale` before Meta preflight or object creation when the live public funnel snapshot no longer matches the current campaign plan.
+- `npm run test:launch-budget-tracking-safety` covers this stale-snapshot fail-closed guard.
+
+Required owner/operator action before live traffic:
+
+1. Republish the public funnel snapshot from the current buyer-focused campaign plan.
+2. Recheck `https://app.agentdealflow.io/f/raiaan-realty` and confirm the page copy matches the buyer offer and selected creatives.
+3. Keep all Meta delivery objects paused until the destination content match is verified and the owner separately approves live activation.
+
 ## Meta Account Delivery Warnings
 
 Read-only Ads Manager verification showed:
