@@ -412,6 +412,15 @@ export function CampaignDashboardView({
   const runtimeMetaCampaignId = plan.runtime.campaignId ?? null;
   const runtimeMetaAdSetIds = Array.isArray(plan.runtime.metaAdSetIds) ? plan.runtime.metaAdSetIds : [];
   const runtimeMetaAdIds = Array.isArray(plan.runtime.metaAdIds) ? plan.runtime.metaAdIds : [];
+  const hasRecordedMetaLaunch = Boolean(launchRecord?.metaCampaignId || runtimeMetaCampaignId);
+  const syncedCampaignStatus = String(syncSnapshot?.campaignStatus ?? "").toLowerCase();
+  const syncShowsActiveDelivery = syncedCampaignStatus.includes("active") && !syncedCampaignStatus.includes("inactive");
+  const hasRecordedPausedLaunch = hasRecordedMetaLaunch && !hasRealDeliveryData && !syncShowsActiveDelivery;
+  const launchStatusLabel = hasRecordedPausedLaunch
+    ? "Paused launch recorded"
+    : hasRecordedMetaLaunch
+      ? launchRecord?.resultStatus || plan.runtime.metaPushStatus || "Meta launch recorded"
+    : "Not launched";
   const syncedMetaCampaignId =
     typeof syncSnapshot?.metaCampaignId === "string" ? syncSnapshot.metaCampaignId : null;
   const syncedAt =
@@ -422,12 +431,20 @@ export function CampaignDashboardView({
         : null;
   const syncIsStale = isStaleSync(syncedAt, stableNowMs);
   const syncStateLabel = !syncedAt
-    ? "Estimated state only"
+    ? hasRecordedPausedLaunch
+      ? "Paused launch recorded"
+      : hasRecordedMetaLaunch
+        ? "Estimated state only"
+      : "Estimated state only"
     : syncIsStale
       ? "Confirmed state is stale"
       : "Confirmed in Meta";
   const syncStateDescription = !syncedAt
-    ? "Local launch records exist, but no fresh Meta sync has confirmed the live state yet."
+    ? hasRecordedPausedLaunch
+      ? "Paused Meta objects are recorded locally. No live delivery is implied until a fresh Meta sync confirms delivery state."
+      : hasRecordedMetaLaunch
+        ? "Local launch records exist, but no fresh Meta sync has confirmed the live state yet."
+      : "No fresh Meta sync has confirmed the live state yet."
     : syncIsStale
       ? "A prior Meta sync exists, but it is stale. Treat current delivery and status as estimated until a fresh sync completes."
       : "Recent Meta sync data is available. Campaign status and delivery details below are confirmed from Meta.";
@@ -451,7 +468,7 @@ export function CampaignDashboardView({
         : runtimeMetaAdIds;
   const lineageItems = [
     { label: "Saved campaign", value: plan.id || "Unavailable" },
-    { label: "Launch status", value: launchRecord?.resultStatus || plan.runtime.metaPushStatus || "Not launched" },
+    { label: "Launch status", value: launchStatusLabel },
     { label: "Meta campaign", value: resolvedMetaCampaignId || "Not assigned" },
     {
       label: "Meta ad sets",
@@ -517,15 +534,15 @@ export function CampaignDashboardView({
     },
     {
       label: "Campaign created",
-      value: campaignCreated ? "Campaign created locally" : "No local campaign created yet",
+      value: campaignCreated ? "Paused campaign object recorded" : "No local campaign created yet",
     },
     {
       label: "Ad set created",
-      value: adSetCreated ? "Ad set created locally" : "No local ad set record yet",
+      value: adSetCreated ? "Paused ad set object recorded" : "No local ad set record yet",
     },
     {
       label: "Ad created",
-      value: adCreated ? "Ad created locally" : "No local ad record yet",
+      value: adCreated ? "Paused ad object recorded" : "No local ad record yet",
     },
     {
       label: "Creatives generated",
@@ -545,7 +562,7 @@ export function CampaignDashboardView({
     },
     {
       label: "Launch status",
-      value: launchRecord?.resultStatus || plan.runtime.metaPushStatus || "not launched",
+      value: launchStatusLabel,
     },
   ];
   const creativeSummaryItems = creativePerformanceSummary
@@ -622,6 +639,8 @@ export function CampaignDashboardView({
   const primaryStatusDescription =
     dataSourceState === "disconnected"
       ? "Connect Meta before live results can be reported."
+      : hasRecordedPausedLaunch
+        ? "Paused Meta launch objects are recorded. Live delivery stays blocked until tracking, funds, and owner approval are complete."
       : launchState !== "live"
         ? "Launch the campaign to begin collecting delivery data."
         : hasMetricData
@@ -682,7 +701,7 @@ export function CampaignDashboardView({
     {
       label: "Campaign status",
       value: plan.runtime.status || statusText,
-      detail: launchRecord?.resultStatus || plan.runtime.metaPushStatus || "Not launched",
+      detail: launchStatusLabel,
     },
     {
       label: "Meta connection",
@@ -756,7 +775,7 @@ export function CampaignDashboardView({
           />
           <MetricTile
             label="Meta status"
-            value={String(syncSnapshot?.campaignStatus ?? (resolvedMetaCampaignId ? "Sent to Meta" : "Not launched"))}
+            value={String(syncSnapshot?.campaignStatus ?? (resolvedMetaCampaignId ? "Paused launch recorded" : "Not launched"))}
             detail={syncedAt ? `Last sync ${formatLastVerified(syncedAt, stableNowMs)}` : "No Meta sync yet"}
             tone={syncDashboardTone}
           />
@@ -1064,6 +1083,8 @@ export function CampaignDashboardView({
           <p className="mt-3 text-sm leading-7 text-muted-foreground">
             {dataSourceState === "disconnected"
               ? "Launch and connect Meta to start collecting results."
+              : hasRecordedPausedLaunch
+                ? "Paused launch objects are recorded. Live reporting begins only after explicit activation and Meta sync."
               : missingPerformanceData
                 ? "Campaign live, waiting for delivery data."
               : launchState !== "live"

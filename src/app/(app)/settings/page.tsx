@@ -6,8 +6,12 @@ import { PortalButton } from "@/components/billing/portal-button";
 import { Card } from "@/components/ui/card";
 import { PageShell } from "@/components/ui/page-shell";
 import { getAppContext } from "@/lib/services/app-context";
-import { getBillingSummary } from "@/lib/services/billing-service";
+import { getBillingSummary, getBillingSummaryForCampaign } from "@/lib/services/billing-service";
 import { getCreditSummaryForCurrentUser } from "@/lib/services/credit-service";
+
+type SettingsBillingSummary =
+  | Awaited<ReturnType<typeof getBillingSummary>>
+  | Awaited<ReturnType<typeof getBillingSummaryForCampaign>>;
 
 function formatPeriodEnd(value: string | null | undefined) {
   if (!value) {
@@ -28,12 +32,30 @@ function formatPeriodEnd(value: string | null | undefined) {
   });
 }
 
-function getBillingStatusCopy(billing: Awaited<ReturnType<typeof getBillingSummary>> | null) {
+function getBillingStatusCopy(billing: SettingsBillingSummary | null) {
   if (!billing) {
     return {
       tone: "neutral",
       title: "Billing not active yet",
       detail: "Activate a subscription before launch, funnel capture, and billing management are available.",
+    };
+  }
+
+  if (billing.launchOverrideSource === "qa_billing_acceptance") {
+    return {
+      tone: "success",
+      title: "Owner/test billing accepted",
+      detail:
+        "This campaign is using the scoped owner/test billing acceptance override. Stripe subscription status is unchanged; normal customers still need active billing.",
+    };
+  }
+
+  if (billing.launchOverrideSource === "billing_admin_email") {
+    return {
+      tone: "success",
+      title: "Internal billing override active",
+      detail:
+        "Launch access is enabled by an explicit internal billing override. Stripe subscription status is unchanged; normal customers still need active billing.",
     };
   }
 
@@ -102,7 +124,9 @@ export default async function SettingsPage({
       ? resolvedSearchParams.campaignId
       : undefined;
   const [billing, credits, appContext] = await Promise.all([
-    getBillingSummary().catch(() => null),
+    campaignId
+      ? getBillingSummaryForCampaign(campaignId).catch(() => null)
+      : getBillingSummary().catch(() => null),
     getCreditSummaryForCurrentUser().catch(() => null),
     getAppContext().catch(() => null),
   ]);
@@ -116,6 +140,13 @@ export default async function SettingsPage({
     appContext?.organization.name ??
     appContext?.businessProfile?.business_name ??
     "DealFlow workspace";
+  const launchAccessLabel = billing?.launchAllowed
+    ? billing.launchOverrideSource === "qa_billing_acceptance"
+      ? "Enabled (owner/test override)"
+      : billing.launchOverrideSource === "billing_admin_email"
+        ? "Enabled (internal override)"
+        : "Enabled"
+    : "Not enabled";
 
   return (
     <PageShell className="max-w-[1280px]">
@@ -200,7 +231,7 @@ export default async function SettingsPage({
                 ["Plan", billing?.planTier ?? "starter"],
                 ["Status", billing?.subscriptionStatus ?? "inactive"],
                 ["Billing state", billing?.billingState?.replace(/_/g, " ") ?? "inactive"],
-                ["Launch access", billing?.launchAllowed ? "Enabled" : "Not enabled"],
+                ["Launch access", launchAccessLabel],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-[18px] border border-white/10 bg-white/[0.035] p-4">
                   <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</p>

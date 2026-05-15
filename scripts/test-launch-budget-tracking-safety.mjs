@@ -23,6 +23,7 @@ function assertOrder(source, first, second, label) {
 const budgetCap = read("src/lib/integrations/meta/budget-cap.ts");
 const launchCreateRoute = read("src/app/api/campaigns/create/route.ts");
 const launchPage = read("src/app/(app)/launch/page.tsx");
+const publicFunnelPage = read("src/app/f/[slug]/page.tsx");
 const metaService = read("src/lib/integrations/meta/service.ts");
 const packageJson = read("package.json");
 const trackingReadinessSync = read("scripts/sync-meta-tracking-readiness.mjs");
@@ -121,6 +122,15 @@ assertIncludes(
   launchPage,
   "Paused only",
   "launch UI exposes paused-only tracking state",
+);
+assertIncludes(
+  publicFunnelPage,
+  "export const dynamic = \"force-dynamic\";",
+  "public funnel route renders the latest published snapshot instead of a stale cached copy",
+);
+assert.ok(
+  !publicFunnelPage.includes("unstable_cache"),
+  "public funnel route should not use unstable_cache without publish-time invalidation",
 );
 
 assertIncludes(

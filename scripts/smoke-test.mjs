@@ -465,6 +465,9 @@ function runOfflineChecks() {
   assertIncludes(dashboardPrimitives, "MiniBarChart", "Dashboard bar chart component", "dashboard visual primitives include a lightweight bar chart");
   assertIncludes(dashboardView, "DashboardVisualMarker", "Dashboard visual component marker", "dashboard renders visual component markers for smoke coverage");
   assertOccurrenceCount(dashboardView, "Waiting for first delivery data", 1, "Dashboard waiting copy appears once", "dashboard shows the no-data state once instead of repeating it");
+  assertIncludes(dashboardView, "Paused launch recorded", "Dashboard paused launch state", "dashboard surfaces recorded paused Meta objects instead of saying the campaign is not launched");
+  assertIncludes(dashboardView, "Paused Meta objects are recorded locally", "Dashboard paused launch sync copy", "dashboard copy separates local paused launch records from live delivery sync");
+  assertIncludes(dashboardView, "Paused campaign object recorded", "Dashboard paused campaign object state", "dashboard operational state reflects paused Meta runtime IDs without implying active delivery");
   assertIncludes(dashboardView, "Day 0", "Dashboard day-zero baseline", "empty dashboard charts use a Day 0 launch baseline");
   assertIncludes(dashboardView, "Live data", "Dashboard live data label", "dashboard distinguishes live synced values when data exists");
   assertIncludes(dashboardView, "Raw details and activity", "Dashboard raw details disclosure", "raw details remain collapsed under a disclosure");
@@ -487,6 +490,9 @@ function runOfflineChecks() {
   assertIncludes(launchMetaSelectionPanel, "encodeURIComponent(launchReturnTo)", "Meta reconnect campaign return", "Meta reconnect preserves campaign-scoped launch return path");
   assertIncludes(settingsPage, "Generation credits", "Settings credit management", "settings surfaces credit balance and top-up controls");
   assertIncludes(settingsPage, "Update payment method", "Settings payment management", "settings links Stripe Portal payment method management");
+  assertIncludes(settingsPage, "getBillingSummaryForCampaign", "Campaign-scoped billing settings", "settings reflects campaign-scoped billing overrides instead of only workspace billing state");
+  assertIncludes(settingsPage, "Owner/test billing accepted", "QA billing acceptance settings copy", "settings distinguishes owner/test billing acceptance from a real Stripe subscription");
+  assertIncludes(settingsPage, "Enabled (owner/test override)", "QA billing launch access settings label", "settings launch access label is explicit when owner/test billing acceptance is active");
   assertIncludes(onboardingRoute, "commercial", "Onboarding commercial backend defaults", "commercial real estate onboarding mode is handled server-side");
   assertIncludes(onboardingRoute, "investor", "Onboarding investor backend defaults", "investor real estate onboarding mode is handled server-side");
   assertIncludes(appContextService, "isDemoWorkspaceSeedingEnabled", "Production demo seeding guard", "workspace demo data seeding is environment-gated");

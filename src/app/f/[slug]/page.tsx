@@ -1,24 +1,10 @@
 import { notFound } from "next/navigation";
-import { unstable_cache } from "next/cache";
 import { getPublishedCampaignBySlug } from "@/lib/services/campaign-persistence";
 import { LeadCaptureForm } from "@/app/f/[slug]/lead-capture-form";
 import { getMetaPixelIdForOrganization } from "@/lib/integrations/meta/conversions";
 import { getCampaignEntitlementsForOrganization } from "@/lib/services/campaign-entitlements";
 
-export const revalidate = 60;
-
-const getCachedPublicFunnel = unstable_cache(
-  async (slug: string) => {
-    const record = await getPublishedCampaignBySlug(slug).catch(() => null);
-    const metaPixelId = record?.campaign.organization_id
-      ? await getMetaPixelIdForOrganization(record.campaign.organization_id)
-      : null;
-
-    return { record, metaPixelId };
-  },
-  ["public-funnel-page"],
-  { revalidate: 60 },
-);
+export const dynamic = "force-dynamic";
 
 export default async function PublicFunnelPage({
   params,
@@ -26,7 +12,10 @@ export default async function PublicFunnelPage({
   params: Promise<{ slug: string }>;
 }) {
   const resolvedParams = await params;
-  const { record, metaPixelId } = await getCachedPublicFunnel(resolvedParams.slug);
+  const record = await getPublishedCampaignBySlug(resolvedParams.slug).catch(() => null);
+  const metaPixelId = record?.campaign.organization_id
+    ? await getMetaPixelIdForOrganization(record.campaign.organization_id)
+    : null;
 
   if (!record) {
     notFound();

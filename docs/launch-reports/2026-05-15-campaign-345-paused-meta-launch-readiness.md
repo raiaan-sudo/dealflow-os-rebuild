@@ -125,9 +125,29 @@ Safety remediation added after this finding:
 
 Required owner/operator action before live traffic:
 
-1. Republish the public funnel snapshot from the current buyer-focused campaign plan.
-2. Recheck `https://app.agentdealflow.io/f/raiaan-realty` and confirm the page copy matches the buyer offer and selected creatives.
-3. Keep all Meta delivery objects paused until the destination content match is verified and the owner separately approves live activation.
+Completed closure action:
+
+1. The public funnel snapshot for campaign `345dcc04-8e87-4ead-b71a-40236e2ef52e` was republished from the current buyer-focused campaign plan.
+2. `https://app.agentdealflow.io/f/raiaan-realty` returned `200` with buyer-focused copy:
+   - Headline: `Know what you can actually buy in Toronto`
+   - CTA: `Check My Options`
+   - Seller/homeowner stale copy was absent.
+3. The app route was hardened so `/f/[slug]` renders dynamically from the latest published snapshot instead of relying on `unstable_cache` without publish-time invalidation.
+4. `npm run test:launch-budget-tracking-safety` now covers the no-stale-cache route contract.
+5. Keep all Meta delivery objects paused until the owner resolves the Meta funds warning and separately approves live activation.
+
+Buyer funnel copy currently published:
+
+- Headline: `Know what you can actually buy in Toronto`
+- Subheadline: `Get a realistic $600K-$900K home shortlist, payment path, and next-step review before wasting weekends on listings that do not fit.`
+- CTA: `Check My Options`
+- Compliance note: the page states that the review is informational and does not promise mortgage approval, pricing, or availability.
+
+Customer-facing state consistency added:
+
+- Settings now uses the campaign-scoped billing summary when opened with `campaignId`, so owner/test billing acceptance is shown as an explicit override instead of a false inactive-subscription blocker.
+- Dashboard now describes recorded paused Meta objects as `Paused launch recorded` and separates local paused launch records from live delivery sync.
+- Dashboard copy does not imply live spend or active delivery while Meta sync/spend remains empty.
 
 ## Meta Account Delivery Warnings
 
