@@ -15,6 +15,7 @@ import {
 import { logMetaError, mapMetaError } from "@/lib/integrations/meta/error-mapper";
 import {
   applyMetaDailyBudgetCapCents,
+  assertMetaDailyBudgetCapConfiguredForLiveLaunch,
   getMetaDailyBudgetCapCents,
 } from "@/lib/integrations/meta/budget-cap";
 import { fetchMetaJson } from "@/lib/integrations/meta/request";
@@ -122,6 +123,16 @@ function assertMetaLiveLaunchEnabled() {
       503,
       "Live Meta launch is disabled. Set ALLOW_META_LIVE_LAUNCH=true only after running the PAUSED retry proof.",
       "meta_live_launch_disabled",
+    );
+  }
+
+  try {
+    assertMetaDailyBudgetCapConfiguredForLiveLaunch();
+  } catch {
+    throw new ApiError(
+      503,
+      "Production Meta launch approval requires META_DAILY_BUDGET_CAP_CENTS before paused objects can be created.",
+      "meta_budget_cap_missing",
     );
   }
 }

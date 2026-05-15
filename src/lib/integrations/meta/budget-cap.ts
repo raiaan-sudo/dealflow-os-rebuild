@@ -11,13 +11,20 @@ export function getMetaDailyBudgetCapCents() {
     : null;
 }
 
+export function isMetaDailyBudgetCapRequiredForProductionLaunch() {
+  return (
+    process.env.NODE_ENV === "production" &&
+    process.env.ALLOW_META_LIVE_LAUNCH === "true"
+  );
+}
+
 export function assertMetaDailyBudgetCapConfiguredForLiveLaunch() {
-  if (process.env.ALLOW_META_LIVE_LAUNCH !== "true") {
+  if (!isMetaDailyBudgetCapRequiredForProductionLaunch()) {
     return;
   }
 
   if (getMetaDailyBudgetCapCents() === null) {
-    throw new Error("META_DAILY_BUDGET_CAP_CENTS must be finite when ALLOW_META_LIVE_LAUNCH=true.");
+    throw new Error("META_DAILY_BUDGET_CAP_CENTS must be finite before production Meta launch approval can create paused objects.");
   }
 }
 

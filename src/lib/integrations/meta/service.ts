@@ -35,6 +35,11 @@ export type MetaLaunchPreflightState = {
   pixelValid: boolean;
   domainValid: boolean;
   trackingValid: boolean;
+  effectiveLaunchDomain: string | null;
+  derivedLaunchDomain: string | null;
+  trackingStatus: MetaWorkspaceTrackingStatus;
+  liveActivationBlocked: boolean;
+  warnings: string[];
   errors: string[];
   ready: boolean;
 };
@@ -274,6 +279,10 @@ function getDestinationHostname(destinationUrl: string | null | undefined) {
   }
 }
 
+export function deriveLaunchDomainFromDestinationUrl(destinationUrl: string | null | undefined) {
+  return getDestinationHostname(destinationUrl);
+}
+
 function getDealFlowPlatformTrackingFallback(destinationUrl: string | null | undefined) {
   const platformDomain = getDealFlowPlatformLaunchDomainEnv();
 
@@ -292,6 +301,79 @@ function getDealFlowPlatformTrackingFallback(destinationUrl: string | null | und
   }
 
   return platformDomain;
+}
+
+async function persistDerivedLaunchDomainFromDestination(params: {
+  row: MetaConnectionRecord | null;
+  metadata: MetaConnectionMetadata;
+  destinationUrl?: string | null;
+}) {
+  const derivedLaunchDomain = deriveLaunchDomainFromDestinationUrl(params.destinationUrl);
+  const existingLaunchDomain = readWorkspaceTrackingValue(
+    params.row?.launch_domain,
+    params.metadata,
+    "launch_domain",
+  );
+
+  if (!params.row?.id || !derivedLaunchDomain || existingLaunchDomain) {
+    return {
+      row: params.row,
+      derivedLaunchDomain,
+    };
+  }
+
+  const { supabase } = await getMetaSupabaseContext();
+  const pixelId = readWorkspaceTrackingValue(params.row.pixel_id, params.metadata, "pixel_id");
+  const verificationToken = readWorkspaceTrackingValue(
+    params.row.verification_token,
+    params.metadata,
+    "verification_token",
+  );
+  const domainVerified = params.row.domain_verified ?? readMetadataBoolean(params.metadata, "domain_verified");
+  const trackingStatus = deriveTrackingStatus({
+    pixelId,
+    launchDomain: derivedLaunchDomain,
+    verificationToken,
+    domainVerified,
+  });
+  const checkedAt = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from("marketing_accounts")
+    .update({
+      launch_domain: derivedLaunchDomain,
+      tracking_status: trackingStatus,
+      tracking_last_checked_at: checkedAt,
+      connection_metadata: {
+        ...params.metadata,
+        launch_domain: derivedLaunchDomain,
+        tracking_status: trackingStatus,
+        tracking_last_checked_at: checkedAt,
+      },
+    } as never)
+    .eq("id", params.row.id)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    throw new ApiError(500, error.message, "meta_launch_domain_persist_failed");
+  }
+
+  return {
+    row: (data as MetaConnectionRecord | null) ?? {
+      ...params.row,
+      launch_domain: derivedLaunchDomain,
+      tracking_status: trackingStatus,
+      tracking_last_checked_at: checkedAt,
+      connection_metadata: {
+        ...params.metadata,
+        launch_domain: derivedLaunchDomain,
+        tracking_status: trackingStatus,
+        tracking_last_checked_at: checkedAt,
+      },
+    },
+    derivedLaunchDomain,
+  };
 }
 
 function getTrackingMissingFields(params: {
@@ -719,7 +801,14 @@ export async function validateMetaLaunchSelections(options?: {
 
   try {
     const credentials = await getMetaWorkspaceCredentials();
-    const row = await getExistingMetaRecord(credentials.workspaceId);
+    const existingRow = await getExistingMetaRecord(credentials.workspaceId);
+    const existingMetadata = normalizeMetaConnectionMetadata(existingRow?.connection_metadata ?? null);
+    const derivedTracking = await persistDerivedLaunchDomainFromDestination({
+      row: existingRow,
+      metadata: existingMetadata,
+      destinationUrl: options?.destinationUrl,
+    });
+    const row = derivedTracking.row as MetaConnectionRecord | null;
     const metadata = normalizeMetaConnectionMetadata(row?.connection_metadata ?? null);
     const tracking = getWorkspaceTrackingConfig(
       row,
@@ -731,6 +820,11 @@ export async function validateMetaLaunchSelections(options?: {
       tracking.launchDomain ?? platformTrackingFallback?.launchDomain ?? null;
     const effectiveDomainVerified =
       tracking.domainVerified || Boolean(platformTrackingFallback?.domainVerified);
+    const workspaceTrackingValid =
+      Boolean(tracking.pixelId) &&
+      Boolean(tracking.launchDomain) &&
+      tracking.domainVerified &&
+      destinationMatchesLaunchDomain(options?.destinationUrl, tracking.launchDomain);
     const tokenCheck = await fetchMetaGraphJson<{ id?: string }>(credentials.accessToken, "me", {
       fields: "id",
     });
@@ -744,6 +838,11 @@ export async function validateMetaLaunchSelections(options?: {
         pixelValid: false,
         domainValid: false,
         trackingValid: false,
+        effectiveLaunchDomain,
+        derivedLaunchDomain: derivedTracking.derivedLaunchDomain,
+        trackingStatus: tracking.trackingStatus,
+        liveActivationBlocked: true,
+        warnings: [],
         errors: [
           formatMetaSelectionInvalidMessage(
             tokenCheck.data?.error?.message ?? "Meta token is invalid or expired.",
@@ -833,6 +932,15 @@ export async function validateMetaLaunchSelections(options?: {
       errors.push("The public funnel URL must match the verified launch domain before Meta launch.");
     }
 
+    const warnings: string[] = [];
+    const liveActivationBlocked = !workspaceTrackingValid;
+
+    if (liveActivationBlocked) {
+      warnings.push(
+        "Paused Meta object creation can proceed after launch gates pass, but live activation remains blocked until the launch domain is verified and tracking is configured.",
+      );
+    }
+
     const ready = accountValid && pageValid && pixelValid && domainValid;
     return {
       checkedAt,
@@ -841,7 +949,12 @@ export async function validateMetaLaunchSelections(options?: {
       pageValid,
       pixelValid,
       domainValid,
-      trackingValid: pixelValid && domainValid,
+      trackingValid: workspaceTrackingValid,
+      effectiveLaunchDomain,
+      derivedLaunchDomain: derivedTracking.derivedLaunchDomain,
+      trackingStatus: tracking.trackingStatus,
+      liveActivationBlocked,
+      warnings,
       errors,
       ready,
     };
@@ -854,6 +967,11 @@ export async function validateMetaLaunchSelections(options?: {
       pixelValid: false,
       domainValid: false,
       trackingValid: false,
+      effectiveLaunchDomain: null,
+      derivedLaunchDomain: deriveLaunchDomainFromDestinationUrl(options?.destinationUrl),
+      trackingStatus: "not_configured",
+      liveActivationBlocked: true,
+      warnings: [],
       errors: [
         formatMetaSelectionInvalidMessage(
           error instanceof Error ? error.message : "Meta preflight failed.",

@@ -14,7 +14,10 @@ import { getCampaignIntentLabel } from "@/lib/campaign-intent";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { getIntegrationProviderState } from "@/lib/integrations/provider-registry";
-import { getMetaDailyBudgetCapCents } from "@/lib/integrations/meta/budget-cap";
+import {
+  getMetaDailyBudgetCapCents,
+  isMetaDailyBudgetCapRequiredForProductionLaunch,
+} from "@/lib/integrations/meta/budget-cap";
 import {
   getSelectedAdIdsFromPlan,
   getSelectedUgcVideoIdsFromPlan,
@@ -268,6 +271,7 @@ export default async function LaunchAliasPage({
       ? "Internal billing override is active. No Stripe subscription is being claimed for this proof."
       : "Launch access active";
   const providerLaunchEnabled = process.env.ALLOW_META_LIVE_LAUNCH === "true";
+  const budgetCapRequiredForLaunch = isMetaDailyBudgetCapRequiredForProductionLaunch();
   const metaVerificationTimedOut =
     metaPreflight === null &&
     (metaProviderState?.status.status === "connected" || metaSelectionReady || metaConnected);
@@ -334,16 +338,19 @@ export default async function LaunchAliasPage({
   const dailyBudgetCents = Math.max(0, Math.round(dailyBudgetInput * 100));
   const budgetCapCents = getMetaDailyBudgetCapCents();
   const budgetCapApplied = budgetCapCents !== null;
+  const budgetCapMissingForLaunch = providerLaunchEnabled && budgetCapRequiredForLaunch && budgetCapCents === null;
   const effectiveDailyBudgetCents = budgetCapCents !== null
     ? Math.min(dailyBudgetCents, budgetCapCents)
     : dailyBudgetCents;
   const budgetWasCapped = budgetCapCents !== null && dailyBudgetCents > budgetCapCents;
+  const liveActivationBlocked = metaPreflight?.liveActivationBlocked ?? false;
   const launchRoomReady =
     billingLaunchAllowed &&
     metaLaunchReady &&
     selectedCreativeMediaReady &&
     videoMediaReady &&
     publicFunnelPublished &&
+    !budgetCapMissingForLaunch &&
     providerLaunchEnabled;
   const readinessItems = [
     {
@@ -367,7 +374,10 @@ export default async function LaunchAliasPage({
       label: "Meta preflight",
       ready: metaLaunchReady,
       detail: metaLaunchReady
-        ? `Meta checks verified ${formatLastVerified(metaPreflight?.checkedAt)}`
+        ? [
+            `Meta checks verified ${formatLastVerified(metaPreflight?.checkedAt)}`,
+            ...(metaPreflight?.warnings ?? []),
+          ].join(" ")
         : metaSelectionReady
           ? (metaPreflight?.errors?.length ?? 0) > 0
             ? metaPreflight?.errors.join(" ")
@@ -400,13 +410,29 @@ export default async function LaunchAliasPage({
     },
     {
       label: "Budget",
-      ready: true,
-      statusLabel: budgetWasCapped ? "Capped" : budgetCapApplied ? undefined : "Unlimited",
-      detail: budgetWasCapped
+      ready: !budgetCapMissingForLaunch,
+      statusLabel: budgetCapMissingForLaunch
+        ? "Blocked"
+        : budgetWasCapped
+          ? "Capped"
+          : budgetCapApplied
+            ? undefined
+            : "Unlimited",
+      detail: budgetCapMissingForLaunch
+        ? "Configure META_DAILY_BUDGET_CAP_CENTS before production Meta object creation. DealFlow will fail closed until a finite cap is present."
+        : budgetWasCapped
         ? `Requested daily budget is ${formatBudgetCap(dailyBudgetCents)}; the launch will use the DealFlow cap of ${formatBudgetCap(effectiveDailyBudgetCents)}/day unless support adjusts the cap.`
         : budgetCapCents !== null
           ? `DealFlow launch is capped at ${formatBudgetCap(budgetCapCents)}/day; requested daily budget is ${formatBudgetCap(dailyBudgetCents)}.`
           : `No DealFlow budget cap is applied. Launch will use the requested daily budget of ${formatBudgetCap(dailyBudgetCents)}.`,
+    },
+    {
+      label: "Tracking / live activation",
+      ready: !liveActivationBlocked,
+      statusLabel: liveActivationBlocked ? "Paused only" : undefined,
+      detail: liveActivationBlocked
+        ? `Paused Meta object creation may proceed with the verified destination preflight, but live activation is blocked until ${metaPreflight?.effectiveLaunchDomain ?? "the launch domain"} is verified and tracking is fully configured.`
+        : "Launch domain and tracking are ready for live activation review.",
     },
     {
       label: "Launch approval",
@@ -458,6 +484,9 @@ export default async function LaunchAliasPage({
       ? [
           "Final launch approval is pending. DealFlow will not create Meta campaign objects until support enables live launch approvals.",
         ]
+      : []),
+    ...(budgetCapMissingForLaunch
+      ? ["Configure META_DAILY_BUDGET_CAP_CENTS before attempting a production Meta launch."]
       : []),
   ];
 
