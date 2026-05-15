@@ -148,8 +148,8 @@ Customer-facing state consistency added:
 - Settings now uses the campaign-scoped billing summary when opened with `campaignId`, so owner/test billing acceptance is shown as an explicit override instead of a false inactive-subscription blocker.
 - Dashboard now describes recorded paused Meta objects as `Paused launch recorded` and separates local paused launch records from live delivery sync.
 - Dashboard copy does not imply live spend or active delivery while Meta sync/spend remains empty.
-- Canonical campaign normalization now preserves nested and root-level launch runtime IDs from modern saved campaign documents, so Dashboard/Results surfaces can show the recorded paused Meta campaign/ad set/ad state.
-- Authenticated campaign loads now pass nested and root-level launch runtime from `campaign_plans.plan` into canonical normalization, preventing campaign-scoped Dashboard/Results views from falling back to `Not launched` when paused Meta IDs already exist.
+- Canonical campaign normalization now preserves nested and root-level launch runtime candidates from modern saved campaign documents, then prefers the runtime object that actually contains recorded Meta launch IDs. This prevents stale `built/not_pushed` runtime defaults from hiding a completed paused launch.
+- Authenticated campaign loads now pass the best recorded launch runtime from `campaign_plans.plan` into canonical normalization, preventing campaign-scoped Dashboard/Results views from falling back to `Not launched` when paused Meta IDs already exist.
 
 ## Meta Account Delivery Warnings
 

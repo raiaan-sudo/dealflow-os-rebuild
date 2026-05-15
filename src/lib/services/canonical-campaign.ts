@@ -152,6 +152,24 @@ function safeRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function runtimeHasRecordedLaunch(value: Record<string, unknown> | null) {
+  if (!value) {
+    return false;
+  }
+
+  return Boolean(
+    safeText(value.campaignId ?? value.campaign_id) ||
+      safeText(value.adSetId ?? value.adset_id) ||
+      safeText(value.adId ?? value.ad_id) ||
+      safeText(value.metaPushStatus ?? value.meta_push_status) === "published" ||
+      safeText(value.status) === "live",
+  );
+}
+
+function pickBestLaunchRuntime(...candidates: Array<Record<string, unknown> | null>) {
+  return candidates.find(runtimeHasRecordedLaunch) ?? candidates.find(Boolean) ?? null;
+}
+
 function isModernPersistedPlanDocument(value: Record<string, unknown>) {
   return Boolean(
     safeText(value.market) ||
@@ -938,7 +956,12 @@ export function getSavedCampaignDocumentFromRow(row: CampaignPlanRow): SavedCamp
         ...(document as unknown as SavedCampaignDocument),
         launch: {
           ...launch,
-          runtime: existingLaunchRuntime ?? nestedPlanRuntime ?? rootRuntime ?? launchRuntime ?? null,
+          runtime: pickBestLaunchRuntime(
+            existingLaunchRuntime,
+            nestedPlanRuntime,
+            rootRuntime,
+            launchRuntime,
+          ),
         },
         strategy: adaptModernPersistedPlanDocument(nestedPlan).strategy,
       };

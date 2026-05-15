@@ -499,8 +499,8 @@ function runOfflineChecks() {
   assertIncludes(appContextService, "fallbackOrganizationSlug", "Workspace slug collision guard", "bootstrap creates a user-owned fallback slug instead of recovering another owner workspace");
   assertIncludes(appContextService, "non-owned organization", "Workspace ownership bootstrap guard", "membership bootstrap refuses non-owned organizations");
   assertIncludes("src/lib/services/canonical-campaign.ts", "nestedPlanRuntime", "Canonical nested runtime preservation", "dashboard and result surfaces preserve launch runtime IDs from nested saved plan documents");
-  assertIncludes("src/lib/services/canonical-campaign.ts", "runtime: existingLaunchRuntime ?? nestedPlanRuntime ?? rootRuntime ?? launchRuntime ?? null", "Canonical campaign runtime preservation", "dashboard and result surfaces preserve paused launch runtime IDs from modern saved documents");
-  assertIncludes("src/lib/services/campaign-persistence.ts", "launchRuntime ?? nestedPlanRuntime ?? rootRuntime ?? legacyRuntime", "Campaign persistence nested runtime preservation", "authenticated campaign loads preserve nested plan runtime before falling back to root-level runtime");
+  assertIncludes("src/lib/services/canonical-campaign.ts", "pickBestLaunchRuntime", "Canonical launch runtime prioritization", "dashboard and result surfaces prefer runtime objects with recorded Meta launch IDs over stale built defaults");
+  assertIncludes("src/lib/services/campaign-persistence.ts", "runtimeWithRecordedLaunch", "Campaign persistence launch runtime prioritization", "authenticated campaign loads prefer runtime objects with recorded Meta launch IDs over stale built defaults");
   assertIncludes("src/lib/services/campaign-persistence.ts", "runtime: getRuntimeFromPlanRow(row)", "Campaign persistence runtime preservation", "authenticated campaign loads pass root-level launch runtime into canonical campaign normalization");
   assertIncludes(membershipPolicyMigration, "drop policy if exists organization_memberships_insert_self", "Membership self-join policy removed", "authenticated users cannot self-join arbitrary organizations");
 

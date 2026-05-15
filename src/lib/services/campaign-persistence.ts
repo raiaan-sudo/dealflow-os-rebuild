@@ -708,22 +708,38 @@ function getRuntimeFromPlanRow(row: CampaignPlanRow): Partial<CampaignRuntime> |
     : null;
   const launchRuntime =
     launch?.runtime && typeof launch.runtime === "object" && !Array.isArray(launch.runtime)
-      ? launch.runtime
+      ? (launch.runtime as Record<string, unknown>)
       : null;
   const nestedPlanRuntime =
     nestedPlan?.runtime && typeof nestedPlan.runtime === "object" && !Array.isArray(nestedPlan.runtime)
-      ? nestedPlan.runtime
+      ? (nestedPlan.runtime as Record<string, unknown>)
       : null;
   const rootRuntime =
     plan?.runtime && typeof plan.runtime === "object" && !Array.isArray(plan.runtime)
-      ? plan.runtime
+      ? (plan.runtime as Record<string, unknown>)
       : null;
   const legacyRuntime =
     plan?.launch_runtime && typeof plan.launch_runtime === "object" && !Array.isArray(plan.launch_runtime)
-      ? plan.launch_runtime
+      ? (plan.launch_runtime as Record<string, unknown>)
       : null;
 
-  return (launchRuntime ?? nestedPlanRuntime ?? rootRuntime ?? legacyRuntime) as Partial<CampaignRuntime> | null;
+  const runtimes: Array<Record<string, unknown> | null> = [
+    launchRuntime,
+    nestedPlanRuntime,
+    rootRuntime,
+    legacyRuntime,
+  ];
+  const runtimeWithRecordedLaunch = runtimes.find((runtime) =>
+    Boolean(
+      safeText(runtime?.campaignId ?? runtime?.campaign_id) ||
+        safeText(runtime?.adSetId ?? runtime?.adset_id) ||
+        safeText(runtime?.adId ?? runtime?.ad_id) ||
+        safeText(runtime?.metaPushStatus ?? runtime?.meta_push_status) === "published" ||
+        safeText(runtime?.status) === "live",
+    ),
+  );
+
+  return (runtimeWithRecordedLaunch ?? runtimes.find(Boolean) ?? null) as Partial<CampaignRuntime> | null;
 }
 
 function buildPublicSlug(record: FullCampaignRecord, requestedSlug?: string | null) {
