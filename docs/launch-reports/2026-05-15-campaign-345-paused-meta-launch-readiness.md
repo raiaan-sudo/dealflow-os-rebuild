@@ -149,6 +149,7 @@ Customer-facing state consistency added:
 - Dashboard now describes recorded paused Meta objects as `Paused launch recorded` and separates local paused launch records from live delivery sync.
 - Dashboard copy does not imply live spend or active delivery while Meta sync/spend remains empty.
 - Canonical campaign normalization now preserves root-level launch runtime IDs from modern saved campaign documents, so Dashboard/Results surfaces can show the recorded paused Meta campaign/ad set/ad state.
+- Authenticated campaign loads now pass root-level launch runtime from `campaign_plans.plan` into canonical normalization, preventing campaign-scoped Dashboard/Results views from falling back to `Not launched` when paused Meta IDs already exist.
 
 ## Meta Account Delivery Warnings
 

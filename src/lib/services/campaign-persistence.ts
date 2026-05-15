@@ -2,6 +2,7 @@ import { ApiError } from "@/lib/api/route";
 import { getSupabaseEnv } from "@/lib/env";
 import { slugify } from "@/lib/utils";
 import { analyzeCampaign, type CampaignAnalysisInput, type CampaignAnalysisResult } from "@/lib/services/ai-optimizer";
+import type { CampaignRuntime } from "@/lib/services/campaign-plan-service";
 import {
   getSavedCampaignDocumentFromRow,
   normalizeCanonicalCampaign,
@@ -695,6 +696,29 @@ function buildPersistedSavedDocument(record: FullCampaignRecord): CampaignPublis
   };
 }
 
+function getRuntimeFromPlanRow(row: CampaignPlanRow): Partial<CampaignRuntime> | null {
+  const plan = row.plan && typeof row.plan === "object" && !Array.isArray(row.plan)
+    ? (row.plan as Record<string, unknown>)
+    : null;
+  const launch = plan?.launch && typeof plan.launch === "object" && !Array.isArray(plan.launch)
+    ? (plan.launch as Record<string, unknown>)
+    : null;
+  const launchRuntime =
+    launch?.runtime && typeof launch.runtime === "object" && !Array.isArray(launch.runtime)
+      ? launch.runtime
+      : null;
+  const rootRuntime =
+    plan?.runtime && typeof plan.runtime === "object" && !Array.isArray(plan.runtime)
+      ? plan.runtime
+      : null;
+  const legacyRuntime =
+    plan?.launch_runtime && typeof plan.launch_runtime === "object" && !Array.isArray(plan.launch_runtime)
+      ? plan.launch_runtime
+      : null;
+
+  return (launchRuntime ?? rootRuntime ?? legacyRuntime) as Partial<CampaignRuntime> | null;
+}
+
 function buildPublicSlug(record: FullCampaignRecord, requestedSlug?: string | null) {
   const explicitSlug = safeText(requestedSlug) || safeText(record.publish.slug);
   const automaticSlug = `${record.campaign.name}-${record.plan.market}-${record.campaign.id.slice(0, 8)}`;
@@ -1013,6 +1037,7 @@ export async function getCampaignById(campaignId: string): Promise<FullCampaignR
   return normalizeCanonicalCampaign({
     campaign,
     savedDocument,
+    runtime: getRuntimeFromPlanRow(row),
     staticAds,
     videoAds: videoAds.length > 0 ? videoAds : undefined,
     publish: mapPublishRecord(row),
