@@ -421,6 +421,52 @@ export function getMetaEnv() {
   };
 }
 
+function normalizeEnvHostname(value: string | undefined | null) {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    return new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`).hostname.toLowerCase();
+  } catch {
+    return trimmed.split("/")[0]?.trim().toLowerCase() || null;
+  }
+}
+
+function getEnvList(value: string | undefined | null) {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+export function getDealFlowPlatformLaunchDomainEnv() {
+  const launchDomain = normalizeEnvHostname(process.env.DEALFLOW_PLATFORM_LAUNCH_DOMAIN);
+  const configuredHosts = getEnvList(process.env.DEALFLOW_PLATFORM_FUNNEL_HOSTS)
+    .map((host) => normalizeEnvHostname(host))
+    .filter((host): host is string => Boolean(host));
+  const publicAppHost = normalizeEnvHostname(
+    process.env.NEXT_PUBLIC_APP_URL ??
+      process.env.APP_URL ??
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null),
+  );
+  const funnelHosts = Array.from(
+    new Set([
+      ...configuredHosts,
+      ...(publicAppHost ? [publicAppHost] : []),
+      ...(launchDomain ? [launchDomain] : []),
+    ]),
+  );
+
+  return {
+    launchDomain,
+    funnelHosts,
+    domainVerified: process.env.DEALFLOW_PLATFORM_LAUNCH_DOMAIN_VERIFIED === "true",
+  };
+}
+
 export function getMetaEnvOrThrow() {
   const env = getMetaEnv();
 

@@ -36,6 +36,7 @@ import {
   validateMetaLaunchSelections,
 } from "@/lib/integrations/meta/service";
 import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
+import { getPublicAppUrl } from "@/lib/env";
 
 function withTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs: number) {
   return new Promise<T>((resolve) => {
@@ -67,6 +68,18 @@ function formatLastVerified(value: string | null | undefined) {
   }
 
   return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+}
+
+function getPublicFunnelDestinationUrl(slug: string | null | undefined) {
+  if (!slug) {
+    return null;
+  }
+
+  try {
+    return `${getPublicAppUrl()}/f/${encodeURIComponent(slug)}`;
+  } catch {
+    return null;
+  }
 }
 
 function formatVerifiedTimestamp(value: string | null | undefined) {
@@ -158,7 +171,7 @@ export default async function LaunchAliasPage({
     typeof params.meta_request_id === "string" && params.meta_request_id.length > 0
       ? params.meta_request_id
       : null;
-  const [record, metaConnection, metaProviderState, metaPreflight] = await Promise.all([
+  const [record, metaConnection, metaProviderState] = await Promise.all([
     withTimeout(
       resolveActiveCampaignRecord(requestedCampaignId)
         .then((resolved) => resolved?.record ?? null)
@@ -176,13 +189,15 @@ export default async function LaunchAliasPage({
       null,
       2_000,
     ),
-    withTimeout(
-      validateMetaLaunchSelections().catch(() => null),
-      null,
-      5_000,
-    ),
   ]);
   const plan = record ? canonicalCampaignToPlan(record) : null;
+  const metaPreflight = await withTimeout(
+    validateMetaLaunchSelections({
+      destinationUrl: getPublicFunnelDestinationUrl(record?.publish.slug),
+    }).catch(() => null),
+    null,
+    5_000,
+  );
   const resolvedCampaignId = record?.campaign.id ?? requestedCampaignId;
   const launchReturnTo = resolvedCampaignId
     ? `/launch?campaignId=${encodeURIComponent(resolvedCampaignId)}`
@@ -428,7 +443,7 @@ export default async function LaunchAliasPage({
           metaSelectionReady
             ? metaSelectionInvalid
               ? "Meta selections were saved, but Meta can no longer verify the selected ad account, Page, or pixel. Re-save the selections or reconnect Meta if the check stays blocked."
-              : "Meta selections were saved, but launch preflight has not passed yet. Add or verify the launch domain and publish the public funnel before attempting launch."
+              : "Meta selections were saved, but launch preflight has not passed yet. Configure DealFlow's verified platform launch domain and publish the public funnel before attempting launch."
             : "Save the ad account, Facebook Page, and pixel in the Meta setup section.",
         ]
       : []),
@@ -603,7 +618,7 @@ export default async function LaunchAliasPage({
                   : metaSelectionInvalid
                     ? "The saved Meta selection is no longer valid. Re-select the ad account, Page, and pixel before launch."
                     : metaTrackingPreflightBlocked
-                      ? "The saved Meta selections are valid, but launch preflight is blocked by tracking, domain, or destination requirements."
+                      ? "The saved Meta selections are valid, but launch preflight is blocked by DealFlow's platform domain or destination requirements."
                     : launchRoomReady
                   ? "Preflight passed. Save the Meta selections below, then use the launch button to attempt launch."
                   : `Before launch: ${blockingReasons.join(" • ")}.`}

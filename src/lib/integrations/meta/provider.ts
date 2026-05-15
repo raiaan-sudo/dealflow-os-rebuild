@@ -303,10 +303,10 @@ class MetaTrackingProvider
     const trackingConfigured = trackingStatus === "configured";
     const trackingMessage =
       trackingConfigured
-        ? "This workspace has its own Meta pixel and launch domain ready for launch tracking."
+        ? "This workspace has Meta pixel tracking and a verified launch domain ready."
         : trackingStatus === "partial"
           ? `This workspace still needs ${missingFields.join(" and ")} before launch tracking is ready.`
-          : "Add this workspace's Meta pixel and launch domain before launch.";
+          : "Add this workspace's Meta pixel and configure DealFlow's platform launch domain before launch.";
 
     return {
       status: trackingConfigured ? "connected" : trackingStatus === "partial" ? "pending" : "disconnected",

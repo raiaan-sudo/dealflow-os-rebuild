@@ -1,5 +1,5 @@
 import { ApiError } from "@/lib/api/route";
-import { getMetaEnv } from "@/lib/env";
+import { getDealFlowPlatformLaunchDomainEnv, getMetaEnv } from "@/lib/env";
 import { createMetaApiError, mapMetaError } from "@/lib/integrations/meta/error-mapper";
 import { decryptSecret } from "@/lib/integrations/meta-crypto";
 import { fetchMetaJson } from "@/lib/integrations/meta/request";
@@ -245,6 +245,53 @@ function destinationMatchesLaunchDomain(destinationUrl: string | null | undefine
   } catch {
     return false;
   }
+}
+
+function hostnameMatchesDomain(hostname: string | null, domain: string | null) {
+  if (!hostname || !domain) {
+    return false;
+  }
+
+  const normalizedHost = normalizeLaunchDomain(hostname);
+  const normalizedDomain = normalizeLaunchDomain(domain);
+
+  return Boolean(
+    normalizedHost &&
+      normalizedDomain &&
+      (normalizedHost === normalizedDomain || normalizedHost.endsWith(`.${normalizedDomain}`)),
+  );
+}
+
+function getDestinationHostname(destinationUrl: string | null | undefined) {
+  if (!destinationUrl) {
+    return null;
+  }
+
+  try {
+    return new URL(destinationUrl).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function getDealFlowPlatformTrackingFallback(destinationUrl: string | null | undefined) {
+  const platformDomain = getDealFlowPlatformLaunchDomainEnv();
+
+  if (!platformDomain.launchDomain || !platformDomain.domainVerified) {
+    return null;
+  }
+
+  const destinationHost = getDestinationHostname(destinationUrl);
+  const hostAllowed =
+    !destinationHost ||
+    platformDomain.funnelHosts.some((host) => hostnameMatchesDomain(destinationHost, host)) ||
+    hostnameMatchesDomain(destinationHost, platformDomain.launchDomain);
+
+  if (!hostAllowed) {
+    return null;
+  }
+
+  return platformDomain;
 }
 
 function getTrackingMissingFields(params: {
@@ -679,6 +726,11 @@ export async function validateMetaLaunchSelections(options?: {
       metadata,
       row?.last_sync_at ?? row?.token_last_synced_at ?? row?.connected_at ?? null,
     );
+    const platformTrackingFallback = getDealFlowPlatformTrackingFallback(options?.destinationUrl);
+    const effectiveLaunchDomain =
+      tracking.launchDomain ?? platformTrackingFallback?.launchDomain ?? null;
+    const effectiveDomainVerified =
+      tracking.domainVerified || Boolean(platformTrackingFallback?.domainVerified);
     const tokenCheck = await fetchMetaGraphJson<{ id?: string }>(credentials.accessToken, "me", {
       fields: "id",
     });
@@ -738,8 +790,8 @@ export async function validateMetaLaunchSelections(options?: {
 
     const pixelValid = availablePixels.some((pixel) => pixel.id === credentials.pixelId);
     const domainValid =
-      tracking.domainVerified &&
-      destinationMatchesLaunchDomain(options?.destinationUrl, tracking.launchDomain);
+      effectiveDomainVerified &&
+      destinationMatchesLaunchDomain(options?.destinationUrl, effectiveLaunchDomain);
 
     const errors: string[] = [];
 
@@ -773,10 +825,10 @@ export async function validateMetaLaunchSelections(options?: {
       );
     }
 
-    if (!tracking.launchDomain) {
-      errors.push("Add a launch domain before sending campaign traffic to Meta.");
-    } else if (!tracking.domainVerified) {
-      errors.push("Verify the launch domain before sending campaign traffic to Meta.");
+    if (!effectiveLaunchDomain) {
+      errors.push("Configure DealFlow's platform launch domain before sending campaign traffic to Meta.");
+    } else if (!effectiveDomainVerified) {
+      errors.push("Verify DealFlow's platform launch domain before sending campaign traffic to Meta.");
     } else if (!domainValid) {
       errors.push("The public funnel URL must match the verified launch domain before Meta launch.");
     }

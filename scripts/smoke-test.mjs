@@ -502,11 +502,13 @@ function runOfflineChecks() {
   assertIncludes(launchPage, "statusLabel: budgetWasCapped ? \"Capped\" : budgetCapApplied ? undefined : \"Unlimited\"", "Launch budget policy visibility", "launch readiness shows unlimited budget policy when no cap is configured");
   assertIncludes(launchPage, "label: \"Meta preflight\"", "Launch Meta preflight visibility", "saved Meta selections and provider preflight are separate readiness gates");
   assertIncludes(launchPage, "Save the Meta ad account, Page, and pixel before launch.", "Launch selection blocker copy", "launch does not tell users to reconnect Meta after selections are already saved");
-  assertIncludes("src/lib/integrations/meta/service.ts", "ready = accountValid && pageValid && pixelValid", "Meta preflight hard gate", "launch preflight is blocked by account, Page, or pixel validity, not missing tracking-domain setup");
+  assertIncludes("src/lib/env.ts", "DEALFLOW_PLATFORM_LAUNCH_DOMAIN", "Platform launch domain env", "DealFlow-hosted funnels can use the platform verified domain instead of per-customer domains");
+  assertIncludes("src/lib/integrations/meta/service.ts", "getDealFlowPlatformTrackingFallback", "Meta platform domain fallback", "Meta preflight can use the verified DealFlow platform domain for DealFlow-hosted funnel traffic");
+  assertIncludes("src/lib/integrations/meta/service.ts", "ready = accountValid && pageValid && pixelValid && domainValid", "Meta preflight hard gate", "launch preflight still requires valid Meta assets and verified destination domain");
   assertExcludes("src/lib/integrations/meta/service.ts", "Configure a launch domain before Meta launch.", "Meta launch domain not hard-blocking", "missing tracking domain no longer blocks the core launch preflight");
   assertIncludes(launchPage, "Reconnect Meta", "Launch Meta error reconnect CTA", "Meta OAuth failure banners provide a direct reconnect action");
   assertIncludes(launchPage, "metaTrackingPreflightBlocked", "Launch Meta tracking blocker copy", "launch distinguishes invalid Meta selections from domain or destination preflight blockers");
-  assertIncludes(launchPage, "Add or verify the launch domain and publish the public funnel", "Launch Meta domain blocker action", "launch tells owners to fix tracking/domain/funnel state instead of reselecting valid Meta assets");
+  assertIncludes(launchPage, "Configure DealFlow's verified platform launch domain", "Launch Meta domain blocker action", "launch tells operators to fix DealFlow's platform domain instead of asking agents for their own domain by default");
   assertIncludes(launchPage, "Clear message", "Launch Meta error clear CTA", "stale Meta OAuth failure URLs can be cleared without leaving launch");
   assertIncludes(launchPage, "metaReconnectHref", "Launch Meta reconnect target", "Meta reconnect preserves the campaign-scoped launch return path from the error banner");
   assertIncludes(launchPage, "Why launch is blocked", "Launch blocker explanation", "launch page explains exactly why the launch button is disabled");

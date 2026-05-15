@@ -50,7 +50,7 @@ const registeredProviders: RegisteredProvider[] = [
     vendor: "Meta",
     category: "tracking",
     description: "Pixel wiring and domain verification readiness for launch tracking.",
-    settingsHint: "Save each workspace's own pixel and launch domain so tracking readiness reflects that client's setup.",
+    settingsHint: "Save each workspace's pixel and use DealFlow's verified platform launch domain for DealFlow-hosted funnels unless a custom domain is configured.",
     capabilities: ["status", "tracking_readiness", "parse_result", "parse_failure"],
     provider: getMetaTrackingProvider(),
   },
