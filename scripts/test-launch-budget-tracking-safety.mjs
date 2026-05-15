@@ -24,6 +24,8 @@ const budgetCap = read("src/lib/integrations/meta/budget-cap.ts");
 const launchCreateRoute = read("src/app/api/campaigns/create/route.ts");
 const launchPage = read("src/app/(app)/launch/page.tsx");
 const metaService = read("src/lib/integrations/meta/service.ts");
+const packageJson = read("package.json");
+const trackingReadinessSync = read("scripts/sync-meta-tracking-readiness.mjs");
 
 const monthlyBudgetDollars = 3000;
 const impliedDailyBudgetCents = Math.round(Math.round(monthlyBudgetDollars / 30) * 100);
@@ -119,6 +121,52 @@ assertIncludes(
   metaService,
   "Paused Meta object creation can proceed after launch gates pass",
   "partial tracking warning remains visible for paused launch",
+);
+
+assertIncludes(
+  packageJson,
+  "\"meta:tracking:sync-readiness\": \"node ./scripts/sync-meta-tracking-readiness.mjs\"",
+  "audited Meta tracking readiness sync command",
+);
+assertIncludes(
+  trackingReadinessSync,
+  "ALLOW_META_TRACKING_READINESS_SYNC",
+  "Meta tracking sync requires explicit operator enablement",
+);
+assertIncludes(
+  trackingReadinessSync,
+  "META_TRACKING_DOMAIN_VERIFIED",
+  "Meta tracking sync requires domain proof",
+);
+assertIncludes(
+  trackingReadinessSync,
+  "META_TRACKING_PAGEVIEW_PROOF",
+  "Meta tracking sync requires PageView proof",
+);
+assertIncludes(
+  trackingReadinessSync,
+  "META_TRACKING_LEAD_PROOF",
+  "Meta tracking sync requires Lead proof",
+);
+assertIncludes(
+  trackingReadinessSync,
+  "Launch domain mismatch",
+  "Meta tracking sync fails closed on wrong launch domain",
+);
+assertIncludes(
+  trackingReadinessSync,
+  "Pixel mismatch",
+  "Meta tracking sync fails closed on wrong pixel",
+);
+assertIncludes(
+  trackingReadinessSync,
+  "Ad account mismatch",
+  "Meta tracking sync fails closed on wrong ad account",
+);
+assertIncludes(
+  trackingReadinessSync,
+  "tracking_status: \"configured\"",
+  "Meta tracking sync records configured tracking only after proof gates",
 );
 
 console.log("PASS launch budget and tracking safety regression checks");
