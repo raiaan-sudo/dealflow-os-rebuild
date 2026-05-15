@@ -928,8 +928,17 @@ export function getSavedCampaignDocumentFromRow(row: CampaignPlanRow): SavedCamp
           !safeText(strategy.audience) &&
           !safeText(strategy.offer)))
     ) {
+      const launch = safeRecord(document.launch);
+      const rootRuntime = safeRecord(document.runtime);
+      const launchRuntime = safeRecord(document.launch_runtime);
+      const existingLaunchRuntime = safeRecord(launch?.runtime);
+
       return {
         ...(document as unknown as SavedCampaignDocument),
+        launch: {
+          ...launch,
+          runtime: existingLaunchRuntime ?? rootRuntime ?? launchRuntime ?? null,
+        },
         strategy: adaptModernPersistedPlanDocument(nestedPlan).strategy,
       };
     }

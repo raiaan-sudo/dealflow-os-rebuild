@@ -498,6 +498,7 @@ function runOfflineChecks() {
   assertIncludes(appContextService, "isDemoWorkspaceSeedingEnabled", "Production demo seeding guard", "workspace demo data seeding is environment-gated");
   assertIncludes(appContextService, "fallbackOrganizationSlug", "Workspace slug collision guard", "bootstrap creates a user-owned fallback slug instead of recovering another owner workspace");
   assertIncludes(appContextService, "non-owned organization", "Workspace ownership bootstrap guard", "membership bootstrap refuses non-owned organizations");
+  assertIncludes("src/lib/services/canonical-campaign.ts", "runtime: existingLaunchRuntime ?? rootRuntime ?? launchRuntime ?? null", "Canonical campaign runtime preservation", "dashboard and result surfaces preserve root-level paused launch runtime IDs from modern saved documents");
   assertIncludes(membershipPolicyMigration, "drop policy if exists organization_memberships_insert_self", "Membership self-join policy removed", "authenticated users cannot self-join arbitrary organizations");
 
   assertIncludes(previewPage, "loadPersistedLaunchMediaSelection", "Preview selected creative source", "preview loads persisted selected creative and UGC video sets from DB helper");
