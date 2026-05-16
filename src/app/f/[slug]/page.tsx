@@ -1,10 +1,14 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getPublishedCampaignBySlug } from "@/lib/services/campaign-persistence";
 import { LeadCaptureForm } from "@/app/f/[slug]/lead-capture-form";
 import { getMetaPixelIdForOrganization } from "@/lib/integrations/meta/conversions";
 import { getCampaignEntitlementsForOrganization } from "@/lib/services/campaign-entitlements";
 
 export const dynamic = "force-dynamic";
+
+const LEGACY_PUBLIC_FUNNEL_SLUG_REDIRECTS: Record<string, string> = {
+  "raiaan-realty": "raiaan-broker-toronto-on-ccbfbfce",
+};
 
 export default async function PublicFunnelPage({
   params,
@@ -18,6 +22,12 @@ export default async function PublicFunnelPage({
     : null;
 
   if (!record) {
+    const redirectSlug = LEGACY_PUBLIC_FUNNEL_SLUG_REDIRECTS[resolvedParams.slug.toLowerCase()];
+
+    if (redirectSlug) {
+      redirect(`/f/${redirectSlug}`);
+    }
+
     notFound();
   }
 
