@@ -804,6 +804,10 @@ function runOfflineChecks() {
   assertIncludes(publicFunnelPage, "campaignId: record.campaign.id", "Public funnel campaign billing override", "public funnel lead capture can honor campaign-scoped owner/test billing acceptance without broad org access");
   assertIncludes(publicFunnelPage, "LEGACY_PUBLIC_FUNNEL_SLUG_REDIRECTS", "Legacy Meta funnel slug redirect", "previously created Meta destinations do not land on a 404 after canonical slug changes");
   assertIncludes(publicFunnelPage, "\"raiaan-realty\": \"raiaan-broker-toronto-on-ccbfbfce\"", "Campaign 345 paid URL redirect", "the known paused-launch destination redirects to the current accepted public funnel");
+  assertOrderedIncludes(publicFunnelPage, [
+    "const redirectSlug = LEGACY_PUBLIC_FUNNEL_SLUG_REDIRECTS",
+    "getPublishedCampaignBySlug(resolvedParams.slug)",
+  ], "Legacy funnel redirect preempts lookup", "app-state repairs cannot hijack the paid alias before it redirects to the canonical funnel");
   assertIncludes(billingService, "billing_admin_override_launch_access_granted", "Billing admin override audit log", "override-based launch access grants are audit logged");
   assertIncludes(billingService, "qa_billing_acceptance_override_launch_access_granted", "QA billing acceptance audit log", "owner/test billing override grants are audit logged without faking Stripe subscriptions");
   assertIncludes(launchApiRoute, "assertCampaignCanLaunch(id)", "Campaign-scoped launch billing gate", "launch route applies campaign-scoped owner/test billing acceptance");

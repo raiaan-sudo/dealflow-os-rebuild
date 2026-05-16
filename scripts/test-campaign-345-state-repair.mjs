@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {
   CAMPAIGN_345_REPAIR,
   buildRepairDecision,
@@ -9,6 +10,16 @@ import {
   summarizeStaticGroups,
   summarizeVideos,
 } from "./repair-campaign-345-launch-state.mjs";
+
+function publishedFunnel() {
+  return {
+    headline: "Know what you can actually buy in Toronto",
+    subheadline: "Get a realistic $600K-$900K path before you tour.",
+    cta: "Check my options",
+    sections: [],
+    form_fields: [],
+  };
+}
 
 function staticRow(id, overrides = {}) {
   return {
@@ -88,7 +99,7 @@ function campaignRow(plan = {}) {
     launch_status: "built",
     public_slug: null,
     publish_state: "published",
-    published_snapshot: { ok: true },
+    published_snapshot: { funnel: publishedFunnel() },
     plan,
   };
 }
@@ -200,13 +211,15 @@ function testRepairBuildsPausedRuntimeAndIsIdempotentAfterApplyShape() {
   assert.equal(firstDecision.after.runtime.runtime.status, "paused");
   assert.equal(firstDecision.after.runtime.runtime.safetyState, "paused");
   assert.equal(firstDecision.after.runtime.launch_runtime.campaign_id, CAMPAIGN_345_REPAIR.meta.campaignId);
+  assert.equal(firstDecision.after.row.public_slug, CAMPAIGN_345_REPAIR.aliasSlug);
+  assert.deepEqual(firstDecision._afterPlan.funnel, publishedFunnel());
   assert.deepEqual(firstDecision.after.selectedMedia.selectedUgcVideoIds, ["video-ugc-final"]);
 
   const secondDecision = buildRepairDecision({
     campaignRow: {
       ...campaignRow(firstDecision._afterPlan),
       launch_status: "paused",
-      public_slug: null,
+      public_slug: CAMPAIGN_345_REPAIR.aliasSlug,
     },
     assets,
     metaProof: metaProof(),
@@ -217,9 +230,23 @@ function testRepairBuildsPausedRuntimeAndIsIdempotentAfterApplyShape() {
   assert.equal(secondDecision.idempotentNoop, true);
 }
 
+function testLegacyPublicFunnelRedirectPreemptsCampaignLookup() {
+  const source = fs.readFileSync("src/app/f/[slug]/page.tsx", "utf8");
+  const redirectIndex = source.indexOf("const redirectSlug = LEGACY_PUBLIC_FUNNEL_SLUG_REDIRECTS");
+  const lookupIndex = source.indexOf("getPublishedCampaignBySlug(resolvedParams.slug)");
+
+  assert.ok(redirectIndex >= 0, "legacy redirect lookup is present");
+  assert.ok(lookupIndex >= 0, "public campaign lookup is present");
+  assert.ok(
+    redirectIndex < lookupIndex,
+    "legacy paid alias redirect must run before campaign lookup so an app-state public_slug repair cannot hijack /f/raiaan-realty",
+  );
+}
+
 testSelectedStaticRepairRequiresFourReadyGroups();
 testMissingStaticMediaBlocksRepair();
 testSelectedUgcRepairRecognizesOnlyLaunchReadyUgc();
 testRepairBuildsPausedRuntimeAndIsIdempotentAfterApplyShape();
+testLegacyPublicFunnelRedirectPreemptsCampaignLookup();
 
 console.log("campaign 345 launch-state repair tests passed");

@@ -2,9 +2,9 @@
 
 ## Verdict
 
-Campaign `345dcc04-8e87-4ead-b71a-40236e2ef52e` had a real app-state gap: the public funnel and paused Meta objects existed, but the authenticated campaign document still showed no saved selected-media set and no saved paused launch runtime.
+Campaign `345dcc04-8e87-4ead-b71a-40236e2ef52e` had a real app-state gap: the public funnel and paused Meta objects existed, but the authenticated campaign document still showed no saved selected-media set, no saved paused launch runtime, no row-level public slug, and a current funnel plan that no longer matched the published snapshot.
 
-Codex performed a narrowly scoped production repair against only that campaign row after a dry-run verified owner/org context, existing app-owned launch-ready media, and read-only paused Meta IDs. No Meta, Stripe, lead, SMS/email, provider, Freshdesk, or unrelated campaign side effect was performed.
+Codex performed a narrowly scoped production repair against only that campaign row after a dry-run verified owner/org context, existing app-owned launch-ready media, the published funnel snapshot, and read-only paused Meta IDs. No Meta, Stripe, lead, SMS/email, provider, Freshdesk, or unrelated campaign side effect was performed.
 
 Live paid launch remains **NO-GO** until the owner resolves the Meta funds warning and explicitly approves live-spend activation.
 
@@ -17,6 +17,11 @@ Live paid launch remains **NO-GO** until the owner resolves the Meta funds warni
   - `user_id`: `ddaff253-807d-419e-8411-7b276558f05e`
 - Before selected static IDs: `[]`
 - Before selected UGC/video IDs: `[]`
+- Before row `public_slug`: `null`
+- Before public funnel snapshot state:
+  - `publish_state`: `published`
+  - `published_snapshot.funnel`: present
+  - current plan funnel: stale versus the published snapshot
 - Before runtime:
   - `launch_status`: `built`
   - `runtime.status`: `built`
@@ -28,7 +33,9 @@ Live paid launch remains **NO-GO** until the owner resolves the Meta funds warni
 
 ## Repair Applied
 
-The repair wrote only `campaign_plans.plan` and `campaign_plans.launch_status` for campaign 345.
+The first repair wrote only `campaign_plans.plan` and `campaign_plans.launch_status` for campaign 345. The final public-state repair also writes `campaign_plans.public_slug = "raiaan-realty"` and syncs `plan.funnel` from the existing `published_snapshot.funnel`.
+
+The public route was patched so `raiaan-realty` redirects to the canonical buyer funnel before any campaign lookup. That keeps the existing Meta destination stable even after campaign 345 regains its row-level alias slug for launch readiness.
 
 After selected static IDs:
 
@@ -40,6 +47,12 @@ After selected static IDs:
 After selected UGC/video IDs:
 
 - `video-ugc-launch-15s-1778801411705`
+
+After public funnel app state:
+
+- `public_slug`: `raiaan-realty`
+- `plan.funnel`: synced from the existing published snapshot
+- `/f/raiaan-realty`: still redirects to `/f/raiaan-broker-toronto-on-ccbfbfce`
 
 After paused runtime:
 
@@ -101,7 +114,7 @@ The production funnel path remains safe:
 - `https://app.agentdealflow.io/f/raiaan-realty` redirects to `/f/raiaan-broker-toronto-on-ccbfbfce`
 - `https://app.agentdealflow.io/f/raiaan-broker-toronto-on-ccbfbfce` returns `200`
 
-The canonical slug `raiaan-broker-toronto-on-ccbfbfce` is already owned by a separate published public-funnel row. The repair therefore did **not** mutate `campaign_plans.public_slug` on campaign 345. The app-state repair is limited to selected media and paused runtime state.
+The canonical slug `raiaan-broker-toronto-on-ccbfbfce` is already owned by a separate published public-funnel row. Campaign 345 therefore uses the paid alias slug `raiaan-realty` as its row-level `public_slug`, while the public route preempts that lookup and redirects the alias to the canonical funnel.
 
 ## Rollback
 
@@ -111,7 +124,8 @@ Rollback procedure:
 
 1. Restore `campaign_plans.plan` for campaign 345 from the pre-repair snapshot emitted by `scripts/repair-campaign-345-launch-state.mjs`.
 2. Restore `campaign_plans.launch_status` from `paused` to `built`.
-3. Do not touch Meta objects, public funnel rows, unrelated campaigns, Stripe, leads, SMS/email, providers, or Freshdesk.
+3. Restore `campaign_plans.public_slug` from `raiaan-realty` to `null` if reverting the public-state repair.
+4. Do not touch Meta objects, public funnel rows, unrelated campaigns, Stripe, leads, SMS/email, providers, or Freshdesk.
 
 ## Owner-Only Blockers
 

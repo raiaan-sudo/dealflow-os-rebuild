@@ -16,18 +16,18 @@ export default async function PublicFunnelPage({
   params: Promise<{ slug: string }>;
 }) {
   const resolvedParams = await params;
+  const redirectSlug = LEGACY_PUBLIC_FUNNEL_SLUG_REDIRECTS[resolvedParams.slug.toLowerCase()];
+
+  if (redirectSlug) {
+    redirect(`/f/${redirectSlug}`);
+  }
+
   const record = await getPublishedCampaignBySlug(resolvedParams.slug).catch(() => null);
   const metaPixelId = record?.campaign.organization_id
     ? await getMetaPixelIdForOrganization(record.campaign.organization_id)
     : null;
 
   if (!record) {
-    const redirectSlug = LEGACY_PUBLIC_FUNNEL_SLUG_REDIRECTS[resolvedParams.slug.toLowerCase()];
-
-    if (redirectSlug) {
-      redirect(`/f/${redirectSlug}`);
-    }
-
     notFound();
   }
 

@@ -393,14 +393,23 @@ function buildLaunchRuntime(now) {
   };
 }
 
+function readPublishedSnapshotFunnel(campaignRow) {
+  const snapshot = asRecord(campaignRow.published_snapshot);
+  const funnel = asRecord(snapshot.funnel);
+
+  return Object.keys(funnel).length > 0 ? funnel : null;
+}
+
 export function buildRepairedPlan(plan, params) {
   const current = asRecord(plan);
   const payload = asRecord(current.campaign_payload);
   const now = params.now;
   const selectedUgcVideoId = params.selectedUgcVideoIds[0] ?? null;
+  const publishedFunnel = asRecord(params.publishedFunnel);
   return {
     ...current,
     version: typeof current.version === "number" ? current.version : 3,
+    ...(Object.keys(publishedFunnel).length > 0 ? { funnel: publishedFunnel } : {}),
     selected_ad_id: params.selectedStaticIds[0] ?? null,
     selected_ad_ids: params.selectedStaticIds,
     selected_ugc_video_id: selectedUgcVideoId,
@@ -570,6 +579,7 @@ async function fetchMetaProof(supabase, row) {
 
 export function buildRepairDecision({ campaignRow, assets, metaProof, now = new Date().toISOString() }) {
   const currentSelected = readSelectedMedia(campaignRow.plan);
+  const publishedFunnel = readPublishedSnapshotFunnel(campaignRow);
   const staticGroups = summarizeStaticGroups(assets);
   const acceptedStaticIds = new Set(staticGroups.filter((group) => group.launchReady).map((group) => group.id));
   const selectedStaticIds = currentSelected.selectedAdIds.length >= 4
@@ -583,6 +593,7 @@ export function buildRepairDecision({ campaignRow, assets, metaProof, now = new 
   const afterPlan = buildRepairedPlan(beforePlan, {
     selectedStaticIds,
     selectedUgcVideoIds,
+    publishedFunnel,
     now,
   });
 
@@ -593,6 +604,7 @@ export function buildRepairDecision({ campaignRow, assets, metaProof, now = new 
   if (campaignRow.user_id !== CAMPAIGN_345_REPAIR.userId) blockers.push("user_mismatch");
   if (selectedStaticIds.length < 4) blockers.push("insufficient_launch_ready_static_media");
   if (selectedUgcVideoIds.length < 1) blockers.push("insufficient_launch_ready_ugc_media");
+  if (!publishedFunnel) blockers.push("published_snapshot_funnel_missing");
   blockers.push(...validateMetaProof(metaProof));
 
   const afterSelected = readSelectedMedia(afterPlan);
@@ -600,7 +612,9 @@ export function buildRepairDecision({ campaignRow, assets, metaProof, now = new 
     JSON.stringify(currentSelected.selectedAdIds) === JSON.stringify(afterSelected.selectedAdIds) &&
     JSON.stringify(currentSelected.selectedUgcVideoIds) === JSON.stringify(afterSelected.selectedUgcVideoIds) &&
     JSON.stringify(safePlanRuntime(beforePlan)) === JSON.stringify(safePlanRuntime(afterPlan)) &&
-    campaignRow.launch_status === "paused";
+    JSON.stringify(asRecord(beforePlan).funnel ?? null) === JSON.stringify(asRecord(afterPlan).funnel ?? null) &&
+    campaignRow.launch_status === "paused" &&
+    campaignRow.public_slug === CAMPAIGN_345_REPAIR.aliasSlug;
 
   return {
     mode: "dry_run",
@@ -619,6 +633,7 @@ export function buildRepairDecision({ campaignRow, assets, metaProof, now = new 
         public_slug: campaignRow.public_slug ?? null,
         publish_state: campaignRow.publish_state ?? null,
         hasPublishedSnapshot: Boolean(campaignRow.published_snapshot),
+        hasPublishedSnapshotFunnel: Boolean(publishedFunnel),
       },
       selectedMedia: currentSelected,
       runtime: safePlanRuntime(beforePlan),
@@ -633,7 +648,7 @@ export function buildRepairDecision({ campaignRow, assets, metaProof, now = new 
     after: {
       row: {
         launch_status: "paused",
-        public_slug: campaignRow.public_slug ?? null,
+        public_slug: CAMPAIGN_345_REPAIR.aliasSlug,
       },
       selectedMedia: afterSelected,
       runtime: safePlanRuntime(afterPlan),
@@ -722,6 +737,7 @@ async function main() {
       .update({
         plan: decision._afterPlan,
         launch_status: "paused",
+        public_slug: CAMPAIGN_345_REPAIR.aliasSlug,
       })
       .eq("id", CAMPAIGN_345_REPAIR.campaignId)
       .eq("organization_id", CAMPAIGN_345_REPAIR.organizationId)
