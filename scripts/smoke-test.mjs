@@ -218,6 +218,9 @@ function runOfflineChecks() {
   const safeE2eSpec = "tests/e2e/safe-self-serve.spec.ts";
   const publishRoute = "src/app/api/campaigns/[id]/publish/route.ts";
   const publicFunnelPage = "src/app/f/[slug]/page.tsx";
+  const publicFunnelThankYouPage = "src/app/f/[slug]/thank-you/page.tsx";
+  const publicFunnelThankYouTracker = "src/app/f/[slug]/thank-you/thank-you-conversion-tracker.tsx";
+  const publicFunnelThankYouModel = "src/lib/public-funnel-thank-you.ts";
   const optimizeRoute = "src/app/api/campaigns/[id]/optimize/route.ts";
   const internalLaunchMonitor = "src/lib/services/internal-launch-monitor.ts";
   const metaExecution = "src/lib/integrations/meta/execution.ts";
@@ -638,6 +641,9 @@ function runOfflineChecks() {
   assertIncludes(leadRoute, "ALLOW_PUBLIC_LEAD_NO_TURNSTILE", "Lead capture Turnstile production guard", "production lead capture fails closed if Turnstile is not configured unless break-glass is set");
   assertIncludes(leadRoute, "https://challenges.cloudflare.com/turnstile/v0/siteverify", "Lead capture Turnstile siteverify", "public lead capture verifies Turnstile tokens server-side");
   assertIncludes(leadForm, "NEXT_PUBLIC_TURNSTILE_SITE_KEY", "Lead form Turnstile client gate", "public lead form renders Turnstile only when the public site key is configured");
+  assertIncludes(leadForm, "submitInFlightRef", "Lead form duplicate submit guard", "public lead form synchronously blocks rapid duplicate submits");
+  assertIncludes(leadForm, "data?.success !== true || data?.ok !== true", "Lead form confirmed-success redirect guard", "public lead form redirects only after confirmed lead-capture success");
+  assertIncludes(leadForm, "window.location.assign(thankYouUrl.toString())", "Lead form thank-you redirect", "successful public lead submissions route to a dedicated next-step page");
   assertIncludes(loginForm, "supabase.auth.signInWithPassword({\n          email,\n          password,\n          options:", "Signin Turnstile token support", "Supabase Auth password sign-in can receive a Turnstile token");
   assertIncludes(loginForm, "captchaToken", "Signup Turnstile token support", "Supabase Auth CAPTCHA can receive a Turnstile token during account creation");
   assertIncludes(loginForm, "resetPasswordForEmail", "Forgot password support", "login page can request a Supabase password reset link");
@@ -808,6 +814,14 @@ function runOfflineChecks() {
     "const redirectSlug = LEGACY_PUBLIC_FUNNEL_SLUG_REDIRECTS",
     "getPublishedCampaignBySlug(resolvedParams.slug)",
   ], "Legacy funnel redirect preempts lookup", "app-state repairs cannot hijack the paid alias before it redirects to the canonical funnel");
+  assertIncludes(publicFunnelThankYouPage, "getPublishedCampaignBySlug(resolvedParams.slug)", "Public funnel thank-you lookup", "thank-you pages render from published public funnel records");
+  assertIncludes(publicFunnelThankYouPage, "notFound()", "Public funnel thank-you invalid slug guard", "invalid thank-you slugs fail safely");
+  assertIncludes(publicFunnelThankYouPage, "view.primaryLink", "Public funnel thank-you booking CTA surface", "thank-you route can show configured booking next step");
+  assertIncludes(publicFunnelThankYouPage, "Keep an eye on your phone and email", "Public funnel thank-you expectation copy", "thank-you route sets follow-up expectations");
+  assertIncludes(publicFunnelThankYouTracker, "CompleteRegistration", "Public funnel thank-you conversion event", "thank-you route can track a post-submit conversion event");
+  assertIncludes(publicFunnelThankYouTracker, "sessionStorage.getItem(storageKey)", "Public funnel thank-you conversion dedupe", "refreshes avoid duplicate thank-you conversion tracking");
+  assertIncludes(publicFunnelThankYouModel, "booking_url", "Public funnel thank-you configurable booking URL", "thank-you model supports campaign/funnel booking links when configured");
+  assertIncludes(publicFunnelThankYouModel, "url.protocol === \"https:\" || url.protocol === \"http:\"", "Public funnel thank-you safe link policy", "thank-you CTAs only use public http(s) URLs");
   assertIncludes(billingService, "billing_admin_override_launch_access_granted", "Billing admin override audit log", "override-based launch access grants are audit logged");
   assertIncludes(billingService, "qa_billing_acceptance_override_launch_access_granted", "QA billing acceptance audit log", "owner/test billing override grants are audit logged without faking Stripe subscriptions");
   assertIncludes(launchApiRoute, "assertCampaignCanLaunch(id)", "Campaign-scoped launch billing gate", "launch route applies campaign-scoped owner/test billing acceptance");

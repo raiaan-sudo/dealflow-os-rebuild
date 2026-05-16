@@ -58,6 +58,7 @@ export function LeadCaptureForm({
   const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
   const turnstileWidgetIdRef = useRef<string | null>(null);
   const pageViewTrackedRef = useRef(false);
+  const submitInFlightRef = useRef(false);
   const turnstileEnabled = Boolean(TURNSTILE_SITE_KEY);
 
   const normalizedFields = useMemo(
@@ -137,6 +138,10 @@ export function LeadCaptureForm({
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitInFlightRef.current) {
+      return;
+    }
+
     const normalizedName = name.trim();
     const normalizedEmail = email.trim();
     const normalizedPhone = phone.trim();
@@ -167,6 +172,7 @@ export function LeadCaptureForm({
 
     setStatus("submitting");
     setMessage(null);
+    submitInFlightRef.current = true;
 
     try {
       const response = await fetch("/api/lead-capture", {
@@ -190,11 +196,15 @@ export function LeadCaptureForm({
       });
 
       const data = (await response.json().catch(() => null)) as
-        | { error?: string; lead_id?: string; id?: string }
+        | { error?: string; message?: string; success?: boolean; ok?: boolean; queued?: boolean; lead_id?: string; id?: string }
         | null;
 
       if (!response.ok) {
         throw new Error(data?.error ?? "Lead capture failed.");
+      }
+
+      if (data?.success !== true || data?.ok !== true) {
+        throw new Error(data?.message ?? "Lead capture is temporarily delayed. Please try again shortly.");
       }
 
       const leadId = data?.lead_id ?? data?.id ?? null;
@@ -204,16 +214,20 @@ export function LeadCaptureForm({
       }
 
       setStatus("success");
-      setMessage("Thanks. Your details were received and the team can follow up now.");
+      setMessage("Thanks. Your details were received. Redirecting to the next step...");
       setName("");
       setEmail("");
       setPhone("");
       setSmsConsent(false);
       resetTurnstile();
+      const thankYouUrl = new URL(`/f/${encodeURIComponent(funnelSlug)}/thank-you`, window.location.origin);
+      thankYouUrl.searchParams.set("submitted", "1");
+      window.location.assign(thankYouUrl.toString());
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "Lead capture failed.");
       resetTurnstile();
+      submitInFlightRef.current = false;
     }
   }
 
