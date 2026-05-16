@@ -16,6 +16,18 @@ export type PublicFunnelThankYouViewModel = {
 
 const BOOKING_LABEL = "Book a quick call";
 const RETURN_LABEL = "Back to listing request";
+const DEFAULT_EXPECTATION =
+  "We will review your criteria and follow up with the strongest next steps.";
+const FOLLOW_UP_EXPECTATIONS: Record<string, string> = {
+  redirect_to_calendar:
+    "Book a quick call if you want faster help, or watch for our follow-up with the strongest next steps.",
+  send_to_follow_up_sequence:
+    "We will review your criteria and follow up with the strongest next steps.",
+  show_thank_you_page:
+    "We will review your request and follow up shortly with the clearest next step.",
+  show_thank_you_page_call_5_15_minutes:
+    "We will review your criteria and follow up shortly with the strongest next steps.",
+};
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -44,6 +56,17 @@ function extractFirstUrl(value: unknown) {
   const raw = safeText(value);
   const match = raw?.match(/https?:\/\/[^\s)"'<]+/i);
   return match ? safePublicUrl(match[0]) : null;
+}
+
+function getFollowUpExpectation(value: unknown) {
+  const raw = safeText(value);
+
+  if (!raw) {
+    return DEFAULT_EXPECTATION;
+  }
+
+  const normalizedKey = raw.trim().toLowerCase();
+  return FOLLOW_UP_EXPECTATIONS[normalizedKey] ?? raw;
 }
 
 export function getPublicFunnelBookingUrl(record: FullCampaignRecord) {
@@ -94,9 +117,7 @@ export function buildPublicFunnelThankYouViewModel(params: {
     safeText(record.funnel.headline) ||
     safeText(record.plan.offer) ||
     "your request";
-  const expectation =
-    safeText(record.funnel.follow_up_action) ||
-    "We will review your criteria and follow up with the strongest next steps.";
+  const expectation = getFollowUpExpectation(record.funnel.follow_up_action);
 
   return {
     businessName,

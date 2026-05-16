@@ -822,6 +822,7 @@ function runOfflineChecks() {
   assertIncludes(publicFunnelThankYouTracker, "sessionStorage.getItem(storageKey)", "Public funnel thank-you conversion dedupe", "refreshes avoid duplicate thank-you conversion tracking");
   assertIncludes(publicFunnelThankYouModel, "booking_url", "Public funnel thank-you configurable booking URL", "thank-you model supports campaign/funnel booking links when configured");
   assertIncludes(publicFunnelThankYouModel, "url.protocol === \"https:\" || url.protocol === \"http:\"", "Public funnel thank-you safe link policy", "thank-you CTAs only use public http(s) URLs");
+  assertIncludes(publicFunnelThankYouModel, "show_thank_you_page_call_5_15_minutes", "Public funnel thank-you follow-up key mapping", "saved machine follow-up keys render as customer-safe next-step copy");
   assertIncludes(billingService, "billing_admin_override_launch_access_granted", "Billing admin override audit log", "override-based launch access grants are audit logged");
   assertIncludes(billingService, "qa_billing_acceptance_override_launch_access_granted", "QA billing acceptance audit log", "owner/test billing override grants are audit logged without faking Stripe subscriptions");
   assertIncludes(launchApiRoute, "assertCampaignCanLaunch(id)", "Campaign-scoped launch billing gate", "launch route applies campaign-scoped owner/test billing acceptance");
