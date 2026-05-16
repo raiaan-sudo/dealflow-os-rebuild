@@ -32,6 +32,7 @@ const {
   CURRENT_CAMPAIGN_PLAN_VERSION,
   assertCampaignPlanDocument,
   buildCampaignPlanCriticalFieldPatch,
+  getSelectedAdIdsFromPlan,
   getLeadLoopVerifiedFromPlan,
   getLaunchStatusFromPlan,
   getPublicSlugFromPlan,
@@ -91,6 +92,7 @@ function testCriticalHelpersStayInSync() {
     selectedUgcVideoIds: ["ugc_video_1"],
   });
   assert.deepEqual(getSelectedUgcVideoIdsFromPlan(withLaunchMedia), ["ugc_video_1"]);
+  assert.deepEqual(getSelectedAdIdsFromPlan(withLaunchMedia), ["ad_123", "ad_456"]);
   assert.deepEqual(withLaunchMedia.campaign_payload?.selected_ugc_video_ids, ["ugc_video_1"]);
 
   const withLeadLoop = withLeadLoopVerified(withLaunchMedia);
@@ -124,6 +126,37 @@ function testCriticalHelpersStayInSync() {
   assert.equal(getLaunchStatusFromPlan(merged), "launching");
 }
 
+function testNestedAndCamelCaseLaunchMediaSelection() {
+  const savedDocumentShape = {
+    plan: {
+      selectedAdIds: ["static-camel-1", "static-camel-2"],
+      campaignPayload: {
+        selectedUgcVideoIds: ["ugc-camel-1"],
+      },
+    },
+  };
+
+  assert.deepEqual(getSelectedAdIdsFromPlan(savedDocumentShape), ["static-camel-1", "static-camel-2"]);
+  assert.deepEqual(getSelectedUgcVideoIdsFromPlan(savedDocumentShape), ["ugc-camel-1"]);
+
+  const nestedSnakeCaseShape = {
+    plan: {
+      selected_ad_ids: ["static-nested-1", "static-nested-2", "static-nested-3", "static-nested-4"],
+      campaign_payload: {
+        selected_ugc_video_id: "ugc-nested-primary",
+      },
+    },
+  };
+
+  assert.deepEqual(getSelectedAdIdsFromPlan(nestedSnakeCaseShape), [
+    "static-nested-1",
+    "static-nested-2",
+    "static-nested-3",
+    "static-nested-4",
+  ]);
+  assert.deepEqual(getSelectedUgcVideoIdsFromPlan(nestedSnakeCaseShape), ["ugc-nested-primary"]);
+}
+
 function testExtractedCriticalFields() {
   const plan = mergeCampaignPlanDocument(
     {
@@ -153,6 +186,7 @@ function main() {
   testMissingFieldsDefaultSafely();
   testInvalidShapeFailsClearly();
   testCriticalHelpersStayInSync();
+  testNestedAndCamelCaseLaunchMediaSelection();
   testExtractedCriticalFields();
 
   console.log("campaign-plan-document validation passed");

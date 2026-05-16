@@ -164,6 +164,7 @@ function runOfflineChecks() {
   const creativeChatIntakeService = "src/lib/services/creative-chat-intake-service.ts";
   const mediaBuyerFramework = "src/lib/services/media-buyer-framework.ts";
   const campaignPersistence = "src/lib/services/campaign-persistence.ts";
+  const campaignPlanDocument = "src/lib/services/campaign-plan-document.ts";
   const campaignPlanPersistence = "src/lib/services/campaign-plan-persistence-service.ts";
   const directHeyGenClient = "src/lib/ai/heygen.ts";
   const videoGenerationErrors = "src/lib/ai/video-generation-errors.ts";
@@ -485,6 +486,8 @@ function runOfflineChecks() {
   assertIncludes(appLayout, "getStageForPath", "App shell route stage", "sidebar stage label follows the current route instead of hard-coding Build");
   assertIncludes(appLayout, "ACTIVE_CAMPAIGN_COOKIE", "App shell active campaign source", "workspace shell reads the active campaign cookie for scoped navigation");
   assertIncludes(appSidebar, "buildCampaignScopedHref", "Sidebar campaign-scoped navigation", "desktop product navigation preserves the active campaign id");
+  assertIncludes(appSidebar, "AI workspace", "Sidebar truthful workspace badge", "authenticated shell does not label paused Meta delivery as AI live");
+  assertExcludes(appSidebar, "AI live", "Sidebar live-delivery badge removed", "authenticated shell avoids live-delivery wording while Meta objects are paused");
   assertIncludes(topBar, "buildCampaignScopedHref", "Mobile campaign-scoped navigation", "mobile product navigation and settings preserve the active campaign id");
   assertIncludes(paywallAccess, "const resolvedRecord = storedRecord ?? latestRecord", "Active campaign preference", "campaign resolution keeps the stored active campaign before falling back to latest");
   assertIncludes(appLayout, "pb-20", "Workspace support safe space", "workspace content reserves bottom room for the support widget");
@@ -523,6 +526,8 @@ function runOfflineChecks() {
   assertIncludes(previewPage, "getSelectedAdIdsFromPlan", "Preview selected creative plan helper", "preview resolves selected creative set through typed plan helper");
   assertIncludes(launchPage, "loadPersistedLaunchMediaSelection", "Launch selected creative source", "launch loads persisted selected creative and UGC video sets from DB helper");
   assertIncludes(launchPage, "getSelectedAdIdsFromPlan", "Launch selected creative plan helper", "launch resolves selected creative set through typed plan helper");
+  assertIncludes(campaignPlanDocument, "selectedAdIds", "Selected creative camel-case normalization", "launch media selection survives saved-document and browser handoff shapes");
+  assertIncludes(campaignPlanDocument, "nestedPlan", "Selected creative nested normalization", "launch media selection survives nested campaign plan documents");
   assertExcludes(launchPage, "recommended", "Launch recommended fallback removed", "launch preview does not use recommended fallback");
   assertIncludes(launchPage, "budgetCapMissingForLaunch", "Launch budget cap fail-closed visibility", "launch readiness blocks production Meta object creation when the cap is missing");
   assertIncludes(launchPage, "effectiveDailyBudgetCents", "Launch effective budget visibility", "launch readiness shows the effective capped budget instead of only the campaign budget");

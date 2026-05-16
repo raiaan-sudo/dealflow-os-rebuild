@@ -12,7 +12,7 @@ export const LAUNCH_STEPS = [
   "Campaign ID generated",
   "Ad set created",
   "Creatives uploaded",
-  "Launching ads...",
+  "Paused ad record created",
 ] as const;
 
 export const MAX_SAFE_DAILY_BUDGET = 100;
@@ -118,8 +118,8 @@ export function useLaunchSimulatorModel({
         (!launchRequirements.pixelReady || !launchRequirements.domainReady),
     },
     {
-      label: "Launch",
-      detail: "Push the campaign live and let the system take over optimization.",
+      label: "Paused Meta setup",
+      detail: "Create or recover paused Meta objects for owner activation review.",
       complete: isLive,
       current: isLaunching || (canLaunch && !isLive),
     },
@@ -146,7 +146,7 @@ export function useLaunchSimulatorModel({
                 : runtime.status === "launching"
                   ? LAUNCH_STEPS[Math.min(stepIndex, LAUNCH_STEPS.length - 1)]
                   : canLaunch
-                    ? "Your campaign is ready for launch setup with the connected account."
+                    ? "Your campaign is ready for paused Meta setup with the connected account."
                     : "Your campaign is reviewed and waiting on the remaining launch requirements.";
 
   const launchStatusLabel =

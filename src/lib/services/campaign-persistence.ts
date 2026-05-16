@@ -9,7 +9,12 @@ import {
   type SavedCampaignDocument,
 } from "@/lib/services/canonical-campaign";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
-import { getSelectedAdIdsFromPlan } from "@/lib/services/campaign-plan-document";
+import {
+  getSelectedAdIdFromPlan,
+  getSelectedAdIdsFromPlan,
+  getSelectedUgcVideoIdFromPlan,
+  getSelectedUgcVideoIdsFromPlan,
+} from "@/lib/services/campaign-plan-document";
 import { getAppContext } from "@/lib/services/app-context";
 import {
   completeAssetGenerationLifecycle,
@@ -882,6 +887,10 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
       publishedSnapshot: null,
     },
   });
+  const selectedAdIds = getSelectedAdIdsFromPlan(mergedSavedDocument);
+  const selectedUgcVideoIds = getSelectedUgcVideoIdsFromPlan(mergedSavedDocument);
+  const selectedAdId = getSelectedAdIdFromPlan(mergedSavedDocument) ?? selectedAdIds[0] ?? null;
+  const selectedUgcVideoId = getSelectedUgcVideoIdFromPlan(mergedSavedDocument) ?? selectedUgcVideoIds[0] ?? null;
   const plan = {
     name: canonical.campaign.name,
     plan: canonical.plan,
@@ -895,6 +904,17 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
     funnel: canonical.funnel,
     launch: canonical.launch,
     results: canonical.results,
+    selected_ad_id: selectedAdId,
+    selected_ad_ids: selectedAdIds,
+    selected_ugc_video_id: selectedUgcVideoId,
+    selected_ugc_video_ids: selectedUgcVideoIds,
+    campaign_payload: {
+      ...((mergedSavedDocument.campaign_payload as Record<string, unknown> | null) ?? {}),
+      ...(selectedAdId ? { selected_ad_id: selectedAdId } : {}),
+      ...(selectedAdIds.length > 0 ? { selected_ad_ids: selectedAdIds } : {}),
+      ...(selectedUgcVideoId ? { selected_ugc_video_id: selectedUgcVideoId } : {}),
+      ...(selectedUgcVideoIds.length > 0 ? { selected_ugc_video_ids: selectedUgcVideoIds } : {}),
+    },
   };
 
   const persistencePayload = {

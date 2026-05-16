@@ -568,11 +568,11 @@ export default async function LaunchAliasPage({
         <PageHeader
           eyebrow="Launch"
           title="Selected creative required"
-          description="Choose an ad in creatives before launch can continue."
+          description="Save a launch-ready static creative set before paused Meta setup can continue."
         />
         <EmptyState
           title="Choose the creative test set first"
-          description="Your build workspace will send you to the next campaign step."
+          description="Creative Studio must save the selected static ads and UGC video before this page can review launch readiness."
         />
         <div>
           <Button asChild>
@@ -596,8 +596,8 @@ export default async function LaunchAliasPage({
       <WizardSteps current="launch" />
       <PageHeader
         eyebrow="Launch"
-        title="Final review before launch"
-        description="Confirm the campaign, check the selected ad, and launch when everything looks right."
+        title="Paused launch readiness review"
+        description="Confirm the campaign, selected media, owner blockers, and paused Meta object readiness."
       />
       {metaConnectedFlag ? (
         <div className="rounded-[22px] border border-emerald-400/15 bg-emerald-400/10 px-5 py-4 text-sm font-medium text-emerald-100">
@@ -652,7 +652,7 @@ export default async function LaunchAliasPage({
                 Why launch is blocked
               </p>
               <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-foreground">
-                Finish these gates before launch
+                Finish these gates before paused setup
               </h2>
               <div className="mt-4 grid gap-2 text-sm leading-6 text-muted-foreground">
                 {launchBlockerActions.map((action) => (
@@ -660,7 +660,7 @@ export default async function LaunchAliasPage({
                 ))}
               </div>
               <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                This page is a recovery checklist while blocked. DealFlow will not call Meta launch actions until every gate below is ready.
+                This page is a recovery checklist while blocked. DealFlow will not create or recover Meta objects until every gate below is ready.
               </p>
             </div>
             <StatusPill tone="warning">Blocked</StatusPill>
@@ -705,7 +705,7 @@ export default async function LaunchAliasPage({
                     : metaTrackingPreflightBlocked
                       ? "The saved Meta selections are valid, but launch preflight is blocked by DealFlow's platform domain or destination requirements."
                     : launchRoomReady
-                  ? "Preflight passed. Save the Meta selections below, then use the launch button to attempt launch."
+                  ? "Preflight passed for paused Meta setup. Owner funds and live activation approval are still separate."
                   : `Before launch: ${blockingReasons.join(" • ")}.`}
               </p>
               {metaSelectionReady ? (
@@ -848,8 +848,8 @@ export default async function LaunchAliasPage({
               {launchRoomReady ? "All launch gates are ready" : "Launch gates still need attention"}
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-7 text-muted-foreground">
-              Launch remains blocked until billing, Meta selections, launch checks, selected creative,
-              published funnel, and final launch approval all pass.
+              Paused setup remains blocked until billing, Meta selections, launch checks, selected creative,
+              published funnel, and final owner approval all pass.
             </p>
           </div>
           <StatusPill tone={launchRoomReady ? "success" : "warning"}>
@@ -878,13 +878,13 @@ export default async function LaunchAliasPage({
           <div className="max-w-2xl">
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Launch check</p>
             <p className="mt-2 text-lg font-semibold">
-              {billingLaunchAllowed ? "Ready to attempt launch" : "Activate to launch"}
+              {billingLaunchAllowed ? "Ready for paused setup review" : "Activate before setup"}
             </p>
             <p className="mt-2 max-w-[720px] text-sm leading-7 text-muted-foreground">
               {launchRoomReady
-                ? `All launch gates passed. Start the paused Meta launch when ready. Last verified at: ${metaVerifiedAtText}. Meta state may change before launch.`
+                ? `All launch gates passed for paused object setup. Owner funds and live activation approval remain separate. Last verified at: ${metaVerifiedAtText}. Meta state may change before activation.`
                 : blockingReasons.length > 0
-                  ? `Blocked: ${blockingReasons.join(" • ")}. No Meta launch will run until these gates pass.`
+                  ? `Blocked: ${blockingReasons.join(" • ")}. No Meta object creation or recovery will run until these gates pass.`
                   : billingBlockCopy}
             </p>
           </div>
@@ -897,7 +897,7 @@ export default async function LaunchAliasPage({
             {launchRoomReady ? (
               <Button asChild className="w-full lg:w-auto">
                 <Link href={`/launching?campaignId=${encodeURIComponent(savedRecord.campaign.id)}&launchIntent=ready`}>
-                  Ready to attempt launch
+                  Review paused setup
                 </Link>
               </Button>
             ) : !billingLaunchAllowed ? (

@@ -35,15 +35,15 @@ export function AppSidebar({ organizationName, isAdmin, stage, activeCampaignId 
     built: { label: "Build", copy: "Tune the campaign, then review the preview." },
     paywall: { label: "Build", copy: "Unlock the campaign to continue review." },
     preview: { label: "Review", copy: "Check the preview and confirm launch details." },
-    launch_ready: { label: "Go Live", copy: "Connect launch settings and start when ready." },
-    launching: { label: "Go Live", copy: "Launch is in progress. Watch for confirmation." },
-    live: { label: "Results", copy: "Track results and optimize the live campaign." },
+    launch_ready: { label: "Launch", copy: "Review paused setup and owner activation gates." },
+    launching: { label: "Paused setup", copy: "Meta object recovery is running; delivery stays paused." },
+    live: { label: "Results", copy: "Track synced delivery after owner activation." },
   };
   const stageLabel = stageState[stage].label;
   const productNavigation = [
     { href: "/builder", label: "Build", icon: Wand2 },
     { href: "/preview", label: "Review", icon: Eye },
-    { href: "/launch", label: "Go Live", icon: Rocket },
+    { href: "/launch", label: "Launch", icon: Rocket },
     { href: "/dashboard", label: "Results", icon: BarChart3 },
   ];
 
@@ -68,7 +68,7 @@ export function AppSidebar({ organizationName, isAdmin, stage, activeCampaignId 
               <p className="min-w-0 truncate text-sm font-medium leading-5" title={organizationName}>
                 {organizationName}
               </p>
-              <Badge className="w-fit shrink-0 border-primary/20 bg-primary/10 text-primary">AI live</Badge>
+              <Badge className="w-fit shrink-0 border-primary/20 bg-primary/10 text-primary">AI workspace</Badge>
             </div>
           </div>
         </div>

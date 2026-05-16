@@ -99,6 +99,12 @@ function normalizeSelectedUgcVideoIds(value: unknown) {
   return normalizeSelectedIds(value, 3);
 }
 
+function normalizeSelectedIdsFromSources(max: number, ...values: unknown[]) {
+  return Array.from(
+    new Set(values.flatMap((value) => normalizeSelectedIds(value, max))),
+  ).slice(0, max);
+}
+
 function normalizeOptionalText(value: unknown) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
@@ -148,6 +154,9 @@ function derivePublicSlugFromPlanValue(value: Record<string, unknown>) {
 
 function migrateCampaignPlanDocument(value: Record<string, unknown>) {
   const currentPayload = asObjectRecord(value.campaign_payload);
+  const camelPayload = asObjectRecord(value.campaignPayload);
+  const nestedPlan = asObjectRecord(value.plan);
+  const nestedPayload = asObjectRecord(nestedPlan?.campaign_payload) ?? asObjectRecord(nestedPlan?.campaignPayload);
   const currentLaunchRuntime = asObjectRecord(value.launch_runtime);
   const currentRuntime = asObjectRecord(value.runtime);
   const currentFirstWeekSuccess = asObjectRecord(value.first_week_success);
@@ -155,20 +164,64 @@ function migrateCampaignPlanDocument(value: Record<string, unknown>) {
   const hasLeadLoopVerified = Object.hasOwn(value, "lead_loop_verified");
   const selectedAdId =
     normalizeSelectedAdId(value.selected_ad_id) ??
+    normalizeSelectedAdId(value.selectedAdId) ??
     normalizeSelectedAdId(currentPayload?.selected_ad_id) ??
+    normalizeSelectedAdId(currentPayload?.selectedAdId) ??
+    normalizeSelectedAdId(camelPayload?.selected_ad_id) ??
+    normalizeSelectedAdId(camelPayload?.selectedAdId) ??
+    normalizeSelectedAdId(nestedPlan?.selected_ad_id) ??
+    normalizeSelectedAdId(nestedPlan?.selectedAdId) ??
+    normalizeSelectedAdId(nestedPayload?.selected_ad_id) ??
+    normalizeSelectedAdId(nestedPayload?.selectedAdId) ??
     null;
-  const selectedAdIds = normalizeSelectedAdIds(value.selected_ad_ids);
-  const payloadSelectedAdIds = normalizeSelectedAdIds(currentPayload?.selected_ad_ids);
+  const selectedAdIds = normalizeSelectedIdsFromSources(
+    6,
+    value.selected_ad_ids,
+    value.selectedAdIds,
+    nestedPlan?.selected_ad_ids,
+    nestedPlan?.selectedAdIds,
+  );
+  const payloadSelectedAdIds = normalizeSelectedIdsFromSources(
+    6,
+    currentPayload?.selected_ad_ids,
+    currentPayload?.selectedAdIds,
+    camelPayload?.selected_ad_ids,
+    camelPayload?.selectedAdIds,
+    nestedPayload?.selected_ad_ids,
+    nestedPayload?.selectedAdIds,
+  );
   const mergedSelectedAdIds = [
     ...(selectedAdIds.length > 0 ? selectedAdIds : payloadSelectedAdIds),
     ...(selectedAdId ? [selectedAdId] : []),
   ].filter((item, index, list) => list.indexOf(item) === index).slice(0, 6);
   const selectedUgcVideoId =
     normalizeSelectedAdId(value.selected_ugc_video_id) ??
+    normalizeSelectedAdId(value.selectedUgcVideoId) ??
     normalizeSelectedAdId(currentPayload?.selected_ugc_video_id) ??
+    normalizeSelectedAdId(currentPayload?.selectedUgcVideoId) ??
+    normalizeSelectedAdId(camelPayload?.selected_ugc_video_id) ??
+    normalizeSelectedAdId(camelPayload?.selectedUgcVideoId) ??
+    normalizeSelectedAdId(nestedPlan?.selected_ugc_video_id) ??
+    normalizeSelectedAdId(nestedPlan?.selectedUgcVideoId) ??
+    normalizeSelectedAdId(nestedPayload?.selected_ugc_video_id) ??
+    normalizeSelectedAdId(nestedPayload?.selectedUgcVideoId) ??
     null;
-  const selectedUgcVideoIds = normalizeSelectedUgcVideoIds(value.selected_ugc_video_ids);
-  const payloadSelectedUgcVideoIds = normalizeSelectedUgcVideoIds(currentPayload?.selected_ugc_video_ids);
+  const selectedUgcVideoIds = normalizeSelectedIdsFromSources(
+    3,
+    value.selected_ugc_video_ids,
+    value.selectedUgcVideoIds,
+    nestedPlan?.selected_ugc_video_ids,
+    nestedPlan?.selectedUgcVideoIds,
+  );
+  const payloadSelectedUgcVideoIds = normalizeSelectedIdsFromSources(
+    3,
+    currentPayload?.selected_ugc_video_ids,
+    currentPayload?.selectedUgcVideoIds,
+    camelPayload?.selected_ugc_video_ids,
+    camelPayload?.selectedUgcVideoIds,
+    nestedPayload?.selected_ugc_video_ids,
+    nestedPayload?.selectedUgcVideoIds,
+  );
   const mergedSelectedUgcVideoIds = [
     ...(selectedUgcVideoIds.length > 0 ? selectedUgcVideoIds : payloadSelectedUgcVideoIds),
     ...(selectedUgcVideoId ? [selectedUgcVideoId] : []),

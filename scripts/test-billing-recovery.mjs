@@ -62,7 +62,7 @@ assert.match(settings, /Need help before cancelling/);
 assert.match(launchPage, /Update the payment method in Stripe Portal before launching/);
 assert.match(launchPage, /Billing is inactive/);
 assert.match(launchPage, /Billing recovery is required before launch/);
-assert.match(launchPage, /No Meta launch will run until these gates pass/);
+assert.match(launchPage, /No Meta object creation or recovery will run until these gates pass/);
 assert.match(launchPage, /Owner\/test billing acceptance is active for this campaign/);
 assert.match(launchPage, /No Stripe subscription is being claimed/);
 assert.match(paywallPage, /Open billing settings/);

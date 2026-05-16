@@ -303,8 +303,8 @@ export function buildFirstWeekSuccessState(params: {
     lastVerifiedAt = params.metaConnection.lastSyncAt ?? params.metaConnection.connectedAt ?? null;
     explanation = "Meta is connected. Once you launch, the system will watch for traffic and lead-loop proof.";
     nextAction = hasSelections
-      ? "Run launch now."
-      : "Select your ad account, Page, and pixel before launch.";
+      ? "Review paused launch setup."
+      : "Select your ad account, Page, and pixel before paused launch setup.";
     monitoring = [
       "Selected ad account, Page, and pixel",
       "Launch preflight status",

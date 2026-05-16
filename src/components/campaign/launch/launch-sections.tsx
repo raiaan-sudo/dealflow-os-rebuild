@@ -22,7 +22,7 @@ function EnvironmentBadge({
           : "border-amber-400/20 bg-amber-400/10 text-amber-100"
       }
     >
-      {demoMode ? "Demo environment" : launchMode === "test" ? "Test environment" : "Live environment"}
+      {demoMode ? "Demo environment" : launchMode === "test" ? "Test environment" : "Activation review"}
     </Badge>
   );
 }
@@ -170,7 +170,7 @@ export function LaunchActionPanel({
             runtime.status === "built" ||
             runtime.status === "preview" ||
             runtime.status === "launch_ready"
-              ? "Launch your campaign"
+              ? "Paused launch setup"
               : "Campaign execution"}
           </h2>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">{currentMessage}</p>
@@ -181,8 +181,8 @@ export function LaunchActionPanel({
           <Button size="lg" onClick={canLaunch ? handleLaunch : handleConnectAccount}>
             {canLaunch
               ? runtime.metaPushStatus === "published"
-                ? "Publish Confirmed"
-                : "Launch Campaign"
+                ? "Publish confirmed"
+                : "Create paused objects"
               : blockingRequirements[0] === "Connect a real Meta ad account"
                 ? "Connect Ad Account"
                 : "Launch Blocked"}
@@ -193,7 +193,7 @@ export function LaunchActionPanel({
             onClick={canLaunch ? handleLaunch : handleConnectAccount}
             disabled={canLaunch ? !canPushToMeta : blockingRequirements[0] !== "Connect a real Meta ad account"}
           >
-            {canLaunch ? "Launch" : blockingRequirements[0] === "Connect a real Meta ad account" ? "Connect Meta" : "Finish setup"}
+            {canLaunch ? "Review paused setup" : blockingRequirements[0] === "Connect a real Meta ad account" ? "Connect Meta" : "Finish setup"}
           </Button>
         </div>
       </div>
@@ -256,7 +256,7 @@ export function LaunchGuidedFlowPanel({
             {isLive
               ? "Publish confirmed"
               : isLaunching
-                ? "Submitting launch now"
+                ? "Creating paused Meta objects"
                 : canLaunch
                   ? "Launch requirements met"
                   : "Finish launch requirements to continue"}
@@ -295,7 +295,7 @@ export function LaunchGuidedFlowPanel({
               disabled={!canLaunch && blockingRequirements[0] !== "Connect a real Meta ad account"}
             >
               {canLaunch
-                ? "Launch Campaign"
+                ? "Create paused objects"
                 : blockingRequirements[0] === "Connect a real Meta ad account"
                   ? "Connect Meta Account"
                   : "Launch Blocked"}

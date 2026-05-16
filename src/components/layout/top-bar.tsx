@@ -81,7 +81,7 @@ export function TopBar({ userName, userEmail, organizationName, activeCampaignId
         {[
           { href: "/builder", label: "Build" },
           { href: "/preview", label: "Review" },
-          { href: "/launch", label: "Go Live" },
+          { href: "/launch", label: "Launch" },
           { href: "/dashboard", label: "Results" },
         ].map((item) => {
           const active =
