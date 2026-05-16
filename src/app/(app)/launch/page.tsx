@@ -567,7 +567,7 @@ export default async function LaunchAliasPage({
         <WizardSteps current="launch" />
         <PageHeader
           eyebrow="Launch"
-          title="Selected creative required"
+          title="Saved creative set missing"
           description="Save a launch-ready static creative set before paused Meta setup can continue."
         />
         <EmptyState

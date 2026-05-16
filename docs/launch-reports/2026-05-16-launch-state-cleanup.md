@@ -12,6 +12,8 @@ Live paid launch remains **NO-GO** until the owner resolves the Meta funds warni
 - Launch controls now describe paused Meta object setup/recovery instead of implying immediate live delivery.
 - Campaign plan selection normalization now recognizes selected static creative and UGC video IDs from root, nested saved-document, snake-case, and camel-case sources.
 - Campaign save persistence now carries selected static creative and UGC video IDs forward when rebuilding the saved campaign document.
+- Dashboard missing-record states now say `Launch record missing` instead of `Not launched`, so data drift does not imply Meta delivery has never been created.
+- Launch missing-media states now say `Saved creative set missing` while preserving the launch block until selected media is actually saved.
 - Regression coverage was added for nested/camel-case selected creative persistence and sidebar paused-state wording.
 
 ## Freshdesk Boundary

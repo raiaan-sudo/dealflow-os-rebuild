@@ -420,7 +420,7 @@ export function CampaignDashboardView({
     ? "Paused launch recorded"
     : hasRecordedMetaLaunch
       ? launchRecord?.resultStatus || plan.runtime.metaPushStatus || "Meta launch recorded"
-    : "Not launched";
+    : "Launch record missing";
   const syncedMetaCampaignId =
     typeof syncSnapshot?.metaCampaignId === "string" ? syncSnapshot.metaCampaignId : null;
   const syncedAt =
@@ -775,7 +775,7 @@ export function CampaignDashboardView({
           />
           <MetricTile
             label="Meta status"
-            value={String(syncSnapshot?.campaignStatus ?? (resolvedMetaCampaignId ? "Paused launch recorded" : "Not launched"))}
+            value={String(syncSnapshot?.campaignStatus ?? (resolvedMetaCampaignId ? "Paused launch recorded" : "Launch record missing"))}
             detail={syncedAt ? `Last sync ${formatLastVerified(syncedAt, stableNowMs)}` : "No Meta sync yet"}
             tone={syncDashboardTone}
           />

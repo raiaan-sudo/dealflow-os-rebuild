@@ -470,6 +470,8 @@ function runOfflineChecks() {
   assertIncludes(dashboardView, "DashboardVisualMarker", "Dashboard visual component marker", "dashboard renders visual component markers for smoke coverage");
   assertOccurrenceCount(dashboardView, "Waiting for first delivery data", 1, "Dashboard waiting copy appears once", "dashboard shows the no-data state once instead of repeating it");
   assertIncludes(dashboardView, "Paused launch recorded", "Dashboard paused launch state", "dashboard surfaces recorded paused Meta objects instead of saying the campaign is not launched");
+  assertIncludes(dashboardView, "Launch record missing", "Dashboard missing launch record state", "dashboard reports missing local launch state without implying Meta delivery is active");
+  assertExcludes(dashboardView, "Not launched", "Dashboard not-launched copy removed", "dashboard avoids stale not-launched wording when production launch records may drift");
   assertIncludes(dashboardView, "Paused Meta objects are recorded locally", "Dashboard paused launch sync copy", "dashboard copy separates local paused launch records from live delivery sync");
   assertIncludes(dashboardView, "Paused campaign object recorded", "Dashboard paused campaign object state", "dashboard operational state reflects paused Meta runtime IDs without implying active delivery");
   assertIncludes(dashboardView, "Day 0", "Dashboard day-zero baseline", "empty dashboard charts use a Day 0 launch baseline");
