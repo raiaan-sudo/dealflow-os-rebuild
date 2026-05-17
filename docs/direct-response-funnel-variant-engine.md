@@ -10,9 +10,24 @@ This document describes the DealFlow funnel V1 source-of-truth contract for gene
 
 This V1 does not deploy, mutate production data, launch Meta, create Stripe sessions, send SMS/email, create provider jobs, or touch leads during QA.
 
-## V1 10 Variant List
+## V1 10 Funnel Variants
 
-The required direct-response funnel variant list is:
+The required direct-response funnel variants are:
+
+1. Seller CMA / Home Value: address-first local valuation request with human-reviewed CMA positioning and no guaranteed value.
+2. Seller Net Sheet / Equity Check: net proceeds and timeline planning with no guaranteed proceeds.
+3. Buyer Homes Under Price: price-threshold list request with budget, area, and timeline matching, and no availability guarantee.
+4. First-Time Buyer Plan: step-by-step buyer plan with optional financing/timeline qualifiers and no approval guarantee.
+5. Relocation Starter Kit: moving-from, target-market, and timeline request with neutral neighborhood language.
+6. Downsizing Guide: guide-style planning offer with empathetic copy and no protected-class targeting claims.
+7. New Construction Incentive List: plans, prices, and incentive request that requires local builder verification.
+8. Investor Deal Access: buy-box, budget, market, and strategy request with no return or ROI guarantee.
+9. Open House / Showing Request: property or area-specific showing request with preferred time and contact fields.
+10. Appointment Strategy Call: consultation-first next step for buyer or seller context.
+
+## Required Conversion Module Order
+
+Every enabled variant must generate these modules in order:
 
 1. Hero / offer
 2. Trust bar
@@ -26,6 +41,22 @@ The required direct-response funnel variant list is:
 10. Closing CTA
 
 Optional media modules, such as VSL and image proof blocks, may exist as hidden editor-ready sections. They do not replace the ten required direct-response modules.
+
+## Form Modes
+
+- `minimal`: full name plus one contact method. Use for strategy-call style offers where the next step is low-friction.
+- `standard`: full name, phone, email, and one core qualifying field. Use for most buyer lists, guides, and starter kits.
+- `highIntent`: standard fields plus offer-specific qualifiers such as address, budget, timeline, buy box, or moving-from. Use when the offer is strong enough to justify the extra questions.
+
+The public form keeps consent language when phone, SMS, or email contact is collected. Buyer variants must not imply guaranteed property availability. Seller variants must not imply guaranteed sale price, value, or proceeds. Investor variants must not imply guaranteed returns. Relocation and downsizing variants must avoid steering or protected-class language.
+
+## Choosing A Variant
+
+- Use seller CMA when the ad hook is about value, pricing, or whether to sell.
+- Use seller net sheet when the ad hook is about equity, proceeds, or timing.
+- Use buyer homes under price when the ad hook contains a budget ceiling such as `$750,000`.
+- Use first-time buyer plan when the prospect needs a guided process before touring.
+- Use relocation, downsizing, new-construction, investor, showing, or appointment variants only when the ad hook names that offer clearly enough for page message match.
 
 ## Conversion Layout Contract
 

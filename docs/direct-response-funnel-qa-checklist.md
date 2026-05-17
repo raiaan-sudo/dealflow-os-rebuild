@@ -5,7 +5,9 @@ Use this checklist for funnel V1 docs and smoke-test verification. Keep checks r
 ## Static Checks
 
 - Run `npm run smoke:offline`.
-- Confirm the V1 10 variant list is documented and still maps to the engine-created sections.
+- Confirm the V1 10 funnel variants are documented and still map to deterministic engine output.
+- Confirm the required conversion module order remains documented and still maps to the engine-created sections.
+- Run `npm run test:direct-response-funnels` for variant, form-mode, compliance, and message-match coverage.
 - Confirm form-above-fold support is present in both preview and public route source markers.
 - Confirm proof/how-it-works/FAQ/compliance coverage:
   - `proof_metrics` exists and is titled `Proof before commitment`.
