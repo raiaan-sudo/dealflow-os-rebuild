@@ -24,11 +24,11 @@ export function getStripePriceId(planTier: BillingPlanTier) {
   return env.starterPriceId;
 }
 
-export function getPlanTierFromPriceId(priceId?: string | null): BillingPlanTier {
+export function getPlanTierFromPriceId(priceId?: string | null): BillingPlanTier | null {
   const env = getStripeEnv();
 
-  if (!env) {
-    return "starter";
+  if (!env || !priceId) {
+    return null;
   }
 
   if (env.growthPriceId && priceId === env.growthPriceId) {
@@ -39,7 +39,11 @@ export function getPlanTierFromPriceId(priceId?: string | null): BillingPlanTier
     return "pro";
   }
 
-  return "starter";
+  if (priceId === env.starterPriceId) {
+    return "starter";
+  }
+
+  return null;
 }
 
 export function getCheckoutUrls(params?: { campaignId?: string | null; planTier?: BillingPlanTier | null }) {

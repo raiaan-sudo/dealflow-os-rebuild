@@ -406,11 +406,29 @@ function mapBillingRow(row: BillingRow | null, fallbackPlanTier: string): Billin
   };
 }
 
+function parseStripeMetadataPlanTier(value: unknown): BillingPlanTier | null {
+  return value === "starter" || value === "pro" || value === "growth" ? value : null;
+}
+
 function getActivePlanTier(subscription: Stripe.Subscription) {
   const firstItem = subscription.items.data[0];
   const priceId = typeof firstItem?.price?.id === "string" ? firstItem.price.id : null;
-  const metadataTier = subscription.metadata.plan_tier;
-  return normalizeBillingPlanTier(metadataTier || getPlanTierFromPriceId(priceId));
+  const metadataTier = parseStripeMetadataPlanTier(subscription.metadata.plan_tier);
+
+  if (metadataTier) {
+    return metadataTier;
+  }
+
+  const mappedPlanTier = getPlanTierFromPriceId(priceId);
+  if (mappedPlanTier) {
+    return mappedPlanTier;
+  }
+
+  throw new ApiError(
+    400,
+    "Stripe subscription price is not configured for a DealFlow billing plan.",
+    "stripe_price_unrecognized",
+  );
 }
 
 function getOrganizationPlanForStatus(planTier: BillingPlanTier, status: string) {
