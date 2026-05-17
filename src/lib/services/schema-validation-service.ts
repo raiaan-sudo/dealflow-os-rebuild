@@ -150,19 +150,48 @@ async function checkRequiredTables() {
 
 async function runSchemaValidation(): Promise<SchemaValidationResult> {
   const mode = getSchemaValidationMode();
-  const [
-    missingCampaignPlanColumns,
-    missingMarketingAccountColumns,
-    missingStripeWebhookEventColumns,
-    missingTables,
-    actualVersion,
-  ] = await Promise.all([
-    checkRequiredColumns("campaign_plans", REQUIRED_CAMPAIGN_PLAN_COLUMNS),
-    checkRequiredColumns("marketing_accounts", REQUIRED_MARKETING_ACCOUNT_COLUMNS),
-    checkRequiredColumns("stripe_webhook_events", REQUIRED_STRIPE_WEBHOOK_EVENT_COLUMNS),
-    checkRequiredTables(),
-    readSchemaVersion(),
-  ]);
+  let missingCampaignPlanColumns: string[];
+  let missingMarketingAccountColumns: string[];
+  let missingStripeWebhookEventColumns: string[];
+  let missingTables: string[];
+  let actualVersion: string | null;
+
+  try {
+    [
+      missingCampaignPlanColumns,
+      missingMarketingAccountColumns,
+      missingStripeWebhookEventColumns,
+      missingTables,
+      actualVersion,
+    ] = await Promise.all([
+      checkRequiredColumns("campaign_plans", REQUIRED_CAMPAIGN_PLAN_COLUMNS),
+      checkRequiredColumns("marketing_accounts", REQUIRED_MARKETING_ACCOUNT_COLUMNS),
+      checkRequiredColumns("stripe_webhook_events", REQUIRED_STRIPE_WEBHOOK_EVENT_COLUMNS),
+      checkRequiredTables(),
+      readSchemaVersion(),
+    ]);
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error && typeof error.code === "string"
+        ? error.code
+        : null;
+
+    if (mode === "warn" && code === "service_role_missing") {
+      return {
+        ok: false,
+        mode,
+        expectedVersion: EXPECTED_APP_SCHEMA_VERSION,
+        actualVersion: null,
+        missingColumns: [],
+        issues: [
+          "Schema validation could not run because SUPABASE_SERVICE_ROLE_KEY is not configured.",
+        ],
+      };
+    }
+
+    throw error;
+  }
+
   const missingColumns = [
     ...missingCampaignPlanColumns.map((column) => `campaign_plans.${column}`),
     ...missingMarketingAccountColumns.map((column) => `marketing_accounts.${column}`),

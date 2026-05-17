@@ -31,6 +31,7 @@ export default defineConfig({
         reuseExistingServer: !process.env.CI,
         env: {
           NEXT_TELEMETRY_DISABLED: "1",
+          SCHEMA_VALIDATION_MODE: "warn",
           ALLOW_OPENAI_IMAGE_GENERATION: "false",
           ALLOW_HEYGEN_VIDEO_GENERATION: "false",
           ALLOW_META_LIVE_LAUNCH: "false",

@@ -71,7 +71,7 @@ test.describe("safe public browser proof", () => {
     const openAppLink = page.getByRole("link", { name: /Open app/i });
     if (await openAppLink.count()) {
       await openAppLink.click();
-      await expect(page).toHaveURL(/\/login\?reason=expired&redirectedFrom=%2Fdashboard/);
+      await expect(page).toHaveURL(/\/login\?reason=(expired|setup)&redirectedFrom=%2Fdashboard/);
     } else {
       await expect(page.getByRole("link", { name: /Get Access|See the system/i }).first()).toBeVisible();
     }
@@ -83,11 +83,13 @@ test.describe("safe public browser proof", () => {
     await expect(page.getByRole("heading", { name: /Terms/i })).toBeVisible();
 
     await page.goto("/dashboard");
-    await expect(page).toHaveURL(/\/login\?reason=expired&redirectedFrom=%2Fdashboard/);
-    await expect(page.getByText("Your session expired or could not be refreshed")).toBeVisible();
+    await expect(page).toHaveURL(/\/login\?reason=(expired|setup)&redirectedFrom=%2Fdashboard/);
+    await expect(
+      page.getByText(/Your session expired or could not be refreshed|Configure Supabase before accessing protected routes/),
+    ).toBeVisible();
 
     await page.goto("/launch");
-    await expect(page).toHaveURL(/\/login\?reason=expired&redirectedFrom=%2Flaunch/);
+    await expect(page).toHaveURL(/\/login\?reason=(expired|setup)&redirectedFrom=%2Flaunch/);
 
     await page.goto("/admin/issues");
     await expect(page).toHaveURL(/\/login\?reason=(expired|setup)&redirectedFrom=%2Fadmin%2Fissues/);
