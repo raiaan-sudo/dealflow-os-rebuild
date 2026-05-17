@@ -8,6 +8,7 @@ import {
   assertInternalOperatorAccess,
   loadLaunchMonitorRows,
 } from "@/lib/services/internal-launch-monitor";
+import { loadOperatorPageSection } from "@/lib/services/internal-operator-page-timeout";
 import { ApiError } from "@/lib/api/route";
 
 function formatDateTime(value: string | null) {
@@ -94,7 +95,12 @@ export default async function LaunchMonitorPage({
   const params = searchParams ? await searchParams : {};
   const selectedCampaignId =
     typeof params.campaignId === "string" && params.campaignId.length > 0 ? params.campaignId : null;
-  const rows = await loadLaunchMonitorRows(50);
+  const rowsSection = await loadOperatorPageSection(
+    "Launch monitor rows",
+    () => loadLaunchMonitorRows(50),
+    [],
+  );
+  const rows = rowsSection.data;
   const selectedRow = selectedCampaignId
     ? rows.find((row) => row.campaignId === selectedCampaignId) ?? null
     : rows[0] ?? null;
@@ -107,6 +113,12 @@ export default async function LaunchMonitorPage({
         description="Monitor recent campaign builds, Meta launch state, public funnel status, and recent leads across workspaces."
         guidance="This view is intentionally operational. Use it to spot broken launches fast and verify what happened before contacting a client."
       />
+
+      {rowsSection.degraded ? (
+        <Card className="border-amber-300/20 bg-amber-300/10 p-5 text-sm leading-6 text-amber-100 sm:p-7">
+          {rowsSection.reason} Showing the operator fallback state instead of leaving the page loading.
+        </Card>
+      ) : null}
 
       <Card className="p-5 sm:p-7">
         <div className="overflow-x-auto">

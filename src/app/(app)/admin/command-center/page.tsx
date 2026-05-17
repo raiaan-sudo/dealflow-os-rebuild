@@ -8,6 +8,7 @@ import {
 import { getSmsOutboundPolicyStatus } from "@/lib/services/sms-service";
 import { loadCustomerSuccessChecklistRows } from "@/lib/services/customer-success-service";
 import { createAdminClient } from "@/lib/server/supabase-admin";
+import { loadOperatorPageSection } from "@/lib/services/internal-operator-page-timeout";
 import { CommandCenterConsole } from "./command-center-console";
 import type {
   AgentConsole,
@@ -76,11 +77,23 @@ export default async function CommandCenterPage() {
     throw error;
   }
 
-  const [rows, ops, issues] = await Promise.all([
-    loadLaunchMonitorRows(24),
-    loadOpsSummary(),
-    loadIssueLogRows(36),
+  const [rowsSection, opsSection, issuesSection] = await Promise.all([
+    loadOperatorPageSection("Launch monitor rows", () => loadLaunchMonitorRows(24), []),
+    loadOperatorPageSection("Operator summary", loadOpsSummary, {
+      failedJobs: 0,
+      processingJobs: 0,
+      deadLetterJobs: 0,
+      recentStripeFailures: 0,
+      recentStripeProcessed: 0,
+    }),
+    loadOperatorPageSection("Issue radar", () => loadIssueLogRows(36), []),
   ]);
+  const rows = rowsSection.data;
+  const ops = opsSection.data;
+  const issues = issuesSection.data;
+  const degradedReasons = [rowsSection.reason, opsSection.reason, issuesSection.reason].filter(
+    (reason): reason is string => Boolean(reason),
+  );
 
   const liveCampaigns = rows.filter((row) => row.launchStatus.includes("completed") || row.launchStatus.includes("live"));
   const cleanCampaigns = rows.filter(
@@ -261,6 +274,15 @@ export default async function CommandCenterPage() {
       value: unresolvedIssues > 0 ? `${unresolvedIssues} open` : "clear",
       detail: issueSignal,
       tone: unresolvedIssues > 0 ? "amber" : "green",
+    },
+    {
+      label: "Operator data",
+      value: degradedReasons.length > 0 ? "degraded" : "live",
+      detail:
+        degradedReasons.length > 0
+          ? degradedReasons.join(" ")
+          : "Live operator loaders responded inside the page timeout.",
+      tone: degradedReasons.length > 0 ? "amber" : "green",
     },
     {
       label: "SMS guard",

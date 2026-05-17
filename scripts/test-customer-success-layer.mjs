@@ -11,6 +11,9 @@ const migration = read("supabase/migrations/20260504210000_create_customer_succe
 const service = read("src/lib/services/customer-success-service.ts");
 const commandCenterPage = read("src/app/(app)/admin/command-center/page.tsx");
 const commandCenterConsole = read("src/app/(app)/admin/command-center/command-center-console.tsx");
+const launchMonitorPage = read("src/app/(app)/admin/launch-monitor/page.tsx");
+const issuesPage = read("src/app/(app)/admin/issues/page.tsx");
+const operatorPageTimeout = read("src/lib/services/internal-operator-page-timeout.ts");
 const issueMonitor = read("src/lib/services/internal-launch-monitor.ts");
 const feedbackWidget = read("src/components/layout/feedback-widget.tsx");
 const feedbackRoute = read("src/app/api/feedback/route.ts");
@@ -52,6 +55,12 @@ assert.match(issueMonitor, /source: "customer_success"/);
 assert.match(commandCenterPage, /loadCustomerSuccessChecklistRows/);
 assert.match(commandCenterConsole, /Customer-success watchlist/);
 assert.match(commandCenterConsole, /First 25-day checklist/);
+assert.match(operatorPageTimeout, /DEFAULT_OPERATOR_PAGE_TIMEOUT_MS = 6500/);
+assert.match(operatorPageTimeout, /Promise\.race/);
+for (const adminPage of [commandCenterPage, launchMonitorPage, issuesPage]) {
+  assert.match(adminPage, /loadOperatorPageSection/);
+  assert.doesNotMatch(adminPage, /await loadLaunchMonitorRows\(|await loadIssueLogRows\(/);
+}
 
 for (const category of [
   "confusing_ux",

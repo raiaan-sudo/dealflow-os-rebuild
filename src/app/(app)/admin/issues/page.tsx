@@ -6,6 +6,7 @@ import {
   assertInternalOperatorAccess,
   loadIssueLogRows,
 } from "@/lib/services/internal-launch-monitor";
+import { loadOperatorPageSection } from "@/lib/services/internal-operator-page-timeout";
 import type { OperatorIssueRow } from "@/lib/services/internal-launch-monitor";
 
 const ISSUE_SOURCE_ORDER: OperatorIssueRow["source"][] = [
@@ -106,7 +107,12 @@ export default async function IssuesPage() {
     throw error;
   }
 
-  const issues = await loadIssueLogRows(100);
+  const issuesSection = await loadOperatorPageSection(
+    "Issue radar",
+    () => loadIssueLogRows(100),
+    [],
+  );
+  const issues = issuesSection.data;
   const critical = issues.filter((issue) => issue.severity === "critical").length;
   const high = issues.filter((issue) => issue.severity === "high").length;
   const open = issues.filter((issue) => issue.status === "open").length;
@@ -183,7 +189,11 @@ export default async function IssuesPage() {
             </div>
 
             <div className="mt-4 space-y-3">
-              {groupedIssues.length > 0 ? (
+              {issuesSection.degraded ? (
+                <div className="rounded-2xl border border-amber-300/20 bg-amber-300/10 p-5 text-sm text-amber-100">
+                  {issuesSection.reason} Showing the operator fallback state instead of leaving the page loading.
+                </div>
+              ) : groupedIssues.length > 0 ? (
                 groupedIssues.map((group) => (
                   <section className="rounded-2xl border border-cyan-300/12 bg-white/[0.025] p-3" key={group.source}>
                     <div className="flex flex-wrap items-start justify-between gap-3 px-1">
