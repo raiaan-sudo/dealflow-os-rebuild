@@ -1,5 +1,14 @@
 import type { CampaignIntent } from "@/lib/campaign-intent";
 import { enhanceOffer, extractOfferData } from "@/lib/copy/offer-enhancement";
+import {
+  buildDirectResponseFunnel,
+  resolveDirectResponseFunnelVariant,
+  type DirectResponseAudienceType,
+  type DirectResponseFormMode,
+  type DirectResponseFunnelMetadata,
+  type DirectResponseFunnelVariant,
+  type DirectResponseOfferType,
+} from "@/lib/direct-response-funnel";
 import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
 import {
   getCategoryCtaOptions,
@@ -57,6 +66,25 @@ export type FunnelEngineInput = {
   pain_points?: string[];
   market_type?: FunnelMarketType;
   funnel_goal?: FunnelGoal;
+  funnelVariant?: DirectResponseFunnelVariant;
+  funnel_variant?: DirectResponseFunnelVariant;
+  audienceType?: DirectResponseAudienceType;
+  audience_type?: DirectResponseAudienceType;
+  offerType?: DirectResponseOfferType;
+  offer_type?: DirectResponseOfferType;
+  market?: string;
+  priceThreshold?: string;
+  price_threshold?: string;
+  leadMagnetTitle?: string;
+  lead_magnet_title?: string;
+  primaryCTA?: string;
+  primary_cta?: string;
+  formMode?: DirectResponseFormMode;
+  form_mode?: DirectResponseFormMode;
+  messageMatchSource?: string;
+  message_match_source?: string;
+  adHook?: string;
+  ad_hook?: string;
 };
 
 export type FunnelSection = {
@@ -79,7 +107,7 @@ export type FunnelBlueprint = {
   form_fields: string[];
   follow_up_action: string;
   optimization_notes: string[];
-};
+} & Partial<DirectResponseFunnelMetadata>;
 
 type NormalizedInput = {
   location: string;
@@ -938,6 +966,14 @@ function buildSections(input: NormalizedInput, parsed: ParsedOffer, headline: st
 
 export function generateFunnel(input?: FunnelEngineInput | null): FunnelBlueprint {
   const raw = input || {};
+
+  if (resolveDirectResponseFunnelVariant(raw)) {
+    return buildDirectResponseFunnel({
+      ...raw,
+      market: raw.market || raw.location,
+    });
+  }
+
   const normalized = normalizeInput(raw);
   const bestVariation = pickBestFunnelVariation(normalized);
   const selectedPackage = selectMediaBuyerCampaignPackage(normalized.campaignCategory, {

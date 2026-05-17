@@ -221,6 +221,12 @@ function runOfflineChecks() {
   const publicFunnelThankYouPage = "src/app/f/[slug]/thank-you/page.tsx";
   const publicFunnelThankYouTracker = "src/app/f/[slug]/thank-you/thank-you-conversion-tracker.tsx";
   const publicFunnelThankYouModel = "src/lib/public-funnel-thank-you.ts";
+  const directResponseFunnelDocs = "docs/direct-response-funnel-variant-engine.md";
+  const directResponseFunnelQaDocs = "docs/direct-response-funnel-qa-checklist.md";
+  const directResponseFunnelCompatibilityDocs = "docs/direct-response-funnel-backward-compatibility.md";
+  const campaign345RepairScript = "scripts/repair-campaign-345-launch-state.mjs";
+  const campaign345RepairTest = "scripts/test-campaign-345-state-repair.mjs";
+  const launchBudgetTrackingSafetyTest = "scripts/test-launch-budget-tracking-safety.mjs";
   const optimizeRoute = "src/app/api/campaigns/[id]/optimize/route.ts";
   const internalLaunchMonitor = "src/lib/services/internal-launch-monitor.ts";
   const metaExecution = "src/lib/integrations/meta/execution.ts";
@@ -377,6 +383,43 @@ function runOfflineChecks() {
   assertIncludes("src/lib/services/funnel-engine.ts", "cleanMarketingCopy", "Funnel copy sanitizer", "funnel copy removes awkward repeated market and spacing artifacts");
   assertIncludes("src/lib/services/funnel-engine.ts", "trimWords(cleanMarketingCopy(headline), 14)", "Funnel headline length guard", "funnel headlines are capped instead of over-concatenating onboarding fields");
   assertIncludes("src/lib/services/funnel-engine.ts", "conciseOfferPhrase", "Funnel offer shaping", "offer and lead magnet shape funnel copy without being dumped raw into the headline");
+  assertOrderedIncludes(directResponseFunnelDocs, [
+    "1. Hero / offer",
+    "2. Trust bar",
+    "3. Proof metrics",
+    "4. Market snapshot",
+    "5. How it works",
+    "6. Benefits",
+    "7. Objections / risk reversal",
+    "8. FAQ",
+    "9. Capture form",
+    "10. Closing CTA",
+  ], "Funnel V1 ten-variant docs", "direct-response funnel docs keep the ten required conversion modules in order");
+  assertIncludes("src/lib/services/funnel-engine.ts", "createSection(\"hero\"", "Funnel V1 hero module", "engine keeps the required direct-response hero module");
+  assertIncludes("src/lib/services/funnel-engine.ts", "createSection(\"trust_bar\"", "Funnel V1 trust module", "engine keeps the required direct-response trust bar module");
+  assertIncludes("src/lib/services/funnel-engine.ts", "createSection(\"proof_metrics\"", "Funnel V1 proof module", "engine keeps the required direct-response proof module");
+  assertIncludes("src/lib/services/funnel-engine.ts", "\"market_snapshot\"", "Funnel V1 market module", "engine keeps the required direct-response market snapshot module");
+  assertIncludes("src/lib/services/funnel-engine.ts", "createSection(\"process\"", "Funnel V1 how-it-works module", "engine keeps the required direct-response process module");
+  assertIncludes("src/lib/services/funnel-engine.ts", "\"benefits\"", "Funnel V1 benefits module", "engine keeps the required direct-response benefits module");
+  assertIncludes("src/lib/services/funnel-engine.ts", "createSection(\"objections\"", "Funnel V1 risk-reversal module", "engine keeps the required direct-response objections module");
+  assertIncludes("src/lib/services/funnel-engine.ts", "createSection(\"faq\"", "Funnel V1 FAQ module", "engine keeps the required direct-response FAQ module");
+  assertIncludes("src/lib/services/funnel-engine.ts", "\"form\"", "Funnel V1 capture module", "engine keeps the required direct-response capture form module");
+  assertIncludes("src/lib/services/funnel-engine.ts", "createSection(\"closing_cta\"", "Funnel V1 closing CTA module", "engine keeps the required direct-response closing CTA module");
+  assertIncludes("src/lib/services/funnel-engine.ts", "Proof before commitment", "Funnel proof section title", "generated funnels include a proof-before-commitment section");
+  assertIncludes("src/lib/services/funnel-engine.ts", "How the mechanism works", "Funnel how-it-works section title", "generated funnels explain the mechanism before conversion");
+  assertIncludes("src/lib/services/funnel-engine.ts", "Questions prospects ask before converting", "Funnel FAQ section title", "generated funnels include an FAQ section before final conversion");
+  assertIncludes("src/components/funnel/funnel-preview.tsx", "Quick capture", "Funnel preview form-above-fold support", "operator previews show the form in the first viewport");
+  assertIncludes(publicFunnelPage, "lg:grid-cols-[minmax(0,1fr)_390px]", "Public funnel form-above-fold layout", "public funnels keep lead capture in the desktop hero area");
+  assertIncludes(publicFunnelPage, "id=\"lead-capture\"", "Public funnel lead-capture anchor", "public funnels expose an above-fold CTA anchor to the lead form");
+  assertIncludes(publicFunnelPage, "lg:sticky lg:top-6", "Public funnel sticky lead form", "public funnel lead capture stays visible during desktop proof review");
+  assertIncludes(leadForm, "SMS_CONSENT_COPY", "Public funnel compliance consent", "lead capture keeps explicit SMS consent copy");
+  assertIncludes(leadForm, "Consent is not a condition of purchase.", "Public funnel compliance disclaimer", "lead capture keeps the required consent disclaimer");
+  assertIncludes(leadForm, "Privacy Policy", "Public funnel privacy link", "lead capture keeps privacy policy access");
+  assertIncludes(leadForm, "Terms", "Public funnel terms link", "lead capture keeps terms access");
+  assertIncludes(directResponseFunnelQaDocs, "Do not submit real leads.", "Funnel QA no-lead boundary", "QA checklist forbids real lead submissions");
+  assertIncludes(directResponseFunnelQaDocs, "proof/how-it-works/FAQ/compliance", "Funnel QA content coverage", "QA checklist names the required content coverage");
+  assertIncludes(directResponseFunnelCompatibilityDocs, "published_funnel_snapshot_stale", "Funnel stale snapshot docs", "compatibility notes document launch fail-closed behavior");
+  assertIncludes(directResponseFunnelCompatibilityDocs, "/f/raiaan-realty", "Funnel legacy alias docs", "compatibility notes document the legacy paid alias");
   assertIncludes("src/components/funnel/funnel-preview.tsx", "shouldUseOfferHero", "Funnel preview offer override", "existing saved funnels render an offer-led hero when stored copy is too generic");
   assertIncludes("src/components/funnel/funnel-preview.tsx", "section.type !== \"hero\"", "Funnel preview duplicate hero guard", "review preview does not repeat a stale hero section below the offer-led hero");
   assertIncludes(creativeEngine, "preventDuplicateStaticCreativeCopy", "Creative duplicate prevention", "static creative options deterministically vary duplicate headline/body/CTA combinations");
@@ -808,12 +851,28 @@ function runOfflineChecks() {
   assertIncludes(campaignEntitlements, "qa_billing_acceptance", "QA billing acceptance entitlement source", "owner/test billing acceptance is auditable and distinct from Stripe-active billing");
   assertIncludes(campaignEntitlements, "getQaBillingAcceptanceOverrideMatch", "QA billing acceptance matcher", "normal billing remains separate from scoped owner/test overrides");
   assertIncludes(publicFunnelPage, "campaignId: record.campaign.id", "Public funnel campaign billing override", "public funnel lead capture can honor campaign-scoped owner/test billing acceptance without broad org access");
+  assertIncludes(publicFunnelPage, "export const dynamic = \"force-dynamic\";", "Public funnel stale cache guard", "public funnels render the latest published snapshot instead of an uninvalidated static cache");
+  assertExcludes(publicFunnelPage, "unstable_cache", "Public funnel stale cache avoided", "public funnel route avoids stale cached snapshots without publish-time invalidation");
   assertIncludes(publicFunnelPage, "LEGACY_PUBLIC_FUNNEL_SLUG_REDIRECTS", "Legacy Meta funnel slug redirect", "previously created Meta destinations do not land on a 404 after canonical slug changes");
   assertIncludes(publicFunnelPage, "\"raiaan-realty\": \"raiaan-broker-toronto-on-ccbfbfce\"", "Campaign 345 paid URL redirect", "the known paused-launch destination redirects to the current accepted public funnel");
   assertOrderedIncludes(publicFunnelPage, [
     "const redirectSlug = LEGACY_PUBLIC_FUNNEL_SLUG_REDIRECTS",
     "getPublishedCampaignBySlug(resolvedParams.slug)",
   ], "Legacy funnel redirect preempts lookup", "app-state repairs cannot hijack the paid alias before it redirects to the canonical funnel");
+  assertIncludes(launchRoute, "published_funnel_snapshot_stale", "Launch stale snapshot fail-closed code", "direct launch route rejects stale public funnel snapshots before paid traffic");
+  assertOrderedIncludes(launchRoute, [
+    "assertPublishedFunnelSnapshotMatchesCurrentPlan({",
+    "const preflight = await validateMetaLaunchSelections({ destinationUrl });",
+  ], "Launch stale snapshot preflight order", "public funnel snapshot consistency is checked before Meta preflight or object creation");
+  assertIncludes(launchPage, "publicFunnelSnapshotMatchesCurrentPlan", "Launch stale snapshot UI state", "launch UI tracks whether the public funnel snapshot matches the current campaign plan");
+  assertIncludes(launchPage, "Republish the public funnel because the live snapshot no longer matches the current campaign plan.", "Launch stale snapshot customer-safe copy", "launch UI tells operators to republish before sending paid traffic");
+  assertIncludes(launchBudgetTrackingSafetyTest, "published_funnel_snapshot_stale", "Launch stale snapshot regression script", "targeted launch budget/tracking test covers stale public funnel snapshots");
+  assertIncludes(campaign345RepairScript, "CAMPAIGN_345_REPAIR", "Campaign 345 repair scoped target", "repair tooling keeps campaign 345 identifiers centralized");
+  assertIncludes(campaign345RepairScript, "applyAck: \"repair-campaign-345-paused-launch-state\"", "Campaign 345 repair apply ack", "repair apply mode requires the explicit campaign 345 acknowledgement");
+  assertIncludes(campaign345RepairScript, "launchReady.length < 4", "Campaign 345 static media floor", "repair tooling blocks selected static repair without enough launch-ready static groups");
+  assertIncludes(campaign345RepairScript, "publishedFunnel", "Campaign 345 published snapshot preservation", "repair tooling carries the published funnel snapshot into app state");
+  assertIncludes(campaign345RepairTest, "testLegacyPublicFunnelRedirectPreemptsCampaignLookup", "Campaign 345 legacy redirect regression", "campaign 345 repair tests protect the legacy alias redirect order");
+  assertIncludes(campaign345RepairTest, "idempotentNoop", "Campaign 345 repair idempotency regression", "campaign 345 repair tests cover idempotent post-apply shape");
   assertIncludes(publicFunnelThankYouPage, "getPublishedCampaignBySlug(resolvedParams.slug)", "Public funnel thank-you lookup", "thank-you pages render from published public funnel records");
   assertIncludes(publicFunnelThankYouPage, "notFound()", "Public funnel thank-you invalid slug guard", "invalid thank-you slugs fail safely");
   assertIncludes(publicFunnelThankYouPage, "view.primaryLink", "Public funnel thank-you booking CTA surface", "thank-you route can show configured booking next step");

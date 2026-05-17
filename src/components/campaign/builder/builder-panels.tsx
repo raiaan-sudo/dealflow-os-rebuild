@@ -191,7 +191,7 @@ const FunnelLivePreview = memo(function FunnelLivePreview({
   const theme = useMemo(() => getPreviewDirection(direction), [direction]);
   const typography = useMemo(() => getTypographyClasses(theme), [theme]);
   const visibleSections = useMemo(
-    () => (sections || []).filter((section) => section?.visible !== false && section?.type !== "hero").slice(0, 3),
+    () => (sections || []).filter((section) => section?.visible !== false && section?.type !== "hero"),
     [sections],
   );
 
@@ -321,6 +321,58 @@ const FunnelLivePreview = memo(function FunnelLivePreview({
       );
     }
 
+    if (section.type === "process") {
+      return (
+        <section key={section.id || `${section.type}-${index}`} className={shellClass}>
+          <p className={`text-[11px] font-semibold uppercase opacity-60 ${typography.labelClass}`}>how it works</p>
+          <h3 className={`mt-3 text-2xl font-semibold ${typography.displayClass}`}>{section.title}</h3>
+          <div className="mt-5 grid gap-3 xl:grid-cols-3">
+            {section.content.map((item, itemIndex) => (
+              <div key={item} className="rounded-[18px] border border-current/10 bg-white/70 p-4">
+                <div
+                  className="grid size-8 place-items-center rounded-full text-sm font-semibold"
+                  style={{ backgroundColor: theme.palette.accent, color: theme.palette.ctaText }}
+                >
+                  {itemIndex + 1}
+                </div>
+                <p className={`mt-3 text-sm opacity-75 ${typography.bodyClass}`}>{item}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    if (section.type === "faq") {
+      return (
+        <section key={section.id || `${section.type}-${index}`} className={shellClass}>
+          <p className={`text-[11px] font-semibold uppercase opacity-60 ${typography.labelClass}`}>FAQ</p>
+          <h3 className={`mt-3 text-2xl font-semibold ${typography.displayClass}`}>{section.title}</h3>
+          <div className="mt-5 space-y-3">
+            {section.content.map((item) => (
+              <div key={item} className="rounded-[18px] border border-current/10 bg-white/70 p-4">
+                <p className={`text-sm font-semibold ${typography.bodyClass}`}>{item}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    if (section.type === "objections") {
+      return (
+        <section key={section.id || `${section.type}-${index}`} className={shellClass}>
+          <p className={`text-[11px] font-semibold uppercase opacity-60 ${typography.labelClass}`}>compliance & fit</p>
+          <h3 className={`mt-3 text-2xl font-semibold ${typography.displayClass}`}>{section.title}</h3>
+          <div className="mt-4 space-y-3">
+            {section.content.map((item) => (
+              <p key={item} className={`text-sm opacity-75 ${typography.bodyClass}`}>{item}</p>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
     if (section.type === "form" || section.type === "closing_cta") {
       return (
         <section key={section.id || `${section.type}-${index}`} className={shellClass}>
@@ -436,7 +488,22 @@ const FunnelLivePreview = memo(function FunnelLivePreview({
         </div>
       </div>
       <div className="space-y-4 px-5 py-6 sm:px-6 sm:py-7">
-        {visibleSections.map(renderSection)}
+        {visibleSections.map((section, index) => (
+          <div key={section.id || `${section.type}-${index}`} className="space-y-4">
+            {renderSection(section, index)}
+            {index < visibleSections.length - 1 && section.type !== "trust_bar" && index % 2 === 0 ? (
+              <div className="rounded-[20px] border border-current/10 bg-white/70 px-5 py-4 sm:flex sm:items-center sm:justify-between sm:gap-5">
+                <p className={`text-sm font-medium ${typography.bodyClass}`}>Ready to see whether this is a fit?</p>
+                <div
+                  className="mt-4 rounded-full px-5 py-3 text-center text-sm font-semibold sm:mt-0"
+                  style={{ backgroundColor: theme.palette.accent, color: theme.palette.ctaText }}
+                >
+                  {cta || "Campaign CTA unavailable"}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -44,6 +44,68 @@ function buildOfferCta(offer: string) {
   return "Review My Plan";
 }
 
+type FunnelPreviewSectionKind =
+  | "trust"
+  | "proof"
+  | "process"
+  | "faq"
+  | "compliance"
+  | "conversion"
+  | "content";
+
+function getPreviewSectionText(section: { type: string; variant?: string; title: string }) {
+  return `${section.type} ${section.variant ?? ""} ${section.title}`.toLowerCase();
+}
+
+function getPreviewSectionKind(section: { type: string; variant?: string; title: string }): FunnelPreviewSectionKind {
+  const text = getPreviewSectionText(section);
+
+  if (section.type === "trust_bar") {
+    return "trust";
+  }
+
+  if (section.type === "proof_metrics" || section.type === "social_proof" || /proof|metric|testimonial|case|authority/.test(text)) {
+    return "proof";
+  }
+
+  if (section.type === "process" || /how it works|mechanism|process|step/.test(text)) {
+    return "process";
+  }
+
+  if (section.type === "faq" || /faq|question/.test(text)) {
+    return "faq";
+  }
+
+  if (section.type === "objections" || /compliance|consent|privacy|terms|risk|objection|reversal/.test(text)) {
+    return "compliance";
+  }
+
+  if (section.type === "form" || section.type === "closing_cta" || /capture|qualification|consultation|urgency|cta/.test(text)) {
+    return "conversion";
+  }
+
+  return "content";
+}
+
+function splitPreviewFaqItem(item: string) {
+  const trimmed = item.trim();
+  const questionMarkIndex = trimmed.indexOf("?");
+
+  if (questionMarkIndex > 8) {
+    return {
+      question: trimmed.slice(0, questionMarkIndex + 1),
+      answer: trimmed.slice(questionMarkIndex + 1).replace(/^[:\s-]+/, ""),
+    };
+  }
+
+  const [question, ...answerParts] = trimmed.split(/\s[-:]\s/);
+
+  return {
+    question: question || trimmed,
+    answer: answerParts.join(" - "),
+  };
+}
+
 export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strategyWhy: _strategyWhy, compact = false }: FunnelPreviewProps) {
   void _expectedOutcomes;
   void _strategyWhy;
@@ -102,6 +164,7 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
     }
 
     const media = getSectionMedia(section);
+    const sectionKind = getPreviewSectionKind(section);
 
     if (section.type === "trust_bar") {
       return (
@@ -115,17 +178,17 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
       );
     }
 
-    if (section.type === "proof_metrics" || section.type === "market_snapshot") {
+    if (sectionKind === "proof" || section.type === "market_snapshot") {
       return (
         <section key={section.id || `${section.type}-${index}`} className={getSectionShell(section)}>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-60">{section.type.replaceAll("_", " ")}</p>
           <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">{section.title}</h3>
           <div className="mt-5 grid gap-4 sm:grid-cols-3">
-          {section.content.map((item) => (
-            <div key={item} className="rounded-[22px] border border-black/8 bg-white p-5 shadow-[0_18px_48px_-38px_rgba(0,0,0,0.24)]">
-              <p className="text-sm font-medium text-[#111827]">{item}</p>
-            </div>
-          ))}
+            {section.content.map((item) => (
+              <div key={item} className="rounded-[22px] border border-black/8 bg-white p-5 shadow-[0_18px_48px_-38px_rgba(0,0,0,0.24)]">
+                <p className="text-sm font-medium text-[#111827]">{item}</p>
+              </div>
+            ))}
           </div>
         </section>
       );
@@ -141,6 +204,8 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
               <video
                 src={media.url}
                 controls
+                controlsList="nodownload noplaybackrate"
+                disablePictureInPicture
                 poster={media?.thumbnailUrl ?? undefined}
                 className="aspect-video w-full bg-black object-cover"
               />
@@ -202,6 +267,60 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
       );
     }
 
+    if (sectionKind === "process") {
+      return (
+        <section key={section.id || `${section.type}-${index}`} className={getSectionShell(section)}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-60">how it works</p>
+          <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">{section.title}</h3>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            {section.content.map((item, itemIndex) => (
+              <div key={item} className="rounded-[20px] border border-black/8 bg-white/75 p-4">
+                <div className="grid size-8 place-items-center rounded-full bg-[#74c7ff] text-sm font-semibold text-[#05111a]">
+                  {itemIndex + 1}
+                </div>
+                <p className="mt-3 text-sm leading-7 text-[#4b5563]">{item}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    if (sectionKind === "faq") {
+      return (
+        <section key={section.id || `${section.type}-${index}`} className={getSectionShell(section)}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-60">FAQ</p>
+          <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">{section.title}</h3>
+          <div className="mt-5 space-y-3">
+            {section.content.map((item) => {
+              const parsed = splitPreviewFaqItem(item);
+
+              return (
+                <div key={item} className="rounded-[18px] border border-black/8 bg-white/75 p-4">
+                  <p className="text-sm font-semibold text-[#111827]">{parsed.question}</p>
+                  {parsed.answer ? <p className="mt-2 text-sm leading-7 text-[#4b5563]">{parsed.answer}</p> : null}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      );
+    }
+
+    if (sectionKind === "compliance") {
+      return (
+        <section key={section.id || `${section.type}-${index}`} className={getSectionShell(section)}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-60">compliance & fit</p>
+          <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">{section.title}</h3>
+          <div className="mt-4 space-y-3">
+            {section.content.map((item) => (
+              <p key={item} className="text-sm leading-7 opacity-75">{item}</p>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
     if (section.type === "form" || section.type === "closing_cta") {
       return (
         <section key={section.id || `${section.type}-${index}`} className={getSectionShell(section)}>
@@ -253,6 +372,7 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
 
   const visibleDetailSections = sections.filter((section) => section.visible !== false && section.type !== "hero");
   const renderedSections = compact ? visibleDetailSections.slice(0, 2) : visibleDetailSections;
+  const directResponseLayout = visibleDetailSections.some((section) => getPreviewSectionKind(section) !== "content");
 
   return (
     <div className="overflow-hidden rounded-[28px] border border-white/8 bg-[#eef3fb] shadow-[0_28px_90px_-48px_rgba(0,0,0,0.68)]">
@@ -296,7 +416,21 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
         </div>
       </div>
       <div className={`mx-auto max-w-5xl space-y-4 px-6 sm:px-8 ${compact ? "py-6" : "py-8 sm:py-10"}`}>
-        {renderedSections.map(renderSection)}
+        {renderedSections.map((section, index) => (
+          <div key={section.id || `${section.type}-${index}`} className="space-y-4">
+            {renderSection(section, index)}
+            {!compact && directResponseLayout && index < renderedSections.length - 1 && index % 2 === 0 ? (
+              <div className="rounded-[20px] border border-[#74c7ff]/20 bg-[#74c7ff]/10 px-5 py-4 sm:flex sm:items-center sm:justify-between sm:gap-5">
+                <p className="text-sm font-medium leading-6 text-[#07121d]">
+                  Ready to see whether this is a fit? Start with the short form.
+                </p>
+                <div className="mt-4 rounded-full bg-[#74c7ff] px-5 py-3 text-center text-sm font-semibold text-[#05111a] sm:mt-0">
+                  {cta}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ))}
       </div>
     </div>
   );
