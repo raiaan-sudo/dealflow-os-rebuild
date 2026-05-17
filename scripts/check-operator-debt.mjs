@@ -64,6 +64,8 @@ async function main() {
     unresolvedStripeFailures,
     failedProviderEvents,
     staleProviderReservations,
+    deliveredNotificationStatusDrift,
+    failedNotificationStatusDrift,
   ] = await Promise.all([
     countRows(supabase, "system_jobs", (query) =>
       query.eq("status", "failed").is("reviewed_at", null),
@@ -80,6 +82,12 @@ async function main() {
         .eq("status", "reserved")
         .lt("created_at", new Date(Date.now() - 30 * 60 * 1000).toISOString()),
     ),
+    countRows(supabase, "lead_notifications", (query) =>
+      query.not("delivered_at", "is", null).neq("status", "delivered"),
+    ),
+    countRows(supabase, "lead_notifications", (query) =>
+      query.not("failed_at", "is", null).neq("status", "failed"),
+    ),
   ]);
 
   const summary = {
@@ -88,6 +96,8 @@ async function main() {
     unresolvedStripeFailures,
     failedProviderEvents,
     staleProviderReservations,
+    deliveredNotificationStatusDrift,
+    failedNotificationStatusDrift,
   };
 
   console.log(JSON.stringify(summary, null, 2));
@@ -118,6 +128,15 @@ async function main() {
       `${failedProviderEvents} failed events, ${staleProviderReservations} stale reservations`,
     );
     process.exitCode = 1;
+  }
+
+  if (deliveredNotificationStatusDrift === 0 && failedNotificationStatusDrift === 0) {
+    pass("Lead notification status drift", "none");
+  } else {
+    fail(
+      "Lead notification status drift",
+      `${deliveredNotificationStatusDrift} delivered rows and ${failedNotificationStatusDrift} failed rows have stale status`,
+    );
   }
 }
 

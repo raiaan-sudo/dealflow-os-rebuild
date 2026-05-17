@@ -172,6 +172,6 @@ Operational note: both rows still showed `status: queued` even though `provider_
 
 ### Remaining Follow-Up
 
-1. Normalize `lead_notifications.status` when Twilio callbacks or send timestamps prove delivery; the new QA rows have delivered timestamps but still report `queued`.
+1. Resolved on 2026-05-17: `lead_notifications.status` now normalizes from delivery/failure evidence, operator debt checks status drift, and the two QA notification rows were repaired from `queued` to `delivered`.
 2. Direct Twilio REST status fetch could not be completed locally because the CLI env pull did not reveal sensitive Twilio values. Production callback evidence and DB delivery timestamps are present.
 3. Keep the QA lead unless a scoped cleanup is explicitly requested. If cleanup is approved later, scope it to lead ID `4d13bc58-4339-47a7-a8b4-4dcc2b91da04` and related assignment/notification rows only.

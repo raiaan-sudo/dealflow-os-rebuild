@@ -16,6 +16,45 @@ type SendSmsParams = {
 type SmsStatus = "queued" | "sent" | "delivered" | "undelivered" | "failed";
 type AdminClient = SupabaseClient<any>;
 
+type LeadNotificationStatusEvidence = {
+  status?: string | null;
+  provider_message_id?: string | null;
+  sent_at?: string | null;
+  delivered_at?: string | null;
+  failed_at?: string | null;
+  error_message?: string | null;
+};
+
+function isSmsStatus(value: string | null | undefined): value is SmsStatus {
+  return (
+    value === "queued" ||
+    value === "sent" ||
+    value === "delivered" ||
+    value === "undelivered" ||
+    value === "failed"
+  );
+}
+
+export function normalizeLeadNotificationStatus(record: LeadNotificationStatusEvidence): SmsStatus {
+  if (record.failed_at || record.error_message || record.status === "failed") {
+    return "failed";
+  }
+
+  if (record.delivered_at || record.status === "delivered") {
+    return "delivered";
+  }
+
+  if (record.status === "undelivered") {
+    return "undelivered";
+  }
+
+  if (record.status === "sent" || record.sent_at || record.provider_message_id) {
+    return "sent";
+  }
+
+  return isSmsStatus(record.status) ? record.status : "queued";
+}
+
 export function normalizePhone(input: unknown, defaultCountry = "US") {
   return normalizePhoneNumber(input, defaultCountry);
 }
@@ -87,7 +126,16 @@ async function findExistingNotification(params: {
     throw error;
   }
 
-  return data as { id: string; status: SmsStatus; provider_message_id?: string | null } | null;
+  if (!data) {
+    return null;
+  }
+
+  const normalizedStatus = normalizeLeadNotificationStatus(data as LeadNotificationStatusEvidence);
+
+  return {
+    ...(data as { id: string; status: SmsStatus; provider_message_id?: string | null }),
+    status: normalizedStatus,
+  };
 }
 
 async function createNotification(params: SendSmsParams) {
@@ -114,6 +162,41 @@ async function createNotification(params: SendSmsParams) {
   return data as { id: string };
 }
 
+async function normalizeStoredNotificationStatusById(id: string) {
+  const supabase = getAdminClientOrThrow();
+  const { data, error } = await supabase
+    .from("lead_notifications")
+    .select("status, provider_message_id, sent_at, delivered_at, failed_at, error_message")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const normalizedStatus = normalizeLeadNotificationStatus(data as LeadNotificationStatusEvidence);
+
+  if (data.status !== normalizedStatus) {
+    const { error: updateError } = await supabase
+      .from("lead_notifications")
+      .update({
+        status: normalizedStatus,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+
+    if (updateError) {
+      throw updateError;
+    }
+  }
+
+  return normalizedStatus;
+}
+
 async function updateNotification(params: {
   id: string;
   status: SmsStatus;
@@ -121,6 +204,16 @@ async function updateNotification(params: {
   errorMessage?: string | null;
 }) {
   const now = new Date().toISOString();
+  const { data: existing, error: existingError } = await getAdminClientOrThrow()
+    .from("lead_notifications")
+    .select("status, provider_message_id, sent_at, delivered_at, failed_at, error_message")
+    .eq("id", params.id)
+    .maybeSingle();
+
+  if (existingError) {
+    throw existingError;
+  }
+
   const patch: Record<string, unknown> = {
     status: params.status,
     provider_message_id: params.providerMessageId ?? null,
@@ -130,6 +223,7 @@ async function updateNotification(params: {
 
   if (params.status === "sent") {
     patch.sent_at = now;
+    patch.failed_at = null;
   }
 
   if (params.status === "failed") {
@@ -138,7 +232,20 @@ async function updateNotification(params: {
 
   if (params.status === "delivered") {
     patch.delivered_at = now;
+    patch.failed_at = null;
   }
+
+  patch.status = normalizeLeadNotificationStatus({
+    ...(existing ?? {}),
+    status: params.status,
+    provider_message_id: (patch.provider_message_id as string | null) ?? null,
+    sent_at: (patch.sent_at as string | null) ?? existing?.sent_at ?? null,
+    delivered_at: (patch.delivered_at as string | null) ?? existing?.delivered_at ?? null,
+    failed_at: Object.prototype.hasOwnProperty.call(patch, "failed_at")
+      ? (patch.failed_at as string | null)
+      : existing?.failed_at ?? null,
+    error_message: (patch.error_message as string | null) ?? null,
+  });
 
   const { error } = await getAdminClientOrThrow()
     .from("lead_notifications")
@@ -148,6 +255,8 @@ async function updateNotification(params: {
   if (error) {
     throw error;
   }
+
+  await normalizeStoredNotificationStatusById(params.id);
 }
 
 async function postTwilioMessage(params: {
@@ -379,20 +488,29 @@ export async function updateSmsDeliveryStatus(params: {
 
   if (mapped === "delivered") {
     patch.delivered_at = now;
+    patch.failed_at = null;
   }
 
   if (mapped === "failed" || mapped === "undelivered") {
     patch.failed_at = now;
   }
 
-  const { error } = await getAdminClientOrThrow()
+  patch.status = normalizeLeadNotificationStatus({
+    status: mapped,
+    delivered_at: (patch.delivered_at as string | null) ?? null,
+    failed_at: (patch.failed_at as string | null) ?? null,
+    error_message: params.errorMessage ?? null,
+  });
+
+  const { data, error } = await getAdminClientOrThrow()
     .from("lead_notifications")
     .update(patch)
-    .eq("provider_message_id", params.providerMessageId);
+    .eq("provider_message_id", params.providerMessageId)
+    .select("id");
 
   if (error) {
     throw error;
   }
 
-  return { updated: true };
+  return { updated: (data?.length ?? 0) > 0, updatedCount: data?.length ?? 0 };
 }
