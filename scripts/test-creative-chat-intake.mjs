@@ -54,6 +54,8 @@ const {
   buildCreativeIntakeBrief,
   buildCreativeIntakePromptVersion,
   createCreativeIntakeState,
+  creativeIntakeIncludesStatic,
+  creativeIntakeIncludesUgcVideo,
   getApprovedCreativeIntakeGenerationContext,
   hasSameCreativeIntakeGenerationContext,
   isCreativeChatIntakeEnabled,
@@ -98,6 +100,8 @@ assert.match(selectAdRoute, /!isLaunchReadyStaticCreative\(ad\)/);
 assert.doesNotMatch(selectAdRoute, /Boolean\(ad\.imageUrl\) && !evaluateStaticVisualAssetDecision/);
 assert.match(creativeChatIntakeUi, /Customer-ready static ad/);
 assert.match(creativeChatIntakeUi, /AI UGC video ads/);
+assert.match(creativeChatIntakeUi, /static_and_ugc/);
+assert.match(creativeChatIntakeUi, /DealFlow can prepare static image ads and AI UGC video direction/);
 assert.match(creativeChatIntakeUi, /Reference examples, links, screenshots, or notes/);
 assert.match(creativeChatIntakeUi, /Open Marketing Studio chat/);
 assert.match(creativeChatIntakeUi, /Pre-render UGC concepts/);
@@ -113,10 +117,10 @@ assert.doesNotMatch(staticCreativePreviewCardUi, /Download|Save Image|Open origi
 assert.doesNotMatch(creativeChatIntakeUi, /Download|Save Image|Open original|Copy URL|Export/);
 assert.doesNotMatch(prepaywallPreviewUi, /Export locked/);
 assert.match(staticAdsRoute, /getApprovedCreativeIntakeGenerationContext/);
-assert.match(staticAdsRoute, /generationPhase !== "static"/);
+assert.match(staticAdsRoute, /creativeIntakeIncludesStatic/);
 assert.match(staticAdsRoute, /creativeIntake: creativeIntakeContext/);
 assert.match(videoRoute, /getApprovedCreativeIntakeGenerationContext/);
-assert.match(videoRoute, /generationPhase !== "ugc_video"/);
+assert.match(videoRoute, /creativeIntakeIncludesUgcVideo/);
 assert.match(videoRoute, /creativeIntake: creativeIntakeContext/);
 
 const defaults = {
@@ -245,6 +249,26 @@ assert.match(ugcPrompt.sanitizedPreview, /Selected UGC concept: Affordability re
 assert.match(ugcPrompt.generatedPrompt, /Reference examples:/);
 assert.match(ugcPrompt.generatedPrompt, /Must-avoid constraints:/);
 assert.match(ugcPrompt.sanitizedPreview, /UGC duration: 20s/);
+
+const combinedBrief = buildCreativeIntakeBrief({
+  ...answers,
+  outputMode: "finished_ad",
+  generationPhase: "static_and_ugc",
+  targetDurationSeconds: 20,
+  creatorPersona: "Toronto buyer agent guide",
+  referenceExamples: "Reference 1: agent explains buyer options in a car",
+  selectedUgcConceptId: "ugc-concept-private-shortlist",
+}, defaults);
+assert.equal(combinedBrief.completion.complete, true);
+assert.equal(combinedBrief.generationPhase, "static_and_ugc");
+assert.ok(creativeIntakeIncludesStatic(combinedBrief.generationPhase), "combined brief allows static generation");
+assert.ok(creativeIntakeIncludesUgcVideo(combinedBrief.generationPhase), "combined brief allows UGC video generation");
+assert.equal(combinedBrief.ugcStyleBrief.selectedConceptId, "ugc-concept-private-shortlist");
+const combinedPrompt = buildCreativeIntakePromptVersion(combinedBrief, 5);
+assert.match(combinedPrompt.generatedPrompt, /MARKETING STUDIO COMBINED STATIC \+ AI UGC BRIEF/);
+assert.match(combinedPrompt.generatedPrompt, /MARKETING STUDIO FINISHED AD CREATIVE/);
+assert.match(combinedPrompt.generatedPrompt, /MARKETING STUDIO AI UGC VIDEO BRIEF/);
+assert.match(combinedPrompt.sanitizedPreview, /Phase: static_and_ugc/);
 
 const state = createCreativeIntakeState({
   campaignId: defaults.campaignId,

@@ -4,6 +4,7 @@ import { logWarn } from "@/lib/logging";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import {
+  creativeIntakeIncludesUgcVideo,
   getApprovedCreativeIntakeGenerationContext,
   hasSameCreativeIntakeGenerationContext,
   isCreativeChatIntakeEnabled,
@@ -94,10 +95,10 @@ export async function POST(
         );
       }
 
-      if (creativeIntakeContext.generationPhase !== "ugc_video") {
+      if (!creativeIntakeIncludesUgcVideo(creativeIntakeContext.generationPhase)) {
         return Response.json(
           {
-            error: "The approved creative brief is scoped to static image generation. Approve a video creative brief before rendering video previews.",
+            error: "The approved creative brief is scoped to static image generation only. Approve a video or combined creative brief before rendering video previews.",
             code: "creative_generation_phase_mismatch",
           },
           { status: 409 },

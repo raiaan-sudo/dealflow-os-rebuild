@@ -42,7 +42,7 @@ export type CreativeIntakeStyle =
 
 export type CreativeIntakeApprovalStatus = "draft" | "approved" | "revision_requested";
 export type CreativeIntakeOutputMode = "finished_ad" | "background_only";
-export type CreativeIntakeGenerationPhase = "static" | "ugc_video";
+export type CreativeIntakeGenerationPhase = "static" | "ugc_video" | "static_and_ugc";
 
 export type CreativeIntakeAnswers = {
   targetAudience?: CreativeIntakeTargetAudience;
@@ -235,7 +235,7 @@ export const creativeIntakeAnswersSchema = z.object({
   platformPlacement: z.string().max(120).nullable().optional(),
   propertyType: z.string().max(160).nullable().optional(),
   outputMode: z.enum(["finished_ad", "background_only"]).optional(),
-  generationPhase: z.enum(["static", "ugc_video"]).optional(),
+  generationPhase: z.enum(["static", "ugc_video", "static_and_ugc"]).optional(),
   targetDurationSeconds: z.coerce.number().int().min(15).max(30).nullable().optional(),
   creatorPersona: z.string().max(220).nullable().optional(),
   hookAngle: z.string().max(220).nullable().optional(),
@@ -250,6 +250,14 @@ export const creativeIntakeAnswersSchema = z.object({
   selectedUgcConceptId: z.string().max(120).nullable().optional(),
   ugcDefaultStyleAccepted: z.boolean().optional(),
 });
+
+export function creativeIntakeIncludesStatic(phase?: CreativeIntakeGenerationPhase | string | null) {
+  return phase === "static" || phase === "static_and_ugc";
+}
+
+export function creativeIntakeIncludesUgcVideo(phase?: CreativeIntakeGenerationPhase | string | null) {
+  return phase === "ugc_video" || phase === "static_and_ugc";
+}
 
 function safeText(value: unknown) {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
@@ -460,7 +468,9 @@ export function buildCreativeIntakeBrief(
   const propertyType = safeText(answers.propertyType) || safeText(defaults.propertyType) || "real estate";
   const platformPlacement = safeText(answers.platformPlacement) || "Meta feed and story placements";
   const outputMode = answers.outputMode === "background_only" ? "background_only" : "finished_ad";
-  const generationPhase = answers.generationPhase === "ugc_video" ? "ugc_video" : "static";
+  const generationPhase = answers.generationPhase === "ugc_video" || answers.generationPhase === "static_and_ugc"
+    ? answers.generationPhase
+    : "static";
   const targetDurationSeconds =
     typeof answers.targetDurationSeconds === "number" && Number.isFinite(answers.targetDurationSeconds)
       ? Math.min(30, Math.max(15, Math.round(answers.targetDurationSeconds)))
@@ -488,7 +498,7 @@ export function buildCreativeIntakeBrief(
     pacing: ugcPacing,
     captionOverlayStyle: ugcCaptionOverlayStyle,
   });
-  const ugcStyleBrief = generationPhase === "ugc_video"
+  const ugcStyleBrief = creativeIntakeIncludesUgcVideo(generationPhase)
     ? {
         targetDurationSeconds,
         creatorPersona: ugcPersona,
@@ -512,10 +522,10 @@ export function buildCreativeIntakeBrief(
     market ? null : "market",
     brokerageBrand ? null : "brokerage_brand",
     creativeStyle ? null : "creative_style",
-    generationPhase === "ugc_video" && ugcReferenceExamples.length === 0 && !ugcDefaultStyleAccepted
+    creativeIntakeIncludesUgcVideo(generationPhase) && ugcReferenceExamples.length === 0 && !ugcDefaultStyleAccepted
       ? "ugc_reference_or_default_style_acceptance"
       : null,
-    generationPhase === "ugc_video" && !ugcConcepts.some((concept) => concept.id === selectedUgcConceptId)
+    creativeIntakeIncludesUgcVideo(generationPhase) && !ugcConcepts.some((concept) => concept.id === selectedUgcConceptId)
       ? "selected_ugc_concept"
       : null,
   ].filter((item): item is string => Boolean(item));
@@ -558,7 +568,7 @@ export function buildCreativeIntakePromptVersion(
   const selectedUgcConcept = brief.ugcStyleBrief?.concepts.find(
     (concept) => concept.id === brief.ugcStyleBrief?.selectedConceptId,
   ) ?? null;
-  const generatedPrompt = brief.generationPhase === "ugc_video" && brief.ugcStyleBrief
+  const ugcPromptSection = brief.ugcStyleBrief
     ? [
       "MARKETING STUDIO AI UGC VIDEO BRIEF.",
       "Create multiple customer-ready UGC video concepts before rendering. Do not spend provider credits until the user selects a concept and explicitly starts rendering.",
@@ -591,7 +601,8 @@ export function buildCreativeIntakePromptVersion(
         : null,
       "Reject generic creator output, awkward pacing, tiny overlays, mismatched CTAs, fake dashboards, fake listing sheets, unsupported guarantees, fake testimonials, invented logos, and anything that looks like a sample clip.",
     ].filter(Boolean).join(" ")
-    : brief.outputMode === "finished_ad"
+    : "";
+  const staticPromptSection = brief.outputMode === "finished_ad"
     ? [
       "MARKETING STUDIO FINISHED AD CREATIVE.",
       "Create ONE polished finished real-estate social ad poster, not a chart, not a dashboard, not a listing sheet, not a web/app UI screenshot.",
@@ -632,6 +643,15 @@ export function buildCreativeIntakePromptVersion(
       ? `Compliance guidance: avoid hard guarantees and keep the visual supportive of this softened claim context: ${brief.complianceNotes.join("; ")}.`
       : null,
   ].filter(Boolean).join(" ");
+  const generatedPrompt = brief.generationPhase === "ugc_video"
+    ? ugcPromptSection
+    : brief.generationPhase === "static_and_ugc"
+      ? [
+          "MARKETING STUDIO COMBINED STATIC + AI UGC BRIEF.",
+          staticPromptSection,
+          ugcPromptSection,
+        ].filter(Boolean).join(" ")
+      : staticPromptSection;
   const negativePrompt = [
     brief.outputMode === "finished_ad" ? null : "text",
     brief.outputMode === "finished_ad" ? null : "letters",
@@ -663,7 +683,7 @@ export function buildCreativeIntakePromptVersion(
       `Offer: ${brief.offer}`,
       `Brand direction: ${brief.brokerageBrand}`,
       brief.outputMode === "finished_ad" ? `CTA in raster: ${brief.cta}` : `CTA DealFlow will render: ${brief.cta}`,
-      brief.generationPhase === "ugc_video" && brief.ugcStyleBrief
+      creativeIntakeIncludesUgcVideo(brief.generationPhase) && brief.ugcStyleBrief
         ? `UGC duration: ${brief.ugcStyleBrief.targetDurationSeconds}s`
         : null,
       selectedUgcConcept ? `Selected UGC concept: ${selectedUgcConcept.title}` : null,
@@ -707,7 +727,14 @@ function buildMessagesFromAnswers(answers: CreativeIntakeAnswers): CreativeIntak
     ["What brokerage or brand should this match?", resolveAnswerLabel(answers.brokerageBrand, brandLabels, answers.customBrokerageBrand)],
     ["What city or market is this for?", safeText(answers.market)],
     ["What creative style do you want?", answers.creativeStyle ? styleLabels[answers.creativeStyle] : ""],
-    ["What are you creating now?", answers.generationPhase === "ugc_video" ? "AI UGC video ads" : "Static ads"],
+    [
+      "What are you creating now?",
+      answers.generationPhase === "static_and_ugc"
+        ? "Static ads and AI UGC video ads"
+        : answers.generationPhase === "ugc_video"
+          ? "AI UGC video ads"
+          : "Static ads",
+    ],
     ["Which UGC concept is selected?", safeText(answers.selectedUgcConceptId ?? "")],
     ["Any must-have copy or compliance constraints?", safeText(answers.constraints)],
   ].filter(([, answer]) => Boolean(answer));

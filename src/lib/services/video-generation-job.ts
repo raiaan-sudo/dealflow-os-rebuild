@@ -11,6 +11,7 @@ import { getSavedCampaignDocumentFromRow } from "@/lib/services/canonical-campai
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import type { StaticCreativeAsset, VideoCreativeAsset } from "@/lib/services/creative-engine";
 import {
+  creativeIntakeIncludesUgcVideo,
   getApprovedCreativeIntakeGenerationContext,
   hasSameCreativeIntakeGenerationContext,
   isCreativeChatIntakeEnabled,
@@ -360,7 +361,7 @@ function resolveDurableVideoCreativeIntake(
 
   const durableCreativeIntake = getApprovedCreativeIntakeGenerationContext(savedDocument);
 
-  if (!durableCreativeIntake || durableCreativeIntake.generationPhase !== "ugc_video") {
+  if (!durableCreativeIntake || !creativeIntakeIncludesUgcVideo(durableCreativeIntake.generationPhase)) {
     throw new ApiError(
       409,
       "Review and approve the video creative brief before rendering paid video previews.",

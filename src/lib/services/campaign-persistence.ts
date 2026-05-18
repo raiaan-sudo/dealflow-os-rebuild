@@ -32,6 +32,7 @@ import {
   type VideoCreativeAsset,
 } from "@/lib/services/creative-engine";
 import {
+  creativeIntakeIncludesStatic,
   getApprovedCreativeIntakeGenerationContext,
   hasSameCreativeIntakeGenerationContext,
   isCreativeChatIntakeEnabled,
@@ -1172,7 +1173,7 @@ export async function regenerateStaticCreativeAssetsForUser(
     : options?.creativeIntake ?? null;
 
   if (isCreativeChatIntakeEnabled()) {
-    if (!durableCreativeIntake || durableCreativeIntake.generationPhase !== "static") {
+    if (!durableCreativeIntake || !creativeIntakeIncludesStatic(durableCreativeIntake.generationPhase)) {
       throw new ApiError(
         409,
         "Review and approve the static creative brief before rendering paid image previews.",

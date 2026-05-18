@@ -12,6 +12,7 @@ import type {
   CreativeChatIntakeState,
   CreativeIntakeAnswers,
   CreativeIntakeCampaignDefaults,
+  CreativeIntakeGenerationPhase,
   CreativeIntakeUgcConcept,
 } from "@/lib/services/creative-chat-intake-service";
 
@@ -55,6 +56,14 @@ const styleOptions = [
   ["simple_direct_response", "Simple direct-response"],
 ] as const;
 
+function phaseIncludesStatic(phase?: CreativeIntakeGenerationPhase | string | null) {
+  return phase === "static" || phase === "static_and_ugc";
+}
+
+function phaseIncludesUgcVideo(phase?: CreativeIntakeGenerationPhase | string | null) {
+  return phase === "ugc_video" || phase === "static_and_ugc";
+}
+
 function defaultAnswers(defaults: CreativeIntakeCampaignDefaults): CreativeIntakeAnswers {
   return {
     targetAudience:
@@ -74,7 +83,7 @@ function defaultAnswers(defaults: CreativeIntakeCampaignDefaults): CreativeIntak
     platformPlacement: "Meta feed and story placements",
     propertyType: defaults.propertyType ?? "",
     outputMode: "finished_ad",
-    generationPhase: "static",
+    generationPhase: "static_and_ugc",
     targetDurationSeconds: 20,
     creatorPersona: "Trusted local agent / buyer guide",
     hookAngle: "Call out the buyer pain in the first two seconds",
@@ -162,8 +171,10 @@ export function CreativeChatIntake({
   const savedDraft = initialIntake?.approvalStatus === "draft" && Boolean(initialIntake?.updatedAt);
   const brief = initialIntake?.brief ?? null;
   const promptPreview = initialIntake?.promptVersion?.sanitizedPreview ?? null;
+  const includesStatic = phaseIncludesStatic(answers.generationPhase);
+  const includesUgcVideo = phaseIncludesUgcVideo(answers.generationPhase);
   const ugcConceptOptions = useMemo(() => {
-    return answers.generationPhase === "ugc_video"
+    return phaseIncludesUgcVideo(answers.generationPhase)
       ? buildClientUgcConceptOptions(answers, defaults)
       : [];
   }, [answers, defaults]);
@@ -178,7 +189,7 @@ export function CreativeChatIntake({
       answers.market?.trim() &&
       answers.creativeStyle &&
       (
-        answers.generationPhase !== "ugc_video" ||
+        !phaseIncludesUgcVideo(answers.generationPhase) ||
         Boolean(
           (answers.referenceExamples?.trim() || answers.ugcDefaultStyleAccepted) &&
           ugcConceptOptions.some((concept) => concept.id === answers.selectedUgcConceptId)
@@ -191,6 +202,14 @@ export function CreativeChatIntake({
     setAnswers((current) => ({ ...current, ...next }));
     setError(null);
     setNotice(null);
+  }
+
+  function updateGenerationPhase(nextPhase: CreativeIntakeGenerationPhase) {
+    updateAnswer({
+      generationPhase: nextPhase,
+      creativeStyle: nextPhase === "ugc_video" ? "ugc" : answers.creativeStyle,
+      selectedUgcConceptId: phaseIncludesUgcVideo(nextPhase) ? answers.selectedUgcConceptId : "",
+    });
   }
 
   async function persist(action: "save_answers" | "approve" | "revise") {
@@ -366,29 +385,23 @@ export function CreativeChatIntake({
               </label>
             </div>
 
-            <ChoiceGroup
+            <FormatChoiceGroup
               label="What are you creating now?"
-              value={answers.generationPhase}
-              options={[
-                ["static", "Static ads"],
-                ["ugc_video", "AI UGC video ads"],
-              ] as const}
-              onChange={(generationPhase) => updateAnswer({
-                generationPhase: generationPhase as CreativeIntakeAnswers["generationPhase"],
-                creativeStyle: generationPhase === "ugc_video" ? "ugc" : answers.creativeStyle,
-                selectedUgcConceptId: generationPhase === "ugc_video" ? answers.selectedUgcConceptId : "",
-              })}
+              value={answers.generationPhase ?? "static_and_ugc"}
+              onChange={updateGenerationPhase}
             />
 
-            <ChoiceGroup
-              label="Static ad output"
-              value={answers.outputMode}
-              options={[
-                ["finished_ad", "Customer-ready static ad"],
-                ["background_only", "Text-free visual background"],
-              ] as const}
-              onChange={(outputMode) => updateAnswer({ outputMode: outputMode as CreativeIntakeAnswers["outputMode"] })}
-            />
+            {includesStatic ? (
+              <ChoiceGroup
+                label="Static ad output"
+                value={answers.outputMode}
+                options={[
+                  ["finished_ad", "Customer-ready static ad"],
+                  ["background_only", "Text-free visual background"],
+                ] as const}
+                onChange={(outputMode) => updateAnswer({ outputMode: outputMode as CreativeIntakeAnswers["outputMode"] })}
+              />
+            ) : null}
 
             <ChoiceGroup
               label="What creative style do you want?"
@@ -397,7 +410,7 @@ export function CreativeChatIntake({
               onChange={(creativeStyle) => updateAnswer({ creativeStyle: creativeStyle as CreativeIntakeAnswers["creativeStyle"] })}
             />
 
-            {answers.generationPhase === "ugc_video" ? (
+            {includesUgcVideo ? (
               <div className="grid gap-4 rounded-[22px] border border-cyan-300/14 bg-cyan-300/[0.045] p-4">
                 <div>
                   <p className="text-sm font-semibold text-foreground">AI UGC style brief</p>
@@ -541,9 +554,20 @@ export function CreativeChatIntake({
             <SummaryRow label="Style" value={getAnswerLabel(answers.creativeStyle, styleOptions)} />
             <SummaryRow label="CTA" value={answers.cta || defaults.cta || "See My Options"} />
             <SummaryRow label="Placement" value={answers.platformPlacement} />
-            <SummaryRow label="Output mode" value={answers.outputMode === "background_only" ? "Text-free visual background" : "Customer-ready static ad"} />
-            <SummaryRow label="Studio mode" value={answers.generationPhase === "ugc_video" ? "AI UGC video ads" : "Static ads"} />
-            {answers.generationPhase === "ugc_video" ? (
+            {includesStatic ? (
+              <SummaryRow label="Output mode" value={answers.outputMode === "background_only" ? "Text-free visual background" : "Customer-ready static ad"} />
+            ) : null}
+            <SummaryRow
+              label="Studio mode"
+              value={
+                answers.generationPhase === "static_and_ugc"
+                  ? "Static ads + AI UGC video ads"
+                  : answers.generationPhase === "ugc_video"
+                    ? "AI UGC video ads"
+                    : "Static ads"
+              }
+            />
+            {includesUgcVideo ? (
               <>
                 <SummaryRow label="UGC length" value={`${answers.targetDurationSeconds ?? 20}s target`} />
                 <SummaryRow label="UGC persona" value={answers.creatorPersona} />
@@ -555,7 +579,7 @@ export function CreativeChatIntake({
               </>
             ) : null}
           </div>
-          {answers.generationPhase === "ugc_video" ? (
+          {includesUgcVideo ? (
             <div className="mt-5 rounded-[20px] border border-cyan-300/16 bg-cyan-300/[0.055] p-4">
               <p className="text-sm font-semibold text-foreground">Pre-render UGC concepts</p>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
@@ -622,6 +646,62 @@ export function CreativeChatIntake({
         </aside>
       </div>
     </Card>
+  );
+}
+
+function FormatChoiceGroup({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: CreativeIntakeGenerationPhase;
+  onChange: (value: CreativeIntakeGenerationPhase) => void;
+}) {
+  const staticSelected = phaseIncludesStatic(value);
+  const ugcSelected = phaseIncludesUgcVideo(value);
+
+  function toggle(kind: "static" | "ugc_video") {
+    const nextStatic = kind === "static" ? !staticSelected : staticSelected;
+    const nextUgc = kind === "ugc_video" ? !ugcSelected : ugcSelected;
+
+    if (nextStatic && nextUgc) {
+      onChange("static_and_ugc");
+    } else if (nextUgc) {
+      onChange("ugc_video");
+    } else {
+      onChange("static");
+    }
+  }
+
+  return (
+    <div>
+      <p className="text-sm font-medium text-foreground">{label}</p>
+      <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label={label}>
+        {[
+          ["static", "Static ads", staticSelected],
+          ["ugc_video", "AI UGC video ads", ugcSelected],
+        ].map(([key, title, active]) => (
+          <button
+            key={String(key)}
+            type="button"
+            aria-pressed={Boolean(active)}
+            onClick={() => toggle(key as "static" | "ugc_video")}
+            className={cn(
+              "rounded-full border px-3 py-2 text-xs font-semibold transition",
+              active
+                ? "border-cyan-200/36 bg-cyan-300/[0.1] text-cyan-50"
+                : "border-white/10 bg-white/[0.035] text-white/64 hover:border-cyan-200/18",
+            )}
+          >
+            {title}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">
+        DealFlow can prepare static image ads and AI UGC video direction from the same approved brief.
+      </p>
+    </div>
   );
 }
 

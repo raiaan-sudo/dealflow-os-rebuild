@@ -25,7 +25,10 @@ import {
   rankStaticCreativeAssets,
   type CreativeScoreBreakdown,
 } from "@/lib/services/creative-scoring-service";
-import type { CreativeIntakeGenerationContext } from "@/lib/services/creative-chat-intake-service";
+import {
+  creativeIntakeIncludesStatic,
+  type CreativeIntakeGenerationContext,
+} from "@/lib/services/creative-chat-intake-service";
 import {
   evaluateStaticVisualAssetDecision,
   type StaticCreativeImageQaResult,
@@ -2044,7 +2047,7 @@ function applyCreativeIntakePromptToStaticAsset(
   normalized: RequiredCreativeInput,
   creativeIntake?: CreativeIntakeGenerationContext | null,
 ): StaticCreativeAsset {
-  if (!creativeIntake || creativeIntake.generationPhase !== "static") {
+  if (!creativeIntake || !creativeIntakeIncludesStatic(creativeIntake.generationPhase)) {
     return asset;
   }
 

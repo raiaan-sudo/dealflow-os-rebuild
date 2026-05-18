@@ -1,4 +1,8 @@
-import type { CreativeIntakeGenerationContext } from "@/lib/services/creative-chat-intake-service";
+import {
+  creativeIntakeIncludesStatic,
+  creativeIntakeIncludesUgcVideo,
+  type CreativeIntakeGenerationContext,
+} from "@/lib/services/creative-chat-intake-service";
 import { getMediaGenerationProvider } from "@/lib/env";
 
 export const MARKETING_STUDIO_WORKER_RUNTIME = "marketing_studio_cli_worker";
@@ -27,7 +31,7 @@ export function isMarketingStudioStaticGenerationPayload(
 
   return (
     creativeIntake.outputMode === "finished_ad" &&
-    creativeIntake.generationPhase === "static"
+    creativeIntakeIncludesStatic(String(creativeIntake.generationPhase))
   );
 }
 
@@ -58,7 +62,7 @@ export function isMarketingStudioVideoGenerationPayload(
     return false;
   }
 
-  return creativeIntake.generationPhase === "ugc_video";
+  return creativeIntakeIncludesUgcVideo(String(creativeIntake.generationPhase));
 }
 
 export function isMarketingStudioVideoGenerationJob(params: {
