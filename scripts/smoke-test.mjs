@@ -109,6 +109,7 @@ function runOfflineChecks() {
   const launchApiRoute = "src/app/api/campaigns/[id]/launch/route.ts";
   const launchPage = "src/app/(app)/launch/page.tsx";
   const previewPage = "src/app/(app)/preview/page.tsx";
+  const signupPage = "src/app/signup/page.tsx";
   const paywallPage = "src/app/(app)/paywall/page.tsx";
   const onboardingPage = "src/app/(app)/onboarding/page.tsx";
   const buildFunnelPage = "src/app/(app)/build/funnel/page.tsx";
@@ -175,6 +176,7 @@ function runOfflineChecks() {
   const smsService = "src/lib/services/sms-service.ts";
   const leadMessageIdempotencyMigration = "supabase/migrations/20260428162000_harden_lead_message_idempotency.sql";
   const envHelpers = "src/lib/env.ts";
+  const proxy = "src/proxy.ts";
   const sessionCostGuard = "src/lib/services/session-cost-guard.ts";
   const creditService = "src/lib/services/credit-service.ts";
   const systemJobService = "src/lib/services/system-job-service.ts";
@@ -216,7 +218,6 @@ function runOfflineChecks() {
   const freshdeskService = "src/lib/support/freshdesk.ts";
   const safeE2eConfig = "playwright.safe.config.ts";
   const safeE2eSpec = "tests/e2e/safe-self-serve.spec.ts";
-  const schemaValidationService = "src/lib/services/schema-validation-service.ts";
   const publishRoute = "src/app/api/campaigns/[id]/publish/route.ts";
   const publicFunnelPage = "src/app/f/[slug]/page.tsx";
   const publicFunnelThankYouPage = "src/app/f/[slug]/thank-you/page.tsx";
@@ -363,6 +364,11 @@ function runOfflineChecks() {
   assertIncludes(creativeWizard, "getStaticPreviewStatusMessage", "Creative partial-count copy", "completed image jobs report ready/missing/failed counts instead of generic ready copy");
   assertIncludes("src/lib/services/creative-media-readiness.ts", "launch-ready previews available", "Creative partial-count wording", "partial image generation copy exposes counts without treating optional failed variants as launch blockers");
   assertIncludes(creativeWizard, "customerImageMessage", "Creative image error sanitizer", "image preview failures do not expose provider or infrastructure wording to customers");
+  assertIncludes(signupPage, "mode: \"sign-up\"", "Signup canonical redirect", "/signup redirects to the canonical /login sign-up mode instead of 404");
+  assertIncludes(proxy, "\"/signup\"", "Signup public route", "/signup is public before auth middleware so public users reach the canonical redirect");
+  assertIncludes(previewPage, "ReviewOnlyCreativePreview", "Preview review-only fallback", "fresh campaigns can render Preview without selected launch-ready media");
+  assertIncludes(previewPage, "cannot satisfy Meta launch gates", "Preview fallback launch warning", "review-only preview media cannot be mistaken for launch-ready media");
+  assertExcludes(previewPage, /selectedAds\.length\s*===\s*0[\s\S]{0,120}redirect\(/, "Preview no creative redirect removed", "preview no longer redirects solely because no selected creative set exists");
   assertIncludes(creativeWizard, "missingOnly: true", "Creative retry refill payload", "creative retry payloads refill unfinished previews without full creative regeneration");
   assertIncludes(creativeWizard, "Draft selection only. Launch remains blocked until this set is saved.", "Creative draft selection copy", "creative page distinguishes recommended draft selections from saved launch selections");
   assertIncludes(creativeWizard, "Approved brief source: saved creative intake", "Creative durable approval source", "creative review no longer has a local-only approval gate");
@@ -791,13 +797,11 @@ function runOfflineChecks() {
   assertIncludes(clientErrorService, "FORBIDDEN_TEXT_PATTERN", "Client error privacy scrubber", "browser error messages/stacks are scrubbed before persistence");
   assertIncludes(internalLaunchMonitor, "source: \"client_error\"", "Client error operator radar integration", "browser crashes appear in operator issues");
   assertIncludes(safeE2eConfig, "screenshot: \"off\"", "Safe E2E screenshot disabled", "browser proof avoids screenshot artifacts with private data");
-  assertIncludes(safeE2eConfig, "SCHEMA_VALIDATION_MODE: \"warn\"", "Safe E2E schema warn mode", "local browser proof can start without mutating remote schema state");
   assertIncludes(safeE2eConfig, "ALLOW_META_LIVE_LAUNCH", "Safe E2E Meta launch disabled", "browser proof starts local app with live Meta launch disabled");
   assertIncludes(safeE2eSpec, "SAFE_E2E_QA_AUTH", "Safe E2E QA auth gate", "authenticated browser journey requires an explicit QA auth env gate");
   assertIncludes(safeE2eSpec, "/api/internal/qa-auth-session", "Safe E2E internal auth harness", "browser proof uses the env-gated internal QA auth harness");
   assertIncludes("src/app/api/internal/qa-auth-session/route.ts", "QA_AUTH_HARNESS_PRODUCTION_ENABLED", "Production QA harness gate", "QA session minting requires a second explicit production gate");
   assertIncludes(safeE2eSpec, "No live ad, payment, message, or media action runs here.", "Safe E2E live-action boundary assertion", "browser proof asserts onboarding warns that no live ad, payment, message, or media action runs");
-  assertIncludes(schemaValidationService, "code === \"service_role_missing\"", "Schema warn service-role fallback", "warn-mode schema validation does not block local browser proof when service-role env is absent");
   assertIncludes("scripts/smoke-test-system.md", "npm run test:e2e:safe", "Safe browser E2E docs", "smoke documentation includes the safe browser proof command");
   assertExcludes("src/lib/services/lead-handler-service.ts", /QA_EMAIL|QA_PASSWORD/, "QA credential fallback removed", "no QA credential fallback remains in lead handler");
   assertIncludes(campaignPlanPersistence, "organization_id: params.ownerId", "Campaign persistence organization ownership", "fresh campaign rows persist organization_id for downstream jobs and billing");

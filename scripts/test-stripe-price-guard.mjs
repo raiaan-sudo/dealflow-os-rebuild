@@ -15,6 +15,11 @@ assert.doesNotMatch(plans, /\$97\/mo|\b9700\b/, "Code must not use the legacy $9
 assert.doesNotMatch(presentation, /\$97\/mo|\b9700\b/, "Plan presentation must not use the legacy $97 Starter price");
 assert.match(stripeService, /priceId === env\.starterPriceId[\s\S]*return "starter"/, "Starter mapping must require the configured Stripe starter price ID");
 assert.match(stripeService, /return null;\s*}\s*export function getCheckoutUrls/, "Unknown Stripe price IDs must not silently map to Starter");
-assert.match(billingService, /stripe_price_unrecognized/, "Stripe subscription sync must fail closed for unknown price IDs without plan metadata");
+assert.match(billingService, /stripe_price_unrecognized/, "Stripe subscription sync must fail closed for unknown price IDs");
+assert.doesNotMatch(
+  billingService,
+  /metadataTier[\s\S]*getPlanTierFromPriceId\(priceId\)/,
+  "Stripe metadata must not override an unknown configured price ID",
+);
 
 console.log("Stripe price guard tests passed.");

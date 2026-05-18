@@ -1,0 +1,63 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+
+const root = process.cwd();
+
+function read(relativePath) {
+  return fs.readFileSync(path.join(root, relativePath), "utf8");
+}
+
+function exists(relativePath) {
+  return fs.existsSync(path.join(root, relativePath));
+}
+
+function listFiles(directory) {
+  const entries = fs.readdirSync(path.join(root, directory), { withFileTypes: true });
+  return entries.flatMap((entry) => {
+    const relativePath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      if ([".next", ".git", "node_modules"].includes(entry.name)) return [];
+      return listFiles(relativePath);
+    }
+    return [relativePath];
+  });
+}
+
+const signupPage = "src/app/signup/page.tsx";
+const proxy = read("src/proxy.ts");
+const builderPage = read("src/app/(app)/builder/page.tsx");
+const unlockPage = read("src/app/(app)/unlock/page.tsx");
+const creativeIntake = read("src/app/(app)/build/creatives/creative-chat-intake.tsx");
+const previewPage = read("src/app/(app)/preview/page.tsx");
+const launchPage = read("src/app/(app)/launch/page.tsx");
+const selectAdRoute = read("src/app/api/campaigns/[id]/select-ad/route.ts");
+
+assert.equal(exists(signupPage), true, "/signup route must exist");
+assert.match(read(signupPage), /mode:\s*"sign-up"/, "/signup must preserve canonical sign-up mode");
+assert.match(read(signupPage), /redirect\(`\/login\?\$\{target\.toString\(\)\}`\)/, "/signup must redirect to /login");
+assert.match(proxy, /"\/signup"/, "/signup must be public before auth middleware redirects");
+
+const deadSignupLinks = listFiles("src")
+  .filter((file) => /\.(tsx?|jsx?)$/.test(file))
+  .filter((file) => file !== signupPage)
+  .filter((file) => /href=["']\/signup["']|href=\{["']\/signup["']\}/.test(read(file)));
+assert.deepEqual(deadSignupLinks, [], "public/source CTAs must not point at a dead /signup route");
+
+assert.equal(exists("src/components/campaign/creative-auto-prepare.tsx"), false, "navigation must not mount an auto provider preparation component");
+assert.doesNotMatch(builderPage, /CreativeAutoPrepare|generate-static-ads/, "builder navigation must not auto-call static generation");
+assert.doesNotMatch(unlockPage, /CreativeAutoPrepare|generate-static-ads/, "unlock navigation must not auto-call static generation");
+assert.doesNotMatch(creativeIntake, /generate-static-ads|generate-video/, "creative intake render must not directly queue provider work");
+
+assert.match(previewPage, /ReviewOnlyCreativePreview/, "preview must expose a review-only acceptance fallback");
+assert.match(previewPage, /cannot satisfy Meta launch gates/, "review-only preview copy must state it cannot satisfy launch gates");
+assert.doesNotMatch(previewPage, /selectedAds\.length\s*===\s*0[\s\S]{0,120}redirect\(/, "preview must not redirect fresh campaigns back to Creative Intake solely because no selected creatives exist");
+assert.doesNotMatch(previewPage, /generate-static-ads|generate-video/, "preview render must not queue provider generation");
+assert.match(previewPage, /Media review needed/, "preview must keep launch CTA disabled until real media is ready");
+
+assert.match(launchPage, /Saved creative set missing/, "launch must still block when no saved creative set exists");
+assert.match(launchPage, /selectedCreativeMediaReady/, "launch must keep selected creative media readiness gate");
+assert.match(selectAdRoute, /!isLaunchReadyStaticCreative\(ad\)/, "review-only or placeholder static media must not be selectable for launch");
+assert.match(selectAdRoute, /selected_static_minimum_not_met/, "launch selection must still require the static creative floor");
+
+console.log("Public self-serve acceptance guards passed.");

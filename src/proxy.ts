@@ -6,6 +6,7 @@ import { getInternalSystemJobSecrets, getSupabaseEnv } from "@/lib/env";
 const PUBLIC_PATHS = new Set([
   "/",
   "/login",
+  "/signup",
   "/privacy",
   "/terms",
   "/data-deletion",

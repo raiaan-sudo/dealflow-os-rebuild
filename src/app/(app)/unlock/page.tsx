@@ -6,13 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
 import { StatusPill } from "@/components/ui/status-pill";
-import { CreativeAutoPrepare } from "@/components/campaign/creative-auto-prepare";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
-import {
-  isCreativeChatIntakeEnabled,
-  readCreativeChatIntakeFromPlan,
-} from "@/lib/services/creative-chat-intake-service";
-import { createClient } from "@/lib/supabase/server";
 import {
   getBillingSummary,
   reconcileBillingCheckoutSuccess,
@@ -66,33 +60,6 @@ export default async function UnlockPage({
   const staticCreativeCount = activeCampaign?.record?.creatives.staticAds.length ?? 0;
   const videoConceptCount = activeCampaign?.record?.creatives.videoAds.length ?? 0;
   const hasStaticCreatives = staticCreativeCount > 0;
-  const hasGeneratedStaticImages =
-    activeCampaign?.record?.creatives.staticAds.some((ad) => Boolean(ad.imageUrl)) ?? false;
-  const creativeIntakeEnabled = isCreativeChatIntakeEnabled();
-  const supabase = creativeIntakeEnabled && campaignId ? await createClient() : null;
-  let intakePlanValue: unknown = null;
-  if (supabase && campaignId) {
-    const { data } = await supabase
-      .from("campaign_plans")
-      .select("plan")
-      .eq("id", campaignId)
-      .maybeSingle() as { data: { plan?: unknown } | null; error: Error | null };
-    intakePlanValue = data?.plan ?? null;
-  }
-  const creativeIntake = readCreativeChatIntakeFromPlan(intakePlanValue);
-  const creativeIntakeApproved =
-    !creativeIntakeEnabled ||
-    (
-      creativeIntake?.approvalStatus === "approved" &&
-      creativeIntake.brief?.completion.complete === true &&
-      Boolean(creativeIntake.promptVersion?.generatedPrompt)
-    );
-  const shouldPrepareImages =
-    Boolean(campaignId) &&
-    hasStaticCreatives &&
-    !hasGeneratedStaticImages &&
-    creativeIntakeApproved &&
-    (activatedByCheckout || launchAllowed);
   const paywallHref = `/paywall${campaignId ? `?campaignId=${encodeURIComponent(campaignId)}${plan ? `&plan=${encodeURIComponent(plan)}` : ""}` : plan ? `?plan=${encodeURIComponent(plan)}` : ""}`;
   const buildHref = campaignId
     ? `/builder?campaignId=${encodeURIComponent(campaignId)}`
@@ -138,11 +105,6 @@ export default async function UnlockPage({
 
   return (
     <PageShell className="max-w-[1180px] py-8">
-      <CreativeAutoPrepare
-        campaignId={campaignId}
-        enabled={shouldPrepareImages}
-        storageScope="unlock"
-      />
       <PageHeader
         eyebrow={activatedByCheckout ? "Welcome" : "Billing"}
         title={title}

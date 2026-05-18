@@ -56,6 +56,7 @@
     "test:lead-notification-status": "node ./scripts/test-lead-notification-status-normalization.mjs",
     "test:meta-app-state-drift": "node ./scripts/test-meta-app-state-drift.mjs",
     "test:stripe-price-guard": "node ./scripts/test-stripe-price-guard.mjs",
+    "test:public-self-serve-acceptance": "node ./scripts/test-public-self-serve-acceptance-guards.mjs",
     "meta:tracking:sync-readiness": "node ./scripts/sync-meta-tracking-readiness.mjs",
     "worker:marketing-studio": "node ./scripts/run-marketing-studio-worker.mjs",
     "launch:validate": "node ./scripts/print-launch-validation-plan.mjs"

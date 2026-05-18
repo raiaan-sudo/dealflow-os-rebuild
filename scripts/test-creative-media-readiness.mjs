@@ -139,6 +139,34 @@ const creatives = [
   },
 ];
 
+const reviewOnlyStaticSet = Array.from({ length: STATIC_LAUNCH_MIN_CREATIVE_COUNT }, (_, index) => ({
+  id: `review-only-preview-${index + 1}`,
+  imageUrl: null,
+  storageNormalized: false,
+  imageGenerationState: "unavailable",
+  imageGenerationMessage: "Review-only placeholder. Select launch-ready media before launch.",
+  imagePrompt: null,
+  imagePromptConfig: null,
+  visualPromptBrief: {
+    visualAssetContract: "review-only preview placeholder",
+    visualAssetRole: "layout_acceptance_only",
+  },
+  qualityGate: { accepted: false, hardFailures: ["review_only_preview"] },
+  imageQa: {
+    usable: false,
+    decision: "review",
+    mode: "background_only",
+    reasons: ["review_only_preview"],
+  },
+}));
+const reviewOnlyReadiness = getStaticCreativeReadiness(
+  reviewOnlyStaticSet,
+  reviewOnlyStaticSet.map((creative) => creative.id),
+);
+assert.equal(reviewOnlyReadiness.selectedReadyCount, 0);
+assert.equal(reviewOnlyReadiness.allSelectedReady, false);
+assert.equal(reviewOnlyReadiness.selectedMinimumMet, false);
+
 const oneSelected = getStaticCreativeReadiness(creatives, ["primary"]);
 assert.equal(oneSelected.selectionLabel, "1 primary creative selected");
 assert.equal(oneSelected.readyLabel, "1 selected launch-ready preview");

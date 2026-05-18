@@ -15,6 +15,7 @@ import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import {
   getExpectedOutcomes,
   getStrategyWhy,
+  type CampaignPlan,
 } from "@/lib/services/campaign-plan-service";
 import {
   normalizeCampaign,
@@ -44,6 +45,48 @@ function customerVideoMessage(message?: string | null) {
   }
 
   return text;
+}
+
+function ReviewOnlyCreativePreview({ plan }: { plan: CampaignPlan }) {
+  const headline = plan.funnel?.headline || plan.keyOffer || "Campaign preview creative";
+  const primaryText =
+    plan.offerSummary ||
+    `Review how the ${plan.market} campaign message will appear before launch-ready media is selected.`;
+  const cta = plan.funnel?.cta || "Learn More";
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-[18px] border border-amber-300/18 bg-amber-300/[0.08] px-4 py-3 text-sm leading-6 text-amber-100">
+        Review-only creative preview. This placeholder proves the Preview layout and message match, but it is not launch-ready, is not selected media, and cannot satisfy Meta launch gates.
+      </div>
+      <StaticCreativeSummaryCard
+        category={plan.creativeStrategy.campaignCategory}
+        className="border-amber-300/18 bg-black/18"
+        cta={cta}
+        headline={headline}
+        imageGenerationMessage="Review-only placeholder. Select 4-6 launch-ready static ads in Creative Studio before launch."
+        imageGenerationState="unavailable"
+        imagePrompt={null}
+        imagePromptConfig={null}
+        imageUrl={null}
+        storageNormalized={false}
+        index={0}
+        location={plan.market}
+        offer={plan.keyOffer}
+        overlayText={plan.keyOffer}
+        primaryText={primaryText}
+        qualityGate={{ accepted: false, hardFailures: ["review_only_preview"] }}
+        imageQa={{ usable: false, decision: "review", mode: "background_only", reasons: ["review_only_preview"] }}
+        score={0}
+        selectedCount={0}
+        visualPromptBrief={{
+          category: plan.creativeStrategy.campaignCategory,
+          visualAssetContract: "review-only preview placeholder",
+          visualAssetRole: "layout_acceptance_only",
+        }}
+      />
+    </div>
+  );
 }
 
 async function loadPersistedLaunchMediaSelection(campaignId: string | null) {
@@ -128,9 +171,6 @@ export default async function PreviewPage({
   const mediaReadyForLaunch = selectedStaticMediaReady && videoMediaReady;
   const campaignIdForFlow = record?.campaign.id ?? null;
 
-  if (selectedAds.length === 0) {
-    redirect(campaignIdForFlow ? `/build/creatives?campaignId=${encodeURIComponent(campaignIdForFlow)}` : "/builder");
-  }
   await recordActivationEventForCurrentUser({
     eventName: "preview_generated_or_viewed",
     campaignId: campaignIdForFlow,
@@ -179,7 +219,7 @@ export default async function PreviewPage({
           <div className="mb-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Selected creative test set</p>
             <h2 className="mt-1 text-lg font-semibold text-foreground">
-              {selectedAds.length > 0 ? staticReadiness.selectionLabel : "Creative selection needed"}
+              {selectedAds.length > 0 ? staticReadiness.selectionLabel : "Review-only creative preview"}
             </h2>
             {selectedAds.length > 0 ? (
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
@@ -259,9 +299,7 @@ export default async function PreviewPage({
               ) : null}
             </div>
           ) : (
-            <div className="rounded-df-card border border-white/10 bg-white/[0.035] p-5 text-sm text-muted-foreground">
-              No saved creative test set is ready yet. Go back to creatives and choose the ads you want to test first.
-            </div>
+            <ReviewOnlyCreativePreview plan={previewPlan} />
           )}
           {displayVideoAds.length > 0 ? (
             <section className="mt-5 border-t border-white/10 pt-5">
