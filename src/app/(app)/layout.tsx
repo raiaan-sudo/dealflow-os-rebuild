@@ -10,6 +10,7 @@ import { SignOutButton } from "@/components/layout/sign-out-button";
 import { isInternalAdminEmail } from "@/lib/env";
 import { ACTIVE_CAMPAIGN_COOKIE } from "@/lib/paywall-access";
 import { getAppContext } from "@/lib/services/app-context";
+import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { getInitials } from "@/lib/utils";
 import type { CampaignExperienceStage } from "@/lib/services/campaign-plan-service";
 
@@ -32,6 +33,15 @@ function buildCampaignScopedHref(path: string, campaignId?: string | null) {
   return `${path}?${params.toString()}`;
 }
 
+async function resolveOwnedActiveCampaignId(candidateCampaignId: string | null) {
+  if (!candidateCampaignId) {
+    return null;
+  }
+
+  const record = await getCampaignById(candidateCampaignId).catch(() => null);
+  return record?.campaign.id ?? null;
+}
+
 export default async function AppLayout({
   children,
 }: Readonly<{
@@ -41,7 +51,9 @@ export default async function AppLayout({
   const cookieStore = await cookies();
   const authState = headerStore.get("x-dealflow-auth-state");
   const pathname = headerStore.get("x-pathname") ?? "";
-  const activeCampaignId = cookieStore.get(ACTIVE_CAMPAIGN_COOKIE)?.value ?? null;
+  const activeCampaignId = await resolveOwnedActiveCampaignId(
+    cookieStore.get(ACTIVE_CAMPAIGN_COOKIE)?.value ?? null,
+  );
   const isFirstRunFocusRoute =
     pathname.startsWith("/campaign-built") ||
     pathname.startsWith("/welcome") ||

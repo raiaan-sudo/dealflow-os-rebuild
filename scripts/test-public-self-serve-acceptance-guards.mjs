@@ -26,6 +26,7 @@ function listFiles(directory) {
 
 const signupPage = "src/app/signup/page.tsx";
 const proxy = read("src/proxy.ts");
+const appLayout = read("src/app/(app)/layout.tsx");
 const builderPage = read("src/app/(app)/builder/page.tsx");
 const unlockPage = read("src/app/(app)/unlock/page.tsx");
 const creativeIntake = read("src/app/(app)/build/creatives/creative-chat-intake.tsx");
@@ -37,6 +38,9 @@ assert.equal(exists(signupPage), true, "/signup route must exist");
 assert.match(read(signupPage), /mode:\s*"sign-up"/, "/signup must preserve canonical sign-up mode");
 assert.match(read(signupPage), /redirect\(`\/login\?\$\{target\.toString\(\)\}`\)/, "/signup must redirect to /login");
 assert.match(proxy, /"\/signup"/, "/signup must be public before auth middleware redirects");
+assert.match(appLayout, /resolveOwnedActiveCampaignId/, "app layout must validate active campaign cookies before scoping navigation");
+assert.match(appLayout, /getCampaignById\(candidateCampaignId\)\.catch\(\(\) => null\)/, "stale or cross-user active campaign cookies must fail closed");
+assert.doesNotMatch(appLayout, /const activeCampaignId = cookieStore\.get\(ACTIVE_CAMPAIGN_COOKIE\)\?\.value \?\? null;/, "app layout must not trust raw active campaign cookie values");
 
 const deadSignupLinks = listFiles("src")
   .filter((file) => /\.(tsx?|jsx?)$/.test(file))
