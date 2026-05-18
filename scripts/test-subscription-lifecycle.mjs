@@ -108,6 +108,20 @@ assert.equal(evaluateCampaignEntitlements({ row: row("active"), now }).canLaunch
 assert.equal(evaluateCampaignEntitlements({ row: row("active", { plan_tier: "pro" }), now }).canRunAutonomy, true);
 assert.equal(evaluateCampaignEntitlements({ row: row("active"), now }).canRunAutonomy, false);
 
+const starterTrial = evaluateCampaignEntitlements({ row: row("trialing"), now });
+assert.equal(starterTrial.subscriptionStatus, "trialing");
+assert.equal(starterTrial.billingState, "active");
+assert.equal(starterTrial.canLaunch, true);
+assert.equal(starterTrial.canRunAutonomy, false);
+
+const proTrial = evaluateCampaignEntitlements({
+  row: row("trialing", { plan_tier: "pro" }),
+  now,
+});
+assert.equal(proTrial.billingState, "active");
+assert.equal(proTrial.canLaunch, true);
+assert.equal(proTrial.canRunAutonomy, true);
+
 const cancelFuture = evaluateCampaignEntitlements({
   row: row("active", { cancel_at_period_end: true, current_period_end: future }),
   now,
@@ -126,6 +140,14 @@ assert.equal(cancelEnded.canCaptureLeads, false);
 assert.equal(cancelEnded.canSendLeadAlerts, false);
 assert.equal(cancelEnded.canRunOptimization, false);
 assert.equal(cancelEnded.requiresSuspension, true);
+
+const trialCanceled = evaluateCampaignEntitlements({
+  row: row("canceled", { cancel_at_period_end: false, current_period_end: past }),
+  now,
+});
+assert.equal(trialCanceled.billingState, "suspended");
+assert.equal(trialCanceled.canLaunch, false);
+assert.equal(trialCanceled.canRunAutonomy, false);
 
 const pastDue = evaluateCampaignEntitlements({ row: row("past_due"), now });
 assert.equal(pastDue.billingState, "payment_issue");
@@ -198,5 +220,6 @@ assert.match(systemJobSource, /subscription_inactive/);
 assert.match(leadRouteSource, /campaign_subscription_inactive/);
 assert.match(publicFunnelSource, /Campaign paused/);
 assert.match(notificationSource, /reason: "subscription_inactive"/);
+assert.match(source, /ACTIVE_SUBSCRIPTION_STATUSES = new Set\(\["active", "trialing"\]\)/);
 
 console.log("Subscription lifecycle entitlement and safety tests passed.");

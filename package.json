@@ -49,6 +49,7 @@
     "load:lead-capture": "node ./scripts/load-test.mjs lead-capture",
     "test:internal-sms": "node ./scripts/test-internal-sms-notifications.mjs",
     "test:subscription-lifecycle": "node ./scripts/test-subscription-lifecycle.mjs",
+    "test:billing-free-trial": "node ./scripts/test-billing-free-trial.mjs",
     "test:activation-telemetry": "node ./scripts/test-activation-telemetry.mjs",
     "test:launch-budget-tracking-safety": "node ./scripts/test-launch-budget-tracking-safety.mjs",
     "test:support-freshdesk": "node ./scripts/test-support-freshdesk.mjs",

@@ -17,6 +17,8 @@ This contract captures the launch-readiness rules for the owner onboarding, payw
 
 - Starter is positioned as recommended optimization: DealFlow recommends the steps, and the agent approves and applies them.
 - Pro is positioned as fully covered and self-optimizing: DealFlow monitors, guides, and keeps the full launch path covered with richer checks.
+- Starter and Pro public self-serve checkout start with a 7-day free trial. Customer-facing paywall copy must say `$147/mo after 7-day free trial` for Starter and `$297/mo after 7-day free trial` for Pro.
+- Trialing is a Stripe subscription state, not a paid-active state. Settings and billing status surfaces must show trialing/free-trial copy while preserving the correct Starter or Pro entitlements.
 - Onboarding and paywall must share plan copy from `src/lib/billing/plan-presentation.ts` so pricing and positioning do not drift.
 
 ## Layout rules

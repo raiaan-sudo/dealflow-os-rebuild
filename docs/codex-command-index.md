@@ -97,6 +97,7 @@ unauthenticated GET https://app.agentdealflow.io/api/internal/system-jobs
 
 ```bash
 npm run test:billing-recovery
+npm run test:billing-free-trial
 npm run test:subscription-lifecycle
 npm run test:internal-sms
 npm run rls:cross-tenant

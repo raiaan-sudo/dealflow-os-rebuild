@@ -79,11 +79,13 @@ export function buildStripeCheckoutMetadata(params: {
   userId: string;
   planTier: BillingPlanTier;
   campaignId?: string | null;
+  trialPeriodDays?: number | null;
 }) {
   return {
     organization_id: params.organizationId,
     user_id: params.userId,
     plan_tier: normalizeBillingPlanTier(params.planTier),
+    ...(params.trialPeriodDays ? { trial_period_days: String(params.trialPeriodDays) } : {}),
     ...(params.campaignId ? { campaign_id: params.campaignId } : {}),
   };
 }

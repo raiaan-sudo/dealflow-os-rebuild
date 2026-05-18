@@ -122,7 +122,7 @@ export function PaywallPlanSelector({
             <CheckoutButton
               campaignId={campaignId}
               planTier={selectedTier}
-              label={`Activate ${selectedPlan.name}`}
+              label={selectedPlan.checkoutCtaLabel}
               className="sm:min-w-[220px]"
               buttonClassName="w-full"
             />

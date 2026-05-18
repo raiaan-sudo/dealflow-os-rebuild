@@ -895,7 +895,8 @@ function runOfflineChecks() {
   assertIncludes(launchPage, "Owner/test billing acceptance is active for this campaign", "Launch billing override copy", "launch page distinguishes owner/test acceptance from real Stripe subscription state");
   assertIncludes(billingService, "billing_checkout_bypass", "Billing override checkout bypass", "override users do not create live Stripe checkout sessions");
   assertIncludes(paywallPage, "launchOverride={billing?.launchOverride === true}", "Paywall override handoff", "billing override state is passed into the paywall CTA");
-  assertIncludes("src/components/billing/paywall-plan-selector.tsx", "Activate {selectedPlan.name}", "Paywall simulated activation CTA", "billing override users see normal activation copy without opening Stripe checkout");
+  assertIncludes("src/components/billing/paywall-plan-selector.tsx", "Activate {selectedPlan.name}", "Paywall simulated override CTA", "billing override users see normal activation copy without opening Stripe checkout");
+  assertIncludes("src/components/billing/paywall-plan-selector.tsx", "label={selectedPlan.checkoutCtaLabel}", "Paywall free-trial checkout CTA", "normal customers see the 7-day free trial checkout copy");
   assertIncludes(unlockPage, "Checkout cancelled", "Unlock cancelled state", "Stripe cancel returns to a clear cancellation state instead of an access-active page");
   assertIncludes(unlockPage, "Back to build", "Unlock cancelled CTA", "cancelled checkout sends the user back to Build instead of dashboard by default");
   assertIncludes(unlockPage, "Welcome to DealFlow OS", "Unlock welcome activation state", "post-checkout activation feels like a customer-facing welcome handoff");

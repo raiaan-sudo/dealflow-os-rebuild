@@ -6,6 +6,8 @@ export type CampaignLimitPolicy = {
   label: string;
 };
 
+export const SELF_SERVE_TRIAL_PERIOD_DAYS = 7;
+
 export const BILLING_PLANS: Record<
   BillingPlanTier,
   {
@@ -72,6 +74,10 @@ export function hasFeatureAccess(planTier: BillingPlanTier, feature: BillingFeat
 
 export function getCampaignLimitPolicy(planTier: BillingPlanTier) {
   return CAMPAIGN_LIMITS[normalizeBillingPlanTier(planTier)];
+}
+
+export function getSelfServeTrialPeriodDays(planTier: BillingPlanTier) {
+  return planTier === "starter" || planTier === "pro" ? SELF_SERVE_TRIAL_PERIOD_DAYS : null;
 }
 
 export function canCreateAdditionalCampaign(params: {

@@ -85,6 +85,16 @@ function getBillingStatusCopy(billing: SettingsBillingSummary | null) {
     };
   }
 
+  if (billing.subscriptionStatus === "trialing") {
+    const trialEnd = billing.currentPeriodEnd ? ` until ${formatPeriodEnd(billing.currentPeriodEnd)}` : "";
+
+    return {
+      tone: "success",
+      title: "Free trial active",
+      detail: `Trial access is enabled for this workspace${trialEnd}. Stripe subscription status is trialing, not paid active.`,
+    };
+  }
+
   if (billing.launchAllowed) {
     return {
       tone: "success",
@@ -98,6 +108,18 @@ function getBillingStatusCopy(billing: SettingsBillingSummary | null) {
     title: "Launch access not active",
     detail: "Activate billing to unlock live Meta launch access.",
   };
+}
+
+function formatBillingStateLabel(billing: SettingsBillingSummary | null) {
+  if (!billing) {
+    return "inactive";
+  }
+
+  if (billing.subscriptionStatus === "trialing" && billing.billingState === "active") {
+    return "trialing";
+  }
+
+  return billing.billingState?.replace(/_/g, " ") ?? "inactive";
 }
 
 function statusToneClass(tone: string) {
@@ -230,7 +252,7 @@ export default async function SettingsPage({
               {[
                 ["Plan", billing?.planTier ?? "starter"],
                 ["Status", billing?.subscriptionStatus ?? "inactive"],
-                ["Billing state", billing?.billingState?.replace(/_/g, " ") ?? "inactive"],
+                ["Billing state", formatBillingStateLabel(billing)],
                 ["Launch access", launchAccessLabel],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-[18px] border border-white/10 bg-white/[0.035] p-4">
@@ -241,7 +263,8 @@ export default async function SettingsPage({
             </div>
             {billing?.currentPeriodEnd ? (
               <p className="mt-3 text-sm text-muted-foreground">
-                Paid-through date: {formatPeriodEnd(billing.currentPeriodEnd)}
+                {billing.subscriptionStatus === "trialing" ? "Trial ends" : "Paid-through date"}:{" "}
+                {formatPeriodEnd(billing.currentPeriodEnd)}
               </p>
             ) : null}
           </div>

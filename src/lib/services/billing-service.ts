@@ -15,6 +15,7 @@ import {
 import { getStripeBillingProvider } from "@/lib/integrations/stripe/provider";
 import {
   hasFeatureAccess,
+  getSelfServeTrialPeriodDays,
   normalizeBillingPlanTier,
   type BillingFeature,
   type BillingPlanTier,
@@ -781,11 +782,13 @@ export async function createBillingCheckoutSession(params: {
     campaignId: requestedCampaignId,
     planTier: params.planTier,
   });
+  const checkoutTrialPeriodDays = getSelfServeTrialPeriodDays(params.planTier);
   const metadata = buildStripeCheckoutMetadata({
     organizationId: context.organization.id,
     userId: context.user.id,
     planTier: params.planTier,
     campaignId: requestedCampaignId,
+    trialPeriodDays: checkoutTrialPeriodDays,
   });
 
   if (
@@ -817,12 +820,17 @@ export async function createBillingCheckoutSession(params: {
       ? existingMetadata.last_checkout_campaign_id
       : null,
   );
+  const lastCheckoutTrialPeriodDays =
+    typeof existingMetadata.last_checkout_trial_period_days === "string"
+      ? Number.parseInt(existingMetadata.last_checkout_trial_period_days, 10)
+      : null;
 
   if (
     customerId &&
     existingBillingRow?.stripe_checkout_session_id &&
     lastCheckoutPlanTier === params.planTier &&
     lastCheckoutCampaignId === requestedCampaignId &&
+    lastCheckoutTrialPeriodDays === checkoutTrialPeriodDays &&
     Number.isFinite(lastCheckoutCreatedAt) &&
     Date.now() - lastCheckoutCreatedAt < CHECKOUT_SESSION_REUSE_MS
   ) {
@@ -837,7 +845,9 @@ export async function createBillingCheckoutSession(params: {
         reusableSession.status === "open" &&
         reusableSession.url &&
         sessionCustomerId === customerId &&
-        normalizeCheckoutCampaignId(reusableSession.metadata?.campaign_id ?? null) === requestedCampaignId
+        normalizeCheckoutCampaignId(reusableSession.metadata?.campaign_id ?? null) === requestedCampaignId &&
+        Number.parseInt(reusableSession.metadata?.trial_period_days ?? "0", 10) ===
+          (checkoutTrialPeriodDays ?? 0)
       ) {
         logOperationalEvent("billing_checkout_session_reused", {
           organizationId: context.organization.id,
@@ -861,7 +871,7 @@ export async function createBillingCheckoutSession(params: {
       action: "create_checkout_session",
       idempotencyKey: `dealflow_checkout_${context.organization.id}_${params.planTier}_${
         requestedCampaignId ?? "workspace"
-      }_${Math.floor(
+      }_trial${checkoutTrialPeriodDays ?? 0}_${Math.floor(
         Date.now() / CHECKOUT_SESSION_REUSE_MS,
       )}`,
       params: {
@@ -879,6 +889,7 @@ export async function createBillingCheckoutSession(params: {
         allow_promotion_codes: true,
         metadata,
         subscription_data: {
+          ...(checkoutTrialPeriodDays ? { trial_period_days: checkoutTrialPeriodDays } : {}),
           metadata,
         },
       },
@@ -912,6 +923,7 @@ export async function createBillingCheckoutSession(params: {
     last_checkout_session_created_at: new Date().toISOString(),
     last_checkout_plan_tier: params.planTier,
     last_checkout_campaign_id: requestedCampaignId,
+    last_checkout_trial_period_days: checkoutTrialPeriodDays === null ? null : String(checkoutTrialPeriodDays),
   } satisfies Json;
 
   const upsertRow: BillingInsert = {
@@ -1215,6 +1227,10 @@ export async function syncBillingSubscriptionFromStripe(
   const firstItem = subscription.items.data[0];
   const priceId = typeof firstItem?.price?.id === "string" ? firstItem.price.id : null;
   const planTier = getActivePlanTier(subscription);
+  const periodEnd =
+    subscription.status === "trialing" && subscription.trial_end
+      ? subscription.trial_end
+      : firstItem?.current_period_end;
   const subscriptionRow: BillingInsert = {
     organization_id: organizationId,
     user_id: subscription.metadata.user_id || null,
@@ -1227,8 +1243,8 @@ export async function syncBillingSubscriptionFromStripe(
     current_period_start: subscription.items.data[0]?.current_period_start
       ? new Date(subscription.items.data[0].current_period_start * 1000).toISOString()
       : null,
-    current_period_end: subscription.items.data[0]?.current_period_end
-      ? new Date(subscription.items.data[0].current_period_end * 1000).toISOString()
+    current_period_end: periodEnd
+      ? new Date(periodEnd * 1000).toISOString()
       : null,
     cancel_at_period_end: subscription.cancel_at_period_end,
     metadata: subscription.metadata,
