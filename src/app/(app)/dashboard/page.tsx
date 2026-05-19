@@ -88,19 +88,13 @@ function withTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs: number) {
 }
 
 function formatLastUpdated(value: string) {
-  const diffMs = Date.now() - new Date(value).getTime();
-  const diffSeconds = Math.max(0, Math.round(diffMs / 1000));
+  const timestamp = new Date(value).getTime();
 
-  if (diffSeconds <= 1) {
-    return "Last updated just now";
+  if (!Number.isFinite(timestamp)) {
+    return "Last updated";
   }
 
-  if (diffSeconds < 60) {
-    return `Last updated ${diffSeconds} seconds ago`;
-  }
-
-  const diffMinutes = Math.round(diffSeconds / 60);
-  return `Last updated ${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+  return `Last updated ${new Date(timestamp).toISOString().slice(11, 16)} UTC`;
 }
 
 function parseCostPerLeadRange(value: string) {
