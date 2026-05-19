@@ -1,6 +1,10 @@
 import "server-only";
 
 import { logWarn } from "@/lib/logging";
+import {
+  SUPPORT_CATEGORIES,
+  SUPPORT_PRIORITY_BY_CATEGORY,
+} from "@/lib/support/support-categories";
 import type { FreshdeskTicketPayload } from "@/lib/support/support-ticket";
 
 export type FreshdeskTicketResult =
@@ -57,6 +61,21 @@ function getFreshdeskConfig() {
     apiKey,
     productId: parseOptionalFreshdeskId(process.env.FRESHDESK_PRODUCT_ID),
     groupId: parseOptionalFreshdeskId(process.env.FRESHDESK_GROUP_ID),
+  };
+}
+
+export function getFreshdeskOperationalStatus() {
+  const config = getFreshdeskConfig();
+  const priorityMapReady = SUPPORT_CATEGORIES.every(
+    (category) => SUPPORT_PRIORITY_BY_CATEGORY[category] !== undefined,
+  );
+
+  return {
+    configured: config.configured,
+    missingEnvNames: config.configured ? [] : ["FRESHDESK_DOMAIN", "FRESHDESK_API_KEY"],
+    optionalEnvNames: ["FRESHDESK_PRODUCT_ID", "FRESHDESK_GROUP_ID"],
+    categoryCount: SUPPORT_CATEGORIES.length,
+    priorityMapReady,
   };
 }
 

@@ -13,6 +13,7 @@ Use this runbook to choose the smallest validation suite that honestly proves th
 ```bash
 node -v
 npm run operator:debt
+npm run operator:scale-report
 npm run smoke:offline
 npm run routes:security
 npm run schema:check
@@ -46,6 +47,7 @@ Run these for Marketing Studio, Higgsfield, static creative, UGC video, storage,
 ```bash
 npm run test:provider-cost-watch
 npm run test:provider-usage-idempotency
+npm run test:scale-readiness-report
 npm run test:billing-free-trial
 npm run test:billing-recovery
 npm run test:subscription-lifecycle
