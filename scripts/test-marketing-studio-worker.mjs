@@ -80,6 +80,7 @@ function resetEnv() {
     "AI_API_KEY",
     "OPENAI_API_KEY",
     "OPENAI_BASE_URL",
+    "MEDIA_GENERATION_FALLBACK_PROVIDER",
   ]) {
     delete process.env[key];
   }
@@ -145,6 +146,8 @@ assert.equal(
 );
 
 delete process.env.MARKETING_STUDIO_WORKER_ENABLED;
+process.env.MEDIA_GENERATION_PROVIDER = "higgsfield_marketing_studio";
+process.env.HIGGSFIELD_UGC_VIDEO_MODEL = "marketing_studio_video";
 assert.equal(
   shouldDeferMarketingStudioStaticGenerationToWorker({
     kind: "video_generation",
@@ -155,7 +158,25 @@ assert.equal(
     },
   }),
   true,
-  "Marketing Studio UGC video jobs are deferred outside worker runtime",
+  "Marketing Studio UGC video jobs are deferred when the selected provider requires the CLI worker",
+);
+
+process.env.MEDIA_GENERATION_FALLBACK_PROVIDER = "higgsfield";
+process.env.ALLOW_HIGGSFIELD_VIDEO_GENERATION = "true";
+process.env.HF_CREDENTIALS = "test-key:test-secret";
+process.env.HIGGSFIELD_IMAGE_MODEL = "marketing_studio_image";
+process.env.HIGGSFIELD_VIDEO_MODEL = "dop-turbo";
+assert.equal(
+  shouldDeferMarketingStudioStaticGenerationToWorker({
+    kind: "video_generation",
+    payload: {
+      creativeIntake: {
+        generationPhase: "ugc_video",
+      },
+    },
+  }),
+  false,
+  "explicit configured API/SDK fallback keeps UGC video out of the CLI worker lane",
 );
 
 resetEnv();
@@ -213,7 +234,7 @@ assert.match(systemJobService, /claimSystemJobByIdForWorker/);
 assert.match(
   systemJobService,
   /const deferToMarketingStudioWorker = isMarketingStudioWorkerOwnedJob/,
-  "Marketing Studio static and video jobs are queued as deferred even when the dedicated worker env is enabled",
+  "Marketing Studio static and worker-required video jobs are queued as deferred for the dedicated worker",
 );
 assert.match(systemJobService, /status: "pending"[\s\S]*next_run_at: MARKETING_STUDIO_WORKER_DEFERRED_UNTIL/);
 assert.doesNotMatch(

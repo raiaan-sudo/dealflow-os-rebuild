@@ -47,6 +47,7 @@ export default async function BuildCreativesPage({
   let intakePlanValue: unknown = null;
   let persistedSelectedAdIds: string[] = [];
   let persistedSelectedUgcVideoIds: string[] = [];
+  let activeRenderJobs: Parameters<typeof CreativeWizard>[0]["initialRenderJobs"] = [];
   if (supabase) {
     const { data } = await supabase
       .from("campaign_plans")
@@ -56,6 +57,18 @@ export default async function BuildCreativesPage({
     intakePlanValue = data?.plan ?? null;
     persistedSelectedAdIds = getSelectedAdIdsFromPlan(intakePlanValue);
     persistedSelectedUgcVideoIds = getSelectedUgcVideoIdsFromPlan(intakePlanValue);
+
+    const { data: jobsData } = await supabase
+      .from("system_jobs")
+      .select("id,kind,status,error_message,result,next_run_at,locked_by,locked_until,created_at,started_at,completed_at,retry_count,attempt_count,max_attempts,payload,last_error_code")
+      .eq("campaign_id", ensuredRecord.campaign.id)
+      .in("kind", ["static_creative_generation", "video_generation", "video_generation_status"])
+      .in("status", ["pending", "processing", "failed"])
+      .order("created_at", { ascending: false })
+      .limit(12);
+    activeRenderJobs = Array.isArray(jobsData)
+      ? jobsData as Parameters<typeof CreativeWizard>[0]["initialRenderJobs"]
+      : [];
   }
   const creativeIntake = readCreativeChatIntakeFromPlan(intakePlanValue);
   const creativeIntakeApproved =
@@ -219,6 +232,7 @@ export default async function BuildCreativesPage({
       <CreativeWizard
         campaignId={ensuredRecord.campaign.id}
         creatives={creativeOptions}
+        initialRenderJobs={activeRenderJobs}
         persistedSelectedAdIds={persistedSelectedAdIds}
         persistedSelectedUgcVideoIds={persistedSelectedUgcVideoIds}
         videoCreatives={videoOptions}

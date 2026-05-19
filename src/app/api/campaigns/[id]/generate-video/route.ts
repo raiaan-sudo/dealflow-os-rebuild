@@ -10,6 +10,7 @@ import {
   isCreativeChatIntakeEnabled,
 } from "@/lib/services/creative-chat-intake-service";
 import { getAvatarVideoProvider } from "@/lib/integrations/creative/avatar-provider";
+import { isMarketingStudioWorkerOwnedJob } from "@/lib/services/marketing-studio-worker-contract";
 import { createSystemJob, listSystemJobs } from "@/lib/services/system-job-service";
 import type { SystemJobRecord } from "@/lib/services/system-job-service";
 import type { VideoGenerationJobPayload } from "@/lib/services/video-generation-job";
@@ -20,7 +21,15 @@ const bodySchema = z.object({
   force: z.boolean().optional(),
 });
 
-function scheduleVideoGenerationJob(jobId: string) {
+function scheduleVideoGenerationJob(jobId: string, payload?: unknown) {
+  if (isMarketingStudioWorkerOwnedJob({ kind: "video_generation", payload })) {
+    logWarn("UGC video generation deferred to Marketing Studio worker", {
+      jobId,
+      runtime: "marketing_studio_cli_worker",
+    });
+    return;
+  }
+
   logWarn("Video generation queued for claimed worker processing", {
     jobId,
     runtime: "system_job_worker",
@@ -123,18 +132,6 @@ export async function POST(
       return Response.json({ error: "Video creative was not found for this campaign." }, { status: 404 });
     }
 
-    const videoProviderReadiness = getVideoProviderReadiness();
-
-    if (!videoProviderReadiness.ready) {
-      return Response.json(
-        {
-          error: "Video previews are saved as a concept for now. Static creatives can still be reviewed, but launch needs an approved campaign-specific UGC video.",
-          code: "video_generation_disabled",
-        },
-        { status: 409 },
-      );
-    }
-
     const activeJobs = (await listSystemJobs({
       userId: auth.userId,
       campaignId,
@@ -148,8 +145,8 @@ export async function POST(
           hasSameCreativeIntakeGenerationContext(job.payload.creativeIntake, creativeIntakeContext)),
       ) ?? null;
 
-    if (existingActiveJob) {
-      scheduleVideoGenerationJob(existingActiveJob.id);
+    if (existingActiveJob && body.force !== true) {
+      scheduleVideoGenerationJob(existingActiveJob.id, existingActiveJob.payload);
 
       return Response.json({
         success: true,
@@ -167,6 +164,18 @@ export async function POST(
           url: selectedVideo.videoUrl ?? "",
         },
       });
+    }
+
+    const videoProviderReadiness = getVideoProviderReadiness();
+
+    if (!videoProviderReadiness.ready) {
+      return Response.json(
+        {
+          error: "Video previews are saved as a concept for now. Static creatives can still be reviewed, but launch needs an approved campaign-specific UGC video.",
+          code: "video_generation_disabled",
+        },
+        { status: 409 },
+      );
     }
 
     const scriptLines = (selectedCopy?.script || selectedVideo.script.join("\n"))
@@ -214,7 +223,7 @@ export async function POST(
       payload,
       maxAttempts: 1,
     });
-    scheduleVideoGenerationJob(job.id);
+    scheduleVideoGenerationJob(job.id, job.payload);
 
     return Response.json({
       success: true,

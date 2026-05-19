@@ -16,8 +16,12 @@ const launchCreateRoute = fs.readFileSync("src/app/api/campaigns/create/route.ts
 
 assert.match(videoRoute, /getVideoProviderReadiness/, "video route preflights provider readiness");
 assert.ok(
-  videoRoute.indexOf("if (!videoProviderReadiness.ready)") < videoRoute.indexOf("const activeJobs"),
-  "video route blocks disabled/unconfigured providers before job lookup/queue",
+  videoRoute.indexOf("const activeJobs") < videoRoute.indexOf("if (!videoProviderReadiness.ready)"),
+  "video route returns existing active render jobs before disabled provider gates can hide stale/deferred state",
+);
+assert.ok(
+  videoRoute.indexOf("if (!videoProviderReadiness.ready)") < videoRoute.indexOf("const job = await createSystemJob"),
+  "video route blocks disabled/unconfigured providers before creating new jobs",
 );
 assert.doesNotMatch(videoRoute, /processSystemJob/, "video route remains enqueue-only");
 

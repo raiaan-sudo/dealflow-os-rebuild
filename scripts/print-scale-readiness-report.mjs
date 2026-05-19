@@ -20,6 +20,7 @@ const HEAVY_JOB_KINDS = new Set([
   "video_generation_status",
   "provider_polling",
 ]);
+const MARKETING_STUDIO_WORKER_DEFERRED_UNTIL_MS = Date.parse("2099-01-01T00:00:00.000Z");
 
 function requireEnv(name) {
   const value = process.env[name]?.trim();
@@ -95,6 +96,13 @@ function ageBucket(value, nowMs) {
   return "olderThan7d";
 }
 
+function isDeferredCreativeRenderJob(row) {
+  if (row.status !== "pending") return false;
+  if (row.kind !== "static_creative_generation" && row.kind !== "video_generation") return false;
+  const nextRunAt = Date.parse(row.next_run_at ?? "");
+  return Number.isFinite(nextRunAt) && nextRunAt >= MARKETING_STUDIO_WORKER_DEFERRED_UNTIL_MS;
+}
+
 function timestampFor(row) {
   return row.updated_at ?? row.failed_at ?? row.dead_lettered_at ?? row.synced_at ?? row.created_at ?? null;
 }
@@ -160,7 +168,7 @@ async function buildReport() {
     metaLocks,
     clientErrors,
   ] = await Promise.all([
-    readRows(supabase, "system_jobs", supabase.from("system_jobs").select("id,kind,status,created_at,started_at,locked_until,attempt_count,max_attempts,dead_lettered_at,last_error_code,reviewed_at,resolution_note").neq("status", "completed").order("created_at", { ascending: false }).limit(1000), warnings),
+    readRows(supabase, "system_jobs", supabase.from("system_jobs").select("id,organization_id,campaign_id,kind,status,created_at,started_at,locked_until,next_run_at,attempt_count,max_attempts,dead_lettered_at,last_error_code,reviewed_at,resolution_note").neq("status", "completed").order("created_at", { ascending: false }).limit(1000), warnings),
     readRows(supabase, "provider_usage_events", supabase.from("provider_usage_events").select("id,organization_id,campaign_id,provider,operation,status,estimated_cost,actual_cost,created_at").gte("created_at", sevenDaysAgoIso).order("created_at", { ascending: false }).limit(2000), warnings),
     readRows(supabase, "provider_usage_limits", supabase.from("provider_usage_limits").select("provider,operation,usage_count,limit_count,usage_date,updated_at").gte("usage_date", today).order("updated_at", { ascending: false }).limit(1000), warnings),
     readRows(supabase, "billing_subscriptions", supabase.from("billing_subscriptions").select("organization_id,plan_tier,status,current_period_end,cancel_at_period_end,created_at,updated_at").limit(5000), warnings),
@@ -193,6 +201,11 @@ async function buildReport() {
   }
   const staleProcessingRows = activeJobs.filter((job) => job.status === "processing" && (!job.locked_until || Date.parse(job.locked_until) < Date.now()));
   const staleProcessingJobs = staleProcessingRows.length;
+  const deferredCreativeRows = activeJobs.filter(isDeferredCreativeRenderJob);
+  const staleDeferredCreativeRows = deferredCreativeRows.filter((job) => {
+    const createdAt = Date.parse(job.created_at ?? "");
+    return Number.isFinite(createdAt) && Date.now() - createdAt > 15 * 60 * 1000;
+  });
   const jobsApproachingMaxAttempts = activeJobs.filter((job) => Number(job.max_attempts ?? 0) > 0 && Number(job.attempt_count ?? 0) >= Math.max(1, Number(job.max_attempts) - 1)).length;
   const providerFailures = providerEvents.filter((event) => event.status === "failed");
   const currentProviderFailures = providerFailures.filter((event) => isWithin(event.created_at, oneDayAgoMs));
@@ -297,6 +310,20 @@ async function buildReport() {
     }));
   }
 
+  if (staleDeferredCreativeRows.length > 0) {
+    issueClassification.currentWatch.push(classificationEntry("stale deferred creative render jobs", staleDeferredCreativeRows, {
+      nowMs: Date.now(),
+      reason: "Creative render jobs are deferred to the Marketing Studio worker and stale without a worker claim.",
+      recommendedAction: "Verify MARKETING_STUDIO_WORKER_ENABLED, HIGGSFIELD_MARKETING_STUDIO_MODE, HIGGSFIELD_CLI_ENABLED, HIGGSFIELD_CLI_PATH, ALLOW_HIGGSFIELD_IMAGE_GENERATION, ALLOW_HIGGSFIELD_VIDEO_GENERATION, FINISHED_AD_VISION_QA_ENABLED, and AI_API_KEY or OPENAI_API_KEY before a scoped requeue.",
+    }));
+  } else if (deferredCreativeRows.length > 0) {
+    issueClassification.currentWatch.push(classificationEntry("deferred creative render jobs", deferredCreativeRows, {
+      nowMs: Date.now(),
+      reason: "Creative render jobs are waiting for the dedicated Marketing Studio worker.",
+      recommendedAction: "Keep the worker running or leave customer previews in concept/composed mode until it is ready.",
+    }));
+  }
+
   if (metaFailures > 0) {
     issueClassification.activeBlockers.push(classificationEntry("Meta latest sync failures", latestMetaSnapshots.filter((row) => row.sync_result === "failed" || (Array.isArray(row.sync_errors) && row.sync_errors.length > 0)), {
       nowMs: Date.now(),
@@ -368,7 +395,7 @@ async function buildReport() {
     status,
     warnings,
     issueClassification,
-    queue: { status: queueStatus, byLane, staleProcessingJobs, jobsApproachingMaxAttempts, caps: JOB_LANE_CONCURRENCY_CAPS },
+    queue: { status: queueStatus, byLane, staleProcessingJobs, deferredCreativeJobs: deferredCreativeRows.length, staleDeferredCreativeJobs: staleDeferredCreativeRows.length, jobsApproachingMaxAttempts, caps: JOB_LANE_CONCURRENCY_CAPS },
     provider: { status: providerStatus, events7d: providerEvents.length, failures7d: currentProviderFailures.length, staleReservations: staleProviderReservations, costToday: providerCostToday, capPressure },
     billing: { status: billingStatus, trialing: billingCounts.trialing ?? 0, active: billingCounts.active ?? 0, pastDue: billingCounts.past_due ?? 0, canceled: (billingCounts.canceled ?? 0) + (billingCounts.inactive ?? 0), stripeFailures },
     leads: { status: leadStatus, leads7d: leads.filter((lead) => isWithin(lead.created_at, sevenDaysAgoMs)).length, notificationsByStatus, failedLeadNotifications: failedLeadNotificationRows.length },
@@ -396,6 +423,8 @@ function printMarkdown(report) {
   console.log(`- Critical lane: ${report.queue.byLane.critical.queued} queued, ${report.queue.byLane.critical.processing} processing, ${report.queue.byLane.critical.failed} failed, ${report.queue.byLane.critical.deadLetter} dead-letter`);
   console.log(`- Heavy lane: ${report.queue.byLane.heavy.queued} queued, ${report.queue.byLane.heavy.processing} processing, ${report.queue.byLane.heavy.failed} failed, ${report.queue.byLane.heavy.deadLetter} dead-letter`);
   console.log(`- Stale processing jobs: ${report.queue.staleProcessingJobs}`);
+  console.log(`- Deferred creative render jobs: ${report.queue.deferredCreativeJobs}`);
+  console.log(`- Stale deferred creative render jobs: ${report.queue.staleDeferredCreativeJobs}`);
   console.log(`- Jobs approaching max attempts: ${report.queue.jobsApproachingMaxAttempts}`);
   console.log(`- Lane caps: critical ${report.queue.caps.critical}, normal ${report.queue.caps.normal}, heavy ${report.queue.caps.heavy}`);
   console.log("");

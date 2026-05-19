@@ -1,5 +1,9 @@
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { getSystemJob, getSystemJobLogs } from "@/lib/services/system-job-service";
+import {
+  classifyCreativeRenderJob,
+  isMarketingStudioWorkerDeferredRunAt,
+} from "@/lib/services/creative-render-state";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +30,7 @@ export async function GET(
       return encoder.encode(
         `event: job\ndata: ${JSON.stringify(
           job
-            ? { ...job, logs }
+            ? { ...job, logs, renderState: classifyCreativeRenderJob(job) }
             : { job: null, logs: [], status: "failed", error_message: "System job was not found." },
         )}\n\n`,
       );
@@ -39,7 +43,12 @@ export async function GET(
           controller.enqueue(payload);
 
           const job = jobId ? await getSystemJob(jobId, auth.userId) : null;
-          if (!job || job.status === "completed" || job.status === "failed") {
+          if (
+            !job ||
+            job.status === "completed" ||
+            job.status === "failed" ||
+            isMarketingStudioWorkerDeferredRunAt(job.next_run_at)
+          ) {
             controller.close();
             return;
           }

@@ -129,7 +129,7 @@ export async function POST(
         );
       }) ?? null;
 
-    if (existingActiveJob) {
+    if (existingActiveJob && body.force !== true) {
       scheduleStaticCreativeJob(existingActiveJob.id, existingActiveJob.payload as { creativeIntake?: unknown });
 
       return apiSuccess({

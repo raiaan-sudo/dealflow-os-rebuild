@@ -1001,15 +1001,15 @@ function runOfflineChecks() {
   assertIncludes(legacyAiProviders, "providerUsage?.mark", "Provider usage ledger transitions", "paid-generation reservations are marked consumed/released after the provider call");
   assertIncludes(legacyAiProviders, "providerJobWasCreated", "Provider usage pre-job release", "provider attempts that fail before a provider job id is returned release the daily reservation");
   assertIncludes(videoRoute, "getVideoProviderReadiness", "Video generation provider preflight", "disabled or unconfigured video providers are blocked before queueing jobs");
-  assertOrderedIncludes(videoRoute, ["if (!videoProviderReadiness.ready)", "const activeJobs"], "Video generation disabled-job guard", "video jobs are not queued when the provider kill switch is off");
+  assertOrderedIncludes(videoRoute, ["const activeJobs", "if (!videoProviderReadiness.ready)", "const job = await createSystemJob"], "Video generation disabled-job guard", "existing active jobs stay visible, but new video jobs are blocked when the provider kill switch is off");
   assertIncludes(videoRoute, "kind: \"video_generation\"", "Video generation job route", "AI video generation is queued through the paid system job path");
   assertIncludes(videoRoute, "getCampaignById", "Video generation ownership guard", "video generation verifies campaign ownership before queueing paid work");
   assertExcludes(videoRoute, "processSystemJob", "Video generation enqueue-only route", "video routes cannot process paid provider jobs without an atomic worker claim");
   assertIncludes(videoRoute, "reusedExistingJob", "Video generation active job reuse", "active pending or processing video jobs are reused for the same creative when safe");
-  assertExcludes(videoRoute, "body.force !== true", "Video retry duplicate paid job guard", "forced video retries still reuse active video jobs instead of stacking duplicate provider calls");
+  assertIncludes(videoRoute, "existingActiveJob && body.force !== true", "Video forced retry visibility", "explicit forced video retry can bypass a stale active job instead of hiding permanent deferred state");
   assertIncludes(systemJobService, "video_generation_status", "Video generation status polling", "AI video render completion is polled by durable follow-up jobs instead of blocking the cron worker");
   assertExcludes(staticAdsRoute, "processSystemJob", "Static generation enqueue-only route", "static creative routes cannot process paid provider jobs without an atomic worker claim");
-  assertIncludes(staticAdsRoute, "if (existingActiveJob)", "Static generation active-job reuse", "forced preview retries reuse active work instead of stacking duplicate paid jobs");
+  assertIncludes(staticAdsRoute, "existingActiveJob && body.force !== true", "Static generation active-job reuse", "normal retries reuse active work while explicit forced retries can bypass stale/deferred state");
   assertIncludes(staticAdsRoute, "missingOnly", "Static missing-image retry", "partial creative retries can refill failed/missing images without regenerating the whole test set");
   assertExcludes(creativeEngine, "Promise.all(\n    baseStaticAds", "Static image sequential provider calls", "static image generation no longer launches all provider calls at once when quota is tight");
   assertIncludes(campaignPersistence, "reuse_static_assets", "Static generated-asset reuse", "missing-image retries preserve already generated Higgsfield assets");
@@ -1017,7 +1017,7 @@ function runOfflineChecks() {
   assertIncludes(staticCreativeAssetService, "imagePromptConfig", "Static prompt metadata persistence", "saved generated assets keep prompt config and negative prompt guidance for future retries");
   assertIncludes(mediaBuyerFramework, "stripNegativePromptGuidance", "Media buyer quality scoring", "creative quality gates do not punish prompts for anti-patterns listed only as avoid guidance");
   assertIncludes(systemJobStreamRoute, "MAX_STREAM_POLLS", "System job stream polling", "job streams stay open long enough for queued creative renders to complete");
-  assertIncludes(systemJobStreamRoute, "? { ...job, logs }", "System job stream payload", "job streams emit the job shape expected by UI consumers");
+  assertIncludes(systemJobStreamRoute, "renderState: classifyCreativeRenderJob(job)", "System job stream payload", "job streams emit render state expected by UI consumers");
   assertIncludes(systemJobStreamRoute, "Creative rendering is still taking longer", "Generic creative stream timeout", "video and image job streams use generic customer-safe rendering copy");
   assertIncludes("src/lib/services/creative-builder-service.ts", "isLaunchReadyStaticImageAsset", "Launch media static visual gate", "launch-ready media excludes old generated static assets with baked-text risk");
   assertExcludes(launchRuntimeApi, "/api/integrations/meta/deploy", "No dead Meta deploy client route", "client helpers do not call a missing Meta deploy endpoint");

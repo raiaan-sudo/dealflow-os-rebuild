@@ -454,12 +454,25 @@ export function getVideoReadinessLabel(video: VideoCreativeReadinessInput | null
     return "Playable review sample";
   }
 
+  if (
+    video?.videoGenerationState === "deferred_worker_required" ||
+    video?.videoGenerationState === "operator_action_required"
+  ) {
+    return "Queued for creative render";
+  }
+
+  if (video?.videoGenerationState === "queued") {
+    return "Queued for creative render";
+  }
+
   if (video?.videoGenerationState === "generating") {
-    return "Rendering";
+    return video.providerAssetId || video.providerStatus
+      ? "Rendering"
+      : "Queued for creative render";
   }
 
   if (video?.videoGenerationState === "failed") {
-    return "Needs retry";
+    return "Render needs retry";
   }
 
   return "Concept ready, render needed";
@@ -475,12 +488,25 @@ export function getVideoReadinessMessage(video: VideoCreativeReadinessInput | nu
       "Playable video is available for review, but it is not launch-ready UGC yet.";
   }
 
+  if (
+    video?.videoGenerationState === "deferred_worker_required" ||
+    video?.videoGenerationState === "operator_action_required"
+  ) {
+    return "Queued for creative render. We'll update this when the render worker is available.";
+  }
+
+  if (video?.videoGenerationState === "queued") {
+    return "Queued for creative render. We'll update this when processing starts.";
+  }
+
   if (video?.videoGenerationState === "generating") {
-    return "Video preview is rendering. This page will update when the playable file is ready.";
+    return video.providerAssetId || video.providerStatus
+      ? "Rendering video..."
+      : "Queued for creative render. We'll update this when processing starts.";
   }
 
   if (video?.videoGenerationState === "failed") {
-    return "Video preview needs another render attempt before it can be used for launch review.";
+    return "Render needs retry.";
   }
 
   return "Script and concept are ready. Render the video preview before treating it as playable media.";

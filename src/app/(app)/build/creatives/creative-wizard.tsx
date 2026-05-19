@@ -9,6 +9,11 @@ import {
 import { CustomerVideoPlayer } from "@/components/campaign/customer-video-player";
 import { Button } from "@/components/ui/button";
 import {
+  classifyCreativeRenderJob,
+  isMarketingStudioWorkerDeferredRunAt,
+  type CreativeRenderStateView,
+} from "@/lib/services/creative-render-state";
+import {
   getStaticCreativeReadiness,
   getStaticPreviewStatusMessage,
   getVideoReadinessLabel,
@@ -154,6 +159,7 @@ type CreativeWizardProps = {
   persistedSelectedAdIds?: string[];
   persistedSelectedUgcVideoIds?: string[];
   videoCreatives?: VideoCreativeOption[];
+  initialRenderJobs?: SystemJob[];
 };
 
 type StudioPhase = "static_ads" | "ugc_videos";
@@ -162,11 +168,37 @@ type SystemJob = {
   id: string;
   kind?: string | null;
   status?: string | null;
+  created_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  next_run_at?: string | null;
+  locked_by?: string | null;
+  locked_until?: string | null;
+  attempt_count?: number | null;
+  retry_count?: number | null;
+  max_attempts?: number | null;
+  last_error_code?: string | null;
   error_message?: string | null;
+  payload?: {
+    creativeIndex?: number | null;
+  } | null;
   result?: {
     staticAds?: CreativeOption[] | null;
   } | null;
+  renderState?: CreativeRenderStateView | null;
 };
+
+function jobRenderView(job: SystemJob | null | undefined) {
+  return job?.renderState ?? classifyCreativeRenderJob(job);
+}
+
+function isOpenRenderJob(job: SystemJob | null | undefined) {
+  return job?.status === "pending" || job?.status === "processing";
+}
+
+function upsertRenderJob(jobs: SystemJob[], job: SystemJob) {
+  return [job, ...jobs.filter((candidate) => candidate.id !== job.id)].slice(0, 12);
+}
 
 function isUgcCreative(creative: CreativeOption) {
   return /\bugc\b/i.test(`${creative.id} ${creative.formatLabel ?? ""} ${creative.breakdown?.concept ?? ""}`);
@@ -224,6 +256,7 @@ function getImageLimitMessage(creatives: CreativeOption[]) {
 export function CreativeWizard({
   campaignId,
   creatives,
+  initialRenderJobs = [],
   persistedSelectedAdIds = [],
   persistedSelectedUgcVideoIds = [],
   videoCreatives = [],
@@ -274,6 +307,7 @@ export function CreativeWizard({
   const [renderingVideo, setRenderingVideo] = useState(false);
   const [activeImageJobId, setActiveImageJobId] = useState<string | null>(null);
   const [activeVideoJobId, setActiveVideoJobId] = useState<string | null>(null);
+  const [renderJobs, setRenderJobs] = useState<SystemJob[]>(initialRenderJobs);
   const [renderMessage, setRenderMessage] = useState<string | null>(null);
   const [videoMessage, setVideoMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -351,6 +385,21 @@ export function CreativeWizard({
     primaryVideoCreative.videoGenerationState !== "generating" &&
     primaryVideoCreative.videoGenerationState !== "generated",
   );
+  const currentImageJob =
+    renderJobs.find((job) =>
+      job.kind === "static_creative_generation" &&
+      isOpenRenderJob(job),
+    ) ?? null;
+  const currentImageRenderView = currentImageJob ? jobRenderView(currentImageJob) : null;
+  const currentVideoJob =
+    activeVideoCreative
+      ? renderJobs.find((job) =>
+          job.kind === "video_generation" &&
+          isOpenRenderJob(job) &&
+          Number(job.payload?.creativeIndex ?? 0) === activeVideoCreative.index,
+        ) ?? null
+      : null;
+  const currentVideoRenderView = currentVideoJob ? jobRenderView(currentVideoJob) : null;
 
   const subscribeToJob = useCallback((jobId: string, surface: "image" | "video") => {
     if (jobStreamsRef.current.has(jobId)) {
@@ -376,6 +425,8 @@ export function CreativeWizard({
     source.addEventListener("job", (event) => {
       try {
         const job = JSON.parse((event as MessageEvent).data) as SystemJob;
+        const renderView = jobRenderView(job);
+        setRenderJobs((current) => upsertRenderJob(current, job));
 
         if (job.status === "completed") {
           if (surface === "video") {
@@ -394,14 +445,29 @@ export function CreativeWizard({
           router.refresh();
         } else if (job.status === "failed") {
           if (surface === "video") {
-            setVideoMessage(customerVideoMessage(job.error_message) || "Video preview rendering failed.");
+            setVideoMessage(customerVideoMessage(renderView.customerMessage || job.error_message) || "Render needs retry.");
           } else {
-            setRenderMessage(customerImageMessage(job.error_message) || "Image preview rendering failed.");
+            setRenderMessage(customerImageMessage(renderView.customerMessage || job.error_message) || "Render needs retry.");
           }
           source.close();
           jobStreamsRef.current.delete(jobId);
           clearActiveJob();
           router.refresh();
+        } else if (isMarketingStudioWorkerDeferredRunAt(job.next_run_at)) {
+          if (surface === "video") {
+            setVideoMessage(renderView.customerMessage);
+          } else {
+            setRenderMessage(renderView.customerMessage);
+          }
+          source.close();
+          jobStreamsRef.current.delete(jobId);
+          clearActiveJob();
+        } else if (job.status === "pending" || job.status === "processing") {
+          if (surface === "video") {
+            setVideoMessage(renderView.customerMessage);
+          } else {
+            setRenderMessage(renderView.customerMessage);
+          }
         }
       } catch {
         source.close();
@@ -449,8 +515,12 @@ export function CreativeWizard({
         throw new Error(data?.error || "Image preview rendering could not start.");
       }
 
-      setRenderMessage("Image previews are being prepared. This page will update when the visuals are ready.");
-      subscribeToJob(data.job.id, "image");
+      const renderView = jobRenderView(data.job);
+      setRenderJobs((current) => upsertRenderJob(current, data.job as SystemJob));
+      setRenderMessage(renderView.customerMessage);
+      if (!isMarketingStudioWorkerDeferredRunAt(data.job.next_run_at)) {
+        subscribeToJob(data.job.id, "image");
+      }
     } catch (renderError) {
       setRenderMessage(null);
       setError(
@@ -505,8 +575,12 @@ export function CreativeWizard({
         throw new Error(data?.error || "Video preview rendering could not start.");
       }
 
-      setVideoMessage("Video preview is processing. This page will update when it is ready.");
-      subscribeToJob(data.job.id, "video");
+      const renderView = jobRenderView(data.job);
+      setRenderJobs((current) => upsertRenderJob(current, data.job as SystemJob));
+      setVideoMessage(renderView.customerMessage);
+      if (!isMarketingStudioWorkerDeferredRunAt(data.job.next_run_at)) {
+        subscribeToJob(data.job.id, "video");
+      }
     } catch (videoError) {
       setVideoMessage(null);
       setError(
@@ -669,9 +743,9 @@ export function CreativeWizard({
 
   const activeCreativeIndex = Math.max(0, rankedCreatives.findIndex((creative) => creative.id === activeCreative.id));
   const activeCreativeSelected = selectedIds.includes(activeCreative.id);
-  const imageRenderPending = renderingImages || Boolean(activeImageJobId);
-  const imageActionPending = renderingImages || Boolean(activeImageJobId);
-  const videoActionPending = renderingVideo || Boolean(activeVideoJobId);
+  const imageRenderPending = renderingImages || Boolean(currentImageJob);
+  const imageActionPending = renderingImages || Boolean(currentImageJob);
+  const videoActionPending = renderingVideo || Boolean(currentVideoJob);
   const imagePendingMessage = "Image preview is being prepared. This page will update when the visual is ready.";
   const imageStatusMessage = selectedNeedsImageGeneration
     ? imageLimitMessage ??
@@ -684,8 +758,12 @@ export function CreativeWizard({
     imageRenderPending && creativeNeedsImageGeneration(creative)
       ? {
           ...creative,
-          imageGenerationState: "generating",
-          imageGenerationMessage: imagePendingMessage,
+          imageGenerationState:
+            currentImageRenderView?.state === "processing" ||
+            currentImageRenderView?.state === "provider_processing"
+              ? "generating"
+              : creative.imageGenerationState ?? "unavailable",
+          imageGenerationMessage: currentImageRenderView?.customerMessage ?? imagePendingMessage,
         }
       : creative;
   const displayActiveCreative = getDisplayCreative(activeCreative);
@@ -965,7 +1043,7 @@ export function CreativeWizard({
                     ? "border-amber-300/25 bg-amber-300/[0.08] text-amber-100"
                     : "border-white/10 bg-white/[0.04] text-muted-foreground"
               }`}>
-                {getVideoReadinessLabel(activeVideoCreative)}
+                {currentVideoRenderView?.customerLabel ?? getVideoReadinessLabel(activeVideoCreative)}
               </span>
             </div>
             <div className="mx-auto w-full max-w-[360px] overflow-hidden rounded-[18px] border border-white/10 bg-black/28">
@@ -983,10 +1061,10 @@ export function CreativeWizard({
                 <div className="grid aspect-[9/16] place-items-center bg-[linear-gradient(135deg,rgba(94,234,212,0.12),rgba(139,92,246,0.12)),radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_24%)] p-5 text-center">
                   <div>
                     <p className="text-sm font-semibold text-foreground">
-                      {videoActionPending ? "Rendering" : getVideoReadinessLabel(activeVideoCreative)}
+                      {currentVideoRenderView?.customerLabel ?? getVideoReadinessLabel(activeVideoCreative)}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                      {getVideoReadinessMessage(activeVideoCreative)}
+                      {currentVideoRenderView?.customerMessage ?? getVideoReadinessMessage(activeVideoCreative)}
                     </p>
                   </div>
                 </div>
@@ -1009,9 +1087,18 @@ export function CreativeWizard({
                     force: activeVideoCreative.videoGenerationState === "failed",
                     video: activeVideoCreative,
                   })}
-                  disabled={videoActionPending || activeVideoCreative.videoGenerationState === "generating"}
+                  disabled={videoActionPending || (
+                    activeVideoCreative.videoGenerationState === "generating" &&
+                    Boolean(activeVideoCreative.providerAssetId || activeVideoCreative.providerStatus)
+                  )}
                 >
-                  {videoActionPending || activeVideoCreative.videoGenerationState === "generating"
+                  {currentVideoRenderView?.state === "deferred_worker_required" ||
+                  currentVideoRenderView?.state === "operator_action_required"
+                    ? "Queued for render worker"
+                    : videoActionPending || (
+                      activeVideoCreative.videoGenerationState === "generating" &&
+                      (activeVideoCreative.providerAssetId || activeVideoCreative.providerStatus)
+                    )
                     ? "Rendering video..."
                     : activeVideoCreative.videoGenerationState === "failed"
                       ? "Retry video preview"
@@ -1067,8 +1154,8 @@ export function CreativeWizard({
                       <p className={isLaunchReadyVideoCreative(video) ? "mt-2 text-[11px] text-emerald-200" : "mt-2 text-[11px] text-muted-foreground"}>
                         {selectedUgcVideoIds.includes(video.id)
                           ? "Selected UGC"
-                          : video.id === activeVideoId && activeVideoJobId
-                            ? "Rendering"
+                          : video.id === activeVideoId && currentVideoRenderView
+                            ? currentVideoRenderView.customerLabel
                             : getVideoReadinessLabel(video)}
                       </p>
                     </button>

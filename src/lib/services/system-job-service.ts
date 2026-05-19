@@ -381,7 +381,9 @@ export async function createSystemJob<K extends SystemJobKind>(params: {
     supabase,
     jobId: insertedJob.id,
     message: deferToMarketingStudioWorker
-      ? "Marketing Studio finished-ad render queued for the dedicated CLI worker."
+      ? params.kind === "video_generation"
+        ? "Marketing Studio UGC video render queued for the dedicated CLI worker."
+        : "Marketing Studio finished-ad render queued for the dedicated CLI worker."
       : `${params.kind.replace(/_/g, " ")} job queued.`,
     details: deferToMarketingStudioWorker
       ? {
@@ -838,7 +840,9 @@ export async function processSystemJob(jobId: string) {
     await appendSystemJobLog({
       supabase,
       jobId,
-      message: "Marketing Studio finished-ad render deferred to the dedicated CLI worker.",
+      message: job.kind === "video_generation"
+        ? "Marketing Studio UGC video render deferred to the dedicated CLI worker."
+        : "Marketing Studio finished-ad render deferred to the dedicated CLI worker.",
       details: {
         runtime: MARKETING_STUDIO_WORKER_RUNTIME,
         deferredUntil: MARKETING_STUDIO_WORKER_DEFERRED_UNTIL,

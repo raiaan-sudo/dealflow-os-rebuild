@@ -404,6 +404,7 @@ export default async function ControlRoomPage() {
           <Metric label="Heavy lane" value={`${snapshot.queue.byLane.heavy.queued} queued`} detail={`${snapshot.queue.byLane.heavy.processing} processing, ${snapshot.queue.byLane.heavy.deadLetter} dead-letter`} />
           <Metric label="Oldest queued" value={`${number(snapshot.queue.oldestQueuedAgeMinutes)} min`} detail="Null means no queued backlog in the read window." />
           <Metric label="Oldest processing" value={`${number(snapshot.queue.oldestProcessingAgeMinutes)} min`} detail={`${snapshot.queue.staleProcessingJobs} stale or expired processing leases.`} />
+          <Metric label="Deferred creative renders" value={snapshot.queue.deferredCreativeJobs} detail={`${snapshot.queue.staleDeferredCreativeJobs} stale worker-required creative job(s).`} />
           <Metric label="Retry pressure" value={snapshot.queue.retryPressure} detail={`${snapshot.queue.jobsApproachingMaxAttempts} jobs are approaching max attempts.`} />
           <Metric label="Kinds watched" value={Object.keys(snapshot.queue.byKind).length} detail="Grouped by critical, normal, and heavy lanes." />
         </Section>

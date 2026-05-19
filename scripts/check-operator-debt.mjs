@@ -13,6 +13,8 @@ import {
 
 nextEnv.loadEnvConfig(process.cwd());
 
+const MARKETING_STUDIO_WORKER_DEFERRED_UNTIL_MS = Date.parse("2099-01-01T00:00:00.000Z");
+
 function requireEnv(name) {
   const value = process.env[name]?.trim();
   if (!value) {
@@ -56,6 +58,31 @@ async function countUnreviewedFailedProviderEvents(supabase) {
   }
 
   return (data ?? []).filter((row) => !row.metadata?.operatorReviewedAt).length;
+}
+
+async function countStaleDeferredCreativeJobs(supabase) {
+  const { data, error } = await supabase
+    .from("system_jobs")
+    .select("id,kind,status,next_run_at,created_at,reviewed_at")
+    .in("kind", ["static_creative_generation", "video_generation"])
+    .eq("status", "pending")
+    .is("reviewed_at", null);
+
+  if (error) {
+    throw new Error(`system_jobs stale deferred creative query: ${error.message}`);
+  }
+
+  const staleBefore = Date.now() - 15 * 60 * 1000;
+  return (data ?? []).filter((row) => {
+    const nextRunAt = Date.parse(row.next_run_at ?? "");
+    const createdAt = Date.parse(row.created_at ?? "");
+    return (
+      Number.isFinite(nextRunAt) &&
+      nextRunAt >= MARKETING_STUDIO_WORKER_DEFERRED_UNTIL_MS &&
+      Number.isFinite(createdAt) &&
+      createdAt < staleBefore
+    );
+  }).length;
 }
 
 function decryptSecret(payload, secret) {
@@ -197,6 +224,7 @@ async function main() {
     unresolvedStripeFailures,
     failedProviderEvents,
     staleProviderReservations,
+    staleDeferredCreativeJobs,
     deliveredNotificationStatusDrift,
     failedNotificationStatusDrift,
     campaign345MetaDebt,
@@ -216,6 +244,7 @@ async function main() {
         .eq("status", "reserved")
         .lt("created_at", new Date(Date.now() - 30 * 60 * 1000).toISOString()),
     ),
+    countStaleDeferredCreativeJobs(supabase),
     countRows(supabase, "lead_notifications", (query) =>
       query.not("delivered_at", "is", null).neq("status", "delivered"),
     ),
@@ -231,6 +260,7 @@ async function main() {
     unresolvedStripeFailures,
     failedProviderEvents,
     staleProviderReservations,
+    staleDeferredCreativeJobs,
     deliveredNotificationStatusDrift,
     failedNotificationStatusDrift,
     metaReadOnlyVerificationErrors: campaign345MetaDebt.metaReadOnlyVerificationErrors,
@@ -266,6 +296,15 @@ async function main() {
       `${failedProviderEvents} failed events, ${staleProviderReservations} stale reservations`,
     );
     process.exitCode = 1;
+  }
+
+  if (staleDeferredCreativeJobs === 0) {
+    pass("Stale deferred creative render jobs", "none");
+  } else {
+    fail(
+      "Stale deferred creative render jobs",
+      `${staleDeferredCreativeJobs} worker-required creative job(s) need worker readiness, operator review, or scoped requeue`,
+    );
   }
 
   if (deliveredNotificationStatusDrift === 0 && failedNotificationStatusDrift === 0) {

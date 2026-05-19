@@ -2,6 +2,7 @@ import "server-only";
 
 import { getMetaDailyBudgetCapCents } from "@/lib/integrations/meta/budget-cap";
 import { createAdminClient } from "@/lib/server/supabase-admin";
+import { isMarketingStudioWorkerDeferredRunAt } from "@/lib/services/creative-render-state";
 import { getSmsOutboundPolicyStatus } from "@/lib/services/sms-service";
 import { getFreshdeskOperationalStatus } from "@/lib/support/freshdesk";
 
@@ -15,6 +16,7 @@ type RawJob = {
   created_at: string | null;
   started_at?: string | null;
   locked_until: string | null;
+  next_run_at?: string | null;
   attempt_count?: number | null;
   max_attempts?: number | null;
   dead_lettered_at: string | null;
@@ -164,6 +166,8 @@ export type ScaleReadinessSnapshot = {
     oldestProcessingAgeMinutes: number | null;
     jobsApproachingMaxAttempts: number;
     staleProcessingJobs: number;
+    deferredCreativeJobs: number;
+    staleDeferredCreativeJobs: number;
     retryPressure: number;
     workerCaps: Record<JobLane, number>;
   };
@@ -511,6 +515,15 @@ export function buildScaleReadinessSnapshot(input: {
     const lockedUntil = Date.parse(job.locked_until);
     return Number.isFinite(lockedUntil) && lockedUntil < nowMs;
   });
+  const deferredCreativeJobRows = activeJobs.filter((job) =>
+    (job.kind === "static_creative_generation" || job.kind === "video_generation") &&
+    job.status === "pending" &&
+    isMarketingStudioWorkerDeferredRunAt(job.next_run_at),
+  );
+  const staleDeferredCreativeJobRows = deferredCreativeJobRows.filter((job) => {
+    const createdAt = Date.parse(job.created_at ?? "");
+    return Number.isFinite(createdAt) && nowMs - createdAt > 15 * 60 * 1000;
+  });
   const activeCriticalFailedJobs = activeFailedOrDeadLetterJobs.filter((job) => classifySystemJobLane(job.kind) === "critical");
   const activeNonCriticalFailedJobs = activeFailedOrDeadLetterJobs.filter((job) => classifySystemJobLane(job.kind) !== "critical");
 
@@ -555,6 +568,7 @@ export function buildScaleReadinessSnapshot(input: {
     status: statusFromCounts({
       critical: activeCriticalFailedJobs.length + staleProcessingJobs,
       watch: activeNonCriticalFailedJobs.length + byLane.heavy.queued + jobsApproachingMaxAttempts,
+      high: 0,
     }),
     byKind,
     byLane,
@@ -562,6 +576,8 @@ export function buildScaleReadinessSnapshot(input: {
     oldestProcessingAgeMinutes: oldestAge(processingJobs, "started_at", nowMs),
     jobsApproachingMaxAttempts,
     staleProcessingJobs,
+    deferredCreativeJobs: deferredCreativeJobRows.length,
+    staleDeferredCreativeJobs: staleDeferredCreativeJobRows.length,
     retryPressure: activeJobs.filter((job) => Number(job.attempt_count ?? 0) > 0 && job.status !== "completed").length,
     workerCaps: JOB_LANE_CONCURRENCY_CAPS,
   };
@@ -780,6 +796,29 @@ export function buildScaleReadinessSnapshot(input: {
       timestamp: (row) => timestampFor(row),
       reason: "Non-critical failed/dead-letter jobs remain unreviewed.",
       recommendedAction: "Classify as retryable or reviewed before increasing scale; do not retry provider jobs without explicit approval.",
+    }));
+  }
+
+  if (staleDeferredCreativeJobRows.length > 0) {
+    issueClassification.currentWatch.push(classificationEntry("stale deferred creative render jobs", staleDeferredCreativeJobRows, {
+      nowMs,
+      timestamp: (row) => row.created_at,
+      reason: "Creative render jobs are intentionally deferred to the Marketing Studio worker and are stale without a worker claim.",
+      recommendedAction: "Verify MARKETING_STUDIO_WORKER_ENABLED, HIGGSFIELD_MARKETING_STUDIO_MODE, HIGGSFIELD_CLI_ENABLED, HIGGSFIELD_CLI_PATH, ALLOW_HIGGSFIELD_IMAGE_GENERATION, ALLOW_HIGGSFIELD_VIDEO_GENERATION, FINISHED_AD_VISION_QA_ENABLED, and AI_API_KEY or OPENAI_API_KEY before a scoped requeue.",
+    }));
+  } else if (deferredCreativeJobRows.length > 0) {
+    issueClassification.currentWatch.push(classificationEntry("deferred creative render jobs", deferredCreativeJobRows, {
+      nowMs,
+      timestamp: (row) => row.created_at,
+      reason: "Creative render jobs are queued for the dedicated Marketing Studio worker.",
+      recommendedAction: "Keep the worker running or leave the customer preview in concept/composed mode until the worker is ready.",
+    }));
+  } else {
+    issueClassification.cleared.push(classificationEntry("deferred creative render jobs", [] as RawJob[], {
+      nowMs,
+      timestamp: (row) => row.created_at,
+      reason: "No deferred Marketing Studio creative render jobs are waiting in the active queue.",
+      recommendedAction: "Continue checking the control room before provider proof runs.",
     }));
   }
 
