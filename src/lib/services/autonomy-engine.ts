@@ -1,6 +1,27 @@
-export type AutonomyMode = "manual" | "assisted" | "auto" | (string & {});
+export type AutonomyMode = "manual" | "assisted" | "auto" | "autonomous" | (string & {});
 
-export type SystemStatus = "healthy" | "degraded" | "offline" | "idle" | (string & {});
+export type SystemStatus =
+  | "healthy"
+  | "degraded"
+  | "offline"
+  | "idle"
+  | "paused"
+  | "optimizing"
+  | (string & {});
+
+export type AutonomyExecutionType =
+  | "manual_recommendation"
+  | "assisted_approval_required"
+  | "autopilot_safe_action"
+  | "high_impact_approval_required";
+
+export type AutonomyActionStatus =
+  | "recommended"
+  | "staged"
+  | "eligible"
+  | "applied"
+  | "blocked"
+  | "skipped";
 
 export type AutonomyActionCandidate = {
   actionKey: string;
@@ -9,8 +30,17 @@ export type AutonomyActionCandidate = {
   targetMarket?: string | null;
   actionType: string;
   confidenceScore: number;
+  score?: number;
   budgetChangePercent: number;
   blockedReason?: string | null;
+  executionType?: AutonomyExecutionType;
+  status?: AutonomyActionStatus;
+  idempotencyKey?: string;
+  lockKey?: string;
+  customerExplanation?: string;
+  auditSummary?: string;
+  approvalRequired?: boolean;
+  rollbackRequired?: boolean;
 };
 
 export type AutonomyFeedEntry = {
@@ -47,4 +77,9 @@ export type AutonomySnapshot = {
   systemStatus?: SystemStatus;
   pendingActions?: AutonomyActionCandidate[];
   recentActions?: AutonomyFeedEntry[];
+  executionSyncedAt?: string | null;
+  queuedCount?: number;
+  appliedCount?: number;
+  blockedCount?: number;
+  alert?: string | null;
 };

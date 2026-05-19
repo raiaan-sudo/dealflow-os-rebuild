@@ -5,6 +5,7 @@ import {
 } from "@/lib/paywall-access";
 import { PageHeader } from "@/components/app/page-header";
 import { CampaignDashboardView } from "@/components/dashboard/campaign-dashboard-view";
+import { AutonomyModeControl } from "@/components/dashboard/autonomy-mode-control";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
@@ -585,6 +586,18 @@ export default async function DashboardPage({
       />
       <p className="text-sm text-muted-foreground">{formatLastUpdated(state.lastUpdatedAt)}</p>
       <SubscriptionLifecycleBanner entitlements={state.entitlements} />
+      <AutonomyModeControl
+        campaignId={state.campaignId}
+        mode={state.autonomySnapshot?.mode ?? "manual"}
+        systemStatus={state.autonomySnapshot?.systemStatus ?? "paused"}
+        alert={state.autonomySnapshot?.alert ?? null}
+        executionSyncedAt={state.autonomySnapshot?.executionSyncedAt ?? null}
+        queuedCount={state.autonomySnapshot?.queuedCount ?? 0}
+        appliedCount={state.autonomySnapshot?.appliedCount ?? 0}
+        blockedCount={state.autonomySnapshot?.blockedCount ?? 0}
+        planTier={state.entitlements?.planTier ?? "starter"}
+        autonomyEntitled={state.entitlements?.canRunAutonomy ?? false}
+      />
       <CampaignDashboardView
         plan={state.plan}
         metaConnection={state.metaConnection}

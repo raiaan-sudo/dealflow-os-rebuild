@@ -4,7 +4,7 @@ import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 
 const repoRoot = process.cwd();
-const expectedSchemaVersion = "20260519023000";
+const expectedSchemaVersion = "20260519043000";
 const schemaCheckMode = process.env.SUPABASE_SCHEMA_CHECK_MODE?.trim().toLowerCase() ?? "remote";
 const requiredMigrationFiles = [
   "20260426110000_add_campaign_plan_critical_fields.sql",
@@ -49,6 +49,8 @@ const requiredMigrationFiles = [
   "20260510183000_cap_generation_credit_overdrafts.sql",
   "20260512010000_scope_provider_usage_idempotency.sql",
   "20260519023000_create_scale_monitor_incidents.sql",
+  "20260519033000_create_autonomy_execution_tables.sql",
+  "20260519043000_harden_autonomy_anon_access.sql",
 ];
 
 const { loadEnvConfig } = nextEnv;
@@ -77,6 +79,85 @@ function validateRequiredMigrationFiles() {
   console.log(
     `local migration file check passed (${requiredMigrationFiles.length} required files present)`,
   );
+}
+
+function requireFileIncludes(relativePath, marker, context) {
+  const text = fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
+
+  if (!text.includes(marker)) {
+    fail(`${context}: ${relativePath} missing ${marker}`);
+  }
+}
+
+function validateAutopilotLocalSchemaContract() {
+  const metaOptimizationMigration =
+    "supabase/migrations/20260509020000_create_meta_sync_and_optimization_tables.sql";
+  const autonomyExecutionMigration =
+    "supabase/migrations/20260519033000_create_autonomy_execution_tables.sql";
+  const autonomyAccessHardeningMigration =
+    "supabase/migrations/20260519043000_harden_autonomy_anon_access.sql";
+
+  const requiredMarkers = [
+    ["create table if not exists public.campaign_action_suggestions", "campaign_action_suggestions table"],
+    ["create table if not exists public.campaign_draft_actions", "campaign_draft_actions table"],
+    ["alter table public.campaign_action_suggestions enable row level security", "campaign_action_suggestions RLS"],
+    ["alter table public.campaign_action_suggestions force row level security", "campaign_action_suggestions forced RLS"],
+    ["alter table public.campaign_draft_actions enable row level security", "campaign_draft_actions RLS"],
+    ["alter table public.campaign_draft_actions force row level security", "campaign_draft_actions forced RLS"],
+    ["campaign_action_suggestions_member_select", "campaign_action_suggestions member select policy"],
+    ["campaign_action_suggestions_member_insert", "campaign_action_suggestions member insert policy"],
+    ["campaign_action_suggestions_member_update", "campaign_action_suggestions member update policy"],
+    ["campaign_action_suggestions_service_role_all", "campaign_action_suggestions service role policy"],
+    ["campaign_draft_actions_member_select", "campaign_draft_actions member select policy"],
+    ["campaign_draft_actions_member_insert", "campaign_draft_actions member insert policy"],
+    ["campaign_draft_actions_member_update", "campaign_draft_actions member update policy"],
+    ["campaign_draft_actions_service_role_all", "campaign_draft_actions service role policy"],
+    ["auth.uid() = user_id", "autopilot user scoping"],
+    ["private.is_current_user_org_member(organization_id)", "autopilot organization scoping"],
+    ["suggestions do not execute provider mutations", "campaign_action_suggestions safety comment"],
+    ["Prepared in-app draft optimizations", "campaign_draft_actions safety comment"],
+  ];
+
+  for (const [marker, context] of requiredMarkers) {
+    requireFileIncludes(metaOptimizationMigration, marker, context);
+  }
+
+  const requiredAutonomyMarkers = [
+    ["create table if not exists public.autonomy_runs", "autonomy_runs table"],
+    ["create table if not exists public.autonomy_actions", "autonomy_actions table"],
+    ["create table if not exists public.autonomy_action_audit_logs", "autonomy_action_audit_logs table"],
+    ["create table if not exists public.autonomy_rollbacks", "autonomy_rollbacks table"],
+    ["create table if not exists public.autonomy_experiments", "autonomy_experiments table"],
+    ["create table if not exists public.campaign_performance_snapshots", "campaign_performance_snapshots table"],
+    ["create table if not exists public.autonomy_learning_memory", "autonomy_learning_memory table"],
+    ["create table if not exists public.autonomy_alerts", "autonomy_alerts table"],
+    ["create table if not exists public.campaign_autonomy_settings", "campaign_autonomy_settings table"],
+    ["create table if not exists public.autonomy_execution_locks", "autonomy_execution_locks table"],
+    ["create table if not exists public.autonomy_idempotency_records", "autonomy_idempotency_records table"],
+    ["alter table public.autonomy_actions force row level security", "autonomy_actions forced RLS"],
+    ["autonomy_actions_member_select", "autonomy_actions member select policy"],
+    ["autonomy_actions_service_role_all", "autonomy_actions service role policy"],
+    ["private.is_current_user_org_member(organization_id)", "autonomy org scoping"],
+    ["payloads must be written before any external mutation", "rollback safety comment"],
+    ["autonomy_execution_schema_version", "autonomy schema version marker"],
+  ];
+
+  for (const [marker, context] of requiredAutonomyMarkers) {
+    requireFileIncludes(autonomyExecutionMigration, marker, context);
+  }
+
+  const requiredAccessMarkers = [
+    ["revoke all on public.autonomy_actions from anon", "autonomy_actions anon revoke"],
+    ["revoke all on public.autonomy_execution_locks from authenticated", "autonomy locks authenticated revoke"],
+    ["grant select on public.autonomy_actions to authenticated", "autonomy_actions authenticated owner-scoped grant"],
+    ["autonomy_access_hardening_schema_version", "autonomy access hardening schema version marker"],
+  ];
+
+  for (const [marker, context] of requiredAccessMarkers) {
+    requireFileIncludes(autonomyAccessHardeningMigration, marker, context);
+  }
+
+  console.log("local Pro Autopilot schema contract check passed");
 }
 
 function requireEnv(name) {
@@ -158,6 +239,7 @@ async function probeQuery(context, action) {
 
 async function main() {
   validateRequiredMigrationFiles();
+  validateAutopilotLocalSchemaContract();
 
   if (schemaCheckMode === "local") {
     console.log("remote schema check skipped (SUPABASE_SCHEMA_CHECK_MODE=local)");

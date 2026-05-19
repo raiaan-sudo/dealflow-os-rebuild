@@ -3,6 +3,8 @@
 This runbook moves DealFlow from public self-serve readiness into `300 clients: GO with automated monitoring`.
 It assumes no provider generation, SMS, Freshdesk ticket creation, Stripe charge, or Meta mutation is run from the monitoring layer.
 
+Pro Autopilot V1 has its own execution-safety contract in `docs/autonomy-pro-autopilot-v1.md`. The 300-client monitor may observe Autopilot state, incidents, and blocked actions, but it must not convert recommendation, draft, or watch evidence into provider, SMS, Stripe, Meta, or destructive database side effects.
+
 ## Automated Monitoring Cadence
 
 The required monitor runs automatically through Vercel Cron:
@@ -14,6 +16,7 @@ The scale monitor uses the internal runner secret (`INTERNAL_SYSTEM_JOBS_SECRET`
 
 - Incident inbox: `/admin/incidents`
 - Control room: `/admin/control-room`
+- Pro Autopilot V1 runbook: `docs/autonomy-pro-autopilot-v1.md`
 - Manual report: `npm run operator:scale-report -- --json`
 - Debt proof: `npm run operator:debt`
 
@@ -82,6 +85,7 @@ The report must classify every stale Meta snapshot, failed lead notification, an
 - Queue/dead-letter dashboard exists and shows lane health.
 - Critical jobs are classified separately from heavy provider jobs.
 - Heavy provider jobs have cap visibility and do not hide critical recovery work.
+- Pro Autopilot mode, queued/staged/applied/blocked state, and blocked reasons are visible in the dashboard and `/admin/control-room`.
 - Provider usage, cap pressure, stale reservations, and cost are visible.
 - Billing lifecycle and Stripe webhook failures are visible.
 - Lead saves, lead notification status, failed notification drift, and SMS policy are visible.

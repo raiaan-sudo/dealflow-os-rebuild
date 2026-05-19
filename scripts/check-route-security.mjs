@@ -38,6 +38,32 @@ const expectedInternalApiRoutes = new Map([
   }],
 ]);
 
+const expectedAutopilotApiRoutes = new Map([
+  ["/api/autonomy", {
+    methods: new Set(["GET", "PATCH"]),
+    markers: [
+      "assertSameOriginRequest",
+      "evaluateAutonomy",
+      "assertCampaignCanRunAutonomy(plan.id)",
+    ],
+    disallowedMarkers: [
+      'executionMode: "recommendation_only"',
+      "Autonomous execution is recommendation-only during beta.",
+    ],
+  }],
+  ["/api/autonomy/run", {
+    methods: new Set(["POST"]),
+    markers: [
+      "assertSameOriginRequest",
+      "evaluateAutonomy",
+      "assertCampaignCanRunAutonomy(plan.id)",
+    ],
+    disallowedMarkers: [
+      'executionMode: "recommendation_only"',
+    ],
+  }],
+]);
+
 const ownershipMarkers = [
   "getAuthenticatedContext",
   "getCampaignById",
@@ -205,6 +231,57 @@ function checkInternalApiGuards(publicApiRoutes, routeFilesByPath) {
   }
 }
 
+function readRouteWithShared(relativePath) {
+  const text = read(relativePath);
+  const sharedPath = "src/app/api/autonomy/_shared.ts";
+
+  if (relativePath.startsWith("src/app/api/autonomy/") && fs.existsSync(path.join(root, sharedPath))) {
+    return `${text}\n${read(sharedPath)}`;
+  }
+
+  return text;
+}
+
+function checkAutopilotApiGuards(publicApiRoutes, routeFilesByPath) {
+  for (const [route, expected] of expectedAutopilotApiRoutes) {
+    if (publicApiRoutes.has(route)) {
+      fail("Pro Autopilot public exposure", `${route} must not be in PUBLIC_API_PATHS`);
+    }
+
+    const file = routeFilesByPath.get(route);
+    if (!file) {
+      fail("Pro Autopilot route file", `${route} route.ts was not found`);
+      continue;
+    }
+
+    const relativePath = path.relative(root, file);
+    const text = readRouteWithShared(relativePath);
+    const actualMethods = exportedMethods(read(relativePath));
+    const missingMethods = [...expected.methods].filter((method) => !actualMethods.has(method));
+    const unexpectedMethods = [...actualMethods].filter((method) => !expected.methods.has(method));
+
+    if (missingMethods.length > 0 || unexpectedMethods.length > 0) {
+      fail("Pro Autopilot method surface", `${route} expected ${[...expected.methods].join(", ")}, found ${[...actualMethods].join(", ")}`);
+    } else {
+      pass("Pro Autopilot method surface", `${route} exports ${[...actualMethods].join(", ")}`);
+    }
+
+    const missingMarkers = expected.markers.filter((marker) => !text.includes(marker));
+    if (missingMarkers.length === 0) {
+      pass("Pro Autopilot route guard", `${route} has same-origin/pro-entitlement guard markers`);
+    } else {
+      fail("Pro Autopilot route guard", `${route} is missing ${missingMarkers.join(", ")}`);
+    }
+
+    const presentDisallowedMarkers = expected.disallowedMarkers.filter((marker) => text.includes(marker));
+    if (presentDisallowedMarkers.length === 0) {
+      pass("Pro Autopilot execution readiness", `${route} is not hard-coded recommendation-only`);
+    } else {
+      fail("Pro Autopilot execution readiness", `${route} still contains ${presentDisallowedMarkers.join(", ")}`);
+    }
+  }
+}
+
 function checkDynamicOwnershipMarkers(routeFilesByPath, publicApiRoutes) {
   for (const [route, file] of routeFilesByPath) {
     if (publicApiRoutes.has(route) || !route.includes("[")) {
@@ -228,6 +305,7 @@ const routeFilesByPath = new Map(routeFiles.map((file) => [routePathFromFile(fil
 
 checkPublicAllowlist(publicApiRoutes, routeFilesByPath);
 checkInternalApiGuards(publicApiRoutes, routeFilesByPath);
+checkAutopilotApiGuards(publicApiRoutes, routeFilesByPath);
 checkPrivateMutationGuards(routeFilesByPath, publicApiRoutes);
 checkDynamicOwnershipMarkers(routeFilesByPath, publicApiRoutes);
 

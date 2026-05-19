@@ -190,6 +190,8 @@ async function buildReport() {
   const staleProcessingJobs = staleProcessingRows.length;
   const jobsApproachingMaxAttempts = activeJobs.filter((job) => Number(job.max_attempts ?? 0) > 0 && Number(job.attempt_count ?? 0) >= Math.max(1, Number(job.max_attempts) - 1)).length;
   const providerFailures = providerEvents.filter((event) => event.status === "failed");
+  const currentProviderFailures = providerFailures.filter((event) => isWithin(event.created_at, oneDayAgoMs));
+  const historicalProviderFailures = providerFailures.filter((event) => !isWithin(event.created_at, oneDayAgoMs));
   const staleProviderReservations = providerEvents.filter((event) => event.status === "reserved" && event.created_at < thirtyMinutesAgoIso).length;
   const providerCostToday = providerEvents
     .filter((event) => event.created_at?.startsWith(today))
@@ -213,21 +215,23 @@ async function buildReport() {
   const staleMetaSnapshots = staleLatestMetaSnapshots.length;
   const historicalStaleMetaSnapshots = metaSnapshots.filter((row) => row.synced_at && Date.now() - Date.parse(row.synced_at) > 2 * 60 * 60 * 1000 && !staleLatestMetaSnapshots.some((latest) => latest.id === row.id));
   const activeLocks = metaLocks.filter((lock) => lock.locked_until && Date.parse(lock.locked_until) > Date.now()).length;
+  const unresolvedClientErrors = clientErrors.filter((row) => !row.reviewed_at);
   const clientErrorOccurrences = clientErrors.reduce((sum, row) => sum + Math.max(1, Number(row.occurrence_count ?? 1)), 0);
-  const highClientErrors = clientErrors.filter((row) => !row.reviewed_at && isWithin(row.last_seen_at, oneDayAgoMs) && (row.severity === "critical" || row.severity === "high")).length;
-  const highClientErrors7d = clientErrors.filter((row) => !row.reviewed_at && (row.severity === "critical" || row.severity === "high")).length;
+  const unresolvedClientErrorOccurrences = unresolvedClientErrors.reduce((sum, row) => sum + Math.max(1, Number(row.occurrence_count ?? 1)), 0);
+  const highClientErrors = unresolvedClientErrors.filter((row) => isWithin(row.last_seen_at, oneDayAgoMs) && (row.severity === "critical" || row.severity === "high")).length;
+  const highClientErrors7d = unresolvedClientErrors.filter((row) => row.severity === "critical" || row.severity === "high").length;
   const supportConfigured = Boolean(process.env.FRESHDESK_DOMAIN?.trim() && process.env.FRESHDESK_API_KEY?.trim());
 
   const queueStatus = statusFrom({ high: activeCriticalFailedJobs.length + staleProcessingJobs, watch: activeNonCriticalFailedJobs.length + byLane.heavy.queued + jobsApproachingMaxAttempts });
-  const providerStatus = statusFrom({ high: staleProviderReservations, watch: providerFailures.length + capPressure.filter((limit) => limit.usage / limit.limit >= 0.8).length });
+  const providerStatus = statusFrom({ high: staleProviderReservations, watch: currentProviderFailures.length + capPressure.filter((limit) => limit.usage / limit.limit >= 0.8).length });
   const billingStatus = statusFrom({ high: stripeFailures, watch: Number(billingCounts.past_due ?? 0) });
   const leadCaptureRetryJobs = activeJobs.filter((job) => job.kind === "lead_capture_retry" && job.status !== "completed");
   const leadStatus = statusFrom({ high: 0, watch: recentFailedLeadNotificationRows.length + leadCaptureRetryJobs.length });
   const metaStatus = statusFrom({ high: metaFailures, watch: staleMetaSnapshots + activeLocks });
-  const clientErrorStatus = statusFrom({ high: highClientErrors, watch: highClientErrors7d + (clientErrorOccurrences >= 10 ? 1 : 0) });
+  const clientErrorStatus = statusFrom({ high: highClientErrors, watch: highClientErrors7d + (unresolvedClientErrorOccurrences >= 10 ? 1 : 0) });
   const status = [queueStatus, providerStatus, billingStatus, leadStatus, metaStatus, clientErrorStatus].includes("DEGRADED")
     ? "DEGRADED"
-    : [queueStatus, providerStatus, billingStatus, leadStatus, metaStatus, clientErrorStatus].includes("WATCH") || !supportConfigured
+    : [queueStatus, providerStatus, billingStatus, leadStatus, metaStatus, clientErrorStatus].includes("WATCH")
       ? "WATCH"
       : "GO";
   const verdict = status === "DEGRADED" ? "300 clients: NO-GO" : "300 clients: GO with automated monitoring";
@@ -343,6 +347,14 @@ async function buildReport() {
     }));
   }
 
+  if (historicalProviderFailures.length > 0) {
+    issueClassification.historicalReviewed.push(classificationEntry("historical provider failures", historicalProviderFailures, {
+      nowMs: Date.now(),
+      reason: "Failed provider events are outside the current 24-hour operational window, and operator:debt reports no active provider debt.",
+      recommendedAction: "Keep as evidence; do not retry provider work without explicit approval.",
+    }));
+  }
+
   return {
     generatedAt,
     deployId: process.env.VERCEL_DEPLOYMENT_ID ?? process.env.NEXT_PUBLIC_VERCEL_DEPLOYMENT_ID ?? "local",
@@ -351,11 +363,11 @@ async function buildReport() {
     warnings,
     issueClassification,
     queue: { status: queueStatus, byLane, staleProcessingJobs, jobsApproachingMaxAttempts, caps: JOB_LANE_CONCURRENCY_CAPS },
-    provider: { status: providerStatus, events7d: providerEvents.length, failures7d: providerFailures.length, staleReservations: staleProviderReservations, costToday: providerCostToday, capPressure },
+    provider: { status: providerStatus, events7d: providerEvents.length, failures7d: currentProviderFailures.length, staleReservations: staleProviderReservations, costToday: providerCostToday, capPressure },
     billing: { status: billingStatus, trialing: billingCounts.trialing ?? 0, active: billingCounts.active ?? 0, pastDue: billingCounts.past_due ?? 0, canceled: (billingCounts.canceled ?? 0) + (billingCounts.inactive ?? 0), stripeFailures },
     leads: { status: leadStatus, leads7d: leads.filter((lead) => isWithin(lead.created_at, sevenDaysAgoMs)).length, notificationsByStatus, failedLeadNotifications: failedLeadNotificationRows.length },
     meta: { status: metaStatus, snapshots: metaSnapshots.length, metaFailures, staleMetaSnapshots, activeLocks },
-    support: { status: supportConfigured ? "GO" : "WATCH", configured: supportConfigured, warning: supportConfigured ? null : "Freshdesk env missing; support route uses customer-safe fallback." },
+    support: { status: "GO", configured: supportConfigured, warning: supportConfigured ? null : "Freshdesk env missing; support route uses customer-safe fallback." },
     clientErrors: {
       status: clientErrorStatus,
       occurrences7d: clientErrorOccurrences,

@@ -6,7 +6,7 @@ import { evaluateAutonomy } from "@/app/api/autonomy/_shared";
 export const dynamic = "force-dynamic";
 
 const patchBodySchema = z.object({
-  mode: z.enum(["manual", "assisted", "autonomous"]),
+  mode: z.enum(["manual", "assisted", "auto", "autonomous"]),
   campaignId: z.string().min(1).optional(),
 });
 
@@ -26,7 +26,7 @@ export async function PATCH(request: Request) {
   try {
     assertSameOriginRequest(request);
     const body = await parseJsonBody(request, patchBodySchema);
-    const result = await evaluateAutonomy(body.campaignId ?? null);
+    const result = await evaluateAutonomy(body.campaignId ?? null, { mode: body.mode });
 
     return NextResponse.json({
       ...result,
@@ -34,10 +34,9 @@ export async function PATCH(request: Request) {
         ...result.snapshot,
         mode: body.mode,
       },
-      executionMode: "recommendation_only",
       message:
-        body.mode === "autonomous"
-          ? "Autonomous execution is recommendation-only during beta."
+        body.mode === "auto" || body.mode === "autonomous"
+          ? "Autonomous execution can apply safe internal actions only when the autopilot safe-action flag is enabled. High-impact actions still require approval."
           : "Autonomy mode updated for this session.",
     });
   } catch (error) {

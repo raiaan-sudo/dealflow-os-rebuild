@@ -185,6 +185,50 @@ export default async function ControlRoomPage() {
 
   const snapshot = await loadScaleReadinessSnapshot();
   const hasBlockers = snapshot.blockers.length > 0;
+  const metaFailureSignals =
+    snapshot.meta.driftWarnings +
+    snapshot.meta.destinationWarnings +
+    snapshot.meta.duplicateObjectWarnings +
+    snapshot.meta.trackingDomainWarnings;
+  const autonomyWarnings = [
+    snapshot.meta.spendAnomalyNote ? `Spend warning: ${snapshot.meta.spendAnomalyNote}` : null,
+    snapshot.leadSms.leadsToday === 0 ? "Lead-quality warning: no leads recorded today." : null,
+    snapshot.meta.staleSyncSnapshots > 0 ? `${snapshot.meta.staleSyncSnapshots} stale Meta sync snapshot warning(s).` : null,
+    snapshot.provider.failed7d > 0 ? `${snapshot.provider.failed7d} provider failure(s) in the last 7 days.` : null,
+  ].filter((item): item is string => Boolean(item));
+  const rollbackNeededCount = metaFailureSignals + snapshot.provider.failed7d;
+  const autonomyQueueRows = [
+    {
+      label: "Pending actions",
+      count: 0,
+      status: "pending",
+      detail: "No durable autonomy action reader is wired into this page yet; pending rows must come from the autonomy service before execution can be claimed.",
+    },
+    {
+      label: "Approved actions",
+      count: 0,
+      status: "approved",
+      detail: "Approval UI is visible below. Approved counts stay zero until durable approvals are loaded.",
+    },
+    {
+      label: "Executed actions",
+      count: 0,
+      status: "executed",
+      detail: "No executed autonomy claim is made from scale-readiness data alone.",
+    },
+    {
+      label: "Failed actions",
+      count: metaFailureSignals,
+      status: "failed",
+      detail: "Meta drift, destination, duplicate object, and tracking warnings that need operator review.",
+    },
+    {
+      label: "Rollback-needed",
+      count: rollbackNeededCount,
+      status: "rollback-needed",
+      detail: "Rollback review is required when Meta/provider warnings indicate a change may need reversal.",
+    },
+  ];
 
   return (
     <div className="min-h-full overflow-hidden rounded-[30px] border border-cyan-300/16 bg-[#030711] p-4 text-slate-100 shadow-[0_0_140px_-70px_rgba(34,211,238,0.75)] sm:p-6">
@@ -245,6 +289,83 @@ export default async function ControlRoomPage() {
             </ul>
           </div>
         ) : null}
+
+        <section className="rounded-[26px] border border-white/10 bg-[#07111d] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-cyan-300/18 bg-cyan-300/10 text-cyan-100">
+                <Gauge className="size-5" />
+              </div>
+              <div>
+                <h2 className="min-w-0 text-xl font-semibold tracking-[-0.04em] text-white">Autonomy queue</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-400">
+                  Operator proof lane for pending, approved, executed, failed, rollback-needed, replay, idempotency, and kill-switch visibility. This section is read-only and does not mutate Meta.
+                </p>
+              </div>
+            </div>
+            <span className={`rounded-full border px-3 py-1 text-xs font-bold uppercase ${statusClass(rollbackNeededCount > 0 ? "WATCH" : "GO")}`}>
+              {rollbackNeededCount > 0 ? "review" : "clear"}
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            {autonomyQueueRows.map((row) => (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4" key={row.label}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">{row.label}</p>
+                  <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-semibold uppercase text-slate-300">
+                    {row.status}
+                  </span>
+                </div>
+                <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">{row.count}</p>
+                <p className="mt-2 text-sm leading-5 text-slate-400">{row.detail}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Approval controls</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {["Approve", "Reject", "Monitor"].map((label) => (
+                  <button
+                    className="rounded-full border border-cyan-300/18 bg-cyan-300/10 px-3 py-1.5 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-300/15"
+                    key={`autonomy-${label}`}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-3 text-sm leading-6 text-slate-400">
+                UI affordances are present for operator review. They do not replay, approve, reject, or execute backend actions from this read-only control room.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Replay / idempotency</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                {[
+                  ["Replay jobs", snapshot.leadSms.leadCaptureRetryJobs, "Critical lane lead replay jobs."],
+                  ["Launch locks", snapshot.meta.activeLaunchLocks, "Active locks prevent duplicate live launch objects."],
+                  ["Retry pressure", snapshot.queue.retryPressure, `${snapshot.queue.jobsApproachingMaxAttempts} near max attempts.`],
+                ].map(([label, value, detail]) => (
+                  <div className="rounded-xl border border-white/8 bg-black/20 p-3" key={label}>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</p>
+                    <p className="mt-2 text-lg font-semibold text-white">{value}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">{detail}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-3">
+            <Metric label="Meta failures" value={metaFailureSignals} detail="Drift, destination, duplicate object, and tracking warnings." />
+            <Metric label="No-data warnings" value={autonomyWarnings.length} detail={autonomyWarnings[0] ?? "No autonomy warnings from scale-readiness snapshot."} />
+            <Metric label="Kill-switch visibility" value={snapshot.provider.killSwitches.filter((item) => item.enabled).length} detail={snapshot.provider.killSwitches.map((item) => `${item.envName}=${item.enabled ? "on" : "off"}`).join(", ")} />
+          </div>
+        </section>
 
         <section className="rounded-[26px] border border-white/10 bg-[#07111d] p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">

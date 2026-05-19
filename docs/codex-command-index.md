@@ -24,6 +24,42 @@ git diff --check
 git diff | rg -i "(api[_-]?key|secret|token|password|authorization:|bearer |sk_live|sk_test|hf_[a-z0-9])"
 ```
 
+## Pro Autopilot V1
+
+Primary runbook:
+
+- `docs/autonomy-pro-autopilot-v1.md`
+
+Readiness commands:
+
+```bash
+npm run autonomy:evaluate -- --dry-run
+npm run autonomy:evaluate -- --campaign-id=<campaign-id> --dry-run
+npm run autonomy:evaluate -- --execute-assisted-approved
+npm run autonomy:report -- --json
+npm run test:autonomy-execution
+npm run test:autonomy-dashboard
+npm run routes:security
+npm run schema:check
+npm run smoke:offline
+npm run rls:fixture-smoke
+npm run rls:cross-tenant
+npm run operator:debt
+npm run test:scale-monitoring
+npm run lint
+npm run typecheck
+npm run build
+```
+
+Required proof boundaries:
+
+- Do not deploy from this command index.
+- Safe production proof is read-only GET plus intentionally invalid or unsigned POST only.
+- `/api/autonomy` and `/api/autonomy/run` must not return `executionMode: "recommendation_only"` for a Pro Autopilot readiness claim.
+- New Autopilot tables must include `autonomy_runs`, `autonomy_actions`, `autonomy_action_audit_logs`, `autonomy_rollbacks`, `autonomy_experiments`, `campaign_performance_snapshots`, `autonomy_learning_memory`, `autonomy_alerts`, `campaign_autonomy_settings`, `autonomy_execution_locks`, and `autonomy_idempotency_records`.
+- Dashboard and `/admin/control-room` must both surface Autopilot state.
+- Env reports must list names only and never values.
+
 ## Creative And Provider
 
 ```bash

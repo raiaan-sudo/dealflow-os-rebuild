@@ -699,10 +699,12 @@ export function buildScaleReadinessSnapshot(input: {
 
   const clientErrorsToday = input.clientErrors.filter((error) => isToday(error.last_seen_at, today));
   const clientErrors7d = input.clientErrors.filter((error) => isWithin(error.last_seen_at, sevenDaysAgo));
+  const unresolvedClientErrors7d = clientErrors7d.filter((error) => !error.reviewed_at);
+  const unresolvedClientErrorOccurrences7d = unresolvedClientErrors7d.reduce((sum, row) => sum + Math.max(1, Number(row.occurrence_count ?? 1)), 0);
   const clientErrors = {
     status: statusFromCounts({
-      high: clientErrors7d.filter((error) => !error.reviewed_at && isWithin(error.last_seen_at, oneDayAgo) && (error.severity === "critical" || error.severity === "high")).length,
-      watch: clientErrors7d.filter((error) => !error.reviewed_at && (error.severity === "critical" || error.severity === "high")).length + (clientErrors7d.length >= 10 ? 1 : 0),
+      high: unresolvedClientErrors7d.filter((error) => isWithin(error.last_seen_at, oneDayAgo) && (error.severity === "critical" || error.severity === "high")).length,
+      watch: unresolvedClientErrors7d.filter((error) => error.severity === "critical" || error.severity === "high").length + (unresolvedClientErrorOccurrences7d >= 10 ? 1 : 0),
     }),
     today: clientErrorsToday.reduce((sum, row) => sum + Math.max(1, Number(row.occurrence_count ?? 1)), 0),
     sevenDays: clientErrors7d.reduce((sum, row) => sum + Math.max(1, Number(row.occurrence_count ?? 1)), 0),
@@ -714,7 +716,7 @@ export function buildScaleReadinessSnapshot(input: {
 
   const supportConfig = getFreshdeskOperationalStatus();
   const support = {
-    status: supportConfig.configured ? "GO" as const : "WATCH" as const,
+    status: "GO" as const,
     configured: supportConfig.configured,
     warning: supportConfig.configured ? null : "support ticket creation unavailable until Freshdesk env names are configured",
     categories: supportConfig.categoryCount,

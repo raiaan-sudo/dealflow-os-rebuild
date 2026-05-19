@@ -194,6 +194,56 @@ function includesRecommendation(
   return patterns.some((pattern) => pattern.test(combined));
 }
 
+function formatAutonomyModeLabel(value: string | null | undefined) {
+  if (value === "auto") {
+    return "Autopilot safe actions";
+  }
+
+  if (value === "assisted") {
+    return "Assisted approval";
+  }
+
+  if (value === "manual") {
+    return "Off / manual recommendations";
+  }
+
+  return value || "Off / manual recommendations";
+}
+
+function getAutonomyRiskLabel(confidenceScore: number, blockedReason?: string | null) {
+  if (blockedReason) {
+    return "Blocked";
+  }
+
+  if (confidenceScore >= 0.82) {
+    return "Low risk";
+  }
+
+  if (confidenceScore >= 0.64) {
+    return "Needs review";
+  }
+
+  return "High risk";
+}
+
+function getStatusBucket(value: string | null | undefined) {
+  const normalized = (value ?? "").toLowerCase();
+
+  if (/executed|applied|approved/.test(normalized)) {
+    return "approved";
+  }
+
+  if (/failed|blocked|rejected|rollback|revert/.test(normalized)) {
+    return "failed";
+  }
+
+  if (/staged|pending|queued|recommended|planned/.test(normalized)) {
+    return "pending";
+  }
+
+  return "monitoring";
+}
+
 type LaunchState = "draft" | "ready" | "live" | "paused";
 type DataSourceState = "disconnected" | "collecting" | "active";
 
@@ -729,6 +779,95 @@ export function CampaignDashboardView({
       detail: customerOptimizerStatus,
     },
   ];
+  const autonomyModeLabel = formatAutonomyModeLabel(autonomySnapshot?.mode);
+  const autonomyPendingActions = autonomySnapshot?.pendingActions ?? [];
+  const autonomyRecentActions = autonomySnapshot?.recentActions ?? [];
+  const autonomyStatus = autonomySnapshot?.systemStatus ?? "idle";
+  const autonomyNeedsApproval =
+    autonomySnapshot?.mode === "assisted" ||
+    autonomySnapshot?.mode === "manual" ||
+    autonomyPendingActions.some((action) => Boolean(action.blockedReason));
+  const autonomyPendingCount = autonomyPendingActions.length;
+  const autonomyApprovedCount = autonomyRecentActions.filter((entry) => getStatusBucket(entry.status) === "approved").length;
+  const autonomyFailedCount = autonomyRecentActions.filter((entry) => getStatusBucket(entry.status) === "failed").length;
+  const autonomyRollbackCount = autonomyRecentActions.filter((entry) =>
+    /rollback|revert/i.test(`${entry.status} ${entry.title} ${entry.reason}`),
+  ).length;
+  const topAutonomyAction = autonomyPendingActions[0] ?? null;
+  const requestedBudgetIncreasePercent = Math.max(
+    0,
+    ...autonomyPendingActions.map((action) => Number(action.budgetChangePercent ?? 0)),
+  );
+  const dailyBudgetCap = Number((plan.monthlyBudget / 30).toFixed(2));
+  const requestedDailyBudget =
+    requestedBudgetIncreasePercent > 0
+      ? Number((dailyBudgetCap * (1 + requestedBudgetIncreasePercent / 100)).toFixed(2))
+      : dailyBudgetCap;
+  const budgetDelta = Number((requestedDailyBudget - dailyBudgetCap).toFixed(2));
+  const budgetWithinCap = requestedDailyBudget <= dailyBudgetCap;
+  const estimatedCreditUse = autonomyPendingActions.reduce((total, action) => {
+    const normalized = `${action.actionType} ${action.title}`.toLowerCase();
+
+    if (/video|ugc/.test(normalized)) {
+      return total + 3;
+    }
+
+    if (/creative|image|ad/.test(normalized)) {
+      return total + 1;
+    }
+
+    return total;
+  }, 0);
+  const leadQualitySignal =
+    displayedLeads <= 0
+      ? "No verified lead quality signal yet"
+      : displayedAppointments > 0
+        ? `${displayedAppointments} appointment${displayedAppointments === 1 ? "" : "s"} from ${displayedLeads} lead${displayedLeads === 1 ? "" : "s"}`
+        : `${displayedLeads} lead${displayedLeads === 1 ? "" : "s"} captured; appointment quality still pending`;
+  const monitoredSignalItems = [
+    {
+      label: "Meta delivery",
+      value: syncStateLabel,
+      detail: syncedAt ? `Last sync ${formatLastVerified(syncedAt, stableNowMs)}` : "No live sync yet",
+    },
+    {
+      label: "Spend cap",
+      value: budgetWithinCap ? "Inside cap" : "Approval required",
+      detail: `${currency(requestedDailyBudget)}/day requested against ${currency(dailyBudgetCap)}/day cap`,
+    },
+    {
+      label: "Lead quality",
+      value: displayedAppointments > 0 ? "Signal present" : "Collecting",
+      detail: leadQualitySignal,
+    },
+    {
+      label: "No-data guardrail",
+      value: missingPerformanceData ? "Warning" : "Clear",
+      detail: missingPerformanceData ? "No spend, lead, impression, or click signal is available yet." : "Delivery data is present or campaign is not live.",
+    },
+  ];
+  const todayChangeItems = [
+    ...autonomyPendingActions.slice(0, 3).map((action) => ({
+      key: action.actionKey,
+      title: action.title,
+      detail: action.reason,
+      status: action.blockedReason ? "blocked" : "recommended",
+      confidence: `${(action.confidenceScore * 100).toFixed(0)}% confidence`,
+    })),
+    ...autonomyRecentActions.slice(0, Math.max(0, 3 - Math.min(3, autonomyPendingActions.length))).map((entry) => ({
+      key: entry.id,
+      title: entry.title,
+      detail: entry.reason,
+      status: entry.status,
+      confidence: entry.executionMode,
+    })),
+  ];
+  const funnelBeforeAfter = {
+    before: plan.funnel?.headline || plan.ads[0]?.headline || "Current funnel/ad message not generated yet",
+    after: topAutonomyAction
+      ? `${topAutonomyAction.title}: ${topAutonomyAction.reason}`
+      : highlightedRecommendations[0]?.description ?? "No funnel change is proposed today.",
+  };
 
   return (
     <div className="space-y-5 text-[15px]">
@@ -1352,54 +1491,201 @@ export function CampaignDashboardView({
         <Card className="rounded-[24px] p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Results</p>
-              <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Recommendations and recent actions</h3>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">DealFlow Pro Autopilot</p>
+              <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Recommendations, approvals, and guardrails</h3>
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
+                This panel separates monitored signals, recommendations, approvals, and logged outcomes. It does not claim that an action executed unless the action history says so.
+              </p>
             </div>
             <div className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-              {autonomySnapshot.mode}
+              {autonomyModeLabel}
             </div>
           </div>
-          <div className="mt-5 grid gap-4 lg:grid-cols-3">
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-4">
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Recommendation status</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Mode</p>
               <p className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
-                {autonomySnapshot.systemStatus ?? "idle"}
+                {autonomyModeLabel}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {autonomyNeedsApproval ? "Approval is required before execution." : "Safe actions may run only inside configured guardrails."}
               </p>
             </div>
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Recommendations</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">System status</p>
               <p className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
-                {autonomySnapshot.pendingActions?.length ?? 0}
+                {autonomyStatus}
               </p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">Current recommendation engine state.</p>
             </div>
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Recent updates</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Today changes</p>
               <p className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
-                {autonomySnapshot.recentActions?.length ?? 0}
+                {autonomyPendingCount}
               </p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">Recommended or staged changes waiting for review.</p>
+            </div>
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Rollback history</p>
+              <p className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
+                {autonomyRollbackCount}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">Only logged rollback or revert records are counted.</p>
             </div>
           </div>
-          {(autonomySnapshot.pendingActions?.length ?? 0) > 0 ? (
+
+          <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Monitored signals</p>
+              <div className="mt-4 grid gap-3">
+                {monitoredSignalItems.map((item) => (
+                  <div key={item.label} className="rounded-[16px] border border-white/8 bg-black/10 px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-foreground">{item.label}</p>
+                      <span className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{item.value}</span>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Spend cap and credit estimate</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[16px] border border-white/8 bg-black/10 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Daily cap math</p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    {currency(requestedDailyBudget)} requested vs {currency(dailyBudgetCap)} cap.
+                  </p>
+                </div>
+                <div className="rounded-[16px] border border-white/8 bg-black/10 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Delta</p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    {budgetDelta > 0 ? `${currency(budgetDelta)}/day over current cap` : "No increase requested"}
+                  </p>
+                </div>
+                <div className="rounded-[16px] border border-white/8 bg-black/10 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Credit estimate</p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    {estimatedCreditUse > 0 ? `${estimatedCreditUse} generation credit estimate` : "No generation credits estimated"}
+                  </p>
+                </div>
+                <div className="rounded-[16px] border border-white/8 bg-black/10 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Approval state</p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    {autonomyNeedsApproval || !budgetWithinCap ? "Approval required" : "Inside safe-action rules"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Today changes and recommendations</p>
+              {todayChangeItems.length > 0 ? (
+                <div className="mt-4 grid gap-3">
+                  {todayChangeItems.map((item) => (
+                    <div key={item.key} className="rounded-[16px] border border-white/8 bg-black/10 px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-foreground">{item.title}</p>
+                        <span className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{item.status}</span>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.detail}</p>
+                      <p className="mt-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">{item.confidence}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm leading-7 text-muted-foreground">
+                  {missingPerformanceData ? "Waiting for delivery data." : "No autonomy recommendations are available yet."}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Funnel before / after preview</p>
+                <div className="mt-4 grid gap-3">
+                  <div className="rounded-[16px] border border-white/8 bg-black/10 px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Before</p>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{funnelBeforeAfter.before}</p>
+                  </div>
+                  <div className="rounded-[16px] border border-white/8 bg-black/10 px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">After preview</p>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{funnelBeforeAfter.after}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Lead quality signal</p>
+                <p className="mt-3 text-sm leading-7 text-muted-foreground">{leadQualitySignal}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 xl:grid-cols-2">
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Approval controls</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {["Approve", "Reject", "Monitor"].map((label) => (
+                  <button
+                    className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-white/[0.08]"
+                    key={`dashboard-autonomy-${label}`}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                Buttons are UI affordances for the proof slice. They do not claim backend execution from this dashboard panel.
+              </p>
+            </div>
+
+            <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Optimization and rollback history</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-[16px] border border-white/8 bg-black/10 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Pending</p>
+                  <p className="mt-2 text-lg font-semibold">{autonomyPendingCount}</p>
+                </div>
+                <div className="rounded-[16px] border border-white/8 bg-black/10 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Approved/executed</p>
+                  <p className="mt-2 text-lg font-semibold">{autonomyApprovedCount}</p>
+                </div>
+                <div className="rounded-[16px] border border-white/8 bg-black/10 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Failed/rollback</p>
+                  <p className="mt-2 text-lg font-semibold">{autonomyFailedCount}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {autonomyPendingActions.length > 0 ? (
             <div className="mt-5 grid gap-4 xl:grid-cols-2">
-              {autonomySnapshot.pendingActions!.slice(0, 4).map((action) => (
+              {autonomyPendingActions.slice(0, 4).map((action) => (
                 <div key={action.actionKey} className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
                   <p className="text-sm font-semibold">{action.title}</p>
                   <p className="mt-2 text-sm leading-7 text-muted-foreground">{action.reason}</p>
+                  {action.blockedReason ? (
+                    <p className="mt-3 rounded-[16px] border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm leading-6 text-rose-100">
+                      Blocked: {action.blockedReason}
+                    </p>
+                  ) : null}
                   <div className="mt-3 flex flex-wrap gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
                     <span>{action.actionType.replaceAll("_", " ")}</span>
                     <span>Confidence {(action.confidenceScore * 100).toFixed(0)}%</span>
+                    <span>{getAutonomyRiskLabel(action.confidenceScore, action.blockedReason)}</span>
                     {action.targetMarket ? <span>{action.targetMarket}</span> : null}
                   </div>
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="mt-5 text-sm leading-7 text-muted-foreground">
-              {missingPerformanceData
-                ? "Waiting for delivery data."
-                : "No autonomy recommendations are available yet."}
-            </p>
-          )}
+          ) : null}
         </Card>
       ) : null}
 

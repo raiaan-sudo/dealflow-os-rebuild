@@ -28,6 +28,42 @@ git diff | rg -i "(api[_-]?key|secret|token|password|authorization:|bearer |sk_l
 
 The secret-pattern scan passes when the `rg` command finds no matches.
 
+## Pro Autopilot V1 Validation
+
+Use `docs/autonomy-pro-autopilot-v1.md` as the source of truth for safe posture, env names, approval boundaries, scheduler commands, production-safe proof, and rollback.
+
+Run these checks before claiming Pro Autopilot V1 readiness:
+
+```bash
+npm run autonomy:evaluate -- --dry-run
+npm run autonomy:evaluate -- --campaign-id=<campaign-id> --dry-run
+npm run autonomy:evaluate -- --execute-assisted-approved
+npm run autonomy:report -- --json
+npm run test:autonomy-execution
+npm run test:autonomy-dashboard
+npm run routes:security
+npm run schema:check
+npm run smoke:offline
+npm run rls:fixture-smoke
+npm run rls:cross-tenant
+npm run operator:debt
+npm run test:scale-monitoring
+npm run lint
+npm run typecheck
+npm run build
+git diff --check
+git diff | rg -i "(api[_-]?key|secret|token|password|authorization:|bearer |sk_live|sk_test|hf_[a-z0-9])"
+```
+
+Autopilot-specific pass criteria:
+
+- Legacy recommendation tables `campaign_action_suggestions` and `campaign_draft_actions` still exist for backward-compatible recommendations.
+- New Autopilot execution tables exist locally and remotely: `autonomy_runs`, `autonomy_actions`, `autonomy_action_audit_logs`, `autonomy_rollbacks`, `autonomy_experiments`, `campaign_performance_snapshots`, `autonomy_learning_memory`, `autonomy_alerts`, `campaign_autonomy_settings`, `autonomy_execution_locks`, and `autonomy_idempotency_records`.
+- RLS is enabled and forced, with member policies scoped by `private.is_current_user_org_member(organization_id)` and service-role-only execution paths for locks/idempotency.
+- `/api/autonomy` and `/api/autonomy/run` are protected, same-origin guarded for mutations, Pro-entitlement gated, and not returning `executionMode: "recommendation_only"`.
+- Dashboard and `/admin/control-room` both surface Autopilot state.
+- Env documentation lists env names only and never includes secret values.
+
 ## Creative And Provider Commands
 
 ```bash

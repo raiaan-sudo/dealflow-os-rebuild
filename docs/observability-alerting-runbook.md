@@ -12,6 +12,7 @@ The internal issue radar reads durable database state through `/admin/command-ce
 - `provider_usage_limits`, `provider_usage_events`, and `user_credits`: provider quota pressure, daily paid-generation cost warnings, and customer generation-credit balances below the `$20.00` minimum top-up, surfaced as `provider_cost`.
 - `client_error_events`: first-party browser errors, unhandled promise rejections, and route error-boundary failures captured through `/api/client-errors` after server-side scrubbing.
 - `campaign_plans`: row/plan consistency drift and missing critical launch fields.
+- `campaign_action_suggestions` and `campaign_draft_actions`: Pro Autopilot recommendation, staged-action, applied-action, dismissed-action, and blocked-action state. Treat these rows as app-owned operational evidence; they are not proof that provider, SMS, Stripe, or Meta side effects ran.
 - `billing_subscriptions` plus `billing_cancellation_intents`: payment-issue accounts, subscriptions scheduled to cancel, suspended-after-period workspaces, and local cancellation reason capture before Stripe Portal handoff.
 - `customer_success_checklists`: first-25-day onboarding, creative QA, billing, Meta, launch-readiness, lead-loop, and renewal-risk follow-up state.
 - `leads`: saved lead evidence, dedupe state, consent metadata, opt-out state, and `lead_loop_verified` confirmation through the launch monitor.
@@ -55,12 +56,14 @@ Create provider alerts against the durable sources first, then use logs for cont
 - High: `provider_usage_events.status = failed`.
 - High: `provider_cost` issue where daily quota is exhausted, daily provider cost is at least 2x the configured warning threshold, or the customer generation-credit balance is `$0.00`.
 - High: repeated `client_error` issue on a launch-critical route such as `/login`, `/onboarding`, `/paywall`, `/dashboard`, `/settings`, `/preview`, or `/launch`.
+- High: Pro Autopilot route or job evidence shows an attempted side effect while the route is still recommendation-only, while billing is inactive, while same-origin/auth/tenant checks fail, or while `ALLOW_META_LIVE_LAUNCH`/provider/SMS gates remain disabled.
 - Medium: `billing_subscriptions.cancel_at_period_end = true` before period end; review captured cancellation intent and save-risk notes.
 - Medium: overdue day 7, day 14, or day 25 customer-success follow-up.
 - Medium: `provider_usage_events.status = reserved` for more than 30 minutes.
 - Medium: `provider_cost` issue where daily quota is above 80%, daily provider cost is above `OPERATOR_PROVIDER_DAILY_COST_WARNING_CENTS`, or customer generation-credit balance is below the `$20.00` minimum top-up.
 - Medium: any unreviewed `client_error` issue in `/admin/issues`.
 - Medium: campaign plan consistency mismatch or missing critical fields.
+- Medium: Pro Autopilot produces blocked actions without dashboard and `/admin/control-room` surfacing.
 - Medium: repeated `rate_limit.blocked` or `lead_capture.spam_rejected` logs for the same IP/contact in a short window.
 
 Recommended destinations:

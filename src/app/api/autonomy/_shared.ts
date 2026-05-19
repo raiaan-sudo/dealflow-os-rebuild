@@ -1,13 +1,17 @@
 import { ApiError } from "@/lib/api/route";
 import {
   analyzeCampaign,
-  type CampaignAnalysisInput,
   type CampaignAnalysisResult,
 } from "@/lib/services/ai-optimizer";
 import {
   type AutonomyActionCandidate,
+  type AutonomyMode,
   type AutonomySnapshot,
 } from "@/lib/services/autonomy-engine";
+import {
+  buildAutonomyExecutionPlan,
+  type AutonomyExecutionMetrics,
+} from "@/lib/services/autonomy-execution-service";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { assertCampaignCanRunAutonomy } from "@/lib/services/campaign-entitlements";
@@ -55,7 +59,7 @@ function mapBudgetChangePercent(
 function buildMetrics(params: {
   syncSnapshot: Awaited<ReturnType<typeof getLatestMetaCampaignSyncSnapshot>> | null;
   monthlyBudget: number;
-}) {
+}): AutonomyExecutionMetrics {
   const metrics = params.syncSnapshot?.deliveryMetrics;
 
   if (metrics) {
@@ -77,7 +81,18 @@ function buildMetrics(params: {
       spend,
       leads,
       lp_cvr: clicks > 0 ? Number(((leads / clicks) * 100).toFixed(2)) : 0,
-    } satisfies CampaignAnalysisInput;
+      leadQualityScore: estimateLeadQualityScore({
+        ctr:
+          metrics.ctr !== undefined
+            ? Number((Number(metrics.ctr) * 100).toFixed(2))
+            : impressions > 0
+              ? Number(((clicks / impressions) * 100).toFixed(2))
+              : 0,
+        cpl: leads > 0 ? Number((spend / leads).toFixed(2)) : 0,
+        lp_cvr: clicks > 0 ? Number(((leads / clicks) * 100).toFixed(2)) : 0,
+        leads,
+      }),
+    } satisfies AutonomyExecutionMetrics;
   }
 
   return {
@@ -88,7 +103,29 @@ function buildMetrics(params: {
     spend: 0,
     leads: 0,
     lp_cvr: 0,
-  } satisfies CampaignAnalysisInput;
+    leadQualityScore: null,
+  } satisfies AutonomyExecutionMetrics;
+}
+
+function estimateLeadQualityScore(params: {
+  ctr: number;
+  cpl: number;
+  lp_cvr: number;
+  leads: number;
+}) {
+  if (params.leads <= 0) {
+    return null;
+  }
+
+  let score = 0.55;
+
+  if (params.ctr >= 1.5) score += 0.1;
+  if (params.lp_cvr >= 8) score += 0.15;
+  if (params.cpl > 0 && params.cpl <= 35) score += 0.1;
+  if (params.cpl >= 100) score -= 0.15;
+  if (params.lp_cvr > 0 && params.lp_cvr < 3) score -= 0.1;
+
+  return Math.min(1, Math.max(0, Number(score.toFixed(2))));
 }
 
 function buildPendingActions(
@@ -111,14 +148,44 @@ function buildPendingActions(
             ? 0.74
             : 0.62,
     budgetChangePercent: mapBudgetChangePercent(result.recommendationFocus, action),
-    blockedReason:
-      /pause|duplicate|increase budget|scale/i.test(action)
-        ? "Autonomy routes are recommendations-only right now."
-        : null,
+    blockedReason: null,
   }));
 }
 
-export async function evaluateAutonomy(campaignId?: string | null) {
+function centsFromEnv(name: string) {
+  const parsed = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function dailyBudgetCentsFromRuntime(value: unknown, monthlyBudget: number) {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.round(value * 100);
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number.parseFloat(value.replace(/[^0-9.]/g, ""));
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.round(parsed * 100);
+    }
+  }
+
+  return Math.round(Math.max(0, monthlyBudget) / 30 * 100);
+}
+
+function normalizeMode(mode?: AutonomyMode | null): AutonomyMode {
+  if (mode === "manual" || mode === "assisted" || mode === "auto" || mode === "autonomous") {
+    return mode;
+  }
+
+  return "assisted";
+}
+
+export async function evaluateAutonomy(
+  campaignId?: string | null,
+  options?: {
+    mode?: AutonomyMode | null;
+  },
+) {
   const record = campaignId
     ? await getCampaignById(campaignId)
     : null;
@@ -153,21 +220,62 @@ export async function evaluateAutonomy(campaignId?: string | null) {
   });
 
   const pendingActions = buildPendingActions(result, plan.audience, plan.market);
+  const executionPlan = buildAutonomyExecutionPlan({
+    mode: normalizeMode(options?.mode),
+    campaign: {
+      organizationId: plan.organizationId,
+      campaignId: plan.id,
+      campaignName: plan.businessName,
+      targetMarket: plan.market,
+      monthlyBudget: plan.monthlyBudget,
+      currentDailyBudgetCents: dailyBudgetCentsFromRuntime(
+        plan.runtime.budgetDailyInput ?? plan.runtime.budgetDaily,
+        plan.monthlyBudget,
+      ),
+      dailyBudgetCapCents:
+        centsFromEnv("META_DAILY_BUDGET_CAP_CENTS"),
+    },
+    metrics,
+    candidates: pendingActions,
+  });
   const recommendations = result.actions.map((action, index) => ({
     id: `${plan.id}-recommendation-${index + 1}`,
     title: action,
     reason: result.reasons[0] ?? "Performance analysis generated a recommendation.",
     focus: result.recommendationFocus ?? "monitor",
-    blocked: true,
+    blocked: executionPlan.blockedExecutionActions.some((candidate) => candidate.actionKey === pendingActions[index]?.actionKey),
   }));
   const snapshot: AutonomySnapshot = {
-    mode: "assisted",
+    mode: executionPlan.mode,
     systemStatus:
-      metrics.spend > 0 || metrics.leads > 0 || Boolean(plan.runtime.campaignId)
+      executionPlan.appliedExecutionActions.length > 0
+        ? "optimizing"
+        : executionPlan.blockedExecutionActions.length > 0
+          ? "degraded"
+          : metrics.spend > 0 || metrics.leads > 0 || Boolean(plan.runtime.campaignId)
         ? "healthy"
         : "idle",
-    pendingActions,
-    recentActions: [],
+    pendingActions: executionPlan.executionQueue,
+    recentActions: executionPlan.auditLogs.map((log) => ({
+      id: log.idempotencyKey,
+      title: pendingActions.find((action) => action.actionKey === log.actionKey)?.title ?? log.actionKey,
+      reason: log.reason,
+      status: log.status,
+      executionMode: executionPlan.mode,
+      targetMarket: plan.market,
+      createdAt: log.createdAt,
+      guardrailSummary: {
+        mode: log.executionType,
+        blockedReason: log.status === "blocked" ? log.reason : undefined,
+        reason: log.auditSummary,
+        applied: log.status === "applied",
+      },
+    })),
+    executionSyncedAt: executionPlan.generatedAt,
+    queuedCount: executionPlan.executionQueue.length,
+    appliedCount: executionPlan.appliedExecutionActions.length,
+    blockedCount: executionPlan.blockedExecutionActions.length,
+    alert: executionPlan.alert,
   };
 
   return {
@@ -176,6 +284,10 @@ export async function evaluateAutonomy(campaignId?: string | null) {
     recommendations,
     actions: result.actions,
     optimizerResult: result,
+    executionPlan,
+    executionQueue: executionPlan.executionQueue,
+    appliedExecutionActions: executionPlan.appliedExecutionActions,
+    blockedExecutionActions: executionPlan.blockedExecutionActions,
     snapshot,
   };
 }
