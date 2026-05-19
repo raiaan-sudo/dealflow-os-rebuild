@@ -47,9 +47,11 @@ function buildLaunchIds(campaign: ExecutableCampaign) {
 }
 
 function getDailyBudget(campaign: ExecutableCampaign) {
-  const monthlyBudgetText = campaign.adSets[0]?.budget ?? "$50/month";
-  const monthlyBudget = Number(monthlyBudgetText.replace(/[^0-9.]/g, ""));
-  const dailyBudget = Math.max(25, Math.round(monthlyBudget / 30));
+  const budgetText = campaign.adSets[0]?.budget ?? "$30/day";
+  const budget = Number(budgetText.replace(/[^0-9.]/g, ""));
+  const dailyBudget = /\/day\b/i.test(budgetText)
+    ? budget
+    : Math.max(25, Math.round(budget / 30));
   return `${formatCurrency(dailyBudget)}/day`;
 }
 

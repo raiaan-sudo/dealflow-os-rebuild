@@ -29,6 +29,7 @@ export type PrepaywallCampaignPreviewDraft = {
   audience?: string;
   propertyType?: string;
   priceRange?: string;
+  dailyBudget?: string;
   monthlyBudget?: string;
   offer?: string;
   planTier?: "starter" | "pro";
@@ -65,7 +66,7 @@ const defaultPreviewDraft: PrepaywallCampaignPreviewDraft = {
   audience: "qualified prospects",
   propertyType: "selected inventory",
   priceRange: "target range",
-  monthlyBudget: "3000",
+  dailyBudget: "30",
   offer: "strategy call",
   planTier: "starter",
 };
@@ -77,14 +78,20 @@ function getModeLabel(mode: PrepaywallCampaignMode) {
   return "Commercial campaign";
 }
 
-function formatBudget(value?: string) {
+function formatDailyBudget(value?: string, legacyMonthlyValue?: string) {
   const numeric = Number.parseFloat(String(value ?? "").replace(/[^0-9.]/g, ""));
 
-  if (!Number.isFinite(numeric) || numeric <= 0) {
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return `$${numeric.toLocaleString("en-US", { maximumFractionDigits: 2 })}/day`;
+  }
+
+  const legacyMonthly = Number.parseFloat(String(legacyMonthlyValue ?? "").replace(/[^0-9.]/g, ""));
+
+  if (!Number.isFinite(legacyMonthly) || legacyMonthly <= 0) {
     return "Budget not set";
   }
 
-  return `$${numeric.toLocaleString("en-US", { maximumFractionDigits: 0 })}/mo`;
+  return `$${Math.round(legacyMonthly / 30).toLocaleString("en-US", { maximumFractionDigits: 0 })}/day`;
 }
 
 function clean(value: string | undefined, fallback: string) {
@@ -360,7 +367,7 @@ function MockAdPreview({
             {content.visualLabel}
           </span>
           <span className="rounded-full border border-white/12 bg-black/38 px-2.5 py-1 text-[9px] font-semibold text-white/64">
-            {formatBudget(draft.monthlyBudget)}
+            {formatDailyBudget(draft.dailyBudget, draft.monthlyBudget)}
           </span>
         </div>
         <div className={cn(

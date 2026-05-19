@@ -289,7 +289,10 @@ function ActiveCampaignWorkspace({
                 { label: "Market", value: plan.market || "Not set" },
                 { label: "Audience", value: plan.audience || "Not set" },
                 { label: "Offer", value: plan.offerSummary || plan.keyOffer || "Not set" },
-                { label: "Budget", value: `$${plan.monthlyBudget.toLocaleString()}/mo` },
+                {
+                  label: "Daily ad spend",
+                  value: `$${(plan.runtime.budgetDailyInput ?? Number((plan.monthlyBudget / 30).toFixed(2))).toLocaleString("en-US", { maximumFractionDigits: 2 })}/day`,
+                },
               ].map((item) => (
                 <div key={item.label} className="min-w-0 rounded-[18px] border border-white/8 bg-white/[0.03] p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">

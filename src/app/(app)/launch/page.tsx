@@ -685,7 +685,10 @@ export default async function LaunchAliasPage({
                 <div>
                   <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Budget</p>
                   <p className="mt-2 text-sm leading-6 text-foreground">
-                    ${plan.monthlyBudget.toLocaleString()}/month
+                    ${dailyBudgetInput.toLocaleString("en-US", { maximumFractionDigits: 2 })}/day
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    30-day estimate ${(dailyBudgetInput * 30).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}
                   </p>
                 </div>
                 <div>

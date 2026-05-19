@@ -14,6 +14,7 @@ Use this runbook to choose the smallest validation suite that honestly proves th
 node -v
 npm run operator:debt
 npm run operator:scale-report
+npm run test:onboarding-daily-budget
 npm run test:scale-monitoring
 npm run smoke:offline
 npm run routes:security
@@ -39,6 +40,7 @@ npm run autonomy:evaluate -- --dry-run
 npm run autonomy:evaluate -- --campaign-id=<campaign-id> --dry-run
 npm run autonomy:evaluate -- --execute-assisted-approved
 npm run autonomy:report -- --json
+npm run test:onboarding-daily-budget
 npm run test:autonomy-execution
 npm run test:autonomy-dashboard
 npm run routes:security

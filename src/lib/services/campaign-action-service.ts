@@ -489,6 +489,7 @@ async function applyApprovedAction(plan: CampaignPlan, action: CampaignActionSug
 
   if (action.type === "increase_budget_on_winner") {
     const nextBudget = Math.round(plan.monthlyBudget * 1.2);
+    const nextDailyBudget = Math.round(nextBudget / 30);
 
     return {
       plan: {
@@ -503,7 +504,7 @@ async function applyApprovedAction(plan: CampaignPlan, action: CampaignActionSug
           lastOptimizationAt: new Date().toISOString(),
         },
       },
-      summary: `Increased campaign budget to ${nextBudget}/month.`,
+      summary: `Increased campaign budget to $${nextDailyBudget}/day with a $${nextBudget} internal 30-day cap.`,
       feedbackAds: plan.ads.slice(0, 1),
       feedbackResultTag: "winner" as const,
     };

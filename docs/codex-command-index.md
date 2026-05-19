@@ -12,6 +12,7 @@ node -v
 ```bash
 npm run operator:debt
 npm run operator:scale-report
+npm run test:onboarding-daily-budget
 npm run test:scale-monitoring
 npm run routes:security
 npm run smoke:offline
@@ -39,6 +40,7 @@ npm run autonomy:evaluate -- --execute-assisted-approved
 npm run autonomy:report -- --json
 npm run test:autonomy-execution
 npm run test:autonomy-dashboard
+npm run test:onboarding-daily-budget
 npm run routes:security
 npm run schema:check
 npm run smoke:offline

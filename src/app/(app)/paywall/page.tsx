@@ -49,6 +49,7 @@ async function loadPersistedPreviewDraft(
     market: plan.market,
     audience: plan.audience,
     propertyType: plan.propertyType,
+    dailyBudget: String(plan.runtime.budgetDailyInput ?? Number((plan.monthlyBudget / 30).toFixed(2))),
     monthlyBudget: String(plan.monthlyBudget),
     offer: plan.keyOffer,
     agentCompanyName: plan.businessName,

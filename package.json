@@ -54,6 +54,7 @@
     "test:subscription-lifecycle": "node ./scripts/test-subscription-lifecycle.mjs",
     "test:billing-free-trial": "node ./scripts/test-billing-free-trial.mjs",
     "test:activation-telemetry": "node ./scripts/test-activation-telemetry.mjs",
+    "test:onboarding-daily-budget": "node ./scripts/test-onboarding-daily-budget.mjs",
     "test:launch-budget-tracking-safety": "node ./scripts/test-launch-budget-tracking-safety.mjs",
     "test:support-freshdesk": "node ./scripts/test-support-freshdesk.mjs",
     "test:public-funnel-thank-you": "node ./scripts/test-public-funnel-thank-you.mjs",

@@ -194,7 +194,7 @@ export default async function LaunchSuccessPage({
     plan?.runtime.budgetDailyInput && plan.runtime.budgetDailyInput > 0
       ? `${currency(plan.runtime.budgetDailyInput)}/day`
       : plan?.monthlyBudget && plan.monthlyBudget > 0
-        ? `${currency(plan.monthlyBudget)}/month`
+        ? `${currency(Number((plan.monthlyBudget / 30).toFixed(2)))}/day`
         : "Budget not recorded";
   const resolvedStatus =
     syncSnapshot?.campaignStatus ??

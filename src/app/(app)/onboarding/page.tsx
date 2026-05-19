@@ -44,7 +44,7 @@ type DraftState = {
   audience: string;
   propertyType: string;
   priceRange: string;
-  monthlyBudget: string;
+  dailyBudget: string;
   offer: string;
   planTier: Extract<BillingPlanTier, "starter" | "pro">;
   idempotencySeed: string;
@@ -185,7 +185,7 @@ const DEFAULT_DRAFT: DraftState = {
   audience: MODE_DEFAULTS.buyer.audience,
   propertyType: MODE_DEFAULTS.buyer.propertyType,
   priceRange: MODE_DEFAULTS.buyer.priceRange,
-  monthlyBudget: "3000",
+  dailyBudget: "30",
   offer: MODE_DEFAULTS.buyer.offer,
   planTier: "starter",
   idempotencySeed: "",
@@ -194,12 +194,14 @@ const DEFAULT_DRAFT: DraftState = {
 const PRICE_RANGES = ["$400k-$600k", "$600k-$900k", "$900k-$1.5M", "$1.5M+"] as const;
 const INVESTOR_PRICE_RANGES = ["<$500k", "$500k-$1.5M", "$1.5M-$3M", "$3M+"] as const;
 const COMMERCIAL_PRICE_RANGES = ["Lease-ready", "$750k-$1.5M", "$1.5M-$3M", "$3M+"] as const;
-const BUDGETS = [
-  { label: "$1.5k/mo", value: "1500" },
-  { label: "$3k/mo", value: "3000" },
-  { label: "$5k/mo", value: "5000" },
-  { label: "$7.5k+/mo", value: "7500" },
+const DAILY_BUDGETS = [
+  { label: "$30/day", value: "30" },
+  { label: "$50/day", value: "50" },
+  { label: "$75/day", value: "75" },
+  { label: "$100/day", value: "100" },
 ] as const;
+const MIN_DAILY_BUDGET_CENTS = 500;
+const MAX_DAILY_BUDGET_CENTS = 50_000;
 
 const OFFER_SUGGESTIONS: Record<CampaignMode, string[]> = {
   buyer: [
@@ -268,6 +270,70 @@ function isCampaignMode(value: unknown): value is CampaignMode {
   return value === "buyer" || value === "seller" || value === "investor" || value === "commercial";
 }
 
+function parseCurrencyCents(value: string) {
+  const normalized = value.trim().replace(/,/g, "");
+
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+    return null;
+  }
+
+  const [dollarsPart, centsPart = ""] = normalized.split(".");
+  const dollars = Number.parseInt(dollarsPart, 10);
+  const cents = Number.parseInt(centsPart.padEnd(2, "0"), 10) || 0;
+  const total = dollars * 100 + cents;
+
+  return Number.isSafeInteger(total) ? total : null;
+}
+
+function dailyBudgetCentsFromDraft(draft: Pick<DraftState, "dailyBudget">) {
+  return parseCurrencyCents(draft.dailyBudget);
+}
+
+function dailyBudgetDollarsFromCents(cents: number) {
+  return cents / 100;
+}
+
+function monthlyCapDollarsFromDailyCents(cents: number) {
+  return Math.round(cents * 30) / 100;
+}
+
+function formatMoney(value: number) {
+  return value.toLocaleString("en-US", {
+    maximumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    minimumFractionDigits: 0,
+  });
+}
+
+function formatDailyBudgetFromDraft(draft: Pick<DraftState, "dailyBudget">) {
+  const cents = dailyBudgetCentsFromDraft(draft);
+
+  if (!cents || cents <= 0) {
+    return "Daily budget not set";
+  }
+
+  return `$${formatMoney(dailyBudgetDollarsFromCents(cents))}/day`;
+}
+
+function formatMonthlyEstimateFromDraft(draft: Pick<DraftState, "dailyBudget">) {
+  const cents = dailyBudgetCentsFromDraft(draft);
+
+  if (!cents || cents <= 0) {
+    return null;
+  }
+
+  return `Estimated monthly media spend: $${formatMoney(monthlyCapDollarsFromDailyCents(cents))} based on 30 days.`;
+}
+
+function migrateLegacyMonthlyBudgetToDaily(value: unknown) {
+  const cents = parseCurrencyCents(String(value ?? ""));
+
+  if (!cents || cents <= 0) {
+    return DEFAULT_DRAFT.dailyBudget;
+  }
+
+  return String(Math.max(1, Math.round(cents / 30 / 100)));
+}
+
 async function recordActivationEvent(params: {
   eventName: string;
   idempotencyKey: string;
@@ -309,7 +375,7 @@ function IconTile({
 
 function validateStep(step: OnboardingStepKey, draft: DraftState) {
   const errors: FieldErrors = {};
-  const budget = Number.parseFloat(draft.monthlyBudget.replace(/[^0-9.]/g, ""));
+  const dailyBudgetCents = dailyBudgetCentsFromDraft(draft);
 
   if (step === "agent" || step === "review") {
     if (!draft.agentFirstName.trim()) errors.agentFirstName = "Add the agent first name.";
@@ -330,7 +396,11 @@ function validateStep(step: OnboardingStepKey, draft: DraftState) {
   if (step === "offer" || step === "review") {
     if (!draft.audience.trim()) errors.audience = "Describe who the campaign should attract.";
     if (!draft.priceRange.trim()) errors.priceRange = "Choose a price range.";
-    if (!Number.isFinite(budget) || budget <= 0) errors.monthlyBudget = "Choose or enter a realistic monthly ad budget.";
+    if (!dailyBudgetCents || dailyBudgetCents < MIN_DAILY_BUDGET_CENTS) {
+      errors.dailyBudget = "Choose or enter a daily ad spend of at least $5/day.";
+    } else if (dailyBudgetCents > MAX_DAILY_BUDGET_CENTS) {
+      errors.dailyBudget = "Daily ad spend must be $500/day or less for self-serve setup.";
+    }
     if (!draft.offer.trim()) errors.offer = "Add the offer or lead magnet for this campaign.";
   }
 
@@ -594,14 +664,20 @@ export default function OnboardingPage() {
     if (raw) {
       try {
         const saved = JSON.parse(raw) as Partial<DraftState> & {
+          monthlyBudget?: string;
           currentStep?: OnboardingStepKey;
           furthestStepIndex?: number;
         };
         const campaignMode = isCampaignMode(saved.campaignMode) ? saved.campaignMode : "buyer";
+        const dailyBudget =
+          typeof saved.dailyBudget === "string" && saved.dailyBudget.trim()
+            ? saved.dailyBudget
+            : migrateLegacyMonthlyBudgetToDaily(saved.monthlyBudget);
         nextDraft = {
           ...nextDraft,
           ...saved,
           campaignMode,
+          dailyBudget,
           planTier: saved.planTier === "pro" ? "pro" : "starter",
           idempotencySeed: saved.idempotencySeed || nextDraft.idempotencySeed,
         };
@@ -736,6 +812,14 @@ export default function OnboardingPage() {
     setSubmitting(true);
 
     try {
+      const dailyBudgetCents = dailyBudgetCentsFromDraft(preparedDraft);
+
+      if (!dailyBudgetCents) {
+        throw new Error("Choose or enter a valid daily ad spend.");
+      }
+
+      const dailyBudget = dailyBudgetDollarsFromCents(dailyBudgetCents);
+      const internalMonthlyBudget = monthlyCapDollarsFromDailyCents(dailyBudgetCents);
       const response = await fetch("/api/onboarding/plan", {
         method: "POST",
         headers: {
@@ -754,7 +838,9 @@ export default function OnboardingPage() {
           service: preparedDraft.offer,
           property_type: preparedDraft.propertyType,
           price_range: preparedDraft.priceRange,
-          budget: preparedDraft.monthlyBudget,
+          daily_budget: dailyBudget,
+          daily_budget_cents: dailyBudgetCents,
+          budget: internalMonthlyBudget,
           goal: preparedDraft.offer,
           idempotencySeed: preparedDraft.idempotencySeed,
         }),
@@ -968,16 +1054,16 @@ export default function OnboardingPage() {
               </div>
 
               <div>
-                <p className="text-sm font-medium text-foreground">Monthly ad budget</p>
+                <p className="text-sm font-medium text-foreground">Daily ad spend budget</p>
                 <div className="mt-3 grid gap-3 sm:grid-cols-4">
-                  {BUDGETS.map((budget) => (
+                  {DAILY_BUDGETS.map((budget) => (
                     <button
                       key={budget.value}
                       type="button"
-                      onClick={() => updateDraft({ monthlyBudget: budget.value })}
+                      onClick={() => updateDraft({ dailyBudget: budget.value })}
                       className={cn(
                         "rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition",
-                        draft.monthlyBudget === budget.value
+                        draft.dailyBudget === budget.value
                           ? "border-cyan-200/28 bg-cyan-300/[0.07] text-cyan-100"
                           : "border-white/10 bg-white/[0.035] text-white/72 hover:border-cyan-200/18",
                       )}
@@ -986,8 +1072,17 @@ export default function OnboardingPage() {
                     </button>
                   ))}
                 </div>
-                <Input className="mt-3" type="number" inputMode="numeric" value={draft.monthlyBudget} onChange={(event) => updateDraft({ monthlyBudget: event.target.value })} placeholder="3000" />
-                {errors.monthlyBudget ? <p className="mt-2 text-sm text-rose-400">{errors.monthlyBudget}</p> : null}
+                <label className="mt-3 block space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-white/48">Custom daily amount</span>
+                  <Input type="number" min={5} max={500} step="1" inputMode="decimal" value={draft.dailyBudget} onChange={(event) => updateDraft({ dailyBudget: event.target.value })} placeholder="30" aria-label="Custom daily ad spend amount" />
+                </label>
+                <p className="mt-2 text-xs leading-5 text-white/52">
+                  Starter keeps you in control. This is a daily media budget input, not a monthly commitment.
+                </p>
+                {formatMonthlyEstimateFromDraft(draft) ? (
+                  <p className="mt-1 text-xs leading-5 text-white/42">{formatMonthlyEstimateFromDraft(draft)}</p>
+                ) : null}
+                {errors.dailyBudget ? <p className="mt-2 text-sm text-rose-400">{errors.dailyBudget}</p> : null}
               </div>
 
               <div className="space-y-3">
@@ -1090,7 +1185,8 @@ export default function OnboardingPage() {
                   ["Market", draft.market],
                   ["Property type", draft.propertyType],
                   ["Price/deal size", draft.priceRange],
-                  ["Budget", `$${draft.monthlyBudget}/month`],
+                  ["Daily ad spend", formatDailyBudgetFromDraft(draft)],
+                  ["30-day estimate", formatMonthlyEstimateFromDraft(draft)?.replace("Estimated monthly media spend: ", "") ?? "Not set"],
                   ["Offer", normalizedDraft.offer],
                   [
                     "Launch access",

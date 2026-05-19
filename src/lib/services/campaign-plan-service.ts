@@ -290,7 +290,12 @@ export type ExpectedOutcomes = {
 
 type PersistedPlanPayload = PersistedCampaignPlanPayload;
 
-function getDefaultCampaignRuntime(): CampaignRuntime {
+function getDefaultCampaignRuntime(dailyBudgetInput?: number | null): CampaignRuntime {
+  const normalizedDailyBudget =
+    typeof dailyBudgetInput === "number" && Number.isFinite(dailyBudgetInput) && dailyBudgetInput > 0
+      ? Number(dailyBudgetInput.toFixed(2))
+      : null;
+
   return {
     status: "built",
     safetyState: "ready",
@@ -301,8 +306,8 @@ function getDefaultCampaignRuntime(): CampaignRuntime {
     campaignId: null,
     adSetId: null,
     adId: null,
-    budgetDaily: null,
-    budgetDailyInput: null,
+    budgetDaily: normalizedDailyBudget !== null ? `${formatCurrency(normalizedDailyBudget)}/day` : null,
+    budgetDailyInput: normalizedDailyBudget,
     lastOptimizationAction: null,
     lastOptimizationAt: null,
     metaPushStatus: "not_pushed",
@@ -1170,12 +1175,14 @@ export async function saveGeneratedCampaignPlan(params: {
   ownerId: string;
   generatedPlan: Awaited<ReturnType<typeof generateCampaignPlan>>;
 }) {
+  const requestedDailyBudget = Number((params.generatedPlan.monthlyBudget / 30).toFixed(2));
+
   return insertCampaignPlan({
     userId: params.userId,
     ownerId: params.ownerId,
     payload: buildPersistedCampaignPlanPayload({
       generatedPlan: params.generatedPlan,
-      runtime: getDefaultCampaignRuntime(),
+      runtime: getDefaultCampaignRuntime(requestedDailyBudget),
     }),
   });
 }

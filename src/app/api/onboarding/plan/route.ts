@@ -24,6 +24,8 @@ type OnboardingPayload = {
   focus?: string;
   property_type?: string;
   price_range?: string;
+  daily_budget?: number | string;
+  daily_budget_cents?: number | string;
   budget?: number | string;
   goal?: string;
   idempotencySeed?: string;
@@ -41,6 +43,8 @@ type SafeOnboardingPayloadLog = {
   propertyType: string;
   priceRange: string;
   budget: number | string | null;
+  dailyBudget: number | string | null;
+  dailyBudgetCentsPresent: boolean;
   goalPresent: boolean;
   servicePresent: boolean;
   idempotencySeedPresent: boolean;
@@ -88,6 +92,12 @@ function buildSafePayloadLog(payload: OnboardingPayload | null): SafeOnboardingP
       typeof payload?.budget === "number" || typeof payload?.budget === "string"
         ? payload.budget
         : null,
+    dailyBudget:
+      typeof payload?.daily_budget === "number" || typeof payload?.daily_budget === "string"
+        ? payload.daily_budget
+        : null,
+    dailyBudgetCentsPresent:
+      typeof payload?.daily_budget_cents === "number" || typeof payload?.daily_budget_cents === "string",
     goalPresent: safeText(payload?.goal).length > 0,
     servicePresent: safeText(payload?.service).length > 0,
     idempotencySeedPresent: safeText(payload?.idempotencySeed).length > 0,
@@ -197,17 +207,97 @@ function normalizeIdempotencyPart(value: unknown) {
   return safeText(value).toLowerCase().replace(/\s+/g, " ");
 }
 
-function toMonthlyBudget(value: unknown) {
+const MIN_DAILY_BUDGET_CENTS = 500;
+const MAX_DAILY_BUDGET_CENTS = 50_000;
+const DEFAULT_DAILY_BUDGET_CENTS = 3_000;
+
+function parseCurrencyCents(value: unknown) {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+
+    const cents = Math.round(value * 100);
+    return Number.isSafeInteger(cents) ? cents : null;
+  }
+
+  const normalized = safeText(value).replace(/,/g, "");
+
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+    return null;
+  }
+
+  const [dollarsPart, centsPart = ""] = normalized.split(".");
+  const dollars = Number.parseInt(dollarsPart, 10);
+  const cents = Number.parseInt(centsPart.padEnd(2, "0"), 10) || 0;
+  const total = dollars * 100 + cents;
+
+  return Number.isSafeInteger(total) ? total : null;
+}
+
+function parseWholeCents(value: unknown) {
+  const numeric =
+    typeof value === "number"
+      ? value
+      : Number.parseInt(safeText(value).replace(/[^0-9]/g, ""), 10);
+
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+
+  const cents = Math.round(numeric);
+
+  return Number.isSafeInteger(cents) ? cents : null;
+}
+
+function toOnboardingBudget(payload: OnboardingPayload | null) {
+  const explicitDailyBudgetCents = parseWholeCents(payload?.daily_budget_cents);
+  const dailyBudgetCents = explicitDailyBudgetCents ?? parseCurrencyCents(payload?.daily_budget);
+
+  if (dailyBudgetCents !== null) {
+    if (dailyBudgetCents < MIN_DAILY_BUDGET_CENTS) {
+      throw new Error("Daily ad spend must be at least $5/day.");
+    }
+
+    if (dailyBudgetCents > MAX_DAILY_BUDGET_CENTS) {
+      throw new Error("Daily ad spend must be $500/day or less for self-serve setup.");
+    }
+
+    return {
+      dailyBudget: dailyBudgetCents / 100,
+      dailyBudgetCents,
+      monthlyBudget: Math.round(dailyBudgetCents * 30) / 100,
+      source: "daily" as const,
+    };
+  }
+
+  return toLegacyMonthlyBudget(payload?.budget);
+}
+
+function toLegacyMonthlyBudget(value: unknown) {
   const numeric =
     typeof value === "number"
       ? value
       : Number.parseFloat((value ?? "").toString().replace(/[^0-9.]/g, ""));
 
   if (!Number.isFinite(numeric) || numeric <= 0) {
-    return 3000;
+    return {
+      dailyBudget: DEFAULT_DAILY_BUDGET_CENTS / 100,
+      dailyBudgetCents: DEFAULT_DAILY_BUDGET_CENTS,
+      monthlyBudget: Math.round(DEFAULT_DAILY_BUDGET_CENTS * 30) / 100,
+      source: "default_daily" as const,
+    };
   }
 
-  return Math.round(numeric);
+  const monthlyBudget = Math.round(numeric);
+  const dailyBudgetCents = Math.max(1, Math.round(monthlyBudget / 30 * 100));
+
+  return {
+    dailyBudget: dailyBudgetCents / 100,
+    dailyBudgetCents,
+    monthlyBudget,
+    source: "legacy_monthly" as const,
+  };
 }
 
 function isRealEstateBusinessType(value: string) {
@@ -597,7 +687,7 @@ export async function POST(req: Request) {
 	            ? "Home Equity Snapshot Report"
 	            : "Curated Home List");
     const service = normalizeOfferForCampaign(rawService, focus).normalizedOffer;
-    const budget = toMonthlyBudget(payload?.budget);
+    const budget = toOnboardingBudget(payload);
     const realEstateMode = isRealEstateBusinessType(businessType) || safeText(payload?.focus).length > 0;
     const normalizedAgentPhone = normalizePhone(agentPhone);
 
@@ -614,7 +704,7 @@ export async function POST(req: Request) {
       businessType: businessName,
       location,
       service: `${focus}|${priceRange}|${service}`,
-      budget,
+      budget: budget.monthlyBudget,
       idempotencySeed: payload?.idempotencySeed,
     });
 
@@ -685,7 +775,7 @@ export async function POST(req: Request) {
             propertyType,
             priceRange,
             goal: service,
-            budget,
+            budget: budget.monthlyBudget,
           })
         : {
             clientName: businessName,
@@ -698,7 +788,7 @@ export async function POST(req: Request) {
               mechanism: service,
             }),
             market: location,
-            monthlyBudget: budget,
+            monthlyBudget: budget.monthlyBudget,
             primaryGoal: `Generate more ${service} leads`,
             timeline: "30 days",
             audience: `${businessName} prospects in ${location}`,
@@ -745,6 +835,10 @@ export async function POST(req: Request) {
         onboarding_focus: focus,
         onboarding_price_range: priceRange,
         onboarding_goal: service,
+        onboarding_daily_budget_cents: budget.dailyBudgetCents,
+        onboarding_daily_budget: budget.dailyBudget,
+        onboarding_monthly_cap_cents: Math.round(budget.monthlyBudget * 100),
+        onboarding_budget_source: budget.source,
       }),
       source: "onboarding_idempotency_metadata",
     });
@@ -772,6 +866,8 @@ export async function POST(req: Request) {
           metadata: {
             mode: focus,
             sourceStage: "new_campaign",
+            dailyBudgetCents: budget.dailyBudgetCents,
+            budgetSource: budget.source,
           },
           idempotencyKey: `onboarding_completed:${idempotencyKey}`,
         }),
@@ -784,6 +880,8 @@ export async function POST(req: Request) {
           metadata: {
             mode: focus,
             sourceStage: "new_campaign",
+            dailyBudgetCents: budget.dailyBudgetCents,
+            budgetSource: budget.source,
           },
           idempotencyKey: `campaign_plan_persisted:${idempotencyKey}`,
         }),
