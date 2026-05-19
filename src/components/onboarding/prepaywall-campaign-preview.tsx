@@ -163,7 +163,7 @@ function offerCta(mode: PrepaywallCampaignMode, offer: string) {
 
   if (/approval|credit|mortgage|pre[-\s]?approved/i.test(normalized)) {
     const scoreMatch = cleanOffer.match(/\b\d{3}\+?\b/);
-    return scoreMatch ? `Check My ${scoreMatch[0].replace(/\+?$/, "+")} Approval Plan` : "Check My Approval Plan";
+    return scoreMatch ? `See ${scoreMatch[0].replace(/\+?$/, "+")} Credit Home Options` : "See Homes I May Qualify For";
   }
 
   if (/guarantee|guaranteed|90\s*days?|sale|sell/i.test(normalized)) {

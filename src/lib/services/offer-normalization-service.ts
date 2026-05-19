@@ -68,21 +68,26 @@ function inferIntent(value: string, mode: OfferCampaignMode): OfferIntent {
 
 function formatApprovalOffer(value: string) {
   const credit = value.match(/\b(\d{3,4})\+?\b/)?.[1];
-  const guaranteed = /guarantee|guaranteed/i.test(value);
-  const prefix = guaranteed ? "Guaranteed Approval" : "Approval";
 
   if (credit) {
-    return `${prefix} for ${credit}+ Credit`;
+    return `Home Options for ${credit}+ Credit`;
   }
 
-  return titleCaseOffer(value.replace(/\bApproval\b/i, prefix));
+  return titleCaseOffer(
+    value
+      .replace(/\bguaranteed?\b/gi, "")
+      .replace(/\bapproval\b/gi, "Qualification")
+      .replace(/\bapproved\b/gi, "Qualified")
+      .replace(/\bpre-approved\b/gi, "Pre-Qualified")
+      .replace(/\bpre-approval\b/gi, "Pre-Qualification"),
+  );
 }
 
 function formatSellerGuaranteeOffer(value: string) {
   const timeline = value.match(/\b(\d{1,3})[-\s]*(?:day|days)\b/i)?.[1];
 
   if (timeline && /guarantee|guaranteed|sale|sell|sold/i.test(value)) {
-    return `Guaranteed Sale in ${timeline} Days`;
+    return `${timeline}-Day Home Sale Plan`;
   }
 
   return titleCaseOffer(value);
@@ -91,7 +96,7 @@ function formatSellerGuaranteeOffer(value: string) {
 function buildCta(intent: OfferIntent, normalizedOffer: string, mode: OfferCampaignMode) {
   if (intent === "approval") {
     const credit = normalizedOffer.match(/\b(\d{3,4})\+/)?.[1];
-    return credit ? `Check My ${credit}+ Approval Plan` : "Check My Approval Plan";
+    return credit ? `See ${credit}+ Credit Home Options` : "See Homes I May Qualify For";
   }
 
   if (intent === "seller_guarantee") {
@@ -108,10 +113,10 @@ function buildCta(intent: OfferIntent, normalizedOffer: string, mode: OfferCampa
 
 function buildCoachNote(intent: OfferIntent, normalizedOffer: string, mode: OfferCampaignMode) {
   if (intent === "approval") {
-    return "Lead with the approval threshold, then ask for the buyer's next step.";
+    return "Lead with qualification clarity, then ask for the buyer's next step.";
   }
   if (intent === "seller_guarantee") {
-    return "Lead with the guarantee first, then support it with timing and market proof.";
+    return "Lead with the sale plan first, then support it with timing and market proof.";
   }
   if (intent === "furnishing") {
     return "This is a strong concrete bonus; keep the outcome visible before the form.";
@@ -128,17 +133,17 @@ function buildAlternates(intent: OfferIntent, normalizedOffer: string, mode: Off
   if (intent === "approval") {
     const credit = normalizedOffer.match(/\b(\d{3,4})\+/)?.[1] ?? "600";
     return [
-      `Guaranteed Approval for ${credit}+ Credit`,
-      `Check Homes You Can Qualify For With ${credit}+ Credit`,
-      `${credit}+ Credit Buyer Approval Plan`,
+      `Home Options for ${credit}+ Credit`,
+      `See Homes You May Qualify For With ${credit}+ Credit`,
+      `${credit}+ Credit Buyer Readiness Plan`,
     ];
   }
 
   if (intent === "seller_guarantee") {
     return [
-      "Guaranteed Sale in 90 Days",
       "90-Day Home Sale Plan",
-      "See If Your Home Qualifies for a Guaranteed Sale",
+      "Seller Timing and Demand Plan",
+      "See If Your Home Fits a 90-Day Sale Plan",
     ];
   }
 

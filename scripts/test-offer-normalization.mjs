@@ -44,8 +44,8 @@ const { normalizeOfferForCampaign } = require("../src/lib/services/offer-normali
 assert.deepEqual(
   pick(normalizeOfferForCampaign("Guaranteed approvl for 600 n up credit", "buyer")),
   {
-    normalizedOffer: "Guaranteed Approval for 600+ Credit",
-    cta: "Check My 600+ Approval Plan",
+    normalizedOffer: "Home Options for 600+ Credit",
+    cta: "See 600+ Credit Home Options",
     intent: "approval",
     changed: true,
   },
@@ -53,11 +53,11 @@ assert.deepEqual(
 
 assert.equal(
   normalizeOfferForCampaign("guarenteed sale in 90 day", "seller").normalizedOffer,
-  "Guaranteed Sale in 90 Days",
+  "90-Day Home Sale Plan",
 );
 assert.equal(
   normalizeOfferForCampaign("600 plus credit", "buyer").normalizedOffer,
-  "Approval for 600+ Credit",
+  "Home Options for 600+ Credit",
 );
 assert.equal(
   normalizeOfferForCampaign("full furnish your entire first floor", "buyer").normalizedOffer,
