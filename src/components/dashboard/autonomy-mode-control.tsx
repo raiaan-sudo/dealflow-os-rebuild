@@ -210,6 +210,7 @@ export function AutonomyModeControl({
               ? `Last execution cycle synced ${new Date(executionSyncedAt).toLocaleString("en-CA", {
                   dateStyle: "medium",
                   timeStyle: "short",
+                  timeZone: "UTC",
                 })}`
               : "No execution cycle has run from live sync yet."}
           </p>

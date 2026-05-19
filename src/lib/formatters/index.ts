@@ -28,6 +28,7 @@ export function formatDate(value: string | Date) {
     month: "short",
     day: "numeric",
     year: "numeric",
+    timeZone: "UTC",
   }).format(new Date(value));
 }
 
@@ -38,5 +39,6 @@ export function formatDateTime(value: string | Date) {
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    timeZone: "UTC",
   }).format(new Date(value));
 }
