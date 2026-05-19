@@ -99,11 +99,11 @@ const DEFAULT_RESOLVE_AFTER_CLEAN_CHECKS = 2;
 const QUEUE_AGE_WATCH_MINUTES = 15;
 const QUEUE_AGE_BLOCKER_MINUTES = 60;
 const PUBLIC_FUNNEL_SMOKE_SLUG = "raiaan-broker-toronto-on-ccbfbfce";
-const DEFAULT_ALIAS_URLS = [
+const DEFAULT_PRODUCT_ALIAS_URLS = [
   "https://app.agentdealflow.io",
-  "https://www.agentdealflow.io",
-  "https://agentdealflow.io",
 ];
+const DEFAULT_MARKETING_WWW_URL = "https://www.agentdealflow.io";
+const DEFAULT_MARKETING_APEX_URL = "https://agentdealflow.io";
 
 function adminOrThrow() {
   const admin = createAdminClient();
@@ -382,16 +382,28 @@ function snapshotRuleIncidents(snapshot: ScaleReadinessSnapshot): ProposedIncide
   return incidents;
 }
 
-function expectedAliasUrls() {
-  const configured = process.env.SCALE_MONITOR_ALIAS_URLS?.trim();
+function csvUrls(value: string | undefined) {
+  return (value ?? "")
+    .split(",")
+    .map((entry) => entry.trim().replace(/\/$/, ""))
+    .filter(Boolean);
+}
+
+function expectedProductAliasUrls() {
+  const configured = process.env.SCALE_MONITOR_PRODUCT_ALIAS_URLS?.trim();
   if (!configured) {
-    return DEFAULT_ALIAS_URLS;
+    return DEFAULT_PRODUCT_ALIAS_URLS;
   }
 
-  return configured
-    .split(",")
-    .map((value) => value.trim().replace(/\/$/, ""))
-    .filter(Boolean);
+  return csvUrls(configured);
+}
+
+function marketingWwwUrl() {
+  return (process.env.SCALE_MONITOR_MARKETING_WWW_URL?.trim() || DEFAULT_MARKETING_WWW_URL).replace(/\/$/, "");
+}
+
+function marketingApexUrl() {
+  return (process.env.SCALE_MONITOR_MARKETING_APEX_URL?.trim() || DEFAULT_MARKETING_APEX_URL).replace(/\/$/, "");
 }
 
 async function smokeFetch(url: string, expected: string, ok: (response: Response, body: string) => boolean): Promise<SmokeCheck> {
@@ -428,8 +440,10 @@ export async function runSafeProductionSmokeSummary(): Promise<SmokeSummary> {
     return { skipped: true, expectedDeployId: null, checks: [] };
   }
 
-  const aliases = expectedAliasUrls();
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL?.trim() || aliases[0] || "https://app.agentdealflow.io").replace(/\/$/, "");
+  const productAliases = expectedProductAliasUrls();
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL?.trim() || productAliases[0] || "https://app.agentdealflow.io").replace(/\/$/, "");
+  const wwwUrl = marketingWwwUrl();
+  const apexUrl = marketingApexUrl();
   const expectedDeployId =
     process.env.SCALE_MONITOR_EXPECTED_DEPLOY_ID?.trim() ||
     process.env.VERCEL_DEPLOYMENT_ID?.trim() ||
@@ -437,14 +451,22 @@ export async function runSafeProductionSmokeSummary(): Promise<SmokeSummary> {
     null;
   const checks: SmokeCheck[] = [];
 
-  for (const alias of aliases) {
-    checks.push(await smokeFetch(`${alias}/login`, "200 login or redirect", (response) => [200, 307, 308].includes(response.status)));
-    if (expectedDeployId && checks[checks.length - 1]?.marker && checks[checks.length - 1].marker !== expectedDeployId) {
-      checks[checks.length - 1].ok = false;
-      checks[checks.length - 1].expected = `data-dpl-id ${expectedDeployId}`;
+  for (const alias of productAliases) {
+    for (const path of ["/", "/login"]) {
+      checks.push(await smokeFetch(`${alias}${path}`, "product app route healthy", (response) => [200, 307, 308].includes(response.status)));
+      if (expectedDeployId && checks[checks.length - 1]?.marker && checks[checks.length - 1].marker !== expectedDeployId) {
+        checks[checks.length - 1].ok = false;
+        checks[checks.length - 1].expected = `product app data-dpl-id ${expectedDeployId}`;
+      }
     }
   }
 
+  checks.push(await smokeFetch(wwwUrl, "marketing www 200", (response, body) =>
+    response.status === 200 && /AgentDealFlow|DealFlow|Generate Clients|Build, launch/i.test(body),
+  ));
+  checks.push(await smokeFetch(apexUrl, "marketing apex redirects to www", (response) =>
+    [301, 302, 303, 307, 308].includes(response.status) && response.headers.get("location")?.includes("www.agentdealflow.io") === true,
+  ));
   checks.push(await smokeFetch(`${appUrl}/signup`, "200/307 signup", (response) => [200, 307, 308].includes(response.status)));
   checks.push(await smokeFetch(`${appUrl}/dashboard`, "unauth dashboard redirects", (response) => [302, 303, 307, 308].includes(response.status)));
   checks.push(await smokeFetch(`${appUrl}/f/${PUBLIC_FUNNEL_SMOKE_SLUG}`, "public funnel 200", (response) => response.status === 200));
@@ -461,7 +483,7 @@ function smokeIncidents(smoke: SmokeSummary): ProposedIncident[] {
     .filter((check) => !check.ok)
     .map((check) => ({
       incidentKey: `smoke:${safeKey(check.url)}`,
-      subsystem: check.expected.includes("data-dpl-id") ? "alias_deploy" : "production_smoke",
+      subsystem: check.expected.includes("data-dpl-id") || check.expected.includes("marketing") ? "alias_deploy" : "production_smoke",
       severity: "p1" as const,
       title: `Safe production smoke failed: ${check.expected}`,
       evidence: {

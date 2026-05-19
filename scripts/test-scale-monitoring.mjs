@@ -55,6 +55,10 @@ assert.match(routeSecurity, /assertInternalOperatorAccess/, "dynamic admin incid
 assert.match(service, /loadScaleReadinessSnapshot/, "monitor must consume scale report data");
 assert.match(service, /loadDurableOperatorDebtSummary/, "monitor must consume operator debt data");
 assert.match(service, /runSafeProductionSmokeSummary/, "monitor must include safe production smoke");
+assert.match(service, /SCALE_MONITOR_PRODUCT_ALIAS_URLS/, "product alias smoke must be scoped to app aliases");
+assert.doesNotMatch(service, /SCALE_MONITOR_ALIAS_URLS/, "legacy mixed alias env must not drive product deploy checks");
+assert.match(service, /SCALE_MONITOR_MARKETING_WWW_URL/, "marketing www contract must be smoke-tested separately");
+assert.match(service, /SCALE_MONITOR_MARKETING_APEX_URL/, "marketing apex redirect contract must be smoke-tested separately");
 assert.match(service, /activeBlockers/, "active blockers must create incidents");
 assert.match(service, /currentWatch/, "current watch items must create incidents");
 assert.match(service, /resolveCleanIncidents/, "clean checks must auto-resolve incidents");
@@ -81,6 +85,9 @@ assert.match(creditCheckout, /billing_checkout_safe_mode/, "credit checkout must
 assert.match(layout, /data-dpl-id/, "root layout must expose a safe deploy marker");
 assert.match(envExample, /BILLING_CHECKOUT_SAFE_MODE=false/, "billing safe-mode env must be documented");
 assert.match(envExample, /SCALE_MONITOR_SMOKE_ENABLED=true/, "scale monitor smoke env must be documented");
+assert.match(envExample, /SCALE_MONITOR_PRODUCT_ALIAS_URLS=https:\/\/app\.agentdealflow\.io/, "product alias env must avoid marketing aliases by default");
+assert.match(envExample, /SCALE_MONITOR_MARKETING_WWW_URL=https:\/\/www\.agentdealflow\.io/, "marketing www env must be documented");
+assert.match(envExample, /SCALE_MONITOR_MARKETING_APEX_URL=https:\/\/agentdealflow\.io/, "marketing apex env must be documented");
 assert.match(schemaCheck, /20260519023000_create_scale_monitor_incidents\.sql/, "schema check must require the incident migration");
 assert.match(schemaCheck, /scale_monitor_incidents table check/, "schema check must probe incidents table");
 assert.match(schemaCheck, /scale_monitor_runs table check/, "schema check must probe monitor runs table");
