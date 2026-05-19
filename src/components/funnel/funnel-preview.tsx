@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { CustomerVideoPlayer } from "@/components/campaign/customer-video-player";
 import type { CampaignPlan, ExpectedOutcomes } from "@/lib/services/campaign-plan-service";
 
 type FunnelPreviewProps = {
@@ -201,13 +202,12 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
           <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">{section.title}</h3>
           <div className="mt-5 overflow-hidden rounded-[24px] border border-white/10 bg-black/50">
             {media?.url ? (
-              <video
+              <CustomerVideoPlayer
                 src={media.url}
-                controls
+                title={section.title}
                 controlsList="nodownload noplaybackrate"
                 disablePictureInPicture
-                poster={media?.thumbnailUrl ?? undefined}
-                className="aspect-video w-full bg-black object-cover"
+                videoClassName="aspect-video w-full bg-black object-cover"
               />
             ) : media?.thumbnailUrl ? (
               <div className="relative aspect-video w-full">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { HelpCircle, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchWithRetry } from "@/lib/http/fetch-with-retry";
@@ -35,23 +35,8 @@ function getVisibleDeploymentId() {
 
 export function SupportWidget({ activeCampaignId }: SupportWidgetProps) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const queryCampaignId = searchParams?.get("campaignId");
-  const campaignId = queryCampaignId || activeCampaignId || null;
-  const mobileCriticalFlowPaths = [
-    "/onboarding",
-    "/builder",
-    "/build",
-    "/paywall",
-    "/unlock",
-    "/dashboard",
-    "/preview",
-    "/launch",
-    "/launching",
-    "/launch-success",
-  ];
+  const campaignId = activeCampaignId || null;
   const hideFloatingButton = pathname?.startsWith("/campaign-built");
-  const hideOnMobileCriticalFlow = mobileCriticalFlowPaths.some((path) => pathname === path || pathname?.startsWith(`${path}/`));
   const compactFloatingButton = [
     "/onboarding",
     "/builder",
@@ -150,7 +135,7 @@ export function SupportWidget({ activeCampaignId }: SupportWidgetProps) {
     <>
       {!hideFloatingButton ? (
         <div
-          className={`fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-40 ${hideOnMobileCriticalFlow ? "hidden sm:block" : ""}`}
+          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-40"
         >
           <Button
             type="button"

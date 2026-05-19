@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Settings } from "lucide-react";
 import { getInitials } from "@/lib/utils";
 import { SignOutButton } from "@/components/layout/sign-out-button";
@@ -26,8 +26,7 @@ function buildCampaignScopedHref(path: string, campaignId?: string | null) {
 
 export function TopBar({ userName, userEmail, organizationName, activeCampaignId }: TopBarProps) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const campaignId = searchParams.get("campaignId") ?? activeCampaignId ?? null;
+  const campaignId = activeCampaignId ?? null;
 
   if (pathname.startsWith("/preview")) {
     return null;

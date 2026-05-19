@@ -30,6 +30,7 @@ import {
   type BillingLaunchOverrideSource,
   type BillingLifecycleState,
 } from "@/lib/services/campaign-entitlements";
+import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { queueSubscriptionSuspensionJobsForOrganization } from "@/lib/services/subscription-suspension-service";
 import type { Database, Json } from "@/lib/supabase/types";
 
@@ -746,6 +747,18 @@ export async function createBillingCheckoutSession(params: {
 
   if (!priceId) {
     throw new ApiError(503, "The selected plan is not configured in Stripe.", "stripe_price_missing");
+  }
+
+  if (requestedCampaignId) {
+    const requestedCampaign = await getCampaignById(requestedCampaignId).catch(() => null);
+
+    if (!requestedCampaign) {
+      throw new ApiError(
+        400,
+        "The selected campaign is no longer available for checkout.",
+        "checkout_campaign_invalid",
+      );
+    }
   }
 
   const { data: existingSubscription, error: existingSubscriptionError } = await billingClient

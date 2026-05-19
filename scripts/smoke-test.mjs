@@ -545,8 +545,13 @@ function runOfflineChecks() {
   assertExcludes(appSidebar, "AI live", "Sidebar live-delivery badge removed", "authenticated shell avoids live-delivery wording while Meta objects are paused");
   assertIncludes(topBar, "buildCampaignScopedHref", "Mobile campaign-scoped navigation", "mobile product navigation and settings preserve the active campaign id");
   assertIncludes(paywallAccess, "const resolvedRecord = storedRecord ?? latestRecord", "Active campaign preference", "campaign resolution keeps the stored active campaign before falling back to latest");
+  assertExcludes(paywallAccess, /campaignId: requestedCampaignId,\s*record: null/s, "Invalid campaign URL ignored", "unowned or stale query campaign ids cannot become active campaign context");
+  assertExcludes(appSidebar, "useSearchParams", "Sidebar ignores raw campaign query", "sidebar navigation uses the server-resolved active campaign id");
+  assertExcludes(topBar, "useSearchParams", "Top bar ignores raw campaign query", "mobile navigation uses the server-resolved active campaign id");
   assertIncludes(appLayout, "pb-20", "Workspace support safe space", "workspace content reserves bottom room for the support widget");
   assertIncludes(appLayout, "SupportWidget", "Authenticated support widget", "authenticated app shell mounts the client-facing support button");
+  assertExcludes(supportWidget, "useSearchParams", "Support ignores raw campaign query", "support ticket context uses the server-resolved active campaign id");
+  assertExcludes(supportWidget, "hidden sm:block", "Support mobile visibility", "support remains available on mobile critical flows");
   assertIncludes(supportWidget, "aria-modal=\"true\"", "Support dialog accessibility", "support modal is marked as a dialog");
   assertIncludes(supportWidget, "max-h-[calc(100dvh-2rem)]", "Support modal mobile fit", "support modal can scroll within short viewports");
   assertIncludes(supportWidget, "/api/support/ticket", "Support ticket route usage", "support widget sends requests to the Freshdesk-backed support route");
@@ -688,7 +693,8 @@ function runOfflineChecks() {
   assertIncludes(rateLimitHelpers, "getHashedRateLimitIdentifier(getRequestIp(request))", "Rate limit fallback privacy", "default rate-limit keys hash fallback IP addresses before logging or storage");
   assertIncludes(leadRoute, "lead_spam_rejected", "Lead capture honeypot/timing guard", "public lead capture rejects obvious bot submissions");
   assertIncludes(leadRoute, "TURNSTILE_SECRET_KEY", "Lead capture Turnstile server gate", "Cloudflare Turnstile verification is enforced when the secret env var is configured");
-  assertIncludes(leadRoute, "ALLOW_PUBLIC_LEAD_NO_TURNSTILE", "Lead capture Turnstile production guard", "production lead capture fails closed if Turnstile is not configured unless break-glass is set");
+  assertIncludes(leadRoute, "return process.env.NODE_ENV !== \"production\";", "Lead capture Turnstile production guard", "production lead capture fails closed if Turnstile is not configured");
+  assertExcludes(leadRoute, "ALLOW_PUBLIC_LEAD_NO_TURNSTILE", "Lead capture public bypass removed", "production public lead capture cannot bypass Turnstile through an env flag");
   assertIncludes(leadRoute, "https://challenges.cloudflare.com/turnstile/v0/siteverify", "Lead capture Turnstile siteverify", "public lead capture verifies Turnstile tokens server-side");
   assertIncludes(leadForm, "NEXT_PUBLIC_TURNSTILE_SITE_KEY", "Lead form Turnstile client gate", "public lead form renders Turnstile only when the public site key is configured");
   assertIncludes(leadForm, "submitInFlightRef", "Lead form duplicate submit guard", "public lead form synchronously blocks rapid duplicate submits");
@@ -829,6 +835,7 @@ function runOfflineChecks() {
   assertExcludes(billingPlans, "priceLabel: \"$97/mo\"", "Legacy Starter price removed", "old Starter pricing is not treated as the public pricing contract");
   assertIncludes(billingPlans, "meta_launch: \"starter\"", "Starter Meta launch access", "Starter plan grants Meta launch access while Pro remains autonomy tier");
   assertIncludes(billingPlans, "autonomy_access: \"pro\"", "Pro autonomy access", "autonomous operator access remains Pro-gated");
+  assertIncludes("src/app/api/autonomy/_shared.ts", "assertCampaignCanRunAutonomy(plan.id)", "Autonomy API entitlement guard", "autonomy analysis cannot run unless the campaign has Pro autonomy access");
   assertIncludes(billingCheckoutRoute, "campaignId", "Checkout campaign handoff", "billing checkout accepts campaign id for post-checkout dashboard routing");
   assertIncludes(billingPortalRoute, "assertSameOriginRequest", "Billing portal same-origin guard", "portal route rejects cross-site POSTs");
   assertIncludes(stripeProvider, "create_billing_portal_session", "Stripe portal provider support", "billing portal sessions are created through the Stripe provider");
@@ -839,6 +846,7 @@ function runOfflineChecks() {
   assertIncludes(billingService, "billing_checkout_session_reused", "Stripe checkout duplicate-session reuse", "recent open checkout sessions are reused instead of duplicated");
   assertIncludes(billingService, "last_checkout_campaign_id", "Stripe checkout campaign-scoped reuse", "recent open checkout sessions are reused only for the same campaign id");
   assertIncludes(billingService, "reusableSession.metadata?.campaign_id", "Stripe checkout session metadata guard", "stored checkout sessions must match requested campaign metadata before reuse");
+  assertIncludes(billingService, "checkout_campaign_invalid", "Stripe checkout campaign ownership guard", "checkout rejects stale or unowned campaign ids before creating Stripe sessions");
   assertIncludes(billingService, "requestedCampaignId ?? \"workspace\"", "Stripe checkout idempotency campaign scope", "subscription checkout idempotency keys are scoped by campaign id");
   assertIncludes(billingService, "checkout_session_stale", "Stripe stale checkout reconciliation guard", "older parallel checkout sessions cannot unlock access");
   assertIncludes(envHelpers, "ALLOW_BILLING_ADMIN_OVERRIDE", "Billing admin override env gate", "internal launch override requires explicit env opt-in");

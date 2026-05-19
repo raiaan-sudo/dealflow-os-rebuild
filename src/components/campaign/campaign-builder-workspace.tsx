@@ -15,6 +15,7 @@ import {
 } from "@/components/campaign/builder/builder-panels";
 import { BuilderNavigation } from "@/components/campaign/builder/builder-navigation";
 import { CampaignPublishPanel } from "@/components/campaign/campaign-publish-panel";
+import { CustomerVideoPlayer } from "@/components/campaign/customer-video-player";
 import { CreativeStrategySummary } from "@/components/campaign/creative-strategy-summary";
 import { THEME_PRESET_LIBRARY } from "@/components/campaign/builder/funnel-editor-shared";
 import type {
@@ -587,12 +588,12 @@ function VideoStoryboardPreview({
         <div className="mt-4 rounded-[20px] border border-primary/15 bg-primary/[0.05] p-4">
           <p className="text-xs uppercase tracking-[0.18em] text-primary/80">Video preview</p>
           <div className="mt-3 overflow-hidden rounded-[18px] border border-white/8 bg-black/30">
-            <video
+            <CustomerVideoPlayer
               src={videoUrl}
-              controls
               controlsList="nodownload noplaybackrate"
               disablePictureInPicture
-              className="aspect-[9/16] w-full bg-black object-cover"
+              title={title}
+              videoClassName="aspect-[9/16] w-full bg-black object-cover"
             />
           </div>
         </div>

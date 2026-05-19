@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { CustomerVideoPlayer } from "@/components/campaign/customer-video-player";
 import { CreativeOpsQaCard } from "@/components/campaign/creative-ops-qa-card";
 import { StaticAdComposedPreview } from "@/components/campaign/static-ad-composed-preview";
 import { generateCreativeCopyAssistant, improveCopyText, type CreativeCopyAssistantOutput } from "@/lib/services/copy-engine";
@@ -255,13 +256,12 @@ const FunnelLivePreview = memo(function FunnelLivePreview({
           <h3 className={`mt-3 text-2xl font-semibold ${typography.displayClass}`}>{section.title}</h3>
           <div className="mt-5 overflow-hidden rounded-[24px] border border-white/10 bg-black/50">
             {section.media?.url ? (
-              <video
+              <CustomerVideoPlayer
                 src={section.media.url}
-                controls
                 controlsList="nodownload noplaybackrate"
                 disablePictureInPicture
-                poster={section.media.thumbnailUrl ?? undefined}
-                className="aspect-video w-full bg-black object-cover"
+                title={section.title}
+                videoClassName="aspect-video w-full bg-black object-cover"
               />
             ) : section.media?.thumbnailUrl ? (
               <div className="relative aspect-video w-full">
@@ -576,12 +576,12 @@ const VideoStoryboardPreview = memo(function VideoStoryboardPreview({
         <div className="mt-4 rounded-[20px] border border-primary/15 bg-primary/[0.05] p-4">
           <p className="text-xs uppercase tracking-[0.18em] text-primary/80">Video preview</p>
           <div className="mt-3 overflow-hidden rounded-[18px] border border-white/8 bg-black/30">
-            <video
+            <CustomerVideoPlayer
               src={videoUrl}
-              controls
               controlsList="nodownload noplaybackrate"
               disablePictureInPicture
-              className="aspect-[9/16] w-full bg-black object-cover"
+              title={title}
+              videoClassName="aspect-[9/16] w-full bg-black object-cover"
             />
           </div>
         </div>

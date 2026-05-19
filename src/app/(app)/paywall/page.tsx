@@ -108,7 +108,7 @@ export default async function PaywallPage({
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Choose launch access</p>
               <h2 className="mt-2 text-2xl font-semibold">Pick how DealFlow should optimize this launch</h2>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
-                Starter gives you recommended optimizations to approve and apply. Pro keeps the launch fully covered with self-optimizing checks. Paid image or video generation remains credit-gated after activation.
+                Starter gives you recommended optimizations to approve and apply. Pro adds recommendation-only autonomy checks and richer monitoring while execution stays approval-gated during beta. Paid image or video generation remains credit-gated after activation.
               </p>
             </div>
             <div className="mt-5">

@@ -65,6 +65,7 @@ assert.match(systemJobSource, /safeNotifyAssignedAgentOfNewLead/);
 assert.match(systemJobSource, /safeSendMetaLeadConversion/);
 assert.match(systemJobSource, /sideEffectJobId/);
 assert.match(systemJobSource, /queueLeadSideEffectsJob\({[\s\S]*requestId: payload\.requestId[\s\S]*metaConversion:/);
-assert.match(leadCaptureSource, /ALLOW_PUBLIC_LEAD_NO_TURNSTILE/);
+assert.match(leadCaptureSource, /return process\.env\.NODE_ENV !== "production";/);
+assert.doesNotMatch(leadCaptureSource, /ALLOW_PUBLIC_LEAD_NO_TURNSTILE/);
 
 console.log("Internal SMS notification static tests passed.");

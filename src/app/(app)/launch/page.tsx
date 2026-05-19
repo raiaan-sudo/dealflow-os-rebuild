@@ -579,11 +579,11 @@ export default async function LaunchAliasPage({
             <Link
               href={
                 savedRecord?.campaign.id
-                  ? `/builder?campaignId=${encodeURIComponent(savedRecord.campaign.id)}`
-                  : "/builder"
+                  ? `/build/creatives?campaignId=${encodeURIComponent(savedRecord.campaign.id)}`
+                  : "/build/creatives"
               }
             >
-              Back to build
+              Open Creative Studio
             </Link>
           </Button>
         </div>

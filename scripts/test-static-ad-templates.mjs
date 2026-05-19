@@ -6,6 +6,15 @@ import { createRequire } from "node:module";
 
 const repoRoot = process.cwd();
 const originalResolve = Module._resolveFilename;
+const originalLoad = Module._load;
+
+Module._load = function load(request, parent, isMain) {
+  if (request === "server-only") {
+    return {};
+  }
+
+  return originalLoad.call(this, request, parent, isMain);
+};
 
 Module._resolveFilename = function resolveFilename(request, parent, isMain, options) {
   if (request.startsWith("@/")) {

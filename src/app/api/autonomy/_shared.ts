@@ -10,6 +10,7 @@ import {
 } from "@/lib/services/autonomy-engine";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
+import { assertCampaignCanRunAutonomy } from "@/lib/services/campaign-entitlements";
 import { getLatestCampaignPlan } from "@/lib/services/campaign-plan-service";
 import {
   getLatestMetaCampaignSyncSnapshot,
@@ -126,6 +127,8 @@ export async function evaluateAutonomy(campaignId?: string | null) {
   if (!plan) {
     throw new ApiError(404, "No campaign is available for autonomy analysis.", "campaign_not_found");
   }
+
+  await assertCampaignCanRunAutonomy(plan.id);
 
   const syncSnapshot = plan.runtime.campaignId
     ? await getMetaCampaignSyncSnapshotForCampaign({

@@ -596,6 +596,10 @@ const creativeWizardSource = fs.readFileSync("src/app/(app)/build/creatives/crea
 const previewSource = fs.readFileSync("src/app/(app)/preview/page.tsx", "utf8");
 const launchSource = fs.readFileSync("src/app/(app)/launch/page.tsx", "utf8");
 const customerVideoPlayerSource = fs.readFileSync("src/components/campaign/customer-video-player.tsx", "utf8");
+const paywallAccessSource = fs.readFileSync("src/lib/paywall-access.ts", "utf8");
+const funnelPreviewSource = fs.readFileSync("src/components/funnel/funnel-preview.tsx", "utf8");
+const builderPanelsSource = fs.readFileSync("src/components/campaign/builder/builder-panels.tsx", "utf8");
+const campaignBuilderWorkspaceSource = fs.readFileSync("src/components/campaign/campaign-builder-workspace.tsx", "utf8");
 
 for (const [name, source] of [
   ["Creative Studio", creativeWizardSource],
@@ -608,21 +612,28 @@ for (const [name, source] of [
 }
 assert.match(customerVideoPlayerSource, /controls=\{false\}/, "customer video player must not expose native video controls");
 assert.match(customerVideoPlayerSource, /onContextMenu=\{\(event\) => event\.preventDefault\(\)\}/, "customer video player suppresses context-menu raw file actions");
+for (const [name, source] of [
+  ["Funnel preview", funnelPreviewSource],
+  ["Builder panels", builderPanelsSource],
+  ["Campaign builder workspace", campaignBuilderWorkspaceSource],
+]) {
+  assert.match(source, /CustomerVideoPlayer/, `${name} must use the customer video player`);
+  assert.doesNotMatch(source, /<video[\s\S]{0,260}\bcontrols\b(?!List)/, `${name} must not render native video controls`);
+}
 assert.match(creativeWizardSource, /draft concept\{draftCreatives\.length === 1 \? "" : "s"\} need regeneration/, "Creative Studio separates draft concepts from launch-ready carousel");
 assert.match(creativeWizardSource, /selectedCount=\{selected \? selectedCreatives\.length : null\}/, "retry cards cannot inherit selected count badges");
 assert.match(creativeWizardSource, /selectedUgcVideoIds/, "Creative Studio persists selected UGC launch video IDs");
 assert.match(creativeWizardSource, /Select UGC for launch/, "Creative Studio lets UGC videos be selected like static creatives");
 assert.match(previewSource, /getSelectedUgcVideoIdsFromPlan/, "Preview consumes persisted selected UGC video IDs");
+assert.match(previewSource, /selectedUgcVideoIds\.length > 0 \? "Selected UGC video ads" : "UGC video options"/, "Preview labels unselected UGC fallback as options, not selected ads");
 assert.match(launchSource, /getSelectedUgcVideoIdsFromPlan/, "Launch consumes persisted selected UGC video IDs");
+assert.match(launchSource, /\/build\/creatives\?campaignId=/, "Launch missing-creative CTA must return to Creative Studio");
 
 assert.doesNotMatch(creativeWizardSource, /Ready to render/);
 assert.doesNotMatch(creativeWizardSource, /Video preview concept is ready/);
 assert.doesNotMatch(creativeWizardSource, /Video concept is ready/);
-assert.match(
-  fs.readFileSync("src/lib/paywall-access.ts", "utf8"),
-  /if \(requestedCampaignId\) \{\s*return \{\s*campaignId: requestedCampaignId,\s*record: null,/s,
-  "requested campaign IDs must not silently fall back to another owner's campaign",
-);
+assert.doesNotMatch(paywallAccessSource, /campaignId: requestedCampaignId,\s*record: null/s, "invalid requested campaign IDs must not become active campaign context");
+assert.match(paywallAccessSource, /campaignId: resolvedRecord\?\.campaign\.id \?\? null/, "campaign context must come from an owned resolved record");
 assert.match(
   fs.readFileSync("src/lib/services/campaign-persistence.ts", "utf8"),
   /selected_static_asset_ids: generationPreferredStaticAssetIds/,

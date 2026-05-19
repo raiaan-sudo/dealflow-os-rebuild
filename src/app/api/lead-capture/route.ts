@@ -91,7 +91,7 @@ function getTurnstileSecret() {
 }
 
 function canBypassTurnstileSecret() {
-  return process.env.NODE_ENV !== "production" || process.env.ALLOW_PUBLIC_LEAD_NO_TURNSTILE === "true";
+  return process.env.NODE_ENV !== "production";
 }
 
 function timingSafeTextEquals(candidate: string | null, expected: string) {

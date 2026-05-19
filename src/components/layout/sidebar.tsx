@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { ChevronRight, BarChart3, Eye, PanelLeft, Rocket, Wand2 } from "lucide-react";
 import { adminNavigation } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
@@ -28,8 +28,7 @@ function buildCampaignScopedHref(path: string, campaignId?: string | null) {
 
 export function AppSidebar({ organizationName, isAdmin, stage, activeCampaignId }: AppSidebarProps) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const campaignId = searchParams.get("campaignId") ?? activeCampaignId ?? null;
+  const campaignId = activeCampaignId ?? null;
   const stageState: Record<CampaignExperienceStage, { label: string; copy: string }> = {
     draft: { label: "Build", copy: "Complete setup and generate the campaign." },
     built: { label: "Build", copy: "Tune the campaign, then review the preview." },

@@ -421,6 +421,20 @@ export async function assertCampaignCanRunOptimization(campaignId: string) {
   );
 }
 
+export async function assertCampaignCanRunAutonomy(campaignId: string) {
+  const entitlements = await getCampaignEntitlementsForCampaign(campaignId);
+
+  if (entitlements.canRunAutonomy) {
+    return entitlements;
+  }
+
+  throw new ApiError(
+    402,
+    "Autonomous campaign operation requires an active Pro subscription.",
+    "billing_autonomy_payment_required",
+  );
+}
+
 export async function assertCampaignCanPublishFunnel(campaignId: string) {
   const entitlements = await getCampaignEntitlementsForCampaign(campaignId);
 

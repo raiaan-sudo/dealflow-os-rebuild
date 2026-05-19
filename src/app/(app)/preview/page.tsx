@@ -304,7 +304,7 @@ export default async function PreviewPage({
           {displayVideoAds.length > 0 ? (
             <section className="mt-5 border-t border-white/10 pt-5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Selected UGC video ads
+                {selectedUgcVideoIds.length > 0 ? "Selected UGC video ads" : "UGC video options"}
               </p>
               <div className="mt-3 grid gap-3">
                 {displayVideoAds.map((video, index) => (

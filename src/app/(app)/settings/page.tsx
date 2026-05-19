@@ -8,6 +8,7 @@ import { PageShell } from "@/components/ui/page-shell";
 import { getAppContext } from "@/lib/services/app-context";
 import { getBillingSummary, getBillingSummaryForCampaign } from "@/lib/services/billing-service";
 import { getCreditSummaryForCurrentUser } from "@/lib/services/credit-service";
+import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 
 type SettingsBillingSummary =
   | Awaited<ReturnType<typeof getBillingSummary>>
@@ -141,10 +142,14 @@ export default async function SettingsPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const campaignId =
+  const requestedCampaignId =
     resolvedSearchParams && typeof resolvedSearchParams.campaignId === "string"
       ? resolvedSearchParams.campaignId
       : undefined;
+  const resolvedCampaign = requestedCampaignId
+    ? await resolveActiveCampaignRecord(requestedCampaignId).catch(() => null)
+    : null;
+  const campaignId = resolvedCampaign?.record?.campaign.id;
   const [billing, credits, appContext] = await Promise.all([
     campaignId
       ? getBillingSummaryForCampaign(campaignId).catch(() => null)

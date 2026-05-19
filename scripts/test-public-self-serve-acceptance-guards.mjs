@@ -61,6 +61,9 @@ assert.match(previewPage, /Media review needed/, "preview must keep launch CTA d
 
 assert.match(launchPage, /Saved creative set missing/, "launch must still block when no saved creative set exists");
 assert.match(launchPage, /selectedCreativeMediaReady/, "launch must keep selected creative media readiness gate");
+assert.match(launchPage, /Open Creative Studio/, "launch missing-creative CTA copy must match the Creative Studio target");
+assert.match(launchPage, /\/build\/creatives\?campaignId=/, "launch missing-creative CTA must return to Creative Studio");
+assert.doesNotMatch(launchPage, /\/builder\?campaignId=\$\{encodeURIComponent\(savedRecord\.campaign\.id\)\}/, "launch missing-creative CTA must not send users back to the generic builder");
 assert.match(selectAdRoute, /!isLaunchReadyStaticCreative\(ad\)/, "review-only or placeholder static media must not be selectable for launch");
 assert.match(selectAdRoute, /selected_static_minimum_not_met/, "launch selection must still require the static creative floor");
 

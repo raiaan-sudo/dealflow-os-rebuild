@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { resolvePreferredCampaignId } from "@/lib/campaign-selection";
 import { getBillingSummary } from "@/lib/services/billing-service";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import {
@@ -56,13 +55,6 @@ export async function resolveActiveCampaignRecord(
     };
   }
 
-  if (requestedCampaignId) {
-    return {
-      campaignId: requestedCampaignId,
-      record: null,
-    };
-  }
-
   const storedRecord = storedCampaignId
     ? await getCampaignById(storedCampaignId).catch(() => null)
     : null;
@@ -71,11 +63,7 @@ export async function resolveActiveCampaignRecord(
   const resolvedRecord = storedRecord ?? latestRecord;
 
   return {
-    campaignId: resolvePreferredCampaignId({
-      requestedCampaignId,
-      storedCampaignId: resolvedRecord?.campaign.id ?? null,
-      fallbackCampaignId: latestRecord?.campaign.id ?? null,
-    }),
+    campaignId: resolvedRecord?.campaign.id ?? null,
     record: resolvedRecord,
   };
 }
