@@ -867,7 +867,8 @@ function runOfflineChecks() {
   assertExcludes(billingPlans, "priceLabel: \"$97/mo\"", "Legacy Starter price removed", "old Starter pricing is not treated as the public pricing contract");
   assertIncludes(billingPlans, "meta_launch: \"starter\"", "Starter Meta launch access", "Starter plan grants Meta launch access while Pro remains autonomy tier");
   assertIncludes(billingPlans, "autonomy_access: \"pro\"", "Pro autonomy access", "autonomous operator access remains Pro-gated");
-  assertIncludes("src/app/api/autonomy/_shared.ts", "assertCampaignCanRunAutonomy(plan.id)", "Autonomy API entitlement guard", "autonomy analysis cannot run unless the campaign has Pro autonomy access");
+  assertIncludes("src/app/api/autonomy/_shared.ts", "getCampaignEntitlementsForCampaign(plan.id)", "Autonomy API entitlement guard", "autonomy recommendations load entitlements before selecting recommendation-only or Pro execution mode");
+  assertIncludes("src/app/api/autonomy/run/route.ts", "assertAutonomyExecutionAccess(result.campaignId)", "Autonomy run entitlement guard", "autonomy execution cannot run unless the campaign has Pro autonomy access");
   assertIncludes(billingCheckoutRoute, "campaignId", "Checkout campaign handoff", "billing checkout accepts campaign id for post-checkout dashboard routing");
   assertIncludes(billingPortalRoute, "assertSameOriginRequest", "Billing portal same-origin guard", "portal route rejects cross-site POSTs");
   assertIncludes(stripeProvider, "create_billing_portal_session", "Stripe portal provider support", "billing portal sessions are created through the Stripe provider");

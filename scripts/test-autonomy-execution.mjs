@@ -84,7 +84,12 @@ assert.match(service, /mode === "auto" \|\| params\.mode === "autonomous"/, "aut
 assert.match(service, /writtenBeforeMutation: status === "eligible"/, "rollback payload must be marked before eligible mutation");
 assert.match(service, /env\[AUTONOMY_DRY_RUN_ONLY_ENV\] !== "false"[\s\S]*return false/, "dry-run default must block execution");
 
-assert.match(shared, /assertCampaignCanRunAutonomy\(plan\.id\)/, "autonomy evaluation must be Pro-entitlement gated");
+assert.match(shared, /getCampaignEntitlementsForCampaign\(plan\.id\)/, "autonomy evaluation must load plan entitlements");
+assert.match(shared, /effectiveMode = entitlements\.canRunAutonomy \? requestedMode : "manual"/, "starter autonomy evaluation must force manual recommendation mode");
+assert.match(shared, /customerAutopilotEnabled/, "autopilot execution must require customer settings");
+assert.match(shared, /A current published funnel snapshot is required before Autopilot execution/, "autopilot execution must require a current funnel snapshot");
+assert.match(route, /body\.mode !== "manual"[\s\S]*assertAutonomyExecutionAccess\(result\.campaignId\)/, "PATCH execution modes must require Pro autonomy access");
+assert.match(runRoute, /assertAutonomyExecutionAccess\(result\.campaignId\)/, "run route must require Pro autonomy execution access");
 assert.match(shared, /leadQualityScore/, "evaluation must include lead quality signal");
 assert.match(shared, /buildAutonomyExecutionPlan/, "evaluation must build execution plan");
 assert.match(route, /z\.enum\(\["manual", "assisted", "auto", "autonomous"\]\)/, "PATCH must accept UI-compatible auto mode");

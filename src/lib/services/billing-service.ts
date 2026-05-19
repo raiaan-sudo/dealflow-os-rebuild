@@ -477,7 +477,7 @@ export async function getBillingSummary() {
     canCaptureLeads: summary.canCaptureLeads || launchOverride,
     canSendLeadAlerts: summary.canSendLeadAlerts || launchOverride,
     canRunOptimization: summary.canRunOptimization || launchOverride,
-    canRunAutonomy: summary.canRunAutonomy || launchOverride,
+    canRunAutonomy: summary.canRunAutonomy,
     requiresSuspension: launchOverride ? false : summary.requiresSuspension,
     suspensionReason: launchOverride ? null : summary.suspensionReason,
   };
@@ -603,7 +603,7 @@ export async function getBillingSummaryForCampaign(campaignId: string) {
     canCaptureLeads: summary.canCaptureLeads || launchOverride,
     canSendLeadAlerts: summary.canSendLeadAlerts || launchOverride,
     canRunOptimization: summary.canRunOptimization || launchOverride,
-    canRunAutonomy: summary.canRunAutonomy || launchOverride,
+    canRunAutonomy: summary.canRunAutonomy,
     requiresSuspension: launchOverride ? false : summary.requiresSuspension,
     suspensionReason: launchOverride ? null : summary.suspensionReason,
   };
@@ -691,7 +691,7 @@ export async function assertMetaLaunchBillingAccessForOrganization(organizationI
       canCaptureLeads: true,
       canSendLeadAlerts: true,
       canRunOptimization: true,
-      canRunAutonomy: true,
+      canRunAutonomy: summary.canRunAutonomy,
       requiresSuspension: false,
       suspensionReason: null,
     };

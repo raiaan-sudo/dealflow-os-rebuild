@@ -426,6 +426,11 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+function isSyntheticMetaSnapshot(snapshot: RawMetaSnapshot) {
+  const metaCampaignId = snapshot.meta_campaign_id ?? "";
+  return /^qa-/i.test(metaCampaignId) || /autopilot-proof/i.test(metaCampaignId);
+}
+
 function statusFromCounts(params: { critical?: number; high?: number; watch?: number }): ScaleHealthStatus {
   if ((params.critical ?? 0) > 0 || (params.high ?? 0) > 0) {
     return "DEGRADED";
@@ -665,9 +670,10 @@ export function buildScaleReadinessSnapshot(input: {
   };
 
   const activeLaunchLocks = input.metaLocks.filter((lock) => Date.parse(lock.locked_until ?? "") > nowMs).length;
-  const latestMetaSnapshots = latestMetaSnapshotsByKey(input.metaSnapshots);
+  const productionMetaSnapshots = input.metaSnapshots.filter((snapshot) => !isSyntheticMetaSnapshot(snapshot));
+  const latestMetaSnapshots = latestMetaSnapshotsByKey(productionMetaSnapshots);
   const staleLatestMetaSnapshots = latestMetaSnapshots.filter((snapshot) => Date.parse(snapshot.synced_at ?? "") < twoHoursAgo);
-  const historicalStaleMetaSnapshots = input.metaSnapshots.filter((snapshot) => {
+  const historicalStaleMetaSnapshots = productionMetaSnapshots.filter((snapshot) => {
     const syncedAt = Date.parse(snapshot.synced_at ?? "");
     return Number.isFinite(syncedAt) &&
       syncedAt < twoHoursAgo &&
@@ -675,10 +681,10 @@ export function buildScaleReadinessSnapshot(input: {
   });
   const failedSyncSnapshots = latestMetaSnapshots.filter((snapshot) => snapshot.sync_result === "failed" || asArray(snapshot.sync_errors).length > 0).length;
   const activeCampaignsTracked = latestMetaSnapshots.filter((snapshot) => /ACTIVE/i.test(snapshot.campaign_status ?? "")).length;
-  const spendTodayCents = input.metaSnapshots.length > 0
-    ? input.metaSnapshots.reduce((sum, snapshot) => sum + Math.round(Number(asRecord(snapshot.delivery_metrics).spend ?? 0) * 100), 0)
+  const spendTodayCents = productionMetaSnapshots.length > 0
+    ? productionMetaSnapshots.reduce((sum, snapshot) => sum + Math.round(Number(asRecord(snapshot.delivery_metrics).spend ?? 0) * 100), 0)
     : null;
-  const duplicateObjectWarnings = input.metaSnapshots.filter((snapshot) => {
+  const duplicateObjectWarnings = productionMetaSnapshots.filter((snapshot) => {
     const adSetIds = asArray(snapshot.ad_set_statuses).map((item) => String(asRecord(item).id ?? ""));
     const adIds = asArray(snapshot.ad_statuses).map((item) => String(asRecord(item).id ?? ""));
     return new Set(adSetIds).size < adSetIds.length || new Set(adIds).size < adIds.length;

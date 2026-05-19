@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
-import { evaluateAutonomy } from "@/app/api/autonomy/_shared";
+import {
+  assertAutonomyExecutionAccess,
+  evaluateAutonomy,
+  updateCampaignAutonomyMode,
+} from "@/app/api/autonomy/_shared";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +31,16 @@ export async function PATCH(request: Request) {
     assertSameOriginRequest(request);
     const body = await parseJsonBody(request, patchBodySchema);
     const result = await evaluateAutonomy(body.campaignId ?? null, { mode: body.mode });
+
+    if (body.mode !== "manual") {
+      await assertAutonomyExecutionAccess(result.campaignId);
+    }
+
+    await updateCampaignAutonomyMode({
+      organizationId: result.executionPlan.campaign.organizationId,
+      campaignId: result.campaignId,
+      mode: body.mode,
+    });
 
     return NextResponse.json({
       ...result,

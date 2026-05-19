@@ -131,6 +131,11 @@ function latestMetaSnapshotsByKey(rows) {
   return [...byKey.values()];
 }
 
+function isSyntheticMetaSnapshot(row) {
+  const metaCampaignId = row.meta_campaign_id ?? "";
+  return /^qa-/i.test(metaCampaignId) || /autopilot-proof/i.test(metaCampaignId);
+}
+
 async function buildReport() {
   const supabase = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -209,11 +214,12 @@ async function buildReport() {
   const failedLeadNotificationRows = notifications.filter((row) => row.status === "failed" || row.status === "undelivered");
   const recentFailedLeadNotificationRows = failedLeadNotificationRows.filter((row) => isWithin(row.updated_at ?? row.failed_at ?? row.created_at, oneDayAgoMs));
   const historicalLeadNotificationRows = failedLeadNotificationRows.filter((row) => !isWithin(row.updated_at ?? row.failed_at ?? row.created_at, oneDayAgoMs));
-  const latestMetaSnapshots = latestMetaSnapshotsByKey(metaSnapshots);
+  const productionMetaSnapshots = metaSnapshots.filter((row) => !isSyntheticMetaSnapshot(row));
+  const latestMetaSnapshots = latestMetaSnapshotsByKey(productionMetaSnapshots);
   const metaFailures = latestMetaSnapshots.filter((row) => row.sync_result === "failed" || (Array.isArray(row.sync_errors) && row.sync_errors.length > 0)).length;
   const staleLatestMetaSnapshots = latestMetaSnapshots.filter((row) => row.synced_at && Date.now() - Date.parse(row.synced_at) > 2 * 60 * 60 * 1000);
   const staleMetaSnapshots = staleLatestMetaSnapshots.length;
-  const historicalStaleMetaSnapshots = metaSnapshots.filter((row) => row.synced_at && Date.now() - Date.parse(row.synced_at) > 2 * 60 * 60 * 1000 && !staleLatestMetaSnapshots.some((latest) => latest.id === row.id));
+  const historicalStaleMetaSnapshots = productionMetaSnapshots.filter((row) => row.synced_at && Date.now() - Date.parse(row.synced_at) > 2 * 60 * 60 * 1000 && !staleLatestMetaSnapshots.some((latest) => latest.id === row.id));
   const activeLocks = metaLocks.filter((lock) => lock.locked_until && Date.parse(lock.locked_until) > Date.now()).length;
   const unresolvedClientErrors = clientErrors.filter((row) => !row.reviewed_at);
   const clientErrorOccurrences = clientErrors.reduce((sum, row) => sum + Math.max(1, Number(row.occurrence_count ?? 1)), 0);

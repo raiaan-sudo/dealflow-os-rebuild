@@ -632,6 +632,8 @@ export default async function DashboardPage({
         firstWeekSuccess={state.firstWeekSuccess}
         valueReport={state.valueReport}
         renderedAt={state.lastUpdatedAt}
+        planTier={state.entitlements?.planTier ?? "starter"}
+        autonomyEntitled={state.entitlements?.canRunAutonomy ?? false}
         optimizerResult={analyzeCampaign(
           buildOptimizerInput({
             plan: state.plan,

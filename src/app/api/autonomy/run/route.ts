@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { NextResponse } from "next/server";
 import { assertSameOriginRequest, handleApiError, parseOptionalJsonBody } from "@/lib/api/route";
-import { evaluateAutonomy } from "@/app/api/autonomy/_shared";
+import {
+  assertAutonomyExecutionAccess,
+  evaluateAutonomy,
+} from "@/app/api/autonomy/_shared";
 import { executeAutonomyPlanWithSyntheticAdapter } from "@/lib/services/autonomy-execution-service";
 
 const bodySchema = z.object({
@@ -14,6 +17,7 @@ export async function POST(request: Request) {
     assertSameOriginRequest(request);
     const body = await parseOptionalJsonBody(request, bodySchema, {});
     const result = await evaluateAutonomy(body.campaignId ?? null, { mode: body.mode ?? "auto" });
+    await assertAutonomyExecutionAccess(result.campaignId);
     const executionPlan = await executeAutonomyPlanWithSyntheticAdapter(result.executionPlan, {
       async applySafeAction(action) {
         return {

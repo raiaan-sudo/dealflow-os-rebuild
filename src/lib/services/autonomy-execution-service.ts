@@ -416,7 +416,7 @@ function blockedReasonFor(params: {
     (params.mode === "auto" || params.mode === "autonomous") &&
     !params.autopilotEnabled
   ) {
-    return `${AUTONOMY_EXECUTION_ENABLED_ENV}=true, ${AUTOPILOT_SAFE_ACTIONS_ENV}=true, and ${AUTONOMY_DRY_RUN_ONLY_ENV}=false are required before autopilot safe actions can execute.`;
+    return `Customer Autopilot settings plus ${AUTONOMY_EXECUTION_ENABLED_ENV}=true, ${AUTOPILOT_SAFE_ACTIONS_ENV}=true, and ${AUTONOMY_DRY_RUN_ONLY_ENV}=false are required before autopilot safe actions can execute.`;
   }
 
   return null;
@@ -428,6 +428,7 @@ export function buildAutonomyExecutionPlan(params: {
   metrics: AutonomyExecutionMetrics;
   candidates: AutonomyActionCandidate[];
   env?: AutonomyExecutionEnvironment;
+  customerAutopilotEnabled?: boolean;
   now?: Date;
   existingLocks?: AutonomyLockInput[];
   existingIdempotencyRecords?: AutonomyIdempotencyInput[];
@@ -437,6 +438,7 @@ export function buildAutonomyExecutionPlan(params: {
   const nowMs = now.getTime();
   const lockUntil = new Date(nowMs + 10 * 60 * 1000).toISOString();
   const autopilotEnabled = isAutopilotSafeActionsEnabled(params.env ?? process.env);
+  const customerAutopilotEnabled = params.customerAutopilotEnabled === true;
   const qualityInfluence = leadQualityInfluence(params.metrics);
   const existingLocks = params.existingLocks ?? [];
   const existingIdempotencyRecords = params.existingIdempotencyRecords ?? [];
@@ -470,12 +472,12 @@ export function buildAutonomyExecutionPlan(params: {
       budgetGuard,
       activeLock,
       idempotencyHit,
-      autopilotEnabled,
+      autopilotEnabled: autopilotEnabled && customerAutopilotEnabled,
     });
     const status = statusFor({
       mode: params.mode,
       classification,
-      autopilotEnabled,
+      autopilotEnabled: autopilotEnabled && customerAutopilotEnabled,
       blockedReason,
     });
     const score = clamp(Math.round(safeNumber(candidate.confidenceScore) * 100 + qualityInfluence.scoreDelta), 0, 100);

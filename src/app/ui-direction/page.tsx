@@ -39,7 +39,7 @@ const experienceCards = [
     href: "/dashboard",
     label: `${BILLING_PLANS.pro.priceLabel} Results`,
     title: "Autonomous recommendation",
-    body: "Pro opens the same results shell with evidence, guardrails, and safe autonomous monitor controls.",
+    body: "Pro opens the same results shell with Autopilot safe actions, approval-required growth moves, and budget protection.",
     icon: Rocket,
   },
 ];
@@ -141,7 +141,7 @@ export default function UIDirectionPage() {
 
             return (
               <Link
-                key={item.href}
+                key={`${item.href}-${item.label}`}
                 href={item.href}
                 className="rounded-[22px] border border-white/10 bg-white/[0.035] p-5 transition hover:border-cyan-200/20 hover:bg-cyan-300/[0.045]"
               >
@@ -185,13 +185,13 @@ export default function UIDirectionPage() {
           <BehaviorCard
             plan={`${BILLING_PLANS.pro.name} ${BILLING_PLANS.pro.priceLabel}`}
             title="Autonomous recommendation"
-            body="The app recommends the action, shows the evidence, and can arm monitoring inside controlled guardrails."
+            body="DealFlow monitors and optimizes within your rules. Safe actions can run automatically when flags and customer settings allow it."
             href="/dashboard"
             items={[
-              "Recommendation includes an automation plan",
-              "Evidence is visible before any action",
-              "User can arm, pause, or adjust guardrails",
-              "Meta sync, creative testing, and monitoring feel unlocked",
+              "High-impact growth moves need approval",
+              "Budget increases, new ads, audiences, and funnel publishing stay approval-required",
+              "Monthly budget cap protection stays visible",
+              "User can arm, pause, or adjust Autopilot guardrails",
             ]}
             pro
           />

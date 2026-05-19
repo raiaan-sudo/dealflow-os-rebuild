@@ -44,7 +44,8 @@ const expectedAutopilotApiRoutes = new Map([
     markers: [
       "assertSameOriginRequest",
       "evaluateAutonomy",
-      "assertCampaignCanRunAutonomy(plan.id)",
+      "getCampaignEntitlementsForCampaign(plan.id)",
+      "assertAutonomyExecutionAccess",
     ],
     disallowedMarkers: [
       'executionMode: "recommendation_only"',
@@ -56,7 +57,8 @@ const expectedAutopilotApiRoutes = new Map([
     markers: [
       "assertSameOriginRequest",
       "evaluateAutonomy",
-      "assertCampaignCanRunAutonomy(plan.id)",
+      "getCampaignEntitlementsForCampaign(plan.id)",
+      "assertAutonomyExecutionAccess",
     ],
     disallowedMarkers: [
       'executionMode: "recommendation_only"',

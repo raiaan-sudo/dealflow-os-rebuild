@@ -65,6 +65,10 @@ assert.match(modeControl, /Autopilot safe actions/, "settings must expose autopi
 assert.match(modeControl, /planTier === "starter"/, "starter plans must be blocked from execution modes");
 assert.match(modeControl, /autonomyEntitled/, "pro autonomy controls must require entitlement");
 assert.doesNotMatch(modeControl, /value: "autonomous"/, "mode control must use the backend-compatible auto value");
+assert.match(feed, /Starter keeps execution manual/, "starter action feed must not expose execution controls");
+assert.match(dashboard, /Starter keeps you in control with guided recommendations/, "starter dashboard must describe guided recommendations");
+assert.match(dashboard, /Upgrade to Pro to let DealFlow execute safe optimizations for you/, "starter dashboard must show Pro upgrade path");
+assert.match(dashboard, /planTier !== "starter" && autonomyEntitled/, "dashboard controls must require non-starter autonomy entitlement");
 
 for (const marker of [
   "Autonomy queue",

@@ -62,6 +62,7 @@
     "autonomy:report": "node ./scripts/print-autonomy-report.mjs",
     "test:autonomy-execution": "node ./scripts/test-autonomy-execution.mjs",
     "test:autonomy-dashboard": "node ./scripts/test-autonomy-dashboard.mjs",
+    "test:plan-autonomy-gating": "node ./scripts/test-plan-autonomy-gating.mjs",
     "test:meta-app-state-drift": "node ./scripts/test-meta-app-state-drift.mjs",
     "test:stripe-price-guard": "node ./scripts/test-stripe-price-guard.mjs",
     "test:public-self-serve-acceptance": "node ./scripts/test-public-self-serve-acceptance-guards.mjs",

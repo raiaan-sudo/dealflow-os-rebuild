@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   getCampaignIntentLabel,
   isCommercialCampaignIntent,
@@ -32,6 +33,7 @@ import type { AutonomySnapshot } from "@/lib/services/autonomy-engine";
 import type { DashboardMetrics } from "@/lib/services/dashboard-service";
 import type { FirstWeekSuccessState } from "@/lib/services/first-week-success-service";
 import type { CampaignValueReport } from "@/lib/services/campaign-value-report-builder";
+import type { BillingPlanTier } from "@/lib/billing/plans";
 
 type AppointmentSummary = Pick<
   Database["public"]["Tables"]["appointments"]["Row"],
@@ -86,6 +88,8 @@ type Props = {
   firstWeekSuccess?: FirstWeekSuccessState | null;
   valueReport?: CampaignValueReport | null;
   renderedAt?: string;
+  planTier?: BillingPlanTier;
+  autonomyEntitled?: boolean;
 };
 
 function currency(value: number) {
@@ -315,6 +319,8 @@ export function CampaignDashboardView({
   firstWeekSuccess = null,
   valueReport = null,
   renderedAt,
+  planTier = "starter",
+  autonomyEntitled = false,
 }: Props) {
   const renderedAtMs = new Date(renderedAt ?? "1970-01-01T00:00:00.000Z").getTime();
   const stableNowMs = Number.isFinite(renderedAtMs) ? renderedAtMs : 0;
@@ -780,6 +786,8 @@ export function CampaignDashboardView({
     },
   ];
   const autonomyModeLabel = formatAutonomyModeLabel(autonomySnapshot?.mode);
+  const canUseAutonomyControls = planTier !== "starter" && autonomyEntitled;
+  const autonomyUpgradeHref = planTier === "starter" ? "/paywall?plan=pro" : "/settings";
   const autonomyPendingActions = autonomySnapshot?.pendingActions ?? [];
   const autonomyRecentActions = autonomySnapshot?.recentActions ?? [];
   const autonomyStatus = autonomySnapshot?.systemStatus ?? "idle";
@@ -1491,14 +1499,22 @@ export function CampaignDashboardView({
         <Card className="rounded-[24px] p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">DealFlow Pro Autopilot</p>
-              <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Recommendations, approvals, and guardrails</h3>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                {canUseAutonomyControls ? "DealFlow Pro Autopilot" : "DealFlow recommendations"}
+              </p>
+              <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">
+                {canUseAutonomyControls
+                  ? "Recommendations, approvals, and guardrails"
+                  : "Guided recommendations and next steps"}
+              </h3>
               <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
-                This panel separates monitored signals, recommendations, approvals, and logged outcomes. It does not claim that an action executed unless the action history says so.
+                {canUseAutonomyControls
+                  ? "DealFlow monitors and optimizes within your rules. Safe actions can run automatically only when production flags and customer settings allow it, and high-impact growth moves need approval. It does not claim that an action executed unless the action history says so."
+                  : "Starter keeps you in control with guided recommendations. DealFlow recommends what to do next, but budget, audience, funnel, provider, launch, and Meta execution stay manual unless you upgrade to Pro."}
               </p>
             </div>
             <div className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-              {autonomyModeLabel}
+              {canUseAutonomyControls ? autonomyModeLabel : "Manual recommendations"}
             </div>
           </div>
 
@@ -1506,10 +1522,14 @@ export function CampaignDashboardView({
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Mode</p>
               <p className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
-                {autonomyModeLabel}
+                {canUseAutonomyControls ? autonomyModeLabel : "Manual recommendations"}
               </p>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                {autonomyNeedsApproval ? "Approval is required before execution." : "Safe actions may run only inside configured guardrails."}
+                {canUseAutonomyControls
+                  ? autonomyNeedsApproval
+                    ? "Approval is required before execution."
+                    : "Safe actions may run only inside configured guardrails."
+                  : "Upgrade to Pro to let DealFlow execute safe optimizations for you."}
               </p>
             </div>
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
@@ -1630,20 +1650,36 @@ export function CampaignDashboardView({
           <div className="mt-5 grid gap-4 xl:grid-cols-2">
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Approval controls</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {["Approve", "Reject", "Monitor"].map((label) => (
-                  <button
-                    className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-white/[0.08]"
-                    key={`dashboard-autonomy-${label}`}
-                    type="button"
+              {canUseAutonomyControls ? (
+                <>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {["Approve", "Reject", "Monitor"].map((label) => (
+                      <button
+                        className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-white/[0.08]"
+                        key={`dashboard-autonomy-${label}`}
+                        type="button"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                    Buttons are UI affordances for the proof slice. They do not claim backend execution from this dashboard panel.
+                  </p>
+                </>
+              ) : (
+                <div className="mt-4 rounded-[18px] border border-cyan-300/18 bg-cyan-300/[0.055] p-4">
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    Starter can see recommendations and next-step guidance, but cannot approve execution actions or enable Autopilot safe actions.
+                  </p>
+                  <Link
+                    className="mt-3 inline-flex rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/15"
+                    href={autonomyUpgradeHref}
                   >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                Buttons are UI affordances for the proof slice. They do not claim backend execution from this dashboard panel.
-              </p>
+                    {planTier === "starter" ? "Upgrade to Pro for automated optimization" : "Reactivate billing to restore Pro Autopilot"}
+                  </Link>
+                </div>
+              )}
             </div>
 
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">

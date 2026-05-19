@@ -47,6 +47,7 @@ assert.match(service, /static_creative_generation/, "static generation must be h
 assert.match(service, /video_generation/, "video generation must be heavy");
 assert.match(service, /provider_polling/, "provider polling must be heavy");
 assert.match(service, /latestMetaSnapshotsByKey/, "Meta freshness must be based on latest snapshot per campaign");
+assert.match(service, /isSyntheticMetaSnapshot/, "production scale readiness must exclude synthetic QA Meta proof snapshots");
 assert.match(service, /historicalStaleMetaSnapshots/, "old Meta snapshots must be classified separately");
 assert.match(service, /reviewedFailedOrDeadLetterJobs/, "reviewed failed jobs must be separated from active failures");
 assert.match(service, /activeCriticalFailedJobs/, "current critical dead letters must remain blockers");
@@ -57,6 +58,7 @@ assert.match(service, /reviewed_at,resolution_note/, "system job report must sel
 
 assert.match(report, /issueClassification/, "CLI report must output explicit WATCH classification");
 assert.match(report, /latestMetaSnapshotsByKey/, "CLI report must classify Meta staleness by latest snapshot");
+assert.match(report, /isSyntheticMetaSnapshot/, "CLI report must exclude synthetic QA Meta proof snapshots");
 assert.match(report, /historicalReviewed/, "CLI report must include historical reviewed bucket");
 assert.match(report, /olderThan7d/, "CLI report must include age buckets");
 assert.match(report, /No failed or undelivered lead notifications occurred in the last 24 hours/, "CLI must distinguish current notification failures");
@@ -138,6 +140,10 @@ function latestMetaSnapshotsByKeyFixture(rows) {
   return [...byKey.values()];
 }
 
+function isSyntheticMetaSnapshotFixture(row) {
+  return /^qa-/i.test(row.meta_campaign_id ?? "") || /autopilot-proof/i.test(row.meta_campaign_id ?? "");
+}
+
 const now = Date.parse("2026-05-19T03:00:00.000Z");
 const metaRows = [
   { id: "old", organization_id: "org", user_id: "user", meta_campaign_id: "meta", synced_at: "2026-05-18T01:00:00.000Z", sync_result: "success" },
@@ -148,6 +154,14 @@ assert.equal(
   latestMetaSnapshotsByKeyFixture([{ ...metaRows[0] }]).filter((row) => now - Date.parse(row.synced_at) > 2 * 60 * 60 * 1000).length,
   1,
   "latest stale Meta snapshot remains a WATCH item",
+);
+const syntheticMetaRows = [
+  { id: "synthetic", organization_id: "org", user_id: "user", meta_campaign_id: "qa-meta-campaign-autopilot-proof-1", synced_at: "2026-05-18T01:00:00.000Z", sync_result: "success" },
+];
+assert.equal(
+  latestMetaSnapshotsByKeyFixture(syntheticMetaRows.filter((row) => !isSyntheticMetaSnapshotFixture(row))).length,
+  0,
+  "synthetic QA Meta proof snapshots must not create production WATCH items",
 );
 
 const reviewedHistoricalDeadLetter = { id: "job-old", kind: "video_generation", status: "failed", dead_lettered_at: "2026-05-12T00:00:00.000Z", reviewed_at: "2026-05-12T01:00:00.000Z" };

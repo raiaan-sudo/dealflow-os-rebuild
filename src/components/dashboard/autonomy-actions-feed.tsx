@@ -9,6 +9,7 @@ import type {
   AutonomyMode,
 } from "@/lib/services/autonomy-engine";
 import type { ClosedLoopAutonomyAction } from "@/lib/services/autonomy-execution-service";
+import type { BillingPlanTier } from "@/lib/billing/plans";
 
 type AutonomyActionsFeedProps = {
   mode: AutonomyMode;
@@ -17,6 +18,8 @@ type AutonomyActionsFeedProps = {
   executionQueue: ClosedLoopAutonomyAction[];
   appliedExecutionActions: ClosedLoopAutonomyAction[];
   blockedExecutionActions: ClosedLoopAutonomyAction[];
+  planTier?: BillingPlanTier;
+  autonomyEntitled?: boolean;
 };
 
 function formatDelta(value: number, suffix = "") {
@@ -80,7 +83,15 @@ function formatRiskLabel(confidenceScore: number, blockedReason?: string | null)
   return "high risk";
 }
 
-function renderActionControls(prefix: string) {
+function renderActionControls(prefix: string, canUseActionControls: boolean) {
+  if (!canUseActionControls) {
+    return (
+      <div className="mt-4 rounded-[18px] border border-cyan-300/18 bg-cyan-300/[0.055] p-3 text-sm leading-6 text-muted-foreground">
+        Starter keeps execution manual. Upgrade to Pro to approve or automate safe optimizations.
+      </div>
+    );
+  }
+
   return (
     <div className="mt-4 flex flex-wrap gap-2">
       {["Approve", "Reject", "Monitor"].map((label) => (
@@ -100,6 +111,7 @@ function renderActionControls(prefix: string) {
 function renderExecutionAction(
   action: ClosedLoopAutonomyAction,
   label: string,
+  canUseActionControls: boolean,
 ) {
   const riskLabel = formatRiskLabel(action.confidenceScore, action.blockedReason);
 
@@ -138,13 +150,13 @@ function renderExecutionAction(
           Execution is shown only because this action is present in the applied execution list.
         </div>
       ) : (
-        renderActionControls(action.actionKey)
+        renderActionControls(action.actionKey, canUseActionControls)
       )}
     </div>
   );
 }
 
-function renderRecentEntry(entry: AutonomyFeedEntry) {
+function renderRecentEntry(entry: AutonomyFeedEntry, canUseActionControls: boolean) {
   const actualOutcomeSummary =
     typeof entry.actualOutcome?.summary === "string" ? entry.actualOutcome.summary : null;
   const actualOutcomeLeadChange =
@@ -243,7 +255,7 @@ function renderRecentEntry(entry: AutonomyFeedEntry) {
         </div>
       ) : null}
       {entry.status === "pending" || entry.status === "recommended" || entry.status === "staged" ? (
-        renderActionControls(entry.id)
+        renderActionControls(entry.id, canUseActionControls)
       ) : null}
     </div>
   );
@@ -256,8 +268,11 @@ export function AutonomyActionsFeed({
   executionQueue,
   appliedExecutionActions,
   blockedExecutionActions,
+  planTier = "starter",
+  autonomyEntitled = false,
 }: AutonomyActionsFeedProps) {
   const queueLabel = getExecutionQueueLabel(mode);
+  const canUseActionControls = planTier !== "starter" && autonomyEntitled;
 
   if (
     recentActions.length === 0 &&
@@ -356,7 +371,7 @@ export function AutonomyActionsFeed({
                   {formatCompactCurrency(action.expectedOutcome.revenueDelta)}
                 </p>
               ) : null}
-              {renderActionControls(action.actionKey)}
+              {renderActionControls(action.actionKey, canUseActionControls)}
             </div>
           ))}
         </div>
@@ -370,7 +385,7 @@ export function AutonomyActionsFeed({
             </p>
             <p className="mt-1 text-sm text-muted-foreground">{getExecutionQueueCopy(mode)}</p>
           </div>
-          {executionQueue.slice(0, 4).map((action) => renderExecutionAction(action, queueLabel))}
+          {executionQueue.slice(0, 4).map((action) => renderExecutionAction(action, queueLabel, canUseActionControls))}
         </div>
       ) : null}
 
@@ -384,7 +399,7 @@ export function AutonomyActionsFeed({
               Actions the ad platform actually applied.
             </p>
           </div>
-          {appliedExecutionActions.slice(0, 4).map((action) => renderExecutionAction(action, "executed"))}
+          {appliedExecutionActions.slice(0, 4).map((action) => renderExecutionAction(action, "executed", canUseActionControls))}
         </div>
       ) : null}
 
@@ -398,7 +413,7 @@ export function AutonomyActionsFeed({
               Actions the system refused to run because of guardrails, duplicate protection, or missing ad platform state.
             </p>
           </div>
-          {blockedExecutionActions.slice(0, 4).map((action) => renderExecutionAction(action, "blocked"))}
+          {blockedExecutionActions.slice(0, 4).map((action) => renderExecutionAction(action, "blocked", canUseActionControls))}
         </div>
       ) : null}
 
@@ -411,7 +426,7 @@ export function AutonomyActionsFeed({
             Logged outcomes across staged, executed, blocked, and reverted actions.
           </p>
         </div>
-        {recentActions.slice(0, 8).map(renderRecentEntry)}
+        {recentActions.slice(0, 8).map((entry) => renderRecentEntry(entry, canUseActionControls))}
       </div>
     </Card>
   );
