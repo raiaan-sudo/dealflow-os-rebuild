@@ -41,6 +41,7 @@
     "test:customer-success": "node ./scripts/test-customer-success-layer.mjs",
     "test:provider-cost-watch": "node ./scripts/test-provider-cost-watch.mjs",
     "test:scale-readiness-report": "node ./scripts/test-scale-readiness-report.mjs",
+    "test:scale-monitoring": "node ./scripts/test-scale-monitoring.mjs",
     "test:offer-normalization": "node ./scripts/test-offer-normalization.mjs",
     "test:direct-response-funnels": "node ./scripts/test-direct-response-funnels.mjs",
     "test:client-error-telemetry": "node ./scripts/test-client-error-telemetry.mjs",

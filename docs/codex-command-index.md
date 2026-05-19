@@ -12,6 +12,7 @@ node -v
 ```bash
 npm run operator:debt
 npm run operator:scale-report
+npm run test:scale-monitoring
 npm run routes:security
 npm run smoke:offline
 npm run schema:check
@@ -37,6 +38,7 @@ npm run test:static-ad-templates
 npm run test:provider-cost-watch
 npm run test:provider-usage-idempotency
 npm run test:scale-readiness-report
+npm run test:scale-monitoring
 ```
 
 ## Worker Dry-Run

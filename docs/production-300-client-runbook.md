@@ -1,11 +1,48 @@
 # DealFlow 300-Client Operating Runbook
 
-This runbook moves DealFlow from public self-serve readiness into `300 clients: GO with monitoring`.
+This runbook moves DealFlow from public self-serve readiness into `300 clients: GO with automated monitoring`.
 It assumes no provider generation, SMS, Freshdesk ticket creation, Stripe charge, or Meta mutation is run from the monitoring layer.
 
-## Daily Operator Cadence
+## Automated Monitoring Cadence
 
-Run this once every business day and before any launch window:
+The required monitor runs automatically through Vercel Cron:
+
+- `/api/internal/system-jobs` every minute for durable queue work.
+- `/api/internal/scale-monitor` every 15 minutes for scale report, operator debt, safe smoke, incident creation, alert path recording, and auto-resolution.
+
+The scale monitor uses the internal runner secret (`INTERNAL_SYSTEM_JOBS_SECRET` or `CRON_SECRET`) and writes only app-owned incident/run rows:
+
+- Incident inbox: `/admin/incidents`
+- Control room: `/admin/control-room`
+- Manual report: `npm run operator:scale-report -- --json`
+- Debt proof: `npm run operator:debt`
+
+The admin incident inbox is the required fail-closed alert channel. Optional email, Slack, or Freshdesk alert routing may be added only when the relevant env exists and the delivery path is explicitly approved. Missing external alert env must not drop incidents.
+
+Auto-resolution policy:
+
+- New `activeBlockers`, `currentWatch`, non-zero operator debt, smoke failures, Freshdesk unavailable state, client error spikes, queue age breaches, provider cap pressure, stale latest Meta snapshots, failed Stripe webhooks, and critical dead-letter jobs open or refresh incidents.
+- A recurring resolved incident reopens with a higher recurrence count.
+- An open/acknowledged incident auto-resolves only after consecutive clean scale-monitor checks.
+- Historical reviewed rows do not reopen incidents unless they recur as current unreviewed evidence.
+- Evidence rows are never deleted to make the monitor green.
+
+Synthetic proof:
+
+```bash
+curl -sS -X POST "$NEXT_PUBLIC_APP_URL/api/internal/scale-monitor" \
+  -H "Authorization: Bearer <internal-runner-secret>" \
+  -H "Content-Type: application/json" \
+  --data '{"synthetic":true}'
+```
+
+The synthetic proof creates and resolves a non-production incident and must not send SMS/email, create tickets, mutate Meta, create Stripe sessions, or trigger provider generation.
+
+## Operator Review Cadence
+
+Daily babysitting is no longer required when `/api/internal/scale-monitor` is registered and the incident inbox is checked by alert. Operators still perform a weekly review and a post-deploy review:
+
+Run this after each production deploy, before major launch windows, and once weekly:
 
 ```bash
 source /Users/raiaanreza/.nvm/nvm.sh && nvm use 20.20.2
@@ -13,14 +50,15 @@ npm run operator:scale-report
 npm run operator:debt
 ```
 
-Open the admin-only control room:
+Open the admin-only operational pages:
 
+- `/admin/incidents`
 - `/admin/control-room`
 - `/admin/command-center`
 - `/admin/issues`
 - `/admin/launch-monitor`
 
-The daily report is read-only. It must not send email, send SMS, create tickets, create Stripe sessions, trigger provider generation, or mutate Meta.
+The report is read-only. It must not send email, send SMS, create tickets, create Stripe sessions, trigger provider generation, or mutate Meta.
 
 Daily classification order:
 
@@ -39,7 +77,7 @@ The report must classify every stale Meta snapshot, failed lead notification, an
 
 ## 300-Client GO Rule
 
-`300 clients: GO with monitoring` requires:
+`300 clients: GO with automated monitoring` requires:
 
 - Queue/dead-letter dashboard exists and shows lane health.
 - Critical jobs are classified separately from heavy provider jobs.
@@ -203,10 +241,12 @@ Document env names only:
 - Provider generation disable: `ALLOW_HIGGSFIELD_IMAGE_GENERATION`, `ALLOW_HIGGSFIELD_VIDEO_GENERATION`, `MARKETING_STUDIO_WORKER_ENABLED`
 - Meta live launch disable: `ALLOW_META_LIVE_LAUNCH`
 - SMS sending disable while lead save continues: `INTERNAL_LEAD_SMS_ENABLED`
-- Billing checkout safe mode/override gates: Stripe price env names plus billing override env names in `.env.example`
+- Billing checkout safe mode: `BILLING_CHECKOUT_SAFE_MODE=true` makes subscription and credit checkout fail closed while billing monitoring is degraded.
+- Billing override gates: Stripe price env names plus billing override env names in `.env.example`
 - Support degradation mode: `FRESHDESK_DOMAIN`, `FRESHDESK_API_KEY`
 - Provider cap emergency override: provider usage limit rows and generation credit env names; owner approval required before increasing spend exposure
 - Queue/dead-letter recovery: `/api/internal/system-jobs` with `INTERNAL_SYSTEM_JOBS_SECRET` or `CRON_SECRET`
+- Automated scale monitor: `/api/internal/scale-monitor` with `INTERNAL_SYSTEM_JOBS_SECRET` or `CRON_SECRET`
 
 ## Scale Readiness Table
 
@@ -216,7 +256,7 @@ Document env names only:
 | 50 clients | GO | Current durable jobs, webhooks, provider caps, and client-error intake cover this tier. | Manual support load. | Consistent support macros and daily report. |
 | 100 clients | GO with monitoring | Existing 100-client runbook and operator debt checks support this tier. | Queue/provider visibility must be watched. | 300-client control room and daily report. |
 | 200 clients | WATCH | Requires summarized queue, provider, billing, lead, Meta, support, and error visibility. | Operator visibility and triage cadence. | Control room clean plus report clean. |
-| 300 clients | GO with monitoring | Control room and daily scale report make critical failures visible before customers find them. | Physical worker fairness and deeper load proof for higher scale. | Dedicated worker isolation/load tests. |
+| 300 clients | GO with automated monitoring | Scheduled monitor creates incidents, records safe alert paths, auto-resolves clean incidents, and keeps the control room/report available for review. | Physical worker fairness and deeper load proof for higher scale. | Dedicated worker isolation/load tests and external on-call delivery. |
 | 500 clients | WATCH | Heavy provider backlog and support volume need stronger physical isolation and alert delivery. | Worker fairness, paging, staffing. | Dedicated queues/workers and external alert delivery. |
 | 600 clients | NO-GO | Current internal monitoring is not enough for larger support and provider incident load. | On-call, load proof, support SLAs. | Formal incident response and queue isolation. |
 | 1,000 clients | NO-GO | Requires sustained load tests, worker pool isolation, provider contracts, and external alerting/on-call. | Throughput, observability, staffing, vendor limits. | Production SRE posture and contracted provider capacity. |

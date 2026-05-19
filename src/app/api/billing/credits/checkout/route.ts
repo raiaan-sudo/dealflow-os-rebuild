@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
+import { ApiError, assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { createCreditTopUpCheckoutSession } from "@/lib/services/billing-service";
 import { CREDIT_TOP_UP_MINIMUM_CENTS } from "@/lib/services/credit-service";
+import { isBillingCheckoutSafeModeEnabled } from "@/lib/env";
 
 const checkoutSchema = z.object({
   amountCents: z.number().int().min(CREDIT_TOP_UP_MINIMUM_CENTS).max(100_000),
@@ -19,6 +20,14 @@ export async function POST(request: Request) {
 
     if (rateLimit && !rateLimit.allowed) {
       return buildRateLimitResponse(rateLimit.resetAt);
+    }
+
+    if (isBillingCheckoutSafeModeEnabled()) {
+      throw new ApiError(
+        503,
+        "Billing checkout is temporarily unavailable while billing monitoring is degraded.",
+        "billing_checkout_safe_mode",
+      );
     }
 
     const body = await parseJsonBody(request, checkoutSchema);

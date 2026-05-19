@@ -230,7 +230,7 @@ async function buildReport() {
     : [queueStatus, providerStatus, billingStatus, leadStatus, metaStatus, clientErrorStatus].includes("WATCH") || !supportConfigured
       ? "WATCH"
       : "GO";
-  const verdict = status === "DEGRADED" ? "300 clients: NO-GO" : "300 clients: GO with monitoring";
+  const verdict = status === "DEGRADED" ? "300 clients: NO-GO" : "300 clients: GO with automated monitoring";
   const issueClassification = {
     activeBlockers: [],
     currentWatch: [],

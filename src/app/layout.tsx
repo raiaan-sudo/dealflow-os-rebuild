@@ -7,6 +7,15 @@ function getMetadataBase() {
   return new URL((process.env.NEXT_PUBLIC_APP_URL || "https://www.agentdealflow.io").replace(/\/$/, ""));
 }
 
+function getDeploymentMarker() {
+  return (
+    process.env.NEXT_PUBLIC_VERCEL_DEPLOYMENT_ID ||
+    process.env.VERCEL_DEPLOYMENT_ID ||
+    process.env.VERCEL_GIT_COMMIT_SHA ||
+    "local"
+  );
+}
+
 export const metadata: Metadata = {
   metadataBase: getMetadataBase(),
   title: {
@@ -36,7 +45,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html data-dpl-id={getDeploymentMarker()} lang="en" suppressHydrationWarning>
       <body className="dark min-h-screen bg-background text-foreground">
         <ThemeProvider attribute="class" defaultTheme="dark">
           <ClientErrorListener />

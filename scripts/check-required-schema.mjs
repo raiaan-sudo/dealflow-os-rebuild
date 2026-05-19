@@ -4,7 +4,7 @@ import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 
 const repoRoot = process.cwd();
-const expectedSchemaVersion = "20260512010000";
+const expectedSchemaVersion = "20260519023000";
 const schemaCheckMode = process.env.SUPABASE_SCHEMA_CHECK_MODE?.trim().toLowerCase() ?? "remote";
 const requiredMigrationFiles = [
   "20260426110000_add_campaign_plan_critical_fields.sql",
@@ -48,6 +48,7 @@ const requiredMigrationFiles = [
   "20260510014500_enable_generation_credit_overdrafts.sql",
   "20260510183000_cap_generation_credit_overdrafts.sql",
   "20260512010000_scope_provider_usage_idempotency.sql",
+  "20260519023000_create_scale_monitor_incidents.sql",
 ];
 
 const { loadEnvConfig } = nextEnv;
@@ -404,6 +405,20 @@ async function main() {
       .limit(1),
   );
 
+  await probeQuery("scale_monitor_incidents table check", () =>
+    supabase
+      .from("scale_monitor_incidents")
+      .select("id, incident_key, subsystem, severity, status, title, evidence, first_seen_at, last_seen_at, resolved_at, recurrence_count, clean_check_count, recommended_action, alert_channels, synthetic")
+      .limit(1),
+  );
+
+  await probeQuery("scale_monitor_runs table check", () =>
+    supabase
+      .from("scale_monitor_runs")
+      .select("id, started_at, completed_at, status, verdict, summary, smoke_summary, incidents_opened, incidents_resolved, error_code")
+      .limit(1),
+  );
+
   await probeQuery("leads reliability columns check", () =>
     supabase
       .from("leads")
@@ -435,6 +450,7 @@ async function main() {
     ["rls_and_fk_advisor_hardening_schema_version", "20260504220000"],
     ["client_error_events_schema_version", "20260504223000"],
     ["meta_sync_optimization_tables_schema_version", "20260509020000"],
+    ["scale_monitor_incidents_schema_version", "20260519023000"],
   ]);
 
   for (const [key, expectedVersion] of expectedMetadataVersions) {

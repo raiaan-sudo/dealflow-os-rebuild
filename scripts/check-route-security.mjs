@@ -32,6 +32,10 @@ const expectedInternalApiRoutes = new Map([
     methods: new Set(["GET", "POST"]),
     markers: ["assertInternalSystemRequest", "runSystemJobWorkerBatch"],
   }],
+  ["/api/internal/scale-monitor", {
+    methods: new Set(["GET", "POST"]),
+    markers: ["assertInternalSystemRequest", "runScaleMonitor"],
+  }],
 ]);
 
 const ownershipMarkers = [
@@ -43,6 +47,7 @@ const ownershipMarkers = [
   "listCampaignCreativeAssets",
   "uploadManualCreativeAsset",
   "assertMetaLaunchBillingAccess",
+  "assertInternalOperatorAccess",
   "auth.userId",
   "auth.organizationId",
   "organization_id",

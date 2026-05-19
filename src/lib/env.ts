@@ -258,6 +258,10 @@ export function isBillingAdminOverrideEnabled() {
   return process.env.ALLOW_BILLING_ADMIN_OVERRIDE === "true";
 }
 
+export function isBillingCheckoutSafeModeEnabled() {
+  return process.env.BILLING_CHECKOUT_SAFE_MODE === "true";
+}
+
 export function getQaBillingAcceptanceOverrideEmails() {
   return (process.env.QA_BILLING_ACCEPTANCE_OVERRIDE_EMAILS ?? "")
     .split(",")

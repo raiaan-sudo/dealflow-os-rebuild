@@ -148,7 +148,7 @@ export type ScaleIssueClassification = {
 
 export type ScaleReadinessSnapshot = {
   status: ScaleHealthStatus;
-  verdict: "300 clients: GO with monitoring" | "300 clients: NO-GO";
+  verdict: "300 clients: GO with automated monitoring" | "300 clients: NO-GO";
   generatedAt: string;
   deployId: string;
   commitSha: string;
@@ -870,7 +870,7 @@ export function buildScaleReadinessSnapshot(input: {
 
   return {
     status,
-    verdict: status === "DEGRADED" ? "300 clients: NO-GO" : "300 clients: GO with monitoring",
+    verdict: status === "DEGRADED" ? "300 clients: NO-GO" : "300 clients: GO with automated monitoring",
     generatedAt,
     deployId: input.deployId ?? process.env.VERCEL_DEPLOYMENT_ID ?? process.env.NEXT_PUBLIC_VERCEL_DEPLOYMENT_ID ?? "local",
     commitSha: input.commitSha ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "local",
