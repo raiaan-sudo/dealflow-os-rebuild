@@ -22,6 +22,21 @@ Open the admin-only control room:
 
 The daily report is read-only. It must not send email, send SMS, create tickets, create Stripe sessions, trigger provider generation, or mutate Meta.
 
+Daily classification order:
+
+1. Run `npm run operator:scale-report -- --json`.
+2. Run `npm run operator:debt`.
+3. Classify `activeBlockers` before touching `currentWatch`.
+4. Confirm `operator:debt` and `operator:scale-report` agree on active blockers.
+5. Keep evidence rows. Never delete jobs, notifications, provider events, or sync snapshots to make a report green.
+
+The report must classify every stale Meta snapshot, failed lead notification, and failed/dead-letter job as one of:
+
+- `CLEARED`: no current row exists for the active risk.
+- `HISTORICAL / REVIEWED`: timestamps, recurrence checks, and review fields or policy evidence prove the row is not an active customer-impacting issue.
+- `CURRENT WATCH`: non-critical current issue that must remain visible but does not block 300-client operations.
+- `ACTIVE BLOCKER`: current critical issue that blocks 300-client GO.
+
 ## 300-Client GO Rule
 
 `300 clients: GO with monitoring` requires:
@@ -68,6 +83,10 @@ Rules:
 - Dead-letter jobs require operator review before retry.
 - Stale processing jobs must respect active leases.
 - Marketing Studio worker proofs stay capped and explicit; no automatic retries.
+- `reviewed_at` failed/dead-letter jobs are historical evidence and must not inflate active lane counts.
+- Current critical failed/dead-letter jobs are blockers until reviewed, resolved, or safely retried.
+- Current heavy/provider failures are WATCH unless they are customer-impacting or recurring in the last 24 hours.
+- Do not retry provider, SMS, Stripe, Meta, or lead side-effect jobs without explicit owner approval for that side effect.
 
 ## Provider Cost And Backpressure
 
@@ -113,6 +132,14 @@ Daily checks:
 
 Lead save must continue even if internal SMS alerts are disabled or Twilio env is missing. Do not send SMS from this runbook.
 
+Classification policy:
+
+- `delivered_at` with stale non-delivered status is repairable through the status-normalization repair path.
+- Failed notifications in the last 24 hours are `CURRENT WATCH` until lead save, assignment, and retry risk are reviewed.
+- Failed notifications older than 24 hours with no recurrence in the last 24 hours, no delivered/failed status drift, and successful lead save/assignment evidence are `HISTORICAL / REVIEWED`.
+- If `INTERNAL_LEAD_SMS_ENABLED` or Twilio env is unavailable, failed internal SMS rows are operational evidence, not permission to retry. Retrying would send SMS and requires explicit approval.
+- Saved lead plus failed notification remains visible in the report even when classified historical.
+
 ## Meta Drift / Spend
 
 Daily checks:
@@ -126,6 +153,14 @@ Daily checks:
 - destination/domain readiness warnings where available
 
 Do not create, edit, activate, or increase budget on Meta from this monitoring pass.
+
+Classification policy:
+
+- Freshness is judged by the latest app-owned snapshot per organization/user/Meta campaign, not by every old snapshot.
+- Old stale snapshots are `HISTORICAL / REVIEWED` when superseded by a newer successful fresh snapshot.
+- A latest stale snapshot is `CURRENT WATCH` until read-only Meta proof is clean and a fresh app-owned sync snapshot is inserted.
+- A latest failed snapshot, read-only Meta proof failure, destination mismatch, budget mismatch, or app-vs-Meta runtime drift is an `ACTIVE BLOCKER`.
+- Clear stale Meta only via read-only Meta verification plus an app-owned sync snapshot. Never mutate Meta delivery, object status, or budget from this runbook.
 
 ## Support / Freshdesk
 

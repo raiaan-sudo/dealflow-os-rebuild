@@ -81,6 +81,56 @@ function statusFrom({ high = 0, watch = 0 }) {
   return "GO";
 }
 
+function safeId(value) {
+  if (!value) return "none";
+  return String(value).length <= 12 ? String(value) : `${String(value).slice(0, 8)}...${String(value).slice(-4)}`;
+}
+
+function ageBucket(value, nowMs) {
+  const parsed = Date.parse(value ?? "");
+  if (!Number.isFinite(parsed)) return "unknown";
+  const ageMs = nowMs - parsed;
+  if (ageMs <= 24 * 60 * 60 * 1000) return "last24h";
+  if (ageMs <= 7 * 24 * 60 * 60 * 1000) return "last7d";
+  return "olderThan7d";
+}
+
+function timestampFor(row) {
+  return row.updated_at ?? row.failed_at ?? row.dead_lettered_at ?? row.synced_at ?? row.created_at ?? null;
+}
+
+function classificationEntry(subsystem, rows, { nowMs, reason, recommendedAction, timestamp = timestampFor }) {
+  const timestamps = rows.map(timestamp).filter(Boolean).sort();
+  const ageBuckets = { last24h: 0, last7d: 0, olderThan7d: 0, unknown: 0 };
+  for (const row of rows) {
+    ageBuckets[ageBucket(timestamp(row), nowMs)] += 1;
+  }
+  return {
+    count: rows.length,
+    subsystem,
+    oldestTimestamp: timestamps[0] ?? null,
+    newestTimestamp: timestamps[timestamps.length - 1] ?? null,
+    affectedIds: rows.slice(0, 12).map((row) => safeId(row.id)),
+    ageBuckets,
+    reason,
+    recommendedAction,
+  };
+}
+
+function latestMetaSnapshotsByKey(rows) {
+  const byKey = new Map();
+  for (const row of rows) {
+    const key = [row.organization_id ?? "org", row.user_id ?? "user", row.meta_campaign_id ?? row.id].join(":");
+    const current = byKey.get(key);
+    const rowTime = Date.parse(row.synced_at ?? "");
+    const currentTime = Date.parse(current?.synced_at ?? "");
+    if (!current || (Number.isFinite(rowTime) && (!Number.isFinite(currentTime) || rowTime > currentTime))) {
+      byKey.set(key, row);
+    }
+  }
+  return [...byKey.values()];
+}
+
 async function buildReport() {
   const supabase = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -105,14 +155,14 @@ async function buildReport() {
     metaLocks,
     clientErrors,
   ] = await Promise.all([
-    readRows(supabase, "system_jobs", supabase.from("system_jobs").select("id,kind,status,created_at,started_at,locked_until,attempt_count,max_attempts,dead_lettered_at").neq("status", "completed").order("created_at", { ascending: false }).limit(1000), warnings),
+    readRows(supabase, "system_jobs", supabase.from("system_jobs").select("id,kind,status,created_at,started_at,locked_until,attempt_count,max_attempts,dead_lettered_at,last_error_code,reviewed_at,resolution_note").neq("status", "completed").order("created_at", { ascending: false }).limit(1000), warnings),
     readRows(supabase, "provider_usage_events", supabase.from("provider_usage_events").select("id,organization_id,campaign_id,provider,operation,status,estimated_cost,actual_cost,created_at").gte("created_at", sevenDaysAgoIso).order("created_at", { ascending: false }).limit(2000), warnings),
     readRows(supabase, "provider_usage_limits", supabase.from("provider_usage_limits").select("provider,operation,usage_count,limit_count,usage_date,updated_at").gte("usage_date", today).order("updated_at", { ascending: false }).limit(1000), warnings),
     readRows(supabase, "billing_subscriptions", supabase.from("billing_subscriptions").select("organization_id,plan_tier,status,current_period_end,cancel_at_period_end,created_at,updated_at").limit(5000), warnings),
     readRows(supabase, "stripe_webhook_events", supabase.from("stripe_webhook_events").select("id,stripe_event_type,status,error_code,created_at,updated_at").gte("created_at", sevenDaysAgoIso).order("created_at", { ascending: false }).limit(2000), warnings),
     readRows(supabase, "leads", supabase.from("leads").select("id,status,created_at").gte("created_at", sevenDaysAgoIso).order("created_at", { ascending: false }).limit(5000), warnings),
-    readRows(supabase, "lead_notifications", supabase.from("lead_notifications").select("id,status,created_at,updated_at").gte("created_at", sevenDaysAgoIso).order("created_at", { ascending: false }).limit(5000), warnings),
-    readRows(supabase, "campaign_sync_snapshots", supabase.from("campaign_sync_snapshots").select("id,sync_result,campaign_status,delivery_metrics,sync_errors,synced_at").order("synced_at", { ascending: false }).limit(500), warnings),
+    readRows(supabase, "lead_notifications", supabase.from("lead_notifications").select("id,status,created_at,updated_at,delivered_at,failed_at").gte("created_at", sevenDaysAgoIso).order("created_at", { ascending: false }).limit(5000), warnings),
+    readRows(supabase, "campaign_sync_snapshots", supabase.from("campaign_sync_snapshots").select("id,organization_id,user_id,meta_campaign_id,sync_result,campaign_status,delivery_metrics,sync_errors,synced_at").order("synced_at", { ascending: false }).limit(500), warnings),
     readRows(supabase, "meta_launch_locks", supabase.from("meta_launch_locks").select("campaign_id,locked_until,updated_at").order("updated_at", { ascending: false }).limit(500), warnings),
     readRows(supabase, "client_error_events", supabase.from("client_error_events").select("id,route_path,severity,error_name,browser,occurrence_count,last_seen_at,reviewed_at").gte("last_seen_at", sevenDaysAgoIso).order("last_seen_at", { ascending: false }).limit(1000), warnings),
   ]);
@@ -122,15 +172,23 @@ async function buildReport() {
     normal: { queued: 0, processing: 0, failed: 0, deadLetter: 0 },
     heavy: { queued: 0, processing: 0, failed: 0, deadLetter: 0 },
   };
-  for (const job of jobs) {
+  const failedOrDeadLetterJobs = jobs.filter((job) => job.status === "failed" || job.dead_lettered_at);
+  const reviewedFailedOrDeadLetterJobs = failedOrDeadLetterJobs.filter((job) => job.reviewed_at);
+  const activeFailedOrDeadLetterJobs = failedOrDeadLetterJobs.filter((job) => !job.reviewed_at);
+  const activeCriticalFailedJobs = activeFailedOrDeadLetterJobs.filter((job) => laneFor(job.kind) === "critical");
+  const activeNonCriticalFailedJobs = activeFailedOrDeadLetterJobs.filter((job) => laneFor(job.kind) !== "critical");
+  const activeJobs = jobs.filter((job) => !job.reviewed_at);
+
+  for (const job of activeJobs) {
     const lane = laneFor(job.kind);
     if (job.status === "pending") byLane[lane].queued += 1;
     if (job.status === "processing") byLane[lane].processing += 1;
     if (job.status === "failed") byLane[lane].failed += 1;
     if (job.dead_lettered_at) byLane[lane].deadLetter += 1;
   }
-  const staleProcessingJobs = jobs.filter((job) => job.status === "processing" && (!job.locked_until || Date.parse(job.locked_until) < Date.now())).length;
-  const jobsApproachingMaxAttempts = jobs.filter((job) => Number(job.max_attempts ?? 0) > 0 && Number(job.attempt_count ?? 0) >= Math.max(1, Number(job.max_attempts) - 1)).length;
+  const staleProcessingRows = activeJobs.filter((job) => job.status === "processing" && (!job.locked_until || Date.parse(job.locked_until) < Date.now()));
+  const staleProcessingJobs = staleProcessingRows.length;
+  const jobsApproachingMaxAttempts = activeJobs.filter((job) => Number(job.max_attempts ?? 0) > 0 && Number(job.attempt_count ?? 0) >= Math.max(1, Number(job.max_attempts) - 1)).length;
   const providerFailures = providerEvents.filter((event) => event.status === "failed");
   const staleProviderReservations = providerEvents.filter((event) => event.status === "reserved" && event.created_at < thirtyMinutesAgoIso).length;
   const providerCostToday = providerEvents
@@ -146,19 +204,25 @@ async function buildReport() {
   const billingCounts = countBy(billingSubscriptions, (row) => row.status ?? "unknown");
   const stripeFailures = stripeEvents.filter((event) => event.status === "failed").length;
   const notificationsByStatus = countBy(notifications, (row) => row.status ?? "unknown");
-  const failedLeadNotifications = (notificationsByStatus.failed ?? 0) + (notificationsByStatus.undelivered ?? 0);
-  const metaFailures = metaSnapshots.filter((row) => row.sync_result === "failed" || (Array.isArray(row.sync_errors) && row.sync_errors.length > 0)).length;
-  const staleMetaSnapshots = metaSnapshots.filter((row) => row.synced_at && Date.now() - Date.parse(row.synced_at) > 2 * 60 * 60 * 1000).length;
+  const failedLeadNotificationRows = notifications.filter((row) => row.status === "failed" || row.status === "undelivered");
+  const recentFailedLeadNotificationRows = failedLeadNotificationRows.filter((row) => isWithin(row.updated_at ?? row.failed_at ?? row.created_at, oneDayAgoMs));
+  const historicalLeadNotificationRows = failedLeadNotificationRows.filter((row) => !isWithin(row.updated_at ?? row.failed_at ?? row.created_at, oneDayAgoMs));
+  const latestMetaSnapshots = latestMetaSnapshotsByKey(metaSnapshots);
+  const metaFailures = latestMetaSnapshots.filter((row) => row.sync_result === "failed" || (Array.isArray(row.sync_errors) && row.sync_errors.length > 0)).length;
+  const staleLatestMetaSnapshots = latestMetaSnapshots.filter((row) => row.synced_at && Date.now() - Date.parse(row.synced_at) > 2 * 60 * 60 * 1000);
+  const staleMetaSnapshots = staleLatestMetaSnapshots.length;
+  const historicalStaleMetaSnapshots = metaSnapshots.filter((row) => row.synced_at && Date.now() - Date.parse(row.synced_at) > 2 * 60 * 60 * 1000 && !staleLatestMetaSnapshots.some((latest) => latest.id === row.id));
   const activeLocks = metaLocks.filter((lock) => lock.locked_until && Date.parse(lock.locked_until) > Date.now()).length;
   const clientErrorOccurrences = clientErrors.reduce((sum, row) => sum + Math.max(1, Number(row.occurrence_count ?? 1)), 0);
   const highClientErrors = clientErrors.filter((row) => !row.reviewed_at && isWithin(row.last_seen_at, oneDayAgoMs) && (row.severity === "critical" || row.severity === "high")).length;
   const highClientErrors7d = clientErrors.filter((row) => !row.reviewed_at && (row.severity === "critical" || row.severity === "high")).length;
   const supportConfigured = Boolean(process.env.FRESHDESK_DOMAIN?.trim() && process.env.FRESHDESK_API_KEY?.trim());
 
-  const queueStatus = statusFrom({ high: byLane.critical.failed + byLane.critical.deadLetter + staleProcessingJobs, watch: byLane.heavy.queued + jobsApproachingMaxAttempts });
+  const queueStatus = statusFrom({ high: activeCriticalFailedJobs.length + staleProcessingJobs, watch: activeNonCriticalFailedJobs.length + byLane.heavy.queued + jobsApproachingMaxAttempts });
   const providerStatus = statusFrom({ high: staleProviderReservations, watch: providerFailures.length + capPressure.filter((limit) => limit.usage / limit.limit >= 0.8).length });
   const billingStatus = statusFrom({ high: stripeFailures, watch: Number(billingCounts.past_due ?? 0) });
-  const leadStatus = statusFrom({ high: 0, watch: failedLeadNotifications + jobs.filter((job) => job.kind === "lead_capture_retry" && job.status !== "completed").length });
+  const leadCaptureRetryJobs = activeJobs.filter((job) => job.kind === "lead_capture_retry" && job.status !== "completed");
+  const leadStatus = statusFrom({ high: 0, watch: recentFailedLeadNotificationRows.length + leadCaptureRetryJobs.length });
   const metaStatus = statusFrom({ high: metaFailures, watch: staleMetaSnapshots + activeLocks });
   const clientErrorStatus = statusFrom({ high: highClientErrors, watch: highClientErrors7d + (clientErrorOccurrences >= 10 ? 1 : 0) });
   const status = [queueStatus, providerStatus, billingStatus, leadStatus, metaStatus, clientErrorStatus].includes("DEGRADED")
@@ -167,6 +231,117 @@ async function buildReport() {
       ? "WATCH"
       : "GO";
   const verdict = status === "DEGRADED" ? "300 clients: NO-GO" : "300 clients: GO with monitoring";
+  const issueClassification = {
+    activeBlockers: [],
+    currentWatch: [],
+    historicalReviewed: [],
+    cleared: [],
+    summary: {
+      metaSnapshots: staleLatestMetaSnapshots.length > 0
+        ? `Meta snapshots: ACTIVE BLOCKER/WATCH - ${staleLatestMetaSnapshots.length} latest snapshot(s) stale`
+        : historicalStaleMetaSnapshots.length > 0
+          ? `Meta snapshots: historical reviewed artifacts only (${historicalStaleMetaSnapshots.length} superseded stale snapshot(s))`
+          : "Meta snapshots: CLEARED",
+      leadNotifications: recentFailedLeadNotificationRows.length > 0
+        ? `Lead notifications: ACTIVE WATCH - ${recentFailedLeadNotificationRows.length} failed/undelivered notification(s) in last 24h`
+        : historicalLeadNotificationRows.length > 0
+          ? `Lead notifications: 0 active failures, ${historicalLeadNotificationRows.length} historical reviewed failure(s)`
+          : "Lead notifications: CLEARED",
+      deadLetters: activeCriticalFailedJobs.length > 0
+        ? `Dead letters: ACTIVE BLOCKER - ${activeCriticalFailedJobs.length} critical failed/dead-letter job(s)`
+        : activeNonCriticalFailedJobs.length > 0
+          ? `Dead letters: CURRENT WATCH - ${activeNonCriticalFailedJobs.length} non-critical unreviewed failed/dead-letter job(s)`
+          : reviewedFailedOrDeadLetterJobs.length > 0
+            ? `Dead letters: 0 active failures, ${reviewedFailedOrDeadLetterJobs.length} historical reviewed job(s)`
+            : "Dead letters: CLEARED",
+    },
+  };
+
+  if (activeCriticalFailedJobs.length > 0) {
+    issueClassification.activeBlockers.push(classificationEntry("failed/dead-letter jobs", activeCriticalFailedJobs, {
+      nowMs: Date.now(),
+      reason: "Current critical lane failed/dead-letter jobs are unreviewed.",
+      recommendedAction: "Review and resolve the critical job without triggering SMS, Stripe, Meta, provider, or lead side effects.",
+    }));
+  } else {
+    issueClassification.cleared.push(classificationEntry("critical failed/dead-letter jobs", [], {
+      nowMs: Date.now(),
+      reason: "No unreviewed critical failed or dead-letter jobs are present.",
+      recommendedAction: "Continue daily operator:debt and operator:scale-report checks.",
+    }));
+  }
+
+  if (activeNonCriticalFailedJobs.length > 0) {
+    issueClassification.currentWatch.push(classificationEntry("non-critical failed/dead-letter jobs", activeNonCriticalFailedJobs, {
+      nowMs: Date.now(),
+      reason: "Non-critical failed/dead-letter jobs remain unreviewed.",
+      recommendedAction: "Classify as retryable or reviewed before increasing scale; do not retry provider jobs without explicit approval.",
+    }));
+  }
+
+  if (reviewedFailedOrDeadLetterJobs.length > 0) {
+    issueClassification.historicalReviewed.push(classificationEntry("reviewed failed/dead-letter jobs", reviewedFailedOrDeadLetterJobs, {
+      nowMs: Date.now(),
+      reason: "Rows have reviewed_at set and operator:debt excludes them from active failed/dead-letter debt.",
+      recommendedAction: "Keep as evidence; do not delete historical job rows.",
+    }));
+  }
+
+  if (metaFailures > 0) {
+    issueClassification.activeBlockers.push(classificationEntry("Meta latest sync failures", latestMetaSnapshots.filter((row) => row.sync_result === "failed" || (Array.isArray(row.sync_errors) && row.sync_errors.length > 0)), {
+      nowMs: Date.now(),
+      timestamp: (row) => row.synced_at,
+      reason: "The latest app-owned Meta snapshot has sync errors.",
+      recommendedAction: "Run read-only Meta proof; only insert an app-owned reconciliation snapshot if proof is clean.",
+    }));
+  }
+
+  if (staleLatestMetaSnapshots.length > 0) {
+    issueClassification.currentWatch.push(classificationEntry("Meta latest stale snapshots", staleLatestMetaSnapshots, {
+      nowMs: Date.now(),
+      timestamp: (row) => row.synced_at,
+      reason: "The latest app-owned snapshot for at least one tracked Meta campaign is older than the freshness threshold.",
+      recommendedAction: "Run read-only Meta proof and insert a fresh app-owned sync snapshot if proof is clean.",
+    }));
+  } else {
+    issueClassification.cleared.push(classificationEntry("Meta latest snapshots", latestMetaSnapshots, {
+      nowMs: Date.now(),
+      timestamp: (row) => row.synced_at,
+      reason: "Latest app-owned Meta snapshot per tracked campaign is fresh and has no sync errors.",
+      recommendedAction: "Refresh via read-only/app-owned sync before the next launch window if it ages past the threshold.",
+    }));
+  }
+
+  if (historicalStaleMetaSnapshots.length > 0) {
+    issueClassification.historicalReviewed.push(classificationEntry("Meta historical stale snapshots", historicalStaleMetaSnapshots, {
+      nowMs: Date.now(),
+      timestamp: (row) => row.synced_at,
+      reason: "Older stale snapshots are superseded by a newer fresh successful snapshot and are retained as audit artifacts.",
+      recommendedAction: "Do not delete evidence rows; judge Meta freshness from the latest snapshot per campaign.",
+    }));
+  }
+
+  if (recentFailedLeadNotificationRows.length > 0) {
+    issueClassification.currentWatch.push(classificationEntry("lead notification failures", recentFailedLeadNotificationRows, {
+      nowMs: Date.now(),
+      reason: "Failed or undelivered lead notifications exist in the last 24 hours.",
+      recommendedAction: "Confirm lead save and assignment state; do not retry SMS without explicit owner approval.",
+    }));
+  } else {
+    issueClassification.cleared.push(classificationEntry("current lead notification failures", [], {
+      nowMs: Date.now(),
+      reason: "No failed or undelivered lead notifications occurred in the last 24 hours.",
+      recommendedAction: "Continue daily drift checks and do not send SMS without explicit approval.",
+    }));
+  }
+
+  if (historicalLeadNotificationRows.length > 0) {
+    issueClassification.historicalReviewed.push(classificationEntry("lead notification historical failures", historicalLeadNotificationRows, {
+      nowMs: Date.now(),
+      reason: "Older failed notification rows have no status drift and are outside the current 24-hour operational window.",
+      recommendedAction: "Keep evidence rows; do not retry SMS without explicit owner approval.",
+    }));
+  }
 
   return {
     generatedAt,
@@ -174,10 +349,11 @@ async function buildReport() {
     verdict,
     status,
     warnings,
+    issueClassification,
     queue: { status: queueStatus, byLane, staleProcessingJobs, jobsApproachingMaxAttempts, caps: JOB_LANE_CONCURRENCY_CAPS },
     provider: { status: providerStatus, events7d: providerEvents.length, failures7d: providerFailures.length, staleReservations: staleProviderReservations, costToday: providerCostToday, capPressure },
     billing: { status: billingStatus, trialing: billingCounts.trialing ?? 0, active: billingCounts.active ?? 0, pastDue: billingCounts.past_due ?? 0, canceled: (billingCounts.canceled ?? 0) + (billingCounts.inactive ?? 0), stripeFailures },
-    leads: { status: leadStatus, leads7d: leads.filter((lead) => isWithin(lead.created_at, sevenDaysAgoMs)).length, notificationsByStatus, failedLeadNotifications },
+    leads: { status: leadStatus, leads7d: leads.filter((lead) => isWithin(lead.created_at, sevenDaysAgoMs)).length, notificationsByStatus, failedLeadNotifications: failedLeadNotificationRows.length },
     meta: { status: metaStatus, snapshots: metaSnapshots.length, metaFailures, staleMetaSnapshots, activeLocks },
     support: { status: supportConfigured ? "GO" : "WATCH", configured: supportConfigured, warning: supportConfigured ? null : "Freshdesk env missing; support route uses customer-safe fallback." },
     clientErrors: {
@@ -238,6 +414,15 @@ function printMarkdown(report) {
   console.log(`- Occurrences 7d: ${report.clientErrors.occurrences7d}`);
   console.log(`- High severity groups: ${report.clientErrors.highSeverityGroups}`);
   console.log(`- Top routes: ${report.clientErrors.topRoutes.length ? report.clientErrors.topRoutes.map(([route, count]) => `${route} (${count})`).join(", ") : "none"}`);
+  console.log("");
+  console.log(`## WATCH Classification`);
+  console.log(`- ${report.issueClassification.summary.metaSnapshots}`);
+  console.log(`- ${report.issueClassification.summary.leadNotifications}`);
+  console.log(`- ${report.issueClassification.summary.deadLetters}`);
+  console.log(`- Active blockers: ${report.issueClassification.activeBlockers.length}`);
+  console.log(`- Current watch: ${report.issueClassification.currentWatch.length}`);
+  console.log(`- Historical reviewed: ${report.issueClassification.historicalReviewed.length}`);
+  console.log(`- Cleared: ${report.issueClassification.cleared.length}`);
   console.log("");
   if (report.warnings.length > 0) {
     console.log(`## Data Warnings`);

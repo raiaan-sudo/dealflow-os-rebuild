@@ -14,12 +14,13 @@ type RawJob = {
   status: string | null;
   created_at: string | null;
   started_at?: string | null;
-  updated_at?: string | null;
   locked_until: string | null;
   attempt_count?: number | null;
   max_attempts?: number | null;
   dead_lettered_at: string | null;
   last_error_code: string | null;
+  reviewed_at?: string | null;
+  resolution_note?: string | null;
   organization_id?: string | null;
   campaign_id?: string | null;
 };
@@ -84,11 +85,14 @@ type RawLeadNotification = {
   status: string | null;
   created_at: string | null;
   updated_at: string | null;
+  delivered_at?: string | null;
+  failed_at?: string | null;
 };
 
 type RawMetaSnapshot = {
   id: string;
   organization_id: string | null;
+  user_id?: string | null;
   launch_mode: string | null;
   sync_result: string | null;
   meta_campaign_id: string | null;
@@ -119,6 +123,29 @@ type RawClientError = {
   reviewed_at?: string | null;
 };
 
+export type ScaleIssueClassificationEntry = {
+  count: number;
+  subsystem: string;
+  oldestTimestamp: string | null;
+  newestTimestamp: string | null;
+  affectedIds: string[];
+  ageBuckets: Record<"last24h" | "last7d" | "olderThan7d" | "unknown", number>;
+  reason: string;
+  recommendedAction: string;
+};
+
+export type ScaleIssueClassification = {
+  activeBlockers: ScaleIssueClassificationEntry[];
+  currentWatch: ScaleIssueClassificationEntry[];
+  historicalReviewed: ScaleIssueClassificationEntry[];
+  cleared: ScaleIssueClassificationEntry[];
+  summary: {
+    metaSnapshots: string;
+    leadNotifications: string;
+    deadLetters: string;
+  };
+};
+
 export type ScaleReadinessSnapshot = {
   status: ScaleHealthStatus;
   verdict: "300 clients: GO with monitoring" | "300 clients: NO-GO";
@@ -128,6 +155,7 @@ export type ScaleReadinessSnapshot = {
   warnings: string[];
   blockers: string[];
   nextActions: string[];
+  issueClassification: ScaleIssueClassification;
   queue: {
     status: ScaleHealthStatus;
     byKind: Record<string, { queued: number; processing: number; failed: number; deadLetter: number; lane: JobLane }>;
@@ -280,6 +308,98 @@ function oldestAge(rows: Array<{ created_at?: string | null; started_at?: string
   return ages.length > 0 ? Math.max(...ages) : null;
 }
 
+function safeId(value: string | null | undefined) {
+  if (!value) {
+    return "none";
+  }
+
+  return value.length <= 12 ? value : `${value.slice(0, 8)}...${value.slice(-4)}`;
+}
+
+function timestampFor(row: { updated_at?: string | null; created_at?: string | null; synced_at?: string | null; dead_lettered_at?: string | null }) {
+  return row.updated_at ?? row.dead_lettered_at ?? row.synced_at ?? row.created_at ?? null;
+}
+
+function ageBucketFor(value: string | null | undefined, nowMs: number): keyof ScaleIssueClassificationEntry["ageBuckets"] {
+  if (!value) {
+    return "unknown";
+  }
+
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return "unknown";
+  }
+
+  const ageMs = nowMs - parsed;
+  if (ageMs <= 24 * 60 * 60 * 1000) {
+    return "last24h";
+  }
+
+  if (ageMs <= 7 * 24 * 60 * 60 * 1000) {
+    return "last7d";
+  }
+
+  return "olderThan7d";
+}
+
+function classificationEntry<T extends { id?: string | null }>(
+  subsystem: string,
+  rows: T[],
+  params: {
+    nowMs: number;
+    reason: string;
+    recommendedAction: string;
+    timestamp: (row: T) => string | null | undefined;
+  },
+): ScaleIssueClassificationEntry {
+  const timestamps = rows
+    .map((row) => params.timestamp(row))
+    .filter((value): value is string => Boolean(value))
+    .sort();
+  const ageBuckets: ScaleIssueClassificationEntry["ageBuckets"] = {
+    last24h: 0,
+    last7d: 0,
+    olderThan7d: 0,
+    unknown: 0,
+  };
+
+  for (const row of rows) {
+    ageBuckets[ageBucketFor(params.timestamp(row), params.nowMs)] += 1;
+  }
+
+  return {
+    count: rows.length,
+    subsystem,
+    oldestTimestamp: timestamps[0] ?? null,
+    newestTimestamp: timestamps[timestamps.length - 1] ?? null,
+    affectedIds: rows.slice(0, 12).map((row) => safeId(row.id)),
+    ageBuckets,
+    reason: params.reason,
+    recommendedAction: params.recommendedAction,
+  };
+}
+
+function latestMetaSnapshotsByKey(rows: RawMetaSnapshot[]) {
+  const byKey = new Map<string, RawMetaSnapshot>();
+
+  for (const row of rows) {
+    const key = [
+      row.organization_id ?? "org",
+      row.user_id ?? "user",
+      row.meta_campaign_id ?? row.id,
+    ].join(":");
+    const current = byKey.get(key);
+    const currentTime = Date.parse(current?.synced_at ?? "");
+    const rowTime = Date.parse(row.synced_at ?? "");
+
+    if (!current || (Number.isFinite(rowTime) && (!Number.isFinite(currentTime) || rowTime > currentTime))) {
+      byKey.set(key, row);
+    }
+  }
+
+  return [...byKey.values()];
+}
+
 function costCents(value: number | string | null | undefined) {
   const numeric = typeof value === "number" ? value : Number.parseFloat(value ?? "");
   return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric * 100) : 0;
@@ -370,13 +490,32 @@ export function buildScaleReadinessSnapshot(input: {
   const twoHoursAgo = nowMs - 2 * 60 * 60 * 1000;
   const warnings = [...(input.warnings ?? [])];
 
+  const failedOrDeadLetterJobs = input.jobs.filter((job) => job.status === "failed" || Boolean(job.dead_lettered_at));
+  const reviewedFailedOrDeadLetterJobs = failedOrDeadLetterJobs.filter((job) => Boolean(job.reviewed_at));
+  const activeFailedOrDeadLetterJobs = failedOrDeadLetterJobs.filter((job) => !job.reviewed_at);
+  const activeJobs = input.jobs.filter((job) => !job.reviewed_at);
+  const staleProcessingJobRows = activeJobs.filter((job) => {
+    if (job.status !== "processing") {
+      return false;
+    }
+
+    if (!job.locked_until) {
+      return true;
+    }
+
+    const lockedUntil = Date.parse(job.locked_until);
+    return Number.isFinite(lockedUntil) && lockedUntil < nowMs;
+  });
+  const activeCriticalFailedJobs = activeFailedOrDeadLetterJobs.filter((job) => classifySystemJobLane(job.kind) === "critical");
+  const activeNonCriticalFailedJobs = activeFailedOrDeadLetterJobs.filter((job) => classifySystemJobLane(job.kind) !== "critical");
+
   const byKind: ScaleReadinessSnapshot["queue"]["byKind"] = {};
   const byLane: ScaleReadinessSnapshot["queue"]["byLane"] = {
     critical: { queued: 0, processing: 0, failed: 0, deadLetter: 0 },
     normal: { queued: 0, processing: 0, failed: 0, deadLetter: 0 },
     heavy: { queued: 0, processing: 0, failed: 0, deadLetter: 0 },
   };
-  for (const job of input.jobs) {
+  for (const job of activeJobs) {
     const kind = job.kind ?? "unknown";
     const lane = classifySystemJobLane(kind);
     const bucket = byKind[kind] ?? { queued: 0, processing: 0, failed: 0, deadLetter: 0, lane };
@@ -399,24 +538,18 @@ export function buildScaleReadinessSnapshot(input: {
     }
     byKind[kind] = bucket;
   }
-  const queuedJobs = input.jobs.filter((job) => job.status === "pending");
-  const processingJobs = input.jobs.filter((job) => job.status === "processing");
-  const staleProcessingJobs = processingJobs.filter((job) => {
-    if (!job.locked_until) {
-      return true;
-    }
-    const lockedUntil = Date.parse(job.locked_until);
-    return Number.isFinite(lockedUntil) && lockedUntil < nowMs;
-  }).length;
-  const jobsApproachingMaxAttempts = input.jobs.filter((job) => {
+  const queuedJobs = activeJobs.filter((job) => job.status === "pending");
+  const processingJobs = activeJobs.filter((job) => job.status === "processing");
+  const staleProcessingJobs = staleProcessingJobRows.length;
+  const jobsApproachingMaxAttempts = activeJobs.filter((job) => {
     const attempts = Number(job.attempt_count ?? 0);
     const maxAttempts = Number(job.max_attempts ?? 0);
     return maxAttempts > 0 && attempts >= Math.max(1, maxAttempts - 1) && job.status !== "completed";
   }).length;
   const queue = {
     status: statusFromCounts({
-      critical: byLane.critical.deadLetter + byLane.critical.failed + staleProcessingJobs,
-      watch: byLane.heavy.queued + jobsApproachingMaxAttempts,
+      critical: activeCriticalFailedJobs.length + staleProcessingJobs,
+      watch: activeNonCriticalFailedJobs.length + byLane.heavy.queued + jobsApproachingMaxAttempts,
     }),
     byKind,
     byLane,
@@ -424,7 +557,7 @@ export function buildScaleReadinessSnapshot(input: {
     oldestProcessingAgeMinutes: oldestAge(processingJobs, "started_at", nowMs),
     jobsApproachingMaxAttempts,
     staleProcessingJobs,
-    retryPressure: input.jobs.filter((job) => Number(job.attempt_count ?? 0) > 0 && job.status !== "completed").length,
+    retryPressure: activeJobs.filter((job) => Number(job.attempt_count ?? 0) > 0 && job.status !== "completed").length,
     workerCaps: JOB_LANE_CONCURRENCY_CAPS,
   };
 
@@ -504,19 +637,23 @@ export function buildScaleReadinessSnapshot(input: {
   };
 
   const notificationsByStatus = countBy(input.leadNotifications, (row) => row.status ?? "unknown");
+  const failedLeadNotificationRows = input.leadNotifications.filter((row) => row.status === "failed" || row.status === "undelivered");
+  const recentFailedLeadNotifications = failedLeadNotificationRows.filter((row) => isWithin(row.updated_at ?? row.failed_at ?? row.created_at, oneDayAgo));
+  const historicalLeadNotificationFailures = failedLeadNotificationRows.filter((row) => !isWithin(row.updated_at ?? row.failed_at ?? row.created_at, oneDayAgo));
+  const leadCaptureRetryJobs = activeJobs.filter((job) => job.kind === "lead_capture_retry" && job.status !== "completed");
+  const smsPolicy = getSmsOutboundPolicyStatus();
   const leadSms = {
     status: statusFromCounts({
       high: 0,
-      watch: (notificationsByStatus.failed ?? 0) + (notificationsByStatus.undelivered ?? 0) +
-        input.jobs.filter((job) => job.kind === "lead_capture_retry" && job.status !== "completed").length,
+      watch: recentFailedLeadNotifications.length + leadCaptureRetryJobs.length,
     }),
     leadsToday: input.leads.filter((lead) => isToday(lead.created_at, today)).length,
     leads7d: input.leads.filter((lead) => isWithin(lead.created_at, sevenDaysAgo)).length,
-    leadCaptureRetryJobs: input.jobs.filter((job) => job.kind === "lead_capture_retry" && job.status !== "completed").length,
+    leadCaptureRetryJobs: leadCaptureRetryJobs.length,
     notificationsByStatus,
     smsSentOrDelivered: (notificationsByStatus.sent ?? 0) + (notificationsByStatus.delivered ?? 0),
-    smsFailed: (notificationsByStatus.failed ?? 0) + (notificationsByStatus.undelivered ?? 0),
-    savedLeadNotificationFailures: input.leadNotifications.filter((row) => row.status === "failed" || row.status === "undelivered").length,
+    smsFailed: failedLeadNotificationRows.length,
+    savedLeadNotificationFailures: failedLeadNotificationRows.length,
     twilioErrorClasses: topCounts(
       countBy(
         input.leadNotifications.filter((row) => row.status === "failed" || row.status === "undelivered"),
@@ -524,13 +661,20 @@ export function buildScaleReadinessSnapshot(input: {
       ),
       5,
     ),
-    policy: getSmsOutboundPolicyStatus(),
+    policy: smsPolicy,
   };
 
   const activeLaunchLocks = input.metaLocks.filter((lock) => Date.parse(lock.locked_until ?? "") > nowMs).length;
-  const staleSyncSnapshots = input.metaSnapshots.filter((snapshot) => Date.parse(snapshot.synced_at ?? "") < twoHoursAgo).length;
-  const failedSyncSnapshots = input.metaSnapshots.filter((snapshot) => snapshot.sync_result === "failed" || asArray(snapshot.sync_errors).length > 0).length;
-  const activeCampaignsTracked = input.metaSnapshots.filter((snapshot) => /ACTIVE/i.test(snapshot.campaign_status ?? "")).length;
+  const latestMetaSnapshots = latestMetaSnapshotsByKey(input.metaSnapshots);
+  const staleLatestMetaSnapshots = latestMetaSnapshots.filter((snapshot) => Date.parse(snapshot.synced_at ?? "") < twoHoursAgo);
+  const historicalStaleMetaSnapshots = input.metaSnapshots.filter((snapshot) => {
+    const syncedAt = Date.parse(snapshot.synced_at ?? "");
+    return Number.isFinite(syncedAt) &&
+      syncedAt < twoHoursAgo &&
+      !staleLatestMetaSnapshots.some((latest) => latest.id === snapshot.id);
+  });
+  const failedSyncSnapshots = latestMetaSnapshots.filter((snapshot) => snapshot.sync_result === "failed" || asArray(snapshot.sync_errors).length > 0).length;
+  const activeCampaignsTracked = latestMetaSnapshots.filter((snapshot) => /ACTIVE/i.test(snapshot.campaign_status ?? "")).length;
   const spendTodayCents = input.metaSnapshots.length > 0
     ? input.metaSnapshots.reduce((sum, snapshot) => sum + Math.round(Number(asRecord(snapshot.delivery_metrics).spend ?? 0) * 100), 0)
     : null;
@@ -540,10 +684,10 @@ export function buildScaleReadinessSnapshot(input: {
     return new Set(adSetIds).size < adSetIds.length || new Set(adIds).size < adIds.length;
   }).length;
   const meta = {
-    status: statusFromCounts({ high: failedSyncSnapshots, watch: staleSyncSnapshots + activeLaunchLocks }),
+    status: statusFromCounts({ high: failedSyncSnapshots, watch: staleLatestMetaSnapshots.length + activeLaunchLocks }),
     activeCampaignsTracked,
     driftWarnings: failedSyncSnapshots,
-    staleSyncSnapshots,
+    staleSyncSnapshots: staleLatestMetaSnapshots.length,
     activeLaunchLocks,
     expectedBudgetCapCents: getMetaDailyBudgetCapCents(),
     spendTodayCents,
@@ -580,6 +724,127 @@ export function buildScaleReadinessSnapshot(input: {
       : "Freshdesk env missing; app falls back to a customer-safe unavailable message.",
   };
 
+  const issueClassification: ScaleIssueClassification = {
+    activeBlockers: [],
+    currentWatch: [],
+    historicalReviewed: [],
+    cleared: [],
+    summary: {
+      metaSnapshots: staleLatestMetaSnapshots.length > 0
+        ? `Meta snapshots: ACTIVE BLOCKER/WATCH - ${staleLatestMetaSnapshots.length} latest snapshot(s) stale`
+        : historicalStaleMetaSnapshots.length > 0
+          ? `Meta snapshots: historical reviewed artifacts only (${historicalStaleMetaSnapshots.length} superseded stale snapshot(s))`
+          : "Meta snapshots: CLEARED",
+      leadNotifications: recentFailedLeadNotifications.length > 0
+        ? `Lead notifications: ACTIVE WATCH - ${recentFailedLeadNotifications.length} failed/undelivered notification(s) in last 24h`
+        : historicalLeadNotificationFailures.length > 0
+          ? `Lead notifications: 0 active failures, ${historicalLeadNotificationFailures.length} historical reviewed failure(s)`
+          : "Lead notifications: CLEARED",
+      deadLetters: activeCriticalFailedJobs.length > 0
+        ? `Dead letters: ACTIVE BLOCKER - ${activeCriticalFailedJobs.length} critical failed/dead-letter job(s)`
+        : activeNonCriticalFailedJobs.length > 0
+          ? `Dead letters: CURRENT WATCH - ${activeNonCriticalFailedJobs.length} non-critical unreviewed failed/dead-letter job(s)`
+          : reviewedFailedOrDeadLetterJobs.length > 0
+            ? `Dead letters: 0 active failures, ${reviewedFailedOrDeadLetterJobs.length} historical reviewed job(s)`
+            : "Dead letters: CLEARED",
+    },
+  };
+
+  if (activeCriticalFailedJobs.length > 0) {
+    issueClassification.activeBlockers.push(classificationEntry("failed/dead-letter jobs", activeCriticalFailedJobs, {
+      nowMs,
+      timestamp: (row) => timestampFor(row),
+      reason: "Current critical lane failed/dead-letter jobs are unreviewed.",
+      recommendedAction: "Review and resolve the critical job without triggering SMS, Stripe, Meta, provider, or lead side effects.",
+    }));
+  } else {
+    issueClassification.cleared.push(classificationEntry("critical failed/dead-letter jobs", [], {
+      nowMs,
+      timestamp: (row) => timestampFor(row),
+      reason: "No unreviewed critical failed or dead-letter jobs are present.",
+      recommendedAction: "Continue daily operator:debt and operator:scale-report checks.",
+    }));
+  }
+
+  if (activeNonCriticalFailedJobs.length > 0) {
+    issueClassification.currentWatch.push(classificationEntry("non-critical failed/dead-letter jobs", activeNonCriticalFailedJobs, {
+      nowMs,
+      timestamp: (row) => timestampFor(row),
+      reason: "Non-critical failed/dead-letter jobs remain unreviewed.",
+      recommendedAction: "Classify as retryable or reviewed before increasing scale; do not retry provider jobs without explicit approval.",
+    }));
+  }
+
+  if (reviewedFailedOrDeadLetterJobs.length > 0) {
+    issueClassification.historicalReviewed.push(classificationEntry("reviewed failed/dead-letter jobs", reviewedFailedOrDeadLetterJobs, {
+      nowMs,
+      timestamp: (row) => timestampFor(row),
+      reason: "Rows have reviewed_at set and operator:debt excludes them from active failed/dead-letter debt.",
+      recommendedAction: "Keep as evidence; do not delete historical job rows.",
+    }));
+  }
+
+  if (failedSyncSnapshots > 0) {
+    issueClassification.activeBlockers.push(classificationEntry("Meta latest sync failures", latestMetaSnapshots.filter((snapshot) => snapshot.sync_result === "failed" || asArray(snapshot.sync_errors).length > 0), {
+      nowMs,
+      timestamp: (row) => row.synced_at,
+      reason: "The latest app-owned Meta snapshot has sync errors.",
+      recommendedAction: "Run read-only Meta proof; only insert an app-owned reconciliation snapshot if proof is clean.",
+    }));
+  }
+
+  if (staleLatestMetaSnapshots.length > 0) {
+    issueClassification.currentWatch.push(classificationEntry("Meta latest stale snapshots", staleLatestMetaSnapshots, {
+      nowMs,
+      timestamp: (row) => row.synced_at,
+      reason: "The latest app-owned snapshot for at least one tracked Meta campaign is older than the freshness threshold.",
+      recommendedAction: "Run read-only Meta proof and insert a fresh app-owned sync snapshot if proof is clean.",
+    }));
+  } else {
+    issueClassification.cleared.push(classificationEntry("Meta latest snapshots", latestMetaSnapshots, {
+      nowMs,
+      timestamp: (row) => row.synced_at,
+      reason: "Latest app-owned Meta snapshot per tracked campaign is fresh and has no sync errors.",
+      recommendedAction: "Refresh via read-only/app-owned sync before the next launch window if it ages past the threshold.",
+    }));
+  }
+
+  if (historicalStaleMetaSnapshots.length > 0) {
+    issueClassification.historicalReviewed.push(classificationEntry("Meta historical stale snapshots", historicalStaleMetaSnapshots, {
+      nowMs,
+      timestamp: (row) => row.synced_at,
+      reason: "Older stale snapshots are superseded by a newer fresh successful snapshot and are retained as audit artifacts.",
+      recommendedAction: "Do not delete evidence rows; judge Meta freshness from the latest snapshot per campaign.",
+    }));
+  }
+
+  if (recentFailedLeadNotifications.length > 0) {
+    issueClassification.currentWatch.push(classificationEntry("lead notification failures", recentFailedLeadNotifications, {
+      nowMs,
+      timestamp: (row) => row.updated_at ?? row.failed_at ?? row.created_at,
+      reason: "Failed or undelivered lead notifications exist in the last 24 hours.",
+      recommendedAction: "Confirm lead save and assignment state; do not retry SMS without explicit owner approval.",
+    }));
+  } else {
+    issueClassification.cleared.push(classificationEntry("current lead notification failures", [] as RawLeadNotification[], {
+      nowMs,
+      timestamp: (row) => row.updated_at ?? row.failed_at ?? row.created_at,
+      reason: "No failed or undelivered lead notifications occurred in the last 24 hours.",
+      recommendedAction: "Continue daily drift checks and do not send SMS without explicit approval.",
+    }));
+  }
+
+  if (historicalLeadNotificationFailures.length > 0) {
+    issueClassification.historicalReviewed.push(classificationEntry("lead notification historical failures", historicalLeadNotificationFailures, {
+      nowMs,
+      timestamp: (row) => row.updated_at ?? row.failed_at ?? row.created_at,
+      reason: smsPolicy.internalLeadNotificationsEnabled
+        ? "Older failed notification rows have no status drift and are outside the current 24-hour operational window."
+        : "Older failed notification rows occurred while internal SMS delivery is not enabled/configured; leads still saved and operator retry would send SMS.",
+      recommendedAction: "Keep evidence rows; do not retry SMS without explicit owner approval.",
+    }));
+  }
+
   const blockers = [
     queue.status === "DEGRADED" ? "Critical queue/dead-letter/stale-processing issue exists." : null,
     provider.status === "DEGRADED" ? "Provider usage failures or stale reservations require operator review." : null,
@@ -612,6 +877,7 @@ export function buildScaleReadinessSnapshot(input: {
     warnings,
     blockers,
     nextActions,
+    issueClassification,
     queue,
     provider,
     billing,
@@ -659,14 +925,14 @@ export async function loadScaleReadinessSnapshot(): Promise<ScaleReadinessSnapsh
     metaLocks,
     clientErrors,
   ] = await Promise.all([
-    safeTable<RawJob>("system_jobs", () => admin.from("system_jobs").select("id,organization_id,campaign_id,kind,status,created_at,started_at,updated_at,locked_until,attempt_count,max_attempts,dead_lettered_at,last_error_code,next_run_at").neq("status", "completed").order("created_at", { ascending: false }).limit(1000), warnings),
+    safeTable<RawJob>("system_jobs", () => admin.from("system_jobs").select("id,organization_id,campaign_id,kind,status,created_at,started_at,locked_until,attempt_count,max_attempts,dead_lettered_at,last_error_code,reviewed_at,resolution_note,next_run_at").neq("status", "completed").order("created_at", { ascending: false }).limit(1000), warnings),
     safeTable<RawProviderEvent>("provider_usage_events", () => admin.from("provider_usage_events").select("id,organization_id,campaign_id,provider,operation,status,estimated_cost,actual_cost,created_at,updated_at").gte("created_at", since7d).order("created_at", { ascending: false }).limit(2000), warnings),
     safeTable<RawProviderLimit>("provider_usage_limits", () => admin.from("provider_usage_limits").select("id,provider,operation,usage_count,limit_count,usage_date,updated_at").gte("usage_date", today).order("updated_at", { ascending: false }).limit(1000), warnings),
     safeTable<RawBillingSubscription>("billing_subscriptions", () => admin.from("billing_subscriptions").select("organization_id,plan_tier,status,current_period_end,cancel_at_period_end,created_at,updated_at").order("updated_at", { ascending: false }).limit(5000), warnings),
     safeTable<RawStripeEvent>("stripe_webhook_events", () => admin.from("stripe_webhook_events").select("id,stripe_event_type,status,error_code,created_at,updated_at").gte("created_at", since7d).order("created_at", { ascending: false }).limit(2000), warnings),
     safeTable<RawLead>("leads", () => admin.from("leads").select("id,organization_id,campaign_id,status,created_at").gte("created_at", since7d).order("created_at", { ascending: false }).limit(5000), warnings),
-    safeTable<RawLeadNotification>("lead_notifications", () => admin.from("lead_notifications").select("id,tenant_id,lead_id,channel,provider,purpose,status,created_at,updated_at").gte("created_at", since7d).order("created_at", { ascending: false }).limit(5000), warnings),
-    safeTable<RawMetaSnapshot>("campaign_sync_snapshots", () => admin.from("campaign_sync_snapshots").select("id,organization_id,launch_mode,sync_result,meta_campaign_id,campaign_status,ad_set_statuses,ad_statuses,delivery_metrics,sync_errors,synced_at").order("synced_at", { ascending: false }).limit(500), warnings),
+    safeTable<RawLeadNotification>("lead_notifications", () => admin.from("lead_notifications").select("id,tenant_id,lead_id,channel,provider,purpose,status,created_at,updated_at,delivered_at,failed_at").gte("created_at", since7d).order("created_at", { ascending: false }).limit(5000), warnings),
+    safeTable<RawMetaSnapshot>("campaign_sync_snapshots", () => admin.from("campaign_sync_snapshots").select("id,organization_id,user_id,launch_mode,sync_result,meta_campaign_id,campaign_status,ad_set_statuses,ad_statuses,delivery_metrics,sync_errors,synced_at").order("synced_at", { ascending: false }).limit(500), warnings),
     safeTable<RawMetaLock>("meta_launch_locks", () => admin.from("meta_launch_locks").select("campaign_id,locked_until,updated_at").order("updated_at", { ascending: false }).limit(500), warnings),
     safeTable<RawClientError>("client_error_events", () => admin.from("client_error_events").select("id,route_path,source,severity,error_name,browser,viewport,occurrence_count,last_seen_at,reviewed_at").gte("last_seen_at", since7d).order("last_seen_at", { ascending: false }).limit(1000), warnings),
   ]);

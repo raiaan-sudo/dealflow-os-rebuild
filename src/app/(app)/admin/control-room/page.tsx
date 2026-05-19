@@ -137,6 +137,41 @@ function CapPressureList({ caps }: { caps: ScaleReadinessSnapshot["provider"]["c
   );
 }
 
+function ClassificationList({
+  title,
+  entries,
+}: {
+  title: string;
+  entries: ScaleReadinessSnapshot["issueClassification"]["historicalReviewed"];
+}) {
+  if (entries.length === 0) {
+    return (
+      <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">{title}</p>
+        <p className="mt-2 text-sm text-slate-300">none</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">{title}</p>
+      <div className="mt-3 grid gap-3">
+        {entries.map((entry) => (
+          <div className="rounded-xl border border-white/8 bg-black/20 p-3" key={`${title}-${entry.subsystem}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-medium text-white">{entry.subsystem}</p>
+              <span className="font-mono text-xs text-cyan-100">{entry.count}</span>
+            </div>
+            <p className="mt-2 text-sm leading-5 text-slate-400">{entry.reason}</p>
+            <p className="mt-2 text-xs leading-5 text-slate-500">{entry.recommendedAction}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default async function ControlRoomPage() {
   try {
     await assertInternalOperatorAccess();
@@ -210,6 +245,38 @@ export default async function ControlRoomPage() {
             </ul>
           </div>
         ) : null}
+
+        <section className="rounded-[26px] border border-white/10 bg-[#07111d] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-emerald-300/18 bg-emerald-300/10 text-emerald-100">
+                <ShieldCheck className="size-5" />
+              </div>
+              <h2 className="min-w-0 text-xl font-semibold tracking-[-0.04em] text-white">WATCH classification</h2>
+            </div>
+            <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-bold uppercase text-slate-200">
+              evidence retained
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            {[
+              ["Meta snapshots", snapshot.issueClassification.summary.metaSnapshots],
+              ["Lead notifications", snapshot.issueClassification.summary.leadNotifications],
+              ["Dead letters", snapshot.issueClassification.summary.deadLetters],
+            ].map(([label, value]) => (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4" key={label}>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">{label}</p>
+                <p className="mt-2 break-words text-sm font-semibold leading-6 text-white">{value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 grid gap-3 lg:grid-cols-4">
+            <ClassificationList title="Active blockers" entries={snapshot.issueClassification.activeBlockers} />
+            <ClassificationList title="Current watch" entries={snapshot.issueClassification.currentWatch} />
+            <ClassificationList title="Historical reviewed" entries={snapshot.issueClassification.historicalReviewed} />
+            <ClassificationList title="Cleared" entries={snapshot.issueClassification.cleared} />
+          </div>
+        </section>
 
         <Section title="Queue / job health" status={snapshot.queue.status} icon={Workflow}>
           <Metric label="Critical lane" value={`${snapshot.queue.byLane.critical.queued} queued`} detail={`${snapshot.queue.byLane.critical.failed} failed, ${snapshot.queue.byLane.critical.deadLetter} dead-letter`} />
