@@ -153,8 +153,9 @@ export function AutonomyModeControl({
         <div className="mt-5 rounded-[22px] border border-rose-400/20 bg-rose-400/10 p-4 text-sm leading-6 text-rose-100">
           {alert}
         </div>
-      ) : (
-        <div className="mt-5 space-y-4">
+      ) : null}
+
+      <div className="mt-5 space-y-4">
           <p className="text-sm leading-6 text-muted-foreground">
             Manual keeps all actions human-driven. Assisted stages high-confidence actions for approval. Autopilot can only apply safe actions inside guardrails when the workspace is entitled.
           </p>
@@ -213,7 +214,6 @@ export function AutonomyModeControl({
               : "No execution cycle has run from live sync yet."}
           </p>
         </div>
-      )}
 
       <div className="mt-5">
         <Button

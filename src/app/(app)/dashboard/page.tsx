@@ -389,7 +389,7 @@ async function loadDashboardStateForCampaign(
         ? withTimeout(
             evaluateAutonomy(resolvedCampaignId).catch(() => null),
             null,
-            3_500,
+            7_000,
           )
         : Promise.resolve(null),
       organizationId
@@ -409,6 +409,21 @@ async function loadDashboardStateForCampaign(
       ),
       withTimeout(loadLeadLoopVerified(resolvedCampaignId).catch(() => false), false, 2_500),
     ]);
+    const resolvedAutonomyResult =
+      autonomyResult ??
+      (resolvedCampaignId
+        ? await withTimeout(
+            evaluateAutonomy(resolvedCampaignId).catch((error) => {
+              logError("Dashboard autonomy evaluation failed", {
+                campaignId: resolvedCampaignId,
+                message: error instanceof Error ? error.message : "Unknown autonomy evaluation error",
+              });
+              return null;
+            }),
+            null,
+            7_000,
+          )
+        : null);
     const recentLeads = dashboardData?.recentLeads ?? [];
     const publish = resolvedCampaign?.record?.publish ?? null;
     const publicFunnelPublished = Boolean(
@@ -470,7 +485,7 @@ async function loadDashboardStateForCampaign(
       launchRecord,
       dashboardData,
       creativePerformanceSummary,
-      autonomySnapshot: autonomyResult?.snapshot ?? null,
+      autonomySnapshot: resolvedAutonomyResult?.snapshot ?? null,
       entitlements,
       selectedAdSummary,
       leadLoopVerified,
