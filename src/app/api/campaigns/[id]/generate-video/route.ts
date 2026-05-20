@@ -14,6 +14,7 @@ import { isMarketingStudioWorkerOwnedJob } from "@/lib/services/marketing-studio
 import { createSystemJob, listSystemJobs } from "@/lib/services/system-job-service";
 import type { SystemJobRecord } from "@/lib/services/system-job-service";
 import type { VideoGenerationJobPayload } from "@/lib/services/video-generation-job";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -50,6 +51,30 @@ function getVideoProviderReadiness() {
     provider,
     ready: validation.configured && generationEnabled,
   };
+}
+
+function safeIdempotencyPart(value: unknown) {
+  return String(value ?? "unknown")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._:-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "unknown";
+}
+
+function creativeIntakeHash(value: unknown) {
+  return createHash("sha256")
+    .update(JSON.stringify(value ?? null))
+    .digest("hex")
+    .slice(0, 16);
+}
+
+function isReusableActiveVideoJob(job: SystemJobRecord<"video_generation">) {
+  return (
+    (job.status === "pending" || job.status === "processing") &&
+    !job.reviewed_at &&
+    !job.dead_lettered_at
+  );
 }
 
 export async function POST(
@@ -140,6 +165,7 @@ export async function POST(
     })) as SystemJobRecord<"video_generation">[];
     const existingActiveJob =
       activeJobs.find((job) =>
+        isReusableActiveVideoJob(job) &&
         job.payload.creativeIndex === body.creativeIndex &&
         (!creativeIntakeContext ||
           hasSameCreativeIntakeGenerationContext(job.payload.creativeIntake, creativeIntakeContext)),
@@ -219,7 +245,7 @@ export async function POST(
       idempotencyKey:
         body.force === true
           ? `video_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${body.creativeIndex}:${crypto.randomUUID()}`
-          : `video_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${body.creativeIndex}`,
+          : `video_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${body.creativeIndex}:${safeIdempotencyPart(selectedVideo.id)}:${creativeIntakeHash(creativeIntakeContext)}`,
       payload,
       maxAttempts: 1,
     });

@@ -60,10 +60,12 @@ export default async function BuildCreativesPage({
 
     const { data: jobsData } = await supabase
       .from("system_jobs")
-      .select("id,kind,status,error_message,result,next_run_at,locked_by,locked_until,created_at,started_at,completed_at,retry_count,attempt_count,max_attempts,payload,last_error_code")
+      .select("id,kind,status,error_message,result,next_run_at,locked_by,locked_until,created_at,started_at,completed_at,retry_count,attempt_count,max_attempts,payload,last_error_code,reviewed_at,dead_lettered_at")
       .eq("campaign_id", ensuredRecord.campaign.id)
       .in("kind", ["static_creative_generation", "video_generation", "video_generation_status"])
       .in("status", ["pending", "processing", "failed"])
+      .is("reviewed_at", null)
+      .is("dead_lettered_at", null)
       .order("created_at", { ascending: false })
       .limit(12);
     activeRenderJobs = Array.isArray(jobsData)

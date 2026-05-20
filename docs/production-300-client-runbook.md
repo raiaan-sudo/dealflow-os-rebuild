@@ -203,6 +203,7 @@ Classification policy:
 - A latest stale snapshot is `CURRENT WATCH` until read-only Meta proof is clean and a fresh app-owned sync snapshot is inserted.
 - A latest failed snapshot, read-only Meta proof failure, destination mismatch, budget mismatch, or app-vs-Meta runtime drift is an `ACTIVE BLOCKER`.
 - Clear stale Meta only via read-only Meta verification plus an app-owned sync snapshot. Never mutate Meta delivery, object status, or budget from this runbook.
+- A clean app-owned reconciliation snapshot must record `mutatesMeta: false` proof, fresh `synced_at`, expected ACTIVE object statuses, expected destination URL, and expected budget. Historical stale snapshots remain evidence and must not be deleted to make the report green.
 
 ## Support / Freshdesk
 

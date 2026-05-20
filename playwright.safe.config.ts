@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const baseURL = process.env.SAFE_E2E_BASE_URL?.trim() || "http://127.0.0.1:3100";
-const shouldStartServer = !process.env.SAFE_E2E_BASE_URL?.trim();
+const isListOnly = process.argv.includes("--list");
+const shouldStartServer = !isListOnly && !process.env.SAFE_E2E_BASE_URL?.trim();
 const browserChannel = process.env.SAFE_E2E_BROWSER_CHANNEL?.trim();
 const readinessURL = `${baseURL.replace(/\/$/, "")}/login`;
 const serverCommand =

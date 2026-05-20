@@ -144,3 +144,7 @@ generation.
 Do not use this worker for broad campaign retries until the capped proof has produced an app-owned, vision-QA-accepted finished ad and operator debt remains clean.
 
 For one-job production proof, run `--dry-run` immediately before `--max-jobs=1` and proceed only when the eligible job list contains exactly the intended fresh/current job. If a provider attempt fails, preserve evidence and do not retry automatically; fix the classified root cause first, then request a separately scoped proof.
+
+UGC video proofs can run materially longer than static finished-ad renders. Treat a long-running single scoped video attempt as active while the job remains `processing` without `last_error_code` or provider debt. Do not start a second attempt in another shell. After completion, prove the result by checking the `video_generation` job result, one consumed `provider_usage_events` row, an app-owned `creative_assets.asset_type = ugc_video` row with `file_url`, `storageNormalized = true`, duration metadata, accepted video provenance QA, accepted UGC product-quality QA, and persisted `selected_ugc_video_ids`.
+
+If local `next build` appears to hang before or during startup, inspect stale local build processes and remove only generated `.next` cache/lock output before rerunning. Do not commit `.next`, build logs, screenshots, or temporary proof artifacts.

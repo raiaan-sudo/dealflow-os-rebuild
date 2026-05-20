@@ -66,6 +66,8 @@ Create provider alerts against the durable sources first, then use logs for cont
 - Medium: Pro Autopilot produces blocked actions without dashboard and `/admin/control-room` surfacing.
 - Medium: repeated `rate_limit.blocked` or `lead_capture.spam_rejected` logs for the same IP/contact in a short window.
 
+Creative Studio render-state alerts should distinguish active jobs from evidence. Pending or processing Marketing Studio rows without `reviewed_at` or `dead_lettered_at` are active queue state; reviewed, dead-lettered, or superseded rows are historical evidence. A customer-visible stale `Queued for render worker` state when worker dry-run has no eligible jobs is a product defect and should be fixed in the render-state mapping, not cleared by deleting evidence rows.
+
 Recommended destinations:
 
 - Vercel Log Drains for structured app logs.

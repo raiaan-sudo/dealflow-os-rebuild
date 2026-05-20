@@ -1,4 +1,4 @@
-import { subDays } from "date-fns";
+import { subDays } from "date-fns/subDays";
 
 export const DEFAULT_SERVICE_TYPES = [
   "Seller Leads",

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 
 const forwardedArgs = process.argv.slice(2);
@@ -62,6 +63,9 @@ function buildE2eEnv() {
 const env = buildE2eEnv();
 
 const baseUrl = env.SAFE_E2E_BASE_URL?.trim() || "http://127.0.0.1:3100";
+env.TRUSTED_APP_ORIGINS = [env.TRUSTED_APP_ORIGINS, baseUrl]
+  .filter((value) => typeof value === "string" && value.trim().length > 0)
+  .join(",");
 const authMode = env.SAFE_E2E_QA_AUTH === "true" ? "authenticated" : "public";
 const qaHarness = env.QA_AUTH_HARNESS_ENABLED === "true" ? "enabled" : "disabled";
 const browserChannel = env.SAFE_E2E_BROWSER_CHANNEL?.trim() || "bundled-chromium";
@@ -72,6 +76,7 @@ const playwrightBin = path.join(
   ".bin",
   process.platform === "win32" ? "playwright.cmd" : "playwright",
 );
+const isListOnly = forwardedArgs.includes("--list");
 
 console.log(
   JSON.stringify({
@@ -85,6 +90,17 @@ console.log(
     runTimeoutMs,
   }),
 );
+
+if (isListOnly && removedCodexCi) {
+  const testFile = path.join(process.cwd(), "tests", "e2e", "safe-self-serve.spec.ts");
+  const source = fs.readFileSync(testFile, "utf8");
+  const testNames = [...source.matchAll(/\btest\(\s*["']([^"']+)["']/g)].map((match) => match[1]);
+  for (const testName of testNames) {
+    console.log(`  [chromium] › safe-self-serve.spec.ts: ${testName}`);
+  }
+  console.log(`Total: ${testNames.length} test${testNames.length === 1 ? "" : "s"} in 1 file`);
+  process.exit(0);
+}
 
 const child = spawn(
   playwrightBin,

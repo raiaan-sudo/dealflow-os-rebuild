@@ -177,6 +177,8 @@ type SystemJob = {
   attempt_count?: number | null;
   retry_count?: number | null;
   max_attempts?: number | null;
+  reviewed_at?: string | null;
+  dead_lettered_at?: string | null;
   last_error_code?: string | null;
   error_message?: string | null;
   payload?: {
@@ -193,6 +195,10 @@ function jobRenderView(job: SystemJob | null | undefined) {
 }
 
 function isOpenRenderJob(job: SystemJob | null | undefined) {
+  if (job?.reviewed_at || job?.dead_lettered_at) {
+    return false;
+  }
+
   return job?.status === "pending" || job?.status === "processing";
 }
 

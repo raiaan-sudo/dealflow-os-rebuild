@@ -250,10 +250,38 @@ assert.match(generateStaticAdsRoute, /queued for claimed worker processing/);
 const generateVideoRoute = fs.readFileSync("src/app/api/campaigns/[id]/generate-video/route.ts", "utf8");
 assert.doesNotMatch(generateVideoRoute, /processSystemJob/);
 assert.match(generateVideoRoute, /queued for claimed worker processing/);
+const creativeStudioPage = fs.readFileSync("src/app/(app)/build/creatives/page.tsx", "utf8");
+assert.match(
+  creativeStudioPage,
+  /\.is\("reviewed_at", null\)/,
+  "Creative Studio must not show reviewed stale worker evidence as active queued render work",
+);
+assert.match(
+  creativeStudioPage,
+  /\.is\("dead_lettered_at", null\)/,
+  "Creative Studio must not show dead-lettered worker evidence as active queued render work",
+);
+const creativeStudioWizard = fs.readFileSync("src/app/(app)/build/creatives/creative-wizard.tsx", "utf8");
+assert.match(
+  creativeStudioWizard,
+  /job\?\.reviewed_at \|\| job\?\.dead_lettered_at/,
+  "Client render-state helper must ignore reviewed or dead-lettered jobs",
+);
 
 const workerScript = fs.readFileSync("scripts/run-marketing-studio-worker.mjs", "utf8");
 assert.match(workerScript, /marketing_studio_worker\.readiness/);
 assert.match(workerScript, /runMarketingStudioWorkerBatch/);
+const safeE2eScript = fs.readFileSync("scripts/run-safe-e2e.mjs", "utf8");
+assert.match(
+  safeE2eScript,
+  /isListOnly && removedCodexCi/,
+  "CODEX_CI safe E2E test discovery must not invoke Playwright's server/test runtime",
+);
+assert.match(
+  safeE2eScript,
+  /env\.TRUSTED_APP_ORIGINS = \[env\.TRUSTED_APP_ORIGINS, baseUrl\]/,
+  "local production safe E2E must trust only its current base URL without weakening production CSRF guards",
+);
 
 const workerService = fs.readFileSync("src/lib/services/marketing-studio-worker-service.ts", "utf8");
 assert.match(workerService, /\.in\("kind", \["static_creative_generation", "video_generation"\]\)/);

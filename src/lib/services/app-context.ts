@@ -1,4 +1,4 @@
-import { subDays } from "date-fns";
+import { subDays } from "date-fns/subDays";
 import { slugify } from "@/lib/utils";
 import { logError, logWarn } from "@/lib/logging";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";

@@ -24,6 +24,10 @@ assert.ok(
   "video route blocks disabled/unconfigured providers before creating new jobs",
 );
 assert.doesNotMatch(videoRoute, /processSystemJob/, "video route remains enqueue-only");
+assert.match(videoRoute, /createHash\("sha256"\)/, "video route scopes idempotency to the approved creative brief");
+assert.match(videoRoute, /safeIdempotencyPart\(selectedVideo\.id\)/, "video route scopes idempotency to the selected video creative");
+assert.match(videoRoute, /!job\.reviewed_at/, "video route does not reuse reviewed stale jobs as active render work");
+assert.match(videoRoute, /!job\.dead_lettered_at/, "video route does not reuse dead-lettered jobs as active render work");
 
 assert.match(systemJobService, /providerUsageRunId: `\$\{processingJob\.id\}:\$\{processingJob\.attempt_count \?\? 0\}`/, "video provider usage idempotency is scoped to the claimed job attempt");
 assert.match(videoJob, /providerUsageRunId/, "video generation accepts a provider usage run id");

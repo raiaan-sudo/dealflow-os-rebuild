@@ -84,6 +84,8 @@ Run these for Marketing Studio, Higgsfield, static creative, UGC video, storage,
 
 `npm run test:e2e:safe` uses `scripts/run-safe-e2e.mjs`, which removes `CODEX_CI` before Playwright starts and defaults to bundled Chromium. Use `SAFE_E2E_BROWSER_CHANNEL=chrome` only when the run specifically needs the user's Chrome channel. Authenticated proof requires `SAFE_E2E_QA_AUTH=true`, `QA_AUTH_HARNESS_ENABLED=true`, Supabase service-role proof env, and `INTERNAL_SYSTEM_JOBS_SECRET` or `CRON_SECRET`; skipped authenticated proof is not a pass. Safe E2E must intercept activation and client-error telemetry writes so local proof churn cannot create production operator debt.
 
+For Creative Studio UGC changes, validation must prove both truthful immediate state and final provider state. Immediate state is concept/script/shot-list/CTA/poster availability. Final launch state requires app-owned playable UGC media, storage normalization, accepted provenance/product QA, and saved `selected_ugc_video_ids`. Historical reviewed or dead-letter worker evidence must not appear as active queued/rendering work.
+
 ## Billing, Meta, SMS, Security, And Cost Commands
 
 ```bash
@@ -121,6 +123,8 @@ Focused validation is acceptable for docs-only changes, isolated copy changes, o
 - `npm run build` when feasible
 - `git diff --check`
 - diff secret-pattern scan
+
+If `npm run typecheck` or `npm run build` hangs, inspect local processes first, stop only stale validation/build processes, remove only generated `.next` cache/lock output when needed, and rerun. A hung validator is not a pass.
 
 ## Skipped Command Classification
 

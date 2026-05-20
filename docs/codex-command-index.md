@@ -122,6 +122,7 @@ Rules:
 - No automatic retry.
 - Stop on first outcome.
 - Record job ID, provider usage event ID, provider job/result ID, asset ID, storage path, and QA/provenance.
+- For UGC video, final proof additionally requires app-owned playable video, duration metadata, accepted provenance QA, accepted UGC product-quality QA, and a persisted selected UGC video id. Concept/script/shot-list availability is immediate preview proof, not final playable-media proof.
 
 ## Safe Production Smoke
 

@@ -61,6 +61,10 @@ Use `npm run worker:marketing-studio -- --dry-run` for readiness and eligible-jo
 
 AI UGC video concepts must be visible before render, selectable as a set, and playable when a video URL exists. Customer UI must not expose provider names, provider payloads, credentials, guard internals, or raw failure messages. Failed or unavailable video renders should present a retry-ready customer message.
 
+Immediate UGC preview means the customer can inspect the concept, script, shot list, CTA, and storyboard/poster state immediately. It does not mean the final playable provider video is synchronous. Final UGC launch proof requires an app-owned playable video, storage normalization, deterministic provenance/product QA acceptance, and a saved selected UGC video id in the launch package.
+
+Reviewed, dead-lettered, or historical worker rows are evidence only. Creative Studio must filter them out of active queued/rendering state on both server render and client refresh paths. If no active eligible job exists, the customer state should be `Concept ready, render needed` or a safe failed/retry state, never stale `Queued for render worker`.
+
 ## Regression checks
 
 `npm run smoke:offline` must cover:
