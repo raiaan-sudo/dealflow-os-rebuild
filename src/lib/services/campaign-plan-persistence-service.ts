@@ -136,6 +136,11 @@ function getMismatchedCriticalFields(
   );
 }
 
+function requiresPublicSlugForLaunchStatus(status: string | null) {
+  const normalized = status?.trim().toLowerCase() ?? "";
+  return ["live", "paused", "launched", "launching", "published"].includes(normalized);
+}
+
 function getMissingCriticalFields(values: CampaignPlanCriticalFieldSnapshot) {
   const missing: string[] = [];
 
@@ -143,7 +148,7 @@ function getMissingCriticalFields(values: CampaignPlanCriticalFieldSnapshot) {
     missing.push("launch_status");
   }
 
-  if (!values.public_slug) {
+  if (requiresPublicSlugForLaunchStatus(values.launch_status) && !values.public_slug) {
     missing.push("public_slug");
   }
 

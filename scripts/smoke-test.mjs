@@ -862,6 +862,7 @@ function runOfflineChecks() {
   assertIncludes(launchRoute, "ownershipVerified", "Meta failure persistence ownership guard", "direct Meta launch route does not persist failure state before ownership is proven");
   assertIncludes(campaignPlanPersistence, "preserveExistingCriticalFieldsForPlanUpdate", "Campaign public slug preservation", "asset-only plan updates preserve an existing row public slug when older plan JSON lacks one");
   assertIncludes(campaignPlanPersistence, "existing.public_slug", "Campaign public slug fallback", "public slug projection is not cleared by static creative regeneration on older published campaigns");
+  assertIncludes(campaignPlanPersistence, "requiresPublicSlugForLaunchStatus", "Campaign public slug warning scope", "pre-launch built campaigns do not emit public_slug warnings before the funnel is published or launched");
   assertIncludes(createCampaignRoute, "meta_paused_verification_failed", "Direct Meta paused verification", "direct Meta launch route verifies or restores PAUSED after create/recovery");
   assertIncludes(billingCheckoutRoute, "assertSameOriginRequest", "Billing checkout same-origin guard", "checkout route rejects cross-site POSTs");
   assertIncludes(billingPlans, "priceLabel: \"$147/mo\"", "Starter price updated", "Starter self-serve plan is priced at $147/month");
