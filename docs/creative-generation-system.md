@@ -23,6 +23,8 @@ DealFlow supports two static creative modes:
 
 If a generated image fails its selected mode contract or the quality gate, it can be stored for review but must not be treated as launch-ready. Launch and selection gates must keep using the static visual QA decision before saving or launching selected creatives.
 
+Marketing Studio brand/logo text is optional unless the prompt explicitly requires visible brand presence. Providers should omit brokerage/logo text when exact rendering is uncertain; QA rejects visible misspellings or distorted brand-like text, but it must not reject a clean finished ad merely because optional brand text is absent.
+
 Marketing Studio finished-ad rasters require `FINISHED_AD_VISION_QA_ENABLED=true` plus an OpenAI-compatible vision model configured by `FINISHED_AD_VISION_QA_MODEL` or `AI_VISION_MODEL`. If vision QA is unavailable, JPEG/PNG finished ads fail closed with `finished_ad_text_unverified`; SVG fixtures can still be inspected deterministically by the built-in text parser. Provider names and raw provider diagnostics remain internal.
 
 The Higgsfield Marketing Studio CLI is allowed only through the explicit CLI provider path. Generic API mode must fail closed unless an official API endpoint/schema is verified. Vercel/serverless runtime support is not assumed; CLI generation should run only in a proven worker/operator runtime with bounded jobs and minimal allowlisted environment variables. The preferred premium static lane is `higgsfield_marketing_studio` finished-ad CLI generation; the preferred premium UGC lane is `higgsfield_marketing_studio` CLI video generation when `HIGGSFIELD_UGC_VIDEO_MODEL=marketing_studio_video`. The existing Higgsfield API/SDK DoP video path remains the explicit fallback through `MEDIA_GENERATION_FALLBACK_PROVIDER=higgsfield`.
@@ -49,6 +51,8 @@ Marketing Studio finished-ad and UGC video generation are intentionally split fr
    - `FINISHED_AD_VISION_QA_ENABLED=true`
    - `AI_API_KEY` or `OPENAI_API_KEY`
 6. The worker claims only eligible Marketing Studio static/video jobs, runs the existing generation pipeline, normalizes accepted provider output into app-owned `creative-assets` storage, runs finished-ad or video provenance/product QA, and writes job status/result back through `system_jobs`.
+   - Provider original URLs are evidence metadata only. Creative Studio and launch gates must read durable app-owned `creative_assets.file_url` values after storage normalization.
+   - After static assets are persisted, campaign plan persistence must reload the saved creative assets and write those app-owned URLs back into the plan snapshot. A provider-original URL in the job result is not sufficient launch proof.
 7. The CLI child process receives only the Higgsfield allowlisted environment: `NODE_ENV`, `PATH`, `HOME`, `TMPDIR`, `HF_CREDENTIALS`, `HF_API_KEY`, `HF_API_SECRET`, `HIGGSFIELD_BASE_URL`, `HIGGSFIELD_CONFIG_HOME`, `HIGGSFIELD_CACHE_DIR`, `HIGGSFIELD_OUTPUT_DIR`, and `MARKETING_STUDIO_WORKER_OUTPUT_DIR`. It must not receive full `process.env`.
 
 Use `npm run worker:marketing-studio -- --dry-run` for readiness and eligible-job proof. Do not run the worker with provider guards enabled against production until the owner has approved one capped live proof.

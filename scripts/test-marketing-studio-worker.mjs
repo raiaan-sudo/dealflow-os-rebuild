@@ -258,6 +258,11 @@ assert.match(workerScript, /runMarketingStudioWorkerBatch/);
 const workerService = fs.readFileSync("src/lib/services/marketing-studio-worker-service.ts", "utf8");
 assert.match(workerService, /\.in\("kind", \["static_creative_generation", "video_generation"\]\)/);
 assert.match(workerService, /isMarketingStudioWorkerOwnedJob/);
+assert.match(
+  workerService,
+  /\.is\("reviewed_at", null\)/,
+  "Marketing Studio worker must not select reviewed stale/dead-letter evidence for live provider processing",
+);
 assert.match(workerService, /FINISHED_AD_VISION_QA_ENABLED=true/);
 assert.match(workerService, /claimSystemJobByIdForWorker/);
 assert.match(workerService, /ignoreNextRunAt: true/);

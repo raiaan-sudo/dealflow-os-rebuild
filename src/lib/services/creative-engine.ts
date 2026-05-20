@@ -741,7 +741,9 @@ function buildFinishedAdPromptContract(params: {
     `Timed offer that must be readable: ${params.offer}.`,
     `CTA that must be readable and uncropped: ${params.cta}.`,
     `Market and audience context: ${params.market}; ${params.audience}.`,
-    params.brand ? `Brand text, if used, must be spelled exactly: ${params.brand}.` : null,
+    params.brand
+      ? `Brand/logo text is optional; if exact brand rendering is uncertain, omit it. If brand text is used, spell it exactly: ${params.brand}. Do not invent or approximate logos.`
+      : null,
     "Keep all live text large enough for mobile social feed viewing with generous safe margins.",
     "Leave clean padding around the headline and CTA; do not place text over busy image detail.",
     "No tiny text, cropped CTA, overlapping panels, fake dashboard, fake table, fake listing sheet, app UI, gibberish, invented logo, guaranteed-approval claim, or guaranteed-financing claim.",

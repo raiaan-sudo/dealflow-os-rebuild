@@ -473,6 +473,8 @@ function runOfflineChecks() {
   assertIncludes(staticCreativeAssetService, "provider_original_url", "Static provider URL audit metadata", "provider URLs are preserved only as metadata during generated static persistence");
   assertIncludes(staticCreativeAssetService, "file_url: readyUrl", "Static durable file URL persistence", "ready generated static assets use the durable app-owned URL as file_url");
   assertIncludes(staticCreativeAssetService, "allInsertedCreativesAreReady", "Static accepted asset preservation", "failed normalization does not clean up existing accepted generated assets");
+  assertIncludes(campaignPersistence, "persistedStaticAdsAfterSave", "Static durable plan readback", "campaign plan persistence reloads app-owned creative assets after storage normalization");
+  assertIncludes(campaignPersistence, "planStaticAds", "Static durable plan writeback", "Creative Studio and launch gates read durable app-owned static URLs after provider storage");
   assertIncludes(staticCreativeStorageBackfillAudit, "STATIC_CREATIVE_STORAGE_BACKFILL_ACK=owner-approved-production-backfill", "Static storage backfill apply gate", "legacy provider-url backfill apply mode requires explicit owner approval");
   assertIncludes(staticCreativeStorageBackfillAudit, "alreadyNormalizedRowsSkipped", "Static storage backfill idempotency", "legacy provider-url backfill skips already-normalized rows");
   assertIncludes(staticCreativeStorageBackfillAudit, "rollbackPlan", "Static storage backfill rollback plan", "legacy provider-url backfill reports rollback guidance before mutation");

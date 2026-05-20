@@ -9,8 +9,8 @@ const repoRoot = process.cwd();
 const originalResolve = Module._resolveFilename;
 const originalLoad = Module._load;
 
-process.env.NEXT_PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://supabase.example.test";
-process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "anon-test";
+process.env.NEXT_PUBLIC_SUPABASE_URL = "https://supabase.example.test";
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-test";
 
 Module._load = function load(request, parent, isMain) {
   if (request === "server-only") {
@@ -178,6 +178,8 @@ assert.match(finishedAdPrompt.generatedPrompt, /one dominant hook area, one proo
 assert.match(finishedAdPrompt.generatedPrompt, /generous safe margins/);
 assert.match(finishedAdPrompt.generatedPrompt, /no tiny text, no cropped CTA, no overlapping panels/i);
 assert.match(finishedAdPrompt.generatedPrompt, /not a chart, not a dashboard, not a listing sheet/);
+assert.match(finishedAdPrompt.generatedPrompt, /Brand\/logo text is optional/);
+assert.match(finishedAdPrompt.generatedPrompt, /omit it/);
 assert.match(finishedAdPrompt.generatedPrompt, /Do not invent logos, guaranteed-approval claims, guaranteed financing/);
 assert.doesNotMatch(finishedAdPrompt.negativePrompt, /finished ad/);
 assert.doesNotMatch(finishedAdPrompt.negativePrompt, /CTA button/);

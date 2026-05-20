@@ -146,7 +146,7 @@ export async function inspectFinishedAdWithVisionQa(
           {
             role: "system",
             content:
-              "You inspect final paid-social ad rasters for launch QA. Return only JSON with keys readableTextSamples, hasGibberish, hasFakeUi, hasListingOrDashboard, hasChartOrTable, brandMisspelled, requiredCtaPresent, requiredOfferPresent. A normal poster-style CTA button or CTA bar is allowed. Be strict about gibberish, misspellings, fake dashboard/listing/table UI, charts, data panels, and missing required offer or CTA.",
+              "You inspect final paid-social ad rasters for launch QA. Return only JSON with keys readableTextSamples, hasGibberish, hasFakeUi, hasListingOrDashboard, hasChartOrTable, brandMisspelled, requiredCtaPresent, requiredOfferPresent. A normal poster-style CTA button or CTA bar is allowed. Brand/logo text may be optional; do not set brandMisspelled merely because an optional brand is absent. Set brandMisspelled only when visible brand-like text is actually misspelled or distorted. Be strict about gibberish, misspellings, fake dashboard/listing/table UI, charts, data panels, and missing required offer or CTA.",
           },
           {
             role: "user",

@@ -503,14 +503,44 @@ function requiredPhrasePresent(samples: string[], phrase: string) {
   return matched / words.length >= 0.55;
 }
 
+function promptRequiresBrandPresence(prompt?: string) {
+  return /\b(brand(?:ed)? text (?:must|required)|must include (?:the )?(?:brokerage|brand)|required brand|logo must appear)\b/i.test(prompt ?? "");
+}
+
+function sampleContainsMisspelledBrand(samples: string[], exactPattern: RegExp, fuzzyPattern: RegExp) {
+  return samples.some((sample) => fuzzyPattern.test(sample) && !exactPattern.test(sample));
+}
+
 function detectBrandMisspelling(samples: string[], prompt?: string) {
   const sourcePrompt = prompt ?? "";
   if (/\bre\s*\/\s*max\b/i.test(sourcePrompt)) {
-    return !samples.some((sample) => /\bre\s*\/\s*max\b/i.test(sample));
+    const exact = /\bre\s*\/\s*max\b/i;
+    const fuzzy = /\bre\s*[-/]?\s*ma+x+\b|\bremx\b|\bremaxx\b/i;
+
+    if (samples.some((sample) => exact.test(sample))) {
+      return false;
+    }
+
+    if (sampleContainsMisspelledBrand(samples, exact, fuzzy)) {
+      return true;
+    }
+
+    return promptRequiresBrandPresence(sourcePrompt);
   }
 
   if (/royal\s+lepage/i.test(sourcePrompt)) {
-    return !samples.some((sample) => /royal\s+lepage/i.test(sample));
+    const exact = /royal\s+lepage/i;
+    const fuzzy = /royal\s+le\s*page|royal\s+page|\blepage\b/i;
+
+    if (samples.some((sample) => exact.test(sample))) {
+      return false;
+    }
+
+    if (sampleContainsMisspelledBrand(samples, exact, fuzzy)) {
+      return true;
+    }
+
+    return promptRequiresBrandPresence(sourcePrompt);
   }
 
   return false;

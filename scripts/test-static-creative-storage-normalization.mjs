@@ -10,8 +10,8 @@ const repoRoot = process.cwd();
 const originalResolve = Module._resolveFilename;
 const originalLoad = Module._load;
 
-process.env.NEXT_PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://supabase.example.test";
-process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "anon-test";
+process.env.NEXT_PUBLIC_SUPABASE_URL = "https://supabase.example.test";
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-test";
 process.env.STATIC_CREATIVE_PROVIDER_IMAGE_HOSTS = "example.com,api.openai.com";
 
 Module._load = function load(request, parent, isMain) {

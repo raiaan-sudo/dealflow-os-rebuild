@@ -97,6 +97,10 @@ Marketing Studio finished-ad output is not launch-ready until all of these are t
 - static visual QA marks the asset launch-eligible;
 - user selection points to a QA-accepted primary creative.
 
+Provider original URLs in job results are proof that Higgsfield returned output, not proof that DealFlow has a launchable asset. Final proof requires app-owned storage normalization and a campaign plan readback that points Creative Studio / Preview / Launch at the durable `creative_assets.file_url`.
+
+Brand/logo text is optional unless a prompt explicitly requires visible brand presence. If exact brand rendering is uncertain, the provider should omit the brand text. QA should reject visible misspellings or distorted brand-like text, not a clean finished ad that simply omits optional brokerage text.
+
 If vision QA is disabled, unavailable, or cannot inspect the JPEG/PNG/WebP, the finished ad fails closed and remains non-ready.
 
 Marketing Studio UGC video output is not launch-ready until all of these are true:
@@ -138,3 +142,5 @@ the operator audit trail. Do not use this override for normal customer
 generation.
 
 Do not use this worker for broad campaign retries until the capped proof has produced an app-owned, vision-QA-accepted finished ad and operator debt remains clean.
+
+For one-job production proof, run `--dry-run` immediately before `--max-jobs=1` and proceed only when the eligible job list contains exactly the intended fresh/current job. If a provider attempt fails, preserve evidence and do not retry automatically; fix the classified root cause first, then request a separately scoped proof.

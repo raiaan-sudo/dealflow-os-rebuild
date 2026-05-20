@@ -613,14 +613,14 @@ export function buildCreativeIntakePromptVersion(
       `Audience text context: ${brief.targetAudience}.`,
       `Required offer text that must be readable in the final raster: ${brief.offer}.`,
       `Required CTA text that must be readable in the final raster: ${brief.cta}.`,
-      `Brokerage or brand direction: ${brief.brokerageBrand}.`,
+      `Brokerage or brand direction: ${brief.brokerageBrand}. Brand/logo text is optional; if exact brand rendering is uncertain, omit it. If brand text is used, spell it exactly and do not invent or approximate logos.`,
       `Property focus: ${brief.propertyType}.`,
       `Creative style: ${brief.creativeStyle}.`,
       `Placement: ${brief.platformPlacement}.`,
       brief.mustUseCopy.length > 0 ? `Must-use copy: ${brief.mustUseCopy.join("; ")}.` : null,
       "The final image should look like a high-performing real estate Facebook/Instagram ad made in a marketing studio, with no spreadsheet/table/grid/data-panel visuals.",
       "Use clean typography, realistic real estate imagery, clear text hierarchy, and a direct-response CTA. Keep text short enough to be legible at mobile feed size.",
-      "Do not create gibberish, pseudo text, misspell the brokerage, invent fake MLS/listing sheets, show dashboards, charts, tables, app UI, landing pages, data panels, tiny text, unreadable pricing cards, or broken text.",
+      "Do not create gibberish, pseudo text, misspell visible brokerage text, invent fake MLS/listing sheets, show dashboards, charts, tables, app UI, landing pages, data panels, tiny text, unreadable pricing cards, or broken text.",
       "Do not invent logos, guaranteed-approval claims, guaranteed financing, or any compliance-sensitive promise beyond the required offer text.",
       brief.complianceNotes.length > 0
         ? `Compliance guidance: ${brief.complianceNotes.join("; ")}.`

@@ -1295,12 +1295,17 @@ export async function regenerateStaticCreativeAssetsForUser(
       campaignId,
       staticAds,
     });
+    const persistedStaticAdsAfterSave = await loadStaticCreativeAssets(supabase, userId, campaignId);
+    const planStaticAds =
+      persistedStaticAdsAfterSave.length > 0
+        ? mergeStaticCreativeImageResults(staticAds, persistedStaticAdsAfterSave)
+        : staticAds;
 
     const updatedSavedDocument = await persistGeneratedStaticAdsToCampaignPlan({
       supabase,
       campaignId,
       userId,
-      staticAds,
+      staticAds: planStaticAds,
       row: {
         ...row,
         plan: nextPlan,
@@ -1310,7 +1315,7 @@ export async function regenerateStaticCreativeAssetsForUser(
     return normalizeCanonicalCampaign({
       campaign,
       savedDocument: updatedSavedDocument,
-      staticAds,
+      staticAds: planStaticAds,
       publish: mapPublishRecord(row),
     });
   } catch (error) {

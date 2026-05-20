@@ -46,7 +46,7 @@
     "test:offer-normalization": "node ./scripts/test-offer-normalization.mjs",
     "test:direct-response-funnels": "node ./scripts/test-direct-response-funnels.mjs",
     "test:client-error-telemetry": "node ./scripts/test-client-error-telemetry.mjs",
-    "test:e2e:safe": "playwright test --config=playwright.safe.config.ts",
+    "test:e2e:safe": "node ./scripts/run-safe-e2e.mjs",
     "smoke:offline": "node ./scripts/smoke-test.mjs offline",
     "smoke:staging": "node ./scripts/smoke-test.mjs staging",
     "load:routes": "node ./scripts/load-test.mjs routes",

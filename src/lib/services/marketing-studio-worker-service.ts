@@ -116,6 +116,7 @@ export async function listEligibleMarketingStudioWorkerJobs(params?: {
     .in("kind", ["static_creative_generation", "video_generation"])
     .in("status", ["pending", "processing"])
     .is("dead_lettered_at", null)
+    .is("reviewed_at", null)
     .order("created_at", { ascending: true })
     .limit(50);
 

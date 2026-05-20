@@ -200,6 +200,29 @@ const cleanFinishedAd = await qa(
 assert.equal(cleanFinishedAd.decision, "accept", "clean finished ad accepted in finished_ad QA mode");
 assert.equal(cleanFinishedAd.mode, "finished_ad");
 
+const optionalBrandOmitted = await qa(
+  "finished-ad-optional-brand-omitted",
+  `
+    <rect width="512" height="512" fill="#f7f3eb"/>
+    <rect x="28" y="28" width="456" height="456" rx="18" fill="#ffffff"/>
+    <rect x="48" y="58" width="416" height="220" rx="14" fill="#d9e8d5"/>
+    <text x="56" y="332" font-size="34">Preview 14-Day Home Sale Plan</text>
+    <text x="56" y="372" font-size="18">Focused seller review this week</text>
+    <rect x="56" y="410" width="248" height="42" rx="21" fill="#183a2b"/>
+    <text x="86" y="437" font-size="18" fill="#fff">Review My Sale Plan</text>
+  `,
+  {
+    mode: "finished_ad",
+    prompt: "Brand/logo text is optional; if exact brand rendering is uncertain, omit it. If brand text is used, spell it exactly: RE/MAX.",
+    campaignContext: {
+      cta: "Review My Sale Plan",
+      offer: "Preview 14-Day Home Sale Plan",
+    },
+  },
+);
+assert.equal(optionalBrandOmitted.decision, "accept", "finished_ad accepts clean rasters that omit optional brokerage text");
+assert.equal(optionalBrandOmitted.reasons.includes("brand_misspelled"), false);
+
 const missingRequiredCta = await qa(
   "finished-ad-missing-cta",
   `

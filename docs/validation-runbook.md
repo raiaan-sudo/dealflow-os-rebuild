@@ -77,9 +77,12 @@ npm run test:higgsfield-provider-selection
 npm run test:static-creative-storage
 npm run test:static-creative-image-qa
 npm run test:static-ad-templates
+npm run test:e2e:safe
 ```
 
 Run these for Marketing Studio, Higgsfield, static creative, UGC video, storage, QA, Build / Preview / Launch readiness, or customer media control changes.
+
+`npm run test:e2e:safe` uses `scripts/run-safe-e2e.mjs`, which removes `CODEX_CI` before Playwright starts and defaults to bundled Chromium. Use `SAFE_E2E_BROWSER_CHANNEL=chrome` only when the run specifically needs the user's Chrome channel. Authenticated proof requires `SAFE_E2E_QA_AUTH=true`, `QA_AUTH_HARNESS_ENABLED=true`, Supabase service-role proof env, and `INTERNAL_SYSTEM_JOBS_SECRET` or `CRON_SECRET`; skipped authenticated proof is not a pass. Safe E2E must intercept activation and client-error telemetry writes so local proof churn cannot create production operator debt.
 
 ## Billing, Meta, SMS, Security, And Cost Commands
 
