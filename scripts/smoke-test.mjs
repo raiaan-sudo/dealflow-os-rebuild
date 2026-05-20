@@ -479,7 +479,7 @@ function runOfflineChecks() {
   assertIncludes(staticCreativeStorageBackfillAudit, "alreadyNormalizedRowsSkipped", "Static storage backfill idempotency", "legacy provider-url backfill skips already-normalized rows");
   assertIncludes(staticCreativeStorageBackfillAudit, "rollbackPlan", "Static storage backfill rollback plan", "legacy provider-url backfill reports rollback guidance before mutation");
   assertIncludes(creativeChatIntake, "Confirm the offer, choose the static style, approve the UGC script", "Creative chat intake UI", "guided intake collects creative direction before paid image or video rendering");
-  assertIncludes(creativeChatIntake, "Final media only becomes launch-ready after storage and QA", "Creative intake render boundary", "creative chat intake explains that paid render work waits for approval");
+  assertIncludes(creativeChatIntake, "Final media only becomes launch-ready after it is saved to your creative library and passes DealFlow review", "Creative intake render boundary", "creative chat intake explains that paid render work waits for approval");
   assertIncludes(creativeChatIntake, "Clean Local Expert", "Creative intake static style copy", "creative intake separates static ad direction from UGC script approval");
   assertExcludes(creativeChatIntake, "Higgsfield", "Creative intake provider name hidden", "creative intake does not expose provider names to customers");
   assertIncludes(creativeChatIntake, "Open Marketing Studio chat", "Creative intake Marketing Studio surface", "creative intake exposes DealFlow's customer-facing Marketing Studio without provider names");

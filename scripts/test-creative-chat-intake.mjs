@@ -106,7 +106,7 @@ assert.doesNotMatch(selectAdRoute, /Boolean\(ad\.imageUrl\) && !evaluateStaticVi
 assert.match(creativeChatIntakeUi, /Choose static ad direction/);
 assert.match(creativeChatIntakeUi, /UGC script/);
 assert.match(creativeChatIntakeUi, /static_and_ugc/);
-assert.match(creativeChatIntakeUi, /Final AI-rendered media updates after worker completion and QA acceptance/);
+assert.match(creativeChatIntakeUi, /Final AI-rendered media updates after rendering completes and passes DealFlow review/);
 assert.match(creativeChatIntakeUi, /Approved UGC script/);
 assert.match(creativeChatIntakeUi, /Open Marketing Studio chat/);
 assert.doesNotMatch(creativeChatIntakeUi, /Pre-render UGC concepts/);

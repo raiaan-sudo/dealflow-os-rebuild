@@ -345,7 +345,7 @@ export function CreativeChatIntake({
                 Build the creative set before anything renders
               </h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Confirm the offer, choose the static style, approve the UGC script, then generate the creative set. Final media only becomes launch-ready after storage and QA.
+                Confirm the offer, choose the static style, approve the UGC script, then generate the creative set. Final media only becomes launch-ready after it is saved to your creative library and passes DealFlow review.
               </p>
             </div>
           </div>
@@ -471,7 +471,7 @@ export function CreativeChatIntake({
             {activeStep === 3 ? (
               <div className="grid gap-4">
                 <p className="text-sm leading-6 text-muted-foreground">
-                  Static previews and the approved UGC script are ready immediately. Final provider-rendered media updates after the Marketing Studio worker completes and QA accepts the asset.
+                  Static previews and the approved UGC script are ready immediately. Final AI-rendered media updates after rendering completes and DealFlow accepts the asset.
                 </p>
                 <PreviewList
                   title="Ready checklist"
@@ -529,7 +529,7 @@ export function CreativeChatIntake({
           </div>
           <div className="mt-5 rounded-[20px] border border-emerald-300/16 bg-emerald-300/[0.055] p-4 text-sm leading-6 text-muted-foreground">
             <FileCheck2 className="mb-3 size-4 text-emerald-100" />
-            Static previews appear immediately. Final AI-rendered media updates after worker completion and QA acceptance.
+            Static previews appear immediately. Final AI-rendered media updates after rendering completes and passes DealFlow review.
           </div>
           <div className="mt-5 rounded-[20px] border border-cyan-300/16 bg-cyan-300/[0.055] p-4 text-sm leading-6 text-muted-foreground">
             <PencilLine className="mb-3 size-4 text-cyan-100" />
