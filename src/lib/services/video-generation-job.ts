@@ -760,9 +760,9 @@ export async function runVideoGenerationJob(params: {
   const fallbackPrompt = [
     "Create a polished native UGC-style vertical video for a real estate lead generation campaign.",
     "Target duration is 15-30 seconds. Do not render a 5-second sample, teaser, or generic placeholder clip.",
-    "Structure: hook in the first 1-2 seconds, specific buyer pain or market problem, relatable creator/agent POV, clear mechanism, source-creative visual relevance, and a direct CTA.",
+    "Structure: hook in the first 1-2 seconds, specific buyer or seller pain or market problem, relatable creator/agent POV, clear mechanism, source-creative visual relevance, and a direct CTA.",
     "Show a believable creator/customer/agent in a real home or market setting with natural phone-camera energy, not a generic stock talking-head clip.",
-    "Mechanism should explain how the buyer gets better options, a shortlist, qualification help, or early access before public search feels crowded.",
+    "Mechanism should follow the approved script. For seller campaigns, do not introduce buyer-consultation, pre-approval, or homebuyer qualification language. For buyer campaigns, do not introduce seller-sale-plan language.",
     "Use the accepted static source image as visual context and keep the setting aligned with the campaign market, offer, audience, and CTA.",
     "Do not use fake documents, fake UI, fake testimonials, unsupported guarantees, readable pricing cards, logos, watermarks, or on-screen text inside the video.",
     "Use the provided script as spoken direction only.",

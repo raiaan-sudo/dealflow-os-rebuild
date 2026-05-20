@@ -70,6 +70,11 @@ const {
   persistStaticCreativeAssets,
 } = require("../src/lib/services/static-creative-asset-service.ts");
 const {
+  buildCreativeUgcScriptDraft,
+  normalizeCreativeOfferTitle,
+  validateCreativeUgcScriptDraft,
+} = require("../src/lib/services/creative-ugc-script-service.ts");
+const {
   getSavedCampaignDocumentFromRow,
 } = require("../src/lib/services/canonical-campaign.ts");
 
@@ -98,16 +103,17 @@ assert.match(staticCreativePreviewCardUi, /Full-resolution creative files stay i
 assert.match(selectAdRoute, /assertCampaignCanLaunch/);
 assert.match(selectAdRoute, /!isLaunchReadyStaticCreative\(ad\)/);
 assert.doesNotMatch(selectAdRoute, /Boolean\(ad\.imageUrl\) && !evaluateStaticVisualAssetDecision/);
-assert.match(creativeChatIntakeUi, /Customer-ready static ad/);
-assert.match(creativeChatIntakeUi, /AI UGC video ads/);
+assert.match(creativeChatIntakeUi, /Choose static ad direction/);
+assert.match(creativeChatIntakeUi, /UGC script/);
 assert.match(creativeChatIntakeUi, /static_and_ugc/);
-assert.match(creativeChatIntakeUi, /DealFlow can prepare static image ads and AI UGC video direction/);
-assert.match(creativeChatIntakeUi, /Reference examples, links, screenshots, or notes/);
+assert.match(creativeChatIntakeUi, /Final AI-rendered media updates after worker completion and QA acceptance/);
+assert.match(creativeChatIntakeUi, /Approved UGC script/);
 assert.match(creativeChatIntakeUi, /Open Marketing Studio chat/);
-assert.match(creativeChatIntakeUi, /Pre-render UGC concepts/);
-assert.match(creativeChatIntakeUi, /Select concept/);
-assert.match(creativeChatIntakeUi, /Marketing Studio chat log/);
-assert.match(creativeChatIntakeUi, /Output mode" value=\{answers\.outputMode === "background_only" \? "Text-free visual background" : "Customer-ready static ad"\}/);
+assert.doesNotMatch(creativeChatIntakeUi, /Pre-render UGC concepts/);
+assert.doesNotMatch(creativeChatIntakeUi, /Select concept/);
+assert.doesNotMatch(creativeChatIntakeUi, /Placement plan/);
+assert.doesNotMatch(creativeChatIntakeUi, /Output mode/);
+assert.match(creativeChatIntakeUi, /Saved brief history/);
 const launchPageUi = fs.readFileSync("src/app/(app)/launch/page.tsx", "utf8");
 assert.match(launchPageUi, /Return to Creatives and refresh unfinished previews/);
 assert.match(creativeWizardUi, /controlsList="nodownload noplaybackrate"/);
@@ -170,7 +176,7 @@ const finishedAdBrief = buildCreativeIntakeBrief({
 }, defaults);
 const finishedAdPrompt = buildCreativeIntakePromptVersion(finishedAdBrief, 3);
 assert.match(finishedAdPrompt.generatedPrompt, /MARKETING STUDIO FINISHED AD CREATIVE/);
-assert.match(finishedAdBrief.offer, /this week/i, "finished-ad brief adds safe timing context to the offer");
+assert.doesNotMatch(finishedAdBrief.offer, /this week/i, "finished-ad brief keeps customer-facing offer concise");
 assert.match(finishedAdBrief.cta, /this week/i, "finished-ad brief adds safe timing context to the CTA");
 assert.match(finishedAdPrompt.generatedPrompt, /Required CTA text that must be readable in the final raster: Check Buying Power this week/);
 assert.match(finishedAdPrompt.generatedPrompt, /short headline, clear timed offer, one concise proof\/support line, and one clear CTA/);
@@ -184,25 +190,46 @@ assert.match(finishedAdPrompt.generatedPrompt, /Do not invent logos, guaranteed-
 assert.doesNotMatch(finishedAdPrompt.negativePrompt, /finished ad/);
 assert.doesNotMatch(finishedAdPrompt.negativePrompt, /CTA button/);
 
-const ugcBriefNeedsReference = buildCreativeIntakeBrief({
-  ...answers,
-  outputMode: "finished_ad",
-  generationPhase: "ugc_video",
+const buyerUgcDraft = buildCreativeUgcScriptDraft({
+  campaignType: defaults.campaignType,
+  audience: defaults.audience,
+  market: defaults.market,
+  offerTitle: defaults.offer,
+  cta: "Check Buying Power",
   targetDurationSeconds: 20,
   creatorPersona: "Toronto buyer agent guide",
-  hookAngle: "Most buyers miss options before they hit public search",
+  hookAngle: "Speed to Sell",
   visualStyle: "native vertical creator POV",
-  pacing: "fast hook, clear explanation, direct CTA",
-  cameraStyle: "phone-camera walkthrough",
-  captionOverlayStyle: "large readable captions",
-  referenceExamples: "",
-  ugcDefaultStyleAccepted: false,
-}, defaults);
-assert.equal(ugcBriefNeedsReference.completion.complete, false);
-assert.ok(ugcBriefNeedsReference.completion.missing.includes("ugc_reference_or_default_style_acceptance"));
-assert.ok(ugcBriefNeedsReference.completion.missing.includes("selected_ugc_concept"));
+});
+const sellerOfferTitle = normalizeCreativeOfferTitle({
+  value: "14-Day Home Sale Plan. Delivered through a buyer consultation and qualification system for home buyers.",
+  campaignType: "seller",
+  audience: "Sellers",
+});
+assert.equal(sellerOfferTitle, "14-Day Home Sale Plan", "verbose seller offer is normalized to a concise customer-facing title");
+const repetitiveScript = {
+  ...buyerUgcDraft,
+  lines: [
+    "Private buyer shortlist.",
+    "Private buyer shortlist.",
+    "Private buyer shortlist.",
+    "Private buyer shortlist.",
+    "Private buyer shortlist.",
+    "Check Buying Power.",
+  ],
+};
+assert.equal(
+  validateCreativeUgcScriptDraft({
+    script: repetitiveScript,
+    campaignType: defaults.campaignType,
+    audience: defaults.audience,
+    offerTitle: defaults.offer,
+  }).accepted,
+  false,
+  "UGC script validator rejects repeated offer phrase spam",
+);
 
-const ugcBriefNeedsConcept = buildCreativeIntakeBrief({
+const ugcBriefNeedsApproval = buildCreativeIntakeBrief({
   ...answers,
   outputMode: "finished_ad",
   generationPhase: "ugc_video",
@@ -213,11 +240,33 @@ const ugcBriefNeedsConcept = buildCreativeIntakeBrief({
   pacing: "fast hook, clear explanation, direct CTA",
   cameraStyle: "phone-camera walkthrough",
   captionOverlayStyle: "large readable captions",
-  referenceExamples: "Reference 1: agent explains buyer options in a car",
-  selectedUgcConceptId: "",
+  ugcApprovedScript: buyerUgcDraft.lines.join("\n"),
+  ugcShotList: buyerUgcDraft.shotList,
+  ugcOnScreenText: buyerUgcDraft.onScreenText,
+  ugcScriptVersion: buyerUgcDraft.version,
 }, defaults);
-assert.equal(ugcBriefNeedsConcept.completion.complete, false);
-assert.ok(ugcBriefNeedsConcept.completion.missing.includes("selected_ugc_concept"));
+assert.equal(ugcBriefNeedsApproval.completion.complete, false);
+assert.ok(ugcBriefNeedsApproval.completion.missing.includes("ugc_script_approval"));
+
+const ugcBriefWithUnsafeScript = buildCreativeIntakeBrief({
+  ...answers,
+  outputMode: "finished_ad",
+  generationPhase: "ugc_video",
+  targetDurationSeconds: 20,
+  creatorPersona: "Toronto buyer agent guide",
+  hookAngle: "Most buyers miss options before they hit public search",
+  visualStyle: "native vertical creator POV",
+  pacing: "fast hook, clear explanation, direct CTA",
+  cameraStyle: "phone-camera walkthrough",
+  captionOverlayStyle: "large readable captions",
+  ugcApprovedScript: repetitiveScript.lines.join("\n"),
+  ugcShotList: buyerUgcDraft.shotList,
+  ugcOnScreenText: buyerUgcDraft.onScreenText,
+  ugcScriptVersion: buyerUgcDraft.version,
+  ugcScriptApprovedAt: "2026-05-20T00:00:00.000Z",
+}, defaults);
+assert.equal(ugcBriefWithUnsafeScript.completion.complete, false);
+assert.ok(ugcBriefWithUnsafeScript.completion.missing.includes("ugc_script_quality"));
 
 const ugcBrief = buildCreativeIntakeBrief({
   ...answers,
@@ -234,20 +283,24 @@ const ugcBrief = buildCreativeIntakeBrief({
   goodBadExamples: "Good: natural creator energy\nBad: generic 5s stock clip",
   mustUseLanguage: "Book a 15-minute buyer strategy call this week",
   mustAvoid: "No fake dashboards. No guaranteed approval.",
-  selectedUgcConceptId: "ugc-concept-affordability-reality-check",
+  ugcApprovedScript: buyerUgcDraft.lines.join("\n"),
+  ugcShotList: buyerUgcDraft.shotList,
+  ugcOnScreenText: buyerUgcDraft.onScreenText,
+  ugcScriptVersion: buyerUgcDraft.version,
+  ugcScriptApprovedAt: "2026-05-20T00:00:00.000Z",
 }, defaults);
 assert.equal(ugcBrief.completion.complete, true);
 assert.equal(ugcBrief.ugcStyleBrief.targetDurationSeconds, 20);
 assert.equal(ugcBrief.ugcStyleBrief.referenceExamples.length, 2);
-assert.equal(ugcBrief.ugcStyleBrief.selectedConceptId, "ugc-concept-affordability-reality-check");
-assert.equal(ugcBrief.ugcStyleBrief.concepts.length, 3);
+assert.equal(ugcBrief.ugcStyleBrief.approvedScript.lines.join("\n"), buyerUgcDraft.lines.join("\n"));
+assert.equal(ugcBrief.ugcStyleBrief.scriptValidation.accepted, true);
 const ugcPrompt = buildCreativeIntakePromptVersion(ugcBrief, 4);
 assert.match(ugcPrompt.generatedPrompt, /MARKETING STUDIO AI UGC VIDEO BRIEF/);
 assert.match(ugcPrompt.generatedPrompt, /15-30 second launch-quality range/);
 assert.match(ugcPrompt.generatedPrompt, /Do not create a 5-second sample/);
 assert.match(ugcPrompt.generatedPrompt, /Creator\/agent persona: Toronto buyer agent guide/);
-assert.match(ugcPrompt.generatedPrompt, /Selected pre-render concept: Affordability reality check/);
-assert.match(ugcPrompt.sanitizedPreview, /Selected UGC concept: Affordability reality check/);
+assert.match(ugcPrompt.generatedPrompt, /Approved script lines:/);
+assert.match(ugcPrompt.sanitizedPreview, /Approved UGC script:/);
 assert.match(ugcPrompt.generatedPrompt, /Reference examples:/);
 assert.match(ugcPrompt.generatedPrompt, /Must-avoid constraints:/);
 assert.match(ugcPrompt.sanitizedPreview, /UGC duration: 20s/);
@@ -259,13 +312,17 @@ const combinedBrief = buildCreativeIntakeBrief({
   targetDurationSeconds: 20,
   creatorPersona: "Toronto buyer agent guide",
   referenceExamples: "Reference 1: agent explains buyer options in a car",
-  selectedUgcConceptId: "ugc-concept-private-shortlist",
+  ugcApprovedScript: buyerUgcDraft.lines.join("\n"),
+  ugcShotList: buyerUgcDraft.shotList,
+  ugcOnScreenText: buyerUgcDraft.onScreenText,
+  ugcScriptVersion: buyerUgcDraft.version,
+  ugcScriptApprovedAt: "2026-05-20T00:00:00.000Z",
 }, defaults);
 assert.equal(combinedBrief.completion.complete, true);
 assert.equal(combinedBrief.generationPhase, "static_and_ugc");
 assert.ok(creativeIntakeIncludesStatic(combinedBrief.generationPhase), "combined brief allows static generation");
 assert.ok(creativeIntakeIncludesUgcVideo(combinedBrief.generationPhase), "combined brief allows UGC video generation");
-assert.equal(combinedBrief.ugcStyleBrief.selectedConceptId, "ugc-concept-private-shortlist");
+assert.equal(combinedBrief.ugcStyleBrief.scriptVersion, buyerUgcDraft.version);
 const combinedPrompt = buildCreativeIntakePromptVersion(combinedBrief, 5);
 assert.match(combinedPrompt.generatedPrompt, /MARKETING STUDIO COMBINED STATIC \+ AI UGC BRIEF/);
 assert.match(combinedPrompt.generatedPrompt, /MARKETING STUDIO FINISHED AD CREATIVE/);

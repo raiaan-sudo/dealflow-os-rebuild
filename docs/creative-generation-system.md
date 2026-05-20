@@ -14,6 +14,19 @@ Creative selection must always show a complete visual creative. Customers should
 
 When generated imagery is not available yet, failed, or withheld by quality checks, DealFlow renders an instant composed preview. That preview uses the same app-rendered headline, proof chips, CTA, category-specific layout, and media-buyer pattern that final generated imagery uses. Generated imagery may refresh in the background, but the customer can still inspect and choose the creative set immediately.
 
+## Creative brief contract
+
+Creative Studio uses a guided customer brief, not a backend production settings form. The customer-facing flow is:
+
+1. Confirm campaign basics: market, read-only audience, concise offer title, and CTA.
+2. Choose static ad direction: Clean Local Expert, Bold Offer Focused, or Premium Home Sale Guide.
+3. Build and approve the UGC script: target length, creator persona, hook angle, visual style, editable script, shot list, and on-screen text.
+4. Generate the creative set.
+
+Audience, placement plan, output mode, generation phase, provider, worker, queue, and QA internals are backend-owned and must not be exposed as customer-facing setup controls. Existing campaign data can still store those fields for compatibility, but the UI should present only customer-meaningful decisions.
+
+Offer copy is split into a concise customer-facing `offerTitle` and optional internal `offerMechanism`. For example, a verbose saved offer like `14-Day Home Sale Plan. Delivered through a buyer consultation...` should display as `14-Day Home Sale Plan` for seller campaigns. The deeper mechanism can remain internal context for prompting and QA, but customer surfaces and scripts should not dump the full mechanism as the offer.
+
 ## Generated imagery contract
 
 DealFlow supports two static creative modes:
@@ -61,7 +74,11 @@ Use `npm run worker:marketing-studio -- --dry-run` for readiness and eligible-jo
 
 AI UGC video concepts must be visible before render, selectable as a set, and playable when a video URL exists. Customer UI must not expose provider names, provider payloads, credentials, guard internals, or raw failure messages. Failed or unavailable video renders should present a retry-ready customer message.
 
-Immediate UGC preview means the customer can inspect the concept, script, shot list, CTA, and storyboard/poster state immediately. It does not mean the final playable provider video is synchronous. Final UGC launch proof requires an app-owned playable video, storage normalization, deterministic provenance/product QA acceptance, and a saved selected UGC video id in the launch package.
+Immediate UGC preview means the customer can inspect and edit the script, shot list, on-screen text, CTA, and storyboard/poster state immediately. It does not mean the final playable provider video is synchronous. Final UGC launch proof requires an app-owned playable video, storage normalization, deterministic provenance/product QA acceptance, and a saved selected UGC video id in the launch package.
+
+Customer-facing pre-render UGC concept cards are not required for approval. The launch-safe gate is the approved structured script and shot list. The script quality guard must reject repeated offer phrases, buyer/seller mismatches, unsupported guarantees, fake urgency, protected-class steering, provider/internal jargon, and scripts that do not fit the selected target duration.
+
+Video rendering must use the approved script and shot list. Provider prompts may use internal context, but they must not invent a new offer, rewrite the campaign strategy, or reinterpret the customer-approved script. Video job idempotency should include the approved script version or hash so edits produce a new scoped job identity without double-spending repeat clicks.
 
 Reviewed, dead-lettered, or historical worker rows are evidence only. Creative Studio must filter them out of active queued/rendering state on both server render and client refresh paths. If no active eligible job exists, the customer state should be `Concept ready, render needed` or a safe failed/retry state, never stale `Queued for render worker`.
 

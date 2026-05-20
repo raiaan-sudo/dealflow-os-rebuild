@@ -204,7 +204,8 @@ export async function POST(
       );
     }
 
-    const scriptLines = (selectedCopy?.script || selectedVideo.script.join("\n"))
+    const approvedScript = creativeIntakeContext?.ugcStyleBrief?.approvedScript ?? null;
+    const scriptLines = (approvedScript?.lines?.join("\n") || selectedCopy?.script || selectedVideo.script.join("\n"))
       .split(/\n+/)
       .map((line) => line.trim())
       .filter(Boolean);
@@ -215,16 +216,18 @@ export async function POST(
       copyId: selectedCopy?.id ?? null,
       creativeFormat: selectedVideo.conceptType === "customer_ugc" ? "ugc" : "talking_head",
       title: selectedVideo.title || selectedCopy?.headline || `Video ${body.creativeIndex + 1}`,
-      hook: selectedVideo.hook || selectedCopy?.hook || normalizedScriptLines[0] || "",
+      hook: approvedScript?.hook || selectedVideo.hook || selectedCopy?.hook || normalizedScriptLines[0] || "",
       body:
-        selectedCopy?.primary_text ||
+        approvedScript
+          ? normalizedScriptLines.slice(1, -1).join(" ")
+          : selectedCopy?.primary_text ||
         normalizedScriptLines.slice(1, -1).join(" ") ||
         normalizedScriptLines[1] ||
         "",
-      cta: selectedVideo.cta || selectedCopy?.cta || campaign.funnel.cta || "Learn more",
+      cta: approvedScript?.cta || selectedVideo.cta || selectedCopy?.cta || campaign.funnel.cta || "Learn more",
       scriptText: normalizedScriptLines.join("\n"),
       scriptLines: normalizedScriptLines,
-      scenes: selectedVideo.shotList.map((text, index) => ({
+      scenes: (approvedScript?.shotList?.length ? approvedScript.shotList : selectedVideo.shotList).map((text, index) => ({
         id: `scene-${index + 1}`,
         text,
       })),
@@ -245,7 +248,7 @@ export async function POST(
       idempotencyKey:
         body.force === true
           ? `video_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${body.creativeIndex}:${crypto.randomUUID()}`
-          : `video_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${body.creativeIndex}:${safeIdempotencyPart(selectedVideo.id)}:${creativeIntakeHash(creativeIntakeContext)}`,
+          : `video_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${body.creativeIndex}:${safeIdempotencyPart(selectedVideo.id)}:${safeIdempotencyPart(approvedScript?.version ?? approvedScript?.hash)}:${creativeIntakeHash(creativeIntakeContext)}`,
       payload,
       maxAttempts: 1,
     });

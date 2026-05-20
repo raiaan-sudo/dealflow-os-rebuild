@@ -106,12 +106,15 @@ If vision QA is disabled, unavailable, or cannot inspect the JPEG/PNG/WebP, the 
 Marketing Studio UGC video output is not launch-ready until all of these are true:
 
 - a ready, accepted static source creative exists in app-owned `creative-assets` storage;
+- the customer has approved a structured UGC script and shot list in Creative Studio;
 - the CLI returns a provider job/result id and a playable video file;
 - the video is copied into app-owned `creative-assets` storage;
 - provider original URL remains metadata only;
 - prompt hash, script hash, source static asset id, and campaign context are persisted;
 - deterministic video provenance QA passes;
 - UGC product-quality QA confirms hook, market problem, creator POV, mechanism, source relevance, and CTA.
+
+The worker should render the approved script, not generate new customer-facing concepts. Immediate UGC state in the app means script, shot list, on-screen text, and CTA are available without provider spend. Final provider media remains asynchronous and worker-owned. If the approved script changes, the video job idempotency identity should change through the script version or hash; repeat clicks on the same approved script must not double-spend.
 
 The Higgsfield CLI `generate create --wait` path returns result URLs rather than a separate generic asset-download command. If a future CLI version writes local files, the worker accepts only files under `MARKETING_STUDIO_WORKER_OUTPUT_DIR`, `HIGGSFIELD_OUTPUT_DIR`, `HIGGSFIELD_CACHE_DIR`, or the process temp directory. Remote provider URLs are fetched through the hardened static creative fetcher and must match `STATIC_CREATIVE_PROVIDER_IMAGE_HOSTS` or the built-in approved provider CDN hosts.
 

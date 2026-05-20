@@ -40,9 +40,11 @@ assert.match(videoJob, /buildVideoProductQualityGate/, "completed videos persist
 assert.match(videoJob, /videoProductQualityGate: existingVideoProductQualityGate/, "async video status completion reuses accepted product-quality gate in deterministic QA");
 assert.match(videoJob, /videoPatch: \{[\s\S]*videoQualityGate: nextVideoQualityGate,[\s\S]*videoProductQualityGate: existingVideoProductQualityGate/, "async video status completion persists launch-ready QA metadata back into the campaign plan");
 assert.match(videoJob, /hook in the first 1-2 seconds/, "UGC prompts require an immediate hook");
-assert.match(videoJob, /specific buyer pain or market problem/, "UGC prompts require a campaign-specific market problem");
+assert.match(videoJob, /specific buyer or seller pain or market problem/, "UGC prompts require a campaign-specific market problem");
 assert.match(videoJob, /relatable creator\/agent POV/, "UGC prompts require a creator or agent point of view");
-assert.match(videoJob, /buyer gets better options, a shortlist, qualification help, or early access/, "UGC prompts require a clear buyer mechanism");
+assert.match(videoJob, /Mechanism should follow the approved script/, "UGC prompts preserve approved script mechanism");
+assert.match(videoRoute, /approvedScript\?\.lines/, "video route uses the approved UGC script when present");
+assert.match(videoRoute, /approvedScript\?\.version/, "video route idempotency includes approved script version or hash");
 assert.match(videoJob, /accepted static source image as visual context/, "UGC prompts require source-static relevance");
 assert.match(videoJob, /Do not use fake documents, fake UI, fake testimonials, unsupported guarantees/, "UGC prompts block unsupported claims and fake artifacts");
 assert.match(videoJob, /status: "released"[\s\S]{0,240}providerJobCreated: false/, "pre-provider failures release provider usage instead of creating failed debt");
