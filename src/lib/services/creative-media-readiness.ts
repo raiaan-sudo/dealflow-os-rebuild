@@ -445,15 +445,15 @@ export function getVideoLaunchReadinessReason(video: VideoCreativeReadinessInput
   }
 
   if (video.storageNormalized !== true || video.storageBucket !== "creative-assets") {
-    return "The playable video is not normalized into DealFlow creative storage.";
+    return "The playable video still needs final DealFlow preparation before launch.";
   }
 
   if (!hasSupportedLaunchVideoContentType(video.storageContentType)) {
-    return "The playable video is missing verified MP4/WebM/QuickTime storage metadata.";
+    return "The playable video still needs final file verification before launch.";
   }
 
   if (typeof video.storageByteSize !== "number" || video.storageByteSize <= 0) {
-    return "The playable video is missing verified file size metadata.";
+    return "The playable video still needs final file verification before launch.";
   }
 
   if (typeof video.durationSeconds !== "number" || !Number.isFinite(video.durationSeconds)) {
@@ -465,11 +465,11 @@ export function getVideoLaunchReadinessReason(video: VideoCreativeReadinessInput
   }
 
   if (!video.providerName || !video.providerAssetId) {
-    return "The playable video is missing provider job provenance.";
+    return "The playable video is missing final render proof.";
   }
 
   if (hasProviderError(video)) {
-    return "The provider reported a video issue, so this asset needs review before launch.";
+    return "The video render reported an issue, so this asset needs review before launch.";
   }
 
   if (!video.sourceStaticAssetId || !video.sourceImageUrl) {
@@ -489,11 +489,11 @@ export function getVideoLaunchReadinessReason(video: VideoCreativeReadinessInput
   }
 
   if (!hasAcceptedVideoQa(video)) {
-    return "The playable video is review-only until video QA accepts it for launch.";
+    return "The playable video is review-only until DealFlow review accepts it for launch.";
   }
 
   if (!hasAcceptedProductQualityGate(video)) {
-    return "The playable video is review-only until UGC product-quality QA confirms the hook, market problem, creator POV, mechanism, source relevance, and CTA.";
+    return "The playable video is review-only until DealFlow review confirms the hook, market problem, creator point of view, source relevance, and CTA.";
   }
 
   return null;
@@ -516,17 +516,17 @@ export function getVideoReadinessLabel(video: VideoCreativeReadinessInput | null
     video?.videoGenerationState === "deferred_worker_required" ||
     video?.videoGenerationState === "operator_action_required"
   ) {
-    return "Queued for creative render";
+    return "Final media queued";
   }
 
   if (video?.videoGenerationState === "queued") {
-    return "Queued for creative render";
+    return "Final media queued";
   }
 
   if (video?.videoGenerationState === "generating") {
     return video.providerAssetId || video.providerStatus
       ? "Rendering"
-      : "Queued for creative render";
+      : "Final media queued";
   }
 
   if (video?.videoGenerationState === "failed") {
@@ -550,17 +550,17 @@ export function getVideoReadinessMessage(video: VideoCreativeReadinessInput | nu
     video?.videoGenerationState === "deferred_worker_required" ||
     video?.videoGenerationState === "operator_action_required"
   ) {
-    return "Queued for creative render. We'll update this when the render worker is available.";
+    return "Final media is queued. We'll update this when rendering starts.";
   }
 
   if (video?.videoGenerationState === "queued") {
-    return "Queued for creative render. We'll update this when processing starts.";
+    return "Final media is queued. We'll update this when rendering starts.";
   }
 
   if (video?.videoGenerationState === "generating") {
     return video.providerAssetId || video.providerStatus
       ? "Rendering video..."
-      : "Queued for creative render. We'll update this when processing starts.";
+      : "Final media is queued. We'll update this when rendering starts.";
   }
 
   if (video?.videoGenerationState === "failed") {

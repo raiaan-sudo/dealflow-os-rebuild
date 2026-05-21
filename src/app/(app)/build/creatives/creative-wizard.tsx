@@ -602,7 +602,7 @@ export function CreativeWizard({
       setRenderJobs((current) => upsertRenderJob(current, data.job as SystemJob));
       setRenderMessage(
         data.previewUpdated
-          ? "Creative concepts are visible now. Final images are queued for render when the worker is available."
+          ? "Creative concepts are visible now. Final media is queued and will update here when rendering starts."
           : renderView.customerMessage,
       );
       if (data.previewUpdated) {
@@ -1035,7 +1035,7 @@ export function CreativeWizard({
                   {imageLimitMessage
                     ? "Daily image limit reached"
                     : imageWorkerDeferred
-                    ? "Queued for render worker"
+                    ? "Final media queued"
                     : imageActionPending
                     ? "Refreshing previews..."
                     : needsImageGeneration
@@ -1259,7 +1259,7 @@ export function CreativeWizard({
                     ? "Render static creatives first"
                     : currentVideoRenderView?.state === "deferred_worker_required" ||
                   currentVideoRenderView?.state === "operator_action_required"
-                    ? "Queued for render worker"
+                    ? "Final media queued"
                     : videoActionPending || (
                       activeVideoCreative.videoGenerationState === "generating" &&
                       (activeVideoCreative.providerAssetId || activeVideoCreative.providerStatus)
@@ -1284,7 +1284,7 @@ export function CreativeWizard({
                 </span>
               ) : (
                 <span className="rounded-full border border-amber-300/20 bg-amber-300/[0.08] px-3 py-2 text-xs font-semibold text-amber-100">
-                  Review-only until product QA accepts
+                  Review-only until DealFlow accepts it for launch
                 </span>
               )}
               {customerVideoMessage(videoMessage || activeVideoCreative.videoGenerationMessage) ? (

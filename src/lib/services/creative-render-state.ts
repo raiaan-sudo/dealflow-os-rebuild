@@ -132,8 +132,8 @@ export function classifyCreativeRenderJob(
   if (deferred) {
     return {
       state: staleDeferred ? "operator_action_required" : "deferred_worker_required",
-      customerLabel: "Queued for creative render",
-      customerMessage: "Queued for creative render. We'll update this when the render worker is available.",
+      customerLabel: "Final media queued",
+      customerMessage: "Final media is queued. We'll update this when rendering starts.",
       customerActionLabel: null,
       active: false,
       retryAvailable: false,
@@ -150,8 +150,8 @@ export function classifyCreativeRenderJob(
   if (job.kind === "video_generation_status") {
     return {
       state: "provider_processing",
-      customerLabel: "Queued for creative render",
-      customerMessage: "Queued for creative render. We'll update this when the render finishes.",
+      customerLabel: "Final media rendering",
+      customerMessage: "Final media is rendering. We'll update this when it is ready for review.",
       customerActionLabel: null,
       active: true,
       retryAvailable: false,
@@ -176,8 +176,8 @@ export function classifyCreativeRenderJob(
   if (job.status === "processing") {
     return {
       state: "operator_action_required",
-      customerLabel: "Queued for creative render",
-      customerMessage: "Queued for creative render. We'll update this when the render worker is available.",
+      customerLabel: "Final media queued",
+      customerMessage: "Final media is queued. We'll update this when rendering starts.",
       customerActionLabel: null,
       active: false,
       retryAvailable: false,
@@ -188,8 +188,8 @@ export function classifyCreativeRenderJob(
 
   return {
     state: "queued",
-    customerLabel: "Queued for creative render",
-    customerMessage: "Queued for creative render. We'll update this when processing starts.",
+    customerLabel: "Final media queued",
+    customerMessage: "Final media is queued. We'll update this when rendering starts.",
     customerActionLabel: null,
     active: false,
     retryAvailable: false,

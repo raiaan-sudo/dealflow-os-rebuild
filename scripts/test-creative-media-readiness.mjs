@@ -580,7 +580,8 @@ const lowQualityUgcVideo = {
   },
 };
 assert.equal(isLaunchReadyVideoCreative(lowQualityUgcVideo), false);
-assert.match(getVideoReadinessMessage(lowQualityUgcVideo), /UGC product-quality QA/);
+assert.match(getVideoReadinessMessage(lowQualityUgcVideo), /DealFlow review/);
+assert.doesNotMatch(getVideoReadinessMessage(lowQualityUgcVideo), /QA|metadata|storage|provider|job/i);
 assert.deepEqual(
   evaluateGeneratedVideoQualityGate(lowQualityUgcVideo, new Date("2026-05-13T00:00:00.000Z")).reasons,
   ["missing_product_quality_acceptance"],
