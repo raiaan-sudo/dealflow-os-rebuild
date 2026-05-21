@@ -129,6 +129,27 @@ for (const ad of offMarketBuyerAds) {
   assert.doesNotMatch(combined, /600\+\s*credit|approval path|home list/i, `static creative ${ad.id} must not drift back to credit/home-list copy`);
 }
 
+const zeroProviderRequestedAssetIds = [];
+const immediateConceptAds = await generateStaticCreativeAds({
+  location: "Toronto, ON",
+  audience: "homeowners",
+  offer: "Sell Your Home in 90 Days or We Buy It",
+  market_type: "seller",
+  max_static_image_generations: 0,
+  provider_usage_context: {
+    createForAsset: (asset) => {
+      zeroProviderRequestedAssetIds.push(asset.id);
+      return null;
+    },
+  },
+});
+assert.equal(immediateConceptAds.length, 6, "zero-provider static generation still produces the full app-rendered concept set");
+assert.deepEqual(zeroProviderRequestedAssetIds, [], "immediate app-rendered concepts do not call the image provider");
+assert.ok(
+  immediateConceptAds.every((ad) => ad.imageGenerationState === "unavailable" && !ad.imageUrl),
+  "immediate app-rendered concepts stay non-launch-ready until final images render",
+);
+
 const generatedCreativeInput = {
   category: "buyer",
   location: "Austin",

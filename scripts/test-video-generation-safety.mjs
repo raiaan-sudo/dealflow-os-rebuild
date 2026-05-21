@@ -87,6 +87,9 @@ assert.match(resolveDebt, /76cfe4df-a488-49ff-8f3f-c616889c5c34/, "known video p
 assert.match(resolveDebt, /operatorReviewedAt/, "known failed provider event is reviewed without rewriting execution status");
 
 assert.match(creativeWizard, /customerVideoMessage/, "creative wizard sanitizes video failure messages");
+assert.match(creativeWizard, /hasCurrentStaticVideoSource/, "creative wizard checks for a current launch-ready static source before UGC render");
+assert.match(creativeWizard, /Render static creatives first/, "creative wizard blocks UGC render until static source media is ready");
+assert.match(creativeWizard, /UGC video preview needs a launch-ready image source/, "creative wizard explains why video render cannot start");
 assert.match(previewPage, /customerVideoMessage/, "preview page sanitizes video failure messages");
 assert.doesNotMatch(videoErrors, /Review the operator diagnostics/, "operator diagnostics are not exposed in video errors");
 assert.match(launchCreateRoute, /isLaunchReadyVideoCreative/, "launch API enforces video readiness server-side");

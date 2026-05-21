@@ -2300,7 +2300,7 @@ export async function generateStaticCreativeAds(
       .map((id, index) => [id, index]),
   );
   const maxStaticImageGenerations = Number.isFinite(input?.max_static_image_generations)
-    ? Math.min(Math.max(Math.trunc(input?.max_static_image_generations ?? 0), 1), baseStaticAds.length)
+    ? Math.min(Math.max(Math.trunc(input?.max_static_image_generations ?? 0), 0), baseStaticAds.length)
     : Number.POSITIVE_INFINITY;
   const generationCandidateAssets = baseStaticAds.filter((asset) => !reusableStaticAssets.has(asset.id));
   const boundedGenerationAssetIds = new Set(

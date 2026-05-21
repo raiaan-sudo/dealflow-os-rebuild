@@ -412,6 +412,7 @@ export function CreativeWizard({
   const needsImageGeneration = rankedCreatives.some((creative) => creativeNeedsImageGeneration(creative, approvedBriefContext));
   const selectedNeedsImageGeneration = selectedCreatives.some((creative) => creativeNeedsImageGeneration(creative, approvedBriefContext));
   const hasGeneratedImages = rankedCreatives.some((creative) => Boolean(creative.imageUrl));
+  const hasCurrentStaticVideoSource = launchReadyCreatives.some((creative) => Boolean(creative.imageUrl));
   const hasAttemptedImageGeneration = rankedCreatives.some(
     (creative) => Boolean(creative.imageGenerationMessage) || Boolean(creative.imageGenerationState),
   );
@@ -590,7 +591,7 @@ export function CreativeWizard({
         }),
       });
       const data = (await response.json().catch(() => null)) as
-        | { job?: SystemJob | null; error?: string | null }
+        | { job?: SystemJob | null; error?: string | null; previewUpdated?: boolean }
         | null;
 
       if (!response.ok || !data?.job?.id) {
@@ -599,7 +600,14 @@ export function CreativeWizard({
 
       const renderView = jobRenderView(data.job);
       setRenderJobs((current) => upsertRenderJob(current, data.job as SystemJob));
-      setRenderMessage(renderView.customerMessage);
+      setRenderMessage(
+        data.previewUpdated
+          ? "Creative concepts are visible now. Final images are queued for render when the worker is available."
+          : renderView.customerMessage,
+      );
+      if (data.previewUpdated) {
+        router.refresh();
+      }
       if (!isMarketingStudioWorkerDeferredRunAt(data.job.next_run_at)) {
         subscribeToJob(data.job.id, "image");
       }
@@ -612,7 +620,7 @@ export function CreativeWizard({
     } finally {
       setRenderingImages(false);
     }
-  }, [campaignId, renderingImages, subscribeToJob]);
+  }, [campaignId, renderingImages, router, subscribeToJob]);
 
   const queueVideoPreview = useCallback(async ({
     force = false,
@@ -626,6 +634,11 @@ export function CreativeWizard({
     const selectedVideo = video ?? activeVideoCreative;
 
     if (renderingVideo || !selectedVideo) {
+      return;
+    }
+
+    if (!hasCurrentStaticVideoSource) {
+      setVideoMessage("Render at least one current static creative first. UGC video preview needs a launch-ready image source before video rendering can start.");
       return;
     }
 
@@ -672,7 +685,7 @@ export function CreativeWizard({
     } finally {
       setRenderingVideo(false);
     }
-  }, [activeVideoCreative, campaignId, renderingVideo, setActiveVideoId, subscribeToJob]);
+  }, [activeVideoCreative, campaignId, hasCurrentStaticVideoSource, renderingVideo, setActiveVideoId, subscribeToJob]);
 
   useEffect(() => {
     const streams = jobStreamsRef.current;
@@ -835,6 +848,10 @@ export function CreativeWizard({
   const imageRenderPending = renderingImages || Boolean(currentImageJob);
   const imageActionPending = renderingImages || Boolean(currentImageJob);
   const videoActionPending = renderingVideo || Boolean(currentVideoJob);
+  const imageWorkerDeferred = Boolean(
+    currentImageJob && isMarketingStudioWorkerDeferredRunAt(currentImageJob.next_run_at),
+  );
+  const videoBlockedByMissingStaticSource = !hasCurrentStaticVideoSource;
   const imagePendingMessage = "Image preview is being prepared. This page will update when the visual is ready.";
   const imageStatusMessage = selectedNeedsImageGeneration
     ? imageLimitMessage ??
@@ -1017,6 +1034,8 @@ export function CreativeWizard({
                 >
                   {imageLimitMessage
                     ? "Daily image limit reached"
+                    : imageWorkerDeferred
+                    ? "Queued for render worker"
                     : imageActionPending
                     ? "Refreshing previews..."
                     : needsImageGeneration
@@ -1186,7 +1205,12 @@ export function CreativeWizard({
                       {currentVideoRenderView?.customerLabel ?? getVideoReadinessLabel(activeVideoCreative)}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                      {currentVideoRenderView?.customerMessage ?? getVideoReadinessMessage(activeVideoCreative)}
+                    {currentVideoRenderView?.customerMessage ?? getVideoReadinessMessage(activeVideoCreative)}
+                    {videoBlockedByMissingStaticSource ? (
+                      <span className="mt-2 block text-cyan-100">
+                        Render static creatives first so the video preview has a current image source.
+                      </span>
+                    ) : null}
                     </p>
                   </div>
                 </div>
@@ -1210,9 +1234,13 @@ export function CreativeWizard({
                     force: true,
                     video: activeVideoCreative,
                   })}
-                  disabled={videoActionPending}
+                  disabled={videoActionPending || videoBlockedByMissingStaticSource}
                 >
-                  {videoActionPending ? "Rendering approved script..." : "Render approved script"}
+                  {videoBlockedByMissingStaticSource
+                    ? "Render static creatives first"
+                    : videoActionPending
+                    ? "Rendering approved script..."
+                    : "Render approved script"}
                 </Button>
               ) : !isPlayableVideoCreative(activeVideoCreative) ? (
                 <Button
@@ -1222,12 +1250,14 @@ export function CreativeWizard({
                     force: activeVideoCreative.videoGenerationState === "failed",
                     video: activeVideoCreative,
                   })}
-                  disabled={videoActionPending || (
+                  disabled={videoBlockedByMissingStaticSource || videoActionPending || (
                     activeVideoCreative.videoGenerationState === "generating" &&
                     Boolean(activeVideoCreative.providerAssetId || activeVideoCreative.providerStatus)
                   )}
                 >
-                  {currentVideoRenderView?.state === "deferred_worker_required" ||
+                  {videoBlockedByMissingStaticSource
+                    ? "Render static creatives first"
+                    : currentVideoRenderView?.state === "deferred_worker_required" ||
                   currentVideoRenderView?.state === "operator_action_required"
                     ? "Queued for render worker"
                     : videoActionPending || (
