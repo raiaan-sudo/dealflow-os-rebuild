@@ -177,7 +177,7 @@ assert.equal(oneSelected.selectedMinimumMet, false);
 assert.equal(oneSelected.allSelectedReady, false);
 assert.equal(oneSelected.retryCount, 2);
 assert.equal(oneSelected.missingCount, 1);
-assert.match(getStaticPreviewStatusMessage(oneSelected), /1 selected launch-ready preview; 6 recommended/);
+assert.match(getStaticPreviewStatusMessage(oneSelected), /1 selected launch-ready preview; 4 required for launch/);
 assert.match(getStaticPreviewStatusMessage(oneSelected), /4 launch-ready static ads required/);
 
 const blockedSelection = getStaticCreativeReadiness(creatives, ["primary", "failed-1"]);
@@ -193,7 +193,7 @@ const allFailedSelection = getStaticCreativeReadiness([
 assert.equal(allFailedSelection.selectedReadyCount, 0);
 assert.equal(allFailedSelection.selectedBlockedCount, 3);
 assert.equal(allFailedSelection.allSelectedReady, false);
-assert.match(getStaticPreviewStatusMessage(allFailedSelection), /0 selected launch-ready previews; 4 recommended/);
+assert.match(getStaticPreviewStatusMessage(allFailedSelection), /0 selected launch-ready previews; 4 required for launch/);
 assert.match(getStaticPreviewStatusMessage(allFailedSelection), /3 selected creatives need retry before launch/);
 
 const fourSelected = getStaticCreativeReadiness([
@@ -206,7 +206,7 @@ const fourSelected = getStaticCreativeReadiness([
 assert.equal(fourSelected.minimumRequiredCount, STATIC_LAUNCH_MIN_CREATIVE_COUNT);
 assert.equal(fourSelected.selectedMinimumMet, true);
 assert.equal(fourSelected.allSelectedReady, true);
-assert.match(getStaticPreviewStatusMessage(fourSelected), /4 selected launch-ready previews; 5 recommended/);
+assert.match(getStaticPreviewStatusMessage(fourSelected), /4 selected launch-ready previews; 4 required for launch/);
 
 process.env.ALLOW_OPENAI_IMAGE_GENERATION = "true";
 process.env.OPENAI_API_KEY = "test-openai-key";
@@ -621,6 +621,9 @@ for (const [name, source] of [
   assert.doesNotMatch(source, /<video[\s\S]{0,260}\bcontrols\b(?!List)/, `${name} must not render native video controls`);
 }
 assert.match(creativeWizardSource, /draft concept\{draftCreatives\.length === 1 \? "" : "s"\} need regeneration/, "Creative Studio separates draft concepts from launch-ready carousel");
+assert.match(creativeWizardSource, /Pick at least \$\{STATIC_LAUNCH_MIN_CREATIVE_COUNT\} launch-ready static ads/, "Creative Studio treats four static ads as the launch floor");
+assert.match(creativeWizardSource, /Render approved script/, "stale UGC renders can be refreshed against the approved script");
+assert.match(creativeWizardSource, /videoMatchesApprovedScript/, "Creative Studio blocks stale UGC videos whose script hash no longer matches the approved script");
 assert.match(creativeWizardSource, /selectedCount=\{selected \? selectedCreatives\.length : null\}/, "retry cards cannot inherit selected count badges");
 assert.match(creativeWizardSource, /selectedUgcVideoIds/, "Creative Studio persists selected UGC launch video IDs");
 assert.match(creativeWizardSource, /Select UGC for launch/, "Creative Studio lets UGC videos be selected like static creatives");

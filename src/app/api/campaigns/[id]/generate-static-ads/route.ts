@@ -4,6 +4,10 @@ import { logWarn } from "@/lib/logging";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import {
+  isLaunchReadyStaticCreative,
+  STATIC_LAUNCH_MIN_CREATIVE_COUNT,
+} from "@/lib/services/creative-media-readiness";
+import {
   creativeIntakeIncludesStatic,
   getApprovedCreativeIntakeGenerationContext,
   hasSameCreativeIntakeGenerationContext,
@@ -112,7 +116,12 @@ export async function POST(
       return buildRateLimitResponse(rateLimit.resetAt);
     }
 
-    const maxGenerations = body.maxGenerations ?? (body.missingOnly === true ? 2 : undefined);
+    const launchReadyStaticCount = campaign.creatives.staticAds.filter(isLaunchReadyStaticCreative).length;
+    const missingLaunchReadyFloorCount = Math.max(0, STATIC_LAUNCH_MIN_CREATIVE_COUNT - launchReadyStaticCount);
+    const maxGenerations = body.maxGenerations ??
+      (body.missingOnly === true
+        ? Math.min(6, Math.max(2, missingLaunchReadyFloorCount))
+        : undefined);
 
     const activeJobs = await listSystemJobs({
       userId: auth.userId,

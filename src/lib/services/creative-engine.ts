@@ -588,6 +588,10 @@ function shouldPreserveExplicitOffer(
   return isTimeboxedSellerOffer(offer, category) || /\b(guarantee|guaranteed|off-market|cash[- ]?flow|deposit|private)\b/i.test(offer);
 }
 
+function isOffMarketOffer(offer: string) {
+  return /\boff[-\s]?market\b|private\s+(listing|inventory|property)|distressed\s+sale/i.test(offer);
+}
+
 function buildOfferAlignedCta(
   offer: string,
   category: CampaignCreativeStrategy["campaignCategory"],
@@ -602,7 +606,7 @@ function buildOfferAlignedCta(
   }
 
   if (/\boff-market\b/i.test(offer)) {
-    return "See Off-Market Options";
+    return "Get Off-Market Access";
   }
 
   if (/\bcash[- ]?flow|yield|roi\b/i.test(offer)) {
@@ -629,6 +633,10 @@ function buildOfferLedHeadline(params: {
   }
 
   if (shouldPreserveExplicitOffer(cleanOffer, params.category)) {
+    if (params.category === "buyer" && isOffMarketOffer(cleanOffer)) {
+      return `Access off-market properties in ${params.market}`;
+    }
+
     return `${trimWords(cleanOffer, 8)} for ${params.market}`;
   }
 
@@ -649,6 +657,10 @@ function buildOfferLedHook(params: {
   }
 
   if (shouldPreserveExplicitOffer(cleanOffer, params.category)) {
+    if (params.category === "buyer" && isOffMarketOffer(cleanOffer)) {
+      return `${params.market} buyers: get access to off-market properties before they hit public search.`;
+    }
+
     return `${params.audience} in ${params.market}: compare your next move against ${cleanOffer}.`;
   }
 
@@ -675,10 +687,14 @@ function buildOfferLedPrimaryText(params: {
   const problem =
     params.category === "seller"
       ? `Most homeowners wait until they are already listing to discover pricing gaps, timing risk, and weak demand signals.`
+      : params.category === "buyer" && isOffMarketOffer(cleanOffer)
+        ? `Most buyers only see the same public listings after competition has already moved in.`
       : `Most ${params.audience} wait until the obvious move is already crowded.`;
   const outcome =
     params.category === "seller"
       ? `${sentenceCase(params.mechanism)} keeps ${cleanOffer} at the center with ${params.proof.toLowerCase()} before you commit to the wrong listing path.`
+      : params.category === "buyer" && isOffMarketOffer(cleanOffer)
+        ? `${sentenceCase(params.mechanism)} keeps off-market property access at the center so buyers can review private or distressed-sale opportunities before the broad search gets crowded.`
       : `${sentenceCase(params.mechanism)} keeps ${cleanOffer} at the center with ${params.proof.toLowerCase()} so the next move is easier to judge.`;
 
   return buildStructuredPrimaryText({
@@ -974,6 +990,7 @@ function buildStaticCreatives(
   const tension = buildDecisionTension(strategy, rulePack);
   const approvalFocused =
     strategy.campaignCategory === "buyer" &&
+    !isOffMarketOffer(cleanOffer) &&
     isApprovalFocusedContext({
       audience,
       offer,
@@ -1001,9 +1018,9 @@ function buildStaticCreatives(
 
   const categoryOverlays = {
     buyer: [
-      trimWords(`Homes in ${market} you may not know you can afford`, 8),
-      trimWords(`Before other buyers see them in ${market}`, 8),
-      trimWords(`${market} payment path made clearer`, 7),
+      trimWords(isOffMarketOffer(cleanOffer) ? "Off-market property access" : `Homes in ${market} you may not know you can afford`, 8),
+      trimWords(isOffMarketOffer(cleanOffer) ? `Private listings before public search` : `Before other buyers see them in ${market}`, 8),
+      trimWords(isOffMarketOffer(cleanOffer) ? `Distressed-sale opportunities in ${market}` : `${market} payment path made clearer`, 7),
     ],
     seller: [
       trimWords(shouldPreserveExplicitOffer(cleanOffer, "seller") ? cleanOffer : `${market} home value update`, 7),
@@ -1120,6 +1137,8 @@ function buildStaticCreatives(
       hook:
         approvalFocused
           ? `POV: you stopped touring before knowing what you can actually qualify for in ${market}.`
+          : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+            ? `POV: you found off-market properties before they reached the crowded public search.`
           : strategy.campaignCategory === "seller"
             ? `POV: you checked demand before guessing your list price in ${market}.`
             : strategy.campaignCategory === "investor"
@@ -1133,13 +1152,21 @@ function buildStaticCreatives(
         proof,
       }),
       primaryText: buildStructuredPrimaryText({
-        hook: `Most ${audience} in ${market} do the normal search first and ask the hard questions too late.`,
-        problem: `That makes the process feel busier than it needs to be.`,
-        outcome: `${sentenceCase(mechanism)} turns ${cleanOffer} into a clearer next step with ${proof.toLowerCase()} and a more believable reason to respond.`,
+        hook: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+          ? `Most buyers in ${market} only see the same public listings after competition has already moved.`
+          : `Most ${audience} in ${market} do the normal search first and ask the hard questions too late.`,
+        problem: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+          ? `That means private, distressed-sale, and quieter opportunities are easy to miss.`
+          : `That makes the process feel busier than it needs to be.`,
+        outcome: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+          ? `${sentenceCase(mechanism)} turns off-market property access into a clearer next step with private opportunities worth reviewing.`
+          : `${sentenceCase(mechanism)} turns ${cleanOffer} into a clearer next step with ${proof.toLowerCase()} and a more believable reason to respond.`,
         cta,
       }),
       headline: approvalFocused
         ? `The buyer POV before the search starts`
+        : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+          ? `Access off-market properties before the crowd`
         : `A more believable path to ${trimWords(cleanOffer, 6)}`,
       cta,
       score: 0,
@@ -1161,6 +1188,8 @@ function buildStaticCreatives(
       hook:
         approvalFocused
           ? `This is what most ${market} buyers should check before they fall in love with a listing.`
+          : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+            ? `This is what most ${market} buyers miss when they only search public listings.`
           : strategy.campaignCategory === "seller"
             ? `Before listing, this is the demand signal most ${market} homeowners miss.`
             : strategy.campaignCategory === "luxury"
@@ -1174,12 +1203,20 @@ function buildStaticCreatives(
         proof,
       }),
       primaryText: buildStructuredPrimaryText({
-        hook: `The strongest creative should feel native to the feed, not like a generic real estate flyer.`,
-        problem: `Most ads look polished but do not make the viewer feel the problem.`,
-        outcome: `${sentenceCase(mechanism)} gives this UGC-style angle a concrete reason to care about ${cleanOffer} before the next click.`,
+        hook: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+          ? `Public listings are not the whole market.`
+          : `The strongest creative should feel native to the feed, not like a generic real estate flyer.`,
+        problem: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+          ? `Buyers who wait for the obvious options can miss private and distressed-sale opportunities.`
+          : `Most ads look polished but do not make the viewer feel the problem.`,
+        outcome: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+          ? `${sentenceCase(mechanism)} gives this UGC-style angle a concrete reason to ask for off-market property access.`
+          : `${sentenceCase(mechanism)} gives this UGC-style angle a concrete reason to care about ${cleanOffer} before the next click.`,
         cta,
       }),
-      headline: `UGC-style angle for ${trimWords(cleanOffer, 6)}`,
+      headline: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+        ? `The off-market property angle buyers understand fast`
+        : `UGC-style angle for ${trimWords(cleanOffer, 6)}`,
       cta,
       score: 0,
       recommended: false,
@@ -1222,12 +1259,16 @@ function buildStaticCreatives(
         : buildStructuredPrimaryText({
             hook: `${audience} in ${market} keep losing momentum because ${tension.toLowerCase()}.`,
             problem: `The usual process creates noise instead of clarity.`,
-            outcome: `${sentenceCase(mechanism)} turns that into a simple path toward ${cleanOffer} with ${proof.toLowerCase()} so the next move feels obvious.`,
+            outcome: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+              ? `${sentenceCase(mechanism)} turns that into a simple path toward off-market property access before public listings feel crowded.`
+              : `${sentenceCase(mechanism)} turns that into a simple path toward ${cleanOffer} with ${proof.toLowerCase()} so the next move feels obvious.`,
             cta,
           }),
       headline:
         approvalFocused
           ? `Know what you qualify for before you shop in ${market}`
+          : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+            ? `Get off-market property access in ${market}`
           : strategy.campaignCategory === "seller"
           ? `Fix the pricing problem before you list in ${market}`
           : strategy.campaignCategory === "investor"
@@ -1275,14 +1316,22 @@ function buildStaticCreatives(
             cta,
           })
         : buildStructuredPrimaryText({
-            hook: `If you are trying to secure ${cleanOffer} in ${market}, timing matters.`,
-            problem: `Most ${audience} do not move until broad attention shows up.`,
-            outcome: `${sentenceCase(mechanism)} gives a faster path around ${trigger.toLowerCase()} so you can act on the offer before the crowd catches up.`,
+            hook: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+              ? `If you are trying to access off-market properties in ${market}, timing matters.`
+              : `If you are trying to secure ${cleanOffer} in ${market}, timing matters.`,
+            problem: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+              ? `Most buyers wait until homes are broadly visible and competition is already building.`
+              : `Most ${audience} do not move until broad attention shows up.`,
+            outcome: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+              ? `${sentenceCase(mechanism)} gives a faster path to private and distressed-sale opportunities before the crowd catches up.`
+              : `${sentenceCase(mechanism)} gives a faster path around ${trigger.toLowerCase()} so you can act on the offer before the crowd catches up.`,
             cta,
           }),
       headline:
         approvalFocused
           ? `See the offer before you waste time touring`
+          : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+            ? `See off-market properties before public search`
           : strategy.campaignCategory === "precon"
           ? `Lock today's entry path before the next shift in ${market}`
           : strategy.campaignCategory === "luxury"
@@ -1331,13 +1380,19 @@ function buildStaticCreatives(
           })
         : buildStructuredPrimaryText({
             hook: `We keep seeing the same story from ${audience} in ${market}.`,
-            problem: `They spend too long reacting to surface-level options and weak-fit opportunities.`,
-            outcome: `${sentenceCase(mechanism)} helps them reach ${cleanOffer} with ${proof.toLowerCase()} and a clearer path to the right outcome.`,
+            problem: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+              ? `They spend too long reacting to public listings while private and distressed-sale options stay harder to see.`
+              : `They spend too long reacting to surface-level options and weak-fit opportunities.`,
+            outcome: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+              ? `${sentenceCase(mechanism)} helps them review off-market property access with a clearer path to the right next step.`
+              : `${sentenceCase(mechanism)} helps them reach ${cleanOffer} with ${proof.toLowerCase()} and a clearer path to the right outcome.`,
             cta,
           }),
       headline:
         approvalFocused
           ? `A better buyer outcome starts with clarity`
+          : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+            ? `The off-market property path buyers want`
           : strategy.campaignCategory === "seller"
           ? `The seller result most homeowners want in ${market}`
           : strategy.campaignCategory === "investor"
@@ -2055,8 +2110,11 @@ function applyCreativeIntakePromptToStaticAsset(
 
   const promptVersion = creativeIntake.promptVersion;
   const finishedAdMode = creativeIntake.outputMode === "finished_ad";
+  const requiredOffer = creativeIntake.requiredOfferTitle ?? creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer;
   const timedOffer = finishedAdMode
-    ? addFinishedAdDefaultTiming(creativeIntake.requiredOfferTitle ?? creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer, "this week", {
+    ? isOffMarketOffer(requiredOffer)
+      ? requiredOffer
+      : addFinishedAdDefaultTiming(requiredOffer, "this week", {
         ensureLowRiskAccess: normalized.creativeStrategy.campaignCategory !== "seller",
       })
     : creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer;

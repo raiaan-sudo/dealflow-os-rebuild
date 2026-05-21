@@ -159,10 +159,7 @@ export function getStaticCreativeReadiness(
   const selectedReadyCount = selectedCreatives.filter(isLaunchReadyStaticCreative).length;
   const selectedBlockedCount = selectedCreatives.length - selectedReadyCount;
   const minimumRequiredCount = STATIC_LAUNCH_MIN_CREATIVE_COUNT;
-  const recommendedRequiredCount =
-    creatives.length >= STATIC_LAUNCH_MIN_CREATIVE_COUNT
-      ? Math.min(STATIC_LAUNCH_MAX_CREATIVE_COUNT, creatives.length)
-      : STATIC_LAUNCH_MIN_CREATIVE_COUNT;
+  const recommendedRequiredCount = STATIC_LAUNCH_MIN_CREATIVE_COUNT;
   const selectedMinimumMet = selectedReadyCount >= minimumRequiredCount;
   const optionalIssueCount = Math.max(0, retryCount + missingCount - selectedBlockedCount);
   const selectedReadyLabel =
@@ -212,7 +209,7 @@ export function getStaticPreviewStatusMessage(readiness: StaticCreativeReadiness
 
   const requiredText =
     readiness.recommendedRequiredCount > 0
-      ? `${readiness.recommendedRequiredCount} recommended for the launch test set`
+      ? `${readiness.recommendedRequiredCount} required for launch`
       : null;
   const readyText = readiness.selectedCount > 0 ? readiness.selectedReadyLabel : readiness.availableReadyLabel;
   const base = requiredText

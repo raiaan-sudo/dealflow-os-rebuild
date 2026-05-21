@@ -111,6 +111,24 @@ assert.equal(buyer.category, "buyer");
 assert.equal(buyer.templateId, "buyer_affordability");
 assert.equal(buyer.cta, "See Matching Homes", "vague buyer CTA is upgraded");
 
+const offMarketBuyerAds = await generateStaticCreativeAds({
+  location: "Toronto, ON",
+  audience: "buyers",
+  offer: "Off-market Property Access",
+  market_type: "buyer",
+  property_type: "homes",
+});
+assert.equal(offMarketBuyerAds.length, 6, "buyer campaigns still produce a six-concept static test set");
+for (const ad of offMarketBuyerAds) {
+  const combined = `${ad.headline} ${ad.primaryText} ${ad.overlayText} ${ad.cta} ${ad.visualConcept}`;
+  assert.match(
+    combined,
+    /off[-\s]?market|private listing|private opportunit|distressed-sale|property access/i,
+    `static creative ${ad.id} must stay aligned to the off-market property access offer`,
+  );
+  assert.doesNotMatch(combined, /600\+\s*credit|approval path|home list/i, `static creative ${ad.id} must not drift back to credit/home-list copy`);
+}
+
 const generatedCreativeInput = {
   category: "buyer",
   location: "Austin",

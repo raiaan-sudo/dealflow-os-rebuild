@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { createHash } from "node:crypto";
 import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
@@ -31,6 +32,10 @@ function resolveCustomerFacingOfferTitle(params: {
     campaignType: params.plan.intent,
     audience: params.plan.audience,
   });
+}
+
+function sha256Text(value: string) {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 export default async function BuildCreativesPage({
@@ -94,6 +99,10 @@ export default async function BuildCreativesPage({
     creativeIntake.brief?.completion.complete === true &&
     Boolean(creativeIntake.promptVersion?.generatedPrompt);
   const customerOfferTitle = resolveCustomerFacingOfferTitle({ intake: creativeIntake, plan });
+  const approvedUgcScriptLines = creativeIntake?.brief?.ugcStyleBrief?.approvedScript?.lines ?? [];
+  const approvedUgcScriptHash = approvedUgcScriptLines.length > 0
+    ? sha256Text(approvedUgcScriptLines.join("\n"))
+    : null;
   const creativeIntakeDefaults: CreativeIntakeCampaignDefaults = {
     campaignId: ensuredRecord.campaign.id,
     market: plan.market,
@@ -237,7 +246,7 @@ export default async function BuildCreativesPage({
       <PageHeader
         eyebrow="Build"
         title="Choose your creative test set"
-        description="Select 4-6 launch-ready static ads and one approved AI UGC video. DealFlow preserves the full launch package across Preview and Launch."
+        description="Select at least 4 launch-ready static ads, add up to 6 for larger split tests, and choose one approved AI UGC video. DealFlow preserves the full launch package across Preview and Launch."
       />
       {creativeIntakeEnabled ? (
         <CreativeChatIntake
@@ -249,6 +258,8 @@ export default async function BuildCreativesPage({
       ) : null}
 
       <CreativeWizard
+        approvedUgcScriptHash={approvedUgcScriptHash}
+        approvedUgcScriptLines={approvedUgcScriptLines}
         campaignId={ensuredRecord.campaign.id}
         creatives={creativeOptions}
         initialRenderJobs={activeRenderJobs}
