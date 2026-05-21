@@ -179,7 +179,15 @@ export function CreativeChatIntake({
   const revisionRequested = initialIntake?.approvalStatus === "revision_requested";
   const savedDraft = initialIntake?.approvalStatus === "draft" && Boolean(initialIntake?.updatedAt);
   const brief = initialIntake?.brief ?? null;
-  const promptPreview = initialIntake?.promptVersion?.sanitizedPreview ?? null;
+  const approvedBriefSummary = brief
+    ? [
+        `${brief.creativeStyle || "Creative"} direction`,
+        brief.targetAudience ? `for ${brief.targetAudience}` : null,
+        brief.market ? `in ${brief.market}` : null,
+        `Offer: ${brief.offerTitle || brief.offer}`,
+        brief.cta ? `CTA: ${brief.cta}` : null,
+      ].filter(Boolean).join(" | ")
+    : `${defaults.offer ?? "Creative"} direction for ${defaults.audience ?? "this audience"}.`;
   const ugcDraft = useMemo(() => buildCreativeUgcScriptDraft({
     campaignType: defaults.campaignType,
     audience: answers.targetAudience === "custom" ? answers.customAudience : getAnswerLabel(answers.targetAudience, audienceOptions),
@@ -304,7 +312,7 @@ export function CreativeChatIntake({
               <p className="text-sm font-semibold text-foreground">Creative brief approved</p>
             </div>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {promptPreview || `${brief?.creativeStyle ?? "Creative"} direction for ${brief?.targetAudience ?? "this audience"}.`}
+              {approvedBriefSummary}
             </p>
             <p className="mt-2 text-xs leading-5 text-emerald-100/80">
               Requesting a revision will pause paid rendering until the revised brief is approved again.

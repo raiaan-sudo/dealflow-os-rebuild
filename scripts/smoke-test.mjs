@@ -356,6 +356,7 @@ function runOfflineChecks() {
   assertIncludes(creativeWizard, "Pick at least", "Creative static floor copy", "Creative Studio treats four static creatives as the launch floor and 5-6 as optional larger-budget variants");
   assertIncludes(creativeWizard, "Render approved script", "Creative UGC stale-script repair", "older UGC renders can be refreshed when the approved script changes");
   assertIncludes(creativeWizard, "videoMatchesApprovedScript", "Creative UGC script hash gate", "UGC videos cannot be selected for launch when their script hash does not match the approved script");
+  assertExcludes(creativeChatIntake, "promptVersion?.sanitizedPreview", "Creative approved brief summary", "approved Creative Studio summary avoids backend prompt/version fields");
   assertExcludes(builderPanels, "provider job completes", "Builder video provider jargon hidden", "builder video status copy does not expose provider-job language to customers");
   assertExcludes(builderPanels, "asset.provider_name", "Builder asset provider names hidden", "builder asset rows avoid exposing raw provider names in customer-facing copy");
   assertIncludes(creativeWizard, "snap-x", "Creative carousel readable cards", "creative carousel uses full preview cards instead of compressed summary-only tiles");
