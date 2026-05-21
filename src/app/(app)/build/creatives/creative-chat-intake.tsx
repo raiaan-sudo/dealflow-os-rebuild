@@ -74,6 +74,23 @@ const visualOptions = [
   ["Clean direct-response explainer", "Clean direct-response explainer"],
 ] as const;
 
+const scriptReasonLabels: Record<string, string> = {
+  script_sections_missing: "use a clear hook, information/proof, and CTA",
+  cta_missing: "add a direct CTA such as click learn more, book a call, or get access",
+  offer_phrase_repeated: "use the offer once or twice instead of repeating it",
+  script_line_repeated: "remove repeated lines",
+  script_too_long_for_duration: "shorten the script or choose a longer duration",
+  seller_buyer_language_mismatch: "remove buyer language from this seller campaign",
+  buyer_seller_language_mismatch: "remove seller language from this buyer campaign",
+  guaranteed_approval: "remove guaranteed approval language",
+  guaranteed_financing: "remove guaranteed financing language",
+  guaranteed_sale: "remove guaranteed sale language",
+  guaranteed_roi: "remove guaranteed ROI language",
+  fake_urgency: "remove fake urgency",
+  protected_class_steering: "remove protected-class steering language",
+  internal_jargon: "remove internal system wording",
+};
+
 function defaultAnswers(defaults: CreativeIntakeCampaignDefaults): CreativeIntakeAnswers {
   const offerTitle = normalizeCreativeOfferTitle({
     value: defaults.offer,
@@ -136,6 +153,10 @@ function defaultAnswers(defaults: CreativeIntakeCampaignDefaults): CreativeIntak
 
 function getAnswerLabel(value: string | null | undefined, options: readonly (readonly [string, string])[]) {
   return options.find(([key]) => key === value)?.[1] ?? value ?? "Not set";
+}
+
+function describeScriptReason(reason: string) {
+  return scriptReasonLabels[reason] ?? reason.replaceAll("_", " ");
 }
 
 export function CreativeChatIntake({
@@ -448,6 +469,9 @@ export function CreativeChatIntake({
                     onChange={(event) => updateAnswer({ ugcApprovedScript: event.target.value, ugcScriptApprovedAt: null })}
                   />
                 </label>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Use Hook → Info/proof → CTA. Current length: {scriptValidation.wordCount}/{scriptValidation.maxWords} words for {answers.targetDurationSeconds ?? 20}s.
+                </p>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <PreviewList title="Shot list" items={answers.ugcShotList?.length ? answers.ugcShotList : ugcDraft.shotList} />
                   <PreviewList title="On-screen text" items={answers.ugcOnScreenText?.length ? answers.ugcOnScreenText : ugcDraft.onScreenText} />
@@ -455,7 +479,9 @@ export function CreativeChatIntake({
                 {scriptValidation.accepted ? (
                   <p className="rounded-2xl border border-emerald-300/18 bg-emerald-300/[0.08] p-3 text-sm text-emerald-100">Script quality checks pass. Approve it before generating media.</p>
                 ) : (
-                  <p className="rounded-2xl border border-amber-300/18 bg-amber-300/[0.08] p-3 text-sm text-amber-100">Fix before approval: {scriptValidation.reasons.join(", ")}</p>
+                  <p className="rounded-2xl border border-amber-300/18 bg-amber-300/[0.08] p-3 text-sm text-amber-100">
+                    Fix before approval: {scriptValidation.reasons.map(describeScriptReason).join("; ")}.
+                  </p>
                 )}
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <Button type="button" variant="secondary" onClick={() => refreshScriptDraft()}>

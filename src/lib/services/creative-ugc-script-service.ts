@@ -23,6 +23,8 @@ export type CreativeUgcScriptValidation = {
   reasons: string[];
   wordCount: number;
   repeatedOfferCount: number;
+  sectionCount: number;
+  maxWords: number;
 };
 
 const DEFAULT_OFFER = "Campaign Plan";
@@ -83,6 +85,28 @@ function stableHash(value: string) {
     hash = Math.imul(hash, 16777619);
   }
   return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function splitScriptSections(lines: string[]) {
+  const lineSections = lines.map((line) => safeText(line)).filter(Boolean);
+  const text = lineSections.join(" ");
+  const sentenceSections = text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((section) => safeText(section))
+    .filter((section) => section.split(/\s+/).filter(Boolean).length >= 3);
+
+  return sentenceSections.length > lineSections.length ? sentenceSections : lineSections;
+}
+
+function hasCustomerCta(params: { text: string; cta?: string | null }) {
+  const text = safeText(params.text).toLowerCase();
+  const cta = safeText(params.cta).toLowerCase();
+
+  if (cta && text.includes(cta)) {
+    return true;
+  }
+
+  return /\b(click|tap|book|schedule|call|message|speak with|learn more|get access|get started|see if|view homes|claim|start)\b/i.test(text);
 }
 
 export function inferCreativeUgcAudienceKind(params: {
@@ -285,6 +309,7 @@ export function validateCreativeUgcScriptDraft(params: {
     ? (lower.match(new RegExp(normalizedOffer, "g")) ?? []).length
     : 0;
   const wordCount = text.split(/\s+/).filter(Boolean).length;
+  const sectionCount = splitScriptSections(params.script.lines).length;
   const duplicateLineCount = params.script.lines
     .map((line) => line.toLowerCase().replace(/[^a-z0-9 ]+/g, "").trim())
     .filter(Boolean)
@@ -295,8 +320,8 @@ export function validateCreativeUgcScriptDraft(params: {
       ? 78
       : 115;
   const reasons = [
-    params.script.lines.length < 4 ? "script_sections_missing" : null,
-    !safeText(params.script.cta) ? "cta_missing" : null,
+    sectionCount < 3 ? "script_sections_missing" : null,
+    !hasCustomerCta({ text, cta: params.script.cta }) ? "cta_missing" : null,
     repeatedOfferCount > 2 ? "offer_phrase_repeated" : null,
     [...duplicateLineCount.values()].some((count) => count > 1) ? "script_line_repeated" : null,
     wordCount > maxWords ? "script_too_long_for_duration" : null,
@@ -315,5 +340,7 @@ export function validateCreativeUgcScriptDraft(params: {
     reasons,
     wordCount,
     repeatedOfferCount,
+    sectionCount,
+    maxWords,
   };
 }

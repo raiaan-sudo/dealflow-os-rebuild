@@ -114,6 +114,8 @@ assert.match(creativeChatIntakeUi, /Creator persona"[\s\S]*?updateAnswer\(\{ cre
 assert.match(creativeChatIntakeUi, /Hook angle"[\s\S]*?updateAnswer\(\{ hookAngle: value, ugcScriptApprovedAt: null \}\)/);
 assert.match(creativeChatIntakeUi, /Visual style"[\s\S]*?updateAnswer\(\{ visualStyle: value, ugcScriptApprovedAt: null \}\)/);
 assert.match(creativeChatIntakeUi, /Refresh script draft/);
+assert.match(creativeChatIntakeUi, /Use Hook → Info\/proof → CTA/);
+assert.match(creativeChatIntakeUi, /describeScriptReason/);
 assert.doesNotMatch(creativeChatIntakeUi, /Pre-render UGC concepts/);
 assert.doesNotMatch(creativeChatIntakeUi, /Select concept/);
 assert.doesNotMatch(creativeChatIntakeUi, /Placement plan/);
@@ -229,6 +231,32 @@ assert.doesNotMatch(
   buyerUgcDraftWithVerboseMechanism.lines.join(" "),
   /delivered through|buyer consultation|qualification system|better houses options/i,
   "UGC script draft strips verbose internal offer mechanisms from customer-facing script text",
+);
+const naturalOffMarketScript = {
+  ...buyerUgcDraft,
+  targetDurationSeconds: 20,
+  cta: "Click learn more",
+  lines: [
+    "I'll get you into your next home for up to 50% less than the current market in the Toronto area.",
+    "You heard that right. Our team has access to hundreds of distressed sale properties that are going for up to 50% less than the market, from condos all the way to detached homes.",
+    "Now if you've held off on purchasing your next home, click learn more to speak with our team and get access to these off-market properties.",
+  ],
+};
+const naturalOffMarketValidation = validateCreativeUgcScriptDraft({
+  script: naturalOffMarketScript,
+  campaignType: defaults.campaignType,
+  audience: defaults.audience,
+  offerTitle: "Off-market Property Access",
+});
+assert.equal(
+  naturalOffMarketValidation.accepted,
+  true,
+  "UGC script validator accepts natural Hook / Info / CTA scripts without requiring literal section headings",
+);
+assert.equal(
+  naturalOffMarketValidation.reasons.includes("script_sections_missing"),
+  false,
+  "Natural three-part UGC scripts do not show the confusing script_sections_missing blocker",
 );
 const repetitiveScript = {
   ...buyerUgcDraft,
