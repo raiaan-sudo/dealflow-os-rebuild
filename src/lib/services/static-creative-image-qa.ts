@@ -633,5 +633,5 @@ export function getCustomerSafeImageQaMessage(result: StaticCreativeImageQaResul
     return null;
   }
 
-  return "This visual needs a cleaner background. Preview is using the composed layout while the image refreshes.";
+  return "This visual needs a cleaner final render before it can be launch-ready.";
 }

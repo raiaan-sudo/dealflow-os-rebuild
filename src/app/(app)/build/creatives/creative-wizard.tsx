@@ -504,6 +504,10 @@ export function CreativeWizard({
         setActiveImageJobId((current) => current === jobId ? null : current);
       }
     };
+    const clearTrackedJob = () => {
+      setRenderJobs((current) => current.filter((job) => job.id !== jobId));
+      clearActiveJob();
+    };
 
     source.addEventListener("job", (event) => {
       try {
@@ -544,7 +548,7 @@ export function CreativeWizard({
           }
           source.close();
           jobStreamsRef.current.delete(jobId);
-          clearActiveJob();
+          clearTrackedJob();
         } else if (job.status === "pending" || job.status === "processing") {
           if (surface === "video") {
             setVideoMessage(renderView.customerMessage);
@@ -599,7 +603,12 @@ export function CreativeWizard({
       }
 
       const renderView = jobRenderView(data.job);
-      setRenderJobs((current) => upsertRenderJob(current, data.job as SystemJob));
+      const deferredWorkerJob = isMarketingStudioWorkerDeferredRunAt(data.job.next_run_at);
+      setRenderJobs((current) =>
+        deferredWorkerJob
+          ? current.filter((job) => job.kind !== "static_creative_generation")
+          : upsertRenderJob(current, data.job as SystemJob),
+      );
       setRenderMessage(
         data.previewUpdated
           ? "Creative concepts are visible now. Final media is queued and will update here when rendering starts."
@@ -608,7 +617,7 @@ export function CreativeWizard({
       if (data.previewUpdated) {
         router.refresh();
       }
-      if (!isMarketingStudioWorkerDeferredRunAt(data.job.next_run_at)) {
+      if (!deferredWorkerJob) {
         subscribeToJob(data.job.id, "image");
       }
     } catch (renderError) {

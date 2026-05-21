@@ -428,6 +428,41 @@ assert.match(combinedPrompt.generatedPrompt, /MARKETING STUDIO FINISHED AD CREAT
 assert.match(combinedPrompt.generatedPrompt, /MARKETING STUDIO AI UGC VIDEO BRIEF/);
 assert.match(combinedPrompt.sanitizedPreview, /Brief hash:/);
 
+const combinedStaticAds = await generateStaticCreativeAds({
+  campaign_id: defaults.campaignId,
+  location: defaults.market,
+  audience: defaults.audience,
+  offer: defaults.offer,
+  property_type: defaults.propertyType,
+  market_type: defaults.campaignType,
+  creative_intake: {
+    version: 1,
+    conversationId: "combined-static-prompt-test",
+    campaignId: defaults.campaignId,
+    revisionNumber: 5,
+    approvedAt: "2026-05-20T00:00:00.000Z",
+    outputMode: "finished_ad",
+    generationPhase: "static_and_ugc",
+    requiredOfferTitle: combinedBrief.offerTitle,
+    requiredOffer: combinedBrief.offer,
+    requiredCta: combinedBrief.cta,
+    market: combinedBrief.market,
+    targetAudience: combinedBrief.targetAudience,
+    brokerageBrand: combinedBrief.brokerageBrand,
+    promptVersion: combinedPrompt,
+    briefHash: combinedBrief.briefHash,
+    staticBriefHash: combinedBrief.staticBriefHash,
+    offerHash: combinedBrief.offerHash,
+    ctaHash: combinedBrief.ctaHash,
+    brandHash: combinedBrief.brandHash,
+    ugcScriptHash: combinedBrief.ugcScriptHash,
+  },
+  max_static_image_generations: 0,
+});
+assert.match(combinedStaticAds[0].imagePrompt, /MARKETING STUDIO FINISHED AD CREATIVE/);
+assert.doesNotMatch(combinedStaticAds[0].imagePrompt, /MARKETING STUDIO AI UGC VIDEO BRIEF/);
+assert.doesNotMatch(combinedStaticAds[0].imagePrompt, /Approved script lines:/);
+
 const state = createCreativeIntakeState({
   campaignId: defaults.campaignId,
   defaults,

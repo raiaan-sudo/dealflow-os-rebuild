@@ -431,7 +431,7 @@ const downgradedAsset = {
   ...generatedAsset,
   imageUrl: "https://example.test/bad-flyer.png",
   imageGenerationState: "failed",
-  imageGenerationMessage: "This visual needs a cleaner background. Preview is using the composed layout while the image refreshes.",
+  imageGenerationMessage: "This visual needs a cleaner final render before it can be launch-ready.",
   imageGenerationModel: "gpt-image-1.5",
   imageGenerationProvider: null,
   imageQa: {

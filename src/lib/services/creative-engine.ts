@@ -2207,6 +2207,15 @@ export function mergeStaticCreativeImageResults(
   });
 }
 
+function staticOnlyPromptForImageGeneration(prompt: string) {
+  const withoutCombinedHeader = prompt.replace(
+    /^MARKETING STUDIO COMBINED STATIC \+ AI UGC BRIEF\.\s*/i,
+    "",
+  );
+  const [staticPrompt] = withoutCombinedHeader.split(/MARKETING STUDIO AI UGC VIDEO BRIEF\./i);
+  return staticPrompt.trim() || prompt;
+}
+
 function applyCreativeIntakePromptToStaticAsset(
   asset: StaticCreativeAsset,
   normalized: RequiredCreativeInput,
@@ -2221,16 +2230,17 @@ function applyCreativeIntakePromptToStaticAsset(
 	  const requiredOffer = creativeIntake.requiredOfferTitle ?? creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer;
 	  const approvedOffer = finishedAdMode ? requiredOffer : creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer;
 	  const approvedCta = creativeIntake.requiredCta ?? asset.cta;
+  const staticPrompt = staticOnlyPromptForImageGeneration(promptVersion.generatedPrompt);
   const prompt = finishedAdMode
     ? buildFinishedAdPromptContract({
-        prompt: promptVersion.generatedPrompt,
+        prompt: staticPrompt,
         market: creativeIntake.market ?? normalized.location,
         audience: creativeIntake.targetAudience ?? normalized.audience,
 	        offer: approvedOffer,
         cta: approvedCta,
         brand: creativeIntake.brokerageBrand,
       })
-    : promptVersion.generatedPrompt;
+    : staticPrompt;
   const negativePrompt = finishedAdMode
     ? [
         promptVersion.negativePrompt,
