@@ -719,7 +719,7 @@ function addFinishedAdDefaultTiming(
   }
 
   if (options?.ensureLowRiskAccess && !hasStaticLowRiskAccessContext(text)) {
-    text = cleanCreativeCopy(`Preview ${text.charAt(0).toLowerCase()}${text.slice(1)}`);
+    text = cleanCreativeCopy(`Review ${text.charAt(0).toLowerCase()}${text.slice(1)}`);
   }
 
   return hasStaticTimingContext(text) ? text : cleanCreativeCopy(`${text} ${fallback}`);
@@ -2056,8 +2056,8 @@ function applyCreativeIntakePromptToStaticAsset(
   const promptVersion = creativeIntake.promptVersion;
   const finishedAdMode = creativeIntake.outputMode === "finished_ad";
   const timedOffer = finishedAdMode
-    ? addFinishedAdDefaultTiming(creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer, "this week", {
-        ensureLowRiskAccess: true,
+    ? addFinishedAdDefaultTiming(creativeIntake.requiredOfferTitle ?? creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer, "this week", {
+        ensureLowRiskAccess: normalized.creativeStrategy.campaignCategory !== "seller",
       })
     : creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer;
   const timedCta = finishedAdMode

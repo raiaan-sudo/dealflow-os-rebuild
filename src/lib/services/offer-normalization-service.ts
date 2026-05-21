@@ -113,7 +113,7 @@ function buildCta(intent: OfferIntent, normalizedOffer: string, mode: OfferCampa
 
 function buildCoachNote(intent: OfferIntent, normalizedOffer: string, mode: OfferCampaignMode) {
   if (intent === "approval") {
-    return "Lead with qualification clarity, then ask for the buyer's next step.";
+    return "Guaranteed approval language is restricted, so DealFlow uses safer qualification wording while keeping the credit angle clear.";
   }
   if (intent === "seller_guarantee") {
     return "Lead with the sale plan first, then support it with timing and market proof.";

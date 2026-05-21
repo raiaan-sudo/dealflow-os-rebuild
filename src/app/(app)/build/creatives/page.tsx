@@ -12,10 +12,26 @@ import {
   readCreativeChatIntakeFromPlan,
   type CreativeIntakeCampaignDefaults,
 } from "@/lib/services/creative-chat-intake-service";
+import { normalizeCreativeOfferTitle } from "@/lib/services/creative-ugc-script-service";
 import { createClient } from "@/lib/supabase/server";
 import { CreativeChatIntake } from "./creative-chat-intake";
 import { CreativeWizard } from "./creative-wizard";
 import { GenerateCreativesPanel } from "./generate-creatives-panel";
+
+function resolveCustomerFacingOfferTitle(params: {
+  intake: ReturnType<typeof readCreativeChatIntakeFromPlan>;
+  plan: ReturnType<typeof canonicalCampaignToPlan>;
+}) {
+  return normalizeCreativeOfferTitle({
+    value:
+      params.intake?.brief?.offerTitle ||
+      params.plan.keyOffer ||
+      params.plan.offerSummary ||
+      "Campaign offer",
+    campaignType: params.plan.intent,
+    audience: params.plan.audience,
+  });
+}
 
 export default async function BuildCreativesPage({
   searchParams,
@@ -77,6 +93,7 @@ export default async function BuildCreativesPage({
     creativeIntake?.approvalStatus === "approved" &&
     creativeIntake.brief?.completion.complete === true &&
     Boolean(creativeIntake.promptVersion?.generatedPrompt);
+  const customerOfferTitle = resolveCustomerFacingOfferTitle({ intake: creativeIntake, plan });
   const creativeIntakeDefaults: CreativeIntakeCampaignDefaults = {
     campaignId: ensuredRecord.campaign.id,
     market: plan.market,
@@ -165,7 +182,7 @@ export default async function BuildCreativesPage({
         qualityGate: ad.qualityGate ?? null,
         imageQa: ad.imageQa ?? null,
         visualPromptBrief: ad.visualPromptBrief ?? null,
-        offer: ensuredRecord.plan.offer_summary || ensuredRecord.plan.offer || null,
+        offer: customerOfferTitle,
         breakdown: {
           hook: ad.hook || matchingCopy?.hook || "",
           concept: ad.visualConcept || "",

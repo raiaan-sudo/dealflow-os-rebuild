@@ -450,7 +450,8 @@ const finishedAdStaticAds = await generateStaticCreativeAds({
 assert.match(finishedAdStaticAds[0].offer, /this week/i, "finished-ad static copy gets a timing fallback");
 assert.match(finishedAdStaticAds[0].cta, /this week/i, "finished-ad CTA gets a timing fallback");
 assert.match(finishedAdStaticAds[0].imagePrompt, /Finished-ad quality contract/);
-assert.match(finishedAdStaticAds[0].imagePrompt, /Timed offer that must be readable: Preview private buyer shortlist this week/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /Timed offer that must be readable: Review private buyer shortlist this week/);
+assert.doesNotMatch(finishedAdStaticAds[0].overlayText, /^Preview\b/i, "finished-ad static overlays do not block the creative with a preview prefix");
 assert.match(finishedAdStaticAds[0].imagePrompt, /one dominant hook area, one proof area, strong negative space, and a clear CTA-safe zone/);
 assert.match(finishedAdStaticAds[0].imagePrompt, /generous safe margins/);
 assert.match(finishedAdStaticAds[0].imagePrompt, /No tiny text, cropped CTA, overlapping panels/);

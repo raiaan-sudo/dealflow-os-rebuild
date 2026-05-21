@@ -84,6 +84,21 @@ assert.equal(seller.templateId, "seller_price_comparison");
 assert.notEqual(seller.status, "background_failed");
 assert.ok(seller.proofChips.some((chip) => /\$950K/i.test(chip)));
 
+const sellerVerboseOffer = buildComposedStaticAdPreview({
+  category: "seller",
+  location: "Brampton, ON",
+  headline: "14-Day Home Sale Plan. Delivered through a buyer consultation and qualification system for home buyers.",
+  overlayText: "Preview 14-Day Home Sale Plan",
+  primaryText: "Before you list in Brampton, ON, check your true home value range. A buyer consultation and qualification system gives you neighborhood sale options.",
+  cta: "Fill Out A Quick Form To See How We Can Review A 14-Day Home Sale Plan",
+  offer: "14-Day Home Sale Plan. Delivered through a buyer consultation and qualification system for home buyers.",
+});
+assert.equal(sellerVerboseOffer.headline, "14-Day Home Sale Plan");
+assert.equal(sellerVerboseOffer.overlayText, "14-Day Home Sale Plan");
+assert.doesNotMatch(sellerVerboseOffer.headline, /preview|buyer consultation|qualification system|home buyers/i);
+assert.doesNotMatch(sellerVerboseOffer.overlayText, /preview|buyer consultation|qualification system|home buyers/i);
+assert.doesNotMatch(sellerVerboseOffer.primaryText, /buyer consultation|qualification system|home buyers/i);
+
 const buyer = buildComposedStaticAdPreview({
   category: "buyer",
   location: "Austin",

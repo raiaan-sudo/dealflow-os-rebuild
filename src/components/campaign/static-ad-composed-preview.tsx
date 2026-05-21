@@ -381,6 +381,40 @@ function renderTemplateDetails(preview: ReturnType<typeof buildComposedStaticAdP
     );
   }
 
+  if (preview.category === "seller") {
+    return (
+      <div className="absolute inset-0 flex flex-col p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="max-w-[72%] rounded-full border border-white/55 bg-white/90 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-950 shadow-sm">
+            {preview.eyebrow}
+          </div>
+        </div>
+        <div className="mt-auto space-y-3">
+          {preview.proofChips.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {preview.proofChips.slice(0, 3).map((chip, index) => (
+                <span key={`${chip}-${index}`} className="rounded-full bg-white/92 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-black shadow-sm">
+                  {chip}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[22px] border border-black/12 bg-white px-4 py-3 text-black shadow-[0_16px_36px_-22px_rgba(0,0,0,0.5)]">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-black/55">{preview.location} homeowners</p>
+              <p className={cn("break-words font-black leading-tight", compact ? "text-sm" : "text-xl")}>
+                {preview.headline}
+              </p>
+            </div>
+            <div className="max-w-[152px] rounded-full border border-black/12 px-3 py-2 text-center text-xs font-black leading-tight">
+              {preview.cta}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="absolute inset-0 flex flex-col p-4">
       <div className="flex items-start justify-between gap-3">

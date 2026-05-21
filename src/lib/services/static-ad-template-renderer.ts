@@ -179,6 +179,39 @@ function titleCase(value: string) {
     .join(" ");
 }
 
+function stripCustomerFacingMechanism(value: string) {
+  return compactWhitespace(value)
+    .replace(/^preview\s+/i, "")
+    .replace(/[.!?]\s+(?:delivered|powered|built)\s+through\b[\s\S]*$/i, "")
+    .replace(/\b(?:delivered|powered|built)\s+through\b[\s\S]*$/i, "")
+    .replace(/\bthrough\s+a\s+buyer\s+consultation(?:\s+and\s+qualification\s+system)?\b[\s\S]*$/i, "")
+    .replace(/\bfor\s+home\s+buyers\b[\s\S]*$/i, "")
+    .replace(/\s+/g, " ")
+    .replace(/\s+[.!?,:;]$/g, "")
+    .trim();
+}
+
+function hasBuyerLanguage(value: string) {
+  return /\b(buyer consultation|home buyers|buying power|pre[-\s]?approval|credit score|mortgage approval)\b/i.test(value);
+}
+
+function buildSellerFallbackLine(offer: string) {
+  const cleanOffer = stripCustomerFacingMechanism(offer);
+  return cleanOffer
+    ? `${cleanOffer} helps homeowners review pricing, demand, and the next move before they list.`
+    : "Review pricing, demand, and the next move before you list.";
+}
+
+function cleanCustomerFacingStaticCopy(value: string, category: CampaignCategory, fallback?: string) {
+  const stripped = stripCustomerFacingMechanism(value);
+
+  if (category === "seller" && hasBuyerLanguage(stripped)) {
+    return compactWhitespace(fallback || buildSellerFallbackLine(stripped));
+  }
+
+  return stripped;
+}
+
 function includesAny(value: string, patterns: RegExp[]) {
   return patterns.some((pattern) => pattern.test(value));
 }
@@ -406,17 +439,22 @@ export function buildComposedStaticAdPreview(input: StaticAdTemplateInput): Comp
   const backgroundDecision = evaluateStaticVisualAssetDecision(input);
   const safeCta = VAGUE_CTA_PATTERN.test(safeText(input.cta)) || !safeText(input.cta)
     ? CATEGORY_CTAS[category]
-    : safeText(input.cta);
-  const headlineSource = safeText(input.headline) || safeText(input.hook) || safeText(input.offer) || fallbackHeadline(category, location);
+    : cleanCustomerFacingStaticCopy(safeText(input.cta), category, CATEGORY_CTAS[category]);
+  const cleanOffer = cleanCustomerFacingStaticCopy(safeText(input.offer), category);
+  const headlineSourceRaw = safeText(input.headline) || safeText(input.hook) || cleanOffer || fallbackHeadline(category, location);
+  const headlineSource = cleanCustomerFacingStaticCopy(headlineSourceRaw, category, cleanOffer || fallbackHeadline(category, location));
   const overlaySource =
-    safeText(input.overlayText) ||
-    safeText(input.offer) ||
-    safeText(input.visualPromptBrief?.proofStyle) ||
+    cleanCustomerFacingStaticCopy(safeText(input.overlayText), category, cleanOffer) ||
+    cleanOffer ||
+    cleanCustomerFacingStaticCopy(safeText(input.visualPromptBrief?.proofStyle), category, cleanOffer) ||
     headlineSource;
+  const primaryFallback = category === "seller"
+    ? buildSellerFallbackLine(cleanOffer || headlineSource)
+    : `Use this ${CATEGORY_LABELS[category].toLowerCase()} to reduce uncertainty before the next move.`;
   const primarySource =
-    safeText(input.primaryText) ||
-    safeText(input.offer) ||
-    `Use this ${CATEGORY_LABELS[category].toLowerCase()} to reduce uncertainty before the next move.`;
+    cleanCustomerFacingStaticCopy(safeText(input.primaryText), category, primaryFallback) ||
+    cleanOffer ||
+    primaryFallback;
   const fitted = fitStaticAdText({
     headline: headlineSource,
     overlayText: overlaySource,

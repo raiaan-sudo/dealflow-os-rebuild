@@ -938,7 +938,7 @@ function hasRiskReversal(text: string, category: CampaignCategory) {
     return /\b(private|request|limited|rare|not publicly available|preview)\b/.test(text);
   }
 
-  return /\b(guarantee|free|no obligation|without|before|off-market|private access|qualify|priority|low deposit|below-market|under|list|preview|refund|work for free)\b/.test(text);
+  return /\b(guarantee|free|no obligation|without|before|off-market|private access|qualify|review|priority|low deposit|below-market|under|list|preview|refund|work for free)\b/.test(text);
 }
 
 function hasMechanismSignal(text: string) {
