@@ -50,6 +50,32 @@ function normalizeDuration(value: unknown) {
     : 20;
 }
 
+function cleanMechanismContext(params: {
+  value?: string | null;
+  audienceKind: CreativeUgcAudienceKind;
+}) {
+  const text = safeText(params.value)
+    .replace(/[.!?]\s+(?:delivered|powered|built)\s+through\b[\s\S]*$/i, "")
+    .replace(/\b(?:delivered|powered|built)\s+through\b[\s\S]*$/i, "")
+    .replace(/\bfor\s+home\s+buyers\s+searching\b[\s\S]*$/i, "")
+    .replace(/\bbetter\s+houses\s+options\b/gi, "better home options")
+    .trim();
+
+  if (!text || text.length > 140) {
+    return "";
+  }
+
+  if (params.audienceKind === "seller" && /\b(buyer consultation|home buyers|credit score|pre[-\s]?approval|buying power)\b/i.test(text)) {
+    return "";
+  }
+
+  if (params.audienceKind === "buyer" && /\b(list your home|before you list|listing strategy|home sale plan|sell your home)\b/i.test(text)) {
+    return "";
+  }
+
+  return text;
+}
+
 function stableHash(value: string) {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
@@ -151,7 +177,10 @@ export function buildCreativeUgcScriptDraft(params: {
   const targetDurationSeconds = normalizeDuration(params.targetDurationSeconds);
   const hookAngle = safeText(params.hookAngle).toLowerCase();
   const visualStyle = safeText(params.visualStyle) || "Talking-head with local captions";
-  const mechanismContext = safeText(params.offerMechanism);
+  const mechanismContext = cleanMechanismContext({
+    value: params.offerMechanism,
+    audienceKind,
+  });
 
   const scripts = {
     seller: {

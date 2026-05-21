@@ -434,10 +434,10 @@ export function CreativeChatIntake({
             {activeStep === 2 ? (
               <div className="grid gap-5">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <ChoiceGroup label="Target length" value={String(answers.targetDurationSeconds ?? 20)} options={lengthOptions} onChange={(value) => refreshScriptDraft({ targetDurationSeconds: Number(value) })} />
-                  <ChoiceGroup label="Creator persona" value={answers.creatorPersona} options={personaOptions} onChange={(value) => refreshScriptDraft({ creatorPersona: value })} />
-                  <ChoiceGroup label="Hook angle" value={answers.hookAngle} options={hookOptions} onChange={(value) => refreshScriptDraft({ hookAngle: value })} />
-                  <ChoiceGroup label="Visual style" value={answers.visualStyle} options={visualOptions} onChange={(value) => refreshScriptDraft({ visualStyle: value })} />
+                  <ChoiceGroup label="Target length" value={String(answers.targetDurationSeconds ?? 20)} options={lengthOptions} onChange={(value) => updateAnswer({ targetDurationSeconds: Number(value), ugcScriptApprovedAt: null })} />
+                  <ChoiceGroup label="Creator persona" value={answers.creatorPersona} options={personaOptions} onChange={(value) => updateAnswer({ creatorPersona: value, ugcScriptApprovedAt: null })} />
+                  <ChoiceGroup label="Hook angle" value={answers.hookAngle} options={hookOptions} onChange={(value) => updateAnswer({ hookAngle: value, ugcScriptApprovedAt: null })} />
+                  <ChoiceGroup label="Visual style" value={answers.visualStyle} options={visualOptions} onChange={(value) => updateAnswer({ visualStyle: value, ugcScriptApprovedAt: null })} />
                 </div>
                 <label className="space-y-2 text-sm">
                   <span className="text-muted-foreground">Approved UGC script</span>

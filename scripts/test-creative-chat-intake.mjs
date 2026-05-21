@@ -109,6 +109,11 @@ assert.match(creativeChatIntakeUi, /static_and_ugc/);
 assert.match(creativeChatIntakeUi, /Final AI-rendered media updates after rendering completes and passes DealFlow review/);
 assert.match(creativeChatIntakeUi, /Approved UGC script/);
 assert.match(creativeChatIntakeUi, /Open Marketing Studio chat/);
+assert.match(creativeChatIntakeUi, /Target length"[\s\S]*?updateAnswer\(\{ targetDurationSeconds: Number\(value\), ugcScriptApprovedAt: null \}\)/);
+assert.match(creativeChatIntakeUi, /Creator persona"[\s\S]*?updateAnswer\(\{ creatorPersona: value, ugcScriptApprovedAt: null \}\)/);
+assert.match(creativeChatIntakeUi, /Hook angle"[\s\S]*?updateAnswer\(\{ hookAngle: value, ugcScriptApprovedAt: null \}\)/);
+assert.match(creativeChatIntakeUi, /Visual style"[\s\S]*?updateAnswer\(\{ visualStyle: value, ugcScriptApprovedAt: null \}\)/);
+assert.match(creativeChatIntakeUi, /Refresh script draft/);
 assert.doesNotMatch(creativeChatIntakeUi, /Pre-render UGC concepts/);
 assert.doesNotMatch(creativeChatIntakeUi, /Select concept/);
 assert.doesNotMatch(creativeChatIntakeUi, /Placement plan/);
@@ -207,6 +212,24 @@ const sellerOfferTitle = normalizeCreativeOfferTitle({
   audience: "Sellers",
 });
 assert.equal(sellerOfferTitle, "14-Day Home Sale Plan", "verbose seller offer is normalized to a concise customer-facing title");
+const buyerUgcDraftWithVerboseMechanism = buildCreativeUgcScriptDraft({
+  campaignType: "buyer",
+  audience: defaults.audience,
+  market: defaults.market,
+  offerTitle: "Off-market Property Access",
+  offerMechanism:
+    "Off-market Property Access. Delivered through a buyer consultation and qualification system for home buyers searching for $600k-$900k homes in toronto, on who want better houses options in Toronto, ON without wasting time.",
+  cta: "Click learn more for access",
+  targetDurationSeconds: 20,
+  creatorPersona: "Direct Response Narrator",
+  hookAngle: "Speed to Sell",
+  visualStyle: "Listing walkthrough style",
+});
+assert.doesNotMatch(
+  buyerUgcDraftWithVerboseMechanism.lines.join(" "),
+  /delivered through|buyer consultation|qualification system|better houses options/i,
+  "UGC script draft strips verbose internal offer mechanisms from customer-facing script text",
+);
 const repetitiveScript = {
   ...buyerUgcDraft,
   lines: [
