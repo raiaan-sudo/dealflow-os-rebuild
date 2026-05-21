@@ -21,6 +21,10 @@ import {
   isLaunchReadyStaticCreative,
   isLaunchReadyVideoCreative,
 } from "@/lib/services/creative-media-readiness";
+import {
+  getApprovedCreativeIntakeGenerationContext,
+  isCreativeChatIntakeEnabled,
+} from "@/lib/services/creative-chat-intake-service";
 import type { StaticCreativeAsset } from "@/lib/services/creative-engine";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 
@@ -110,6 +114,17 @@ export async function POST(
 
     const existingSelectedAdIds = getSelectedAdIdsFromPlan(currentPlan);
     const existingSelectedUgcVideoIds = getSelectedUgcVideoIdsFromPlan(currentPlan);
+    const creativeIntakeContext = isCreativeChatIntakeEnabled()
+      ? getApprovedCreativeIntakeGenerationContext(currentPlan)
+      : null;
+    const staticBriefReadinessContext = creativeIntakeContext
+      ? {
+          staticBriefHash: creativeIntakeContext.staticBriefHash,
+          offerHash: creativeIntakeContext.offerHash,
+          ctaHash: creativeIntakeContext.ctaHash,
+          brandHash: creativeIntakeContext.brandHash,
+        }
+      : null;
     const hydratedRecord = await getCampaignById(id);
     const staticAds = hydratedRecord?.creatives.staticAds.length
       ? hydratedRecord.creatives.staticAds
@@ -123,14 +138,14 @@ export async function POST(
 
     const rejectedIds = selectedAdIds.filter((selectedId) => {
       const ad = staticAdById.get(selectedId);
-      return !ad || !isLaunchReadyStaticCreative(ad);
+      return !ad || !isLaunchReadyStaticCreative(ad, staticBriefReadinessContext);
     });
 
     if (rejectedIds.length > 0) {
       throw new ApiError(400, "Regenerate the selected creative before saving it to the launch set.", "selected_ad_not_launch_safe");
     }
 
-    const staticReadiness = getStaticCreativeReadiness(staticAds, selectedAdIds);
+    const staticReadiness = getStaticCreativeReadiness(staticAds, selectedAdIds, staticBriefReadinessContext);
 
     if (!staticReadiness.selectedMinimumMet) {
       throw new ApiError(
@@ -150,7 +165,10 @@ export async function POST(
 
     const rejectedVideoIds = selectedUgcVideoIds.filter((selectedId) => {
       const video = videoById.get(selectedId);
-      return !video || !isLaunchReadyVideoCreative(video) || video.conceptType !== "customer_ugc";
+      return !video ||
+        !isLaunchReadyVideoCreative(video) ||
+        video.conceptType !== "customer_ugc" ||
+        (creativeIntakeContext?.ugcScriptHash ? video.ugcScriptHash !== creativeIntakeContext.ugcScriptHash && video.scriptHash !== creativeIntakeContext.ugcScriptHash : false);
     });
 
     if (rejectedVideoIds.length > 0) {

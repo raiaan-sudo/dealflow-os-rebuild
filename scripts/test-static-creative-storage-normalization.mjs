@@ -417,7 +417,7 @@ assert.equal(imageFrame.thumbnail_url, imageFrame.file_url);
 assert.equal(imageFrame.metadata.provider_original_url, providerDataUri);
 assert.equal(imageFrame.metadata.storageBucket, "creative-assets");
 assert.equal(imageFrame.metadata.storageNormalized, true);
-assert.equal(successfulDb.operations.some((item) => item.op === "delete"), true, "all-ready replacement can clean old rows");
+assert.equal(successfulDb.operations.some((item) => item.op === "delete"), false, "all-ready replacement preserves historical evidence rows");
 
 const finishedAdDb = fakeSupabase();
 await persistStaticCreativeAssets({

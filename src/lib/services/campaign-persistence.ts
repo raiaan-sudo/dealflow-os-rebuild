@@ -320,11 +320,20 @@ export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativ
       hook: typeof metadata?.overlayText === "string" ? metadata.overlayText : "",
       overlayText: typeof metadata?.overlayText === "string" ? metadata.overlayText : "",
       primaryText: typeof metadata?.primaryText === "string" ? metadata.primaryText : "",
-      headline: typeof metadata?.headline === "string" ? metadata.headline : "",
-      cta: typeof metadata?.cta === "string" ? metadata.cta : "",
-      score: typeof metadata?.score === "number" ? metadata.score : 0,
-      recommended: metadata?.recommended === true,
-    } satisfies StaticCreativeAsset;
+	      headline: typeof metadata?.headline === "string" ? metadata.headline : "",
+	      cta: typeof metadata?.cta === "string" ? metadata.cta : "",
+	      briefHash: metadataString(metadata, "briefHash"),
+	      staticBriefHash: metadataString(metadata, "staticBriefHash"),
+	      offerHash: metadataString(metadata, "offerHash"),
+	      ctaHash: metadataString(metadata, "ctaHash"),
+	      brandHash: metadataString(metadata, "brandHash"),
+	      briefRevisionNumber: metadataNumber(metadata, "briefRevisionNumber"),
+	      approvedOfferTitle: metadataString(metadata, "approvedOfferTitle"),
+	      approvedCta: metadataString(metadata, "approvedCta"),
+	      approvedBrand: metadataString(metadata, "approvedBrand"),
+	      score: typeof metadata?.score === "number" ? metadata.score : 0,
+	      recommended: metadata?.recommended === true,
+	    } satisfies StaticCreativeAsset;
     const visualDecision = evaluateStaticVisualAssetDecision(assetDraft);
     const generationState =
       imageUrl
@@ -507,10 +516,13 @@ export function mapVideoCreativeAssets(rows: CreativeAssetRow[]): VideoCreativeA
       sourceImageUrl: metadataString(metadata, "sourceImageUrl"),
       sourceStaticAccepted: sourceStaticAccepted(rows, sourceStaticAssetId),
       promptUsed,
-      promptSource: metadataString(metadata, "promptSource"),
-      promptHash: metadataString(metadata, "promptHash"),
-      scriptHash: metadataString(metadata, "scriptHash"),
-      campaignSpecificContext:
+	      promptSource: metadataString(metadata, "promptSource"),
+	      promptHash: metadataString(metadata, "promptHash"),
+	      scriptHash: metadataString(metadata, "scriptHash"),
+	      ugcScriptHash: metadataString(metadata, "ugcScriptHash") ?? metadataString(metadata, "scriptHash"),
+	      briefHash: metadataString(metadata, "briefHash"),
+	      briefRevisionNumber: metadataNumber(metadata, "briefRevisionNumber"),
+	      campaignSpecificContext:
         metadata?.campaignSpecificContext && typeof metadata.campaignSpecificContext === "object"
           ? metadata.campaignSpecificContext as VideoCreativeAsset["campaignSpecificContext"]
           : {

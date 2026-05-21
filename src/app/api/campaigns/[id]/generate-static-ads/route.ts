@@ -116,7 +116,17 @@ export async function POST(
       return buildRateLimitResponse(rateLimit.resetAt);
     }
 
-    const launchReadyStaticCount = campaign.creatives.staticAds.filter(isLaunchReadyStaticCreative).length;
+    const staticBriefReadinessContext = creativeIntakeContext
+      ? {
+          staticBriefHash: creativeIntakeContext.staticBriefHash,
+          offerHash: creativeIntakeContext.offerHash,
+          ctaHash: creativeIntakeContext.ctaHash,
+          brandHash: creativeIntakeContext.brandHash,
+        }
+      : null;
+    const launchReadyStaticCount = campaign.creatives.staticAds
+      .filter((creative) => isLaunchReadyStaticCreative(creative, staticBriefReadinessContext))
+      .length;
     const missingLaunchReadyFloorCount = Math.max(0, STATIC_LAUNCH_MIN_CREATIVE_COUNT - launchReadyStaticCount);
     const maxGenerations = body.maxGenerations ??
       (body.missingOnly === true

@@ -366,13 +366,18 @@ function renderTemplateDetails(preview: ReturnType<typeof buildComposedStaticAdP
               ))}
             </div>
           ) : null}
-          <div className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-[22px] border border-black/12 bg-white px-4 py-3 text-black shadow-[0_16px_36px_-22px_rgba(0,0,0,0.5)]">
+          <div
+            className={cn(
+              "grid items-center rounded-[22px] border border-black/12 bg-white px-4 py-3 text-black shadow-[0_16px_36px_-22px_rgba(0,0,0,0.5)]",
+              compact ? "grid-cols-1 gap-2" : "grid-cols-[minmax(0,1fr)_auto] gap-3",
+            )}
+          >
             <div className="min-w-0">
               <p className={cn("break-words font-black leading-tight", compact ? "text-sm" : "text-xl")}>
                 {preview.headline}
               </p>
             </div>
-            <div className="rounded-full border border-black/12 px-3 py-2 text-xs font-black">
+            <div className={cn("rounded-full border border-black/12 px-3 py-2 text-center text-xs font-black leading-tight", compact ? "w-fit max-w-full" : "")}>
               {preview.cta}
             </div>
           </div>
@@ -399,14 +404,19 @@ function renderTemplateDetails(preview: ReturnType<typeof buildComposedStaticAdP
               ))}
             </div>
           ) : null}
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[22px] border border-black/12 bg-white px-4 py-3 text-black shadow-[0_16px_36px_-22px_rgba(0,0,0,0.5)]">
+          <div
+            className={cn(
+              "grid items-center rounded-[22px] border border-black/12 bg-white px-4 py-3 text-black shadow-[0_16px_36px_-22px_rgba(0,0,0,0.5)]",
+              compact ? "grid-cols-1 gap-2" : "grid-cols-[minmax(0,1fr)_auto] gap-3",
+            )}
+          >
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-black/55">{preview.location} homeowners</p>
               <p className={cn("break-words font-black leading-tight", compact ? "text-sm" : "text-xl")}>
                 {preview.headline}
               </p>
             </div>
-            <div className="max-w-[152px] rounded-full border border-black/12 px-3 py-2 text-center text-xs font-black leading-tight">
+            <div className={cn("rounded-full border border-black/12 px-3 py-2 text-center text-xs font-black leading-tight", compact ? "w-fit max-w-full" : "max-w-[152px]")}>
               {preview.cta}
             </div>
           </div>
@@ -434,12 +444,17 @@ function renderTemplateDetails(preview: ReturnType<typeof buildComposedStaticAdP
             ))}
           </div>
         ) : null}
-        <div className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-full border border-black/12 bg-white px-4 py-3 text-black shadow-lg">
+        <div
+          className={cn(
+            "grid items-center border border-black/12 bg-white px-4 py-3 text-black shadow-lg",
+            compact ? "grid-cols-1 gap-2 rounded-[22px]" : "grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-full",
+          )}
+        >
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-black/55">{preview.eyebrow}</p>
             <p className="break-words text-sm font-black leading-tight">{preview.headline}</p>
           </div>
-          <div className="rounded-full border border-black/12 px-3 py-2 text-xs font-black">
+          <div className={cn("rounded-full border border-black/12 px-3 py-2 text-center text-xs font-black leading-tight", compact ? "w-fit max-w-full" : "")}>
             {preview.cta}
           </div>
         </div>

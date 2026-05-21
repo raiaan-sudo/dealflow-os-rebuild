@@ -31,6 +31,10 @@ import {
   isLaunchReadyStaticCreative,
   isLaunchReadyVideoCreative,
 } from "@/lib/services/creative-media-readiness";
+import {
+  getApprovedCreativeIntakeGenerationContext,
+  isCreativeChatIntakeEnabled,
+} from "@/lib/services/creative-chat-intake-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { slugify } from "@/lib/utils";
@@ -943,7 +947,18 @@ async function launchCampaignToMeta(
         ...(storedPayload?.selected_ad_id ? [storedPayload.selected_ad_id] : []),
       ].map((value) => String(value).trim()).filter(Boolean)),
     );
-    const selectedAdId = selectedAdIds[0] ?? null;
+	    const selectedAdId = selectedAdIds[0] ?? null;
+	    const creativeIntakeContext = isCreativeChatIntakeEnabled()
+	      ? getApprovedCreativeIntakeGenerationContext(currentPlan)
+	      : null;
+	    const staticBriefReadinessContext = creativeIntakeContext
+	      ? {
+	          staticBriefHash: creativeIntakeContext.staticBriefHash,
+	          offerHash: creativeIntakeContext.offerHash,
+	          ctaHash: creativeIntakeContext.ctaHash,
+	          brandHash: creativeIntakeContext.brandHash,
+	        }
+	      : null;
 
     if (!selectedAdId) {
       throw new ApiError(
@@ -967,10 +982,10 @@ async function launchCampaignToMeta(
       );
     }
 
-    const staticReadiness = getStaticCreativeReadiness(record.creatives.staticAds, selectedAdIds);
+	    const staticReadiness = getStaticCreativeReadiness(record.creatives.staticAds, selectedAdIds, staticBriefReadinessContext);
 
-    if (!staticReadiness.allSelectedReady || selectedStaticAds.some((ad) => !isLaunchReadyStaticCreative(ad))) {
-      throw new ApiError(
+	    if (!staticReadiness.allSelectedReady || selectedStaticAds.some((ad) => !isLaunchReadyStaticCreative(ad, staticBriefReadinessContext))) {
+	      throw new ApiError(
         400,
         "One or more selected creative images are still rendering or need regeneration before launch.",
         "selected_ad_image_not_launch_ready",
@@ -982,11 +997,20 @@ async function launchCampaignToMeta(
       .map((id) => record.creatives.videoAds.find((video) => video.id === id) ?? null)
       .filter((video): video is NonNullable<typeof video> => Boolean(video));
 
-    if (
-      selectedUgcVideoIds.length === 0 ||
-      selectedUgcVideos.length !== selectedUgcVideoIds.length ||
-      selectedUgcVideos.some((video) => video.conceptType !== "customer_ugc" || !isLaunchReadyVideoCreative(video))
-    ) {
+	    if (
+	      selectedUgcVideoIds.length === 0 ||
+	      selectedUgcVideos.length !== selectedUgcVideoIds.length ||
+	      selectedUgcVideos.some((video) =>
+	        video.conceptType !== "customer_ugc" ||
+	        !isLaunchReadyVideoCreative(video) ||
+	        (
+	          creativeIntakeContext?.ugcScriptHash
+	            ? video.ugcScriptHash !== creativeIntakeContext.ugcScriptHash &&
+	              video.scriptHash !== creativeIntakeContext.ugcScriptHash
+	            : false
+	        ),
+	      )
+	    ) {
       throw new ApiError(
         400,
         "Select one campaign-specific app-owned UGC video before launch.",

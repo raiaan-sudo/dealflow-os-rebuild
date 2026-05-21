@@ -103,6 +103,23 @@ export default async function BuildCreativesPage({
   const approvedUgcScriptHash = approvedUgcScriptLines.length > 0
     ? sha256Text(approvedUgcScriptLines.join("\n"))
     : null;
+  const approvedBriefContext = creativeIntake?.brief
+    ? {
+        offerTitle: creativeIntake.brief.offerTitle,
+        audience: creativeIntake.brief.targetAudience,
+        market: creativeIntake.brief.market,
+        brand: creativeIntake.brief.brokerageBrand,
+        cta: creativeIntake.brief.cta,
+        staticStyle: creativeIntake.brief.staticStyle ?? creativeIntake.brief.creativeStyle,
+        revisionNumber: creativeIntake.revisionNumber,
+        briefHash: creativeIntake.brief.briefHash ?? null,
+        staticBriefHash: creativeIntake.brief.staticBriefHash ?? null,
+        offerHash: creativeIntake.brief.offerHash ?? null,
+        ctaHash: creativeIntake.brief.ctaHash ?? null,
+        brandHash: creativeIntake.brief.brandHash ?? null,
+        ugcScriptHash: creativeIntake.brief.ugcScriptHash ?? approvedUgcScriptHash,
+      }
+    : null;
   const creativeIntakeDefaults: CreativeIntakeCampaignDefaults = {
     campaignId: ensuredRecord.campaign.id,
     market: plan.market,
@@ -191,6 +208,14 @@ export default async function BuildCreativesPage({
         qualityGate: ad.qualityGate ?? null,
         imageQa: ad.imageQa ?? null,
         visualPromptBrief: ad.visualPromptBrief ?? null,
+        briefHash: ad.briefHash ?? ad.creativeIntake?.briefHash ?? null,
+        staticBriefHash: ad.staticBriefHash ?? ad.creativeIntake?.staticBriefHash ?? null,
+        offerHash: ad.offerHash ?? ad.creativeIntake?.offerHash ?? null,
+        ctaHash: ad.ctaHash ?? ad.creativeIntake?.ctaHash ?? null,
+        brandHash: ad.brandHash ?? ad.creativeIntake?.brandHash ?? null,
+        approvedOfferTitle: ad.approvedOfferTitle ?? ad.creativeIntake?.requiredOfferTitle ?? null,
+        approvedCta: ad.approvedCta ?? ad.creativeIntake?.requiredCta ?? null,
+        approvedBrand: ad.approvedBrand ?? ad.creativeIntake?.brokerageBrand ?? null,
         offer: customerOfferTitle,
         breakdown: {
           hook: ad.hook || matchingCopy?.hook || "",
@@ -231,7 +256,10 @@ export default async function BuildCreativesPage({
       promptUsed: video.promptUsed ?? null,
       promptSource: video.promptSource ?? null,
       promptHash: video.promptHash ?? null,
-      scriptHash: video.scriptHash ?? null,
+      scriptHash: video.ugcScriptHash ?? video.scriptHash ?? null,
+      briefHash: video.briefHash ?? null,
+      ugcScriptHash: video.ugcScriptHash ?? video.scriptHash ?? null,
+      briefRevisionNumber: video.briefRevisionNumber ?? null,
       campaignSpecificContext: video.campaignSpecificContext ?? null,
       videoQualityGate: video.videoQualityGate ?? null,
       videoProductQualityGate: video.videoProductQualityGate ?? null,
@@ -260,6 +288,7 @@ export default async function BuildCreativesPage({
       <CreativeWizard
         approvedUgcScriptHash={approvedUgcScriptHash}
         approvedUgcScriptLines={approvedUgcScriptLines}
+        approvedBriefContext={approvedBriefContext}
         campaignId={ensuredRecord.campaign.id}
         creatives={creativeOptions}
         initialRenderJobs={activeRenderJobs}

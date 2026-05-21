@@ -171,7 +171,7 @@ export async function POST(
           hasSameCreativeIntakeGenerationContext(job.payload.creativeIntake, creativeIntakeContext)),
       ) ?? null;
 
-    if (existingActiveJob && body.force !== true) {
+	    if (existingActiveJob && body.force !== true) {
       scheduleVideoGenerationJob(existingActiveJob.id, existingActiveJob.payload);
 
       return Response.json({
@@ -247,7 +247,7 @@ export async function POST(
       kind: "video_generation",
       idempotencyKey:
         body.force === true
-          ? `video_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${body.creativeIndex}:${crypto.randomUUID()}`
+          ? `video_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${body.creativeIndex}:${safeIdempotencyPart(selectedVideo.id)}:${safeIdempotencyPart(approvedScript?.version ?? approvedScript?.hash)}:${safeIdempotencyPart(creativeIntakeContext?.ugcScriptHash)}:${safeIdempotencyPart(creativeIntakeContext?.briefHash)}:force:${crypto.randomUUID()}`
           : `video_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${body.creativeIndex}:${safeIdempotencyPart(selectedVideo.id)}:${safeIdempotencyPart(approvedScript?.version ?? approvedScript?.hash)}:${creativeIntakeHash(creativeIntakeContext)}`,
       payload,
       maxAttempts: 1,

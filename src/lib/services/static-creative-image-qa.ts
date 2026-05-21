@@ -17,11 +17,12 @@ export type StaticCreativeImageQaInput = {
   campaignContext?: {
     market?: string;
     campaignType?: string;
-    audience?: string;
-    offer?: string;
-    propertyType?: string;
-    cta?: string;
-  };
+	    audience?: string;
+	    offer?: string;
+	    propertyType?: string;
+	    cta?: string;
+	    brand?: string | null;
+	  };
 };
 
 type FetchedImage = {
@@ -137,10 +138,11 @@ function filterReasonsForMode(
     reason === "ui_or_dashboard_layout" ||
     reason === "chart_or_table_detected" ||
     reason === "listing_sheet_detected" ||
-    reason === "finished_ad_text_unverified" ||
-    reason === "required_cta_missing" ||
-    reason === "required_offer_missing" ||
-    reason === "brand_misspelled" ||
+	    reason === "finished_ad_text_unverified" ||
+	    reason === "required_cta_missing" ||
+	    reason === "required_offer_missing" ||
+	    reason === "required_brand_missing" ||
+	    reason === "brand_misspelled" ||
     reason === "image_fetch_failed" ||
     reason === "qa_timeout"
   )));
@@ -559,11 +561,15 @@ function collectFinishedAdSemanticReasons(input: StaticCreativeImageQaInput, ana
     reasons.push("required_cta_missing");
   }
 
-  if (!requiredPhrasePresent(samples, input.campaignContext?.offer ?? "")) {
-    reasons.push("required_offer_missing");
-  }
+	  if (!requiredPhrasePresent(samples, input.campaignContext?.offer ?? "")) {
+	    reasons.push("required_offer_missing");
+	  }
 
-  if (detectBrandMisspelling(samples, input.prompt)) {
+	  if (input.campaignContext?.brand && promptRequiresBrandPresence(input.prompt) && !requiredPhrasePresent(samples, input.campaignContext.brand)) {
+	    reasons.push("required_brand_missing");
+	  }
+
+	  if (detectBrandMisspelling(samples, input.prompt)) {
     reasons.push("brand_misspelled");
   }
 

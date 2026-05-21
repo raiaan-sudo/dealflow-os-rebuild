@@ -15,6 +15,7 @@ import {
 } from "@/lib/services/creative-render-state";
 import {
   getStaticCreativeReadiness,
+  getStaticCreativeBriefMismatchReason,
   getStaticPreviewStatusMessage,
   getVideoReadinessLabel,
   getVideoReadinessMessage,
@@ -71,6 +72,14 @@ type CreativeOption = {
     visualLogic?: string[] | null;
     overlayLogic?: string[] | null;
   } | null;
+  briefHash?: string | null;
+  staticBriefHash?: string | null;
+  offerHash?: string | null;
+  ctaHash?: string | null;
+  brandHash?: string | null;
+  approvedOfferTitle?: string | null;
+  approvedCta?: string | null;
+  approvedBrand?: string | null;
   breakdown?: {
     hook?: string;
     concept?: string;
@@ -109,6 +118,9 @@ type VideoCreativeOption = {
   promptSource?: string | null;
   promptHash?: string | null;
   scriptHash?: string | null;
+  briefHash?: string | null;
+  ugcScriptHash?: string | null;
+  briefRevisionNumber?: number | null;
   campaignSpecificContext?: {
     campaignId?: string | null;
     creativeId?: string | null;
@@ -156,6 +168,21 @@ type VideoCreativeOption = {
 type CreativeWizardProps = {
   campaignId: string;
   creatives: CreativeOption[];
+  approvedBriefContext?: {
+    offerTitle?: string | null;
+    audience?: string | null;
+    market?: string | null;
+    brand?: string | null;
+    cta?: string | null;
+    staticStyle?: string | null;
+    revisionNumber?: number | null;
+    briefHash?: string | null;
+    staticBriefHash?: string | null;
+    offerHash?: string | null;
+    ctaHash?: string | null;
+    brandHash?: string | null;
+    ugcScriptHash?: string | null;
+  } | null;
   approvedUgcScriptHash?: string | null;
   approvedUgcScriptLines?: string[];
   persistedSelectedAdIds?: string[];
@@ -185,6 +212,11 @@ type SystemJob = {
   error_message?: string | null;
   payload?: {
     creativeIndex?: number | null;
+    creativeIntake?: {
+      ugcScriptHash?: string | null;
+      briefHash?: string | null;
+      staticBriefHash?: string | null;
+    } | null;
   } | null;
   result?: {
     staticAds?: CreativeOption[] | null;
@@ -213,13 +245,14 @@ function isUgcCreative(creative: CreativeOption) {
 }
 
 function videoMatchesApprovedScript(video: VideoCreativeOption, approvedUgcScriptHash?: string | null) {
-  return !approvedUgcScriptHash || video.scriptHash === approvedUgcScriptHash;
+  return !approvedUgcScriptHash || video.ugcScriptHash === approvedUgcScriptHash || video.scriptHash === approvedUgcScriptHash;
 }
 
-function creativeNeedsImageGeneration(creative: CreativeOption) {
+function creativeNeedsImageGeneration(creative: CreativeOption, approvedBriefContext?: CreativeWizardProps["approvedBriefContext"]) {
   return !creative.imageUrl ||
     creative.imageGenerationState === "failed" ||
-    !evaluateStaticVisualAssetDecision(creative).usable;
+    !evaluateStaticVisualAssetDecision(creative).usable ||
+    getStaticCreativeBriefMismatchReason(creative, approvedBriefContext) !== null;
 }
 
 function customerVideoMessage(message?: string | null) {
@@ -268,6 +301,7 @@ function getImageLimitMessage(creatives: CreativeOption[]) {
 export function CreativeWizard({
   campaignId,
   creatives,
+  approvedBriefContext = null,
   approvedUgcScriptHash = null,
   approvedUgcScriptLines = [],
   initialRenderJobs = [],
@@ -278,15 +312,27 @@ export function CreativeWizard({
   const router = useRouter();
   const jobStreamsRef = useRef<Map<string, EventSource>>(new Map());
   const autoVideoStartedRef = useRef(false);
+  const staticBriefReadinessContext = useMemo(() => approvedBriefContext
+    ? {
+        staticBriefHash: approvedBriefContext.staticBriefHash,
+        offerHash: approvedBriefContext.offerHash,
+        ctaHash: approvedBriefContext.ctaHash,
+        brandHash: approvedBriefContext.brandHash,
+      }
+    : null, [approvedBriefContext]);
+  const isStaticLaunchReady = useCallback(
+    (creative: CreativeOption) => isLaunchReadyStaticCreative(creative, staticBriefReadinessContext),
+    [staticBriefReadinessContext],
+  );
   const buildHref = `/builder?campaignId=${encodeURIComponent(campaignId)}`;
   const rankedCreatives = useMemo(
     () => [...creatives].sort((left, right) => {
-      const readinessDelta = Number(isLaunchReadyStaticCreative(right)) - Number(isLaunchReadyStaticCreative(left));
+      const readinessDelta = Number(isStaticLaunchReady(right)) - Number(isStaticLaunchReady(left));
       return readinessDelta || (right.score ?? 0) - (left.score ?? 0);
     }),
-    [creatives],
+    [creatives, isStaticLaunchReady],
   );
-  const launchReadyCreatives = rankedCreatives.filter(isLaunchReadyStaticCreative);
+  const launchReadyCreatives = rankedCreatives.filter(isStaticLaunchReady);
   const recommendedStaticCount =
     launchReadyCreatives.length >= STATIC_LAUNCH_MIN_CREATIVE_COUNT
       ? STATIC_LAUNCH_MIN_CREATIVE_COUNT
@@ -338,12 +384,12 @@ export function CreativeWizard({
     defaultSelectedIds[0] ?? rankedCreatives[0]?.id ?? null,
   );
   const selectedCreatives = rankedCreatives.filter((creative) => selectedIds.includes(creative.id));
-  const selectedLaunchReadyCreatives = selectedCreatives.filter(isLaunchReadyStaticCreative);
+  const selectedLaunchReadyCreatives = selectedCreatives.filter(isStaticLaunchReady);
   const selectedLaunchReadyIds = new Set(selectedLaunchReadyCreatives.map((creative) => creative.id));
   const unselectedLaunchReadyCreatives = launchReadyCreatives.filter(
     (creative) => !selectedLaunchReadyIds.has(creative.id),
   );
-  const draftCreatives = rankedCreatives.filter((creative) => !isLaunchReadyStaticCreative(creative));
+  const draftCreatives = rankedCreatives.filter((creative) => !isStaticLaunchReady(creative));
   const selectableCreatives =
     selectedLaunchReadyCreatives.length > 0
       ? selectedLaunchReadyCreatives
@@ -351,7 +397,7 @@ export function CreativeWizard({
         ? launchReadyCreatives
         : rankedCreatives;
   const carouselMaxSelected = Math.min(maxSelected, Math.max(minSelected, selectableCreatives.length || rankedCreatives.length));
-  const staticReadiness = getStaticCreativeReadiness(rankedCreatives, selectedIds);
+  const staticReadiness = getStaticCreativeReadiness(rankedCreatives, selectedIds, staticBriefReadinessContext);
   const primaryCreative = selectedCreatives[0] ?? rankedCreatives[0] ?? null;
   const activeCreative =
     rankedCreatives.find((creative) => creative.id === activeCreativeId) ??
@@ -363,8 +409,8 @@ export function CreativeWizard({
     savedSelectedIds.length === selectedIds.length &&
     savedSelectedIds.every((selectedId, index) => selectedId === selectedIds[index]);
   const allImagesMissing = rankedCreatives.every((creative) => !creative.imageUrl);
-  const needsImageGeneration = rankedCreatives.some(creativeNeedsImageGeneration);
-  const selectedNeedsImageGeneration = selectedCreatives.some(creativeNeedsImageGeneration);
+  const needsImageGeneration = rankedCreatives.some((creative) => creativeNeedsImageGeneration(creative, approvedBriefContext));
+  const selectedNeedsImageGeneration = selectedCreatives.some((creative) => creativeNeedsImageGeneration(creative, approvedBriefContext));
   const hasGeneratedImages = rankedCreatives.some((creative) => Boolean(creative.imageUrl));
   const hasAttemptedImageGeneration = rankedCreatives.some(
     (creative) => Boolean(creative.imageGenerationMessage) || Boolean(creative.imageGenerationState),
@@ -431,7 +477,8 @@ export function CreativeWizard({
       ? renderJobs.find((job) =>
           job.kind === "video_generation" &&
           isOpenRenderJob(job) &&
-          Number(job.payload?.creativeIndex ?? 0) === activeVideoCreative.index,
+          Number(job.payload?.creativeIndex ?? 0) === activeVideoCreative.index &&
+          (!approvedUgcScriptHash || job.payload?.creativeIntake?.ugcScriptHash === approvedUgcScriptHash),
         ) ?? null
       : null;
   const currentVideoRenderView = currentVideoJob ? jobRenderView(currentVideoJob) : null;
@@ -470,7 +517,7 @@ export function CreativeWizard({
             const staticAds = job.result?.staticAds ?? [];
             setRenderMessage(
               getImageLimitMessage(staticAds) ??
-                getStaticPreviewStatusMessage(getStaticCreativeReadiness(staticAds, selectedIds)) ??
+                getStaticPreviewStatusMessage(getStaticCreativeReadiness(staticAds, selectedIds, staticBriefReadinessContext)) ??
                 "Image previews are ready.",
             );
           }
@@ -516,7 +563,7 @@ export function CreativeWizard({
       jobStreamsRef.current.delete(jobId);
       clearActiveJob();
     });
-  }, [router, selectedIds]);
+  }, [router, selectedIds, staticBriefReadinessContext]);
 
   const queueImagePreviews = useCallback(async ({ force = false, automatic = false, missingOnly = false } = {}) => {
     if (renderingImages) {
@@ -708,7 +755,9 @@ export function CreativeWizard({
     }
 
     if (!selectedMediaReady) {
-      setError("Refresh unfinished previews before saving this launch set.");
+      setError(staticReadiness.selectedStaleCount > 0
+        ? "Regenerate stale creatives before saving this launch set."
+        : "Refresh unfinished previews before saving this launch set.");
       return;
     }
 
@@ -794,8 +843,23 @@ export function CreativeWizard({
       : getStaticPreviewStatusMessage(staticReadiness) ??
         "Some optional previews need another attempt. Launch-ready selected previews stay available.")
     : null;
-  const getDisplayCreative = (creative: CreativeOption): CreativeOption =>
-    imageRenderPending && creativeNeedsImageGeneration(creative)
+  const getDisplayCreative = (creative: CreativeOption): CreativeOption => {
+    const staleReason = getStaticCreativeBriefMismatchReason(creative, staticBriefReadinessContext);
+
+    if (staleReason) {
+      return {
+        ...creative,
+        imageGenerationState: "failed",
+        imageGenerationMessage: "Older render, needs refresh to match the approved brief.",
+        qualityGate: {
+          ...(creative.qualityGate ?? {}),
+          accepted: false,
+          hardFailures: Array.from(new Set([...(creative.qualityGate?.hardFailures ?? []), staleReason])),
+        },
+      };
+    }
+
+    return imageRenderPending && creativeNeedsImageGeneration(creative, approvedBriefContext)
       ? {
           ...creative,
           imageGenerationState:
@@ -806,6 +870,7 @@ export function CreativeWizard({
           imageGenerationMessage: currentImageRenderView?.customerMessage ?? imagePendingMessage,
         }
       : creative;
+  };
   const displayActiveCreative = getDisplayCreative(activeCreative);
   const currentPhaseLabel = activePhase === "static_ads" ? "Static Ads" : "UGC Videos";
 
@@ -825,12 +890,22 @@ export function CreativeWizard({
             </p>
           </div>
           <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.07] px-4 py-3 text-sm leading-6 text-emerald-100 lg:max-w-md">
-            Approved brief source: saved creative intake. This screen only selects creatives, reviews variants, and starts explicit preview renders.
+            Approved brief source: saved creative intake. Current offer, brand, CTA, and script version control which assets can become launch-ready.
           </div>
           <div className="rounded-2xl border border-cyan-300/18 bg-cyan-300/[0.06] px-4 py-3 text-sm leading-6 text-cyan-100 lg:max-w-md">
             Full-resolution creative files stay inside DealFlow. Preview, approve, request revisions, and use assets through the launch workflow.
           </div>
         </div>
+        {approvedBriefContext ? (
+          <div className="mt-4 grid gap-2 rounded-2xl border border-white/10 bg-black/18 p-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
+            <BriefSummaryItem label="Offer" value={approvedBriefContext.offerTitle} />
+            <BriefSummaryItem label="Audience" value={approvedBriefContext.audience} />
+            <BriefSummaryItem label="Market" value={approvedBriefContext.market} />
+            <BriefSummaryItem label="Brand" value={approvedBriefContext.brand} />
+            <BriefSummaryItem label="CTA" value={approvedBriefContext.cta} />
+            <BriefSummaryItem label="UGC script" value={approvedBriefContext.ugcScriptHash ? `Revision ${approvedBriefContext.revisionNumber ?? 0}` : "Not approved"} />
+          </div>
+        ) : null}
 
         <div className="mt-5 flex flex-wrap gap-2" role="tablist" aria-label="Creative Studio phases">
           {([
@@ -906,7 +981,7 @@ export function CreativeWizard({
             qualityGate={displayActiveCreative.qualityGate}
             imageQa={displayActiveCreative.imageQa}
             score={displayActiveCreative.score}
-            selectedCount={activeCreativeSelected && isLaunchReadyStaticCreative(activeCreative) ? staticReadiness.selectedReadyCount : null}
+            selectedCount={activeCreativeSelected && activeCreative && isStaticLaunchReady(activeCreative) ? staticReadiness.selectedReadyCount : null}
             visualPromptBrief={displayActiveCreative.visualPromptBrief}
           />
         </div>
@@ -945,7 +1020,9 @@ export function CreativeWizard({
                     : imageActionPending
                     ? "Refreshing previews..."
                     : needsImageGeneration
-                      ? "Refresh unfinished previews"
+                      ? staticReadiness.staleCount > 0
+                        ? "Regenerate stale creatives"
+                        : "Refresh unfinished previews"
                       : "Refresh image previews"}
                 </Button>
               ) : null}
@@ -1019,7 +1096,7 @@ export function CreativeWizard({
                     qualityGate={displayCreative.qualityGate}
                     imageQa={displayCreative.imageQa}
                     score={displayCreative.score}
-                    selectedCount={isLaunchReadyStaticCreative(creative) ? staticReadiness.selectedReadyCount : null}
+                    selectedCount={isStaticLaunchReady(creative) ? staticReadiness.selectedReadyCount : null}
                     visualPromptBrief={displayCreative.visualPromptBrief}
                   />
                 </div>
@@ -1041,7 +1118,9 @@ export function CreativeWizard({
             <p className={error ? "mt-3 text-sm text-rose-400" : "mt-3 text-sm text-muted-foreground"}>
               {error ??
                 (!selectedMediaReady
-                  ? staticReadiness.selectedBlockedCount > 0
+                  ? staticReadiness.selectedStaleCount > 0
+                    ? "Regenerate stale selected creatives before saving this launch set."
+                    : staticReadiness.selectedBlockedCount > 0
                     ? "Refresh selected previews before saving this launch set."
                     : "Select launch-ready previews before saving this launch set."
                   : !savedSelectionMatchesCurrent
@@ -1457,6 +1536,15 @@ export function CreativeWizard({
           </details>
         ) : null}
       </section>
+    </div>
+  );
+}
+
+function BriefSummaryItem({ label, value }: { label: string; value?: string | number | null }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-foreground">{value || "Not set"}</p>
     </div>
   );
 }

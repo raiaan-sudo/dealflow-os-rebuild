@@ -154,9 +154,28 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
             approvedAt: asset.creativeIntake.approvedAt,
             outputMode: asset.creativeIntake.outputMode,
             generationPhase: asset.creativeIntake.generationPhase,
+            requiredOfferTitle: asset.creativeIntake.requiredOfferTitle ?? null,
+            requiredCta: asset.creativeIntake.requiredCta ?? null,
+            market: asset.creativeIntake.market ?? null,
+            targetAudience: asset.creativeIntake.targetAudience ?? null,
+            brokerageBrand: asset.creativeIntake.brokerageBrand ?? null,
+            briefHash: asset.creativeIntake.briefHash ?? null,
+            staticBriefHash: asset.creativeIntake.staticBriefHash ?? null,
+            offerHash: asset.creativeIntake.offerHash ?? null,
+            ctaHash: asset.creativeIntake.ctaHash ?? null,
+            brandHash: asset.creativeIntake.brandHash ?? null,
             promptVersionCreatedAt: asset.creativeIntake.promptVersion.createdAt,
           } as Json)
         : null,
+      briefHash: asset.briefHash ?? asset.creativeIntake?.briefHash ?? null,
+      staticBriefHash: asset.staticBriefHash ?? asset.creativeIntake?.staticBriefHash ?? null,
+      offerHash: asset.offerHash ?? asset.creativeIntake?.offerHash ?? null,
+      ctaHash: asset.ctaHash ?? asset.creativeIntake?.ctaHash ?? null,
+      brandHash: asset.brandHash ?? asset.creativeIntake?.brandHash ?? null,
+      briefRevisionNumber: asset.briefRevisionNumber ?? asset.creativeIntake?.revisionNumber ?? null,
+      approvedOfferTitle: asset.approvedOfferTitle ?? asset.creativeIntake?.requiredOfferTitle ?? null,
+      approvedCta: asset.approvedCta ?? asset.creativeIntake?.requiredCta ?? null,
+      approvedBrand: asset.approvedBrand ?? asset.creativeIntake?.brokerageBrand ?? null,
       imageGenerationState: normalizedGenerationState,
       imageGenerationProvider: asset.imageGenerationProvider ?? null,
       imageGenerationModel: asset.imageGenerationModel,
@@ -238,24 +257,8 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
     .map((row) => (typeof row.id === "string" ? row.id : ""))
     .filter(Boolean);
 
-  if (insertedIds.length > 0) {
-    try {
-      if (allInsertedCreativesAreReady) {
-        await params.supabase
-          .from("creative_assets")
-          .delete()
-          .eq("campaign_id", params.campaignId)
-          .eq("user_id", params.userId)
-          .eq("generation_method", "image_generation")
-          .in("asset_type", ["image_frame", "thumbnail"])
-          .like("creative_id", `${params.campaignId}-creative-%`)
-          .not("id", "in", `(${insertedIds.join(",")})`);
-      }
-    } catch {
-      // Cleanup is deliberately best-effort. New rows are already written, and
-      // loaders prefer the newest rows so old accepted assets are not lost.
-    }
-  }
+  void insertedIds;
+  void allInsertedCreativesAreReady;
 
   return insertedRows;
 }

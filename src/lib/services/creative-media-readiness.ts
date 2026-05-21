@@ -25,6 +25,20 @@ type StaticCreativeReadinessInput = {
     mode?: string | null;
     reasons?: string[] | null;
   } | null;
+  staticBriefHash?: string | null;
+  offerHash?: string | null;
+  ctaHash?: string | null;
+  brandHash?: string | null;
+  approvedOfferTitle?: string | null;
+  approvedCta?: string | null;
+  approvedBrand?: string | null;
+};
+
+export type StaticCreativeBriefReadinessContext = {
+  staticBriefHash?: string | null;
+  offerHash?: string | null;
+  ctaHash?: string | null;
+  brandHash?: string | null;
 };
 
 export type VideoCreativeReadinessInput = {
@@ -113,10 +127,39 @@ export type StaticCreativeReadiness = {
   selectionLabel: string;
   readyLabel: string;
   issueLabel: string | null;
+  staleCount: number;
+  selectedStaleCount: number;
 };
 
 export function pluralizeCount(count: number, singular: string, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
+}
+
+export function getStaticCreativeBriefMismatchReason(
+  creative: Pick<StaticCreativeReadinessInput, "staticBriefHash" | "offerHash" | "ctaHash" | "brandHash">,
+  context?: StaticCreativeBriefReadinessContext | null,
+) {
+  if (!context?.staticBriefHash) {
+    return null;
+  }
+
+  if (!creative.staticBriefHash || creative.staticBriefHash !== context.staticBriefHash) {
+    return "brief_hash_mismatch";
+  }
+
+  if (context.offerHash && creative.offerHash !== context.offerHash) {
+    return "offer_hash_mismatch";
+  }
+
+  if (context.ctaHash && creative.ctaHash !== context.ctaHash) {
+    return "cta_hash_mismatch";
+  }
+
+  if (context.brandHash && creative.brandHash !== context.brandHash) {
+    return "brand_hash_mismatch";
+  }
+
+  return null;
 }
 
 export function isLaunchReadyStaticCreative(creative: Pick<
@@ -128,19 +171,33 @@ export function isLaunchReadyStaticCreative(creative: Pick<
   | "visualPromptBrief"
   | "qualityGate"
   | "imageQa"
->) {
-  return evaluateStaticVisualAssetDecision(creative).usable;
+  | "staticBriefHash"
+  | "offerHash"
+  | "ctaHash"
+  | "brandHash"
+>, context?: StaticCreativeBriefReadinessContext | null) {
+  return evaluateStaticVisualAssetDecision(creative).usable &&
+    getStaticCreativeBriefMismatchReason(creative, context) === null;
 }
 
 export function getStaticCreativeReadiness(
   creatives: StaticCreativeReadinessInput[],
   selectedIds: string[],
+  context?: StaticCreativeBriefReadinessContext | null,
 ): StaticCreativeReadiness {
   const selectedIdSet = new Set(selectedIds);
   const selectedCreatives = creatives.filter((creative) => selectedIdSet.has(creative.id));
-  const launchReadyCreatives = creatives.filter(isLaunchReadyStaticCreative);
+  const isCurrentLaunchReady = (creative: StaticCreativeReadinessInput) =>
+    isLaunchReadyStaticCreative(creative, context);
+  const staleCreatives = creatives.filter((creative) =>
+    Boolean(creative.imageUrl) && getStaticCreativeBriefMismatchReason(creative, context) !== null,
+  );
+  const selectedStaleCount = selectedCreatives.filter((creative) =>
+    getStaticCreativeBriefMismatchReason(creative, context) !== null,
+  ).length;
+  const launchReadyCreatives = creatives.filter(isCurrentLaunchReady);
   const retryCount = creatives.filter((creative) => {
-    if (isLaunchReadyStaticCreative(creative)) {
+    if (isCurrentLaunchReady(creative)) {
       return false;
     }
 
@@ -156,7 +213,7 @@ export function getStaticCreativeReadiness(
       creative.imageGenerationState !== "failed" &&
       creative.qualityGate?.accepted !== false,
   ).length;
-  const selectedReadyCount = selectedCreatives.filter(isLaunchReadyStaticCreative).length;
+  const selectedReadyCount = selectedCreatives.filter(isCurrentLaunchReady).length;
   const selectedBlockedCount = selectedCreatives.length - selectedReadyCount;
   const minimumRequiredCount = STATIC_LAUNCH_MIN_CREATIVE_COUNT;
   const recommendedRequiredCount = STATIC_LAUNCH_MIN_CREATIVE_COUNT;
@@ -191,14 +248,18 @@ export function getStaticCreativeReadiness(
         ? "1 primary creative selected"
         : `${selectedCreatives.length} creatives selected`,
     readyLabel: selectedCreatives.length > 0 ? selectedReadyLabel : availableReadyLabel,
-    issueLabel:
-      selectedBlockedCount > 0
+	    issueLabel:
+	      selectedStaleCount > 0
+	        ? `Older render, needs refresh: ${selectedStaleCount} selected ${selectedStaleCount === 1 ? "creative" : "creatives"}`
+        : selectedBlockedCount > 0
         ? `${selectedBlockedCount} selected ${selectedBlockedCount === 1 ? "creative needs" : "creatives need"} retry before launch`
         : selectedCreatives.length > 0 && !selectedMinimumMet
           ? `${minimumRequiredCount} launch-ready static ads required; select ${Math.max(0, minimumRequiredCount - selectedReadyCount)} more`
         : optionalIssueCount > 0
-          ? `${optionalIssueCount} optional ${optionalIssueCount === 1 ? "variant needs" : "variants need"} retry`
+          ? `${optionalIssueCount} optional ${optionalIssueCount === 1 ? "variant needs" : "variants need"} refresh or retry`
           : null,
+    staleCount: staleCreatives.length,
+    selectedStaleCount,
   };
 }
 

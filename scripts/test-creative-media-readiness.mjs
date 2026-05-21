@@ -208,6 +208,33 @@ assert.equal(fourSelected.selectedMinimumMet, true);
 assert.equal(fourSelected.allSelectedReady, true);
 assert.match(getStaticPreviewStatusMessage(fourSelected), /4 selected launch-ready previews; 4 required for launch/);
 
+const currentBriefContext = {
+  staticBriefHash: "static-brief-current",
+  offerHash: "offer-current",
+  ctaHash: "cta-current",
+  brandHash: "brand-current",
+};
+const currentBriefCreative = {
+  ...readyStatic("current-brief-static"),
+  ...currentBriefContext,
+};
+const staleBriefCreative = {
+  ...readyStatic("stale-brief-static"),
+  staticBriefHash: "static-brief-old",
+  offerHash: "offer-current",
+  ctaHash: "cta-current",
+  brandHash: "brand-current",
+};
+const staleStaticReadiness = getStaticCreativeReadiness(
+  [currentBriefCreative, staleBriefCreative],
+  ["current-brief-static", "stale-brief-static"],
+  currentBriefContext,
+);
+assert.equal(staleStaticReadiness.selectedReadyCount, 1);
+assert.equal(staleStaticReadiness.selectedStaleCount, 1);
+assert.equal(staleStaticReadiness.allSelectedReady, false);
+assert.match(staleStaticReadiness.issueLabel ?? "", /Older render, needs refresh/);
+
 process.env.ALLOW_OPENAI_IMAGE_GENERATION = "true";
 process.env.OPENAI_API_KEY = "test-openai-key";
 const selectedStaticProofIds = [

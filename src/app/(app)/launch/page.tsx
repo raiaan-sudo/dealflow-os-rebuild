@@ -26,6 +26,7 @@ import {
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { getBillingSummary, getBillingSummaryForCampaign } from "@/lib/services/billing-service";
 import { getMetaQueryUiCopy } from "@/lib/integrations/meta/error-mapper";
+import { getApprovedCreativeIntakeGenerationContext, isCreativeChatIntakeEnabled } from "@/lib/services/creative-chat-intake-service";
 import {
   getStaticCreativeReadiness,
   getVideoReadinessLabel,
@@ -163,22 +164,24 @@ function formatBudgetCap(valueCents: number) {
 
 async function loadPersistedLaunchMediaSelection(campaignId: string | null) {
   if (!campaignId) {
-    return {
-      selectedAdIds: [],
-      selectedUgcVideoIds: [],
-      publicFunnelSnapshotMatchesCurrentPlan: false,
-    };
-  }
+	    return {
+	      selectedAdIds: [],
+	      selectedUgcVideoIds: [],
+	      creativeIntakeContext: null,
+	      publicFunnelSnapshotMatchesCurrentPlan: false,
+	    };
+	  }
 
   const supabase = await createRouteHandlerClient();
 
   if (!supabase) {
-    return {
-      selectedAdIds: [],
-      selectedUgcVideoIds: [],
-      publicFunnelSnapshotMatchesCurrentPlan: false,
-    };
-  }
+	    return {
+	      selectedAdIds: [],
+	      selectedUgcVideoIds: [],
+	      creativeIntakeContext: null,
+	      publicFunnelSnapshotMatchesCurrentPlan: false,
+	    };
+	  }
 
   const { data } = await supabase
     .from("campaign_plans")
@@ -189,12 +192,15 @@ async function loadPersistedLaunchMediaSelection(campaignId: string | null) {
   const row = (data as { plan?: unknown; published_snapshot?: unknown } | null) ?? null;
   const plan = readCampaignPlanDocument(row?.plan);
 
-  return {
-    selectedAdIds: getSelectedAdIdsFromPlan(plan),
-    selectedUgcVideoIds: getSelectedUgcVideoIdsFromPlan(plan),
-    publicFunnelSnapshotMatchesCurrentPlan: publishedFunnelSnapshotMatchesCurrentPlan({
-      currentPlan: plan,
-      publishedSnapshot: row?.published_snapshot,
+	  return {
+	    selectedAdIds: getSelectedAdIdsFromPlan(plan),
+	    selectedUgcVideoIds: getSelectedUgcVideoIdsFromPlan(plan),
+	    creativeIntakeContext: isCreativeChatIntakeEnabled()
+	      ? getApprovedCreativeIntakeGenerationContext(plan)
+	      : null,
+	    publicFunnelSnapshotMatchesCurrentPlan: publishedFunnelSnapshotMatchesCurrentPlan({
+	      currentPlan: plan,
+	      publishedSnapshot: row?.published_snapshot,
     }),
   };
 }
@@ -263,9 +269,18 @@ export default async function LaunchAliasPage({
   const metaReconnectHref = `/api/integrations/meta/connect?returnTo=${encodeURIComponent(launchReturnTo)}`;
   const cleanLaunchHref = launchReturnTo;
   const launchMediaSelection = await loadPersistedLaunchMediaSelection(resolvedCampaignId);
-  const selectedAdIds = launchMediaSelection.selectedAdIds;
-  const selectedUgcVideoIds = launchMediaSelection.selectedUgcVideoIds;
-  const publicFunnelSnapshotCurrent = launchMediaSelection.publicFunnelSnapshotMatchesCurrentPlan;
+	  const selectedAdIds = launchMediaSelection.selectedAdIds;
+	  const selectedUgcVideoIds = launchMediaSelection.selectedUgcVideoIds;
+	  const creativeIntakeContext = launchMediaSelection.creativeIntakeContext;
+	  const staticBriefReadinessContext = creativeIntakeContext
+	    ? {
+	        staticBriefHash: creativeIntakeContext.staticBriefHash,
+	        offerHash: creativeIntakeContext.offerHash,
+	        ctaHash: creativeIntakeContext.ctaHash,
+	        brandHash: creativeIntakeContext.brandHash,
+	      }
+	    : null;
+	  const publicFunnelSnapshotCurrent = launchMediaSelection.publicFunnelSnapshotMatchesCurrentPlan;
   const metaErrorCopy = getMetaQueryUiCopy(metaError, "oauth_callback");
   const discoveryIncomplete =
     metaWarning === "asset_discovery_incomplete"
@@ -347,7 +362,7 @@ export default async function LaunchAliasPage({
     ...(!providerLaunchEnabled ? ["Final launch approval is pending."] : []),
   ];
   const selectedCreatives = plan.creatives.staticAds.filter((ad) => selectedAdIds.includes(ad.id));
-  const staticReadiness = getStaticCreativeReadiness(plan.creatives.staticAds, selectedAdIds);
+	  const staticReadiness = getStaticCreativeReadiness(plan.creatives.staticAds, selectedAdIds, staticBriefReadinessContext);
   const selectedCreativeMediaReady =
     staticReadiness.allSelectedReady;
   const selectedUgcVideos = selectedUgcVideoIds.length > 0
@@ -355,12 +370,22 @@ export default async function LaunchAliasPage({
         .filter((video) => selectedUgcVideoIds.includes(video.id))
         .sort((left, right) => selectedUgcVideoIds.indexOf(left.id) - selectedUgcVideoIds.indexOf(right.id))
     : [];
-  const launchReadyVideos = selectedUgcVideos.filter(
-    (video) => video.conceptType === "customer_ugc" && isLaunchReadyVideoCreative(video),
-  );
-  const fallbackDisplayVideos = plan.creatives.videoAds.filter(
-    (video) => video.conceptType === "customer_ugc" && isLaunchReadyVideoCreative(video),
-  );
+	  const launchReadyVideos = selectedUgcVideos.filter(
+	    (video) =>
+	      video.conceptType === "customer_ugc" &&
+	      isLaunchReadyVideoCreative(video) &&
+	      (!creativeIntakeContext?.ugcScriptHash ||
+	        video.ugcScriptHash === creativeIntakeContext.ugcScriptHash ||
+	        video.scriptHash === creativeIntakeContext.ugcScriptHash),
+	  );
+	  const fallbackDisplayVideos = plan.creatives.videoAds.filter(
+	    (video) =>
+	      video.conceptType === "customer_ugc" &&
+	      isLaunchReadyVideoCreative(video) &&
+	      (!creativeIntakeContext?.ugcScriptHash ||
+	        video.ugcScriptHash === creativeIntakeContext.ugcScriptHash ||
+	        video.scriptHash === creativeIntakeContext.ugcScriptHash),
+	  );
   const displayVideoAds = selectedUgcVideos.length > 0
     ? selectedUgcVideos
     : fallbackDisplayVideos.length > 0

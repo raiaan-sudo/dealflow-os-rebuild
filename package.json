@@ -23,6 +23,7 @@
     "audit:static-creative-storage": "node ./scripts/audit-static-creative-storage-backfill.mjs",
     "backup:supabase": "node ./scripts/create-supabase-logical-backup.mjs",
     "operator:debt:resolve-known": "node ./scripts/resolve-known-operator-debt.mjs",
+    "repair:campaign-345-creative-brief": "node ./scripts/repair-campaign-345-creative-brief-integrity.mjs",
     "test:media-buyer": "node ./scripts/test-media-buyer-framework.mjs",
     "test:media-buying-upgrades": "node ./scripts/test-media-buying-upgrades.mjs",
     "test:media-buyer-regression": "node ./scripts/regress-media-buyer-integration.mjs",

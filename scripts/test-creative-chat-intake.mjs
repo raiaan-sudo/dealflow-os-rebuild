@@ -61,6 +61,7 @@ const {
   isCreativeChatIntakeEnabled,
   isCreativeIntakeApproved,
   mergeCreativeChatIntakeIntoPlan,
+  readCreativeChatIntakeFromPlan,
   softenRegulatedClaims,
 } = require("../src/lib/services/creative-chat-intake-service.ts");
 const {
@@ -101,9 +102,12 @@ assert.match(creativeWizardUi, /Add to review set/);
 assert.match(creativeWizardUi, /Full-resolution creative files stay inside DealFlow/);
 assert.match(staticCreativePreviewCardUi, /Full-resolution creative files stay inside DealFlow and are used through the launch workflow/);
 assert.match(selectAdRoute, /assertCampaignCanLaunch/);
-assert.match(selectAdRoute, /!isLaunchReadyStaticCreative\(ad\)/);
+assert.match(selectAdRoute, /!isLaunchReadyStaticCreative\(ad, staticBriefReadinessContext\)/);
 assert.doesNotMatch(selectAdRoute, /Boolean\(ad\.imageUrl\) && !evaluateStaticVisualAssetDecision/);
 assert.match(creativeChatIntakeUi, /Choose static ad direction/);
+assert.match(creativeChatIntakeUi, /Brokerage brand/);
+assert.match(creativeChatIntakeUi, /Century 21/);
+assert.match(creativeChatIntakeUi, /Offer wording needs a compliant version before approval/);
 assert.match(creativeChatIntakeUi, /UGC script/);
 assert.match(creativeChatIntakeUi, /static_and_ugc/);
 assert.match(creativeChatIntakeUi, /Final AI-rendered media updates after rendering completes and passes DealFlow review/);
@@ -148,8 +152,13 @@ const defaults = {
 };
 
 const softened = softenRegulatedClaims("Guaranteed Approval for 600+ Credit");
-assert.match(softened.text, /may qualify|options may be available/i);
+assert.match(softened.text, /Home Options for 600\+ Credit/i);
 assert.ok(softened.softenedClaims.length > 0, "risky approval claims are softened");
+assert.equal(softened.explanations[0].blockedPhrase, "Guaranteed Approval for 600+ Credit");
+
+const softenedSaleClaim = softenRegulatedClaims("We guarantee to sell your home in the next 90 days");
+assert.match(softenedSaleClaim.text, /90-Day Home Sale Plan/i);
+assert.ok(softenedSaleClaim.explanations.some((item) => /Guaranteed sale/i.test(item.reason)));
 
 const answers = {
   targetAudience: "first_time_buyers",
@@ -166,7 +175,12 @@ const answers = {
 };
 const brief = buildCreativeIntakeBrief(answers, defaults);
 assert.equal(brief.completion.complete, true, "complete intake brief is accepted");
-assert.match(brief.offer, /may qualify|options may be available/i);
+assert.match(brief.offer, /Home Options for 600\+ Credit/i);
+assert.ok(brief.staticBriefHash, "static brief hash is persisted on the approved brief");
+assert.ok(brief.offerHash, "offer hash is persisted on the approved brief");
+assert.ok(brief.ctaHash, "CTA hash is persisted on the approved brief");
+assert.ok(brief.brandHash, "brand hash is persisted on the approved brief");
+assert.ok(brief.complianceExplanations.some((item) => item.blockedPhrase === "Guaranteed Approval for 600+ Credit"));
 assert.ok(brief.complianceNotes.some((note) => /guarantee|qualif|lender|approval|credit/i.test(note)));
 
 const prompt = buildCreativeIntakePromptVersion(brief, 2);
@@ -175,7 +189,7 @@ assert.match(prompt.generatedPrompt, /DealFlow will render the actual headline, 
 assert.doesNotMatch(prompt.generatedPrompt, /create a finished ad/i);
 assert.match(prompt.negativePrompt, /gibberish typography/);
 assert.match(prompt.sanitizedPreview, /Check Buying Power/);
-assert.match(prompt.sanitizedPreview, /background_only/);
+assert.match(prompt.sanitizedPreview, /Brief hash:/);
 
 const finishedAdBrief = buildCreativeIntakeBrief({
   ...answers,
@@ -184,9 +198,9 @@ const finishedAdBrief = buildCreativeIntakeBrief({
 const finishedAdPrompt = buildCreativeIntakePromptVersion(finishedAdBrief, 3);
 assert.match(finishedAdPrompt.generatedPrompt, /MARKETING STUDIO FINISHED AD CREATIVE/);
 assert.doesNotMatch(finishedAdBrief.offer, /this week/i, "finished-ad brief keeps customer-facing offer concise");
-assert.match(finishedAdBrief.cta, /this week/i, "finished-ad brief adds safe timing context to the CTA");
-assert.match(finishedAdPrompt.generatedPrompt, /Required CTA text that must be readable in the final raster: Check Buying Power this week/);
-assert.match(finishedAdPrompt.generatedPrompt, /short headline, clear timed offer, one concise proof\/support line, and one clear CTA/);
+assert.equal(finishedAdBrief.cta, "Check Buying Power", "finished-ad brief keeps customer-facing CTA exact");
+assert.match(finishedAdPrompt.generatedPrompt, /Required CTA text that must be readable in the final raster: Check Buying Power/);
+assert.match(finishedAdPrompt.generatedPrompt, /short headline, exact approved offer, one concise proof\/support line, and one clear CTA/);
 assert.match(finishedAdPrompt.generatedPrompt, /one dominant hook area, one proof area, strong negative space, and a clear CTA-safe zone/);
 assert.match(finishedAdPrompt.generatedPrompt, /generous safe margins/);
 assert.match(finishedAdPrompt.generatedPrompt, /no tiny text, no cropped CTA, no overlapping panels/i);
@@ -378,7 +392,7 @@ const combinedPrompt = buildCreativeIntakePromptVersion(combinedBrief, 5);
 assert.match(combinedPrompt.generatedPrompt, /MARKETING STUDIO COMBINED STATIC \+ AI UGC BRIEF/);
 assert.match(combinedPrompt.generatedPrompt, /MARKETING STUDIO FINISHED AD CREATIVE/);
 assert.match(combinedPrompt.generatedPrompt, /MARKETING STUDIO AI UGC VIDEO BRIEF/);
-assert.match(combinedPrompt.sanitizedPreview, /Phase: static_and_ugc/);
+assert.match(combinedPrompt.sanitizedPreview, /Brief hash:/);
 
 const state = createCreativeIntakeState({
   campaignId: defaults.campaignId,
@@ -396,9 +410,31 @@ const approvedContext = getApprovedCreativeIntakeGenerationContext(plan);
 assert.equal(approvedContext.outputMode, "background_only");
 assert.equal(approvedContext.generationPhase, "static");
 assert.equal(approvedContext.requiredCta, "Check Buying Power");
-assert.equal(approvedContext.requiredOffer, "options may be available for buyers with 600+ credit");
+assert.equal(approvedContext.requiredOffer, "Home Options for 600+ Credit");
+assert.equal(approvedContext.staticBriefHash, approvedState.brief.staticBriefHash);
+assert.equal(approvedContext.brandHash, approvedState.brief.brandHash);
 assert.equal(approvedContext.promptVersion.generatedPrompt, prompt.generatedPrompt);
 assert.equal(hasSameCreativeIntakeGenerationContext(approvedContext, approvedContext), true);
+const legacyBriefWithoutHashes = {
+  ...approvedState.brief,
+  briefHash: "",
+  staticBriefHash: "",
+  offerHash: "",
+  ctaHash: "",
+  brandHash: "",
+  ugcScriptHash: null,
+};
+const legacyPlan = mergeCreativeChatIntakeIntoPlan(plan, {
+  ...approvedState,
+  brief: legacyBriefWithoutHashes,
+});
+const hydratedLegacyIntake = readCreativeChatIntakeFromPlan(legacyPlan);
+const hydratedLegacyContext = getApprovedCreativeIntakeGenerationContext(legacyPlan);
+assert.ok(hydratedLegacyIntake.brief.staticBriefHash, "legacy approved briefs are hydrated with a current static brief hash on read");
+assert.ok(hydratedLegacyContext.staticBriefHash, "legacy approved contexts get deterministic hashes so stale assets fail closed");
+assert.equal(hydratedLegacyContext.staticBriefHash, approvedContext.staticBriefHash);
+assert.equal(hydratedLegacyContext.ctaHash, approvedContext.ctaHash);
+assert.equal(hydratedLegacyContext.brandHash, approvedContext.brandHash);
 const adaptedModernDocument = getSavedCampaignDocumentFromRow({
   id: defaults.campaignId,
   plan: {
@@ -474,8 +510,8 @@ const finishedAdContext = {
   approvedAt: "2026-05-14T00:00:00.000Z",
   outputMode: "finished_ad",
   generationPhase: "static",
-  requiredOffer: "Private buyer shortlist",
-  requiredCta: "Book a 15-minute buyer strategy call",
+	  requiredOffer: "Private buyer access system with 25 off-market homes this month",
+	  requiredCta: "Click Learn More",
   market: defaults.market,
   targetAudience: defaults.audience,
   brokerageBrand: defaults.brand,
@@ -498,15 +534,16 @@ const finishedAdStaticAds = await generateStaticCreativeAds({
   creative_intake: finishedAdContext,
   max_static_image_generations: 0,
 });
-assert.match(finishedAdStaticAds[0].offer, /this week/i, "finished-ad static copy gets a timing fallback");
-assert.match(finishedAdStaticAds[0].cta, /this week/i, "finished-ad CTA gets a timing fallback");
+assert.equal(finishedAdStaticAds[0].offer, "Private buyer access system with 25 off-market homes this month", "finished-ad static copy uses the approved offer exactly");
+assert.equal(finishedAdStaticAds[0].cta, "Click Learn More", "finished-ad CTA uses the approved CTA exactly");
 assert.match(finishedAdStaticAds[0].imagePrompt, /Finished-ad quality contract/);
-assert.match(finishedAdStaticAds[0].imagePrompt, /Timed offer that must be readable: Review private buyer shortlist this week/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /Approved offer that must be readable: Private buyer access system with 25 off-market homes this month/);
 assert.doesNotMatch(finishedAdStaticAds[0].overlayText, /^Preview\b/i, "finished-ad static overlays do not block the creative with a preview prefix");
 assert.match(finishedAdStaticAds[0].imagePrompt, /one dominant hook area, one proof area, strong negative space, and a clear CTA-safe zone/);
 assert.match(finishedAdStaticAds[0].imagePrompt, /generous safe margins/);
 assert.match(finishedAdStaticAds[0].imagePrompt, /No tiny text, cropped CTA, overlapping panels/);
 assert.equal(finishedAdStaticAds[0].qualityGate.accepted, true, "finished-ad static prompt contract passes product-quality preflight");
+assert.equal(finishedAdStaticAds[0].staticBriefHash, finishedAdContext.staticBriefHash ?? null);
 
 function buildAsset() {
   return {
@@ -605,8 +642,8 @@ await persistStaticCreativeAssets({
 });
 assert.deepEqual(
   successfulDb.operations.map((item) => item.op),
-  ["insert", "delete"],
-  "static creative assets are inserted before old rows are cleaned up",
+  ["insert"],
+  "static creative assets are inserted without deleting historical evidence rows",
 );
 assert.equal(successfulDb.operations[0].rows[0].status, "ready");
 assert.equal(successfulDb.operations[0].rows[0].metadata.generationBatchId.length > 0, true);
@@ -616,6 +653,8 @@ assert.equal(
 );
 assert.equal(successfulDb.operations[0].rows[0].metadata.creativeIntakeGenerationContext.outputMode, "background_only");
 assert.equal(successfulDb.operations[0].rows[0].metadata.creativeIntakeGenerationContext.generationPhase, "static");
+assert.equal(successfulDb.operations[0].rows[0].metadata.staticBriefHash, approvedContext.staticBriefHash);
+assert.equal(successfulDb.operations[0].rows[0].metadata.ctaHash, approvedContext.ctaHash);
 
 const failingDb = fakeSupabase({ insertFails: true });
 await assert.rejects(

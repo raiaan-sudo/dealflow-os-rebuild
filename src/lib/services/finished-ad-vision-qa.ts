@@ -5,12 +5,13 @@ export type FinishedAdVisionQaInput = {
   bytes: Uint8Array;
   contentType: string;
   prompt?: string;
-  campaignContext?: {
-    offer?: string;
-    cta?: string;
-    market?: string;
-    audience?: string;
-  };
+	  campaignContext?: {
+	    offer?: string;
+	    cta?: string;
+	    brand?: string | null;
+	    market?: string;
+	    audience?: string;
+	  };
 };
 
 export type FinishedAdVisionQaResult = {
@@ -87,9 +88,13 @@ function collectReasons(payload: Record<string, unknown>): StaticCreativeImageQa
     reasons.push("required_cta_missing");
   }
 
-  if (parseBoolean(payload.requiredOfferPresent) === false) {
-    reasons.push("required_offer_missing");
-  }
+	  if (parseBoolean(payload.requiredOfferPresent) === false) {
+	    reasons.push("required_offer_missing");
+	  }
+
+	  if (parseBoolean(payload.requiredBrandPresent) === false) {
+	    reasons.push("required_brand_missing");
+	  }
 
   return Array.from(new Set(reasons));
 }
@@ -146,7 +151,7 @@ export async function inspectFinishedAdWithVisionQa(
           {
             role: "system",
             content:
-              "You inspect final paid-social ad rasters for launch QA. Return only JSON with keys readableTextSamples, hasGibberish, hasFakeUi, hasListingOrDashboard, hasChartOrTable, brandMisspelled, requiredCtaPresent, requiredOfferPresent. A normal poster-style CTA button or CTA bar is allowed. Brand/logo text may be optional; do not set brandMisspelled merely because an optional brand is absent. Set brandMisspelled only when visible brand-like text is actually misspelled or distorted. Be strict about gibberish, misspellings, fake dashboard/listing/table UI, charts, data panels, and missing required offer or CTA.",
+	              "You inspect final paid-social ad rasters for launch QA. Return only JSON with keys readableTextSamples, hasGibberish, hasFakeUi, hasListingOrDashboard, hasChartOrTable, brandMisspelled, requiredCtaPresent, requiredOfferPresent, requiredBrandPresent. A normal poster-style CTA button or CTA bar is allowed. If a required brand is provided, visible brand-like text must match it exactly or be absent only when the prompt permits omission. Set brandMisspelled only when visible brand-like text is actually misspelled or distorted. Be strict about gibberish, misspellings, fake dashboard/listing/table UI, charts, data panels, missing required offer, missing required CTA, or wrong brand text.",
           },
           {
             role: "user",
@@ -155,9 +160,10 @@ export async function inspectFinishedAdWithVisionQa(
                 type: "text",
                 text: [
                   `Prompt: ${safeText(input.prompt) || "not provided"}`,
-                  `Required offer: ${safeText(input.campaignContext?.offer) || "none"}`,
-                  `Required CTA: ${safeText(input.campaignContext?.cta) || "none"}`,
-                  `Market: ${safeText(input.campaignContext?.market) || "none"}`,
+	                  `Required offer: ${safeText(input.campaignContext?.offer) || "none"}`,
+	                  `Required CTA: ${safeText(input.campaignContext?.cta) || "none"}`,
+	                  `Required brand: ${safeText(input.campaignContext?.brand) || "none"}`,
+	                  `Market: ${safeText(input.campaignContext?.market) || "none"}`,
                   `Audience: ${safeText(input.campaignContext?.audience) || "none"}`,
                 ].join("\n"),
               },

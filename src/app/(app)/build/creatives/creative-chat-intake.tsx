@@ -37,9 +37,10 @@ const audienceOptions = [
 
 const brandOptions = [
   ["remax", "RE/MAX"],
-  ["royal_lepage", "Royal LePage"],
   ["exp", "eXp"],
+  ["royal_lepage", "Royal LePage"],
   ["keller_williams", "Keller Williams"],
+  ["century_21", "Century 21"],
   ["custom", "Custom"],
 ] as const;
 
@@ -157,6 +158,31 @@ function getAnswerLabel(value: string | null | undefined, options: readonly (rea
 
 function describeScriptReason(reason: string) {
   return scriptReasonLabels[reason] ?? reason.replaceAll("_", " ");
+}
+
+function getComplianceRewritePreview(value: string | null | undefined) {
+  const input = value?.trim() ?? "";
+  const guaranteedApprovalCredit = input.match(/\bguaranteed\s+approval\s+for\s+([0-9]{3}\+?)\s+credit\b/i);
+
+  if (guaranteedApprovalCredit) {
+    return {
+      originalInput: input,
+      blockedPhrase: guaranteedApprovalCredit[0],
+      reason: "Guaranteed approval language is not allowed for housing or financing-related ads.",
+      suggestedReplacement: `Home Options for ${guaranteedApprovalCredit[1]} Credit`,
+    };
+  }
+
+  if (/\bguaranteed\s+approval\b/i.test(input)) {
+    return {
+      originalInput: input,
+      blockedPhrase: "Guaranteed approval",
+      reason: "Guaranteed approval language is not allowed for housing or financing-related ads.",
+      suggestedReplacement: input.replace(/\bguaranteed\s+approval\b/gi, "see what you may qualify for"),
+    };
+  }
+
+  return null;
 }
 
 export function CreativeChatIntake({
@@ -359,6 +385,10 @@ export function CreativeChatIntake({
   const audienceLabel = answers.targetAudience === "custom"
     ? answers.customAudience
     : getAnswerLabel(answers.targetAudience, audienceOptions);
+  const brandLabel = answers.brokerageBrand === "custom"
+    ? answers.customBrokerageBrand
+    : getAnswerLabel(answers.brokerageBrand, brandOptions);
+  const offerRewritePreview = getComplianceRewritePreview(answers.offerTitle || answers.customOffer);
 
   return (
     <Card className="overflow-hidden p-0">
@@ -436,6 +466,24 @@ export function CreativeChatIntake({
                     <span className="text-muted-foreground">Offer title</span>
                     <Input value={answers.offerTitle ?? answers.customOffer ?? ""} onChange={(event) => updateAnswer({ offerTitle: event.target.value, customOffer: event.target.value, ugcScriptApprovedAt: null })} placeholder="14-Day Home Sale Plan" />
                   </label>
+                  <div className="space-y-2 text-sm">
+                    <span className="text-muted-foreground">Brokerage brand</span>
+                    <ChoiceGroup
+                      label="Brokerage brand"
+                      value={answers.brokerageBrand}
+                      options={brandOptions}
+                      onChange={(brokerageBrand) => updateAnswer({
+                        brokerageBrand: brokerageBrand as CreativeIntakeAnswers["brokerageBrand"],
+                        ugcScriptApprovedAt: null,
+                      })}
+                    />
+                  </div>
+                  {answers.brokerageBrand === "custom" ? (
+                    <label className="space-y-2 text-sm">
+                      <span className="text-muted-foreground">Custom brokerage</span>
+                      <Input value={answers.customBrokerageBrand ?? ""} onChange={(event) => updateAnswer({ customBrokerageBrand: event.target.value, ugcScriptApprovedAt: null })} placeholder="Your brokerage or team brand" />
+                    </label>
+                  ) : null}
                   <label className="space-y-2 text-sm">
                     <span className="text-muted-foreground">Primary CTA</span>
                     <Input value={answers.cta ?? ""} onChange={(event) => updateAnswer({ cta: event.target.value, ugcScriptApprovedAt: null })} placeholder="See if your home qualifies" />
@@ -445,6 +493,41 @@ export function CreativeChatIntake({
                     <Input value={answers.constraints ?? ""} onChange={(event) => updateAnswer({ constraints: event.target.value })} placeholder="Clear, local, direct" />
                   </label>
                 </div>
+                {offerRewritePreview ? (
+                  <div className="rounded-[20px] border border-amber-300/18 bg-amber-300/[0.07] p-4 text-sm leading-6 text-amber-100">
+                    <p className="font-semibold text-amber-50">Offer wording needs a compliant version before approval.</p>
+                    <dl className="mt-3 grid gap-2">
+                      <div>
+                        <dt className="text-xs uppercase tracking-[0.14em] text-amber-100/70">Original input</dt>
+                        <dd>{offerRewritePreview.originalInput}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs uppercase tracking-[0.14em] text-amber-100/70">Blocked phrase</dt>
+                        <dd>{offerRewritePreview.blockedPhrase}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs uppercase tracking-[0.14em] text-amber-100/70">Reason</dt>
+                        <dd>{offerRewritePreview.reason}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs uppercase tracking-[0.14em] text-amber-100/70">Suggested replacement</dt>
+                        <dd>{offerRewritePreview.suggestedReplacement}</dd>
+                      </div>
+                    </dl>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="mt-3"
+                      onClick={() => updateAnswer({
+                        offerTitle: offerRewritePreview.suggestedReplacement,
+                        customOffer: offerRewritePreview.suggestedReplacement,
+                        ugcScriptApprovedAt: null,
+                      })}
+                    >
+                      Use compliant version
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -557,6 +640,7 @@ export function CreativeChatIntake({
             <SummaryRow label="Market" value={answers.market} />
             <SummaryRow label="Audience" value={audienceLabel} />
             <SummaryRow label="Offer" value={answers.offerTitle || answers.customOffer} />
+            <SummaryRow label="Brand" value={brandLabel} />
             <SummaryRow label="CTA" value={answers.cta || defaults.cta || "See My Options"} />
             <SummaryRow label="Static style" value={getAnswerLabel(answers.staticStyle ?? answers.creativeStyle, styleOptions)} />
             <SummaryRow label="UGC script" value={scriptApproved ? "Approved" : "Needs approval"} />

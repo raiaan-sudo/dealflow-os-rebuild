@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { Json } from "@/lib/supabase/types";
 import {
@@ -38,6 +39,7 @@ export type CreativeIntakeBrand =
   | "royal_lepage"
   | "exp"
   | "keller_williams"
+  | "century_21"
   | "custom";
 
 export type CreativeIntakeStyle =
@@ -102,22 +104,42 @@ export type CreativeIntakeUgcConcept = {
   cta: string;
 };
 
+export type CreativeIntakeComplianceExplanation = {
+  field: "offer" | "cta" | "constraints";
+  originalInput: string;
+  blockedPhrase: string;
+  reason: string;
+  suggestedReplacement: string;
+};
+
 export type CreativeIntakeBrief = {
   targetAudience: string;
   offer: string;
   offerTitle: string;
   offerMechanism: string;
+  campaignType?: string | null;
   market: string;
   brokerageBrand: string;
+  customBrokerageBrand?: string | null;
   propertyType: string;
   creativeStyle: string;
+  staticStyle: string;
   platformPlacement: string;
   cta: string;
   mustUseCopy: string[];
   complianceNotes: string[];
   softenedClaims: string[];
+  complianceExplanations: CreativeIntakeComplianceExplanation[];
   outputMode: CreativeIntakeOutputMode;
   generationPhase: CreativeIntakeGenerationPhase;
+  creativeBriefApprovedAt?: string | null;
+  revisionNumber?: number | null;
+  briefHash: string;
+  staticBriefHash: string;
+  offerHash: string;
+  ctaHash: string;
+  brandHash: string;
+  ugcScriptHash: string | null;
   ugcStyleBrief?: {
     targetDurationSeconds: number;
     creatorPersona: string;
@@ -166,6 +188,15 @@ export type CreativeIntakeGenerationContext = {
   market?: string | null;
   targetAudience?: string | null;
   brokerageBrand?: string | null;
+  campaignType?: string | null;
+  propertyType?: string | null;
+  staticStyle?: string | null;
+  briefHash?: string | null;
+  staticBriefHash?: string | null;
+  offerHash?: string | null;
+  ctaHash?: string | null;
+  brandHash?: string | null;
+  ugcScriptHash?: string | null;
   ugcStyleBrief?: CreativeIntakeBrief["ugcStyleBrief"] | null;
   promptVersion: CreativeIntakePromptVersion;
 };
@@ -235,6 +266,7 @@ const brandLabels: Record<CreativeIntakeBrand, string> = {
   royal_lepage: "Royal LePage",
   exp: "eXp",
   keller_williams: "Keller Williams",
+  century_21: "Century 21",
   custom: "Custom brokerage brand",
 };
 
@@ -256,7 +288,7 @@ export const creativeIntakeAnswersSchema = z.object({
   customOffer: z.string().max(260).nullable().optional(),
   offerTitle: z.string().max(120).nullable().optional(),
   offerMechanism: z.string().max(320).nullable().optional(),
-  brokerageBrand: z.enum(["remax", "royal_lepage", "exp", "keller_williams", "custom"]).optional(),
+  brokerageBrand: z.enum(["remax", "royal_lepage", "exp", "keller_williams", "century_21", "custom"]).optional(),
   customBrokerageBrand: z.string().max(160).nullable().optional(),
   market: z.string().max(160).nullable().optional(),
   creativeStyle: z.enum(["ugc", "bold_poster_ad", "luxury", "local_expert", "simple_direct_response", "clean_local_expert", "bold_offer_focused", "premium_home_sale_guide"]).optional(),
@@ -297,6 +329,116 @@ export function creativeIntakeIncludesUgcVideo(phase?: CreativeIntakeGenerationP
 
 function safeText(value: unknown) {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
+      .join(",")}}`;
+  }
+
+  return JSON.stringify(value ?? null);
+}
+
+function sha256Short(value: unknown) {
+  return createHash("sha256")
+    .update(stableStringify(value))
+    .digest("hex")
+    .slice(0, 24);
+}
+
+function buildCreativeBriefHashSet(params: {
+  campaignType?: string | null;
+  offerTitle: string;
+  cta: string;
+  targetAudience: string;
+  market: string;
+  brokerageBrand: string;
+  propertyType: string;
+  staticStyle: string;
+  ugcStyleBrief?: CreativeIntakeBrief["ugcStyleBrief"] | null;
+}) {
+  const ugcScriptHash = params.ugcStyleBrief
+    ? sha256Short({
+        lines: params.ugcStyleBrief.approvedScript.lines,
+        shotList: params.ugcStyleBrief.approvedScript.shotList,
+        onScreenText: params.ugcStyleBrief.approvedScript.onScreenText,
+        version: params.ugcStyleBrief.scriptVersion,
+      })
+    : null;
+  const offerHash = sha256Short({ offerTitle: params.offerTitle });
+  const ctaHash = sha256Short({ cta: params.cta });
+  const brandHash = sha256Short({ brokerageBrand: params.brokerageBrand });
+  const staticBriefHash = sha256Short({
+    offerTitle: params.offerTitle,
+    cta: params.cta,
+    targetAudience: params.targetAudience,
+    market: params.market,
+    brokerageBrand: params.brokerageBrand,
+    propertyType: params.propertyType,
+    staticStyle: params.staticStyle,
+  });
+  const briefHash = sha256Short({
+    campaignType: params.campaignType ?? null,
+    offerTitle: params.offerTitle,
+    cta: params.cta,
+    targetAudience: params.targetAudience,
+    market: params.market,
+    brokerageBrand: params.brokerageBrand,
+    propertyType: params.propertyType,
+    staticStyle: params.staticStyle,
+    ugcTargetLength: params.ugcStyleBrief?.targetDurationSeconds ?? null,
+    ugcCreatorPersona: params.ugcStyleBrief?.creatorPersona ?? null,
+    ugcHookAngle: params.ugcStyleBrief?.hookAngle ?? null,
+    ugcVisualStyle: params.ugcStyleBrief?.visualStyle ?? null,
+    ugcScriptHash,
+  });
+
+  return {
+    briefHash,
+    staticBriefHash,
+    offerHash,
+    ctaHash,
+    brandHash,
+    ugcScriptHash,
+  };
+}
+
+export function hydrateCreativeIntakeBriefHashes(
+  brief: CreativeIntakeBrief,
+  fallback?: { campaignType?: string | null; revisionNumber?: number | null; approvedAt?: string | null },
+): CreativeIntakeBrief {
+  const staticStyle = brief.staticStyle || brief.creativeStyle;
+  const hashes = buildCreativeBriefHashSet({
+    campaignType: brief.campaignType ?? fallback?.campaignType ?? null,
+    offerTitle: brief.offerTitle || brief.offer,
+    cta: brief.cta,
+    targetAudience: brief.targetAudience,
+    market: brief.market,
+    brokerageBrand: brief.brokerageBrand,
+    propertyType: brief.propertyType,
+    staticStyle,
+    ugcStyleBrief: brief.ugcStyleBrief ?? null,
+  });
+
+  return {
+    ...brief,
+    staticStyle,
+    briefHash: brief.briefHash || hashes.briefHash,
+    staticBriefHash: brief.staticBriefHash || hashes.staticBriefHash,
+    offerHash: brief.offerHash || hashes.offerHash,
+    ctaHash: brief.ctaHash || hashes.ctaHash,
+    brandHash: brief.brandHash || hashes.brandHash,
+    ugcScriptHash: brief.ugcScriptHash || hashes.ugcScriptHash,
+    creativeBriefApprovedAt: brief.creativeBriefApprovedAt ?? fallback?.approvedAt ?? null,
+    revisionNumber: brief.revisionNumber ?? fallback?.revisionNumber ?? null,
+  };
 }
 
 function nowIso() {
@@ -351,35 +493,6 @@ function splitMultilineText(value: unknown) {
   return typeof value === "string"
     ? value.split(/\n+/).map((line) => safeText(line)).filter(Boolean)
     : [];
-}
-
-function hasTimingContext(value: string) {
-  return /\b(today|now|daily|weekly|this week|this month|month|monthly|year|days?|weeks?|30|60|90|202\d|completion|deadline|before|early)\b/i.test(value);
-}
-
-function hasLowRiskAccessContext(value: string) {
-  return /\b(preview|review|private access|early access|may qualify|qualify|no obligation)\b/i.test(value);
-}
-
-function addFinishedAdTimingContext(
-  value: string,
-  fallback: string,
-  options?: { ensureLowRiskAccess?: boolean },
-) {
-  let text = safeText(value);
-  const timing = safeText(fallback) || "this week";
-
-  if (!text) {
-    return text;
-  }
-
-  if (options?.ensureLowRiskAccess && !hasLowRiskAccessContext(text)) {
-    text = `Preview ${text.charAt(0).toLowerCase()}${text.slice(1)}`;
-  }
-
-  return hasTimingContext(text)
-    ? text
-    : `${text} ${timing}`.replace(/\s+/g, " ").trim();
 }
 
 export function buildUgcConceptOptions(params: {
@@ -448,39 +561,72 @@ export function buildUgcConceptOptions(params: {
 }
 
 export function softenRegulatedClaims(value: string) {
+  const originalInput = safeText(value);
   let text = safeText(value);
   const softenedClaims: string[] = [];
+  const explanations: Omit<CreativeIntakeComplianceExplanation, "field">[] = [];
 
   if (!text) {
-    return { text, softenedClaims };
+    return { text, softenedClaims, explanations };
   }
 
-  const replacements: Array<[RegExp, string, string]> = [
+  const replacements: Array<[RegExp, string | ((match: RegExpExecArray) => string), string, string]> = [
     [
       /\bguaranteed\s+approval\s+for\s+([0-9]{3}\+?)\s+credit\b/gi,
-      "options may be available for buyers with $1 credit",
+      (match) => `Home Options for ${match[1]} Credit`,
       "Softened credit approval guarantee.",
+      "Guaranteed approval language is not allowed for housing or financing-related ads.",
     ],
     [
       /\bapproved\s+with\s+([0-9]{3}\+?)\s+credit\b/gi,
-      "see if you may qualify with $1 credit",
+      (match) => `Home Options for ${match[1]} Credit`,
       "Softened credit approval claim.",
+      "Approval claims must be framed as options or qualification review, not promised outcomes.",
     ],
-    [
-      /\bguaranteed\s+approval\b/gi,
-      "see what you may qualify for",
-      "Softened guaranteed approval language.",
-    ],
-  ];
+	    [
+	      /\bguaranteed\s+approval\b/gi,
+	      "see what you may qualify for",
+	      "Softened guaranteed approval language.",
+	      "Guaranteed approval language is not allowed for housing or financing-related ads.",
+	    ],
+	    [
+	      /\bguarantee(?:d)?\s+(?:to\s+)?sell\s+(?:your\s+)?home\s+(?:in|within)\s+(?:the\s+next\s+)?([0-9]{1,3})\s+days?\b/gi,
+	      (match) => `${match[1]}-Day Home Sale Plan`,
+	      "Softened guaranteed sale claim.",
+	      "Guaranteed sale language is not allowed; the offer can describe a sale plan without promising the outcome.",
+	    ],
+	    [
+	      /\bguaranteed\s+sale\b/gi,
+	      "home sale plan",
+	      "Softened guaranteed sale claim.",
+	      "Guaranteed sale language is not allowed; the offer can describe a sale plan without promising the outcome.",
+	    ],
+	  ];
 
-  for (const [pattern, replacement, note] of replacements) {
-    if (pattern.test(text)) {
-      text = text.replace(pattern, replacement);
+  for (const [pattern, replacement, note, reason] of replacements) {
+    pattern.lastIndex = 0;
+    const matches = [...text.matchAll(pattern)];
+    if (matches.length > 0) {
+      const firstMatch = matches[0];
+      const suggestedReplacement =
+        typeof replacement === "function" ? replacement(firstMatch) : replacement;
+      text = text.replace(pattern, (...args) => {
+        const match = args.slice(0, -2) as string[];
+        return typeof replacement === "function"
+          ? replacement(match as unknown as RegExpExecArray)
+          : replacement;
+      });
       softenedClaims.push(note);
+      explanations.push({
+        originalInput,
+        blockedPhrase: firstMatch[0],
+        reason,
+        suggestedReplacement,
+      });
     }
   }
 
-  return { text, softenedClaims };
+  return { text, softenedClaims, explanations };
 }
 
 export function buildCreativeIntakeBrief(
@@ -517,6 +663,7 @@ export function buildCreativeIntakeBrief(
     : answers.creativeStyle
       ? styleLabels[answers.creativeStyle]
       : "";
+  const staticStyle = creativeStyle;
   const propertyType = safeText(answers.propertyType) || safeText(defaults.propertyType) || "real estate";
   const platformPlacement = safeText(answers.platformPlacement) || "Meta feed and story placements";
   const outputMode = answers.outputMode === "background_only" ? "background_only" : "finished_ad";
@@ -528,9 +675,7 @@ export function buildCreativeIntakeBrief(
       ? Math.min(30, Math.max(15, Math.round(answers.targetDurationSeconds)))
       : 20;
   const offer = softenedOffer.text;
-  const cta = outputMode === "finished_ad"
-    ? addFinishedAdTimingContext(softenedCta.text, "this week")
-    : softenedCta.text;
+  const cta = softenedCta.text;
   const ugcReferenceExamples = splitReferenceLines(answers.referenceExamples ?? "");
   const ugcDefaultStyleAccepted = answers.ugcDefaultStyleAccepted === true;
   const selectedUgcConceptId = safeText(answers.selectedUgcConceptId) || null;
@@ -621,16 +766,35 @@ export function buildCreativeIntakeBrief(
       ? "ugc_script_approval"
       : null,
   ].filter((item): item is string => Boolean(item));
+  const hashes = buildCreativeBriefHashSet({
+    campaignType: defaults.campaignType ?? null,
+    offerTitle: offer,
+    cta,
+    targetAudience,
+    market,
+    brokerageBrand,
+    propertyType,
+    staticStyle,
+    ugcStyleBrief,
+  });
+  const complianceExplanations: CreativeIntakeComplianceExplanation[] = [
+    ...softenedOffer.explanations.map((item) => ({ ...item, field: "offer" as const })),
+    ...softenedCta.explanations.map((item) => ({ ...item, field: "cta" as const })),
+    ...softenedConstraints.explanations.map((item) => ({ ...item, field: "constraints" as const })),
+  ];
 
   return {
     targetAudience,
     offer,
     offerTitle: offer,
     offerMechanism,
+    campaignType: safeText(defaults.campaignType),
     market,
     brokerageBrand,
+    customBrokerageBrand: answers.brokerageBrand === "custom" ? safeText(answers.customBrokerageBrand) : null,
     propertyType,
     creativeStyle,
+    staticStyle,
     platformPlacement,
     cta,
     mustUseCopy: splitConstraints(softenedConstraints.text).filter((item) => !/disclaim|not guarantee|subject to/i.test(item)),
@@ -645,8 +809,17 @@ export function buildCreativeIntakeBrief(
       ...softenedCta.softenedClaims,
       ...softenedConstraints.softenedClaims,
     ],
+    complianceExplanations,
     outputMode,
     generationPhase,
+    creativeBriefApprovedAt: null,
+    revisionNumber: null,
+    briefHash: hashes.briefHash,
+    staticBriefHash: hashes.staticBriefHash,
+    offerHash: hashes.offerHash,
+    ctaHash: hashes.ctaHash,
+    brandHash: hashes.brandHash,
+    ugcScriptHash: hashes.ugcScriptHash,
     ugcStyleBrief,
     completion: {
       complete: missing.length === 0,
@@ -699,7 +872,7 @@ export function buildCreativeIntakePromptVersion(
     ? [
       "MARKETING STUDIO FINISHED AD CREATIVE.",
       "Create ONE polished finished real-estate social ad poster, not a chart, not a dashboard, not a listing sheet, not a web/app UI screenshot.",
-      "Use a clean premium poster layout with this exact hierarchy: short headline, clear timed offer, one concise proof/support line, and one clear CTA button or CTA bar.",
+	      "Use a clean premium poster layout with this exact hierarchy: short headline, exact approved offer, one concise proof/support line, and one clear CTA button or CTA bar.",
       "Media-buyer reference layout: one dominant hook area, one proof area, strong negative space, and a clear CTA-safe zone.",
       "Keep all text large and mobile-feed readable. Use generous safe margins on all sides, no tiny text, no cropped CTA, no overlapping panels, and no text over busy image detail.",
       `Market/city text that should appear: ${brief.market}.`,
@@ -709,6 +882,7 @@ export function buildCreativeIntakePromptVersion(
       `Brokerage or brand direction: ${brief.brokerageBrand}. Brand/logo text is optional; if exact brand rendering is uncertain, omit it. If brand text is used, spell it exactly and do not invent or approximate logos.`,
       `Property focus: ${brief.propertyType}.`,
       `Creative style: ${brief.creativeStyle}.`,
+      `Approved creative brief hash: ${brief.staticBriefHash}.`,
       `Placement: ${brief.platformPlacement}.`,
       brief.mustUseCopy.length > 0 ? `Must-use copy: ${brief.mustUseCopy.join("; ")}.` : null,
       "The final image should look like a high-performing real estate Facebook/Instagram ad made in a marketing studio, with no spreadsheet/table/grid/data-panel visuals.",
@@ -776,12 +950,11 @@ export function buildCreativeIntakePromptVersion(
       `Offer: ${brief.offerTitle}`,
       `Brand direction: ${brief.brokerageBrand}`,
       brief.outputMode === "finished_ad" ? `CTA in raster: ${brief.cta}` : `CTA DealFlow will render: ${brief.cta}`,
+      `Brief hash: ${brief.staticBriefHash}`,
       creativeIntakeIncludesUgcVideo(brief.generationPhase) && brief.ugcStyleBrief
         ? `UGC duration: ${brief.ugcStyleBrief.targetDurationSeconds}s`
         : null,
       approvedUgcScript ? `Approved UGC script: ${brief.ugcStyleBrief?.scriptVersion ?? approvedUgcScript.version}` : null,
-      `Mode: ${brief.outputMode}`,
-      `Phase: ${brief.generationPhase}`,
     ].join(" | "),
     createdAt: nowIso(),
   };
@@ -862,7 +1035,20 @@ export function readCreativeChatIntakeFromPlan(planValue: unknown): CreativeChat
     return null;
   }
 
-  return raw as CreativeChatIntakeState;
+  const intake = raw as CreativeChatIntakeState;
+
+  if (!intake.brief) {
+    return intake;
+  }
+
+  return {
+    ...intake,
+    brief: hydrateCreativeIntakeBriefHashes(intake.brief, {
+      campaignType: intake.brief.campaignType ?? null,
+      revisionNumber: intake.revisionNumber,
+      approvedAt: intake.approvedAt ?? null,
+    }),
+  };
 }
 
 export function isCreativeIntakeApproved(planValue: unknown) {
@@ -896,6 +1082,15 @@ export function getApprovedCreativeIntakeGenerationContext(
     market: intake.brief.market,
     targetAudience: intake.brief.targetAudience,
     brokerageBrand: intake.brief.brokerageBrand,
+    campaignType: intake.brief.campaignType ?? null,
+    propertyType: intake.brief.propertyType,
+    staticStyle: intake.brief.staticStyle ?? intake.brief.creativeStyle,
+    briefHash: intake.brief.briefHash ?? null,
+    staticBriefHash: intake.brief.staticBriefHash ?? null,
+    offerHash: intake.brief.offerHash ?? null,
+    ctaHash: intake.brief.ctaHash ?? null,
+    brandHash: intake.brief.brandHash ?? null,
+    ugcScriptHash: intake.brief.ugcScriptHash ?? null,
     ugcStyleBrief: intake.brief.ugcStyleBrief ?? null,
     promptVersion: intake.promptVersion,
   };
@@ -916,6 +1111,9 @@ export function hasSameCreativeIntakeGenerationContext(
     (left.requiredOffer ?? null) === (right.requiredOffer ?? null) &&
     (left.requiredOfferTitle ?? null) === (right.requiredOfferTitle ?? null) &&
     (left.requiredCta ?? null) === (right.requiredCta ?? null) &&
+    (left.staticBriefHash ?? null) === (right.staticBriefHash ?? null) &&
+    (left.briefHash ?? null) === (right.briefHash ?? null) &&
+    (left.ugcScriptHash ?? null) === (right.ugcScriptHash ?? null) &&
     JSON.stringify(left.ugcStyleBrief ?? null) === JSON.stringify(right.ugcStyleBrief ?? null) &&
     left.promptVersion.revisionNumber === right.promptVersion.revisionNumber &&
     left.promptVersion.createdAt === right.promptVersion.createdAt &&
@@ -977,8 +1175,13 @@ export async function persistCreativeChatIntake(params: {
     : existing?.revisionNumber ?? 0;
   const timestamp = nowIso();
   const approved = params.action === "approve";
+  const persistedBrief: CreativeIntakeBrief = {
+    ...brief,
+    revisionNumber,
+    creativeBriefApprovedAt: approved ? timestamp : existing?.brief?.creativeBriefApprovedAt ?? null,
+  };
   const promptVersion = approved
-    ? buildCreativeIntakePromptVersion(brief, revisionNumber)
+    ? buildCreativeIntakePromptVersion(persistedBrief, revisionNumber)
     : params.action === "revise"
       ? null
       : existing?.promptVersion ?? null;
@@ -1020,7 +1223,7 @@ export async function persistCreativeChatIntake(params: {
     approvalStatus: approved ? "approved" : params.action === "revise" ? "revision_requested" : "draft",
     revisionNumber,
     answers: mergedAnswers,
-    brief,
+    brief: persistedBrief,
     promptVersion,
     messages: [
       ...(existing?.messages ?? []),
@@ -1033,8 +1236,8 @@ export async function persistCreativeChatIntake(params: {
     approvedAt: approved ? timestamp : null,
   };
 
-  if (approved && !brief.completion.complete) {
-    throw new Error(`Creative brief is incomplete: ${brief.completion.missing.join(", ")}`);
+  if (approved && !persistedBrief.completion.complete) {
+    throw new Error(`Creative brief is incomplete: ${persistedBrief.completion.missing.join(", ")}`);
   }
 
   await persistCampaignPlanDocumentUpdate({

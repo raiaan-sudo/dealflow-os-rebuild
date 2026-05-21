@@ -32,6 +32,10 @@ import {
   isLaunchReadyVideoCreative,
   isPlayableVideoCreative,
 } from "@/lib/services/creative-media-readiness";
+import {
+  getApprovedCreativeIntakeGenerationContext,
+  isCreativeChatIntakeEnabled,
+} from "@/lib/services/creative-chat-intake-service";
 
 function customerVideoMessage(message?: string | null) {
   const text = message?.trim();
@@ -91,13 +95,13 @@ function ReviewOnlyCreativePreview({ plan }: { plan: CampaignPlan }) {
 
 async function loadPersistedLaunchMediaSelection(campaignId: string | null) {
   if (!campaignId) {
-    return { selectedAdIds: [], selectedUgcVideoIds: [] };
+    return { selectedAdIds: [], selectedUgcVideoIds: [], creativeIntakeContext: null };
   }
 
   const supabase = await createRouteHandlerClient();
 
   if (!supabase) {
-    return { selectedAdIds: [], selectedUgcVideoIds: [] };
+    return { selectedAdIds: [], selectedUgcVideoIds: [], creativeIntakeContext: null };
   }
 
   const { data } = await supabase
@@ -112,6 +116,9 @@ async function loadPersistedLaunchMediaSelection(campaignId: string | null) {
   return {
     selectedAdIds: getSelectedAdIdsFromPlan(plan),
     selectedUgcVideoIds: getSelectedUgcVideoIdsFromPlan(plan),
+    creativeIntakeContext: isCreativeChatIntakeEnabled()
+      ? getApprovedCreativeIntakeGenerationContext(plan)
+      : null,
   };
 }
 
@@ -132,6 +139,15 @@ export default async function PreviewPage({
   const launchMediaSelection = await loadPersistedLaunchMediaSelection(resolvedCampaignId);
   const selectedAdIds = launchMediaSelection.selectedAdIds;
   const selectedUgcVideoIds = launchMediaSelection.selectedUgcVideoIds;
+  const creativeIntakeContext = launchMediaSelection.creativeIntakeContext;
+  const staticBriefReadinessContext = creativeIntakeContext
+    ? {
+        staticBriefHash: creativeIntakeContext.staticBriefHash,
+        offerHash: creativeIntakeContext.offerHash,
+        ctaHash: creativeIntakeContext.ctaHash,
+        brandHash: creativeIntakeContext.brandHash,
+      }
+    : null;
 
   if (!plan) {
     redirect("/builder");
@@ -150,7 +166,7 @@ export default async function PreviewPage({
     .filter((ad) => selectedAdIds.includes(ad.id))
     .sort((left, right) => selectedAdIds.indexOf(left.id) - selectedAdIds.indexOf(right.id));
   const videoAds = previewPlan.creatives.videoAds;
-  const staticReadiness = getStaticCreativeReadiness(previewPlan.creatives.staticAds, selectedAdIds);
+  const staticReadiness = getStaticCreativeReadiness(previewPlan.creatives.staticAds, selectedAdIds, staticBriefReadinessContext);
   const selectedStaticMediaReady = staticReadiness.allSelectedReady;
   const selectedUgcVideos = selectedUgcVideoIds.length > 0
     ? videoAds
@@ -158,9 +174,16 @@ export default async function PreviewPage({
         .sort((left, right) => selectedUgcVideoIds.indexOf(left.id) - selectedUgcVideoIds.indexOf(right.id))
     : [];
   const selectedLaunchReadyVideos = selectedUgcVideos.filter(
-    (video) => video.conceptType === "customer_ugc" && isLaunchReadyVideoCreative(video),
+    (video) =>
+      video.conceptType === "customer_ugc" &&
+      isLaunchReadyVideoCreative(video) &&
+      (!creativeIntakeContext?.ugcScriptHash || video.ugcScriptHash === creativeIntakeContext.ugcScriptHash || video.scriptHash === creativeIntakeContext.ugcScriptHash),
   );
-  const launchReadyVideos = videoAds.filter((video) => video.conceptType === "customer_ugc" && isLaunchReadyVideoCreative(video));
+  const launchReadyVideos = videoAds.filter((video) =>
+    video.conceptType === "customer_ugc" &&
+    isLaunchReadyVideoCreative(video) &&
+    (!creativeIntakeContext?.ugcScriptHash || video.ugcScriptHash === creativeIntakeContext.ugcScriptHash || video.scriptHash === creativeIntakeContext.ugcScriptHash),
+  );
   const displayVideoAds = selectedUgcVideos.length > 0
     ? selectedUgcVideos
     : launchReadyVideos.length > 0

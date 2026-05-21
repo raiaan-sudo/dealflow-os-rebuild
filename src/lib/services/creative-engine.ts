@@ -85,6 +85,15 @@ export type StaticCreativeAsset = {
   visualPromptBrief: StaticVisualPromptBrief | null;
   imageQa?: StaticCreativeImageQaResult | null;
   creativeIntake?: CreativeIntakeGenerationContext | null;
+  briefHash?: string | null;
+  staticBriefHash?: string | null;
+  offerHash?: string | null;
+  ctaHash?: string | null;
+  brandHash?: string | null;
+  briefRevisionNumber?: number | null;
+  approvedOfferTitle?: string | null;
+  approvedCta?: string | null;
+  approvedBrand?: string | null;
   scoreBreakdown: CreativeScoreBreakdown | null;
   hook: string;
   overlayText: string;
@@ -126,6 +135,9 @@ export type VideoCreativeAsset = {
   promptSource?: string | null;
   promptHash?: string | null;
   scriptHash?: string | null;
+  briefHash?: string | null;
+  ugcScriptHash?: string | null;
+  briefRevisionNumber?: number | null;
   campaignSpecificContext?: {
     campaignId?: string | null;
     creativeId?: string | null;
@@ -605,7 +617,7 @@ function buildOfferAlignedCta(
     return "Check My Sale Plan";
   }
 
-  if (/\boff-market\b/i.test(offer)) {
+  if (isOffMarketOffer(offer)) {
     return "Get Off-Market Access";
   }
 
@@ -715,32 +727,6 @@ function cleanCreativeCopy(value: string) {
     .trim();
 }
 
-function hasStaticTimingContext(value: string) {
-  return /\b(today|now|daily|weekly|this week|this month|month|monthly|year|days?|weeks?|30|60|90|202\d|completion|deadline|before|early)\b/i.test(value);
-}
-
-function hasStaticLowRiskAccessContext(value: string) {
-  return /\b(preview|review|private access|early access|may qualify|qualify|no obligation)\b/i.test(value);
-}
-
-function addFinishedAdDefaultTiming(
-  value: string,
-  fallback = "this week",
-  options?: { ensureLowRiskAccess?: boolean },
-) {
-  let text = cleanCreativeCopy(value);
-
-  if (!text) {
-    return text;
-  }
-
-  if (options?.ensureLowRiskAccess && !hasStaticLowRiskAccessContext(text)) {
-    text = cleanCreativeCopy(`Review ${text.charAt(0).toLowerCase()}${text.slice(1)}`);
-  }
-
-  return hasStaticTimingContext(text) ? text : cleanCreativeCopy(`${text} ${fallback}`);
-}
-
 function buildFinishedAdPromptContract(params: {
   prompt: string;
   market: string;
@@ -750,11 +736,11 @@ function buildFinishedAdPromptContract(params: {
   brand?: string | null;
 }) {
   return [
-    params.prompt,
-    "Finished-ad quality contract:",
-    "Use a clean hierarchy with one short headline, one clear timed offer, one minimal support line, and one CTA.",
-    "Media-buyer reference layout: one dominant hook area, one proof area, strong negative space, and a clear CTA-safe zone.",
-    `Timed offer that must be readable: ${params.offer}.`,
+	    params.prompt,
+	    "Finished-ad quality contract:",
+	    "Use a clean hierarchy with one short headline, the exact approved offer, one minimal support line, and one CTA.",
+	    "Media-buyer reference layout: one dominant hook area, one proof area, strong negative space, and a clear CTA-safe zone.",
+	    `Approved offer that must be readable: ${params.offer}.`,
     `CTA that must be readable and uncropped: ${params.cta}.`,
     `Market and audience context: ${params.market}; ${params.audience}.`,
     params.brand
@@ -887,6 +873,64 @@ function repairStaticCreativeForMediaBuyerQuality(params: {
       ...params.ad,
       offerQuality,
       qualityGate: initialQuality,
+    };
+  }
+
+  if (params.strategy.campaignCategory === "buyer" && isOffMarketOffer(params.offer)) {
+    const safeOffer = shortSentence(params.offer) || "Off-market property access";
+    const cta = buildOfferAlignedCta(safeOffer, params.strategy.campaignCategory, params.ad.cta);
+    const hook = `${params.market} buyers: review private and off-market properties before the public search gets crowded.`;
+    const repairedPrompt =
+      `${params.ad.imagePrompt.replace(params.offer, safeOffer)} Core offer: ${safeOffer}. Show private inventory access, off-market opportunities, and buyer access context. Avoid credit-score, approval-path, generic home-list, or weekend-crowd language unless the approved offer says it.`;
+    const repaired: StaticCreativeAsset = {
+      ...params.ad,
+      hook,
+      overlayText: clampOverlayLine(safeOffer),
+      headline: `Access off-market properties in ${params.market}`,
+      primaryText: buildStructuredPrimaryText({
+        hook,
+        problem: `Most buyers only see the same public listings after competition has already moved in.`,
+        outcome: `${sentenceCase(params.strategy.mechanism || "private property review")} keeps private inventory and distressed-sale opportunities at the center before the broad search gets crowded.`,
+        cta,
+      }),
+      cta,
+      visualConcept: `Buyer-access creative for ${safeOffer}: private inventory, off-market opportunities, and pre-public-search access.`,
+      imagePrompt: repairedPrompt,
+      imagePromptConfig: params.ad.imagePromptConfig
+        ? {
+            ...params.ad.imagePromptConfig,
+            prompt: repairedPrompt,
+          }
+        : null,
+    };
+    const finalQuality = evaluateCreativeQuality({
+      category: params.strategy.campaignCategory,
+      offer: safeOffer,
+      mechanism: params.strategy.mechanism,
+      audience: params.audience,
+      hook: repaired.hook,
+      primaryText: repaired.primaryText,
+      headline: repaired.headline,
+      overlayText: repaired.overlayText,
+      cta: repaired.cta,
+      visualConcept: repaired.visualConcept,
+      imagePrompt: repaired.imagePrompt,
+    });
+
+    return {
+      ...repaired,
+      offerQuality,
+      qualityGate: finalQuality.accepted
+        ? finalQuality
+        : {
+            ...finalQuality,
+            hardFailures: Array.from(
+              new Set([...finalQuality.hardFailures, ...initialQuality.hardFailures]),
+            ),
+            improvementHints: Array.from(
+              new Set([...finalQuality.improvementHints, ...initialQuality.improvementHints]),
+            ),
+          },
     };
   }
 
@@ -1418,8 +1462,10 @@ function buildStaticCreatives(
       hook:
         approvalFocused
           ? `See the right ${brief.propertyType} in ${market} after your approval path is clear`
+          : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+          ? `See off-market ${brief.propertyType} in ${market} before other buyers do`
           : strategy.campaignCategory === "buyer"
-          ? fillTemplate(rulePack.approvedHookStructures[2], templateParams)
+            ? fillTemplate(rulePack.approvedHookStructures[2], templateParams)
           : strategy.campaignCategory === "luxury"
             ? fillTemplate(rulePack.approvedHookStructures[2], templateParams)
           : strategy.campaignCategory === "precon"
@@ -1436,6 +1482,8 @@ function buildStaticCreatives(
           base:
             approvalFocused
               ? "After Approval Clarity"
+            : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+              ? "Private Access"
             : strategy.campaignCategory === "buyer"
               ? "Before Other Buyers Do"
               : strategy.campaignCategory === "luxury"
@@ -1451,12 +1499,16 @@ function buildStaticCreatives(
           ? `${audience} in ${market} miss the strongest opportunities because they are unsure what they can actually buy. ${sentenceCase(mechanism)} brings approval-ready matches forward with ${proof.toLowerCase()} before everyone else reacts. ${cta}.`
         : strategy.campaignCategory === "luxury"
           ? `${sentenceCase(mechanism)} brings rare ${brief.propertyType} in ${market} to the right buyer with ${proof.toLowerCase()} and the tension of ${tension.toLowerCase()} before they become broadly visible. ${cta}.`
+          : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+            ? `${audience} in ${market} miss private and distressed-sale opportunities when they only search public listings. ${sentenceCase(mechanism)} brings off-market property access forward before the broad search gets crowded. ${cta}.`
           : `${audience} in ${market} miss the strongest opportunities because ${tension.toLowerCase()}. ${sentenceCase(mechanism)} brings the strongest matches forward with ${proof.toLowerCase()} before everyone else reacts. ${cta}.`,
       headline:
         approvalFocused
           ? `Find homes that fit your approval path in ${market}`
+        : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+          ? `Access off-market properties in ${market}`
         : strategy.campaignCategory === "buyer"
-          ? `See homes you may not know you can afford in ${market}`
+            ? `See homes you may not know you can afford in ${market}`
           : strategy.campaignCategory === "luxury"
             ? `Private access to rare ${brief.propertyType} in ${market}`
           : `Access stronger ${brief.propertyType} in ${market}`,
@@ -2044,7 +2096,23 @@ function shouldDropStaleProviderImageForRetry(
   asset: StaticCreativeAsset | null | undefined,
   creativeIntake?: CreativeIntakeGenerationContext | null,
 ) {
-  return creativeIntake?.outputMode === "finished_ad" && isStaleFailedProviderImage(asset);
+  return creativeIntake?.outputMode === "finished_ad" && (isStaleFailedProviderImage(asset) || !staticAssetMatchesCreativeIntake(asset, creativeIntake));
+}
+
+function staticAssetMatchesCreativeIntake(
+  asset: StaticCreativeAsset | null | undefined,
+  creativeIntake?: CreativeIntakeGenerationContext | null,
+) {
+  if (!asset || !creativeIntake) {
+    return true;
+  }
+
+  return (
+    (asset.staticBriefHash ?? null) === (creativeIntake.staticBriefHash ?? null) &&
+    (asset.offerHash ?? null) === (creativeIntake.offerHash ?? null) &&
+    (asset.ctaHash ?? null) === (creativeIntake.ctaHash ?? null) &&
+    (asset.brandHash ?? null) === (creativeIntake.brandHash ?? null)
+  );
 }
 
 function stripStaleProviderImageForRetry(asset: StaticCreativeAsset): StaticCreativeAsset {
@@ -2072,6 +2140,7 @@ function preserveStaticCreativeImage(
     imageGenerationProvider: existing.imageGenerationProvider ?? asset.imageGenerationProvider ?? null,
     imageQa: existing.imageQa ?? asset.imageQa ?? null,
     qualityGate: asset.qualityGate ?? existing.qualityGate ?? null,
+    storageNormalized: existing.storageNormalized ?? asset.storageNormalized ?? null,
   };
 }
 
@@ -2095,7 +2164,9 @@ export function mergeStaticCreativeImageResults(
     }
 
     const existing = reusableStaticAssets.get(asset.id);
-    return existing ? preserveStaticCreativeImage(asset, existing) : asset;
+    return existing && staticAssetMatchesCreativeIntake(existing, asset.creativeIntake)
+      ? preserveStaticCreativeImage(asset, existing)
+      : asset;
   });
 }
 
@@ -2108,26 +2179,18 @@ function applyCreativeIntakePromptToStaticAsset(
     return asset;
   }
 
-  const promptVersion = creativeIntake.promptVersion;
-  const finishedAdMode = creativeIntake.outputMode === "finished_ad";
-  const requiredOffer = creativeIntake.requiredOfferTitle ?? creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer;
-  const timedOffer = finishedAdMode
-    ? isOffMarketOffer(requiredOffer)
-      ? requiredOffer
-      : addFinishedAdDefaultTiming(requiredOffer, "this week", {
-        ensureLowRiskAccess: normalized.creativeStrategy.campaignCategory !== "seller",
-      })
-    : creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer;
-  const timedCta = finishedAdMode
-    ? addFinishedAdDefaultTiming(creativeIntake.requiredCta ?? asset.cta)
-    : creativeIntake.requiredCta ?? asset.cta;
+	  const promptVersion = creativeIntake.promptVersion;
+	  const finishedAdMode = creativeIntake.outputMode === "finished_ad";
+	  const requiredOffer = creativeIntake.requiredOfferTitle ?? creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer;
+	  const approvedOffer = finishedAdMode ? requiredOffer : creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer;
+	  const approvedCta = creativeIntake.requiredCta ?? asset.cta;
   const prompt = finishedAdMode
     ? buildFinishedAdPromptContract({
         prompt: promptVersion.generatedPrompt,
         market: creativeIntake.market ?? normalized.location,
         audience: creativeIntake.targetAudience ?? normalized.audience,
-        offer: timedOffer,
-        cta: timedCta,
+	        offer: approvedOffer,
+        cta: approvedCta,
         brand: creativeIntake.brokerageBrand,
       })
     : promptVersion.generatedPrompt;
@@ -2156,40 +2219,40 @@ function applyCreativeIntakePromptToStaticAsset(
         prompt,
         negativePrompt,
       };
-  const primaryText = finishedAdMode
-    ? cleanCreativeCopy(`${asset.primaryText} ${timedOffer}. ${timedCta}.`)
-    : asset.primaryText;
+	  const primaryText = finishedAdMode
+	    ? cleanCreativeCopy(`${asset.primaryText} ${approvedOffer}. ${approvedCta}.`)
+	    : asset.primaryText;
   const headline = finishedAdMode
     ? trimWords(cleanCreativeCopy(asset.headline), 10)
     : asset.headline;
-  const overlayText = finishedAdMode
-    ? clampOverlayLine(timedOffer)
-    : asset.overlayText;
-  const offerQuality = evaluateOfferQuality({
-    category: normalized.creativeStrategy.campaignCategory,
-    offer: timedOffer,
+	  const overlayText = finishedAdMode
+	    ? clampOverlayLine(approvedOffer)
+	    : asset.overlayText;
+	  const offerQuality = evaluateOfferQuality({
+	    category: normalized.creativeStrategy.campaignCategory,
+	    offer: approvedOffer,
     mechanism: normalized.creativeStrategy.mechanism,
     audience: creativeIntake.targetAudience ?? normalized.audience,
-    cta: timedCta,
+    cta: approvedCta,
   });
-  const qualityGate = evaluateCreativeQuality({
-    category: normalized.creativeStrategy.campaignCategory,
-    offer: timedOffer,
+	  const qualityGate = evaluateCreativeQuality({
+	    category: normalized.creativeStrategy.campaignCategory,
+	    offer: approvedOffer,
     mechanism: normalized.creativeStrategy.mechanism,
     audience: creativeIntake.targetAudience ?? normalized.audience,
     hook: asset.hook,
     primaryText,
     headline,
     overlayText,
-    cta: timedCta,
+    cta: approvedCta,
     visualConcept: asset.visualConcept,
     imagePrompt: prompt,
   });
 
   return {
-    ...asset,
-    cta: timedCta,
-    offer: timedOffer,
+	    ...asset,
+	    cta: approvedCta,
+	    offer: approvedOffer,
     headline,
     overlayText,
     primaryText,
@@ -2198,6 +2261,15 @@ function applyCreativeIntakePromptToStaticAsset(
     imagePrompt: prompt,
     imagePromptConfig,
     creativeIntake,
+    briefHash: creativeIntake.briefHash ?? null,
+    staticBriefHash: creativeIntake.staticBriefHash ?? null,
+    offerHash: creativeIntake.offerHash ?? null,
+    ctaHash: creativeIntake.ctaHash ?? null,
+    brandHash: creativeIntake.brandHash ?? null,
+    briefRevisionNumber: creativeIntake.revisionNumber ?? null,
+    approvedOfferTitle: creativeIntake.requiredOfferTitle ?? creativeIntake.requiredOffer ?? null,
+    approvedCta,
+    approvedBrand: creativeIntake.brokerageBrand ?? null,
   };
 }
 
@@ -2214,6 +2286,7 @@ export async function generateStaticCreativeAds(
   const reusableStaticAssets = new Map(
     (input?.reuse_static_assets ?? [])
       .filter(() => input?.force !== true)
+      .filter((asset) => staticAssetMatchesCreativeIntake(asset, creativeIntake))
       .filter(hasUsableStaticCreativeImage)
       .map((asset) => [asset.id, asset]),
   );
@@ -2346,9 +2419,10 @@ export async function generateStaticCreativeAds(
               market: creativeIntake?.market ?? normalized.location,
               campaignType: normalized.marketType,
               audience: creativeIntake?.targetAudience ?? normalized.audience,
-              offer: creativeIntake?.requiredOffer ?? normalized.offer,
-              propertyType: normalized.propertyType,
-              cta: creativeIntake?.requiredCta ?? asset.cta,
+	              offer: creativeIntake?.requiredOfferTitle ?? creativeIntake?.requiredOffer ?? normalized.offer,
+	              propertyType: normalized.propertyType,
+	              cta: creativeIntake?.requiredCta ?? asset.cta,
+	              brand: creativeIntake?.brokerageBrand ?? null,
             },
           })
         : null;

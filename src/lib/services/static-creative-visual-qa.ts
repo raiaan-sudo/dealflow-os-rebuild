@@ -16,6 +16,7 @@ export type StaticCreativeImageQaReason =
   | "finished_ad_text_unverified"
   | "required_cta_missing"
   | "required_offer_missing"
+  | "required_brand_missing"
   | "brand_misspelled"
   | "image_fetch_failed"
   | "qa_timeout";

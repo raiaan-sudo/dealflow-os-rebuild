@@ -211,12 +211,27 @@ function isLaunchReadyStaticSourceRow(row: CreativeAsset) {
   }).usable;
 }
 
+function staticSourceMatchesCreativeIntake(row: CreativeAsset, creativeIntake?: CreativeIntakeGenerationContext | null) {
+  if (!creativeIntake?.staticBriefHash) {
+    return true;
+  }
+
+  const metadata = asRecord(row.metadata);
+  return (
+    metadata?.staticBriefHash === creativeIntake.staticBriefHash &&
+    metadata?.offerHash === creativeIntake.offerHash &&
+    metadata?.ctaHash === creativeIntake.ctaHash &&
+    metadata?.brandHash === creativeIntake.brandHash
+  );
+}
+
 async function getLaunchReadyStaticVideoSource(params: {
   supabase: VideoPersistenceClient;
   userId: string;
   campaignId: string;
   savedDocument: unknown;
   selectedIndex: number;
+  creativeIntake?: CreativeIntakeGenerationContext | null;
 }) {
   const { data, error } = await params.supabase
     .from("creative_assets")
@@ -232,6 +247,7 @@ async function getLaunchReadyStaticVideoSource(params: {
   const selectedIds = readSelectedStaticIds(params.savedDocument);
   const readyRows = (data as CreativeAsset[])
     .filter(isLaunchReadyStaticSourceRow)
+    .filter((row) => staticSourceMatchesCreativeIntake(row, params.creativeIntake))
     .map((row) => ({
       row,
       staticAssetId: staticAssetIdForRow(row),
@@ -266,6 +282,7 @@ async function getVideoSourceImageUrl(params: {
   campaignId: string;
   savedDocument: unknown;
   selectedIndex: number;
+  creativeIntake?: CreativeIntakeGenerationContext | null;
 }) {
   const readyStaticSource = await getLaunchReadyStaticVideoSource(params);
 
@@ -291,7 +308,16 @@ async function getVideoSourceImageUrl(params: {
       imageUrl &&
       asset.imageGenerationState === "generated" &&
       asset.qualityGate?.accepted !== false &&
-      isAppOwnedCreativeAssetUrl(imageUrl)
+      isAppOwnedCreativeAssetUrl(imageUrl) &&
+      (
+        !params.creativeIntake?.staticBriefHash ||
+        (
+          asset.staticBriefHash === params.creativeIntake.staticBriefHash &&
+          asset.offerHash === params.creativeIntake.offerHash &&
+          asset.ctaHash === params.creativeIntake.ctaHash &&
+          asset.brandHash === params.creativeIntake.brandHash
+        )
+      )
     ) {
       return {
         imageUrl,
@@ -345,6 +371,12 @@ function buildCreativeIntakeAssetMetadata(
       approvedAt: creativeIntake.approvedAt,
       outputMode: creativeIntake.outputMode,
       generationPhase: creativeIntake.generationPhase,
+      briefHash: creativeIntake.briefHash ?? null,
+      staticBriefHash: creativeIntake.staticBriefHash ?? null,
+      offerHash: creativeIntake.offerHash ?? null,
+      ctaHash: creativeIntake.ctaHash ?? null,
+      brandHash: creativeIntake.brandHash ?? null,
+      ugcScriptHash: creativeIntake.ugcScriptHash ?? null,
       ugcStyleBrief: creativeIntake.ugcStyleBrief ?? null,
       promptVersionCreatedAt: creativeIntake.promptVersion.createdAt,
     },
@@ -592,17 +624,24 @@ export async function runVideoGenerationJob(params: {
   const row = await loadCampaignPlanRow(params.supabase, params.userId, params.campaignId);
   const savedDocument = getSavedCampaignDocumentFromRow(row) ?? {};
   const creativeIntake = resolveDurableVideoCreativeIntake(savedDocument, params.payload.creativeIntake);
-  const existingVideoAds = Array.isArray(savedDocument.videoAds)
-    ? (savedDocument.videoAds as VideoCreativeAsset[])
-    : [];
-  const existingVideo = existingVideoAds[params.payload.creativeIndex] ?? null;
+	  const existingVideoAds = Array.isArray(savedDocument.videoAds)
+	    ? (savedDocument.videoAds as VideoCreativeAsset[])
+	    : [];
+	  const existingVideo = existingVideoAds[params.payload.creativeIndex] ?? null;
+	  const currentScriptHash = sha256(params.payload.scriptText);
+	  const currentUgcScriptHash = creativeIntake?.ugcScriptHash ?? currentScriptHash;
+	  const existingVideoMatchesCurrentScript =
+	    !currentUgcScriptHash ||
+	    existingVideo?.ugcScriptHash === currentUgcScriptHash ||
+	    existingVideo?.scriptHash === currentUgcScriptHash;
 
-  if (
-    params.payload.force !== true &&
-    existingVideo &&
-    (existingVideo.videoGenerationState === "generated" ||
-      existingVideo.videoGenerationState === "generating")
-  ) {
+	  if (
+	    params.payload.force !== true &&
+	    existingVideo &&
+	    existingVideoMatchesCurrentScript &&
+	    (existingVideo.videoGenerationState === "generated" ||
+	      existingVideo.videoGenerationState === "generating")
+	  ) {
     return {
       assetId: null,
       providerAssetId: existingVideo.providerAssetId ?? null,
@@ -625,6 +664,7 @@ export async function runVideoGenerationJob(params: {
     campaignId: params.campaignId,
     savedDocument,
     selectedIndex: params.payload.creativeIndex,
+    creativeIntake,
   });
 
   if (!avatarProvider.isConfigured()) {
@@ -637,6 +677,10 @@ export async function runVideoGenerationJob(params: {
       videoGenerationState: "unavailable",
       videoGenerationMessage: "AI video generation is not configured yet.",
       providerAssetId: null,
+      scriptHash: currentScriptHash,
+      ugcScriptHash: creativeIntake?.ugcScriptHash ?? currentScriptHash,
+      briefHash: creativeIntake?.briefHash ?? null,
+      briefRevisionNumber: creativeIntake?.revisionNumber ?? null,
     };
 
     await persistVideoAdsToCampaignPlan({
@@ -675,6 +719,8 @@ export async function runVideoGenerationJob(params: {
           avatarId: params.payload.avatarProfileId,
           voiceId: params.payload.voiceProfile,
           unavailableReason: "AI video generation is not configured yet.",
+          scriptHash: currentScriptHash,
+          ugcScriptHash: creativeIntake?.ugcScriptHash ?? currentScriptHash,
           ...buildCreativeIntakeAssetMetadata(creativeIntake),
         } as Json,
       } as never)
@@ -722,6 +768,10 @@ export async function runVideoGenerationJob(params: {
       videoGenerationState: "unavailable",
       videoGenerationMessage: "Render a ready static creative first, then retry the UGC video preview.",
       providerAssetId: null,
+      scriptHash: currentScriptHash,
+      ugcScriptHash: creativeIntake?.ugcScriptHash ?? currentScriptHash,
+      briefHash: creativeIntake?.briefHash ?? null,
+      briefRevisionNumber: creativeIntake?.revisionNumber ?? null,
     };
 
     await persistVideoAdsToCampaignPlan({
@@ -773,10 +823,10 @@ export async function runVideoGenerationJob(params: {
     params.payload.scriptText,
   ].filter(Boolean).join("\n");
   const promptUsed = approvedPrompt ?? fallbackPrompt;
-  const promptSource = approvedPrompt ? "creative_intake" : "campaign_specific_fallback";
-  const promptHash = sha256(promptUsed);
-  const scriptHash = sha256(params.payload.scriptText);
-  const videoProductQualityGate = buildVideoProductQualityGate({
+	  const promptSource = approvedPrompt ? "creative_intake" : "campaign_specific_fallback";
+	  const promptHash = sha256(promptUsed);
+	  const scriptHash = currentScriptHash;
+	  const videoProductQualityGate = buildVideoProductQualityGate({
     promptUsed,
     scriptText: params.payload.scriptText,
     body: params.payload.body,
@@ -824,6 +874,10 @@ export async function runVideoGenerationJob(params: {
         videoGenerationState: "failed",
         videoGenerationMessage: SAFE_VIDEO_FAILURE_MESSAGE,
         providerAssetId: null,
+        scriptHash: currentScriptHash,
+        ugcScriptHash: creativeIntake?.ugcScriptHash ?? currentScriptHash,
+        briefHash: creativeIntake?.briefHash ?? null,
+        briefRevisionNumber: creativeIntake?.revisionNumber ?? null,
       };
 
       await persistVideoAdsToCampaignPlan({
@@ -868,6 +922,10 @@ export async function runVideoGenerationJob(params: {
       videoGenerationState: "failed",
       videoGenerationMessage: SAFE_VIDEO_FAILURE_MESSAGE,
       providerAssetId: null,
+      scriptHash: currentScriptHash,
+      ugcScriptHash: creativeIntake?.ugcScriptHash ?? currentScriptHash,
+      briefHash: creativeIntake?.briefHash ?? null,
+      briefRevisionNumber: creativeIntake?.revisionNumber ?? null,
     };
 
     await persistVideoAdsToCampaignPlan({
@@ -927,6 +985,10 @@ export async function runVideoGenerationJob(params: {
         videoGenerationState: "failed",
         videoGenerationMessage: SAFE_VIDEO_FAILURE_MESSAGE,
         providerAssetId: providerVideo.providerAssetId,
+        scriptHash: currentScriptHash,
+        ugcScriptHash: creativeIntake?.ugcScriptHash ?? currentScriptHash,
+        briefHash: creativeIntake?.briefHash ?? null,
+        briefRevisionNumber: creativeIntake?.revisionNumber ?? null,
       };
 
       await persistVideoAdsToCampaignPlan({
@@ -1022,6 +1084,12 @@ export async function runVideoGenerationJob(params: {
         promptSource,
         promptHash,
         scriptHash,
+        ugcScriptHash: currentUgcScriptHash,
+        briefHash: creativeIntake?.briefHash ?? null,
+        staticBriefHash: creativeIntake?.staticBriefHash ?? null,
+        offerHash: creativeIntake?.offerHash ?? null,
+        ctaHash: creativeIntake?.ctaHash ?? null,
+        brandHash: creativeIntake?.brandHash ?? null,
         audience: params.payload.audience,
         location: params.payload.location,
         offer: params.payload.body,
@@ -1109,6 +1177,9 @@ export async function runVideoGenerationJob(params: {
     promptSource,
     promptHash,
     scriptHash,
+    ugcScriptHash: currentUgcScriptHash,
+    briefHash: creativeIntake?.briefHash ?? null,
+    briefRevisionNumber: creativeIntake?.revisionNumber ?? null,
     campaignSpecificContext,
     videoQualityGate,
     videoProductQualityGate,
