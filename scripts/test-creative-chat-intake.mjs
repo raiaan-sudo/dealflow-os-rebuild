@@ -78,6 +78,9 @@ const {
 const {
   getSavedCampaignDocumentFromRow,
 } = require("../src/lib/services/canonical-campaign.ts");
+const {
+  normalizeOfferForCampaign,
+} = require("../src/lib/services/offer-normalization-service.ts");
 
 const creativeChatIntakeUi = fs.readFileSync("src/app/(app)/build/creatives/creative-chat-intake.tsx", "utf8");
 const creativeWizardUi = fs.readFileSync("src/app/(app)/build/creatives/creative-wizard.tsx", "utf8");
@@ -159,6 +162,31 @@ assert.equal(softened.explanations[0].blockedPhrase, "Guaranteed Approval for 60
 const softenedSaleClaim = softenRegulatedClaims("We guarantee to sell your home in the next 90 days");
 assert.match(softenedSaleClaim.text, /90-Day Home Sale Plan/i);
 assert.ok(softenedSaleClaim.explanations.some((item) => /Guaranteed sale/i.test(item.reason)));
+
+const buyoutBackedSellerOffer = normalizeOfferForCampaign(
+  "Sell Your Home In 90 Days Or We'll Buy It",
+  "seller",
+);
+assert.equal(
+  buyoutBackedSellerOffer.normalizedOffer,
+  "Sell Your Home in 90 Days or We'll Buy It",
+  "buyout-backed seller offers must preserve the user's actual offer instead of collapsing to a generic 90-day plan",
+);
+assert.notEqual(
+  buyoutBackedSellerOffer.normalizedOffer,
+  "90-Day Home Sale Plan",
+  "non-guarantee buyout wording must not be silently rewritten to a generic plan",
+);
+
+const explicitGuaranteedSellerOffer = normalizeOfferForCampaign(
+  "Guaranteed Sale In 90 Days",
+  "seller",
+);
+assert.equal(
+  explicitGuaranteedSellerOffer.normalizedOffer,
+  "90-Day Home Sale Plan",
+  "explicit guaranteed-sale wording is still softened into a compliant sale plan",
+);
 
 const answers = {
   targetAudience: "first_time_buyers",

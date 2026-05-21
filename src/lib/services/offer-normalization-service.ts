@@ -86,7 +86,7 @@ function formatApprovalOffer(value: string) {
 function formatSellerGuaranteeOffer(value: string) {
   const timeline = value.match(/\b(\d{1,3})[-\s]*(?:day|days)\b/i)?.[1];
 
-  if (timeline && /guarantee|guaranteed|sale|sell|sold/i.test(value)) {
+  if (timeline && /\bguarantee(?:d)?\b|\bguaranteed\s+sale\b/i.test(value)) {
     return `${timeline}-Day Home Sale Plan`;
   }
 
