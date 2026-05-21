@@ -226,6 +226,11 @@ assert.match(creativeWizardSource, /classifyCreativeRenderJob/);
 assert.match(creativeWizardSource, /Final media queued/);
 assert.doesNotMatch(creativeWizardSource, /Queued for render worker|worker is available|product QA accepts/);
 assert.doesNotMatch(creativeWizardSource, /\{videoActionPending \? "Rendering"/, "active job ids no longer force a Rendering label");
+assert.doesNotMatch(
+  creativeWizardSource,
+  /rankedCreatives\.slice\(0,\s*1\)\.map\(\(creative\) => creative\.id\)/,
+  "draft concepts are no longer auto-selected when no launch-ready static asset exists",
+);
 
 const scaleReadinessSource = fs.readFileSync("src/lib/services/scale-readiness-service.ts", "utf8");
 assert.match(scaleReadinessSource, /stale deferred creative render jobs/);

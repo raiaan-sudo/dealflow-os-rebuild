@@ -437,9 +437,10 @@ export function buildComposedStaticAdPreview(input: StaticAdTemplateInput): Comp
   const numbers = extractNumberTokens(input);
   const status = buildStatus(input);
   const backgroundDecision = evaluateStaticVisualAssetDecision(input);
-  const safeCta = VAGUE_CTA_PATTERN.test(safeText(input.cta)) || !safeText(input.cta)
-    ? CATEGORY_CTAS[category]
-    : cleanCustomerFacingStaticCopy(safeText(input.cta), category, CATEGORY_CTAS[category]);
+  const rawCta = safeText(input.cta);
+  const safeCta = rawCta
+    ? cleanCustomerFacingStaticCopy(rawCta, category, CATEGORY_CTAS[category])
+    : CATEGORY_CTAS[category];
   const cleanOffer = cleanCustomerFacingStaticCopy(safeText(input.offer), category);
   const headlineSourceRaw = safeText(input.headline) || safeText(input.hook) || cleanOffer || fallbackHeadline(category, location);
   const headlineSource = cleanCustomerFacingStaticCopy(headlineSourceRaw, category, cleanOffer || fallbackHeadline(category, location));

@@ -359,7 +359,7 @@ export function CreativeWizard({
             : topCreatives.map((creative) => creative.id),
         ),
       )
-    : rankedCreatives.slice(0, 1).map((creative) => creative.id);
+    : [];
   const defaultSelectedIds = savedSelectedIds.length > 0 ? savedSelectedIds : recommendedSelectedIds;
   const minSelected = rankedCreatives.length >= STATIC_LAUNCH_MIN_CREATIVE_COUNT
     ? STATIC_LAUNCH_MIN_CREATIVE_COUNT
