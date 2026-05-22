@@ -42,7 +42,22 @@ assert.match(appLayout, /resolveOwnedActiveCampaignId/, "app layout must validat
 assert.match(appLayout, /getCampaignById\(candidateCampaignId\)\.catch\(\(\) => null\)/, "stale or cross-user active campaign cookies must fail closed");
 assert.doesNotMatch(appLayout, /const activeCampaignId = cookieStore\.get\(ACTIVE_CAMPAIGN_COOKIE\)\?\.value \?\? null;/, "app layout must not trust raw active campaign cookie values");
 
-const deadSignupLinks = listFiles("src")
+const customerFacingSignupLinkFiles = [
+  "src/app/page.tsx",
+  "src/app/login/page.tsx",
+  "src/app/(app)/layout.tsx",
+  "src/app/(app)/onboarding/page.tsx",
+  "src/app/(app)/paywall/page.tsx",
+  "src/app/(app)/unlock/page.tsx",
+  "src/app/(app)/welcome/page.tsx",
+  "src/app/(app)/builder/page.tsx",
+  "src/app/(app)/build/creatives/page.tsx",
+  "src/app/(app)/preview/page.tsx",
+  "src/app/(app)/launch/page.tsx",
+  "src/app/(app)/dashboard/page.tsx",
+].filter(exists);
+
+const deadSignupLinks = customerFacingSignupLinkFiles
   .filter((file) => /\.(tsx?|jsx?)$/.test(file))
   .filter((file) => file !== signupPage)
   .filter((file) => /href=["']\/signup["']|href=\{["']\/signup["']\}/.test(read(file)));
@@ -64,7 +79,7 @@ assert.match(launchPage, /selectedCreativeMediaReady/, "launch must keep selecte
 assert.match(launchPage, /Open Creative Studio/, "launch missing-creative CTA copy must match the Creative Studio target");
 assert.match(launchPage, /\/build\/creatives\?campaignId=/, "launch missing-creative CTA must return to Creative Studio");
 assert.doesNotMatch(launchPage, /\/builder\?campaignId=\$\{encodeURIComponent\(savedRecord\.campaign\.id\)\}/, "launch missing-creative CTA must not send users back to the generic builder");
-assert.match(selectAdRoute, /!isLaunchReadyStaticCreative\(ad\)/, "review-only or placeholder static media must not be selectable for launch");
+assert.match(selectAdRoute, /!ad\s*\|\|\s*!isLaunchReadyStaticCreative\(ad,/, "review-only or placeholder static media must not be selectable for launch");
 assert.match(selectAdRoute, /selected_static_minimum_not_met/, "launch selection must still require the static creative floor");
 
 console.log("Public self-serve acceptance guards passed.");

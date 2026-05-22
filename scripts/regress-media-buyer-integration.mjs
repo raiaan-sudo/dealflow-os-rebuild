@@ -7,6 +7,15 @@ import { createRequire } from "node:module";
 
 const repoRoot = process.cwd();
 const originalResolve = Module._resolveFilename;
+const originalLoad = Module._load;
+
+Module._load = function loadModule(request, parent, isMain) {
+  if (request === "server-only") {
+    return {};
+  }
+
+  return originalLoad.call(this, request, parent, isMain);
+};
 
 Module._resolveFilename = function resolveFilename(request, parent, isMain, options) {
   if (request.startsWith("@/")) {
@@ -49,8 +58,10 @@ const {
 } = require("../src/lib/services/static-ad-template-renderer.ts");
 const {
   buildMarketingOptimizationBlueprint,
+} = require("../src/lib/optimization-engine/campaign.ts");
+const {
   evaluateMediaBuyingDecision,
-} = require("../src/lib/optimization-engine/index.ts");
+} = require("../src/lib/optimization-engine/media-buying-rules.ts");
 
 const B2B_LEAK_PATTERN = /\b(listing appointments?|homeowner appointments?|seller leads?|buyer leads?|realtors?|agents?|pay again|work for free|ad spend|lead quality)\b/i;
 const GENERIC_HOOK_PATTERN = /\b(attention realtors|looking for motivated sellers|we help businesses grow|learn more)\b/i;
@@ -275,3 +286,4 @@ assert.ok(actionService.includes("duplicate_winner_do_not_edit"), "scale action 
 
 console.table(report);
 console.log(JSON.stringify({ categories: report, killDecision, scaleDecision }, null, 2));
+process.exit(0);
