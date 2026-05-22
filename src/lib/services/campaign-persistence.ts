@@ -576,10 +576,12 @@ async function loadStaticCreativeAssets(
   campaignId: string,
 ) {
   try {
-    const { data, error } = await supabase
+    const readClient = createAdminClient() ?? supabase;
+    const { data, error } = await readClient
       .from("creative_assets")
       .select("*")
       .eq("campaign_id", campaignId)
+      .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -598,10 +600,12 @@ async function loadVideoCreativeAssets(
   campaignId: string,
 ) {
   try {
-    const { data, error } = await supabase
+    const readClient = createAdminClient() ?? supabase;
+    const { data, error } = await readClient
       .from("creative_assets")
       .select("*")
       .eq("campaign_id", campaignId)
+      .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
     if (error) {
