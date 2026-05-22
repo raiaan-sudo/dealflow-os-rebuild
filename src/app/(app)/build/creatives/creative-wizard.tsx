@@ -37,6 +37,7 @@ type CreativeOption = {
   recommended?: boolean;
   imageUrl?: string | null;
   storageNormalized?: boolean | null;
+  appComposedFinal?: boolean | null;
   imageGenerationState?: string | null;
   imageGenerationMessage?: string | null;
   imagePrompt?: string | null;
@@ -999,6 +1000,7 @@ export function CreativeWizard({
             imagePromptConfig={displayActiveCreative.imagePromptConfig}
             imageUrl={displayActiveCreative.imageUrl}
             storageNormalized={displayActiveCreative.storageNormalized}
+            appComposedFinal={displayActiveCreative.appComposedFinal}
             location={displayActiveCreative.location}
             formatLabel={displayActiveCreative.formatLabel}
             offer={displayActiveCreative.offer}
@@ -1117,6 +1119,7 @@ export function CreativeWizard({
                     imagePromptConfig={displayCreative.imagePromptConfig}
                     imageUrl={displayCreative.imageUrl}
                     storageNormalized={displayCreative.storageNormalized}
+                    appComposedFinal={displayCreative.appComposedFinal}
                     location={displayCreative.location}
                     offer={displayCreative.offer}
                     overlayText={displayCreative.overlayText}
@@ -1493,6 +1496,7 @@ export function CreativeWizard({
                     imagePromptConfig={displayCreative.imagePromptConfig}
                     imageUrl={displayCreative.imageUrl}
                     storageNormalized={displayCreative.storageNormalized}
+                    appComposedFinal={displayCreative.appComposedFinal}
                     location={displayCreative.location}
                     offer={displayCreative.offer}
                     overlayText={displayCreative.overlayText}
@@ -1557,6 +1561,7 @@ export function CreativeWizard({
                         imagePromptConfig={displayCreative.imagePromptConfig}
                         imageUrl={displayCreative.imageUrl}
                         storageNormalized={displayCreative.storageNormalized}
+                        appComposedFinal={displayCreative.appComposedFinal}
                         location={displayCreative.location}
                         offer={displayCreative.offer}
                         overlayText={displayCreative.overlayText}

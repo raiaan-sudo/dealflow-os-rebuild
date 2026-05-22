@@ -74,6 +74,7 @@ export type StaticCreativeAsset = {
   angle: "guarantee" | "urgency" | "contrarian" | "opportunity" | "authority";
   imageUrl: string;
   storageNormalized?: boolean | null;
+  appComposedFinal?: boolean | null;
   imageGenerationState: "generated" | "generating" | "unavailable" | "failed";
   imageGenerationMessage: string | null;
   imageGenerationModel: string | null;
@@ -764,7 +765,7 @@ function cleanCreativeCopy(value: string) {
     .trim();
 }
 
-function buildFinishedAdPromptContract(params: {
+function buildTextFreeBackgroundPromptContract(params: {
   prompt: string;
   market: string;
   audience: string;
@@ -772,20 +773,34 @@ function buildFinishedAdPromptContract(params: {
   cta: string;
   brand?: string | null;
 }) {
+  const promptHasFinishedAdTextRisk =
+    /\b(finished|poster|raster|required .*text|must be readable|cta button|cta bar|typography|text hierarchy|headline|proof\/support|marketing studio)\b/i.test(params.prompt);
+  const sourceVisualPrompt = (promptHasFinishedAdTextRisk
+    ? "Premium real estate source photography with realistic property, homeowner, buyer, or agent context and clean negative space."
+    : params.prompt)
+    .replace(/\bMARKETING STUDIO FINISHED AD CREATIVE\.\s*/gi, "")
+    .replace(/\bCreate one finished paid[- ]social real estate ad raster\b/gi, "Create one premium real estate background")
+    .replace(/\bwith a clear headline, offer, and CTA\b/gi, "with natural negative space")
+    .replace(/\bfinished paid[- ]social\b/gi, "premium real estate")
+    .replace(/\bfinished ad\b/gi, "visual background")
+    .replace(/\bad raster\b/gi, "background image")
+    .trim();
+
   return [
-	    params.prompt,
-	    "Finished-ad quality contract:",
-	    "Use a clean hierarchy with one short headline, the exact approved offer, one minimal support line, and one CTA.",
-	    "Media-buyer reference layout: one dominant hook area, one proof area, strong negative space, and a clear CTA-safe zone.",
-	    `Approved offer that must be readable: ${params.offer}.`,
-    `CTA that must be readable and uncropped: ${params.cta}.`,
+    "TEXT-FREE PREMIUM REAL ESTATE VISUAL BACKGROUND ONLY.",
+	    sourceVisualPrompt,
+	    "Create a premium real estate visual background suitable for DealFlow to compose exact approved ad copy on top.",
+	    "Do not render text, captions, CTA, buttons, logos, flyers, posters, UI, dashboards, tables, listing sheets, fake forms, or typography.",
+	    "Use the approved offer only as visual direction, not as visible raster text.",
+	    `Approved offer context for visual direction only: ${params.offer}.`,
+    `CTA context for DealFlow text layer only, do not render it: ${params.cta}.`,
     `Market and audience context: ${params.market}; ${params.audience}.`,
     params.brand
-      ? `Brand/logo text is optional; if exact brand rendering is uncertain, omit it. If brand text is used, spell it exactly: ${params.brand}. Do not invent or approximate logos.`
+      ? `Brand style context only: ${params.brand}. Do not render the brokerage name, logo, or approximated logo in the image.`
       : null,
-    "Keep all live text large enough for mobile social feed viewing with generous safe margins.",
-    "Leave clean padding around the headline and CTA; do not place text over busy image detail.",
-    "No tiny text, cropped CTA, overlapping panels, fake dashboard, fake table, fake listing sheet, app UI, gibberish, invented logo, guaranteed-approval claim, or guaranteed-financing claim.",
+    "Media-buyer source imagery logic: one dominant hook area, one proof area, and clear CTA-safe negative space; DealFlow will place exact text later.",
+    "Leave natural negative space for the app-rendered headline and CTA layer.",
+    "Avoid any visible type, pseudo-letters, interface elements, documents, forms, or regulated lending/sale promise visuals.",
   ].filter(Boolean).join(" ");
 }
 
@@ -2175,11 +2190,12 @@ function preserveStaticCreativeImage(
     imageGenerationMessage: null,
     imageGenerationModel: existing.imageGenerationModel ?? asset.imageGenerationModel,
     imageGenerationProvider: existing.imageGenerationProvider ?? asset.imageGenerationProvider ?? null,
-    imageQa: existing.imageQa ?? asset.imageQa ?? null,
-    qualityGate: asset.qualityGate ?? existing.qualityGate ?? null,
-    storageNormalized: existing.storageNormalized ?? asset.storageNormalized ?? null,
-  };
-}
+	    imageQa: existing.imageQa ?? asset.imageQa ?? null,
+	    qualityGate: asset.qualityGate ?? existing.qualityGate ?? null,
+	    storageNormalized: existing.storageNormalized ?? asset.storageNormalized ?? null,
+	    appComposedFinal: existing.appComposedFinal ?? asset.appComposedFinal ?? null,
+	  };
+	}
 
 export function mergeStaticCreativeImageResults(
   nextAssets: StaticCreativeAsset[],
@@ -2231,8 +2247,8 @@ function applyCreativeIntakePromptToStaticAsset(
 	  const approvedOffer = finishedAdMode ? requiredOffer : creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer;
 	  const approvedCta = creativeIntake.requiredCta ?? asset.cta;
   const staticPrompt = staticOnlyPromptForImageGeneration(promptVersion.generatedPrompt);
-  const prompt = finishedAdMode
-    ? buildFinishedAdPromptContract({
+	  const prompt = finishedAdMode
+	    ? buildTextFreeBackgroundPromptContract({
         prompt: staticPrompt,
         market: creativeIntake.market ?? normalized.location,
         audience: creativeIntake.targetAudience ?? normalized.audience,
@@ -2403,9 +2419,10 @@ export async function generateStaticCreativeAds(
         imageGenerationState: "generated" as const,
         imageGenerationMessage: null,
         imageGenerationModel: existing.imageGenerationModel,
-        imageGenerationProvider: existing.imageGenerationProvider ?? null,
-        imageQa: existing.imageQa ?? null,
-      });
+	        imageGenerationProvider: existing.imageGenerationProvider ?? null,
+	        imageQa: existing.imageQa ?? null,
+	        appComposedFinal: existing.appComposedFinal ?? null,
+	      });
       continue;
     }
 
@@ -2421,7 +2438,8 @@ export async function generateStaticCreativeAds(
           ? {
               ...asset,
               imageUrl: carryForwardPrevious.imageUrl ?? "",
-              storageNormalized: carryForwardPrevious.storageNormalized ?? null,
+	              storageNormalized: carryForwardPrevious.storageNormalized ?? null,
+	              appComposedFinal: carryForwardPrevious.appComposedFinal ?? null,
               imageGenerationState: carryForwardPrevious.imageGenerationState ?? "unavailable",
               imageGenerationMessage:
                 carryForwardPrevious.imageGenerationMessage ??

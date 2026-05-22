@@ -67,7 +67,11 @@ function clamp01(value: number) {
 }
 
 function normalizeQaMode(value: StaticCreativeImageQaInput["mode"]): StaticCreativeImageQaMode {
-  return value === "finished_ad" ? "finished_ad" : BACKGROUND_ONLY_QA_MODE;
+  if (value === "finished_ad" || value === "app_composed_final") {
+    return value;
+  }
+
+  return BACKGROUND_ONLY_QA_MODE;
 }
 
 function hasNegation(sentence: string) {
@@ -131,6 +135,22 @@ function filterReasonsForMode(
 ): StaticCreativeImageQaReason[] {
   if (mode === "background_only") {
     return uniq(reasons);
+  }
+
+  if (mode === "app_composed_final") {
+    return uniq(reasons.filter((reason) => (
+      reason === "gibberish_text_detected" ||
+      reason === "ui_or_dashboard_layout" ||
+      reason === "chart_or_table_detected" ||
+      reason === "listing_sheet_detected" ||
+      reason === "finished_ad_text_unverified" ||
+      reason === "required_cta_missing" ||
+      reason === "required_offer_missing" ||
+      reason === "required_brand_missing" ||
+      reason === "brand_misspelled" ||
+      reason === "image_fetch_failed" ||
+      reason === "qa_timeout"
+    )));
   }
 
   return uniq(reasons.filter((reason) => (
@@ -603,7 +623,9 @@ export async function evaluateStaticCreativeImageQa(
   const analysis = mode === "finished_ad"
     ? await analyzeFinishedAdImageWithVision(input, fetched, rawAnalysis)
     : rawAnalysis;
-  const semanticReasons = mode === "finished_ad" ? collectFinishedAdSemanticReasons(input, analysis) : [];
+  const semanticReasons = mode === "finished_ad" || mode === "app_composed_final"
+    ? collectFinishedAdSemanticReasons(input, analysis)
+    : [];
   const reasons = filterReasonsForMode([...promptReasons, ...analysis.reasons, ...semanticReasons], mode);
 
   if (mode === "background_only" && analysis.textDensity > 0.12 && !reasons.includes("text_heavy")) {

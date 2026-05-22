@@ -14,6 +14,7 @@ type StaticCreativePreviewCardProps = {
   location?: string | null;
   imageUrl?: string | null;
   storageNormalized?: boolean | null;
+  appComposedFinal?: boolean | null;
   imageGenerationState?: "generated" | "generating" | "unavailable" | "failed" | string | null;
   imageGenerationMessage?: string | null;
   imagePrompt?: string | null;
@@ -61,6 +62,7 @@ export function StaticCreativePreviewCard({
   location,
   imageUrl,
   storageNormalized,
+  appComposedFinal,
   imageGenerationState,
   imageGenerationMessage,
   imagePrompt,
@@ -93,6 +95,7 @@ export function StaticCreativePreviewCard({
         imagePromptConfig={imagePromptConfig}
         imageUrl={imageUrl}
         storageNormalized={storageNormalized}
+        appComposedFinal={appComposedFinal}
         location={location}
         offer={safeOffer}
         overlayText={overlayText}
@@ -178,6 +181,7 @@ export function StaticCreativePreviewCard({
                 imagePromptConfig={imagePromptConfig}
                 imageUrl={imageUrl}
                 storageNormalized={storageNormalized}
+                appComposedFinal={appComposedFinal}
                 location={location}
                 offer={safeOffer}
                 overlayText={overlayText}
@@ -212,6 +216,7 @@ export function StaticCreativeSummaryCard({
   location,
   imageUrl,
   storageNormalized,
+  appComposedFinal,
   imageGenerationState,
   imageGenerationMessage,
   imagePrompt,
@@ -258,6 +263,7 @@ export function StaticCreativeSummaryCard({
           imagePromptConfig={imagePromptConfig}
           imageUrl={imageUrl}
           storageNormalized={storageNormalized}
+          appComposedFinal={appComposedFinal}
           location={location}
           offer={safeOffer}
           overlayText={overlayText}

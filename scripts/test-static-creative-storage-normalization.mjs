@@ -417,6 +417,10 @@ assert.equal(imageFrame.thumbnail_url, imageFrame.file_url);
 assert.equal(imageFrame.metadata.provider_original_url, providerDataUri);
 assert.equal(imageFrame.metadata.storageBucket, "creative-assets");
 assert.equal(imageFrame.metadata.storageNormalized, true);
+assert.equal(imageFrame.metadata.appComposedFinal, true);
+assert.equal(imageFrame.metadata.imageQa.mode, "app_composed_final");
+assert.equal(imageFrame.metadata.imageQa.decision, "accept");
+assert.match(imageFrame.metadata.storagePath, /^user-test\/campaign-test\/app-composed-static\/campaign-test-creative-0\//);
 assert.equal(successfulDb.operations.some((item) => item.op === "delete"), false, "all-ready replacement preserves historical evidence rows");
 
 const finishedAdDb = fakeSupabase();
@@ -459,7 +463,9 @@ assert.ok(
 );
 assert.equal(finishedAdInsert.rows[0].status, "ready");
 assert.match(finishedAdInsert.rows[0].file_url, /\/storage\/v1\/object\/public\/creative-assets\//);
+assert.match(finishedAdInsert.rows[0].metadata.storagePath, /^user-test\/campaign-test\/app-composed-static\//);
 assert.equal(finishedAdInsert.rows[0].metadata.imageQa.decision, "accept");
+assert.equal(finishedAdInsert.rows[0].metadata.imageQa.mode, "app_composed_final");
 assert.equal(finishedAdInsert.rows[0].metadata.storageNormalized, true);
 
 const uploadFailDb = fakeSupabase({ uploadFails: true });
@@ -493,8 +499,8 @@ await persistStaticCreativeAssets({
   staticAds: [buildAsset(appOwnedUrl)],
 });
 const appOwnedInsert = appOwnedDb.operations.find((item) => item.op === "insert");
-assert.equal(appOwnedDb.operations.some((item) => item.op === "upload"), false, "old app-owned assets remain readable without reupload");
-assert.equal(appOwnedInsert.rows[0].file_url, appOwnedUrl);
-assert.equal(appOwnedInsert.rows[0].metadata.storageNormalizationReusedExistingAppAsset, true);
+assert.equal(appOwnedDb.operations.some((item) => item.op === "upload"), true, "old app-owned assets are recomposed into current launch-ready finals");
+assert.notEqual(appOwnedInsert.rows[0].file_url, appOwnedUrl);
+assert.equal(appOwnedInsert.rows[0].metadata.appComposedFinal, true);
 
 console.log("Static creative storage normalization tests passed.");

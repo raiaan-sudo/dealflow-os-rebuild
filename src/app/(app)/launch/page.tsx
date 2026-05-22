@@ -794,8 +794,9 @@ export default async function LaunchAliasPage({
                     imageGenerationState={selectedCreative.imageGenerationState}
                     imagePrompt={selectedCreative.imagePrompt}
                     imagePromptConfig={selectedCreative.imagePromptConfig}
-                    imageUrl={selectedCreative.imageUrl}
-                    storageNormalized={selectedCreative.storageNormalized}
+	                    imageUrl={selectedCreative.imageUrl}
+	                    storageNormalized={selectedCreative.storageNormalized}
+	                    appComposedFinal={selectedCreative.appComposedFinal}
                     location={plan.market}
                     offer={plan.offerSummary || plan.keyOffer}
                     overlayText={selectedCreative.overlayText}

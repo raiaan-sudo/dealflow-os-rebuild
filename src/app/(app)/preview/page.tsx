@@ -74,6 +74,7 @@ function ReviewOnlyCreativePreview({ plan }: { plan: CampaignPlan }) {
         imagePromptConfig={null}
         imageUrl={null}
         storageNormalized={false}
+        appComposedFinal={false}
         index={0}
         location={plan.market}
         offer={plan.keyOffer}
@@ -272,8 +273,9 @@ export default async function PreviewPage({
                   imageGenerationState={selectedAds[0]?.imageGenerationState}
                   imagePrompt={selectedAds[0]?.imagePrompt}
                   imagePromptConfig={selectedAds[0]?.imagePromptConfig}
-                  imageUrl={selectedAds[0]?.imageUrl}
-                  storageNormalized={selectedAds[0]?.storageNormalized}
+	                  imageUrl={selectedAds[0]?.imageUrl}
+	                  storageNormalized={selectedAds[0]?.storageNormalized}
+	                  appComposedFinal={selectedAds[0]?.appComposedFinal}
                   index={0}
                   location={previewPlan.market}
                   offer={previewPlan.keyOffer}
@@ -303,8 +305,9 @@ export default async function PreviewPage({
                       imageGenerationState={selectedAd.imageGenerationState}
                       imagePrompt={selectedAd.imagePrompt}
                       imagePromptConfig={selectedAd.imagePromptConfig}
-                      imageUrl={selectedAd.imageUrl}
-                      storageNormalized={selectedAd.storageNormalized}
+	                      imageUrl={selectedAd.imageUrl}
+	                      storageNormalized={selectedAd.storageNormalized}
+	                      appComposedFinal={selectedAd.appComposedFinal}
                       index={index + 1}
                       key={selectedAd.id}
                       location={previewPlan.market}

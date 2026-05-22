@@ -459,9 +459,11 @@ const combinedStaticAds = await generateStaticCreativeAds({
   },
   max_static_image_generations: 0,
 });
-assert.match(combinedStaticAds[0].imagePrompt, /MARKETING STUDIO FINISHED AD CREATIVE/);
+assert.match(combinedStaticAds[0].imagePrompt, /TEXT-FREE PREMIUM REAL ESTATE VISUAL BACKGROUND ONLY/);
+assert.doesNotMatch(combinedStaticAds[0].imagePrompt, /MARKETING STUDIO FINISHED AD CREATIVE/);
 assert.doesNotMatch(combinedStaticAds[0].imagePrompt, /MARKETING STUDIO AI UGC VIDEO BRIEF/);
 assert.doesNotMatch(combinedStaticAds[0].imagePrompt, /Approved script lines:/);
+assert.doesNotMatch(combinedStaticAds[0].imagePrompt, /must be readable|CTA button|text hierarchy/i);
 
 const state = createCreativeIntakeState({
   campaignId: defaults.campaignId,
@@ -605,12 +607,16 @@ const finishedAdStaticAds = await generateStaticCreativeAds({
 });
 assert.equal(finishedAdStaticAds[0].offer, "Private buyer access system with 25 off-market homes this month", "finished-ad static copy uses the approved offer exactly");
 assert.equal(finishedAdStaticAds[0].cta, "Click Learn More", "finished-ad CTA uses the approved CTA exactly");
-assert.match(finishedAdStaticAds[0].imagePrompt, /Finished-ad quality contract/);
-assert.match(finishedAdStaticAds[0].imagePrompt, /Approved offer that must be readable: Private buyer access system with 25 off-market homes this month/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /TEXT-FREE PREMIUM REAL ESTATE VISUAL BACKGROUND ONLY/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /Create a premium real estate visual background suitable for DealFlow to compose exact approved ad copy on top/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /Approved offer context for visual direction only: Private buyer access system with 25 off-market homes this month/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /CTA context for DealFlow text layer only, do not render it: Click Learn More/);
 assert.doesNotMatch(finishedAdStaticAds[0].overlayText, /^Preview\b/i, "finished-ad static overlays do not block the creative with a preview prefix");
-assert.match(finishedAdStaticAds[0].imagePrompt, /one dominant hook area, one proof area, strong negative space, and a clear CTA-safe zone/);
-assert.match(finishedAdStaticAds[0].imagePrompt, /generous safe margins/);
-assert.match(finishedAdStaticAds[0].imagePrompt, /No tiny text, cropped CTA, overlapping panels/);
+assert.doesNotMatch(finishedAdStaticAds[0].imagePrompt, /Finished-ad quality contract|Approved offer that must be readable|CTA that must be readable/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /Do not render text, captions, CTA, buttons, logos, flyers, posters, UI/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /Media-buyer source imagery logic: one dominant hook area, one proof area, and clear CTA-safe negative space/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /DealFlow will place exact text later/);
+assert.doesNotMatch(finishedAdStaticAds[0].imagePrompt, /guaranteed-approval claim|guaranteed-financing claim/);
 assert.equal(finishedAdStaticAds[0].qualityGate.accepted, true, "finished-ad static prompt contract passes product-quality preflight");
 assert.equal(finishedAdStaticAds[0].staticBriefHash, finishedAdContext.staticBriefHash ?? null);
 
@@ -671,6 +677,32 @@ function fakeSupabase({ insertFails = false } = {}) {
   const operations = [];
   return {
     operations,
+    storage: {
+      from(bucket) {
+        operations.push({ op: "storage.from", bucket });
+        return {
+          async upload(storagePath, body, options) {
+            operations.push({
+              op: "upload",
+              bucket,
+              storagePath,
+              byteSize: body.byteLength,
+              contentType: options.contentType,
+              upsert: options.upsert,
+            });
+            return { error: null };
+          },
+          getPublicUrl(storagePath) {
+            operations.push({ op: "getPublicUrl", bucket, storagePath });
+            return {
+              data: {
+                publicUrl: `https://example.test/storage/v1/object/public/${bucket}/${storagePath}`,
+              },
+            };
+          },
+        };
+      },
+    },
     from() {
       return {
         insert(rows) {
@@ -710,20 +742,24 @@ await persistStaticCreativeAssets({
   staticAds: [buildAsset()],
 });
 assert.deepEqual(
-  successfulDb.operations.map((item) => item.op),
-  ["insert"],
+  successfulDb.operations.map((item) => item.op).includes("delete"),
+  false,
   "static creative assets are inserted without deleting historical evidence rows",
 );
-assert.equal(successfulDb.operations[0].rows[0].status, "ready");
-assert.equal(successfulDb.operations[0].rows[0].metadata.generationBatchId.length > 0, true);
+const successfulInsert = successfulDb.operations.find((item) => item.op === "insert");
+assert.equal(Boolean(successfulInsert), true, "app-composed static final row is inserted");
+assert.equal(successfulDb.operations.some((item) => item.op === "upload"), true, "app-composed final is stored before insert");
+assert.equal(successfulInsert.rows[0].status, "ready");
+assert.equal(successfulInsert.rows[0].metadata.appComposedFinal, true);
+assert.equal(successfulInsert.rows[0].metadata.generationBatchId.length > 0, true);
 assert.equal(
-  successfulDb.operations[0].rows[0].metadata.creativeIntakePromptVersionUsed.generatedPrompt,
+  successfulInsert.rows[0].metadata.creativeIntakePromptVersionUsed.generatedPrompt,
   prompt.generatedPrompt,
 );
-assert.equal(successfulDb.operations[0].rows[0].metadata.creativeIntakeGenerationContext.outputMode, "background_only");
-assert.equal(successfulDb.operations[0].rows[0].metadata.creativeIntakeGenerationContext.generationPhase, "static");
-assert.equal(successfulDb.operations[0].rows[0].metadata.staticBriefHash, approvedContext.staticBriefHash);
-assert.equal(successfulDb.operations[0].rows[0].metadata.ctaHash, approvedContext.ctaHash);
+assert.equal(successfulInsert.rows[0].metadata.creativeIntakeGenerationContext.outputMode, "background_only");
+assert.equal(successfulInsert.rows[0].metadata.creativeIntakeGenerationContext.generationPhase, "static");
+assert.equal(successfulInsert.rows[0].metadata.staticBriefHash, approvedContext.staticBriefHash);
+assert.equal(successfulInsert.rows[0].metadata.ctaHash, approvedContext.ctaHash);
 
 const failingDb = fakeSupabase({ insertFails: true });
 await assert.rejects(
@@ -736,8 +772,8 @@ await assert.rejects(
   /insert failed/,
 );
 assert.deepEqual(
-  failingDb.operations.map((item) => item.op),
-  ["insert"],
+  failingDb.operations.map((item) => item.op).includes("delete"),
+  false,
   "failed replacement insert never deletes previous accepted assets",
 );
 

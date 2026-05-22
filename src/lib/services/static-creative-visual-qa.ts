@@ -1,7 +1,7 @@
 export const STATIC_CREATIVE_BACKGROUND_CONTRACT = "text_free_background_v2";
 
 export type StaticCreativeImageQaDecision = "accept" | "reject" | "review";
-export type StaticCreativeImageQaMode = "background_only" | "finished_ad";
+export type StaticCreativeImageQaMode = "background_only" | "finished_ad" | "app_composed_final";
 
 export type StaticCreativeImageQaReason =
   | "text_heavy"
@@ -44,6 +44,7 @@ type StaticCreativeImageQaMetadata = {
 type StaticVisualContractInput = {
   imageUrl?: string | null;
   storageNormalized?: boolean | null;
+  appComposedFinal?: boolean | null;
   imagePrompt?: string | null;
   imagePromptConfig?: {
     prompt?: string | null;
@@ -121,17 +122,24 @@ export function evaluateStaticVisualAssetDecision(
     };
   }
 
-  if (input.imageQa?.mode === "finished_ad") {
-    if (input.storageNormalized !== true) {
-      return {
-        usable: false,
-        reason: "This visual needs to be stored in DealFlow before it can be used as a launch-ready creative.",
-      };
-    }
+  if (input.storageNormalized !== true) {
+    return {
+      usable: false,
+      reason: "This visual needs to be stored in DealFlow before it can be used as a launch-ready creative.",
+    };
+  }
 
+  if (input.appComposedFinal === true && input.imageQa?.mode === "app_composed_final") {
     return {
       usable: true,
       reason: null,
+    };
+  }
+
+  if (input.imageQa?.mode === "finished_ad") {
+    return {
+      usable: false,
+      reason: "This provider-rendered ad is review-only; DealFlow must compose final launch-ready text and layout.",
     };
   }
 
@@ -139,13 +147,6 @@ export function evaluateStaticVisualAssetDecision(
     return {
       usable: false,
       reason: "This visual was generated before the text-free background contract and was withheld from the launch preview.",
-    };
-  }
-
-  if (input.storageNormalized !== true) {
-    return {
-      usable: false,
-      reason: "This visual needs to be stored in DealFlow before it can be used as a launch-ready creative.",
     };
   }
 
@@ -157,7 +158,7 @@ export function evaluateStaticVisualAssetDecision(
   }
 
   return {
-    usable: true,
-    reason: null,
+    usable: false,
+    reason: "This text-free background is review-only until DealFlow composes the final launch-ready ad.",
   };
 }

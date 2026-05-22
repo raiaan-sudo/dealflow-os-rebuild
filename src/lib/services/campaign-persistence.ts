@@ -252,6 +252,10 @@ export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativ
     const preferredRow =
       assetRows.find((row) => {
         const metadata = asObjectRecord(row.metadata);
+        return metadata?.role === "app_composed_final_static" && isAcceptedSourceStaticRow(row);
+      }) ??
+      assetRows.find((row) => {
+        const metadata = asObjectRecord(row.metadata);
         return metadata?.role === "background_image" && isAcceptedSourceStaticRow(row);
       }) ??
       assetRows.find(isAcceptedSourceStaticRow) ??
@@ -302,8 +306,9 @@ export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativ
         typeof metadata?.imageGenerationProvider === "string"
           ? metadata.imageGenerationProvider
           : preferredRow.provider_name ?? null,
-      visualConcept: typeof metadata?.visualConcept === "string" ? metadata.visualConcept : "",
-      imagePrompt: typeof metadata?.imagePrompt === "string" ? metadata.imagePrompt : "",
+	      visualConcept: typeof metadata?.visualConcept === "string" ? metadata.visualConcept : "",
+	      appComposedFinal: metadata?.appComposedFinal === true,
+	      imagePrompt: typeof metadata?.imagePrompt === "string" ? metadata.imagePrompt : "",
       imagePromptConfig: asImagePromptConfig(metadata?.imagePromptConfig),
       preferredImageModel,
       visualPromptBrief: asVisualPromptBrief(metadata?.visualPromptBrief),
@@ -392,12 +397,13 @@ function metadataNumber(metadata: Record<string, Json> | null, key: string) {
 function isAcceptedSourceStaticRow(row: CreativeAssetRow) {
   const metadata = asObjectRecord(row.metadata);
   const imageUrl = row.file_url ?? row.thumbnail_url ?? "";
-  const assetDraft = {
-    imageUrl,
-    storageNormalized:
-      metadata?.storageNormalized === true ||
-      (metadata?.storageNormalizationReusedExistingAppAsset === true && typeof metadata?.storagePath === "string"),
-    imagePrompt: typeof metadata?.imagePrompt === "string" ? metadata.imagePrompt : "",
+	    const assetDraft = {
+	    imageUrl,
+	    storageNormalized:
+	      metadata?.storageNormalized === true ||
+	      (metadata?.storageNormalizationReusedExistingAppAsset === true && typeof metadata?.storagePath === "string"),
+	    appComposedFinal: metadata?.appComposedFinal === true,
+	    imagePrompt: typeof metadata?.imagePrompt === "string" ? metadata.imagePrompt : "",
     imagePromptConfig: asImagePromptConfig(metadata?.imagePromptConfig),
     visualPromptBrief: asVisualPromptBrief(metadata?.visualPromptBrief),
     qualityGate:

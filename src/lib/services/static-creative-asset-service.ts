@@ -5,6 +5,10 @@ import type { CampaignStrategyInput } from "@/lib/services/campaign-orchestrator
 import type { CampaignCreativeStrategy } from "@/lib/services/campaign-creative-strategy";
 import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
 import {
+  composeAndUploadStaticCreativeFinal,
+  type StaticCreativeCompositionMetadata,
+} from "@/lib/services/static-creative-composition-service";
+import {
   normalizeStaticCreativeProviderImage,
   type StaticCreativeStorageNormalizationResult,
 } from "@/lib/services/static-creative-storage-normalization";
@@ -50,6 +54,22 @@ function buildStorageMetadata(
   };
 }
 
+function buildAppComposedImageQa(composition: StaticCreativeCompositionMetadata | null) {
+  return {
+    usable: Boolean(composition?.appComposedFinal),
+    decision: composition?.appComposedFinal ? "accept" : "reject",
+    mode: "app_composed_final",
+    reasons: composition?.appComposedFinal ? [] : ["image_fetch_failed"],
+    textDensity: 0,
+    layoutRisk: 0,
+    detectedTextSamples: [
+      composition?.renderedOffer,
+      composition?.renderedCta,
+      composition?.renderedBrand,
+    ].filter(Boolean),
+  };
+}
+
 function evaluatePreStorageStaticVisualDecision(asset: StaticCreativeAsset) {
   return evaluateStaticVisualAssetDecision({
     ...asset,
@@ -82,6 +102,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
     const creativeId = buildStaticCreativeId(params.campaignId, index);
     const copyId = buildStaticCopyId(params.campaignId, index);
     let durableImage: StaticCreativeStorageNormalizationResult | null = null;
+    let composedFinal: (StaticCreativeStorageNormalizationResult & { metadata: StaticCreativeCompositionMetadata }) | null = null;
     let normalizationError: string | null = null;
 
     if (asset.imageUrl && (visualDecision.usable || hasAcceptedFinishedAdImageQa(asset))) {
@@ -99,9 +120,26 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       }
     }
 
-    const readyUrl = durableImage?.durableUrl ?? null;
+    try {
+      composedFinal = await composeAndUploadStaticCreativeFinal({
+        supabase: params.supabase,
+        userId: params.userId,
+        campaignId: params.campaignId,
+        creativeId,
+        generationBatchId,
+        asset,
+      });
+    } catch {
+      normalizationError = "Final ad could not be stored durably. Refresh this creative before launch.";
+    }
+
+    const readyUrl = composedFinal?.durableUrl ?? null;
+    const storageResult = composedFinal ?? durableImage;
+    const compositionMetadata = composedFinal?.metadata ?? null;
     const persistedImageQa =
-      asset.imageUrl && !readyUrl && normalizationError
+      readyUrl && compositionMetadata
+        ? buildAppComposedImageQa(compositionMetadata)
+        : asset.imageUrl && !readyUrl && normalizationError
         ? {
             ...((asset.imageQa ?? {}) as Record<string, unknown>),
             usable: false,
@@ -144,6 +182,16 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       visualAssetContract: asset.visualPromptBrief?.visualAssetContract ?? null,
       visualAssetRole: asset.visualPromptBrief?.visualAssetRole ?? null,
       imageQa: persistedImageQa as Json,
+      appComposedFinal: compositionMetadata?.appComposedFinal ?? false,
+      compositionHash: compositionMetadata?.compositionHash ?? null,
+      compositionVersion: compositionMetadata?.compositionVersion ?? null,
+      layoutTemplateId: compositionMetadata?.layoutTemplateId ?? null,
+      sourceBackgroundKind: compositionMetadata?.sourceBackgroundKind ?? null,
+      sourceBackgroundProvider: compositionMetadata?.sourceBackgroundProvider ?? null,
+      sourceBackgroundAssetId: compositionMetadata?.sourceBackgroundAssetId ?? null,
+      renderedOffer: compositionMetadata?.renderedOffer ?? null,
+      renderedCta: compositionMetadata?.renderedCta ?? null,
+      renderedBrand: compositionMetadata?.renderedBrand ?? null,
       creativeIntakePromptVersionUsed: (asset.creativeIntake?.promptVersion ?? null) as Json,
       creativeIntakeGenerationContext: asset.creativeIntake
         ? ({
@@ -190,7 +238,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       primaryText: asset.primaryText,
       cta: asset.cta,
       generationBatchId,
-      ...buildStorageMetadata(durableImage, providerOriginalUrl),
+      ...buildStorageMetadata(storageResult, providerOriginalUrl),
     } satisfies Record<string, Json | string | number | boolean | null>;
 
     inserts.push(
@@ -201,9 +249,9 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
         copy_id: copyId,
         asset_type: "image_frame",
         format: "1:1",
-        generation_method: "image_generation",
+        generation_method: "app_composed_static",
         status,
-        provider_name: asset.imageGenerationProvider ?? null,
+        provider_name: "dealflow_app_composer",
         file_url: readyUrl,
         thumbnail_url: readyUrl,
         metadata: {
@@ -214,7 +262,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
               : normalizationError ?? (asset.imageUrl
                 ? visualDecision.reason ?? "Generated background needs review before launch."
                 : asset.imageGenerationMessage ?? "Static image was not generated for this creative."),
-          role: "background_image",
+          role: "app_composed_final_static",
         } as Json,
       },
       {
@@ -224,9 +272,9 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
         copy_id: copyId,
         asset_type: "thumbnail",
         format: "1:1",
-        generation_method: "image_generation",
+        generation_method: "app_composed_static",
         status,
-        provider_name: asset.imageGenerationProvider ?? null,
+        provider_name: "dealflow_app_composer",
         file_url: readyUrl,
         thumbnail_url: readyUrl,
         metadata: {
@@ -237,7 +285,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
               : normalizationError ?? (asset.imageUrl
                 ? visualDecision.reason ?? "Generated background needs review before launch."
                 : asset.imageGenerationMessage ?? "Static thumbnail was not generated for this creative."),
-          role: "thumbnail",
+          role: "app_composed_final_thumbnail",
         } as Json,
       },
     );

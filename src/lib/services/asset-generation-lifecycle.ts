@@ -1,4 +1,5 @@
 import type { StaticCreativeAsset, VideoCreativeAsset } from "@/lib/services/creative-engine";
+import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
 
 export type AssetGenerationStatus =
   | "idle"
@@ -70,10 +71,10 @@ export function deriveStaticGenerationStatus(staticAds: StaticCreativeAsset[]): 
 
   const generatedCount = staticAds.filter(
     (asset) =>
-      asset.imageGenerationState === "generated" &&
-      Boolean(asset.imageUrl) &&
-      asset.qualityGate?.accepted !== false,
-  ).length;
+	      asset.imageGenerationState === "generated" &&
+	      Boolean(asset.imageUrl) &&
+	      evaluateStaticVisualAssetDecision(asset).usable,
+	  ).length;
   const failedCount = staticAds.filter((asset) => asset.imageGenerationState === "failed").length;
   const unavailableCount = staticAds.filter(
     (asset) => asset.imageGenerationState === "unavailable",

@@ -103,8 +103,9 @@ const {
 function readyStatic(id) {
   return {
     id,
-    imageUrl: `https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/${id}.png`,
-    storageNormalized: true,
+	    imageUrl: `https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/${id}.png`,
+	    storageNormalized: true,
+	    appComposedFinal: true,
     imageGenerationState: "generated",
     imagePrompt: "Text-free background asset only for a real estate ad.",
     imagePromptConfig: null,
@@ -113,9 +114,9 @@ function readyStatic(id) {
       visualAssetRole: "text_free_background",
     },
     qualityGate: { accepted: true },
-    imageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
-  };
-}
+	    imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
+	  };
+	}
 
 const creatives = [
   readyStatic("primary"),
@@ -311,10 +312,11 @@ const productionLikeCreativeAssets = [
     metadata: {
       source: "static_ad",
       staticAssetId: "primary",
-      role: "background_image",
-      storageNormalized: true,
-      qualityGate: { accepted: true },
-      imageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
+	      role: "background_image",
+	      storageNormalized: true,
+	      appComposedFinal: true,
+	      qualityGate: { accepted: true },
+	      imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
       imagePrompt: "Text-free background asset only for a real estate ad.",
       imagePromptConfig: { prompt: "Text-free background asset only for a real estate ad." },
       visualPromptBrief: {
@@ -340,10 +342,11 @@ const productionLikeCreativeAssets = [
     metadata: {
       source: "static_ad",
       staticAssetId: "review-1",
-      role: "background_image",
-      storageNormalized: true,
-      qualityGate: { accepted: true },
-      imageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
+	      role: "background_image",
+	      storageNormalized: true,
+	      appComposedFinal: true,
+	      qualityGate: { accepted: true },
+	      imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
       imagePrompt: "Text-free background asset only for a real estate ad.",
       visualPromptBrief: {
         visualAssetContract: "text_free_background_v2",
@@ -368,10 +371,11 @@ const productionLikeCreativeAssets = [
     metadata: {
       source: "static_ad",
       staticAssetId: "review-2",
-      role: "background_image",
-      storageNormalized: true,
-      qualityGate: { accepted: true },
-      imageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
+	      role: "background_image",
+	      storageNormalized: true,
+	      appComposedFinal: true,
+	      qualityGate: { accepted: true },
+	      imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
       imagePrompt: "Text-free background asset only for a real estate ad.",
       visualPromptBrief: {
         visualAssetContract: "text_free_background_v2",
@@ -397,7 +401,8 @@ const fallbackPreview = buildComposedStaticAdPreview({
   imageGenerationState: "unavailable",
 });
 assert.equal(fallbackPreview.status, "template_fallback");
-assert.doesNotMatch(fallbackPreview.backgroundMessage, /is ready/i);
+assert.match(fallbackPreview.backgroundMessage, /Concept preview is ready/i);
+assert.doesNotMatch(fallbackPreview.backgroundMessage, /launch-ready|Final ad ready/i);
 
 const rejectedPreview = buildComposedStaticAdPreview({
   headline: "Toronto seller plan",

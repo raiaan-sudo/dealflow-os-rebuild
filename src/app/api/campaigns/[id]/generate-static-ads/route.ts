@@ -130,10 +130,7 @@ export async function POST(
     const missingLaunchReadyFloorCount = Math.max(0, STATIC_LAUNCH_MIN_CREATIVE_COUNT - launchReadyStaticCount);
     let previewUpdated = false;
 
-    if (
-      body.missingOnly === true &&
-      (missingLaunchReadyFloorCount > 0 || campaign.creatives.staticAds.length < STATIC_LAUNCH_MIN_CREATIVE_COUNT)
-    ) {
+    if (missingLaunchReadyFloorCount > 0 || campaign.creatives.staticAds.length < STATIC_LAUNCH_MIN_CREATIVE_COUNT) {
       await regenerateStaticCreativeAssetsForUser(campaignId, auth.userId, {
         force: body.force === true,
         missingOnly: true,

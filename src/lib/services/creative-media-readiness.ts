@@ -6,6 +6,7 @@ type StaticCreativeReadinessInput = {
   id: string;
   imageUrl?: string | null;
   storageNormalized?: boolean | null;
+  appComposedFinal?: boolean | null;
   imageGenerationState?: string | null;
   imagePrompt?: string | null;
   imagePromptConfig?: {
@@ -164,9 +165,10 @@ export function getStaticCreativeBriefMismatchReason(
 
 export function isLaunchReadyStaticCreative(creative: Pick<
   StaticCreativeReadinessInput,
-  | "imageUrl"
-  | "storageNormalized"
-  | "imagePrompt"
+	  | "imageUrl"
+	  | "storageNormalized"
+	  | "appComposedFinal"
+	  | "imagePrompt"
   | "imagePromptConfig"
   | "visualPromptBrief"
   | "qualityGate"

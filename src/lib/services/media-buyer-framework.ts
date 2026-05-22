@@ -938,11 +938,11 @@ function hasRiskReversal(text: string, category: CampaignCategory) {
     return /\b(private|request|limited|rare|not publicly available|preview)\b/.test(text);
   }
 
-  return /\b(guarantee|free|no obligation|without|before|off-market|private access|qualify|review|priority|low deposit|below-market|under|list|preview|refund|work for free)\b/.test(text);
+  return /\b(guarantee|free|no obligation|without|before|off-market|private access|qualify|review|priority|low deposit|below-market|under|list|preview|refund|work for free|we buy it|we'?ll buy it|buyout|buy it|purchase it)\b/.test(text);
 }
 
 function hasMechanismSignal(text: string) {
-  return /\b(system|process|strategy|framework|network|filter|matching|access|pre-market|demand test|phased|micro-market|underwriting|sequence|workflow|structure)\b/.test(text);
+  return /\b(system|process|strategy|framework|network|filter|matching|access|pre-market|demand test|phased|micro-market|underwriting|sequence|workflow|structure|we buy it|we'?ll buy it|buyout|buy it|purchase it)\b/.test(text);
 }
 
 function hasLowFrictionStep(text: string) {

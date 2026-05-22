@@ -173,7 +173,8 @@ const composedFallback = buildComposedStaticAdPreview({
 });
 assert.equal(composedFallback.status, "template_fallback");
 assert.equal(composedFallback.backgroundImageUrl, null);
-assert.match(composedFallback.backgroundMessage, /Draft concept is shown/);
+assert.match(composedFallback.backgroundMessage, /Concept preview is ready/);
+assert.doesNotMatch(composedFallback.backgroundMessage, /launch-ready|Final ad ready/i);
 assert.ok(composedFallback.headline.length > 0);
 assert.ok(composedFallback.cta.length > 0);
 

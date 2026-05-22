@@ -10,6 +10,7 @@ type StaticAdComposedPreviewProps = StaticAdTemplateInput & {
   compact?: boolean;
   selectedCount?: number | null;
   showRawAssetState?: boolean;
+  appComposedFinal?: boolean | null;
 };
 
 function statusLabel(status: ReturnType<typeof buildComposedStaticAdPreview>["status"]) {

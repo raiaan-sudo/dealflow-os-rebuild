@@ -40,6 +40,7 @@ export type StaticAdTemplateInput = {
   offer?: string | null;
   imageUrl?: string | null;
   storageNormalized?: boolean | null;
+  appComposedFinal?: boolean | null;
   imageGenerationState?: string | null;
   imageGenerationMessage?: string | null;
   imagePrompt?: string | null;
@@ -371,8 +372,12 @@ export function fitStaticAdText(input: {
 }
 
 function buildStatus(input: StaticAdTemplateInput): StaticAdTemplateStatus {
-  if (input.imageUrl) {
+  if (input.imageUrl && input.appComposedFinal === true) {
     return evaluateStaticVisualAssetDecision(input).usable ? "final_composed" : "background_rejected";
+  }
+
+  if (input.imageUrl) {
+    return "background_rejected";
   }
 
   if (input.imageGenerationState === "generating") {
@@ -394,22 +399,22 @@ function buildBackgroundMessage(input: StaticAdTemplateInput, status: StaticAdTe
       : null;
 
   if (status === "final_composed") {
-    return "Launch-ready app-owned creative with accepted text-free generated background imagery and exact app-rendered copy.";
+    return "Final ad ready with exact approved copy.";
   }
 
   if (status === "background_generating") {
-    return customerSafeImageMessage || "Final generated imagery is rendering; draft concept remains visible.";
+    return customerSafeImageMessage || "AI visual polish is preparing; final ads remain visible.";
   }
 
   if (status === "background_rejected") {
-    return "This visual needs a cleaner background before it can be used as launch-ready media.";
+    return "AI visual polish needs another attempt. Launch-ready final ads remain available when selected.";
   }
 
   if (status === "background_failed") {
-    return customerSafeImageMessage || "Final generated imagery needs retry before this can be used as launch-ready media.";
+    return customerSafeImageMessage || "AI visual polish needs another attempt. Final ads remain visible.";
   }
 
-  return "Draft concept is shown while launch-ready generated imagery is unavailable.";
+  return "Concept preview is ready while final ads are prepared.";
 }
 
 function buildEyebrow(category: CampaignCategory, location: string, templateId: StaticAdTemplateKind) {
