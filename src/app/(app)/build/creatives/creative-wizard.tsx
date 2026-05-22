@@ -612,7 +612,7 @@ export function CreativeWizard({
       );
       setRenderMessage(
         data.previewUpdated
-          ? "Creative concepts are visible now. Final media is queued and will update here when rendering starts."
+          ? "Creative concepts are visible now. Launch-ready ads stay available while optional polish prepares."
           : renderView.customerMessage,
       );
       if (data.previewUpdated) {
@@ -1046,7 +1046,7 @@ export function CreativeWizard({
                   {imageLimitMessage
                     ? "Daily image limit reached"
                     : imageWorkerDeferred
-                    ? "AI visual polish queued"
+                    ? "Premium polish preparing"
                     : imageActionPending
                     ? "Preparing previews..."
                     : needsImageGeneration
@@ -1271,7 +1271,7 @@ export function CreativeWizard({
                     ? "Render static creatives first"
                     : currentVideoRenderView?.state === "deferred_worker_required" ||
                   currentVideoRenderView?.state === "operator_action_required"
-                    ? "Video render queued"
+                    ? "Video render preparing"
                     : videoActionPending || (
                       activeVideoCreative.videoGenerationState === "generating" &&
                       (activeVideoCreative.providerAssetId || activeVideoCreative.providerStatus)

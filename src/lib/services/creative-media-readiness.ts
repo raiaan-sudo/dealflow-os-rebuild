@@ -518,17 +518,17 @@ export function getVideoReadinessLabel(video: VideoCreativeReadinessInput | null
     video?.videoGenerationState === "deferred_worker_required" ||
     video?.videoGenerationState === "operator_action_required"
   ) {
-    return "Video render queued";
+    return "Video render preparing";
   }
 
   if (video?.videoGenerationState === "queued") {
-    return "Video render queued";
+    return "Video render preparing";
   }
 
   if (video?.videoGenerationState === "generating") {
     return video.providerAssetId || video.providerStatus
       ? "Rendering"
-      : "Video render queued";
+      : "Video render preparing";
   }
 
   if (video?.videoGenerationState === "failed") {
@@ -552,17 +552,17 @@ export function getVideoReadinessMessage(video: VideoCreativeReadinessInput | nu
     video?.videoGenerationState === "deferred_worker_required" ||
     video?.videoGenerationState === "operator_action_required"
   ) {
-    return "Final media is queued. We'll update this when rendering starts.";
+    return "Video render is preparing. We'll update this when rendering starts.";
   }
 
   if (video?.videoGenerationState === "queued") {
-    return "Final media is queued. We'll update this when rendering starts.";
+    return "Video render is preparing. We'll update this when rendering starts.";
   }
 
   if (video?.videoGenerationState === "generating") {
     return video.providerAssetId || video.providerStatus
       ? "Rendering video..."
-      : "Final media is queued. We'll update this when rendering starts.";
+      : "Video render is preparing. We'll update this when rendering starts.";
   }
 
   if (video?.videoGenerationState === "failed") {

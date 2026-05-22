@@ -132,10 +132,10 @@ export function classifyCreativeRenderJob(
   if (deferred) {
     return {
       state: staleDeferred ? "operator_action_required" : "deferred_worker_required",
-      customerLabel: job.kind === "static_creative_generation" ? "AI visual polish queued" : "Video render queued",
+      customerLabel: job.kind === "static_creative_generation" ? "Premium polish preparing" : "Video render preparing",
       customerMessage: job.kind === "static_creative_generation"
-        ? "AI visual polish is queued. Launch-ready final ads remain available."
-        : "Video render is queued. We'll update this when rendering starts.",
+        ? "Premium visual polish is preparing in the background. Launch-ready final ads remain available."
+        : "Video render is preparing. We'll update this when rendering starts.",
       customerActionLabel: null,
       active: false,
       retryAvailable: false,
@@ -178,10 +178,10 @@ export function classifyCreativeRenderJob(
   if (job.status === "processing") {
     return {
       state: "operator_action_required",
-      customerLabel: job.kind === "static_creative_generation" ? "AI visual polish queued" : "Video render queued",
+      customerLabel: job.kind === "static_creative_generation" ? "Premium polish preparing" : "Video render preparing",
       customerMessage: job.kind === "static_creative_generation"
-        ? "AI visual polish is queued. Launch-ready final ads remain available."
-        : "Video render is queued. We'll update this when rendering starts.",
+        ? "Premium visual polish is preparing in the background. Launch-ready final ads remain available."
+        : "Video render is preparing. We'll update this when rendering starts.",
       customerActionLabel: null,
       active: false,
       retryAvailable: false,
@@ -192,10 +192,10 @@ export function classifyCreativeRenderJob(
 
   return {
     state: "queued",
-    customerLabel: job.kind === "static_creative_generation" ? "AI visual polish queued" : "Video render queued",
+    customerLabel: job.kind === "static_creative_generation" ? "Premium polish preparing" : "Video render preparing",
     customerMessage: job.kind === "static_creative_generation"
-      ? "AI visual polish is queued. Launch-ready final ads remain available."
-      : "Video render is queued. We'll update this when rendering starts.",
+      ? "Premium visual polish is preparing in the background. Launch-ready final ads remain available."
+      : "Video render is preparing. We'll update this when rendering starts.",
     customerActionLabel: null,
     active: false,
     retryAvailable: false,

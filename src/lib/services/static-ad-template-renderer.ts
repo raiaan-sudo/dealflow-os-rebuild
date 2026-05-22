@@ -403,15 +403,15 @@ function buildBackgroundMessage(input: StaticAdTemplateInput, status: StaticAdTe
   }
 
   if (status === "background_generating") {
-    return customerSafeImageMessage || "AI visual polish is preparing; final ads remain visible.";
+    return customerSafeImageMessage || "Premium visual polish is preparing; final ads remain visible.";
   }
 
   if (status === "background_rejected") {
-    return "AI visual polish needs another attempt. Launch-ready final ads remain available when selected.";
+    return "Premium visual polish needs another attempt. Launch-ready final ads remain available when selected.";
   }
 
   if (status === "background_failed") {
-    return customerSafeImageMessage || "AI visual polish needs another attempt. Final ads remain visible.";
+    return customerSafeImageMessage || "Premium visual polish needs another attempt. Final ads remain visible.";
   }
 
   return "Concept preview is ready while final ads are prepared.";

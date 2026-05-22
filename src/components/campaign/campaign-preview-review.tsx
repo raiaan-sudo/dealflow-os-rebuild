@@ -275,7 +275,7 @@ export function CampaignPreviewReview({
           jobStreamsRef.current.delete(jobId);
           router.refresh();
         } else if (job.status === "failed") {
-          setGenerationMessage("AI visual polish needs another attempt. Launch-ready final ads remain available.");
+          setGenerationMessage("Premium visual polish needs another attempt. Launch-ready final ads remain available.");
           source.close();
           jobStreamsRef.current.delete(jobId);
           router.refresh();
@@ -322,7 +322,7 @@ export function CampaignPreviewReview({
         throw new Error(data.error || "Static creative generation failed.");
       }
 
-      setGenerationMessage("AI visual polish queued.");
+      setGenerationMessage("Premium visual polish is preparing. Launch-ready final ads remain available.");
       subscribeToJob(data.job.id);
     } catch (error) {
       setGenerationMessage(

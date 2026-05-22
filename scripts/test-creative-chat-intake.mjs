@@ -103,7 +103,7 @@ assert.match(creativeWizardUi, /Primary creative/);
 assert.match(creativeWizardUi, /Review variant/);
 assert.match(creativeWizardUi, /Add to review set/);
 assert.match(creativeWizardUi, /Full-resolution creative files stay inside DealFlow/);
-assert.match(creativeWizardUi, /Creative concepts are visible now\. Final media is queued and will update here when rendering starts\./);
+assert.match(creativeWizardUi, /Creative concepts are visible now\. Launch-ready ads stay available while optional polish prepares\./);
 assert.doesNotMatch(creativeWizardUi, /worker is available|Queued for render worker|product QA accepts/);
 assert.match(creativeWizardUi, /Render static creatives first/);
 assert.match(staticAdsRoute, /regenerateStaticCreativeAssetsForUser/);

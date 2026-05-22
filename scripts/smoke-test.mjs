@@ -458,7 +458,7 @@ function runOfflineChecks() {
   assertIncludes(staticAdComposedPreview, "Launch-ready creative", "Generated creative composition", "rendered images are used as text-free backgrounds while DealFlow composes exact copy and CTA");
   assertIncludes(staticAdComposedPreview, "object-cover", "Generated background crop", "generated backgrounds fill deterministic media-buyer templates without raw baked-text layouts");
   assertIncludes(staticAdComposedPreview, "renderInstantVisualScene", "Instant creative visual scene", "creatives render a complete visual layout even when generated imagery is missing");
-  assertIncludes(staticAdTemplateRenderer, "AI visual polish needs another attempt", "Generated rejection customer copy", "missing or rejected generated backgrounds do not expose internal QA language to customers");
+  assertIncludes(staticAdTemplateRenderer, "Premium visual polish needs another attempt", "Generated rejection customer copy", "missing or rejected generated backgrounds do not expose internal QA language to customers");
   assertExcludes(staticAdComposedPreview, "Image rejected, template ready", "Generated rejection jargon removed", "creative previews do not expose rejected-image internal labels");
   assertExcludes(staticAdComposedPreview, "No generated background image is available yet.", "Blank missing-background copy removed", "creative cards do not tell users the card is missing a background");
   assertExcludes(staticAdComposedPreview, "bg-gradient-to-t", "Generated creative overlay removed", "generated creative previews do not add a dark overlay across the asset");
@@ -505,7 +505,7 @@ function runOfflineChecks() {
   assertIncludes(mediaBuyerFramework, "previewReadability", "Creative readability gate", "quality gates penalize covered, unreadable, or awkward preview states");
   assertIncludes(mediaBuyerFramework, "generic stock-photo", "Creative stock-photo penalty", "quality gates penalize generic stock-photo-looking output");
   assertIncludes(staticAdTemplateRenderer, "evaluateStaticVisualAssetDecision(input).usable", "Generated creative review guard", "generated assets are only shown as ready after the app-composed/static visual decision passes");
-  assertIncludes(staticAdTemplateRenderer, "AI visual polish needs another attempt", "Rejected image customer copy", "bad provider images show clean customer-safe retry copy instead of raw QA/provider language");
+  assertIncludes(staticAdTemplateRenderer, "Premium visual polish needs another attempt", "Rejected image customer copy", "bad provider images show clean customer-safe retry copy instead of raw QA/provider language");
   assertIncludes(staticCreativeAssetService, "\"requires_review\"", "Rejected generated asset persistence", "generated assets with quality concerns are persisted for review instead of being mislabeled as image failures");
   assertIncludes(staticCreativeAssetService, "imageQa", "Static image QA persistence", "image QA decision metadata is stored with generated static assets");
   assertIncludes(assetGenerationLifecycle, "evaluateStaticVisualAssetDecision(asset).usable", "Generated asset lifecycle guard", "static asset lifecycle does not mark rejected generated creatives as fully generated");

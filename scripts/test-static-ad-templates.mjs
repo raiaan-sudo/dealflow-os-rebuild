@@ -308,7 +308,7 @@ assert.equal(
 assert.equal(rejectedGeneratedCreative.backgroundImageUrl, null);
 assert.equal(
   rejectedGeneratedCreative.backgroundMessage,
-  "AI visual polish needs another attempt. Launch-ready final ads remain available when selected.",
+  "Premium visual polish needs another attempt. Launch-ready final ads remain available when selected.",
   "rejected image state uses customer-safe copy",
 );
 
