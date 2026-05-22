@@ -195,6 +195,7 @@ export default async function BuildCreativesPage({
         recommended: ad.recommended ?? false,
         imageUrl: ad.imageUrl ?? null,
         storageNormalized: ad.storageNormalized ?? null,
+        appComposedFinal: ad.appComposedFinal ?? null,
         imageGenerationState: ad.imageGenerationState ?? null,
         imageGenerationMessage: ad.imageGenerationMessage ?? null,
         imagePrompt: ad.imagePrompt ?? null,
