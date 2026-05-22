@@ -19,6 +19,7 @@ import {
   getStaticPreviewStatusMessage,
   getVideoReadinessLabel,
   getVideoReadinessMessage,
+  getVideoLaunchReadinessReason,
   isLaunchReadyStaticCreative,
   isLaunchReadyVideoCreative,
   isPlayableVideoCreative,
@@ -452,6 +453,15 @@ export function CreativeWizard({
     activeVideoCreative.conceptType === "customer_ugc" &&
     isCurrentLaunchReadyVideo(activeVideoCreative),
   );
+  const activeVideoLaunchReadinessReason =
+    activeVideoCreative && !activeVideoLaunchReady
+      ? getVideoLaunchReadinessReason(activeVideoCreative)
+      : null;
+  const activeVideoPlayableReviewOnly = Boolean(
+    activeVideoCreative &&
+    isPlayableVideoCreative(activeVideoCreative) &&
+    !activeVideoLaunchReady,
+  );
   const activeVideoDisplayScript =
     !activeVideoMatchesApprovedScript && approvedUgcScriptLines.length > 0
       ? approvedUgcScriptLines
@@ -605,11 +615,7 @@ export function CreativeWizard({
 
       const renderView = jobRenderView(data.job);
       const deferredWorkerJob = isMarketingStudioWorkerDeferredRunAt(data.job.next_run_at);
-      setRenderJobs((current) =>
-        deferredWorkerJob
-          ? current.filter((job) => job.kind !== "static_creative_generation")
-          : upsertRenderJob(current, data.job as SystemJob),
-      );
+      setRenderJobs((current) => upsertRenderJob(current, data.job as SystemJob));
       setRenderMessage(
         deferredWorkerJob
           ? "Optional premium polish is preparing in the background. Your launch-ready ads are available now."
@@ -1249,6 +1255,23 @@ export function CreativeWizard({
                   View full video
                 </Button>
               ) : null}
+              {activeVideoPlayableReviewOnly && activeVideoMatchesApprovedScript ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void queueVideoPreview({
+                    force: true,
+                    video: activeVideoCreative,
+                  })}
+                  disabled={videoBlockedByMissingStaticSource || videoActionPending}
+                >
+                  {videoBlockedByMissingStaticSource
+                    ? "Render static creatives first"
+                    : videoActionPending
+                    ? "Retrying UGC video..."
+                    : "Retry UGC video"}
+                </Button>
+              ) : null}
               {!activeVideoMatchesApprovedScript && isPlayableVideoCreative(activeVideoCreative) ? (
                 <Button
                   type="button"
@@ -1310,6 +1333,11 @@ export function CreativeWizard({
                   Review-only until DealFlow accepts it for launch
                 </span>
               )}
+              {activeVideoLaunchReadinessReason ? (
+                <span className="text-sm leading-6 text-amber-100">
+                  {activeVideoLaunchReadinessReason}
+                </span>
+              ) : null}
               {customerVideoMessage(videoMessage || activeVideoCreative.videoGenerationMessage) ? (
                 <span className="text-sm leading-6 text-muted-foreground">
                   {customerVideoMessage(videoMessage || activeVideoCreative.videoGenerationMessage)}

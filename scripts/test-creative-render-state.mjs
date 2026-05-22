@@ -229,6 +229,13 @@ assert.match(creativeWizardSource, /Premium polish preparing/);
 assert.match(creativeWizardSource, /Optional premium polish is preparing in the background/);
 assert.match(creativeWizardSource, /Optional polish preparing/);
 assert.match(creativeWizardSource, /Prepare optional polish/);
+assert.match(
+  creativeWizardSource,
+  /setRenderJobs\(\(current\) => upsertRenderJob\(current, data\.job as SystemJob\)\)/,
+  "deferred optional polish jobs must stay in client state so the button does not look dead",
+);
+assert.match(creativeWizardSource, /getVideoLaunchReadinessReason/);
+assert.match(creativeWizardSource, /Retry UGC video/);
 assert.doesNotMatch(creativeWizardSource, /Queued for render worker|worker is available|product QA accepts/);
 assert.doesNotMatch(creativeWizardSource, /\{videoActionPending \? "Rendering"/, "active job ids no longer force a Rendering label");
 assert.doesNotMatch(
@@ -252,5 +259,13 @@ assert.match(
 const mediaReadinessSource = fs.readFileSync("src/lib/services/creative-media-readiness.ts", "utf8");
 assert.match(mediaReadinessSource, /optional .*polish variant/);
 assert.doesNotMatch(mediaReadinessSource, /optional .*variant needs refresh or retry/);
+
+const buildCreativesPageSource = fs.readFileSync("src/app/(app)/build/creatives/page.tsx", "utf8");
+assert.match(buildCreativesPageSource, /mapVideoCreativeAssets/);
+assert.match(
+  buildCreativesPageSource,
+  /persistedVideoAds = mappedVideoAssets/,
+  "Creative Studio must prefer current video creative_assets over stale campaign-plan video concepts",
+);
 
 console.log("Creative render state regression checks passed.");

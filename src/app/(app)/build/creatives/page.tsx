@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
+import { mapVideoCreativeAssets } from "@/lib/services/campaign-persistence";
 import {
   getSelectedAdIdsFromPlan,
   getSelectedUgcVideoIdsFromPlan,
@@ -68,6 +69,7 @@ export default async function BuildCreativesPage({
   let intakePlanValue: unknown = null;
   let persistedSelectedAdIds: string[] = [];
   let persistedSelectedUgcVideoIds: string[] = [];
+  let persistedVideoAds = ensuredRecord.creatives.videoAds;
   let activeRenderJobs: Parameters<typeof CreativeWizard>[0]["initialRenderJobs"] = [];
   if (supabase) {
     const { data } = await supabase
@@ -92,6 +94,18 @@ export default async function BuildCreativesPage({
     activeRenderJobs = Array.isArray(jobsData)
       ? jobsData as Parameters<typeof CreativeWizard>[0]["initialRenderJobs"]
       : [];
+
+    const { data: videoAssetData } = await supabase
+      .from("creative_assets")
+      .select("*")
+      .eq("campaign_id", ensuredRecord.campaign.id)
+      .eq("user_id", ensuredRecord.campaign.user_id)
+      .in("asset_type", ["ugc_video", "talking_head_video", "montage_video", "video"])
+      .order("created_at", { ascending: false });
+    const mappedVideoAssets = mapVideoCreativeAssets(Array.isArray(videoAssetData) ? videoAssetData : []);
+    if (mappedVideoAssets.length > 0) {
+      persistedVideoAds = mappedVideoAssets;
+    }
   }
   const creativeIntake = readCreativeChatIntakeFromPlan(intakePlanValue);
   const creativeIntakeApproved =
@@ -224,7 +238,7 @@ export default async function BuildCreativesPage({
         },
       };
     });
-  const videoOptions = ensuredRecord.creatives.videoAds
+  const videoOptions = persistedVideoAds
     .slice(0, 3)
     .map((video, index) => ({
       id: video.id || `video-${index + 1}`,

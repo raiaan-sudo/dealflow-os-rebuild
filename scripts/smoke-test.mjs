@@ -375,6 +375,8 @@ function runOfflineChecks() {
   assertIncludes(creativeWizard, "activeVideoJobId", "Creative video active-job state", "video preview progress stays visible while an active render job is streaming");
   assertIncludes(creativeWizard, "Optional premium polish is preparing in the background", "Creative optional polish feedback", "optional polish clicks give visible feedback while launch-ready ads remain usable");
   assertIncludes(creativeWizard, "Optional polish preparing", "Creative optional polish button state", "optional polish does not present as a dead refresh button while deferred");
+  assertIncludes(creativeWizard, "Retry UGC video", "Creative UGC retry action", "completed but review-only UGC renders expose a retry action instead of looking stuck");
+  assertIncludes(creativeWizard, "getVideoLaunchReadinessReason", "Creative UGC truthful rejection reason", "completed but non-launch-ready UGC videos show the exact launch-readiness reason");
   assertIncludes(creativeWizard, "Image preview is being prepared. This page will update when the visual is ready.", "Creative retry pending copy", "creative cards show immediate pending feedback instead of stale cap errors");
   assertIncludes(creativeWizard, "getStaticPreviewStatusMessage", "Creative partial-count copy", "completed image jobs report ready/missing/failed counts instead of generic ready copy");
   assertIncludes("src/lib/services/creative-media-readiness.ts", "launch-ready previews available", "Creative partial-count wording", "partial image generation copy exposes counts without treating optional failed variants as launch blockers");
@@ -697,6 +699,8 @@ function runOfflineChecks() {
   assertIncludes(selectAdRoute, "isLaunchReadyStaticCreative", "Select-ad visual contract", "creative selection applies the same text-free generated image contract before saving launch choices");
   assertIncludes(selectAdRoute, "assertCampaignCanLaunch", "Select-ad billing entitlement gate", "inactive or unpaid customers cannot approve a creative launch set");
   assertIncludes(creativeWizard, "Full-resolution creative files stay inside DealFlow", "Creative no-download policy copy", "customer creative workspace explains raw creative files stay inside DealFlow");
+  assertIncludes(buildCreativesPage, "mapVideoCreativeAssets", "Creative Studio current video asset read", "Creative Studio reads current video creative_assets instead of stale campaign-plan video concepts");
+  assertIncludes(buildCreativesPage, "persistedVideoAds = mappedVideoAssets", "Creative Studio video asset precedence", "current playable UGC assets win over stale generating plan state");
   assertIncludes(staticCreativePreviewCard, "Full-resolution creative files stay inside DealFlow and are used through the launch workflow", "Creative direct-file copy", "customer preview cards avoid presenting generated files as raw files");
   assertExcludes(creativeWizard, /Download|Save Image|Open original|Copy URL|Export/, "Creative wizard download affordances absent", "customer creative workspace does not expose direct download/export/copy-url actions");
   assertIncludes(creativeWizard, "controlsList=\"nodownload noplaybackrate\"", "Creative video no-download controls", "customer video previews request native controls without download affordances");
