@@ -474,6 +474,7 @@ export function StaticAdComposedPreview({
   const preview = buildComposedStaticAdPreview(input);
   const label = statusLabel(preview.status);
   const quality = qualityLabel(preview);
+  const renderStoredFinalOnly = preview.status === "final_composed" && Boolean(preview.backgroundImageUrl);
 
   return (
     <div className={cn("overflow-hidden rounded-[20px] border border-white/10 bg-black/20", className)}>
@@ -495,8 +496,8 @@ export function StaticAdComposedPreview({
         ) : (
           renderInstantVisualScene(preview, compact)
         )}
-        {preview.backgroundImageUrl ? <div className="absolute inset-0 bg-black/8" /> : null}
-        {renderTemplateDetails(preview, compact)}
+        {preview.backgroundImageUrl && !renderStoredFinalOnly ? <div className="absolute inset-0 bg-black/8" /> : null}
+        {renderStoredFinalOnly ? null : renderTemplateDetails(preview, compact)}
       </div>
 
       <div className={cn("space-y-3", compact ? "p-3" : "p-4")}>

@@ -373,6 +373,8 @@ function runOfflineChecks() {
   assertIncludes(creativeWizard, "imageRenderPending", "Creative retry optimistic state", "retry clicks immediately clear stale failed-copy and show a generating state while provider work runs");
   assertIncludes(creativeWizard, "activeImageJobId", "Creative image active-job state", "image preview progress stays visible while an active render job is streaming");
   assertIncludes(creativeWizard, "activeVideoJobId", "Creative video active-job state", "video preview progress stays visible while an active render job is streaming");
+  assertIncludes(creativeWizard, "Optional premium polish is preparing in the background", "Creative optional polish feedback", "optional polish clicks give visible feedback while launch-ready ads remain usable");
+  assertIncludes(creativeWizard, "Optional polish preparing", "Creative optional polish button state", "optional polish does not present as a dead refresh button while deferred");
   assertIncludes(creativeWizard, "Image preview is being prepared. This page will update when the visual is ready.", "Creative retry pending copy", "creative cards show immediate pending feedback instead of stale cap errors");
   assertIncludes(creativeWizard, "getStaticPreviewStatusMessage", "Creative partial-count copy", "completed image jobs report ready/missing/failed counts instead of generic ready copy");
   assertIncludes("src/lib/services/creative-media-readiness.ts", "launch-ready previews available", "Creative partial-count wording", "partial image generation copy exposes counts without treating optional failed variants as launch blockers");
@@ -459,6 +461,8 @@ function runOfflineChecks() {
   assertIncludes(staticAdComposedPreview, "object-cover", "Generated background crop", "generated backgrounds fill deterministic media-buyer templates without raw baked-text layouts");
   assertIncludes(staticAdComposedPreview, "renderInstantVisualScene", "Instant creative visual scene", "creatives render a complete visual layout even when generated imagery is missing");
   assertIncludes(staticAdTemplateRenderer, "Premium visual polish needs another attempt", "Generated rejection customer copy", "missing or rejected generated backgrounds do not expose internal QA language to customers");
+  assertIncludes(staticAdComposedPreview, "renderStoredFinalOnly", "Stored final preview source of truth", "app-composed final PNGs render without duplicate live text overlays");
+  assertIncludes(staticAdComposedPreview, "renderStoredFinalOnly ? null : renderTemplateDetails", "Stored final text overlay guard", "stored launch-ready final ads do not receive a second browser-composed copy layer");
   assertExcludes(staticAdComposedPreview, "Image rejected, template ready", "Generated rejection jargon removed", "creative previews do not expose rejected-image internal labels");
   assertExcludes(staticAdComposedPreview, "No generated background image is available yet.", "Blank missing-background copy removed", "creative cards do not tell users the card is missing a background");
   assertExcludes(staticAdComposedPreview, "bg-gradient-to-t", "Generated creative overlay removed", "generated creative previews do not add a dark overlay across the asset");

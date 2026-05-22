@@ -611,9 +611,11 @@ export function CreativeWizard({
           : upsertRenderJob(current, data.job as SystemJob),
       );
       setRenderMessage(
-        data.previewUpdated
-          ? "Creative concepts are visible now. Launch-ready ads stay available while optional polish prepares."
-          : renderView.customerMessage,
+        deferredWorkerJob
+          ? "Optional premium polish is preparing in the background. Your launch-ready ads are available now."
+          : data.previewUpdated
+            ? "Creative concepts are visible now. Launch-ready ads stay available while optional polish prepares."
+            : renderView.customerMessage,
       );
       if (data.previewUpdated) {
         router.refresh();
@@ -861,6 +863,11 @@ export function CreativeWizard({
   const imageWorkerDeferred = Boolean(
     currentImageJob && isMarketingStudioWorkerDeferredRunAt(currentImageJob.next_run_at),
   );
+  const optionalOnlyNeedsPolish =
+    staticReadiness.allSelectedReady &&
+    staticReadiness.optionalIssueCount > 0 &&
+    staticReadiness.selectedBlockedCount === 0 &&
+    staticReadiness.selectedStaleCount === 0;
   const videoBlockedByMissingStaticSource = !hasCurrentStaticVideoSource;
   const imagePendingMessage = "Image preview is being prepared. This page will update when the visual is ready.";
   const imageStatusMessage = selectedNeedsImageGeneration
@@ -1041,14 +1048,18 @@ export function CreativeWizard({
                     force: hasCreditBlocker,
                     missingOnly: true,
                   })}
-                  disabled={imageActionPending || Boolean(imageLimitMessage)}
+                  disabled={imageActionPending || imageWorkerDeferred || Boolean(imageLimitMessage)}
                 >
                   {imageLimitMessage
                     ? "Daily image limit reached"
                     : imageWorkerDeferred
-                    ? "Premium polish preparing"
+                    ? optionalOnlyNeedsPolish
+                      ? "Optional polish preparing"
+                      : "Premium polish preparing"
                     : imageActionPending
                     ? "Preparing previews..."
+                    : optionalOnlyNeedsPolish
+                    ? "Prepare optional polish"
                     : needsImageGeneration
                       ? staticReadiness.staleCount > 0
                         ? "Regenerate stale creatives"

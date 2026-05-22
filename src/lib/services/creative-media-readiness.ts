@@ -250,15 +250,15 @@ export function getStaticCreativeReadiness(
         ? "1 primary creative selected"
         : `${selectedCreatives.length} creatives selected`,
     readyLabel: selectedCreatives.length > 0 ? selectedReadyLabel : availableReadyLabel,
-	    issueLabel:
-	      selectedStaleCount > 0
-	        ? `Older render, needs refresh: ${selectedStaleCount} selected ${selectedStaleCount === 1 ? "creative" : "creatives"}`
+    issueLabel:
+      selectedStaleCount > 0
+        ? `Older render, needs refresh: ${selectedStaleCount} selected ${selectedStaleCount === 1 ? "creative" : "creatives"}`
         : selectedBlockedCount > 0
         ? `${selectedBlockedCount} selected ${selectedBlockedCount === 1 ? "creative needs" : "creatives need"} retry before launch`
         : selectedCreatives.length > 0 && !selectedMinimumMet
           ? `${minimumRequiredCount} launch-ready static ads required; select ${Math.max(0, minimumRequiredCount - selectedReadyCount)} more`
         : optionalIssueCount > 0
-          ? `${optionalIssueCount} optional ${optionalIssueCount === 1 ? "variant needs" : "variants need"} refresh or retry`
+          ? `${optionalIssueCount} optional ${optionalIssueCount === 1 ? "polish variant is" : "polish variants are"} still preparing; launch-ready ads are available now`
           : null,
     staleCount: staleCreatives.length,
     selectedStaleCount,

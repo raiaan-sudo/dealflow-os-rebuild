@@ -226,6 +226,9 @@ const creativeWizardSource = fs.readFileSync("src/app/(app)/build/creatives/crea
 assert.match(creativeWizardSource, /classifyCreativeRenderJob/);
 assert.doesNotMatch(creativeWizardSource, /Final media queued/);
 assert.match(creativeWizardSource, /Premium polish preparing/);
+assert.match(creativeWizardSource, /Optional premium polish is preparing in the background/);
+assert.match(creativeWizardSource, /Optional polish preparing/);
+assert.match(creativeWizardSource, /Prepare optional polish/);
 assert.doesNotMatch(creativeWizardSource, /Queued for render worker|worker is available|product QA accepts/);
 assert.doesNotMatch(creativeWizardSource, /\{videoActionPending \? "Rendering"/, "active job ids no longer force a Rendering label");
 assert.doesNotMatch(
@@ -237,5 +240,17 @@ assert.doesNotMatch(
 const scaleReadinessSource = fs.readFileSync("src/lib/services/scale-readiness-service.ts", "utf8");
 assert.match(scaleReadinessSource, /stale deferred creative render jobs/);
 assert.match(scaleReadinessSource, /MARKETING_STUDIO_WORKER_ENABLED/);
+
+const staticComposedPreviewSource = fs.readFileSync("src/components/campaign/static-ad-composed-preview.tsx", "utf8");
+assert.match(staticComposedPreviewSource, /renderStoredFinalOnly/);
+assert.match(
+  staticComposedPreviewSource,
+  /renderStoredFinalOnly \? null : renderTemplateDetails/,
+  "app-composed final PNGs must not receive a second React text overlay",
+);
+
+const mediaReadinessSource = fs.readFileSync("src/lib/services/creative-media-readiness.ts", "utf8");
+assert.match(mediaReadinessSource, /optional .*polish variant/);
+assert.doesNotMatch(mediaReadinessSource, /optional .*variant needs refresh or retry/);
 
 console.log("Creative render state regression checks passed.");
