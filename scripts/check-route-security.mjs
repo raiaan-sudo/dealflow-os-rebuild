@@ -22,7 +22,7 @@ const expectedPublicApiRoutes = new Map([
 const expectedInternalApiRoutes = new Map([
   ["/api/internal/qa-auth-session", {
     methods: new Set(["POST"]),
-    markers: ["assertInternalSystemRequest", "QA_AUTH_HARNESS_ENABLED"],
+    markers: ["assertQaAuthHarnessRequest", "QA_AUTH_HARNESS_ENABLED"],
   }],
   ["/api/internal/stripe-test-proof", {
     methods: new Set(["POST"]),
@@ -183,7 +183,11 @@ function checkPrivateMutationGuards(routeFilesByPath, publicApiRoutes) {
       continue;
     }
 
-    if (text.includes("assertSameOriginRequest") || text.includes("assertInternalSystemRequest")) {
+    if (
+      text.includes("assertSameOriginRequest") ||
+      text.includes("assertInternalSystemRequest") ||
+      text.includes("assertQaAuthHarnessRequest")
+    ) {
       pass("Private mutation same-origin guard", `${route} ${privateMutations.join(", ")}`);
     } else {
       fail("Private mutation same-origin guard", `${route} exports ${privateMutations.join(", ")} without assertSameOriginRequest`);

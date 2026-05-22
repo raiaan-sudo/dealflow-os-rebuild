@@ -2,7 +2,10 @@ import { expect, test, type Page } from "@playwright/test";
 
 const QA_AUTH_ENABLED = process.env.SAFE_E2E_QA_AUTH === "true";
 const INTERNAL_SECRET =
-  process.env.INTERNAL_SYSTEM_JOBS_SECRET?.trim() || process.env.CRON_SECRET?.trim() || "";
+  process.env.QA_AUTH_PROOF_SECRET?.trim() ||
+  process.env.INTERNAL_SYSTEM_JOBS_SECRET?.trim() ||
+  process.env.CRON_SECRET?.trim() ||
+  "";
 const QA_HARNESS_ENABLED = process.env.QA_AUTH_HARNESS_ENABLED === "true";
 
 const modeExpectations = [
@@ -141,7 +144,7 @@ test.describe("safe public browser proof", () => {
 test.describe("safe authenticated self-serve journey", () => {
   test.skip(
     !QA_AUTH_ENABLED || !QA_HARNESS_ENABLED || !INTERNAL_SECRET,
-    "Set SAFE_E2E_QA_AUTH=true, QA_AUTH_HARNESS_ENABLED=true, QA_EMAIL, Supabase service-role env, and INTERNAL_SYSTEM_JOBS_SECRET/CRON_SECRET to run the authenticated safe journey.",
+    "Set SAFE_E2E_QA_AUTH=true, QA_AUTH_HARNESS_ENABLED=true, QA_EMAIL, Supabase service-role env, and QA_AUTH_PROOF_SECRET or INTERNAL_SYSTEM_JOBS_SECRET/CRON_SECRET to run the authenticated safe journey.",
   );
 
   test("onboarding, preview modes, paywall, dashboard, and launch gates work without real-world side effects", async ({ page }) => {

@@ -85,7 +85,7 @@ Safe E2E notes:
 - `npm run test:e2e:safe` runs through `scripts/run-safe-e2e.mjs`.
 - The wrapper strips `CODEX_CI` before invoking Playwright because the Codex desktop plugin setup can otherwise hang before test discovery.
 - By default the proof uses bundled Chromium. Set `SAFE_E2E_BROWSER_CHANNEL=chrome` only when deliberately proving the user's Chrome channel.
-- Authenticated safe proof still requires `SAFE_E2E_QA_AUTH=true`, `QA_AUTH_HARNESS_ENABLED=true`, Supabase service-role proof env, and `INTERNAL_SYSTEM_JOBS_SECRET` or `CRON_SECRET`.
+- Authenticated safe proof still requires `SAFE_E2E_QA_AUTH=true`, `QA_AUTH_HARNESS_ENABLED=true`, Supabase service-role proof env, and `QA_AUTH_PROOF_SECRET` or `INTERNAL_SYSTEM_JOBS_SECRET`/`CRON_SECRET`.
 - QA auth failures must report status plus response `code` / `error` without printing secrets.
 
 ## Worker Dry-Run
