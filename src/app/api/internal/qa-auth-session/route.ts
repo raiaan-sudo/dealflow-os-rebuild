@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
+import { randomBytes } from "node:crypto";
 import {
   ApiError,
   handleApiError,
@@ -91,6 +92,10 @@ function redactEmail(email: string) {
   return `${name.slice(0, 2)}***@${domain}`;
 }
 
+function createTemporaryQaPassword() {
+  return `Df-${randomBytes(36).toString("base64url")}!1`;
+}
+
 export async function POST(request: Request) {
   try {
     assertQaAuthHarnessRequest(request);
@@ -132,13 +137,39 @@ export async function POST(request: Request) {
       throw new ApiError(500, "Supabase did not return a token hash.", "qa_session_token_missing");
     }
 
-    const { data: sessionData, error: verifyError } = await anon.auth.verifyOtp({
+    let { data: sessionData, error: verifyError } = await anon.auth.verifyOtp({
       type: "magiclink",
       token_hash: tokenHash,
     });
 
     if (verifyError) {
-      throw new ApiError(500, verifyError.message, "qa_session_verify_failed");
+      const userId = linkData.user?.id;
+
+      if (!userId) {
+        throw new ApiError(500, "QA session could not identify the test user.", "qa_session_user_missing");
+      }
+
+      const temporaryPassword = createTemporaryQaPassword();
+      const { error: updateError } = await admin.auth.admin.updateUserById(userId, {
+        password: temporaryPassword,
+        email_confirm: true,
+      });
+
+      if (updateError) {
+        throw new ApiError(500, updateError.message, "qa_session_password_prepare_failed");
+      }
+
+      const passwordSession = await anon.auth.signInWithPassword({
+        email: qaEmail,
+        password: temporaryPassword,
+      });
+
+      if (passwordSession.error) {
+        throw new ApiError(500, passwordSession.error.message, "qa_session_password_verify_failed");
+      }
+
+      sessionData = passwordSession.data;
+      verifyError = null;
     }
 
     const session = sessionData.session;
