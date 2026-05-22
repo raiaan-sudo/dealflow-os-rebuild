@@ -6,9 +6,11 @@ import { createClient } from "@supabase/supabase-js";
 import {
   CAMPAIGN_345_ACTIVE_META,
   appRuntimeReflectsActiveMeta,
+  appRuntimeReflectsPausedMeta,
   asRecord,
   getMetaProofFailures,
   latestSnapshotIsFreshActive,
+  metaProofIsCampaignLevelPaused,
 } from "./meta-app-state-drift-utils.mjs";
 
 nextEnv.loadEnvConfig(process.cwd());
@@ -196,17 +198,24 @@ async function fetchMetaProofForCampaign345(supabase) {
 
 async function getCampaign345MetaDebt(supabase) {
   const result = await fetchMetaProofForCampaign345(supabase);
-  const verificationErrors = result.errors.length;
+  const campaignPausedAtMeta = result.proof && metaProofIsCampaignLevelPaused(result.proof);
+  const verificationErrors = campaignPausedAtMeta ? 0 : result.errors.length;
   const appStatusDrift =
-    result.proof && result.errors.length === 0 && !appRuntimeReflectsActiveMeta(result.campaignRow) ? 1 : 0;
+    result.proof && (
+      campaignPausedAtMeta
+        ? !appRuntimeReflectsPausedMeta(result.campaignRow)
+        : result.errors.length === 0 && !appRuntimeReflectsActiveMeta(result.campaignRow)
+    )
+      ? 1
+      : 0;
   const staleSyncSnapshot =
-    result.proof && result.errors.length === 0 && !latestSnapshotIsFreshActive(result.latestSnapshot, result.proof) ? 1 : 0;
+    result.proof && !campaignPausedAtMeta && result.errors.length === 0 && !latestSnapshotIsFreshActive(result.latestSnapshot, result.proof) ? 1 : 0;
 
   return {
     metaReadOnlyVerificationErrors: verificationErrors,
     metaAppStatusDrift: appStatusDrift,
     staleMetaSyncSnapshots: staleSyncSnapshot,
-    metaDebtDetails: result.errors,
+    metaDebtDetails: campaignPausedAtMeta ? ["campaign_intentionally_paused_non_blocking"] : result.errors,
   };
 }
 

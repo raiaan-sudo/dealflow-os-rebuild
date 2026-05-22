@@ -504,11 +504,11 @@ function runOfflineChecks() {
   assertIncludes(mediaBuyerFramework, "mediaBuyerReference", "Creative media-buyer reference gate", "quality gates score concrete media-buyer layout/reference logic");
   assertIncludes(mediaBuyerFramework, "previewReadability", "Creative readability gate", "quality gates penalize covered, unreadable, or awkward preview states");
   assertIncludes(mediaBuyerFramework, "generic stock-photo", "Creative stock-photo penalty", "quality gates penalize generic stock-photo-looking output");
-  assertIncludes(staticAdTemplateRenderer, "text-free generated background", "Generated creative review guard", "generated assets are only shown as ready after the text-free background contract passes");
+  assertIncludes(staticAdTemplateRenderer, "evaluateStaticVisualAssetDecision(input).usable", "Generated creative review guard", "generated assets are only shown as ready after the app-composed/static visual decision passes");
   assertIncludes(staticAdTemplateRenderer, "AI visual polish needs another attempt", "Rejected image customer copy", "bad provider images show clean customer-safe retry copy instead of raw QA/provider language");
   assertIncludes(staticCreativeAssetService, "\"requires_review\"", "Rejected generated asset persistence", "generated assets with quality concerns are persisted for review instead of being mislabeled as image failures");
   assertIncludes(staticCreativeAssetService, "imageQa", "Static image QA persistence", "image QA decision metadata is stored with generated static assets");
-  assertIncludes(assetGenerationLifecycle, "asset.qualityGate?.accepted !== false", "Generated asset lifecycle guard", "static asset lifecycle does not mark rejected generated creatives as fully generated");
+  assertIncludes(assetGenerationLifecycle, "evaluateStaticVisualAssetDecision(asset).usable", "Generated asset lifecycle guard", "static asset lifecycle does not mark rejected generated creatives as fully generated");
   assertIncludes(previewPage, "StaticCreativeSummaryCard", "Preview rendered creative cards", "preview page shows rendered creative visuals instead of text-only summaries");
   assertIncludes(previewPage, "Review variants", "Preview review variant label", "preview page separates the primary creative from review variants");
   assertIncludes(previewPage, "Selected UGC video ads", "Preview video concept review", "preview page surfaces selected UGC video ads before launch");

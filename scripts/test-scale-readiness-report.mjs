@@ -94,14 +94,17 @@ for (const forbiddenSelect of [
   "metadata",
   "access_token",
 ]) {
+  const pattern = forbiddenSelect === "metadata"
+    ? /(\.select\([^)]*(^|[, ])metadata([,) ]|$))/i
+    : new RegExp(`\\.select\\([^)]*${forbiddenSelect}`, "i");
   assert.doesNotMatch(
     service,
-    new RegExp(`\\.select\\([^)]*${forbiddenSelect}`, "i"),
+    pattern,
     `service aggregate select must not include raw ${forbiddenSelect}`,
   );
   assert.doesNotMatch(
     report,
-    new RegExp(`\\.select\\([^)]*${forbiddenSelect}`, "i"),
+    pattern,
     `CLI aggregate select must not include raw ${forbiddenSelect}`,
   );
 }

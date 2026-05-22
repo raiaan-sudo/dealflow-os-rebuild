@@ -518,17 +518,17 @@ export function getVideoReadinessLabel(video: VideoCreativeReadinessInput | null
     video?.videoGenerationState === "deferred_worker_required" ||
     video?.videoGenerationState === "operator_action_required"
   ) {
-    return "Final media queued";
+    return "Video render queued";
   }
 
   if (video?.videoGenerationState === "queued") {
-    return "Final media queued";
+    return "Video render queued";
   }
 
   if (video?.videoGenerationState === "generating") {
     return video.providerAssetId || video.providerStatus
       ? "Rendering"
-      : "Final media queued";
+      : "Video render queued";
   }
 
   if (video?.videoGenerationState === "failed") {

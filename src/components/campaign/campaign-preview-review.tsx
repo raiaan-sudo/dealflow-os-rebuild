@@ -269,13 +269,13 @@ export function CampaignPreviewReview({
 
         if (job.status === "completed") {
           if (job.kind === "static_creative_generation") {
-            setGenerationMessage("Static creative job completed.");
+            setGenerationMessage("Final ads are ready.");
           }
           source.close();
           jobStreamsRef.current.delete(jobId);
           router.refresh();
         } else if (job.status === "failed") {
-          setGenerationMessage(job.error_message || "Background generation failed.");
+          setGenerationMessage("AI visual polish needs another attempt. Launch-ready final ads remain available.");
           source.close();
           jobStreamsRef.current.delete(jobId);
           router.refresh();
@@ -322,7 +322,7 @@ export function CampaignPreviewReview({
         throw new Error(data.error || "Static creative generation failed.");
       }
 
-      setGenerationMessage("Static creative job queued.");
+      setGenerationMessage("AI visual polish queued.");
       subscribeToJob(data.job.id);
     } catch (error) {
       setGenerationMessage(

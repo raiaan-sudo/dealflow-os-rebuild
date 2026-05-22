@@ -198,7 +198,12 @@ await assert.rejects(
 );
 globalThis.fetch = originalFetch;
 
-function fakeSupabase({ uploadFails = false, uploadFailuresRemaining = uploadFails ? Number.POSITIVE_INFINITY : 0, insertFails = false } = {}) {
+function fakeSupabase({
+  uploadFails = false,
+  uploadFailuresRemaining = uploadFails ? Number.POSITIVE_INFINITY : 0,
+  insertFails = false,
+  existingRows = [],
+} = {}) {
   const operations = [];
 
   return {
@@ -239,6 +244,25 @@ function fakeSupabase({ uploadFails = false, uploadFailuresRemaining = uploadFai
     },
     from() {
       return {
+        select(columns) {
+          const filters = [];
+          operations.push({ op: "select", columns, filters });
+          const chain = {
+            eq(column, value) {
+              filters.push({ column, value });
+              return chain;
+            },
+            order(column, options) {
+              operations.push({ op: "order", column, options });
+              return chain;
+            },
+            async limit(count) {
+              operations.push({ op: "limit", count });
+              return { data: existingRows, error: null };
+            },
+          };
+          return chain;
+        },
         insert(rows) {
           operations.push({ op: "insert", rows });
 
@@ -420,8 +444,40 @@ assert.equal(imageFrame.metadata.storageNormalized, true);
 assert.equal(imageFrame.metadata.appComposedFinal, true);
 assert.equal(imageFrame.metadata.imageQa.mode, "app_composed_final");
 assert.equal(imageFrame.metadata.imageQa.decision, "accept");
-assert.match(imageFrame.metadata.storagePath, /^user-test\/campaign-test\/app-composed-static\/campaign-test-creative-0\//);
+assert.match(
+  imageFrame.metadata.storagePath,
+  /^user-test\/campaign-test\/app-composed-static\/campaign-test-creative-0\/[a-f0-9]{24}\.png$/,
+  "app-composed final storage path is deterministic by composition hash",
+);
 assert.equal(successfulDb.operations.some((item) => item.op === "delete"), false, "all-ready replacement preserves historical evidence rows");
+
+const existingRows = successfulInsert.rows.map((row, index) => ({
+  ...row,
+  id: `existing-${index}`,
+  created_at: "2026-05-21T00:00:00.000Z",
+  updated_at: "2026-05-21T00:00:00.000Z",
+}));
+const idempotentDb = fakeSupabase({ existingRows });
+const idempotentRows = await persistStaticCreativeAssets({
+  supabase: idempotentDb,
+  userId: "user-test",
+  campaignId: "campaign-test",
+  staticAds: [buildAsset()],
+});
+assert.equal(
+  idempotentDb.operations.some((item) => item.op === "insert"),
+  false,
+  "same app-composed composition reuses existing current rows instead of inserting duplicates",
+);
+assert.equal(idempotentRows.length, 2);
+assert.equal(idempotentRows.every((row) => String(row.id).startsWith("existing-")), true);
+assert.deepEqual(
+  idempotentDb.operations
+    .filter((item) => item.op === "upload")
+    .map((item) => item.storagePath),
+  [imageFrame.metadata.storagePath],
+  "retrying the same composition upserts the same durable storage object path",
+);
 
 const finishedAdDb = fakeSupabase();
 await persistStaticCreativeAssets({

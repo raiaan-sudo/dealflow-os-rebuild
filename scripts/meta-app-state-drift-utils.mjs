@@ -26,6 +26,10 @@ export function isPausedMetaStatus(value) {
   return normalizeMetaStatus(value) === "PAUSED";
 }
 
+export function isCampaignPausedMetaStatus(value) {
+  return normalizeMetaStatus(value) === "CAMPAIGN_PAUSED";
+}
+
 export function readPlanRuntime(plan) {
   const runtime = asRecord(asRecord(plan).runtime);
   const launchRuntime = asRecord(asRecord(plan).launch_runtime);
@@ -59,6 +63,26 @@ export function metaProofIsExactActive(proof, expected = CAMPAIGN_345_ACTIVE_MET
     isActiveMetaStatus(proof?.adset?.effective_status) &&
     isActiveMetaStatus(proof?.ad?.status) &&
     isActiveMetaStatus(proof?.ad?.effective_status)
+  );
+}
+
+export function metaProofIsCampaignLevelPaused(proof, expected = CAMPAIGN_345_ACTIVE_META) {
+  return (
+    proof?.campaign?.id === expected.metaCampaignId &&
+    proof?.adset?.id === expected.metaAdSetId &&
+    proof?.ad?.id === expected.metaAdId &&
+    proof?.ad?.creative_id === expected.metaCreativeId &&
+    proof?.adset?.campaign_id === expected.metaCampaignId &&
+    proof?.ad?.campaign_id === expected.metaCampaignId &&
+    proof?.ad?.adset_id === expected.metaAdSetId &&
+    String(proof?.adset?.daily_budget ?? "") === expected.dailyBudget &&
+    proof?.creative?.destinationLink === expected.destinationUrl &&
+    isPausedMetaStatus(proof?.campaign?.status) &&
+    isPausedMetaStatus(proof?.campaign?.effective_status) &&
+    (isActiveMetaStatus(proof?.adset?.status) || isPausedMetaStatus(proof?.adset?.status)) &&
+    (isCampaignPausedMetaStatus(proof?.adset?.effective_status) || isPausedMetaStatus(proof?.adset?.effective_status)) &&
+    (isActiveMetaStatus(proof?.ad?.status) || isPausedMetaStatus(proof?.ad?.status)) &&
+    (isCampaignPausedMetaStatus(proof?.ad?.effective_status) || isPausedMetaStatus(proof?.ad?.effective_status))
   );
 }
 
@@ -98,6 +122,21 @@ export function appRuntimeReflectsActiveMeta(campaignRow, expected = CAMPAIGN_34
     runtime.adId === expected.metaAdId &&
     runtime.launchRuntimeStatus === "live" &&
     runtime.launchRuntimeStepStatus === "active"
+  );
+}
+
+export function appRuntimeReflectsPausedMeta(campaignRow, expected = CAMPAIGN_345_ACTIVE_META) {
+  const runtime = readPlanRuntime(campaignRow?.plan);
+  return (
+    campaignRow?.launch_status === "paused" &&
+    runtime.status === "paused" &&
+    runtime.safetyState === "paused" &&
+    runtime.metaPushStatus === "paused" &&
+    runtime.campaignId === expected.metaCampaignId &&
+    runtime.adSetId === expected.metaAdSetId &&
+    runtime.adId === expected.metaAdId &&
+    runtime.launchRuntimeStatus === "paused" &&
+    runtime.launchRuntimeStepStatus === "paused"
   );
 }
 

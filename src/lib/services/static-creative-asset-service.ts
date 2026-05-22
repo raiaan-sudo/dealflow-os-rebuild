@@ -31,6 +31,8 @@ type GenerateAndPersistParams = {
   creativeIntake?: CreativeEngineInput["creative_intake"];
 };
 
+type CreativeAssetRow = Database["public"]["Tables"]["creative_assets"]["Row"];
+
 function buildStaticCreativeId(campaignId: string, index: number) {
   return `${campaignId}-creative-${index}`;
 }
@@ -70,6 +72,81 @@ function buildAppComposedImageQa(composition: StaticCreativeCompositionMetadata 
   };
 }
 
+function getCreativeAssetRole(row: CreativeAssetRow | Record<string, unknown>) {
+  const metadata = row.metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+
+  const role = (metadata as Record<string, unknown>).role;
+  return typeof role === "string" ? role : null;
+}
+
+async function findExistingAppComposedFinalRows(params: {
+  supabase: SupabaseClient<Database>;
+  userId: string;
+  campaignId: string;
+  staticAssetId: string;
+  composition: StaticCreativeCompositionMetadata;
+}) {
+  try {
+    const table = params.supabase.from("creative_assets") as unknown as {
+      select?: (columns: string) => unknown;
+    };
+
+    if (typeof table.select !== "function") {
+      return [];
+    }
+
+    let query = table.select("*") as {
+      eq?: (column: string, value: unknown) => unknown;
+      order?: (column: string, options?: { ascending?: boolean }) => unknown;
+      limit?: (count: number) => Promise<{ data: CreativeAssetRow[] | null; error: { message?: string } | null }>;
+    };
+
+    const eq = (column: string, value: unknown) => {
+      if (typeof query.eq === "function") {
+        query = query.eq(column, value) as typeof query;
+      }
+    };
+
+    eq("campaign_id", params.campaignId);
+    eq("user_id", params.userId);
+    eq("generation_method", "app_composed_static");
+    eq("status", "ready");
+    eq("metadata->>staticAssetId", params.staticAssetId);
+    eq("metadata->>appComposedFinal", "true");
+    eq("metadata->>compositionHash", params.composition.compositionHash);
+
+    if (params.composition.staticBriefHash) {
+      eq("metadata->>staticBriefHash", params.composition.staticBriefHash);
+    }
+
+    if (typeof query.order === "function") {
+      query = query.order("created_at", { ascending: false }) as typeof query;
+    }
+
+    const result = typeof query.limit === "function"
+      ? await query.limit(12)
+      : { data: null, error: null };
+
+    if (result.error || !Array.isArray(result.data)) {
+      return [];
+    }
+
+    return result.data.filter((row) =>
+      row.file_url &&
+      row.thumbnail_url &&
+      (
+        getCreativeAssetRole(row) === "app_composed_final_static" ||
+        getCreativeAssetRole(row) === "app_composed_final_thumbnail"
+      ),
+    );
+  } catch {
+    return [];
+  }
+}
+
 function evaluatePreStorageStaticVisualDecision(asset: StaticCreativeAsset) {
   return evaluateStaticVisualAssetDecision({
     ...asset,
@@ -94,6 +171,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
 
   const generationBatchId = crypto.randomUUID();
   const inserts: Array<Database["public"]["Tables"]["creative_assets"]["Insert"]> = [];
+  const existingRows: CreativeAssetRow[] = [];
   let allInsertedCreativesAreReady = true;
 
   for (const [index, asset] of staticAds.entries()) {
@@ -170,6 +248,18 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
           ? "failed"
           : "requires_review";
     allInsertedCreativesAreReady = allInsertedCreativesAreReady && status === "ready";
+    const existingReadyRows = compositionMetadata
+      ? await findExistingAppComposedFinalRows({
+          supabase: params.supabase,
+          userId: params.userId,
+          campaignId: params.campaignId,
+          staticAssetId: asset.id,
+          composition: compositionMetadata,
+        })
+      : [];
+    const hasExistingStatic = existingReadyRows.some((row) => getCreativeAssetRole(row) === "app_composed_final_static");
+    const hasExistingThumbnail = existingReadyRows.some((row) => getCreativeAssetRole(row) === "app_composed_final_thumbnail");
+    existingRows.push(...existingReadyRows);
     const metadataBase = {
       source: "static_ad",
       staticAssetId: asset.id,
@@ -241,8 +331,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       ...buildStorageMetadata(storageResult, providerOriginalUrl),
     } satisfies Record<string, Json | string | number | boolean | null>;
 
-    inserts.push(
-      {
+    const imageFrameRow = {
         user_id: params.userId,
         campaign_id: params.campaignId,
         creative_id: creativeId,
@@ -264,8 +353,8 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
                 : asset.imageGenerationMessage ?? "Static image was not generated for this creative."),
           role: "app_composed_final_static",
         } as Json,
-      },
-      {
+      };
+    const thumbnailRow = {
         user_id: params.userId,
         campaign_id: params.campaignId,
         creative_id: creativeId,
@@ -287,8 +376,19 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
                 : asset.imageGenerationMessage ?? "Static thumbnail was not generated for this creative."),
           role: "app_composed_final_thumbnail",
         } as Json,
-      },
-    );
+      };
+
+    if (!hasExistingStatic) {
+      inserts.push(imageFrameRow);
+    }
+
+    if (!hasExistingThumbnail) {
+      inserts.push(thumbnailRow);
+    }
+  }
+
+  if (inserts.length === 0) {
+    return existingRows;
   }
 
   const { data, error } = await params.supabase
@@ -308,7 +408,10 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
   void insertedIds;
   void allInsertedCreativesAreReady;
 
-  return insertedRows;
+  return [
+    ...existingRows,
+    ...insertedRows,
+  ];
 }
 
 export async function generateAndPersistStaticCreativeAssets(params: GenerateAndPersistParams) {

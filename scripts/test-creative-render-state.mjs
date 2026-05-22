@@ -96,8 +96,8 @@ const deferredJob = {
 const deferred = classifyCreativeRenderJob(deferredJob, now);
 assert.equal(deferred.state, "deferred_worker_required");
 assert.equal(deferred.active, false);
-assert.equal(deferred.customerLabel, "Final media queued");
-assert.match(deferred.customerMessage, /Final media is queued/);
+assert.equal(deferred.customerLabel, "Video render queued");
+assert.match(deferred.customerMessage, /Video render is queued/);
 assert.doesNotMatch(deferred.customerLabel, /Rendering/i);
 assert.doesNotMatch(deferred.customerMessage, /provider|worker|job|system job|higgsfield|openai|qa|storage|hash|env|api key|marketing_studio|cli/i, "customer deferred copy hides internals");
 
@@ -145,7 +145,7 @@ assert.equal(getVideoReadinessLabel({ id: "concept", scriptHash: "script" }), "C
 assert.match(getVideoReadinessMessage({ id: "concept", scriptHash: "script" }), /Script and concept are ready/);
 assert.equal(
   getVideoReadinessLabel({ id: "deferred-video", videoGenerationState: "deferred_worker_required" }),
-  "Final media queued",
+  "Video render queued",
 );
 assert.doesNotMatch(
   getVideoReadinessMessage({ id: "deferred-video", videoGenerationState: "deferred_worker_required" }),
@@ -153,7 +153,7 @@ assert.doesNotMatch(
 );
 assert.equal(
   getVideoReadinessLabel({ id: "queued-video", videoGenerationState: "generating" }),
-  "Final media queued",
+  "Video render queued",
 );
 assert.equal(
   getVideoReadinessLabel({ id: "active-video", videoGenerationState: "generating", providerAssetId: "provider-job" }),
@@ -224,7 +224,8 @@ assert.equal(
 
 const creativeWizardSource = fs.readFileSync("src/app/(app)/build/creatives/creative-wizard.tsx", "utf8");
 assert.match(creativeWizardSource, /classifyCreativeRenderJob/);
-assert.match(creativeWizardSource, /Final media queued/);
+assert.doesNotMatch(creativeWizardSource, /Final media queued/);
+assert.match(creativeWizardSource, /AI visual polish queued/);
 assert.doesNotMatch(creativeWizardSource, /Queued for render worker|worker is available|product QA accepts/);
 assert.doesNotMatch(creativeWizardSource, /\{videoActionPending \? "Rendering"/, "active job ids no longer force a Rendering label");
 assert.doesNotMatch(

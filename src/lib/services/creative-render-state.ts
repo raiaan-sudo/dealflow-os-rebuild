@@ -132,8 +132,10 @@ export function classifyCreativeRenderJob(
   if (deferred) {
     return {
       state: staleDeferred ? "operator_action_required" : "deferred_worker_required",
-      customerLabel: "Final media queued",
-      customerMessage: "Final media is queued. We'll update this when rendering starts.",
+      customerLabel: job.kind === "static_creative_generation" ? "AI visual polish queued" : "Video render queued",
+      customerMessage: job.kind === "static_creative_generation"
+        ? "AI visual polish is queued. Launch-ready final ads remain available."
+        : "Video render is queued. We'll update this when rendering starts.",
       customerActionLabel: null,
       active: false,
       retryAvailable: false,
@@ -176,8 +178,10 @@ export function classifyCreativeRenderJob(
   if (job.status === "processing") {
     return {
       state: "operator_action_required",
-      customerLabel: "Final media queued",
-      customerMessage: "Final media is queued. We'll update this when rendering starts.",
+      customerLabel: job.kind === "static_creative_generation" ? "AI visual polish queued" : "Video render queued",
+      customerMessage: job.kind === "static_creative_generation"
+        ? "AI visual polish is queued. Launch-ready final ads remain available."
+        : "Video render is queued. We'll update this when rendering starts.",
       customerActionLabel: null,
       active: false,
       retryAvailable: false,
@@ -188,8 +192,10 @@ export function classifyCreativeRenderJob(
 
   return {
     state: "queued",
-    customerLabel: "Final media queued",
-    customerMessage: "Final media is queued. We'll update this when rendering starts.",
+    customerLabel: job.kind === "static_creative_generation" ? "AI visual polish queued" : "Video render queued",
+    customerMessage: job.kind === "static_creative_generation"
+      ? "AI visual polish is queued. Launch-ready final ads remain available."
+      : "Video render is queued. We'll update this when rendering starts.",
     customerActionLabel: null,
     active: false,
     retryAvailable: false,

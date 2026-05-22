@@ -1046,9 +1046,9 @@ export function CreativeWizard({
                   {imageLimitMessage
                     ? "Daily image limit reached"
                     : imageWorkerDeferred
-                    ? "Final media queued"
+                    ? "AI visual polish queued"
                     : imageActionPending
-                    ? "Refreshing previews..."
+                    ? "Preparing previews..."
                     : needsImageGeneration
                       ? staticReadiness.staleCount > 0
                         ? "Regenerate stale creatives"
@@ -1271,7 +1271,7 @@ export function CreativeWizard({
                     ? "Render static creatives first"
                     : currentVideoRenderView?.state === "deferred_worker_required" ||
                   currentVideoRenderView?.state === "operator_action_required"
-                    ? "Final media queued"
+                    ? "Video render queued"
                     : videoActionPending || (
                       activeVideoCreative.videoGenerationState === "generating" &&
                       (activeVideoCreative.providerAssetId || activeVideoCreative.providerStatus)

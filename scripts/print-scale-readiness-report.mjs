@@ -169,7 +169,7 @@ async function buildReport() {
     clientErrors,
   ] = await Promise.all([
     readRows(supabase, "system_jobs", supabase.from("system_jobs").select("id,organization_id,campaign_id,kind,status,created_at,started_at,locked_until,next_run_at,attempt_count,max_attempts,dead_lettered_at,last_error_code,reviewed_at,resolution_note").neq("status", "completed").order("created_at", { ascending: false }).limit(1000), warnings),
-    readRows(supabase, "provider_usage_events", supabase.from("provider_usage_events").select("id,organization_id,campaign_id,provider,operation,status,estimated_cost,actual_cost,created_at").gte("created_at", sevenDaysAgoIso).order("created_at", { ascending: false }).limit(2000), warnings),
+    readRows(supabase, "provider_usage_events", supabase.from("provider_usage_events").select("id,organization_id,campaign_id,provider,operation,status,estimated_cost,actual_cost,operator_reviewed_at:metadata->>operatorReviewedAt,created_at").gte("created_at", sevenDaysAgoIso).order("created_at", { ascending: false }).limit(2000), warnings),
     readRows(supabase, "provider_usage_limits", supabase.from("provider_usage_limits").select("provider,operation,usage_count,limit_count,usage_date,updated_at").gte("usage_date", today).order("updated_at", { ascending: false }).limit(1000), warnings),
     readRows(supabase, "billing_subscriptions", supabase.from("billing_subscriptions").select("organization_id,plan_tier,status,current_period_end,cancel_at_period_end,created_at,updated_at").limit(5000), warnings),
     readRows(supabase, "stripe_webhook_events", supabase.from("stripe_webhook_events").select("id,stripe_event_type,status,error_code,created_at,updated_at").gte("created_at", sevenDaysAgoIso).order("created_at", { ascending: false }).limit(2000), warnings),
@@ -208,8 +208,9 @@ async function buildReport() {
   });
   const jobsApproachingMaxAttempts = activeJobs.filter((job) => Number(job.max_attempts ?? 0) > 0 && Number(job.attempt_count ?? 0) >= Math.max(1, Number(job.max_attempts) - 1)).length;
   const providerFailures = providerEvents.filter((event) => event.status === "failed");
-  const currentProviderFailures = providerFailures.filter((event) => isWithin(event.created_at, oneDayAgoMs));
-  const historicalProviderFailures = providerFailures.filter((event) => !isWithin(event.created_at, oneDayAgoMs));
+  const activeProviderFailures = providerFailures.filter((event) => !event.operator_reviewed_at);
+  const currentProviderFailures = activeProviderFailures.filter((event) => isWithin(event.created_at, oneDayAgoMs));
+  const historicalProviderFailures = providerFailures.filter((event) => event.operator_reviewed_at || !isWithin(event.created_at, oneDayAgoMs));
   const staleProviderReservations = providerEvents.filter((event) => event.status === "reserved" && event.created_at < thirtyMinutesAgoIso).length;
   const providerCostToday = providerEvents
     .filter((event) => event.created_at?.startsWith(today))

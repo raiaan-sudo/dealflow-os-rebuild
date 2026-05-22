@@ -279,8 +279,7 @@ export async function composeAndUploadStaticCreativeFinal(
   const { png, preview } = await composeStaticCreativeFinalPng(params.asset);
   const metadata = buildStaticCreativeCompositionMetadata(params.asset, preview);
   const safeCreativeId = toSlug(params.creativeId);
-  const safeBatchId = toSlug(params.generationBatchId);
-  const storagePath = `${params.userId}/${params.campaignId}/app-composed-static/${safeCreativeId}/${metadata.compositionHash}-${safeBatchId}.png`;
+  const storagePath = `${params.userId}/${params.campaignId}/app-composed-static/${safeCreativeId}/${metadata.compositionHash}.png`;
   const { error: uploadError } = await params.supabase.storage
     .from(STATIC_CREATIVE_STORAGE_BUCKET)
     .upload(storagePath, png, {
