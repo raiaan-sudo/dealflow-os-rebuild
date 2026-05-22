@@ -68,8 +68,34 @@ function isInternalApiRequest(pathname: string) {
   return pathname === "/api/internal" || pathname.startsWith("/api/internal/");
 }
 
+function getQaAuthHarnessSecrets() {
+  return Array.from(
+    new Set(
+      [
+        process.env.QA_AUTH_PROOF_SECRET,
+        ...getInternalSystemJobSecrets(),
+      ]
+        .map((value) => value?.trim() ?? "")
+        .filter(Boolean),
+    ),
+  );
+}
+
 function isAuthorizedInternalRequest(request: NextRequest) {
   const secrets = getInternalSystemJobSecrets();
+  const token =
+    getBearerToken(request) ??
+    request.headers.get("x-internal-system-key")?.trim() ??
+    null;
+
+  return {
+    configured: secrets.length > 0,
+    authorized: secrets.some((secret) => timingSafeTokenEquals(token, secret)),
+  };
+}
+
+function isAuthorizedQaAuthHarnessRequest(request: NextRequest) {
+  const secrets = getQaAuthHarnessSecrets();
   const token =
     getBearerToken(request) ??
     request.headers.get("x-internal-system-key")?.trim() ??
@@ -148,7 +174,10 @@ export async function proxy(request: NextRequest) {
   }
 
   if (isInternalApiRequest(pathname)) {
-    const { configured, authorized } = isAuthorizedInternalRequest(request);
+    const { configured, authorized } =
+      pathname === "/api/internal/qa-auth-session"
+        ? isAuthorizedQaAuthHarnessRequest(request)
+        : isAuthorizedInternalRequest(request);
 
     if (!configured) {
       return finalize(NextResponse.json(
