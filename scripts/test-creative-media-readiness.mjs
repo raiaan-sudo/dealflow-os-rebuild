@@ -705,7 +705,9 @@ assert.match(creativeWizardSource, /selectedUgcVideoIds/, "Creative Studio persi
 assert.match(creativeWizardSource, /Select UGC for launch/, "Creative Studio lets UGC videos be selected like static creatives");
 assert.match(previewSource, /getSelectedUgcVideoIdsFromPlan/, "Preview consumes persisted selected UGC video IDs");
 assert.match(previewSource, /selectedUgcVideoIds\.length > 0 \? "Selected UGC video ads" : "UGC video options"/, "Preview labels unselected UGC fallback as options, not selected ads");
+assert.match(previewSource, /dedupeVideoIds/, "Preview dedupes duplicate UGC creative IDs before display/readiness");
 assert.match(launchSource, /getSelectedUgcVideoIdsFromPlan/, "Launch consumes persisted selected UGC video IDs");
+assert.match(launchSource, /dedupeVideoIds/, "Launch dedupes duplicate UGC creative IDs before display/readiness");
 assert.match(launchSource, /\/build\/creatives\?campaignId=/, "Launch missing-creative CTA must return to Creative Studio");
 
 assert.doesNotMatch(creativeWizardSource, /Ready to render/);

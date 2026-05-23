@@ -365,27 +365,31 @@ export default async function LaunchAliasPage({
 	  const staticReadiness = getStaticCreativeReadiness(plan.creatives.staticAds, selectedAdIds, staticBriefReadinessContext);
   const selectedCreativeMediaReady =
     staticReadiness.allSelectedReady;
+  const isCurrentLaunchReadyUgcVideo = (video: (typeof plan.creatives.videoAds)[number]) =>
+    video.conceptType === "customer_ugc" &&
+    isLaunchReadyVideoCreative(video) &&
+    (!creativeIntakeContext?.ugcScriptHash ||
+      video.ugcScriptHash === creativeIntakeContext.ugcScriptHash ||
+      video.scriptHash === creativeIntakeContext.ugcScriptHash);
+  const dedupeVideoIds = (videos: typeof plan.creatives.videoAds) => {
+    const seen = new Set<string>();
+    return videos.filter((video) => {
+      if (seen.has(video.id)) {
+        return false;
+      }
+
+      seen.add(video.id);
+      return true;
+    });
+  };
   const selectedUgcVideos = selectedUgcVideoIds.length > 0
-    ? plan.creatives.videoAds
+    ? dedupeVideoIds(plan.creatives.videoAds
         .filter((video) => selectedUgcVideoIds.includes(video.id))
-        .sort((left, right) => selectedUgcVideoIds.indexOf(left.id) - selectedUgcVideoIds.indexOf(right.id))
+        .filter(isCurrentLaunchReadyUgcVideo)
+        .sort((left, right) => selectedUgcVideoIds.indexOf(left.id) - selectedUgcVideoIds.indexOf(right.id)))
     : [];
-	  const launchReadyVideos = selectedUgcVideos.filter(
-	    (video) =>
-	      video.conceptType === "customer_ugc" &&
-	      isLaunchReadyVideoCreative(video) &&
-	      (!creativeIntakeContext?.ugcScriptHash ||
-	        video.ugcScriptHash === creativeIntakeContext.ugcScriptHash ||
-	        video.scriptHash === creativeIntakeContext.ugcScriptHash),
-	  );
-	  const fallbackDisplayVideos = plan.creatives.videoAds.filter(
-	    (video) =>
-	      video.conceptType === "customer_ugc" &&
-	      isLaunchReadyVideoCreative(video) &&
-	      (!creativeIntakeContext?.ugcScriptHash ||
-	        video.ugcScriptHash === creativeIntakeContext.ugcScriptHash ||
-	        video.scriptHash === creativeIntakeContext.ugcScriptHash),
-	  );
+	  const launchReadyVideos = selectedUgcVideos;
+	  const fallbackDisplayVideos = dedupeVideoIds(plan.creatives.videoAds.filter(isCurrentLaunchReadyUgcVideo));
   const displayVideoAds = selectedUgcVideos.length > 0
     ? selectedUgcVideos
     : fallbackDisplayVideos.length > 0

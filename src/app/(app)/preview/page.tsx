@@ -167,24 +167,31 @@ export default async function PreviewPage({
     .filter((ad) => selectedAdIds.includes(ad.id))
     .sort((left, right) => selectedAdIds.indexOf(left.id) - selectedAdIds.indexOf(right.id));
   const videoAds = previewPlan.creatives.videoAds;
+  const isCurrentLaunchReadyUgcVideo = (video: (typeof videoAds)[number]) =>
+    video.conceptType === "customer_ugc" &&
+    isLaunchReadyVideoCreative(video) &&
+    (!creativeIntakeContext?.ugcScriptHash || video.ugcScriptHash === creativeIntakeContext.ugcScriptHash || video.scriptHash === creativeIntakeContext.ugcScriptHash);
+  const dedupeVideoIds = (videos: typeof videoAds) => {
+    const seen = new Set<string>();
+    return videos.filter((video) => {
+      if (seen.has(video.id)) {
+        return false;
+      }
+
+      seen.add(video.id);
+      return true;
+    });
+  };
   const staticReadiness = getStaticCreativeReadiness(previewPlan.creatives.staticAds, selectedAdIds, staticBriefReadinessContext);
   const selectedStaticMediaReady = staticReadiness.allSelectedReady;
   const selectedUgcVideos = selectedUgcVideoIds.length > 0
-    ? videoAds
+    ? dedupeVideoIds(videoAds
         .filter((video) => selectedUgcVideoIds.includes(video.id))
-        .sort((left, right) => selectedUgcVideoIds.indexOf(left.id) - selectedUgcVideoIds.indexOf(right.id))
+        .filter(isCurrentLaunchReadyUgcVideo)
+        .sort((left, right) => selectedUgcVideoIds.indexOf(left.id) - selectedUgcVideoIds.indexOf(right.id)))
     : [];
-  const selectedLaunchReadyVideos = selectedUgcVideos.filter(
-    (video) =>
-      video.conceptType === "customer_ugc" &&
-      isLaunchReadyVideoCreative(video) &&
-      (!creativeIntakeContext?.ugcScriptHash || video.ugcScriptHash === creativeIntakeContext.ugcScriptHash || video.scriptHash === creativeIntakeContext.ugcScriptHash),
-  );
-  const launchReadyVideos = videoAds.filter((video) =>
-    video.conceptType === "customer_ugc" &&
-    isLaunchReadyVideoCreative(video) &&
-    (!creativeIntakeContext?.ugcScriptHash || video.ugcScriptHash === creativeIntakeContext.ugcScriptHash || video.scriptHash === creativeIntakeContext.ugcScriptHash),
-  );
+  const selectedLaunchReadyVideos = selectedUgcVideos;
+  const launchReadyVideos = dedupeVideoIds(videoAds.filter(isCurrentLaunchReadyUgcVideo));
   const displayVideoAds = selectedUgcVideos.length > 0
     ? selectedUgcVideos
     : launchReadyVideos.length > 0
