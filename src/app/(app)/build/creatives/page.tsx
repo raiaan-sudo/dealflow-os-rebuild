@@ -114,9 +114,11 @@ export default async function BuildCreativesPage({
     Boolean(creativeIntake.promptVersion?.generatedPrompt);
   const customerOfferTitle = resolveCustomerFacingOfferTitle({ intake: creativeIntake, plan });
   const approvedUgcScriptLines = creativeIntake?.brief?.ugcStyleBrief?.approvedScript?.lines ?? [];
-  const approvedUgcScriptHash = approvedUgcScriptLines.length > 0
-    ? sha256Text(approvedUgcScriptLines.join("\n"))
-    : null;
+  const approvedUgcScriptHash =
+    creativeIntake?.brief?.ugcScriptHash ??
+    (approvedUgcScriptLines.length > 0
+      ? sha256Text(approvedUgcScriptLines.join("\n"))
+      : null);
   const approvedBriefContext = creativeIntake?.brief
     ? {
         offerTitle: creativeIntake.brief.offerTitle,
