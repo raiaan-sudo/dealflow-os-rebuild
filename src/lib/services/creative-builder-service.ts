@@ -159,10 +159,18 @@ function isLaunchReadyStaticImageAsset(asset: CreativeAsset) {
     storageNormalized:
       metadata.storageNormalized === true ||
       (metadata.storageNormalizationReusedExistingAppAsset === true && typeof metadata.storagePath === "string"),
+    appComposedFinal: metadata.appComposedFinal === true,
+    qualityTier: typeof metadata.qualityTier === "string" ? metadata.qualityTier : null,
+    sourceBackgroundKind: typeof metadata.sourceBackgroundKind === "string" ? metadata.sourceBackgroundKind : null,
+    sourceBackgroundProvider: typeof metadata.sourceBackgroundProvider === "string" ? metadata.sourceBackgroundProvider : null,
+    sourceBackgroundAssetId: typeof metadata.sourceBackgroundAssetId === "string" ? metadata.sourceBackgroundAssetId : null,
     imagePrompt: typeof metadata.imagePrompt === "string" ? metadata.imagePrompt : null,
     imagePromptConfig: (metadata.imagePromptConfig ?? null) as StaticCreativeAsset["imagePromptConfig"],
     visualPromptBrief: (metadata.visualPromptBrief ?? null) as StaticCreativeAsset["visualPromptBrief"],
     qualityGate: (metadata.qualityGate ?? null) as StaticCreativeAsset["qualityGate"],
+    visualQualityGate: (metadata.visualQualityGate ?? null) as StaticCreativeAsset["visualQualityGate"],
+    premiumQualityGate: (metadata.premiumQualityGate ?? null) as StaticCreativeAsset["premiumQualityGate"],
+    imageQa: (metadata.imageQa ?? null) as StaticCreativeAsset["imageQa"],
   });
 
   return decision.usable;

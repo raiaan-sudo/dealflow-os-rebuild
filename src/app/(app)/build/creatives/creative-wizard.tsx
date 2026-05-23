@@ -39,6 +39,10 @@ type CreativeOption = {
   imageUrl?: string | null;
   storageNormalized?: boolean | null;
   appComposedFinal?: boolean | null;
+  qualityTier?: string | null;
+  sourceBackgroundKind?: string | null;
+  sourceBackgroundProvider?: string | null;
+  sourceBackgroundAssetId?: string | null;
   imageGenerationState?: string | null;
   imageGenerationMessage?: string | null;
   imagePrompt?: string | null;
@@ -55,6 +59,16 @@ type CreativeOption = {
     score?: number | null;
     accepted?: boolean | null;
     hardFailures?: string[] | null;
+  } | null;
+  visualQualityGate?: {
+    accepted?: boolean | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+  } | null;
+  premiumQualityGate?: {
+    accepted?: boolean | null;
+    mode?: string | null;
+    reasons?: string[] | null;
   } | null;
   imageQa?: {
     usable?: boolean | null;
@@ -618,9 +632,9 @@ export function CreativeWizard({
       setRenderJobs((current) => upsertRenderJob(current, data.job as SystemJob));
       setRenderMessage(
         deferredWorkerJob
-          ? "Optional premium polish is preparing in the background. Your launch-ready ads are available now."
+          ? "Premium launch ads are preparing in the background. Draft previews remain available while final ads finish."
           : data.previewUpdated
-            ? "Creative concepts are visible now. Launch-ready ads stay available while optional polish prepares."
+            ? "Draft previews are visible now. Premium launch ads are preparing separately."
             : renderView.customerMessage,
       );
       if (data.previewUpdated) {
@@ -1014,12 +1028,18 @@ export function CreativeWizard({
             imageUrl={displayActiveCreative.imageUrl}
             storageNormalized={displayActiveCreative.storageNormalized}
             appComposedFinal={displayActiveCreative.appComposedFinal}
+            qualityTier={displayActiveCreative.qualityTier}
+            sourceBackgroundKind={displayActiveCreative.sourceBackgroundKind}
+            sourceBackgroundProvider={displayActiveCreative.sourceBackgroundProvider}
+            sourceBackgroundAssetId={displayActiveCreative.sourceBackgroundAssetId}
             location={displayActiveCreative.location}
             formatLabel={displayActiveCreative.formatLabel}
             offer={displayActiveCreative.offer}
             overlayText={displayActiveCreative.overlayText}
             primaryText={displayActiveCreative.primaryText}
             qualityGate={displayActiveCreative.qualityGate}
+            visualQualityGate={displayActiveCreative.visualQualityGate}
+            premiumQualityGate={displayActiveCreative.premiumQualityGate}
             imageQa={displayActiveCreative.imageQa}
             score={displayActiveCreative.score}
             selectedCount={activeCreativeSelected && activeCreative && isStaticLaunchReady(activeCreative) ? staticReadiness.selectedReadyCount : null}
@@ -1059,18 +1079,16 @@ export function CreativeWizard({
                   {imageLimitMessage
                     ? "Daily image limit reached"
                     : imageWorkerDeferred
-                    ? optionalOnlyNeedsPolish
-                      ? "Optional polish preparing"
-                      : "Premium polish preparing"
+                    ? "Premium ads preparing"
                     : imageActionPending
-                    ? "Preparing previews..."
+                    ? "Preparing premium ads..."
                     : optionalOnlyNeedsPolish
-                    ? "Prepare optional polish"
+                    ? "Prepare premium ads"
                     : needsImageGeneration
                       ? staticReadiness.staleCount > 0
-                        ? "Regenerate stale creatives"
-                        : "Refresh unfinished previews"
-                      : "Refresh image previews"}
+                        ? "Regenerate stale premium ads"
+                        : "Prepare premium ads"
+                      : "Refresh premium ads"}
                 </Button>
               ) : null}
               {activeCreative.imageGenerationState === "failed" || activeCreative.qualityGate?.accepted === false ? (
@@ -1137,11 +1155,17 @@ export function CreativeWizard({
                     imageUrl={displayCreative.imageUrl}
                     storageNormalized={displayCreative.storageNormalized}
                     appComposedFinal={displayCreative.appComposedFinal}
+                    qualityTier={displayCreative.qualityTier}
+                    sourceBackgroundKind={displayCreative.sourceBackgroundKind}
+                    sourceBackgroundProvider={displayCreative.sourceBackgroundProvider}
+                    sourceBackgroundAssetId={displayCreative.sourceBackgroundAssetId}
                     location={displayCreative.location}
                     offer={displayCreative.offer}
                     overlayText={displayCreative.overlayText}
                     primaryText={displayCreative.primaryText}
                     qualityGate={displayCreative.qualityGate}
+                    visualQualityGate={displayCreative.visualQualityGate}
+                    premiumQualityGate={displayCreative.premiumQualityGate}
                     imageQa={displayCreative.imageQa}
                     score={displayCreative.score}
                     selectedCount={isStaticLaunchReady(creative) ? staticReadiness.selectedReadyCount : null}
@@ -1167,10 +1191,10 @@ export function CreativeWizard({
               {error ??
                 (!selectedMediaReady
                   ? staticReadiness.selectedStaleCount > 0
-                    ? "Regenerate stale selected creatives before saving this launch set."
+                    ? "Regenerate stale selected premium ads before saving this launch set."
                     : staticReadiness.selectedBlockedCount > 0
-                    ? "Refresh selected previews before saving this launch set."
-                    : "Select launch-ready previews before saving this launch set."
+                    ? "Prepare selected premium ads before saving this launch set."
+                    : "Select premium launch-ready ads before saving this launch set."
                   : !savedSelectionMatchesCurrent
                     ? "Draft selection only. Launch remains blocked until this set is saved."
                     : rankedCreatives.length >= 2
@@ -1470,12 +1494,12 @@ export function CreativeWizard({
             </h3>
           </div>
           <p className="text-sm text-muted-foreground">
-            Click any card to view it large above. Selected launch-ready cards are shown first. {selectedLaunchReadyCreatives.length || selectedCreatives.length}/{carouselMaxSelected} selected.
+            Click any card to view it large above. Premium launch-ready cards are shown first; drafts remain visible for review. {selectedLaunchReadyCreatives.length || selectedCreatives.length}/{carouselMaxSelected} selected.
           </p>
         </div>
         {draftCreatives.length > 0 && launchReadyCreatives.length > 0 ? (
           <p className="mt-3 rounded-[14px] border border-amber-300/16 bg-amber-300/[0.075] px-3 py-2 text-sm leading-6 text-amber-100">
-            Showing {selectedLaunchReadyCreatives.length || launchReadyCreatives.length} launch-ready candidate{(selectedLaunchReadyCreatives.length || launchReadyCreatives.length) === 1 ? "" : "s"}.
+            Showing {selectedLaunchReadyCreatives.length || launchReadyCreatives.length} premium launch-ready candidate{(selectedLaunchReadyCreatives.length || launchReadyCreatives.length) === 1 ? "" : "s"}.
             {" "}
             {draftCreatives.length} draft concept{draftCreatives.length === 1 ? "" : "s"} need regeneration and are separated below.
             {unselectedLaunchReadyCreatives.length > 0 ? ` ${unselectedLaunchReadyCreatives.length} optional launch-ready candidate${unselectedLaunchReadyCreatives.length === 1 ? "" : "s"} can be added after review.` : ""}
@@ -1536,11 +1560,17 @@ export function CreativeWizard({
                     imageUrl={displayCreative.imageUrl}
                     storageNormalized={displayCreative.storageNormalized}
                     appComposedFinal={displayCreative.appComposedFinal}
+                    qualityTier={displayCreative.qualityTier}
+                    sourceBackgroundKind={displayCreative.sourceBackgroundKind}
+                    sourceBackgroundProvider={displayCreative.sourceBackgroundProvider}
+                    sourceBackgroundAssetId={displayCreative.sourceBackgroundAssetId}
                     location={displayCreative.location}
                     offer={displayCreative.offer}
                     overlayText={displayCreative.overlayText}
                     primaryText={displayCreative.primaryText}
                     qualityGate={displayCreative.qualityGate}
+                    visualQualityGate={displayCreative.visualQualityGate}
+                    premiumQualityGate={displayCreative.premiumQualityGate}
                     imageQa={displayCreative.imageQa}
                     score={displayCreative.score}
                     selectedCount={selected ? selectedCreatives.length : null}
@@ -1557,7 +1587,7 @@ export function CreativeWizard({
               {draftCreatives.length} draft concept{draftCreatives.length === 1 ? "" : "s"} need regeneration
             </summary>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              These concepts are not launch-ready and are not selectable as final launch media until accepted app-owned imagery is generated.
+              These concepts are draft previews and are not selectable as final launch media until premium app-owned ads pass review.
             </p>
             <div className="mt-4 grid gap-4 lg:grid-cols-3">
               {draftCreatives.map((creative, index) => {
@@ -1601,11 +1631,17 @@ export function CreativeWizard({
                         imageUrl={displayCreative.imageUrl}
                         storageNormalized={displayCreative.storageNormalized}
                         appComposedFinal={displayCreative.appComposedFinal}
+                        qualityTier={displayCreative.qualityTier}
+                        sourceBackgroundKind={displayCreative.sourceBackgroundKind}
+                        sourceBackgroundProvider={displayCreative.sourceBackgroundProvider}
+                        sourceBackgroundAssetId={displayCreative.sourceBackgroundAssetId}
                         location={displayCreative.location}
                         offer={displayCreative.offer}
                         overlayText={displayCreative.overlayText}
                         primaryText={displayCreative.primaryText}
                         qualityGate={displayCreative.qualityGate}
+                        visualQualityGate={displayCreative.visualQualityGate}
+                        premiumQualityGate={displayCreative.premiumQualityGate}
                         imageQa={displayCreative.imageQa}
                         score={displayCreative.score}
                         selectedCount={null}

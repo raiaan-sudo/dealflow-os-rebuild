@@ -225,10 +225,9 @@ assert.equal(
 const creativeWizardSource = fs.readFileSync("src/app/(app)/build/creatives/creative-wizard.tsx", "utf8");
 assert.match(creativeWizardSource, /classifyCreativeRenderJob/);
 assert.doesNotMatch(creativeWizardSource, /Final media queued/);
-assert.match(creativeWizardSource, /Premium polish preparing/);
-assert.match(creativeWizardSource, /Optional premium polish is preparing in the background/);
-assert.match(creativeWizardSource, /Optional polish preparing/);
-assert.match(creativeWizardSource, /Prepare optional polish/);
+assert.match(creativeWizardSource, /Premium ads preparing/);
+assert.match(creativeWizardSource, /Premium launch ads are preparing in the background/);
+assert.match(creativeWizardSource, /Prepare premium ads/);
 assert.match(
   creativeWizardSource,
   /setRenderJobs\(\(current\) => upsertRenderJob\(current, data\.job as SystemJob\)\)/,

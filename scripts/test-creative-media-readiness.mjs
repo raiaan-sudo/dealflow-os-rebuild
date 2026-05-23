@@ -106,6 +106,10 @@ function readyStatic(id) {
 	    imageUrl: `https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/${id}.png`,
 	    storageNormalized: true,
 	    appComposedFinal: true,
+    qualityTier: "premium_final",
+    sourceBackgroundKind: "higgsfield_visual_background",
+    sourceBackgroundProvider: "higgsfield_marketing_studio",
+    sourceBackgroundAssetId: `source-${id}`,
     imageGenerationState: "generated",
     imagePrompt: "Text-free background asset only for a real estate ad.",
     imagePromptConfig: null,
@@ -114,6 +118,8 @@ function readyStatic(id) {
       visualAssetRole: "text_free_background",
     },
     qualityGate: { accepted: true },
+    visualQualityGate: { accepted: true },
+    premiumQualityGate: { accepted: true },
 	    imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
 	  };
 	}
@@ -167,6 +173,26 @@ const reviewOnlyReadiness = getStaticCreativeReadiness(
 assert.equal(reviewOnlyReadiness.selectedReadyCount, 0);
 assert.equal(reviewOnlyReadiness.allSelectedReady, false);
 assert.equal(reviewOnlyReadiness.selectedMinimumMet, false);
+
+const appFallbackTemplateReadiness = getStaticCreativeReadiness([
+  {
+    ...readyStatic("app-fallback-template"),
+    qualityTier: "draft_preview",
+    sourceBackgroundKind: "app_fallback_visual",
+    sourceBackgroundProvider: null,
+    sourceBackgroundAssetId: null,
+    visualQualityGate: { accepted: false },
+    premiumQualityGate: { accepted: false },
+    imageQa: {
+      usable: false,
+      decision: "review",
+      mode: "app_composed_final",
+      reasons: ["app_fallback_visual_not_launch_ready", "generic_template_asset"],
+    },
+  },
+], ["app-fallback-template"]);
+assert.equal(appFallbackTemplateReadiness.selectedReadyCount, 0, "app fallback template cards cannot be launch-ready");
+assert.equal(appFallbackTemplateReadiness.allSelectedReady, false, "app fallback template cards cannot satisfy static floor");
 
 const oneSelected = getStaticCreativeReadiness(creatives, ["primary"]);
 assert.equal(oneSelected.selectionLabel, "1 primary creative selected");
@@ -388,12 +414,12 @@ const productionLikeCreativeAssets = [
 ];
 const productionMappedStatic = mapStaticCreativeAssets(productionLikeCreativeAssets);
 const productionStaticReadiness = getStaticCreativeReadiness(productionMappedStatic, stalePlanSelectedIds);
-assert.equal(productionStaticReadiness.selectedReadyCount, 3);
-assert.equal(productionStaticReadiness.selectedBlockedCount, 0);
+assert.equal(productionStaticReadiness.selectedReadyCount, 0);
+assert.equal(productionStaticReadiness.selectedBlockedCount, 3);
 assert.equal(productionStaticReadiness.selectedMinimumMet, false);
 assert.equal(productionStaticReadiness.allSelectedReady, false);
-assert.equal(productionStaticReadiness.readyLabel, "3 selected launch-ready previews");
-assert.equal(productionMappedStatic.find((asset) => asset.id === "primary")?.imageGenerationState, "generated");
+assert.equal(productionStaticReadiness.readyLabel, "0 selected launch-ready previews");
+assert.equal(productionMappedStatic.find((asset) => asset.id === "primary")?.imageGenerationState, "failed");
 assert.doesNotMatch(productionMappedStatic.find((asset) => asset.id === "primary")?.headline ?? "", /Delivered through|property selection/i);
 assert.doesNotMatch(productionMappedStatic.find((asset) => asset.id === "primary")?.primaryText ?? "", /Delivered through|property selection/i);
 
@@ -521,8 +547,8 @@ const productionMappedVideo = mapVideoCreativeAssets([
   ...productionLikeCreativeAssets,
 ]);
 assert.equal(productionMappedVideo.length, 1);
-assert.equal(isLaunchReadyVideoCreative(productionMappedVideo[0]), true);
-assert.equal(getVideoReadinessLabel(productionMappedVideo[0]), "Campaign-specific UGC ready");
+assert.equal(isLaunchReadyVideoCreative(productionMappedVideo[0]), false, "UGC tied to non-premium static source cannot be launch-ready");
+assert.equal(getVideoReadinessLabel(productionMappedVideo[0]), "Playable review sample");
 
 const videoOnlyMappedCreativeStudioRead = mapVideoCreativeAssets([
   {

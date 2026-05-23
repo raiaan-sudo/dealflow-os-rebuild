@@ -57,11 +57,21 @@ function buildStorageMetadata(
 }
 
 function buildAppComposedImageQa(composition: StaticCreativeCompositionMetadata | null) {
+  const accepted = Boolean(
+    composition?.appComposedFinal &&
+      composition.qualityTier === "premium_final" &&
+      composition.premiumQualityGate.accepted === true,
+  );
+  const fallbackReasons =
+    composition?.sourceBackgroundKind === "app_fallback_visual"
+      ? ["app_fallback_visual_not_launch_ready", "generic_template_asset", "icon_house_asset"]
+      : composition?.premiumQualityGate.reasons ?? ["image_fetch_failed"];
+
   return {
-    usable: Boolean(composition?.appComposedFinal),
-    decision: composition?.appComposedFinal ? "accept" : "reject",
+    usable: accepted,
+    decision: accepted ? "accept" : "review",
     mode: "app_composed_final",
-    reasons: composition?.appComposedFinal ? [] : ["image_fetch_failed"],
+    reasons: accepted ? [] : fallbackReasons,
     textDensity: 0,
     layoutRisk: 0,
     detectedTextSamples: [
@@ -234,19 +244,25 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
             ),
           }
         : asset.imageQa ?? null;
-    const normalizedGenerationState = readyUrl
+    const appComposedAccepted =
+      persistedImageQa?.usable === true && persistedImageQa?.decision === "accept";
+    const normalizedGenerationState = readyUrl && appComposedAccepted
       ? "generated"
-      : asset.imageUrl
+      : readyUrl
         ? "failed"
-        : asset.imageGenerationState;
-    const status =
-      readyUrl
-        ? "ready"
         : asset.imageUrl
           ? "failed"
-          : asset.imageGenerationState === "failed"
-          ? "failed"
-          : "requires_review";
+          : asset.imageGenerationState;
+    const status =
+      readyUrl && appComposedAccepted
+        ? "ready"
+        : readyUrl
+          ? "requires_review"
+          : asset.imageUrl
+            ? "failed"
+            : asset.imageGenerationState === "failed"
+            ? "failed"
+            : "requires_review";
     allInsertedCreativesAreReady = allInsertedCreativesAreReady && status === "ready";
     const existingReadyRows = compositionMetadata
       ? await findExistingAppComposedFinalRows({
@@ -272,7 +288,11 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       visualAssetContract: asset.visualPromptBrief?.visualAssetContract ?? null,
       visualAssetRole: asset.visualPromptBrief?.visualAssetRole ?? null,
       imageQa: persistedImageQa as Json,
+      sourceImageQa: (asset.imageQa ?? null) as Json,
       appComposedFinal: compositionMetadata?.appComposedFinal ?? false,
+      qualityTier: compositionMetadata?.qualityTier ?? "draft_preview",
+      visualQualityGate: (compositionMetadata?.visualQualityGate ?? null) as Json,
+      premiumQualityGate: (compositionMetadata?.premiumQualityGate ?? null) as Json,
       compositionHash: compositionMetadata?.compositionHash ?? null,
       compositionVersion: compositionMetadata?.compositionVersion ?? null,
       layoutTemplateId: compositionMetadata?.layoutTemplateId ?? null,

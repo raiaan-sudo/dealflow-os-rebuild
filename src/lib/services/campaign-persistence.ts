@@ -308,6 +308,10 @@ export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativ
           : preferredRow.provider_name ?? null,
 	      visualConcept: typeof metadata?.visualConcept === "string" ? metadata.visualConcept : "",
 	      appComposedFinal: metadata?.appComposedFinal === true,
+	      qualityTier: metadataString(metadata, "qualityTier"),
+	      sourceBackgroundKind: metadataString(metadata, "sourceBackgroundKind"),
+	      sourceBackgroundProvider: metadataString(metadata, "sourceBackgroundProvider"),
+	      sourceBackgroundAssetId: metadataString(metadata, "sourceBackgroundAssetId"),
 	      imagePrompt: typeof metadata?.imagePrompt === "string" ? metadata.imagePrompt : "",
       imagePromptConfig: asImagePromptConfig(metadata?.imagePromptConfig),
       preferredImageModel,
@@ -315,6 +319,18 @@ export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativ
       imageQa:
         metadata?.imageQa && typeof metadata.imageQa === "object"
           ? metadata.imageQa as StaticCreativeAsset["imageQa"]
+          : null,
+      sourceImageQa:
+        metadata?.sourceImageQa && typeof metadata.sourceImageQa === "object"
+          ? metadata.sourceImageQa as StaticCreativeAsset["sourceImageQa"]
+          : null,
+      visualQualityGate:
+        metadata?.visualQualityGate && typeof metadata.visualQualityGate === "object"
+          ? metadata.visualQualityGate as StaticCreativeAsset["visualQualityGate"]
+          : null,
+      premiumQualityGate:
+        metadata?.premiumQualityGate && typeof metadata.premiumQualityGate === "object"
+          ? metadata.premiumQualityGate as StaticCreativeAsset["premiumQualityGate"]
           : null,
       scoreBreakdown: asScoreBreakdown(metadata?.scoreBreakdown),
       offerQuality:
@@ -417,6 +433,10 @@ function isAcceptedSourceStaticRow(row: CreativeAssetRow) {
 	      metadata?.storageNormalized === true ||
 	      (metadata?.storageNormalizationReusedExistingAppAsset === true && typeof metadata?.storagePath === "string"),
 	    appComposedFinal: metadata?.appComposedFinal === true,
+	    qualityTier: metadataString(metadata, "qualityTier"),
+	    sourceBackgroundKind: metadataString(metadata, "sourceBackgroundKind"),
+	    sourceBackgroundProvider: metadataString(metadata, "sourceBackgroundProvider"),
+	    sourceBackgroundAssetId: metadataString(metadata, "sourceBackgroundAssetId"),
 	    imagePrompt: typeof metadata?.imagePrompt === "string" ? metadata.imagePrompt : "",
     imagePromptConfig: asImagePromptConfig(metadata?.imagePromptConfig),
     visualPromptBrief: asVisualPromptBrief(metadata?.visualPromptBrief),
@@ -427,6 +447,14 @@ function isAcceptedSourceStaticRow(row: CreativeAssetRow) {
     imageQa:
       metadata?.imageQa && typeof metadata.imageQa === "object"
         ? metadata.imageQa as StaticCreativeAsset["imageQa"]
+        : null,
+    visualQualityGate:
+      metadata?.visualQualityGate && typeof metadata.visualQualityGate === "object"
+        ? metadata.visualQualityGate as StaticCreativeAsset["visualQualityGate"]
+        : null,
+    premiumQualityGate:
+      metadata?.premiumQualityGate && typeof metadata.premiumQualityGate === "object"
+        ? metadata.premiumQualityGate as StaticCreativeAsset["premiumQualityGate"]
         : null,
   };
 

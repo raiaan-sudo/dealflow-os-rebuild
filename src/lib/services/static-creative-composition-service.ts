@@ -15,6 +15,17 @@ export const APP_COMPOSED_STATIC_FINAL_VERSION = "app_composed_static_v1";
 
 export type StaticCreativeCompositionMetadata = {
   appComposedFinal: true;
+  qualityTier: "draft_preview" | "premium_final";
+  visualQualityGate: {
+    accepted: boolean;
+    mode: "composition_provenance";
+    reasons: string[];
+  };
+  premiumQualityGate: {
+    accepted: boolean;
+    mode: "higgsfield_source_provenance";
+    reasons: string[];
+  };
   compositionHash: string;
   compositionVersion: typeof APP_COMPOSED_STATIC_FINAL_VERSION;
   layoutTemplateId: string;
@@ -69,6 +80,10 @@ function hashObject(value: unknown) {
     .update(JSON.stringify(value))
     .digest("hex")
     .slice(0, 24);
+}
+
+function sourceImageQaAccepted(asset: StaticCreativeAsset) {
+  return Boolean(asset.imageQa?.decision === "accept" && asset.imageQa?.usable !== false);
 }
 
 function wrapWords(value: string, maxChars: number, maxLines: number) {
@@ -239,6 +254,12 @@ export function buildStaticCreativeCompositionMetadata(
   const renderedOffer = safeText(asset.approvedOfferTitle) || safeText(asset.offer) || preview.headline;
   const renderedCta = safeText(asset.approvedCta) || preview.cta;
   const renderedBrand = safeText(asset.approvedBrand) || null;
+  const premiumReasons = [
+    sourceBackgroundKind === "higgsfield_visual_background" ? null : "premium_higgsfield_source_required",
+    asset.imageUrl ? null : "source_image_required",
+    sourceImageQaAccepted(asset) ? null : "source_image_qa_required",
+  ].filter((reason): reason is string => Boolean(reason));
+  const premiumAccepted = premiumReasons.length === 0;
   const compositionHash = hashObject({
     version: APP_COMPOSED_STATIC_FINAL_VERSION,
     assetId: asset.id,
@@ -257,6 +278,17 @@ export function buildStaticCreativeCompositionMetadata(
 
   return {
     appComposedFinal: true,
+    qualityTier: premiumAccepted ? "premium_final" : "draft_preview",
+    visualQualityGate: {
+      accepted: premiumAccepted,
+      mode: "composition_provenance",
+      reasons: premiumAccepted ? [] : ["app_fallback_visual_not_launch_ready"],
+    },
+    premiumQualityGate: {
+      accepted: premiumAccepted,
+      mode: "higgsfield_source_provenance",
+      reasons: premiumReasons,
+    },
     compositionHash,
     compositionVersion: APP_COMPOSED_STATIC_FINAL_VERSION,
     layoutTemplateId: preview.templateId,

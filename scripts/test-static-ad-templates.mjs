@@ -209,9 +209,9 @@ const generatedCreativeInput = {
   primaryText: "A curated shortlist helps buyers compare fit before the same homes get crowded.",
   cta: "See Matching Homes",
 	  imageUrl: "https://example.test/background.png",
-	  storageNormalized: true,
-	  appComposedFinal: true,
-  imageGenerationState: "generated",
+		  storageNormalized: true,
+		  appComposedFinal: true,
+	  imageGenerationState: "generated",
   imagePrompt: "TEXT-FREE BACKGROUND ASSET ONLY. Warm buyer reviewing homes in Austin.",
   visualPromptBrief: {
     category: "buyer",
@@ -221,14 +221,16 @@ const generatedCreativeInput = {
 	  qualityGate: {
 	    accepted: true,
 	    score: 8.2,
-	  },
-	  imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
+		  },
+      visualQualityGate: { accepted: true },
+      premiumQualityGate: { accepted: true },
+		  imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
 	};
 const generatedCreative = buildComposedStaticAdPreview(generatedCreativeInput);
-assert.equal(generatedCreative.status, "final_composed", "accepted generated images are primary creative previews");
+assert.equal(generatedCreative.status, "background_rejected", "non-premium app-composed images stay draft/review-only");
 assert.equal(
   generatedCreative.backgroundMessage,
-  "Final ad ready with exact approved copy.",
+  "Premium visual polish needs another attempt. Launch-ready final ads remain available when selected.",
 );
 
 const finishedAdPromptQuality = evaluateCreativeQuality({
@@ -401,11 +403,34 @@ assert.deepEqual(
     imageUrl: "https://example.test/app-composed-final.png",
     storageNormalized: true,
     appComposedFinal: true,
+    qualityTier: "draft_preview",
+    sourceBackgroundKind: "app_fallback_visual",
     qualityGate: { accepted: true },
+    imageQa: { usable: false, decision: "review", mode: "app_composed_final", reasons: ["app_fallback_visual_not_launch_ready"] },
+  }),
+  {
+    usable: false,
+    reason: "Premium launch ads are still being prepared. Draft previews cannot satisfy launch readiness.",
+  },
+  "app-composed fallback statics are draft-only until premium provenance is accepted",
+);
+
+assert.deepEqual(
+  evaluateStaticVisualAssetDecision({
+    imageUrl: "https://example.test/premium-final.png",
+    storageNormalized: true,
+    appComposedFinal: true,
+    qualityTier: "premium_final",
+    sourceBackgroundKind: "higgsfield_visual_background",
+    sourceBackgroundProvider: "higgsfield_marketing_studio",
+    sourceBackgroundAssetId: "provider-source-1",
+    qualityGate: { accepted: true },
+    visualQualityGate: { accepted: true },
+    premiumQualityGate: { accepted: true },
     imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
   }),
   { usable: true, reason: null },
-  "app-composed final statics are the launch-ready static layer",
+  "premium Higgsfield-backed final statics are the launch-ready static layer",
 );
 
 assert.equal(
@@ -440,6 +465,12 @@ const generatedAsset = {
   },
   preferredImageModel: "gpt-image-1.5",
   scoreBreakdown: null,
+  qualityTier: "premium_final",
+  sourceBackgroundKind: "higgsfield_visual_background",
+  sourceBackgroundProvider: "higgsfield_marketing_studio",
+  sourceBackgroundAssetId: "source-static-preserved",
+  visualQualityGate: { accepted: true },
+  premiumQualityGate: { accepted: true },
   hook: generatedCreativeInput.headline,
   overlayText: generatedCreativeInput.headline,
   visualConcept: "Austin buyer source photo",
@@ -483,6 +514,10 @@ const reusableStaticAds = baseStaticAds.slice(0, -1).map((asset) => ({
 	  imageUrl: `https://example.test/${asset.id}.png`,
 	  storageNormalized: true,
 	  appComposedFinal: true,
+  qualityTier: "premium_final",
+  sourceBackgroundKind: "higgsfield_visual_background",
+  sourceBackgroundProvider: "higgsfield",
+  sourceBackgroundAssetId: `source-${asset.id}`,
   imageGenerationState: "generated",
   imageGenerationMessage: null,
   imageGenerationModel: "gpt-image-1.5",
@@ -491,6 +526,8 @@ const reusableStaticAds = baseStaticAds.slice(0, -1).map((asset) => ({
 	    ...(asset.qualityGate ?? {}),
 	    accepted: true,
 	  },
+  visualQualityGate: { accepted: true },
+  premiumQualityGate: { accepted: true },
 	  imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
   imagePromptConfig: {
     ...asset.imagePromptConfig,
@@ -522,18 +559,24 @@ for (const reusable of reusableStaticAds) {
 const forcedRequestedAssetIds = [];
 const allReusableStaticAds = baseStaticAds.map((asset) => ({
   ...asset,
-	  imageUrl: `https://example.test/ready-${asset.id}.png`,
-	  storageNormalized: true,
-	  appComposedFinal: true,
-  imageGenerationState: "generated",
+		  imageUrl: `https://example.test/ready-${asset.id}.png`,
+		  storageNormalized: true,
+		  appComposedFinal: true,
+      qualityTier: "premium_final",
+      sourceBackgroundKind: "higgsfield_visual_background",
+      sourceBackgroundProvider: "higgsfield",
+      sourceBackgroundAssetId: `source-${asset.id}`,
+	  imageGenerationState: "generated",
   imageGenerationMessage: null,
   imageGenerationModel: "gpt-image-1.5",
   imageGenerationProvider: "higgsfield",
-	  qualityGate: {
-	    ...(asset.qualityGate ?? {}),
-	    accepted: true,
-	  },
-	  imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
+		  qualityGate: {
+		    ...(asset.qualityGate ?? {}),
+		    accepted: true,
+		  },
+      visualQualityGate: { accepted: true },
+      premiumQualityGate: { accepted: true },
+		  imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
 	}));
 const forcedStaticAds = await generateStaticCreativeAds({
   ...generationInput,

@@ -283,12 +283,18 @@ export default async function PreviewPage({
 	                  imageUrl={selectedAds[0]?.imageUrl}
 	                  storageNormalized={selectedAds[0]?.storageNormalized}
 	                  appComposedFinal={selectedAds[0]?.appComposedFinal}
+                  qualityTier={selectedAds[0]?.qualityTier}
+                  sourceBackgroundKind={selectedAds[0]?.sourceBackgroundKind}
+                  sourceBackgroundProvider={selectedAds[0]?.sourceBackgroundProvider}
+                  sourceBackgroundAssetId={selectedAds[0]?.sourceBackgroundAssetId}
                   index={0}
                   location={previewPlan.market}
                   offer={previewPlan.keyOffer}
                   overlayText={selectedAds[0]?.overlayText}
                   primaryText={selectedAds[0]?.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
                   qualityGate={selectedAds[0]?.qualityGate}
+                  visualQualityGate={selectedAds[0]?.visualQualityGate}
+                  premiumQualityGate={selectedAds[0]?.premiumQualityGate}
                   imageQa={selectedAds[0]?.imageQa}
                   score={selectedAds[0]?.score}
                   selected
@@ -315,6 +321,10 @@ export default async function PreviewPage({
 	                      imageUrl={selectedAd.imageUrl}
 	                      storageNormalized={selectedAd.storageNormalized}
 	                      appComposedFinal={selectedAd.appComposedFinal}
+                      qualityTier={selectedAd.qualityTier}
+                      sourceBackgroundKind={selectedAd.sourceBackgroundKind}
+                      sourceBackgroundProvider={selectedAd.sourceBackgroundProvider}
+                      sourceBackgroundAssetId={selectedAd.sourceBackgroundAssetId}
                       index={index + 1}
                       key={selectedAd.id}
                       location={previewPlan.market}
@@ -322,6 +332,8 @@ export default async function PreviewPage({
                       overlayText={selectedAd.overlayText}
                       primaryText={selectedAd.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
                       qualityGate={selectedAd.qualityGate}
+                      visualQualityGate={selectedAd.visualQualityGate}
+                      premiumQualityGate={selectedAd.premiumQualityGate}
                       imageQa={selectedAd.imageQa}
                       score={selectedAd.score}
                       selectedCount={selectedAds.length}

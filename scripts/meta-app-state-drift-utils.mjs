@@ -203,3 +203,21 @@ export function latestSnapshotIsFreshActive(snapshot, proof, nowMs = Date.now(),
     isActiveMetaStatus(ad?.status)
   );
 }
+
+export function latestSnapshotIsFreshPaused(snapshot, proof, nowMs = Date.now(), maxAgeMs = 60 * 60 * 1000) {
+  if (!snapshot) return false;
+  const syncedAt = Date.parse(snapshot.synced_at ?? "");
+  const adSetStatuses = Array.isArray(snapshot.ad_set_statuses) ? snapshot.ad_set_statuses : [];
+  const adStatuses = Array.isArray(snapshot.ad_statuses) ? snapshot.ad_statuses : [];
+  const adSet = adSetStatuses.find((row) => row?.id === proof?.adset?.id);
+  const ad = adStatuses.find((row) => row?.id === proof?.ad?.id);
+
+  return (
+    Number.isFinite(syncedAt) &&
+    nowMs - syncedAt <= maxAgeMs &&
+    snapshot.meta_campaign_id === proof?.campaign?.id &&
+    isPausedMetaStatus(snapshot.campaign_status) &&
+    (isActiveMetaStatus(adSet?.status) || isPausedMetaStatus(adSet?.status)) &&
+    (isActiveMetaStatus(ad?.status) || isPausedMetaStatus(ad?.status))
+  );
+}

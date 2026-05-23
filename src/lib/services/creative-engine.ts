@@ -75,6 +75,10 @@ export type StaticCreativeAsset = {
   imageUrl: string;
   storageNormalized?: boolean | null;
   appComposedFinal?: boolean | null;
+  qualityTier?: string | null;
+  sourceBackgroundKind?: string | null;
+  sourceBackgroundProvider?: string | null;
+  sourceBackgroundAssetId?: string | null;
   imageGenerationState: "generated" | "generating" | "unavailable" | "failed";
   imageGenerationMessage: string | null;
   imageGenerationModel: string | null;
@@ -85,6 +89,17 @@ export type StaticCreativeAsset = {
   preferredImageModel: OpenAiImageModel;
   visualPromptBrief: StaticVisualPromptBrief | null;
   imageQa?: StaticCreativeImageQaResult | null;
+  sourceImageQa?: StaticCreativeImageQaResult | null;
+  visualQualityGate?: {
+    accepted?: boolean | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+  } | null;
+  premiumQualityGate?: {
+    accepted?: boolean | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+  } | null;
   creativeIntake?: CreativeIntakeGenerationContext | null;
   briefHash?: string | null;
   staticBriefHash?: string | null;
@@ -2230,6 +2245,13 @@ function preserveStaticCreativeImage(
     imageGenerationModel: existing.imageGenerationModel ?? asset.imageGenerationModel,
     imageGenerationProvider: existing.imageGenerationProvider ?? asset.imageGenerationProvider ?? null,
 	    imageQa: existing.imageQa ?? asset.imageQa ?? null,
+	    sourceImageQa: existing.sourceImageQa ?? asset.sourceImageQa ?? null,
+	    qualityTier: existing.qualityTier ?? asset.qualityTier ?? null,
+	    sourceBackgroundKind: existing.sourceBackgroundKind ?? asset.sourceBackgroundKind ?? null,
+	    sourceBackgroundProvider: existing.sourceBackgroundProvider ?? asset.sourceBackgroundProvider ?? null,
+	    sourceBackgroundAssetId: existing.sourceBackgroundAssetId ?? asset.sourceBackgroundAssetId ?? null,
+	    visualQualityGate: existing.visualQualityGate ?? asset.visualQualityGate ?? null,
+	    premiumQualityGate: existing.premiumQualityGate ?? asset.premiumQualityGate ?? null,
 	    qualityGate: asset.qualityGate ?? existing.qualityGate ?? null,
 	    storageNormalized: existing.storageNormalized ?? asset.storageNormalized ?? null,
 	    appComposedFinal: existing.appComposedFinal ?? asset.appComposedFinal ?? null,
@@ -2475,6 +2497,13 @@ export async function generateStaticCreativeAds(
         imageGenerationModel: existing.imageGenerationModel,
 	        imageGenerationProvider: existing.imageGenerationProvider ?? null,
 	        imageQa: existing.imageQa ?? null,
+          sourceImageQa: existing.sourceImageQa ?? null,
+          qualityTier: existing.qualityTier ?? null,
+          sourceBackgroundKind: existing.sourceBackgroundKind ?? null,
+          sourceBackgroundProvider: existing.sourceBackgroundProvider ?? null,
+          sourceBackgroundAssetId: existing.sourceBackgroundAssetId ?? null,
+          visualQualityGate: existing.visualQualityGate ?? null,
+          premiumQualityGate: existing.premiumQualityGate ?? null,
 	        appComposedFinal: existing.appComposedFinal ?? null,
 	      });
       continue;
@@ -2501,6 +2530,13 @@ export async function generateStaticCreativeAds(
               imageGenerationModel: carryForwardPrevious.imageGenerationModel ?? asset.preferredImageModel,
               imageGenerationProvider: carryForwardPrevious.imageGenerationProvider ?? null,
               imageQa: carryForwardPrevious.imageQa ?? null,
+              sourceImageQa: carryForwardPrevious.sourceImageQa ?? null,
+              qualityTier: carryForwardPrevious.qualityTier ?? null,
+              sourceBackgroundKind: carryForwardPrevious.sourceBackgroundKind ?? null,
+              sourceBackgroundProvider: carryForwardPrevious.sourceBackgroundProvider ?? null,
+              sourceBackgroundAssetId: carryForwardPrevious.sourceBackgroundAssetId ?? null,
+              visualQualityGate: carryForwardPrevious.visualQualityGate ?? null,
+              premiumQualityGate: carryForwardPrevious.premiumQualityGate ?? null,
               qualityGate: asset.qualityGate ?? carryForwardPrevious.qualityGate ?? null,
             }
           : {

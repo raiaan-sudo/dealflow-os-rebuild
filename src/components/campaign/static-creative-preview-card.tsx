@@ -15,6 +15,10 @@ type StaticCreativePreviewCardProps = {
   imageUrl?: string | null;
   storageNormalized?: boolean | null;
   appComposedFinal?: boolean | null;
+  qualityTier?: string | null;
+  sourceBackgroundKind?: string | null;
+  sourceBackgroundProvider?: string | null;
+  sourceBackgroundAssetId?: string | null;
   imageGenerationState?: "generated" | "generating" | "unavailable" | "failed" | string | null;
   imageGenerationMessage?: string | null;
   imagePrompt?: string | null;
@@ -28,6 +32,16 @@ type StaticCreativePreviewCardProps = {
     score?: number | null;
     accepted?: boolean | null;
     hardFailures?: string[] | null;
+  } | null;
+  visualQualityGate?: {
+    accepted?: boolean | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+  } | null;
+  premiumQualityGate?: {
+    accepted?: boolean | null;
+    mode?: string | null;
+    reasons?: string[] | null;
   } | null;
   imageQa?: {
     usable?: boolean | null;
@@ -63,6 +77,10 @@ export function StaticCreativePreviewCard({
   imageUrl,
   storageNormalized,
   appComposedFinal,
+  qualityTier,
+  sourceBackgroundKind,
+  sourceBackgroundProvider,
+  sourceBackgroundAssetId,
   imageGenerationState,
   imageGenerationMessage,
   imagePrompt,
@@ -70,6 +88,8 @@ export function StaticCreativePreviewCard({
   overlayText,
   score,
   qualityGate,
+  visualQualityGate,
+  premiumQualityGate,
   imageQa,
   visualPromptBrief,
   selectedCount,
@@ -96,11 +116,17 @@ export function StaticCreativePreviewCard({
         imageUrl={imageUrl}
         storageNormalized={storageNormalized}
         appComposedFinal={appComposedFinal}
+        qualityTier={qualityTier}
+        sourceBackgroundKind={sourceBackgroundKind}
+        sourceBackgroundProvider={sourceBackgroundProvider}
+        sourceBackgroundAssetId={sourceBackgroundAssetId}
         location={location}
         offer={safeOffer}
         overlayText={overlayText}
         primaryText={primaryText}
         qualityGate={qualityGate}
+        visualQualityGate={visualQualityGate}
+        premiumQualityGate={premiumQualityGate}
         imageQa={imageQa}
         score={score}
         selectedCount={selectedCount}
@@ -182,11 +208,17 @@ export function StaticCreativePreviewCard({
                 imageUrl={imageUrl}
                 storageNormalized={storageNormalized}
                 appComposedFinal={appComposedFinal}
+                qualityTier={qualityTier}
+                sourceBackgroundKind={sourceBackgroundKind}
+                sourceBackgroundProvider={sourceBackgroundProvider}
+                sourceBackgroundAssetId={sourceBackgroundAssetId}
                 location={location}
                 offer={safeOffer}
                 overlayText={overlayText}
                 primaryText={primaryText}
                 qualityGate={qualityGate}
+                visualQualityGate={visualQualityGate}
+                premiumQualityGate={premiumQualityGate}
                 imageQa={imageQa}
                 score={score}
                 selectedCount={selectedCount}
@@ -217,6 +249,10 @@ export function StaticCreativeSummaryCard({
   imageUrl,
   storageNormalized,
   appComposedFinal,
+  qualityTier,
+  sourceBackgroundKind,
+  sourceBackgroundProvider,
+  sourceBackgroundAssetId,
   imageGenerationState,
   imageGenerationMessage,
   imagePrompt,
@@ -224,6 +260,8 @@ export function StaticCreativeSummaryCard({
   overlayText,
   score,
   qualityGate,
+  visualQualityGate,
+  premiumQualityGate,
   imageQa,
   visualPromptBrief,
   selectedCount,
@@ -264,11 +302,17 @@ export function StaticCreativeSummaryCard({
           imageUrl={imageUrl}
           storageNormalized={storageNormalized}
           appComposedFinal={appComposedFinal}
+          qualityTier={qualityTier}
+          sourceBackgroundKind={sourceBackgroundKind}
+          sourceBackgroundProvider={sourceBackgroundProvider}
+          sourceBackgroundAssetId={sourceBackgroundAssetId}
           location={location}
           offer={safeOffer}
           overlayText={overlayText}
           primaryText={primaryText}
           qualityGate={qualityGate}
+          visualQualityGate={visualQualityGate}
+          premiumQualityGate={premiumQualityGate}
           imageQa={imageQa}
           score={score}
           selectedCount={selectedCount}

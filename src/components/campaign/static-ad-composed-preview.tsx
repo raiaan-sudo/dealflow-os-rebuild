@@ -534,11 +534,6 @@ export function StaticAdComposedPreview({
             </div>
           </div>
         ) : null}
-        {preview.overflowRisk ? (
-          <p className="text-xs leading-5 text-amber-300">
-            Long copy was fitted into the template to prevent visual overflow.
-          </p>
-        ) : null}
       </div>
     </div>
   );

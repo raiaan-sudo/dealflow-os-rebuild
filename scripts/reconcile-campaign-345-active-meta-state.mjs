@@ -5,11 +5,14 @@ import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 import {
   CAMPAIGN_345_ACTIVE_META,
+  appRuntimeReflectsPausedMeta,
   appRuntimeReflectsActiveMeta,
   asRecord,
   buildActiveRuntimePatch,
   getMetaProofFailures,
+  latestSnapshotIsFreshPaused,
   latestSnapshotIsFreshActive,
+  metaProofIsCampaignLevelPaused,
 } from "./meta-app-state-drift-utils.mjs";
 
 nextEnv.loadEnvConfig(process.cwd());
@@ -144,12 +147,13 @@ async function loadLatestSnapshot(supabase) {
 }
 
 function buildSnapshotInsert({ campaignRow, proof, now }) {
+  const campaignPaused = metaProofIsCampaignLevelPaused(proof);
   return {
     organization_id: CAMPAIGN_345_ACTIVE_META.organizationId,
     user_id: CAMPAIGN_345_ACTIVE_META.userId,
     campaign_name: proof.campaign.name ?? "Campaign 345 active Meta reconciliation",
     account_name: proof.account.account_name,
-    launch_mode: "live",
+    launch_mode: campaignPaused ? "test" : "live",
     sync_result: "success",
     meta_campaign_id: CAMPAIGN_345_ACTIVE_META.metaCampaignId,
     meta_ad_set_ids: [CAMPAIGN_345_ACTIVE_META.metaAdSetId],
@@ -174,11 +178,12 @@ function buildSnapshotInsert({ campaignRow, proof, now }) {
     ],
     delivery_metrics: {},
     sync_metadata: {
-      source: "campaign_345_active_meta_reconciliation",
+      source: campaignPaused ? "campaign_345_paused_meta_snapshot_refresh" : "campaign_345_active_meta_reconciliation",
       read_only_meta_verification: true,
       app_campaign_id: campaignRow.id,
       destination_url: proof.creative.destinationLink,
       budget_daily_cents: proof.adset.daily_budget,
+      campaign_level_paused: campaignPaused,
     },
     sync_errors: [],
     synced_at: now,
@@ -187,11 +192,14 @@ function buildSnapshotInsert({ campaignRow, proof, now }) {
 
 function summarize({ campaignRow, proof, latestSnapshot, afterPlan, now }) {
   const failures = getMetaProofFailures(proof);
+  const campaignPaused = metaProofIsCampaignLevelPaused(proof);
+  const sufficientEvidence = campaignPaused ? appRuntimeReflectsPausedMeta(campaignRow) : failures.length === 0;
   return {
     targetCampaignId: CAMPAIGN_345_ACTIVE_META.campaignId,
     mutatesMeta: false,
+    campaignPaused,
     metaProofFailures: failures,
-    sufficientEvidence: failures.length === 0,
+    sufficientEvidence,
     before: {
       launch_status: campaignRow.launch_status ?? null,
       runtime_status: asRecord(campaignRow.plan?.runtime).status ?? null,
@@ -211,12 +219,12 @@ function summarize({ campaignRow, proof, latestSnapshot, afterPlan, now }) {
       destination: proof.creative.destinationLink,
     },
     after: {
-      launch_status: "live",
-      runtime_status: afterPlan.runtime.status,
-      runtime_safety_state: afterPlan.runtime.safetyState,
-      runtime_meta_push_status: afterPlan.runtime.metaPushStatus,
-      launch_runtime_status: afterPlan.launch_runtime.status,
-      launch_runtime_step_status: afterPlan.launch_runtime.step_status,
+      launch_status: campaignPaused ? campaignRow.launch_status ?? null : "live",
+      runtime_status: campaignPaused ? asRecord(campaignRow.plan?.runtime).status ?? null : afterPlan.runtime.status,
+      runtime_safety_state: campaignPaused ? asRecord(campaignRow.plan?.runtime).safetyState ?? null : afterPlan.runtime.safetyState,
+      runtime_meta_push_status: campaignPaused ? asRecord(campaignRow.plan?.runtime).metaPushStatus ?? null : afterPlan.runtime.metaPushStatus,
+      launch_runtime_status: campaignPaused ? asRecord(campaignRow.plan?.launch_runtime).status ?? null : afterPlan.launch_runtime.status,
+      launch_runtime_step_status: campaignPaused ? asRecord(campaignRow.plan?.launch_runtime).step_status ?? null : afterPlan.launch_runtime.step_status,
       snapshot_synced_at: now,
     },
     rollback: {
@@ -251,6 +259,7 @@ async function main() {
   const latestSnapshot = await loadLatestSnapshot(supabase);
   const afterPlan = buildActiveRuntimePatch(campaignRow.plan ?? {}, proof, now);
   const decision = summarize({ campaignRow, proof, latestSnapshot, afterPlan, now });
+  const campaignPaused = metaProofIsCampaignLevelPaused(proof);
 
   if (!decision.sufficientEvidence) {
     console.log(JSON.stringify({ mode: apply ? "apply" : "dry_run", ...decision }, null, 2));
@@ -259,7 +268,9 @@ async function main() {
   }
 
   const alreadyReconciled =
-    appRuntimeReflectsActiveMeta(campaignRow) && latestSnapshotIsFreshActive(latestSnapshot, proof);
+    campaignPaused
+      ? appRuntimeReflectsPausedMeta(campaignRow) && latestSnapshotIsFreshPaused(latestSnapshot, proof)
+      : appRuntimeReflectsActiveMeta(campaignRow) && latestSnapshotIsFreshActive(latestSnapshot, proof);
 
   if (!apply) {
     console.log(JSON.stringify({ mode: "dry_run", alreadyReconciled, ...decision }, null, 2));
@@ -267,7 +278,7 @@ async function main() {
   }
 
   let insertedSnapshotId = null;
-  if (!appRuntimeReflectsActiveMeta(campaignRow)) {
+  if (!campaignPaused && !appRuntimeReflectsActiveMeta(campaignRow)) {
     const { error: updateError } = await supabase
       .from("campaign_plans")
       .update({
@@ -280,7 +291,7 @@ async function main() {
     if (updateError) throw new Error(`campaign_plans update failed: ${updateError.message}`);
   }
 
-  if (!latestSnapshotIsFreshActive(latestSnapshot, proof)) {
+  if (!(campaignPaused ? latestSnapshotIsFreshPaused(latestSnapshot, proof) : latestSnapshotIsFreshActive(latestSnapshot, proof))) {
     const { data: inserted, error: insertError } = await supabase
       .from("campaign_sync_snapshots")
       .insert(buildSnapshotInsert({ campaignRow, proof, now }))
@@ -303,12 +314,14 @@ async function main() {
 
   console.log(JSON.stringify({
     mode: "apply",
-    appliedRuntimeUpdate: !appRuntimeReflectsActiveMeta(campaignRow),
+    appliedRuntimeUpdate: !campaignPaused && !appRuntimeReflectsActiveMeta(campaignRow),
     insertedSnapshotId,
     beforeAfter: decision,
     verification: {
       appRuntimeReflectsActiveMeta: appRuntimeReflectsActiveMeta(verifyRows?.[0]),
+      appRuntimeReflectsPausedMeta: appRuntimeReflectsPausedMeta(verifyRows?.[0]),
       latestSnapshotIsFreshActive: latestSnapshotIsFreshActive(verifySnapshot, proof),
+      latestSnapshotIsFreshPaused: latestSnapshotIsFreshPaused(verifySnapshot, proof),
       latestSnapshotId: verifySnapshot?.id ?? null,
       latestSnapshotStatus: verifySnapshot?.campaign_status ?? null,
       latestSnapshotSyncedAt: verifySnapshot?.synced_at ?? null,

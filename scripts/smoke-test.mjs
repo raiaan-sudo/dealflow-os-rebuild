@@ -373,8 +373,8 @@ function runOfflineChecks() {
   assertIncludes(creativeWizard, "imageRenderPending", "Creative retry optimistic state", "retry clicks immediately clear stale failed-copy and show a generating state while provider work runs");
   assertIncludes(creativeWizard, "activeImageJobId", "Creative image active-job state", "image preview progress stays visible while an active render job is streaming");
   assertIncludes(creativeWizard, "activeVideoJobId", "Creative video active-job state", "video preview progress stays visible while an active render job is streaming");
-  assertIncludes(creativeWizard, "Optional premium polish is preparing in the background", "Creative optional polish feedback", "optional polish clicks give visible feedback while launch-ready ads remain usable");
-  assertIncludes(creativeWizard, "Optional polish preparing", "Creative optional polish button state", "optional polish does not present as a dead refresh button while deferred");
+  assertIncludes(creativeWizard, "Premium launch ads are preparing in the background", "Creative premium ad feedback", "premium generation clicks give visible feedback while draft previews remain usable");
+  assertIncludes(creativeWizard, "Premium ads preparing", "Creative premium button state", "premium generation does not present as a dead refresh button while deferred");
   assertIncludes(creativeWizard, "Retry UGC video", "Creative UGC retry action", "completed but review-only UGC renders expose a retry action instead of looking stuck");
   assertIncludes(creativeWizard, "getVideoLaunchReadinessReason", "Creative UGC truthful rejection reason", "completed but non-launch-ready UGC videos show the exact launch-readiness reason");
   assertIncludes(creativeWizard, "Image preview is being prepared. This page will update when the visual is ready.", "Creative retry pending copy", "creative cards show immediate pending feedback instead of stale cap errors");

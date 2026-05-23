@@ -41,6 +41,10 @@ export type StaticAdTemplateInput = {
   imageUrl?: string | null;
   storageNormalized?: boolean | null;
   appComposedFinal?: boolean | null;
+  qualityTier?: string | null;
+  sourceBackgroundKind?: string | null;
+  sourceBackgroundProvider?: string | null;
+  sourceBackgroundAssetId?: string | null;
   imageGenerationState?: string | null;
   imageGenerationMessage?: string | null;
   imagePrompt?: string | null;
@@ -67,6 +71,16 @@ export type StaticAdTemplateInput = {
     score?: number | null;
     accepted?: boolean | null;
     hardFailures?: string[] | null;
+  } | null;
+  visualQualityGate?: {
+    accepted?: boolean | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+  } | null;
+  premiumQualityGate?: {
+    accepted?: boolean | null;
+    mode?: string | null;
+    reasons?: string[] | null;
   } | null;
   imageQa?: {
     usable?: boolean | null;

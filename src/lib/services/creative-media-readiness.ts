@@ -7,6 +7,10 @@ type StaticCreativeReadinessInput = {
   imageUrl?: string | null;
   storageNormalized?: boolean | null;
   appComposedFinal?: boolean | null;
+  qualityTier?: string | null;
+  sourceBackgroundKind?: string | null;
+  sourceBackgroundProvider?: string | null;
+  sourceBackgroundAssetId?: string | null;
   imageGenerationState?: string | null;
   imagePrompt?: string | null;
   imagePromptConfig?: {
@@ -18,6 +22,12 @@ type StaticCreativeReadinessInput = {
     visualAssetRole?: string | null;
   } | null;
   qualityGate?: {
+    accepted?: boolean | null;
+  } | null;
+  visualQualityGate?: {
+    accepted?: boolean | null;
+  } | null;
+  premiumQualityGate?: {
     accepted?: boolean | null;
   } | null;
   imageQa?: {
@@ -168,10 +178,16 @@ export function isLaunchReadyStaticCreative(creative: Pick<
 	  | "imageUrl"
 	  | "storageNormalized"
 	  | "appComposedFinal"
+    | "qualityTier"
+    | "sourceBackgroundKind"
+    | "sourceBackgroundProvider"
+    | "sourceBackgroundAssetId"
 	  | "imagePrompt"
   | "imagePromptConfig"
   | "visualPromptBrief"
   | "qualityGate"
+  | "visualQualityGate"
+  | "premiumQualityGate"
   | "imageQa"
   | "staticBriefHash"
   | "offerHash"

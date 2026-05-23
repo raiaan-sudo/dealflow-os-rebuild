@@ -801,11 +801,17 @@ export default async function LaunchAliasPage({
 	                    imageUrl={selectedCreative.imageUrl}
 	                    storageNormalized={selectedCreative.storageNormalized}
 	                    appComposedFinal={selectedCreative.appComposedFinal}
+                    qualityTier={selectedCreative.qualityTier}
+                    sourceBackgroundKind={selectedCreative.sourceBackgroundKind}
+                    sourceBackgroundProvider={selectedCreative.sourceBackgroundProvider}
+                    sourceBackgroundAssetId={selectedCreative.sourceBackgroundAssetId}
                     location={plan.market}
                     offer={plan.offerSummary || plan.keyOffer}
                     overlayText={selectedCreative.overlayText}
                     primaryText={selectedCreative.primaryText}
                     qualityGate={selectedCreative.qualityGate}
+                    visualQualityGate={selectedCreative.visualQualityGate}
+                    premiumQualityGate={selectedCreative.premiumQualityGate}
                     imageQa={selectedCreative.imageQa}
                     score={selectedCreative.score}
                     index={index}

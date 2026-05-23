@@ -19,7 +19,10 @@ export type StaticCreativeImageQaReason =
   | "required_brand_missing"
   | "brand_misspelled"
   | "image_fetch_failed"
-  | "qa_timeout";
+  | "qa_timeout"
+  | "generic_template_asset"
+  | "icon_house_asset"
+  | "app_fallback_visual_not_launch_ready";
 
 export type StaticCreativeImageQaResult = {
   usable: boolean;
@@ -45,6 +48,10 @@ type StaticVisualContractInput = {
   imageUrl?: string | null;
   storageNormalized?: boolean | null;
   appComposedFinal?: boolean | null;
+  qualityTier?: string | null;
+  sourceBackgroundKind?: string | null;
+  sourceBackgroundProvider?: string | null;
+  sourceBackgroundAssetId?: string | null;
   imagePrompt?: string | null;
   imagePromptConfig?: {
     prompt?: string | null;
@@ -55,6 +62,12 @@ type StaticVisualContractInput = {
     visualAssetRole?: string | null;
   } | null;
   qualityGate?: {
+    accepted?: boolean | null;
+  } | null;
+  visualQualityGate?: {
+    accepted?: boolean | null;
+  } | null;
+  premiumQualityGate?: {
     accepted?: boolean | null;
   } | null;
   imageQa?: StaticCreativeImageQaMetadata | null;
@@ -98,6 +111,23 @@ export function hasLegacyFinishedAdPromptRisk(input: StaticVisualContractInput) 
   return /\b(finished,\s*high-converting|finished paid social|finished paid-social|ad creative frame|proof modules|dashboard grids|brochure-style ad layout|poster-like typography|cta-safe bottom)\b/.test(prompt);
 }
 
+function hasPremiumSourceProvider(input: StaticVisualContractInput) {
+  const provider = safeText(input.sourceBackgroundProvider).toLowerCase();
+
+  return provider === "higgsfield_marketing_studio" || provider === "higgsfield";
+}
+
+function hasAcceptedPremiumFinalProvenance(input: StaticVisualContractInput) {
+  return Boolean(
+    input.qualityTier === "premium_final" &&
+      input.premiumQualityGate?.accepted === true &&
+      input.visualQualityGate?.accepted !== false &&
+      input.sourceBackgroundKind === "higgsfield_visual_background" &&
+      hasPremiumSourceProvider(input) &&
+      safeText(input.sourceBackgroundAssetId),
+  );
+}
+
 export function evaluateStaticVisualAssetDecision(
   input: StaticVisualContractInput,
 ): StaticVisualAssetDecision {
@@ -108,17 +138,12 @@ export function evaluateStaticVisualAssetDecision(
     };
   }
 
-  if (input.qualityGate?.accepted !== true) {
+  const premiumFinalAccepted = hasAcceptedPremiumFinalProvenance(input);
+
+  if (input.qualityGate?.accepted !== true && !premiumFinalAccepted) {
     return {
       usable: false,
       reason: "This generated visual has not passed the creative quality gate yet and must be regenerated.",
-    };
-  }
-
-  if (input.imageQa && (input.imageQa.usable === false || input.imageQa.decision !== "accept")) {
-    return {
-      usable: false,
-      reason: "This visual needs a cleaner background before it can be used as a launch-ready creative.",
     };
   }
 
@@ -130,9 +155,23 @@ export function evaluateStaticVisualAssetDecision(
   }
 
   if (input.appComposedFinal === true && input.imageQa?.mode === "app_composed_final") {
+    if (!premiumFinalAccepted) {
+      return {
+        usable: false,
+        reason: "Premium launch ads are still being prepared. Draft previews cannot satisfy launch readiness.",
+      };
+    }
+
     return {
       usable: true,
       reason: null,
+    };
+  }
+
+  if (input.imageQa && (input.imageQa.usable === false || input.imageQa.decision !== "accept")) {
+    return {
+      usable: false,
+      reason: "This visual needs a cleaner background before it can be used as a launch-ready creative.",
     };
   }
 
