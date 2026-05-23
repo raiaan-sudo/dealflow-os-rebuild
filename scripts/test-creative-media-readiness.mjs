@@ -665,6 +665,7 @@ assert.doesNotMatch(getVideoReadinessMessage(conceptOnlyVideo), /preview is read
 
 const creativeWizardSource = fs.readFileSync("src/app/(app)/build/creatives/creative-wizard.tsx", "utf8");
 const buildCreativesPageSource = fs.readFileSync("src/app/(app)/build/creatives/page.tsx", "utf8");
+const selectAdRouteSource = fs.readFileSync("src/app/api/campaigns/[id]/select-ad/route.ts", "utf8");
 const previewSource = fs.readFileSync("src/app/(app)/preview/page.tsx", "utf8");
 const launchSource = fs.readFileSync("src/app/(app)/launch/page.tsx", "utf8");
 const customerVideoPlayerSource = fs.readFileSync("src/components/campaign/customer-video-player.tsx", "utf8");
@@ -697,6 +698,7 @@ assert.match(creativeWizardSource, /Pick at least \$\{STATIC_LAUNCH_MIN_CREATIVE
 assert.match(creativeWizardSource, /Render approved script/, "stale UGC renders can be refreshed against the approved script");
 assert.match(creativeWizardSource, /videoMatchesApprovedScript/, "Creative Studio blocks stale UGC videos whose script hash no longer matches the approved script");
 assert.match(buildCreativesPageSource, /creativeIntake\?\.brief\?\.ugcScriptHash \?\?/, "Creative Studio must pass the canonical approved UGC script hash to the client");
+assert.match(selectAdRouteSource, /mapVideoCreativeAssets/, "Save launch package must validate UGC selections against current creative_assets video rows");
 assert.match(creativeWizardSource, /selectedCount=\{selected \? selectedCreatives\.length : null\}/, "retry cards cannot inherit selected count badges");
 assert.match(creativeWizardSource, /selectedUgcVideoIds/, "Creative Studio persists selected UGC launch video IDs");
 assert.match(creativeWizardSource, /Select UGC for launch/, "Creative Studio lets UGC videos be selected like static creatives");

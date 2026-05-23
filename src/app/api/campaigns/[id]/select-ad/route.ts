@@ -14,7 +14,7 @@ import {
   getSelectedUgcVideoIdsFromPlan,
   withSelectedLaunchMedia,
 } from "@/lib/services/campaign-plan-document";
-import { getCampaignById } from "@/lib/services/campaign-persistence";
+import { getCampaignById, mapVideoCreativeAssets } from "@/lib/services/campaign-persistence";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import {
   getStaticCreativeReadiness,
@@ -155,7 +155,22 @@ export async function POST(
       );
     }
 
-    const videoAds = hydratedRecord?.creatives.videoAds ?? [];
+    const { data: videoAssetData, error: videoAssetError } = await supabase
+      .from("creative_assets")
+      .select("*")
+      .eq("campaign_id", id)
+      .eq("user_id", auth.userId)
+      .in("asset_type", ["ugc_video", "talking_head_video", "montage_video", "video"])
+      .order("created_at", { ascending: false });
+
+    if (videoAssetError) {
+      throw videoAssetError;
+    }
+
+    const mappedVideoAssets = mapVideoCreativeAssets(Array.isArray(videoAssetData) ? videoAssetData : []);
+    const videoAds = mappedVideoAssets.length > 0
+      ? mappedVideoAssets
+      : hydratedRecord?.creatives.videoAds ?? [];
     const videoById = new Map(videoAds.map((video) => [video.id, video]));
     const missingVideoIds = selectedUgcVideoIds.filter((selectedId) => !videoById.has(selectedId));
 
