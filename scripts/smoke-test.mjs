@@ -741,6 +741,8 @@ function runOfflineChecks() {
   assertIncludes(leadRoute, "TURNSTILE_SECRET_KEY", "Lead capture Turnstile server gate", "Cloudflare Turnstile verification is enforced when the secret env var is configured");
   assertIncludes(leadRoute, "return process.env.NODE_ENV !== \"production\";", "Lead capture Turnstile production guard", "production lead capture fails closed if Turnstile is not configured");
   assertExcludes(leadRoute, "ALLOW_PUBLIC_LEAD_NO_TURNSTILE", "Lead capture public bypass removed", "production public lead capture cannot bypass Turnstile through an env flag");
+  assertIncludes("scripts/smoke-test.mjs", "SMOKE_ALLOW_SAFE_VALID_LEAD_PROOF", "Production smoke live-lead guard", "standard production smoke does not create a real lead unless an explicit safe proof flag is set");
+  assertIncludes("scripts/smoke-test.mjs", "Valid lead submission skipped by default", "Production smoke live-lead skip copy", "missing valid-lead proof is informational instead of a product warning");
   assertIncludes(leadRoute, "https://challenges.cloudflare.com/turnstile/v0/siteverify", "Lead capture Turnstile siteverify", "public lead capture verifies Turnstile tokens server-side");
   assertIncludes(leadForm, "NEXT_PUBLIC_TURNSTILE_SITE_KEY", "Lead form Turnstile client gate", "public lead form renders Turnstile only when the public site key is configured");
   assertIncludes(leadForm, "submitInFlightRef", "Lead form duplicate submit guard", "public lead form synchronously blocks rapid duplicate submits");
@@ -1142,8 +1144,9 @@ async function runStagingChecks() {
   const testCampaignId = getEnv("SMOKE_TEST_CAMPAIGN_ID");
   const testEmail = getEnv("SMOKE_TEST_EMAIL");
   const testPhone = getEnv("SMOKE_TEST_PHONE");
+  const allowSafeValidLeadProof = getEnv("SMOKE_ALLOW_SAFE_VALID_LEAD_PROOF") === "true";
 
-  if (testCampaignId && (testEmail || testPhone)) {
+  if (allowSafeValidLeadProof && testCampaignId && (testEmail || testPhone)) {
     const payload = {
       name: "Smoke Test Lead",
       campaignId: testCampaignId,
@@ -1181,15 +1184,15 @@ async function runStagingChecks() {
       fail("Lead duplicate handling", `expected safe success, got ${second.response.status}`);
     }
   } else {
-    warn(
-      "Valid lead submission",
-      "Set SMOKE_TEST_CAMPAIGN_ID plus SMOKE_TEST_EMAIL or SMOKE_TEST_PHONE to verify live lead capture and dedupe",
+    info(
+      allowSafeValidLeadProof
+        ? "Valid lead submission skipped: set SMOKE_TEST_CAMPAIGN_ID plus SMOKE_TEST_EMAIL or SMOKE_TEST_PHONE to run the explicit safe proof."
+        : "Valid lead submission skipped by default. Standard production smoke never creates a real lead; set SMOKE_ALLOW_SAFE_VALID_LEAD_PROOF=true only with a safe suppressed test campaign.",
     );
   }
 
-  warn(
-    "Manual authenticated checks still required",
-    "OAuth, onboarding resume, selected creative persistence, Meta launch, and dashboard campaign-state verification still need browser-driven staging validation",
+  info(
+    "Authenticated browser checks are outside standard unauthenticated smoke; run the safe E2E/browser proof for onboarding, selected creative persistence, dashboard state, and launch gates.",
   );
 }
 
