@@ -520,6 +520,44 @@ assert.equal(productionMappedVideo.length, 1);
 assert.equal(isLaunchReadyVideoCreative(productionMappedVideo[0]), true);
 assert.equal(getVideoReadinessLabel(productionMappedVideo[0]), "Campaign-specific UGC ready");
 
+const videoOnlyMappedCreativeStudioRead = mapVideoCreativeAssets([
+  {
+    id: "video-row-video-only",
+    campaign_id: "campaign-1",
+    creative_id: "video-ugc-launch-proof",
+    copy_id: "copy-1",
+    asset_type: "ugc_video",
+    status: "ready",
+    file_url: readyVideo.videoUrl,
+    thumbnail_url: null,
+    provider_name: readyVideo.providerName,
+    provider_asset_id: readyVideo.providerAssetId,
+    error_message: null,
+    created_at: "2026-05-13T05:09:46.000Z",
+    updated_at: "2026-05-13T05:09:46.000Z",
+    metadata: {
+      storageNormalized: true,
+      storageBucket: "creative-assets",
+      storagePath: "user/campaign/video.mp4",
+      storageContentType: "video/mp4",
+      storageByteSize: 7_533_116,
+      durationSeconds: 20,
+      targetDurationSeconds: 20,
+      sourceStaticAssetId: "primary",
+      sourceStaticAccepted: true,
+      sourceImageUrl: readyVideo.sourceImageUrl,
+      promptSource: "campaign_specific_fallback",
+      promptHash: "prompt-hash",
+      scriptHash: "script-hash",
+      promptUsed: readyVideo.promptUsed,
+      campaignSpecificContext: readyVideo.campaignSpecificContext,
+      videoQualityGate: readyVideo.videoQualityGate,
+      videoProductQualityGate: readyVideo.videoProductQualityGate,
+    },
+  },
+]);
+assert.equal(isLaunchReadyVideoCreative(videoOnlyMappedCreativeStudioRead[0]), true);
+
 const buildCreativePageSource = fs.readFileSync(
   path.join(repoRoot, "src/app/(app)/build/creatives/page.tsx"),
   "utf8",

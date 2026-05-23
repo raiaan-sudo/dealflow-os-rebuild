@@ -520,7 +520,7 @@ export function mapVideoCreativeAssets(rows: CreativeAssetRow[]): VideoCreativeA
       targetDurationSeconds: metadataNumber(metadata, "targetDurationSeconds"),
       sourceStaticAssetId,
       sourceImageUrl: metadataString(metadata, "sourceImageUrl"),
-      sourceStaticAccepted: sourceStaticAccepted(rows, sourceStaticAssetId),
+      sourceStaticAccepted: metadata?.sourceStaticAccepted === true || sourceStaticAccepted(rows, sourceStaticAssetId),
       promptUsed,
 	      promptSource: metadataString(metadata, "promptSource"),
 	      promptHash: metadataString(metadata, "promptHash"),
