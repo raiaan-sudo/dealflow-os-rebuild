@@ -324,8 +324,8 @@ export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativ
       qualityGate,
       hook: typeof metadata?.overlayText === "string" ? metadata.overlayText : "",
       overlayText: typeof metadata?.overlayText === "string" ? metadata.overlayText : "",
-      primaryText: typeof metadata?.primaryText === "string" ? metadata.primaryText : "",
-	      headline: typeof metadata?.headline === "string" ? metadata.headline : "",
+      primaryText: cleanPersistedStaticCopy(metadata?.primaryText),
+	      headline: cleanPersistedStaticCopy(metadata?.headline),
 	      cta: typeof metadata?.cta === "string" ? metadata.cta : "",
 	      briefHash: metadataString(metadata, "briefHash"),
 	      staticBriefHash: metadataString(metadata, "staticBriefHash"),
@@ -387,6 +387,20 @@ function asVideoProductQualityGate(value: Json | null | undefined): VideoCreativ
 function metadataString(metadata: Record<string, Json> | null, key: string) {
   const value = metadata?.[key];
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+function cleanPersistedStaticCopy(value: unknown) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value
+    .replace(/\bDelivered through\b[^.?!]*(?:[.?!]|$)/gi, "")
+    .replace(/\bthrough a tighter property selection process\b[^.?!]*(?:[.?!]|$)/gi, "")
+    .replace(/\bA tighter property selection process\b[^.?!]*(?:[.?!]|$)/gi, "")
+    .replace(/\s+([,.!?])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function metadataNumber(metadata: Record<string, Json> | null, key: string) {

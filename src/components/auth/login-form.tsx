@@ -14,6 +14,22 @@ const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
 const GOOGLE_AUTH_ENABLED = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_AUTH === "true";
 const TURNSTILE_SCRIPT_ID = "cloudflare-turnstile-script";
 const DEFAULT_AUTH_REDIRECT_PATH = "/welcome?fresh=1";
+const AUTH_TEMPORARILY_UNAVAILABLE_COPY =
+  "Sign-in is temporarily unavailable. Please try again shortly or contact support if it continues.";
+
+function customerSafeAuthErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+
+  if (/supabase|environment|configured|config|url|anon|service|provider|oauth/i.test(message)) {
+    return AUTH_TEMPORARILY_UNAVAILABLE_COPY;
+  }
+
+  if (/no session|session was established|auth session/i.test(message)) {
+    return "We could not finish signing you in. Please try again.";
+  }
+
+  return message || "Authentication failed. Please try again.";
+}
 
 declare global {
   interface Window {
@@ -74,7 +90,7 @@ export function LoginForm({
     const supabase = createClient();
 
     if (!supabase) {
-      setError("Supabase environment variables are not configured.");
+      setError(AUTH_TEMPORARILY_UNAVAILABLE_COPY);
       return;
     }
 
@@ -95,9 +111,7 @@ export function LoginForm({
         throw oauthError;
       }
     } catch (caughtError) {
-      setError(
-        caughtError instanceof Error ? caughtError.message : "Authentication failed.",
-      );
+      setError(customerSafeAuthErrorMessage(caughtError));
       setIsPending(false);
     }
   }
@@ -110,7 +124,7 @@ export function LoginForm({
     const supabase = createClient();
 
     if (!supabase) {
-      setError("Supabase environment variables are not configured.");
+      setError(AUTH_TEMPORARILY_UNAVAILABLE_COPY);
       return;
     }
 
@@ -201,9 +215,7 @@ export function LoginForm({
       setMode("sign-in");
       resetTurnstile();
     } catch (caughtError) {
-      setError(
-        caughtError instanceof Error ? caughtError.message : "Authentication failed.",
-      );
+      setError(customerSafeAuthErrorMessage(caughtError));
       if (turnstileEnabled) {
         resetTurnstile();
       }
@@ -241,7 +253,7 @@ export function LoginForm({
       });
 
       if (sessionError) {
-        setError(sessionError.message);
+        setError(customerSafeAuthErrorMessage(sessionError));
         return;
       }
 
@@ -433,7 +445,7 @@ export function LoginForm({
 
         {reason === "setup" ? (
           <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100">
-            Configure Supabase before accessing protected routes.
+            Sign-in is temporarily unavailable. Please try again shortly.
           </div>
         ) : null}
 
@@ -445,7 +457,7 @@ export function LoginForm({
 
         {!isConfigured ? (
           <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100">
-            Missing `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+            Sign-in is temporarily unavailable. Please try again shortly.
           </div>
         ) : null}
 

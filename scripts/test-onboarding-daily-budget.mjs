@@ -36,7 +36,8 @@ assert.match(onboardingPage, /dailyBudget:\s*"30"/, "default onboarding budget m
 assert.match(onboardingPage, /Daily ad spend budget/, "onboarding budget field must be daily-first");
 assert.match(onboardingPage, /Custom daily amount/, "custom amount must be labeled as daily");
 assert.match(onboardingPage, /not a monthly commitment/, "onboarding must avoid monthly-commitment framing");
-assert.match(onboardingPage, /Estimated monthly media spend/, "monthly estimate may only be secondary explanatory copy");
+assert.match(onboardingPage, /Estimated 30-day media spend/, "30-day estimate may only be secondary explanatory copy");
+assert.match(onboardingPage, /currency:\s*"CAD"/, "onboarding ad spend must label CAD consistently");
 assert.doesNotMatch(onboardingPage, /Monthly ad budget|\$1\.5k\/mo|\$3k\/mo|\$5k\/mo|\$7\.5k\+\/mo/, "old monthly onboarding choices must be removed");
 
 assert.match(onboardingPage, /parseCurrencyCents/, "client validation must parse cents without float regex ambiguity");
@@ -63,7 +64,8 @@ assert.match(campaignPlanService, /requestedDailyBudget = Number\(\(params\.gene
 assert.match(prepaywallPreview, /dailyBudget\?: string/, "preview draft must accept daily budget");
 assert.match(prepaywallPreview, /formatDailyBudget/, "preview budget pill must render daily budget");
 assert.match(builderPage, /Daily ad spend/, "builder campaign summary must be daily-first");
-assert.match(launchPage, /dailyBudgetInput\.toLocaleString[\s\S]*\/day/, "launch page budget display must be daily-first");
+assert.match(launchPage, /formatBudgetCap\(dailyBudgetCents\)[\s\S]*\/day/, "launch page budget display must be daily-first and currency-labeled");
+assert.match(launchPage, /30-day estimate \{formatBudgetCap\(dailyBudgetCents \* 30\)\}/, "launch page estimate must use the same currency formatter");
 assert.match(launchSuccessPage, /monthlyBudget \/ 30/, "launch success fallback must derive a daily budget from legacy monthly records");
 
 assert.ok(

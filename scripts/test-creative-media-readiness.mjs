@@ -313,6 +313,8 @@ const productionLikeCreativeAssets = [
       source: "static_ad",
       staticAssetId: "primary",
 	      role: "background_image",
+	      headline: "Sell Your Home in 90 Days. Delivered through a tighter property selection process.",
+	      primaryText: "Toronto homeowners can review a 90-day sale plan. Delivered through a tighter property selection process.",
 	      storageNormalized: true,
 	      appComposedFinal: true,
 	      qualityGate: { accepted: true },
@@ -392,6 +394,8 @@ assert.equal(productionStaticReadiness.selectedMinimumMet, false);
 assert.equal(productionStaticReadiness.allSelectedReady, false);
 assert.equal(productionStaticReadiness.readyLabel, "3 selected launch-ready previews");
 assert.equal(productionMappedStatic.find((asset) => asset.id === "primary")?.imageGenerationState, "generated");
+assert.doesNotMatch(productionMappedStatic.find((asset) => asset.id === "primary")?.headline ?? "", /Delivered through|property selection/i);
+assert.doesNotMatch(productionMappedStatic.find((asset) => asset.id === "primary")?.primaryText ?? "", /Delivered through|property selection/i);
 
 const fallbackPreview = buildComposedStaticAdPreview({
   headline: "Toronto seller plan",

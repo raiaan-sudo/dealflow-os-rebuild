@@ -221,6 +221,7 @@ async function updateSelectedStaticIds(supabase, row, selectedIds) {
 
 async function main() {
   const apply = process.argv.includes("--apply");
+  const forceRegenerateCurrent = process.argv.includes("--force-regenerate-current");
   const ack = process.argv.find((arg) => arg.startsWith("--ack="))?.slice("--ack=".length) ?? "";
 
   if (apply && ack !== APPLY_ACK) {
@@ -251,12 +252,14 @@ async function main() {
       staticAssetRows: summarizeRows(beforeRows),
       hasApprovedStaticBrief: Boolean(beforeContext),
       wouldApply: [
-        "regenerate current static concepts/finals with maxGenerations=0",
+        forceRegenerateCurrent
+          ? "force-regenerate current static concepts/finals with maxGenerations=0"
+          : "regenerate current static concepts/finals with maxGenerations=0 when fewer than 4 are launch-ready",
         "store 4-6 app-composed final statics in app-owned storage",
         "select the first 4-6 current launch-ready app-composed static IDs",
         "preserve historical failed/provider rows as evidence",
       ],
-      applyCommand: `node ./scripts/repair-app-composed-static-finals.mjs --apply --ack=${APPLY_ACK}`,
+      applyCommand: `node ./scripts/repair-app-composed-static-finals.mjs${forceRegenerateCurrent ? " --force-regenerate-current" : ""} --apply --ack=${APPLY_ACK}`,
       rollback: {
         scope: `campaign_plans row ${TARGET_CAMPAIGN_ID} and newly inserted creative_assets/storage objects for this campaign only`,
         action: "Restore the previous campaign_plans.plan from pre-apply output or Supabase PITR; leave historical evidence rows unless owner explicitly approves cleanup.",
@@ -266,10 +269,10 @@ async function main() {
   }
 
   let repaired = null;
-  if (beforeReadyIds.length < 4) {
+  if (forceRegenerateCurrent || beforeReadyIds.length < 4) {
     repaired = await regenerateStaticCreativeAssetsForUser(TARGET_CAMPAIGN_ID, before.user_id, {
       force: true,
-      missingOnly: true,
+      missingOnly: !forceRegenerateCurrent,
       maxGenerations: 0,
       supabase,
       providerUsageRunId: "repair-app-composed-static-finals",

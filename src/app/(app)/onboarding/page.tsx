@@ -297,11 +297,13 @@ function monthlyCapDollarsFromDailyCents(cents: number) {
   return Math.round(cents * 30) / 100;
 }
 
-function formatMoney(value: number) {
-  return value.toLocaleString("en-US", {
+function formatAdSpend(value: number) {
+  return new Intl.NumberFormat("en-CA", {
+    style: "currency",
+    currency: "CAD",
     maximumFractionDigits: Number.isInteger(value) ? 0 : 2,
     minimumFractionDigits: 0,
-  });
+  }).format(value);
 }
 
 function formatDailyBudgetFromDraft(draft: Pick<DraftState, "dailyBudget">) {
@@ -311,7 +313,7 @@ function formatDailyBudgetFromDraft(draft: Pick<DraftState, "dailyBudget">) {
     return "Daily budget not set";
   }
 
-  return `$${formatMoney(dailyBudgetDollarsFromCents(cents))}/day`;
+  return `${formatAdSpend(dailyBudgetDollarsFromCents(cents))}/day`;
 }
 
 function formatMonthlyEstimateFromDraft(draft: Pick<DraftState, "dailyBudget">) {
@@ -321,7 +323,7 @@ function formatMonthlyEstimateFromDraft(draft: Pick<DraftState, "dailyBudget">) 
     return null;
   }
 
-  return `Estimated monthly media spend: $${formatMoney(monthlyCapDollarsFromDailyCents(cents))} based on 30 days.`;
+  return `Estimated 30-day media spend: ${formatAdSpend(monthlyCapDollarsFromDailyCents(cents))}.`;
 }
 
 function migrateLegacyMonthlyBudgetToDaily(value: unknown) {
@@ -1186,7 +1188,7 @@ export default function OnboardingPage() {
                   ["Property type", draft.propertyType],
                   ["Price/deal size", draft.priceRange],
                   ["Daily ad spend", formatDailyBudgetFromDraft(draft)],
-                  ["30-day estimate", formatMonthlyEstimateFromDraft(draft)?.replace("Estimated monthly media spend: ", "") ?? "Not set"],
+                  ["30-day estimate", formatMonthlyEstimateFromDraft(draft)?.replace("Estimated 30-day media spend: ", "").replace(/\.$/, "") ?? "Not set"],
                   ["Offer", normalizedDraft.offer],
                   [
                     "Launch access",

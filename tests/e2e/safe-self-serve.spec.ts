@@ -126,7 +126,7 @@ test.describe("safe public browser proof", () => {
     await expect(page).toHaveURL(/\/login\?reason=(expired|setup)&redirectedFrom=%2Fdashboard/);
     await expect(
       page.getByText(
-        /Your session expired or could not be refreshed|Configure Supabase before accessing protected routes|The sign-in experience hit an unexpected error|Retry the request/,
+        /Your session expired or could not be refreshed|Sign-in is temporarily unavailable|The sign-in experience hit an unexpected error|Retry the request/,
       ),
     ).toBeVisible();
 

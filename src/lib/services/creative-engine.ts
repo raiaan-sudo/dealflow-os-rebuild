@@ -548,7 +548,24 @@ function buildStructuredPrimaryText(params: {
   outcome: string;
   cta: string;
 }) {
-  return `${shortSentence(params.hook)} ${sentenceCase(params.problem)} ${sentenceCase(params.outcome)} ${params.cta}.`;
+  const parts = [
+    shortSentence(params.hook),
+    sentenceCase(params.problem),
+    sentenceCase(params.outcome),
+    `${shortSentence(params.cta)}.`,
+  ]
+    .map((part) => cleanCreativeCopy(part))
+    .filter(Boolean);
+  const seen = new Set<string>();
+
+  return parts
+    .filter((part) => {
+      const key = normalizeForOfferMatch(part);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join(" ");
 }
 
 function normalizeForOfferMatch(value: string) {
@@ -666,6 +683,21 @@ function stripUnapprovedCtaPhrases(value: string, approvedCta: string) {
   return safeText(next).replace(/\s+/g, " ");
 }
 
+function replaceVerboseApprovedOfferReference(value: string, fullOffer: string | null | undefined, offerTitle: string | null | undefined) {
+  const title = safeText(offerTitle);
+  const full = safeText(fullOffer);
+
+  if (!value || !title || !full || normalizeForOfferMatch(full) === normalizeForOfferMatch(title)) {
+    return value;
+  }
+
+  return value
+    .replace(new RegExp(escapeRegExp(full), "gi"), title)
+    .replace(/\bDelivered through\b[^.?!]*(?:[.?!]|$)/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function buildOfferLedHeadline(params: {
   offer: string;
   market: string;
@@ -703,7 +735,7 @@ function buildOfferLedHook(params: {
   const cleanOffer = shortSentence(params.offer);
 
   if (isTimeboxedSellerOffer(cleanOffer, params.category)) {
-    return `${params.market} sellers: review the ${cleanOffer.toLowerCase()} before you list.`;
+    return `${params.market} homeowners: check your 90-day sale plan before you list.`;
   }
 
   if (shouldPreserveExplicitOffer(cleanOffer, params.category)) {
@@ -736,13 +768,13 @@ function buildOfferLedPrimaryText(params: {
 
   const problem =
     params.category === "seller"
-      ? `Most homeowners wait until they are already listing to discover pricing gaps, timing risk, and weak demand signals.`
+      ? `Most homeowners do not see pricing gaps, timing risk, or weak demand signals until the listing is already live.`
       : params.category === "buyer" && isOffMarketOffer(cleanOffer)
         ? `Most buyers only see the same public listings after competition has already moved in.`
       : `Most ${params.audience} wait until the obvious move is already crowded.`;
   const outcome =
     params.category === "seller"
-      ? `${sentenceCase(params.mechanism)} keeps ${cleanOffer} at the center with ${params.proof.toLowerCase()} before you commit to the wrong listing path.`
+      ? `${sentenceCase(params.mechanism)} gives you ${params.proof.toLowerCase()} around ${cleanOffer} before you commit to the wrong listing path.`
       : params.category === "buyer" && isOffMarketOffer(cleanOffer)
         ? `${sentenceCase(params.mechanism)} keeps off-market property access at the center so buyers can review private or distressed-sale opportunities before the broad search gets crowded.`
       : `${sentenceCase(params.mechanism)} keeps ${cleanOffer} at the center with ${params.proof.toLowerCase()} so the next move is easier to judge.`;
@@ -857,6 +889,13 @@ function creativeAngleLabel(ad: StaticCreativeAsset) {
 
 function preventDuplicateStaticCreativeCopy(ads: StaticCreativeAsset[]) {
   const seen = new Set<string>();
+  const angleCopy: Record<string, string> = {
+    "Expert angle": "Use a clearer pricing and demand read before you commit.",
+    "Offer-led": "Put the offer in front of homeowners while the decision is still flexible.",
+    "Opportunity": "Make the next step feel specific before another listing cycle passes.",
+    "Problem-solution": "Show the risk first, then give homeowners a practical next step.",
+    "Proof story": "Lead with proof and make the response feel easier to trust.",
+  };
 
   return ads.map((ad, index) => {
     const key = normalizeForOfferMatch(`${ad.headline}|${ad.primaryText}|${ad.cta}`);
@@ -867,7 +906,7 @@ function preventDuplicateStaticCreativeCopy(ads: StaticCreativeAsset[]) {
 
     const label = creativeAngleLabel(ad);
     const headline = cleanCreativeCopy(`${label}: ${ad.headline}`);
-    const primaryText = cleanCreativeCopy(`${ad.primaryText} This variation tests the ${label.toLowerCase()} angle.`);
+    const primaryText = cleanCreativeCopy(`${ad.primaryText} ${angleCopy[label] ?? "Give the same offer a clearer reason to act."}`);
     seen.add(normalizeForOfferMatch(`${headline}|${primaryText}|${ad.cta}|${index}`));
 
     return {
@@ -2243,7 +2282,8 @@ function applyCreativeIntakePromptToStaticAsset(
 
 	  const promptVersion = creativeIntake.promptVersion;
 	  const finishedAdMode = creativeIntake.outputMode === "finished_ad";
-	  const requiredOffer = creativeIntake.requiredOfferTitle ?? creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer;
+  const approvedOfferTitle = creativeIntake.requiredOfferTitle ?? null;
+	  const requiredOffer = approvedOfferTitle ?? creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer;
 	  const approvedOffer = finishedAdMode ? requiredOffer : creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer;
 	  const approvedCta = creativeIntake.requiredCta ?? asset.cta;
   const staticPrompt = staticOnlyPromptForImageGeneration(promptVersion.generatedPrompt);
@@ -2282,8 +2322,22 @@ function applyCreativeIntakePromptToStaticAsset(
         prompt,
         negativePrompt,
       };
+  const approvedOfferAlreadyPresent = textIncludesOffer(asset.primaryText, approvedOffer);
+  const approvedCtaAlreadyPresent = normalizeForOfferMatch(asset.primaryText).includes(normalizeForOfferMatch(approvedCta));
 	  const primaryText = finishedAdMode
-	    ? cleanCreativeCopy(`${stripUnapprovedCtaPhrases(asset.primaryText, approvedCta)} ${approvedOffer}. ${approvedCta}.`)
+	    ? cleanCreativeCopy([
+          replaceVerboseApprovedOfferReference(
+            replaceVerboseApprovedOfferReference(
+              stripUnapprovedCtaPhrases(asset.primaryText, approvedCta),
+              asset.offer ?? normalized.offer,
+              approvedOfferTitle,
+            ),
+            creativeIntake.requiredOffer ?? null,
+            approvedOfferTitle,
+          ),
+          approvedOfferAlreadyPresent ? "" : approvedOffer,
+          approvedCtaAlreadyPresent ? "" : approvedCta,
+        ].filter(Boolean).join(" "))
 	    : asset.primaryText;
   const headline = finishedAdMode
     ? trimWords(cleanCreativeCopy(asset.headline), 10)
@@ -2330,7 +2384,7 @@ function applyCreativeIntakePromptToStaticAsset(
     ctaHash: creativeIntake.ctaHash ?? null,
     brandHash: creativeIntake.brandHash ?? null,
     briefRevisionNumber: creativeIntake.revisionNumber ?? null,
-    approvedOfferTitle: creativeIntake.requiredOfferTitle ?? creativeIntake.requiredOffer ?? null,
+    approvedOfferTitle: approvedOfferTitle ?? creativeIntake.requiredOffer ?? null,
     approvedCta,
     approvedBrand: creativeIntake.brokerageBrand ?? null,
   };
