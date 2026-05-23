@@ -699,6 +699,7 @@ assert.match(creativeWizardSource, /Render approved script/, "stale UGC renders 
 assert.match(creativeWizardSource, /videoMatchesApprovedScript/, "Creative Studio blocks stale UGC videos whose script hash no longer matches the approved script");
 assert.match(buildCreativesPageSource, /creativeIntake\?\.brief\?\.ugcScriptHash \?\?/, "Creative Studio must pass the canonical approved UGC script hash to the client");
 assert.match(selectAdRouteSource, /mapVideoCreativeAssets/, "Save launch package must validate UGC selections against current creative_assets video rows");
+assert.match(selectAdRouteSource, /if \(!videoById\.has\(video\.id\)\)/, "Save launch package must preserve the newest launch-ready UGC asset when duplicate creative IDs exist");
 assert.match(creativeWizardSource, /selectedCount=\{selected \? selectedCreatives\.length : null\}/, "retry cards cannot inherit selected count badges");
 assert.match(creativeWizardSource, /selectedUgcVideoIds/, "Creative Studio persists selected UGC launch video IDs");
 assert.match(creativeWizardSource, /Select UGC for launch/, "Creative Studio lets UGC videos be selected like static creatives");

@@ -171,7 +171,12 @@ export async function POST(
     const videoAds = mappedVideoAssets.length > 0
       ? mappedVideoAssets
       : hydratedRecord?.creatives.videoAds ?? [];
-    const videoById = new Map(videoAds.map((video) => [video.id, video]));
+    const videoById = new Map<string, (typeof videoAds)[number]>();
+    for (const video of videoAds) {
+      if (!videoById.has(video.id)) {
+        videoById.set(video.id, video);
+      }
+    }
     const missingVideoIds = selectedUgcVideoIds.filter((selectedId) => !videoById.has(selectedId));
 
     if (missingVideoIds.length > 0) {
