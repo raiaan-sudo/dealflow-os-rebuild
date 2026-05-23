@@ -138,7 +138,7 @@ export async function POST(request: Request) {
     }
 
     let { data: sessionData, error: verifyError } = await anon.auth.verifyOtp({
-      type: "magiclink",
+      type: "email",
       token_hash: tokenHash,
     });
 

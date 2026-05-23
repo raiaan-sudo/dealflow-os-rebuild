@@ -855,6 +855,7 @@ function runOfflineChecks() {
   assertIncludes(safeE2eSpec, "SAFE_E2E_QA_AUTH", "Safe E2E QA auth gate", "authenticated browser journey requires an explicit QA auth env gate");
   assertIncludes(safeE2eSpec, "/api/internal/qa-auth-session", "Safe E2E internal auth harness", "browser proof uses the env-gated internal QA auth harness");
   assertIncludes("src/app/api/internal/qa-auth-session/route.ts", "QA_AUTH_HARNESS_PRODUCTION_ENABLED", "Production QA harness gate", "QA session minting requires a second explicit production gate");
+  assertIncludes("src/app/api/internal/qa-auth-session/route.ts", "type: \"email\"", "QA auth token verification", "generated Supabase email tokens are verified server-side without relying on CAPTCHA-protected password sign-in");
   assertIncludes(safeE2eSpec, "No live ad, payment, message, or media action runs here.", "Safe E2E live-action boundary assertion", "browser proof asserts onboarding warns that no live ad, payment, message, or media action runs");
   assertIncludes("scripts/smoke-test-system.md", "npm run test:e2e:safe", "Safe browser E2E docs", "smoke documentation includes the safe browser proof command");
   assertExcludes("src/lib/services/lead-handler-service.ts", /QA_EMAIL|QA_PASSWORD/, "QA credential fallback removed", "no QA credential fallback remains in lead handler");
