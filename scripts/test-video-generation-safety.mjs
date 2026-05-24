@@ -90,6 +90,10 @@ assert.match(creativeWizard, /customerVideoMessage/, "creative wizard sanitizes 
 assert.match(creativeWizard, /hasCurrentStaticVideoSource/, "creative wizard checks for a current launch-ready static source before UGC render");
 assert.match(creativeWizard, /Render static creatives first/, "creative wizard blocks UGC render until static source media is ready");
 assert.match(creativeWizard, /UGC video preview needs a launch-ready image source/, "creative wizard explains why video render cannot start");
+assert.match(creativeWizard, /activeVideoHasCurrentPlayableRender/, "creative wizard only loads playable UGC video when it matches the approved script");
+assert.match(creativeWizard, /Fresh UGC render required/, "creative wizard replaces stale playable videos with a fresh-render state");
+assert.match(creativeWizard, /Prepare current static source/, "creative wizard gives users an action when fresh UGC needs current static source media");
+assert.match(creativeWizard, /Render fresh UGC video/, "creative wizard gives users a fresh render action instead of showing stale approved-script media");
 assert.match(previewPage, /customerVideoMessage/, "preview page sanitizes video failure messages");
 assert.doesNotMatch(videoErrors, /Review the operator diagnostics/, "operator diagnostics are not exposed in video errors");
 assert.match(launchCreateRoute, /isLaunchReadyVideoCreative/, "launch API enforces video readiness server-side");

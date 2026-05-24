@@ -468,6 +468,11 @@ export function CreativeWizard({
     activeVideoCreative.conceptType === "customer_ugc" &&
     isCurrentLaunchReadyVideo(activeVideoCreative),
   );
+  const activeVideoHasCurrentPlayableRender = Boolean(
+    activeVideoCreative &&
+    activeVideoMatchesApprovedScript &&
+    isPlayableVideoCreative(activeVideoCreative),
+  );
   const activeVideoLaunchReadinessReason =
     activeVideoCreative && !activeVideoLaunchReady
       ? getVideoLaunchReadinessReason(activeVideoCreative)
@@ -1242,7 +1247,7 @@ export function CreativeWizard({
               </span>
             </div>
             <div className="mx-auto w-full max-w-[360px] overflow-hidden rounded-[18px] border border-white/10 bg-black/28">
-              {isPlayableVideoCreative(activeVideoCreative) ? (
+              {activeVideoHasCurrentPlayableRender ? (
                 <CustomerVideoPlayer
                   className="border-0"
                   videoClassName="aspect-[9/16] max-h-[70dvh] w-full bg-black object-contain"
@@ -1256,10 +1261,14 @@ export function CreativeWizard({
                 <div className="grid aspect-[9/16] place-items-center bg-[linear-gradient(135deg,rgba(94,234,212,0.12),rgba(139,92,246,0.12)),radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_24%)] p-5 text-center">
                   <div>
                     <p className="text-sm font-semibold text-foreground">
-                      {currentVideoRenderView?.customerLabel ?? getVideoReadinessLabel(activeVideoCreative)}
+                      {!activeVideoMatchesApprovedScript && isPlayableVideoCreative(activeVideoCreative)
+                        ? "Fresh UGC render required"
+                        : currentVideoRenderView?.customerLabel ?? getVideoReadinessLabel(activeVideoCreative)}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    {currentVideoRenderView?.customerMessage ?? getVideoReadinessMessage(activeVideoCreative)}
+                    {!activeVideoMatchesApprovedScript && isPlayableVideoCreative(activeVideoCreative)
+                      ? "The previous video was made from an older script, so DealFlow will not show or use it. Prepare a current static source, then render a fresh campaign-specific UGC video."
+                      : currentVideoRenderView?.customerMessage ?? getVideoReadinessMessage(activeVideoCreative)}
                     {videoBlockedByMissingStaticSource ? (
                       <span className="mt-2 block text-cyan-100">
                         Render static creatives first so the video preview has a current image source.
@@ -1271,7 +1280,7 @@ export function CreativeWizard({
               )}
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              {isPlayableVideoCreative(activeVideoCreative) ? (
+              {activeVideoHasCurrentPlayableRender ? (
                 <Button
                   type="button"
                   variant="secondary"
@@ -1301,33 +1310,55 @@ export function CreativeWizard({
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => void queueVideoPreview({
-                    force: true,
-                    video: activeVideoCreative,
-                  })}
-                  disabled={videoActionPending || videoBlockedByMissingStaticSource}
+                  onClick={() => {
+                    if (videoBlockedByMissingStaticSource) {
+                      void queueImagePreviews({ missingOnly: true });
+                      return;
+                    }
+
+                    void queueVideoPreview({
+                      force: true,
+                      video: activeVideoCreative,
+                    });
+                  }}
+                  disabled={videoActionPending || imageActionPending || Boolean(imageLimitMessage)}
                 >
                   {videoBlockedByMissingStaticSource
-                    ? "Render static creatives first"
+                    ? imageActionPending
+                      ? "Preparing current static source..."
+                      : imageLimitMessage
+                        ? "Daily image limit reached"
+                        : "Prepare current static source"
                     : videoActionPending
                     ? "Rendering approved script..."
-                    : "Render approved script"}
+                    : "Render fresh UGC video"}
                 </Button>
               ) : !isPlayableVideoCreative(activeVideoCreative) ? (
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => void queueVideoPreview({
-                    force: activeVideoCreative.videoGenerationState === "failed",
-                    video: activeVideoCreative,
-                  })}
-                  disabled={videoBlockedByMissingStaticSource || videoActionPending || (
+                  onClick={() => {
+                    if (videoBlockedByMissingStaticSource) {
+                      void queueImagePreviews({ missingOnly: true });
+                      return;
+                    }
+
+                    void queueVideoPreview({
+                      force: activeVideoCreative.videoGenerationState === "failed",
+                      video: activeVideoCreative,
+                    });
+                  }}
+                  disabled={videoActionPending || imageActionPending || Boolean(imageLimitMessage) || (
                     activeVideoCreative.videoGenerationState === "generating" &&
                     Boolean(activeVideoCreative.providerAssetId || activeVideoCreative.providerStatus)
                   )}
                 >
                   {videoBlockedByMissingStaticSource
-                    ? "Render static creatives first"
+                    ? imageActionPending
+                      ? "Preparing current static source..."
+                      : imageLimitMessage
+                        ? "Daily image limit reached"
+                        : "Prepare current static source"
                     : currentVideoRenderView?.state === "deferred_worker_required" ||
                   currentVideoRenderView?.state === "operator_action_required"
                     ? "Video render preparing"
@@ -1338,7 +1369,7 @@ export function CreativeWizard({
                     ? "Rendering video..."
                     : activeVideoCreative.videoGenerationState === "failed"
                       ? "Retry video preview"
-                      : "Render video preview"}
+                      : "Render fresh UGC video"}
                 </Button>
               ) : null}
               {activeVideoLaunchReady ? (
