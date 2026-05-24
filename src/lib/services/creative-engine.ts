@@ -2560,8 +2560,11 @@ export async function generateStaticCreativeAds(
       );
       const imageAd = await createImageAd(brief, asset, providerUsage);
       const qaMode =
-        creativeIntake?.outputMode ??
-        (imageAd.generationProvider === "higgsfield_marketing_studio" ? "finished_ad" : "background_only");
+        creativeIntake?.outputMode === "finished_ad" &&
+        imageAd.generationProvider === "higgsfield_marketing_studio"
+          ? "background_only"
+          : creativeIntake?.outputMode ??
+            (imageAd.generationProvider === "higgsfield_marketing_studio" ? "finished_ad" : "background_only");
       const imageQa = imageAd.imageUrl
         ? await evaluateStaticCreativeImageQa({
             imageUrl: imageAd.imageUrl,

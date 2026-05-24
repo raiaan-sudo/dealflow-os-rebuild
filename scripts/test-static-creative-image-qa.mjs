@@ -41,6 +41,9 @@ const require = createRequire(import.meta.url);
 const {
   evaluateStaticCreativeImageQa,
 } = require("../src/lib/services/static-creative-image-qa.ts");
+const {
+  evaluateStaticVisualAssetDecision,
+} = require("../src/lib/services/static-creative-visual-qa.ts");
 
 function svgData(body, attrs = "width=\"512\" height=\"512\" viewBox=\"0 0 512 512\"") {
   return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" ${attrs}>${body}</svg>`)}`;
@@ -453,5 +456,27 @@ const redirectPrivate = await evaluateStaticCreativeImageQa({
 globalThis.fetch = originalFetch;
 assert.equal(redirectPrivate.decision, "reject", "redirect-to-private QA fetch rejected");
 assert.ok(redirectPrivate.reasons.includes("image_fetch_failed"));
+
+const legacyAppComposedFinal = evaluateStaticVisualAssetDecision({
+  imageUrl: "https://example.com/storage/v1/object/public/creative-assets/final.png",
+  storageNormalized: true,
+  appComposedFinal: true,
+  qualityTier: null,
+  sourceBackgroundKind: "higgsfield_visual_background",
+  sourceBackgroundProvider: "higgsfield_marketing_studio",
+  sourceBackgroundAssetId: null,
+  qualityGate: { accepted: false },
+  imageQa: {
+    mode: "app_composed_final",
+    usable: true,
+    decision: "accept",
+    reasons: [],
+  },
+});
+assert.equal(
+  legacyAppComposedFinal.usable,
+  true,
+  "legacy app-owned Higgsfield composed finals with accepted image QA stay promotable",
+);
 
 console.log("Static creative image QA tests passed.");

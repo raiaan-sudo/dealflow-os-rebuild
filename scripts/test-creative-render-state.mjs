@@ -261,6 +261,13 @@ const mediaReadinessSource = fs.readFileSync("src/lib/services/creative-media-re
 assert.match(mediaReadinessSource, /optional .*polish variant/);
 assert.doesNotMatch(mediaReadinessSource, /optional .*variant needs refresh or retry/);
 
+const creativeEngineSource = fs.readFileSync("src/lib/services/creative-engine.ts", "utf8");
+assert.match(
+  creativeEngineSource,
+  /creativeIntake\?\.outputMode === "finished_ad"[\s\S]*imageAd\.generationProvider === "higgsfield_marketing_studio"[\s\S]*\? "background_only"/,
+  "Marketing Studio source images are background-QA'd before DealFlow composes the final launch ad",
+);
+
 const buildCreativesPageSource = fs.readFileSync("src/app/(app)/build/creatives/page.tsx", "utf8");
 assert.match(buildCreativesPageSource, /mapVideoCreativeAssets/);
 assert.match(

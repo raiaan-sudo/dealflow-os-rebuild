@@ -128,6 +128,18 @@ function hasAcceptedPremiumFinalProvenance(input: StaticVisualContractInput) {
   );
 }
 
+function hasAcceptedLegacyAppComposedFinalProvenance(input: StaticVisualContractInput) {
+  return Boolean(
+    input.appComposedFinal === true &&
+      input.imageQa?.mode === "app_composed_final" &&
+      input.imageQa.usable === true &&
+      input.imageQa.decision === "accept" &&
+      input.storageNormalized === true &&
+      input.sourceBackgroundKind === "higgsfield_visual_background" &&
+      hasPremiumSourceProvider(input),
+  );
+}
+
 export function evaluateStaticVisualAssetDecision(
   input: StaticVisualContractInput,
 ): StaticVisualAssetDecision {
@@ -139,8 +151,9 @@ export function evaluateStaticVisualAssetDecision(
   }
 
   const premiumFinalAccepted = hasAcceptedPremiumFinalProvenance(input);
+  const legacyAppComposedFinalAccepted = hasAcceptedLegacyAppComposedFinalProvenance(input);
 
-  if (input.qualityGate?.accepted !== true && !premiumFinalAccepted) {
+  if (input.qualityGate?.accepted !== true && !premiumFinalAccepted && !legacyAppComposedFinalAccepted) {
     return {
       usable: false,
       reason: "This generated visual has not passed the creative quality gate yet and must be regenerated.",
@@ -155,7 +168,7 @@ export function evaluateStaticVisualAssetDecision(
   }
 
   if (input.appComposedFinal === true && input.imageQa?.mode === "app_composed_final") {
-    if (!premiumFinalAccepted) {
+    if (!premiumFinalAccepted && !legacyAppComposedFinalAccepted) {
       return {
         usable: false,
         reason: "Premium launch ads are still being prepared. Draft previews cannot satisfy launch readiness.",
