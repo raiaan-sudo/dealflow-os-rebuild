@@ -358,13 +358,20 @@ export function CreativeChatIntake({
                 type="button"
                 variant="secondary"
                 className="!h-auto min-h-14 w-full min-w-0 max-w-full whitespace-normal py-4 !leading-none sm:w-auto"
+                style={{ minHeight: 64, lineHeight: 1 }}
                 disabled={saving || !revisionMessage.trim()}
                 onClick={() => void persist("revise")}
               >
                 Revise
               </Button>
             </div>
-            <Button asChild type="button" variant="secondary" className="mt-3 !h-auto min-h-14 w-full max-w-full whitespace-normal py-4 text-center !leading-none">
+            <Button
+              asChild
+              type="button"
+              variant="secondary"
+              className="mt-3 !h-auto min-h-14 w-full max-w-full whitespace-normal py-4 text-center !leading-none"
+              style={{ minHeight: 64, lineHeight: 1 }}
+            >
               <Link href={`/build/creatives?campaignId=${encodeURIComponent(campaignId)}&creativeBrief=edit`}>
                 Open Marketing Studio chat
               </Link>
