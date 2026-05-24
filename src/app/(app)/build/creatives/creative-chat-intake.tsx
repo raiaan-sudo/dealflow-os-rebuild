@@ -348,7 +348,7 @@ export function CreativeChatIntake({
             <label className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               Revision note
             </label>
-            <div className="mt-2 flex gap-2">
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
               <Input
                 value={revisionMessage}
                 onChange={(event) => setRevisionMessage(event.target.value)}
@@ -357,6 +357,7 @@ export function CreativeChatIntake({
               <Button
                 type="button"
                 variant="secondary"
+                className="w-full sm:w-auto"
                 disabled={saving || !revisionMessage.trim()}
                 onClick={() => void persist("revise")}
               >
