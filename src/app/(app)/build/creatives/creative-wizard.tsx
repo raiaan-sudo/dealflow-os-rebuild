@@ -1275,7 +1275,7 @@ export function CreativeWizard({
                   <div>
                     <p className="text-sm font-semibold text-foreground">
                       {!activeVideoMatchesApprovedScript && isPlayableVideoCreative(activeVideoCreative)
-                        ? "Current UGC render needed"
+                        ? "Fresh UGC render required"
                         : currentVideoRenderView?.customerLabel ?? getVideoReadinessLabel(activeVideoCreative)}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">
