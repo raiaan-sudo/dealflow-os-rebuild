@@ -637,8 +637,10 @@ export function CreativeWizard({
       const deferredWorkerJob = isMarketingStudioWorkerDeferredRunAt(data.job.next_run_at);
       setRenderJobs((current) => upsertRenderJob(current, data.job as SystemJob));
       setRenderMessage(
-        deferredWorkerJob
-          ? "Premium launch ads are preparing in the background. Draft previews remain available while final ads finish."
+        renderView.state === "operator_action_required"
+          ? "Premium render is paused while final rendering is unavailable. Draft previews remain visible; final launch-ready ads will update once rendering is available."
+          : deferredWorkerJob
+            ? "Premium launch ads are queued for final rendering. Draft previews remain available while final ads finish."
           : data.previewUpdated
             ? "Draft previews are visible now. Premium launch ads are preparing separately."
             : renderView.customerMessage,
@@ -883,8 +885,11 @@ export function CreativeWizard({
 
   const activeCreativeIndex = Math.max(0, rankedCreatives.findIndex((creative) => creative.id === activeCreative.id));
   const activeCreativeSelected = selectedIds.includes(activeCreative.id);
-  const imageRenderPending = renderingImages || Boolean(currentImageJob);
-  const imageActionPending = renderingImages || Boolean(currentImageJob);
+  const imageRenderActive = Boolean(currentImageRenderView?.active);
+  const imageOperatorActionRequired = currentImageRenderView?.state === "operator_action_required";
+  const imageWorkerQueued = currentImageRenderView?.state === "deferred_worker_required";
+  const imageRenderPending = renderingImages || imageRenderActive;
+  const imageActionPending = renderingImages || imageRenderActive;
   const videoActionPending = renderingVideo || Boolean(currentVideoJob);
   const imageWorkerDeferred = Boolean(
     currentImageJob && isMarketingStudioWorkerDeferredRunAt(currentImageJob.next_run_at),
@@ -1084,8 +1089,10 @@ export function CreativeWizard({
                 >
                   {imageLimitMessage
                     ? "Daily image limit reached"
-                    : imageWorkerDeferred
-                    ? "Premium ads preparing"
+                    : imageOperatorActionRequired
+                    ? "Premium render paused"
+                    : imageWorkerQueued
+                    ? "Premium render queued"
                     : imageActionPending
                     ? "Preparing premium ads..."
                     : optionalOnlyNeedsPolish
@@ -1101,10 +1108,16 @@ export function CreativeWizard({
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={() => void queueImagePreviews({ missingOnly: true })}
+                  onClick={() => void queueImagePreviews({ force: imageOperatorActionRequired, missingOnly: true })}
                   disabled={imageActionPending || Boolean(imageLimitMessage)}
                 >
-                  {imageLimitMessage ? "Daily image limit reached" : imageActionPending ? "Retrying..." : "Retry preview render"}
+                  {imageLimitMessage
+                    ? "Daily image limit reached"
+                    : imageActionPending
+                    ? "Retrying..."
+                    : imageOperatorActionRequired
+                    ? "Request fresh render"
+                    : "Retry preview render"}
                 </Button>
               ) : null}
             </div>
@@ -1132,9 +1145,9 @@ export function CreativeWizard({
                 <button
                   type="button"
                   className="ml-2 font-semibold text-amber-50 underline decoration-amber-200/50 underline-offset-4"
-                  onClick={() => void queueImagePreviews({ missingOnly: true })}
+                  onClick={() => void queueImagePreviews({ force: imageOperatorActionRequired, missingOnly: true })}
                 >
-                  Retry image previews
+                  {imageOperatorActionRequired ? "Request a fresh render" : "Retry image previews"}
                 </button>
               ) : null}
             </div>
