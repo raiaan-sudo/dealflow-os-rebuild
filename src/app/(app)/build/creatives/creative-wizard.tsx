@@ -1237,8 +1237,8 @@ export function CreativeWizard({
       </section>
 
       {activePhase === "ugc_videos" && activeVideoCreative ? (
-        <section className="grid gap-4 rounded-2xl border border-border bg-card p-4 sm:p-5 lg:grid-cols-[minmax(280px,0.82fr)_minmax(0,1.18fr)]">
-          <div className="space-y-3">
+        <section className="grid min-w-0 gap-4 rounded-2xl border border-border bg-card p-4 sm:p-5 lg:grid-cols-[minmax(280px,0.82fr)_minmax(0,1.18fr)]">
+          <div className="min-w-0 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -1259,7 +1259,7 @@ export function CreativeWizard({
                     : getVideoReadinessLabel(activeVideoCreative))}
               </span>
             </div>
-            <div className="mx-auto w-full max-w-[360px] overflow-hidden rounded-[18px] border border-white/10 bg-black/28">
+            <div className="mx-auto w-full max-w-full overflow-hidden rounded-[18px] border border-white/10 bg-black/28 sm:max-w-[360px]">
               {activeVideoHasCurrentPlayableRender ? (
                 <CustomerVideoPlayer
                   className="border-0"
@@ -1275,12 +1275,12 @@ export function CreativeWizard({
                   <div>
                     <p className="text-sm font-semibold text-foreground">
                       {!activeVideoMatchesApprovedScript && isPlayableVideoCreative(activeVideoCreative)
-                        ? "Fresh UGC render required"
+                        ? "Current UGC render needed"
                         : currentVideoRenderView?.customerLabel ?? getVideoReadinessLabel(activeVideoCreative)}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     {!activeVideoMatchesApprovedScript && isPlayableVideoCreative(activeVideoCreative)
-                      ? "The previous video was made from an older script, so DealFlow will not show or use it. Prepare a current static source, then render a fresh campaign-specific UGC video."
+                      ? "DealFlow is not showing a video because the approved script needs a current campaign-specific render. Prepare a current static source, then render the video."
                       : currentVideoRenderView?.customerMessage ?? getVideoReadinessMessage(activeVideoCreative)}
                     {videoBlockedByMissingStaticSource ? (
                       <span className="mt-2 block text-cyan-100">
@@ -1395,7 +1395,7 @@ export function CreativeWizard({
                 </Button>
               ) : !activeVideoMatchesApprovedScript && isPlayableVideoCreative(activeVideoCreative) ? (
                 <span className="rounded-full border border-amber-300/20 bg-amber-300/[0.08] px-3 py-2 text-xs font-semibold text-amber-100">
-                  Older render; approved script needs a fresh video
+                  Approved script needs a current video
                 </span>
               ) : (
                 <span className="rounded-full border border-amber-300/20 bg-amber-300/[0.08] px-3 py-2 text-xs font-semibold text-amber-100">
@@ -1414,14 +1414,14 @@ export function CreativeWizard({
               ) : null}
             </div>
             {reviewableVideoCreatives.length > 1 ? (
-              <div className="flex gap-2 overflow-x-auto pb-1">
+              <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
                 {reviewableVideoCreatives.map((video, index) => {
                   const active = video.id === activeVideoCreative.id;
                   return (
                     <button
                       key={video.id}
                       type="button"
-                      className={`min-w-[180px] rounded-2xl border px-3 py-3 text-left transition ${
+                      className={`min-w-[150px] max-w-[75vw] rounded-2xl border px-3 py-3 text-left transition ${
                         active
                           ? "border-emerald-300/35 bg-emerald-300/[0.08]"
                           : "border-white/10 bg-black/18 hover:border-white/20"
@@ -1455,7 +1455,7 @@ export function CreativeWizard({
               </div>
             ) : null}
           </div>
-          <div className="grid gap-3">
+          <div className="grid min-w-0 gap-3">
             <div className="rounded-2xl border border-cyan-300/15 bg-[radial-gradient(circle_at_10%_0%,rgba(103,232,249,0.12),transparent_34%),linear-gradient(135deg,rgba(8,14,26,0.95),rgba(5,9,18,0.86))] p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>

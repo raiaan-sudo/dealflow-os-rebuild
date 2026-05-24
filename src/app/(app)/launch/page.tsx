@@ -590,36 +590,6 @@ export default async function LaunchAliasPage({
     }).catch(() => undefined);
   }
 
-  if (selectedCreatives.length === 0) {
-    return (
-      <PageShell>
-        <WizardSteps current="launch" />
-        <PageHeader
-          eyebrow="Launch"
-          title="Saved creative set missing"
-          description="Save a launch-ready static creative set before paused Meta setup can continue."
-        />
-        <EmptyState
-          title="Choose the creative test set first"
-          description="Creative Studio must save the selected static ads and UGC video before this page can review launch readiness."
-        />
-        <div>
-          <Button asChild>
-            <Link
-              href={
-                savedRecord?.campaign.id
-                  ? `/build/creatives?campaignId=${encodeURIComponent(savedRecord.campaign.id)}`
-                  : "/build/creatives"
-              }
-            >
-              Open Creative Studio
-            </Link>
-          </Button>
-        </div>
-      </PageShell>
-    );
-  }
-
   return (
     <PageShell className="max-w-[1640px]">
       <WizardSteps current="launch" />
