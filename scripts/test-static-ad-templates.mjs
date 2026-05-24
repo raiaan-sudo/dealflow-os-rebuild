@@ -410,7 +410,7 @@ assert.deepEqual(
   }),
   {
     usable: false,
-    reason: "Premium launch ads are still being prepared. Draft previews cannot satisfy launch readiness.",
+    reason: "Premium launch ads need a fresh generated source image before they can satisfy launch readiness.",
   },
   "app-composed fallback statics are draft-only until premium provenance is accepted",
 );
@@ -428,6 +428,7 @@ assert.deepEqual(
     visualQualityGate: { accepted: true },
     premiumQualityGate: { accepted: true },
     imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
+    sourceImageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
   }),
   { usable: true, reason: null },
   "premium Higgsfield-backed final statics are the launch-ready static layer",
@@ -471,6 +472,7 @@ const generatedAsset = {
   sourceBackgroundAssetId: "source-static-preserved",
   visualQualityGate: { accepted: true },
   premiumQualityGate: { accepted: true },
+  sourceImageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
   hook: generatedCreativeInput.headline,
   overlayText: generatedCreativeInput.headline,
   visualConcept: "Austin buyer source photo",
@@ -529,6 +531,7 @@ const reusableStaticAds = baseStaticAds.slice(0, -1).map((asset) => ({
   visualQualityGate: { accepted: true },
   premiumQualityGate: { accepted: true },
 	  imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
+  sourceImageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
   imagePromptConfig: {
     ...asset.imagePromptConfig,
     negativePrompt: `${asset.imagePromptConfig?.negativePrompt ?? ""}; proof modules; poster-like typography`,
@@ -577,6 +580,7 @@ const allReusableStaticAds = baseStaticAds.map((asset) => ({
       visualQualityGate: { accepted: true },
       premiumQualityGate: { accepted: true },
 		  imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
+      sourceImageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
 	}));
 const forcedStaticAds = await generateStaticCreativeAds({
   ...generationInput,

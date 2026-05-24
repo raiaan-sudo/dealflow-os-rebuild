@@ -120,6 +120,9 @@ function readyStatic(id) {
     qualityGate: { accepted: true },
     visualQualityGate: { accepted: true },
     premiumQualityGate: { accepted: true },
+    sourceImageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
+    visualQualityGate: { accepted: true },
+    premiumQualityGate: { accepted: true },
 	    imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
 	  };
 	}

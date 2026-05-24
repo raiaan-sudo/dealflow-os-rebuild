@@ -36,6 +36,12 @@ type StaticCreativeReadinessInput = {
     mode?: string | null;
     reasons?: string[] | null;
   } | null;
+  sourceImageQa?: {
+    usable?: boolean | null;
+    decision?: string | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+  } | null;
   staticBriefHash?: string | null;
   offerHash?: string | null;
   ctaHash?: string | null;
@@ -189,6 +195,7 @@ export function isLaunchReadyStaticCreative(creative: Pick<
   | "visualQualityGate"
   | "premiumQualityGate"
   | "imageQa"
+  | "sourceImageQa"
   | "staticBriefHash"
   | "offerHash"
   | "ctaHash"

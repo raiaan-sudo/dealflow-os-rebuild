@@ -42,6 +42,7 @@ export type StaticAdTemplateInput = {
   storageNormalized?: boolean | null;
   appComposedFinal?: boolean | null;
   qualityTier?: string | null;
+  compositionVersion?: string | null;
   sourceBackgroundKind?: string | null;
   sourceBackgroundProvider?: string | null;
   sourceBackgroundAssetId?: string | null;
@@ -85,10 +86,17 @@ export type StaticAdTemplateInput = {
   imageQa?: {
     usable?: boolean | null;
     decision?: "accept" | "reject" | "review" | string | null;
+    mode?: "background_only" | "finished_ad" | "app_composed_final" | string | null;
     reasons?: string[] | null;
     textDensity?: number | null;
     layoutRisk?: number | null;
     detectedTextSamples?: string[] | null;
+  } | null;
+  sourceImageQa?: {
+    usable?: boolean | null;
+    decision?: "accept" | "reject" | "review" | string | null;
+    mode?: "background_only" | "finished_ad" | "app_composed_final" | string | null;
+    reasons?: string[] | null;
   } | null;
   offerQuality?: {
     score?: number | null;

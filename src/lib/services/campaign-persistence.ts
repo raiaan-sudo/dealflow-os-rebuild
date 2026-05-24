@@ -309,6 +309,7 @@ export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativ
 	      visualConcept: typeof metadata?.visualConcept === "string" ? metadata.visualConcept : "",
 	      appComposedFinal: metadata?.appComposedFinal === true,
 	      qualityTier: metadataString(metadata, "qualityTier"),
+	      compositionVersion: metadataString(metadata, "compositionVersion"),
 	      sourceBackgroundKind: metadataString(metadata, "sourceBackgroundKind"),
 	      sourceBackgroundProvider: metadataString(metadata, "sourceBackgroundProvider"),
 	      sourceBackgroundAssetId: metadataString(metadata, "sourceBackgroundAssetId"),
@@ -352,6 +353,8 @@ export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativ
 	      approvedOfferTitle: metadataString(metadata, "approvedOfferTitle"),
 	      approvedCta: metadataString(metadata, "approvedCta"),
 	      approvedBrand: metadataString(metadata, "approvedBrand"),
+	      location: metadataString(metadata, "location"),
+	      audience: metadataString(metadata, "audience"),
 	      score: typeof metadata?.score === "number" ? metadata.score : 0,
 	      recommended: metadata?.recommended === true,
 	    } satisfies StaticCreativeAsset;
@@ -434,6 +437,7 @@ function isAcceptedSourceStaticRow(row: CreativeAssetRow) {
 	      (metadata?.storageNormalizationReusedExistingAppAsset === true && typeof metadata?.storagePath === "string"),
 	    appComposedFinal: metadata?.appComposedFinal === true,
 	    qualityTier: metadataString(metadata, "qualityTier"),
+	    compositionVersion: metadataString(metadata, "compositionVersion"),
 	    sourceBackgroundKind: metadataString(metadata, "sourceBackgroundKind"),
 	    sourceBackgroundProvider: metadataString(metadata, "sourceBackgroundProvider"),
 	    sourceBackgroundAssetId: metadataString(metadata, "sourceBackgroundAssetId"),
@@ -447,6 +451,10 @@ function isAcceptedSourceStaticRow(row: CreativeAssetRow) {
     imageQa:
       metadata?.imageQa && typeof metadata.imageQa === "object"
         ? metadata.imageQa as StaticCreativeAsset["imageQa"]
+        : null,
+    sourceImageQa:
+      metadata?.sourceImageQa && typeof metadata.sourceImageQa === "object"
+        ? metadata.sourceImageQa as StaticCreativeAsset["sourceImageQa"]
         : null,
     visualQualityGate:
       metadata?.visualQualityGate && typeof metadata.visualQualityGate === "object"

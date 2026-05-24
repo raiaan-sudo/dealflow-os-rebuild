@@ -124,7 +124,7 @@ const legacyProviderVisual = {
     visualAssetRole: "text_free_background",
   },
   qualityGate: { accepted: true },
-  imageQa: { usable: true, decision: "accept", reasons: [] },
+  imageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
 };
 assert.equal(
   evaluateStaticVisualAssetDecision(legacyProviderVisual).usable,
@@ -332,7 +332,7 @@ function buildAsset(imageUrl = providerDataUri) {
         aspectRatio: "1:1",
       },
     },
-    imageQa: { usable: true, decision: "accept", reasons: [] },
+    imageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
     scoreBreakdown: null,
     hook: "See matched homes",
     overlayText: "See matched homes",
@@ -548,12 +548,22 @@ assert.equal(
 );
 
 const appOwnedDb = fakeSupabase();
+globalThis.fetch = async (url) => {
+  assert.equal(String(url), appOwnedUrl, "old app-owned creative source is fetched for recomposition");
+  return new Response(Buffer.from(providerDataUri.split(",")[1], "base64"), {
+    status: 200,
+    headers: {
+      "content-type": "image/png",
+    },
+  });
+};
 await persistStaticCreativeAssets({
   supabase: appOwnedDb,
   userId: "user-test",
   campaignId: "campaign-test",
   staticAds: [buildAsset(appOwnedUrl)],
 });
+globalThis.fetch = originalFetch;
 const appOwnedInsert = appOwnedDb.operations.find((item) => item.op === "insert");
 assert.equal(appOwnedDb.operations.some((item) => item.op === "upload"), true, "old app-owned assets are recomposed into current launch-ready finals");
 assert.notEqual(appOwnedInsert.rows[0].file_url, appOwnedUrl);

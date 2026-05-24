@@ -475,8 +475,8 @@ const legacyAppComposedFinal = evaluateStaticVisualAssetDecision({
 });
 assert.equal(
   legacyAppComposedFinal.usable,
-  true,
-  "legacy app-owned Higgsfield composed finals with accepted image QA stay promotable",
+  false,
+  "legacy app-owned Higgsfield composed finals cannot stay promotable without fresh source provenance",
 );
 
 console.log("Static creative image QA tests passed.");

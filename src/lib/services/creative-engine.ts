@@ -72,10 +72,13 @@ export type CreativeFormat = "talking_head" | "ugc" | "montage";
 export type StaticCreativeAsset = {
   id: string;
   angle: "guarantee" | "urgency" | "contrarian" | "opportunity" | "authority";
+  location?: string | null;
+  audience?: string | null;
   imageUrl: string;
   storageNormalized?: boolean | null;
   appComposedFinal?: boolean | null;
   qualityTier?: string | null;
+  compositionVersion?: string | null;
   sourceBackgroundKind?: string | null;
   sourceBackgroundProvider?: string | null;
   sourceBackgroundAssetId?: string | null;
@@ -2255,6 +2258,7 @@ function preserveStaticCreativeImage(
 	    qualityGate: asset.qualityGate ?? existing.qualityGate ?? null,
 	    storageNormalized: existing.storageNormalized ?? asset.storageNormalized ?? null,
 	    appComposedFinal: existing.appComposedFinal ?? asset.appComposedFinal ?? null,
+      compositionVersion: existing.compositionVersion ?? asset.compositionVersion ?? null,
 	  };
 	}
 
@@ -2406,9 +2410,11 @@ function applyCreativeIntakePromptToStaticAsset(
     ctaHash: creativeIntake.ctaHash ?? null,
     brandHash: creativeIntake.brandHash ?? null,
     briefRevisionNumber: creativeIntake.revisionNumber ?? null,
-    approvedOfferTitle: approvedOfferTitle ?? creativeIntake.requiredOffer ?? null,
+	    approvedOfferTitle: approvedOfferTitle ?? creativeIntake.requiredOffer ?? null,
     approvedCta,
     approvedBrand: creativeIntake.brokerageBrand ?? null,
+    location: creativeIntake.market ?? normalized.location,
+    audience: creativeIntake.targetAudience ?? normalized.audience,
   };
 }
 
@@ -2499,6 +2505,7 @@ export async function generateStaticCreativeAds(
 	        imageQa: existing.imageQa ?? null,
           sourceImageQa: existing.sourceImageQa ?? null,
           qualityTier: existing.qualityTier ?? null,
+          compositionVersion: existing.compositionVersion ?? null,
           sourceBackgroundKind: existing.sourceBackgroundKind ?? null,
           sourceBackgroundProvider: existing.sourceBackgroundProvider ?? null,
           sourceBackgroundAssetId: existing.sourceBackgroundAssetId ?? null,
@@ -2523,6 +2530,7 @@ export async function generateStaticCreativeAds(
               imageUrl: carryForwardPrevious.imageUrl ?? "",
 	              storageNormalized: carryForwardPrevious.storageNormalized ?? null,
 	              appComposedFinal: carryForwardPrevious.appComposedFinal ?? null,
+              compositionVersion: carryForwardPrevious.compositionVersion ?? null,
               imageGenerationState: carryForwardPrevious.imageGenerationState ?? "unavailable",
               imageGenerationMessage:
                 carryForwardPrevious.imageGenerationMessage ??
@@ -2597,6 +2605,8 @@ export async function generateStaticCreativeAds(
         imageGenerationModel: imageAd.generationModel,
         imageGenerationProvider: imageAd.generationProvider,
         imageQa,
+        location: creativeIntake?.market ?? normalized.location,
+        audience: creativeIntake?.targetAudience ?? normalized.audience,
       });
     } catch (error) {
       generatedStaticAds.push({

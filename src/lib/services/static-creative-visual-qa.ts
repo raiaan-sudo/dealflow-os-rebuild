@@ -49,6 +49,7 @@ type StaticVisualContractInput = {
   storageNormalized?: boolean | null;
   appComposedFinal?: boolean | null;
   qualityTier?: string | null;
+  compositionVersion?: string | null;
   sourceBackgroundKind?: string | null;
   sourceBackgroundProvider?: string | null;
   sourceBackgroundAssetId?: string | null;
@@ -71,6 +72,7 @@ type StaticVisualContractInput = {
     accepted?: boolean | null;
   } | null;
   imageQa?: StaticCreativeImageQaMetadata | null;
+  sourceImageQa?: StaticCreativeImageQaMetadata | null;
 };
 
 export type StaticVisualAssetDecision = {
@@ -118,26 +120,33 @@ function hasPremiumSourceProvider(input: StaticVisualContractInput) {
 }
 
 function hasAcceptedPremiumFinalProvenance(input: StaticVisualContractInput) {
-  return Boolean(
+  const standardBackgroundSource = Boolean(
     input.qualityTier === "premium_final" &&
       input.premiumQualityGate?.accepted === true &&
       input.visualQualityGate?.accepted !== false &&
+      input.sourceImageQa?.mode === "background_only" &&
+      input.sourceImageQa.decision === "accept" &&
+      input.sourceImageQa.usable !== false &&
       input.sourceBackgroundKind === "higgsfield_visual_background" &&
       hasPremiumSourceProvider(input) &&
       safeText(input.sourceBackgroundAssetId),
   );
-}
 
-function hasAcceptedLegacyAppComposedFinalProvenance(input: StaticVisualContractInput) {
-  return Boolean(
+  const appComposedV2Final = Boolean(
     input.appComposedFinal === true &&
+      input.compositionVersion === "app_composed_static_v2" &&
+      input.qualityTier === "premium_final" &&
+      input.premiumQualityGate?.accepted === true &&
+      input.visualQualityGate?.accepted !== false &&
       input.imageQa?.mode === "app_composed_final" &&
-      input.imageQa.usable === true &&
       input.imageQa.decision === "accept" &&
-      input.storageNormalized === true &&
+      input.imageQa.usable !== false &&
       input.sourceBackgroundKind === "higgsfield_visual_background" &&
-      hasPremiumSourceProvider(input),
+      hasPremiumSourceProvider(input) &&
+      safeText(input.sourceBackgroundAssetId),
   );
+
+  return standardBackgroundSource || appComposedV2Final;
 }
 
 export function evaluateStaticVisualAssetDecision(
@@ -151,9 +160,8 @@ export function evaluateStaticVisualAssetDecision(
   }
 
   const premiumFinalAccepted = hasAcceptedPremiumFinalProvenance(input);
-  const legacyAppComposedFinalAccepted = hasAcceptedLegacyAppComposedFinalProvenance(input);
 
-  if (input.qualityGate?.accepted !== true && !premiumFinalAccepted && !legacyAppComposedFinalAccepted) {
+  if (input.qualityGate?.accepted !== true && !premiumFinalAccepted) {
     return {
       usable: false,
       reason: "This generated visual has not passed the creative quality gate yet and must be regenerated.",
@@ -168,10 +176,10 @@ export function evaluateStaticVisualAssetDecision(
   }
 
   if (input.appComposedFinal === true && input.imageQa?.mode === "app_composed_final") {
-    if (!premiumFinalAccepted && !legacyAppComposedFinalAccepted) {
+    if (!premiumFinalAccepted) {
       return {
         usable: false,
-        reason: "Premium launch ads are still being prepared. Draft previews cannot satisfy launch readiness.",
+        reason: "Premium launch ads need a fresh generated source image before they can satisfy launch readiness.",
       };
     }
 

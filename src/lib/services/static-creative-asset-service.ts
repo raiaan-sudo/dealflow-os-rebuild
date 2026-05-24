@@ -144,14 +144,42 @@ async function findExistingAppComposedFinalRows(params: {
       return [];
     }
 
-    return result.data.filter((row) =>
-      row.file_url &&
-      row.thumbnail_url &&
-      (
-        getCreativeAssetRole(row) === "app_composed_final_static" ||
-        getCreativeAssetRole(row) === "app_composed_final_thumbnail"
-      ),
-    );
+    return result.data.filter((row) => {
+      const metadata = row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+        ? row.metadata as Record<string, unknown>
+        : {};
+      const sourceImageQa = metadata.sourceImageQa && typeof metadata.sourceImageQa === "object" && !Array.isArray(metadata.sourceImageQa)
+        ? metadata.sourceImageQa as Record<string, unknown>
+        : {};
+      const appComposedV2Accepted = Boolean(
+        metadata.compositionVersion === "app_composed_static_v2" &&
+          metadata.qualityTier === "premium_final" &&
+          typeof metadata.sourceBackgroundAssetId === "string" &&
+          metadata.sourceBackgroundAssetId.trim() &&
+          metadata.sourceBackgroundKind === "higgsfield_visual_background" &&
+          (
+            metadata.sourceBackgroundProvider === "higgsfield_marketing_studio" ||
+            metadata.sourceBackgroundProvider === "higgsfield"
+          ),
+      );
+
+      return Boolean(
+        row.file_url &&
+          row.thumbnail_url &&
+          (
+            getCreativeAssetRole(row) === "app_composed_final_static" ||
+            getCreativeAssetRole(row) === "app_composed_final_thumbnail"
+          ) &&
+          (
+            (
+              sourceImageQa.mode === "background_only" &&
+              sourceImageQa.decision === "accept" &&
+              sourceImageQa.usable !== false
+            ) ||
+            appComposedV2Accepted
+          ),
+      );
+    });
   } catch {
     return [];
   }
@@ -299,9 +327,14 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       sourceBackgroundKind: compositionMetadata?.sourceBackgroundKind ?? null,
       sourceBackgroundProvider: compositionMetadata?.sourceBackgroundProvider ?? null,
       sourceBackgroundAssetId: compositionMetadata?.sourceBackgroundAssetId ?? null,
+      sourceImageQaMode: compositionMetadata?.sourceImageQaMode ?? null,
+      sourceImageQaDecision: compositionMetadata?.sourceImageQaDecision ?? null,
+      sourceImageQaOverride: compositionMetadata?.sourceImageQaOverride ?? null,
       renderedOffer: compositionMetadata?.renderedOffer ?? null,
       renderedCta: compositionMetadata?.renderedCta ?? null,
       renderedBrand: compositionMetadata?.renderedBrand ?? null,
+      location: asset.location ?? asset.creativeIntake?.market ?? null,
+      audience: asset.audience ?? asset.creativeIntake?.targetAudience ?? null,
       creativeIntakePromptVersionUsed: (asset.creativeIntake?.promptVersion ?? null) as Json,
       creativeIntakeGenerationContext: asset.creativeIntake
         ? ({

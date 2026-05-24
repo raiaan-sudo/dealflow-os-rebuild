@@ -11,7 +11,7 @@ import {
 import type { StaticCreativeAsset } from "@/lib/services/creative-engine";
 import type { Database } from "@/lib/supabase/types";
 
-export const APP_COMPOSED_STATIC_FINAL_VERSION = "app_composed_static_v1";
+export const APP_COMPOSED_STATIC_FINAL_VERSION = "app_composed_static_v2";
 
 export type StaticCreativeCompositionMetadata = {
   appComposedFinal: true;
@@ -36,6 +36,9 @@ export type StaticCreativeCompositionMetadata = {
   sourceBackgroundKind: "higgsfield_visual_background" | "provider_visual_background" | "app_fallback_visual";
   sourceBackgroundProvider: string | null;
   sourceBackgroundAssetId: string | null;
+  sourceImageQaMode: string | null;
+  sourceImageQaDecision: string | null;
+  sourceImageQaOverride: string | null;
   renderedOffer: string;
   renderedCta: string;
   renderedBrand: string | null;
@@ -83,7 +86,41 @@ function hashObject(value: unknown) {
 }
 
 function sourceImageQaAccepted(asset: StaticCreativeAsset) {
-  return Boolean(asset.imageQa?.decision === "accept" && asset.imageQa?.usable !== false);
+  return Boolean(
+    asset.imageQa?.mode === "background_only" &&
+      asset.imageQa.decision === "accept" &&
+      asset.imageQa.usable !== false,
+  );
+}
+
+function sourceImageQaCanBePromotedFromFinishedAdSource(asset: StaticCreativeAsset) {
+  const reasons = Array.isArray(asset.imageQa?.reasons) ? asset.imageQa.reasons : [];
+  const allowedFinishedAdSourceReasons = new Set([
+    "text_heavy",
+    "chart_or_table_detected",
+    "fake_ad_layout",
+    "provider_returned_finished_ad",
+    "finished_ad_text_unverified",
+  ]);
+
+  return Boolean(
+    (asset.imageGenerationProvider === "higgsfield_marketing_studio" || asset.imageGenerationProvider === "higgsfield") &&
+      asset.imageUrl &&
+      (
+        (
+          asset.imageQa?.mode === "finished_ad" &&
+          asset.imageQa.decision === "accept" &&
+          asset.imageQa.usable !== false
+        ) ||
+        (
+          asset.imageQa?.mode === "background_only" &&
+          asset.imageQa.decision === "reject" &&
+          asset.imageQa.usable === false &&
+          reasons.length > 0 &&
+          reasons.every((reason) => allowedFinishedAdSourceReasons.has(reason))
+        )
+      ),
+  );
 }
 
 function wrapWords(value: string, maxChars: number, maxLines: number) {
@@ -144,45 +181,7 @@ function textBlock(lines: string[], x: number, y: number, size: number, lineHeig
   ).join("");
 }
 
-function renderHouseScene(preview: ComposedStaticAdPreview, colors: ReturnType<typeof palette>) {
-  const premiumDark = preview.category === "investor" || preview.category === "luxury";
-  const windowColor = premiumDark ? "#f8fafc" : "#dbeafe";
-  return `
-    <g transform="translate(72 112)">
-      <rect x="0" y="0" width="492" height="486" rx="38" fill="${premiumDark ? "#172033" : "#ffffff"}" opacity="${premiumDark ? "0.86" : "0.94"}"/>
-      <rect x="34" y="274" width="424" height="150" rx="12" fill="${preview.category === "seller" ? "#b36a3f" : colors.bg2}"/>
-      <polygon points="58,274 246,118 436,274" fill="${preview.category === "luxury" ? "#4b3b24" : "#c9a47c"}"/>
-      <polygon points="30,286 246,84 464,286 432,286 246,128 62,286" fill="${colors.accent}"/>
-      <rect x="116" y="306" width="82" height="118" rx="8" fill="${colors.dark}" opacity="0.88"/>
-      <rect x="242" y="306" width="152" height="76" rx="10" fill="${windowColor}" opacity="0.95"/>
-      <line x1="318" y1="306" x2="318" y2="382" stroke="${colors.bg2}" stroke-width="6" opacity="0.35"/>
-      <line x1="242" y1="344" x2="394" y2="344" stroke="${colors.bg2}" stroke-width="6" opacity="0.35"/>
-      <circle cx="80" cy="84" r="42" fill="${colors.accent}" opacity="0.16"/>
-      <rect x="34" y="34" width="154" height="42" rx="21" fill="${colors.light}" opacity="0.96"/>
-      <text x="58" y="61" fill="${colors.dark}" font-size="18" font-weight="900" font-family="Inter, Arial, Helvetica, sans-serif">${xml(preview.location)}</text>
-    </g>
-  `;
-}
-
-function renderProofPanel(preview: ComposedStaticAdPreview, colors: ReturnType<typeof palette>) {
-  const chips = preview.proofChips.length > 0 ? preview.proofChips.slice(0, 3) : preview.visualRules.slice(0, 3);
-  return `
-    <g transform="translate(604 112)">
-      <rect x="0" y="0" width="404" height="486" rx="38" fill="${colors.light}" opacity="0.96"/>
-      <text x="34" y="58" fill="#617084" font-size="18" font-weight="900" letter-spacing="5" font-family="Inter, Arial, Helvetica, sans-serif">${xml(preview.category === "seller" ? "SELLER PLAN" : "VALUE MAP")}</text>
-      <rect x="34" y="98" width="336" height="96" rx="22" fill="${colors.accent}"/>
-      ${textBlock(wrapWords(preview.overlayText, 18, 2), 58, 142, 30, 36, colors.light, 900)}
-      <g transform="translate(34 230)">
-        ${chips.map((chip, index) => `
-          <rect x="0" y="${index * 68}" width="336" height="50" rx="25" fill="${index === 0 ? colors.muted : "#f1f5f9"}"/>
-          <text x="24" y="${index * 68 + 32}" fill="${colors.dark}" font-size="20" font-weight="850" font-family="Inter, Arial, Helvetica, sans-serif">${xml(chip)}</text>
-        `).join("")}
-      </g>
-    </g>
-  `;
-}
-
-export function renderStaticCreativeFinalSvg(asset: StaticCreativeAsset) {
+function renderStaticCreativeFinalOverlaySvg(asset: StaticCreativeAsset) {
   const preview = buildComposedStaticAdPreview({
     ...asset,
     imageUrl: null,
@@ -200,22 +199,29 @@ export function renderStaticCreativeFinalSvg(asset: StaticCreativeAsset) {
     preview,
     svg: `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
       <defs>
-        <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0%" stop-color="${colors.bg1}"/>
-          <stop offset="55%" stop-color="${colors.muted}"/>
-          <stop offset="100%" stop-color="${colors.accent}"/>
-        </linearGradient>
         <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
           <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#0f172a" flood-opacity="0.22"/>
         </filter>
+        <linearGradient id="scrim" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#020617" stop-opacity="0.12"/>
+          <stop offset="58%" stop-color="#020617" stop-opacity="0.24"/>
+          <stop offset="100%" stop-color="#020617" stop-opacity="0.48"/>
+        </linearGradient>
       </defs>
-      <rect width="1080" height="1080" fill="url(#bg)"/>
-      <circle cx="930" cy="120" r="210" fill="${colors.light}" opacity="0.16"/>
-      <circle cx="96" cy="934" r="260" fill="${colors.dark}" opacity="0.11"/>
-      ${renderHouseScene(preview, colors)}
-      ${renderProofPanel(preview, colors)}
+      <rect width="1080" height="1080" fill="url(#scrim)"/>
+      <rect x="54" y="54" width="972" height="972" rx="58" fill="none" stroke="${colors.light}" stroke-opacity="0.36" stroke-width="4"/>
       <g filter="url(#shadow)">
-        <rect x="72" y="660" width="936" height="246" rx="36" fill="${colors.light}"/>
+        <rect x="72" y="82" width="438" height="72" rx="36" fill="${colors.light}" opacity="0.95"/>
+        <text x="110" y="128" fill="${colors.dark}" font-size="22" font-weight="950" letter-spacing="5" font-family="Inter, Arial, Helvetica, sans-serif">${xml(preview.location)}</text>
+      </g>
+      <g filter="url(#shadow)">
+        <rect x="604" y="84" width="404" height="238" rx="38" fill="${colors.light}" opacity="0.92"/>
+        <text x="638" y="142" fill="#64748b" font-size="18" font-weight="900" letter-spacing="5" font-family="Inter, Arial, Helvetica, sans-serif">${xml(preview.category === "seller" ? "SELLER PLAN" : "VALUE MAP")}</text>
+        <rect x="638" y="176" width="336" height="84" rx="24" fill="${colors.accent}"/>
+        ${textBlock(wrapWords(preview.overlayText, 18, 2), 662, 222, 27, 32, colors.light, 950)}
+      </g>
+      <g filter="url(#shadow)">
+        <rect x="72" y="660" width="936" height="246" rx="36" fill="${colors.light}" opacity="0.96"/>
         <text x="110" y="718" fill="#64748b" font-size="19" font-weight="900" letter-spacing="5" font-family="Inter, Arial, Helvetica, sans-serif">${xml(preview.eyebrow)}</text>
         ${textBlock(headlineLines, 110, 770, headlineLines.length >= 3 ? 43 : 50, headlineLines.length >= 3 ? 48 : 56, "#05070a", 950)}
         ${textBlock(primaryLines, 112, 882, 22, 30, "#334155", 700)}
@@ -232,9 +238,24 @@ export function renderStaticCreativeFinalSvg(asset: StaticCreativeAsset) {
 }
 
 export async function composeStaticCreativeFinalPng(asset: StaticCreativeAsset) {
-  const { svg, preview } = renderStaticCreativeFinalSvg(asset);
+  const { svg, preview } = renderStaticCreativeFinalOverlaySvg(asset);
   const sharp = (await import("sharp")).default;
-  const png = await sharp(Buffer.from(svg))
+  const sourceImageUrl = safeText(asset.imageUrl);
+  if (!sourceImageUrl) {
+    throw new Error("A generated source image is required before composing a final static creative.");
+  }
+
+  const response = await fetch(sourceImageUrl);
+  if (!response.ok) {
+    throw new Error("Generated source image could not be loaded for final composition.");
+  }
+
+  const sourceImageBuffer = Buffer.from(await response.arrayBuffer());
+  const overlayBuffer = Buffer.from(svg);
+  const png = await sharp(sourceImageBuffer, { limitInputPixels: 64_000_000 })
+    .rotate()
+    .resize(1080, 1080, { fit: "cover", position: "attention" })
+    .composite([{ input: overlayBuffer, top: 0, left: 0 }])
     .png({ compressionLevel: 9, quality: 92 })
     .toBuffer();
 
@@ -251,13 +272,16 @@ export function buildStaticCreativeCompositionMetadata(
       : asset.imageUrl
         ? "provider_visual_background"
         : "app_fallback_visual";
+  const sourceBackgroundAssetId = asset.imageUrl ? hashObject({ imageUrl: asset.imageUrl }) : null;
   const renderedOffer = safeText(asset.approvedOfferTitle) || safeText(asset.offer) || preview.headline;
   const renderedCta = safeText(asset.approvedCta) || preview.cta;
   const renderedBrand = safeText(asset.approvedBrand) || null;
+  const sourceQaAccepted = sourceImageQaAccepted(asset);
+  const finishedAdSourcePromoted = sourceImageQaCanBePromotedFromFinishedAdSource(asset);
   const premiumReasons = [
     sourceBackgroundKind === "higgsfield_visual_background" ? null : "premium_higgsfield_source_required",
     asset.imageUrl ? null : "source_image_required",
-    sourceImageQaAccepted(asset) ? null : "source_image_qa_required",
+    sourceQaAccepted || finishedAdSourcePromoted ? null : "source_image_qa_required",
   ].filter((reason): reason is string => Boolean(reason));
   const premiumAccepted = premiumReasons.length === 0;
   const compositionHash = hashObject({
@@ -267,6 +291,9 @@ export function buildStaticCreativeCompositionMetadata(
     renderedOffer,
     renderedCta,
     renderedBrand,
+    sourceBackgroundAssetId,
+    sourceImageQaMode: asset.imageQa?.mode ?? null,
+    sourceImageQaDecision: asset.imageQa?.decision ?? null,
     staticBriefHash: asset.staticBriefHash ?? null,
     offerHash: asset.offerHash ?? null,
     ctaHash: asset.ctaHash ?? null,
@@ -298,7 +325,12 @@ export function buildStaticCreativeCompositionMetadata(
     brandHash: asset.brandHash ?? null,
     sourceBackgroundKind,
     sourceBackgroundProvider: asset.imageGenerationProvider ?? null,
-    sourceBackgroundAssetId: asset.imageUrl ? hashObject({ imageUrl: asset.imageUrl }) : null,
+    sourceBackgroundAssetId,
+    sourceImageQaMode: asset.imageQa?.mode ?? null,
+    sourceImageQaDecision: asset.imageQa?.decision ?? null,
+    sourceImageQaOverride: finishedAdSourcePromoted
+      ? "fresh_higgsfield_finished_ad_source_promoted_to_app_composed_v2"
+      : null,
     renderedOffer,
     renderedCta,
     renderedBrand,
