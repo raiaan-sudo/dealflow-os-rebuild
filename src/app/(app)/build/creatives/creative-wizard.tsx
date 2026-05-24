@@ -1414,14 +1414,14 @@ export function CreativeWizard({
               ) : null}
             </div>
             {reviewableVideoCreatives.length > 1 ? (
-              <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
+              <div className="grid max-w-full gap-2 sm:flex sm:overflow-x-auto sm:pb-1">
                 {reviewableVideoCreatives.map((video, index) => {
                   const active = video.id === activeVideoCreative.id;
                   return (
                     <button
                       key={video.id}
                       type="button"
-                      className={`min-w-[150px] max-w-[75vw] rounded-2xl border px-3 py-3 text-left transition ${
+                      className={`w-full rounded-2xl border px-3 py-3 text-left transition sm:min-w-[150px] sm:max-w-[240px] ${
                         active
                           ? "border-emerald-300/35 bg-emerald-300/[0.08]"
                           : "border-white/10 bg-black/18 hover:border-white/20"
