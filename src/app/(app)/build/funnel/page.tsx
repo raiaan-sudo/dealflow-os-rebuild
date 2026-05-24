@@ -11,5 +11,5 @@ export default async function BuildFunnelPage({
       ? params.campaignId
       : null;
 
-  redirect(campaignId ? `/builder?campaignId=${encodeURIComponent(campaignId)}` : "/builder");
+  redirect(campaignId ? `/builder?campaignId=${encodeURIComponent(campaignId)}&mode=edit&tab=funnel` : "/builder?mode=edit&tab=funnel");
 }

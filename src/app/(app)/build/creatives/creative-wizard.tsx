@@ -1532,14 +1532,14 @@ export function CreativeWizard({
             {unselectedLaunchReadyCreatives.length > 0 ? ` ${unselectedLaunchReadyCreatives.length} optional launch-ready candidate${unselectedLaunchReadyCreatives.length === 1 ? "" : "s"} can be added after review.` : ""}
           </p>
         ) : null}
-        <div className="mt-5 flex snap-x gap-4 overflow-x-auto pb-3">
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
           {selectableCreatives.map((creative, index) => {
             const displayCreative = getDisplayCreative(creative);
             const selected = selectedIds.includes(creative.id);
             const active = activeCreative.id === creative.id;
             return (
               <article
-                className={`min-w-[min(84vw,430px)] max-w-[430px] snap-start rounded-2xl border p-3 transition ${
+                className={`min-w-0 rounded-2xl border p-3 transition ${
                   active
                     ? "border-primary bg-primary/10"
                     : selected

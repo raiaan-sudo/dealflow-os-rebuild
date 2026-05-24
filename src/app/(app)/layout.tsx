@@ -136,7 +136,7 @@ export default async function AppLayout({
             <SignOutButton />
           </div>
         </header>
-        <main className="min-h-screen px-5 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+        <main className="min-h-screen px-5 pb-5 pt-20 sm:px-6 sm:pb-6 sm:pt-24 lg:px-8 lg:pb-8">
           {children}
         </main>
         <SupportWidget activeCampaignId={activeCampaignId} />
