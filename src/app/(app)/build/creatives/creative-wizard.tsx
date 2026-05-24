@@ -1532,7 +1532,7 @@ export function CreativeWizard({
             {unselectedLaunchReadyCreatives.length > 0 ? ` ${unselectedLaunchReadyCreatives.length} optional launch-ready candidate${unselectedLaunchReadyCreatives.length === 1 ? "" : "s"} can be added after review.` : ""}
           </p>
         ) : null}
-        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+        <div className="mt-5 grid snap-x gap-4 lg:grid-cols-3">
           {selectableCreatives.map((creative, index) => {
             const displayCreative = getDisplayCreative(creative);
             const selected = selectedIds.includes(creative.id);
