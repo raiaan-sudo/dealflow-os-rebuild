@@ -661,6 +661,21 @@ export default async function LaunchAliasPage({
               <p className="mt-4 text-sm leading-6 text-muted-foreground">
                 This page is a recovery checklist while blocked. DealFlow will not create or recover Meta objects until every gate below is ready.
               </p>
+              {selectedCreatives.length === 0 ? (
+                <div className="mt-4">
+                  <Button asChild>
+                    <Link
+                      href={
+                        savedRecord?.campaign.id
+                          ? `/build/creatives?campaignId=${encodeURIComponent(savedRecord.campaign.id)}`
+                          : "/build/creatives"
+                      }
+                    >
+                      Open Creative Studio
+                    </Link>
+                  </Button>
+                </div>
+              ) : null}
             </div>
             <StatusPill tone="warning">Blocked</StatusPill>
           </div>
