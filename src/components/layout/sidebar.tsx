@@ -53,7 +53,7 @@ export function AppSidebar({ organizationName, isAdmin, stage, activeCampaignId 
           <div className="flex items-center gap-2.5">
             <Logo size="small" iconOnly priority className="shrink-0" />
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold tracking-[-0.02em]">DealFlow AI</p>
+              <p className="truncate text-sm font-semibold tracking-[-0.02em]">DealFlow</p>
               <p className="mt-0.5 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
                 {stageLabel}
               </p>

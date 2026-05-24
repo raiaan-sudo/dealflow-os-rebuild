@@ -3,7 +3,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { memo, useMemo, useState } from "react";
+import { memo, useMemo, useState, type ComponentType } from "react";
+import { CheckCircle2, Link2, MousePointerClick, ShieldCheck, Smartphone } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -94,6 +95,30 @@ function EditorDisclosure({
       </summary>
       <div className="mt-4">{children}</div>
     </details>
+  );
+}
+
+function FunnelCheckCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-[18px] border border-white/8 bg-black/20 p-3">
+      <div className="flex items-center gap-2">
+        <span className="grid size-8 shrink-0 place-items-center rounded-xl border border-cyan-300/18 bg-cyan-300/[0.07] text-cyan-100">
+          <Icon className="size-4" />
+        </span>
+        <p className="truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          {label}
+        </p>
+      </div>
+      <p className="mt-3 line-clamp-2 text-sm font-medium leading-5 text-foreground">{value}</p>
+    </div>
   );
 }
 
@@ -1142,6 +1167,36 @@ export function BuilderFunnelPanel({
           <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
             {editingMode === "advanced" ? "Advanced funnel editor" : "Edit the landing page copy"}
           </h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-white/64">
+            Review the core funnel promises before changing copy. DealFlow keeps offer, CTA, consent, public page, and mobile checks visible so edits do not create launch confusion.
+          </p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <FunnelCheckCard
+            icon={CheckCircle2}
+            label="Offer match"
+            value={campaign.strategy.offer || campaign.funnel.headline || "Use the approved offer"}
+          />
+          <FunnelCheckCard
+            icon={MousePointerClick}
+            label="CTA"
+            value={campaign.funnel.cta || "Add a clear call to action"}
+          />
+          <FunnelCheckCard
+            icon={ShieldCheck}
+            label="Consent"
+            value="Privacy and lead consent copy stay preserved."
+          />
+          <FunnelCheckCard
+            icon={Smartphone}
+            label="Mobile"
+            value="Layout uses responsive sections and a compact preview."
+          />
+          <FunnelCheckCard
+            icon={Link2}
+            label="Public page"
+            value={savedCampaignId ? "Saved campaign can be staged from Launch." : "Save the campaign before public staging."}
+          />
         </div>
         {editingMode === "advanced" ? (
           <div className="space-y-5">
@@ -1685,7 +1740,7 @@ export function BuilderFunnelPanel({
                                     Asset picker
                                   </p>
                                   <p className="mt-2 text-sm leading-6 text-white/58">
-                                    Choose from the real campaign asset library or upload a new file directly into `creative_assets`.
+                                    Choose from the real campaign media library or upload a new file for this funnel block.
                                   </p>
                                 </div>
                                 <Badge className="border-white/10 bg-white/[0.05] text-white/72">
@@ -1923,7 +1978,7 @@ export function BuilderFunnelPanel({
                         </div>
                         <div className="rounded-[18px] border border-primary/15 bg-primary/[0.05] px-4 py-4">
                           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary/80">
-                            Operator note
+                            Edit guardrails
                           </p>
                           <p className="mt-2 text-sm leading-6 text-primary/90">
                             The assistant is scoped to the selected block and the live campaign context: offer, audience, market, headline, and CTA.

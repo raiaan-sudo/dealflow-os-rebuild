@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
+import { Captions, Clapperboard, Gauge, Image as ImageIcon, Mic2, Sparkles } from "lucide-react";
 import {
   StaticCreativePreviewCard,
 } from "@/components/campaign/static-creative-preview-card";
@@ -1411,6 +1412,32 @@ export function CreativeWizard({
             ) : null}
           </div>
           <div className="grid gap-3">
+            <div className="rounded-2xl border border-cyan-300/15 bg-[radial-gradient(circle_at_10%_0%,rgba(103,232,249,0.12),transparent_34%),linear-gradient(135deg,rgba(8,14,26,0.95),rgba(5,9,18,0.86))] p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/80">Creator studio</p>
+                  <h3 className="mt-2 text-lg font-semibold text-foreground">Script, source, and render controls</h3>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                    Review the presenter style, voice, pacing, source static, captions, and energy before rendering or approving this campaign-specific video.
+                  </p>
+                </div>
+                <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${
+                  activeVideoLaunchReady
+                    ? "border-emerald-300/20 bg-emerald-300/[0.08] text-emerald-100"
+                    : "border-amber-300/20 bg-amber-300/[0.08] text-amber-100"
+                }`}>
+                  {activeVideoLaunchReady ? "Launch-ready" : "Review needed"}
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <CreatorStudioSetting icon={Clapperboard} label="Presenter" value={activeVideoCreative.creatorStyle} />
+                <CreatorStudioSetting icon={Mic2} label="Voice" value={activeVideoCreative.voiceStyle} />
+                <CreatorStudioSetting icon={Gauge} label="Pacing" value={activeVideoCreative.targetDurationSeconds ? `${activeVideoCreative.targetDurationSeconds}s target` : "Fast direct response"} />
+                <CreatorStudioSetting icon={ImageIcon} label="Source static" value={videoBlockedByMissingStaticSource ? "Current static needed" : activeVideoCreative.sourceStaticAssetId ? "Current static selected" : "Static source pending"} />
+                <CreatorStudioSetting icon={Captions} label="Captions" value={activeVideoCreative.onScreenText?.[0] || "Hook captions ready"} />
+                <CreatorStudioSetting icon={Sparkles} label="Energy" value={activeVideoCreative.conceptType === "customer_ugc" ? "Customer-style proof" : "Expert explainer"} />
+              </div>
+            </div>
             <div className="rounded-2xl border border-white/10 bg-black/18 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Script</p>
               <div className="mt-3 space-y-2">
@@ -1664,6 +1691,28 @@ function BriefSummaryItem({ label, value }: { label: string; value?: string | nu
     <div className="min-w-0 rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2">
       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold text-foreground">{value || "Not set"}</p>
+    </div>
+  );
+}
+
+function CreatorStudioSetting({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  value?: string | number | null;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/18 p-4">
+      <div className="flex items-center gap-2">
+        <span className="grid size-8 place-items-center rounded-xl border border-cyan-300/18 bg-cyan-300/[0.07] text-cyan-100">
+          <Icon className="size-4" />
+        </span>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+      </div>
+      <p className="mt-3 text-sm font-semibold leading-5 text-foreground">{value || "Ready for review"}</p>
     </div>
   );
 }
