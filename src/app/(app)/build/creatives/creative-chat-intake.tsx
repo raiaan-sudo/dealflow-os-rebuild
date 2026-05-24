@@ -344,11 +344,11 @@ export function CreativeChatIntake({
               Requesting a revision will pause paid rendering until the revised brief is approved again.
             </p>
           </div>
-          <div className="min-w-0 lg:w-[420px]">
+          <div className="min-w-0 max-w-full lg:w-[420px]">
             <label className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               Revision note
             </label>
-            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+            <div className="mt-2 flex max-w-full flex-col gap-2 sm:flex-row">
               <Input
                 value={revisionMessage}
                 onChange={(event) => setRevisionMessage(event.target.value)}
@@ -357,14 +357,14 @@ export function CreativeChatIntake({
               <Button
                 type="button"
                 variant="secondary"
-                className="w-full sm:w-auto"
+                className="w-full min-w-0 max-w-full whitespace-normal sm:w-auto"
                 disabled={saving || !revisionMessage.trim()}
                 onClick={() => void persist("revise")}
               >
                 Revise
               </Button>
             </div>
-            <Button asChild type="button" variant="secondary" className="mt-3 w-full">
+            <Button asChild type="button" variant="secondary" className="mt-3 w-full max-w-full whitespace-normal text-center">
               <Link href={`/build/creatives?campaignId=${encodeURIComponent(campaignId)}&creativeBrief=edit`}>
                 Open Marketing Studio chat
               </Link>
