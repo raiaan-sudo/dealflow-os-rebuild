@@ -5,7 +5,7 @@ import path from "node:path";
 import ts from "typescript";
 import { createRequire } from "node:module";
 
-const repoRoot = process.cwd();
+const repoRoot = process.env.DEALFLOW_REPO_ROOT || process.cwd();
 const { loadEnvConfig } = nextEnv;
 loadEnvConfig(repoRoot);
 
