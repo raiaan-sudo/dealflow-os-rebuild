@@ -10,7 +10,7 @@ import {
   type PrepaywallCampaignPreviewDraft,
 } from "@/components/onboarding/prepaywall-campaign-preview";
 import { normalizeBillingPlanTier } from "@/lib/billing/plans";
-import { getBillingSummary } from "@/lib/services/billing-service";
+import { getBillingSummary, getBillingSummaryForCampaign } from "@/lib/services/billing-service";
 import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
@@ -67,7 +67,9 @@ export default async function PaywallPage({
     typeof params.campaignId === "string" && params.campaignId.length > 0 ? params.campaignId : null;
   const selectedPlanTier =
     typeof params.plan === "string" ? normalizeBillingPlanTier(params.plan) : "starter";
-  const billing = await getBillingSummary().catch(() => null);
+  const billing = campaignId
+    ? await getBillingSummaryForCampaign(campaignId).catch(() => getBillingSummary().catch(() => null))
+    : await getBillingSummary().catch(() => null);
   const selectedPreviewPlanTier = selectedPlanTier === "pro" ? "pro" : "starter";
   const selectablePlanTier = selectedPlanTier === "pro" ? "pro" : "starter";
   const persistedPreviewDraft = await loadPersistedPreviewDraft(campaignId, selectedPreviewPlanTier);

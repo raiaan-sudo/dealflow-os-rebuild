@@ -9,6 +9,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import {
   getBillingSummary,
+  getBillingSummaryForCampaign,
   reconcileBillingCheckoutSuccess,
 } from "@/lib/services/billing-service";
 import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
@@ -48,7 +49,9 @@ export default async function UnlockPage({
           .then(() => null)
           .catch(() => "checkout_verification_failed")
       : null;
-  const billing = await getBillingSummary().catch(() => null);
+  const billing = campaignId
+    ? await getBillingSummaryForCampaign(campaignId).catch(() => getBillingSummary().catch(() => null))
+    : await getBillingSummary().catch(() => null);
   const launchAllowed = billing?.launchAllowed ?? false;
   const checkoutCancelled = checkoutState === "cancelled";
   const checkoutOverride = checkoutState === "override" && billing?.launchOverride === true;
