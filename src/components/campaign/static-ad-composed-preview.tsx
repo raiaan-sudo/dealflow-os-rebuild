@@ -490,6 +490,7 @@ export function StaticAdComposedPreview({
             alt={preview.headline}
             fill
             unoptimized
+            loading={renderStoredFinalOnly ? "eager" : "lazy"}
             className="object-cover"
             src={preview.backgroundImageUrl}
           />
