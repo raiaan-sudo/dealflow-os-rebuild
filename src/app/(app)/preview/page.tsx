@@ -282,8 +282,9 @@ export default async function PreviewPage({
                   imagePromptConfig={selectedAds[0]?.imagePromptConfig}
 	                  imageUrl={selectedAds[0]?.imageUrl}
 	                  storageNormalized={selectedAds[0]?.storageNormalized}
-	                  appComposedFinal={selectedAds[0]?.appComposedFinal}
+                  appComposedFinal={selectedAds[0]?.appComposedFinal}
                   qualityTier={selectedAds[0]?.qualityTier}
+                  compositionVersion={selectedAds[0]?.compositionVersion}
                   sourceBackgroundKind={selectedAds[0]?.sourceBackgroundKind}
                   sourceBackgroundProvider={selectedAds[0]?.sourceBackgroundProvider}
                   sourceBackgroundAssetId={selectedAds[0]?.sourceBackgroundAssetId}
@@ -296,6 +297,7 @@ export default async function PreviewPage({
                   visualQualityGate={selectedAds[0]?.visualQualityGate}
                   premiumQualityGate={selectedAds[0]?.premiumQualityGate}
                   imageQa={selectedAds[0]?.imageQa}
+                  sourceImageQa={selectedAds[0]?.sourceImageQa}
                   score={selectedAds[0]?.score}
                   selected
                   selectedCount={selectedAds.length}
@@ -322,6 +324,7 @@ export default async function PreviewPage({
 	                      storageNormalized={selectedAd.storageNormalized}
 	                      appComposedFinal={selectedAd.appComposedFinal}
                       qualityTier={selectedAd.qualityTier}
+                      compositionVersion={selectedAd.compositionVersion}
                       sourceBackgroundKind={selectedAd.sourceBackgroundKind}
                       sourceBackgroundProvider={selectedAd.sourceBackgroundProvider}
                       sourceBackgroundAssetId={selectedAd.sourceBackgroundAssetId}
@@ -335,6 +338,7 @@ export default async function PreviewPage({
                       visualQualityGate={selectedAd.visualQualityGate}
                       premiumQualityGate={selectedAd.premiumQualityGate}
                       imageQa={selectedAd.imageQa}
+                      sourceImageQa={selectedAd.sourceImageQa}
                       score={selectedAd.score}
                       selectedCount={selectedAds.length}
                       visualPromptBrief={selectedAd.visualPromptBrief}

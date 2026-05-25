@@ -787,6 +787,7 @@ export default async function LaunchAliasPage({
 	                    storageNormalized={selectedCreative.storageNormalized}
 	                    appComposedFinal={selectedCreative.appComposedFinal}
                     qualityTier={selectedCreative.qualityTier}
+                    compositionVersion={selectedCreative.compositionVersion}
                     sourceBackgroundKind={selectedCreative.sourceBackgroundKind}
                     sourceBackgroundProvider={selectedCreative.sourceBackgroundProvider}
                     sourceBackgroundAssetId={selectedCreative.sourceBackgroundAssetId}
@@ -798,6 +799,7 @@ export default async function LaunchAliasPage({
                     visualQualityGate={selectedCreative.visualQualityGate}
                     premiumQualityGate={selectedCreative.premiumQualityGate}
                     imageQa={selectedCreative.imageQa}
+                    sourceImageQa={selectedCreative.sourceImageQa}
                     score={selectedCreative.score}
                     index={index}
                     selected

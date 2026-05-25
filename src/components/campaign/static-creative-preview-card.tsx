@@ -264,6 +264,7 @@ export function StaticCreativeSummaryCard({
   storageNormalized,
   appComposedFinal,
   qualityTier,
+  compositionVersion,
   sourceBackgroundKind,
   sourceBackgroundProvider,
   sourceBackgroundAssetId,
@@ -277,6 +278,7 @@ export function StaticCreativeSummaryCard({
   visualQualityGate,
   premiumQualityGate,
   imageQa,
+  sourceImageQa,
   visualPromptBrief,
   selectedCount,
   className,
@@ -317,6 +319,7 @@ export function StaticCreativeSummaryCard({
           storageNormalized={storageNormalized}
           appComposedFinal={appComposedFinal}
           qualityTier={qualityTier}
+          compositionVersion={compositionVersion}
           sourceBackgroundKind={sourceBackgroundKind}
           sourceBackgroundProvider={sourceBackgroundProvider}
           sourceBackgroundAssetId={sourceBackgroundAssetId}
@@ -328,6 +331,7 @@ export function StaticCreativeSummaryCard({
           visualQualityGate={visualQualityGate}
           premiumQualityGate={premiumQualityGate}
           imageQa={imageQa}
+          sourceImageQa={sourceImageQa}
           score={score}
           selectedCount={selectedCount}
           showRawAssetState={false}

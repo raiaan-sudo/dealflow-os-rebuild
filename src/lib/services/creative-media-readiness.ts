@@ -8,6 +8,7 @@ type StaticCreativeReadinessInput = {
   storageNormalized?: boolean | null;
   appComposedFinal?: boolean | null;
   qualityTier?: string | null;
+  compositionVersion?: string | null;
   sourceBackgroundKind?: string | null;
   sourceBackgroundProvider?: string | null;
   sourceBackgroundAssetId?: string | null;
@@ -185,6 +186,7 @@ export function isLaunchReadyStaticCreative(creative: Pick<
 	  | "storageNormalized"
 	  | "appComposedFinal"
     | "qualityTier"
+    | "compositionVersion"
     | "sourceBackgroundKind"
     | "sourceBackgroundProvider"
     | "sourceBackgroundAssetId"
