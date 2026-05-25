@@ -73,6 +73,11 @@ type SystemJobPayloadMap = {
     force?: boolean;
     missingOnly?: boolean;
     maxGenerations?: number;
+    targetVariantCount?: number;
+    promoteThreshold?: number;
+    outputMode?: "finished_ad" | "background_only" | string;
+    provider?: "higgsfield_marketing_studio" | string;
+    queueReason?: string;
     creativeIntake?: CreativeIntakeGenerationContext | null;
   };
   video_generation: VideoGenerationJobPayload;

@@ -66,7 +66,7 @@ export function hasActiveRenderLease(job: CreativeRenderJobLike, now = Date.now(
 export function isStaleDeferredCreativeRenderJob(
   job: CreativeRenderJobLike,
   now = Date.now(),
-  staleAfterMs = 15 * 60_000,
+  staleAfterMs = 10 * 60_000,
 ) {
   if (job.status !== "pending" || !isMarketingStudioWorkerDeferredRunAt(job.next_run_at)) {
     return false;
@@ -98,6 +98,9 @@ export function classifyCreativeRenderJob(
   const retryAvailable = retryCount < Math.max(1, maxAttempts) - 1;
   const deferred = isMarketingStudioWorkerDeferredRunAt(job.next_run_at);
   const staleDeferred = isStaleDeferredCreativeRenderJob(job, now);
+  const createdAt = parseTime(job.created_at);
+  const ageMs = createdAt ? now - createdAt : 0;
+  const providerDelay = ageMs >= 5 * 60_000;
 
   if (job.status === "completed") {
     return {
@@ -132,13 +135,27 @@ export function classifyCreativeRenderJob(
   if (deferred) {
     return {
       state: staleDeferred ? "operator_action_required" : "deferred_worker_required",
-      customerLabel: job.kind === "static_creative_generation" ? "Premium polish preparing" : "Video render preparing",
+      customerLabel: job.kind === "static_creative_generation"
+        ? staleDeferred
+          ? "Final ad render delayed"
+          : providerDelay
+            ? "Final ads still rendering"
+            : "Final ads queued"
+        : staleDeferred
+          ? "Video render delayed"
+          : "Video render queued",
       customerMessage: job.kind === "static_creative_generation"
-        ? "Premium visual polish is preparing in the background. Launch-ready final ads remain available."
-        : "Video render is preparing. We'll update this when rendering starts.",
-      customerActionLabel: null,
+        ? staleDeferred
+          ? "Final Higgsfield ads are taking longer than expected. Retry the render or ask support to review the job."
+          : providerDelay
+            ? "Higgsfield finished ads are still rendering. We will surface the first launch-ready set as soon as 4 pass QA."
+            : "Higgsfield finished ads are queued and should start rendering shortly."
+        : staleDeferred
+          ? "Video rendering is taking longer than expected. Retry the render or ask support to review the job."
+          : "Video render is queued. We'll update this when rendering starts.",
+      customerActionLabel: staleDeferred ? "Retry render" : null,
       active: false,
-      retryAvailable: false,
+      retryAvailable: staleDeferred,
       operatorLabel: staleDeferred ? "operator_action_required" : "deferred_worker_required",
       operatorMessage: [
         `runtime=${MARKETING_STUDIO_WORKER_RUNTIME}`,
@@ -165,8 +182,10 @@ export function classifyCreativeRenderJob(
   if (hasActiveRenderLease(job, now)) {
     return {
       state: "processing",
-      customerLabel: "Rendering video...",
-      customerMessage: "Rendering video...",
+      customerLabel: job.kind === "static_creative_generation" ? "Rendering final ads..." : "Rendering video...",
+      customerMessage: job.kind === "static_creative_generation"
+        ? "Higgsfield is rendering final paid-social ads. We will unlock the launch package as soon as 4 pass QA."
+        : "Rendering video...",
       customerActionLabel: null,
       active: true,
       retryAvailable: false,
@@ -178,13 +197,13 @@ export function classifyCreativeRenderJob(
   if (job.status === "processing") {
     return {
       state: "operator_action_required",
-      customerLabel: job.kind === "static_creative_generation" ? "Premium polish preparing" : "Video render preparing",
+      customerLabel: job.kind === "static_creative_generation" ? "Final ad render delayed" : "Video render delayed",
       customerMessage: job.kind === "static_creative_generation"
-        ? "Premium visual polish is preparing in the background. Launch-ready final ads remain available."
-        : "Video render is preparing. We'll update this when rendering starts.",
-      customerActionLabel: null,
+        ? "The render worker lost its active lease. Retry the render or ask support to review it."
+        : "The render worker lost its active lease. Retry the render or ask support to review it.",
+      customerActionLabel: "Retry render",
       active: false,
-      retryAvailable: false,
+      retryAvailable: true,
       operatorLabel: "operator_action_required",
       operatorMessage: `Processing job ${job.id ?? "unknown"} has no active worker lease.`,
     };
@@ -192,10 +211,10 @@ export function classifyCreativeRenderJob(
 
   return {
     state: "queued",
-    customerLabel: job.kind === "static_creative_generation" ? "Premium polish preparing" : "Video render preparing",
+    customerLabel: job.kind === "static_creative_generation" ? "Final ads queued" : "Video render queued",
     customerMessage: job.kind === "static_creative_generation"
-      ? "Premium visual polish is preparing in the background. Launch-ready final ads remain available."
-      : "Video render is preparing. We'll update this when rendering starts.",
+      ? "Higgsfield finished ads are queued and should start rendering shortly."
+      : "Video render is queued. We'll update this when rendering starts.",
     customerActionLabel: null,
     active: false,
     retryAvailable: false,

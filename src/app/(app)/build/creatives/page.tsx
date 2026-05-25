@@ -15,6 +15,7 @@ import {
   type CreativeIntakeCampaignDefaults,
 } from "@/lib/services/creative-chat-intake-service";
 import { normalizeCreativeOfferTitle } from "@/lib/services/creative-ugc-script-service";
+import { ensureStaticCreativeRenderQueuedForCampaign } from "@/lib/services/static-creative-render-queue-service";
 import { createClient } from "@/lib/supabase/server";
 import { CreativeChatIntake } from "./creative-chat-intake";
 import { CreativeWizard } from "./creative-wizard";
@@ -73,7 +74,7 @@ export default async function BuildCreativesPage({
   let persistedSelectedAdIds: string[] = [];
   let persistedSelectedUgcVideoIds: string[] = [];
   let persistedVideoAds = ensuredRecord.creatives.videoAds;
-  let activeRenderJobs: Parameters<typeof CreativeWizard>[0]["initialRenderJobs"] = [];
+  let activeRenderJobs: NonNullable<Parameters<typeof CreativeWizard>[0]["initialRenderJobs"]> = [];
   if (supabase) {
     const { data } = await supabase
       .from("campaign_plans")
@@ -95,7 +96,7 @@ export default async function BuildCreativesPage({
       .order("created_at", { ascending: false })
       .limit(12);
     activeRenderJobs = Array.isArray(jobsData)
-      ? jobsData as Parameters<typeof CreativeWizard>[0]["initialRenderJobs"]
+      ? jobsData as NonNullable<Parameters<typeof CreativeWizard>[0]["initialRenderJobs"]>
       : [];
 
     const { data: videoAssetData } = await supabase
@@ -115,6 +116,42 @@ export default async function BuildCreativesPage({
     creativeIntake?.approvalStatus === "approved" &&
     creativeIntake.brief?.completion.complete === true &&
     Boolean(creativeIntake.promptVersion?.generatedPrompt);
+  const staticRenderQueue = creativeIntakeApproved
+    ? await ensureStaticCreativeRenderQueuedForCampaign({
+        campaignId: ensuredRecord.campaign.id,
+        reason: "creative_studio_visit",
+        userId: ensuredRecord.campaign.user_id,
+        organizationId: ensuredRecord.campaign.organization_id ?? undefined,
+      }).catch(() => null)
+    : null;
+  if (
+    staticRenderQueue?.jobId &&
+    !activeRenderJobs.some((job) => job.id === staticRenderQueue.jobId)
+  ) {
+    activeRenderJobs = [
+      {
+        id: staticRenderQueue.jobId,
+        kind: "static_creative_generation",
+        status: "pending",
+        error_message: null,
+        result: null,
+        next_run_at: "2099-01-01T00:00:00.000Z",
+        locked_by: null,
+        locked_until: null,
+        created_at: new Date().toISOString(),
+        started_at: null,
+        completed_at: null,
+        retry_count: 0,
+        attempt_count: 0,
+        max_attempts: 2,
+        payload: null,
+        last_error_code: null,
+        reviewed_at: null,
+        dead_lettered_at: null,
+      },
+      ...activeRenderJobs,
+    ];
+  }
   const customerOfferTitle = resolveCustomerFacingOfferTitle({ intake: creativeIntake, plan });
   const approvedUgcScriptLines = creativeIntake?.brief?.ugcStyleBrief?.approvedScript?.lines ?? [];
   const approvedUgcScriptHash =

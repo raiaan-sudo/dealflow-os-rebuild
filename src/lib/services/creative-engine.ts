@@ -5,6 +5,7 @@ import {
 } from "@/lib/ai/creative-brief";
 import type { ImagePromptConfig } from "@/lib/types/creative-assets";
 import type { ImageProviderUsageContext } from "@/lib/ai/providers";
+import { getMediaGenerationProvider } from "@/lib/env";
 import {
   selectAvatarProfile,
   selectVoiceProfile,
@@ -2492,12 +2493,13 @@ export async function generateStaticCreativeAds(
       : generationCandidateAssets
     ).map((asset) => asset.id),
   );
-  const generatedStaticAds: StaticCreativeAsset[] = [];
+  const generatedStaticAds: StaticCreativeAsset[] = new Array(baseStaticAds.length);
+  const generationTasks: Array<{ index: number; asset: StaticCreativeAsset }> = [];
 
-  for (const asset of baseStaticAds) {
+  for (const [index, asset] of baseStaticAds.entries()) {
     const existing = reusableStaticAssets.get(asset.id);
     if (existing) {
-      generatedStaticAds.push({
+      generatedStaticAds[index] = {
         ...asset,
         imageUrl: existing.imageUrl,
         imageGenerationState: "generated" as const,
@@ -2514,7 +2516,7 @@ export async function generateStaticCreativeAds(
           visualQualityGate: existing.visualQualityGate ?? null,
           premiumQualityGate: existing.premiumQualityGate ?? null,
 	        appComposedFinal: existing.appComposedFinal ?? null,
-	      });
+	      };
       continue;
     }
 
@@ -2525,7 +2527,7 @@ export async function generateStaticCreativeAds(
           ? stripStaleProviderImageForRetry(previous)
           : previous;
 
-      generatedStaticAds.push(
+      generatedStaticAds[index] =
         carryForwardPrevious
           ? {
               ...asset,
@@ -2557,11 +2559,14 @@ export async function generateStaticCreativeAds(
               imageGenerationMessage: "A cleaner image is being prepared for this creative.",
               imageGenerationModel: asset.preferredImageModel,
               imageGenerationProvider: null,
-            },
-      );
+            };
       continue;
     }
 
+    generationTasks.push({ index, asset });
+  }
+
+  const generateOneStaticAsset = async (asset: StaticCreativeAsset): Promise<StaticCreativeAsset> => {
     try {
       const providerUsage = input?.provider_usage_context?.createForAsset(asset) ?? null;
       const { createImageAd } = await import("@/lib/ai/providers");
@@ -2596,7 +2601,7 @@ export async function generateStaticCreativeAds(
         Boolean(imageAd.imageUrl) &&
         imageAd.generationState === "generated" &&
         (!imageQa || imageQa.decision === "accept");
-      generatedStaticAds.push({
+      return {
         ...asset,
         imageUrl: imageAd.imageUrl ?? "",
         imageGenerationState: imageAccepted ? "generated" : imageAd.imageUrl ? "failed" : imageAd.generationState,
@@ -2620,9 +2625,9 @@ export async function generateStaticCreativeAds(
         imageQa,
         location: creativeIntake?.market ?? normalized.location,
         audience: creativeIntake?.targetAudience ?? normalized.audience,
-      });
+      };
     } catch (error) {
-      generatedStaticAds.push({
+      return {
         ...asset,
         imageUrl: "",
         imageGenerationState: "failed" as const,
@@ -2630,11 +2635,26 @@ export async function generateStaticCreativeAds(
           error instanceof Error ? error.message : "Static image generation failed.",
         imageGenerationModel: asset.preferredImageModel,
         imageGenerationProvider: null,
-      });
+      };
+    }
+  };
+
+  const generationConcurrency = getMediaGenerationProvider() === "higgsfield_marketing_studio" ? 2 : 1;
+  for (let offset = 0; offset < generationTasks.length; offset += generationConcurrency) {
+    const batch = generationTasks.slice(offset, offset + generationConcurrency);
+    const batchResults = await Promise.all(
+      batch.map(async ({ index, asset }) => ({
+        index,
+        generated: await generateOneStaticAsset(asset),
+      })),
+    );
+
+    for (const result of batchResults) {
+      generatedStaticAds[result.index] = result.generated;
     }
   }
   const mergedStaticAds = mergeStaticCreativeImageResults(
-    generatedStaticAds,
+    generatedStaticAds.filter(Boolean),
     input?.reuse_static_assets,
   );
 

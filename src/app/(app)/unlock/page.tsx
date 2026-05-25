@@ -12,6 +12,7 @@ import {
   reconcileBillingCheckoutSuccess,
 } from "@/lib/services/billing-service";
 import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
+import { ensureStaticCreativeRenderQueuedForCampaign } from "@/lib/services/static-creative-render-queue-service";
 
 function formatPlanName(value: string | null | undefined) {
   const normalized = (value ?? "pro").trim().toLowerCase();
@@ -96,6 +97,14 @@ export default async function UnlockPage({
         launchAllowed,
       },
       idempotencyKey: `checkout_completed_or_reconciled:${checkoutSessionId}`,
+    }).catch(() => undefined);
+  }
+
+  if (!checkoutCancelled && campaignId && launchAllowed && !reconciliationError) {
+    await ensureStaticCreativeRenderQueuedForCampaign({
+      campaignId,
+      reason: activatedByCheckout ? "checkout_success" : "subscription_active",
+      accessAlreadyConfirmed: true,
     }).catch(() => undefined);
   }
 

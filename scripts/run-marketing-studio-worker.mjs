@@ -60,7 +60,7 @@ function parseArgs(argv) {
     dryRun: false,
     maxJobs: 1,
     poll: false,
-    intervalMs: 30_000,
+    intervalMs: 5_000,
   };
 
   for (const arg of argv) {

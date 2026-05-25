@@ -96,8 +96,8 @@ const deferredJob = {
 const deferred = classifyCreativeRenderJob(deferredJob, now);
 assert.equal(deferred.state, "deferred_worker_required");
 assert.equal(deferred.active, false);
-assert.equal(deferred.customerLabel, "Video render preparing");
-assert.match(deferred.customerMessage, /Video render is preparing/);
+assert.equal(deferred.customerLabel, "Video render queued");
+assert.match(deferred.customerMessage, /Video render is queued/);
 assert.doesNotMatch(deferred.customerLabel, /Rendering/i);
 assert.doesNotMatch(deferred.customerMessage, /provider|worker|job|system job|higgsfield|openai|qa|storage|hash|env|api key|marketing_studio|cli/i, "customer deferred copy hides internals");
 
@@ -106,8 +106,23 @@ const staleDeferred = classifyCreativeRenderJob({
   created_at: "2026-05-19T11:00:00.000Z",
 }, now);
 assert.equal(staleDeferred.state, "operator_action_required");
+assert.equal(staleDeferred.customerActionLabel, "Retry render");
 assert.match(staleDeferred.operatorMessage, /marketing_studio_cli_worker/);
 assert.match(staleDeferred.operatorMessage, /next_run_at=2099-01-01T00:00:00.000Z/);
+
+const delayedStatic = classifyCreativeRenderJob({
+  id: "job-static-delayed",
+  kind: "static_creative_generation",
+  status: "pending",
+  next_run_at: MARKETING_STUDIO_WORKER_DEFERRED_UNTIL,
+  created_at: "2026-05-19T11:49:00.000Z",
+  retry_count: 0,
+  max_attempts: 2,
+}, now);
+assert.equal(delayedStatic.state, "operator_action_required");
+assert.equal(delayedStatic.retryAvailable, true);
+assert.equal(delayedStatic.customerActionLabel, "Retry render");
+assert.match(delayedStatic.customerMessage, /taking longer than expected/);
 
 const processing = classifyCreativeRenderJob({
   id: "job-processing",

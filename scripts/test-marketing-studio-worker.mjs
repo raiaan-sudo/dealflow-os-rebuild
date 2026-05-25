@@ -271,6 +271,8 @@ assert.match(
 const workerScript = fs.readFileSync("scripts/run-marketing-studio-worker.mjs", "utf8");
 assert.match(workerScript, /marketing_studio_worker\.readiness/);
 assert.match(workerScript, /runMarketingStudioWorkerBatch/);
+assert.match(workerScript, /intervalMs:\s*5_000/, "Marketing Studio polling default must be fast enough for post-unlock pickup");
+assert.match(workerScript, /Math\.min\(value,\s*10\)/, "Marketing Studio worker still caps explicit max-jobs to avoid uncontrolled provider loops");
 const safeE2eScript = fs.readFileSync("scripts/run-safe-e2e.mjs", "utf8");
 assert.match(
   safeE2eScript,
@@ -294,6 +296,27 @@ assert.match(
 assert.match(workerService, /FINISHED_AD_VISION_QA_ENABLED=true/);
 assert.match(workerService, /claimSystemJobByIdForWorker/);
 assert.match(workerService, /ignoreNextRunAt: true/);
+
+const autoQueueService = fs.readFileSync("src/lib/services/static-creative-render-queue-service.ts", "utf8");
+assert.match(autoQueueService, /ensureStaticCreativeRenderQueuedForCampaign/);
+assert.match(autoQueueService, /creativeIntake\.outputMode !== "finished_ad"/);
+assert.match(autoQueueService, /STATIC_LAUNCH_MIN_CREATIVE_COUNT - launchReadyCount/);
+assert.match(autoQueueService, /static_creative_generation:auto_finished_ad/);
+assert.match(autoQueueService, /targetVariantCount:\s*6/);
+assert.match(autoQueueService, /promoteThreshold:\s*STATIC_LAUNCH_MIN_CREATIVE_COUNT/);
+assert.match(autoQueueService, /provider:\s*"higgsfield_marketing_studio"/);
+assert.match(autoQueueService, /hasSameCreativeIntakeGenerationContext/);
+assert.doesNotMatch(autoQueueService, /processSystemJob|createImageAd|stripe\.checkout|executeMetaCampaignLaunch|createFreshdeskTicket|sendSms/i);
+
+const unlockPage = fs.readFileSync("src/app/(app)/unlock/page.tsx", "utf8");
+assert.match(unlockPage, /ensureStaticCreativeRenderQueuedForCampaign/);
+assert.match(unlockPage, /reason:\s*activatedByCheckout \? "checkout_success" : "subscription_active"/);
+
+const creativeIntakeRoute = fs.readFileSync("src/app/api/campaigns/[id]/creative-intake/route.ts", "utf8");
+assert.match(creativeIntakeRoute, /body\.action === "approve"/);
+assert.match(creativeIntakeRoute, /reason:\s*"creative_brief_approved"/);
+
+assert.match(creativeStudioPage, /reason:\s*"creative_studio_visit"/);
 
 assert.equal(MARKETING_STUDIO_WORKER_DEFERRED_UNTIL, "2099-01-01T00:00:00.000Z");
 
