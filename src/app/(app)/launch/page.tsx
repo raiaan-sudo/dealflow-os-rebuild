@@ -365,9 +365,10 @@ export default async function LaunchAliasPage({
     ...(!providerLaunchEnabled ? ["Final launch approval is pending."] : []),
   ];
   const selectedCreatives = plan.creatives.staticAds.filter((ad) => selectedAdIds.includes(ad.id));
-	  const staticReadiness = getStaticCreativeReadiness(plan.creatives.staticAds, selectedAdIds, staticBriefReadinessContext);
+  const staticReadiness = getStaticCreativeReadiness(plan.creatives.staticAds, selectedAdIds, staticBriefReadinessContext);
   const selectedCreativeMediaReady =
     staticReadiness.allSelectedReady;
+  const savedCreativeSetMissing = selectedCreatives.length === 0;
   const isCurrentLaunchReadyUgcVideo = (video: (typeof plan.creatives.videoAds)[number]) =>
     video.conceptType === "customer_ugc" &&
     isLaunchReadyVideoCreative(video) &&
@@ -391,8 +392,8 @@ export default async function LaunchAliasPage({
         .filter(isCurrentLaunchReadyUgcVideo)
         .sort((left, right) => selectedUgcVideoIds.indexOf(left.id) - selectedUgcVideoIds.indexOf(right.id)))
     : [];
-	  const launchReadyVideos = selectedUgcVideos;
-	  const fallbackDisplayVideos = dedupeVideoIds(plan.creatives.videoAds.filter(isCurrentLaunchReadyUgcVideo));
+  const launchReadyVideos = selectedUgcVideos;
+  const fallbackDisplayVideos = dedupeVideoIds(plan.creatives.videoAds.filter(isCurrentLaunchReadyUgcVideo));
   const displayVideoAds = selectedUgcVideos.length > 0
     ? selectedUgcVideos
     : fallbackDisplayVideos.length > 0
@@ -476,6 +477,8 @@ export default async function LaunchAliasPage({
       detail:
         selectedCreativeMediaReady
           ? `${staticReadiness.selectionLabel}; ${staticReadiness.selectedReadyLabel}`
+          : savedCreativeSetMissing
+            ? "Saved creative set missing. Open Creative Studio and save at least four launch-ready static ads before launch."
           : selectedCreatives.length > 0
             ? "Regenerate selected creatives until clean image renders are ready"
             : "Choose the creative test set first",
@@ -563,7 +566,11 @@ export default async function LaunchAliasPage({
       : []),
     ...(!publicFunnelPublished ? ["Publish the public funnel snapshot so Meta has a live destination URL."] : []),
     ...(!selectedCreativeMediaReady
-      ? ["Return to Creatives and refresh unfinished previews before saving the launch set again."]
+      ? [
+          savedCreativeSetMissing
+            ? "Open Creative Studio and save at least four launch-ready static ads before launch."
+            : "Return to Creatives and refresh unfinished previews before saving the launch set again.",
+        ]
       : []),
     ...(!videoMediaReady
       ? ["Return to Creatives and render or approve a campaign-specific UGC video before launch."]
@@ -762,6 +769,8 @@ export default async function LaunchAliasPage({
                 <h2 className="mt-2 text-lg font-semibold text-foreground">
                   {selectedCreativeMediaReady
                     ? staticReadiness.selectionLabel
+                    : savedCreativeSetMissing
+                      ? "Saved creative set missing"
                     : `${selectedCreatives.length} selected, rendering needed`}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
