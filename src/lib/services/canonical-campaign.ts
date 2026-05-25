@@ -152,6 +152,22 @@ function safeRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function hasHiggsfieldFinishedStaticAds(value: CampaignCreatives["staticAds"]) {
+  return value.filter((asset) => {
+    const qa = asset.imageQa;
+
+    return (
+      asset.imageGenerationProvider === "higgsfield_marketing_studio" &&
+      asset.qualityTier === "higgsfield_finished_ad" &&
+      asset.appComposedFinal !== true &&
+      asset.storageNormalized === true &&
+      Boolean(asset.imageUrl) &&
+      qa?.mode === "finished_ad" &&
+      qa.decision === "accept"
+    );
+  }).length >= 4;
+}
+
 function runtimeHasRecordedLaunch(value: Record<string, unknown> | null) {
   if (!value) {
     return false;
@@ -691,11 +707,18 @@ export function normalizeCanonicalCampaign(params: {
   const funnelSteps = Array.isArray(planSource.funnel_steps)
     ? planSource.funnel_steps.map(String)
     : planRecord?.funnelSteps ?? [];
-  const savedStaticAds =
-    params.staticAds ??
-    safeArray<CampaignCreatives["staticAds"][number]>(params.savedDocument?.staticAds) ??
-    planRecord?.creatives?.staticAds ??
-    [];
+  const documentStaticAds = safeArray<CampaignCreatives["staticAds"][number]>(
+    params.savedDocument?.staticAds,
+  );
+  const persistedStaticAds = params.staticAds ?? [];
+  const planRecordStaticAds = planRecord?.creatives?.staticAds ?? [];
+  const savedStaticAds = hasHiggsfieldFinishedStaticAds(documentStaticAds)
+    ? documentStaticAds
+    : persistedStaticAds.length > 0
+      ? persistedStaticAds
+      : documentStaticAds.length > 0
+        ? documentStaticAds
+        : planRecordStaticAds;
   const savedVideoAds =
     params.videoAds ??
     safeArray<CampaignCreatives["videoAds"][number]>(params.savedDocument?.videoAds) ??
