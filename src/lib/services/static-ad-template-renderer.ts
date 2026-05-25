@@ -394,8 +394,8 @@ export function fitStaticAdText(input: {
 }
 
 function buildStatus(input: StaticAdTemplateInput): StaticAdTemplateStatus {
-  if (input.imageUrl && input.appComposedFinal === true) {
-    return evaluateStaticVisualAssetDecision(input).usable ? "final_composed" : "background_rejected";
+  if (input.imageUrl && evaluateStaticVisualAssetDecision(input).usable) {
+    return "final_composed";
   }
 
   if (input.imageUrl) {

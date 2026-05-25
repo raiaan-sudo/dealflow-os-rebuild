@@ -445,6 +445,13 @@ const rejectedPreview = buildComposedStaticAdPreview({
 assert.equal(rejectedPreview.status, "background_rejected");
 assert.doesNotMatch(rejectedPreview.backgroundMessage, /provider\.example|https?:\/\//);
 
+const higgsfieldFinishedPreview = buildComposedStaticAdPreview(readyStatic("higgsfield-finished-preview"));
+assert.equal(higgsfieldFinishedPreview.status, "final_composed");
+assert.equal(
+  higgsfieldFinishedPreview.backgroundImageUrl,
+  "https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/higgsfield-finished-preview.png",
+);
+
 const readyVideo = {
   id: "campaign-video",
   videoUrl: "https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/video.mp4",
