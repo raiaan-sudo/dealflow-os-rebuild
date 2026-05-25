@@ -34,6 +34,9 @@ import {
   isLaunchReadyVideoCreative,
   isPlayableVideoCreative,
 } from "@/lib/services/creative-media-readiness";
+
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 import {
   getMetaConnectionState,
   getDefaultMetaConnectionState,
