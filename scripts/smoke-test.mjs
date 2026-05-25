@@ -618,6 +618,7 @@ function runOfflineChecks() {
   assertIncludes(settingsPage, "Enabled (owner/test override)", "QA billing launch access settings label", "settings launch access label is explicit when owner/test billing acceptance is active");
   assertIncludes(onboardingRoute, "commercial", "Onboarding commercial backend defaults", "commercial real estate onboarding mode is handled server-side");
   assertIncludes(onboardingRoute, "investor", "Onboarding investor backend defaults", "investor real estate onboarding mode is handled server-side");
+  assertIncludes(onboardingRoute, 'if (intent === "seller")', "Onboarding buyer listing offer guard", "buyer offers that mention listings stay on the buyer path instead of being reclassified as seller campaigns");
   assertIncludes(appContextService, "isDemoWorkspaceSeedingEnabled", "Production demo seeding guard", "workspace demo data seeding is environment-gated");
   assertIncludes(appContextService, "fallbackOrganizationSlug", "Workspace slug collision guard", "bootstrap creates a user-owned fallback slug instead of recovering another owner workspace");
   assertIncludes(appContextService, "non-owned organization", "Workspace ownership bootstrap guard", "membership bootstrap refuses non-owned organizations");

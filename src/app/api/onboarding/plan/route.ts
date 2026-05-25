@@ -508,7 +508,7 @@ function getRealEstateOnboardingDefaults(params: {
     };
   }
 
-  if (/seller|sell|listing|valuation|home value/.test(normalizedService)) {
+  if (intent === "seller") {
     return {
       clientName: businessName,
       businessName,
