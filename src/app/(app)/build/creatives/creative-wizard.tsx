@@ -1044,6 +1044,7 @@ export function CreativeWizard({
             cta={displayActiveCreative.cta}
             headline={displayActiveCreative.headline}
             imageGenerationMessage={displayActiveCreative.imageGenerationMessage}
+            imageGenerationProvider={displayActiveCreative.imageGenerationProvider}
             imageGenerationState={displayActiveCreative.imageGenerationState}
             imagePrompt={displayActiveCreative.imagePrompt}
             imagePromptConfig={displayActiveCreative.imagePromptConfig}
@@ -1181,6 +1182,7 @@ export function CreativeWizard({
                     formatLabel={displayCreative.formatLabel}
                     headline={displayCreative.headline}
                     imageGenerationMessage={displayCreative.imageGenerationMessage}
+                    imageGenerationProvider={displayCreative.imageGenerationProvider}
                     imageGenerationState={displayCreative.imageGenerationState}
                     imagePrompt={displayCreative.imagePrompt}
                     imagePromptConfig={displayCreative.imagePromptConfig}
@@ -1640,6 +1642,7 @@ export function CreativeWizard({
                     formatLabel={displayCreative.formatLabel}
                     headline={displayCreative.headline}
                     imageGenerationMessage={displayCreative.imageGenerationMessage}
+                    imageGenerationProvider={displayCreative.imageGenerationProvider}
                     imageGenerationState={displayCreative.imageGenerationState}
                     imagePrompt={displayCreative.imagePrompt}
                     imagePromptConfig={displayCreative.imagePromptConfig}
@@ -1713,6 +1716,7 @@ export function CreativeWizard({
                         formatLabel={displayCreative.formatLabel}
                         headline={displayCreative.headline}
                         imageGenerationMessage={displayCreative.imageGenerationMessage}
+                        imageGenerationProvider={displayCreative.imageGenerationProvider}
                         imageGenerationState={displayCreative.imageGenerationState}
                         imagePrompt={displayCreative.imagePrompt}
                         imagePromptConfig={displayCreative.imagePromptConfig}

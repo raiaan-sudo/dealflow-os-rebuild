@@ -280,6 +280,7 @@ export default async function PreviewPage({
                   cta={selectedAds[0]?.cta || "Learn More"}
                   headline={selectedAds[0]?.headline || previewPlan.keyOffer}
                   imageGenerationMessage={selectedAds[0]?.imageGenerationMessage}
+                  imageGenerationProvider={selectedAds[0]?.imageGenerationProvider}
                   imageGenerationState={selectedAds[0]?.imageGenerationState}
                   imagePrompt={selectedAds[0]?.imagePrompt}
                   imagePromptConfig={selectedAds[0]?.imagePromptConfig}
@@ -321,6 +322,7 @@ export default async function PreviewPage({
                       cta={selectedAd.cta || "Learn More"}
                       headline={selectedAd.headline || previewPlan.keyOffer}
                       imageGenerationMessage={selectedAd.imageGenerationMessage}
+                      imageGenerationProvider={selectedAd.imageGenerationProvider}
                       imageGenerationState={selectedAd.imageGenerationState}
                       imagePrompt={selectedAd.imagePrompt}
                       imagePromptConfig={selectedAd.imagePromptConfig}

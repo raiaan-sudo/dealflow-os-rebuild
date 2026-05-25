@@ -22,6 +22,7 @@ type StaticCreativePreviewCardProps = {
   sourceBackgroundAssetId?: string | null;
   imageGenerationState?: "generated" | "generating" | "unavailable" | "failed" | string | null;
   imageGenerationMessage?: string | null;
+  imageGenerationProvider?: string | null;
   imagePrompt?: string | null;
   imagePromptConfig?: {
     prompt?: string | null;
@@ -94,6 +95,7 @@ export function StaticCreativePreviewCard({
   sourceBackgroundAssetId,
   imageGenerationState,
   imageGenerationMessage,
+  imageGenerationProvider,
   imagePrompt,
   imagePromptConfig,
   overlayText,
@@ -122,6 +124,7 @@ export function StaticCreativePreviewCard({
         cta={safeCta}
         headline={safeHeadline}
         imageGenerationMessage={imageGenerationMessage}
+        imageGenerationProvider={imageGenerationProvider}
         imageGenerationState={imageGenerationState}
         imagePrompt={imagePrompt}
         imagePromptConfig={imagePromptConfig}
@@ -216,6 +219,7 @@ export function StaticCreativePreviewCard({
                 cta={safeCta}
                 headline={safeHeadline}
                 imageGenerationMessage={imageGenerationMessage}
+                imageGenerationProvider={imageGenerationProvider}
                 imageGenerationState={imageGenerationState}
                 imagePrompt={imagePrompt}
                 imagePromptConfig={imagePromptConfig}
@@ -271,6 +275,7 @@ export function StaticCreativeSummaryCard({
   sourceBackgroundAssetId,
   imageGenerationState,
   imageGenerationMessage,
+  imageGenerationProvider,
   imagePrompt,
   imagePromptConfig,
   overlayText,
@@ -312,6 +317,7 @@ export function StaticCreativeSummaryCard({
           cta={safeCta}
           headline={safeHeadline}
           imageGenerationMessage={imageGenerationMessage}
+          imageGenerationProvider={imageGenerationProvider}
           imageGenerationState={imageGenerationState}
           imagePrompt={imagePrompt}
           imagePromptConfig={imagePromptConfig}
@@ -386,6 +392,7 @@ export function StaticCreativeSummaryCard({
           cta={safeCta}
           headline={safeHeadline}
           imageGenerationMessage={imageGenerationMessage}
+          imageGenerationProvider={imageGenerationProvider}
           imageGenerationState={imageGenerationState}
           imagePrompt={imagePrompt}
           imagePromptConfig={imagePromptConfig}

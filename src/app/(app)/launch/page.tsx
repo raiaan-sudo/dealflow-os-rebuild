@@ -783,6 +783,7 @@ export default async function LaunchAliasPage({
                     cta={selectedCreative.cta}
                     headline={selectedCreative.headline}
                     imageGenerationMessage={selectedCreative.imageGenerationMessage}
+                    imageGenerationProvider={selectedCreative.imageGenerationProvider}
                     imageGenerationState={selectedCreative.imageGenerationState}
                     imagePrompt={selectedCreative.imagePrompt}
                     imagePromptConfig={selectedCreative.imagePromptConfig}
