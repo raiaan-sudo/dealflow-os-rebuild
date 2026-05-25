@@ -226,8 +226,8 @@ const creativeWizardSource = fs.readFileSync("src/app/(app)/build/creatives/crea
 assert.match(creativeWizardSource, /classifyCreativeRenderJob/);
 assert.doesNotMatch(creativeWizardSource, /Final media queued/);
 assert.match(creativeWizardSource, /currentImageRenderView\?\.active/);
-assert.match(creativeWizardSource, /Premium render paused/);
-assert.match(creativeWizardSource, /Premium launch ads are queued for final rendering/);
+assert.match(creativeWizardSource, /Final Higgsfield render is paused/);
+assert.match(creativeWizardSource, /Final Higgsfield ads are queued for rendering/);
 assert.match(creativeWizardSource, /Request a fresh render/);
 assert.match(creativeWizardSource, /Prepare premium ads/);
 assert.match(
@@ -264,8 +264,8 @@ assert.doesNotMatch(mediaReadinessSource, /optional .*variant needs refresh or r
 const creativeEngineSource = fs.readFileSync("src/lib/services/creative-engine.ts", "utf8");
 assert.match(
   creativeEngineSource,
-  /creativeIntake\?\.outputMode === "finished_ad"[\s\S]*imageAd\.generationProvider === "higgsfield_marketing_studio"[\s\S]*\? "background_only"/,
-  "Marketing Studio source images are background-QA'd before DealFlow composes the final launch ad",
+  /imageAd\.generationProvider === "higgsfield_marketing_studio"[\s\S]*\? "finished_ad"/,
+  "Marketing Studio finished ads are finished-ad QA'd and must not be downgraded to background-only assets",
 );
 
 const buildCreativesPageSource = fs.readFileSync("src/app/(app)/build/creatives/page.tsx", "utf8");

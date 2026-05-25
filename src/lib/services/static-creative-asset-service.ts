@@ -194,6 +194,9 @@ function evaluatePreStorageStaticVisualDecision(asset: StaticCreativeAsset) {
 
 function hasAcceptedFinishedAdImageQa(asset: StaticCreativeAsset) {
   return (
+    asset.imageGenerationProvider === "higgsfield_marketing_studio" &&
+    asset.appComposedFinal !== true &&
+    asset.compositionVersion !== "app_composed_static_v2" &&
     asset.imageQa?.mode === "finished_ad" &&
     asset.imageQa.usable !== false &&
     asset.imageQa.decision === "accept"
@@ -221,7 +224,9 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
     let composedFinal: (StaticCreativeStorageNormalizationResult & { metadata: StaticCreativeCompositionMetadata }) | null = null;
     let normalizationError: string | null = null;
 
-    if (asset.imageUrl && (visualDecision.usable || hasAcceptedFinishedAdImageQa(asset))) {
+    const acceptedHiggsfieldFinishedAd = hasAcceptedFinishedAdImageQa(asset);
+
+    if (asset.imageUrl && (visualDecision.usable || acceptedHiggsfieldFinishedAd)) {
       try {
         durableImage = await normalizeStaticCreativeProviderImage({
           supabase: params.supabase,
@@ -236,24 +241,30 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       }
     }
 
-    try {
-      composedFinal = await composeAndUploadStaticCreativeFinal({
-        supabase: params.supabase,
-        userId: params.userId,
-        campaignId: params.campaignId,
-        creativeId,
-        generationBatchId,
-        asset,
-      });
-    } catch {
-      normalizationError = "Final ad could not be stored durably. Refresh this creative before launch.";
+    if (!acceptedHiggsfieldFinishedAd) {
+      try {
+        composedFinal = await composeAndUploadStaticCreativeFinal({
+          supabase: params.supabase,
+          userId: params.userId,
+          campaignId: params.campaignId,
+          creativeId,
+          generationBatchId,
+          asset,
+        });
+      } catch {
+        normalizationError = "Final ad could not be stored durably. Refresh this creative before launch.";
+      }
     }
 
-    const readyUrl = composedFinal?.durableUrl ?? null;
+    const readyUrl = acceptedHiggsfieldFinishedAd
+      ? durableImage?.durableUrl ?? null
+      : composedFinal?.durableUrl ?? null;
     const storageResult = composedFinal ?? durableImage;
     const compositionMetadata = composedFinal?.metadata ?? null;
     const persistedImageQa =
-      readyUrl && compositionMetadata
+      acceptedHiggsfieldFinishedAd
+        ? asset.imageQa ?? null
+        : readyUrl && compositionMetadata
         ? buildAppComposedImageQa(compositionMetadata)
         : asset.imageUrl && !readyUrl && normalizationError
         ? {
@@ -272,9 +283,9 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
             ),
           }
         : asset.imageQa ?? null;
-    const appComposedAccepted =
+    const finalRasterAccepted =
       persistedImageQa?.usable === true && persistedImageQa?.decision === "accept";
-    const normalizedGenerationState = readyUrl && appComposedAccepted
+    const normalizedGenerationState = readyUrl && finalRasterAccepted
       ? "generated"
       : readyUrl
         ? "failed"
@@ -282,7 +293,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
           ? "failed"
           : asset.imageGenerationState;
     const status =
-      readyUrl && appComposedAccepted
+      readyUrl && finalRasterAccepted
         ? "ready"
         : readyUrl
           ? "requires_review"
@@ -316,11 +327,17 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       visualAssetContract: asset.visualPromptBrief?.visualAssetContract ?? null,
       visualAssetRole: asset.visualPromptBrief?.visualAssetRole ?? null,
       imageQa: persistedImageQa as Json,
-      sourceImageQa: (asset.imageQa ?? null) as Json,
-      appComposedFinal: compositionMetadata?.appComposedFinal ?? false,
-      qualityTier: compositionMetadata?.qualityTier ?? "draft_preview",
-      visualQualityGate: (compositionMetadata?.visualQualityGate ?? null) as Json,
-      premiumQualityGate: (compositionMetadata?.premiumQualityGate ?? null) as Json,
+      sourceImageQa: acceptedHiggsfieldFinishedAd ? null : (asset.imageQa ?? null) as Json,
+      appComposedFinal: acceptedHiggsfieldFinishedAd ? false : compositionMetadata?.appComposedFinal ?? false,
+      qualityTier: acceptedHiggsfieldFinishedAd
+        ? "higgsfield_finished_ad"
+        : compositionMetadata?.qualityTier ?? "draft_preview",
+      visualQualityGate: (acceptedHiggsfieldFinishedAd
+        ? { accepted: true, mode: "finished_ad_qa", reasons: [] }
+        : compositionMetadata?.visualQualityGate ?? null) as Json,
+      premiumQualityGate: (acceptedHiggsfieldFinishedAd
+        ? { accepted: true, mode: "higgsfield_finished_ad_provenance", reasons: [] }
+        : compositionMetadata?.premiumQualityGate ?? null) as Json,
       compositionHash: compositionMetadata?.compositionHash ?? null,
       compositionVersion: compositionMetadata?.compositionVersion ?? null,
       layoutTemplateId: compositionMetadata?.layoutTemplateId ?? null,
@@ -330,6 +347,8 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       sourceImageQaMode: compositionMetadata?.sourceImageQaMode ?? null,
       sourceImageQaDecision: compositionMetadata?.sourceImageQaDecision ?? null,
       sourceImageQaOverride: compositionMetadata?.sourceImageQaOverride ?? null,
+      generationMode: acceptedHiggsfieldFinishedAd ? "finished_ad" : null,
+      assetRole: acceptedHiggsfieldFinishedAd ? "final_static_ad" : null,
       renderedOffer: compositionMetadata?.renderedOffer ?? null,
       renderedCta: compositionMetadata?.renderedCta ?? null,
       renderedBrand: compositionMetadata?.renderedBrand ?? null,
@@ -391,9 +410,9 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
         copy_id: copyId,
         asset_type: "image_frame",
         format: "1:1",
-        generation_method: "app_composed_static",
+        generation_method: acceptedHiggsfieldFinishedAd ? "higgsfield_marketing_studio" : "app_composed_static",
         status,
-        provider_name: "dealflow_app_composer",
+        provider_name: acceptedHiggsfieldFinishedAd ? "higgsfield_marketing_studio" : "dealflow_app_composer",
         file_url: readyUrl,
         thumbnail_url: readyUrl,
         metadata: {
@@ -404,7 +423,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
               : normalizationError ?? (asset.imageUrl
                 ? visualDecision.reason ?? "Generated background needs review before launch."
                 : asset.imageGenerationMessage ?? "Static image was not generated for this creative."),
-          role: "app_composed_final_static",
+          role: acceptedHiggsfieldFinishedAd ? "higgsfield_finished_static_ad" : "app_composed_final_static",
         } as Json,
       };
     const thumbnailRow = {
@@ -414,9 +433,9 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
         copy_id: copyId,
         asset_type: "thumbnail",
         format: "1:1",
-        generation_method: "app_composed_static",
+        generation_method: acceptedHiggsfieldFinishedAd ? "higgsfield_marketing_studio" : "app_composed_static",
         status,
-        provider_name: "dealflow_app_composer",
+        provider_name: acceptedHiggsfieldFinishedAd ? "higgsfield_marketing_studio" : "dealflow_app_composer",
         file_url: readyUrl,
         thumbnail_url: readyUrl,
         metadata: {
@@ -427,7 +446,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
               : normalizationError ?? (asset.imageUrl
                 ? visualDecision.reason ?? "Generated background needs review before launch."
                 : asset.imageGenerationMessage ?? "Static thumbnail was not generated for this creative."),
-          role: "app_composed_final_thumbnail",
+          role: acceptedHiggsfieldFinishedAd ? "higgsfield_finished_static_thumbnail" : "app_composed_final_thumbnail",
         } as Json,
       };
 

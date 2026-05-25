@@ -13,6 +13,7 @@ type StaticCreativeReadinessInput = {
   sourceBackgroundProvider?: string | null;
   sourceBackgroundAssetId?: string | null;
   imageGenerationState?: string | null;
+  imageGenerationProvider?: string | null;
   imagePrompt?: string | null;
   imagePromptConfig?: {
     prompt?: string | null;
@@ -187,6 +188,7 @@ export function isLaunchReadyStaticCreative(creative: Pick<
 	  | "appComposedFinal"
     | "qualityTier"
     | "compositionVersion"
+    | "imageGenerationProvider"
     | "sourceBackgroundKind"
     | "sourceBackgroundProvider"
     | "sourceBackgroundAssetId"

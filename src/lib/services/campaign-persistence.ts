@@ -252,6 +252,10 @@ export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativ
     const preferredRow =
       assetRows.find((row) => {
         const metadata = asObjectRecord(row.metadata);
+        return metadata?.role === "higgsfield_finished_static_ad" && isAcceptedSourceStaticRow(row);
+      }) ??
+      assetRows.find((row) => {
+        const metadata = asObjectRecord(row.metadata);
         return metadata?.role === "app_composed_final_static" && isAcceptedSourceStaticRow(row);
       }) ??
       assetRows.find((row) => {

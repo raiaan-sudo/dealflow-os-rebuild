@@ -2313,15 +2313,17 @@ function applyCreativeIntakePromptToStaticAsset(
 	  const approvedOffer = finishedAdMode ? requiredOffer : creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer;
 	  const approvedCta = creativeIntake.requiredCta ?? asset.cta;
   const staticPrompt = staticOnlyPromptForImageGeneration(promptVersion.generatedPrompt);
-	  const prompt = finishedAdMode
-	    ? buildTextFreeBackgroundPromptContract({
-        prompt: staticPrompt,
-        market: creativeIntake.market ?? normalized.location,
-        audience: creativeIntake.targetAudience ?? normalized.audience,
-	        offer: approvedOffer,
-        cta: approvedCta,
-        brand: creativeIntake.brokerageBrand,
-      })
+  const prompt = finishedAdMode
+    ? [
+        staticPrompt,
+        "FINAL OUTPUT REQUIREMENT: render a complete square paid-social ad raster directly in Higgsfield Marketing Studio.",
+        "Media-buyer reference layout: one dominant hook area, one proof/support area, strong negative space, and one clear CTA-safe zone.",
+        `Required offer text that must be readable in the final raster: ${approvedOffer}.`,
+        `Required CTA text that must be readable in the final raster: ${approvedCta}.`,
+        "The returned image must already include the full ad layout, readable headline, exact offer, exact CTA, and real-estate visual.",
+        "The final image should look like a high-performing real estate Facebook/Instagram ad made in a marketing studio.",
+        "Do not return a text-free background, raw photo, browser mockup, dashboard, listing sheet, blank template, or asset for DealFlow to compose later.",
+      ].join(" ")
     : staticPrompt;
   const negativePrompt = finishedAdMode
     ? [
@@ -2568,11 +2570,8 @@ export async function generateStaticCreativeAds(
       );
       const imageAd = await createImageAd(brief, asset, providerUsage);
       const qaMode =
-        creativeIntake?.outputMode === "finished_ad" &&
-        imageAd.generationProvider === "higgsfield_marketing_studio"
-          ? "background_only"
-          : creativeIntake?.outputMode ??
-            (imageAd.generationProvider === "higgsfield_marketing_studio" ? "finished_ad" : "background_only");
+        creativeIntake?.outputMode ??
+        (imageAd.generationProvider === "higgsfield_marketing_studio" ? "finished_ad" : "background_only");
       const imageQa = imageAd.imageUrl
         ? await evaluateStaticCreativeImageQa({
             imageUrl: imageAd.imageUrl,
@@ -2604,6 +2603,20 @@ export async function generateStaticCreativeAds(
         imageGenerationMessage: imageAccepted ? imageAd.generationMessage : qaMessage ?? imageAd.generationMessage,
         imageGenerationModel: imageAd.generationModel,
         imageGenerationProvider: imageAd.generationProvider,
+        appComposedFinal: false,
+        qualityTier:
+          imageAccepted &&
+          imageAd.generationProvider === "higgsfield_marketing_studio" &&
+          qaMode === "finished_ad"
+            ? "higgsfield_finished_ad"
+            : null,
+        compositionVersion: null,
+        visualQualityGate: imageAccepted && qaMode === "finished_ad"
+          ? { accepted: true, mode: "finished_ad_qa", reasons: [] }
+          : null,
+        premiumQualityGate: imageAccepted && qaMode === "finished_ad"
+          ? { accepted: true, mode: "higgsfield_finished_ad_provenance", reasons: [] }
+          : null,
         imageQa,
         location: creativeIntake?.market ?? normalized.location,
         audience: creativeIntake?.targetAudience ?? normalized.audience,

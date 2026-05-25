@@ -218,6 +218,7 @@ export default async function BuildCreativesPage({
         sourceBackgroundProvider: ad.sourceBackgroundProvider ?? null,
         sourceBackgroundAssetId: ad.sourceBackgroundAssetId ?? null,
         imageGenerationState: ad.imageGenerationState ?? null,
+        imageGenerationProvider: ad.imageGenerationProvider ?? null,
         imageGenerationMessage: ad.imageGenerationMessage ?? null,
         imagePrompt: ad.imagePrompt ?? null,
         imagePromptConfig: ad.imagePromptConfig ?? null,

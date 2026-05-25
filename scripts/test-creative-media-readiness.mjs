@@ -105,12 +105,10 @@ function readyStatic(id) {
     id,
 	    imageUrl: `https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/${id}.png`,
 	    storageNormalized: true,
-	    appComposedFinal: true,
-    qualityTier: "premium_final",
-    sourceBackgroundKind: "higgsfield_visual_background",
-    sourceBackgroundProvider: "higgsfield_marketing_studio",
-    sourceBackgroundAssetId: `source-${id}`,
+	    appComposedFinal: false,
+    qualityTier: "higgsfield_finished_ad",
     imageGenerationState: "generated",
+    imageGenerationProvider: "higgsfield_marketing_studio",
     imagePrompt: "Text-free background asset only for a real estate ad.",
     imagePromptConfig: null,
     visualPromptBrief: {
@@ -120,10 +118,9 @@ function readyStatic(id) {
     qualityGate: { accepted: true },
     visualQualityGate: { accepted: true },
     premiumQualityGate: { accepted: true },
-    sourceImageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
     visualQualityGate: { accepted: true },
     premiumQualityGate: { accepted: true },
-	    imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
+	    imageQa: { usable: true, decision: "accept", mode: "finished_ad", reasons: [] },
 	  };
 	}
 

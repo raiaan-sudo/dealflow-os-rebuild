@@ -50,6 +50,7 @@ type StaticVisualContractInput = {
   appComposedFinal?: boolean | null;
   qualityTier?: string | null;
   compositionVersion?: string | null;
+  imageGenerationProvider?: string | null;
   sourceBackgroundKind?: string | null;
   sourceBackgroundProvider?: string | null;
   sourceBackgroundAssetId?: string | null;
@@ -119,34 +120,22 @@ function hasPremiumSourceProvider(input: StaticVisualContractInput) {
   return provider === "higgsfield_marketing_studio" || provider === "higgsfield";
 }
 
-function hasAcceptedPremiumFinalProvenance(input: StaticVisualContractInput) {
-  const standardBackgroundSource = Boolean(
-    input.qualityTier === "premium_final" &&
-      input.premiumQualityGate?.accepted === true &&
-      input.visualQualityGate?.accepted !== false &&
-      input.sourceImageQa?.mode === "background_only" &&
-      input.sourceImageQa.decision === "accept" &&
-      input.sourceImageQa.usable !== false &&
-      input.sourceBackgroundKind === "higgsfield_visual_background" &&
-      hasPremiumSourceProvider(input) &&
-      safeText(input.sourceBackgroundAssetId),
-  );
+export function hasHiggsfieldFinishedAdProvenance(input: StaticVisualContractInput) {
+  const provider = safeText(input.imageGenerationProvider).toLowerCase();
+  const qualityTier = safeText(input.qualityTier).toLowerCase();
 
-  const appComposedV2Final = Boolean(
-    input.appComposedFinal === true &&
-      input.compositionVersion === "app_composed_static_v2" &&
-      input.qualityTier === "premium_final" &&
-      input.premiumQualityGate?.accepted === true &&
-      input.visualQualityGate?.accepted !== false &&
-      input.imageQa?.mode === "app_composed_final" &&
+  return Boolean(
+    provider === "higgsfield_marketing_studio" &&
+      (qualityTier === "higgsfield_finished_ad" || qualityTier === "premium_finished_ad") &&
+      input.appComposedFinal !== true &&
+      input.compositionVersion !== "app_composed_static_v2" &&
+      input.imageQa?.mode === "finished_ad" &&
       input.imageQa.decision === "accept" &&
       input.imageQa.usable !== false &&
-      input.sourceBackgroundKind === "higgsfield_visual_background" &&
-      hasPremiumSourceProvider(input) &&
-      safeText(input.sourceBackgroundAssetId),
+      input.qualityGate?.accepted !== false &&
+      input.visualQualityGate?.accepted !== false &&
+      input.premiumQualityGate?.accepted !== false,
   );
-
-  return standardBackgroundSource || appComposedV2Final;
 }
 
 export function evaluateStaticVisualAssetDecision(
@@ -155,16 +144,7 @@ export function evaluateStaticVisualAssetDecision(
   if (!safeText(input.imageUrl)) {
     return {
       usable: false,
-      reason: "No generated background image is available yet.",
-    };
-  }
-
-  const premiumFinalAccepted = hasAcceptedPremiumFinalProvenance(input);
-
-  if (input.qualityGate?.accepted !== true && !premiumFinalAccepted) {
-    return {
-      usable: false,
-      reason: "This generated visual has not passed the creative quality gate yet and must be regenerated.",
+      reason: "No finished Higgsfield ad image is available yet.",
     };
   }
 
@@ -175,38 +155,45 @@ export function evaluateStaticVisualAssetDecision(
     };
   }
 
-  if (input.appComposedFinal === true && input.imageQa?.mode === "app_composed_final") {
-    if (!premiumFinalAccepted) {
+  if (input.appComposedFinal === true || input.compositionVersion === "app_composed_static_v2") {
+    return {
+      usable: false,
+      reason: "Final launch-ready ads must be finished Higgsfield renders, not DealFlow-composed mockups.",
+    };
+  }
+
+  if (input.imageQa?.mode === "finished_ad") {
+    if (hasHiggsfieldFinishedAdProvenance(input)) {
       return {
-        usable: false,
-        reason: "Premium launch ads need a fresh generated source image before they can satisfy launch readiness.",
+        usable: true,
+        reason: null,
       };
     }
 
     return {
-      usable: true,
-      reason: null,
+      usable: false,
+      reason: "This finished ad is review-only until it is a verified Higgsfield CLI render that passes QA.",
     };
   }
 
   if (input.imageQa && (input.imageQa.usable === false || input.imageQa.decision !== "accept")) {
     return {
       usable: false,
-      reason: "This visual needs a cleaner background before it can be used as a launch-ready creative.",
+      reason: "This visual needs a cleaner finished Higgsfield render before it can be launch-ready.",
     };
   }
 
-  if (input.imageQa?.mode === "finished_ad") {
+  if (input.sourceImageQa?.mode === "background_only" || hasPremiumSourceProvider(input)) {
     return {
       usable: false,
-      reason: "This provider-rendered ad is review-only; DealFlow must compose final launch-ready text and layout.",
+      reason: "Higgsfield background/source images are review-only and cannot satisfy launch readiness.",
     };
   }
 
   if (!hasTextFreeBackgroundContract(input)) {
     return {
       usable: false,
-      reason: "This visual was generated before the text-free background contract and was withheld from the launch preview.",
+      reason: "Final launch ads must be finished Higgsfield CLI ad renders.",
     };
   }
 
@@ -219,6 +206,6 @@ export function evaluateStaticVisualAssetDecision(
 
   return {
     usable: false,
-    reason: "This text-free background is review-only until DealFlow composes the final launch-ready ad.",
+    reason: "Text-free backgrounds are review-only; final launch ads must be finished Higgsfield CLI renders.",
   };
 }

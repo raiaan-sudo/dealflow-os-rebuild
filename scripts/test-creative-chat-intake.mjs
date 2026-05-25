@@ -103,7 +103,8 @@ assert.match(creativeWizardUi, /Primary creative/);
 assert.match(creativeWizardUi, /Review variant/);
 assert.match(creativeWizardUi, /Add to review set/);
 assert.match(creativeWizardUi, /Full-resolution creative files stay inside DealFlow/);
-assert.match(creativeWizardUi, /Creative concepts are visible now\. Launch-ready ads stay available while optional polish prepares\./);
+assert.match(creativeWizardUi, /Final Higgsfield ads are queued for rendering/);
+assert.match(creativeWizardUi, /finished Higgsfield ads pass review/);
 assert.doesNotMatch(creativeWizardUi, /worker is available|Queued for render worker|product QA accepts/);
 assert.match(creativeWizardUi, /Render static creatives first/);
 assert.match(staticAdsRoute, /regenerateStaticCreativeAssetsForUser/);
@@ -459,11 +460,11 @@ const combinedStaticAds = await generateStaticCreativeAds({
   },
   max_static_image_generations: 0,
 });
-assert.match(combinedStaticAds[0].imagePrompt, /TEXT-FREE PREMIUM REAL ESTATE VISUAL BACKGROUND ONLY/);
-assert.doesNotMatch(combinedStaticAds[0].imagePrompt, /MARKETING STUDIO FINISHED AD CREATIVE/);
+assert.match(combinedStaticAds[0].imagePrompt, /MARKETING STUDIO FINISHED AD CREATIVE/);
+assert.match(combinedStaticAds[0].imagePrompt, /FINAL OUTPUT REQUIREMENT/);
 assert.doesNotMatch(combinedStaticAds[0].imagePrompt, /MARKETING STUDIO AI UGC VIDEO BRIEF/);
 assert.doesNotMatch(combinedStaticAds[0].imagePrompt, /Approved script lines:/);
-assert.doesNotMatch(combinedStaticAds[0].imagePrompt, /must be readable|CTA button|text hierarchy/i);
+assert.match(combinedStaticAds[0].imagePrompt, /must be readable|CTA button|text hierarchy/i);
 
 const state = createCreativeIntakeState({
   campaignId: defaults.campaignId,
@@ -607,15 +608,14 @@ const finishedAdStaticAds = await generateStaticCreativeAds({
 });
 assert.equal(finishedAdStaticAds[0].offer, "Private buyer access system with 25 off-market homes this month", "finished-ad static copy uses the approved offer exactly");
 assert.equal(finishedAdStaticAds[0].cta, "Click Learn More", "finished-ad CTA uses the approved CTA exactly");
-assert.match(finishedAdStaticAds[0].imagePrompt, /TEXT-FREE PREMIUM REAL ESTATE VISUAL BACKGROUND ONLY/);
-assert.match(finishedAdStaticAds[0].imagePrompt, /Create a premium real estate visual background suitable for DealFlow to compose exact approved ad copy on top/);
-assert.match(finishedAdStaticAds[0].imagePrompt, /Approved offer context for visual direction only: Private buyer access system with 25 off-market homes this month/);
-assert.match(finishedAdStaticAds[0].imagePrompt, /CTA context for DealFlow text layer only, do not render it: Click Learn More/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /MARKETING STUDIO FINISHED AD CREATIVE/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /complete square paid-social ad raster directly in Higgsfield Marketing Studio/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /Required offer text that must be readable in the final raster: Private buyer access system with 25 off-market homes this month/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /Required CTA text that must be readable in the final raster: Click Learn More/);
 assert.doesNotMatch(finishedAdStaticAds[0].overlayText, /^Preview\b/i, "finished-ad static overlays do not block the creative with a preview prefix");
-assert.doesNotMatch(finishedAdStaticAds[0].imagePrompt, /Finished-ad quality contract|Approved offer that must be readable|CTA that must be readable/);
-assert.match(finishedAdStaticAds[0].imagePrompt, /Do not render text, captions, CTA, buttons, logos, flyers, posters, UI/);
-assert.match(finishedAdStaticAds[0].imagePrompt, /Media-buyer source imagery logic: one dominant hook area, one proof area, and clear CTA-safe negative space/);
-assert.match(finishedAdStaticAds[0].imagePrompt, /DealFlow will place exact text later/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /final image should look like a high-performing real estate Facebook\/Instagram ad/i);
+assert.match(finishedAdStaticAds[0].imagePrompt, /Media-buyer reference layout: one dominant hook area, one proof\/support area, strong negative space, and one clear CTA-safe zone/);
+assert.doesNotMatch(finishedAdStaticAds[0].imagePrompt, /DealFlow will place exact text later/);
 assert.doesNotMatch(finishedAdStaticAds[0].imagePrompt, /guaranteed-approval claim|guaranteed-financing claim/);
 assert.equal(finishedAdStaticAds[0].qualityGate.accepted, true, "finished-ad static prompt contract passes product-quality preflight");
 assert.equal(finishedAdStaticAds[0].staticBriefHash, finishedAdContext.staticBriefHash ?? null);
@@ -629,12 +629,14 @@ function buildAsset() {
     imageGenerationState: "generated",
     imageGenerationMessage: null,
     imageGenerationModel: "marketing_studio_image",
-    imageGenerationProvider: "higgsfield",
-    visualConcept: "Toronto buyer background",
-    imagePrompt: "TEXT-FREE BACKGROUND ASSET ONLY. Realistic photo.",
+    imageGenerationProvider: "higgsfield_marketing_studio",
+    appComposedFinal: false,
+    qualityTier: "higgsfield_finished_ad",
+    visualConcept: "Toronto buyer finished ad",
+    imagePrompt: "MARKETING STUDIO FINISHED AD CREATIVE. Real estate paid social ad.",
     imagePromptConfig: {
-      prompt: "TEXT-FREE BACKGROUND ASSET ONLY. Realistic photo.",
-      negativePrompt: "final ad layout; flyer; text",
+      prompt: "MARKETING STUDIO FINISHED AD CREATIVE. Real estate paid social ad.",
+      negativePrompt: "gibberish; fake dashboard; listing sheet",
       aspectRatio: "1:1",
     },
     preferredImageModel: "gpt-image-1.5",
@@ -658,8 +660,10 @@ function buildAsset() {
         aspectRatio: "1:1",
       },
     },
-    imageQa: { usable: true, decision: "accept", reasons: [] },
-    creativeIntake: approvedContext,
+    imageQa: { usable: true, decision: "accept", mode: "finished_ad", reasons: [] },
+    visualQualityGate: { accepted: true, mode: "finished_ad_qa", reasons: [] },
+    premiumQualityGate: { accepted: true, mode: "higgsfield_finished_ad_provenance", reasons: [] },
+    creativeIntake: finishedAdContext,
     scoreBreakdown: null,
     hook: "See matched homes",
     overlayText: "See matched homes",
@@ -747,19 +751,21 @@ assert.deepEqual(
   "static creative assets are inserted without deleting historical evidence rows",
 );
 const successfulInsert = successfulDb.operations.find((item) => item.op === "insert");
-assert.equal(Boolean(successfulInsert), true, "app-composed static final row is inserted");
-assert.equal(successfulDb.operations.some((item) => item.op === "upload"), true, "app-composed final is stored before insert");
+assert.equal(Boolean(successfulInsert), true, "finished Higgsfield static final row is inserted");
+assert.equal(successfulInsert.rows[0].metadata.storageNormalized, true, "finished Higgsfield final is app-owned before insert");
 assert.equal(successfulInsert.rows[0].status, "ready");
-assert.equal(successfulInsert.rows[0].metadata.appComposedFinal, true);
+assert.equal(successfulInsert.rows[0].metadata.appComposedFinal, false);
+assert.equal(successfulInsert.rows[0].metadata.qualityTier, "higgsfield_finished_ad");
+assert.equal(successfulInsert.rows[0].metadata.role, "higgsfield_finished_static_ad");
 assert.equal(successfulInsert.rows[0].metadata.generationBatchId.length > 0, true);
 assert.equal(
   successfulInsert.rows[0].metadata.creativeIntakePromptVersionUsed.generatedPrompt,
-  prompt.generatedPrompt,
+  finishedAdContext.promptVersion.generatedPrompt,
 );
-assert.equal(successfulInsert.rows[0].metadata.creativeIntakeGenerationContext.outputMode, "background_only");
+assert.equal(successfulInsert.rows[0].metadata.creativeIntakeGenerationContext.outputMode, "finished_ad");
 assert.equal(successfulInsert.rows[0].metadata.creativeIntakeGenerationContext.generationPhase, "static");
-assert.equal(successfulInsert.rows[0].metadata.staticBriefHash, approvedContext.staticBriefHash);
-assert.equal(successfulInsert.rows[0].metadata.ctaHash, approvedContext.ctaHash);
+assert.equal(successfulInsert.rows[0].metadata.staticBriefHash, finishedAdContext.staticBriefHash ?? null);
+assert.equal(successfulInsert.rows[0].metadata.ctaHash, finishedAdContext.ctaHash ?? null);
 
 const failingDb = fakeSupabase({ insertFails: true });
 await assert.rejects(

@@ -46,6 +46,7 @@ type CreativeOption = {
   sourceBackgroundProvider?: string | null;
   sourceBackgroundAssetId?: string | null;
   imageGenerationState?: string | null;
+  imageGenerationProvider?: string | null;
   imageGenerationMessage?: string | null;
   imagePrompt?: string | null;
   imagePromptConfig?: {
@@ -648,11 +649,11 @@ export function CreativeWizard({
       setRenderJobs((current) => upsertRenderJob(current, data.job as SystemJob));
       setRenderMessage(
         renderView.state === "operator_action_required"
-          ? "Premium render is paused while final rendering is unavailable. Draft previews remain visible; final launch-ready ads will update once rendering is available."
+          ? "Final Higgsfield render is paused while the render worker is unavailable. Draft previews remain visible; launch-ready ads will update only after finished ads render."
           : deferredWorkerJob
-            ? "Premium launch ads are queued for final rendering. Draft previews remain available while final ads finish."
+            ? "Final Higgsfield ads are queued for rendering. Draft previews remain available while finished ads are created."
           : data.previewUpdated
-            ? "Draft previews are visible now. Premium launch ads are preparing separately."
+            ? "Draft previews are visible now. Final Higgsfield launch ads are preparing separately."
             : renderView.customerMessage,
       );
       if (data.previewUpdated) {
@@ -1674,7 +1675,7 @@ export function CreativeWizard({
               {draftCreatives.length} draft concept{draftCreatives.length === 1 ? "" : "s"} need regeneration
             </summary>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              These concepts are draft previews and are not selectable as final launch media until premium app-owned ads pass review.
+              These concepts are draft previews and are not selectable as final launch media until finished Higgsfield ads pass review.
             </p>
             <div className="mt-4 grid gap-4 lg:grid-cols-3">
               {draftCreatives.map((creative, index) => {
