@@ -16,6 +16,7 @@ type StaticCreativePreviewCardProps = {
   storageNormalized?: boolean | null;
   appComposedFinal?: boolean | null;
   qualityTier?: string | null;
+  compositionVersion?: string | null;
   sourceBackgroundKind?: string | null;
   sourceBackgroundProvider?: string | null;
   sourceBackgroundAssetId?: string | null;
@@ -52,6 +53,15 @@ type StaticCreativePreviewCardProps = {
     layoutRisk?: number | null;
     detectedTextSamples?: string[] | null;
   } | null;
+  sourceImageQa?: {
+    usable?: boolean | null;
+    decision?: "accept" | "reject" | "review" | string | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+    textDensity?: number | null;
+    layoutRisk?: number | null;
+    detectedTextSamples?: string[] | null;
+  } | null;
   visualPromptBrief?: {
     category?: CampaignCategory | string | null;
     visualAssetContract?: string | null;
@@ -78,6 +88,7 @@ export function StaticCreativePreviewCard({
   storageNormalized,
   appComposedFinal,
   qualityTier,
+  compositionVersion,
   sourceBackgroundKind,
   sourceBackgroundProvider,
   sourceBackgroundAssetId,
@@ -91,6 +102,7 @@ export function StaticCreativePreviewCard({
   visualQualityGate,
   premiumQualityGate,
   imageQa,
+  sourceImageQa,
   visualPromptBrief,
   selectedCount,
   formatLabel,
@@ -117,6 +129,7 @@ export function StaticCreativePreviewCard({
         storageNormalized={storageNormalized}
         appComposedFinal={appComposedFinal}
         qualityTier={qualityTier}
+        compositionVersion={compositionVersion}
         sourceBackgroundKind={sourceBackgroundKind}
         sourceBackgroundProvider={sourceBackgroundProvider}
         sourceBackgroundAssetId={sourceBackgroundAssetId}
@@ -128,6 +141,7 @@ export function StaticCreativePreviewCard({
         visualQualityGate={visualQualityGate}
         premiumQualityGate={premiumQualityGate}
         imageQa={imageQa}
+        sourceImageQa={sourceImageQa}
         score={score}
         selectedCount={selectedCount}
         showRawAssetState={!compact}

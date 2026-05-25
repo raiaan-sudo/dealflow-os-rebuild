@@ -41,6 +41,7 @@ type CreativeOption = {
   storageNormalized?: boolean | null;
   appComposedFinal?: boolean | null;
   qualityTier?: string | null;
+  compositionVersion?: string | null;
   sourceBackgroundKind?: string | null;
   sourceBackgroundProvider?: string | null;
   sourceBackgroundAssetId?: string | null;
@@ -72,6 +73,15 @@ type CreativeOption = {
     reasons?: string[] | null;
   } | null;
   imageQa?: {
+    usable?: boolean | null;
+    decision?: "accept" | "reject" | "review" | string | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+    textDensity?: number | null;
+    layoutRisk?: number | null;
+    detectedTextSamples?: string[] | null;
+  } | null;
+  sourceImageQa?: {
     usable?: boolean | null;
     decision?: "accept" | "reject" | "review" | string | null;
     mode?: string | null;
@@ -1040,6 +1050,7 @@ export function CreativeWizard({
             storageNormalized={displayActiveCreative.storageNormalized}
             appComposedFinal={displayActiveCreative.appComposedFinal}
             qualityTier={displayActiveCreative.qualityTier}
+            compositionVersion={displayActiveCreative.compositionVersion}
             sourceBackgroundKind={displayActiveCreative.sourceBackgroundKind}
             sourceBackgroundProvider={displayActiveCreative.sourceBackgroundProvider}
             sourceBackgroundAssetId={displayActiveCreative.sourceBackgroundAssetId}
@@ -1052,6 +1063,7 @@ export function CreativeWizard({
             visualQualityGate={displayActiveCreative.visualQualityGate}
             premiumQualityGate={displayActiveCreative.premiumQualityGate}
             imageQa={displayActiveCreative.imageQa}
+            sourceImageQa={displayActiveCreative.sourceImageQa}
             score={displayActiveCreative.score}
             selectedCount={activeCreativeSelected && activeCreative && isStaticLaunchReady(activeCreative) ? staticReadiness.selectedReadyCount : null}
             visualPromptBrief={displayActiveCreative.visualPromptBrief}
@@ -1175,6 +1187,7 @@ export function CreativeWizard({
                     storageNormalized={displayCreative.storageNormalized}
                     appComposedFinal={displayCreative.appComposedFinal}
                     qualityTier={displayCreative.qualityTier}
+                    compositionVersion={displayCreative.compositionVersion}
                     sourceBackgroundKind={displayCreative.sourceBackgroundKind}
                     sourceBackgroundProvider={displayCreative.sourceBackgroundProvider}
                     sourceBackgroundAssetId={displayCreative.sourceBackgroundAssetId}
@@ -1186,6 +1199,7 @@ export function CreativeWizard({
                     visualQualityGate={displayCreative.visualQualityGate}
                     premiumQualityGate={displayCreative.premiumQualityGate}
                     imageQa={displayCreative.imageQa}
+                    sourceImageQa={displayCreative.sourceImageQa}
                     score={displayCreative.score}
                     selectedCount={isStaticLaunchReady(creative) ? staticReadiness.selectedReadyCount : null}
                     visualPromptBrief={displayCreative.visualPromptBrief}
@@ -1632,6 +1646,7 @@ export function CreativeWizard({
                     storageNormalized={displayCreative.storageNormalized}
                     appComposedFinal={displayCreative.appComposedFinal}
                     qualityTier={displayCreative.qualityTier}
+                    compositionVersion={displayCreative.compositionVersion}
                     sourceBackgroundKind={displayCreative.sourceBackgroundKind}
                     sourceBackgroundProvider={displayCreative.sourceBackgroundProvider}
                     sourceBackgroundAssetId={displayCreative.sourceBackgroundAssetId}
@@ -1643,6 +1658,7 @@ export function CreativeWizard({
                     visualQualityGate={displayCreative.visualQualityGate}
                     premiumQualityGate={displayCreative.premiumQualityGate}
                     imageQa={displayCreative.imageQa}
+                    sourceImageQa={displayCreative.sourceImageQa}
                     score={displayCreative.score}
                     selectedCount={selected ? selectedCreatives.length : null}
                     visualPromptBrief={displayCreative.visualPromptBrief}
@@ -1703,6 +1719,7 @@ export function CreativeWizard({
                         storageNormalized={displayCreative.storageNormalized}
                         appComposedFinal={displayCreative.appComposedFinal}
                         qualityTier={displayCreative.qualityTier}
+                        compositionVersion={displayCreative.compositionVersion}
                         sourceBackgroundKind={displayCreative.sourceBackgroundKind}
                         sourceBackgroundProvider={displayCreative.sourceBackgroundProvider}
                         sourceBackgroundAssetId={displayCreative.sourceBackgroundAssetId}
@@ -1714,6 +1731,7 @@ export function CreativeWizard({
                         visualQualityGate={displayCreative.visualQualityGate}
                         premiumQualityGate={displayCreative.premiumQualityGate}
                         imageQa={displayCreative.imageQa}
+                        sourceImageQa={displayCreative.sourceImageQa}
                         score={displayCreative.score}
                         selectedCount={null}
                         visualPromptBrief={displayCreative.visualPromptBrief}
