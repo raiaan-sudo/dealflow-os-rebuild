@@ -73,7 +73,7 @@ npm run worker:marketing-studio -- --max-jobs=1
 Run as a polling worker:
 
 ```bash
-npm run worker:marketing-studio -- --poll --max-jobs=1 --interval-ms=30000
+npm run worker:marketing-studio -- --poll --max-jobs=2 --interval-ms=5000
 ```
 
 ## Job flow
