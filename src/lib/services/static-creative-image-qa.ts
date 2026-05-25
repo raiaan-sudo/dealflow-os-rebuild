@@ -41,7 +41,7 @@ type AnalyzeResult = {
 };
 
 const BACKGROUND_ONLY_QA_MODE: StaticCreativeImageQaMode = "background_only";
-const MAX_IMAGE_BYTES = 4_000_000;
+const MAX_IMAGE_BYTES = 12_000_000;
 const PNG_SIGNATURE = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
 
 function assertServerSide() {

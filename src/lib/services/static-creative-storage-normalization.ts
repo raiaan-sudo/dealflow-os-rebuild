@@ -9,7 +9,7 @@ import type { Database } from "@/lib/supabase/types";
 
 export const STATIC_CREATIVE_STORAGE_BUCKET = "creative-assets";
 
-export const MAX_STATIC_CREATIVE_PROVIDER_IMAGE_BYTES = 5_000_000;
+export const MAX_STATIC_CREATIVE_PROVIDER_IMAGE_BYTES = 12_000_000;
 export const MAX_STATIC_CREATIVE_PROVIDER_VIDEO_BYTES = 100_000_000;
 const FETCH_TIMEOUT_MS = 5_000;
 const MAX_PROVIDER_REDIRECTS = 3;

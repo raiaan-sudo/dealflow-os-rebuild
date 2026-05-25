@@ -699,6 +699,15 @@ export function extractHiggsfieldCliGenerationAssets(value: unknown): {
   };
 }
 
+function buildMarketingStudioCardPrompt(request: HiggsfieldImageRequest) {
+  return [
+    request.prompt,
+    "This is a complete paid-social static ad request, not a background-generation request.",
+    "The final raster must be publish-ready with headline, offer, CTA, real-estate image, hierarchy, contrast, and mobile-feed readable text already baked into the image.",
+    "Quality floor: premium Higgsfield real estate ad examples with photoreal property imagery, strong headline, large CTA bar, clean spacing, and direct-response Facebook/Instagram composition.",
+  ].filter(Boolean).join(" ");
+}
+
 async function generateMarketingStudioImageWithCli(
   request: HiggsfieldImageRequest,
   model: string,
@@ -710,17 +719,35 @@ async function generateMarketingStudioImageWithCli(
   }
   const cliPath = cliReadiness.resolvedPath;
 
-  const args = [
-    "--json",
-    "generate",
-    "create",
-    model,
-    "--prompt",
-    request.prompt,
-    "--wait",
-  ];
+  const args = model === HIGGSFIELD_MARKETING_STUDIO_IMAGE_MODEL
+    ? [
+        "--json",
+        "marketplace-cards",
+        "create",
+        "--scope",
+        "main",
+        "--category",
+        "real estate paid social ad",
+        "--prompt",
+        buildMarketingStudioCardPrompt(request),
+        "--brand_context",
+        "Premium direct-response real estate ad. Finished Higgsfield CLI raster only; no DealFlow app-composed layout, no template card, no background-only asset.",
+        "--visual_style",
+        "finished premium Facebook/Instagram real estate ad, large readable headline, photoreal property image, strong CTA button or CTA bar, professional ad hierarchy, clean spacing, no mockup, no dashboard, no placeholder boxes",
+        "--timeout",
+        "15m",
+      ]
+    : [
+        "--json",
+        "generate",
+        "create",
+        model,
+        "--prompt",
+        request.prompt,
+        "--wait",
+      ];
 
-  if (request.aspectRatio) {
+  if (request.aspectRatio && model !== HIGGSFIELD_MARKETING_STUDIO_IMAGE_MODEL) {
     args.push("--aspect_ratio", request.aspectRatio);
   }
 
@@ -743,7 +770,7 @@ async function generateMarketingStudioImageWithCli(
       },
     );
   });
-  const stdout = await runCli(args);
+  const stdout = await runCli(args, model === HIGGSFIELD_MARKETING_STUDIO_IMAGE_MODEL ? 16 * 60_000 : 240_000);
   let parsed: unknown = stdout;
 
   try {

@@ -651,7 +651,7 @@ export function CreativeWizard({
         renderView.state === "operator_action_required"
           ? "Final Higgsfield render is paused while the render worker is unavailable. Draft previews remain visible; launch-ready ads will update only after finished ads render."
           : deferredWorkerJob
-            ? "Final Higgsfield ads are queued for rendering. Draft previews remain available while finished ads are created."
+            ? "Premium launch ads are queued for final rendering. Final Higgsfield ads are queued for rendering; draft previews remain available while finished ads are created."
           : data.previewUpdated
             ? "Draft previews are visible now. Final Higgsfield launch ads are preparing separately."
             : renderView.customerMessage,
