@@ -298,6 +298,7 @@ export default async function PreviewPage({
                   premiumQualityGate={selectedAds[0]?.premiumQualityGate}
                   imageQa={selectedAds[0]?.imageQa}
                   sourceImageQa={selectedAds[0]?.sourceImageQa}
+                  prominent
                   score={selectedAds[0]?.score}
                   selected
                   selectedCount={selectedAds.length}
@@ -339,6 +340,7 @@ export default async function PreviewPage({
                       premiumQualityGate={selectedAd.premiumQualityGate}
                       imageQa={selectedAd.imageQa}
                       sourceImageQa={selectedAd.sourceImageQa}
+                      prominent
                       score={selectedAd.score}
                       selectedCount={selectedAds.length}
                       visualPromptBrief={selectedAd.visualPromptBrief}

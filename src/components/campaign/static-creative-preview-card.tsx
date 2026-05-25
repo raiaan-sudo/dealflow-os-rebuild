@@ -251,6 +251,7 @@ type StaticCreativeSummaryCardProps = StaticCreativePreviewCardProps & {
   angleLabel?: string | null;
   selected?: boolean;
   index?: number;
+  prominent?: boolean;
 };
 
 export function StaticCreativeSummaryCard({
@@ -286,6 +287,7 @@ export function StaticCreativeSummaryCard({
   formatLabel,
   selected = false,
   index,
+  prominent = false,
 }: StaticCreativeSummaryCardProps) {
   const safeHeadline = headline || offer || "Campaign creative";
   const safeCta = cta || "Learn More";
@@ -295,6 +297,78 @@ export function StaticCreativeSummaryCard({
     visualPromptBrief?.mechanism ||
     visualPromptBrief?.proofStyle ||
     (category ? String(category).replaceAll("_", " ") : "Creative angle");
+
+  if (prominent) {
+    return (
+      <div
+        className={cn(
+          "min-w-0 overflow-hidden rounded-df-card border bg-black/18 transition",
+          selected ? "border-primary/35 bg-primary/[0.08]" : "border-white/10",
+          className,
+        )}
+      >
+        <StaticAdComposedPreview
+          category={category}
+          cta={safeCta}
+          headline={safeHeadline}
+          imageGenerationMessage={imageGenerationMessage}
+          imageGenerationState={imageGenerationState}
+          imagePrompt={imagePrompt}
+          imagePromptConfig={imagePromptConfig}
+          imageUrl={imageUrl}
+          storageNormalized={storageNormalized}
+          appComposedFinal={appComposedFinal}
+          qualityTier={qualityTier}
+          compositionVersion={compositionVersion}
+          sourceBackgroundKind={sourceBackgroundKind}
+          sourceBackgroundProvider={sourceBackgroundProvider}
+          sourceBackgroundAssetId={sourceBackgroundAssetId}
+          location={location}
+          offer={safeOffer}
+          overlayText={overlayText}
+          primaryText={primaryText}
+          qualityGate={qualityGate}
+          visualQualityGate={visualQualityGate}
+          premiumQualityGate={premiumQualityGate}
+          imageQa={imageQa}
+          sourceImageQa={sourceImageQa}
+          score={score}
+          selectedCount={selectedCount}
+          showRawAssetState={false}
+          visualPromptBrief={visualPromptBrief}
+        />
+        <div className="space-y-3 p-4">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              {typeof index === "number" ? `Creative ${index + 1}` : "Creative"}
+            </span>
+            <span className="min-w-0 truncate rounded-full border border-cyan-300/16 bg-cyan-300/[0.055] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100">
+              {resolvedAngle}
+            </span>
+            {typeof score === "number" ? (
+              <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-white/62">
+                {score.toFixed(1)}/10
+              </span>
+            ) : null}
+            {formatLabel ? (
+              <span className="rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-100">
+                {formatLabel}
+              </span>
+            ) : null}
+          </div>
+          <div className="min-w-0">
+            <h3 className="line-clamp-2 text-base font-semibold leading-6 text-foreground">
+              {safeHeadline}
+            </h3>
+            <p className="mt-2 line-clamp-3 text-sm leading-6 text-muted-foreground">
+              {primaryText || safeOffer}
+            </p>
+            <p className="mt-3 text-sm font-semibold text-primary">CTA: {safeCta}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

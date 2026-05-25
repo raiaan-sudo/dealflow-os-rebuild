@@ -800,6 +800,7 @@ export default async function LaunchAliasPage({
                     premiumQualityGate={selectedCreative.premiumQualityGate}
                     imageQa={selectedCreative.imageQa}
                     sourceImageQa={selectedCreative.sourceImageQa}
+                    prominent
                     score={selectedCreative.score}
                     index={index}
                     selected
