@@ -237,6 +237,8 @@ export async function POST(
       location: campaign.strategy.location ?? campaign.campaign.location ?? null,
       force: body.force === true,
       targetDurationSeconds: creativeIntakeContext?.ugcStyleBrief?.targetDurationSeconds ?? 20,
+      ugcScriptHash: creativeIntakeContext?.ugcScriptHash ?? null,
+      sourceContextHash: creativeIntakeContext?.ugcStyleBrief?.sourceContextHash ?? null,
       creativeIntake: creativeIntakeContext,
     };
 

@@ -72,7 +72,9 @@ const {
 } = require("../src/lib/services/static-creative-asset-service.ts");
 const {
   buildCreativeUgcScriptDraft,
+  inferCreativeUgcAudienceKind,
   normalizeCreativeOfferTitle,
+  resolveUgcScriptContext,
   validateCreativeUgcScriptDraft,
 } = require("../src/lib/services/creative-ugc-script-service.ts");
 const {
@@ -129,6 +131,9 @@ assert.match(creativeChatIntakeUi, /Hook angle"[\s\S]*?activeHookOptions[\s\S]*?
 assert.match(creativeChatIntakeUi, /Early Access/);
 assert.match(creativeChatIntakeUi, /Hidden Inventory/);
 assert.match(creativeChatIntakeUi, /Budget Confidence/);
+assert.match(creativeChatIntakeUi, /Buyer Demand/);
+assert.match(creativeChatIntakeUi, /Avoid Underpricing/);
+assert.match(creativeChatIntakeUi, /Classify the campaign before choosing this setting/);
 assert.match(creativeChatIntakeUi, /Visual style"[\s\S]*?updateAnswer\(\{ visualStyle: value, ugcScriptApprovedAt: null \}\)/);
 assert.match(creativeChatIntakeUi, /Refresh script draft/);
 assert.match(creativeChatIntakeUi, /Use Hook → Info\/proof → CTA/);
@@ -251,15 +256,23 @@ assert.doesNotMatch(finishedAdPrompt.negativePrompt, /CTA button/);
 
 const buyerUgcDraft = buildCreativeUgcScriptDraft({
   campaignType: defaults.campaignType,
-  audience: defaults.audience,
+  audience: brief.targetAudience,
   market: defaults.market,
-  offerTitle: defaults.offer,
+  offerTitle: brief.offer,
   cta: "Check Buying Power",
+  propertyType: answers.propertyType,
   targetDurationSeconds: 20,
   creatorPersona: "Toronto buyer agent guide",
   hookAngle: "Speed to Sell",
   visualStyle: "native vertical creator POV",
 });
+assert.equal(inferCreativeUgcAudienceKind({ campaignType: "buyer", audience: "Buyers" }), "buyer");
+assert.equal(inferCreativeUgcAudienceKind({ audience: "Buyers", offer: "Access To Off Market Properties", cta: "View Homes" }), "buyer");
+assert.equal(inferCreativeUgcAudienceKind({ campaignType: "seller", audience: "Homeowners" }), "seller");
+assert.equal(inferCreativeUgcAudienceKind({ campaignType: "investor", offer: "Off-market deal flow" }), "investor");
+assert.equal(inferCreativeUgcAudienceKind({ campaignType: "commercial", offer: "Site shortlist" }), "commercial");
+assert.equal(resolveUgcScriptContext({ campaignType: "other", audience: "Prospects" }).campaignType, "unknown");
+assert.ok(resolveUgcScriptContext({ campaignType: "other", audience: "Prospects" }).rejectedReasons.includes("needs_campaign_classification"));
 const offMarketBuyerUgcDraft = buildCreativeUgcScriptDraft({
   campaignType: "buyer",
   audience: "Buyers",
@@ -284,7 +297,9 @@ assert.equal(
     script: offMarketBuyerUgcDraft,
     campaignType: "buyer",
     audience: "Buyers",
+    market: "Toronto, ON",
     offerTitle: "Access To Off Market Properties",
+    cta: "View Homes",
   }).accepted,
   true,
   "off-market buyer UGC script passes buyer-safe validation",
@@ -304,11 +319,150 @@ assert.equal(
     },
     campaignType: "buyer",
     audience: "Buyers",
+    market: "Toronto, ON",
     offerTitle: "Access To Off Market Properties",
+    cta: "View Homes",
   }).reasons.includes("buyer_seller_language_mismatch"),
   true,
   "buyer UGC validation rejects seller/homeowner script leakage",
 );
+const sellerUgcDraft = buildCreativeUgcScriptDraft({
+  campaignType: "seller",
+  audience: "Homeowners",
+  market: "Toronto, ON",
+  offerTitle: "Free Home Value And Buyer Demand Report",
+  cta: "Get Report",
+  targetDurationSeconds: 20,
+  creatorPersona: "Local Agent",
+  hookAngle: "Buyer Demand",
+  visualStyle: "Talking-head with local captions",
+});
+assert.match(sellerUgcDraft.fullScript, /own a home in Toronto|buyer demand|Get Report/i);
+assert.doesNotMatch(sellerUgcDraft.fullScript, /View Homes|pre-approval|buying power|custom home list|home search/i);
+assert.equal(
+  validateCreativeUgcScriptDraft({
+    script: sellerUgcDraft,
+    campaignType: "seller",
+    audience: "Homeowners",
+    market: "Toronto, ON",
+    offerTitle: "Free Home Value And Buyer Demand Report",
+    cta: "Get Report",
+  }).accepted,
+  true,
+  "seller UGC script passes seller-safe validation",
+);
+assert.equal(
+  validateCreativeUgcScriptDraft({
+    script: {
+      ...sellerUgcDraft,
+      cta: "Get Report",
+      lines: [
+        "If you are trying to buy a home in Toronto, ON, view homes before they disappear.",
+        "Most buyers need pre-approval and a clear home search plan.",
+        "Custom home list.",
+        "It helps with buying power.",
+        "Custom home list.",
+        "View Homes.",
+      ],
+    },
+    campaignType: "seller",
+    audience: "Homeowners",
+    market: "Toronto, ON",
+    offerTitle: "Free Home Value And Buyer Demand Report",
+    cta: "Get Report",
+  }).reasons.includes("seller_buyer_language_mismatch"),
+  true,
+  "seller UGC validation rejects buyer/search script leakage",
+);
+const investorUgcDraft = buildCreativeUgcScriptDraft({
+  campaignType: "investor",
+  audience: "Investors",
+  market: "Toronto, ON",
+  offerTitle: "Off-Market Deal Review",
+  cta: "Review Deals",
+  targetDurationSeconds: 20,
+  hookAngle: "Numbers First",
+});
+assert.match(investorUgcDraft.fullScript, /investors?|deals?|numbers|risk|Review Deals/i);
+assert.equal(validateCreativeUgcScriptDraft({
+  script: investorUgcDraft,
+  campaignType: "investor",
+  audience: "Investors",
+  market: "Toronto, ON",
+  offerTitle: "Off-Market Deal Review",
+  cta: "Review Deals",
+}).accepted, true, "investor UGC scripts avoid buyer/seller defaults");
+const commercialUgcDraft = buildCreativeUgcScriptDraft({
+  campaignType: "commercial",
+  audience: "Commercial tenants",
+  market: "Toronto, ON",
+  offerTitle: "Commercial Site Shortlist",
+  cta: "Book A Tour",
+  targetDurationSeconds: 20,
+  hookAngle: "Site Shortlist",
+});
+assert.match(commercialUgcDraft.fullScript, /commercial space|shortlist|requirements|Book A Tour/i);
+assert.equal(validateCreativeUgcScriptDraft({
+  script: commercialUgcDraft,
+  campaignType: "commercial",
+  audience: "Commercial tenants",
+  market: "Toronto, ON",
+  offerTitle: "Commercial Site Shortlist",
+  cta: "Book A Tour",
+}).accepted, true, "commercial UGC scripts avoid residential defaults");
+const unknownUgcDraft = buildCreativeUgcScriptDraft({
+  campaignType: "other",
+  audience: "Prospects",
+  market: "Toronto, ON",
+  offerTitle: "Campaign Plan",
+  cta: "Learn More",
+  targetDurationSeconds: 20,
+});
+assert.ok(unknownUgcDraft.rejectedReasons.includes("needs_campaign_classification"));
+assert.ok(validateCreativeUgcScriptDraft({
+  script: unknownUgcDraft,
+  campaignType: "other",
+  audience: "Prospects",
+  market: "Toronto, ON",
+  offerTitle: "Campaign Plan",
+  cta: "Learn More",
+}).reasons.includes("needs_campaign_classification"));
+assert.ok(validateCreativeUgcScriptDraft({
+  script: {
+    ...buyerUgcDraft,
+    lines: [
+      "If you are trying to buy a home in Toronto, ON, this is for families only.",
+      "Buyers need options.",
+      "Private buyer shortlist.",
+      "It helps match timing and must-haves.",
+      "Private buyer shortlist.",
+      "Check Buying Power.",
+    ],
+  },
+  campaignType: "buyer",
+  audience: defaults.audience,
+  market: defaults.market,
+  offerTitle: defaults.offer,
+  cta: "Check Buying Power",
+}).reasons.includes("housing_protected_class_language"), "protected-class housing copy is rejected");
+assert.ok(validateCreativeUgcScriptDraft({
+  script: {
+    ...buyerUgcDraft,
+    lines: [
+      "If you are trying to buy a home in Toronto, ON, I bought with this agent last month.",
+      "Buyers need options.",
+      "Private buyer shortlist.",
+      "It helps match timing and must-haves.",
+      "Private buyer shortlist.",
+      "Check Buying Power.",
+    ],
+  },
+  campaignType: "buyer",
+  audience: defaults.audience,
+  market: defaults.market,
+  offerTitle: defaults.offer,
+  cta: "Check Buying Power",
+}).reasons.includes("testimonial_unsubstantiated"), "fake testimonial framing is rejected");
 const sellerOfferTitle = normalizeCreativeOfferTitle({
   value: "14-Day Home Sale Plan. Delivered through a buyer consultation and qualification system for home buyers.",
   campaignType: "seller",
@@ -347,7 +501,9 @@ const naturalOffMarketValidation = validateCreativeUgcScriptDraft({
   script: naturalOffMarketScript,
   campaignType: defaults.campaignType,
   audience: defaults.audience,
+  market: defaults.market,
   offerTitle: "Off-market Property Access",
+  cta: "Click learn more",
 });
 assert.equal(
   naturalOffMarketValidation.accepted,
@@ -375,7 +531,9 @@ assert.equal(
     script: repetitiveScript,
     campaignType: defaults.campaignType,
     audience: defaults.audience,
+    market: defaults.market,
     offerTitle: defaults.offer,
+    cta: "Check Buying Power",
   }).accepted,
   false,
   "UGC script validator rejects repeated offer phrase spam",
@@ -387,7 +545,7 @@ const ugcBriefNeedsApproval = buildCreativeIntakeBrief({
   generationPhase: "ugc_video",
   targetDurationSeconds: 20,
   creatorPersona: "Toronto buyer agent guide",
-  hookAngle: "Most buyers miss options before they hit public search",
+  hookAngle: buyerUgcDraft.scriptAngle,
   visualStyle: "native vertical creator POV",
   pacing: "fast hook, clear explanation, direct CTA",
   cameraStyle: "phone-camera walkthrough",
@@ -406,7 +564,7 @@ const ugcBriefWithUnsafeScript = buildCreativeIntakeBrief({
   generationPhase: "ugc_video",
   targetDurationSeconds: 20,
   creatorPersona: "Toronto buyer agent guide",
-  hookAngle: "Most buyers miss options before they hit public search",
+  hookAngle: buyerUgcDraft.scriptAngle,
   visualStyle: "native vertical creator POV",
   pacing: "fast hook, clear explanation, direct CTA",
   cameraStyle: "phone-camera walkthrough",
@@ -426,7 +584,7 @@ const ugcBrief = buildCreativeIntakeBrief({
   generationPhase: "ugc_video",
   targetDurationSeconds: 20,
   creatorPersona: "Toronto buyer agent guide",
-  hookAngle: "Most buyers miss options before they hit public search",
+  hookAngle: buyerUgcDraft.scriptAngle,
   visualStyle: "native vertical creator POV",
   pacing: "fast hook, clear explanation, direct CTA",
   cameraStyle: "phone-camera walkthrough",
@@ -446,6 +604,14 @@ assert.equal(ugcBrief.ugcStyleBrief.targetDurationSeconds, 20);
 assert.equal(ugcBrief.ugcStyleBrief.referenceExamples.length, 2);
 assert.equal(ugcBrief.ugcStyleBrief.approvedScript.lines.join("\n"), buyerUgcDraft.lines.join("\n"));
 assert.equal(ugcBrief.ugcStyleBrief.scriptValidation.accepted, true);
+assert.equal(ugcBrief.ugcStyleBrief.resolvedCampaignType, "buyer");
+assert.equal(ugcBrief.ugcStyleBrief.scriptAngle, buyerUgcDraft.scriptAngle);
+assert.equal(ugcBrief.ugcStyleBrief.sourceContextHash, buyerUgcDraft.contextHash);
+assert.ok(ugcBrief.ugcStyleBrief.campaignTypeHash);
+assert.ok(ugcBrief.ugcStyleBrief.audienceHash);
+assert.ok(ugcBrief.ugcStyleBrief.marketHash);
+assert.ok(ugcBrief.ugcStyleBrief.offerHash);
+assert.ok(ugcBrief.ugcStyleBrief.ctaHash);
 const ugcPrompt = buildCreativeIntakePromptVersion(ugcBrief, 4);
 assert.match(ugcPrompt.generatedPrompt, /MARKETING STUDIO AI UGC VIDEO BRIEF/);
 assert.match(ugcPrompt.generatedPrompt, /15-30 second launch-quality range/);

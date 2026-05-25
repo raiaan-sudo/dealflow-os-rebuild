@@ -141,6 +141,15 @@ export type CreativeIntakeBrief = {
   brandHash: string;
   ugcScriptHash: string | null;
   ugcStyleBrief?: {
+    resolvedCampaignType?: string | null;
+    scriptAngle?: string | null;
+    sourceContextHash?: string | null;
+    campaignTypeHash?: string | null;
+    audienceHash?: string | null;
+    marketHash?: string | null;
+    offerHash?: string | null;
+    leadMagnetHash?: string | null;
+    ctaHash?: string | null;
     targetDurationSeconds: number;
     creatorPersona: string;
     hookAngle: string;
@@ -370,6 +379,8 @@ function buildCreativeBriefHashSet(params: {
         shotList: params.ugcStyleBrief.approvedScript.shotList,
         onScreenText: params.ugcStyleBrief.approvedScript.onScreenText,
         version: params.ugcStyleBrief.scriptVersion,
+        sourceContextHash: params.ugcStyleBrief.sourceContextHash ?? params.ugcStyleBrief.approvedScript.contextHash ?? null,
+        resolvedCampaignType: params.ugcStyleBrief.resolvedCampaignType ?? params.ugcStyleBrief.approvedScript.campaignType ?? null,
       })
     : null;
   const offerHash = sha256Short({ offerTitle: params.offerTitle });
@@ -397,6 +408,7 @@ function buildCreativeBriefHashSet(params: {
     ugcCreatorPersona: params.ugcStyleBrief?.creatorPersona ?? null,
     ugcHookAngle: params.ugcStyleBrief?.hookAngle ?? null,
     ugcVisualStyle: params.ugcStyleBrief?.visualStyle ?? null,
+    ugcSourceContextHash: params.ugcStyleBrief?.sourceContextHash ?? params.ugcStyleBrief?.approvedScript.contextHash ?? null,
     ugcScriptHash,
   });
 
@@ -690,6 +702,7 @@ export function buildCreativeIntakeBrief(
     offerTitle: offer,
     offerMechanism,
     cta,
+    propertyType,
     targetDurationSeconds,
     creatorPersona: ugcPersona,
     hookAngle: ugcHookAngle,
@@ -703,10 +716,12 @@ export function buildCreativeIntakeBrief(
     lines: approvedScriptLines,
     hook: approvedScriptLines[0] || draftScript.hook,
     problem: approvedScriptLines[1] || draftScript.problem,
-    mechanism: approvedScriptLines[2] || draftScript.mechanism,
-    proof: approvedScriptLines[3] || draftScript.proof,
-    offer: approvedScriptLines[4] || draftScript.offer,
+    offer: approvedScriptLines[2] || draftScript.offer,
+    mechanism: approvedScriptLines[3] || draftScript.mechanism,
+    proof: approvedScriptLines[4] || draftScript.proof,
     cta: approvedScriptLines[5] || draftScript.cta,
+    body: approvedScriptLines.slice(1, -1).join(" ") || draftScript.body,
+    fullScript: approvedScriptLines.join(" ") || draftScript.fullScript,
     shotList: Array.isArray(answers.ugcShotList) && answers.ugcShotList.length > 0
       ? answers.ugcShotList.map((line) => safeText(line)).filter(Boolean).slice(0, 8)
       : draftScript.shotList,
@@ -719,7 +734,10 @@ export function buildCreativeIntakeBrief(
     script: approvedScript,
     campaignType: defaults.campaignType,
     audience: targetAudience,
+    market,
     offerTitle: offer,
+    cta,
+    propertyType,
   });
   const ugcConcepts = buildUgcConceptOptions({
     market,
@@ -733,6 +751,15 @@ export function buildCreativeIntakeBrief(
   });
   const ugcStyleBrief = creativeIntakeIncludesUgcVideo(generationPhase)
     ? {
+        resolvedCampaignType: approvedScript.campaignType,
+        scriptAngle: approvedScript.scriptAngle,
+        sourceContextHash: approvedScript.contextHash,
+        campaignTypeHash: sha256Short({ campaignType: defaults.campaignType ?? null }),
+        audienceHash: sha256Short({ targetAudience }),
+        marketHash: sha256Short({ market }),
+        offerHash: sha256Short({ offer }),
+        leadMagnetHash: sha256Short({ leadMagnet: offer }),
+        ctaHash: sha256Short({ cta }),
         targetDurationSeconds,
         creatorPersona: ugcPersona,
         hookAngle: ugcHookAngle,

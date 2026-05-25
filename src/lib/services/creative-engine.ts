@@ -157,6 +157,7 @@ export type VideoCreativeAsset = {
   scriptHash?: string | null;
   briefHash?: string | null;
   ugcScriptHash?: string | null;
+  sourceContextHash?: string | null;
   briefRevisionNumber?: number | null;
   campaignSpecificContext?: {
     campaignId?: string | null;

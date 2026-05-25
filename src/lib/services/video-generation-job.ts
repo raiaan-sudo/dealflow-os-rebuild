@@ -52,6 +52,8 @@ export type VideoGenerationJobPayload = {
   location: string | null;
   force: boolean;
   targetDurationSeconds?: number | null;
+  ugcScriptHash?: string | null;
+  sourceContextHash?: string | null;
   creativeIntake?: CreativeIntakeGenerationContext | null;
 };
 
@@ -377,6 +379,7 @@ function buildCreativeIntakeAssetMetadata(
       ctaHash: creativeIntake.ctaHash ?? null,
       brandHash: creativeIntake.brandHash ?? null,
       ugcScriptHash: creativeIntake.ugcScriptHash ?? null,
+      sourceContextHash: creativeIntake.ugcStyleBrief?.sourceContextHash ?? null,
       ugcStyleBrief: creativeIntake.ugcStyleBrief ?? null,
       promptVersionCreatedAt: creativeIntake.promptVersion.createdAt,
     },
@@ -679,6 +682,7 @@ export async function runVideoGenerationJob(params: {
       providerAssetId: null,
       scriptHash: currentScriptHash,
       ugcScriptHash: creativeIntake?.ugcScriptHash ?? currentScriptHash,
+      sourceContextHash: creativeIntake?.ugcStyleBrief?.sourceContextHash ?? params.payload.sourceContextHash ?? null,
       briefHash: creativeIntake?.briefHash ?? null,
       briefRevisionNumber: creativeIntake?.revisionNumber ?? null,
     };
@@ -721,6 +725,7 @@ export async function runVideoGenerationJob(params: {
           unavailableReason: "AI video generation is not configured yet.",
           scriptHash: currentScriptHash,
           ugcScriptHash: creativeIntake?.ugcScriptHash ?? currentScriptHash,
+          sourceContextHash: creativeIntake?.ugcStyleBrief?.sourceContextHash ?? params.payload.sourceContextHash ?? null,
           ...buildCreativeIntakeAssetMetadata(creativeIntake),
         } as Json,
       } as never)
@@ -770,6 +775,7 @@ export async function runVideoGenerationJob(params: {
       providerAssetId: null,
       scriptHash: currentScriptHash,
       ugcScriptHash: creativeIntake?.ugcScriptHash ?? currentScriptHash,
+      sourceContextHash: creativeIntake?.ugcStyleBrief?.sourceContextHash ?? params.payload.sourceContextHash ?? null,
       briefHash: creativeIntake?.briefHash ?? null,
       briefRevisionNumber: creativeIntake?.revisionNumber ?? null,
     };
@@ -876,6 +882,7 @@ export async function runVideoGenerationJob(params: {
         providerAssetId: null,
         scriptHash: currentScriptHash,
         ugcScriptHash: creativeIntake?.ugcScriptHash ?? currentScriptHash,
+        sourceContextHash: creativeIntake?.ugcStyleBrief?.sourceContextHash ?? params.payload.sourceContextHash ?? null,
         briefHash: creativeIntake?.briefHash ?? null,
         briefRevisionNumber: creativeIntake?.revisionNumber ?? null,
       };
@@ -924,6 +931,7 @@ export async function runVideoGenerationJob(params: {
       providerAssetId: null,
       scriptHash: currentScriptHash,
       ugcScriptHash: creativeIntake?.ugcScriptHash ?? currentScriptHash,
+      sourceContextHash: creativeIntake?.ugcStyleBrief?.sourceContextHash ?? params.payload.sourceContextHash ?? null,
       briefHash: creativeIntake?.briefHash ?? null,
       briefRevisionNumber: creativeIntake?.revisionNumber ?? null,
     };
@@ -987,6 +995,7 @@ export async function runVideoGenerationJob(params: {
         providerAssetId: providerVideo.providerAssetId,
         scriptHash: currentScriptHash,
         ugcScriptHash: creativeIntake?.ugcScriptHash ?? currentScriptHash,
+        sourceContextHash: creativeIntake?.ugcStyleBrief?.sourceContextHash ?? params.payload.sourceContextHash ?? null,
         briefHash: creativeIntake?.briefHash ?? null,
         briefRevisionNumber: creativeIntake?.revisionNumber ?? null,
       };
@@ -1085,6 +1094,7 @@ export async function runVideoGenerationJob(params: {
         promptHash,
         scriptHash,
         ugcScriptHash: currentUgcScriptHash,
+        sourceContextHash: creativeIntake?.ugcStyleBrief?.sourceContextHash ?? params.payload.sourceContextHash ?? null,
         briefHash: creativeIntake?.briefHash ?? null,
         staticBriefHash: creativeIntake?.staticBriefHash ?? null,
         offerHash: creativeIntake?.offerHash ?? null,
@@ -1178,6 +1188,7 @@ export async function runVideoGenerationJob(params: {
     promptHash,
     scriptHash,
     ugcScriptHash: currentUgcScriptHash,
+    sourceContextHash: creativeIntake?.ugcStyleBrief?.sourceContextHash ?? params.payload.sourceContextHash ?? null,
     briefHash: creativeIntake?.briefHash ?? null,
     briefRevisionNumber: creativeIntake?.revisionNumber ?? null,
     campaignSpecificContext,

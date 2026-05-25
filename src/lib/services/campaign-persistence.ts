@@ -580,6 +580,7 @@ export function mapVideoCreativeAssets(rows: CreativeAssetRow[]): VideoCreativeA
 	      promptHash: metadataString(metadata, "promptHash"),
 	      scriptHash: metadataString(metadata, "scriptHash"),
 	      ugcScriptHash: metadataString(metadata, "ugcScriptHash") ?? metadataString(metadata, "scriptHash"),
+	      sourceContextHash: metadataString(metadata, "sourceContextHash"),
 	      briefHash: metadataString(metadata, "briefHash"),
 	      briefRevisionNumber: metadataNumber(metadata, "briefRevisionNumber"),
 	      campaignSpecificContext:

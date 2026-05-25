@@ -64,10 +64,10 @@ const personaOptions = [
 ] as const;
 
 const sellerHookOptions = [
-  ["Speed to Sell", "Speed to Sell"],
+  ["Buyer Demand", "Buyer Demand"],
   ["Price Confidence", "Price Confidence"],
-  ["Avoid Wasted Time", "Avoid Wasted Time"],
-  ["Local Market Reality", "Local Market Reality"],
+  ["Timing Clarity", "Timing Clarity"],
+  ["Avoid Underpricing", "Avoid Underpricing"],
 ] as const;
 
 const buyerHookOptions = [
@@ -79,9 +79,9 @@ const buyerHookOptions = [
 
 const investorHookOptions = [
   ["Off-Market Deal Flow", "Off-Market Deal Flow"],
-  ["Cash-Flow Clarity", "Cash-Flow Clarity"],
-  ["Avoid Bad Deals", "Avoid Bad Deals"],
-  ["Local Yield Reality", "Local Yield Reality"],
+  ["Numbers First", "Numbers First"],
+  ["Risk Check", "Risk Check"],
+  ["Yield Clarity", "Yield Clarity"],
 ] as const;
 
 const commercialHookOptions = [
@@ -89,6 +89,11 @@ const commercialHookOptions = [
   ["Lease/Purchase Clarity", "Lease/Purchase Clarity"],
   ["Avoid Wasted Tours", "Avoid Wasted Tours"],
   ["Local Availability", "Local Availability"],
+] as const;
+
+const mixedHookOptions = [
+  ["Single Primary CTA", "Single Primary CTA"],
+  ["Clear Next Step", "Clear Next Step"],
 ] as const;
 
 const visualOptions = [
@@ -105,12 +110,24 @@ const scriptReasonLabels: Record<string, string> = {
   script_too_long_for_duration: "shorten the script or choose a longer duration",
   seller_buyer_language_mismatch: "remove buyer language from this seller campaign",
   buyer_seller_language_mismatch: "remove seller language from this buyer campaign",
+  investor_language_mismatch: "remove residential buyer or seller language from this investor campaign",
+  commercial_language_mismatch: "remove residential buyer or seller language from this commercial campaign",
+  needs_campaign_classification: "classify this campaign as buyer, seller, investor, commercial, or mixed before approving a script",
+  needs_primary_cta: "choose one primary CTA for this mixed campaign",
+  audience_missing: "add the audience before approving the script",
+  market_missing: "add the market before approving the script",
+  offer_missing: "add the campaign offer before approving the script",
+  hook_missing_market_or_audience: "make the hook mention the audience and market",
+  cta_mismatch: "make the script CTA match the campaign CTA exactly",
+  multiple_ctas: "use one clear CTA only",
+  testimonial_unsubstantiated: "remove testimonial-style claims unless a real testimonial is approved",
+  housing_protected_class_language: "remove protected-class or exclusionary housing language",
+  unsupported_guarantee: "remove unsupported guarantee language",
   guaranteed_approval: "remove guaranteed approval language",
   guaranteed_financing: "remove guaranteed financing language",
   guaranteed_sale: "remove guaranteed sale language",
   guaranteed_roi: "remove guaranteed ROI language",
   fake_urgency: "remove fake urgency",
-  protected_class_steering: "remove protected-class steering language",
   internal_jargon: "remove internal system wording",
 };
 
@@ -133,6 +150,7 @@ function defaultAnswers(defaults: CreativeIntakeCampaignDefaults): CreativeIntak
     market: defaults.market,
     offerTitle,
     offerMechanism: defaults.offer,
+    propertyType: defaults.propertyType,
     cta: defaults.cta ?? "See My Options",
     targetDurationSeconds: 20,
     creatorPersona: "Local Agent",
@@ -145,10 +163,12 @@ function defaultAnswers(defaults: CreativeIntakeCampaignDefaults): CreativeIntak
         ? "sellers"
         : audienceKind === "investor"
           ? "investors"
-          : audienceKind === "commercial"
-            ? "custom"
-          : "buyers",
-    customAudience: audienceKind === "commercial" ? (defaults.audience ?? "Commercial prospects") : undefined,
+          : audienceKind === "buyer"
+            ? "buyers"
+            : "custom",
+    customAudience: audienceKind === "commercial" || audienceKind === "mixed" || audienceKind === "unknown"
+      ? (defaults.audience ?? "")
+      : undefined,
     offer: "custom",
     customOffer: offerTitle,
     offerTitle,
@@ -188,13 +208,17 @@ function getDefaultHookAngle(audienceKind: ReturnType<typeof inferCreativeUgcAud
   if (audienceKind === "buyer") return "Early Access";
   if (audienceKind === "investor") return "Off-Market Deal Flow";
   if (audienceKind === "commercial") return "Site Shortlist";
-  return "Speed to Sell";
+  if (audienceKind === "mixed") return "Single Primary CTA";
+  if (audienceKind === "unknown") return "";
+  return "Buyer Demand";
 }
 
 function getHookOptions(audienceKind: ReturnType<typeof inferCreativeUgcAudienceKind>) {
   if (audienceKind === "buyer") return buyerHookOptions;
   if (audienceKind === "investor") return investorHookOptions;
   if (audienceKind === "commercial") return commercialHookOptions;
+  if (audienceKind === "mixed") return mixedHookOptions;
+  if (audienceKind === "unknown") return [];
   return sellerHookOptions;
 }
 
@@ -217,6 +241,7 @@ function buildDraftForAnswers(defaults: CreativeIntakeCampaignDefaults, answers:
     market: answers.market,
     offerTitle: answers.offerTitle || answers.customOffer || defaults.offer,
     offerMechanism: answers.offerMechanism || defaults.offer,
+    propertyType: answers.propertyType || defaults.propertyType,
     cta: answers.cta || defaults.cta,
     targetDurationSeconds: answers.targetDurationSeconds,
     creatorPersona: answers.creatorPersona,
@@ -247,7 +272,10 @@ function normalizeInitialAnswers(defaults: CreativeIntakeCampaignDefaults, answe
     script: { ...draft, lines: scriptLines },
     campaignType: defaults.campaignType,
     audience: getAudienceLabelFromAnswers(nextAnswers) || defaults.audience,
+    market: nextAnswers.market || defaults.market,
     offerTitle: nextAnswers.offerTitle || nextAnswers.customOffer || defaults.offer,
+    cta: nextAnswers.cta || defaults.cta,
+    propertyType: nextAnswers.propertyType || defaults.propertyType,
   });
 
   if (scriptValidation.reasons.includes("buyer_seller_language_mismatch") || scriptValidation.reasons.includes("seller_buyer_language_mismatch")) {
@@ -337,7 +365,10 @@ export function CreativeChatIntake({
     script: { ...ugcDraft, lines: scriptLines },
     campaignType: defaults.campaignType,
     audience: audienceLabel,
+    market: answers.market || defaults.market,
     offerTitle: answers.offerTitle || answers.customOffer || defaults.offer,
+    cta: answers.cta || defaults.cta,
+    propertyType: answers.propertyType || defaults.propertyType,
   });
   const scriptApproved = Boolean(answers.ugcScriptApprovedAt) && scriptValidation.accepted;
   const complete = useMemo(() => {
@@ -783,6 +814,11 @@ function ChoiceGroup({
     <div>
       <p className="text-sm font-medium text-foreground">{label}</p>
       <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label={label}>
+        {options.length === 0 ? (
+          <p className="rounded-2xl border border-amber-300/18 bg-amber-300/[0.08] px-3 py-2 text-xs font-semibold text-amber-100">
+            Classify the campaign before choosing this setting.
+          </p>
+        ) : null}
         {options.map(([key, title]) => {
           const active = value === key;
           return (
