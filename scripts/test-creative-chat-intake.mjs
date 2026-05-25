@@ -125,7 +125,10 @@ assert.match(creativeChatIntakeUi, /Approved UGC script/);
 assert.match(creativeChatIntakeUi, /Open Marketing Studio chat/);
 assert.match(creativeChatIntakeUi, /Target length"[\s\S]*?updateAnswer\(\{ targetDurationSeconds: Number\(value\), ugcScriptApprovedAt: null \}\)/);
 assert.match(creativeChatIntakeUi, /Creator persona"[\s\S]*?updateAnswer\(\{ creatorPersona: value, ugcScriptApprovedAt: null \}\)/);
-assert.match(creativeChatIntakeUi, /Hook angle"[\s\S]*?updateAnswer\(\{ hookAngle: value, ugcScriptApprovedAt: null \}\)/);
+assert.match(creativeChatIntakeUi, /Hook angle"[\s\S]*?activeHookOptions[\s\S]*?updateAnswer\(\{ hookAngle: value, ugcScriptApprovedAt: null \}\)/);
+assert.match(creativeChatIntakeUi, /Early Access/);
+assert.match(creativeChatIntakeUi, /Hidden Inventory/);
+assert.match(creativeChatIntakeUi, /Budget Confidence/);
 assert.match(creativeChatIntakeUi, /Visual style"[\s\S]*?updateAnswer\(\{ visualStyle: value, ugcScriptApprovedAt: null \}\)/);
 assert.match(creativeChatIntakeUi, /Refresh script draft/);
 assert.match(creativeChatIntakeUi, /Use Hook → Info\/proof → CTA/);
@@ -257,6 +260,55 @@ const buyerUgcDraft = buildCreativeUgcScriptDraft({
   hookAngle: "Speed to Sell",
   visualStyle: "native vertical creator POV",
 });
+const offMarketBuyerUgcDraft = buildCreativeUgcScriptDraft({
+  campaignType: "buyer",
+  audience: "Buyers",
+  market: "Toronto, ON",
+  offerTitle: "Access To Off Market Properties",
+  offerMechanism: "Access To Off Market Properties",
+  cta: "View Homes",
+  targetDurationSeconds: 20,
+  creatorPersona: "Local Agent",
+  hookAngle: "Early Access",
+  visualStyle: "Talking-head with local captions",
+});
+const offMarketBuyerScriptText = offMarketBuyerUgcDraft.lines.join(" ");
+assert.match(offMarketBuyerScriptText, /buyers|homes|properties|off market|View Homes/i);
+assert.doesNotMatch(
+  offMarketBuyerScriptText,
+  /homeowners|selling options|before they list|listing strategy|speed to sell|sell your home/i,
+  "buyer campaign UGC script must not inherit seller/homeowner language",
+);
+assert.equal(
+  validateCreativeUgcScriptDraft({
+    script: offMarketBuyerUgcDraft,
+    campaignType: "buyer",
+    audience: "Buyers",
+    offerTitle: "Access To Off Market Properties",
+  }).accepted,
+  true,
+  "off-market buyer UGC script passes buyer-safe validation",
+);
+assert.equal(
+  validateCreativeUgcScriptDraft({
+    script: {
+      ...offMarketBuyerUgcDraft,
+      lines: [
+        "Most Toronto, ON homeowners wait too long before they know their real selling options.",
+        "They need a clear plan for price, timing, demand, and the next move before they list.",
+        "Access To Off Market Properties.",
+        "It gives you a cleaner read before you commit to the wrong listing strategy.",
+        "Access To Off Market Properties.",
+        "View Homes.",
+      ],
+    },
+    campaignType: "buyer",
+    audience: "Buyers",
+    offerTitle: "Access To Off Market Properties",
+  }).reasons.includes("buyer_seller_language_mismatch"),
+  true,
+  "buyer UGC validation rejects seller/homeowner script leakage",
+);
 const sellerOfferTitle = normalizeCreativeOfferTitle({
   value: "14-Day Home Sale Plan. Delivered through a buyer consultation and qualification system for home buyers.",
   campaignType: "seller",

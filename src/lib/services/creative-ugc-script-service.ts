@@ -37,6 +37,18 @@ const UNSAFE_COPY_PATTERNS = [
   ["protected_class_steering", /\b(families only|no kids|young professionals only|safe for women|immigrant|race|religion)\b/i],
 ] as const;
 
+const BUYER_LANGUAGE_PATTERNS = [
+  /\b(buyer|buyers|homebuyer|homebuyers|buying power|pre[-\s]?approval|credit score)\b/i,
+  /\b(view homes|see homes|homes that match|book a showing|showings?)\b/i,
+  /\b(off[-\s]?market|early access|private listings?|property shortlist|home shortlist|available properties|inventory)\b/i,
+] as const;
+
+const SELLER_LANGUAGE_PATTERNS = [
+  /\b(seller|sellers|homeowner|homeowners|home value|home valuation)\b/i,
+  /\b(sell your home|selling options|speed to sell|home sale plan)\b/i,
+  /\b(before (?:they|you) list|before listing|listing strategy|listing consultation|seller conversation)\b/i,
+] as const;
+
 function safeText(value: unknown) {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
 }
@@ -50,6 +62,10 @@ function normalizeDuration(value: unknown) {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.min(30, Math.max(15, Math.round(value)))
     : 20;
+}
+
+function hasAnyPattern(value: string, patterns: readonly RegExp[]) {
+  return patterns.some((pattern) => pattern.test(value));
 }
 
 function cleanMechanismContext(params: {
@@ -67,11 +83,11 @@ function cleanMechanismContext(params: {
     return "";
   }
 
-  if (params.audienceKind === "seller" && /\b(buyer consultation|home buyers|credit score|pre[-\s]?approval|buying power)\b/i.test(text)) {
+  if (params.audienceKind === "seller" && hasAnyPattern(text, BUYER_LANGUAGE_PATTERNS)) {
     return "";
   }
 
-  if (params.audienceKind === "buyer" && /\b(list your home|before you list|listing strategy|home sale plan|sell your home)\b/i.test(text)) {
+  if (params.audienceKind === "buyer" && hasAnyPattern(text, SELLER_LANGUAGE_PATTERNS)) {
     return "";
   }
 
@@ -113,20 +129,43 @@ export function inferCreativeUgcAudienceKind(params: {
   campaignType?: CampaignIntent | string | null;
   audience?: string | null;
   offer?: string | null;
+  cta?: string | null;
 }) {
-  const text = `${params.campaignType ?? ""} ${params.audience ?? ""} ${params.offer ?? ""}`.toLowerCase();
+  const campaignType = safeText(params.campaignType).toLowerCase();
+  const audience = safeText(params.audience).toLowerCase();
+  const offer = safeText(params.offer).toLowerCase();
+  const cta = safeText(params.cta).toLowerCase();
+  const combined = `${campaignType} ${audience} ${offer} ${cta}`.trim();
+  const scores = {
+    seller: 0,
+    buyer: 0,
+    investor: 0,
+    commercial: 0,
+  };
 
-  if (/\b(seller|sell|listing|list|homeowner|expired)\b/.test(text)) {
-    return "seller" as const;
+  if (/\bseller\b/.test(campaignType)) scores.seller += 4;
+  if (/\bbuyer\b/.test(campaignType)) scores.buyer += 4;
+  if (/\binvestor\b/.test(campaignType)) scores.investor += 4;
+  if (/\bcommercial\b/.test(campaignType)) scores.commercial += 4;
+
+  if (hasAnyPattern(audience, SELLER_LANGUAGE_PATTERNS)) scores.seller += 3;
+  if (hasAnyPattern(audience, BUYER_LANGUAGE_PATTERNS)) scores.buyer += 3;
+  if (/\b(investor|cash flow|cap rate|roi|deal flow)\b/.test(audience)) scores.investor += 3;
+  if (/\b(commercial|lease|space|tenant|site)\b/.test(audience)) scores.commercial += 3;
+
+  if (hasAnyPattern(`${offer} ${cta}`, SELLER_LANGUAGE_PATTERNS)) scores.seller += 2;
+  if (hasAnyPattern(`${offer} ${cta}`, BUYER_LANGUAGE_PATTERNS)) scores.buyer += 2;
+  if (/\b(investor|cash flow|cap rate|roi|deals?|distressed)\b/.test(`${offer} ${cta}`)) scores.investor += 2;
+  if (/\b(commercial|lease|space|tenant|site)\b/.test(`${offer} ${cta}`)) scores.commercial += 2;
+
+  if (/\bexpired listings?\b/.test(combined)) {
+    scores.seller += 2;
   }
-  if (/\b(investor|roi|cash flow|cap rate|deal)\b/.test(text)) {
-    return "investor" as const;
-  }
-  if (/\b(commercial|lease|space|tenant)\b/.test(text)) {
-    return "commercial" as const;
-  }
-  if (/\b(buyer|buy|pre[-\s]?con|preconstruction|homes?|shortlist|approval|credit)\b/.test(text)) {
-    return "buyer" as const;
+
+  const ranked = Object.entries(scores).sort((first, second) => second[1] - first[1]);
+  const [winner, score] = ranked[0] ?? ["general", 0];
+  if (score > 0) {
+    return winner as Exclude<CreativeUgcAudienceKind, "general">;
   }
 
   return "general" as const;
@@ -195,6 +234,7 @@ export function buildCreativeUgcScriptDraft(params: {
     campaignType: params.campaignType,
     audience: params.audience,
     offer: offerTitle,
+    cta: params.cta,
   });
   const market = safeText(params.market) || "your local market";
   const cta = safeText(params.cta) || "See if this is a fit";
@@ -205,6 +245,10 @@ export function buildCreativeUgcScriptDraft(params: {
     value: params.offerMechanism,
     audienceKind,
   });
+  const usableMechanismContext =
+    mechanismContext && mechanismContext.toLowerCase() !== offerTitle.toLowerCase()
+      ? mechanismContext
+      : "";
 
   const scripts = {
     seller: {
@@ -212,23 +256,27 @@ export function buildCreativeUgcScriptDraft(params: {
         ? `Most ${market} homeowners do not need another vague home value estimate.`
         : `Most ${market} homeowners wait too long before they know their real selling options.`,
       problem: "They need a clear plan for price, timing, demand, and the next move before they list.",
-      mechanism: mechanismContext || `${offerTitle} shows the practical path for what could happen next.`,
+      mechanism: usableMechanismContext || `${offerTitle} shows the practical path for what could happen next.`,
       proof: "It gives you a cleaner read before you commit to the wrong listing strategy.",
       offer: offerTitle,
       cta,
     },
     buyer: {
-      hook: `By the time most buyers see the obvious listings in ${market}, the best-fit options may already be gone.`,
-      problem: "The issue is not effort. It is knowing which homes fit your timing, budget, and next step.",
-      mechanism: mechanismContext || `${offerTitle} organizes the right matches before the search gets noisy.`,
-      proof: "You get a clearer path before wasting time on the wrong homes.",
+      hook: hookAngle.includes("budget") || hookAngle.includes("price")
+        ? `Most ${market} buyers need a clearer read on fit, budget, and next steps before they book showings.`
+        : hookAngle.includes("wasted")
+          ? `Most ${market} buyers waste weeks chasing the same public listings before they see better-fit options.`
+          : `Most ${market} buyers never see the better-fit homes before the obvious options get crowded.`,
+      problem: "The issue is not effort. It is knowing which properties fit your timing, budget, and next move.",
+      mechanism: usableMechanismContext || `${offerTitle} organizes the right matches before the search gets noisy.`,
+      proof: "You get a cleaner shortlist before wasting time on the wrong homes or showings.",
       offer: offerTitle,
       cta,
     },
     investor: {
       hook: `If you are only checking public listings in ${market}, the best deals may already be filtered out.`,
       problem: "The risk is chasing properties before the numbers, timing, and downside are clear.",
-      mechanism: mechanismContext || `${offerTitle} helps compare opportunities around fit, risk, and upside.`,
+      mechanism: usableMechanismContext || `${offerTitle} helps compare opportunities around fit, risk, and upside.`,
       proof: "That gives you a cleaner reason to review the deal before capital moves.",
       offer: offerTitle,
       cta,
@@ -236,7 +284,7 @@ export function buildCreativeUgcScriptDraft(params: {
     commercial: {
       hook: `The wrong ${market} space shortlist can waste weeks before you know what actually fits.`,
       problem: "Most searches break down when timing, requirements, and availability are compared too late.",
-      mechanism: mechanismContext || `${offerTitle} narrows the options around fit, location, and timing.`,
+      mechanism: usableMechanismContext || `${offerTitle} narrows the options around fit, location, and timing.`,
       proof: "That gives you a clearer path before the search gets noisy.",
       offer: offerTitle,
       cta,
@@ -244,7 +292,7 @@ export function buildCreativeUgcScriptDraft(params: {
     general: {
       hook: `Most people in ${market} do not need more noise. They need a clearer next step.`,
       problem: "The hard part is knowing which option is actually worth acting on.",
-      mechanism: mechanismContext || `${offerTitle} turns the campaign into a simple decision path.`,
+      mechanism: usableMechanismContext || `${offerTitle} turns the campaign into a simple decision path.`,
       proof: "That gives you a cleaner reason to move forward.",
       offer: offerTitle,
       cta,
@@ -298,6 +346,7 @@ export function validateCreativeUgcScriptDraft(params: {
     campaignType: params.campaignType,
     audience: params.audience,
     offer: params.offerTitle,
+    cta: params.script.cta,
   });
   const offerTitle = normalizeCreativeOfferTitle({
     value: params.offerTitle || params.script.offer,
@@ -325,10 +374,10 @@ export function validateCreativeUgcScriptDraft(params: {
     repeatedOfferCount > 2 ? "offer_phrase_repeated" : null,
     [...duplicateLineCount.values()].some((count) => count > 1) ? "script_line_repeated" : null,
     wordCount > maxWords ? "script_too_long_for_duration" : null,
-    audienceKind === "seller" && /\b(buyer shortlist|home buyers|pre[-\s]?approval|credit score|buying power)\b/i.test(text)
+    audienceKind === "seller" && hasAnyPattern(text, BUYER_LANGUAGE_PATTERNS)
       ? "seller_buyer_language_mismatch"
       : null,
-    audienceKind === "buyer" && /\b(list your home|before you list|listing strategy|home sale plan|sell your home)\b/i.test(text)
+    audienceKind === "buyer" && hasAnyPattern(text, SELLER_LANGUAGE_PATTERNS)
       ? "buyer_seller_language_mismatch"
       : null,
     ...UNSAFE_COPY_PATTERNS.map(([code, pattern]) => pattern.test(text) ? code : null),

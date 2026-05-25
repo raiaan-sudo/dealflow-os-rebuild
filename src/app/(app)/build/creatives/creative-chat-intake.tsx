@@ -15,6 +15,7 @@ import type {
 } from "@/lib/services/creative-chat-intake-service";
 import {
   buildCreativeUgcScriptDraft,
+  inferCreativeUgcAudienceKind,
   normalizeCreativeOfferTitle,
   validateCreativeUgcScriptDraft,
 } from "@/lib/services/creative-ugc-script-service";
@@ -62,11 +63,32 @@ const personaOptions = [
   ["Direct Response Narrator", "Direct Response Narrator"],
 ] as const;
 
-const hookOptions = [
+const sellerHookOptions = [
   ["Speed to Sell", "Speed to Sell"],
   ["Price Confidence", "Price Confidence"],
   ["Avoid Wasted Time", "Avoid Wasted Time"],
   ["Local Market Reality", "Local Market Reality"],
+] as const;
+
+const buyerHookOptions = [
+  ["Early Access", "Early Access"],
+  ["Hidden Inventory", "Hidden Inventory"],
+  ["Avoid Wasted Time", "Avoid Wasted Time"],
+  ["Budget Confidence", "Budget Confidence"],
+] as const;
+
+const investorHookOptions = [
+  ["Off-Market Deal Flow", "Off-Market Deal Flow"],
+  ["Cash-Flow Clarity", "Cash-Flow Clarity"],
+  ["Avoid Bad Deals", "Avoid Bad Deals"],
+  ["Local Yield Reality", "Local Yield Reality"],
+] as const;
+
+const commercialHookOptions = [
+  ["Site Shortlist", "Site Shortlist"],
+  ["Lease/Purchase Clarity", "Lease/Purchase Clarity"],
+  ["Avoid Wasted Tours", "Avoid Wasted Tours"],
+  ["Local Availability", "Local Availability"],
 ] as const;
 
 const visualOptions = [
@@ -93,11 +115,18 @@ const scriptReasonLabels: Record<string, string> = {
 };
 
 function defaultAnswers(defaults: CreativeIntakeCampaignDefaults): CreativeIntakeAnswers {
+  const audienceKind = inferCreativeUgcAudienceKind({
+    campaignType: defaults.campaignType,
+    audience: defaults.audience,
+    offer: defaults.offer,
+    cta: defaults.cta,
+  });
   const offerTitle = normalizeCreativeOfferTitle({
     value: defaults.offer,
     campaignType: defaults.campaignType,
     audience: defaults.audience,
   });
+  const hookAngle = getDefaultHookAngle(audienceKind);
   const draft = buildCreativeUgcScriptDraft({
     campaignType: defaults.campaignType,
     audience: defaults.audience,
@@ -107,16 +136,19 @@ function defaultAnswers(defaults: CreativeIntakeCampaignDefaults): CreativeIntak
     cta: defaults.cta ?? "See My Options",
     targetDurationSeconds: 20,
     creatorPersona: "Local Agent",
-    hookAngle: "Speed to Sell",
+    hookAngle,
     visualStyle: "Talking-head with local captions",
   });
   return {
     targetAudience:
-      defaults.campaignType === "seller"
+      audienceKind === "seller"
         ? "sellers"
-        : defaults.campaignType === "investor"
+        : audienceKind === "investor"
           ? "investors"
+          : audienceKind === "commercial"
+            ? "custom"
           : "buyers",
+    customAudience: audienceKind === "commercial" ? (defaults.audience ?? "Commercial prospects") : undefined,
     offer: "custom",
     customOffer: offerTitle,
     offerTitle,
@@ -134,7 +166,7 @@ function defaultAnswers(defaults: CreativeIntakeCampaignDefaults): CreativeIntak
     generationPhase: "static_and_ugc",
     targetDurationSeconds: 20,
     creatorPersona: "Local Agent",
-    hookAngle: "Speed to Sell",
+    hookAngle,
     visualStyle: "Talking-head with local captions",
     pacing: "Fast hook, clear mechanism, calm CTA",
     cameraStyle: "Phone-camera creator POV",
@@ -152,12 +184,84 @@ function defaultAnswers(defaults: CreativeIntakeCampaignDefaults): CreativeIntak
   };
 }
 
+function getDefaultHookAngle(audienceKind: ReturnType<typeof inferCreativeUgcAudienceKind>) {
+  if (audienceKind === "buyer") return "Early Access";
+  if (audienceKind === "investor") return "Off-Market Deal Flow";
+  if (audienceKind === "commercial") return "Site Shortlist";
+  return "Speed to Sell";
+}
+
+function getHookOptions(audienceKind: ReturnType<typeof inferCreativeUgcAudienceKind>) {
+  if (audienceKind === "buyer") return buyerHookOptions;
+  if (audienceKind === "investor") return investorHookOptions;
+  if (audienceKind === "commercial") return commercialHookOptions;
+  return sellerHookOptions;
+}
+
 function getAnswerLabel(value: string | null | undefined, options: readonly (readonly [string, string])[]) {
   return options.find(([key]) => key === value)?.[1] ?? value ?? "Not set";
 }
 
 function describeScriptReason(reason: string) {
   return scriptReasonLabels[reason] ?? reason.replaceAll("_", " ");
+}
+
+function getAudienceLabelFromAnswers(answers: CreativeIntakeAnswers) {
+  return answers.targetAudience === "custom" ? answers.customAudience : getAnswerLabel(answers.targetAudience, audienceOptions);
+}
+
+function buildDraftForAnswers(defaults: CreativeIntakeCampaignDefaults, answers: CreativeIntakeAnswers) {
+  return buildCreativeUgcScriptDraft({
+    campaignType: defaults.campaignType,
+    audience: getAudienceLabelFromAnswers(answers),
+    market: answers.market,
+    offerTitle: answers.offerTitle || answers.customOffer || defaults.offer,
+    offerMechanism: answers.offerMechanism || defaults.offer,
+    cta: answers.cta || defaults.cta,
+    targetDurationSeconds: answers.targetDurationSeconds,
+    creatorPersona: answers.creatorPersona,
+    hookAngle: answers.hookAngle,
+    visualStyle: answers.visualStyle,
+  });
+}
+
+function normalizeInitialAnswers(defaults: CreativeIntakeCampaignDefaults, answers: CreativeIntakeAnswers) {
+  const audienceKind = inferCreativeUgcAudienceKind({
+    campaignType: defaults.campaignType,
+    audience: getAudienceLabelFromAnswers(answers) || defaults.audience,
+    offer: answers.offerTitle || answers.customOffer || defaults.offer,
+    cta: answers.cta || defaults.cta,
+  });
+  const hookOptions = getHookOptions(audienceKind);
+  const hasValidHook = hookOptions.some(([value]) => value === answers.hookAngle);
+  const nextAnswers: CreativeIntakeAnswers = {
+    ...answers,
+    hookAngle: hasValidHook ? answers.hookAngle : getDefaultHookAngle(audienceKind),
+  };
+  const draft = buildDraftForAnswers(defaults, nextAnswers);
+  const scriptLines = (nextAnswers.ugcApprovedScript?.trim() ? nextAnswers.ugcApprovedScript : draft.lines.join("\n"))
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const scriptValidation = validateCreativeUgcScriptDraft({
+    script: { ...draft, lines: scriptLines },
+    campaignType: defaults.campaignType,
+    audience: getAudienceLabelFromAnswers(nextAnswers) || defaults.audience,
+    offerTitle: nextAnswers.offerTitle || nextAnswers.customOffer || defaults.offer,
+  });
+
+  if (scriptValidation.reasons.includes("buyer_seller_language_mismatch") || scriptValidation.reasons.includes("seller_buyer_language_mismatch")) {
+    return {
+      ...nextAnswers,
+      ugcApprovedScript: draft.lines.join("\n"),
+      ugcShotList: draft.shotList,
+      ugcOnScreenText: draft.onScreenText,
+      ugcScriptVersion: draft.version,
+      ugcScriptApprovedAt: null,
+    };
+  }
+
+  return nextAnswers;
 }
 
 function getComplianceRewritePreview(value: string | null | undefined) {
@@ -192,10 +296,12 @@ export function CreativeChatIntake({
   mode = "gate",
 }: CreativeChatIntakeProps) {
   const router = useRouter();
-  const [answers, setAnswers] = useState<CreativeIntakeAnswers>({
-    ...defaultAnswers(defaults),
-    ...(initialIntake?.answers ?? {}),
-  });
+  const [answers, setAnswers] = useState<CreativeIntakeAnswers>(() =>
+    normalizeInitialAnswers(defaults, {
+      ...defaultAnswers(defaults),
+      ...(initialIntake?.answers ?? {}),
+    }),
+  );
   const [revisionMessage, setRevisionMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -214,18 +320,15 @@ export function CreativeChatIntake({
         brief.cta ? `CTA: ${brief.cta}` : null,
       ].filter(Boolean).join(" | ")
     : `${defaults.offer ?? "Creative"} direction for ${defaults.audience ?? "this audience"}.`;
-  const ugcDraft = useMemo(() => buildCreativeUgcScriptDraft({
+  const audienceLabel = getAudienceLabelFromAnswers(answers);
+  const audienceKind = useMemo(() => inferCreativeUgcAudienceKind({
     campaignType: defaults.campaignType,
-    audience: answers.targetAudience === "custom" ? answers.customAudience : getAnswerLabel(answers.targetAudience, audienceOptions),
-    market: answers.market,
-    offerTitle: answers.offerTitle || answers.customOffer || defaults.offer,
-    offerMechanism: answers.offerMechanism || defaults.offer,
+    audience: audienceLabel || defaults.audience,
+    offer: answers.offerTitle || answers.customOffer || defaults.offer,
     cta: answers.cta || defaults.cta,
-    targetDurationSeconds: answers.targetDurationSeconds,
-    creatorPersona: answers.creatorPersona,
-    hookAngle: answers.hookAngle,
-    visualStyle: answers.visualStyle,
-  }), [answers, defaults]);
+  }), [answers.cta, answers.customOffer, answers.offerTitle, audienceLabel, defaults]);
+  const activeHookOptions = getHookOptions(audienceKind);
+  const ugcDraft = useMemo(() => buildDraftForAnswers(defaults, answers), [answers, defaults]);
   const scriptLines = (answers.ugcApprovedScript?.trim() ? answers.ugcApprovedScript : ugcDraft.lines.join("\n"))
     .split(/\n+/)
     .map((line) => line.trim())
@@ -233,7 +336,7 @@ export function CreativeChatIntake({
   const scriptValidation = validateCreativeUgcScriptDraft({
     script: { ...ugcDraft, lines: scriptLines },
     campaignType: defaults.campaignType,
-    audience: answers.targetAudience === "custom" ? answers.customAudience : getAnswerLabel(answers.targetAudience, audienceOptions),
+    audience: audienceLabel,
     offerTitle: answers.offerTitle || answers.customOffer || defaults.offer,
   });
   const scriptApproved = Boolean(answers.ugcScriptApprovedAt) && scriptValidation.accepted;
@@ -258,18 +361,7 @@ export function CreativeChatIntake({
 
   function refreshScriptDraft(next: Partial<CreativeIntakeAnswers> = {}) {
     const merged = { ...answers, ...next };
-    const draft = buildCreativeUgcScriptDraft({
-      campaignType: defaults.campaignType,
-      audience: merged.targetAudience === "custom" ? merged.customAudience : getAnswerLabel(merged.targetAudience, audienceOptions),
-      market: merged.market,
-      offerTitle: merged.offerTitle || merged.customOffer || defaults.offer,
-      offerMechanism: merged.offerMechanism || defaults.offer,
-      cta: merged.cta || defaults.cta,
-      targetDurationSeconds: merged.targetDurationSeconds,
-      creatorPersona: merged.creatorPersona,
-      hookAngle: merged.hookAngle,
-      visualStyle: merged.visualStyle,
-    });
+    const draft = buildDraftForAnswers(defaults, merged);
     updateAnswer({
       ...next,
       ugcApprovedScript: draft.lines.join("\n"),
@@ -390,9 +482,6 @@ export function CreativeChatIntake({
     ["UGC Script", "Approve script"],
     ["Review", "Generate set"],
   ] as const;
-  const audienceLabel = answers.targetAudience === "custom"
-    ? answers.customAudience
-    : getAnswerLabel(answers.targetAudience, audienceOptions);
   const brandLabel = answers.brokerageBrand === "custom"
     ? answers.customBrokerageBrand
     : getAnswerLabel(answers.brokerageBrand, brandOptions);
@@ -556,7 +645,7 @@ export function CreativeChatIntake({
                 <div className="grid gap-4 sm:grid-cols-2">
                   <ChoiceGroup label="Target length" value={String(answers.targetDurationSeconds ?? 20)} options={lengthOptions} onChange={(value) => updateAnswer({ targetDurationSeconds: Number(value), ugcScriptApprovedAt: null })} />
                   <ChoiceGroup label="Creator persona" value={answers.creatorPersona} options={personaOptions} onChange={(value) => updateAnswer({ creatorPersona: value, ugcScriptApprovedAt: null })} />
-                  <ChoiceGroup label="Hook angle" value={answers.hookAngle} options={hookOptions} onChange={(value) => updateAnswer({ hookAngle: value, ugcScriptApprovedAt: null })} />
+                  <ChoiceGroup label="Hook angle" value={answers.hookAngle} options={activeHookOptions} onChange={(value) => updateAnswer({ hookAngle: value, ugcScriptApprovedAt: null })} />
                   <ChoiceGroup label="Visual style" value={answers.visualStyle} options={visualOptions} onChange={(value) => updateAnswer({ visualStyle: value, ugcScriptApprovedAt: null })} />
                 </div>
                 <label className="space-y-2 text-sm">
