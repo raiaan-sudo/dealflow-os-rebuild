@@ -245,6 +245,7 @@ assert.equal(minimalEnv.SUPABASE_SERVICE_ROLE_KEY, undefined, "worker CLI child 
 assert.equal(minimalEnv.OPENAI_API_KEY, undefined, "worker CLI child env excludes vision provider key");
 
 const systemJobService = fs.readFileSync("src/lib/services/system-job-service.ts", "utf8");
+const campaignPersistence = fs.readFileSync("src/lib/services/campaign-persistence.ts", "utf8");
 progress("after system job read");
 assert.match(systemJobService, /MARKETING_STUDIO_WORKER_DEFERRED_UNTIL/);
 assert.match(systemJobService, /SYSTEM_JOB_LEASE_MS = 5 \* 60_000/);
@@ -333,6 +334,21 @@ assert.match(
   systemJobService,
   /marketing_studio_worker_runtime_required/,
   "Finished-ad static jobs must refuse non-worker runtimes instead of falling back to app composition",
+);
+assert.match(
+  campaignPersistence,
+  /getLaunchReadyStaticAssetIds/,
+  "Finished static generation must compute canonical selected IDs from launch-ready Higgsfield assets",
+);
+assert.match(
+  campaignPersistence,
+  /isLaunchReadyStaticCreative\(creative\)/,
+  "Finished static generation must never select app-composed/background/fallback assets",
+);
+assert.match(
+  campaignPersistence,
+  /withSelectedLaunchMedia\(savedDocument,\s*{\s*selectedAdIds: launchReadyStaticAssetIds/s,
+  "Finished static generation must persist the selected launch package after the first four finished ads pass",
 );
 progress("after worker service assertions");
 

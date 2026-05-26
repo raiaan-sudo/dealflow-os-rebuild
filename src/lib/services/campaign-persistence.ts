@@ -14,6 +14,7 @@ import {
   getSelectedAdIdsFromPlan,
   getSelectedUgcVideoIdFromPlan,
   getSelectedUgcVideoIdsFromPlan,
+  withSelectedLaunchMedia,
 } from "@/lib/services/campaign-plan-document";
 import { getAppContext } from "@/lib/services/app-context";
 import {
@@ -39,6 +40,7 @@ import {
 } from "@/lib/services/creative-chat-intake-service";
 import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
 import {
+  isLaunchReadyStaticCreative,
   STATIC_LAUNCH_MAX_CREATIVE_COUNT,
   STATIC_LAUNCH_MIN_CREATIVE_COUNT,
 } from "@/lib/services/creative-media-readiness";
@@ -102,6 +104,25 @@ function getDefaultLaunchStaticAssetIds(staticAds: StaticCreativeAsset[]) {
         : topCreatives.map((creative) => creative.id),
     ),
   );
+}
+
+function getLaunchReadyStaticAssetIds(staticAds: StaticCreativeAsset[]) {
+  const rankedCreatives = [...staticAds]
+    .filter((creative) => isLaunchReadyStaticCreative(creative))
+    .sort((left, right) => {
+      const readinessDelta =
+        Number(evaluateStaticVisualAssetDecision(right).usable) -
+        Number(evaluateStaticVisualAssetDecision(left).usable);
+
+      return readinessDelta || (right.score ?? 0) - (left.score ?? 0);
+    });
+
+  if (rankedCreatives.length < STATIC_LAUNCH_MIN_CREATIVE_COUNT) {
+    return [];
+  }
+
+  return Array.from(new Set(rankedCreatives.map((creative) => creative.id)))
+    .slice(0, STATIC_LAUNCH_MAX_CREATIVE_COUNT);
 }
 
 function isMissingPublishSchemaError(error: unknown) {
@@ -695,11 +716,17 @@ async function persistGeneratedStaticAdsToCampaignPlan(params: {
 }) {
   const savedDocument = getSavedCampaignDocumentFromRow(params.row) ?? {};
   const previousGenerationState = readPersistedAssetGenerationState(savedDocument?.assetGeneration);
+  const launchReadyStaticAssetIds = getLaunchReadyStaticAssetIds(params.staticAds);
+  const existingUgcVideoIds = getSelectedUgcVideoIdsFromPlan(savedDocument);
+  const selectedDocument = withSelectedLaunchMedia(savedDocument, {
+    selectedAdIds: launchReadyStaticAssetIds,
+    selectedUgcVideoIds: existingUgcVideoIds,
+  });
   const nextPlan = {
-    ...(savedDocument as Record<string, unknown>),
+    ...(selectedDocument as Record<string, unknown>),
     staticAds: params.staticAds,
     assetGeneration: {
-      ...((savedDocument?.assetGeneration as Record<string, unknown> | null) ?? {}),
+      ...((selectedDocument.assetGeneration as Record<string, unknown> | null) ?? {}),
       staticAds: completeAssetGenerationLifecycle({
         previous: previousGenerationState.staticAds,
         status: deriveStaticGenerationStatus(params.staticAds),
@@ -722,10 +749,10 @@ async function persistGeneratedStaticAdsToCampaignPlan(params: {
   }
 
   return {
-    ...(savedDocument as Record<string, unknown>),
+    ...(selectedDocument as Record<string, unknown>),
     staticAds: params.staticAds,
     assetGeneration: {
-      ...((savedDocument?.assetGeneration as Record<string, unknown> | null) ?? {}),
+      ...((selectedDocument.assetGeneration as Record<string, unknown> | null) ?? {}),
       staticAds: completeAssetGenerationLifecycle({
         previous: previousGenerationState.staticAds,
         status: deriveStaticGenerationStatus(params.staticAds),
