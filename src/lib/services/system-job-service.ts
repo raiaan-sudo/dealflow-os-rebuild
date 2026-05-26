@@ -4,7 +4,10 @@ import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
 import { createAdminClient } from "@/lib/server/supabase-admin";
 import type { Database, Json } from "@/lib/supabase/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { regenerateStaticCreativeAssetsForUser } from "@/lib/services/campaign-persistence";
+import {
+  regenerateHiggsfieldFinishedStaticAdsForUser,
+  regenerateStaticCreativeAssetsForUser,
+} from "@/lib/services/campaign-persistence";
 import {
   pollVideoGenerationStatusJob,
   type VideoGenerationJobPayload,
@@ -888,18 +891,25 @@ export async function processSystemJob(jobId: string) {
     }
 
     if (result === undefined && processingJob.kind === "static_creative_generation") {
-      const output = await regenerateStaticCreativeAssetsForUser(
+      const staticPayload = processingJob.payload as SystemJobPayloadMap["static_creative_generation"];
+      const regenerateStatic =
+        isMarketingStudioStaticGenerationJob({
+          kind: processingJob.kind,
+          payload: staticPayload,
+        })
+          ? regenerateHiggsfieldFinishedStaticAdsForUser
+          : regenerateStaticCreativeAssetsForUser;
+      const output = await regenerateStatic(
         processingJob.campaign_id ?? "",
         processingJob.user_id,
         {
-          force: Boolean((processingJob.payload as SystemJobPayloadMap["static_creative_generation"])?.force),
-          missingOnly: Boolean((processingJob.payload as SystemJobPayloadMap["static_creative_generation"])?.missingOnly),
+          force: Boolean(staticPayload?.force),
+          missingOnly: Boolean(staticPayload?.missingOnly),
           maxGenerations:
-            typeof (processingJob.payload as SystemJobPayloadMap["static_creative_generation"])?.maxGenerations === "number"
-              ? (processingJob.payload as SystemJobPayloadMap["static_creative_generation"]).maxGenerations
+            typeof staticPayload?.maxGenerations === "number"
+              ? staticPayload.maxGenerations
               : undefined,
-          creativeIntake:
-            (processingJob.payload as SystemJobPayloadMap["static_creative_generation"])?.creativeIntake ?? null,
+          creativeIntake: staticPayload?.creativeIntake ?? null,
           providerUsageRunId: `${processingJob.id}:${processingJob.attempt_count ?? 0}`,
           supabase,
         },

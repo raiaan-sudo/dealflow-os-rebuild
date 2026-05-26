@@ -87,6 +87,10 @@ export type StaticCreativeAsset = {
   imageGenerationMessage: string | null;
   imageGenerationModel: string | null;
   imageGenerationProvider?: string | null;
+  generationMethod?: string | null;
+  providerName?: string | null;
+  generationMode?: string | null;
+  assetRole?: string | null;
   visualConcept: string;
   imagePrompt: string;
   imagePromptConfig: ImagePromptConfig | null;

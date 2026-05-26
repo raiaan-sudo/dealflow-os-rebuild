@@ -17,6 +17,8 @@ import {
 export { MARKETING_STUDIO_WORKER_DEFERRED_UNTIL, MARKETING_STUDIO_WORKER_RUNTIME };
 
 type StaticCreativeGenerationPayload = {
+  outputMode?: string | null;
+  provider?: string | null;
   creativeIntake?: CreativeIntakeGenerationContext | null;
 };
 
@@ -38,9 +40,19 @@ export function isMarketingStudioStaticGenerationPayload(
   }
 
   return (
+    paramsOutputMode(payload) === "finished_ad" &&
+    paramsProvider(payload) === "higgsfield_marketing_studio" &&
     creativeIntake.outputMode === "finished_ad" &&
     creativeIntakeIncludesStatic(String(creativeIntake.generationPhase))
   );
+}
+
+function paramsOutputMode(payload: StaticCreativeGenerationPayload) {
+  return typeof payload.outputMode === "string" ? payload.outputMode : null;
+}
+
+function paramsProvider(payload: StaticCreativeGenerationPayload) {
+  return typeof payload.provider === "string" ? payload.provider : null;
 }
 
 export function isMarketingStudioWorkerRuntimeEnabled() {

@@ -89,6 +89,8 @@ function resetEnv() {
 const finishedAdPayload = {
   force: false,
   missingOnly: true,
+  outputMode: "finished_ad",
+  provider: "higgsfield_marketing_studio",
   creativeIntake: {
     version: 1,
     conversationId: "conversation-test",
@@ -136,6 +138,8 @@ assert.equal(
 );
 assert.equal(
   isMarketingStudioStaticGenerationPayload({
+    outputMode: "background_only",
+    provider: "higgsfield_marketing_studio",
     creativeIntake: {
       outputMode: "background_only",
       generationPhase: "static",
@@ -143,6 +147,13 @@ assert.equal(
   }),
   false,
   "background-only fallback jobs stay on the existing safe path",
+);
+assert.equal(
+  isMarketingStudioStaticGenerationPayload({
+    creativeIntake: finishedAdPayload.creativeIntake,
+  }),
+  false,
+  "finished-ad jobs need explicit top-level provider/outputMode to enter the CLI worker lane",
 );
 
 delete process.env.MARKETING_STUDIO_WORKER_ENABLED;
@@ -297,7 +308,20 @@ assert.match(workerService, /FINISHED_AD_VISION_QA_ENABLED=true/);
 assert.match(workerService, /claimSystemJobByIdForWorker/);
 assert.match(workerService, /ignoreNextRunAt: true/);
 
+assert.match(
+  systemJobService,
+  /regenerateHiggsfieldFinishedStaticAdsForUser/,
+  "Marketing Studio finished-ad static jobs must bypass the generic app-composition regeneration path",
+);
+
 const autoQueueService = fs.readFileSync("src/lib/services/static-creative-render-queue-service.ts", "utf8");
+assert.match(generateStaticAdsRoute, /outputMode:\s*"finished_ad"/);
+assert.match(generateStaticAdsRoute, /provider:\s*"higgsfield_marketing_studio"/);
+assert.doesNotMatch(
+  generateStaticAdsRoute,
+  /regenerateStaticCreativeAssetsForUser/,
+  "Generate static ads route must enqueue finished-ad work instead of inline app-composed previews",
+);
 assert.match(autoQueueService, /ensureStaticCreativeRenderQueuedForCampaign/);
 assert.match(autoQueueService, /creativeIntake\.outputMode !== "finished_ad"/);
 assert.match(autoQueueService, /STATIC_LAUNCH_MIN_CREATIVE_COUNT - launchReadyCount/);

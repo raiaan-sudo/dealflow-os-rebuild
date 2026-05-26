@@ -54,6 +54,10 @@ type StaticVisualContractInput = {
   sourceBackgroundKind?: string | null;
   sourceBackgroundProvider?: string | null;
   sourceBackgroundAssetId?: string | null;
+  generationMethod?: string | null;
+  providerName?: string | null;
+  generationMode?: string | null;
+  assetRole?: string | null;
   imagePrompt?: string | null;
   imagePromptConfig?: {
     prompt?: string | null;
@@ -122,17 +126,24 @@ function hasPremiumSourceProvider(input: StaticVisualContractInput) {
 
 export function hasHiggsfieldFinishedAdProvenance(input: StaticVisualContractInput) {
   const provider = safeText(input.imageGenerationProvider).toLowerCase();
+  const generationMethod = safeText(input.generationMethod).toLowerCase();
+  const providerName = safeText(input.providerName).toLowerCase();
+  const generationMode = safeText(input.generationMode).toLowerCase();
+  const assetRole = safeText(input.assetRole).toLowerCase();
   const qualityTier = safeText(input.qualityTier).toLowerCase();
 
   return Boolean(
     provider === "higgsfield_marketing_studio" &&
+      generationMethod === "higgsfield_marketing_studio" &&
+      providerName === "higgsfield_marketing_studio" &&
+      generationMode === "finished_ad" &&
+      assetRole === "final_static_ad" &&
       (qualityTier === "higgsfield_finished_ad" || qualityTier === "premium_finished_ad") &&
       input.appComposedFinal !== true &&
       input.compositionVersion !== "app_composed_static_v2" &&
       input.imageQa?.mode === "finished_ad" &&
       input.imageQa.decision === "accept" &&
       input.imageQa.usable !== false &&
-      input.qualityGate?.accepted !== false &&
       input.visualQualityGate?.accepted !== false &&
       input.premiumQualityGate?.accepted !== false,
   );

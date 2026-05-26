@@ -109,6 +109,10 @@ function readyStatic(id) {
     qualityTier: "higgsfield_finished_ad",
     imageGenerationState: "generated",
     imageGenerationProvider: "higgsfield_marketing_studio",
+    generationMethod: "higgsfield_marketing_studio",
+    providerName: "higgsfield_marketing_studio",
+    generationMode: "finished_ad",
+    assetRole: "final_static_ad",
     imagePrompt: "Text-free background asset only for a real estate ad.",
     imagePromptConfig: null,
     visualPromptBrief: {

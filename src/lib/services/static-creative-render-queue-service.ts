@@ -16,6 +16,7 @@ import {
   STATIC_LAUNCH_MIN_CREATIVE_COUNT,
   isLaunchReadyStaticCreative,
 } from "@/lib/services/creative-media-readiness";
+import { isMarketingStudioStaticGenerationPayload } from "@/lib/services/marketing-studio-worker-contract";
 import { createSystemJob } from "@/lib/services/system-job-service";
 
 type QueueClient = SupabaseClient<Database>;
@@ -218,9 +219,12 @@ export async function ensureStaticCreativeRenderQueuedForCampaign(
 
   const equivalentActiveJob = (Array.isArray(activeJobsRaw) ? activeJobsRaw : []).find((job) => {
     const payload = getActiveJobPayload(job as { payload?: Json | null });
-    return hasSameCreativeIntakeGenerationContext(
-      payload.creativeIntake as Parameters<typeof hasSameCreativeIntakeGenerationContext>[0],
-      creativeIntake,
+    return (
+      isMarketingStudioStaticGenerationPayload(payload) &&
+      hasSameCreativeIntakeGenerationContext(
+        payload.creativeIntake as Parameters<typeof hasSameCreativeIntakeGenerationContext>[0],
+        creativeIntake,
+      )
     );
   }) as { id?: string | null } | undefined;
 

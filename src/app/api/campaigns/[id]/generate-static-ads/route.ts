@@ -2,7 +2,7 @@ import { assertSameOriginRequest, apiSuccess, handleApiError, parseOptionalJsonB
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { logWarn } from "@/lib/logging";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
-import { getCampaignById, regenerateStaticCreativeAssetsForUser } from "@/lib/services/campaign-persistence";
+import { getCampaignById } from "@/lib/services/campaign-persistence";
 import {
   isLaunchReadyStaticCreative,
   STATIC_LAUNCH_MIN_CREATIVE_COUNT,
@@ -130,17 +130,6 @@ export async function POST(
     const missingLaunchReadyFloorCount = Math.max(0, STATIC_LAUNCH_MIN_CREATIVE_COUNT - launchReadyStaticCount);
     let previewUpdated = false;
 
-    if (missingLaunchReadyFloorCount > 0 || campaign.creatives.staticAds.length < STATIC_LAUNCH_MIN_CREATIVE_COUNT) {
-      await regenerateStaticCreativeAssetsForUser(campaignId, auth.userId, {
-        force: body.force === true,
-        missingOnly: true,
-        maxGenerations: 0,
-        creativeIntake: creativeIntakeContext,
-        supabase: auth.supabase,
-      });
-      previewUpdated = true;
-    }
-
     const maxGenerations = body.maxGenerations ??
       (body.missingOnly === true
         ? Math.min(6, Math.max(2, missingLaunchReadyFloorCount))
@@ -156,8 +145,11 @@ export async function POST(
       activeJobs.find((job) => {
         const payload = job.payload as { creativeIntake?: typeof creativeIntakeContext };
         return (
-          !creativeIntakeContext ||
-          hasSameCreativeIntakeGenerationContext(payload.creativeIntake, creativeIntakeContext)
+          isMarketingStudioStaticGenerationPayload(job.payload) &&
+          (
+            !creativeIntakeContext ||
+            hasSameCreativeIntakeGenerationContext(payload.creativeIntake, creativeIntakeContext)
+          )
         );
       }) ?? null;
 
@@ -175,9 +167,14 @@ export async function POST(
 
     const requestScope = body.force === true
       ? `force:${crypto.randomUUID()}`
-      : body.missingOnly === true
-        ? `missing:${crypto.randomUUID()}`
-        : `attempt:${Date.now()}`;
+      : [
+          "finished",
+          creativeIntakeContext?.staticBriefHash ?? creativeIntakeContext?.briefHash ?? "brief",
+          creativeIntakeContext?.offerHash ?? "offer",
+          creativeIntakeContext?.ctaHash ?? "cta",
+          creativeIntakeContext?.brandHash ?? "brand",
+          `window:${Math.floor(Date.now() / (10 * 60_000))}`,
+        ].join(":");
     const idempotencyKey = `static_creative_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${requestScope}`;
 
     const job = await createSystemJob({
@@ -189,6 +186,10 @@ export async function POST(
       payload: {
         force: body.force === true,
         missingOnly: body.missingOnly === true,
+        targetVariantCount: 6,
+        promoteThreshold: STATIC_LAUNCH_MIN_CREATIVE_COUNT,
+        outputMode: "finished_ad",
+        provider: "higgsfield_marketing_studio",
         creativeIntake: creativeIntakeContext,
         ...(maxGenerations ? { maxGenerations } : {}),
       },

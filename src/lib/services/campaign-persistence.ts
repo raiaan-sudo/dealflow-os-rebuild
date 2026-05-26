@@ -310,6 +310,10 @@ export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativ
         typeof metadata?.imageGenerationProvider === "string"
           ? metadata.imageGenerationProvider
           : preferredRow.provider_name ?? null,
+      generationMethod: preferredRow.generation_method ?? null,
+      providerName: preferredRow.provider_name ?? null,
+      generationMode: metadataString(metadata, "generationMode"),
+      assetRole: metadataString(metadata, "assetRole"),
 	      visualConcept: typeof metadata?.visualConcept === "string" ? metadata.visualConcept : "",
 	      appComposedFinal: metadata?.appComposedFinal === true,
 	      qualityTier: metadataString(metadata, "qualityTier"),
@@ -440,6 +444,14 @@ function isAcceptedSourceStaticRow(row: CreativeAssetRow) {
 	      metadata?.storageNormalized === true ||
 	      (metadata?.storageNormalizationReusedExistingAppAsset === true && typeof metadata?.storagePath === "string"),
 	    appComposedFinal: metadata?.appComposedFinal === true,
+    imageGenerationProvider:
+      typeof metadata?.imageGenerationProvider === "string"
+        ? metadata.imageGenerationProvider
+        : row.provider_name ?? null,
+    generationMethod: row.generation_method ?? null,
+    providerName: row.provider_name ?? null,
+    generationMode: metadataString(metadata, "generationMode"),
+    assetRole: metadataString(metadata, "assetRole"),
 	    qualityTier: metadataString(metadata, "qualityTier"),
 	    compositionVersion: metadataString(metadata, "compositionVersion"),
 	    sourceBackgroundKind: metadataString(metadata, "sourceBackgroundKind"),
@@ -1231,6 +1243,7 @@ export async function regenerateStaticCreativeAssetsForUser(
     creativeIntake?: CreativeEngineInput["creative_intake"];
     supabase?: PersistenceClient;
     providerUsageRunId?: string | null;
+    finishedAdOnly?: boolean;
   },
 ): Promise<FullCampaignRecord> {
   const supabase =
@@ -1371,6 +1384,7 @@ export async function regenerateStaticCreativeAssetsForUser(
       userId,
       campaignId,
       staticAds,
+      allowAppComposition: options?.finishedAdOnly === true ? false : undefined,
     });
     const persistedStaticAdsAfterSave = await loadStaticCreativeAssets(supabase, userId, campaignId);
     const planStaticAds =
@@ -1419,6 +1433,24 @@ export async function regenerateStaticCreativeAssetsForUser(
 
     throw error;
   }
+}
+
+export async function regenerateHiggsfieldFinishedStaticAdsForUser(
+  campaignId: string,
+  userId: string,
+  options?: {
+    force?: boolean;
+    missingOnly?: boolean;
+    maxGenerations?: number;
+    creativeIntake?: CreativeEngineInput["creative_intake"];
+    supabase?: PersistenceClient;
+    providerUsageRunId?: string | null;
+  },
+): Promise<FullCampaignRecord> {
+  return regenerateStaticCreativeAssetsForUser(campaignId, userId, {
+    ...options,
+    finishedAdOnly: true,
+  });
 }
 
 export async function updateCampaignPublishState(params: {

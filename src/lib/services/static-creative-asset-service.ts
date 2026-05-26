@@ -19,6 +19,7 @@ type PersistStaticCreativeAssetsParams = {
   userId: string;
   campaignId: string;
   staticAds: StaticCreativeAsset[];
+  allowAppComposition?: boolean;
 };
 
 type GenerateAndPersistParams = {
@@ -203,6 +204,14 @@ function hasAcceptedFinishedAdImageQa(asset: StaticCreativeAsset) {
   );
 }
 
+function isFinishedAdOnlyAsset(asset: StaticCreativeAsset) {
+  return (
+    asset.creativeIntake?.outputMode === "finished_ad" ||
+    asset.imageGenerationProvider === "higgsfield_marketing_studio" ||
+    asset.qualityTier === "higgsfield_finished_ad"
+  );
+}
+
 export async function persistStaticCreativeAssets(params: PersistStaticCreativeAssetsParams) {
   const staticAds = Array.isArray(params.staticAds) ? params.staticAds : [];
 
@@ -226,7 +235,13 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
 
     const acceptedHiggsfieldFinishedAd = hasAcceptedFinishedAdImageQa(asset);
 
-    if (asset.imageUrl && (visualDecision.usable || acceptedHiggsfieldFinishedAd)) {
+    const finishedAdOnlyAsset = isFinishedAdOnlyAsset(asset);
+    const canNormalizeProviderImage = Boolean(
+      asset.imageUrl &&
+        (visualDecision.usable || acceptedHiggsfieldFinishedAd || finishedAdOnlyAsset),
+    );
+
+    if (canNormalizeProviderImage) {
       try {
         durableImage = await normalizeStaticCreativeProviderImage({
           supabase: params.supabase,
@@ -241,7 +256,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       }
     }
 
-    if (!acceptedHiggsfieldFinishedAd) {
+    if (!acceptedHiggsfieldFinishedAd && params.allowAppComposition !== false && !finishedAdOnlyAsset) {
       try {
         composedFinal = await composeAndUploadStaticCreativeFinal({
           supabase: params.supabase,
@@ -254,6 +269,8 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       } catch {
         normalizationError = "Final ad could not be stored durably. Refresh this creative before launch.";
       }
+    } else if (!acceptedHiggsfieldFinishedAd && finishedAdOnlyAsset && asset.imageUrl) {
+      normalizationError = "Finished Higgsfield render needs review before it can be selected for launch.";
     }
 
     const readyUrl = acceptedHiggsfieldFinishedAd
@@ -284,11 +301,13 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
           }
         : asset.imageQa ?? null;
     const finalRasterAccepted =
-      persistedImageQa?.usable === true && persistedImageQa?.decision === "accept";
+      acceptedHiggsfieldFinishedAd &&
+      persistedImageQa?.usable === true &&
+      persistedImageQa?.decision === "accept";
     const normalizedGenerationState = readyUrl && finalRasterAccepted
       ? "generated"
       : readyUrl
-        ? "failed"
+        ? "generated"
         : asset.imageUrl
           ? "failed"
           : asset.imageGenerationState;
@@ -317,6 +336,8 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
     existingRows.push(...existingReadyRows);
     const metadataBase = {
       source: "static_ad",
+      provider: acceptedHiggsfieldFinishedAd || finishedAdOnlyAsset ? "higgsfield_marketing_studio" : "static_ad",
+      providerRuntime: acceptedHiggsfieldFinishedAd || finishedAdOnlyAsset ? "cli" : null,
       staticAssetId: asset.id,
       angle: asset.angle,
       visualConcept: asset.visualConcept,
@@ -331,7 +352,9 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       appComposedFinal: acceptedHiggsfieldFinishedAd ? false : compositionMetadata?.appComposedFinal ?? false,
       qualityTier: acceptedHiggsfieldFinishedAd
         ? "higgsfield_finished_ad"
-        : compositionMetadata?.qualityTier ?? "draft_preview",
+        : finishedAdOnlyAsset
+          ? "higgsfield_finished_ad_review"
+          : compositionMetadata?.qualityTier ?? "draft_preview",
       visualQualityGate: (acceptedHiggsfieldFinishedAd
         ? { accepted: true, mode: "finished_ad_qa", reasons: [] }
         : compositionMetadata?.visualQualityGate ?? null) as Json,
@@ -347,8 +370,8 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       sourceImageQaMode: compositionMetadata?.sourceImageQaMode ?? null,
       sourceImageQaDecision: compositionMetadata?.sourceImageQaDecision ?? null,
       sourceImageQaOverride: compositionMetadata?.sourceImageQaOverride ?? null,
-      generationMode: acceptedHiggsfieldFinishedAd ? "finished_ad" : null,
-      assetRole: acceptedHiggsfieldFinishedAd ? "final_static_ad" : null,
+      generationMode: acceptedHiggsfieldFinishedAd || finishedAdOnlyAsset ? "finished_ad" : null,
+      assetRole: acceptedHiggsfieldFinishedAd ? "final_static_ad" : finishedAdOnlyAsset ? "final_static_ad_review" : null,
       renderedOffer: compositionMetadata?.renderedOffer ?? null,
       renderedCta: compositionMetadata?.renderedCta ?? null,
       renderedBrand: compositionMetadata?.renderedBrand ?? null,
@@ -388,6 +411,8 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       approvedBrand: asset.approvedBrand ?? asset.creativeIntake?.brokerageBrand ?? null,
       imageGenerationState: normalizedGenerationState,
       imageGenerationProvider: asset.imageGenerationProvider ?? null,
+      generationMethod: acceptedHiggsfieldFinishedAd || finishedAdOnlyAsset ? "higgsfield_marketing_studio" : "app_composed_static",
+      providerName: acceptedHiggsfieldFinishedAd || finishedAdOnlyAsset ? "higgsfield_marketing_studio" : "dealflow_app_composer",
       imageGenerationModel: asset.imageGenerationModel,
       imageGenerationMessage: asset.imageGenerationMessage,
       recommended: asset.recommended,
@@ -410,9 +435,9 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
         copy_id: copyId,
         asset_type: "image_frame",
         format: "1:1",
-        generation_method: acceptedHiggsfieldFinishedAd ? "higgsfield_marketing_studio" : "app_composed_static",
+        generation_method: acceptedHiggsfieldFinishedAd || finishedAdOnlyAsset ? "higgsfield_marketing_studio" : "app_composed_static",
         status,
-        provider_name: acceptedHiggsfieldFinishedAd ? "higgsfield_marketing_studio" : "dealflow_app_composer",
+        provider_name: acceptedHiggsfieldFinishedAd || finishedAdOnlyAsset ? "higgsfield_marketing_studio" : "dealflow_app_composer",
         file_url: readyUrl,
         thumbnail_url: readyUrl,
         metadata: {
@@ -423,7 +448,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
               : normalizationError ?? (asset.imageUrl
                 ? visualDecision.reason ?? "Generated background needs review before launch."
                 : asset.imageGenerationMessage ?? "Static image was not generated for this creative."),
-          role: acceptedHiggsfieldFinishedAd ? "higgsfield_finished_static_ad" : "app_composed_final_static",
+          role: acceptedHiggsfieldFinishedAd ? "higgsfield_finished_static_ad" : finishedAdOnlyAsset ? "higgsfield_finished_static_ad_review" : "app_composed_final_static",
         } as Json,
       };
     const thumbnailRow = {
@@ -433,9 +458,9 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
         copy_id: copyId,
         asset_type: "thumbnail",
         format: "1:1",
-        generation_method: acceptedHiggsfieldFinishedAd ? "higgsfield_marketing_studio" : "app_composed_static",
+        generation_method: acceptedHiggsfieldFinishedAd || finishedAdOnlyAsset ? "higgsfield_marketing_studio" : "app_composed_static",
         status,
-        provider_name: acceptedHiggsfieldFinishedAd ? "higgsfield_marketing_studio" : "dealflow_app_composer",
+        provider_name: acceptedHiggsfieldFinishedAd || finishedAdOnlyAsset ? "higgsfield_marketing_studio" : "dealflow_app_composer",
         file_url: readyUrl,
         thumbnail_url: readyUrl,
         metadata: {
@@ -446,7 +471,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
               : normalizationError ?? (asset.imageUrl
                 ? visualDecision.reason ?? "Generated background needs review before launch."
                 : asset.imageGenerationMessage ?? "Static thumbnail was not generated for this creative."),
-          role: acceptedHiggsfieldFinishedAd ? "higgsfield_finished_static_thumbnail" : "app_composed_final_thumbnail",
+          role: acceptedHiggsfieldFinishedAd ? "higgsfield_finished_static_thumbnail" : finishedAdOnlyAsset ? "higgsfield_finished_static_thumbnail_review" : "app_composed_final_thumbnail",
         } as Json,
       };
 
