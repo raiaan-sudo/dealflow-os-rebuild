@@ -1,9 +1,4 @@
 import {
-  creativeIntakeIncludesStatic,
-  creativeIntakeIncludesUgcVideo,
-  type CreativeIntakeGenerationContext,
-} from "@/lib/services/creative-chat-intake-service";
-import {
   getHiggsfieldMarketingStudioEnv,
   getMediaGenerationFallbackProvider,
   getMediaGenerationProvider,
@@ -19,7 +14,10 @@ export { MARKETING_STUDIO_WORKER_DEFERRED_UNTIL, MARKETING_STUDIO_WORKER_RUNTIME
 type StaticCreativeGenerationPayload = {
   outputMode?: string | null;
   provider?: string | null;
-  creativeIntake?: CreativeIntakeGenerationContext | null;
+  creativeIntake?: {
+    outputMode?: string | null;
+    generationPhase?: string | null;
+  } | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -53,6 +51,14 @@ function paramsOutputMode(payload: StaticCreativeGenerationPayload) {
 
 function paramsProvider(payload: StaticCreativeGenerationPayload) {
   return typeof payload.provider === "string" ? payload.provider : null;
+}
+
+function creativeIntakeIncludesStatic(phase?: string | null) {
+  return phase === "static" || phase === "static_and_ugc";
+}
+
+function creativeIntakeIncludesUgcVideo(phase?: string | null) {
+  return phase === "ugc_video" || phase === "static_and_ugc";
 }
 
 export function isMarketingStudioWorkerRuntimeEnabled() {

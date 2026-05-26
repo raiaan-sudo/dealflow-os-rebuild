@@ -1003,3 +1003,4 @@ assert.deepEqual(
 );
 
 console.log("Creative chat intake migration tests passed.");
+process.exit(0);

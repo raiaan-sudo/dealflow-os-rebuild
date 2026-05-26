@@ -18,7 +18,15 @@ Module._load = function load(request, parent, isMain) {
     return {};
   }
 
-  return originalLoad.call(this, request, parent, isMain);
+  if (process.env.MARKETING_STUDIO_WORKER_TRACE_IMPORTS === "true") {
+    process.stderr.write(`[worker-import:start] ${request}\n`);
+  }
+  const loaded = originalLoad.call(this, request, parent, isMain);
+  if (process.env.MARKETING_STUDIO_WORKER_TRACE_IMPORTS === "true") {
+    process.stderr.write(`[worker-import:done] ${request}\n`);
+  }
+
+  return loaded;
 };
 
 Module._resolveFilename = function resolveFilename(request, parent, isMain, options) {
@@ -51,10 +59,21 @@ Module._extensions[".ts"] = function loadTs(module, filename) {
 };
 
 const require = createRequire(import.meta.url);
-const {
-  getMarketingStudioWorkerReadiness,
-  runMarketingStudioWorkerBatch,
-} = require("../src/lib/services/marketing-studio-worker-service.ts");
+let workerService;
+
+function getWorkerService() {
+  if (!workerService) {
+    log("info", "marketing_studio_worker.service_import_start", {
+      runtime: "marketing_studio_cli_worker",
+    });
+    workerService = require("../src/lib/services/marketing-studio-worker-service.ts");
+    log("info", "marketing_studio_worker.service_import_complete", {
+      runtime: "marketing_studio_cli_worker",
+    });
+  }
+
+  return workerService;
+}
 
 function parseArgs(argv) {
   const options = {
@@ -122,6 +141,7 @@ function getCommitSha() {
 }
 
 async function logStartupFingerprint(options) {
+  const { getMarketingStudioWorkerReadiness } = getWorkerService();
   const readiness = await getMarketingStudioWorkerReadiness();
   log("info", "marketing_studio_worker.startup", {
     commitSha: getCommitSha(),
@@ -136,6 +156,10 @@ async function logStartupFingerprint(options) {
 }
 
 async function runOnce(options) {
+  const {
+    getMarketingStudioWorkerReadiness,
+    runMarketingStudioWorkerBatch,
+  } = getWorkerService();
   const readiness = await getMarketingStudioWorkerReadiness();
   log(readiness.ready ? "info" : "warn", "marketing_studio_worker.readiness", {
     ready: readiness.ready,
@@ -173,6 +197,10 @@ try {
     }
   } else {
     await runOnce(options);
+    // The Supabase/admin client stack can leave process handles open after a
+    // one-shot dry-run. Poll mode is the long-running path; one-shot mode must
+    // terminate cleanly for operator proof and automation.
+    process.exit(process.exitCode ?? 0);
   }
 } catch (error) {
   log("error", "marketing_studio_worker.fatal", {

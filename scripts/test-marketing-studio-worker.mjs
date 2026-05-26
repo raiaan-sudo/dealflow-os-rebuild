@@ -60,6 +60,12 @@ const {
   buildHiggsfieldCliEnvironment,
 } = require("../src/lib/ai/higgsfield.ts");
 
+function progress(label) {
+  if (process.env.MARKETING_STUDIO_TEST_PROGRESS === "true") {
+    console.error(`[marketing-studio-test] ${label}`);
+  }
+}
+
 function resetEnv() {
   for (const key of [
     "MARKETING_STUDIO_WORKER_ENABLED",
@@ -191,7 +197,9 @@ assert.equal(
 );
 
 resetEnv();
+progress("before not-ready readiness");
 const notReady = await getMarketingStudioWorkerReadiness();
+progress("after not-ready readiness");
 assert.equal(notReady.ready, false);
 assert.ok(notReady.missing.includes("MARKETING_STUDIO_WORKER_ENABLED=true"));
 assert.ok(notReady.missing.includes("FINISHED_AD_VISION_QA_ENABLED=true"));
@@ -212,7 +220,9 @@ process.env.HIGGSFIELD_UGC_VIDEO_MODEL = "marketing_studio_video";
 process.env.FINISHED_AD_VISION_QA_ENABLED = "true";
 process.env.OPENAI_API_KEY = "test-key";
 process.env.OPENAI_BASE_URL = "https://api.openai.com/v1";
+progress("before ready readiness");
 const ready = await getMarketingStudioWorkerReadiness();
+progress("after ready readiness");
 assert.equal(ready.ready, true, "mocked CLI runtime plus vision QA config is worker-ready");
 assert.equal(ready.checks.cliReady, true);
 
@@ -235,6 +245,7 @@ assert.equal(minimalEnv.SUPABASE_SERVICE_ROLE_KEY, undefined, "worker CLI child 
 assert.equal(minimalEnv.OPENAI_API_KEY, undefined, "worker CLI child env excludes vision provider key");
 
 const systemJobService = fs.readFileSync("src/lib/services/system-job-service.ts", "utf8");
+progress("after system job read");
 assert.match(systemJobService, /MARKETING_STUDIO_WORKER_DEFERRED_UNTIL/);
 assert.match(systemJobService, /SYSTEM_JOB_LEASE_MS = 5 \* 60_000/);
 assert.match(systemJobService, /MIN_STALE_PROCESSING_RESET_MS = SYSTEM_JOB_LEASE_MS \+ SYSTEM_JOB_STALE_BUFFER_MS/);
@@ -253,6 +264,7 @@ assert.doesNotMatch(
   /Marketing Studio[\s\S]{0,300}dead_lettered_at:\s*new Date/,
   "serverless deferral does not create a dead-lettered worker debt record",
 );
+progress("after system job assertions");
 
 const generateStaticAdsRoute = fs.readFileSync("src/app/api/campaigns/[id]/generate-static-ads/route.ts", "utf8");
 assert.match(generateStaticAdsRoute, /isMarketingStudioStaticGenerationPayload/);
@@ -278,6 +290,7 @@ assert.match(
   /job\?\.reviewed_at \|\| job\?\.dead_lettered_at/,
   "Client render-state helper must ignore reviewed or dead-lettered jobs",
 );
+progress("after route/ui assertions");
 
 const workerScript = fs.readFileSync("scripts/run-marketing-studio-worker.mjs", "utf8");
 assert.match(workerScript, /marketing_studio_worker\.readiness/);
@@ -297,6 +310,7 @@ assert.match(
   /env\.TRUSTED_APP_ORIGINS = \[env\.TRUSTED_APP_ORIGINS, baseUrl\]/,
   "local production safe E2E must trust only its current base URL without weakening production CSRF guards",
 );
+progress("after worker script assertions");
 
 const workerService = fs.readFileSync("src/lib/services/marketing-studio-worker-service.ts", "utf8");
 assert.match(workerService, /\.in\("kind", \["static_creative_generation", "video_generation"\]\)/);
@@ -320,8 +334,10 @@ assert.match(
   /marketing_studio_worker_runtime_required/,
   "Finished-ad static jobs must refuse non-worker runtimes instead of falling back to app composition",
 );
+progress("after worker service assertions");
 
 const autoQueueService = fs.readFileSync("src/lib/services/static-creative-render-queue-service.ts", "utf8");
+progress("after auto queue read");
 assert.match(generateStaticAdsRoute, /outputMode:\s*"finished_ad"/);
 assert.match(generateStaticAdsRoute, /provider:\s*"higgsfield_marketing_studio"/);
 assert.doesNotMatch(
@@ -337,7 +353,9 @@ assert.match(autoQueueService, /targetVariantCount:\s*6/);
 assert.match(autoQueueService, /promoteThreshold:\s*STATIC_LAUNCH_MIN_CREATIVE_COUNT/);
 assert.match(autoQueueService, /provider:\s*"higgsfield_marketing_studio"/);
 assert.match(autoQueueService, /hasSameCreativeIntakeGenerationContext/);
+progress("before auto queue side effect regex");
 assert.doesNotMatch(autoQueueService, /processSystemJob|createImageAd|stripe\.checkout|executeMetaCampaignLaunch|createFreshdeskTicket|sendSms/i);
+progress("after auto queue side effect regex");
 
 const unlockPage = fs.readFileSync("src/app/(app)/unlock/page.tsx", "utf8");
 assert.match(unlockPage, /ensureStaticCreativeRenderQueuedForCampaign/);
@@ -348,6 +366,7 @@ assert.match(creativeIntakeRoute, /body\.action === "approve"/);
 assert.match(creativeIntakeRoute, /reason:\s*"creative_brief_approved"/);
 
 assert.match(creativeStudioPage, /reason:\s*"creative_studio_visit"/);
+progress("after auto queue assertions");
 
 const operatorDebtScript = fs.readFileSync("scripts/check-operator-debt.mjs", "utf8");
 assert.match(operatorDebtScript, /getSelectedBlockedStaticAssetDebt/);
@@ -356,5 +375,7 @@ assert.match(operatorDebtScript, /app_composed_static_v2/);
 assert.match(operatorDebtScript, /Selected app-composed\/fallback static assets/);
 
 assert.equal(MARKETING_STUDIO_WORKER_DEFERRED_UNTIL, "2099-01-01T00:00:00.000Z");
+progress("after operator debt assertions");
 
 console.log("Marketing Studio worker architecture checks passed.");
+process.exit(0);

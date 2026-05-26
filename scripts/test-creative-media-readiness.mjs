@@ -763,3 +763,4 @@ assert.match(
 );
 
 console.log("creative media readiness regression checks passed");
+process.exit(0);
