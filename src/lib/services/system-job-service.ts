@@ -17,6 +17,7 @@ import {
 import {
   isMarketingStudioWorkerOwnedJob,
   isMarketingStudioStaticGenerationJob,
+  isMarketingStudioWorkerRuntimeEnabled,
   MARKETING_STUDIO_WORKER_DEFERRED_UNTIL,
   MARKETING_STUDIO_WORKER_RUNTIME,
   shouldDeferMarketingStudioStaticGenerationToWorker,
@@ -892,13 +893,22 @@ export async function processSystemJob(jobId: string) {
 
     if (result === undefined && processingJob.kind === "static_creative_generation") {
       const staticPayload = processingJob.payload as SystemJobPayloadMap["static_creative_generation"];
-      const regenerateStatic =
-        isMarketingStudioStaticGenerationJob({
-          kind: processingJob.kind,
-          payload: staticPayload,
-        })
-          ? regenerateHiggsfieldFinishedStaticAdsForUser
-          : regenerateStaticCreativeAssetsForUser;
+      const isMarketingStudioFinishedStaticJob = isMarketingStudioStaticGenerationJob({
+        kind: processingJob.kind,
+        payload: staticPayload,
+      });
+
+      if (isMarketingStudioFinishedStaticJob && !isMarketingStudioWorkerRuntimeEnabled()) {
+        throw new ApiError(
+          409,
+          "Marketing Studio finished-ad jobs must run in the dedicated CLI worker runtime.",
+          "marketing_studio_worker_runtime_required",
+        );
+      }
+
+      const regenerateStatic = isMarketingStudioFinishedStaticJob
+        ? regenerateHiggsfieldFinishedStaticAdsForUser
+        : regenerateStaticCreativeAssetsForUser;
       const output = await regenerateStatic(
         processingJob.campaign_id ?? "",
         processingJob.user_id,

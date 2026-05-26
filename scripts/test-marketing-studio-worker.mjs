@@ -281,6 +281,8 @@ assert.match(
 
 const workerScript = fs.readFileSync("scripts/run-marketing-studio-worker.mjs", "utf8");
 assert.match(workerScript, /marketing_studio_worker\.readiness/);
+assert.match(workerScript, /marketing_studio_worker\.startup/);
+assert.match(workerScript, /getCommitSha/);
 assert.match(workerScript, /runMarketingStudioWorkerBatch/);
 assert.match(workerScript, /intervalMs:\s*5_000/, "Marketing Studio polling default must be fast enough for post-unlock pickup");
 assert.match(workerScript, /Math\.min\(value,\s*10\)/, "Marketing Studio worker still caps explicit max-jobs to avoid uncontrolled provider loops");
@@ -313,6 +315,11 @@ assert.match(
   /regenerateHiggsfieldFinishedStaticAdsForUser/,
   "Marketing Studio finished-ad static jobs must bypass the generic app-composition regeneration path",
 );
+assert.match(
+  systemJobService,
+  /marketing_studio_worker_runtime_required/,
+  "Finished-ad static jobs must refuse non-worker runtimes instead of falling back to app composition",
+);
 
 const autoQueueService = fs.readFileSync("src/lib/services/static-creative-render-queue-service.ts", "utf8");
 assert.match(generateStaticAdsRoute, /outputMode:\s*"finished_ad"/);
@@ -341,6 +348,12 @@ assert.match(creativeIntakeRoute, /body\.action === "approve"/);
 assert.match(creativeIntakeRoute, /reason:\s*"creative_brief_approved"/);
 
 assert.match(creativeStudioPage, /reason:\s*"creative_studio_visit"/);
+
+const operatorDebtScript = fs.readFileSync("scripts/check-operator-debt.mjs", "utf8");
+assert.match(operatorDebtScript, /getSelectedBlockedStaticAssetDebt/);
+assert.match(operatorDebtScript, /dealflow_app_composer/);
+assert.match(operatorDebtScript, /app_composed_static_v2/);
+assert.match(operatorDebtScript, /Selected app-composed\/fallback static assets/);
 
 assert.equal(MARKETING_STUDIO_WORKER_DEFERRED_UNTIL, "2099-01-01T00:00:00.000Z");
 

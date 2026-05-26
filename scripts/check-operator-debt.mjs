@@ -87,6 +87,133 @@ async function countStaleDeferredCreativeJobs(supabase) {
   }).length;
 }
 
+function stringArray(value) {
+  return Array.isArray(value) ? value.map(String).map((item) => item.trim()).filter(Boolean) : [];
+}
+
+function unique(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function selectedStaticIdsFromPlan(plan) {
+  const record = asRecord(plan);
+  const payload = asRecord(record.campaign_payload);
+  const nestedPlan = asRecord(record.plan);
+  const nestedPayload = asRecord(nestedPlan.campaign_payload);
+
+  return unique([
+    ...stringArray(record.selected_ad_ids),
+    ...stringArray(payload.selected_ad_ids),
+    ...stringArray(nestedPlan.selected_ad_ids),
+    ...stringArray(nestedPayload.selected_ad_ids),
+  ]);
+}
+
+function staticAdsFromPlan(plan) {
+  const record = asRecord(plan);
+  const nestedPlan = asRecord(record.plan);
+  const creatives = asRecord(record.creatives);
+  const nestedCreatives = asRecord(nestedPlan.creatives);
+
+  return [
+    ...(Array.isArray(record.staticAds) ? record.staticAds : []),
+    ...(Array.isArray(nestedPlan.staticAds) ? nestedPlan.staticAds : []),
+    ...(Array.isArray(creatives.staticAds) ? creatives.staticAds : []),
+    ...(Array.isArray(nestedCreatives.staticAds) ? nestedCreatives.staticAds : []),
+  ].filter((item) => item && typeof item === "object" && !Array.isArray(item));
+}
+
+function selectedStaticIdForCreative(creative) {
+  const record = asRecord(creative);
+  return String(record.id ?? record.creativeId ?? record.creative_id ?? "").trim();
+}
+
+function hasBlockedStaticCreativeProvenance(value) {
+  const record = asRecord(value);
+  const metadata = asRecord(record.metadata);
+  const sourceImageQa = asRecord(record.sourceImageQa ?? metadata.sourceImageQa);
+  const generationMethod = String(record.generation_method ?? record.generationMethod ?? "").toLowerCase();
+  const providerName = String(record.provider_name ?? record.providerName ?? "").toLowerCase();
+  const compositionVersion = String(record.compositionVersion ?? metadata.compositionVersion ?? "").toLowerCase();
+
+  return (
+    generationMethod === "app_composed_static" ||
+    providerName === "dealflow_app_composer" ||
+    record.appComposedFinal === true ||
+    metadata.appComposedFinal === true ||
+    compositionVersion === "app_composed_static_v2" ||
+    sourceImageQa.mode === "background_only"
+  );
+}
+
+async function getSelectedBlockedStaticAssetDebt(supabase) {
+  const { data: campaigns, error: campaignError } = await supabase
+    .from("campaign_plans")
+    .select("id,plan");
+
+  if (campaignError) {
+    throw new Error(`campaign_plans selected static scan: ${campaignError.message}`);
+  }
+
+  const selectedByCampaign = new Map();
+  const blocked = [];
+
+  for (const campaign of campaigns ?? []) {
+    const selectedIds = selectedStaticIdsFromPlan(campaign.plan);
+    if (selectedIds.length === 0) continue;
+
+    selectedByCampaign.set(campaign.id, new Set(selectedIds));
+
+    for (const creative of staticAdsFromPlan(campaign.plan)) {
+      const id = selectedStaticIdForCreative(creative);
+      if (id && selectedIds.includes(id) && hasBlockedStaticCreativeProvenance(creative)) {
+        blocked.push(`${campaign.id}:${id}`);
+      }
+    }
+  }
+
+  if (selectedByCampaign.size === 0) {
+    return { count: 0, affectedIds: [] };
+  }
+
+  const campaignIds = [...selectedByCampaign.keys()];
+  const { data: assets, error: assetError } = await supabase
+    .from("creative_assets")
+    .select("id,campaign_id,creative_id,generation_method,provider_name,metadata")
+    .in("campaign_id", campaignIds);
+
+  if (assetError) {
+    throw new Error(`creative_assets selected static scan: ${assetError.message}`);
+  }
+
+  const assetsBySelectedId = new Map();
+
+  for (const asset of assets ?? []) {
+    const selectedIds = selectedByCampaign.get(asset.campaign_id);
+    if (!selectedIds) continue;
+
+    const assetIds = [asset.id, asset.creative_id].map((id) => String(id ?? "").trim()).filter(Boolean);
+    for (const id of assetIds) {
+      if (!selectedIds.has(id)) continue;
+      const key = `${asset.campaign_id}:${id}`;
+      const current = assetsBySelectedId.get(key) ?? [];
+      current.push(asset);
+      assetsBySelectedId.set(key, current);
+    }
+  }
+
+  for (const [key, matchingAssets] of assetsBySelectedId) {
+    if (matchingAssets.length > 0 && matchingAssets.every(hasBlockedStaticCreativeProvenance)) {
+      blocked.push(key);
+    }
+  }
+
+  return {
+    count: unique(blocked).length,
+    affectedIds: unique(blocked).slice(0, 12),
+  };
+}
+
 function decryptSecret(payload, secret) {
   const raw = Buffer.from(payload, "base64");
   const iv = raw.subarray(0, 12);
@@ -234,6 +361,7 @@ async function main() {
     failedProviderEvents,
     staleProviderReservations,
     staleDeferredCreativeJobs,
+    selectedBlockedStaticAssetDebt,
     deliveredNotificationStatusDrift,
     failedNotificationStatusDrift,
     campaign345MetaDebt,
@@ -254,6 +382,7 @@ async function main() {
         .lt("created_at", new Date(Date.now() - 30 * 60 * 1000).toISOString()),
     ),
     countStaleDeferredCreativeJobs(supabase),
+    getSelectedBlockedStaticAssetDebt(supabase),
     countRows(supabase, "lead_notifications", (query) =>
       query.not("delivered_at", "is", null).neq("status", "delivered"),
     ),
@@ -270,6 +399,7 @@ async function main() {
     failedProviderEvents,
     staleProviderReservations,
     staleDeferredCreativeJobs,
+    selectedBlockedStaticAssets: selectedBlockedStaticAssetDebt.count,
     deliveredNotificationStatusDrift,
     failedNotificationStatusDrift,
     metaReadOnlyVerificationErrors: campaign345MetaDebt.metaReadOnlyVerificationErrors,
@@ -313,6 +443,15 @@ async function main() {
     fail(
       "Stale deferred creative render jobs",
       `${staleDeferredCreativeJobs} worker-required creative job(s) need worker readiness, operator review, or scoped requeue`,
+    );
+  }
+
+  if (selectedBlockedStaticAssetDebt.count === 0) {
+    pass("Selected app-composed/fallback static assets", "none");
+  } else {
+    fail(
+      "Selected app-composed/fallback static assets",
+      `${selectedBlockedStaticAssetDebt.count} selected blocked asset(s): ${selectedBlockedStaticAssetDebt.affectedIds.join(", ")}`,
     );
   }
 

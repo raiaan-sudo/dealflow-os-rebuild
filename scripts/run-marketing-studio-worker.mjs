@@ -4,6 +4,7 @@ import Module from "node:module";
 import path from "node:path";
 import ts from "typescript";
 import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
 
 const repoRoot = process.env.DEALFLOW_REPO_ROOT || process.cwd();
 const { loadEnvConfig } = nextEnv;
@@ -102,6 +103,38 @@ function log(level, event, payload) {
   })}\n`);
 }
 
+function getCommitSha() {
+  const explicit = process.env.DEALFLOW_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA;
+
+  if (explicit) {
+    return explicit;
+  }
+
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return "unknown";
+  }
+}
+
+async function logStartupFingerprint(options) {
+  const readiness = await getMarketingStudioWorkerReadiness();
+  log("info", "marketing_studio_worker.startup", {
+    commitSha: getCommitSha(),
+    runtime: readiness.runtime,
+    poll: options.poll,
+    intervalMs: options.intervalMs,
+    maxJobs: options.maxJobs,
+    ready: readiness.ready,
+    checks: readiness.checks,
+    missing: readiness.missing,
+  });
+}
+
 async function runOnce(options) {
   const readiness = await getMarketingStudioWorkerReadiness();
   log(readiness.ready ? "info" : "warn", "marketing_studio_worker.readiness", {
@@ -126,6 +159,8 @@ async function runOnce(options) {
 const options = parseArgs(process.argv.slice(2));
 
 try {
+  await logStartupFingerprint(options);
+
   if (options.poll) {
     // Long-running operator process. Keep the loop simple so supervisors can
     // restart on crash and collect one JSON line per cycle.
