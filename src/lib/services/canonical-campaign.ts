@@ -155,10 +155,16 @@ function safeRecord(value: unknown): Record<string, unknown> | null {
 function hasHiggsfieldFinishedStaticAds(value: CampaignCreatives["staticAds"]) {
   return value.filter((asset) => {
     const qa = asset.imageQa;
+    const provider =
+      asset.imageGenerationProvider === "higgsfield_marketing_studio" ||
+      asset.generationMethod === "higgsfield_marketing_studio" ||
+      asset.providerName === "higgsfield_marketing_studio";
 
     return (
-      asset.imageGenerationProvider === "higgsfield_marketing_studio" &&
+      provider &&
       asset.qualityTier === "higgsfield_finished_ad" &&
+      asset.generationMode === "finished_ad" &&
+      asset.assetRole === "final_static_ad" &&
       asset.appComposedFinal !== true &&
       asset.storageNormalized === true &&
       Boolean(asset.imageUrl) &&
