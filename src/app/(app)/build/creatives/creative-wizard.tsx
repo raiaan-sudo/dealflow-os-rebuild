@@ -47,6 +47,10 @@ type CreativeOption = {
   sourceBackgroundAssetId?: string | null;
   imageGenerationState?: string | null;
   imageGenerationProvider?: string | null;
+  generationMethod?: string | null;
+  providerName?: string | null;
+  generationMode?: string | null;
+  assetRole?: string | null;
   imageGenerationMessage?: string | null;
   imagePrompt?: string | null;
   imagePromptConfig?: {
