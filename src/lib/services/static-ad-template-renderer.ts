@@ -49,6 +49,10 @@ export type StaticAdTemplateInput = {
   imageGenerationState?: string | null;
   imageGenerationMessage?: string | null;
   imageGenerationProvider?: string | null;
+  generationMethod?: string | null;
+  providerName?: string | null;
+  generationMode?: string | null;
+  assetRole?: string | null;
   imagePrompt?: string | null;
   imagePromptConfig?: {
     prompt?: string | null;

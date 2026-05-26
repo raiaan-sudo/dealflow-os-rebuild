@@ -23,6 +23,10 @@ type StaticCreativePreviewCardProps = {
   imageGenerationState?: "generated" | "generating" | "unavailable" | "failed" | string | null;
   imageGenerationMessage?: string | null;
   imageGenerationProvider?: string | null;
+  generationMethod?: string | null;
+  providerName?: string | null;
+  generationMode?: string | null;
+  assetRole?: string | null;
   imagePrompt?: string | null;
   imagePromptConfig?: {
     prompt?: string | null;
@@ -96,6 +100,10 @@ export function StaticCreativePreviewCard({
   imageGenerationState,
   imageGenerationMessage,
   imageGenerationProvider,
+  generationMethod,
+  providerName,
+  generationMode,
+  assetRole,
   imagePrompt,
   imagePromptConfig,
   overlayText,
@@ -126,6 +134,10 @@ export function StaticCreativePreviewCard({
         imageGenerationMessage={imageGenerationMessage}
         imageGenerationProvider={imageGenerationProvider}
         imageGenerationState={imageGenerationState}
+        generationMethod={generationMethod}
+        providerName={providerName}
+        generationMode={generationMode}
+        assetRole={assetRole}
         imagePrompt={imagePrompt}
         imagePromptConfig={imagePromptConfig}
         imageUrl={imageUrl}
@@ -221,6 +233,10 @@ export function StaticCreativePreviewCard({
                 imageGenerationMessage={imageGenerationMessage}
                 imageGenerationProvider={imageGenerationProvider}
                 imageGenerationState={imageGenerationState}
+                generationMethod={generationMethod}
+                providerName={providerName}
+                generationMode={generationMode}
+                assetRole={assetRole}
                 imagePrompt={imagePrompt}
                 imagePromptConfig={imagePromptConfig}
                 imageUrl={imageUrl}
@@ -276,6 +292,10 @@ export function StaticCreativeSummaryCard({
   imageGenerationState,
   imageGenerationMessage,
   imageGenerationProvider,
+  generationMethod,
+  providerName,
+  generationMode,
+  assetRole,
   imagePrompt,
   imagePromptConfig,
   overlayText,
@@ -319,6 +339,10 @@ export function StaticCreativeSummaryCard({
           imageGenerationMessage={imageGenerationMessage}
           imageGenerationProvider={imageGenerationProvider}
           imageGenerationState={imageGenerationState}
+          generationMethod={generationMethod}
+          providerName={providerName}
+          generationMode={generationMode}
+          assetRole={assetRole}
           imagePrompt={imagePrompt}
           imagePromptConfig={imagePromptConfig}
           imageUrl={imageUrl}
@@ -394,6 +418,10 @@ export function StaticCreativeSummaryCard({
           imageGenerationMessage={imageGenerationMessage}
           imageGenerationProvider={imageGenerationProvider}
           imageGenerationState={imageGenerationState}
+          generationMethod={generationMethod}
+          providerName={providerName}
+          generationMode={generationMode}
+          assetRole={assetRole}
           imagePrompt={imagePrompt}
           imagePromptConfig={imagePromptConfig}
           imageUrl={imageUrl}
