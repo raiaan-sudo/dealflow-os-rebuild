@@ -8,6 +8,7 @@ import {
   StaticCreativePreviewCard,
 } from "@/components/campaign/static-creative-preview-card";
 import { CustomerVideoPlayer } from "@/components/campaign/customer-video-player";
+import { GenerationCreditTopUpPanel } from "@/components/billing/generation-credit-top-up-panel";
 import { Button } from "@/components/ui/button";
 import {
   classifyCreativeRenderJob,
@@ -314,6 +315,10 @@ function customerImageMessage(message?: string | null) {
   return text;
 }
 
+function isCreditsInsufficient(code?: string | null, message?: string | null) {
+  return code === "credits_insufficient" || /credits?\s+insufficient|generation credits/i.test(message ?? "");
+}
+
 function getImageLimitMessage(creatives: CreativeOption[]) {
   const blockedCreative = creatives.find((creative) =>
     /maximum \d+ AI image generation|maximum \d+ AI image generations|daily image generation limit|provider_usage_limit_reached|session already used the maximum/i.test(
@@ -406,6 +411,7 @@ export function CreativeWizard({
   const [renderMessage, setRenderMessage] = useState<string | null>(null);
   const [videoMessage, setVideoMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [creditTopUpSurface, setCreditTopUpSurface] = useState<"image" | "video" | null>(null);
   const [fullVideoOpen, setFullVideoOpen] = useState(false);
   const [activePhase, setActivePhase] = useState<StudioPhase>("static_ads");
   const [activeCreativeId, setActiveCreativeId] = useState<string | null>(
@@ -573,6 +579,9 @@ export function CreativeWizard({
           clearActiveJob();
           router.refresh();
         } else if (job.status === "failed") {
+          if (isCreditsInsufficient(job.last_error_code, job.error_message)) {
+            setCreditTopUpSurface(surface);
+          }
           if (surface === "video") {
             setVideoMessage(customerVideoMessage(renderView.customerMessage || job.error_message) || "Render needs retry.");
           } else {
@@ -619,6 +628,7 @@ export function CreativeWizard({
 
     setRenderingImages(true);
     setError(null);
+    setCreditTopUpSurface(null);
     setRenderMessage(
       automatic
         ? "Preparing image previews automatically. You can review the creative set while visuals finish."
@@ -637,10 +647,15 @@ export function CreativeWizard({
         }),
       });
       const data = (await response.json().catch(() => null)) as
-        | { job?: SystemJob | null; error?: string | null; previewUpdated?: boolean }
+        | { job?: SystemJob | null; error?: string | null; code?: string | null; previewUpdated?: boolean }
         | null;
 
       if (!response.ok || !data?.job?.id) {
+        if (isCreditsInsufficient(data?.code, data?.error)) {
+          setCreditTopUpSurface("image");
+          setRenderMessage(null);
+          return;
+        }
         throw new Error(data?.error || "Image preview rendering could not start.");
       }
 
@@ -696,6 +711,7 @@ export function CreativeWizard({
     setActiveVideoId(selectedVideo.id);
     setRenderingVideo(true);
     setError(null);
+    setCreditTopUpSurface(null);
     setVideoMessage(
       automatic
         ? "Preparing video preview automatically. You can keep choosing static creatives while it renders."
@@ -714,10 +730,15 @@ export function CreativeWizard({
         }),
       });
       const data = (await response.json().catch(() => null)) as
-        | { job?: SystemJob | null; error?: string | null }
+        | { job?: SystemJob | null; error?: string | null; code?: string | null }
         | null;
 
       if (!response.ok || !data?.job?.id) {
+        if (isCreditsInsufficient(data?.code, data?.error)) {
+          setCreditTopUpSurface("video");
+          setVideoMessage(null);
+          return;
+        }
         throw new Error(data?.error || "Video preview rendering could not start.");
       }
 
@@ -1141,10 +1162,13 @@ export function CreativeWizard({
               {renderMessage}
             </div>
           ) : null}
+          {creditTopUpSurface === "image" || hasCreditBlocker ? (
+            <GenerationCreditTopUpPanel surface="image" />
+          ) : null}
           {selectedNeedsImageGeneration ? (
             <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm leading-6 text-amber-100">
               {hasCreditBlocker
-                ? "Your strategy, copy, and creative concepts are ready. The previous render stopped before credit overdraft was enabled."
+                ? "Your strategy, copy, and creative concepts are ready. Add credits to render paid premium ads."
                 : imageStatusMessage}
               {hasCreditBlocker ? (
                 <button
@@ -1428,6 +1452,11 @@ export function CreativeWizard({
                 <span className="text-sm leading-6 text-muted-foreground">
                   {customerVideoMessage(videoMessage || activeVideoCreative.videoGenerationMessage)}
                 </span>
+              ) : null}
+              {creditTopUpSurface === "video" ? (
+                <div className="w-full">
+                  <GenerationCreditTopUpPanel surface="video" />
+                </div>
               ) : null}
             </div>
             {reviewableVideoCreatives.length > 1 ? (

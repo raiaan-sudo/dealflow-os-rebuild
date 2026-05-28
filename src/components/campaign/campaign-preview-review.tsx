@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getCampaignIntentLabel } from "@/lib/campaign-intent";
 import { FunnelPreview } from "@/components/funnel/funnel-preview";
+import { GenerationCreditTopUpPanel } from "@/components/billing/generation-credit-top-up-panel";
 import { PreviewActions } from "@/components/billing/preview-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,7 +44,12 @@ type SystemJob = {
     staticAds?: StaticCreativeAsset[];
   } | null;
   error_message?: string | null;
+  last_error_code?: string | null;
 };
+
+function isCreditsInsufficient(code?: string | null, message?: string | null) {
+  return code === "credits_insufficient" || /credits?\s+insufficient|generation credits/i.test(message ?? "");
+}
 
 export function getAdPreviewStatusLabel(ad: Pick<StaticCreativeAsset, "recommended" | "score" | "angle" | "imageGenerationState">, index: number) {
   if (ad.recommended) {
@@ -163,6 +169,7 @@ export function CampaignPreviewReview({
   const [adsState, setAdsState] = useState(previewAds);
   const [isGeneratingAds, setIsGeneratingAds] = useState(false);
   const [generationMessage, setGenerationMessage] = useState<string | null>(null);
+  const [showCreditTopUp, setShowCreditTopUp] = useState(false);
   const jobStreamsRef = useRef<Map<string, EventSource>>(new Map());
 
   useEffect(() => {
@@ -275,6 +282,9 @@ export function CampaignPreviewReview({
           jobStreamsRef.current.delete(jobId);
           router.refresh();
         } else if (job.status === "failed") {
+          if (isCreditsInsufficient(job.last_error_code, job.error_message)) {
+            setShowCreditTopUp(true);
+          }
           setGenerationMessage("Premium visual polish needs another attempt. Launch-ready final ads remain available.");
           source.close();
           jobStreamsRef.current.delete(jobId);
@@ -298,6 +308,7 @@ export function CampaignPreviewReview({
     }
 
     setIsGeneratingAds(true);
+    setShowCreditTopUp(false);
     setGenerationMessage("Generating static creative previews.");
 
     try {
@@ -316,9 +327,15 @@ export function CampaignPreviewReview({
         success?: boolean;
         job?: SystemJob;
         error?: string;
+        code?: string;
       };
 
       if (!response.ok || !data.job?.id) {
+        if (isCreditsInsufficient(data.code, data.error)) {
+          setGenerationMessage(null);
+          setShowCreditTopUp(true);
+          return;
+        }
         throw new Error(data.error || "Static creative generation failed.");
       }
 
@@ -517,6 +534,11 @@ export function CampaignPreviewReview({
             {generationMessage ? (
               <div className="mt-4 rounded-[16px] border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-muted-foreground">
                 {generationMessage}
+              </div>
+            ) : null}
+            {showCreditTopUp ? (
+              <div className="mt-4">
+                <GenerationCreditTopUpPanel surface="image" />
               </div>
             ) : null}
             {allStaticAdsMissing ? (

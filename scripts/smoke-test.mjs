@@ -924,7 +924,8 @@ function runOfflineChecks() {
   assertIncludes(envHelpers, "ALLOW_QA_BILLING_ACCEPTANCE_OVERRIDE", "QA billing acceptance env gate", "owner/test billing acceptance requires explicit env opt-in");
   assertIncludes(envHelpers, "QA_BILLING_ACCEPTANCE_OVERRIDE_CAMPAIGN_IDS", "QA billing campaign allowlist", "owner/test billing acceptance can be scoped to a single campaign");
   assertIncludes(envHelpers, "QA_BILLING_ACCEPTANCE_OVERRIDE_PLAN_TIERS", "QA billing plan allowlist", "owner/test billing acceptance is constrained by explicit plan tier");
-  assertIncludes(creditService, "GENERATION_CREDIT_OVERDRAFT_LIMIT_CENTS", "Credit overdraft cap env", "self-serve paid generation overdraft is capped instead of unlimited");
+  assertIncludes(creditService, "DEFAULT_GENERATION_CREDIT_OVERDRAFT_LIMIT_CENTS = 0", "Strict prepaid credit default", "self-serve paid generation is prepaid by default");
+  assertIncludes(creditService, "GENERATION_CREDIT_OVERDRAFT_LIMIT_CENTS", "Credit overdraft cap env", "any generation-credit overdraft requires an explicit operator env override");
   assertIncludes("supabase/migrations/20260510183000_cap_generation_credit_overdrafts.sql", "next_balance < -overdraft_limit", "DB credit overdraft cap", "database credit consumption enforces a maximum negative balance");
   assertIncludes(".env.example", "INTERNAL_SYSTEM_JOBS_SECRET", "Internal runner env example", "cron runner secret is documented in the environment template");
   assertIncludes(".env.example", "CRON_SECRET", "Vercel cron env example", "Vercel Cron secret fallback is documented in the environment template");
@@ -992,10 +993,12 @@ function runOfflineChecks() {
   assertIncludes(billingWebhookMigration, "stripe_latest_event_created", "Billing subscription event watermark", "billing rows persist latest Stripe event timestamps");
   assertIncludes(billingOrderingMigration, "stripe_latest_event_id, '') < normalized_event_id", "Billing equal-timestamp ordering guard", "same-second Stripe events are ordered deterministically");
   assertIncludes(creditService, "consume_user_credits", "Atomic credit deduction", "paid generation credits are deducted through a DB RPC");
+  assertIncludes(creditService, "assertGenerationCreditsAvailableForUser", "Generation credit preflight", "paid generation routes preflight credits before queueing provider work");
   assertIncludes(creditService, "grant_user_credits", "Credit top-up ledger", "credit grants and refunds use the append-only DB ledger");
   assertIncludes(creditService, "CREDIT_TOP_UP_MINIMUM_CENTS = 2_000", "Credit top-up minimum", "generation credit top-ups require the intended $20 minimum");
   assertIncludes(creditService, "bypassedByBillingOverride", "Credit billing override", "billing override users can test paid generation without internal credit balance friction");
-  assertIncludes("supabase/migrations/20260510014500_enable_generation_credit_overdrafts.sql", "next_balance := current_balance - p_amount", "Credit overdraft ledger", "paid generation can create a negative balance that is repaid by the next top-up");
+  assertIncludes("src/components/billing/generation-credit-top-up-panel.tsx", "Add $20.00 credits", "Creative top-up prompt", "insufficient generation credits surface a compact $20 top-up action");
+  assertIncludes("supabase/migrations/20260510014500_enable_generation_credit_overdrafts.sql", "next_balance := current_balance - p_amount", "Historical credit ledger compatibility", "credit ledger keeps backward-compatible support for prior overdraft-cap migrations");
   assertIncludes(billingService, "checkout_kind: \"credit_top_up\"", "Stripe credit top-up checkout", "credit purchases are isolated from subscription checkout metadata");
   assertIncludes(billingService, "stripe_credit_top_up_processed", "Stripe credit top-up webhook", "paid credit checkout sessions grant credits idempotently");
   assertIncludes(billingService, "payment_method_types: [\"card\"]", "Stripe credit top-up synchronous payment", "credit top-up checkout is card-only so delayed async payment methods do not strand credits");

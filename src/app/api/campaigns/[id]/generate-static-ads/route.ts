@@ -13,6 +13,7 @@ import {
   hasSameCreativeIntakeGenerationContext,
   isCreativeChatIntakeEnabled,
 } from "@/lib/services/creative-chat-intake-service";
+import { assertGenerationCreditsAvailableForUser } from "@/lib/services/credit-service";
 import { isMarketingStudioStaticGenerationPayload } from "@/lib/services/marketing-studio-worker-contract";
 import { createSystemJob, listSystemJobs } from "@/lib/services/system-job-service";
 import { z } from "zod";
@@ -164,6 +165,14 @@ export async function POST(
         previewUpdated,
       });
     }
+
+    await assertGenerationCreditsAvailableForUser({
+      bucket: "image_generation",
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      campaignId,
+      quantity: maxGenerations ?? 6,
+    });
 
     const requestScope = body.force === true
       ? `force:${crypto.randomUUID()}`

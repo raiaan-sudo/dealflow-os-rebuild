@@ -10,6 +10,7 @@ import {
   isCreativeChatIntakeEnabled,
 } from "@/lib/services/creative-chat-intake-service";
 import { getAvatarVideoProvider } from "@/lib/integrations/creative/avatar-provider";
+import { assertGenerationCreditsAvailableForUser } from "@/lib/services/credit-service";
 import { isMarketingStudioWorkerOwnedJob } from "@/lib/services/marketing-studio-worker-contract";
 import { createSystemJob, listSystemJobs } from "@/lib/services/system-job-service";
 import type { SystemJobRecord } from "@/lib/services/system-job-service";
@@ -203,6 +204,13 @@ export async function POST(
         { status: 409 },
       );
     }
+
+    await assertGenerationCreditsAvailableForUser({
+      bucket: "video_generation",
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      campaignId,
+    });
 
     const approvedScript = creativeIntakeContext?.ugcStyleBrief?.approvedScript ?? null;
     const scriptLines = (approvedScript?.lines?.join("\n") || selectedCopy?.script || selectedVideo.script.join("\n"))

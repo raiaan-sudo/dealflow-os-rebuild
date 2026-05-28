@@ -12,6 +12,10 @@ function read(relativePath) {
 
 const creditService = read("src/lib/services/credit-service.ts");
 const creditTopUpButton = read("src/components/billing/credit-top-up-button.tsx");
+const generationCreditTopUpPanel = read("src/components/billing/generation-credit-top-up-panel.tsx");
+const staticAdsRoute = read("src/app/api/campaigns/[id]/generate-static-ads/route.ts");
+const videoRoute = read("src/app/api/campaigns/[id]/generate-video/route.ts");
+const creativeWizard = read("src/app/(app)/build/creatives/creative-wizard.tsx");
 const settingsPage = read("src/app/(app)/settings/page.tsx");
 const billingService = read("src/lib/services/billing-service.ts");
 const envExample = read(".env.example");
@@ -25,9 +29,24 @@ assert.match(
   "credit service must enforce the $20 minimum top-up",
 );
 assert.match(
+  creditService,
+  /DEFAULT_GENERATION_CREDIT_OVERDRAFT_LIMIT_CENTS\s*=\s*0/,
+  "normal generation credit policy must be prepaid by default",
+);
+assert.match(
+  creditService,
+  /GENERATION_CREDIT_OVERDRAFT_LIMIT_CENTS/,
+  "operator-configured generation credit overdraft remains available as an explicit env override",
+);
+assert.match(
   creditTopUpButton,
   /amountCents\s*=\s*2000/,
   "credit top-up button fallback must use the $20 minimum",
+);
+assert.ok(
+  generationCreditTopUpPanel.includes("CreditTopUpButton") &&
+    generationCreditTopUpPanel.includes("Add $20.00 credits"),
+  "generation surfaces must show a compact top-up action when credits are insufficient",
 );
 assert.ok(
   settingsPage.includes('formattedMinimumTopUp ?? "$20.00"'),
@@ -78,6 +97,26 @@ assert.match(
   creditService,
   /if \(nextBalance < -overdraftLimitCents\)[\s\S]{0,220}"credits_insufficient"/,
   "normal non-allowlisted generation still blocks on the standard overdraft limit",
+);
+assert.match(
+  creditService,
+  /assertGenerationCreditsAvailableForUser/,
+  "generation routes must have a non-mutating credit preflight before queueing paid work",
+);
+assert.ok(
+  staticAdsRoute.includes("assertGenerationCreditsAvailableForUser") &&
+    staticAdsRoute.includes('bucket: "image_generation"'),
+  "static generation route preflights image credits before queueing provider work",
+);
+assert.ok(
+  videoRoute.includes("assertGenerationCreditsAvailableForUser") &&
+    videoRoute.includes('bucket: "video_generation"'),
+  "video generation route preflights video credits before queueing provider work",
+);
+assert.ok(
+  creativeWizard.includes("GenerationCreditTopUpPanel") &&
+    creativeWizard.includes("credits_insufficient"),
+  "Creative Studio renders the top-up panel for insufficient generation-credit responses",
 );
 assert.match(
   creditService,
