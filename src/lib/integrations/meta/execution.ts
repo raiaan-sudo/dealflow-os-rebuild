@@ -8,6 +8,11 @@ import { decryptSecret } from "@/lib/integrations/meta-crypto";
 import type { MetaConnectionRecord } from "@/lib/integrations/meta/types";
 import { fetchWithRetryServer } from "@/lib/http/fetch-with-retry-server";
 import { fetchMetaResponse } from "@/lib/integrations/meta/request";
+import {
+  applyMetaCreativeOptOut,
+  buildMetaMarketGeoLocations,
+  type MetaCreativeOptOutPayload,
+} from "@/lib/integrations/meta/launch-payload-guardrails";
 import type {
   ExecutableAd,
   ExecutableAdSet,
@@ -28,14 +33,7 @@ export type MetaAdSetPayload = {
   optimization_goal: "LEAD_GENERATION";
   bid_strategy: "LOWEST_COST_WITHOUT_CAP";
   targeting: {
-    geo_locations: {
-      countries: string[];
-      custom_locations?: Array<{
-        address_string: string;
-        radius: number;
-        distance_unit: "mile" | "kilometer";
-      }>;
-    };
+    geo_locations: ReturnType<typeof buildMetaMarketGeoLocations>;
     age_min: number;
     age_max: number;
     interests: Array<{ id: string; name: string }>;
@@ -77,7 +75,7 @@ export type MetaAdCreativePayload = {
       };
     };
   };
-};
+} & MetaCreativeOptOutPayload;
 
 export function normalizeObjective(objective: string): MetaCampaignPayload["objective"] {
   if (objective.toLowerCase().includes("lead")) {
@@ -101,20 +99,6 @@ function getInterestKeywords(adSet: ExecutableAdSet) {
 function getMetaObjectStatus(launchMode: "test" | "live"): "PAUSED" {
   void launchMode;
   return "PAUSED";
-}
-
-function inferCountryCode(location: string) {
-  const normalized = location.toLowerCase();
-
-  if (
-    /\btoronto\b|\bontario\b|\bvancouver\b|\bcalgary\b|\bedmonton\b|\bmontreal\b|\bcanada\b/.test(
-      normalized,
-    )
-  ) {
-    return "CA";
-  }
-
-  return "US";
 }
 
 function getAgeRange(adSet: ExecutableAdSet) {
@@ -281,16 +265,7 @@ export async function mapAdSetToMetaPayload(
     optimization_goal: "LEAD_GENERATION",
     bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     targeting: {
-      geo_locations: {
-        countries: [inferCountryCode(adSet.location)],
-        custom_locations: [
-          {
-            address_string: adSet.location,
-            radius: 25,
-            distance_unit: "mile",
-          },
-        ],
-      },
+      geo_locations: buildMetaMarketGeoLocations(adSet.location),
       age_min: ageRange.min,
       age_max: ageRange.max,
       interests,
@@ -341,22 +316,24 @@ export async function mapAdToMetaPayload(
     accessToken,
     mode,
     payload: {
-      name: `${ad.name} creative`,
-      object_story_spec: {
-        page_id: pageId,
-        link_data: {
-          message: ad.copy,
-          name: ad.headline,
-          picture: ad.creativeAsset.imageUrl,
-          link: destinationUrl,
-          call_to_action: {
-            type: normalizeCta(ad.cta),
-            value: {
-              link: destinationUrl,
+      ...applyMetaCreativeOptOut({
+        name: `${ad.name} creative`,
+        object_story_spec: {
+          page_id: pageId,
+          link_data: {
+            message: ad.copy,
+            name: ad.headline,
+            picture: ad.creativeAsset.imageUrl,
+            link: destinationUrl,
+            call_to_action: {
+              type: normalizeCta(ad.cta),
+              value: {
+                link: destinationUrl,
+              },
             },
           },
         },
-      },
+      }),
     },
   });
 

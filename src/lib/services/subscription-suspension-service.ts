@@ -9,6 +9,7 @@ import {
   buildCampaignPlanCriticalFieldPatch,
   mergeCampaignPlanDocument,
 } from "@/lib/services/campaign-plan-document";
+import { queueCampaignOffboardingCleanupJobsForOrganization } from "@/lib/services/campaign-offboarding-cleanup-service";
 import { createSystemJob, type SystemJobRecord } from "@/lib/services/system-job-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/lib/supabase/types";
@@ -185,6 +186,8 @@ export async function queueSubscriptionSuspensionJobsForOrganization(params: {
   organizationId: string;
   reason: string;
   source: string;
+  stripeSubscriptionId?: string | null;
+  billingEndedAt?: string | null;
 }) {
   const supabase = createAdminClient();
 
@@ -234,6 +237,21 @@ export async function queueSubscriptionSuspensionJobsForOrganization(params: {
     reason: params.reason,
     source: params.source,
     jobCount: jobs.length,
+  });
+
+  await queueCampaignOffboardingCleanupJobsForOrganization({
+    organizationId: params.organizationId,
+    reason: params.reason,
+    source: params.source,
+    stripeSubscriptionId: params.stripeSubscriptionId ?? null,
+    billingEndedAt: params.billingEndedAt ?? null,
+  }).catch((error) => {
+    logWarn("campaign_offboarding.queue_failed", {
+      organizationId: params.organizationId,
+      reason: params.reason,
+      source: params.source,
+      message: error instanceof Error ? error.message : "Unknown campaign offboarding queue failure",
+    });
   });
 
   return jobs;

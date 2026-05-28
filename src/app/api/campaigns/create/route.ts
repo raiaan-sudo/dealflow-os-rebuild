@@ -20,6 +20,11 @@ import {
 } from "@/lib/integrations/meta/budget-cap";
 import { fetchMetaJson } from "@/lib/integrations/meta/request";
 import {
+  getMetaCreativeOptOutPayload,
+  buildMetaMarketGeoLocations,
+  getMetaSpecialAdCategoryCountries,
+} from "@/lib/integrations/meta/launch-payload-guardrails";
+import {
   getMetaWorkspaceCredentials,
   validateMetaLaunchSelections,
   type MetaWorkspaceCredentials,
@@ -175,20 +180,6 @@ function getMetaErrorMessage(data: Record<string, unknown> | null, fallback: str
   return [userTitle, userMessage || message].filter(Boolean).join(": ") || fallback;
 }
 
-function inferCountryCode(location: string) {
-  const normalized = location.toLowerCase();
-
-  if (
-    /\btoronto\b|\bontario\b|\bvancouver\b|\bcalgary\b|\bedmonton\b|\bmontreal\b|\bcanada\b/.test(
-      normalized,
-    )
-  ) {
-    return "CA";
-  }
-
-  return "US";
-}
-
 function inferAgeRange(audience: string, targetingSummary: string) {
   const normalized = `${audience} ${targetingSummary}`.toLowerCase();
 
@@ -208,8 +199,7 @@ function inferAgeRange(audience: string, targetingSummary: string) {
 }
 
 function buildGeoTargeting(location: string) {
-  void location;
-  return {};
+  return buildMetaMarketGeoLocations(location);
 }
 
 async function loadSavedCampaignPayload(campaignId: string): Promise<CampaignPayloadRecord | null> {
@@ -924,7 +914,6 @@ async function launchCampaignToMeta(
       storedPayload?.business_profile?.location ??
       record.strategy.location ??
       record.plan.market;
-    const countryCode = inferCountryCode(location);
     const audience = storedPayload?.targeting_plan?.audience ?? record.strategy.audience ?? record.plan.audience;
     const targetingSummary =
       storedPayload?.targeting_plan?.summary ?? record.plan.targeting_summary ?? "";
@@ -1253,7 +1242,7 @@ async function launchCampaignToMeta(
         objective,
         status: "PAUSED",
         special_ad_categories: JSON.stringify(["HOUSING"]),
-        special_ad_category_country: JSON.stringify([countryCode]),
+        special_ad_category_country: JSON.stringify(getMetaSpecialAdCategoryCountries(location)),
         is_adset_budget_sharing_enabled: "false",
         access_token: credentials.accessToken,
       });
@@ -1459,10 +1448,7 @@ async function launchCampaignToMeta(
         daily_budget: dailyBudget,
         bid_strategy: "LOWEST_COST_WITHOUT_CAP",
         targeting: JSON.stringify({
-          geo_locations: {
-            countries: [countryCode],
-            ...buildGeoTargeting(location),
-          },
+          geo_locations: buildGeoTargeting(location),
         }),
         status: "PAUSED",
         access_token: credentials.accessToken,
@@ -1702,6 +1688,10 @@ async function launchCampaignToMeta(
           page_id: pageId,
           link_data: linkData,
         }),
+        degrees_of_freedom_spec: JSON.stringify(
+          getMetaCreativeOptOutPayload().degrees_of_freedom_spec,
+        ),
+        contextual_multi_ads: JSON.stringify(getMetaCreativeOptOutPayload().contextual_multi_ads),
         access_token: credentials.accessToken,
       });
       const { response: creativeResponse, data: creativeResponseData } = await fetchMetaJson<Record<string, unknown> | null>(

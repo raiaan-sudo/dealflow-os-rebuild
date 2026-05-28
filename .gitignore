@@ -46,4 +46,3 @@ supabase/.temp/
 *screenshot*.webp
 recovery-report.json
 .env*.local
-.vercel

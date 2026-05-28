@@ -26,6 +26,10 @@ import {
   createMetaCreative,
   publishMetaCampaignIfNeeded,
 } from "@/lib/services/meta-launch-service";
+import {
+  applyMetaCreativeOptOut,
+  buildMetaMarketGeoLocations,
+} from "@/lib/integrations/meta/launch-payload-guardrails";
 import type { MetaConnectionRecord } from "@/lib/integrations/meta/types";
 import type { FullCampaignRecord } from "@/lib/types/campaign-records";
 import { getLaunchReadyCreativeMedia } from "@/lib/services/creative-builder-service";
@@ -420,20 +424,6 @@ function getMetaTrackingPreflightErrors(
 
 function buildMetaName(baseName: string, campaignId: string, stage: string) {
   return `${baseName} | DF-${campaignId.slice(0, 8)}-${stage}`.trim();
-}
-
-function inferCountryCode(location: string) {
-  const normalized = location.toLowerCase();
-
-  if (
-    /\btoronto\b|\bontario\b|\bvancouver\b|\bcalgary\b|\bedmonton\b|\bmontreal\b|\bcanada\b/.test(
-      normalized,
-    )
-  ) {
-    return "CA";
-  }
-
-  return "US";
 }
 
 function getAgeRange(marketType?: FullCampaignRecord["strategy"]["market_type"]) {
@@ -879,16 +869,7 @@ export function buildMetaAdSetPayloads(
         ? { daily_budget: toMinorUnits(config.dailyBudget ?? 0) }
         : { lifetime_budget: toMinorUnits(config.lifetimeBudget ?? 0) }),
       targeting: {
-        geo_locations: {
-          countries: [inferCountryCode(campaignRecord.strategy.location)],
-          custom_locations: [
-            {
-              address_string: campaignRecord.strategy.location,
-              radius: 25,
-              distance_unit: "mile",
-            },
-          ],
-        },
+        geo_locations: buildMetaMarketGeoLocations(campaignRecord.strategy.location),
         age_min: ageRange.min,
         age_max: ageRange.max,
         interests,
@@ -924,7 +905,7 @@ export function buildMetaAdPayloads(
     })(),
   })).map(({ asset, mediaUrl }, index) => ({
     asset,
-    creativePayload: {
+    creativePayload: applyMetaCreativeOptOut({
       name: buildMetaName(
         `${campaignRecord.campaign.name} | Creative ${index + 1}`,
         campaignRecord.campaign.id,
@@ -945,7 +926,7 @@ export function buildMetaAdPayloads(
           },
         },
       },
-    },
+    }),
     adPayload: {
       name: buildMetaName(
         `${campaignRecord.campaign.name} | Ad ${index + 1}`,

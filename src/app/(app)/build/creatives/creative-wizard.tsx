@@ -47,10 +47,6 @@ type CreativeOption = {
   sourceBackgroundAssetId?: string | null;
   imageGenerationState?: string | null;
   imageGenerationProvider?: string | null;
-  generationMethod?: string | null;
-  providerName?: string | null;
-  generationMode?: string | null;
-  assetRole?: string | null;
   imageGenerationMessage?: string | null;
   imagePrompt?: string | null;
   imagePromptConfig?: {
@@ -1050,10 +1046,6 @@ export function CreativeWizard({
             imageGenerationMessage={displayActiveCreative.imageGenerationMessage}
             imageGenerationProvider={displayActiveCreative.imageGenerationProvider}
             imageGenerationState={displayActiveCreative.imageGenerationState}
-            generationMethod={displayActiveCreative.generationMethod}
-            providerName={displayActiveCreative.providerName}
-            generationMode={displayActiveCreative.generationMode}
-            assetRole={displayActiveCreative.assetRole}
             imagePrompt={displayActiveCreative.imagePrompt}
             imagePromptConfig={displayActiveCreative.imagePromptConfig}
             imageUrl={displayActiveCreative.imageUrl}
@@ -1192,10 +1184,6 @@ export function CreativeWizard({
                     imageGenerationMessage={displayCreative.imageGenerationMessage}
                     imageGenerationProvider={displayCreative.imageGenerationProvider}
                     imageGenerationState={displayCreative.imageGenerationState}
-                    generationMethod={displayCreative.generationMethod}
-                    providerName={displayCreative.providerName}
-                    generationMode={displayCreative.generationMode}
-                    assetRole={displayCreative.assetRole}
                     imagePrompt={displayCreative.imagePrompt}
                     imagePromptConfig={displayCreative.imagePromptConfig}
                     imageUrl={displayCreative.imageUrl}
@@ -1656,10 +1644,6 @@ export function CreativeWizard({
                     imageGenerationMessage={displayCreative.imageGenerationMessage}
                     imageGenerationProvider={displayCreative.imageGenerationProvider}
                     imageGenerationState={displayCreative.imageGenerationState}
-                    generationMethod={displayCreative.generationMethod}
-                    providerName={displayCreative.providerName}
-                    generationMode={displayCreative.generationMode}
-                    assetRole={displayCreative.assetRole}
                     imagePrompt={displayCreative.imagePrompt}
                     imagePromptConfig={displayCreative.imagePromptConfig}
                     imageUrl={displayCreative.imageUrl}
@@ -1734,10 +1718,6 @@ export function CreativeWizard({
                         imageGenerationMessage={displayCreative.imageGenerationMessage}
                         imageGenerationProvider={displayCreative.imageGenerationProvider}
                         imageGenerationState={displayCreative.imageGenerationState}
-                        generationMethod={displayCreative.generationMethod}
-                        providerName={displayCreative.providerName}
-                        generationMode={displayCreative.generationMode}
-                        assetRole={displayCreative.assetRole}
                         imagePrompt={displayCreative.imagePrompt}
                         imagePromptConfig={displayCreative.imagePromptConfig}
                         imageUrl={displayCreative.imageUrl}

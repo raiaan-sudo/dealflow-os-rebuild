@@ -214,6 +214,64 @@ async function getSelectedBlockedStaticAssetDebt(supabase) {
   };
 }
 
+async function getOffboardingDebt(supabase) {
+  const staleBefore = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+  const [failedJobs, staleJobs, campaignRows] = await Promise.all([
+    countRows(supabase, "system_jobs", (query) =>
+      query
+        .eq("kind", "campaign_offboarding_cleanup")
+        .eq("status", "failed")
+        .is("reviewed_at", null),
+    ),
+    countRows(supabase, "system_jobs", (query) =>
+      query
+        .eq("kind", "campaign_offboarding_cleanup")
+        .in("status", ["pending", "processing"])
+        .lt("created_at", staleBefore)
+        .is("reviewed_at", null),
+    ),
+    supabase.from("campaign_plans").select("id,launch_status,publish_state,plan"),
+  ]);
+
+  if (campaignRows.error) {
+    throw new Error(`campaign_plans offboarding scan: ${campaignRows.error.message}`);
+  }
+
+  let offboardedPublished = 0;
+  let activeOffboardedRuntime = 0;
+
+  for (const row of campaignRows.data ?? []) {
+    const plan = asRecord(row.plan);
+    const runtime = asRecord(plan.runtime);
+    const offboardingStatus = String(runtime.offboardingStatus ?? asRecord(plan.offboarding).status ?? "");
+    const isOffboarded =
+      row.launch_status === "offboarded" ||
+      offboardingStatus === "deleted" ||
+      offboardingStatus === "blocked_review";
+    if (
+      isOffboarded &&
+      row.publish_state === "published" &&
+      (runtime.status === "live" || runtime.safetyState === "live")
+    ) {
+      offboardedPublished += 1;
+    }
+
+    if (
+      (row.launch_status === "offboarded" || row.launch_status === "paused") &&
+      (runtime.metaPushStatus === "published" || runtime.status === "live" || runtime.safetyState === "live")
+    ) {
+      activeOffboardedRuntime += 1;
+    }
+  }
+
+  return {
+    failedJobs,
+    staleJobs,
+    offboardedPublished,
+    activeOffboardedRuntime,
+  };
+}
+
 function decryptSecret(payload, secret) {
   const raw = Buffer.from(payload, "base64");
   const iv = raw.subarray(0, 12);
@@ -365,6 +423,7 @@ async function main() {
     deliveredNotificationStatusDrift,
     failedNotificationStatusDrift,
     campaign345MetaDebt,
+    offboardingDebt,
   ] = await Promise.all([
     countRows(supabase, "system_jobs", (query) =>
       query.eq("status", "failed").is("reviewed_at", null),
@@ -390,6 +449,7 @@ async function main() {
       query.not("failed_at", "is", null).neq("status", "failed"),
     ),
     getCampaign345MetaDebt(supabase),
+    getOffboardingDebt(supabase),
   ]);
 
   const summary = {
@@ -405,6 +465,10 @@ async function main() {
     metaReadOnlyVerificationErrors: campaign345MetaDebt.metaReadOnlyVerificationErrors,
     metaAppStatusDrift: campaign345MetaDebt.metaAppStatusDrift,
     staleMetaSyncSnapshots: campaign345MetaDebt.staleMetaSyncSnapshots,
+    offboardingFailedJobs: offboardingDebt.failedJobs,
+    offboardingStaleJobs: offboardingDebt.staleJobs,
+    offboardedPublishedFunnels: offboardingDebt.offboardedPublished,
+    offboardedActiveLaunchRuntime: offboardingDebt.activeOffboardedRuntime,
   };
 
   console.log(JSON.stringify(summary, null, 2));
@@ -481,6 +545,25 @@ async function main() {
           ? `details: ${campaign345MetaDebt.metaDebtDetails.join(", ")}`
           : null,
       ].filter(Boolean).join("; "),
+    );
+  }
+
+  if (
+    offboardingDebt.failedJobs === 0 &&
+    offboardingDebt.staleJobs === 0 &&
+    offboardingDebt.offboardedPublished === 0 &&
+    offboardingDebt.activeOffboardedRuntime === 0
+  ) {
+    pass("Campaign offboarding cleanup debt", "none");
+  } else {
+    fail(
+      "Campaign offboarding cleanup debt",
+      [
+        `${offboardingDebt.failedJobs} failed cleanup job(s)`,
+        `${offboardingDebt.staleJobs} stale cleanup job(s)`,
+        `${offboardingDebt.offboardedPublished} offboarded published funnel(s)`,
+        `${offboardingDebt.activeOffboardedRuntime} active launch runtime drift issue(s)`,
+      ].join("; "),
     );
   }
 }

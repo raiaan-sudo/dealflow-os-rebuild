@@ -7,7 +7,8 @@ export type MetaRequestPurpose =
   | "preflight"
   | "launch_lookup"
   | "launch_create"
-  | "sync";
+  | "sync"
+  | "offboarding_delete";
 
 type MetaRequestOptions = RequestInit & {
   purpose: MetaRequestPurpose;
@@ -24,6 +25,7 @@ const META_TIMEOUTS_MS: Record<MetaRequestPurpose, number> = {
   launch_lookup: 10_000,
   launch_create: 15_000,
   sync: 12_000,
+  offboarding_delete: 12_000,
 };
 
 const META_RETRIES: Record<MetaRequestPurpose, number> = {
@@ -33,6 +35,7 @@ const META_RETRIES: Record<MetaRequestPurpose, number> = {
   launch_lookup: 2,
   launch_create: 0,
   sync: 2,
+  offboarding_delete: 1,
 };
 
 function sleep(ms: number) {

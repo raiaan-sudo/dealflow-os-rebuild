@@ -146,11 +146,11 @@ function getBillingLaunchBlockCopy(billing: Awaited<ReturnType<typeof getBilling
   }
 
   if (billing.requiresSuspension) {
-    return "Billing is inactive, so DealFlow-managed launch, funnel capture, alerts, and optimization are paused until the subscription is reactivated.";
+    return "Billing ended. DealFlow-managed campaign assets have been removed or are being removed, and launch remains unavailable until billing is reactivated.";
   }
 
   if (billing.cancelAtPeriodEnd) {
-    return "This subscription is scheduled to cancel. Launch remains available during the paid period, but reactivation is required after the period ends.";
+    return "This subscription is scheduled to cancel. Launch remains available during the paid period, and DealFlow-created campaign assets will be removed when access ends unless billing is reactivated.";
   }
 
   return "Activate billing before this workspace can launch to Meta. The launch button stays disabled and no live ad launch runs until billing is active.";
@@ -794,10 +794,6 @@ export default async function LaunchAliasPage({
                     imageGenerationMessage={selectedCreative.imageGenerationMessage}
                     imageGenerationProvider={selectedCreative.imageGenerationProvider}
                     imageGenerationState={selectedCreative.imageGenerationState}
-                    generationMethod={selectedCreative.generationMethod}
-                    providerName={selectedCreative.providerName}
-                    generationMode={selectedCreative.generationMode}
-                    assetRole={selectedCreative.assetRole}
                     imagePrompt={selectedCreative.imagePrompt}
                     imagePromptConfig={selectedCreative.imagePromptConfig}
 	                    imageUrl={selectedCreative.imageUrl}

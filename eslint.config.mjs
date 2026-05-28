@@ -14,6 +14,7 @@ const config = [
       "out/**",
       "test-results/**",
       "coverage/**",
+      "src/lib/services/autonomy-execution-service 2.ts",
     ],
   },
   {

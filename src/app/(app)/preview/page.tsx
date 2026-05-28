@@ -282,10 +282,6 @@ export default async function PreviewPage({
                   imageGenerationMessage={selectedAds[0]?.imageGenerationMessage}
                   imageGenerationProvider={selectedAds[0]?.imageGenerationProvider}
                   imageGenerationState={selectedAds[0]?.imageGenerationState}
-                  generationMethod={selectedAds[0]?.generationMethod}
-                  providerName={selectedAds[0]?.providerName}
-                  generationMode={selectedAds[0]?.generationMode}
-                  assetRole={selectedAds[0]?.assetRole}
                   imagePrompt={selectedAds[0]?.imagePrompt}
                   imagePromptConfig={selectedAds[0]?.imagePromptConfig}
 	                  imageUrl={selectedAds[0]?.imageUrl}
@@ -328,10 +324,6 @@ export default async function PreviewPage({
                       imageGenerationMessage={selectedAd.imageGenerationMessage}
                       imageGenerationProvider={selectedAd.imageGenerationProvider}
                       imageGenerationState={selectedAd.imageGenerationState}
-                      generationMethod={selectedAd.generationMethod}
-                      providerName={selectedAd.providerName}
-                      generationMode={selectedAd.generationMode}
-                      assetRole={selectedAd.assetRole}
                       imagePrompt={selectedAd.imagePrompt}
                       imagePromptConfig={selectedAd.imagePromptConfig}
 	                      imageUrl={selectedAd.imageUrl}

@@ -25,6 +25,10 @@ const launchCreateRoute = read("src/app/api/campaigns/create/route.ts");
 const launchPage = read("src/app/(app)/launch/page.tsx");
 const publicFunnelPage = read("src/app/f/[slug]/page.tsx");
 const metaService = read("src/lib/integrations/meta/service.ts");
+const metaPayloadGuardrails = read("src/lib/integrations/meta/launch-payload-guardrails.ts");
+const metaExecution = read("src/lib/integrations/meta/execution.ts");
+const campaignExecutionService = read("src/lib/services/campaign-execution-service.ts");
+const metaLaunchService = read("src/lib/services/meta-launch-service.ts");
 const packageJson = read("package.json");
 const trackingReadinessSync = read("scripts/sync-meta-tracking-readiness.mjs");
 
@@ -86,6 +90,66 @@ assertOrder(
   "const preflight = await validateMetaLaunchSelections({ destinationUrl });",
   "https://graph.facebook.com/v18.0/act_${externalAccountId}/campaigns",
   "preflight runs before Meta campaign creation",
+);
+assertIncludes(
+  metaPayloadGuardrails,
+  "buildMetaMarketGeoLocations",
+  "shared Meta location guardrail exists",
+);
+assertIncludes(
+  metaPayloadGuardrails,
+  "meta_market_too_broad",
+  "Meta launch blocks country-only markets",
+);
+assertIncludes(
+  metaPayloadGuardrails,
+  "contextual_multi_ads",
+  "Meta multi-advertiser ads are explicitly opted out",
+);
+assertIncludes(
+  metaPayloadGuardrails,
+  "standard_enhancements",
+  "Meta standard creative enhancements are explicitly opted out",
+);
+assertIncludes(
+  metaPayloadGuardrails,
+  "enroll_status: \"OPT_OUT\"",
+  "Meta creative opt-out payload uses OPT_OUT",
+);
+assertIncludes(
+  metaExecution,
+  "geo_locations: buildMetaMarketGeoLocations(adSet.location)",
+  "shared Meta execution mapper targets the campaign market, not an entire country",
+);
+assertIncludes(
+  campaignExecutionService,
+  "geo_locations: buildMetaMarketGeoLocations(campaignRecord.strategy.location)",
+  "direct campaign execution targets the campaign market, not an entire country",
+);
+assertIncludes(
+  launchCreateRoute,
+  "geo_locations: buildGeoTargeting(location)",
+  "direct launch route targets the campaign market, not an entire country",
+);
+assertIncludes(
+  metaExecution,
+  "applyMetaCreativeOptOut",
+  "shared Meta execution mapper opts out of multi-advertiser creative behavior",
+);
+assertIncludes(
+  campaignExecutionService,
+  "applyMetaCreativeOptOut",
+  "campaign execution payloads opt out of multi-advertiser creative behavior",
+);
+assertIncludes(
+  metaLaunchService,
+  "applyMetaCreativeOptOut",
+  "Meta launch service enforces creative opt-out as a last-mile guard",
+);
+assertIncludes(
+  launchCreateRoute,
+  "contextual_multi_ads",
+  "direct launch route opts out of multi-advertiser ads",
 );
 
 assertIncludes(

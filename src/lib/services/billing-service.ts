@@ -1244,6 +1244,9 @@ export async function syncBillingSubscriptionFromStripe(
     subscription.status === "trialing" && subscription.trial_end
       ? subscription.trial_end
       : firstItem?.current_period_end;
+  const currentPeriodEndIso = periodEnd
+    ? new Date(periodEnd * 1000).toISOString()
+    : null;
   const subscriptionRow: BillingInsert = {
     organization_id: organizationId,
     user_id: subscription.metadata.user_id || null,
@@ -1256,9 +1259,7 @@ export async function syncBillingSubscriptionFromStripe(
     current_period_start: subscription.items.data[0]?.current_period_start
       ? new Date(subscription.items.data[0].current_period_start * 1000).toISOString()
       : null,
-    current_period_end: periodEnd
-      ? new Date(periodEnd * 1000).toISOString()
-      : null,
+    current_period_end: currentPeriodEndIso,
     cancel_at_period_end: subscription.cancel_at_period_end,
     metadata: subscription.metadata,
   };
@@ -1332,6 +1333,8 @@ export async function syncBillingSubscriptionFromStripe(
       organizationId,
       reason: entitlementState.suspensionReason ?? "subscription_inactive",
       source: source.eventType ?? "stripe_subscription_sync",
+      stripeSubscriptionId: subscription.id,
+      billingEndedAt: currentPeriodEndIso ?? new Date().toISOString(),
     }).catch((error) => {
       logError("subscription_suspension_queue_failed", {
         organizationId,

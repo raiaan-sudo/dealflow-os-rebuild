@@ -24,6 +24,7 @@ import {
 } from "@/lib/services/marketing-studio-worker-contract";
 import type { CreativeIntakeGenerationContext } from "@/lib/services/creative-chat-intake-service";
 import type { SubscriptionSuspensionJobPayload } from "@/lib/services/subscription-suspension-service";
+import type { CampaignOffboardingCleanupPayload } from "@/lib/services/campaign-offboarding-cleanup-service";
 
 type SystemJobRow = Database["public"]["Tables"]["system_jobs"]["Row"];
 type SystemJobLogRow = Database["public"]["Tables"]["system_job_logs"]["Row"];
@@ -40,7 +41,8 @@ export type SystemJobKind =
   | "recommendation_generation"
   | "lead_capture_retry"
   | "lead_side_effects"
-  | "subscription_suspension";
+  | "subscription_suspension"
+  | "campaign_offboarding_cleanup";
 export type SystemJobStatus = "pending" | "processing" | "completed" | "failed";
 export type SystemJobLifecycleStatus =
   | "queued"
@@ -164,6 +166,7 @@ type SystemJobPayloadMap = {
     };
   };
   subscription_suspension: SubscriptionSuspensionJobPayload;
+  campaign_offboarding_cleanup: CampaignOffboardingCleanupPayload;
 };
 
 export type SystemJobTrackingPayload = {
@@ -1097,6 +1100,11 @@ export async function processSystemJob(jobId: string) {
       const { runSubscriptionSuspensionJob } = await import("@/lib/services/subscription-suspension-service");
       result = await runSubscriptionSuspensionJob({
         job: processingJob as SystemJobRecord<"subscription_suspension">,
+      });
+    } else if (result === undefined && processingJob.kind === "campaign_offboarding_cleanup") {
+      const { runCampaignOffboardingCleanupJob } = await import("@/lib/services/campaign-offboarding-cleanup-service");
+      result = await runCampaignOffboardingCleanupJob({
+        job: processingJob as SystemJobRecord<"campaign_offboarding_cleanup">,
       });
     } else if (result === undefined && (
       processingJob.kind === "campaign_build" ||

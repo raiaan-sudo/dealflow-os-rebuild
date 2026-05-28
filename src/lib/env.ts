@@ -403,6 +403,14 @@ export function isQaGenerationCreditOverrideEnabled() {
   return process.env.ALLOW_QA_GENERATION_CREDIT_OVERRIDE === "true";
 }
 
+export function isMetaOffboardingDeletionEnabled() {
+  return process.env.ENABLE_META_OFFBOARDING_DELETION === "true";
+}
+
+export function isCreativeStorageOffboardingDeletionEnabled() {
+  return process.env.ENABLE_CREATIVE_STORAGE_OFFBOARDING_DELETION === "true";
+}
+
 export function getMetaEnv() {
   const appId = process.env.META_APP_ID;
   const appSecret = process.env.META_APP_SECRET;

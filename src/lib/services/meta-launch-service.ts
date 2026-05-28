@@ -8,6 +8,7 @@ import type {
   BuiltMetaAdSetPayload,
   BuiltMetaCampaignPayload,
 } from "@/lib/types/campaign-execution";
+import { applyMetaCreativeOptOut } from "@/lib/integrations/meta/launch-payload-guardrails";
 
 function getSelectedPageId(connection: MetaConnectionRecord) {
   const metadata = connection.connection_metadata;
@@ -409,13 +410,13 @@ export async function createMetaCreative(params: {
     throw new ApiError(400, "Missing selected Meta assets", "missing_selected_meta_assets");
   }
 
-  const payload = {
-    ...params.payload,
+  const payload = applyMetaCreativeOptOut({
+    ...(params.payload as Record<string, unknown>),
     object_story_spec: {
       ...(objectStorySpec ?? {}),
       page_id: pageId,
     },
-  } as BuiltMetaAdPayload["creativePayload"];
+  }) as BuiltMetaAdPayload["creativePayload"];
   const data = await createOrRecoverMetaObject({
     accountId,
     accessToken,
