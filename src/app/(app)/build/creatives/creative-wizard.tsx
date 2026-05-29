@@ -410,6 +410,7 @@ export function CreativeWizard({
   const [renderJobs, setRenderJobs] = useState<SystemJob[]>(initialRenderJobs);
   const [renderMessage, setRenderMessage] = useState<string | null>(null);
   const [videoMessage, setVideoMessage] = useState<string | null>(null);
+  const [renderClockMs, setRenderClockMs] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
   const [creditTopUpSurface, setCreditTopUpSurface] = useState<"image" | "video" | null>(null);
   const [fullVideoOpen, setFullVideoOpen] = useState(false);
@@ -531,6 +532,16 @@ export function CreativeWizard({
         ) ?? null
       : null;
   const currentVideoRenderView = currentVideoJob ? jobRenderView(currentVideoJob) : null;
+
+  useEffect(() => {
+    if (!currentImageJob) {
+      return;
+    }
+
+    setRenderClockMs(Date.now());
+    const interval = window.setInterval(() => setRenderClockMs(Date.now()), 30_000);
+    return () => window.clearInterval(interval);
+  }, [currentImageJob?.id]);
 
   const subscribeToJob = useCallback((jobId: string, surface: "image" | "video") => {
     if (jobStreamsRef.current.has(jobId)) {
@@ -931,6 +942,35 @@ export function CreativeWizard({
     staticReadiness.optionalIssueCount > 0 &&
     staticReadiness.selectedBlockedCount === 0 &&
     staticReadiness.selectedStaleCount === 0;
+  const imageRenderStartedAtMs = currentImageJob?.created_at ? Date.parse(currentImageJob.created_at) : null;
+  const imageRenderElapsedMs = imageRenderStartedAtMs ? Math.max(0, renderClockMs - imageRenderStartedAtMs) : 0;
+  const imageRenderPastThreeMinutes = imageActionPending && imageRenderElapsedMs >= 180_000;
+  const requiredStaticProgressLabel = `${staticReadiness.requiredReadyCount}/${staticReadiness.minimumRequiredCount} launch-ready static ads ready`;
+  const staticProgressTitle = hasCreditBlocker
+    ? "Add credits to render final ads"
+    : staticReadiness.selectedMinimumMet
+      ? "First 4 static ads are launch-ready"
+      : imageRenderPastThreeMinutes
+        ? "Final ads are still rendering in the background"
+        : imageActionPending || imageWorkerQueued
+          ? "Preparing first 4 launch-ready ads"
+          : staticReadiness.requiredReadyCount > 0
+            ? requiredStaticProgressLabel
+            : "Final static ads are not ready yet";
+  const staticProgressBody = hasCreditBlocker
+    ? "Top up generation credits to start paid premium rendering. Draft previews stay visible, but Launch remains blocked until 4 final ads pass review."
+    : staticReadiness.selectedMinimumMet
+      ? "You can save the required static set now. Optional 5th and 6th polish variants can finish later and do not block the first launch package."
+      : imageRenderPastThreeMinutes
+        ? `${requiredStaticProgressLabel}. You can keep setting up Meta, billing, and preview while final ads finish. Launch unlocks automatically only after 4 ads pass review.`
+        : imageActionPending || imageWorkerQueued
+          ? `${requiredStaticProgressLabel}. DealFlow is prioritizing the first 4 required ads; optional polish variants wait until the launch floor is ready.`
+          : `${requiredStaticProgressLabel}. Click Prepare premium ads to render the launch floor first. Optional polish variants do not need to finish before setup can continue.`;
+  const staticProgressTone = hasCreditBlocker
+    ? "border-amber-400/24 bg-amber-400/10 text-amber-50"
+    : staticReadiness.selectedMinimumMet
+      ? "border-emerald-300/20 bg-emerald-300/[0.08] text-emerald-50"
+      : "border-cyan-300/18 bg-cyan-300/[0.07] text-cyan-50";
   const videoBlockedByMissingStaticSource = !hasCurrentStaticVideoSource;
   const imagePendingMessage = "Image preview is being prepared. This page will update when the visual is ready.";
   const imageStatusMessage = selectedNeedsImageGeneration
@@ -1100,10 +1140,16 @@ export function CreativeWizard({
               {staticReadiness.selectionLabel}
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {savedSelectionMatchesCurrent
+              {savedSelectionMatchesCurrent && staticReadiness.allSelectedReady
                 ? `${staticReadiness.selectedReadyLabel}. DealFlow will use the first saved ad as the primary creative and keep the rest as static launch variants once every launch gate is ready.`
-                : `${staticReadiness.selectedReadyLabel}. Save at least 4 static ads plus one approved UGC video before launch can continue; 5-6 static ads are optional for larger budgets.`}
+                : staticReadiness.selectedMinimumMet
+                  ? `${staticReadiness.selectedReadyLabel}. Save at least 4 static ads plus one approved UGC video before launch can continue; 5-6 static ads are optional for larger budgets.`
+                  : `${requiredStaticProgressLabel}. DealFlow renders the first 4 required ads before optional polish variants; Launch stays blocked until the required set passes review.`}
             </p>
+            <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm leading-6 ${staticProgressTone}`} aria-live="polite">
+              <p className="font-semibold">{staticProgressTitle}</p>
+              <p className="mt-1 text-white/72">{staticProgressBody}</p>
+            </div>
             {staticReadiness.issueLabel ? (
               <p className={staticReadiness.selectedBlockedCount > 0 ? "mt-2 text-sm leading-6 text-amber-200" : "mt-2 text-sm leading-6 text-muted-foreground"}>
                 {staticReadiness.issueLabel}

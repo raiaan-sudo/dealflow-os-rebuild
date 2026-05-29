@@ -250,6 +250,57 @@ function buildDraftForAnswers(defaults: CreativeIntakeCampaignDefaults, answers:
   });
 }
 
+const UGC_DERIVED_FIELD_KEYS: (keyof CreativeIntakeAnswers)[] = [
+  "cta",
+  "offer",
+  "offerTitle",
+  "customOffer",
+  "market",
+  "targetAudience",
+  "customAudience",
+  "propertyType",
+  "targetDurationSeconds",
+  "creatorPersona",
+  "hookAngle",
+  "visualStyle",
+];
+
+const UGC_APPROVAL_INVALIDATING_KEYS: (keyof CreativeIntakeAnswers)[] = [
+  ...UGC_DERIVED_FIELD_KEYS,
+  "staticStyle",
+  "creativeStyle",
+  "brokerageBrand",
+  "customBrokerageBrand",
+];
+
+function hasAnswerKey(next: Partial<CreativeIntakeAnswers>, keys: (keyof CreativeIntakeAnswers)[]) {
+  return keys.some((key) => Object.prototype.hasOwnProperty.call(next, key));
+}
+
+function ensureCurrentCtaOnScreenText(items: string[] | undefined, cta: string | null | undefined) {
+  const cleanItems = Array.isArray(items) ? items.map((item) => item.trim()).filter(Boolean) : [];
+  const cleanCta = cta?.trim() ?? "";
+
+  if (!cleanCta) {
+    return cleanItems;
+  }
+
+  const withoutStaleCta = cleanItems.filter((item) => item.toLowerCase() !== cleanCta.toLowerCase());
+  return [...withoutStaleCta.slice(0, 5), cleanCta];
+}
+
+function syncDerivedUgcAnswers(defaults: CreativeIntakeCampaignDefaults, answers: CreativeIntakeAnswers) {
+  const draft = buildDraftForAnswers(defaults, answers);
+
+  return {
+    ugcApprovedScript: draft.lines.join("\n"),
+    ugcShotList: draft.shotList,
+    ugcOnScreenText: ensureCurrentCtaOnScreenText(draft.onScreenText, answers.cta || defaults.cta),
+    ugcScriptVersion: draft.version,
+    ugcScriptApprovedAt: null,
+  } satisfies Partial<CreativeIntakeAnswers>;
+}
+
 function normalizeInitialAnswers(defaults: CreativeIntakeCampaignDefaults, answers: CreativeIntakeAnswers) {
   const audienceKind = inferCreativeUgcAudienceKind({
     campaignType: defaults.campaignType,
@@ -361,7 +412,7 @@ export function CreativeChatIntake({
     .split(/\n+/)
     .map((line) => line.trim())
     .filter(Boolean);
-  const scriptValidation = validateCreativeUgcScriptDraft({
+  const baseScriptValidation = validateCreativeUgcScriptDraft({
     script: { ...ugcDraft, lines: scriptLines },
     campaignType: defaults.campaignType,
     audience: audienceLabel,
@@ -370,6 +421,21 @@ export function CreativeChatIntake({
     cta: answers.cta || defaults.cta,
     propertyType: answers.propertyType || defaults.propertyType,
   });
+  const expectedCta = (answers.cta || defaults.cta || "").trim().toLowerCase();
+  const scriptText = scriptLines.join(" ").toLowerCase();
+  const onScreenText = answers.ugcOnScreenText?.length ? answers.ugcOnScreenText : ugcDraft.onScreenText;
+  const onScreenCtaMatches =
+    !expectedCta || onScreenText.some((line) => line.trim().toLowerCase() === expectedCta);
+  const scriptCtaMatches = !expectedCta || scriptText.includes(expectedCta);
+  const scriptReasons = [
+    ...baseScriptValidation.reasons,
+    !scriptCtaMatches || !onScreenCtaMatches ? "cta_mismatch" : null,
+  ].filter((reason): reason is string => Boolean(reason));
+  const scriptValidation = {
+    ...baseScriptValidation,
+    accepted: [...new Set(scriptReasons)].length === 0,
+    reasons: [...new Set(scriptReasons)],
+  };
   const scriptApproved = Boolean(answers.ugcScriptApprovedAt) && scriptValidation.accepted;
   const complete = useMemo(() => {
     return Boolean(
@@ -385,7 +451,19 @@ export function CreativeChatIntake({
   }, [answers, scriptApproved]);
 
   function updateAnswer(next: Partial<CreativeIntakeAnswers>) {
-    setAnswers((current) => ({ ...current, ...next }));
+    setAnswers((current) => {
+      const merged = { ...current, ...next };
+      const shouldRegenerateUgc =
+        hasAnswerKey(next, UGC_DERIVED_FIELD_KEYS) &&
+        !hasAnswerKey(next, ["ugcApprovedScript", "ugcShotList", "ugcOnScreenText"]);
+      const shouldInvalidateApproval = shouldRegenerateUgc || hasAnswerKey(next, UGC_APPROVAL_INVALIDATING_KEYS);
+
+      return {
+        ...merged,
+        ...(shouldRegenerateUgc ? syncDerivedUgcAnswers(defaults, merged) : {}),
+        ...(shouldInvalidateApproval && !shouldRegenerateUgc ? { ugcScriptApprovedAt: null } : {}),
+      };
+    });
     setError(null);
     setNotice(null);
   }
@@ -404,10 +482,14 @@ export function CreativeChatIntake({
   }
 
   function approveScript() {
+    const cleanCta = answers.cta || defaults.cta || ugcDraft.cta;
     updateAnswer({
       ugcApprovedScript: scriptLines.join("\n"),
       ugcShotList: answers.ugcShotList?.length ? answers.ugcShotList : ugcDraft.shotList,
-      ugcOnScreenText: answers.ugcOnScreenText?.length ? answers.ugcOnScreenText : ugcDraft.onScreenText,
+      ugcOnScreenText: ensureCurrentCtaOnScreenText(
+        answers.ugcOnScreenText?.length ? answers.ugcOnScreenText : ugcDraft.onScreenText,
+        cleanCta,
+      ),
       ugcScriptVersion: ugcDraft.version,
       ugcScriptApprovedAt: new Date().toISOString(),
     });
@@ -441,7 +523,9 @@ export function CreativeChatIntake({
           ? "Creative brief approved. Paid rendering can continue after the workspace refreshes."
           : action === "revise"
             ? "Revision requested. Paid rendering stays blocked until the updated brief is approved."
-            : "Draft saved. Paid rendering is still blocked until you approve the brief.",
+            : scriptApproved
+              ? "Draft saved. Your approved brief is ready for generation."
+              : "Draft saved. Approve the UGC script before generating media.",
       );
       router.refresh();
     } catch (nextError) {

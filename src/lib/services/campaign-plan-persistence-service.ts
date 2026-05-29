@@ -76,6 +76,7 @@ type PersistPlanParams = {
   userId: string;
   ownerId: string;
   payload: PersistedCampaignPlanPayload;
+  allowLegacySingleCampaignUpdate?: boolean;
 };
 
 type MinimalPersistParams = {
@@ -720,11 +721,19 @@ async function persistCampaignPlanRow(params: PersistPlanParams) {
 
   if (!insertResult.error && !insertResult.data) {
     const latestRow = await findLatestCampaignPlanRow();
-    return updateExistingCampaignPlan(latestRow.id);
+    if (latestRow.id === params.campaignId || params.allowLegacySingleCampaignUpdate) {
+      return updateExistingCampaignPlan(latestRow.id);
+    }
+
+    throw new Error("Campaign plan insert returned no row; refusing to update an existing campaign implicitly.");
   }
 
   if (!isLegacySingleCampaignConstraintError(insertResult.error)) {
     throw insertResult.error ?? new Error("DB write returned null");
+  }
+
+  if (!params.allowLegacySingleCampaignUpdate) {
+    throw new Error("Fresh campaign creation is blocked by a legacy single-campaign database constraint.");
   }
 
   const existingResult = (await client

@@ -178,6 +178,27 @@ assert.equal(reviewOnlyReadiness.selectedReadyCount, 0);
 assert.equal(reviewOnlyReadiness.allSelectedReady, false);
 assert.equal(reviewOnlyReadiness.selectedMinimumMet, false);
 
+const unselectedPreparingReadiness = getStaticCreativeReadiness(creatives, []);
+assert.equal(unselectedPreparingReadiness.selectedReadyCount, 0);
+assert.equal(unselectedPreparingReadiness.launchReadyCount, 3);
+assert.equal(unselectedPreparingReadiness.requiredReadyCount, 3);
+assert.equal(unselectedPreparingReadiness.requiredMissingCount, 1);
+assert.equal(unselectedPreparingReadiness.optionalReadyCount, 0);
+assert.match(unselectedPreparingReadiness.issueLabel ?? "", /4 launch-ready static ads required; 3 available now/);
+assert.doesNotMatch(unselectedPreparingReadiness.issueLabel ?? "", /launch-ready ads are available now/);
+assert.match(getStaticPreviewStatusMessage(unselectedPreparingReadiness), /3 launch-ready previews available; 4 required for launch/);
+assert.doesNotMatch(getStaticPreviewStatusMessage(unselectedPreparingReadiness), /launch can continue/);
+
+const unselectedReviewOnlyReadiness = getStaticCreativeReadiness(reviewOnlyStaticSet, []);
+assert.equal(unselectedReviewOnlyReadiness.selectedReadyCount, 0);
+assert.equal(unselectedReviewOnlyReadiness.launchReadyCount, 0);
+assert.equal(unselectedReviewOnlyReadiness.requiredReadyCount, 0);
+assert.equal(unselectedReviewOnlyReadiness.requiredMissingCount, 4);
+assert.match(unselectedReviewOnlyReadiness.issueLabel ?? "", /4 launch-ready static ads required; 0 available now/);
+assert.doesNotMatch(unselectedReviewOnlyReadiness.issueLabel ?? "", /launch-ready ads are available now/);
+assert.match(getStaticPreviewStatusMessage(unselectedReviewOnlyReadiness), /0 launch-ready previews available; 4 required for launch/);
+assert.doesNotMatch(getStaticPreviewStatusMessage(unselectedReviewOnlyReadiness), /launch can continue/);
+
 const appFallbackTemplateReadiness = getStaticCreativeReadiness([
   {
     ...readyStatic("app-fallback-template"),
@@ -237,6 +258,9 @@ const fourSelected = getStaticCreativeReadiness([
 assert.equal(fourSelected.minimumRequiredCount, STATIC_LAUNCH_MIN_CREATIVE_COUNT);
 assert.equal(fourSelected.selectedMinimumMet, true);
 assert.equal(fourSelected.allSelectedReady, true);
+assert.equal(fourSelected.requiredReadyCount, 4);
+assert.equal(fourSelected.requiredMissingCount, 0);
+assert.equal(fourSelected.optionalReadyCount, 1);
 assert.match(getStaticPreviewStatusMessage(fourSelected), /4 selected launch-ready previews; 4 required for launch/);
 
 const currentBriefContext = {

@@ -711,7 +711,7 @@ function buildTrustBar(input: NormalizedInput, parsed: ParsedOffer) {
   const base = [
     `Focused on ${input.location}`,
     input.marketType === "seller"
-      ? "Qualified buyer positioning"
+      ? "Pricing and demand clarity"
       : input.marketType === "investor"
         ? "Investor-grade filtering"
         : "Fast qualification path",

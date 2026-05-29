@@ -649,7 +649,9 @@ export default function OnboardingPage() {
   );
 
   useEffect(() => {
-    const shouldStartFresh = new URLSearchParams(window.location.search).get("new") === "1";
+    const searchParams = new URLSearchParams(window.location.search);
+    const shouldStartFresh = searchParams.get("new") === "1" || (!searchParams.get("resume") && !searchParams.get("campaignId"));
+    const shouldRecoverDraft = !shouldStartFresh && (searchParams.get("resume") === "1" || Boolean(searchParams.get("campaignId")));
     setIsNewCampaignFlow(shouldStartFresh);
     if (shouldStartFresh) {
       window.localStorage.removeItem(STORAGE_KEY);
@@ -660,7 +662,7 @@ export default function OnboardingPage() {
       return;
     }
 
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = shouldRecoverDraft ? window.localStorage.getItem(STORAGE_KEY) : null;
     let nextDraft = { ...DEFAULT_DRAFT, idempotencySeed: createIdempotencySeed() };
 
     if (raw) {
@@ -863,6 +865,7 @@ export default function OnboardingPage() {
           currentStep: "review",
           furthestStepIndex: visibleSteps.length - 1,
           campaignId,
+          lastSubmittedCampaignId: campaignId,
           completedAt: new Date().toISOString(),
         }),
       );
@@ -916,6 +919,7 @@ export default function OnboardingPage() {
   function resetDraft() {
     const freshDraft = { ...DEFAULT_DRAFT, idempotencySeed: createIdempotencySeed() };
     window.localStorage.removeItem(STORAGE_KEY);
+    setIsNewCampaignFlow(true);
     setDraft(freshDraft);
     setCurrentStep("intent");
     setFurthestStepIndex(0);
@@ -938,6 +942,9 @@ export default function OnboardingPage() {
               One decision at a time. DealFlow recommends the strategy, updates the preview, and keeps the next click obvious.
             </p>
           </div>
+          <Button type="button" variant="secondary" onClick={resetDraft}>
+            New campaign
+          </Button>
         </div>
       </Card>
 

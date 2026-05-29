@@ -124,7 +124,7 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
       (offer
         ? `${offer} for ${plan.audience || "qualified prospects"} without guessing what to do next.`
         : plan.summary);
-  const cta = shouldUseOfferHero ? buildOfferCta(offer) : plan.funnel.cta || (offer ? buildOfferCta(offer) : "Request details");
+  const cta = plan.funnel.cta || (shouldUseOfferHero ? buildOfferCta(offer) : offer ? buildOfferCta(offer) : "Request details");
   const formFields = (plan.funnel.formFields ?? ["name", "phone", "email"]).map((field) =>
     field.charAt(0).toUpperCase() + field.slice(1),
   );

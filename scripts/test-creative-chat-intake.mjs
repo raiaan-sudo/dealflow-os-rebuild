@@ -99,7 +99,8 @@ process.env.CREATIVE_CHAT_INTAKE_ENABLED = "false";
 assert.equal(isCreativeChatIntakeEnabled(), false);
 delete process.env.CREATIVE_CHAT_INTAKE_ENABLED;
 assert.match(creativeChatIntakeUi, /Draft recovered from your last session/);
-assert.match(creativeChatIntakeUi, /Paid rendering stays blocked until the updated brief is approved/);
+assert.match(creativeChatIntakeUi, /Draft saved\. Your approved brief is ready for generation\./);
+assert.match(creativeChatIntakeUi, /Draft saved\. Approve the UGC script before generating media\./);
 assert.match(creativeChatIntakeUi, /aria-pressed/);
 assert.match(creativeWizardUi, /Primary creative/);
 assert.match(creativeWizardUi, /Review variant/);
@@ -137,6 +138,8 @@ assert.match(creativeChatIntakeUi, /Avoid Underpricing/);
 assert.match(creativeChatIntakeUi, /Classify the campaign before choosing this setting/);
 assert.match(creativeChatIntakeUi, /Visual style"[\s\S]*?updateAnswer\(\{ visualStyle: value, ugcScriptApprovedAt: null \}\)/);
 assert.match(creativeChatIntakeUi, /Refresh script draft/);
+assert.match(creativeChatIntakeUi, /syncDerivedUgcAnswers/);
+assert.match(creativeChatIntakeUi, /ensureCurrentCtaOnScreenText/);
 assert.match(creativeChatIntakeUi, /Use Hook → Info\/proof → CTA/);
 assert.match(creativeChatIntakeUi, /describeScriptReason/);
 assert.doesNotMatch(creativeChatIntakeUi, /Pre-render UGC concepts/);
@@ -374,6 +377,29 @@ assert.equal(
   }).reasons.includes("seller_buyer_language_mismatch"),
   true,
   "seller UGC validation rejects buyer/search script leakage",
+);
+assert.equal(
+  validateCreativeUgcScriptDraft({
+    script: {
+      ...sellerUgcDraft,
+      cta: "Get My Sale Comparison",
+      lines: [
+        "If you own a home in Toronto, ON, this sale comparison gives you a clearer read on demand.",
+        "Toronto homeowners need pricing and timing context before they decide whether to list.",
+        "Neighbourhood Sale Comparison Report.",
+        "It compares local demand, recent sales, and the next seller conversation.",
+        "Neighbourhood Sale Comparison Report.",
+        "Tap Request Private Access.",
+      ],
+    },
+    campaignType: "seller",
+    audience: "Homeowners",
+    market: "Toronto, ON",
+    offerTitle: "Neighbourhood Sale Comparison Report",
+    cta: "Get My Sale Comparison",
+  }).reasons.includes("cta_mismatch"),
+  true,
+  "UGC validation rejects stale CTA drift after the campaign CTA changes",
 );
 const investorUgcDraft = buildCreativeUgcScriptDraft({
   campaignType: "investor",

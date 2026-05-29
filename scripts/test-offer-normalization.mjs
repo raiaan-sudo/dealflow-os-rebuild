@@ -40,6 +40,7 @@ Module._extensions[".ts"] = function loadTs(module, filename) {
 
 const require = createRequire(import.meta.url);
 const { normalizeOfferForCampaign } = require("../src/lib/services/offer-normalization-service.ts");
+const { inferCampaignCategory } = require("../src/lib/services/campaign-creative-strategy.ts");
 
 assert.deepEqual(
   pick(normalizeOfferForCampaign("Guaranteed approvl for 600 n up credit", "buyer")),
@@ -66,6 +67,19 @@ assert.equal(
 assert.equal(
   normalizeOfferForCampaign("private inventory preview", "buyer").normalizedOffer,
   "Private Inventory Preview",
+);
+assert.equal(
+  inferCampaignCategory({
+    intent: "seller",
+    audience: "Homeowners considering a sale",
+    propertyType: "luxury listings",
+    keyOffer: "Neighbourhood Sale Comparison Report",
+    mechanism: "seller consultation and listing launch system",
+    primaryGoal: "Generate more seller and listing leads",
+    painPoints: ["Homeowners are unsure what their property is worth"],
+  }),
+  "seller",
+  "seller campaigns with luxury inventory must not inherit buyer/luxury private-access copy",
 );
 
 function pick(result) {

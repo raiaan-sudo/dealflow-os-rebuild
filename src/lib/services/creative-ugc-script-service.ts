@@ -612,7 +612,8 @@ export function validateCreativeUgcScriptDraft(params: {
               : false;
   const ctaMismatch =
     Boolean(expectedCta) &&
-    safeText(params.script.cta).toLowerCase() !== safeText(expectedCta).toLowerCase();
+    (safeText(params.script.cta).toLowerCase() !== safeText(expectedCta).toLowerCase() ||
+      !text.toLowerCase().includes(safeText(expectedCta).toLowerCase()));
   const reasons = [
     ...context.rejectedReasons,
     sectionCount < 3 ? "script_sections_missing" : null,

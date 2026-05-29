@@ -1042,70 +1042,11 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
         error.message,
       )
     ) {
-      const { data: existingRow, error: existingRowError } = await supabase
-        .from("campaign_plans")
-        .select("id, plan")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (existingRowError) {
-        throw new ApiError(500, existingRowError.message, "campaign_save_failed");
-      }
-
-      const existingCampaignId =
-        existingRow && typeof (existingRow as Pick<CampaignPlanRow, "id">).id === "string"
-          ? (existingRow as Pick<CampaignPlanRow, "id">).id
-          : "";
-
-      if (existingCampaignId) {
-        const recoveredExistingDocument = getSavedCampaignDocumentFromRow(existingRow as CampaignPlanRow);
-        const currentPersistencePlan = persistencePayload.plan as Record<string, unknown>;
-        const recoveredPlan = recoveredExistingDocument
-          ? {
-              ...currentPersistencePlan,
-              plan: {
-                ...((recoveredExistingDocument.plan as Record<string, unknown> | null) ?? {}),
-                ...((currentPersistencePlan.plan as Record<string, unknown> | null) ?? {}),
-              },
-              strategy: {
-                ...((recoveredExistingDocument.strategy as Record<string, unknown> | null) ?? {}),
-                ...((currentPersistencePlan.strategy as Record<string, unknown> | null) ?? {}),
-              },
-              funnel: {
-                ...((recoveredExistingDocument.funnel as Record<string, unknown> | null) ?? {}),
-                ...((currentPersistencePlan.funnel as Record<string, unknown> | null) ?? {}),
-              },
-              ...(recoveredExistingDocument.assetGeneration
-                ? { assetGeneration: recoveredExistingDocument.assetGeneration }
-                : {}),
-            }
-          : currentPersistencePlan;
-        const recoveredUpdatePayload = {
-          ...(persistencePayload as Record<string, unknown>),
-          id: existingCampaignId,
-          plan: recoveredPlan,
-        };
-        const { data: recoveredData, error: recoveredError } = await supabase
-          .from("campaign_plans")
-          .update(recoveredUpdatePayload as never)
-          .eq("id", existingCampaignId)
-          .eq("user_id", userId)
-          .select("*")
-          .single();
-
-        if (recoveredError) {
-          throw new ApiError(500, recoveredError.message, "campaign_save_failed");
-        }
-
-        if (recoveredData) {
-          return {
-            success: true,
-            campaignId: (recoveredData as CampaignPlanRow).id,
-          };
-        }
-      }
+      throw new ApiError(
+        409,
+        "Fresh campaign creation is blocked by a legacy single-campaign database constraint.",
+        "campaign_creation_constraint",
+      );
     }
 
     debugLog("campaign-save-failed", {

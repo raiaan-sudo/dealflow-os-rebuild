@@ -21,6 +21,8 @@
     "operator:debt": "node ./scripts/check-operator-debt.mjs",
     "operator:scale-report": "node ./scripts/print-scale-readiness-report.mjs",
     "audit:static-creative-storage": "node ./scripts/audit-static-creative-storage-backfill.mjs",
+    "audit:secret-exposure": "node ./scripts/audit-secret-exposure.mjs",
+    "audit:pre-saas-launch": "node ./scripts/audit-pre-saas-launch.mjs",
     "backup:supabase": "node ./scripts/create-supabase-logical-backup.mjs",
     "operator:debt:resolve-known": "node ./scripts/resolve-known-operator-debt.mjs",
     "repair:campaign-345-creative-brief": "node ./scripts/repair-campaign-345-creative-brief-integrity.mjs",
@@ -73,7 +75,14 @@
     "test:public-self-serve-acceptance": "node ./scripts/test-public-self-serve-acceptance-guards.mjs",
     "meta:tracking:sync-readiness": "node ./scripts/sync-meta-tracking-readiness.mjs",
     "worker:marketing-studio": "node ./scripts/run-marketing-studio-worker.mjs",
-    "launch:validate": "node ./scripts/print-launch-validation-plan.mjs"
+    "launch:validate": "node ./scripts/print-launch-validation-plan.mjs",
+    "validate:predeploy": "node ./scripts/run-with-timeout.mjs --suite predeploy --validation-suite predeploy",
+    "validate:postdeploy": "node ./scripts/run-with-timeout.mjs --suite postdeploy --validation-suite postdeploy --environment production",
+    "proof:write": "node ./scripts/write-proof-artifact.mjs",
+    "proof:latest": "node ./scripts/summarize-proof-artifacts.mjs",
+    "proof:verify": "node ./scripts/verify-proof-artifacts.mjs",
+    "proof:self-test": "node ./scripts/run-with-timeout.mjs --self-test",
+    "engineering:classify": "node ./scripts/engineering-mission-classifier.mjs"
   },
   "dependencies": {
     "@higgsfield/client": "^0.2.1",

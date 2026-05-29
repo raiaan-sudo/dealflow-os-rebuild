@@ -127,7 +127,7 @@ test.describe("safe public browser proof", () => {
     await expect(
       page.getByText(
         /Your session expired or could not be refreshed|Sign-in is temporarily unavailable|The sign-in experience hit an unexpected error|Retry the request/,
-      ),
+      ).first(),
     ).toBeVisible();
 
     await page.goto("/launch");

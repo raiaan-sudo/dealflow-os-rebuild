@@ -137,6 +137,9 @@ export type StaticCreativeReadiness = {
   selectedCount: number;
   selectedReadyCount: number;
   launchReadyCount: number;
+  requiredReadyCount: number;
+  requiredMissingCount: number;
+  optionalReadyCount: number;
   retryCount: number;
   missingCount: number;
   selectedBlockedCount: number;
@@ -256,6 +259,10 @@ export function getStaticCreativeReadiness(
   const recommendedRequiredCount = STATIC_LAUNCH_MIN_CREATIVE_COUNT;
   const selectedMinimumMet = selectedReadyCount >= minimumRequiredCount;
   const optionalIssueCount = Math.max(0, retryCount + missingCount - selectedBlockedCount);
+  const launchReadyMissingCount = Math.max(0, minimumRequiredCount - launchReadyCreatives.length);
+  const requiredReadyCount = Math.min(launchReadyCreatives.length, minimumRequiredCount);
+  const requiredMissingCount = Math.max(0, minimumRequiredCount - requiredReadyCount);
+  const optionalReadyCount = Math.max(0, launchReadyCreatives.length - minimumRequiredCount);
   const selectedReadyLabel =
     selectedReadyCount === 1
       ? "1 selected launch-ready preview"
@@ -270,6 +277,9 @@ export function getStaticCreativeReadiness(
     selectedCount: selectedCreatives.length,
     selectedReadyCount,
     launchReadyCount: launchReadyCreatives.length,
+    requiredReadyCount,
+    requiredMissingCount,
+    optionalReadyCount,
     retryCount,
     missingCount,
     selectedBlockedCount,
@@ -292,6 +302,8 @@ export function getStaticCreativeReadiness(
         ? `${selectedBlockedCount} selected ${selectedBlockedCount === 1 ? "creative needs" : "creatives need"} retry before launch`
         : selectedCreatives.length > 0 && !selectedMinimumMet
           ? `${minimumRequiredCount} launch-ready static ads required; select ${Math.max(0, minimumRequiredCount - selectedReadyCount)} more`
+        : launchReadyMissingCount > 0
+          ? `${minimumRequiredCount} launch-ready static ads required; ${launchReadyCreatives.length} available now. ${optionalIssueCount > 0 ? `${optionalIssueCount} ${optionalIssueCount === 1 ? "creative is" : "creatives are"} still preparing` : "Prepare premium ads before launch"}`
         : optionalIssueCount > 0
           ? `${optionalIssueCount} optional ${optionalIssueCount === 1 ? "polish variant is" : "polish variants are"} still preparing; launch-ready ads are available now`
           : null,
@@ -322,8 +334,12 @@ export function getStaticPreviewStatusMessage(readiness: StaticCreativeReadiness
     return `${base} ${readiness.issueLabel}.`;
   }
 
-  if (readiness.issueLabel) {
+  if (readiness.issueLabel && readiness.selectedMinimumMet) {
     return `${base} ${readiness.issueLabel}; launch can continue with the selected ready creatives.`;
+  }
+
+  if (readiness.issueLabel) {
+    return `${base} ${readiness.issueLabel}.`;
   }
 
   return base;

@@ -261,6 +261,10 @@ function runOfflineChecks() {
   assertIncludes(middleware, "\"/opengraph-image\"", "Public Open Graph image route", "social preview image remains public");
   assertIncludes(onboardingRoute, "onboarding_idempotency_key", "Onboarding idempotency persistence", "campaign plans store onboarding idempotency key");
   assertIncludes(onboardingPage, "dealflow-guided-onboarding-v3", "Onboarding local draft persistence", "safe builder persists draft state locally without stale v2 step order");
+  assertIncludes(onboardingPage, "(!searchParams.get(\"resume\") && !searchParams.get(\"campaignId\"))", "Onboarding fresh-by-default route", "/onboarding starts a new campaign unless recovery or edit is explicit");
+  assertIncludes(onboardingPage, "searchParams.get(\"resume\") === \"1\"", "Onboarding explicit draft recovery", "saved local drafts are recovered only from an explicit resume path");
+  assertIncludes(onboardingPage, "lastSubmittedCampaignId", "Onboarding submitted campaign marker", "submitted campaigns are tracked without becoming the next fresh campaign default");
+  assertIncludes(onboardingPage, "New campaign", "Onboarding new-campaign action", "users can explicitly start a clean campaign draft");
   assertIncludes(onboardingPage, "Step-by-step campaign builder", "Onboarding step builder UI", "safe wizard title is visible");
   assertOrderedIncludes(
     onboardingPage,
@@ -381,6 +385,8 @@ function runOfflineChecks() {
   assertIncludes(creativeWizard, "getVideoLaunchReadinessReason", "Creative UGC truthful rejection reason", "completed but non-launch-ready UGC videos show the exact launch-readiness reason");
   assertIncludes(creativeWizard, "Image preview is being prepared. This page will update when the visual is ready.", "Creative retry pending copy", "creative cards show immediate pending feedback instead of stale cap errors");
   assertIncludes(creativeWizard, "getStaticPreviewStatusMessage", "Creative partial-count copy", "completed image jobs report ready/missing/failed counts instead of generic ready copy");
+  assertIncludes(creativeWizard, "Preparing first 4 launch-ready ads", "Creative first-four progress copy", "creative rendering prioritizes the required first four launch-ready ads before optional polish variants");
+  assertIncludes(creativeWizard, "You can keep setting up Meta, billing, and preview while final ads finish", "Creative slow-render fallback copy", "creative rendering has a 3-minute background-mode message instead of looking stuck");
   assertIncludes("src/lib/services/creative-media-readiness.ts", "launch-ready previews available", "Creative partial-count wording", "partial image generation copy exposes counts without treating optional failed variants as launch blockers");
   assertIncludes(creativeWizard, "customerImageMessage", "Creative image error sanitizer", "image preview failures do not expose provider or infrastructure wording to customers");
   assertIncludes(signupPage, "mode: \"sign-up\"", "Signup canonical redirect", "/signup redirects to the canonical /login sign-up mode instead of 404");
@@ -527,6 +533,8 @@ function runOfflineChecks() {
   assertIncludes(launchPage, "The first saved ad is the primary creative", "Launch primary creative copy", "launch review explains primary creative versus review variants");
   assertIncludes(launchPage, "selectedCreativeMediaReady", "Launch creative media gate", "launch readiness requires selected creatives to have clean rendered images");
   assertIncludes(launchPage, "Creative media ready", "Launch creative readiness label", "launch page tells users creative media must be ready before launch");
+  assertIncludes(previewPage, "applyCreativeIntakePreviewContext", "Preview approved creative context", "preview uses the approved creative-intake context to prevent CTA and seller/buyer drift");
+  assertIncludes(previewPage, "Pricing and demand clarity", "Preview seller trust copy", "seller previews avoid stale buyer/private-access positioning copy");
   assertIncludes(builderPage, "Active campaign workspace", "Builder active campaign shell", "builder defaults to the active campaign workspace when a campaign exists");
   assertIncludes(builderPage, "activeCampaignCopy", "Builder active campaign count copy", "builder uses the real campaign count in active-campaign guidance");
   assertIncludes(builderPage, "mode=edit", "Builder edit gate", "full campaign editing is explicit instead of the default existing-campaign view");

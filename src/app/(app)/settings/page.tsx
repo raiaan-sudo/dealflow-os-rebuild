@@ -63,9 +63,9 @@ function getBillingStatusCopy(billing: SettingsBillingSummary | null) {
   if (billing.requiresSuspension) {
     return {
       tone: "danger",
-      title: "Subscription inactive",
+      title: "Billing ended",
       detail:
-        "DealFlow-managed launch, funnel capture, lead alerts, and optimization are paused until billing is reactivated.",
+        "DealFlow-managed campaign assets have been removed or are being removed. Launch, funnel capture, lead alerts, and optimization stay unavailable until billing is reactivated.",
     };
   }
 
@@ -82,7 +82,7 @@ function getBillingStatusCopy(billing: SettingsBillingSummary | null) {
     return {
       tone: "warning",
       title: "Subscription scheduled to cancel",
-      detail: `Access stays active until ${formatPeriodEnd(billing.currentPeriodEnd)}. Stripe Portal remains available for changes or reactivation, and support can help recover the workspace before the paid period ends.`,
+      detail: `Access remains active until ${formatPeriodEnd(billing.currentPeriodEnd)}. DealFlow-created campaign assets will be removed when access ends unless billing is reactivated.`,
     };
   }
 
