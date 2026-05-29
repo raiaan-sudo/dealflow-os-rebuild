@@ -56,6 +56,13 @@ export async function resolveActiveCampaignRecord(
     };
   }
 
+  if (requestedCampaignId) {
+    return {
+      campaignId: null,
+      record: null,
+    };
+  }
+
   const latestRecord = await getLatestCampaignRecord().catch(() => null);
   const latestCampaignId = latestRecord?.campaign.id ?? null;
   const storedRecord =
