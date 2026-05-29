@@ -87,7 +87,7 @@ export default async function AppLayout({
         />
         <main className="flex-1 overflow-hidden">
           <div className="flex h-full min-h-0 flex-col overflow-y-auto px-6 py-6">
-            <div className="app-page-transition flex min-h-full flex-col gap-6">
+            <div className="app-page-transition flex min-h-full flex-col gap-6 pb-24 sm:pb-0">
               <GuidedFlowBanner />
               {children}
             </div>

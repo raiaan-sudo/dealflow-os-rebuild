@@ -8,9 +8,7 @@ import { fetchWithRetry } from "@/lib/http/fetch-with-retry";
 
 export function FeedbackWidget() {
   const pathname = usePathname();
-  const hideFloatingButton =
-    pathname?.startsWith("/campaign-built") ||
-    pathname?.startsWith("/onboarding");
+  const hideFloatingButton = pathname?.startsWith("/campaign-built");
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [confusedText, setConfusedText] = useState("");
@@ -68,32 +66,38 @@ export function FeedbackWidget() {
   return (
     <>
       {!hideFloatingButton ? (
-        <div className="fixed bottom-6 right-6 z-40">
+        <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-[calc(env(safe-area-inset-right)+1rem)] z-40">
           <Button
             type="button"
             size="lg"
-            className="h-12 rounded-full px-5 text-sm shadow-[0_20px_50px_-24px_rgba(47,128,255,0.75)]"
+            className="size-14 rounded-full p-0 shadow-[0_20px_50px_-24px_rgba(47,128,255,0.75)] sm:h-12 sm:w-auto sm:px-5 sm:text-sm"
+            aria-label="Send feedback"
             onClick={() => {
               setOpen(true);
               setError(null);
               setSuccess(null);
             }}
           >
-            <MessageSquare className="mr-2 h-4 w-4" />
-            Feedback
+            <MessageSquare className="h-5 w-5 sm:mr-2 sm:h-4 sm:w-4" />
+            <span className="sr-only sm:not-sr-only">Feedback</span>
           </Button>
         </div>
       ) : null}
 
       {open ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-end bg-black/55 p-4 backdrop-blur-sm sm:items-center sm:justify-center">
-          <div className="surface-guided w-full max-w-lg rounded-df-panel border border-white/10 p-6 shadow-df-elevated">
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-end overflow-y-auto bg-black/55 p-4 backdrop-blur-sm sm:items-center sm:justify-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="feedback-dialog-title"
+        >
+          <div className="surface-guided max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-df-panel border border-white/10 p-6 shadow-df-elevated">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="df-eyebrow">
                   Early feedback
                 </p>
-                <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">
+                <h3 id="feedback-dialog-title" className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-white">
                   Tell us what felt off
                 </h3>
                 <p className="mt-2 text-sm leading-7 text-white/60">
@@ -102,6 +106,7 @@ export function FeedbackWidget() {
               </div>
               <button
                 type="button"
+                aria-label="Close feedback"
                 className="rounded-full border border-white/10 bg-white/[0.04] p-2 text-white/70 transition hover:bg-white/[0.08] hover:text-white"
                 onClick={() => setOpen(false)}
               >
