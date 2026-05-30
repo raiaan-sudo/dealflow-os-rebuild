@@ -22,6 +22,7 @@ const PUBLIC_API_PATHS = new Set([
   "/api/webhooks/twilio/status",
   "/api/stripe/webhook",
   "/api/client-errors",
+  "/api/performance-billing-setup",
 ]);
 
 function isPublicRequest(pathname: string) {
