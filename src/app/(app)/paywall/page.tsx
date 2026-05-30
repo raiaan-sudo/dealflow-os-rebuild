@@ -10,6 +10,8 @@ import {
   type PrepaywallCampaignPreviewDraft,
 } from "@/components/onboarding/prepaywall-campaign-preview";
 import { normalizeBillingPlanTier } from "@/lib/billing/plans";
+import { getStripePlanPriceConfiguration } from "@/lib/integrations/stripe/service";
+import { SELECTABLE_PLAN_TIERS, type SelectablePlanTier } from "@/lib/billing/plan-presentation";
 import { getBillingSummary, getBillingSummaryForCampaign } from "@/lib/services/billing-service";
 import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
@@ -65,8 +67,15 @@ export default async function PaywallPage({
   const params = searchParams ? await searchParams : {};
   const campaignId =
     typeof params.campaignId === "string" && params.campaignId.length > 0 ? params.campaignId : null;
-  const selectedPlanTier =
+  const requestedPlanTier =
     typeof params.plan === "string" ? normalizeBillingPlanTier(params.plan) : "performance";
+  const performanceConfigured = Boolean(getStripePlanPriceConfiguration("performance"));
+  const availablePlanTiers: readonly SelectablePlanTier[] = performanceConfigured
+    ? SELECTABLE_PLAN_TIERS
+    : SELECTABLE_PLAN_TIERS.filter((tier) => tier !== "performance");
+  const selectedPlanTier = availablePlanTiers.includes(requestedPlanTier as SelectablePlanTier)
+    ? requestedPlanTier
+    : "starter";
   const billing = campaignId
     ? await getBillingSummaryForCampaign(campaignId).catch(() => getBillingSummary().catch(() => null))
     : await getBillingSummary().catch(() => null);
@@ -112,7 +121,9 @@ export default async function PaywallPage({
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Choose launch access</p>
               <h2 className="mt-2 text-2xl font-semibold">Pick how DealFlow should optimize this launch</h2>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
-                Performance gives the same guided launch access as Starter with a lower base and qualified-lead usage on your Stripe invoice. Pro adds recommendation-only autonomy checks and richer monitoring while execution stays approval-gated during beta. Paid image or video generation remains credit-gated after activation.
+                {performanceConfigured
+                  ? "Performance gives the same guided launch access as Starter with a lower base and qualified-lead usage on your Stripe invoice. Pro adds recommendation-only autonomy checks and richer monitoring while execution stays approval-gated during beta. Paid image or video generation remains credit-gated after activation."
+                  : "Starter gives guided launch access with a free trial. Pro adds recommendation-only autonomy checks and richer monitoring while execution stays approval-gated during beta. Paid image or video generation remains credit-gated after activation."}
               </p>
             </div>
             <div className="mt-5">
@@ -120,6 +131,7 @@ export default async function PaywallPage({
                 campaignId={checkoutCampaignId}
                 disabled={!hasServerPreview}
                 initialPlanTier={selectablePlanTier}
+                availablePlanTiers={availablePlanTiers}
                 launchOverride={billing?.launchOverride === true}
               />
             </div>

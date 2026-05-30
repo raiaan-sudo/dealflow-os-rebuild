@@ -12,16 +12,21 @@ import {
 
 export function PaywallPlanSelector({
   initialPlanTier,
+  availablePlanTiers = SELECTABLE_PLAN_TIERS,
   campaignId,
   disabled = false,
   launchOverride = false,
 }: {
   initialPlanTier: SelectablePlanTier;
+  availablePlanTiers?: readonly SelectablePlanTier[];
   campaignId: string | null;
   disabled?: boolean;
   launchOverride?: boolean;
 }) {
-  const [selectedTier, setSelectedTier] = useState<SelectablePlanTier>(initialPlanTier);
+  const initialAvailableTier = availablePlanTiers.includes(initialPlanTier)
+    ? initialPlanTier
+    : availablePlanTiers[0] ?? "starter";
+  const [selectedTier, setSelectedTier] = useState<SelectablePlanTier>(initialAvailableTier);
   const selectedPlan = getPlanPresentation(selectedTier);
   const overrideHref = `/unlock?checkout=override&plan=${encodeURIComponent(selectedTier)}${
     campaignId ? `&campaignId=${encodeURIComponent(campaignId)}` : ""
@@ -30,7 +35,7 @@ export function PaywallPlanSelector({
   return (
     <div className="space-y-5">
       <div className="grid gap-4 lg:grid-cols-3">
-        {SELECTABLE_PLAN_TIERS.map((tier) => {
+        {availablePlanTiers.map((tier) => {
           const plan = getPlanPresentation(tier);
           const selected = selectedTier === tier;
 
