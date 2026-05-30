@@ -24,7 +24,7 @@ export function GenerationCreditTopUpPanel({
           </p>
         </div>
         <div className="shrink-0">
-          <CreditTopUpButton label="Add $20.00 credits" />
+          <CreditTopUpButton label="Add $10.00 credits" />
         </div>
       </div>
     </div>

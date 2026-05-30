@@ -20,7 +20,7 @@ export type GenerationCreditBucket =
   | "openai_image_generation"
   | "heygen_video_generation";
 
-export const CREDIT_TOP_UP_MINIMUM_CENTS = 2_000;
+export const CREDIT_TOP_UP_MINIMUM_CENTS = 1_000;
 const DEFAULT_GENERATION_CREDIT_OVERDRAFT_LIMIT_CENTS = 0;
 
 const DEFAULT_GENERATION_CREDIT_COSTS_CENTS: Record<GenerationCreditBucket, number> = {

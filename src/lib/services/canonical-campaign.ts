@@ -3,6 +3,7 @@ import { inferCampaignIntent, type CampaignIntent } from "@/lib/campaign-intent"
 import { readCampaignPlanDocumentWithDriftGuard } from "@/lib/services/campaign-plan-persistence-service";
 import { readPersistedAssetGenerationState } from "@/lib/services/asset-generation-lifecycle";
 import { normalizeCreativeStrategy } from "@/lib/services/campaign-creative-strategy";
+import { markInstantFallbackStaticAssets } from "@/lib/services/creative-asset-status";
 import type {
   CampaignAd,
   CampaignCreatives,
@@ -732,7 +733,7 @@ export function normalizeCanonicalCampaign(params: {
   );
   const staticAds = savedStaticAds.length > 0
     ? savedStaticAds
-    : items
+    : markInstantFallbackStaticAssets(items
         .filter((item) => item.kind === "static")
         .map((item) => ({
           id: item.id,
@@ -754,7 +755,7 @@ export function normalizeCanonicalCampaign(params: {
           cta: item.cta,
           score: item.score,
           recommended: item.recommended,
-        }));
+        })));
   const lifecycleAwareStaticAds = applySavedStaticGenerationLifecycle(staticAds, params.savedDocument);
   const videoAds = savedVideoAds.length > 0
     ? savedVideoAds

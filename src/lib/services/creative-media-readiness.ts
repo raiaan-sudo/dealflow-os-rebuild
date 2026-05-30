@@ -1,9 +1,14 @@
 import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
+import type { FallbackLaunchQaResult } from "@/lib/services/creative-asset-status";
 export const STATIC_LAUNCH_MIN_CREATIVE_COUNT = 4;
 export const STATIC_LAUNCH_MAX_CREATIVE_COUNT = 6;
 
 type StaticCreativeReadinessInput = {
   id: string;
+  creativeAssetSource?: string | null;
+  creativeAssetStatus?: string | null;
+  creativeAssetQaStatus?: string | null;
+  fallbackLaunchQa?: FallbackLaunchQaResult | null;
   imageUrl?: string | null;
   storageNormalized?: boolean | null;
   appComposedFinal?: boolean | null;
@@ -190,9 +195,13 @@ export function getStaticCreativeBriefMismatchReason(
 
 export function isLaunchReadyStaticCreative(creative: Pick<
   StaticCreativeReadinessInput,
-	  | "imageUrl"
-	  | "storageNormalized"
-	  | "appComposedFinal"
+    | "creativeAssetSource"
+    | "creativeAssetStatus"
+    | "creativeAssetQaStatus"
+    | "fallbackLaunchQa"
+    | "imageUrl"
+    | "storageNormalized"
+    | "appComposedFinal"
     | "qualityTier"
     | "compositionVersion"
     | "imageGenerationProvider"
@@ -203,21 +212,43 @@ export function isLaunchReadyStaticCreative(creative: Pick<
     | "sourceBackgroundKind"
     | "sourceBackgroundProvider"
     | "sourceBackgroundAssetId"
-	  | "imagePrompt"
-  | "imagePromptConfig"
-  | "visualPromptBrief"
-  | "qualityGate"
-  | "visualQualityGate"
-  | "premiumQualityGate"
-  | "imageQa"
-  | "sourceImageQa"
-  | "staticBriefHash"
-  | "offerHash"
-  | "ctaHash"
-  | "brandHash"
+    | "imagePrompt"
+    | "imagePromptConfig"
+    | "visualPromptBrief"
+    | "qualityGate"
+    | "visualQualityGate"
+    | "premiumQualityGate"
+    | "imageQa"
+    | "sourceImageQa"
+    | "staticBriefHash"
+    | "offerHash"
+    | "ctaHash"
+    | "brandHash"
 >, context?: StaticCreativeBriefReadinessContext | null) {
-  return evaluateStaticVisualAssetDecision(creative).usable &&
-    getStaticCreativeBriefMismatchReason(creative, context) === null;
+  if (getStaticCreativeBriefMismatchReason(creative, context) !== null) {
+    return false;
+  }
+
+  const explicitlyLaunchApproved =
+    creative.creativeAssetStatus === "launch_approved" &&
+    Boolean(creative.imageUrl) &&
+    creative.storageNormalized === true &&
+    (
+      creative.creativeAssetQaStatus === "operator_approved" ||
+      creative.creativeAssetQaStatus === "passed" ||
+      (creative.creativeAssetSource === "fallback" && creative.fallbackLaunchQa?.passed === true)
+    ) &&
+    (
+      creative.creativeAssetSource === "fallback" ||
+      creative.creativeAssetSource === "branded_static" ||
+      creative.creativeAssetSource === "manual"
+    );
+
+  if (explicitlyLaunchApproved) {
+    return true;
+  }
+
+  return evaluateStaticVisualAssetDecision(creative).usable;
 }
 
 export function getStaticCreativeReadiness(

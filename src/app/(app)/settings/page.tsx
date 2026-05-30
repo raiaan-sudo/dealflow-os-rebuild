@@ -246,11 +246,11 @@ export default async function SettingsPage({
           </div>
           <div className="mt-5">
             <CreditTopUpButton
-              amountCents={credits?.minimumTopUpCents ?? 2000}
+              amountCents={credits?.minimumTopUpCents ?? 1000}
               label={
                 credits && credits.balance < 0
-                  ? `Add ${credits.formattedMinimumTopUp ?? "$20.00"} credits`
-                  : `Add ${credits?.formattedMinimumTopUp ?? "$20.00"} credits`
+                  ? `Add ${credits.formattedMinimumTopUp ?? "$10.00"} credits`
+                  : `Add ${credits?.formattedMinimumTopUp ?? "$10.00"} credits`
               }
             />
           </div>

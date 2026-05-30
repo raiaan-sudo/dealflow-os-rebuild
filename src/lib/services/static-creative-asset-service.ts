@@ -1,5 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ApiError } from "@/lib/api/route";
 import { generateStaticCreativeAds, type CreativeEngineInput, type StaticCreativeAsset } from "@/lib/services/creative-engine";
 import type { CampaignStrategyInput } from "@/lib/services/campaign-orchestrator";
 import type { CampaignCreativeStrategy } from "@/lib/services/campaign-creative-strategy";
@@ -12,6 +11,10 @@ import {
   normalizeStaticCreativeProviderImage,
   type StaticCreativeStorageNormalizationResult,
 } from "@/lib/services/static-creative-storage-normalization";
+import {
+  retryStaticCreativePersistence,
+  toStaticCreativePersistenceApiError,
+} from "@/lib/services/static-creative-render-resilience";
 import type { Database, Json } from "@/lib/supabase/types";
 
 type PersistStaticCreativeAssetsParams = {
@@ -91,6 +94,151 @@ function getCreativeAssetRole(row: CreativeAssetRow | Record<string, unknown>) {
 
   const role = (metadata as Record<string, unknown>).role;
   return typeof role === "string" ? role : null;
+}
+
+function newestCreativeAssetRow(rows: CreativeAssetRow[]) {
+  return [...rows].sort((a, b) => {
+    const aTime = Date.parse(a.updated_at ?? a.created_at ?? "");
+    const bTime = Date.parse(b.updated_at ?? b.created_at ?? "");
+    return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+  })[0] ?? null;
+}
+
+async function findExistingStaticCreativeRows(params: {
+  supabase: SupabaseClient<Database>;
+  userId: string;
+  campaignId: string;
+  row: Database["public"]["Tables"]["creative_assets"]["Insert"];
+}) {
+  const role = getCreativeAssetRole(params.row as Record<string, unknown>);
+
+  try {
+    const table = params.supabase.from("creative_assets") as unknown as {
+      select?: (columns: string) => unknown;
+    };
+
+    if (typeof table.select !== "function") {
+      return [];
+    }
+
+    let query = table.select("*") as {
+      eq?: (column: string, value: unknown) => unknown;
+      order?: (column: string, options?: { ascending?: boolean }) => unknown;
+      limit?: (count: number) => Promise<{ data: CreativeAssetRow[] | null; error: { message?: string } | null }>;
+    };
+    const eq = (column: string, value: unknown) => {
+      if (typeof query.eq === "function") {
+        query = query.eq(column, value) as typeof query;
+      }
+    };
+
+    eq("user_id", params.userId);
+    eq("campaign_id", params.campaignId);
+    eq("creative_id", params.row.creative_id);
+    eq("asset_type", params.row.asset_type);
+    eq("format", params.row.format);
+    if (role) {
+      eq("metadata->>role", role);
+    }
+
+    if (typeof query.order === "function") {
+      query = query.order("updated_at", { ascending: false }) as typeof query;
+    }
+
+    const result = typeof query.limit === "function"
+      ? await query.limit(12)
+      : { data: null, error: null };
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return Array.isArray(result.data) ? result.data : [];
+  } catch (error) {
+    throw toStaticCreativePersistenceApiError(
+      error,
+      "creative_asset_transient_persist_failed",
+      "creative_asset_persist_failed",
+    );
+  }
+}
+
+async function persistStaticCreativeAssetRow(params: {
+  supabase: SupabaseClient<Database>;
+  userId: string;
+  campaignId: string;
+  row: Database["public"]["Tables"]["creative_assets"]["Insert"];
+}) {
+  return retryStaticCreativePersistence(async () => {
+    const existingRows = await findExistingStaticCreativeRows(params);
+    const canonical = newestCreativeAssetRow(existingRows);
+
+    if (canonical?.id) {
+      const updatePayload = {
+        status: params.row.status,
+        provider_name: params.row.provider_name,
+        generation_method: params.row.generation_method,
+        file_url: params.row.file_url,
+        thumbnail_url: params.row.thumbnail_url,
+        metadata: params.row.metadata,
+      } satisfies Database["public"]["Tables"]["creative_assets"]["Update"];
+      const { data, error } = await (params.supabase.from("creative_assets") as any)
+        .update(updatePayload)
+        .eq("id", canonical.id)
+        .eq("user_id", params.userId)
+        .eq("campaign_id", params.campaignId)
+        .select("*")
+        .single();
+
+      if (error || !data) {
+        throw error ?? new Error("Creative asset update returned no row.");
+      }
+
+      return data as CreativeAssetRow;
+    }
+
+    type InsertResult = {
+      data: CreativeAssetRow[] | CreativeAssetRow | null;
+      error: { message?: string } | null;
+    };
+    const insertSelection = params.supabase
+      .from("creative_assets")
+      .insert([params.row] as never)
+      .select("*") as unknown as
+        | Promise<InsertResult>
+        | {
+            single?: () => Promise<InsertResult>;
+          };
+    const insertResult: InsertResult =
+      typeof (insertSelection as { single?: unknown }).single === "function"
+        ? await (insertSelection as { single: () => Promise<InsertResult> }).single()
+        : await (insertSelection as Promise<InsertResult>);
+    const data = Array.isArray(insertResult.data) ? insertResult.data[0] ?? null : insertResult.data;
+    const error = insertResult.error;
+
+    if (error || !data) {
+      throw error ?? new Error("Creative asset insert returned no row.");
+    }
+
+    return data as CreativeAssetRow;
+  }).catch(async (error) => {
+    const maybeErrorCode =
+      error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code) : null;
+
+    if (maybeErrorCode === "23505") {
+      const recoveredRows = await findExistingStaticCreativeRows(params);
+      const recovered = newestCreativeAssetRow(recoveredRows);
+      if (recovered) {
+        return recovered;
+      }
+    }
+
+    throw toStaticCreativePersistenceApiError(
+      error,
+      "creative_asset_transient_persist_failed",
+      "creative_asset_persist_failed",
+    );
+  });
 }
 
 async function findExistingAppComposedFinalRows(params: {
@@ -488,26 +636,23 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
     return existingRows;
   }
 
-  const { data, error } = await params.supabase
-    .from("creative_assets")
-    .insert(inserts as never)
-    .select("*");
-
-  if (error) {
-    throw new ApiError(500, error.message, "creative_asset_persist_failed");
+  const persistedRows: CreativeAssetRow[] = [];
+  for (const row of inserts) {
+    persistedRows.push(
+      await persistStaticCreativeAssetRow({
+        supabase: params.supabase,
+        userId: params.userId,
+        campaignId: params.campaignId,
+        row,
+      }),
+    );
   }
 
-  const insertedRows = Array.isArray(data) ? data as Array<Record<string, unknown>> : [];
-  const insertedIds = insertedRows
-    .map((row) => (typeof row.id === "string" ? row.id : ""))
-    .filter(Boolean);
-
-  void insertedIds;
   void allInsertedCreativesAreReady;
 
   return [
     ...existingRows,
-    ...insertedRows,
+    ...persistedRows,
   ];
 }
 

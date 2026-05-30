@@ -7,6 +7,7 @@ export type CreativeRenderState =
   | "deferred_worker_required"
   | "processing"
   | "provider_processing"
+  | "saving_retrying"
   | "render_ready"
   | "render_failed"
   | "retry_available"
@@ -47,6 +48,12 @@ function parseTime(value?: string | null) {
 
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isTransientStaticCreativeSaveErrorCode(value?: string | null) {
+  return value === "campaign_static_generation_state_save_failed" ||
+    value === "campaign_static_generation_final_save_failed" ||
+    value === "creative_asset_transient_persist_failed";
 }
 
 export function isMarketingStudioWorkerDeferredRunAt(value?: string | null) {
@@ -96,6 +103,9 @@ export function classifyCreativeRenderJob(
   const retryCount = Number(job.retry_count ?? 0);
   const maxAttempts = Number(job.max_attempts ?? 1);
   const retryAvailable = retryCount < Math.max(1, maxAttempts) - 1;
+  const transientStaticSaveFailure =
+    job.kind === "static_creative_generation" &&
+    isTransientStaticCreativeSaveErrorCode(job.last_error_code);
   const deferred = isMarketingStudioWorkerDeferredRunAt(job.next_run_at);
   const staleDeferred = isStaleDeferredCreativeRenderJob(job, now);
   const createdAt = parseTime(job.created_at);
@@ -116,6 +126,23 @@ export function classifyCreativeRenderJob(
   }
 
   if (job.status === "failed") {
+    if (transientStaticSaveFailure && retryAvailable) {
+      return {
+        state: "saving_retrying",
+        customerLabel: "Saving render state",
+        customerMessage: "Saving render state. Retrying automatically.",
+        customerActionLabel: null,
+        active: true,
+        retryAvailable,
+        operatorLabel: "saving_retrying",
+        operatorMessage: [
+          `Job ${job.id ?? "unknown"} hit a transient static save failure.`,
+          job.last_error_code ? `code=${job.last_error_code}` : null,
+          "automatic retry is available",
+        ].filter(Boolean).join(" "),
+      };
+    }
+
     return {
       state: retryAvailable ? "retry_available" : "render_failed",
       customerLabel: retryAvailable ? "Render needs retry" : "Render failed",
@@ -176,6 +203,22 @@ export function classifyCreativeRenderJob(
       retryAvailable: false,
       operatorLabel: "provider_processing",
       operatorMessage: `Provider polling job ${job.id ?? "unknown"} is active or scheduled.`,
+    };
+  }
+
+  if (transientStaticSaveFailure && (job.status === "pending" || job.status === "processing")) {
+    return {
+      state: "saving_retrying",
+      customerLabel: "Saving render state",
+      customerMessage: "Saving render state. Retrying automatically.",
+      customerActionLabel: null,
+      active: true,
+      retryAvailable,
+      operatorLabel: "saving_retrying",
+      operatorMessage: [
+        `Job ${job.id ?? "unknown"} is recovering from transient static save failure.`,
+        job.last_error_code ? `code=${job.last_error_code}` : null,
+      ].filter(Boolean).join(" "),
     };
   }
 

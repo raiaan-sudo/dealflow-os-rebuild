@@ -52,6 +52,12 @@ const {
   classifyCreativeRenderJob,
 } = require("../src/lib/services/creative-render-state.ts");
 const {
+  ApiError,
+} = require("../src/lib/api/route.ts");
+const {
+  isTransientStaticCreativePersistenceError,
+} = require("../src/lib/services/static-creative-render-resilience.ts");
+const {
   getVideoReadinessLabel,
   getVideoReadinessMessage,
 } = require("../src/lib/services/creative-media-readiness.ts");
@@ -155,6 +161,51 @@ const failedRetry = classifyCreativeRenderJob({
 }, now);
 assert.equal(failedRetry.state, "retry_available");
 assert.equal(failedRetry.customerMessage, "Render needs retry.");
+
+const transientStaticSaveRetry = classifyCreativeRenderJob({
+  id: "job-static-save",
+  kind: "static_creative_generation",
+  status: "failed",
+  retry_count: 0,
+  max_attempts: 3,
+  last_error_code: "campaign_static_generation_state_save_failed",
+}, now);
+assert.equal(transientStaticSaveRetry.state, "saving_retrying");
+assert.equal(transientStaticSaveRetry.customerLabel, "Saving render state");
+assert.equal(transientStaticSaveRetry.customerMessage, "Saving render state. Retrying automatically.");
+assert.equal(transientStaticSaveRetry.customerActionLabel, null);
+
+const transientStaticSaveExhausted = classifyCreativeRenderJob({
+  id: "job-static-save-exhausted",
+  kind: "static_creative_generation",
+  status: "failed",
+  retry_count: 2,
+  max_attempts: 3,
+  last_error_code: "campaign_static_generation_final_save_failed",
+}, now);
+assert.equal(transientStaticSaveExhausted.state, "render_failed");
+assert.equal(transientStaticSaveExhausted.customerActionLabel, null);
+
+const pendingStaticSaveRetry = classifyCreativeRenderJob({
+  id: "job-static-save-pending",
+  kind: "static_creative_generation",
+  status: "pending",
+  retry_count: 1,
+  max_attempts: 3,
+  last_error_code: "creative_asset_transient_persist_failed",
+  next_run_at: "2026-05-19T12:01:00.000Z",
+}, now);
+assert.equal(pendingStaticSaveRetry.state, "saving_retrying");
+assert.equal(pendingStaticSaveRetry.customerActionLabel, null);
+assert.equal(
+  isTransientStaticCreativePersistenceError(new TypeError("fetch failed: UND_ERR_SOCKET")),
+  true,
+);
+assert.equal(
+  isTransientStaticCreativePersistenceError(new ApiError(500, "column status does not exist", "creative_asset_persist_failed")),
+  false,
+  "non-transient schema persist errors fail closed instead of auto-retrying",
+);
 
 assert.equal(getVideoReadinessLabel({ id: "concept", scriptHash: "script" }), "Concept ready, render needed");
 assert.match(getVideoReadinessMessage({ id: "concept", scriptHash: "script" }), /Script and concept are ready/);

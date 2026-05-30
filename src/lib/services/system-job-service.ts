@@ -26,6 +26,7 @@ import type { CreativeIntakeGenerationContext } from "@/lib/services/creative-ch
 import type { SubscriptionSuspensionJobPayload } from "@/lib/services/subscription-suspension-service";
 import type { CampaignOffboardingCleanupPayload } from "@/lib/services/campaign-offboarding-cleanup-service";
 import type { PerformanceLeadBillingJobPayload } from "@/lib/services/performance-lead-billing-service";
+import { isTransientStaticCreativePersistenceError } from "@/lib/services/static-creative-render-resilience";
 
 type SystemJobRow = Database["public"]["Tables"]["system_jobs"]["Row"];
 type SystemJobLogRow = Database["public"]["Tables"]["system_job_logs"]["Row"];
@@ -65,6 +66,7 @@ export type SystemJobWorkerBatchResult = {
 };
 
 const MAX_SYSTEM_JOB_RETRIES = 1;
+const STATIC_CREATIVE_TRANSIENT_MAX_RETRIES = 2;
 const SYSTEM_JOB_LEASE_MS = 5 * 60_000;
 const SYSTEM_JOB_STALE_BUFFER_MS = 60_000;
 const MIN_STALE_PROCESSING_RESET_MS = SYSTEM_JOB_LEASE_MS + SYSTEM_JOB_STALE_BUFFER_MS;
@@ -86,6 +88,7 @@ type SystemJobPayloadMap = {
     outputMode?: "finished_ad" | "background_only" | string;
     provider?: "higgsfield_marketing_studio" | string;
     queueReason?: string;
+    providerUsageRunId?: string | null;
     creativeIntake?: CreativeIntakeGenerationContext | null;
   };
   video_generation: VideoGenerationJobPayload;
@@ -243,12 +246,16 @@ function hasActiveProcessingLease(job: SystemJobRecord) {
 }
 
 function isTransientJobError(error: unknown) {
+  if (isTransientStaticCreativePersistenceError(error)) {
+    return true;
+  }
+
   if (error instanceof ApiError) {
     return error.status === 408 || error.status === 429 || error.status >= 500;
   }
 
   if (error instanceof Error) {
-    return error.name === "AbortError" || /timeout|timed out|rate limit|temporary|network/i.test(error.message);
+    return error.name === "AbortError" || /fetch failed|und_err_socket|econnreset|etimedout|socket|connection closed|timeout|timed out|rate limit|temporary|network/i.test(error.message);
   }
 
   return false;
@@ -295,6 +302,23 @@ function getJobTracking<K extends SystemJobKind>(job: SystemJobRecord<K>) {
       : null;
 
   return payload?.tracking ?? null;
+}
+
+function defaultMaxAttemptsForJob(kind: SystemJobKind) {
+  return kind === "static_creative_generation"
+    ? STATIC_CREATIVE_TRANSIENT_MAX_RETRIES + 1
+    : MAX_SYSTEM_JOB_RETRIES + 1;
+}
+
+function maxRetriesForJob(job: Pick<SystemJobRecord, "kind" | "max_attempts">) {
+  const maxAttempts = Number(job.max_attempts ?? 0);
+  if (Number.isFinite(maxAttempts) && maxAttempts > 0) {
+    return Math.max(0, maxAttempts - 1);
+  }
+
+  return job.kind === "static_creative_generation"
+    ? STATIC_CREATIVE_TRANSIENT_MAX_RETRIES
+    : MAX_SYSTEM_JOB_RETRIES;
 }
 
 export async function appendSystemJobLog(params: {
@@ -361,7 +385,7 @@ export async function createSystemJob<K extends SystemJobKind>(params: {
       status: "pending",
       payload: (params.payload ?? {}) as Json,
       idempotency_key: params.idempotencyKey?.trim() || null,
-      max_attempts: params.maxAttempts ?? MAX_SYSTEM_JOB_RETRIES + 1,
+      max_attempts: params.maxAttempts ?? defaultMaxAttemptsForJob(params.kind),
       next_run_at: deferToMarketingStudioWorker ? MARKETING_STUDIO_WORKER_DEFERRED_UNTIL : null,
     } as never)
     .select("*")
@@ -781,8 +805,9 @@ export async function retrySystemJob(jobId: string, userId: string) {
     throw new ApiError(404, "Job not found.", "system_job_not_found");
   }
 
-  if (currentJob.retry_count >= MAX_SYSTEM_JOB_RETRIES) {
-    throw new ApiError(409, "This job has already used its only retry.", "system_job_retry_limit");
+  const maxRetries = maxRetriesForJob(currentJob);
+  if (currentJob.retry_count >= maxRetries) {
+    throw new ApiError(409, "This job has already used its retry budget.", "system_job_retry_limit");
   }
 
   const nextJob = await updateSystemJob(supabase, jobId, {
@@ -805,7 +830,7 @@ export async function retrySystemJob(jobId: string, userId: string) {
     job: nextJob,
     lifecycleStatus: "retrying",
     attemptCount: nextJob.retry_count,
-    maxRetries: MAX_SYSTEM_JOB_RETRIES,
+    maxRetries,
     retryEligible: true,
   });
 
@@ -819,11 +844,18 @@ export async function retrySystemJob(jobId: string, userId: string) {
 }
 
 function shouldAutoRetrySystemJob(job: SystemJobRecord, error: unknown) {
+  if (job.kind === "static_creative_generation") {
+    return (
+      job.retry_count < Math.min(STATIC_CREATIVE_TRANSIENT_MAX_RETRIES, maxRetriesForJob(job)) &&
+      isTransientStaticCreativePersistenceError(error)
+    );
+  }
+
   if (job.kind === "video_generation") {
     return false;
   }
 
-  if (job.retry_count >= MAX_SYSTEM_JOB_RETRIES || !(error instanceof ApiError)) {
+  if (job.retry_count >= maxRetriesForJob(job) || !(error instanceof ApiError)) {
     return false;
   }
 
@@ -943,7 +975,7 @@ export async function processSystemJob(jobId: string) {
               ? staticPayload.maxGenerations
               : undefined,
           creativeIntake: staticPayload?.creativeIntake ?? null,
-          providerUsageRunId: `${processingJob.id}:${processingJob.attempt_count ?? 0}`,
+          providerUsageRunId: staticPayload?.providerUsageRunId?.trim() || processingJob.id,
           supabase,
         },
       );

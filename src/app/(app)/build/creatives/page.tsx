@@ -14,6 +14,7 @@ import {
   readCreativeChatIntakeFromPlan,
   type CreativeIntakeCampaignDefaults,
 } from "@/lib/services/creative-chat-intake-service";
+import { getCreativeAssetTierLabel } from "@/lib/services/creative-asset-status";
 import { normalizeCreativeOfferTitle } from "@/lib/services/creative-ugc-script-service";
 import { ensureStaticCreativeRenderQueuedForCampaign } from "@/lib/services/static-creative-render-queue-service";
 import { createClient } from "@/lib/supabase/server";
@@ -143,7 +144,7 @@ export default async function BuildCreativesPage({
         completed_at: null,
         retry_count: 0,
         attempt_count: 0,
-        max_attempts: 2,
+        max_attempts: 3,
         payload: null,
         last_error_code: null,
         reviewed_at: null,
@@ -263,9 +264,11 @@ export default async function BuildCreativesPage({
         imagePrompt: ad.imagePrompt ?? null,
         imagePromptConfig: ad.imagePromptConfig ?? null,
         overlayText: ad.overlayText ?? null,
-        formatLabel: /\bugc\b/i.test(`${ad.id} ${ad.visualConcept} ${ad.hook}`)
-          ? "Native-style static ad"
-          : null,
+        formatLabel:
+          getCreativeAssetTierLabel(ad) ??
+          (/\bugc\b/i.test(`${ad.id} ${ad.visualConcept} ${ad.hook}`)
+            ? "Native-style static ad"
+            : null),
         category: ad.visualPromptBrief?.category ?? ensuredRecord.plan.creative_strategy?.campaignCategory ?? null,
         location: ensuredRecord.plan.market || null,
         qualityGate: ad.qualityGate ?? null,

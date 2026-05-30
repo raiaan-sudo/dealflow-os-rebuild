@@ -35,6 +35,13 @@ import {
   type StaticCreativeImageQaResult,
 } from "@/lib/services/static-creative-visual-qa";
 import {
+  markInstantFallbackStaticAssets,
+  type CreativeAssetLifecycleStatus,
+  type CreativeAssetQaStatus,
+  type CreativeAssetSource,
+  type FallbackLaunchQaResult,
+} from "@/lib/services/creative-asset-status";
+import {
   evaluateCreativeQuality,
   evaluateOfferQuality,
   getCategorySafeOffer,
@@ -75,6 +82,14 @@ export type StaticCreativeAsset = {
   angle: "guarantee" | "urgency" | "contrarian" | "opportunity" | "authority";
   location?: string | null;
   audience?: string | null;
+  creativeAssetSource?: CreativeAssetSource | string | null;
+  creativeAssetStatus?: CreativeAssetLifecycleStatus | string | null;
+  creativeAssetQaStatus?: CreativeAssetQaStatus | string | null;
+  fallbackUsed?: boolean | null;
+  durationMs?: number | null;
+  errorReason?: string | null;
+  storagePath?: string | null;
+  fallbackLaunchQa?: FallbackLaunchQaResult | null;
   imageUrl: string;
   storageNormalized?: boolean | null;
   appComposedFinal?: boolean | null;
@@ -1668,7 +1683,7 @@ function buildStaticCreatives(
     },
   ].slice(0, 6) as StaticCreativeAsset[];
 
-  return preventDuplicateStaticCreativeCopy(rankStaticCreativeAssets(
+  return markInstantFallbackStaticAssets(preventDuplicateStaticCreativeCopy(rankStaticCreativeAssets(
     ads.map((ad): StaticCreativeAsset => {
       const visualBrief = buildStaticVisualPromptBrief({
         location: market,
@@ -1718,7 +1733,7 @@ function buildStaticCreatives(
     }),
     strategy,
     { market },
-  ));
+  )));
 }
 
 async function buildVideoCreatives(brief: CreativeBrief): Promise<VideoCreativeAsset[]> {

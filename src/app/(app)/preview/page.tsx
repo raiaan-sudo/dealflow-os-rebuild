@@ -33,6 +33,10 @@ import {
   isLaunchReadyVideoCreative,
   isPlayableVideoCreative,
 } from "@/lib/services/creative-media-readiness";
+import {
+  getCreativeAssetTierLabel,
+  rankBestAvailableStaticCreatives,
+} from "@/lib/services/creative-asset-status";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -234,6 +238,9 @@ export default async function PreviewPage({
   const selectedAds = previewPlan.creatives.staticAds
     .filter((ad) => selectedAdIds.includes(ad.id))
     .sort((left, right) => selectedAdIds.indexOf(left.id) - selectedAdIds.indexOf(right.id));
+  const fallbackDisplayAds = rankBestAvailableStaticCreatives(previewPlan.creatives.staticAds).slice(0, 4);
+  const displayStaticAds = selectedAds.length > 0 ? selectedAds : fallbackDisplayAds;
+  const usingInstantFallbackPreview = selectedAds.length === 0 && displayStaticAds.length > 0;
   const videoAds = previewPlan.creatives.videoAds;
   const isCurrentLaunchReadyUgcVideo = (video: (typeof videoAds)[number]) =>
     video.conceptType === "customer_ugc" &&
@@ -318,69 +325,82 @@ export default async function PreviewPage({
           <div className="mb-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Selected creative test set</p>
             <h2 className="mt-1 text-lg font-semibold text-foreground">
-              {selectedAds.length > 0 ? staticReadiness.selectionLabel : "Review-only creative preview"}
+              {selectedAds.length > 0
+                ? staticReadiness.selectionLabel
+                : usingInstantFallbackPreview
+                  ? "Instant creative preview"
+                  : "Review-only creative preview"}
             </h2>
             {selectedAds.length > 0 ? (
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 {staticReadiness.selectedReadyLabel}
                 {staticReadiness.issueLabel ? `; ${staticReadiness.issueLabel}` : ""}
               </p>
+            ) : usingInstantFallbackPreview ? (
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Preview creatives are available now. Premium launch-ready renders still need review before they can satisfy launch gates.
+              </p>
             ) : null}
             {selectedAds.length > 0 && !selectedStaticMediaReady ? (
               <p className="mt-2 rounded-[14px] border border-amber-300/18 bg-amber-300/[0.08] px-3 py-2 text-sm leading-6 text-amber-100">
                 Selected creative media is not launch-ready yet. Return to Creative Studio and refresh the selected previews before launch.
               </p>
+            ) : usingInstantFallbackPreview ? (
+              <p className="mt-2 rounded-[14px] border border-cyan-300/18 bg-cyan-300/[0.08] px-3 py-2 text-sm leading-6 text-cyan-100">
+                These instant fallback creatives keep Preview usable while premium renders prepare. They are not launch-approved and cannot satisfy Meta launch gates until QA-approved.
+              </p>
             ) : null}
           </div>
-          {selectedAds.length > 0 ? (
+          {displayStaticAds.length > 0 ? (
             <div className="space-y-3">
               <div className="rounded-df-card border border-primary/30 bg-primary/[0.08] p-3">
                 <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">
-                  Primary creative
+                  {usingInstantFallbackPreview ? "Primary preview creative" : "Primary creative"}
                 </p>
                 <StaticCreativeSummaryCard
-                  angleLabel={selectedAds[0]?.angle}
+                  angleLabel={displayStaticAds[0]?.angle}
                   category={previewPlan.creativeStrategy.campaignCategory}
                   className="border-primary/35 bg-black/18"
-                  cta={selectedAds[0]?.cta || "Learn More"}
-                  headline={selectedAds[0]?.headline || previewPlan.keyOffer}
-                  imageGenerationMessage={selectedAds[0]?.imageGenerationMessage}
-                  imageGenerationProvider={selectedAds[0]?.imageGenerationProvider}
-                  imageGenerationState={selectedAds[0]?.imageGenerationState}
-                  imagePrompt={selectedAds[0]?.imagePrompt}
-                  imagePromptConfig={selectedAds[0]?.imagePromptConfig}
-	                  imageUrl={selectedAds[0]?.imageUrl}
-	                  storageNormalized={selectedAds[0]?.storageNormalized}
-                  appComposedFinal={selectedAds[0]?.appComposedFinal}
-                  qualityTier={selectedAds[0]?.qualityTier}
-                  compositionVersion={selectedAds[0]?.compositionVersion}
-                  sourceBackgroundKind={selectedAds[0]?.sourceBackgroundKind}
-                  sourceBackgroundProvider={selectedAds[0]?.sourceBackgroundProvider}
-                  sourceBackgroundAssetId={selectedAds[0]?.sourceBackgroundAssetId}
+                  cta={displayStaticAds[0]?.cta || "Learn More"}
+                  headline={displayStaticAds[0]?.headline || previewPlan.keyOffer}
+                  imageGenerationMessage={displayStaticAds[0]?.imageGenerationMessage}
+                  imageGenerationProvider={displayStaticAds[0]?.imageGenerationProvider}
+                  imageGenerationState={displayStaticAds[0]?.imageGenerationState}
+                  imagePrompt={displayStaticAds[0]?.imagePrompt}
+                  imagePromptConfig={displayStaticAds[0]?.imagePromptConfig}
+	                  imageUrl={displayStaticAds[0]?.imageUrl}
+	                  storageNormalized={displayStaticAds[0]?.storageNormalized}
+                  appComposedFinal={displayStaticAds[0]?.appComposedFinal}
+                  qualityTier={displayStaticAds[0]?.qualityTier}
+                  compositionVersion={displayStaticAds[0]?.compositionVersion}
+                  sourceBackgroundKind={displayStaticAds[0]?.sourceBackgroundKind}
+                  sourceBackgroundProvider={displayStaticAds[0]?.sourceBackgroundProvider}
+                  sourceBackgroundAssetId={displayStaticAds[0]?.sourceBackgroundAssetId}
+                  formatLabel={getCreativeAssetTierLabel(displayStaticAds[0])}
                   index={0}
                   location={previewPlan.market}
                   offer={previewPlan.keyOffer}
-                  overlayText={selectedAds[0]?.overlayText}
-                  primaryText={selectedAds[0]?.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
-                  qualityGate={selectedAds[0]?.qualityGate}
-                  visualQualityGate={selectedAds[0]?.visualQualityGate}
-                  premiumQualityGate={selectedAds[0]?.premiumQualityGate}
-                  imageQa={selectedAds[0]?.imageQa}
-                  sourceImageQa={selectedAds[0]?.sourceImageQa}
+                  overlayText={displayStaticAds[0]?.overlayText}
+                  primaryText={displayStaticAds[0]?.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
+                  qualityGate={displayStaticAds[0]?.qualityGate}
+                  visualQualityGate={displayStaticAds[0]?.visualQualityGate}
+                  premiumQualityGate={displayStaticAds[0]?.premiumQualityGate}
+                  imageQa={displayStaticAds[0]?.imageQa}
+                  sourceImageQa={displayStaticAds[0]?.sourceImageQa}
                   prominent
-                  score={selectedAds[0]?.score}
-                  selected
-                  selectedCount={selectedAds.length}
-                  visualPromptBrief={selectedAds[0]?.visualPromptBrief}
+                  score={displayStaticAds[0]?.score}
+                  selected={selectedAds.length > 0}
+                  selectedCount={displayStaticAds.length}
+                  visualPromptBrief={displayStaticAds[0]?.visualPromptBrief}
                 />
               </div>
 
-              {selectedAds.length > 1 ? (
+              {displayStaticAds.length > 1 ? (
                 <div className="grid gap-2">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Review variants
+                    {usingInstantFallbackPreview ? "Instant draft variants" : "Review variants"}
                   </p>
-                  {selectedAds.slice(1).map((selectedAd, index) => (
+                  {displayStaticAds.slice(1).map((selectedAd, index) => (
                     <StaticCreativeSummaryCard
                       angleLabel={selectedAd.angle}
                       category={previewPlan.creativeStrategy.campaignCategory}
@@ -399,6 +419,7 @@ export default async function PreviewPage({
                       sourceBackgroundKind={selectedAd.sourceBackgroundKind}
                       sourceBackgroundProvider={selectedAd.sourceBackgroundProvider}
                       sourceBackgroundAssetId={selectedAd.sourceBackgroundAssetId}
+                      formatLabel={getCreativeAssetTierLabel(selectedAd)}
                       index={index + 1}
                       key={selectedAd.id}
                       location={previewPlan.market}
@@ -412,7 +433,7 @@ export default async function PreviewPage({
                       sourceImageQa={selectedAd.sourceImageQa}
                       prominent
                       score={selectedAd.score}
-                      selectedCount={selectedAds.length}
+                      selectedCount={displayStaticAds.length}
                       visualPromptBrief={selectedAd.visualPromptBrief}
                     />
                   ))}

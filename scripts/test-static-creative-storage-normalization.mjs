@@ -263,18 +263,57 @@ function fakeSupabase({
           };
           return chain;
         },
+        update(payload) {
+          operations.push({ op: "update", payload });
+          const chain = {
+            eq(column, value) {
+              operations.push({ op: "update.eq", column, value });
+              return chain;
+            },
+            select() {
+              return {
+                async single() {
+                  return {
+                    data: {
+                      ...(existingRows[0] ?? {}),
+                      ...payload,
+                      id: existingRows[0]?.id ?? "updated-0",
+                    },
+                    error: null,
+                  };
+                },
+              };
+            },
+          };
+          return chain;
+        },
         insert(rows) {
-          operations.push({ op: "insert", rows });
+          const insertedRows = Array.isArray(rows) ? rows : [rows];
+          operations.push({ op: "insert", rows: insertedRows });
 
           return {
-            async select() {
-              if (insertFails) {
-                return { data: null, error: new Error("insert failed") };
-              }
-
+            select() {
               return {
-                data: rows.map((row, index) => ({ ...row, id: `new-${index}` })),
-                error: null,
+                async single() {
+                  if (insertFails) {
+                    return { data: null, error: new Error("insert failed") };
+                  }
+
+                  return {
+                    data: { ...insertedRows[0], id: "new-0" },
+                    error: null,
+                  };
+                },
+                then(resolve) {
+                  if (insertFails) {
+                    return Promise.resolve({ data: null, error: new Error("insert failed") }).then(resolve);
+                  }
+
+                  return Promise.resolve({
+                    data: insertedRows.map((row, index) => ({ ...row, id: `new-${index}` })),
+                    error: null,
+                  }).then(resolve);
+                },
               };
             },
           };
@@ -433,8 +472,12 @@ await persistStaticCreativeAssets({
 });
 const successfulInsert = successfulDb.operations.find((item) => item.op === "insert");
 assert.ok(successfulInsert, "creative asset rows are inserted");
-const [imageFrame] = successfulInsert.rows;
-assert.equal(imageFrame.status, "ready");
+const imageFrame = successfulDb.operations
+  .filter((item) => item.op === "insert")
+  .flatMap((item) => item.rows)
+  .find((row) => row.metadata?.role === "app_composed_final_static");
+assert.ok(imageFrame, "app-composed final static row is inserted");
+assert.equal(imageFrame.status, "requires_review", "app-composed finals remain review-only and are not launch-ready Higgsfield rasters");
 assert.match(imageFrame.file_url, /\/storage\/v1\/object\/public\/creative-assets\//);
 assert.notEqual(imageFrame.file_url, providerDataUri, "provider URL is not the primary durable URL");
 assert.equal(imageFrame.thumbnail_url, imageFrame.file_url);
@@ -487,6 +530,8 @@ await persistStaticCreativeAssets({
   staticAds: [
     {
       ...buildAsset(),
+      imageGenerationProvider: "higgsfield_marketing_studio",
+      qualityTier: "higgsfield_finished_ad",
       storageNormalized: false,
       imagePrompt: "MARKETING STUDIO FINISHED AD CREATIVE. Required CTA text: Check My Options.",
       imagePromptConfig: {
@@ -519,9 +564,9 @@ assert.ok(
 );
 assert.equal(finishedAdInsert.rows[0].status, "ready");
 assert.match(finishedAdInsert.rows[0].file_url, /\/storage\/v1\/object\/public\/creative-assets\//);
-assert.match(finishedAdInsert.rows[0].metadata.storagePath, /^user-test\/campaign-test\/app-composed-static\//);
+assert.match(finishedAdInsert.rows[0].metadata.storagePath, /^user-test\/campaign-test\/generated-static\//);
 assert.equal(finishedAdInsert.rows[0].metadata.imageQa.decision, "accept");
-assert.equal(finishedAdInsert.rows[0].metadata.imageQa.mode, "app_composed_final");
+assert.equal(finishedAdInsert.rows[0].metadata.imageQa.mode, "finished_ad");
 assert.equal(finishedAdInsert.rows[0].metadata.storageNormalized, true);
 
 const uploadFailDb = fakeSupabase({ uploadFails: true });

@@ -25,8 +25,8 @@ const productionRunbook = read("docs/production-100-client-runbook.md");
 
 assert.match(
   creditService,
-  /CREDIT_TOP_UP_MINIMUM_CENTS\s*=\s*2_000/,
-  "credit service must enforce the $20 minimum top-up",
+  /CREDIT_TOP_UP_MINIMUM_CENTS\s*=\s*1_000/,
+  "credit service must enforce the $10 minimum top-up",
 );
 assert.match(
   creditService,
@@ -40,17 +40,17 @@ assert.match(
 );
 assert.match(
   creditTopUpButton,
-  /amountCents\s*=\s*2000/,
-  "credit top-up button fallback must use the $20 minimum",
+  /amountCents\s*=\s*1000/,
+  "credit top-up button fallback must use the $10 minimum",
 );
 assert.ok(
   generationCreditTopUpPanel.includes("CreditTopUpButton") &&
-    generationCreditTopUpPanel.includes("Add $20.00 credits"),
+    generationCreditTopUpPanel.includes("Add $10.00 credits"),
   "generation surfaces must show a compact top-up action when credits are insufficient",
 );
 assert.ok(
-  settingsPage.includes('formattedMinimumTopUp ?? "$20.00"'),
-  "settings fallback copy must show $20.00",
+  settingsPage.includes('formattedMinimumTopUp ?? "$10.00"'),
+  "settings fallback copy must show $10.00",
 );
 assert.ok(
   billingService.includes("CREDIT_TOP_UP_MINIMUM_CENTS"),
@@ -154,8 +154,8 @@ assert.ok(
   "observability docs must explain provider cost/quota issue source",
 );
 assert.ok(
-  productionRunbook.includes("$20.00"),
-  "production runbook must document the $20 credit minimum",
+  productionRunbook.includes("$10.00"),
+  "production runbook must document the $10 credit minimum",
 );
 assert.ok(
   envExample.includes("ALLOW_QA_GENERATION_CREDIT_OVERRIDE=false"),

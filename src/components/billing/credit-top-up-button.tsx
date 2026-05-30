@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
 export function CreditTopUpButton({
-  amountCents = 2000,
+  amountCents = 1000,
   label = "Add credits",
 }: {
   amountCents?: number;

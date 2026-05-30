@@ -22,6 +22,7 @@ import {
   readPersistedAssetGenerationState,
   shouldReuseStaticGeneration,
   startAssetGenerationLifecycle,
+  updateAssetGenerationLifecycleStage,
 } from "@/lib/services/asset-generation-lifecycle";
 import { debugLog } from "@/lib/debug";
 import {
@@ -43,6 +44,12 @@ import {
   STATIC_LAUNCH_MIN_CREATIVE_COUNT,
 } from "@/lib/services/creative-media-readiness";
 import { persistStaticCreativeAssets } from "@/lib/services/static-creative-asset-service";
+import {
+  isTransientStaticCreativePersistenceError,
+  retryStaticCreativePersistence,
+  toStaticCreativePersistenceApiError,
+  type StaticCreativeGenerationStage,
+} from "@/lib/services/static-creative-render-resilience";
 import {
   consumeSessionCostBudget,
   markSessionCostBudgetEvent,
@@ -151,6 +158,46 @@ function getErrorMessage(error: unknown) {
   }
 
   return "Unknown error";
+}
+
+function withStaticAssetGenerationStage(
+  savedDocument: SavedCampaignDocument | Record<string, unknown> | null | undefined,
+  stage: StaticCreativeGenerationStage,
+) {
+  const generationState = readPersistedAssetGenerationState(savedDocument?.assetGeneration);
+
+  return {
+    ...((savedDocument as Record<string, unknown> | null) ?? {}),
+    assetGeneration: {
+      ...((savedDocument?.assetGeneration as Record<string, unknown> | null) ?? {}),
+      staticAds: updateAssetGenerationLifecycleStage(generationState.staticAds, stage),
+    },
+  } as Json;
+}
+
+async function persistStaticCampaignPlanDocumentUpdate(params: {
+  supabase: PersistenceClient;
+  campaignId: string;
+  userId: string;
+  plan: Json;
+  source: string;
+  existingRow: CampaignPlanRow;
+  transientCode: string;
+}) {
+  try {
+    await retryStaticCreativePersistence(() =>
+      persistCampaignPlanDocumentUpdate({
+        supabase: params.supabase,
+        campaignId: params.campaignId,
+        userId: params.userId,
+        plan: params.plan,
+        source: params.source,
+        existingRow: params.existingRow,
+      }),
+    );
+  } catch (error) {
+    throw toStaticCreativePersistenceApiError(error, params.transientCode);
+  }
 }
 
 async function requireUserSession() {
@@ -703,23 +750,21 @@ async function persistGeneratedStaticAdsToCampaignPlan(params: {
       staticAds: completeAssetGenerationLifecycle({
         previous: previousGenerationState.staticAds,
         status: deriveStaticGenerationStatus(params.staticAds),
+        stage: "completed",
         error: params.generationError ?? null,
       }),
     },
   } as Json;
 
-  try {
-    await persistCampaignPlanDocumentUpdate({
-      supabase: params.supabase,
-      campaignId: params.campaignId,
-      userId: params.userId,
-      plan: nextPlan,
-      source: "campaign_static_ads_save",
-      existingRow: params.row,
-    });
-  } catch (error) {
-    throw new ApiError(500, getErrorMessage(error), "campaign_static_ads_save_failed");
-  }
+  await persistStaticCampaignPlanDocumentUpdate({
+    supabase: params.supabase,
+    campaignId: params.campaignId,
+    userId: params.userId,
+    plan: nextPlan,
+    source: "campaign_static_ads_save",
+    existingRow: params.row,
+    transientCode: "campaign_static_generation_final_save_failed",
+  });
 
   return {
     ...(savedDocument as Record<string, unknown>),
@@ -729,6 +774,7 @@ async function persistGeneratedStaticAdsToCampaignPlan(params: {
       staticAds: completeAssetGenerationLifecycle({
         previous: previousGenerationState.staticAds,
         status: deriveStaticGenerationStatus(params.staticAds),
+        stage: "completed",
         error: params.generationError ?? null,
       }),
     },
@@ -1264,22 +1310,19 @@ export async function regenerateStaticCreativeAssetsForUser(
     ...((savedDocument as Record<string, unknown> | null) ?? {}),
     assetGeneration: {
       ...((savedDocument?.assetGeneration as Record<string, unknown> | null) ?? {}),
-      staticAds: startAssetGenerationLifecycle(generationState.staticAds),
+      staticAds: startAssetGenerationLifecycle(generationState.staticAds, "rendering"),
     },
   } as Json;
 
-  try {
-    await persistCampaignPlanDocumentUpdate({
-      supabase,
-      campaignId,
-      userId,
-      plan: nextPlan,
-      source: "campaign_static_generation_state_save",
-      existingRow: row,
-    });
-  } catch (error) {
-    throw new ApiError(500, getErrorMessage(error), "campaign_static_generation_state_save_failed");
-  }
+  await persistStaticCampaignPlanDocumentUpdate({
+    supabase,
+    campaignId,
+    userId,
+    plan: nextPlan,
+    source: "campaign_static_generation_state_save",
+    existingRow: row,
+    transientCode: "campaign_static_generation_state_save_failed",
+  });
 
   try {
     const generatedStaticAds = await generateStaticCreativeAds({
@@ -1320,6 +1363,23 @@ export async function regenerateStaticCreativeAssetsForUser(
       currentRecord.creatives.staticAds,
     );
 
+    const assetsPersistingPlan = withStaticAssetGenerationStage(
+      nextPlan as Record<string, unknown>,
+      "assets_persisting",
+    );
+    await persistStaticCampaignPlanDocumentUpdate({
+      supabase,
+      campaignId,
+      userId,
+      plan: assetsPersistingPlan,
+      source: "campaign_static_generation_assets_persisting",
+      existingRow: {
+        ...row,
+        plan: nextPlan,
+      } as CampaignPlanRow,
+      transientCode: "campaign_static_generation_state_save_failed",
+    });
+
     await persistStaticCreativeAssets({
       supabase,
       userId,
@@ -1332,6 +1392,22 @@ export async function regenerateStaticCreativeAssetsForUser(
       persistedStaticAdsAfterSave.length > 0
         ? mergeStaticCreativeImageResults(staticAds, persistedStaticAdsAfterSave)
         : staticAds;
+    const planFinalizingPlan = withStaticAssetGenerationStage(
+      assetsPersistingPlan as Record<string, unknown>,
+      "plan_finalizing",
+    );
+    await persistStaticCampaignPlanDocumentUpdate({
+      supabase,
+      campaignId,
+      userId,
+      plan: planFinalizingPlan,
+      source: "campaign_static_generation_plan_finalizing",
+      existingRow: {
+        ...row,
+        plan: assetsPersistingPlan,
+      } as CampaignPlanRow,
+      transientCode: "campaign_static_generation_final_save_failed",
+    });
 
     const updatedSavedDocument = await persistGeneratedStaticAdsToCampaignPlan({
       supabase,
@@ -1340,7 +1416,7 @@ export async function regenerateStaticCreativeAssetsForUser(
       staticAds: planStaticAds,
       row: {
         ...row,
-        plan: nextPlan,
+        plan: planFinalizingPlan,
       } as CampaignPlanRow,
     });
 
@@ -1351,6 +1427,10 @@ export async function regenerateStaticCreativeAssetsForUser(
       publish: mapPublishRecord(row),
     });
   } catch (error) {
+    const retryablePersistenceFailure = isTransientStaticCreativePersistenceError(error);
+    const errorCode = error instanceof ApiError ? error.code : retryablePersistenceFailure
+      ? "campaign_static_generation_state_save_failed"
+      : "campaign_static_generation_failed";
     const failurePlan = {
       ...((savedDocument as Record<string, unknown> | null) ?? {}),
       assetGeneration: {
@@ -1358,19 +1438,29 @@ export async function regenerateStaticCreativeAssetsForUser(
         staticAds: completeAssetGenerationLifecycle({
           previous: startAssetGenerationLifecycle(generationState.staticAds),
           status: "failed",
+          stage: retryablePersistenceFailure ? "retryable_save_failed" : "failed",
+          errorCode,
           error: error instanceof Error ? error.message : "Static generation failed.",
         }),
       },
     } as Json;
 
-    await persistCampaignPlanDocumentUpdate({
-      supabase,
-      campaignId,
-      userId,
-      plan: failurePlan,
-      source: "campaign_static_generation_failure",
-      existingRow: row,
-    });
+    try {
+      await persistStaticCampaignPlanDocumentUpdate({
+        supabase,
+        campaignId,
+        userId,
+        plan: failurePlan,
+        source: "campaign_static_generation_failure",
+        existingRow: row,
+        transientCode: retryablePersistenceFailure
+          ? "campaign_static_generation_state_save_failed"
+          : "campaign_static_generation_final_save_failed",
+      });
+    } catch {
+      // Preserve the root render failure. The system job retry path will recover
+      // when even the failure-state checkpoint cannot be saved.
+    }
 
     throw error;
   }
