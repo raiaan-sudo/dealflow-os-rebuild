@@ -1,5 +1,7 @@
 .env
 .env.*
+.codex/
+app
 
 .next/
 out/
