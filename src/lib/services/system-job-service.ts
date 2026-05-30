@@ -25,6 +25,7 @@ import {
 import type { CreativeIntakeGenerationContext } from "@/lib/services/creative-chat-intake-service";
 import type { SubscriptionSuspensionJobPayload } from "@/lib/services/subscription-suspension-service";
 import type { CampaignOffboardingCleanupPayload } from "@/lib/services/campaign-offboarding-cleanup-service";
+import type { PerformanceLeadBillingJobPayload } from "@/lib/services/performance-lead-billing-service";
 
 type SystemJobRow = Database["public"]["Tables"]["system_jobs"]["Row"];
 type SystemJobLogRow = Database["public"]["Tables"]["system_job_logs"]["Row"];
@@ -41,6 +42,7 @@ export type SystemJobKind =
   | "recommendation_generation"
   | "lead_capture_retry"
   | "lead_side_effects"
+  | "performance_lead_billing"
   | "subscription_suspension"
   | "campaign_offboarding_cleanup";
 export type SystemJobStatus = "pending" | "processing" | "completed" | "failed";
@@ -165,6 +167,7 @@ type SystemJobPayloadMap = {
       fbc?: string | null;
     };
   };
+  performance_lead_billing: PerformanceLeadBillingJobPayload;
   subscription_suspension: SubscriptionSuspensionJobPayload;
   campaign_offboarding_cleanup: CampaignOffboardingCleanupPayload;
 };
@@ -467,6 +470,23 @@ export async function queueLeadSideEffectsJob(params: {
   });
 
   return row;
+}
+
+export async function queuePerformanceLeadBillingJob(params: {
+  organizationId: string;
+  userId: string;
+  campaignId: string;
+  payload: SystemJobPayloadMap["performance_lead_billing"];
+}) {
+  return createSystemJob({
+    organizationId: params.organizationId,
+    userId: params.userId,
+    campaignId: params.campaignId,
+    kind: "performance_lead_billing",
+    payload: params.payload,
+    idempotencyKey: `performance_lead_billing:${params.payload.organizationId}:${params.payload.campaignId}:${params.payload.leadId}`,
+    maxAttempts: 3,
+  });
 }
 
 async function updateSystemJobTracking<K extends SystemJobKind>(params: {
@@ -1013,6 +1033,7 @@ export async function processSystemJob(jobId: string) {
         });
 
         let sideEffectJobId: string | null = null;
+        let performanceLeadBillingJobId: string | null = null;
         if (replayResult.leadId && replayResult.campaignId && replayResult.organizationId) {
           const sideEffectJob = await queueLeadSideEffectsJob({
             organizationId: replayResult.organizationId,
@@ -1047,6 +1068,27 @@ export async function processSystemJob(jobId: string) {
             },
           });
           sideEffectJobId = sideEffectJob.id;
+          const performanceBillingJob = await queuePerformanceLeadBillingJob({
+            organizationId: replayResult.organizationId,
+            userId: processingJob.user_id,
+            campaignId: replayResult.campaignId,
+            payload: {
+              source: "lead_capture_retry",
+              requestId: payload.requestId,
+              leadId: replayResult.leadId,
+              organizationId: replayResult.organizationId,
+              campaignId: replayResult.campaignId,
+            },
+          }).catch((error) => {
+            logWarn("performance_lead_billing_retry_queue_failed", {
+              requestId: payload.requestId,
+              leadId: replayResult.leadId,
+              organizationId: replayResult.organizationId,
+              message: error instanceof Error ? error.message : "Unknown performance lead billing queue failure",
+            });
+            return null;
+          });
+          performanceLeadBillingJobId = performanceBillingJob?.id ?? null;
         }
 
         result = {
@@ -1054,6 +1096,7 @@ export async function processSystemJob(jobId: string) {
           requestId: payload.requestId,
           retryReason: payload.reason,
           sideEffectJobId,
+          performanceLeadBillingJobId,
         } as Json;
       }
     } else if (result === undefined && processingJob.kind === "lead_side_effects") {
@@ -1096,6 +1139,11 @@ export async function processSystemJob(jobId: string) {
         metaConversionResult,
       } as Json;
       }
+    } else if (result === undefined && processingJob.kind === "performance_lead_billing") {
+      const { runPerformanceLeadBillingJob } = await import("@/lib/services/performance-lead-billing-service");
+      result = await runPerformanceLeadBillingJob(
+        processingJob.payload as SystemJobPayloadMap["performance_lead_billing"],
+      ) as unknown as Json;
     } else if (result === undefined && processingJob.kind === "subscription_suspension") {
       const { runSubscriptionSuspensionJob } = await import("@/lib/services/subscription-suspension-service");
       result = await runSubscriptionSuspensionJob({

@@ -30,7 +30,7 @@ assert.equal(
 assert.match(plans, /starter:[\s\S]*priceLabel:\s*"\$147\/mo"/, "Starter must stay $147/mo");
 assert.match(plans, /pro:[\s\S]*priceLabel:\s*"\$297\/mo"/, "Pro must stay $297/mo");
 assert.match(plans, /growth:[\s\S]*priceLabel:\s*"\$497\/mo"/, "Growth must not interfere with Starter/Pro pricing");
-assert.doesNotMatch(plans, /\$97\/mo|\b9700\b/, "legacy $97 Starter price must not be a new-customer source of truth");
+assert.match(plans, /performance:[\s\S]*priceLabel:\s*"\$97\/mo \+ \$3\/qualified lead"/, "Performance must be the only $97 base plan");
 assert.match(plans, /autonomy_access:\s*"pro"/, "autonomy access must remain Pro-gated");
 
 assert.match(entitlements, /ACTIVE_SUBSCRIPTION_STATUSES = new Set\(\["active", "trialing"\]\)/, "active and trialing billing are active states");

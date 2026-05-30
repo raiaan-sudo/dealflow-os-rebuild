@@ -46,7 +46,7 @@ type DraftState = {
   priceRange: string;
   dailyBudget: string;
   offer: string;
-  planTier: Extract<BillingPlanTier, "starter" | "pro">;
+  planTier: Extract<BillingPlanTier, "performance" | "starter" | "pro">;
   idempotencySeed: string;
 };
 
@@ -187,7 +187,7 @@ const DEFAULT_DRAFT: DraftState = {
   priceRange: MODE_DEFAULTS.buyer.priceRange,
   dailyBudget: "30",
   offer: MODE_DEFAULTS.buyer.offer,
-  planTier: "starter",
+  planTier: "performance",
   idempotencySeed: "",
 };
 
@@ -682,7 +682,7 @@ export default function OnboardingPage() {
           ...saved,
           campaignMode,
           dailyBudget,
-          planTier: saved.planTier === "pro" ? "pro" : "starter",
+          planTier: saved.planTier === "pro" ? "pro" : saved.planTier === "performance" ? "performance" : "starter",
           idempotencySeed: saved.idempotencySeed || nextDraft.idempotencySeed,
         };
         setDraft(nextDraft);

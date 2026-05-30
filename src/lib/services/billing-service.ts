@@ -9,8 +9,8 @@ import {
   buildStripeCheckoutMetadata,
   getBillingPortalUrls,
   getCheckoutUrls,
-  getPlanTierFromPriceId,
-  getStripePriceId,
+  getPlanTierFromSubscriptionPriceIds,
+  getStripePlanPriceConfiguration,
 } from "@/lib/integrations/stripe/service";
 import { getStripeBillingProvider } from "@/lib/integrations/stripe/provider";
 import {
@@ -409,19 +409,28 @@ function mapBillingRow(row: BillingRow | null, fallbackPlanTier: string): Billin
 }
 
 function getActivePlanTier(subscription: Stripe.Subscription) {
-  const firstItem = subscription.items.data[0];
-  const priceId = typeof firstItem?.price?.id === "string" ? firstItem.price.id : null;
-  const planTier = getPlanTierFromPriceId(priceId);
+  const priceIds = subscription.items.data
+    .map((item) => (typeof item.price?.id === "string" ? item.price.id : null))
+    .filter((priceId): priceId is string => Boolean(priceId));
+  const planTier = getPlanTierFromSubscriptionPriceIds(priceIds);
 
   if (!planTier) {
     throw new ApiError(
       400,
-      "Stripe subscription price is not configured for DealFlow billing.",
+      "Stripe subscription price combination is not configured for DealFlow billing.",
       "stripe_price_unrecognized",
     );
   }
 
   return planTier;
+}
+
+function getSubscriptionItemByPriceId(subscription: Stripe.Subscription, priceId: string | null) {
+  if (!priceId) {
+    return null;
+  }
+
+  return subscription.items.data.find((item) => item.price?.id === priceId) ?? null;
 }
 
 function getOrganizationPlanForStatus(planTier: BillingPlanTier, status: string) {
@@ -616,7 +625,7 @@ export async function assertBillingFeatureAccess(feature: BillingFeature) {
     throw new ApiError(
       403,
       feature === "meta_launch"
-        ? "Upgrade to Pro to launch live campaigns from this app."
+        ? "Activate a Performance, Starter, or Pro subscription to launch live campaigns from this app."
         : feature === "campaign_data_import"
           ? "Upgrade to Growth to use campaign data imports and advanced intelligence."
           : "Upgrade to Pro to use the autonomous campaign operator.",
@@ -743,9 +752,9 @@ export async function createBillingCheckoutSession(params: {
   }
 
   const billingClient = createAdminClient() ?? supabase;
-  const priceId = getStripePriceId(params.planTier);
+  const priceConfig = getStripePlanPriceConfiguration(params.planTier);
 
-  if (!priceId) {
+  if (!priceConfig) {
     throw new ApiError(503, "The selected plan is not configured in Stripe.", "stripe_price_missing");
   }
 
@@ -803,6 +812,17 @@ export async function createBillingCheckoutSession(params: {
     campaignId: requestedCampaignId,
     trialPeriodDays: checkoutTrialPeriodDays,
   });
+  const checkoutMetadata = {
+    ...metadata,
+    price_signature: priceConfig.priceSignature,
+    price_ids: priceConfig.priceIds.join(","),
+    ...(priceConfig.meteredPriceId
+      ? {
+          performance_metered_price_id: priceConfig.meteredPriceId,
+          performance_meter_event_name: priceConfig.meterEventName ?? "dealflow_billable_lead",
+        }
+      : {}),
+  };
 
   if (
     existingBillingRow &&
@@ -837,6 +857,10 @@ export async function createBillingCheckoutSession(params: {
     typeof existingMetadata.last_checkout_trial_period_days === "string"
       ? Number.parseInt(existingMetadata.last_checkout_trial_period_days, 10)
       : null;
+  const lastCheckoutPriceSignature =
+    typeof existingMetadata.last_checkout_price_signature === "string"
+      ? existingMetadata.last_checkout_price_signature
+      : null;
 
   if (
     customerId &&
@@ -844,6 +868,7 @@ export async function createBillingCheckoutSession(params: {
     lastCheckoutPlanTier === params.planTier &&
     lastCheckoutCampaignId === requestedCampaignId &&
     lastCheckoutTrialPeriodDays === checkoutTrialPeriodDays &&
+    lastCheckoutPriceSignature === priceConfig.priceSignature &&
     Number.isFinite(lastCheckoutCreatedAt) &&
     Date.now() - lastCheckoutCreatedAt < CHECKOUT_SESSION_REUSE_MS
   ) {
@@ -859,6 +884,7 @@ export async function createBillingCheckoutSession(params: {
         reusableSession.url &&
         sessionCustomerId === customerId &&
         normalizeCheckoutCampaignId(reusableSession.metadata?.campaign_id ?? null) === requestedCampaignId &&
+        reusableSession.metadata?.price_signature === priceConfig.priceSignature &&
         Number.parseInt(reusableSession.metadata?.trial_period_days ?? "0", 10) ===
           (checkoutTrialPeriodDays ?? 0)
       ) {
@@ -884,26 +910,21 @@ export async function createBillingCheckoutSession(params: {
       action: "create_checkout_session",
       idempotencyKey: `dealflow_checkout_${context.organization.id}_${params.planTier}_${
         requestedCampaignId ?? "workspace"
-      }_trial${checkoutTrialPeriodDays ?? 0}_${Math.floor(
+      }_${priceConfig.priceSignature.replace(/[^a-zA-Z0-9_-]/g, "_")}_trial${checkoutTrialPeriodDays ?? 0}_${Math.floor(
         Date.now() / CHECKOUT_SESSION_REUSE_MS,
       )}`,
       params: {
         mode: "subscription",
         customer: stripeCustomerId,
         client_reference_id: context.organization.id,
-        line_items: [
-          {
-            price: priceId,
-            quantity: 1,
-          },
-        ],
+        line_items: priceConfig.lineItems,
         success_url: urls.successUrl,
         cancel_url: urls.cancelUrl,
         allow_promotion_codes: true,
-        metadata,
+        metadata: checkoutMetadata,
         subscription_data: {
           ...(checkoutTrialPeriodDays ? { trial_period_days: checkoutTrialPeriodDays } : {}),
-          metadata,
+          metadata: checkoutMetadata,
         },
       },
     })) as Stripe.Checkout.Session;
@@ -937,6 +958,8 @@ export async function createBillingCheckoutSession(params: {
     last_checkout_plan_tier: params.planTier,
     last_checkout_campaign_id: requestedCampaignId,
     last_checkout_trial_period_days: checkoutTrialPeriodDays === null ? null : String(checkoutTrialPeriodDays),
+    last_checkout_price_signature: priceConfig.priceSignature,
+    last_checkout_price_ids: priceConfig.priceIds,
   } satisfies Json;
 
   const upsertRow: BillingInsert = {
@@ -1237,16 +1260,47 @@ export async function syncBillingSubscriptionFromStripe(
     throw new ApiError(400, "Stripe subscription is missing organization metadata.", "stripe_metadata_missing");
   }
 
-  const firstItem = subscription.items.data[0];
-  const priceId = typeof firstItem?.price?.id === "string" ? firstItem.price.id : null;
   const planTier = getActivePlanTier(subscription);
+  const priceConfig = getStripePlanPriceConfiguration(planTier);
+  if (!priceConfig) {
+    throw new ApiError(
+      400,
+      "Stripe subscription plan is missing required DealFlow price configuration.",
+      "stripe_price_missing",
+    );
+  }
+  const primaryItem = getSubscriptionItemByPriceId(subscription, priceConfig.primaryPriceId);
+  const meteredItem = getSubscriptionItemByPriceId(subscription, priceConfig.meteredPriceId);
+  if (planTier === "performance" && (!priceConfig.meteredPriceId || !meteredItem)) {
+    throw new ApiError(
+      400,
+      "Performance subscription is missing the metered lead subscription item.",
+      "stripe_performance_metered_item_missing",
+    );
+  }
+  const periodItem = primaryItem ?? subscription.items.data[0];
+  const priceId = priceConfig.primaryPriceId;
   const periodEnd =
     subscription.status === "trialing" && subscription.trial_end
       ? subscription.trial_end
-      : firstItem?.current_period_end;
+      : periodItem?.current_period_end;
   const currentPeriodEndIso = periodEnd
     ? new Date(periodEnd * 1000).toISOString()
     : null;
+  const subscriptionMetadata = {
+    ...subscription.metadata,
+    price_signature: priceConfig.priceSignature,
+    price_ids: priceConfig.priceIds,
+    ...(planTier === "performance"
+      ? {
+          performance_base_price_id: priceConfig.primaryPriceId,
+          performance_base_subscription_item_id: primaryItem?.id ?? null,
+          performance_metered_price_id: priceConfig.meteredPriceId,
+          performance_subscription_item_id: meteredItem?.id ?? null,
+          performance_meter_event_name: priceConfig.meterEventName ?? "dealflow_billable_lead",
+        }
+      : {}),
+  } satisfies Json;
   const subscriptionRow: BillingInsert = {
     organization_id: organizationId,
     user_id: subscription.metadata.user_id || null,
@@ -1256,12 +1310,12 @@ export async function syncBillingSubscriptionFromStripe(
     stripe_price_id: priceId,
     plan_tier: planTier,
     status: subscription.status,
-    current_period_start: subscription.items.data[0]?.current_period_start
-      ? new Date(subscription.items.data[0].current_period_start * 1000).toISOString()
+    current_period_start: periodItem?.current_period_start
+      ? new Date(periodItem.current_period_start * 1000).toISOString()
       : null,
     current_period_end: currentPeriodEndIso,
     cancel_at_period_end: subscription.cancel_at_period_end,
-    metadata: subscription.metadata,
+    metadata: subscriptionMetadata,
   };
 
   const { data: applyRows, error: billingError } = await (admin as any).rpc(

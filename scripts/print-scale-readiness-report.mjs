@@ -162,6 +162,7 @@ async function buildReport() {
     providerLimits,
     billingSubscriptions,
     stripeEvents,
+    leadBillingEvents,
     leads,
     notifications,
     metaSnapshots,
@@ -173,6 +174,7 @@ async function buildReport() {
     readRows(supabase, "provider_usage_limits", supabase.from("provider_usage_limits").select("provider,operation,usage_count,limit_count,usage_date,updated_at").gte("usage_date", today).order("updated_at", { ascending: false }).limit(1000), warnings),
     readRows(supabase, "billing_subscriptions", supabase.from("billing_subscriptions").select("organization_id,plan_tier,status,current_period_end,cancel_at_period_end,created_at,updated_at").limit(5000), warnings),
     readRows(supabase, "stripe_webhook_events", supabase.from("stripe_webhook_events").select("id,stripe_event_type,status,error_code,created_at,updated_at").gte("created_at", sevenDaysAgoIso).order("created_at", { ascending: false }).limit(2000), warnings),
+    readRows(supabase, "lead_billing_events", supabase.from("lead_billing_events").select("id,organization_id,campaign_id,status,skip_reason,amount_cents,created_at,reported_at").gte("created_at", sevenDaysAgoIso).order("created_at", { ascending: false }).limit(5000), warnings),
     readRows(supabase, "leads", supabase.from("leads").select("id,status,created_at").gte("created_at", sevenDaysAgoIso).order("created_at", { ascending: false }).limit(5000), warnings),
     readRows(supabase, "lead_notifications", supabase.from("lead_notifications").select("id,status,created_at,updated_at,delivered_at,failed_at").gte("created_at", sevenDaysAgoIso).order("created_at", { ascending: false }).limit(5000), warnings),
     readRows(supabase, "campaign_sync_snapshots", supabase.from("campaign_sync_snapshots").select("id,organization_id,user_id,meta_campaign_id,sync_result,campaign_status,delivery_metrics,sync_errors,synced_at").order("synced_at", { ascending: false }).limit(500), warnings),
@@ -224,6 +226,16 @@ async function buildReport() {
     .filter((limit) => limit.limit > 0 && limit.usage / limit.limit >= 0.7);
   const billingCounts = countBy(billingSubscriptions, (row) => row.status ?? "unknown");
   const stripeFailures = stripeEvents.filter((event) => event.status === "failed").length;
+  const performanceSubscriptions = billingSubscriptions.filter((row) => row.plan_tier === "performance");
+  const performanceLeadBillingByStatus = countBy(leadBillingEvents, (row) => row.status ?? "unknown");
+  const performanceSkippedByReason = countBy(
+    leadBillingEvents.filter((row) => row.status === "skipped"),
+    (row) => row.skip_reason ?? "unknown",
+  );
+  const performanceFailedEvents = leadBillingEvents.filter((row) => row.status === "failed").length;
+  const performancePendingEvents = leadBillingEvents.filter((row) => row.status === "pending").length;
+  const performanceBillableLeadEvents = leadBillingEvents.filter((row) => ["pending", "reported", "failed"].includes(row.status ?? ""));
+  const performanceUsageRevenueCents = performanceBillableLeadEvents.reduce((sum, row) => sum + Number(row.amount_cents ?? 0), 0);
   const notificationsByStatus = countBy(notifications, (row) => row.status ?? "unknown");
   const failedLeadNotificationRows = notifications.filter((row) => row.status === "failed" || row.status === "undelivered");
   const recentFailedLeadNotificationRows = failedLeadNotificationRows.filter((row) => isWithin(row.updated_at ?? row.failed_at ?? row.created_at, oneDayAgoMs));
@@ -244,7 +256,7 @@ async function buildReport() {
 
   const queueStatus = statusFrom({ high: activeCriticalFailedJobs.length + staleProcessingJobs, watch: activeNonCriticalFailedJobs.length + byLane.heavy.queued + jobsApproachingMaxAttempts });
   const providerStatus = statusFrom({ high: staleProviderReservations, watch: currentProviderFailures.length + capPressure.filter((limit) => limit.usage / limit.limit >= 0.8).length });
-  const billingStatus = statusFrom({ high: stripeFailures, watch: Number(billingCounts.past_due ?? 0) });
+  const billingStatus = statusFrom({ high: stripeFailures + performanceFailedEvents, watch: Number(billingCounts.past_due ?? 0) + performancePendingEvents });
   const leadCaptureRetryJobs = activeJobs.filter((job) => job.kind === "lead_capture_retry" && job.status !== "completed");
   const leadStatus = statusFrom({ high: 0, watch: recentFailedLeadNotificationRows.length + leadCaptureRetryJobs.length });
   const metaStatus = statusFrom({ high: metaFailures, watch: staleMetaSnapshots + activeLocks });
@@ -398,7 +410,20 @@ async function buildReport() {
     issueClassification,
     queue: { status: queueStatus, byLane, staleProcessingJobs, deferredCreativeJobs: deferredCreativeRows.length, staleDeferredCreativeJobs: staleDeferredCreativeRows.length, jobsApproachingMaxAttempts, caps: JOB_LANE_CONCURRENCY_CAPS },
     provider: { status: providerStatus, events7d: providerEvents.length, failures7d: currentProviderFailures.length, staleReservations: staleProviderReservations, costToday: providerCostToday, capPressure },
-    billing: { status: billingStatus, trialing: billingCounts.trialing ?? 0, active: billingCounts.active ?? 0, pastDue: billingCounts.past_due ?? 0, canceled: (billingCounts.canceled ?? 0) + (billingCounts.inactive ?? 0), stripeFailures },
+    billing: {
+      status: billingStatus,
+      trialing: billingCounts.trialing ?? 0,
+      active: billingCounts.active ?? 0,
+      pastDue: billingCounts.past_due ?? 0,
+      canceled: (billingCounts.canceled ?? 0) + (billingCounts.inactive ?? 0),
+      stripeFailures,
+      performanceSubscriptions: performanceSubscriptions.length,
+      performanceLeadBillingByStatus,
+      performanceSkippedByReason,
+      performancePendingEvents,
+      performanceFailedEvents,
+      performanceUsageRevenueCents,
+    },
     leads: { status: leadStatus, leads7d: leads.filter((lead) => isWithin(lead.created_at, sevenDaysAgoMs)).length, notificationsByStatus, failedLeadNotifications: failedLeadNotificationRows.length },
     meta: { status: metaStatus, snapshots: metaSnapshots.length, metaFailures, staleMetaSnapshots, activeLocks },
     support: { status: "GO", configured: supportConfigured, warning: supportConfigured ? null : "Freshdesk env missing; support route uses customer-safe fallback." },
@@ -442,6 +467,11 @@ function printMarkdown(report) {
   console.log(`- Past due: ${report.billing.pastDue}`);
   console.log(`- Canceled/inactive: ${report.billing.canceled}`);
   console.log(`- Stripe webhook failures: ${report.billing.stripeFailures}`);
+  console.log(`- Performance subscriptions: ${report.billing.performanceSubscriptions}`);
+  console.log(`- Performance lead billing statuses: ${JSON.stringify(report.billing.performanceLeadBillingByStatus)}`);
+  console.log(`- Performance skipped lead reasons: ${JSON.stringify(report.billing.performanceSkippedByReason)}`);
+  console.log(`- Performance pending/failed usage events: ${report.billing.performancePendingEvents}/${report.billing.performanceFailedEvents}`);
+  console.log(`- Estimated Performance usage revenue 7d: ${money(report.billing.performanceUsageRevenueCents)}`);
   console.log("");
   console.log(`## Lead / SMS Reliability - ${report.leads.status}`);
   console.log(`- Leads 7d: ${report.leads.leads7d}`);

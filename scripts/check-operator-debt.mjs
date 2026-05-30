@@ -416,6 +416,8 @@ async function main() {
     unresolvedFailedJobs,
     unresolvedDeadLetterJobs,
     unresolvedStripeFailures,
+    failedPerformanceLeadBillingEvents,
+    pendingPerformanceLeadBillingEvents,
     failedProviderEvents,
     staleProviderReservations,
     staleDeferredCreativeJobs,
@@ -433,6 +435,14 @@ async function main() {
     ),
     countRows(supabase, "stripe_webhook_events", (query) =>
       query.eq("status", "failed").is("reviewed_at", null),
+    ),
+    countRows(supabase, "lead_billing_events", (query) =>
+      query.eq("status", "failed"),
+    ),
+    countRows(supabase, "lead_billing_events", (query) =>
+      query
+        .eq("status", "pending")
+        .lt("created_at", new Date(Date.now() - 30 * 60 * 1000).toISOString()),
     ),
     countUnreviewedFailedProviderEvents(supabase),
     countRows(supabase, "provider_usage_events", (query) =>
@@ -456,6 +466,8 @@ async function main() {
     unresolvedFailedJobs,
     unresolvedDeadLetterJobs,
     unresolvedStripeFailures,
+    failedPerformanceLeadBillingEvents,
+    pendingPerformanceLeadBillingEvents,
     failedProviderEvents,
     staleProviderReservations,
     staleDeferredCreativeJobs,
@@ -489,6 +501,15 @@ async function main() {
     pass("Unresolved Stripe webhook failures", "none");
   } else {
     fail("Unresolved Stripe webhook failures", `${unresolvedStripeFailures} require replay, resync, or review`);
+  }
+
+  if (failedPerformanceLeadBillingEvents === 0 && pendingPerformanceLeadBillingEvents === 0) {
+    pass("Performance lead billing events", "no failed events or stale pending usage");
+  } else {
+    fail(
+      "Performance lead billing events",
+      `${failedPerformanceLeadBillingEvents} failed usage event(s), ${pendingPerformanceLeadBillingEvents} stale pending usage event(s)`,
+    );
   }
 
   if (failedProviderEvents === 0 && staleProviderReservations === 0) {

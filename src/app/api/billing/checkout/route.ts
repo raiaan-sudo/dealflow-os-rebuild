@@ -7,7 +7,7 @@ import { recordActivationEventForCurrentUser } from "@/lib/services/activation-t
 import { isBillingCheckoutSafeModeEnabled } from "@/lib/env";
 
 const checkoutSchema = z.object({
-  planTier: z.enum(["starter", "pro", "growth"]).default("starter"),
+  planTier: z.enum(["performance", "starter", "pro", "growth"]).default("performance"),
   campaignId: z.string().min(1).optional(),
 });
 

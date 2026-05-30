@@ -535,6 +535,16 @@ export function getStripeEnv() {
   const growthPriceId = useTestEnv
     ? process.env.STRIPE_TEST_GROWTH_PRICE_ID
     : process.env.STRIPE_GROWTH_PRICE_ID;
+  const performanceBasePriceId = useTestEnv
+    ? process.env.STRIPE_TEST_PERFORMANCE_BASE_PRICE_ID
+    : process.env.STRIPE_PERFORMANCE_BASE_PRICE_ID;
+  const performanceLeadPriceId = useTestEnv
+    ? process.env.STRIPE_TEST_PERFORMANCE_LEAD_PRICE_ID
+    : process.env.STRIPE_PERFORMANCE_LEAD_PRICE_ID;
+  const performanceLeadMeterEventName =
+    (useTestEnv
+      ? process.env.STRIPE_TEST_PERFORMANCE_LEAD_METER_EVENT_NAME
+      : process.env.STRIPE_PERFORMANCE_LEAD_METER_EVENT_NAME) || "dealflow_billable_lead";
 
   if (!secretKey || !webhookSecret || !starterPriceId || !proPriceId) {
     return null;
@@ -546,6 +556,9 @@ export function getStripeEnv() {
     starterPriceId,
     proPriceId,
     growthPriceId: growthPriceId ?? null,
+    performanceBasePriceId: performanceBasePriceId ?? null,
+    performanceLeadPriceId: performanceLeadPriceId ?? null,
+    performanceLeadMeterEventName,
   };
 }
 

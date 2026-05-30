@@ -146,7 +146,7 @@ function getBillingLaunchBlockCopy(billing: Awaited<ReturnType<typeof getBilling
   }
 
   if (billing.requiresSuspension) {
-    return "Billing ended. DealFlow-managed campaign assets have been removed or are being removed, and launch remains unavailable until billing is reactivated.";
+    return "Billing is inactive. DealFlow-managed campaign assets have been removed or are being removed, and launch remains unavailable until billing is reactivated.";
   }
 
   if (billing.cancelAtPeriodEnd) {

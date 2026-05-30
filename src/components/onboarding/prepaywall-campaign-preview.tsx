@@ -32,7 +32,7 @@ export type PrepaywallCampaignPreviewDraft = {
   dailyBudget?: string;
   monthlyBudget?: string;
   offer?: string;
-  planTier?: "starter" | "pro";
+  planTier?: "performance" | "starter" | "pro";
 };
 
 type PreviewContent = {
@@ -68,7 +68,7 @@ const defaultPreviewDraft: PrepaywallCampaignPreviewDraft = {
   priceRange: "target range",
   dailyBudget: "30",
   offer: "strategy call",
-  planTier: "starter",
+  planTier: "performance",
 };
 
 function getModeLabel(mode: PrepaywallCampaignMode) {
@@ -645,7 +645,7 @@ export function PrepaywallCampaignPreviewFromStorage({
   fallbackDraft,
   className,
 }: {
-  selectedPlanTier?: "starter" | "pro";
+  selectedPlanTier?: "performance" | "starter" | "pro";
   campaignId?: string | null;
   fallbackDraft?: PrepaywallCampaignPreviewDraft | null;
   className?: string;
@@ -670,7 +670,7 @@ export function PrepaywallCampaignPreviewFromStorage({
       setStoredDraft({
         ...parsed,
         campaignMode: mode,
-        planTier: selectedPlanTier ?? parsed.planTier ?? "starter",
+        planTier: selectedPlanTier ?? parsed.planTier ?? "performance",
       });
     } catch {
       setStoredDraft(null);

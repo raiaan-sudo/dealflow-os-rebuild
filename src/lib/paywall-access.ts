@@ -8,7 +8,7 @@ import {
 } from "@/lib/services/campaign-persistence";
 import type { FullCampaignRecord } from "@/lib/types/campaign-records";
 
-export type PaywallPlan = "starter" | "pro" | "growth";
+export type PaywallPlan = "performance" | "starter" | "pro" | "growth";
 
 export const PAYWALL_ACTIVE_COOKIE = "has_active_plan";
 export const PAYWALL_PLAN_COOKIE = "selected_plan";
@@ -16,7 +16,7 @@ export const PREVIEW_COMPLETE_COOKIE = "has_completed_preview";
 export const ACTIVE_CAMPAIGN_COOKIE = "active_campaign_id";
 
 function isValidPlan(value: string | undefined): value is PaywallPlan {
-  return value === "starter" || value === "pro" || value === "growth";
+  return value === "performance" || value === "starter" || value === "pro" || value === "growth";
 }
 
 export function buildCampaignScopedPath(path: string, campaignId?: string | null) {

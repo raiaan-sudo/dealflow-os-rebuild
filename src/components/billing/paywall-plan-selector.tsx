@@ -29,7 +29,7 @@ export function PaywallPlanSelector({
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-3">
         {SELECTABLE_PLAN_TIERS.map((tier) => {
           const plan = getPlanPresentation(tier);
           const selected = selectedTier === tier;

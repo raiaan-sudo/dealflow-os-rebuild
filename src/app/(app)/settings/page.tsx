@@ -8,6 +8,7 @@ import { PageShell } from "@/components/ui/page-shell";
 import { getAppContext } from "@/lib/services/app-context";
 import { getBillingSummary, getBillingSummaryForCampaign } from "@/lib/services/billing-service";
 import { getCreditSummaryForCurrentUser } from "@/lib/services/credit-service";
+import { getPerformanceLeadUsageSummary } from "@/lib/services/performance-lead-billing-service";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 
 type SettingsBillingSummary =
@@ -63,7 +64,7 @@ function getBillingStatusCopy(billing: SettingsBillingSummary | null) {
   if (billing.requiresSuspension) {
     return {
       tone: "danger",
-      title: "Billing ended",
+      title: "Subscription inactive",
       detail:
         "DealFlow-managed campaign assets have been removed or are being removed. Launch, funnel capture, lead alerts, and optimization stay unavailable until billing is reactivated.",
     };
@@ -123,6 +124,10 @@ function formatBillingStateLabel(billing: SettingsBillingSummary | null) {
   return billing.billingState?.replace(/_/g, " ") ?? "inactive";
 }
 
+function formatCurrencyFromCents(value: number) {
+  return `$${(value / 100).toFixed(2)}`;
+}
+
 function statusToneClass(tone: string) {
   if (tone === "danger") {
     return "border-rose-400/20 bg-rose-400/10 text-rose-100";
@@ -157,6 +162,10 @@ export default async function SettingsPage({
     getCreditSummaryForCurrentUser().catch(() => null),
     getAppContext().catch(() => null),
   ]);
+  const performanceUsage =
+    billing?.planTier === "performance" && appContext?.organization.id
+      ? await getPerformanceLeadUsageSummary(appContext.organization.id).catch(() => null)
+      : null;
   const billingStatus = getBillingStatusCopy(billing);
   const accountEmail = appContext?.profile?.email ?? appContext?.user.email ?? "Not available";
   const accountName =
@@ -279,6 +288,45 @@ export default async function SettingsPage({
             <p className="mt-2 leading-6">{billingStatus.detail}</p>
           </div>
 
+          {billing?.planTier === "performance" ? (
+            <div className="rounded-[20px] border border-cyan-300/16 bg-cyan-300/[0.055] p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-cyan-100/75">Performance usage</p>
+              <h3 className="mt-2 text-lg font-semibold text-white">$97/mo base + $3 per qualified lead</h3>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  ["Billable leads", String(performanceUsage?.billableLeadCount ?? 0)],
+                  ["Lead usage estimate", formatCurrencyFromCents(performanceUsage?.estimatedLeadChargesCents ?? 0)],
+                  ["Base subscription", formatCurrencyFromCents(performanceUsage?.baseSubscriptionCents ?? 9700)],
+                  [
+                    "Current estimate",
+                    formatCurrencyFromCents(
+                      (performanceUsage?.baseSubscriptionCents ?? 9700) +
+                        (performanceUsage?.estimatedLeadChargesCents ?? 0),
+                    ),
+                  ],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-[16px] border border-white/10 bg-white/[0.035] p-3">
+                    <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+                    <p className="mt-2 text-sm font-semibold text-foreground">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-sm leading-6 text-cyan-50/80">
+                Spam, duplicate, test, invalid, internal, and imported leads are skipped. Usage appears on the Stripe invoice after DealFlow reports the metered lead event.
+              </p>
+              {performanceUsage?.failedLeadCount || performanceUsage?.pendingLeadCount ? (
+                <p className="mt-3 text-sm font-semibold text-amber-100">
+                  Usage reporting needs review: {performanceUsage.pendingLeadCount} pending, {performanceUsage.failedLeadCount} failed.
+                </p>
+              ) : null}
+              {performanceUsage?.latestReportedAt ? (
+                <p className="mt-2 text-xs text-cyan-100/70">
+                  Last reported usage: {formatPeriodEnd(performanceUsage.latestReportedAt)}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           {billing?.stripeCustomerId ? (
             <div className="space-y-5">
               <PortalButton label="Update payment method" />
@@ -286,7 +334,7 @@ export default async function SettingsPage({
                 <div>
                   <p className="text-sm font-medium text-foreground">Manage or cancel subscription</p>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                    Cancellation and payment changes happen in Stripe Portal. DealFlow records the reason only so support can reduce failed-payment churn and disputes. If the issue is lead quality, setup, or a temporary pause, leave a note here before opening Stripe so support has the context to help.
+                    Cancellation and payment changes happen in Stripe Portal. DealFlow records the reason only so support can reduce failed-payment churn and disputes. If the issue is lead quality, setup, or a temporary pause, leave a note here before opening Stripe so support can help recover the workspace.
                   </p>
                 </div>
                 <CancellationIntentForm />

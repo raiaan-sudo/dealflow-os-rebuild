@@ -4,7 +4,7 @@ import {
   type BillingPlanTier,
 } from "@/lib/billing/plans";
 
-export type SelectablePlanTier = Extract<BillingPlanTier, "starter" | "pro">;
+export type SelectablePlanTier = Extract<BillingPlanTier, "performance" | "starter" | "pro">;
 
 export type PlanPresentation = {
   tier: SelectablePlanTier;
@@ -24,6 +24,26 @@ function priceAfterTrialLabel(priceLabel: string) {
 }
 
 export const PLAN_PRESENTATION: Record<SelectablePlanTier, PlanPresentation> = {
+  performance: {
+    tier: "performance",
+    name: BILLING_PLANS.performance.name,
+    priceLabel: BILLING_PLANS.performance.priceLabel,
+    recurringPriceLabel: BILLING_PLANS.performance.priceLabel,
+    checkoutCtaLabel: "Start Performance checkout",
+    eyebrow: "Lower base + usage",
+    positioning: "Best first launch option",
+    summary:
+      "Same guided launch access as Starter with a lower monthly base and qualified leads billed on your Stripe invoice.",
+    features: [
+      "Guided campaign setup",
+      "Offer-led funnel and creative preview",
+      "Recommended optimization checklist",
+      "Meta readiness and launch gates",
+      "Spam, duplicate, test, and invalid leads are not billed",
+      "Lead usage appears on your Stripe invoice",
+    ],
+    footer: "Lower base, usage tied to qualified leads",
+  },
   starter: {
     tier: "starter",
     name: BILLING_PLANS.starter.name,
@@ -63,7 +83,7 @@ export const PLAN_PRESENTATION: Record<SelectablePlanTier, PlanPresentation> = {
   },
 };
 
-export const SELECTABLE_PLAN_TIERS = ["starter", "pro"] as const;
+export const SELECTABLE_PLAN_TIERS = ["performance", "starter", "pro"] as const;
 
 export function getPlanPresentation(tier: SelectablePlanTier) {
   return PLAN_PRESENTATION[tier];

@@ -29,7 +29,7 @@ function toPreviewCampaignMode(intent: string): PrepaywallCampaignPreviewDraft["
 
 async function loadPersistedPreviewDraft(
   campaignId: string | null,
-  selectedPlanTier: "starter" | "pro",
+  selectedPlanTier: "performance" | "starter" | "pro",
 ): Promise<PrepaywallCampaignPreviewDraft | null> {
   if (!campaignId) {
     return null;
@@ -66,12 +66,13 @@ export default async function PaywallPage({
   const campaignId =
     typeof params.campaignId === "string" && params.campaignId.length > 0 ? params.campaignId : null;
   const selectedPlanTier =
-    typeof params.plan === "string" ? normalizeBillingPlanTier(params.plan) : "starter";
+    typeof params.plan === "string" ? normalizeBillingPlanTier(params.plan) : "performance";
   const billing = campaignId
     ? await getBillingSummaryForCampaign(campaignId).catch(() => getBillingSummary().catch(() => null))
     : await getBillingSummary().catch(() => null);
-  const selectedPreviewPlanTier = selectedPlanTier === "pro" ? "pro" : "starter";
-  const selectablePlanTier = selectedPlanTier === "pro" ? "pro" : "starter";
+  const selectedPreviewPlanTier =
+    selectedPlanTier === "pro" ? "pro" : selectedPlanTier === "performance" ? "performance" : "starter";
+  const selectablePlanTier = selectedPreviewPlanTier;
   const persistedPreviewDraft = await loadPersistedPreviewDraft(campaignId, selectedPreviewPlanTier);
   const paymentIssue = billing?.billingState === "payment_issue";
   const suspended = billing?.requiresSuspension === true;
@@ -111,7 +112,7 @@ export default async function PaywallPage({
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Choose launch access</p>
               <h2 className="mt-2 text-2xl font-semibold">Pick how DealFlow should optimize this launch</h2>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
-                Starter gives you recommended optimizations to approve and apply. Pro adds recommendation-only autonomy checks and richer monitoring while execution stays approval-gated during beta. Paid image or video generation remains credit-gated after activation.
+                Performance gives the same guided launch access as Starter with a lower base and qualified-lead usage on your Stripe invoice. Pro adds recommendation-only autonomy checks and richer monitoring while execution stays approval-gated during beta. Paid image or video generation remains credit-gated after activation.
               </p>
             </div>
             <div className="mt-5">

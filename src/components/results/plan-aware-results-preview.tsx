@@ -27,7 +27,7 @@ import { Card } from "@/components/ui/card";
 import { BILLING_PLANS, type BillingPlanTier } from "@/lib/billing/plans";
 import { cn } from "@/lib/utils";
 
-type SupportedPlanTier = Extract<BillingPlanTier, "starter" | "pro">;
+type SupportedPlanTier = Extract<BillingPlanTier, "performance" | "starter" | "pro">;
 
 type PlanAwareResultsPreviewProps = {
   planTier: SupportedPlanTier;

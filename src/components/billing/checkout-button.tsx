@@ -10,7 +10,7 @@ export function CheckoutButton({
   className,
   buttonClassName,
 }: {
-  planTier?: "starter" | "pro" | "growth";
+  planTier?: "performance" | "starter" | "pro" | "growth";
   campaignId?: string | null;
   label?: string;
   className?: string;

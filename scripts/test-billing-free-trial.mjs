@@ -30,6 +30,7 @@ assert.match(
   /planTier === "starter" \|\| planTier === "pro"\s*\? SELF_SERVE_TRIAL_PERIOD_DAYS\s*:\s*null/,
   "trial must apply only to Starter and Pro plans",
 );
+assert.match(plans, /case "performance":/, "Performance must be a first-class plan tier");
 assert.doesNotMatch(
   plans,
   /planTier === "growth"\s*\? SELF_SERVE_TRIAL_PERIOD_DAYS/,
@@ -43,7 +44,7 @@ assert.match(
 );
 assert.match(
   checkoutSessionBody,
-  /subscription_data:\s*{[\s\S]*trial_period_days: checkoutTrialPeriodDays[\s\S]*metadata[\s\S]*}/,
+  /subscription_data:\s*{[\s\S]*trial_period_days: checkoutTrialPeriodDays[\s\S]*metadata: checkoutMetadata[\s\S]*}/,
   "subscription checkout must pass subscription_data.trial_period_days",
 );
 assert.match(
@@ -81,9 +82,10 @@ assert.match(
   /trial_period_days: String\(params\.trialPeriodDays\)/,
   "Stripe metadata should expose the configured trial length for safe audit and reuse checks",
 );
+assert.match(stripeService, /performanceBasePriceId[\s\S]*performanceLeadPriceId/, "Stripe pricing config must support Performance base plus metered lead prices");
 assert.match(
   billingService,
-  /subscription\.status === "trialing" && subscription\.trial_end[\s\S]*\? subscription\.trial_end[\s\S]*: firstItem\?\.current_period_end/,
+  /subscription\.status === "trialing" && subscription\.trial_end[\s\S]*\? subscription\.trial_end[\s\S]*: periodItem\?\.current_period_end/,
   "trialing subscriptions should persist the trial end as the displayed period end",
 );
 
@@ -103,8 +105,9 @@ assert.match(
   "Pro paywall copy must include the trial",
 );
 assert.match(planPresentation, /Start \$\{SELF_SERVE_TRIAL_PERIOD_DAYS\}-day free trial/, "Paywall CTA copy must start the trial");
+assert.match(planPresentation, /performance:[\s\S]*checkoutCtaLabel:\s*"Start Performance checkout"/, "Performance must not advertise a free trial");
 assert.match(paywallSelector, /label=\{selectedPlan\.checkoutCtaLabel\}/, "Paywall checkout CTA must use trial copy");
-assert.match(checkoutRoute, /planTier: z\.enum\(\["starter", "pro", "growth"\]\)/, "checkout route plan validation must remain explicit");
+assert.match(checkoutRoute, /planTier: z\.enum\(\["performance", "starter", "pro", "growth"\]\)/, "checkout route plan validation must remain explicit");
 
 assert.match(settings, /title: "Free trial active"/, "Settings must show a truthful trial state");
 assert.match(settings, /Stripe subscription status is trialing, not paid active/, "Settings must not call trialing paid active");

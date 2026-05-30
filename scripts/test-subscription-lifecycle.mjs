@@ -49,10 +49,10 @@ const sandbox = {
     if (specifier === "@/lib/billing/plans") {
       return {
         normalizeBillingPlanTier(value) {
-          return value === "pro" || value === "starter" ? value : "starter";
+          return value === "performance" || value === "pro" || value === "starter" ? value : "starter";
         },
         hasFeatureAccess(planTier, feature) {
-          if (feature === "meta_launch") return planTier === "starter" || planTier === "pro";
+          if (feature === "meta_launch") return planTier === "performance" || planTier === "starter" || planTier === "pro";
           if (feature === "autonomy_access") return planTier === "pro";
           return false;
         },
