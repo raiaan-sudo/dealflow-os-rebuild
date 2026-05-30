@@ -18,6 +18,8 @@ const systemJobs = read("src/lib/services/system-job-service.ts");
 const performanceService = read("src/lib/services/performance-lead-billing-service.ts");
 const migration = read("supabase/migrations/20260530170000_create_lead_billing_events.sql");
 const settings = read("src/app/(app)/settings/page.tsx");
+const envExample = read(".env.example");
+const stripeHarness = read("src/app/api/internal/stripe-test-proof/route.ts");
 
 assert.equal(
   packageJson.scripts["test:performance-billing"],
@@ -40,6 +42,7 @@ assert.match(stripeService, /performanceBasePriceId[\s\S]*performanceLeadPriceId
 assert.match(stripeService, /lineItems:\s*\[[\s\S]*performanceBasePriceId[\s\S]*performanceLeadPriceId[\s\S]*\]/);
 assert.match(stripeService, /getPlanTierFromSubscriptionPriceIds/);
 assert.match(stripeService, /priceSet\.has\(env\.performanceLeadPriceId\)/, "Performance webhook mapping must require the metered item");
+assert.doesNotMatch(stripeService, /return null;\s*return null;/, "Stripe price mapping must not contain unreachable duplicate returns");
 
 assert.match(stripeProvider, /action: "create_meter_event"/);
 assert.match(stripeProvider, /event_name: request\.eventName/);
@@ -83,5 +86,13 @@ assert.match(settings, /Performance usage/);
 assert.match(settings, /\$97\/mo base \+ \$3 per qualified lead/);
 assert.match(settings, /pendingLeadCount/);
 assert.match(settings, /failedLeadCount/);
+
+assert.match(envExample, /STRIPE_TEST_PERFORMANCE_BASE_PRICE_ID/);
+assert.match(envExample, /STRIPE_TEST_PERFORMANCE_LEAD_PRICE_ID/);
+assert.match(stripeHarness, /STRIPE_TEST_PERFORMANCE_BASE_PRICE_ID/);
+assert.match(stripeHarness, /STRIPE_TEST_PERFORMANCE_LEAD_PRICE_ID/);
+assert.match(stripeHarness, /price: env\.performanceBasePriceId[\s\S]*price: env\.performanceLeadPriceId/);
+assert.match(stripeHarness, /plan_tier:\s*"performance"/);
+assert.match(stripeHarness, /lineItemCount:\s*2/);
 
 console.log("Performance billing checkout, metering, ledger, and UI guard tests passed.");

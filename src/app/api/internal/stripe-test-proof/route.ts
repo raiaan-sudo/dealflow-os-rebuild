@@ -40,6 +40,8 @@ function getStripeTestHarnessEnv() {
     starterPriceId: requireTestEnv("STRIPE_TEST_STARTER_PRICE_ID"),
     proPriceId: requireTestEnv("STRIPE_TEST_PRO_PRICE_ID"),
     growthPriceId: requireTestEnv("STRIPE_TEST_GROWTH_PRICE_ID"),
+    performanceBasePriceId: requireTestEnv("STRIPE_TEST_PERFORMANCE_BASE_PRICE_ID"),
+    performanceLeadPriceId: requireTestEnv("STRIPE_TEST_PERFORMANCE_LEAD_PRICE_ID"),
   };
 }
 
@@ -68,15 +70,20 @@ export async function POST(request: Request) {
     });
     const appUrl = getPublicAppUrl();
     const requestId = crypto.randomUUID();
-    const [starterPrice, proPrice, growthPrice] = await Promise.all([
-      stripe.prices.retrieve(env.starterPriceId),
-      stripe.prices.retrieve(env.proPriceId),
-      stripe.prices.retrieve(env.growthPriceId),
-    ]);
+    const [starterPrice, proPrice, growthPrice, performanceBasePrice, performanceLeadPrice] =
+      await Promise.all([
+        stripe.prices.retrieve(env.starterPriceId),
+        stripe.prices.retrieve(env.proPriceId),
+        stripe.prices.retrieve(env.growthPriceId),
+        stripe.prices.retrieve(env.performanceBasePriceId),
+        stripe.prices.retrieve(env.performanceLeadPriceId),
+      ]);
 
     assertTestModeObject(starterPrice, "Starter price");
     assertTestModeObject(proPrice, "Pro price");
     assertTestModeObject(growthPrice, "Growth price");
+    assertTestModeObject(performanceBasePrice, "Performance base price");
+    assertTestModeObject(performanceLeadPrice, "Performance lead price");
 
     const customer = await stripe.customers.create({
       name: "DealFlow OS QA Test Harness",
@@ -93,8 +100,11 @@ export async function POST(request: Request) {
         customer: customer.id,
         line_items: [
           {
-            price: env.proPriceId,
+            price: env.performanceBasePriceId,
             quantity: 1,
+          },
+          {
+            price: env.performanceLeadPriceId,
           },
         ],
         success_url: `${appUrl}/unlock?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
@@ -102,11 +112,13 @@ export async function POST(request: Request) {
         metadata: {
           source: "dealflow_internal_stripe_test_harness",
           request_id: requestId,
+          plan_tier: "performance",
         },
         subscription_data: {
           metadata: {
             source: "dealflow_internal_stripe_test_harness",
             request_id: requestId,
+            plan_tier: "performance",
           },
         },
       },
@@ -147,6 +159,17 @@ export async function POST(request: Request) {
             livemode: growthPrice.livemode,
             recurring: growthPrice.recurring?.interval ?? null,
           },
+          performanceBase: {
+            idPrefix: idPrefix(performanceBasePrice.id),
+            livemode: performanceBasePrice.livemode,
+            recurring: performanceBasePrice.recurring?.interval ?? null,
+          },
+          performanceLead: {
+            idPrefix: idPrefix(performanceLeadPrice.id),
+            livemode: performanceLeadPrice.livemode,
+            recurring: performanceLeadPrice.recurring?.interval ?? null,
+            usageType: performanceLeadPrice.recurring?.usage_type ?? null,
+          },
         },
         customer: {
           idPrefix: idPrefix(customer.id),
@@ -158,6 +181,8 @@ export async function POST(request: Request) {
           livemode: checkoutSession.livemode,
           urlPresent: Boolean(checkoutSession.url),
           testId: checkoutSession.id.startsWith("cs_test_"),
+          lineItemCount: 2,
+          planTier: "performance",
         },
         portal: {
           idPrefix: idPrefix(portalSession.id),
