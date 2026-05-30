@@ -142,19 +142,94 @@ async function ensurePerformanceResources(mode: "test" | "live", secretKey: stri
   };
 }
 
+async function runStripeTestModeProof(secretKey: string, resources: Awaited<ReturnType<typeof ensurePerformanceResources>>) {
+  const stripe = new Stripe(secretKey, { apiVersion: STRIPE_API_VERSION });
+  const proofId = crypto.randomUUID();
+  const customer = await stripe.customers.create(
+    {
+      name: "DealFlow Performance Test Proof",
+      metadata: {
+        source: "dealflow_performance_setup_proof",
+        proof_id: proofId,
+      },
+    },
+    { idempotencyKey: `dealflow_performance_test_customer_${proofId}` },
+  );
+
+  if (customer.livemode !== false) {
+    throw new ApiError(500, "Stripe proof customer was not test mode.", "performance_billing_test_customer_mode");
+  }
+
+  const checkoutSession = await stripe.checkout.sessions.create(
+    {
+      mode: "subscription",
+      customer: customer.id,
+      line_items: [
+        { price: resources.basePriceId, quantity: 1 },
+        { price: resources.leadPriceId },
+      ],
+      success_url: "https://app.agentdealflow.io/unlock?checkout=success&session_id={CHECKOUT_SESSION_ID}",
+      cancel_url: "https://app.agentdealflow.io/unlock?checkout=cancelled",
+      metadata: {
+        source: "dealflow_performance_setup_proof",
+        proof_id: proofId,
+        plan_tier: "performance",
+      },
+      subscription_data: {
+        metadata: {
+          source: "dealflow_performance_setup_proof",
+          proof_id: proofId,
+          plan_tier: "performance",
+        },
+      },
+    },
+    { idempotencyKey: `dealflow_performance_test_checkout_${proofId}` },
+  );
+
+  if (checkoutSession.livemode !== false || !checkoutSession.id.startsWith("cs_test_")) {
+    throw new ApiError(500, "Stripe proof checkout was not test mode.", "performance_billing_test_checkout_mode");
+  }
+
+  const meterEvent = await stripe.billing.meterEvents.create(
+    {
+      event_name: resources.eventName,
+      identifier: `dealflow_performance_test_meter_${proofId}`,
+      payload: {
+        stripe_customer_id: customer.id,
+        value: "1",
+        proof_id: proofId,
+      },
+    },
+    { idempotencyKey: `dealflow_performance_test_meter_${proofId}` },
+  );
+
+  return {
+    proofId,
+    customerId: customer.id,
+    checkoutSessionId: checkoutSession.id,
+    checkoutLivemode: checkoutSession.livemode,
+    checkoutUrlPresent: Boolean(checkoutSession.url),
+    lineItemCount: 2,
+    meterEventIdentifier: "identifier" in meterEvent ? meterEvent.identifier : `dealflow_performance_test_meter_${proofId}`,
+  };
+}
+
 export async function POST(request: Request) {
   try {
     assertInternalSystemRequest(request);
 
+    const testSecret = requireSecret("STRIPE_TEST_SECRET_KEY", "test");
     const [testResources, liveResources] = await Promise.all([
-      ensurePerformanceResources("test", requireSecret("STRIPE_TEST_SECRET_KEY", "test")),
+      ensurePerformanceResources("test", testSecret),
       ensurePerformanceResources("live", requireSecret("STRIPE_SECRET_KEY", "live")),
     ]);
+    const testProof = await runStripeTestModeProof(testSecret, testResources);
 
     return Response.json(
       {
         success: true,
         resources: [testResources, liveResources],
+        testProof,
       },
       {
         headers: {
