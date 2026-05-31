@@ -186,6 +186,8 @@ async function createStripeCustomerForCheckout(params: {
   userId: string;
   email?: string | null;
   name?: string | null;
+  partnerId?: string | null;
+  partnerSlug?: string | null;
 }) {
   return params.stripeProvider.execute({
     action: "create_customer",
@@ -196,6 +198,8 @@ async function createStripeCustomerForCheckout(params: {
       metadata: {
         organization_id: params.organizationId,
         user_id: params.userId,
+        partner_id: params.partnerId ?? "",
+        partner_slug: params.partnerSlug ?? "",
       },
     },
   }) as Promise<Stripe.Customer>;
@@ -796,6 +800,8 @@ export async function createBillingCheckoutSession(params: {
       userId: context.user.id,
       email: params.customerEmail || context.user.email || undefined,
       name: params.customerName || context.organization.name || undefined,
+      partnerId: context.partner?.id ?? null,
+      partnerSlug: context.partner?.slug ?? null,
     });
     customerId = customer.id;
   }
@@ -811,6 +817,9 @@ export async function createBillingCheckoutSession(params: {
     planTier: params.planTier,
     campaignId: requestedCampaignId,
     trialPeriodDays: checkoutTrialPeriodDays,
+    partnerId: context.partner?.id ?? null,
+    partnerSlug: context.partner?.slug ?? null,
+    partnerAttributionSource: context.partner?.id ? "partner_account" : "native",
   });
   const checkoutMetadata = {
     ...metadata,
@@ -946,6 +955,8 @@ export async function createBillingCheckoutSession(params: {
       userId: context.user.id,
       email: params.customerEmail || context.user.email || undefined,
       name: params.customerName || context.organization.name || undefined,
+      partnerId: context.partner?.id ?? null,
+      partnerSlug: context.partner?.slug ?? null,
     });
     customerId = replacementCustomer.id;
     session = await createCheckoutSession(customerId);
@@ -965,6 +976,7 @@ export async function createBillingCheckoutSession(params: {
   const upsertRow: BillingInsert = {
     organization_id: context.organization.id,
     user_id: context.user.id,
+    partner_id: context.partner?.id ?? null,
     stripe_customer_id: customerId,
     stripe_checkout_session_id: session.id,
     plan_tier: params.planTier,
@@ -1029,6 +1041,8 @@ export async function createCreditTopUpCheckoutSession(params: {
       userId: context.user.id,
       email: params.customerEmail || context.user.email || undefined,
       name: params.customerName || context.organization.name || undefined,
+      partnerId: context.partner?.id ?? null,
+      partnerSlug: context.partner?.slug ?? null,
     });
     customerId = customer.id;
   }
@@ -1041,6 +1055,8 @@ export async function createCreditTopUpCheckoutSession(params: {
     checkout_kind: "credit_top_up",
     organization_id: context.organization.id,
     user_id: context.user.id,
+    partner_id: context.partner?.id ?? "",
+    partner_slug: context.partner?.slug ?? "",
     credit_amount_cents: String(amountCents),
   };
 
@@ -1255,6 +1271,10 @@ export async function syncBillingSubscriptionFromStripe(
   }
 
   const organizationId = subscription.metadata.organization_id;
+  const partnerId =
+    typeof subscription.metadata.partner_id === "string" && subscription.metadata.partner_id.trim()
+      ? subscription.metadata.partner_id.trim()
+      : null;
 
   if (!organizationId) {
     throw new ApiError(400, "Stripe subscription is missing organization metadata.", "stripe_metadata_missing");
@@ -1304,6 +1324,7 @@ export async function syncBillingSubscriptionFromStripe(
   const subscriptionRow: BillingInsert = {
     organization_id: organizationId,
     user_id: subscription.metadata.user_id || null,
+    partner_id: partnerId,
     stripe_customer_id:
       typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id ?? null,
     stripe_subscription_id: subscription.id,
@@ -1365,6 +1386,7 @@ export async function syncBillingSubscriptionFromStripe(
     .from("organizations")
     .update({
       plan_tier: getOrganizationPlanForStatus(planTier, subscription.status),
+      ...(partnerId ? { partner_id: partnerId } : {}),
     } as never)
     .eq("id", organizationId);
 
@@ -1399,10 +1421,99 @@ export async function syncBillingSubscriptionFromStripe(
     });
   }
 
+  if (partnerId) {
+    await admin.from("partner_billing_attribution").upsert(
+      {
+        partner_id: partnerId,
+        account_id: organizationId,
+        stripe_customer_id:
+          typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id ?? null,
+        stripe_subscription_id: subscription.id,
+        pricing_plan_key: planTier,
+        attribution_source: "stripe_subscription_metadata",
+      } as never,
+      { onConflict: "stripe_subscription_id" },
+    ).then(({ error }) => {
+      if (error) {
+        logWarn("partner_billing_attribution_upsert_failed", {
+          organizationId,
+          partnerId,
+          stripeSubscriptionId: subscription.id,
+          message: error.message,
+        });
+      }
+    });
+  }
+
   return {
     applied: true,
     ignoredReason: null,
   };
+}
+
+async function createPartnerCommissionEventForInvoice(event: Stripe.Event) {
+  if (event.type !== "invoice.payment_succeeded" || event.data.object.object !== "invoice") {
+    return;
+  }
+
+  const admin = createAdminClient();
+  if (!admin) {
+    return;
+  }
+
+  const invoice = event.data.object as Stripe.Invoice & { subscription?: string | { id?: string | null } | null };
+  const subscriptionId = typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id ?? null;
+  if (!subscriptionId || !invoice.id) {
+    return;
+  }
+
+  const { data: billingRow, error: billingError } = await admin
+    .from("billing_subscriptions")
+    .select("organization_id,partner_id,stripe_customer_id,stripe_subscription_id")
+    .eq("stripe_subscription_id", subscriptionId)
+    .maybeSingle();
+
+  if (billingError || !billingRow) {
+    return;
+  }
+
+  const billing = billingRow as {
+    organization_id?: string | null;
+    partner_id?: string | null;
+    stripe_customer_id?: string | null;
+    stripe_subscription_id?: string | null;
+  };
+  if (!billing.partner_id || !billing.organization_id) {
+    return;
+  }
+
+  const { data: partnerRow } = await admin
+    .from("partners")
+    .select("commission_rate")
+    .eq("id", billing.partner_id)
+    .maybeSingle();
+  const commissionRate = Number((partnerRow as { commission_rate?: number | string | null } | null)?.commission_rate ?? 0);
+  const grossAmount = invoice.amount_paid ?? invoice.total ?? 0;
+  const commissionAmount = Math.max(0, Math.round(grossAmount * (Number.isFinite(commissionRate) ? commissionRate : 0)));
+
+  await admin.from("partner_commission_events").upsert(
+    {
+      partner_id: billing.partner_id,
+      account_id: billing.organization_id,
+      stripe_customer_id: billing.stripe_customer_id,
+      stripe_subscription_id: subscriptionId,
+      stripe_invoice_id: invoice.id,
+      event_type: "invoice_paid",
+      gross_amount: grossAmount,
+      net_amount: grossAmount,
+      commission_rate: Number.isFinite(commissionRate) ? commissionRate : 0,
+      commission_amount: commissionAmount,
+      currency: invoice.currency ?? "usd",
+      status: "pending",
+      notes: `Created from Stripe event ${event.id}`,
+    } as never,
+    { onConflict: "partner_id,stripe_invoice_id,event_type" },
+  );
 }
 
 async function syncBillingSubscriptionFromEventObject(event: Stripe.Event) {
@@ -1579,6 +1690,8 @@ export async function handleStripeBillingEvent(event: Stripe.Event) {
           processed: false,
         };
       }
+
+      await createPartnerCommissionEventForInvoice(event);
 
       await markStripeWebhookEvent({
         eventId: event.id,

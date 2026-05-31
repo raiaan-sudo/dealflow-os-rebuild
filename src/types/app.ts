@@ -41,4 +41,10 @@ export type AppContext = {
   organization: AppOrganization;
   membership?: AppMembership | null;
   businessProfile?: AppBusinessProfile | null;
+  partner?: {
+    id: string;
+    slug?: string | null;
+    brand_name?: string | null;
+    status?: string | null;
+  } | null;
 };

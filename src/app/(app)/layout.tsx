@@ -68,6 +68,7 @@ export default async function AppLayout({
     appContext?.organization.name?.trim() ||
     appContext?.businessProfile?.business_name?.trim() ||
     "DealFlow Workspace";
+  const brandName = appContext?.partner?.brand_name?.trim() || "DealFlow";
   const userName =
     appContext?.profile?.full_name?.trim() ||
     appContext?.user.email?.split("@")[0] ||
@@ -148,6 +149,7 @@ export default async function AppLayout({
     <div className="app-shell relative flex h-screen w-screen overflow-hidden bg-transparent">
       <AppSidebar
         activeCampaignId={activeCampaignId}
+        brandName={brandName}
         isAdmin={isAdmin}
         organizationName={organizationName}
         stage={getStageForPath(pathname)}

@@ -10,6 +10,7 @@ const PUBLIC_PATHS = new Set([
   "/privacy",
   "/terms",
   "/data-deletion",
+  "/start",
   "/robots.txt",
   "/sitemap.xml",
   "/opengraph-image",
@@ -37,6 +38,10 @@ function isPublicRequest(pathname: string) {
   }
 
   if (pathname.startsWith("/f/")) {
+    return true;
+  }
+
+  if (pathname.startsWith("/p/") || pathname.startsWith("/invite/")) {
     return true;
   }
 

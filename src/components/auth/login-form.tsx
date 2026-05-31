@@ -8,6 +8,19 @@ type LoginFormProps = {
   reason?: string;
   initialMode?: "sign-in" | "sign-up" | "reset-password";
   isConfigured: boolean;
+  branding?: {
+    appName?: string;
+    loginEyebrow?: string;
+    loginHeadline?: string;
+    loginSubheadline?: string;
+    supportEmail?: string | null;
+    poweredByDealFlow?: boolean;
+  };
+  partnerAttribution?: {
+    partnerSlug?: string | null;
+    inviteCode?: string | null;
+    source?: "slug" | "invite" | "domain" | "admin" | "import" | "native";
+  };
 };
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
@@ -53,6 +66,8 @@ export function LoginForm({
   reason,
   initialMode = "sign-in",
   isConfigured,
+  branding,
+  partnerAttribution,
 }: LoginFormProps) {
   const [mode, setMode] = useState<"sign-in" | "sign-up" | "reset-password" | "update-password">(initialMode);
   const [email, setEmail] = useState("");
@@ -196,6 +211,11 @@ export function LoginForm({
           captchaToken: turnstileEnabled ? turnstileToken : undefined,
           data: {
             full_name: fullName,
+            ...(partnerAttribution?.partnerSlug ? { partner_slug: partnerAttribution.partnerSlug } : {}),
+            ...(partnerAttribution?.inviteCode ? { partner_invite_code: partnerAttribution.inviteCode } : {}),
+            ...(partnerAttribution?.source && partnerAttribution.source !== "native"
+              ? { partner_attribution_source: partnerAttribution.source }
+              : {}),
           },
         },
       });
@@ -353,14 +373,19 @@ export function LoginForm({
     <div className="surface-guided w-full min-w-0 max-w-[calc(100vw-40px)] rounded-df-panel border border-white/10 p-6 shadow-df-elevated sm:max-w-none sm:p-8">
       <div className="mb-6">
         <p className="df-eyebrow">
-          Replace your agency
+          {branding?.loginEyebrow ?? "Replace your agency"}
         </p>
         <h1 className="mt-2 text-2xl font-semibold text-white [overflow-wrap:anywhere] sm:tracking-[-0.04em]">
-          Build, launch, and optimize your ads without paying an agency
+          {branding?.loginHeadline ?? "Build, launch, and optimize your ads without paying an agency"}
         </h1>
         <p className="mt-2 text-sm leading-6 text-white/70 [overflow-wrap:anywhere]">
-          Sign in to get your funnel, ads, campaign launch path, and optimization workflow in one place.
+          {branding?.loginSubheadline ?? "Sign in to get your funnel, ads, campaign launch path, and optimization workflow in one place."}
         </p>
+        {branding?.poweredByDealFlow ? (
+          <p className="mt-3 text-xs font-medium uppercase tracking-[0.2em] text-white/45">
+            Powered by DealFlow
+          </p>
+        ) : null}
       </div>
 
       <div className="flex rounded-full border border-white/10 bg-white/[0.04] p-1 shadow-inner shadow-black/30">

@@ -1,5 +1,6 @@
 import { hasSupabaseEnv } from "@/lib/env";
 import { LoginForm } from "@/components/auth/login-form";
+import { resolvePartnerContextFromHeaders } from "@/lib/white-label/resolver";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -27,6 +28,7 @@ export default async function LoginPage({
       : resolvedSearchParams && resolvedSearchParams.mode === "reset-password"
         ? "reset-password"
         : "sign-in";
+  const partnerContext = await resolvePartnerContextFromHeaders();
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-[560px] items-center px-5 py-10 sm:px-6">
@@ -35,6 +37,11 @@ export default async function LoginPage({
         reason={reason}
         initialMode={initialMode}
         isConfigured={hasSupabaseEnv()}
+        branding={partnerContext.branding}
+        partnerAttribution={{
+          partnerSlug: partnerContext.partnerSlug,
+          source: partnerContext.attributionSource,
+        }}
       />
     </div>
   );

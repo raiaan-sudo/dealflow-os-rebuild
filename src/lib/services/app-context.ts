@@ -3,6 +3,7 @@ import { slugify } from "@/lib/utils";
 import { logError, logWarn } from "@/lib/logging";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { ensurePartnerAttributionForWorkspace } from "@/lib/white-label/attribution";
 import type { Database } from "@/lib/supabase/types";
 import type { AppContext } from "@/types/app";
 import {
@@ -458,6 +459,20 @@ export async function ensureAppContext() {
     const organization = await ensureWorkspace(bootstrapSupabase, profile);
     const membership = await ensureMembership(bootstrapSupabase, profile, organization);
     const businessProfile = await ensureBusinessProfile(bootstrapSupabase, organization, profile);
+    const partnerId = await ensurePartnerAttributionForWorkspace({
+      supabase: bootstrapSupabase,
+      user,
+      organization,
+    });
+    let partner: AppContext["partner"] = null;
+    if (partnerId) {
+      const { data: partnerRow } = await bootstrapSupabase
+        .from("partners")
+        .select("id,slug,brand_name,status")
+        .eq("id", partnerId)
+        .maybeSingle();
+      partner = (partnerRow as AppContext["partner"]) ?? null;
+    }
 
     const context: AppContext = {
       user,
@@ -465,6 +480,7 @@ export async function ensureAppContext() {
       organization,
       membership,
       businessProfile,
+      partner,
     };
 
     try {

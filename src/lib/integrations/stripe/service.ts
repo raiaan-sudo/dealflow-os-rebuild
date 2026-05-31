@@ -174,11 +174,17 @@ export function buildStripeCheckoutMetadata(params: {
   planTier: BillingPlanTier;
   campaignId?: string | null;
   trialPeriodDays?: number | null;
+  partnerId?: string | null;
+  partnerSlug?: string | null;
+  partnerAttributionSource?: string | null;
 }) {
   return {
     organization_id: params.organizationId,
     user_id: params.userId,
     plan_tier: normalizeBillingPlanTier(params.planTier),
+    partner_id: params.partnerId ?? "",
+    partner_slug: params.partnerSlug ?? "",
+    partner_attribution_source: params.partnerAttributionSource ?? "native",
     ...(params.trialPeriodDays ? { trial_period_days: String(params.trialPeriodDays) } : {}),
     ...(params.campaignId ? { campaign_id: params.campaignId } : {}),
   };

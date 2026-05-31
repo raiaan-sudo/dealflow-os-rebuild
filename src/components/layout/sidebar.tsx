@@ -11,6 +11,7 @@ import type { CampaignExperienceStage } from "@/lib/services/campaign-plan-servi
 
 type AppSidebarProps = {
   organizationName: string;
+  brandName?: string | null;
   isAdmin: boolean;
   stage: CampaignExperienceStage;
   activeCampaignId?: string | null;
@@ -26,7 +27,7 @@ function buildCampaignScopedHref(path: string, campaignId?: string | null) {
   return `${path}?${params.toString()}`;
 }
 
-export function AppSidebar({ organizationName, isAdmin, stage, activeCampaignId }: AppSidebarProps) {
+export function AppSidebar({ organizationName, brandName, isAdmin, stage, activeCampaignId }: AppSidebarProps) {
   const pathname = usePathname();
   const campaignId = activeCampaignId ?? null;
   const stageState: Record<CampaignExperienceStage, { label: string; copy: string }> = {
@@ -53,7 +54,7 @@ export function AppSidebar({ organizationName, isAdmin, stage, activeCampaignId 
           <div className="flex items-center gap-2.5">
             <Logo size="small" iconOnly priority className="shrink-0" />
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold tracking-[-0.02em]">DealFlow</p>
+              <p className="truncate text-sm font-semibold tracking-[-0.02em]">{brandName || "DealFlow"}</p>
               <p className="mt-0.5 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
                 {stageLabel}
               </p>
