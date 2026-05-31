@@ -13,6 +13,8 @@ const resolver = read("src/lib/white-label/resolver.ts");
 const permissions = read("src/lib/white-label/permissions.ts");
 const attribution = read("src/lib/white-label/attribution.ts");
 const loginForm = read("src/components/auth/login-form.tsx");
+const partnerCreateForm = read("src/components/white-label/partner-create-form.tsx");
+const platformPartnersAdmin = read("src/components/white-label/platform-partners-admin.tsx");
 const billingService = read("src/lib/services/billing-service.ts");
 const stripeService = read("src/lib/integrations/stripe/service.ts");
 const proxy = read("src/proxy.ts");
@@ -80,6 +82,10 @@ assert.match(billingService, /createPartnerCommissionEventForInvoice/, "commissi
 assert.match(adminPartnerRoute, /assertSameOriginRequest/, "admin partner creation must require same-origin requests");
 assert.match(adminPartnerRoute, /requirePlatformAdmin/, "admin partner creation must require platform admin");
 assert.match(adminPartnerRoute, /partner_audit_logs/, "admin partner creation must write audit logs");
+assert.match(platformPartnersAdmin, /mode\?: "list" \| "new"/, "admin partners shell must support a dedicated new-partner mode");
+assert.match(platformPartnersAdmin, /<PartnerCreateForm \/>/, "new-partner route must render the create form instead of only the partner list");
+assert.match(partnerCreateForm, /fetch\("\/api\/admin\/partners"/, "new-partner form must submit to the secured partner creation API");
+assert.match(partnerCreateForm, /router\.push\(`\/admin\/partners\/\$\{payload\.partner\.id\}`\)/, "successful partner creation must navigate to the created partner detail page");
 
 assert.match(proxy, /pathname\.startsWith\("\/p\/"\)/, "partner slug routes must be public before auth");
 assert.match(proxy, /pathname\.startsWith\("\/invite\/"\)/, "custom-domain invite routes must be public before auth");

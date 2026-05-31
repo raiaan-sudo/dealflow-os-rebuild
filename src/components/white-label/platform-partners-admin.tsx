@@ -1,8 +1,15 @@
 import Link from "next/link";
+import { PartnerCreateForm } from "@/components/white-label/partner-create-form";
 import { requirePlatformAdmin } from "@/lib/white-label/permissions";
 import { listPlatformPartners } from "@/lib/white-label/queries";
 
-export async function PlatformPartnersAdmin({ section = "Partners" }: { section?: string }) {
+export async function PlatformPartnersAdmin({
+  mode = "list",
+  section = mode === "new" ? "New Partner" : "Partners",
+}: {
+  mode?: "list" | "new";
+  section?: string;
+}) {
   await requirePlatformAdmin();
   const partners = await listPlatformPartners();
 
@@ -20,6 +27,10 @@ export async function PlatformPartnersAdmin({ section = "Partners" }: { section?
         <Link href="/admin/partners" className="rounded-full border border-white/10 px-3 py-2 text-sm">Partners</Link>
         <Link href="/admin/partners/new" className="rounded-full border border-white/10 px-3 py-2 text-sm">New Partner</Link>
       </div>
+
+      {mode === "new" ? (
+        <PartnerCreateForm />
+      ) : null}
 
       <div className="rounded-df-panel border border-white/10 bg-white/[0.035]">
         <div className="grid grid-cols-[1fr_auto_auto] gap-3 border-b border-white/10 px-5 py-3 text-xs uppercase tracking-[0.16em] text-muted-foreground">

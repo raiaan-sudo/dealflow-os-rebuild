@@ -1,5 +1,5 @@
 import { PlatformPartnersAdmin } from "@/components/white-label/platform-partners-admin";
 
 export default function AdminPartnerNewPage() {
-  return <PlatformPartnersAdmin section="New Partner" />;
+  return <PlatformPartnersAdmin mode="new" />;
 }
