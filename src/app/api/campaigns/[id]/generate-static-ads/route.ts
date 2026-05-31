@@ -136,6 +136,14 @@ export async function POST(
         ? Math.min(6, Math.max(2, missingLaunchReadyFloorCount))
         : undefined);
 
+    await assertGenerationCreditsAvailableForUser({
+      bucket: "image_generation",
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      campaignId,
+      quantity: maxGenerations ?? 6,
+    });
+
     const activeJobs = await listSystemJobs({
       userId: auth.userId,
       campaignId,
@@ -165,14 +173,6 @@ export async function POST(
         previewUpdated,
       });
     }
-
-    await assertGenerationCreditsAvailableForUser({
-      bucket: "image_generation",
-      userId: auth.userId,
-      organizationId: auth.organizationId,
-      campaignId,
-      quantity: maxGenerations ?? 6,
-    });
 
     const requestScope = body.force === true
       ? `force:${crypto.randomUUID()}`

@@ -109,6 +109,11 @@ assert.ok(
   "static generation route preflights image credits before queueing provider work",
 );
 assert.ok(
+  staticAdsRoute.indexOf("await assertGenerationCreditsAvailableForUser") <
+    staticAdsRoute.indexOf("const activeJobs = await listSystemJobs"),
+  "static generation route must check current credit balance before reusing a queued render job",
+);
+assert.ok(
   videoRoute.includes("assertGenerationCreditsAvailableForUser") &&
     videoRoute.includes('bucket: "video_generation"'),
   "video generation route preflights video credits before queueing provider work",
