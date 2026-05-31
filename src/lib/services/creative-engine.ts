@@ -2621,6 +2621,10 @@ export async function generateStaticCreativeAds(
         Boolean(imageAd.imageUrl) &&
         imageAd.generationState === "generated" &&
         (!imageQa || imageQa.decision === "accept");
+      const acceptedFinishedAd =
+        imageAccepted &&
+        imageAd.generationProvider === "higgsfield_marketing_studio" &&
+        qaMode === "finished_ad";
       return {
         ...asset,
         imageUrl: imageAd.imageUrl ?? "",
@@ -2628,18 +2632,20 @@ export async function generateStaticCreativeAds(
         imageGenerationMessage: imageAccepted ? imageAd.generationMessage : qaMessage ?? imageAd.generationMessage,
         imageGenerationModel: imageAd.generationModel,
         imageGenerationProvider: imageAd.generationProvider,
+        generationMethod: acceptedFinishedAd ? "higgsfield_marketing_studio" : null,
+        providerName: acceptedFinishedAd ? "higgsfield_marketing_studio" : null,
+        generationMode: acceptedFinishedAd ? "finished_ad" : null,
+        assetRole: acceptedFinishedAd ? "final_static_ad" : null,
         appComposedFinal: false,
         qualityTier:
-          imageAccepted &&
-          imageAd.generationProvider === "higgsfield_marketing_studio" &&
-          qaMode === "finished_ad"
+          acceptedFinishedAd
             ? "higgsfield_finished_ad"
             : null,
         compositionVersion: null,
-        visualQualityGate: imageAccepted && qaMode === "finished_ad"
+        visualQualityGate: acceptedFinishedAd
           ? { accepted: true, mode: "finished_ad_qa", reasons: [] }
           : null,
-        premiumQualityGate: imageAccepted && qaMode === "finished_ad"
+        premiumQualityGate: acceptedFinishedAd
           ? { accepted: true, mode: "higgsfield_finished_ad_provenance", reasons: [] }
           : null,
         imageQa,
