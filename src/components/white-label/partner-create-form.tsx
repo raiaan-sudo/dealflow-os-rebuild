@@ -7,6 +7,8 @@ type CreatePartnerState = {
   brandName: string;
   slug: string;
   legalName: string;
+  logoUrl: string;
+  faviconUrl: string;
   supportEmail: string;
   primaryColor: string;
   secondaryColor: string;
@@ -19,6 +21,8 @@ const initialState: CreatePartnerState = {
   brandName: "",
   slug: "",
   legalName: "",
+  logoUrl: "",
+  faviconUrl: "",
   supportEmail: "",
   primaryColor: "#67e8f9",
   secondaryColor: "#0f172a",
@@ -77,6 +81,8 @@ export function PartnerCreateForm() {
           brandName: form.brandName.trim(),
           slug: slugify(form.slug || form.brandName),
           legalName: form.legalName.trim() || null,
+          logoUrl: form.logoUrl.trim() || null,
+          faviconUrl: form.faviconUrl.trim() || null,
           supportEmail: form.supportEmail.trim() || null,
           primaryColor: form.primaryColor,
           secondaryColor: form.secondaryColor || null,
@@ -156,6 +162,28 @@ export function PartnerCreateForm() {
         </label>
 
         <label className="space-y-2">
+          <span className="text-sm font-medium text-white">Logo URL</span>
+          <input
+            type="url"
+            value={form.logoUrl}
+            onChange={(event) => updateField("logoUrl", event.target.value)}
+            placeholder="https://..."
+            className="h-11 w-full rounded-df-control border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition focus:border-cyan-200/50"
+          />
+        </label>
+
+        <label className="space-y-2">
+          <span className="text-sm font-medium text-white">Favicon URL</span>
+          <input
+            type="url"
+            value={form.faviconUrl}
+            onChange={(event) => updateField("faviconUrl", event.target.value)}
+            placeholder="Optional https://..."
+            className="h-11 w-full rounded-df-control border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition focus:border-cyan-200/50"
+          />
+        </label>
+
+        <label className="space-y-2">
           <span className="text-sm font-medium text-white">Commission rate</span>
           <div className="flex h-11 items-center rounded-df-control border border-white/10 bg-black/20 px-3 focus-within:border-cyan-200/50">
             <input
@@ -208,6 +236,9 @@ export function PartnerCreateForm() {
 
       <div className="rounded-2xl border border-cyan-200/15 bg-cyan-200/10 p-4 text-sm text-cyan-50">
         Signup URL preview: <span className="font-mono text-cyan-100">{previewUrl}</span>
+        <span className="mt-1 block text-xs text-cyan-100/70">
+          Short link also works: <span className="font-mono">/{slugify(form.slug || form.brandName) || "partner-slug"}</span>
+        </span>
       </div>
 
       {error ? (

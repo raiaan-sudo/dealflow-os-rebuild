@@ -86,12 +86,18 @@ assert.match(platformPartnersAdmin, /mode\?: "list" \| "new"/, "admin partners s
 assert.match(platformPartnersAdmin, /<PartnerCreateForm \/>/, "new-partner route must render the create form instead of only the partner list");
 assert.match(partnerCreateForm, /fetch\("\/api\/admin\/partners"/, "new-partner form must submit to the secured partner creation API");
 assert.match(partnerCreateForm, /router\.push\(`\/admin\/partners\/\$\{payload\.partner\.id\}`\)/, "successful partner creation must navigate to the created partner detail page");
+assert.match(partnerCreateForm, /logoUrl/, "new-partner form must support logo URL entry");
+assert.match(partnerCreateForm, /faviconUrl/, "new-partner form must support favicon URL entry");
+assert.match(partnerCreateForm, /Short link also works/, "new-partner form must explain the short partner URL");
 
 assert.match(proxy, /pathname\.startsWith\("\/p\/"\)/, "partner slug routes must be public before auth");
 assert.match(proxy, /pathname\.startsWith\("\/invite\/"\)/, "custom-domain invite routes must be public before auth");
+assert.match(proxy, /RESERVED_ROOT_PATHS/, "short partner URLs must reserve app root routes");
+assert.match(proxy, /rootSlugMatch/, "short partner URLs must be public before auth");
 
 for (const route of [
   "src/app/p/[partnerSlug]/start/page.tsx",
+  "src/app/[partnerSlug]/page.tsx",
   "src/app/p/[partnerSlug]/invite/[code]/page.tsx",
   "src/app/start/page.tsx",
   "src/app/invite/[code]/page.tsx",

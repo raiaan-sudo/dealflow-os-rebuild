@@ -24,6 +24,35 @@ const PUBLIC_API_PATHS = new Set([
   "/api/stripe/webhook",
   "/api/client-errors",
 ]);
+const RESERVED_ROOT_PATHS = new Set([
+  "admin",
+  "api",
+  "build",
+  "builder",
+  "campaign-built",
+  "dashboard",
+  "data-deletion",
+  "f",
+  "invite",
+  "launch",
+  "launch-success",
+  "launching",
+  "login",
+  "onboarding",
+  "p",
+  "partner",
+  "paywall",
+  "preview",
+  "privacy",
+  "results",
+  "settings",
+  "signup",
+  "start",
+  "terms",
+  "ui-direction",
+  "unlock",
+  "welcome",
+]);
 
 function isPublicRequest(pathname: string) {
   if (
@@ -42,6 +71,11 @@ function isPublicRequest(pathname: string) {
   }
 
   if (pathname.startsWith("/p/") || pathname.startsWith("/invite/")) {
+    return true;
+  }
+
+  const rootSlugMatch = pathname.match(/^\/([a-z0-9][a-z0-9-]{1,62}[a-z0-9])\/?$/);
+  if (rootSlugMatch && !RESERVED_ROOT_PATHS.has(rootSlugMatch[1])) {
     return true;
   }
 
