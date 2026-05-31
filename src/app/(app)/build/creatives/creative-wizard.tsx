@@ -218,6 +218,7 @@ type CreativeWizardProps = {
   persistedSelectedUgcVideoIds?: string[];
   videoCreatives?: VideoCreativeOption[];
   initialRenderJobs?: SystemJob[];
+  generationCreditOverrideActive?: boolean;
 };
 
 type StudioPhase = "static_ads" | "ugc_videos";
@@ -341,6 +342,7 @@ export function CreativeWizard({
   persistedSelectedAdIds = [],
   persistedSelectedUgcVideoIds = [],
   videoCreatives = [],
+  generationCreditOverrideActive = false,
 }: CreativeWizardProps) {
   const router = useRouter();
   const jobStreamsRef = useRef<Map<string, EventSource>>(new Map());
@@ -451,9 +453,10 @@ export function CreativeWizard({
   const hasAttemptedImageGeneration = rankedCreatives.some(
     (creative) => Boolean(creative.imageGenerationMessage) || Boolean(creative.imageGenerationState),
   );
-  const hasCreditBlocker = rankedCreatives.some((creative) =>
+  const hasPersistedCreditBlocker = rankedCreatives.some((creative) =>
     /insufficient credits|add at least/i.test(creative.imageGenerationMessage ?? ""),
   );
+  const hasCreditBlocker = !generationCreditOverrideActive && hasPersistedCreditBlocker;
   const imageLimitMessage = getImageLimitMessage(rankedCreatives);
   const ugcQuotaAvailable = rankedCreatives.some(isUgcCreative);
   const selectedUgcCount = selectedCreatives.filter(isUgcCreative).length;

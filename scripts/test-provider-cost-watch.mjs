@@ -123,6 +123,12 @@ assert.ok(
     creativeWizard.includes("credits_insufficient"),
   "Creative Studio renders the top-up panel for insufficient generation-credit responses",
 );
+assert.ok(
+  creativeWizard.includes("generationCreditOverrideActive") &&
+    creativeWizard.includes("hasPersistedCreditBlocker") &&
+    creativeWizard.includes("!generationCreditOverrideActive && hasPersistedCreditBlocker"),
+  "Creative Studio must suppress stale persisted credit-blocker UI when a scoped generation-credit override is active",
+);
 assert.match(
   creditService,
   /getQaGenerationCreditOverrideForUser\({[\s\S]*amountCents: amount,[\s\S]*}\)/,

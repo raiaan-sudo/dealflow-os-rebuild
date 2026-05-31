@@ -16,6 +16,7 @@ import {
 } from "@/lib/services/creative-chat-intake-service";
 import { getCreativeAssetTierLabel } from "@/lib/services/creative-asset-status";
 import { normalizeCreativeOfferTitle } from "@/lib/services/creative-ugc-script-service";
+import { getCreditSummaryForCurrentUser } from "@/lib/services/credit-service";
 import { ensureStaticCreativeRenderQueuedForCampaign } from "@/lib/services/static-creative-render-queue-service";
 import { createClient } from "@/lib/supabase/server";
 import { CreativeChatIntake } from "./creative-chat-intake";
@@ -76,6 +77,11 @@ export default async function BuildCreativesPage({
   let persistedSelectedUgcVideoIds: string[] = [];
   let persistedVideoAds = ensuredRecord.creatives.videoAds;
   let activeRenderJobs: NonNullable<Parameters<typeof CreativeWizard>[0]["initialRenderJobs"]> = [];
+  const generationCredits = await getCreditSummaryForCurrentUser().catch(() => null);
+  const generationCreditOverrideActive =
+    generationCredits?.creditOverride === true ||
+    generationCredits?.qaGenerationCreditOverride === true;
+
   if (supabase) {
     const { data } = await supabase
       .from("campaign_plans")
@@ -360,6 +366,7 @@ export default async function BuildCreativesPage({
         approvedBriefContext={approvedBriefContext}
         campaignId={ensuredRecord.campaign.id}
         creatives={creativeOptions}
+        generationCreditOverrideActive={generationCreditOverrideActive}
         initialRenderJobs={activeRenderJobs}
         persistedSelectedAdIds={persistedSelectedAdIds}
         persistedSelectedUgcVideoIds={persistedSelectedUgcVideoIds}
