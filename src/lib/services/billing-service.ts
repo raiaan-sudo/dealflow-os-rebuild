@@ -36,6 +36,7 @@ import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { queueSubscriptionSuspensionJobsForOrganization } from "@/lib/services/subscription-suspension-service";
 import type { Database, Json } from "@/lib/supabase/types";
 import {
+  hasPartnerPricingConfiguration,
   parsePartnerPricingConfig,
   type PartnerPricingConfig,
 } from "@/lib/white-label/partner-billing-config";
@@ -170,8 +171,9 @@ async function getPartnerBillingConfigBundle(
   }
 
   const branding = brandingResult.data as { pricing_json?: unknown } | null;
+  const pricing = branding ? parsePartnerPricingConfig(branding.pricing_json) : null;
   return {
-    pricing: branding ? parsePartnerPricingConfig(branding.pricing_json) : null,
+    pricing: hasPartnerPricingConfiguration(pricing) ? pricing : null,
     commissionRate: Number(partner.commission_rate ?? 0),
   };
 }

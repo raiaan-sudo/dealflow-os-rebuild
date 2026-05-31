@@ -1,5 +1,10 @@
-import { PlatformPartnersAdmin } from "@/components/white-label/platform-partners-admin";
+import { PartnerDetailDashboard } from "@/components/white-label/platform-partners-admin";
 
-export default function AdminPartnerDetailPage() {
-  return <PlatformPartnersAdmin section="Partner Detail" />;
+export default async function AdminPartnerDetailPage({
+  params,
+}: {
+  params: Promise<{ partnerId: string }>;
+}) {
+  const { partnerId } = await params;
+  return <PartnerDetailDashboard partnerId={partnerId} />;
 }

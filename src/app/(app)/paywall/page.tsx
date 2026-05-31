@@ -22,7 +22,7 @@ import { recordActivationEventForCurrentUser } from "@/lib/services/activation-t
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { parsePartnerPricingConfig } from "@/lib/white-label/partner-billing-config";
+import { hasPartnerPricingConfiguration, parsePartnerPricingConfig } from "@/lib/white-label/partner-billing-config";
 
 function buildHomeHref(campaignId: string | null) {
   return campaignId ? `/builder?campaignId=${encodeURIComponent(campaignId)}` : "/onboarding";
@@ -47,7 +47,8 @@ async function loadPartnerPricingForCurrentWorkspace() {
     return null;
   }
 
-  return parsePartnerPricingConfig((data as { pricing_json?: unknown } | null)?.pricing_json);
+  const pricing = parsePartnerPricingConfig((data as { pricing_json?: unknown } | null)?.pricing_json);
+  return hasPartnerPricingConfiguration(pricing) ? pricing : null;
 }
 
 function toPreviewCampaignMode(intent: string): PrepaywallCampaignPreviewDraft["campaignMode"] {

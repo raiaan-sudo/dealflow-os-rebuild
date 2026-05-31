@@ -19,6 +19,9 @@ const adminPartnerRoute = read("src/app/api/admin/partners/route.ts");
 const platformPartnersAdmin = read("src/components/white-label/platform-partners-admin.tsx");
 const migration = read("supabase/migrations/20260531193000_add_partner_branded_billing_metadata.sql");
 const settings = read("src/app/(app)/settings/page.tsx");
+const partnerQueries = read("src/lib/white-label/queries.ts");
+const partnerDetailPage = read("src/app/(app)/admin/partners/[partnerId]/page.tsx");
+const setupPartnerStripe = read("scripts/setup-partner-stripe.mjs");
 
 assert.equal(
   packageJson.scripts["test:partner-branded-billing"],
@@ -63,6 +66,20 @@ assert.match(partnerCreateForm, /Allow default DealFlow prices/, "Partner admin 
 assert.match(adminPartnerRoute, /partner_pricing_invalid/, "Admin create API must fail closed on invalid active partner pricing");
 assert.match(adminPartnerRoute, /partner_branding/, "Admin create API must write partner branding/pricing config");
 assert.match(platformPartnersAdmin, /Partner payouts are handled manually from the commission ledger/, "Admin copy must describe manual payouts accurately");
+assert.match(platformPartnersAdmin, /Users signed up/, "Partner detail dashboard must show signup metrics");
+assert.match(platformPartnersAdmin, /MRR estimate/, "Partner detail dashboard must show revenue metrics");
+assert.match(platformPartnersAdmin, /Commission ledger/, "Partner detail dashboard must show commission ledger");
+assert.match(platformPartnersAdmin, /Custom domains/, "Partner detail dashboard must show domain status");
+assert.match(partnerDetailPage, /PartnerDetailDashboard/, "Partner detail route must render the dashboard");
+assert.match(partnerQueries, /getPlatformPartnerDetail/, "Partner detail query must exist");
+assert.match(partnerQueries, /partner_billing_attribution/, "Partner detail must include billing attribution");
+assert.match(partnerQueries, /lead_billing_events/, "Partner detail must include performance lead usage events");
+assert.match(partnerQueries, /partner_audit_logs/, "Partner detail must include audit trail");
+assert.match(setupPartnerStripe, /billing\.meters/, "Stripe setup must create or verify billing meters");
+assert.match(setupPartnerStripe, /usage_type: "metered"/, "Stripe setup must create metered recurring lead price");
+assert.match(setupPartnerStripe, /STRIPE_TEST_SECRET_KEY/, "Stripe setup must support test-mode setup");
+assert.match(setupPartnerStripe, /STRIPE_SECRET_KEY/, "Stripe setup must support live-mode setup");
+assert.match(setupPartnerStripe, /partner_branding/, "Stripe setup must write partner pricing config");
 
 assert.match(migration, /partner_product_name text/, "Migration must add partner product name column");
 assert.match(migration, /partner_plan_label text/, "Migration must add partner plan label column");

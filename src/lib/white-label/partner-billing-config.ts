@@ -149,3 +149,16 @@ export function validatePartnerPricingConfig(pricing: PartnerPricingConfig) {
 export function getPartnerMeterEventName(plan: PartnerPricingPlanConfig | null | undefined) {
   return plan?.meterEventName?.trim() || PERFORMANCE_LEAD_METER_EVENT_NAME;
 }
+
+export function hasPartnerPricingConfiguration(pricing: PartnerPricingConfig | null | undefined) {
+  if (!pricing) {
+    return false;
+  }
+
+  return Boolean(
+    pricing.displayProductName ||
+      pricing.checkoutHeadline ||
+      pricing.allowDefaultDealFlowPrices ||
+      Object.keys(pricing.plans).length > 0,
+  );
+}
