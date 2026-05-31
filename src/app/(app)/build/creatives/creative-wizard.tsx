@@ -546,6 +546,23 @@ export function CreativeWizard({
     return () => window.clearInterval(interval);
   }, [currentImageJob?.id]);
 
+  useEffect(() => {
+    if (staticReadiness.selectedMinimumMet || !needsImageGeneration || hasCreditBlocker) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      router.refresh();
+    }, 15_000);
+
+    return () => window.clearInterval(interval);
+  }, [
+    hasCreditBlocker,
+    needsImageGeneration,
+    router,
+    staticReadiness.selectedMinimumMet,
+  ]);
+
   const subscribeToJob = useCallback((jobId: string, surface: "image" | "video") => {
     if (jobStreamsRef.current.has(jobId)) {
       return;
