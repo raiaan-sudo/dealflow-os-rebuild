@@ -171,7 +171,7 @@ async function getPartnerBillingConfigBundle(
 
   const branding = brandingResult.data as { pricing_json?: unknown } | null;
   return {
-    pricing: parsePartnerPricingConfig(branding?.pricing_json),
+    pricing: branding ? parsePartnerPricingConfig(branding.pricing_json) : null,
     commissionRate: Number(partner.commission_rate ?? 0),
   };
 }

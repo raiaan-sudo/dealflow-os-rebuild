@@ -43,6 +43,10 @@ async function loadPartnerPricingForCurrentWorkspace() {
     .eq("partner_id", partnerId)
     .maybeSingle();
 
+  if (!data) {
+    return null;
+  }
+
   return parsePartnerPricingConfig((data as { pricing_json?: unknown } | null)?.pricing_json);
 }
 
