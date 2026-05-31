@@ -8,12 +8,14 @@ import {
 type StaticAdComposedPreviewProps = StaticAdTemplateInput & {
   className?: string;
   compact?: boolean;
+  launchReady?: boolean;
   selectedCount?: number | null;
   showRawAssetState?: boolean;
   appComposedFinal?: boolean | null;
 };
 
-function statusLabel(status: ReturnType<typeof buildComposedStaticAdPreview>["status"]) {
+function statusLabel(status: ReturnType<typeof buildComposedStaticAdPreview>["status"], launchReady?: boolean) {
+  if (launchReady) return "Launch-ready creative";
   if (status === "final_composed") return "Launch-ready creative";
   if (status === "background_generating") return "Draft concept";
   if (status === "background_rejected") return "Retry needed";
@@ -21,7 +23,11 @@ function statusLabel(status: ReturnType<typeof buildComposedStaticAdPreview>["st
   return "Draft concept";
 }
 
-function qualityLabel(preview: ReturnType<typeof buildComposedStaticAdPreview>) {
+function qualityLabel(preview: ReturnType<typeof buildComposedStaticAdPreview>, launchReady?: boolean) {
+  if (launchReady) {
+    return "Launch-ready image";
+  }
+
   if (preview.status === "final_composed") {
     return "Launch-ready image";
   }
@@ -467,13 +473,14 @@ function renderTemplateDetails(preview: ReturnType<typeof buildComposedStaticAdP
 export function StaticAdComposedPreview({
   className,
   compact = false,
+  launchReady = false,
   selectedCount,
   showRawAssetState = true,
   ...input
 }: StaticAdComposedPreviewProps) {
   const preview = buildComposedStaticAdPreview(input);
-  const label = statusLabel(preview.status);
-  const quality = qualityLabel(preview);
+  const label = statusLabel(preview.status, launchReady);
+  const quality = qualityLabel(preview, launchReady);
   const renderStoredFinalOnly = preview.status === "final_composed" && Boolean(preview.backgroundImageUrl);
 
   return (
@@ -517,8 +524,8 @@ export function StaticAdComposedPreview({
         </div>
         {showRawAssetState ? (
           <p className="text-xs leading-5 text-muted-foreground">
-            {preview.status === "final_composed"
-              ? preview.backgroundMessage
+            {launchReady
+              ? "Finished ad passed review and is available for the launch package."
               : preview.backgroundMessage}
           </p>
         ) : null}

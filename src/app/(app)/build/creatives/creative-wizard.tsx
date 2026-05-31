@@ -1149,6 +1149,7 @@ export function CreativeWizard({
             sourceImageQa={displayActiveCreative.sourceImageQa}
             score={displayActiveCreative.score}
             selectedCount={activeCreativeSelected && activeCreative && isStaticLaunchReady(activeCreative) ? staticReadiness.selectedReadyCount : null}
+            launchReady={activeCreative ? isStaticLaunchReady(activeCreative) : false}
             visualPromptBrief={displayActiveCreative.visualPromptBrief}
           />
         </div>
@@ -1295,6 +1296,7 @@ export function CreativeWizard({
                     sourceImageQa={displayCreative.sourceImageQa}
                     score={displayCreative.score}
                     selectedCount={isStaticLaunchReady(creative) ? staticReadiness.selectedReadyCount : null}
+                    launchReady={isStaticLaunchReady(creative)}
                     visualPromptBrief={displayCreative.visualPromptBrief}
                   />
                 </div>
@@ -1760,6 +1762,7 @@ export function CreativeWizard({
                     sourceImageQa={displayCreative.sourceImageQa}
                     score={displayCreative.score}
                     selectedCount={selected ? selectedCreatives.length : null}
+                    launchReady={isStaticLaunchReady(creative)}
                     visualPromptBrief={displayCreative.visualPromptBrief}
                   />
                 </button>
@@ -1833,6 +1836,7 @@ export function CreativeWizard({
                         imageQa={displayCreative.imageQa}
                         sourceImageQa={displayCreative.sourceImageQa}
                         score={displayCreative.score}
+                        launchReady={false}
                         selectedCount={null}
                         visualPromptBrief={displayCreative.visualPromptBrief}
                       />

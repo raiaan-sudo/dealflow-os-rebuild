@@ -73,6 +73,7 @@ type StaticCreativePreviewCardProps = {
     overlayLogic?: string[] | null;
   } | null;
   selectedCount?: number | null;
+  launchReady?: boolean;
   formatLabel?: string | null;
   className?: string;
   compact?: boolean;
@@ -107,6 +108,7 @@ export function StaticCreativePreviewCard({
   sourceImageQa,
   visualPromptBrief,
   selectedCount,
+  launchReady,
   formatLabel,
   className,
   compact = false,
@@ -147,6 +149,7 @@ export function StaticCreativePreviewCard({
         sourceImageQa={sourceImageQa}
         score={score}
         selectedCount={selectedCount}
+        launchReady={launchReady}
         showRawAssetState={!compact}
         visualPromptBrief={visualPromptBrief}
       />
@@ -240,6 +243,7 @@ export function StaticCreativePreviewCard({
                 imageQa={imageQa}
                 score={score}
                 selectedCount={selectedCount}
+                launchReady={launchReady}
                 showRawAssetState
                 visualPromptBrief={visualPromptBrief}
               />
@@ -287,6 +291,7 @@ export function StaticCreativeSummaryCard({
   sourceImageQa,
   visualPromptBrief,
   selectedCount,
+  launchReady,
   className,
   angleLabel,
   formatLabel,
@@ -340,6 +345,7 @@ export function StaticCreativeSummaryCard({
           sourceImageQa={sourceImageQa}
           score={score}
           selectedCount={selectedCount}
+          launchReady={launchReady}
           showRawAssetState={false}
           visualPromptBrief={visualPromptBrief}
         />
@@ -415,6 +421,7 @@ export function StaticCreativeSummaryCard({
           sourceImageQa={sourceImageQa}
           score={score}
           selectedCount={selectedCount}
+          launchReady={launchReady}
           showRawAssetState={false}
           visualPromptBrief={visualPromptBrief}
         />
