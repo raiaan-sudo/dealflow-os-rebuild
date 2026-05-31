@@ -183,6 +183,8 @@ export default async function SettingsPage({
         ? "Enabled (internal override)"
         : "Enabled"
     : "Not enabled";
+  const billingPlanLabel = billing?.partnerPlanLabel ?? billing?.planTier ?? "starter";
+  const billingProductLabel = billing?.partnerProductName ?? "DealFlow";
 
   return (
     <PageShell className="max-w-[1280px]">
@@ -201,7 +203,7 @@ export default async function SettingsPage({
               ["Name", accountName],
               ["Email", accountEmail],
               ["Workspace", workspaceName],
-              ["Plan tier", billing?.planTier ?? "starter"],
+              ["Plan", billingPlanLabel],
             ].map(([label, value]) => (
               <div key={label} className="min-w-0 rounded-[18px] border border-white/10 bg-white/[0.035] p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
@@ -265,6 +267,7 @@ export default async function SettingsPage({
             <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {[
                 ["Plan", billing?.planTier ?? "starter"],
+                ["Product", billingProductLabel],
                 ["Status", billing?.subscriptionStatus ?? "inactive"],
                 ["Billing state", formatBillingStateLabel(billing)],
                 ["Launch access", launchAccessLabel],

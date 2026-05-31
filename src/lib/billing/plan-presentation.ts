@@ -3,6 +3,11 @@ import {
   SELF_SERVE_TRIAL_PERIOD_DAYS,
   type BillingPlanTier,
 } from "@/lib/billing/plans";
+import {
+  getPartnerPlanConfig,
+  getPartnerPlanLabel,
+  type PartnerPricingConfig,
+} from "@/lib/white-label/partner-billing-config";
 
 export type SelectablePlanTier = Extract<BillingPlanTier, "performance" | "starter" | "pro">;
 
@@ -87,4 +92,35 @@ export const SELECTABLE_PLAN_TIERS = ["performance", "starter", "pro"] as const;
 
 export function getPlanPresentation(tier: SelectablePlanTier) {
   return PLAN_PRESENTATION[tier];
+}
+
+export function getPlanPresentationsForPartner(
+  pricing: PartnerPricingConfig | null | undefined,
+): Record<SelectablePlanTier, PlanPresentation> {
+  if (!pricing) {
+    return PLAN_PRESENTATION;
+  }
+
+  return SELECTABLE_PLAN_TIERS.reduce(
+    (presentations, tier) => {
+      const defaultPlan = PLAN_PRESENTATION[tier];
+      const partnerPlan = getPartnerPlanConfig(pricing, tier);
+      const partnerLabel = getPartnerPlanLabel(pricing, tier);
+
+      presentations[tier] = {
+        ...defaultPlan,
+        name: partnerLabel ?? defaultPlan.name,
+        checkoutCtaLabel:
+          tier === "performance" && partnerLabel
+            ? `Start ${partnerLabel} checkout`
+            : defaultPlan.checkoutCtaLabel,
+        summary:
+          partnerPlan?.label || pricing.displayProductName
+            ? defaultPlan.summary.replace("DealFlow", pricing.checkoutHeadline ?? pricing.displayProductName ?? "DealFlow")
+            : defaultPlan.summary,
+      };
+      return presentations;
+    },
+    {} as Record<SelectablePlanTier, PlanPresentation>,
+  );
 }

@@ -11,14 +11,39 @@ import {
 } from "@/components/onboarding/prepaywall-campaign-preview";
 import { normalizeBillingPlanTier } from "@/lib/billing/plans";
 import { getStripePlanPriceConfiguration } from "@/lib/integrations/stripe/service";
-import { SELECTABLE_PLAN_TIERS, type SelectablePlanTier } from "@/lib/billing/plan-presentation";
+import {
+  getPlanPresentationsForPartner,
+  SELECTABLE_PLAN_TIERS,
+  type SelectablePlanTier,
+} from "@/lib/billing/plan-presentation";
 import { getBillingSummary, getBillingSummaryForCampaign } from "@/lib/services/billing-service";
+import { getAppContext } from "@/lib/services/app-context";
 import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { parsePartnerPricingConfig } from "@/lib/white-label/partner-billing-config";
 
 function buildHomeHref(campaignId: string | null) {
   return campaignId ? `/builder?campaignId=${encodeURIComponent(campaignId)}` : "/onboarding";
+}
+
+async function loadPartnerPricingForCurrentWorkspace() {
+  const context = await getAppContext().catch(() => null);
+  const partnerId = context?.partner?.id ?? null;
+  const admin = createAdminClient();
+
+  if (!partnerId || !admin) {
+    return null;
+  }
+
+  const { data } = await admin
+    .from("partner_branding")
+    .select("pricing_json")
+    .eq("partner_id", partnerId)
+    .maybeSingle();
+
+  return parsePartnerPricingConfig((data as { pricing_json?: unknown } | null)?.pricing_json);
 }
 
 function toPreviewCampaignMode(intent: string): PrepaywallCampaignPreviewDraft["campaignMode"] {
@@ -69,10 +94,16 @@ export default async function PaywallPage({
     typeof params.campaignId === "string" && params.campaignId.length > 0 ? params.campaignId : null;
   const requestedPlanTier =
     typeof params.plan === "string" ? normalizeBillingPlanTier(params.plan) : "performance";
-  const performanceConfigured = Boolean(getStripePlanPriceConfiguration("performance"));
-  const availablePlanTiers: readonly SelectablePlanTier[] = performanceConfigured
-    ? SELECTABLE_PLAN_TIERS
-    : SELECTABLE_PLAN_TIERS.filter((tier) => tier !== "performance");
+  const partnerPricing = await loadPartnerPricingForCurrentWorkspace();
+  const planPresentations = getPlanPresentationsForPartner(partnerPricing);
+  const availablePlanTiers: readonly SelectablePlanTier[] = SELECTABLE_PLAN_TIERS.filter((tier) => {
+    if (partnerPricing && !partnerPricing.visiblePlans.includes(tier)) {
+      return false;
+    }
+
+    return Boolean(getStripePlanPriceConfiguration(tier, partnerPricing));
+  });
+  const performanceConfigured = availablePlanTiers.includes("performance");
   const selectedPlanTier = availablePlanTiers.includes(requestedPlanTier as SelectablePlanTier)
     ? requestedPlanTier
     : "starter";
@@ -129,10 +160,11 @@ export default async function PaywallPage({
             <div className="mt-5">
               <PaywallPlanSelector
                 campaignId={checkoutCampaignId}
-                disabled={!hasServerPreview}
+                disabled={!hasServerPreview || availablePlanTiers.length === 0}
                 initialPlanTier={selectablePlanTier}
                 availablePlanTiers={availablePlanTiers}
                 launchOverride={billing?.launchOverride === true}
+                planPresentations={planPresentations}
               />
             </div>
           </Card>

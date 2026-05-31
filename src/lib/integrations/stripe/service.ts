@@ -1,3 +1,4 @@
+import type Stripe from "stripe";
 import { getPublicAppUrl, getStripeEnv } from "@/lib/env";
 import { getStripeBillingProvider } from "@/lib/integrations/stripe/provider";
 import {
@@ -5,6 +6,12 @@ import {
   normalizeBillingPlanTier,
   type BillingPlanTier,
 } from "@/lib/billing/plans";
+import {
+  getPartnerMeterEventName,
+  getPartnerPlanConfig,
+  getPartnerPlanLabel,
+  type PartnerPricingConfig,
+} from "@/lib/white-label/partner-billing-config";
 
 export function getStripeClient() {
   return getStripeBillingProvider().getClient();
@@ -40,11 +47,72 @@ export type StripePlanPriceConfiguration = {
   priceSignature: string;
   lineItems: Array<{ price: string; quantity?: number }>;
   meterEventName: string | null;
+  partnerProductName: string | null;
+  partnerPlanLabel: string | null;
+  partnerPriceIds: Record<string, string>;
 };
 
 export function getStripePlanPriceConfiguration(
   planTier: BillingPlanTier,
+  partnerPricing?: PartnerPricingConfig | null,
 ): StripePlanPriceConfiguration | null {
+  const partnerPlan = getPartnerPlanConfig(partnerPricing, planTier);
+
+  if (partnerPlan && planTier === "performance") {
+    if (!partnerPlan.basePriceId || !partnerPlan.meteredLeadPriceId) {
+      return partnerPricing?.allowDefaultDealFlowPrices
+        ? getStripePlanPriceConfiguration(planTier, null)
+        : null;
+    }
+
+    const priceIds = [partnerPlan.basePriceId, partnerPlan.meteredLeadPriceId];
+    return {
+      planTier,
+      primaryPriceId: partnerPlan.basePriceId,
+      meteredPriceId: partnerPlan.meteredLeadPriceId,
+      priceIds,
+      priceSignature: priceIds.slice().sort().join("+"),
+      lineItems: [
+        { price: partnerPlan.basePriceId, quantity: 1 },
+        { price: partnerPlan.meteredLeadPriceId },
+      ],
+      meterEventName: getPartnerMeterEventName(partnerPlan),
+      partnerProductName: partnerPricing?.displayProductName ?? null,
+      partnerPlanLabel: getPartnerPlanLabel(partnerPricing, planTier),
+      partnerPriceIds: {
+        performance_base: partnerPlan.basePriceId,
+        performance_metered_lead: partnerPlan.meteredLeadPriceId,
+      },
+    };
+  }
+
+  if (partnerPlan && planTier !== "growth") {
+    if (!partnerPlan.priceId) {
+      return partnerPricing?.allowDefaultDealFlowPrices
+        ? getStripePlanPriceConfiguration(planTier, null)
+        : null;
+    }
+
+    return {
+      planTier,
+      primaryPriceId: partnerPlan.priceId,
+      meteredPriceId: null,
+      priceIds: [partnerPlan.priceId],
+      priceSignature: partnerPlan.priceId,
+      lineItems: [{ price: partnerPlan.priceId, quantity: 1 }],
+      meterEventName: null,
+      partnerProductName: partnerPricing?.displayProductName ?? null,
+      partnerPlanLabel: getPartnerPlanLabel(partnerPricing, planTier),
+      partnerPriceIds: {
+        [planTier]: partnerPlan.priceId,
+      },
+    };
+  }
+
+  if (partnerPricing && !partnerPricing.allowDefaultDealFlowPrices && planTier !== "growth") {
+    return null;
+  }
+
   const env = getStripeEnv();
 
   if (!env) {
@@ -68,6 +136,9 @@ export function getStripePlanPriceConfiguration(
         { price: env.performanceLeadPriceId },
       ],
       meterEventName: env.performanceLeadMeterEventName || PERFORMANCE_LEAD_METER_EVENT_NAME,
+      partnerProductName: null,
+      partnerPlanLabel: null,
+      partnerPriceIds: {},
     };
   }
 
@@ -84,6 +155,9 @@ export function getStripePlanPriceConfiguration(
     priceSignature: priceId,
     lineItems: [{ price: priceId, quantity: 1 }],
     meterEventName: null,
+    partnerProductName: null,
+    partnerPlanLabel: null,
+    partnerPriceIds: {},
   };
 }
 
@@ -140,6 +214,33 @@ export function getPlanTierFromSubscriptionPriceIds(priceIds: string[]) {
   return null;
 }
 
+export function getPartnerPlanTierFromSubscriptionPriceIds(params: {
+  priceIds: string[];
+  metadata: Stripe.Metadata | Record<string, string | undefined>;
+}) {
+  const partnerId = params.metadata.partner_id?.trim();
+  const metadataTier = normalizeBillingPlanTier(params.metadata.internal_plan_tier || params.metadata.plan_tier);
+  if (!partnerId || metadataTier === "growth") {
+    return null;
+  }
+
+  const priceSet = new Set(params.priceIds.filter(Boolean));
+  const metadataPriceIds = (params.metadata.partner_price_ids ?? "")
+    .split(",")
+    .map((priceId) => priceId.trim())
+    .filter(Boolean);
+
+  if (!metadataPriceIds.length || !metadataPriceIds.every((priceId) => priceSet.has(priceId))) {
+    return null;
+  }
+
+  if (metadataTier === "performance" && metadataPriceIds.length < 2) {
+    return null;
+  }
+
+  return metadataTier;
+}
+
 export function getCheckoutUrls(params?: { campaignId?: string | null; planTier?: BillingPlanTier | null }) {
   const baseUrl = getPublicAppUrl();
   const extraQuery = new URLSearchParams();
@@ -177,14 +278,26 @@ export function buildStripeCheckoutMetadata(params: {
   partnerId?: string | null;
   partnerSlug?: string | null;
   partnerAttributionSource?: string | null;
+  partnerProductName?: string | null;
+  partnerPlanLabel?: string | null;
+  partnerPriceIds?: string[] | null;
+  commissionRateSnapshot?: number | null;
 }) {
   return {
     organization_id: params.organizationId,
     user_id: params.userId,
     plan_tier: normalizeBillingPlanTier(params.planTier),
+    internal_plan_tier: normalizeBillingPlanTier(params.planTier),
     partner_id: params.partnerId ?? "",
     partner_slug: params.partnerSlug ?? "",
     partner_attribution_source: params.partnerAttributionSource ?? "native",
+    partner_product_name: params.partnerProductName ?? "",
+    partner_plan_label: params.partnerPlanLabel ?? "",
+    partner_price_ids: params.partnerPriceIds?.join(",") ?? "",
+    commission_rate_snapshot:
+      typeof params.commissionRateSnapshot === "number" && Number.isFinite(params.commissionRateSnapshot)
+        ? String(params.commissionRateSnapshot)
+        : "",
     ...(params.trialPeriodDays ? { trial_period_days: String(params.trialPeriodDays) } : {}),
     ...(params.campaignId ? { campaign_id: params.campaignId } : {}),
   };

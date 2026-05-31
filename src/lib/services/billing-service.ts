@@ -9,12 +9,14 @@ import {
   buildStripeCheckoutMetadata,
   getBillingPortalUrls,
   getCheckoutUrls,
+  getPartnerPlanTierFromSubscriptionPriceIds,
   getPlanTierFromSubscriptionPriceIds,
   getStripePlanPriceConfiguration,
 } from "@/lib/integrations/stripe/service";
 import { getStripeBillingProvider } from "@/lib/integrations/stripe/provider";
 import {
   hasFeatureAccess,
+  PERFORMANCE_LEAD_METER_EVENT_NAME,
   getSelfServeTrialPeriodDays,
   normalizeBillingPlanTier,
   type BillingFeature,
@@ -33,6 +35,10 @@ import {
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { queueSubscriptionSuspensionJobsForOrganization } from "@/lib/services/subscription-suspension-service";
 import type { Database, Json } from "@/lib/supabase/types";
+import {
+  parsePartnerPricingConfig,
+  type PartnerPricingConfig,
+} from "@/lib/white-label/partner-billing-config";
 
 type BillingRow = Database["public"]["Tables"]["billing_subscriptions"]["Row"];
 type BillingInsert = Database["public"]["Tables"]["billing_subscriptions"]["Insert"];
@@ -51,6 +57,8 @@ export type BillingSummary = {
   billingState: BillingLifecycleState;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
+  partnerProductName: string | null;
+  partnerPlanLabel: string | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   launchAllowed: boolean;
@@ -85,6 +93,11 @@ type StripeSubscriptionSyncSource = {
   eventId: string | null;
   eventCreated: number | null;
   eventType: string | null;
+};
+
+type PartnerBillingConfigBundle = {
+  pricing: PartnerPricingConfig | null;
+  commissionRate: number | null;
 };
 
 function isUniqueViolation(error: unknown) {
@@ -127,6 +140,40 @@ function getStripeSubscriptionIdFromSession(session: Stripe.Checkout.Session) {
   }
 
   return session.subscription?.id ?? null;
+}
+
+async function getPartnerBillingConfigBundle(
+  partnerId: string | null | undefined,
+  admin = createAdminClient(),
+  options: { requireActive?: boolean } = {},
+): Promise<PartnerBillingConfigBundle> {
+  if (!partnerId || !admin) {
+    return { pricing: null, commissionRate: null };
+  }
+
+  const [partnerResult, brandingResult] = await Promise.all([
+    admin.from("partners").select("commission_rate,status").eq("id", partnerId).maybeSingle(),
+    admin.from("partner_branding").select("pricing_json").eq("partner_id", partnerId).maybeSingle(),
+  ]);
+
+  if (partnerResult.error) {
+    throw new ApiError(500, partnerResult.error.message, "partner_billing_config_fetch_failed");
+  }
+
+  if (brandingResult.error) {
+    throw new ApiError(500, brandingResult.error.message, "partner_billing_pricing_fetch_failed");
+  }
+
+  const partner = partnerResult.data as { commission_rate?: number | string | null; status?: string | null } | null;
+  if (!partner || (options.requireActive === true && partner.status !== "active")) {
+    throw new ApiError(400, "Partner billing is not active.", "partner_billing_inactive");
+  }
+
+  const branding = brandingResult.data as { pricing_json?: unknown } | null;
+  return {
+    pricing: parsePartnerPricingConfig(branding?.pricing_json),
+    commissionRate: Number(partner.commission_rate ?? 0),
+  };
 }
 
 function normalizeCheckoutCampaignId(campaignId?: string | null) {
@@ -396,6 +443,12 @@ function mapBillingRow(row: BillingRow | null, fallbackPlanTier: string): Billin
     billingState: entitlements.billingState,
     stripeCustomerId: row?.stripe_customer_id ?? null,
     stripeSubscriptionId: row?.stripe_subscription_id ?? null,
+    partnerProductName: typeof (row as { partner_product_name?: unknown } | null)?.partner_product_name === "string"
+      ? ((row as { partner_product_name?: string | null }).partner_product_name ?? null)
+      : null,
+    partnerPlanLabel: typeof (row as { partner_plan_label?: unknown } | null)?.partner_plan_label === "string"
+      ? ((row as { partner_plan_label?: string | null }).partner_plan_label ?? null)
+      : null,
     currentPeriodEnd: row?.current_period_end ?? null,
     cancelAtPeriodEnd: row?.cancel_at_period_end ?? false,
     launchAllowed: entitlements.canLaunch,
@@ -416,7 +469,11 @@ function getActivePlanTier(subscription: Stripe.Subscription) {
   const priceIds = subscription.items.data
     .map((item) => (typeof item.price?.id === "string" ? item.price.id : null))
     .filter((priceId): priceId is string => Boolean(priceId));
-  const planTier = getPlanTierFromSubscriptionPriceIds(priceIds);
+  const planTier =
+    getPartnerPlanTierFromSubscriptionPriceIds({
+      priceIds,
+      metadata: subscription.metadata,
+    }) ?? getPlanTierFromSubscriptionPriceIds(priceIds);
 
   if (!planTier) {
     throw new ApiError(
@@ -435,6 +492,69 @@ function getSubscriptionItemByPriceId(subscription: Stripe.Subscription, priceId
   }
 
   return subscription.items.data.find((item) => item.price?.id === priceId) ?? null;
+}
+
+function getMetadataPartnerPriceIds(metadata: Stripe.Metadata) {
+  return (metadata.partner_price_ids ?? "")
+    .split(",")
+    .map((priceId) => priceId.trim())
+    .filter(Boolean);
+}
+
+function buildPartnerPriceConfigFromSubscriptionMetadata(
+  planTier: BillingPlanTier,
+  metadata: Stripe.Metadata,
+) {
+  const priceIds = getMetadataPartnerPriceIds(metadata);
+  if (!metadata.partner_id || !priceIds.length || planTier === "growth") {
+    return null;
+  }
+
+  if (planTier === "performance") {
+    const [basePriceId, meteredPriceId] = priceIds;
+    if (!basePriceId || !meteredPriceId) {
+      return null;
+    }
+
+    return {
+      planTier,
+      primaryPriceId: basePriceId,
+      meteredPriceId,
+      priceIds,
+      priceSignature: priceIds.slice().sort().join("+"),
+      lineItems: [
+        { price: basePriceId, quantity: 1 },
+        { price: meteredPriceId },
+      ],
+      meterEventName: metadata.performance_meter_event_name || PERFORMANCE_LEAD_METER_EVENT_NAME,
+      partnerProductName: metadata.partner_product_name || null,
+      partnerPlanLabel: metadata.partner_plan_label || null,
+      partnerPriceIds: {
+        performance_base: basePriceId,
+        performance_metered_lead: meteredPriceId,
+      },
+    };
+  }
+
+  const [priceId] = priceIds;
+  if (!priceId) {
+    return null;
+  }
+
+  return {
+    planTier,
+    primaryPriceId: priceId,
+    meteredPriceId: null,
+    priceIds: [priceId],
+    priceSignature: priceId,
+    lineItems: [{ price: priceId, quantity: 1 }],
+    meterEventName: null,
+    partnerProductName: metadata.partner_product_name || null,
+    partnerPlanLabel: metadata.partner_plan_label || null,
+    partnerPriceIds: {
+      [planTier]: priceId,
+    },
+  };
 }
 
 function getOrganizationPlanForStatus(planTier: BillingPlanTier, status: string) {
@@ -756,10 +876,19 @@ export async function createBillingCheckoutSession(params: {
   }
 
   const billingClient = createAdminClient() ?? supabase;
-  const priceConfig = getStripePlanPriceConfiguration(params.planTier);
+  const partnerBilling = await getPartnerBillingConfigBundle(context.partner?.id ?? null, billingClient, {
+    requireActive: true,
+  });
+  const priceConfig = getStripePlanPriceConfiguration(params.planTier, partnerBilling.pricing);
 
   if (!priceConfig) {
-    throw new ApiError(503, "The selected plan is not configured in Stripe.", "stripe_price_missing");
+    throw new ApiError(
+      503,
+      context.partner?.id
+        ? "The selected partner plan is not configured in Stripe."
+        : "The selected plan is not configured in Stripe.",
+      context.partner?.id ? "partner_stripe_price_missing" : "stripe_price_missing",
+    );
   }
 
   if (requestedCampaignId) {
@@ -820,6 +949,10 @@ export async function createBillingCheckoutSession(params: {
     partnerId: context.partner?.id ?? null,
     partnerSlug: context.partner?.slug ?? null,
     partnerAttributionSource: context.partner?.id ? "partner_account" : "native",
+    partnerProductName: priceConfig.partnerProductName,
+    partnerPlanLabel: priceConfig.partnerPlanLabel,
+    partnerPriceIds: priceConfig.priceIds,
+    commissionRateSnapshot: partnerBilling.commissionRate,
   });
   const checkoutMetadata = {
     ...metadata,
@@ -971,6 +1104,10 @@ export async function createBillingCheckoutSession(params: {
     last_checkout_trial_period_days: checkoutTrialPeriodDays === null ? null : String(checkoutTrialPeriodDays),
     last_checkout_price_signature: priceConfig.priceSignature,
     last_checkout_price_ids: priceConfig.priceIds,
+    last_checkout_partner_product_name: priceConfig.partnerProductName,
+    last_checkout_partner_plan_label: priceConfig.partnerPlanLabel,
+    last_checkout_partner_price_ids: priceConfig.partnerPriceIds,
+    last_checkout_commission_rate_snapshot: partnerBilling.commissionRate,
   } satisfies Json;
 
   const upsertRow: BillingInsert = {
@@ -981,8 +1118,12 @@ export async function createBillingCheckoutSession(params: {
     stripe_checkout_session_id: session.id,
     plan_tier: params.planTier,
     status: "checkout_started",
+    partner_product_name: priceConfig.partnerProductName,
+    partner_plan_label: priceConfig.partnerPlanLabel,
+    partner_price_ids: priceConfig.partnerPriceIds,
+    commission_rate_snapshot: partnerBilling.commissionRate,
     metadata: metadataPatch,
-  };
+  } as BillingInsert;
 
   const { error: upsertError } = await billingClient.from("billing_subscriptions").upsert(upsertRow as never, {
     onConflict: "organization_id",
@@ -1280,8 +1421,11 @@ export async function syncBillingSubscriptionFromStripe(
     throw new ApiError(400, "Stripe subscription is missing organization metadata.", "stripe_metadata_missing");
   }
 
+  const partnerBilling = await getPartnerBillingConfigBundle(partnerId, admin);
   const planTier = getActivePlanTier(subscription);
-  const priceConfig = getStripePlanPriceConfiguration(planTier);
+  const priceConfig =
+    getStripePlanPriceConfiguration(planTier, partnerBilling.pricing) ??
+    buildPartnerPriceConfigFromSubscriptionMetadata(planTier, subscription.metadata);
   if (!priceConfig) {
     throw new ApiError(
       400,
@@ -1311,6 +1455,13 @@ export async function syncBillingSubscriptionFromStripe(
     ...subscription.metadata,
     price_signature: priceConfig.priceSignature,
     price_ids: priceConfig.priceIds,
+    partner_product_name: priceConfig.partnerProductName,
+    partner_plan_label: priceConfig.partnerPlanLabel,
+    partner_price_ids: priceConfig.priceIds.join(","),
+    commission_rate_snapshot:
+      typeof partnerBilling.commissionRate === "number" && Number.isFinite(partnerBilling.commissionRate)
+        ? String(partnerBilling.commissionRate)
+        : subscription.metadata.commission_rate_snapshot ?? "",
     ...(planTier === "performance"
       ? {
           performance_base_price_id: priceConfig.primaryPriceId,
@@ -1331,13 +1482,17 @@ export async function syncBillingSubscriptionFromStripe(
     stripe_price_id: priceId,
     plan_tier: planTier,
     status: subscription.status,
+    partner_product_name: priceConfig.partnerProductName,
+    partner_plan_label: priceConfig.partnerPlanLabel,
+    partner_price_ids: priceConfig.partnerPriceIds,
+    commission_rate_snapshot: partnerBilling.commissionRate,
     current_period_start: periodItem?.current_period_start
       ? new Date(periodItem.current_period_start * 1000).toISOString()
       : null,
     current_period_end: currentPeriodEndIso,
     cancel_at_period_end: subscription.cancel_at_period_end,
     metadata: subscriptionMetadata,
-  };
+  } as BillingInsert;
 
   const { data: applyRows, error: billingError } = await (admin as any).rpc(
     "apply_billing_subscription_webhook",
@@ -1394,6 +1549,26 @@ export async function syncBillingSubscriptionFromStripe(
     throw new ApiError(500, organizationError.message, "organization_plan_update_failed");
   }
 
+  await admin
+    .from("billing_subscriptions")
+    .update({
+      partner_product_name: priceConfig.partnerProductName,
+      partner_plan_label: priceConfig.partnerPlanLabel,
+      partner_price_ids: priceConfig.partnerPriceIds,
+      commission_rate_snapshot: partnerBilling.commissionRate,
+    } as never)
+    .eq("stripe_subscription_id", subscription.id)
+    .then(({ error }) => {
+      if (error) {
+        logWarn("partner_billing_subscription_metadata_patch_failed", {
+          organizationId,
+          partnerId,
+          stripeSubscriptionId: subscription.id,
+          message: error.message,
+        });
+      }
+    });
+
   const entitlementState = evaluateCampaignEntitlements({
     row: {
       plan_tier: subscriptionRow.plan_tier,
@@ -1431,6 +1606,12 @@ export async function syncBillingSubscriptionFromStripe(
         stripe_subscription_id: subscription.id,
         pricing_plan_key: planTier,
         attribution_source: "stripe_subscription_metadata",
+        metadata_json: {
+          partner_product_name: priceConfig.partnerProductName,
+          partner_plan_label: priceConfig.partnerPlanLabel,
+          partner_price_ids: priceConfig.partnerPriceIds,
+          commission_rate_snapshot: partnerBilling.commissionRate,
+        },
       } as never,
       { onConflict: "stripe_subscription_id" },
     ).then(({ error }) => {
@@ -1469,7 +1650,7 @@ async function createPartnerCommissionEventForInvoice(event: Stripe.Event) {
 
   const { data: billingRow, error: billingError } = await admin
     .from("billing_subscriptions")
-    .select("organization_id,partner_id,stripe_customer_id,stripe_subscription_id")
+    .select("organization_id,partner_id,stripe_customer_id,stripe_subscription_id,commission_rate_snapshot,partner_product_name,partner_plan_label")
     .eq("stripe_subscription_id", subscriptionId)
     .maybeSingle();
 
@@ -1482,6 +1663,9 @@ async function createPartnerCommissionEventForInvoice(event: Stripe.Event) {
     partner_id?: string | null;
     stripe_customer_id?: string | null;
     stripe_subscription_id?: string | null;
+    commission_rate_snapshot?: number | string | null;
+    partner_product_name?: string | null;
+    partner_plan_label?: string | null;
   };
   if (!billing.partner_id || !billing.organization_id) {
     return;
@@ -1492,7 +1676,11 @@ async function createPartnerCommissionEventForInvoice(event: Stripe.Event) {
     .select("commission_rate")
     .eq("id", billing.partner_id)
     .maybeSingle();
-  const commissionRate = Number((partnerRow as { commission_rate?: number | string | null } | null)?.commission_rate ?? 0);
+  const commissionRate = Number(
+    billing.commission_rate_snapshot ??
+      (partnerRow as { commission_rate?: number | string | null } | null)?.commission_rate ??
+      0,
+  );
   const grossAmount = invoice.amount_paid ?? invoice.total ?? 0;
   const commissionAmount = Math.max(0, Math.round(grossAmount * (Number.isFinite(commissionRate) ? commissionRate : 0)));
 
@@ -1511,6 +1699,11 @@ async function createPartnerCommissionEventForInvoice(event: Stripe.Event) {
       currency: invoice.currency ?? "usd",
       status: "pending",
       notes: `Created from Stripe event ${event.id}`,
+      metadata_json: {
+        partner_product_name: billing.partner_product_name ?? null,
+        partner_plan_label: billing.partner_plan_label ?? null,
+        commission_rate_source: billing.commission_rate_snapshot == null ? "partner_current" : "subscription_snapshot",
+      },
     } as never,
     { onConflict: "partner_id,stripe_invoice_id,event_type" },
   );

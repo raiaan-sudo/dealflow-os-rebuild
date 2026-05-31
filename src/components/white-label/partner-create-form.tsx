@@ -13,6 +13,16 @@ type CreatePartnerState = {
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
+  productName: string;
+  checkoutHeadline: string;
+  allowDefaultDealFlowPrices: boolean;
+  performanceLabel: string;
+  performanceBasePriceId: string;
+  performanceLeadPriceId: string;
+  starterLabel: string;
+  starterPriceId: string;
+  proLabel: string;
+  proPriceId: string;
   commissionRatePercent: string;
   status: "draft" | "active";
 };
@@ -27,6 +37,16 @@ const initialState: CreatePartnerState = {
   primaryColor: "#67e8f9",
   secondaryColor: "#0f172a",
   accentColor: "#a7f3d0",
+  productName: "",
+  checkoutHeadline: "",
+  allowDefaultDealFlowPrices: false,
+  performanceLabel: "",
+  performanceBasePriceId: "",
+  performanceLeadPriceId: "",
+  starterLabel: "",
+  starterPriceId: "",
+  proLabel: "",
+  proPriceId: "",
   commissionRatePercent: "20",
   status: "draft",
 };
@@ -89,6 +109,28 @@ export function PartnerCreateForm() {
           accentColor: form.accentColor || null,
           commissionRate: Number.isFinite(commissionRate) ? commissionRate : 0,
           status: form.status,
+          pricing: {
+            displayProductName: form.productName.trim() || null,
+            checkoutHeadline: form.checkoutHeadline.trim() || null,
+            visiblePlans: ["performance", "starter", "pro"],
+            allowDefaultDealFlowPrices: form.allowDefaultDealFlowPrices,
+            plans: {
+              performance: {
+                label: form.performanceLabel.trim() || form.productName.trim() || null,
+                basePriceId: form.performanceBasePriceId.trim() || null,
+                meteredLeadPriceId: form.performanceLeadPriceId.trim() || null,
+                meterEventName: "dealflow_billable_lead",
+              },
+              starter: {
+                label: form.starterLabel.trim() || null,
+                priceId: form.starterPriceId.trim() || null,
+              },
+              pro: {
+                label: form.proLabel.trim() || null,
+                priceId: form.proPriceId.trim() || null,
+              },
+            },
+          },
         }),
       });
 
@@ -239,6 +281,109 @@ export function PartnerCreateForm() {
         <span className="mt-1 block text-xs text-cyan-100/70">
           Short link also works: <span className="font-mono">/{slugify(form.slug || form.brandName) || "partner-slug"}</span>
         </span>
+      </div>
+
+      <div className="space-y-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/75">Partner Stripe products</p>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            These are DealFlow-owned Stripe Product/Price IDs. Partner labels show in Checkout, invoices, receipts, and billing portal.
+          </p>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-white">Product display name</span>
+            <input
+              value={form.productName}
+              onChange={(event) => updateField("productName", event.target.value)}
+              placeholder="EGEN ACCELERATOR"
+              className="h-11 w-full rounded-df-control border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition focus:border-cyan-200/50"
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-white">Checkout headline</span>
+            <input
+              value={form.checkoutHeadline}
+              onChange={(event) => updateField("checkoutHeadline", event.target.value)}
+              placeholder="EGEN Accelerator"
+              className="h-11 w-full rounded-df-control border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition focus:border-cyan-200/50"
+            />
+          </label>
+        </div>
+        <label className="flex items-center gap-3 rounded-df-control border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white">
+          <input
+            type="checkbox"
+            checked={form.allowDefaultDealFlowPrices}
+            onChange={(event) => updateField("allowDefaultDealFlowPrices", event.target.checked)}
+            className="h-4 w-4"
+          />
+          Allow default DealFlow prices when partner price IDs are missing
+        </label>
+        <div className="grid gap-4 lg:grid-cols-3">
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-white">Performance label</span>
+            <input
+              value={form.performanceLabel}
+              onChange={(event) => updateField("performanceLabel", event.target.value)}
+              placeholder="EGEN Accelerator"
+              className="h-11 w-full rounded-df-control border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition focus:border-cyan-200/50"
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-white">Performance base price</span>
+            <input
+              value={form.performanceBasePriceId}
+              onChange={(event) => updateField("performanceBasePriceId", event.target.value)}
+              placeholder="price_..."
+              className="h-11 w-full rounded-df-control border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition focus:border-cyan-200/50"
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-white">Performance lead price</span>
+            <input
+              value={form.performanceLeadPriceId}
+              onChange={(event) => updateField("performanceLeadPriceId", event.target.value)}
+              placeholder="price_..."
+              className="h-11 w-full rounded-df-control border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition focus:border-cyan-200/50"
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-white">Starter label</span>
+            <input
+              value={form.starterLabel}
+              onChange={(event) => updateField("starterLabel", event.target.value)}
+              placeholder="EGEN Launch"
+              className="h-11 w-full rounded-df-control border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition focus:border-cyan-200/50"
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-white">Starter price</span>
+            <input
+              value={form.starterPriceId}
+              onChange={(event) => updateField("starterPriceId", event.target.value)}
+              placeholder="price_..."
+              className="h-11 w-full rounded-df-control border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition focus:border-cyan-200/50"
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-white">Pro price</span>
+            <input
+              value={form.proPriceId}
+              onChange={(event) => updateField("proPriceId", event.target.value)}
+              placeholder="price_..."
+              className="h-11 w-full rounded-df-control border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition focus:border-cyan-200/50"
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-white">Pro label</span>
+            <input
+              value={form.proLabel}
+              onChange={(event) => updateField("proLabel", event.target.value)}
+              placeholder="EGEN Scale"
+              className="h-11 w-full rounded-df-control border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition focus:border-cyan-200/50"
+            />
+          </label>
+        </div>
       </div>
 
       {error ? (

@@ -59,8 +59,9 @@ export async function PlatformPartnersAdmin({
       </div>
 
       <div className="rounded-df-panel border border-amber-400/20 bg-amber-400/10 p-5 text-sm leading-6 text-amber-100">
-        V1 deliberately excludes Stripe Connect payouts, cloned apps, partner-owned Stripe accounts, partner-owned provider keys,
-        and partner-specific campaign engines.
+        V1 runs on DealFlow&apos;s Stripe account, provider keys, app infrastructure, and campaign engine. Partner
+        branding, product names, pricing display, attribution, reporting, and commission tracking are supported.
+        Partner payouts are handled manually from the commission ledger.
       </div>
     </div>
   );

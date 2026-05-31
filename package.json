@@ -62,6 +62,8 @@
     "operator:offboarding-dry-run": "node ./scripts/audit-campaign-offboarding-cleanup.mjs",
     "test:billing-free-trial": "node ./scripts/test-billing-free-trial.mjs",
     "test:performance-billing": "node ./scripts/test-performance-billing.mjs",
+    "test:partner-branded-billing": "node ./scripts/test-partner-branded-billing.mjs",
+    "test-white-label-foundation": "node ./scripts/test-white-label-foundation.mjs",
     "test:activation-telemetry": "node ./scripts/test-activation-telemetry.mjs",
     "test:onboarding-daily-budget": "node ./scripts/test-onboarding-daily-budget.mjs",
     "test:launch-budget-tracking-safety": "node ./scripts/test-launch-budget-tracking-safety.mjs",

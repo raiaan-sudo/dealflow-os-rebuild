@@ -7,6 +7,7 @@ import { CheckoutButton } from "@/components/billing/checkout-button";
 import {
   getPlanPresentation,
   SELECTABLE_PLAN_TIERS,
+  type PlanPresentation,
   type SelectablePlanTier,
 } from "@/lib/billing/plan-presentation";
 
@@ -16,18 +17,21 @@ export function PaywallPlanSelector({
   campaignId,
   disabled = false,
   launchOverride = false,
+  planPresentations,
 }: {
   initialPlanTier: SelectablePlanTier;
   availablePlanTiers?: readonly SelectablePlanTier[];
   campaignId: string | null;
   disabled?: boolean;
   launchOverride?: boolean;
+  planPresentations?: Record<SelectablePlanTier, PlanPresentation>;
 }) {
   const initialAvailableTier = availablePlanTiers.includes(initialPlanTier)
     ? initialPlanTier
     : availablePlanTiers[0] ?? "starter";
   const [selectedTier, setSelectedTier] = useState<SelectablePlanTier>(initialAvailableTier);
-  const selectedPlan = getPlanPresentation(selectedTier);
+  const getPresentation = (tier: SelectablePlanTier) => planPresentations?.[tier] ?? getPlanPresentation(tier);
+  const selectedPlan = getPresentation(selectedTier);
   const overrideHref = `/unlock?checkout=override&plan=${encodeURIComponent(selectedTier)}${
     campaignId ? `&campaignId=${encodeURIComponent(campaignId)}` : ""
   }`;
@@ -36,7 +40,7 @@ export function PaywallPlanSelector({
     <div className="space-y-5">
       <div className="grid gap-4 lg:grid-cols-3">
         {availablePlanTiers.map((tier) => {
-          const plan = getPlanPresentation(tier);
+          const plan = getPresentation(tier);
           const selected = selectedTier === tier;
 
           return (

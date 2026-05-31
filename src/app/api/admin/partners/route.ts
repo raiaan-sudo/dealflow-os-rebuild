@@ -2,6 +2,11 @@ import { z } from "zod";
 import { ApiError, assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizePartnerSlug } from "@/lib/white-label/branding";
+import {
+  parsePartnerPricingConfig,
+  serializePartnerPricingConfig,
+  validatePartnerPricingConfig,
+} from "@/lib/white-label/partner-billing-config";
 import { requirePlatformAdmin } from "@/lib/white-label/permissions";
 
 const partnerCreateSchema = z.object({
@@ -18,6 +23,7 @@ const partnerCreateSchema = z.object({
   defaultTimezone: z.string().min(2).max(80).default("America/Toronto"),
   commissionRate: z.number().min(0).max(1).default(0),
   status: z.enum(["draft", "active", "paused", "archived"]).default("draft"),
+  pricing: z.unknown().optional(),
 });
 
 export async function POST(request: Request) {
@@ -33,6 +39,15 @@ export async function POST(request: Request) {
     const slug = normalizePartnerSlug(body.slug);
     if (!slug) {
       throw new ApiError(400, "Partner slug is invalid.", "partner_slug_invalid");
+    }
+    const pricing = parsePartnerPricingConfig(body.pricing);
+    const pricingIssues = validatePartnerPricingConfig(pricing);
+    if (body.status === "active" && pricingIssues.length > 0) {
+      throw new ApiError(
+        400,
+        `Partner pricing is incomplete: ${pricingIssues.join(" ")}`,
+        "partner_pricing_invalid",
+      );
     }
 
     const { data: partner, error } = await admin
@@ -61,16 +76,42 @@ export async function POST(request: Request) {
       throw new ApiError(500, error.message, "partner_create_failed");
     }
 
+    const partnerId = (partner as { id?: string } | null)?.id ?? null;
+
+    if (partnerId) {
+      const { error: brandingError } = await admin.from("partner_branding").upsert(
+        {
+          partner_id: partnerId,
+          theme_json: {
+            primaryColor: body.primaryColor,
+            secondaryColor: body.secondaryColor ?? null,
+            accentColor: body.accentColor ?? null,
+            logoUrl: body.logoUrl ?? null,
+            faviconUrl: body.faviconUrl ?? null,
+          },
+          pricing_json: serializePartnerPricingConfig(pricing),
+          updated_by: context.user.id,
+        } as never,
+        { onConflict: "partner_id" },
+      );
+
+      if (brandingError) {
+        throw new ApiError(500, brandingError.message, "partner_branding_create_failed");
+      }
+    }
+
     await admin.from("partner_audit_logs").insert({
-      partner_id: (partner as { id?: string } | null)?.id ?? null,
+      partner_id: partnerId,
       actor_user_id: context.user.id,
       actor_role: "platform_admin",
       action: "partner_created",
       target_type: "partner",
-      target_id: (partner as { id?: string } | null)?.id ?? null,
+      target_id: partnerId,
       metadata_json: {
         slug,
         status: body.status,
+        hasPartnerPricing: Object.keys(pricing.plans).length > 0,
+        pricingIssues,
       },
       user_agent: request.headers.get("user-agent"),
     } as never);
