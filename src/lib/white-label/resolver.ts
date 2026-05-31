@@ -240,14 +240,20 @@ export async function resolvePartnerContext(input: PartnerResolutionInput): Prom
   const inviteCode = input.inviteCode ?? routeParams.inviteCode;
   const partnerSlug = input.partnerSlug ?? routeParams.partnerSlug;
 
+  const byInvite = await findPartnerByInvite(inviteCode);
+  if (byInvite) {
+    const normalizedSlug = normalizePartnerSlug(partnerSlug);
+    if (!normalizedSlug || byInvite.partner.slug === normalizedSlug) {
+      return lookupToContext(byInvite);
+    }
+    return NATIVE_PARTNER_CONTEXT;
+  }
+
   const byDomain = await findPartnerByVerifiedDomain(hostname);
   if (byDomain) return lookupToContext(byDomain);
 
   const bySlug = await findPartnerBySlug(partnerSlug);
   if (bySlug) return lookupToContext(bySlug);
-
-  const byInvite = await findPartnerByInvite(inviteCode);
-  if (byInvite) return lookupToContext(byInvite);
 
   return NATIVE_PARTNER_CONTEXT;
 }

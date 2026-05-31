@@ -52,7 +52,8 @@ assert.match(migration, /is_current_user_partner_member/, "partner membership RL
 assert.match(migration, /partner_commission_events_invoice_event_unique/, "commission event idempotency index must exist");
 assert.match(migration, /partner_id is null/, "native DealFlow null partner path must be preserved");
 
-assert.match(resolver, /findPartnerByVerifiedDomain[\s\S]*findPartnerBySlug[\s\S]*findPartnerByInvite/, "resolver must implement domain, slug, invite lookup order");
+assert.match(resolver, /findPartnerByInvite[\s\S]*findPartnerByVerifiedDomain[\s\S]*findPartnerBySlug/, "resolver must prefer explicit invite attribution before slug/domain fallback");
+assert.match(resolver, /byInvite\.partner\.slug === normalizedSlug/, "partner invite routes must reject slug/code mismatches");
 assert.match(resolver, /verification_status", "verified"/, "resolver must reject unverified custom domains");
 assert.match(resolver, /nativeFallback/, "resolver must have native fallback");
 assert.match(resolver, /isInviteUsableForPartner/, "invite route must validate expiry and use limits");
