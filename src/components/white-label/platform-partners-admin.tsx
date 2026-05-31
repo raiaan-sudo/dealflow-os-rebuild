@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { PartnerCreateForm } from "@/components/white-label/partner-create-form";
+import { PartnerStripeSetupPanel } from "@/components/white-label/partner-stripe-setup-panel";
 import { requirePlatformAdmin } from "@/lib/white-label/permissions";
 import { getPlatformPartnerDetail, listPlatformPartners } from "@/lib/white-label/queries";
 
@@ -200,6 +201,11 @@ export async function PartnerDetailDashboard({ partnerId }: { partnerId: string 
           />
         </div>
       </div>
+
+      <PartnerStripeSetupPanel
+        partnerId={String(partner.id)}
+        productName={text(pricing.displayProductName, "EGEN ACCELERATOR")}
+      />
 
       <div className="grid gap-4 xl:grid-cols-2">
         <MiniTable
