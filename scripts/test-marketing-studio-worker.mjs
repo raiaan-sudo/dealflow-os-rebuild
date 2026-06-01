@@ -363,9 +363,10 @@ assert.match(unlockPage, /reason:\s*activatedByCheckout \? "checkout_success" : 
 
 const creativeIntakeRoute = fs.readFileSync("src/app/api/campaigns/[id]/creative-intake/route.ts", "utf8");
 assert.match(creativeIntakeRoute, /body\.action === "approve"/);
-assert.match(creativeIntakeRoute, /reason:\s*"creative_brief_approved"/);
+assert.match(creativeIntakeRoute, /manual_render_required/);
 
-assert.match(creativeStudioPage, /reason:\s*"creative_studio_visit"/);
+assert.doesNotMatch(creativeStudioPage, /reason:\s*"creative_studio_visit"/);
+assert.doesNotMatch(creativeStudioPage, /ensureStaticCreativeRenderQueuedForCampaign/);
 progress("after auto queue assertions");
 
 const operatorDebtScript = fs.readFileSync("scripts/check-operator-debt.mjs", "utf8");

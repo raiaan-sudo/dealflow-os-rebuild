@@ -17,7 +17,6 @@ import {
   readCreativeChatIntakeFromPlan,
   type CreativeIntakeCampaignDefaults,
 } from "@/lib/services/creative-chat-intake-service";
-import { ensureStaticCreativeRenderQueuedForCampaign } from "@/lib/services/static-creative-render-queue-service";
 
 const paramsSchema = z.object({
   id: z.string().min(1),
@@ -120,28 +119,20 @@ export async function POST(
       revisionMessage: body.revisionMessage,
     });
 
-    const staticRenderQueue = body.action === "approve"
-      ? await ensureStaticCreativeRenderQueuedForCampaign({
-          campaignId: id,
-          reason: "creative_brief_approved",
-          supabase: auth.supabase as never,
-          userId: auth.userId,
-          organizationId: auth.organizationId,
-        }).catch((error) => ({
-          queued: false,
-          reusedExistingJob: false,
-          jobId: null,
-          blockedReason: error instanceof Error ? error.message : "static_render_queue_failed",
-          launchReadyCount: 0,
-          missingCount: 4,
-        }))
-      : null;
-
     return apiSuccess({
       success: true,
       campaignId: id,
       intake,
-      staticRenderQueue,
+      staticRenderQueue: body.action === "approve"
+        ? {
+            queued: false,
+            reusedExistingJob: false,
+            jobId: null,
+            blockedReason: "manual_render_required",
+            launchReadyCount: 0,
+            missingCount: 4,
+          }
+        : null,
     });
   } catch (error) {
     return handleApiError(error, "Creative intake");

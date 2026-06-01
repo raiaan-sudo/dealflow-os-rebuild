@@ -305,7 +305,9 @@ assert.match(creativeWizardSource, /currentImageRenderView\?\.active/);
 assert.match(creativeWizardSource, /Final Higgsfield render is paused/);
 assert.match(creativeWizardSource, /Final Higgsfield ads are queued for rendering/);
 assert.match(creativeWizardSource, /Request a fresh render/);
-assert.match(creativeWizardSource, /Prepare premium ads/);
+assert.match(creativeWizardSource, /Render assets/);
+assert.match(creativeWizardSource, /Preview renders locked until ready/);
+assert.match(creativeWizardSource, /Show preview renders/);
 assert.match(
   creativeWizardSource,
   /setRenderJobs\(\(current\) => upsertRenderJob\(current, data\.job as SystemJob\)\)/,

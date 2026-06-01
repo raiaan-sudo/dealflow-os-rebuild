@@ -320,6 +320,12 @@ function customerImageMessage(message?: string | null) {
   return text;
 }
 
+const STATIC_RENDER_TIMEFRAME_MESSAGE =
+  "Render assets sent for generation and queued. This usually takes 90 seconds to 3 minutes. Keep this page open; the preview button unlocks when the renders are ready to load.";
+
+const STATIC_RENDER_READY_TO_LOAD_MESSAGE =
+  "Preview renders are ready. Click Show preview renders to load the finished assets into this page.";
+
 function isCreditsInsufficient(code?: string | null, message?: string | null) {
   return code === "credits_insufficient" || /credits?\s+insufficient|generation credits/i.test(message ?? "");
 }
@@ -415,6 +421,8 @@ export function CreativeWizard({
   const [activeVideoJobId, setActiveVideoJobId] = useState<string | null>(null);
   const [renderJobs, setRenderJobs] = useState<SystemJob[]>(initialRenderJobs);
   const [renderMessage, setRenderMessage] = useState<string | null>(null);
+  const [previewRendersReadyToLoad, setPreviewRendersReadyToLoad] = useState(false);
+  const [previewRendersLoading, setPreviewRendersLoading] = useState(false);
   const [videoMessage, setVideoMessage] = useState<string | null>(null);
   const [renderClockMs, setRenderClockMs] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
@@ -633,17 +641,15 @@ export function CreativeWizard({
           if (surface === "video") {
             setVideoMessage("Video preview is processing. This page will update when it is ready.");
           } else {
-            const staticAds = job.result?.staticAds ?? [];
-            setRenderMessage(
-              getImageLimitMessage(staticAds) ??
-                getStaticPreviewStatusMessage(getStaticCreativeReadiness(staticAds, selectedIds, staticBriefReadinessContext)) ??
-                "Image previews are ready.",
-            );
+            setPreviewRendersReadyToLoad(true);
+            setRenderMessage(STATIC_RENDER_READY_TO_LOAD_MESSAGE);
           }
           source.close();
           jobStreamsRef.current.delete(jobId);
           clearActiveJob();
-          router.refresh();
+          if (surface === "video") {
+            router.refresh();
+          }
         } else if (job.status === "failed") {
           if (isCreditsInsufficient(job.last_error_code, job.error_message)) {
             setCreditTopUpSurface(surface);
@@ -695,10 +701,12 @@ export function CreativeWizard({
     setRenderingImages(true);
     setError(null);
     setCreditTopUpSurface(null);
+    setPreviewRendersReadyToLoad(false);
+    setPreviewRendersLoading(false);
     setRenderMessage(
       automatic
         ? "Preparing image previews automatically. You can review the creative set while visuals finish."
-        : "Preparing image previews.",
+        : STATIC_RENDER_TIMEFRAME_MESSAGE,
     );
 
     try {
@@ -735,7 +743,7 @@ export function CreativeWizard({
             ? "Premium launch ads are queued for final rendering. Final Higgsfield ads are queued for rendering; draft previews remain available while finished ads are created."
           : data.previewUpdated
             ? "Draft previews are visible now. Final Higgsfield launch ads are preparing separately."
-            : renderView.customerMessage,
+            : STATIC_RENDER_TIMEFRAME_MESSAGE,
       );
       if (data.previewUpdated) {
         router.refresh();
@@ -753,6 +761,24 @@ export function CreativeWizard({
       setRenderingImages(false);
     }
   }, [campaignId, renderingImages, router, subscribeToJob]);
+
+  useEffect(() => {
+    if (!currentImageJob?.id || isMarketingStudioWorkerDeferredRunAt(currentImageJob.next_run_at)) {
+      return;
+    }
+
+    subscribeToJob(currentImageJob.id, "image");
+  }, [currentImageJob?.id, currentImageJob?.next_run_at, subscribeToJob]);
+
+  const showPreviewRenders = useCallback(() => {
+    if (!previewRendersReadyToLoad || previewRendersLoading) {
+      return;
+    }
+
+    setPreviewRendersLoading(true);
+    setRenderMessage("Loading finished preview renders...");
+    router.refresh();
+  }, [previewRendersLoading, previewRendersReadyToLoad, router]);
 
   const queueVideoPreview = useCallback(async ({
     force = false,
@@ -991,6 +1017,11 @@ export function CreativeWizard({
   const imageWorkerQueued = currentImageRenderView?.state === "deferred_worker_required";
   const imageRenderPending = renderingImages || imageRenderActive;
   const imageActionPending = renderingImages || imageRenderActive;
+  const showPreviewRendersVisible =
+    previewRendersReadyToLoad ||
+    imageActionPending ||
+    Boolean(activeImageJobId) ||
+    Boolean(currentImageJob);
   const videoActionPending = renderingVideo || Boolean(currentVideoJob);
   const imageWorkerDeferred = Boolean(
     currentImageJob && isMarketingStudioWorkerDeferredRunAt(currentImageJob.next_run_at),
@@ -1023,7 +1054,7 @@ export function CreativeWizard({
         ? `${requiredStaticProgressLabel}. You can keep setting up Meta, billing, and preview while final ads finish. Launch unlocks automatically only after 4 ads pass review.`
         : imageActionPending || imageWorkerQueued
           ? `${requiredStaticProgressLabel}. DealFlow is prioritizing the first 4 required ads; optional polish variants wait until the launch floor is ready.`
-          : `${requiredStaticProgressLabel}. Click Prepare premium ads to render the launch floor first. Optional polish variants do not need to finish before setup can continue.`;
+          : `${requiredStaticProgressLabel}. Click Render assets to render the launch floor first. Optional polish variants do not need to finish before setup can continue.`;
   const staticProgressTone = hasCreditBlocker
     ? "border-amber-400/24 bg-amber-400/10 text-amber-50"
     : staticReadiness.selectedMinimumMet
@@ -1236,12 +1267,26 @@ export function CreativeWizard({
                     : imageActionPending
                     ? "Preparing premium ads..."
                     : optionalOnlyNeedsPolish
-                    ? "Prepare premium ads"
-                    : needsImageGeneration
-                      ? staticReadiness.staleCount > 0
-                        ? "Regenerate stale premium ads"
-                        : "Prepare premium ads"
+                      ? "Render assets"
+                      : needsImageGeneration
+                        ? staticReadiness.staleCount > 0
+                        ? "Regenerate stale render assets"
+                        : "Render assets"
                       : "Refresh premium ads"}
+                </Button>
+              ) : null}
+              {showPreviewRendersVisible ? (
+                <Button
+                  type="button"
+                  variant={previewRendersReadyToLoad ? "default" : "secondary"}
+                  onClick={showPreviewRenders}
+                  disabled={!previewRendersReadyToLoad || previewRendersLoading}
+                >
+                  {previewRendersLoading
+                    ? "Loading preview renders..."
+                    : previewRendersReadyToLoad
+                      ? "Show preview renders"
+                      : "Preview renders locked until ready"}
                 </Button>
               ) : null}
               {activeCreativeHardBlocked ? (

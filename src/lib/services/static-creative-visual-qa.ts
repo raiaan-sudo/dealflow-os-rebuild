@@ -172,7 +172,7 @@ function hasPremiumSourceProvider(input: StaticVisualContractInput) {
   return provider === "higgsfield_marketing_studio" || provider === "higgsfield";
 }
 
-export function hasHiggsfieldFinishedAdProvenance(input: StaticVisualContractInput) {
+function hasHiggsfieldFinishedAdBaseProvenance(input: StaticVisualContractInput) {
   const provider = safeText(input.imageGenerationProvider).toLowerCase();
   const generationMethod = safeText(input.generationMethod).toLowerCase();
   const providerName = safeText(input.providerName).toLowerCase();
@@ -190,10 +190,17 @@ export function hasHiggsfieldFinishedAdProvenance(input: StaticVisualContractInp
       input.appComposedFinal !== true &&
       input.compositionVersion !== "app_composed_static_v2" &&
       input.imageQa?.mode === "finished_ad" &&
-      input.imageQa.decision === "accept" &&
-      input.imageQa.usable !== false &&
       input.visualQualityGate?.accepted !== false &&
       input.premiumQualityGate?.accepted !== false,
+  );
+}
+
+export function hasHiggsfieldFinishedAdProvenance(input: StaticVisualContractInput) {
+  return Boolean(
+    hasHiggsfieldFinishedAdBaseProvenance(input) &&
+      input.imageQa?.mode === "finished_ad" &&
+      input.imageQa.decision === "accept" &&
+      input.imageQa.usable !== false,
   );
 }
 
@@ -212,13 +219,9 @@ function launchBlockersForImageQa(input: StaticVisualContractInput): StaticCreat
     if (reason === "brand_misspelled" || reason === "required_brand_missing") blockers.add("compliance_blocker");
     if (reason === "image_fetch_failed" || reason === "qa_timeout") blockers.add("image_corrupt");
     if (
-      reason === "text_heavy" ||
-      reason === "fake_ad_layout" ||
-      reason === "flyer_or_brochure_layout" ||
       reason === "ui_or_dashboard_layout" ||
       reason === "chart_or_table_detected" ||
-      reason === "listing_sheet_detected" ||
-      reason === "button_or_fake_cta_detected"
+      reason === "listing_sheet_detected"
     ) {
       blockers.add("not_finished_higgsfield_render");
     }
@@ -231,7 +234,12 @@ function launchBlockersForImageQa(input: StaticVisualContractInput): StaticCreat
     }
   }
 
-  if (blockers.size === 0 && input.imageQa && (input.imageQa.usable === false || input.imageQa.decision !== "accept")) {
+  if (
+    blockers.size === 0 &&
+    input.imageQa &&
+    reasons.length === 0 &&
+    (input.imageQa.usable === false || input.imageQa.decision !== "accept")
+  ) {
     blockers.add("image_qa_failed");
   }
 
@@ -297,10 +305,12 @@ export function evaluateStaticCreativeLaunchSafety(
   blockers.push(...launchBlockersForQualityGate(input));
 
   if (input.imageQa?.mode === "finished_ad") {
-    if (hasHiggsfieldFinishedAdProvenance(input)) {
+    blockers.push(...launchBlockersForImageQa(input));
+
+    if (hasHiggsfieldFinishedAdBaseProvenance(input)) {
       return {
         passed: blockers.length === 0,
-        blockers,
+        blockers: [...new Set(blockers)],
         checkedAt: checkedAt(),
       };
     }

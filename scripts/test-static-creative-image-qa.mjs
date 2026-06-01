@@ -532,8 +532,20 @@ assert.ok(
       decision: "reject",
       reasons: ["required_cta_missing"],
     },
-  }).blockers.includes("not_finished_higgsfield_render"),
-  "finished render without accepted image QA remains blocked",
+  }).blockers.includes("required_cta_missing"),
+  "finished render missing a required CTA remains blocked",
 );
+
+const softImageQaGate = evaluateStaticCreativeLaunchSafety({
+  ...launchSafeFinishedRender,
+  imageQa: {
+    mode: "finished_ad",
+    usable: false,
+    decision: "reject",
+    reasons: ["text_heavy", "fake_ad_layout", "button_or_fake_cta_detected"],
+  },
+});
+assert.equal(softImageQaGate.passed, true, "subjective image QA concerns are advisory for app-owned Higgsfield finished renders");
+assert.deepEqual(softImageQaGate.blockers, []);
 
 console.log("Static creative image QA tests passed.");
