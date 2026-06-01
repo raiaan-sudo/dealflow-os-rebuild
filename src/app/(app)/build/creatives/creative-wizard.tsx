@@ -534,7 +534,15 @@ export function CreativeWizard({
           (!approvedUgcScriptHash || job.payload?.creativeIntake?.ugcScriptHash === approvedUgcScriptHash),
         ) ?? null
       : null;
-  const currentVideoRenderView = currentVideoJob ? jobRenderView(currentVideoJob) : null;
+  const currentVideoStatusJob =
+    activeVideoCreative
+      ? renderJobs.find((job) =>
+          job.kind === "video_generation_status" &&
+          isOpenRenderJob(job),
+        ) ?? null
+      : null;
+  const currentVideoRenderJob = currentVideoJob ?? currentVideoStatusJob;
+  const currentVideoRenderView = currentVideoRenderJob ? jobRenderView(currentVideoRenderJob) : null;
 
   useEffect(() => {
     if (!currentImageJob) {
@@ -562,6 +570,18 @@ export function CreativeWizard({
     router,
     staticReadiness.selectedMinimumMet,
   ]);
+
+  useEffect(() => {
+    if (!currentVideoRenderJob && !activeVideoJobId) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      router.refresh();
+    }, 10_000);
+
+    return () => window.clearInterval(interval);
+  }, [activeVideoJobId, currentVideoRenderJob?.id, currentVideoRenderJob?.status, router]);
 
   const subscribeToJob = useCallback((jobId: string, surface: "image" | "video") => {
     if (jobStreamsRef.current.has(jobId)) {
@@ -775,20 +795,23 @@ export function CreativeWizard({
 
       const renderView = jobRenderView(data.job);
       setRenderJobs((current) => upsertRenderJob(current, data.job as SystemJob));
+      setActiveVideoJobId(data.job.id);
       setVideoMessage(renderView.customerMessage);
       if (!isMarketingStudioWorkerDeferredRunAt(data.job.next_run_at)) {
         subscribeToJob(data.job.id, "video");
+      } else {
+        router.refresh();
       }
     } catch (videoError) {
-      setVideoMessage(null);
-      setError(
+      const customerMessage =
         customerVideoMessage(videoError instanceof Error ? videoError.message : null) ??
-          "Video preview rendering could not start.",
-      );
+        "Video preview rendering could not start.";
+      setVideoMessage(customerMessage);
+      setError(customerMessage);
     } finally {
       setRenderingVideo(false);
     }
-  }, [activeVideoCreative, campaignId, hasCurrentStaticVideoSource, renderingVideo, setActiveVideoId, subscribeToJob]);
+  }, [activeVideoCreative, campaignId, hasCurrentStaticVideoSource, renderingVideo, router, setActiveVideoId, subscribeToJob]);
 
   useEffect(() => {
     const streams = jobStreamsRef.current;

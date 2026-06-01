@@ -762,6 +762,10 @@ assert.match(creativeWizardSource, /draft concept\{draftCreatives\.length === 1 
 assert.match(creativeWizardSource, /Pick at least \$\{STATIC_LAUNCH_MIN_CREATIVE_COUNT\} launch-ready static ads/, "Creative Studio treats four static ads as the launch floor");
 assert.match(creativeWizardSource, /Render fresh UGC video/, "stale UGC renders can be refreshed against the approved script");
 assert.match(creativeWizardSource, /videoMatchesApprovedScript/, "Creative Studio blocks stale UGC videos whose script hash no longer matches the approved script");
+assert.match(creativeWizardSource, /currentVideoStatusJob/, "Creative Studio tracks video status polling jobs after the initial render job completes");
+assert.match(creativeWizardSource, /currentVideoRenderJob/, "Creative Studio uses a unified video render job state for customer messaging and polling");
+assert.match(creativeWizardSource, /setActiveVideoJobId\(data\.job\.id\)/, "Creative Studio keeps deferred UGC jobs active for browser polling");
+assert.match(creativeWizardSource, /window\.setInterval\(\(\) => \{\s*router\.refresh\(\);\s*\}, 10_000\)/s, "Creative Studio refreshes while UGC jobs are deferred to the worker");
 assert.match(buildCreativesPageSource, /creativeIntake\?\.brief\?\.ugcScriptHash \?\?/, "Creative Studio must pass the canonical approved UGC script hash to the client");
 assert.match(selectAdRouteSource, /mapVideoCreativeAssets/, "Save launch package must validate UGC selections against current creative_assets video rows");
 assert.match(selectAdRouteSource, /if \(!videoById\.has\(video\.id\)\)/, "Save launch package must preserve the newest launch-ready UGC asset when duplicate creative IDs exist");

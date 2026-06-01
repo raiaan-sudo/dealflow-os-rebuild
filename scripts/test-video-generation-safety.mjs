@@ -94,6 +94,9 @@ assert.match(creativeWizard, /activeVideoHasCurrentPlayableRender/, "creative wi
 assert.match(creativeWizard, /Fresh UGC render required/, "creative wizard replaces stale playable videos with a fresh-render state");
 assert.match(creativeWizard, /Prepare current static source/, "creative wizard gives users an action when fresh UGC needs current static source media");
 assert.match(creativeWizard, /Render fresh UGC video/, "creative wizard gives users a fresh render action instead of showing stale approved-script media");
+assert.match(creativeWizard, /currentVideoStatusJob/, "creative wizard follows video status jobs until app-owned media is visible");
+assert.match(creativeWizard, /setActiveVideoJobId\(data\.job\.id\)/, "creative wizard keeps queued UGC render jobs active even when worker processing is deferred");
+assert.match(creativeWizard, /window\.setInterval\(\(\) => \{\s*router\.refresh\(\);\s*\}, 10_000\)/s, "creative wizard polls server-rendered UGC state while video jobs are active");
 assert.match(previewPage, /customerVideoMessage/, "preview page sanitizes video failure messages");
 assert.doesNotMatch(videoErrors, /Review the operator diagnostics/, "operator diagnostics are not exposed in video errors");
 assert.match(launchCreateRoute, /isLaunchReadyVideoCreative/, "launch API enforces video readiness server-side");
