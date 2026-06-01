@@ -48,3 +48,4 @@ recovery-report.json
 .env*.local
 .vercel
 data/engineering-proof-artifacts/
+performance-reports/

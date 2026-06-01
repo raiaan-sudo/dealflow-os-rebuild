@@ -1,0 +1,29 @@
+{
+  "publicPages": {
+    "p95Ms": 1500,
+    "errorRate": 0.005
+  },
+  "authenticatedApi": {
+    "readP95Ms": 800,
+    "dashboardP95Ms": 1500,
+    "errorRate": 0.01
+  },
+  "onboardingWrites": {
+    "p95Ms": 1000,
+    "errorRate": 0.01
+  },
+  "leadCapture": {
+    "p95Ms": 750,
+    "p99Ms": 1500,
+    "errorRate": 0.005
+  },
+  "creativeJobCreation": {
+    "p95Ms": 1000,
+    "stuckJobs": 0
+  },
+  "security": {
+    "crossTenantFailures": 0,
+    "secretLeaks": 0,
+    "unauthorizedAccessRegressions": 0
+  }
+}
