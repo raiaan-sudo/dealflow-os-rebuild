@@ -360,6 +360,12 @@ assert.match(
 );
 
 const buildCreativesPageSource = fs.readFileSync("src/app/(app)/build/creatives/page.tsx", "utf8");
+assert.match(buildCreativesPageSource, /mapStaticCreativeAssets/);
+assert.match(
+  buildCreativesPageSource,
+  /persistedStaticAds = mappedStaticAssets/,
+  "Creative Studio must prefer current static creative_assets over stale campaign-plan static concepts",
+);
 assert.match(buildCreativesPageSource, /mapVideoCreativeAssets/);
 assert.match(
   buildCreativesPageSource,

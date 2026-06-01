@@ -4,7 +4,10 @@ import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
-import { mapVideoCreativeAssets } from "@/lib/services/campaign-persistence";
+import {
+  mapStaticCreativeAssets,
+  mapVideoCreativeAssets,
+} from "@/lib/services/campaign-persistence";
 import {
   getSelectedAdIdsFromPlan,
   getSelectedUgcVideoIdsFromPlan,
@@ -74,6 +77,7 @@ export default async function BuildCreativesPage({
   let intakePlanValue: unknown = null;
   let persistedSelectedAdIds: string[] = [];
   let persistedSelectedUgcVideoIds: string[] = [];
+  let persistedStaticAds = ensuredRecord.creatives.staticAds;
   let persistedVideoAds = ensuredRecord.creatives.videoAds;
   let activeRenderJobs: NonNullable<Parameters<typeof CreativeWizard>[0]["initialRenderJobs"]> = [];
   const generationCredits = await getCreditSummaryForCurrentUser().catch(() => null);
@@ -104,6 +108,18 @@ export default async function BuildCreativesPage({
     activeRenderJobs = Array.isArray(jobsData)
       ? jobsData as NonNullable<Parameters<typeof CreativeWizard>[0]["initialRenderJobs"]>
       : [];
+
+    const { data: staticAssetData } = await supabase
+      .from("creative_assets")
+      .select("*")
+      .eq("campaign_id", ensuredRecord.campaign.id)
+      .eq("user_id", ensuredRecord.campaign.user_id)
+      .in("asset_type", ["image_frame", "thumbnail", "static_image", "image"])
+      .order("created_at", { ascending: false });
+    const mappedStaticAssets = mapStaticCreativeAssets(Array.isArray(staticAssetData) ? staticAssetData : []);
+    if (mappedStaticAssets.length > 0) {
+      persistedStaticAds = mappedStaticAssets;
+    }
 
     const { data: videoAssetData } = await supabase
       .from("creative_assets")
@@ -176,7 +192,7 @@ export default async function BuildCreativesPage({
     );
   }
 
-  if (!ensuredRecord.creatives.staticAds.length) {
+  if (!persistedStaticAds.length) {
     return (
       <div className="mx-auto w-full max-w-[1320px] space-y-4 p-5 sm:p-6">
         <WizardSteps current="creatives" />
@@ -203,7 +219,7 @@ export default async function BuildCreativesPage({
     );
   }
 
-  const creativeOptions = ensuredRecord.creatives.staticAds
+  const creativeOptions = persistedStaticAds
     .slice()
     .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
     .slice(0, 6)
