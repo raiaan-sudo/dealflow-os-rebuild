@@ -439,6 +439,7 @@ export function CreativeWizard({
   const activeCreative =
     rankedCreatives.find((creative) => creative.id === activeCreativeId) ??
     primaryCreative;
+  const activeCreativeLaunchReady = activeCreative ? isStaticLaunchReady(activeCreative) : false;
   const canContinue = selectedCreatives.length >= minSelected && selectedCreatives.length <= maxSelected;
   const selectedMediaReady =
     staticReadiness.allSelectedReady;
@@ -1229,7 +1230,7 @@ export function CreativeWizard({
                       : "Refresh premium ads"}
                 </Button>
               ) : null}
-              {activeCreative.imageGenerationState === "failed" || activeCreative.qualityGate?.accepted === false ? (
+              {!activeCreativeLaunchReady && (activeCreative.imageGenerationState === "failed" || activeCreative.qualityGate?.accepted === false) ? (
                 <Button
                   type="button"
                   variant="secondary"

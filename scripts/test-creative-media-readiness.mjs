@@ -98,6 +98,7 @@ const {
 } = require("../src/lib/services/campaign-persistence.ts");
 const {
   generateStaticCreativeAds,
+  mergeStaticCreativeImageResults,
 } = require("../src/lib/services/creative-engine.ts");
 
 function readyStatic(id) {
@@ -149,6 +150,36 @@ const creatives = [
     storageNormalized: false,
   },
 ];
+
+const draftMissingProvenance = {
+  ...readyStatic("merge-provenance"),
+  imageUrl: "",
+  storageNormalized: false,
+  imageGenerationState: "failed",
+  imageGenerationProvider: null,
+  generationMethod: null,
+  providerName: null,
+  generationMode: null,
+  assetRole: null,
+  imageQa: null,
+  visualQualityGate: null,
+  premiumQualityGate: null,
+};
+const persistedFinishedRender = readyStatic("merge-provenance");
+const [mergedFinishedRender] = mergeStaticCreativeImageResults(
+  [draftMissingProvenance],
+  [persistedFinishedRender],
+);
+assert.equal(mergedFinishedRender.imageGenerationProvider, "higgsfield_marketing_studio");
+assert.equal(mergedFinishedRender.generationMethod, "higgsfield_marketing_studio");
+assert.equal(mergedFinishedRender.providerName, "higgsfield_marketing_studio");
+assert.equal(mergedFinishedRender.generationMode, "finished_ad");
+assert.equal(mergedFinishedRender.assetRole, "final_static_ad");
+assert.equal(
+  getStaticCreativeReadiness([mergedFinishedRender], [mergedFinishedRender.id]).launchReadyCount,
+  1,
+  "persisted Higgsfield finished renders must keep provenance fields when merged back into the campaign plan",
+);
 
 const reviewOnlyStaticSet = Array.from({ length: STATIC_LAUNCH_MIN_CREATIVE_COUNT }, (_, index) => ({
   id: `review-only-preview-${index + 1}`,
@@ -770,6 +801,7 @@ assert.match(buildCreativesPageSource, /creativeIntake\?\.brief\?\.ugcScriptHash
 assert.match(selectAdRouteSource, /mapVideoCreativeAssets/, "Save launch package must validate UGC selections against current creative_assets video rows");
 assert.match(selectAdRouteSource, /if \(!videoById\.has\(video\.id\)\)/, "Save launch package must preserve the newest launch-ready UGC asset when duplicate creative IDs exist");
 assert.match(creativeWizardSource, /selectedCount=\{selected \? selectedCreatives\.length : null\}/, "retry cards cannot inherit selected count badges");
+assert.match(creativeWizardSource, /!activeCreativeLaunchReady && \(activeCreative\.imageGenerationState === "failed" \|\| activeCreative\.qualityGate\?\.accepted === false\)/, "launch-ready Higgsfield renders must not keep showing a retry CTA because of legacy copy-quality flags");
 assert.match(creativeWizardSource, /selectedUgcVideoIds/, "Creative Studio persists selected UGC launch video IDs");
 assert.match(creativeWizardSource, /Select UGC for launch/, "Creative Studio lets UGC videos be selected like static creatives");
 assert.match(previewSource, /getSelectedUgcVideoIdsFromPlan/, "Preview consumes persisted selected UGC video IDs");
