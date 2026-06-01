@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseEnv } from "@/lib/env";
+import { normalizeStaticCreativePersistenceError } from "@/lib/services/static-creative-render-resilience";
 import type { Database } from "@/lib/supabase/types";
 
 export const STATIC_CREATIVE_STORAGE_BUCKET = "creative-assets";
@@ -767,7 +768,9 @@ export async function normalizeStaticCreativeProviderImage(
   }
 
   if (uploadError) {
-    throw new Error("Generated image could not be stored durably.");
+    throw new Error(
+      `Generated image could not be stored durably. ${normalizeStaticCreativePersistenceError(uploadError).message}`,
+    );
   }
 
   const { data } = params.supabase.storage

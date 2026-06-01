@@ -56,6 +56,7 @@ const {
 } = require("../src/lib/api/route.ts");
 const {
   isTransientStaticCreativePersistenceError,
+  normalizeStaticCreativePersistenceError,
 } = require("../src/lib/services/static-creative-render-resilience.ts");
 const {
   getVideoReadinessLabel,
@@ -206,6 +207,15 @@ assert.equal(
   false,
   "non-transient schema persist errors fail closed instead of auto-retrying",
 );
+const normalizedPostgrestError = normalizeStaticCreativePersistenceError({
+  message: "column creative_assets.updated_at does not exist",
+  code: "42703",
+  details: "Missing column in production schema.",
+  hint: "Use created_at for creative_assets ordering.",
+});
+assert.match(normalizedPostgrestError.message, /updated_at/);
+assert.match(normalizedPostgrestError.message, /42703/);
+assert.notEqual(normalizedPostgrestError.message, "[object Object]");
 
 assert.equal(getVideoReadinessLabel({ id: "concept", scriptHash: "script" }), "Concept ready, render needed");
 assert.match(getVideoReadinessMessage({ id: "concept", scriptHash: "script" }), /Script and concept are ready/);

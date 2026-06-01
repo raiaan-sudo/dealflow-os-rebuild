@@ -23,7 +23,92 @@ const NON_TRANSIENT_CODE_PATTERN =
   /auth|ownership|validation|brief|mismatch|not_found|conflict|stale|permission|forbidden|unauthorized|schema|malformed|row-level security|rls/i;
 
 export function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error ?? "Unknown error");
+  return normalizeStaticCreativePersistenceError(error).message;
+}
+
+export type NormalizedStaticCreativePersistenceError = {
+  message: string;
+  code: string | null;
+  details: string | null;
+  hint: string | null;
+  status: number | null;
+  name: string | null;
+};
+
+function readErrorField(error: Record<string, unknown>, field: string) {
+  const value = error[field];
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return null;
+}
+
+export function normalizeStaticCreativePersistenceError(error: unknown): NormalizedStaticCreativePersistenceError {
+  if (error instanceof Error) {
+    const record = error as Error & Record<string, unknown>;
+    const code = readErrorField(record, "code");
+    const details = readErrorField(record, "details");
+    const hint = readErrorField(record, "hint");
+    const statusValue = record.status;
+    const status = typeof statusValue === "number" && Number.isFinite(statusValue) ? statusValue : null;
+    const message = [
+      error.message,
+      code ? `code=${code}` : null,
+      details ? `details=${details}` : null,
+      hint ? `hint=${hint}` : null,
+      status ? `status=${status}` : null,
+    ].filter(Boolean).join(" | ");
+
+    return {
+      message: message || error.name || "Unknown error",
+      code,
+      details,
+      hint,
+      status,
+      name: error.name || null,
+    };
+  }
+
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    const message = readErrorField(record, "message");
+    const code = readErrorField(record, "code");
+    const details = readErrorField(record, "details");
+    const hint = readErrorField(record, "hint");
+    const statusRaw = record.status ?? record.statusCode;
+    const status = typeof statusRaw === "number" && Number.isFinite(statusRaw) ? statusRaw : null;
+    const name = readErrorField(record, "name");
+    const combined = [
+      message,
+      code ? `code=${code}` : null,
+      details ? `details=${details}` : null,
+      hint ? `hint=${hint}` : null,
+      status ? `status=${status}` : null,
+      name && !message ? `name=${name}` : null,
+    ].filter(Boolean).join(" | ");
+
+    return {
+      message: combined || "Unknown object error",
+      code,
+      details,
+      hint,
+      status,
+      name,
+    };
+  }
+
+  const primitive = String(error ?? "").trim();
+  return {
+    message: primitive || "Unknown error",
+    code: null,
+    details: null,
+    hint: null,
+    status: null,
+    name: null,
+  };
 }
 
 export function isTransientStaticCreativePersistenceError(error: unknown) {
@@ -98,7 +183,8 @@ export function toStaticCreativePersistenceApiError(
   transientCode: string,
   nonTransientCode = transientCode,
 ) {
-  const message = getErrorMessage(error);
+  const normalized = normalizeStaticCreativePersistenceError(error);
+  const message = normalized.message;
   const retryable = isTransientStaticCreativePersistenceError(error);
 
   if (error instanceof ApiError && !retryable) {

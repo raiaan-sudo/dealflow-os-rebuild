@@ -98,8 +98,8 @@ function getCreativeAssetRole(row: CreativeAssetRow | Record<string, unknown>) {
 
 function newestCreativeAssetRow(rows: CreativeAssetRow[]) {
   return [...rows].sort((a, b) => {
-    const aTime = Date.parse(a.updated_at ?? a.created_at ?? "");
-    const bTime = Date.parse(b.updated_at ?? b.created_at ?? "");
+    const aTime = Date.parse(a.created_at ?? "");
+    const bTime = Date.parse(b.created_at ?? "");
     return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
   })[0] ?? null;
 }
@@ -142,7 +142,7 @@ async function findExistingStaticCreativeRows(params: {
     }
 
     if (typeof query.order === "function") {
-      query = query.order("updated_at", { ascending: false }) as typeof query;
+      query = query.order("created_at", { ascending: false }) as typeof query;
     }
 
     const result = typeof query.limit === "function"

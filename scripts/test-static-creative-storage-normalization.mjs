@@ -558,6 +558,16 @@ await persistStaticCreativeAssets({
   ],
 });
 const finishedAdInsert = finishedAdDb.operations.find((item) => item.op === "insert");
+assert.equal(
+  finishedAdDb.operations.some((item) => item.op === "order" && item.column === "updated_at"),
+  false,
+  "creative asset persistence must not query updated_at because production creative_assets does not have that column",
+);
+assert.equal(
+  finishedAdDb.operations.some((item) => item.op === "order" && item.column === "created_at"),
+  true,
+  "creative asset persistence uses created_at to find existing rows before insert/update",
+);
 assert.ok(
   finishedAdDb.operations.some((item) => item.op === "upload"),
   "accepted finished_ad provider rasters are normalized before final launch readiness",
