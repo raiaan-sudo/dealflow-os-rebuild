@@ -57,7 +57,7 @@ async function fetchCampaignPlanRowsPaged(supabase, selectColumns, options = {})
     const { data, error } = await supabase
       .from("campaign_plans")
       .select(selectColumns)
-      .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
       .range(offset, offset + pageSize - 1);
 
     if (error) {
@@ -194,18 +194,24 @@ async function getSelectedBlockedStaticAssetDebt(supabase) {
   }
 
   const campaignIds = [...selectedByCampaign.keys()];
-  const { data: assets, error: assetError } = await supabase
-    .from("creative_assets")
-    .select("id,campaign_id,creative_id,generation_method,provider_name,metadata")
-    .in("campaign_id", campaignIds);
+  const assets = [];
+  for (const campaignId of campaignIds) {
+    const { data, error: assetError } = await supabase
+      .from("creative_assets")
+      .select("id,campaign_id,creative_id,generation_method,provider_name,metadata")
+      .eq("campaign_id", campaignId)
+      .limit(100);
 
-  if (assetError) {
-    throw new Error(`creative_assets selected static scan: ${assetError.message}`);
+    if (assetError) {
+      throw new Error(`creative_assets selected static scan: ${assetError.message}`);
+    }
+
+    assets.push(...(data ?? []));
   }
 
   const assetsBySelectedId = new Map();
 
-  for (const asset of assets ?? []) {
+  for (const asset of assets) {
     const selectedIds = selectedByCampaign.get(asset.campaign_id);
     if (!selectedIds) continue;
 
