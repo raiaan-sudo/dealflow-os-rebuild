@@ -181,6 +181,29 @@ assert.equal(
   "persisted Higgsfield finished renders must keep provenance fields when merged back into the campaign plan",
 );
 
+const advisoryOnlyFinishedRender = {
+  ...readyStatic("advisory-only-finished-render"),
+  qualityGate: {
+    accepted: false,
+    score: 72,
+    hardFailures: ["Offer needs risk reversal"],
+    improvementHints: ["Add a softer no-obligation promise later"],
+  },
+};
+const advisoryOnlyFinishedSet = Array.from({ length: STATIC_LAUNCH_MIN_CREATIVE_COUNT }, (_, index) => ({
+  ...advisoryOnlyFinishedRender,
+  id: `advisory-only-finished-render-${index + 1}`,
+}));
+const advisoryOnlyReadiness = getStaticCreativeReadiness(
+  advisoryOnlyFinishedSet,
+  advisoryOnlyFinishedSet.map((creative) => creative.id),
+);
+assert.equal(advisoryOnlyReadiness.launchReadyCount, 4, "soft offer-quality notes cannot block verified Higgsfield finished renders");
+assert.equal(advisoryOnlyReadiness.selectedReadyCount, 4, "soft offer-quality notes cannot block selection readiness");
+assert.equal(advisoryOnlyReadiness.retryCount, 0, "soft offer-quality notes cannot increment retry-needed counts");
+assert.equal(advisoryOnlyReadiness.missingCount, 0, "soft offer-quality notes are not missing media");
+assert.equal(advisoryOnlyReadiness.issueLabel, null, "soft offer-quality notes do not create launch-blocking issue copy");
+
 const reviewOnlyStaticSet = Array.from({ length: STATIC_LAUNCH_MIN_CREATIVE_COUNT }, (_, index) => ({
   id: `review-only-preview-${index + 1}`,
   imageUrl: null,
@@ -801,7 +824,9 @@ assert.match(buildCreativesPageSource, /creativeIntake\?\.brief\?\.ugcScriptHash
 assert.match(selectAdRouteSource, /mapVideoCreativeAssets/, "Save launch package must validate UGC selections against current creative_assets video rows");
 assert.match(selectAdRouteSource, /if \(!videoById\.has\(video\.id\)\)/, "Save launch package must preserve the newest launch-ready UGC asset when duplicate creative IDs exist");
 assert.match(creativeWizardSource, /selectedCount=\{selected \? selectedCreatives\.length : null\}/, "retry cards cannot inherit selected count badges");
-assert.match(creativeWizardSource, /!activeCreativeLaunchReady && \(activeCreative\.imageGenerationState === "failed" \|\| activeCreative\.qualityGate\?\.accepted === false\)/, "launch-ready Higgsfield renders must not keep showing a retry CTA because of legacy copy-quality flags");
+assert.match(creativeWizardSource, /activeCreativeHardBlocked/, "launch-ready Higgsfield renders must not keep showing a retry CTA because of legacy copy-quality flags");
+assert.doesNotMatch(creativeWizardSource, /qualityGate\?\.accepted === false\)/, "soft copy-quality flags cannot directly control the retry CTA");
+assert.match(creativeWizardSource, /Optional polish/, "soft copy-quality notes surface as optional polish instead of retry-needed copy");
 assert.match(creativeWizardSource, /selectedUgcVideoIds/, "Creative Studio persists selected UGC launch video IDs");
 assert.match(creativeWizardSource, /Select UGC for launch/, "Creative Studio lets UGC videos be selected like static creatives");
 assert.match(previewSource, /getSelectedUgcVideoIdsFromPlan/, "Preview consumes persisted selected UGC video IDs");

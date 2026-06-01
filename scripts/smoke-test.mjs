@@ -522,7 +522,7 @@ function runOfflineChecks() {
   assertIncludes(staticAdTemplateRenderer, "Premium visual polish needs another attempt", "Rejected image customer copy", "bad provider images show clean customer-safe retry copy instead of raw QA/provider language");
   assertIncludes(staticCreativeAssetService, "\"requires_review\"", "Rejected generated asset persistence", "generated assets with quality concerns are persisted for review instead of being mislabeled as image failures");
   assertIncludes(staticCreativeAssetService, "imageQa", "Static image QA persistence", "image QA decision metadata is stored with generated static assets");
-  assertIncludes(assetGenerationLifecycle, "evaluateStaticVisualAssetDecision(asset).usable", "Generated asset lifecycle guard", "static asset lifecycle does not mark rejected generated creatives as fully generated");
+  assertIncludes(assetGenerationLifecycle, "evaluateStaticCreativeLaunchSafety(asset).passed", "Generated asset lifecycle guard", "static asset lifecycle does not mark rejected generated creatives as fully generated");
   assertIncludes(previewPage, "StaticCreativeSummaryCard", "Preview rendered creative cards", "preview page shows rendered creative visuals instead of text-only summaries");
   assertIncludes(previewPage, "Review variants", "Preview review variant label", "preview page separates the primary creative from review variants");
   assertIncludes(previewPage, "Selected UGC video ads", "Preview video concept review", "preview page surfaces selected UGC video ads before launch");

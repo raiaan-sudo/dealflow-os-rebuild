@@ -29,7 +29,10 @@ import {
   STATIC_LAUNCH_MIN_CREATIVE_COUNT,
 } from "@/lib/services/creative-media-readiness";
 import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
-import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
+import {
+  evaluateStaticCreativeLaunchSafety,
+  evaluateStaticCreativeQualityAdvisory,
+} from "@/lib/services/static-creative-visual-qa";
 
 type CreativeOption = {
   id: string;
@@ -279,9 +282,10 @@ function videoMatchesApprovedScript(video: VideoCreativeOption, approvedUgcScrip
 }
 
 function creativeNeedsImageGeneration(creative: CreativeOption, approvedBriefContext?: CreativeWizardProps["approvedBriefContext"]) {
+  const launchSafety = evaluateStaticCreativeLaunchSafety(creative);
+
   return !creative.imageUrl ||
-    creative.imageGenerationState === "failed" ||
-    !evaluateStaticVisualAssetDecision(creative).usable ||
+    !launchSafety.passed ||
     getStaticCreativeBriefMismatchReason(creative, approvedBriefContext) !== null;
 }
 
@@ -440,6 +444,16 @@ export function CreativeWizard({
     rankedCreatives.find((creative) => creative.id === activeCreativeId) ??
     primaryCreative;
   const activeCreativeLaunchReady = activeCreative ? isStaticLaunchReady(activeCreative) : false;
+  const activeCreativeLaunchSafety = activeCreative ? evaluateStaticCreativeLaunchSafety(activeCreative) : null;
+  const activeCreativeQualityAdvisory = activeCreative ? evaluateStaticCreativeQualityAdvisory(activeCreative) : null;
+  const activeCreativeHardBlocked = Boolean(
+    activeCreative &&
+    !activeCreativeLaunchReady &&
+    (
+      activeCreative.imageGenerationState === "failed" ||
+      (activeCreativeLaunchSafety?.blockers.length ?? 0) > 0
+    ),
+  );
   const canContinue = selectedCreatives.length >= minSelected && selectedCreatives.length <= maxSelected;
   const selectedMediaReady =
     staticReadiness.allSelectedReady;
@@ -1230,7 +1244,7 @@ export function CreativeWizard({
                       : "Refresh premium ads"}
                 </Button>
               ) : null}
-              {!activeCreativeLaunchReady && (activeCreative.imageGenerationState === "failed" || activeCreative.qualityGate?.accepted === false) ? (
+              {activeCreativeHardBlocked ? (
                 <Button
                   type="button"
                   variant="secondary"
@@ -1246,6 +1260,12 @@ export function CreativeWizard({
                     : "Retry preview render"}
                 </Button>
               ) : null}
+            </div>
+          ) : null}
+          {activeCreativeLaunchReady && activeCreativeQualityAdvisory?.canImproveLater ? (
+            <div className="rounded-2xl border border-cyan-300/16 bg-cyan-300/[0.055] px-4 py-3 text-sm leading-6 text-cyan-100" aria-live="polite">
+              <span className="font-semibold text-cyan-50">Optional polish.</span>{" "}
+              This creative is launch-ready. Quality notes can be improved later.
             </div>
           ) : null}
           {renderMessage ? (

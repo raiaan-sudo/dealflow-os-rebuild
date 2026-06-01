@@ -1,4 +1,4 @@
-import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
+import { evaluateStaticCreativeLaunchSafety } from "@/lib/services/static-creative-visual-qa";
 import type { FallbackLaunchQaResult } from "@/lib/services/creative-asset-status";
 export const STATIC_LAUNCH_MIN_CREATIVE_COUNT = 4;
 export const STATIC_LAUNCH_MAX_CREATIVE_COUNT = 6;
@@ -34,6 +34,10 @@ type StaticCreativeReadinessInput = {
   } | null;
   qualityGate?: {
     accepted?: boolean | null;
+    score?: number | null;
+    hardFailures?: string[] | null;
+    improvementHints?: string[] | null;
+    notes?: string[] | null;
   } | null;
   visualQualityGate?: {
     accepted?: boolean | null;
@@ -248,7 +252,7 @@ export function isLaunchReadyStaticCreative(creative: Pick<
     return true;
   }
 
-  return evaluateStaticVisualAssetDecision(creative).usable;
+  return evaluateStaticCreativeLaunchSafety(creative).passed;
 }
 
 export function getStaticCreativeReadiness(
@@ -272,17 +276,12 @@ export function getStaticCreativeReadiness(
       return false;
     }
 
-    return (
-      creative.imageGenerationState === "failed" ||
-      creative.qualityGate?.accepted === false ||
-      Boolean(creative.imageUrl)
-    );
+    return creative.imageGenerationState === "failed" || Boolean(creative.imageUrl);
   }).length;
   const missingCount = creatives.filter(
     (creative) =>
       !creative.imageUrl &&
-      creative.imageGenerationState !== "failed" &&
-      creative.qualityGate?.accepted !== false,
+      creative.imageGenerationState !== "failed",
   ).length;
   const selectedReadyCount = selectedCreatives.filter(isCurrentLaunchReady).length;
   const selectedBlockedCount = selectedCreatives.length - selectedReadyCount;

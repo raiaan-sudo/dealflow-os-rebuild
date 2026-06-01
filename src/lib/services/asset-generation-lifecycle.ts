@@ -1,5 +1,5 @@
 import type { StaticCreativeAsset, VideoCreativeAsset } from "@/lib/services/creative-engine";
-import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
+import { evaluateStaticCreativeLaunchSafety } from "@/lib/services/static-creative-visual-qa";
 import type { StaticCreativeGenerationStage } from "@/lib/services/static-creative-render-resilience";
 
 export type AssetGenerationStatus =
@@ -91,7 +91,7 @@ export function deriveStaticGenerationStatus(staticAds: StaticCreativeAsset[]): 
     (asset) =>
 	      asset.imageGenerationState === "generated" &&
 	      Boolean(asset.imageUrl) &&
-	      evaluateStaticVisualAssetDecision(asset).usable,
+	      evaluateStaticCreativeLaunchSafety(asset).passed,
 	  ).length;
   const failedCount = staticAds.filter((asset) => asset.imageGenerationState === "failed").length;
   const unavailableCount = staticAds.filter(

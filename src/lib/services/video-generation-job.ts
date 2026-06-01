@@ -29,7 +29,7 @@ import {
   normalizeGeneratedVideoProviderFile,
 } from "@/lib/services/static-creative-storage-normalization";
 import { evaluateGeneratedVideoQualityGate } from "@/lib/services/creative-media-readiness";
-import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
+import { evaluateStaticCreativeLaunchSafety } from "@/lib/services/static-creative-visual-qa";
 
 type VideoPersistenceClient = SupabaseClient<Database>;
 type CampaignPlanRow = Database["public"]["Tables"]["campaign_plans"]["Row"];
@@ -202,15 +202,32 @@ function isLaunchReadyStaticSourceRow(row: CreativeAsset) {
     return false;
   }
 
-  return evaluateStaticVisualAssetDecision({
+  return evaluateStaticCreativeLaunchSafety({
     imageUrl,
     storageNormalized,
+    appComposedFinal: metadata?.appComposedFinal === true,
+    imageGenerationProvider:
+      typeof metadata?.imageGenerationProvider === "string"
+        ? metadata.imageGenerationProvider
+        : row.provider_name ?? null,
+    generationMethod: row.generation_method ?? null,
+    providerName: row.provider_name ?? null,
+    generationMode: typeof metadata?.generationMode === "string" ? metadata.generationMode : null,
+    assetRole: typeof metadata?.assetRole === "string" ? metadata.assetRole : null,
+    qualityTier: typeof metadata?.qualityTier === "string" ? metadata.qualityTier : null,
+    compositionVersion: typeof metadata?.compositionVersion === "string" ? metadata.compositionVersion : null,
+    sourceBackgroundKind: typeof metadata?.sourceBackgroundKind === "string" ? metadata.sourceBackgroundKind : null,
+    sourceBackgroundProvider: typeof metadata?.sourceBackgroundProvider === "string" ? metadata.sourceBackgroundProvider : null,
+    sourceBackgroundAssetId: typeof metadata?.sourceBackgroundAssetId === "string" ? metadata.sourceBackgroundAssetId : null,
     imagePrompt: typeof metadata?.imagePrompt === "string" ? metadata.imagePrompt : "",
     imagePromptConfig: asStaticPromptConfig(metadata?.imagePromptConfig),
     visualPromptBrief: asStaticVisualPromptBrief(metadata?.visualPromptBrief),
     qualityGate: asStaticQualityGate(metadata?.qualityGate),
     imageQa: asStaticImageQa(metadata?.imageQa),
-  }).usable;
+    sourceImageQa: asStaticImageQa(metadata?.sourceImageQa),
+    visualQualityGate: asStaticQualityGate(metadata?.visualQualityGate),
+    premiumQualityGate: asStaticQualityGate(metadata?.premiumQualityGate),
+  }).passed;
 }
 
 function staticSourceMatchesCreativeIntake(row: CreativeAsset, creativeIntake?: CreativeIntakeGenerationContext | null) {
@@ -309,7 +326,7 @@ async function getVideoSourceImageUrl(params: {
     if (
       imageUrl &&
       asset.imageGenerationState === "generated" &&
-      asset.qualityGate?.accepted !== false &&
+      evaluateStaticCreativeLaunchSafety(asset).passed &&
       isAppOwnedCreativeAssetUrl(imageUrl) &&
       (
         !params.creativeIntake?.staticBriefHash ||

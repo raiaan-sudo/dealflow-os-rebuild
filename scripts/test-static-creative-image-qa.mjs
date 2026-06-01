@@ -43,6 +43,8 @@ const {
 } = require("../src/lib/services/static-creative-image-qa.ts");
 const {
   evaluateStaticVisualAssetDecision,
+  evaluateStaticCreativeLaunchSafety,
+  evaluateStaticCreativeQualityAdvisory,
 } = require("../src/lib/services/static-creative-visual-qa.ts");
 
 function svgData(body, attrs = "width=\"512\" height=\"512\" viewBox=\"0 0 512 512\"") {
@@ -477,6 +479,61 @@ assert.equal(
   legacyAppComposedFinal.usable,
   false,
   "legacy app-owned Higgsfield composed finals cannot stay promotable without fresh source provenance",
+);
+
+const launchSafeFinishedRender = {
+  imageUrl: "https://example.com/storage/v1/object/public/creative-assets/user/campaign/final.png",
+  storageNormalized: true,
+  appComposedFinal: false,
+  imageGenerationProvider: "higgsfield_marketing_studio",
+  generationMethod: "higgsfield_marketing_studio",
+  providerName: "higgsfield_marketing_studio",
+  generationMode: "finished_ad",
+  assetRole: "final_static_ad",
+  qualityTier: "higgsfield_finished_ad",
+  qualityGate: {
+    accepted: false,
+    score: 68,
+    hardFailures: ["Offer needs risk reversal"],
+    improvementHints: ["Sharper hook could improve conversion later"],
+  },
+  visualQualityGate: { accepted: true },
+  premiumQualityGate: { accepted: true },
+  imageQa: {
+    mode: "finished_ad",
+    usable: true,
+    decision: "accept",
+    reasons: [],
+  },
+};
+const advisorySafeGate = evaluateStaticCreativeLaunchSafety(launchSafeFinishedRender);
+assert.equal(advisorySafeGate.passed, true, "soft qualityGate rejection cannot block launch-safe Higgsfield finished renders");
+assert.deepEqual(advisorySafeGate.blockers, []);
+const advisory = evaluateStaticCreativeQualityAdvisory(launchSafeFinishedRender);
+assert.equal(advisory.canImproveLater, true, "soft quality notes remain available as advisory metadata");
+assert.ok(advisory.reasons.includes("offer_needs_risk_reversal"));
+assert.ok(advisory.reasons.includes("hook_could_be_stronger"));
+
+assert.deepEqual(
+  evaluateStaticCreativeLaunchSafety({ ...launchSafeFinishedRender, imageUrl: "" }).blockers,
+  ["missing_image"],
+  "missing image remains a hard launch blocker",
+);
+assert.ok(
+  evaluateStaticCreativeLaunchSafety({ ...launchSafeFinishedRender, storageNormalized: false }).blockers.includes("storage_not_app_owned"),
+  "non app-owned storage remains a hard launch blocker",
+);
+assert.ok(
+  evaluateStaticCreativeLaunchSafety({
+    ...launchSafeFinishedRender,
+    imageQa: {
+      mode: "finished_ad",
+      usable: false,
+      decision: "reject",
+      reasons: ["required_cta_missing"],
+    },
+  }).blockers.includes("not_finished_higgsfield_render"),
+  "finished render without accepted image QA remains blocked",
 );
 
 console.log("Static creative image QA tests passed.");
