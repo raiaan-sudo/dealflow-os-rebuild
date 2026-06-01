@@ -75,7 +75,7 @@ const installStack = [
   },
   {
     title: "Campaign assets",
-    body: "Creative angles, static ad concepts, launch copy, scoring, and preview states generated around the actual funnel.",
+    body: "Draft previews appear first, then premium static ads render into DealFlow storage for review, selection, and launch readiness.",
     icon: Megaphone,
   },
   {
@@ -156,8 +156,8 @@ const softwareModules = [
   {
     label: "03",
     title: "Creative engine",
-    body: "Ad angles, hooks, static concepts, and launch copy are generated around the funnel instead of sitting in a disconnected document.",
-    items: ["Hooks", "Static ad concepts", "Launch copy"],
+    body: "Ad angles, hooks, launch copy, and premium render states stay tied to the funnel, with launch blocked until the required assets are ready.",
+    items: ["Draft previews", "Premium statics", "Launch copy"],
   },
   {
     label: "04",
