@@ -30,6 +30,7 @@ import {
   getStaticCreativeReadiness,
   getVideoReadinessLabel,
   getVideoReadinessMessage,
+  isLaunchReadyStaticCreative,
   isLaunchReadyVideoCreative,
   isPlayableVideoCreative,
 } from "@/lib/services/creative-media-readiness";
@@ -258,6 +259,13 @@ export default async function PreviewPage({
     });
   };
   const staticReadiness = getStaticCreativeReadiness(previewPlan.creatives.staticAds, selectedAdIds, staticBriefReadinessContext);
+  const isCurrentLaunchReadyStatic = (ad: (typeof previewPlan.creatives.staticAds)[number] | null | undefined) => {
+    if (!ad) {
+      return false;
+    }
+
+    return isLaunchReadyStaticCreative(ad, staticBriefReadinessContext);
+  };
   const selectedStaticMediaReady = staticReadiness.allSelectedReady;
   const selectedUgcVideos = selectedUgcVideoIds.length > 0
     ? dedupeVideoIds(videoAds
@@ -391,6 +399,7 @@ export default async function PreviewPage({
                   score={displayStaticAds[0]?.score}
                   selected={selectedAds.length > 0}
                   selectedCount={displayStaticAds.length}
+                  launchReady={isCurrentLaunchReadyStatic(displayStaticAds[0])}
                   visualPromptBrief={displayStaticAds[0]?.visualPromptBrief}
                 />
               </div>
@@ -434,6 +443,7 @@ export default async function PreviewPage({
                       prominent
                       score={selectedAd.score}
                       selectedCount={displayStaticAds.length}
+                      launchReady={isCurrentLaunchReadyStatic(selectedAd)}
                       visualPromptBrief={selectedAd.visualPromptBrief}
                     />
                   ))}
