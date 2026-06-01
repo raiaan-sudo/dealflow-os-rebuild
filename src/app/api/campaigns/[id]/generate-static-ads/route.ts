@@ -133,15 +133,15 @@ export async function POST(
 
     const maxGenerations = body.maxGenerations ??
       (body.missingOnly === true
-        ? Math.min(6, Math.max(2, missingLaunchReadyFloorCount))
-        : undefined);
+        ? Math.min(STATIC_LAUNCH_MIN_CREATIVE_COUNT, Math.max(1, missingLaunchReadyFloorCount))
+        : STATIC_LAUNCH_MIN_CREATIVE_COUNT);
 
     await assertGenerationCreditsAvailableForUser({
       bucket: "image_generation",
       userId: auth.userId,
       organizationId: auth.organizationId,
       campaignId,
-      quantity: maxGenerations ?? 6,
+      quantity: maxGenerations,
     });
 
     const activeJobs = await listSystemJobs({
@@ -195,7 +195,7 @@ export async function POST(
       payload: {
         force: body.force === true,
         missingOnly: body.missingOnly === true,
-        targetVariantCount: 6,
+        targetVariantCount: STATIC_LAUNCH_MIN_CREATIVE_COUNT,
         promoteThreshold: STATIC_LAUNCH_MIN_CREATIVE_COUNT,
         outputMode: "finished_ad",
         provider: "higgsfield_marketing_studio",

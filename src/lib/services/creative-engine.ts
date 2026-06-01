@@ -2202,6 +2202,10 @@ export function hasUsableStaticCreativeImage(asset: StaticCreativeAsset | null |
     return false;
   }
 
+  if (asset.imageGenerationState === "failed" || asset.imageQa?.usable === false || asset.imageQa?.decision === "reject") {
+    return false;
+  }
+
   return evaluateStaticVisualAssetDecision(asset).usable;
 }
 

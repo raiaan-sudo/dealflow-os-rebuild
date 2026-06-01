@@ -351,15 +351,15 @@ export function evaluateStaticCreativeLaunchSafety(
 function blockerMessage(reason: StaticCreativeLaunchBlockerReason | undefined) {
   switch (reason) {
     case "missing_image":
-      return "No finished Higgsfield ad image is available yet.";
+      return "No finished ad image is available yet.";
     case "storage_not_app_owned":
       return "This visual needs to be stored in DealFlow before it can be used as a launch-ready creative.";
     case "app_composed_not_launch_approved":
-      return "Final launch-ready ads must be finished Higgsfield renders, not DealFlow-composed mockups.";
+      return "This draft needs final approval before it can be selected for launch.";
     case "not_finished_higgsfield_render":
-      return "This finished ad is review-only until it is a verified Higgsfield CLI render that passes QA.";
+      return "This draft needs a finished render before it can be selected for launch.";
     case "background_source_not_final":
-      return "Higgsfield background/source images are review-only and cannot satisfy launch readiness.";
+      return "This background image is review-only and cannot satisfy launch readiness.";
     case "legacy_finished_ad_prompt_risk":
       return "This visual was generated from an old full-ad prompt that can create fake text artifacts.";
     case "gibberish_text":
@@ -376,7 +376,7 @@ function blockerMessage(reason: StaticCreativeLaunchBlockerReason | undefined) {
     case "protected_class_language":
       return "This visual needs review for compliance before launch.";
     default:
-      return "This visual needs a cleaner finished Higgsfield render before it can be launch-ready.";
+      return "This visual needs another finished render before it can be launch-ready.";
   }
 }
 

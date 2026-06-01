@@ -366,7 +366,7 @@ function runOfflineChecks() {
   assertExcludes(builderPanels, "asset.provider_name", "Builder asset provider names hidden", "builder asset rows avoid exposing raw provider names in customer-facing copy");
   assertIncludes(creativeWizard, "snap-x", "Creative carousel readable cards", "creative carousel uses full preview cards instead of compressed summary-only tiles");
   assertIncludes(creativeWizard, "Keep at least one native-style concept", "Creative native-style quota gate", "selected creative sets must retain a native-style concept when available");
-  assertIncludes(creativeWizard, "Retry preview render", "Creative retry secondary action", "retry/regenerate remains a secondary failed-state action");
+  assertIncludes(creativeWizard, "Retry render", "Creative retry secondary action", "retry/regenerate remains a secondary failed-state action");
   assertIncludes(creativeWizard, "Video preview", "Creative video preview panel", "creative selection exposes the video concept and render status");
   assertIncludes(creativeWizard, "/generate-video", "Creative video render", "creative selection can queue the campaign video render from the video panel");
   assertIncludes(creativeWizard, "View full video", "Creative video fullscreen", "video previews can be watched in a full-screen review modal");
@@ -378,9 +378,9 @@ function runOfflineChecks() {
   assertIncludes(creativeWizard, "imageRenderPending", "Creative retry optimistic state", "retry clicks immediately clear stale failed-copy and show a generating state while provider work runs");
   assertIncludes(creativeWizard, "activeImageJobId", "Creative image active-job state", "image preview progress stays visible while an active render job is streaming");
   assertIncludes(creativeWizard, "activeVideoJobId", "Creative video active-job state", "video preview progress stays visible while an active render job is streaming");
-  assertIncludes(creativeWizard, "Premium launch ads are queued for final rendering", "Creative premium ad feedback", "premium generation clicks give visible feedback while draft previews remain usable");
-  assertIncludes(creativeWizard, "Premium render paused", "Creative premium button state", "stale deferred premium renders do not present as actively retrying forever");
-  assertIncludes(creativeWizard, "Request a fresh render", "Creative stale deferred retry", "stale deferred premium renders expose a clear fresh-render request");
+  assertIncludes(creativeWizard, "Sent for generation. Usually takes 90 seconds to 3 minutes", "Creative render click feedback", "render clicks give visible feedback while draft previews remain usable");
+  assertIncludes(creativeWizard, "Preview renders locked until ready", "Creative preview locked state", "in-progress static renders lock preview loading until the job is ready");
+  assertIncludes(creativeWizard, "Show preview renders", "Creative preview unlock action", "finished renders load only after the explicit preview action");
   assertIncludes(creativeWizard, "Retry UGC video", "Creative UGC retry action", "completed but review-only UGC renders expose a retry action instead of looking stuck");
   assertIncludes(creativeWizard, "getVideoLaunchReadinessReason", "Creative UGC truthful rejection reason", "completed but non-launch-ready UGC videos show the exact launch-readiness reason");
   assertIncludes(creativeWizard, "Image preview is being prepared. This page will update when the visual is ready.", "Creative retry pending copy", "creative cards show immediate pending feedback instead of stale cap errors");

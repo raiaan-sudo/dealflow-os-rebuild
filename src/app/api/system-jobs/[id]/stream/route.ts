@@ -2,7 +2,6 @@ import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { getSystemJob, getSystemJobLogs } from "@/lib/services/system-job-service";
 import {
   classifyCreativeRenderJob,
-  isMarketingStudioWorkerDeferredRunAt,
 } from "@/lib/services/creative-render-state";
 
 export const dynamic = "force-dynamic";
@@ -46,8 +45,7 @@ export async function GET(
           if (
             !job ||
             job.status === "completed" ||
-            job.status === "failed" ||
-            isMarketingStudioWorkerDeferredRunAt(job.next_run_at)
+            job.status === "failed"
           ) {
             controller.close();
             return;

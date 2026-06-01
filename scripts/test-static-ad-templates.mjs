@@ -393,7 +393,7 @@ assert.deepEqual(
   }),
   {
     usable: false,
-    reason: "Text-free backgrounds are review-only; final launch ads must be finished Higgsfield CLI renders.",
+    reason: "This draft needs a finished render before it can be selected for launch.",
   },
   "text-free provider backgrounds are review-only and cannot satisfy final static launch readiness",
 );
@@ -410,7 +410,7 @@ assert.deepEqual(
   }),
   {
     usable: false,
-    reason: "Final launch-ready ads must be finished Higgsfield renders, not DealFlow-composed mockups.",
+    reason: "This draft needs final approval before it can be selected for launch.",
   },
   "app-composed fallback statics are draft-only until premium provenance is accepted",
 );
@@ -432,7 +432,7 @@ assert.deepEqual(
   }),
   {
     usable: false,
-    reason: "Final launch-ready ads must be finished Higgsfield renders, not DealFlow-composed mockups.",
+    reason: "This draft needs final approval before it can be selected for launch.",
   },
   "app-composed Higgsfield-backed statics are review-only and cannot satisfy launch readiness",
 );
@@ -472,6 +472,10 @@ const generatedAsset = {
   appComposedFinal: false,
   qualityTier: "higgsfield_finished_ad",
   imageGenerationProvider: "higgsfield_marketing_studio",
+  generationMethod: "higgsfield_marketing_studio",
+  providerName: "higgsfield_marketing_studio",
+  generationMode: "finished_ad",
+  assetRole: "final_static_ad",
   visualQualityGate: { accepted: true, mode: "finished_ad_qa", reasons: [] },
   premiumQualityGate: { accepted: true, mode: "higgsfield_finished_ad_provenance", reasons: [] },
   imageQa: { usable: true, decision: "accept", mode: "finished_ad", reasons: [] },
@@ -523,6 +527,10 @@ const reusableStaticAds = baseStaticAds.slice(0, -1).map((asset) => ({
   imageGenerationMessage: null,
   imageGenerationModel: "gpt-image-1.5",
   imageGenerationProvider: "higgsfield_marketing_studio",
+  generationMethod: "higgsfield_marketing_studio",
+  providerName: "higgsfield_marketing_studio",
+  generationMode: "finished_ad",
+  assetRole: "final_static_ad",
 	  qualityGate: {
 	    ...(asset.qualityGate ?? {}),
 	    accepted: true,
@@ -568,6 +576,10 @@ const allReusableStaticAds = baseStaticAds.map((asset) => ({
   imageGenerationMessage: null,
   imageGenerationModel: "gpt-image-1.5",
   imageGenerationProvider: "higgsfield_marketing_studio",
+  generationMethod: "higgsfield_marketing_studio",
+  providerName: "higgsfield_marketing_studio",
+  generationMode: "finished_ad",
+  assetRole: "final_static_ad",
 		  qualityGate: {
 		    ...(asset.qualityGate ?? {}),
 		    accepted: true,

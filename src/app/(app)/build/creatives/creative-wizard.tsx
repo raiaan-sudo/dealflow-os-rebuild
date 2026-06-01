@@ -325,7 +325,7 @@ function customerImageMessage(message?: string | null) {
 }
 
 const STATIC_RENDER_TIMEFRAME_MESSAGE =
-  "Render assets sent for generation and queued. This usually takes 90 seconds to 3 minutes. Keep this page open; the preview button unlocks when the renders are ready to load.";
+  "Sent for generation. Usually takes 90 seconds to 3 minutes. Preview renders unlock when they are ready.";
 
 const STATIC_RENDER_READY_TO_LOAD_MESSAGE =
   "Preview renders are ready. Click Show preview renders to load the finished assets into this page.";
@@ -582,23 +582,6 @@ export function CreativeWizard({
   }, [currentImageJob?.id]);
 
   useEffect(() => {
-    if (staticReadiness.selectedMinimumMet || !needsImageGeneration || hasCreditBlocker) {
-      return;
-    }
-
-    const interval = window.setInterval(() => {
-      router.refresh();
-    }, 15_000);
-
-    return () => window.clearInterval(interval);
-  }, [
-    hasCreditBlocker,
-    needsImageGeneration,
-    router,
-    staticReadiness.selectedMinimumMet,
-  ]);
-
-  useEffect(() => {
     if (!currentVideoRenderJob && !activeVideoJobId) {
       return;
     }
@@ -630,11 +613,6 @@ export function CreativeWizard({
         setActiveImageJobId((current) => current === jobId ? null : current);
       }
     };
-    const clearTrackedJob = () => {
-      setRenderJobs((current) => current.filter((job) => job.id !== jobId));
-      clearActiveJob();
-    };
-
     source.addEventListener("job", (event) => {
       try {
         const job = JSON.parse((event as MessageEvent).data) as SystemJob;
@@ -666,16 +644,15 @@ export function CreativeWizard({
           source.close();
           jobStreamsRef.current.delete(jobId);
           clearActiveJob();
-          router.refresh();
+          if (surface === "video") {
+            router.refresh();
+          }
         } else if (isMarketingStudioWorkerDeferredRunAt(job.next_run_at)) {
           if (surface === "video") {
             setVideoMessage(renderView.customerMessage);
           } else {
             setRenderMessage(renderView.customerMessage);
           }
-          source.close();
-          jobStreamsRef.current.delete(jobId);
-          clearTrackedJob();
         } else if (job.status === "pending" || job.status === "processing") {
           if (surface === "video") {
             setVideoMessage(renderView.customerMessage);
@@ -707,11 +684,7 @@ export function CreativeWizard({
     setCreditTopUpSurface(null);
     setPreviewRendersReadyToLoad(false);
     setPreviewRendersLoading(false);
-    setRenderMessage(
-      automatic
-        ? "Preparing image previews automatically. You can review the creative set while visuals finish."
-        : STATIC_RENDER_TIMEFRAME_MESSAGE,
-    );
+    setRenderMessage(STATIC_RENDER_TIMEFRAME_MESSAGE);
 
     try {
       const response = await fetch(`/api/campaigns/${encodeURIComponent(campaignId)}/generate-static-ads`, {
@@ -722,6 +695,7 @@ export function CreativeWizard({
         body: JSON.stringify({
           force,
           missingOnly,
+          maxGenerations: STATIC_LAUNCH_MIN_CREATIVE_COUNT,
         }),
       });
       const data = (await response.json().catch(() => null)) as
@@ -738,23 +712,13 @@ export function CreativeWizard({
       }
 
       const renderView = jobRenderView(data.job);
-      const deferredWorkerJob = isMarketingStudioWorkerDeferredRunAt(data.job.next_run_at);
       setRenderJobs((current) => upsertRenderJob(current, data.job as SystemJob));
       setRenderMessage(
-        renderView.state === "operator_action_required"
-          ? "Final Higgsfield render is paused while the render worker is unavailable. Draft previews remain visible; launch-ready ads will update only after finished ads render."
-          : deferredWorkerJob
-            ? "Premium launch ads are queued for final rendering. Final Higgsfield ads are queued for rendering; draft previews remain available while finished ads are created."
-          : data.previewUpdated
-            ? "Draft previews are visible now. Final Higgsfield launch ads are preparing separately."
-            : STATIC_RENDER_TIMEFRAME_MESSAGE,
+        data.previewUpdated
+          ? "Draft previews are visible while final ads render."
+          : renderView.customerMessage || STATIC_RENDER_TIMEFRAME_MESSAGE,
       );
-      if (data.previewUpdated) {
-        router.refresh();
-      }
-      if (!deferredWorkerJob) {
-        subscribeToJob(data.job.id, "image");
-      }
+      subscribeToJob(data.job.id, "image");
     } catch (renderError) {
       setRenderMessage(null);
       setError(
@@ -767,12 +731,12 @@ export function CreativeWizard({
   }, [campaignId, renderingImages, router, subscribeToJob]);
 
   useEffect(() => {
-    if (!currentImageJob?.id || isMarketingStudioWorkerDeferredRunAt(currentImageJob.next_run_at)) {
+    if (!currentImageJob?.id) {
       return;
     }
 
     subscribeToJob(currentImageJob.id, "image");
-  }, [currentImageJob?.id, currentImageJob?.next_run_at, subscribeToJob]);
+  }, [currentImageJob?.id, subscribeToJob]);
 
   const showPreviewRenders = useCallback(() => {
     if (!previewRendersReadyToLoad || previewRendersLoading) {
@@ -1019,8 +983,8 @@ export function CreativeWizard({
   const imageRenderActive = Boolean(currentImageRenderView?.active);
   const imageOperatorActionRequired = currentImageRenderView?.state === "operator_action_required";
   const imageWorkerQueued = currentImageRenderView?.state === "deferred_worker_required";
-  const imageRenderPending = renderingImages || imageRenderActive;
-  const imageActionPending = renderingImages || imageRenderActive;
+  const imageRenderPending = renderingImages || imageRenderActive || imageWorkerQueued || Boolean(activeImageJobId);
+  const imageActionPending = imageRenderPending;
   const showPreviewRendersVisible =
     previewRendersReadyToLoad ||
     imageActionPending ||
@@ -1051,11 +1015,11 @@ export function CreativeWizard({
             ? requiredStaticProgressLabel
             : "Final static ads are not ready yet";
   const staticProgressBody = hasCreditBlocker
-    ? "Top up generation credits to start paid premium rendering. Draft previews stay visible, but Launch remains blocked until 3 final ads pass review."
+    ? "Top up generation credits to start paid rendering. Draft previews stay visible, but Launch remains blocked until 3 final ads are ready."
     : staticReadiness.selectedMinimumMet
       ? "You can save the required static set now. Optional 5th and 6th polish variants can finish later and do not block the first launch package."
-      : imageRenderPastThreeMinutes
-        ? `${requiredStaticProgressLabel}. You can keep setting up Meta, billing, and preview while final ads finish. Launch unlocks automatically only after 3 ads pass review.`
+    : imageRenderPastThreeMinutes
+        ? `${requiredStaticProgressLabel}. You can keep setting up Meta, billing, and preview while final ads finish. Launch unlocks only after 3 ads are ready.`
         : imageActionPending || imageWorkerQueued
           ? `${requiredStaticProgressLabel}. DealFlow is prioritizing the first 3 required ads; optional polish variants wait until the launch floor is ready.`
           : `${requiredStaticProgressLabel}. Click Render assets to render the launch floor first. Optional polish variants do not need to finish before setup can continue.`;
@@ -1269,18 +1233,18 @@ export function CreativeWizard({
                   {imageLimitMessage
                     ? "Daily image limit reached"
                     : imageOperatorActionRequired
-                    ? "Premium render paused"
+                    ? "Retry render"
                     : imageWorkerQueued
-                    ? "Premium render queued"
+                    ? "Render assets"
                     : imageActionPending
-                    ? "Preparing premium ads..."
+                    ? "Render assets"
                     : optionalOnlyNeedsPolish
                       ? "Render assets"
                       : needsImageGeneration
                         ? staticReadiness.staleCount > 0
                         ? "Regenerate stale render assets"
                         : "Render assets"
-                      : "Refresh premium ads"}
+                      : "Render assets"}
                 </Button>
               ) : null}
               {showPreviewRendersVisible ? (
@@ -1308,9 +1272,7 @@ export function CreativeWizard({
                     ? "Daily image limit reached"
                     : imageActionPending
                     ? "Retrying..."
-                    : imageOperatorActionRequired
-                    ? "Request fresh render"
-                    : "Retry preview render"}
+                    : "Retry render"}
                 </Button>
               ) : null}
             </div>
@@ -1349,7 +1311,7 @@ export function CreativeWizard({
                   className="ml-2 font-semibold text-amber-50 underline decoration-amber-200/50 underline-offset-4"
                   onClick={() => void queueImagePreviews({ force: imageOperatorActionRequired, missingOnly: true })}
                 >
-                  {imageOperatorActionRequired ? "Request a fresh render" : "Retry image previews"}
+                  Retry render
                 </button>
               ) : null}
             </div>
@@ -1881,7 +1843,7 @@ export function CreativeWizard({
               {draftCreatives.length} draft concept{draftCreatives.length === 1 ? "" : "s"} need regeneration
             </summary>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              These concepts are draft previews and are not selectable as final launch media until finished Higgsfield ads pass review.
+              These concepts are draft previews and are not selectable as final launch media until finished ads are ready.
             </p>
             <div className="mt-4 grid gap-4 lg:grid-cols-3">
               {draftCreatives.map((creative, index) => {

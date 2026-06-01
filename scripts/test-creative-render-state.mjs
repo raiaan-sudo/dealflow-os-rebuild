@@ -130,6 +130,7 @@ assert.equal(delayedStatic.state, "operator_action_required");
 assert.equal(delayedStatic.retryAvailable, true);
 assert.equal(delayedStatic.customerActionLabel, "Retry render");
 assert.match(delayedStatic.customerMessage, /taking longer than expected/);
+assert.doesNotMatch(delayedStatic.customerMessage, /provider|worker|job|system job|higgsfield|openai|qa|storage|hash|env|api key|marketing_studio|cli/i);
 
 const processing = classifyCreativeRenderJob({
   id: "job-processing",
@@ -302,9 +303,9 @@ const creativeWizardSource = fs.readFileSync("src/app/(app)/build/creatives/crea
 assert.match(creativeWizardSource, /classifyCreativeRenderJob/);
 assert.doesNotMatch(creativeWizardSource, /Final media queued/);
 assert.match(creativeWizardSource, /currentImageRenderView\?\.active/);
-assert.match(creativeWizardSource, /Final Higgsfield render is paused/);
-assert.match(creativeWizardSource, /Final Higgsfield ads are queued for rendering/);
-assert.match(creativeWizardSource, /Request a fresh render/);
+assert.doesNotMatch(creativeWizardSource, /Final Higgsfield render is paused/);
+assert.doesNotMatch(creativeWizardSource, /Final Higgsfield ads are queued for rendering/);
+assert.doesNotMatch(creativeWizardSource, /Request a fresh render/);
 assert.match(creativeWizardSource, /Render assets/);
 assert.match(creativeWizardSource, /Preview renders locked until ready/);
 assert.match(creativeWizardSource, /Show preview renders/);
@@ -313,9 +314,21 @@ assert.match(
   /setRenderJobs\(\(current\) => upsertRenderJob\(current, data\.job as SystemJob\)\)/,
   "deferred optional polish jobs must stay in client state so the button does not look dead",
 );
+assert.match(creativeWizardSource, /maxGenerations:\s*STATIC_LAUNCH_MIN_CREATIVE_COUNT/);
+assert.doesNotMatch(
+  creativeWizardSource,
+  /window\.setInterval\(\(\) => \{\s*router\.refresh\(\);\s*\}, 15_000\)/s,
+  "static render completion must unlock Show preview renders instead of surprise-refreshing the page",
+);
+const streamRouteSource = fs.readFileSync("src/app/api/system-jobs/[id]/stream/route.ts", "utf8");
+assert.doesNotMatch(
+  streamRouteSource,
+  /isMarketingStudioWorkerDeferredRunAt\(job\.next_run_at\)/,
+  "render stream must keep polling deferred jobs so the UI can unlock without page auto-refresh",
+);
 assert.match(creativeWizardSource, /getVideoLaunchReadinessReason/);
 assert.match(creativeWizardSource, /Retry UGC video/);
-assert.doesNotMatch(creativeWizardSource, /Queued for render worker|worker is available|product QA accepts/);
+assert.doesNotMatch(creativeWizardSource, /Queued for render worker|worker is available|product QA accepts|pass QA|finished Higgsfield ads pass review/);
 assert.doesNotMatch(creativeWizardSource, /\{videoActionPending \? "Rendering"/, "active job ids no longer force a Rendering label");
 assert.doesNotMatch(
   creativeWizardSource,

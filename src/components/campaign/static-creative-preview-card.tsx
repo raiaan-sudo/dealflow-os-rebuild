@@ -162,7 +162,7 @@ export function StaticCreativePreviewCard({
         score={score}
         selectedCount={selectedCount}
         launchReady={launchReady}
-        showRawAssetState={!compact}
+        showRawAssetState={false}
         visualPromptBrief={visualPromptBrief}
       />
       <div className={cn("space-y-4", compact ? "p-3" : "p-6")}>
@@ -260,7 +260,7 @@ export function StaticCreativePreviewCard({
                 score={score}
                 selectedCount={selectedCount}
                 launchReady={launchReady}
-                showRawAssetState
+                showRawAssetState={false}
                 visualPromptBrief={visualPromptBrief}
               />
             </div>
