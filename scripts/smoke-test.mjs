@@ -358,7 +358,7 @@ function runOfflineChecks() {
   assertIncludes(creativeWizard, "Selected creative preview", "Creative wizard primary focus", "creative selection leads with one large selected creative preview instead of repeated stacks");
   assertIncludes(creativeWizard, "Creative carousel", "Creative carousel selector", "agents can view every generated creative and select the test set from an always-visible carousel");
   assertIncludes(creativeWizard, "Click any card to view it large above", "Creative carousel inspection cue", "creative carousel tells users how to inspect the full creative");
-  assertIncludes(creativeWizard, "Pick at least", "Creative static floor copy", "Creative Studio treats four static creatives as the launch floor and 5-6 as optional larger-budget variants");
+  assertIncludes(creativeWizard, "Pick at least", "Creative static floor copy", "Creative Studio treats the configured static creative count as the launch floor and optional larger-budget variants separately");
   assertIncludes(creativeWizard, "Render fresh UGC video", "Creative UGC stale-script repair", "older UGC renders can be refreshed when the approved script changes");
   assertIncludes(creativeWizard, "videoMatchesApprovedScript", "Creative UGC script hash gate", "UGC videos cannot be selected for launch when their script hash does not match the approved script");
   assertExcludes(creativeChatIntake, "promptVersion?.sanitizedPreview", "Creative approved brief summary", "approved Creative Studio summary avoids backend prompt/version fields");
@@ -385,7 +385,7 @@ function runOfflineChecks() {
   assertIncludes(creativeWizard, "getVideoLaunchReadinessReason", "Creative UGC truthful rejection reason", "completed but non-launch-ready UGC videos show the exact launch-readiness reason");
   assertIncludes(creativeWizard, "Image preview is being prepared. This page will update when the visual is ready.", "Creative retry pending copy", "creative cards show immediate pending feedback instead of stale cap errors");
   assertIncludes(creativeWizard, "getStaticPreviewStatusMessage", "Creative partial-count copy", "completed image jobs report ready/missing/failed counts instead of generic ready copy");
-  assertIncludes(creativeWizard, "Preparing first 4 launch-ready ads", "Creative first-four progress copy", "creative rendering prioritizes the required first four launch-ready ads before optional polish variants");
+  assertIncludes(creativeWizard, "Preparing first 3 launch-ready ads", "Creative first-three progress copy", "creative rendering prioritizes the required first three launch-ready ads before optional polish variants");
   assertIncludes(creativeWizard, "You can keep setting up Meta, billing, and preview while final ads finish", "Creative slow-render fallback copy", "creative rendering has a 3-minute background-mode message instead of looking stuck");
   assertIncludes("src/lib/services/creative-media-readiness.ts", "launch-ready previews available", "Creative partial-count wording", "partial image generation copy exposes counts without treating optional failed variants as launch blockers");
   assertIncludes(creativeWizard, "customerImageMessage", "Creative image error sanitizer", "image preview failures do not expose provider or infrastructure wording to customers");

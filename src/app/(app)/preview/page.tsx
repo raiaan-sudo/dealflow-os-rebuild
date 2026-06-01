@@ -141,7 +141,7 @@ function ReviewOnlyCreativePreview({ plan }: { plan: CampaignPlan }) {
         className="border-amber-300/18 bg-black/18"
         cta={cta}
         headline={headline}
-        imageGenerationMessage="Review-only placeholder. Select at least 4 launch-ready static ads in Creative Studio before launch."
+        imageGenerationMessage="Review-only placeholder. Select at least 3 launch-ready static ads in Creative Studio before launch."
         imageGenerationState="unavailable"
         imagePrompt={null}
         imagePromptConfig={null}

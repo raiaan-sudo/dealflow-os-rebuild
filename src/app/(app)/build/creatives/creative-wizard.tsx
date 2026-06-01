@@ -1042,22 +1042,22 @@ export function CreativeWizard({
   const staticProgressTitle = hasCreditBlocker
     ? "Add credits to render final ads"
     : staticReadiness.selectedMinimumMet
-      ? "First 4 static ads are launch-ready"
+      ? "First 3 static ads are launch-ready"
       : imageRenderPastThreeMinutes
         ? "Final ads are still rendering in the background"
         : imageActionPending || imageWorkerQueued
-          ? "Preparing first 4 launch-ready ads"
+          ? "Preparing first 3 launch-ready ads"
           : staticReadiness.requiredReadyCount > 0
             ? requiredStaticProgressLabel
             : "Final static ads are not ready yet";
   const staticProgressBody = hasCreditBlocker
-    ? "Top up generation credits to start paid premium rendering. Draft previews stay visible, but Launch remains blocked until 4 final ads pass review."
+    ? "Top up generation credits to start paid premium rendering. Draft previews stay visible, but Launch remains blocked until 3 final ads pass review."
     : staticReadiness.selectedMinimumMet
       ? "You can save the required static set now. Optional 5th and 6th polish variants can finish later and do not block the first launch package."
       : imageRenderPastThreeMinutes
-        ? `${requiredStaticProgressLabel}. You can keep setting up Meta, billing, and preview while final ads finish. Launch unlocks automatically only after 4 ads pass review.`
+        ? `${requiredStaticProgressLabel}. You can keep setting up Meta, billing, and preview while final ads finish. Launch unlocks automatically only after 3 ads pass review.`
         : imageActionPending || imageWorkerQueued
-          ? `${requiredStaticProgressLabel}. DealFlow is prioritizing the first 4 required ads; optional polish variants wait until the launch floor is ready.`
+          ? `${requiredStaticProgressLabel}. DealFlow is prioritizing the first 3 required ads; optional polish variants wait until the launch floor is ready.`
           : `${requiredStaticProgressLabel}. Click Render assets to render the launch floor first. Optional polish variants do not need to finish before setup can continue.`;
   const staticProgressTone = hasCreditBlocker
     ? "border-amber-400/24 bg-amber-400/10 text-amber-50"
@@ -1116,7 +1116,7 @@ export function CreativeWizard({
               Choose the launch test set from the approved brief
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              The creative brief approval is saved in the intake step. Select at least 4 launch-ready static ads, add up to 6 for higher-budget split tests, and choose one launch-ready AI UGC video for the final launch package.
+              The creative brief approval is saved in the intake step. Select at least 3 launch-ready static ads, add up to 6 for higher-budget split tests, and choose one launch-ready AI UGC video for the final launch package.
             </p>
           </div>
           <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.07] px-4 py-3 text-sm leading-6 text-emerald-100 lg:max-w-md">
@@ -1241,8 +1241,8 @@ export function CreativeWizard({
               {savedSelectionMatchesCurrent && staticReadiness.allSelectedReady
                 ? `${staticReadiness.selectedReadyLabel}. DealFlow will use the first saved ad as the primary creative and keep the rest as static launch variants once every launch gate is ready.`
                 : staticReadiness.selectedMinimumMet
-                  ? `${staticReadiness.selectedReadyLabel}. Save at least 4 static ads plus one approved UGC video before launch can continue; 5-6 static ads are optional for larger budgets.`
-                  : `${requiredStaticProgressLabel}. DealFlow renders the first 4 required ads before optional polish variants; Launch stays blocked until the required set passes review.`}
+                  ? `${staticReadiness.selectedReadyLabel}. Save at least 3 static ads plus one approved UGC video before launch can continue; 4-6 static ads are optional for larger budgets.`
+                  : `${requiredStaticProgressLabel}. DealFlow renders the first 3 required ads before optional polish variants; Launch stays blocked until the required set passes review.`}
             </p>
             <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm leading-6 ${staticProgressTone}`} aria-live="polite">
               <p className="font-semibold">{staticProgressTitle}</p>

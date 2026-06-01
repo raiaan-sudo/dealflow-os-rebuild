@@ -1,6 +1,6 @@
 import { evaluateStaticCreativeLaunchSafety } from "@/lib/services/static-creative-visual-qa";
 import type { FallbackLaunchQaResult } from "@/lib/services/creative-asset-status";
-export const STATIC_LAUNCH_MIN_CREATIVE_COUNT = 4;
+export const STATIC_LAUNCH_MIN_CREATIVE_COUNT = 3;
 export const STATIC_LAUNCH_MAX_CREATIVE_COUNT = 6;
 
 type StaticCreativeReadinessInput = {

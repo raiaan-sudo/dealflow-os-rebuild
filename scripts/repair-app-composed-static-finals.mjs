@@ -590,7 +590,7 @@ async function main() {
           ? `force-regenerate current static concepts/finals with maxGenerations=${maxGenerations}`
           : `regenerate current static concepts/finals with maxGenerations=${maxGenerations} when fewer than 4 are launch-ready`,
         "store 4-6 app-composed final statics in app-owned storage",
-        "select the first 4-6 current launch-ready app-composed static IDs",
+        "select the first 3-6 current launch-ready app-composed static IDs",
         "preserve historical failed/provider rows as evidence",
       ],
       applyCommand: `node ./scripts/repair-app-composed-static-finals.mjs${forceRegenerateCurrent ? " --force-regenerate-current" : ""}${recomposeExistingSources ? " --recompose-existing-sources" : ""} --max-generations=${maxGenerations} --apply --ack=${APPLY_ACK}`,

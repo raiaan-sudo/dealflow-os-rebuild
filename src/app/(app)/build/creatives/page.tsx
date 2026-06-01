@@ -320,7 +320,7 @@ export default async function BuildCreativesPage({
       <PageHeader
         eyebrow="Build"
         title="Choose your creative test set"
-        description="Select at least 4 launch-ready static ads, add up to 6 for larger split tests, and choose one approved AI UGC video. DealFlow preserves the full launch package across Preview and Launch."
+        description="Select at least 3 launch-ready static ads, add up to 6 for larger split tests, and choose one approved AI UGC video. DealFlow preserves the full launch package across Preview and Launch."
       />
       {creativeIntakeEnabled ? (
         <CreativeChatIntake

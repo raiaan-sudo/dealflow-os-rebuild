@@ -198,8 +198,8 @@ const advisoryOnlyReadiness = getStaticCreativeReadiness(
   advisoryOnlyFinishedSet,
   advisoryOnlyFinishedSet.map((creative) => creative.id),
 );
-assert.equal(advisoryOnlyReadiness.launchReadyCount, 4, "soft offer-quality notes cannot block verified Higgsfield finished renders");
-assert.equal(advisoryOnlyReadiness.selectedReadyCount, 4, "soft offer-quality notes cannot block selection readiness");
+assert.equal(advisoryOnlyReadiness.launchReadyCount, STATIC_LAUNCH_MIN_CREATIVE_COUNT, "soft offer-quality notes cannot block verified Higgsfield finished renders");
+assert.equal(advisoryOnlyReadiness.selectedReadyCount, STATIC_LAUNCH_MIN_CREATIVE_COUNT, "soft offer-quality notes cannot block selection readiness");
 assert.equal(advisoryOnlyReadiness.retryCount, 0, "soft offer-quality notes cannot increment retry-needed counts");
 assert.equal(advisoryOnlyReadiness.missingCount, 0, "soft offer-quality notes are not missing media");
 assert.equal(advisoryOnlyReadiness.issueLabel, null, "soft offer-quality notes do not create launch-blocking issue copy");
@@ -236,21 +236,19 @@ const unselectedPreparingReadiness = getStaticCreativeReadiness(creatives, []);
 assert.equal(unselectedPreparingReadiness.selectedReadyCount, 0);
 assert.equal(unselectedPreparingReadiness.launchReadyCount, 3);
 assert.equal(unselectedPreparingReadiness.requiredReadyCount, 3);
-assert.equal(unselectedPreparingReadiness.requiredMissingCount, 1);
+assert.equal(unselectedPreparingReadiness.requiredMissingCount, 0);
 assert.equal(unselectedPreparingReadiness.optionalReadyCount, 0);
-assert.match(unselectedPreparingReadiness.issueLabel ?? "", /4 launch-ready static ads required; 3 available now/);
-assert.doesNotMatch(unselectedPreparingReadiness.issueLabel ?? "", /launch-ready ads are available now/);
-assert.match(getStaticPreviewStatusMessage(unselectedPreparingReadiness), /3 launch-ready previews available; 4 required for launch/);
-assert.doesNotMatch(getStaticPreviewStatusMessage(unselectedPreparingReadiness), /launch can continue/);
+assert.match(unselectedPreparingReadiness.issueLabel ?? "", /3 optional polish variants are still preparing; launch-ready ads are available now/);
+assert.match(getStaticPreviewStatusMessage(unselectedPreparingReadiness), /3 launch-ready previews available; 3 required for launch/);
 
 const unselectedReviewOnlyReadiness = getStaticCreativeReadiness(reviewOnlyStaticSet, []);
 assert.equal(unselectedReviewOnlyReadiness.selectedReadyCount, 0);
 assert.equal(unselectedReviewOnlyReadiness.launchReadyCount, 0);
 assert.equal(unselectedReviewOnlyReadiness.requiredReadyCount, 0);
-assert.equal(unselectedReviewOnlyReadiness.requiredMissingCount, 4);
-assert.match(unselectedReviewOnlyReadiness.issueLabel ?? "", /4 launch-ready static ads required; 0 available now/);
+assert.equal(unselectedReviewOnlyReadiness.requiredMissingCount, STATIC_LAUNCH_MIN_CREATIVE_COUNT);
+assert.match(unselectedReviewOnlyReadiness.issueLabel ?? "", /3 launch-ready static ads required; 0 available now/);
 assert.doesNotMatch(unselectedReviewOnlyReadiness.issueLabel ?? "", /launch-ready ads are available now/);
-assert.match(getStaticPreviewStatusMessage(unselectedReviewOnlyReadiness), /0 launch-ready previews available; 4 required for launch/);
+assert.match(getStaticPreviewStatusMessage(unselectedReviewOnlyReadiness), /0 launch-ready previews available; 3 required for launch/);
 assert.doesNotMatch(getStaticPreviewStatusMessage(unselectedReviewOnlyReadiness), /launch can continue/);
 
 const appFallbackTemplateReadiness = getStaticCreativeReadiness([
@@ -283,8 +281,8 @@ assert.equal(oneSelected.selectedMinimumMet, false);
 assert.equal(oneSelected.allSelectedReady, false);
 assert.equal(oneSelected.retryCount, 2);
 assert.equal(oneSelected.missingCount, 1);
-assert.match(getStaticPreviewStatusMessage(oneSelected), /1 selected launch-ready preview; 4 required for launch/);
-assert.match(getStaticPreviewStatusMessage(oneSelected), /4 launch-ready static ads required/);
+assert.match(getStaticPreviewStatusMessage(oneSelected), /1 selected launch-ready preview; 3 required for launch/);
+assert.match(getStaticPreviewStatusMessage(oneSelected), /3 launch-ready static ads required/);
 
 const blockedSelection = getStaticCreativeReadiness(creatives, ["primary", "failed-1"]);
 assert.equal(blockedSelection.selectedBlockedCount, 1);
@@ -299,23 +297,23 @@ const allFailedSelection = getStaticCreativeReadiness([
 assert.equal(allFailedSelection.selectedReadyCount, 0);
 assert.equal(allFailedSelection.selectedBlockedCount, 3);
 assert.equal(allFailedSelection.allSelectedReady, false);
-assert.match(getStaticPreviewStatusMessage(allFailedSelection), /0 selected launch-ready previews; 4 required for launch/);
+assert.match(getStaticPreviewStatusMessage(allFailedSelection), /0 selected launch-ready previews; 3 required for launch/);
 assert.match(getStaticPreviewStatusMessage(allFailedSelection), /3 selected creatives need retry before launch/);
 
-const fourSelected = getStaticCreativeReadiness([
+const threeSelected = getStaticCreativeReadiness([
   readyStatic("primary"),
   readyStatic("review-1"),
   readyStatic("review-2"),
   readyStatic("review-3"),
   readyStatic("review-4"),
-], ["primary", "review-1", "review-2", "review-3"]);
-assert.equal(fourSelected.minimumRequiredCount, STATIC_LAUNCH_MIN_CREATIVE_COUNT);
-assert.equal(fourSelected.selectedMinimumMet, true);
-assert.equal(fourSelected.allSelectedReady, true);
-assert.equal(fourSelected.requiredReadyCount, 4);
-assert.equal(fourSelected.requiredMissingCount, 0);
-assert.equal(fourSelected.optionalReadyCount, 1);
-assert.match(getStaticPreviewStatusMessage(fourSelected), /4 selected launch-ready previews; 4 required for launch/);
+], ["primary", "review-1", "review-2"]);
+assert.equal(threeSelected.minimumRequiredCount, STATIC_LAUNCH_MIN_CREATIVE_COUNT);
+assert.equal(threeSelected.selectedMinimumMet, true);
+assert.equal(threeSelected.allSelectedReady, true);
+assert.equal(threeSelected.requiredReadyCount, STATIC_LAUNCH_MIN_CREATIVE_COUNT);
+assert.equal(threeSelected.requiredMissingCount, 0);
+assert.equal(threeSelected.optionalReadyCount, 2);
+assert.match(getStaticPreviewStatusMessage(threeSelected), /3 selected launch-ready previews; 3 required for launch/);
 
 const currentBriefContext = {
   staticBriefHash: "static-brief-current",
@@ -813,7 +811,7 @@ for (const [name, source] of [
   assert.doesNotMatch(source, /<video[\s\S]{0,260}\bcontrols\b(?!List)/, `${name} must not render native video controls`);
 }
 assert.match(creativeWizardSource, /draft concept\{draftCreatives\.length === 1 \? "" : "s"\} need regeneration/, "Creative Studio separates draft concepts from launch-ready carousel");
-assert.match(creativeWizardSource, /Pick at least \$\{STATIC_LAUNCH_MIN_CREATIVE_COUNT\} launch-ready static ads/, "Creative Studio treats four static ads as the launch floor");
+assert.match(creativeWizardSource, /Pick at least \$\{STATIC_LAUNCH_MIN_CREATIVE_COUNT\} launch-ready static ads/, "Creative Studio treats the configured static ads as the launch floor");
 assert.match(creativeWizardSource, /Render fresh UGC video/, "stale UGC renders can be refreshed against the approved script");
 assert.match(creativeWizardSource, /videoMatchesApprovedScript/, "Creative Studio blocks stale UGC videos whose script hash no longer matches the approved script");
 assert.match(creativeWizardSource, /currentVideoStatusJob/, "Creative Studio tracks video status polling jobs after the initial render job completes");
