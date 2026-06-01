@@ -49,6 +49,29 @@ async function countRows(supabase, table, queryBuilder) {
   return count ?? 0;
 }
 
+async function fetchCampaignPlanRowsPaged(supabase, selectColumns, options = {}) {
+  const pageSize = options.pageSize ?? 100;
+  const rows = [];
+
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase
+      .from("campaign_plans")
+      .select(selectColumns)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + pageSize - 1);
+
+    if (error) {
+      throw new Error(`campaign_plans paged scan: ${error.message}`);
+    }
+
+    rows.push(...(data ?? []));
+
+    if (!data || data.length < pageSize) {
+      return rows;
+    }
+  }
+}
+
 async function countUnreviewedFailedProviderEvents(supabase) {
   const { data, error } = await supabase
     .from("provider_usage_events")
@@ -147,18 +170,12 @@ function hasBlockedStaticCreativeProvenance(value) {
 }
 
 async function getSelectedBlockedStaticAssetDebt(supabase) {
-  const { data: campaigns, error: campaignError } = await supabase
-    .from("campaign_plans")
-    .select("id,plan");
-
-  if (campaignError) {
-    throw new Error(`campaign_plans selected static scan: ${campaignError.message}`);
-  }
+  const campaigns = await fetchCampaignPlanRowsPaged(supabase, "id,plan");
 
   const selectedByCampaign = new Map();
   const blocked = [];
 
-  for (const campaign of campaigns ?? []) {
+  for (const campaign of campaigns) {
     const selectedIds = selectedStaticIdsFromPlan(campaign.plan);
     if (selectedIds.length === 0) continue;
 
@@ -230,17 +247,13 @@ async function getOffboardingDebt(supabase) {
         .lt("created_at", staleBefore)
         .is("reviewed_at", null),
     ),
-    supabase.from("campaign_plans").select("id,launch_status,publish_state,plan"),
+    fetchCampaignPlanRowsPaged(supabase, "id,launch_status,publish_state,plan"),
   ]);
-
-  if (campaignRows.error) {
-    throw new Error(`campaign_plans offboarding scan: ${campaignRows.error.message}`);
-  }
 
   let offboardedPublished = 0;
   let activeOffboardedRuntime = 0;
 
-  for (const row of campaignRows.data ?? []) {
+  for (const row of campaignRows) {
     const plan = asRecord(row.plan);
     const runtime = asRecord(plan.runtime);
     const offboardingStatus = String(runtime.offboardingStatus ?? asRecord(plan.offboarding).status ?? "");
