@@ -6,7 +6,11 @@ import { PortalButton } from "@/components/billing/portal-button";
 import { Card } from "@/components/ui/card";
 import { PageShell } from "@/components/ui/page-shell";
 import { getAppContext } from "@/lib/services/app-context";
-import { getBillingSummary, getBillingSummaryForCampaign } from "@/lib/services/billing-service";
+import {
+  getBillingSummary,
+  getBillingSummaryForCampaign,
+  syncCreditTopUpCheckoutSessionFromReturn,
+} from "@/lib/services/billing-service";
 import { getCreditSummaryForCurrentUser } from "@/lib/services/credit-service";
 import { getPerformanceLeadUsageSummary } from "@/lib/services/performance-lead-billing-service";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
@@ -151,6 +155,25 @@ export default async function SettingsPage({
     resolvedSearchParams && typeof resolvedSearchParams.campaignId === "string"
       ? resolvedSearchParams.campaignId
       : undefined;
+  const creditCheckoutStatus =
+    resolvedSearchParams && typeof resolvedSearchParams.credits === "string"
+      ? resolvedSearchParams.credits
+      : undefined;
+  const creditCheckoutSessionId =
+    resolvedSearchParams && typeof resolvedSearchParams.session_id === "string"
+      ? resolvedSearchParams.session_id
+      : undefined;
+  let creditTopUpSyncStatus: "confirmed" | "pending" | null = null;
+
+  if (creditCheckoutStatus === "success" && creditCheckoutSessionId) {
+    try {
+      await syncCreditTopUpCheckoutSessionFromReturn(creditCheckoutSessionId);
+      creditTopUpSyncStatus = "confirmed";
+    } catch {
+      creditTopUpSyncStatus = "pending";
+    }
+  }
+
   const resolvedCampaign = requestedCampaignId
     ? await resolveActiveCampaignRecord(requestedCampaignId).catch(() => null)
     : null;
@@ -253,9 +276,18 @@ export default async function SettingsPage({
                 credits && credits.balance < 0
                   ? `Add ${credits.formattedMinimumTopUp ?? "$10.00"} credits`
                   : `Add ${credits?.formattedMinimumTopUp ?? "$10.00"} credits`
-              }
+                }
             />
           </div>
+          {creditTopUpSyncStatus === "confirmed" ? (
+            <p className="mt-3 rounded-[16px] border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-100">
+              Credit top-up confirmed. Your generation credit balance is updated.
+            </p>
+          ) : creditTopUpSyncStatus === "pending" ? (
+            <p className="mt-3 rounded-[16px] border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+              Credit top-up is still syncing. Refresh this page in a moment if the balance has not updated.
+            </p>
+          ) : null}
         </Card>
       </div>
 

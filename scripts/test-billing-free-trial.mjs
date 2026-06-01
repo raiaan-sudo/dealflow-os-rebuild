@@ -71,6 +71,26 @@ assert.match(checkoutSessionBody, /stripe_price_missing/, "unknown or missing St
 
 assert.doesNotMatch(creditTopUpBody, /trial_period_days/, "credit top-up checkout must not receive subscription trial data");
 assert.match(creditTopUpBody, /mode:\s*"payment"/, "credit top-ups must remain one-time payment mode");
+assert.match(
+  billingService,
+  /export async function syncCreditTopUpCheckoutSessionFromReturn/,
+  "credit top-up success return must reconcile paid Stripe sessions",
+);
+assert.match(
+  billingService,
+  /idempotencyKey: `stripe_credit_top_up:\$\{session\.id\}`/,
+  "credit top-up return sync and webhook must share the same Stripe session idempotency key",
+);
+assert.match(
+  settings,
+  /syncCreditTopUpCheckoutSessionFromReturn\(creditCheckoutSessionId\)/,
+  "settings success return must sync paid credit checkout before reading the balance",
+);
+assert.match(
+  settings,
+  /Credit top-up confirmed\. Your generation credit balance is updated\./,
+  "settings must show clear success copy after return-page credit sync",
+);
 
 assert.match(
   stripeService,

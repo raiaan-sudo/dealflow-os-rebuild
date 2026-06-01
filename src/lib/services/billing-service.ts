@@ -1779,7 +1779,14 @@ function isCreditTopUpCheckoutSession(object: Stripe.Event.Data.Object): object 
   );
 }
 
-async function applyCreditTopUpCheckoutSession(session: Stripe.Checkout.Session, event: Stripe.Event) {
+async function grantCreditTopUpCheckoutSession(params: {
+  session: Stripe.Checkout.Session;
+  sourceEventId: string | null;
+  livemode: boolean;
+  source: "webhook" | "checkout_return";
+}) {
+  const { session, sourceEventId, livemode, source } = params;
+
   if (session.mode !== "payment") {
     throw new ApiError(400, "Credit top-up checkout session is not a payment session.", "credit_checkout_mode_invalid");
   }
@@ -1806,26 +1813,79 @@ async function applyCreditTopUpCheckoutSession(session: Stripe.Checkout.Session,
     referenceId: session.id,
     idempotencyKey: `stripe_credit_top_up:${session.id}`,
     metadata: {
-      stripeEventId: event.id,
+      stripeEventId: sourceEventId,
+      source,
       paymentIntent:
         typeof session.payment_intent === "string"
           ? session.payment_intent
           : session.payment_intent?.id ?? null,
-      livemode: event.livemode,
+      livemode,
     },
   });
 
   logOperationalEvent("stripe_credit_top_up_processed", {
-    eventId: event.id,
+    eventId: sourceEventId,
     checkoutSessionId: session.id,
     organizationId,
     userId,
     amountCents,
     ledgerId: result.ledgerId,
     reusedExisting: result.reusedExisting,
+    source,
   });
 
   return result;
+}
+
+async function applyCreditTopUpCheckoutSession(session: Stripe.Checkout.Session, event: Stripe.Event) {
+  return grantCreditTopUpCheckoutSession({
+    session,
+    sourceEventId: event.id,
+    livemode: event.livemode,
+    source: "webhook",
+  });
+}
+
+export async function syncCreditTopUpCheckoutSessionFromReturn(sessionId: string) {
+  const context = await getAppContext();
+
+  if (!context) {
+    throw new ApiError(401, "Authentication is required for credit checkout sync.", "unauthorized");
+  }
+
+  if (!/^cs_(test|live)_[A-Za-z0-9]+/.test(sessionId)) {
+    throw new ApiError(400, "Credit checkout session id is invalid.", "credit_checkout_session_invalid");
+  }
+
+  const provider = getStripeBillingProvider();
+
+  if (!provider.isConfigured()) {
+    throw new ApiError(503, "Stripe is not configured yet.", "stripe_not_configured");
+  }
+
+  const session = (await provider.execute({
+    action: "retrieve_checkout_session",
+    sessionId,
+  })) as Stripe.Checkout.Session;
+
+  if (!isCreditTopUpCheckoutSession(session)) {
+    throw new ApiError(400, "Checkout session is not a credit top-up.", "credit_checkout_kind_invalid");
+  }
+
+  const metadataUserId = typeof session.metadata?.user_id === "string" ? session.metadata.user_id : null;
+  const metadataOrganizationId =
+    typeof session.metadata?.organization_id === "string" ? session.metadata.organization_id : null;
+
+  if (metadataUserId !== context.user.id || metadataOrganizationId !== context.organization.id) {
+    throw new ApiError(403, "Credit checkout session does not belong to this workspace.", "credit_checkout_owner_mismatch");
+  }
+
+  return grantCreditTopUpCheckoutSession({
+    session,
+    sourceEventId: null,
+    livemode: session.livemode,
+    source: "checkout_return",
+  });
 }
 
 export async function handleStripeBillingEvent(event: Stripe.Event) {
