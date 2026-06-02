@@ -172,7 +172,7 @@ function getBuilderNextAction(plan: CampaignPlan, campaignId: string, hasSelecte
       return {
         label: "Choose creatives",
         href: scoped("/build/creatives"),
-        detail: "Pick the recommended creative test set. Then DealFlow will show the final review before launch.",
+        detail: "Pick the recommended creative test set. Then the final review opens before launch.",
       };
     }
 
