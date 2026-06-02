@@ -481,7 +481,13 @@ export function StaticAdComposedPreview({
   const preview = buildComposedStaticAdPreview(input);
   const label = statusLabel(preview.status, launchReady);
   const quality = qualityLabel(preview, launchReady);
-  const renderStoredFinalOnly = preview.status === "final_composed" && Boolean(preview.backgroundImageUrl);
+  const displayBackgroundImageUrl =
+    launchReady && input.imageUrl
+      ? input.imageUrl
+      : preview.backgroundImageUrl;
+  const renderStoredFinalOnly =
+    Boolean(displayBackgroundImageUrl) &&
+    (launchReady || preview.status === "final_composed");
 
   return (
     <div className={cn("overflow-hidden rounded-[20px] border border-white/10 bg-black/20", className)}>
@@ -492,19 +498,19 @@ export function StaticAdComposedPreview({
           backgroundClass(preview.category),
         )}
       >
-        {preview.backgroundImageUrl ? (
+        {displayBackgroundImageUrl ? (
           <Image
             alt={preview.headline}
             fill
             unoptimized
             loading={renderStoredFinalOnly ? "eager" : "lazy"}
             className="object-cover"
-            src={preview.backgroundImageUrl}
+            src={displayBackgroundImageUrl}
           />
         ) : (
           renderInstantVisualScene(preview, compact)
         )}
-        {preview.backgroundImageUrl && !renderStoredFinalOnly ? <div className="absolute inset-0 bg-black/8" /> : null}
+        {displayBackgroundImageUrl && !renderStoredFinalOnly ? <div className="absolute inset-0 bg-black/8" /> : null}
         {renderStoredFinalOnly ? null : renderTemplateDetails(preview, compact)}
       </div>
 

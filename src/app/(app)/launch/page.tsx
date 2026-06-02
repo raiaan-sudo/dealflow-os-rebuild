@@ -31,6 +31,7 @@ import {
   getStaticCreativeReadiness,
   getVideoReadinessLabel,
   getVideoReadinessMessage,
+  isLaunchReadyStaticCreative,
   isLaunchReadyVideoCreative,
   isPlayableVideoCreative,
 } from "@/lib/services/creative-media-readiness";
@@ -808,12 +809,13 @@ export default async function LaunchAliasPage({
                     imageQa={selectedCreative.imageQa}
                     sourceImageQa={selectedCreative.sourceImageQa}
                     prominent
-                    score={selectedCreative.score}
-                    index={index}
-                    selected
-                    selectedCount={selectedCreatives.length}
-                    visualPromptBrief={selectedCreative.visualPromptBrief}
-                  />
+	                    score={selectedCreative.score}
+	                    index={index}
+	                    selected
+	                    selectedCount={selectedCreatives.length}
+	                    launchReady={isLaunchReadyStaticCreative(selectedCreative, staticBriefReadinessContext)}
+	                    visualPromptBrief={selectedCreative.visualPromptBrief}
+	                  />
                 </div>
               ))}
             </div>
