@@ -66,7 +66,7 @@ export async function POST(
     const auth = await getAuthenticatedContext();
     const { id } = await parseRouteParams(context.params, paramsSchema);
     const body = await parseJsonBody(request, bodySchema);
-    const selectedAdIds = Array.from(
+    let selectedAdIds = Array.from(
       new Set([...(body.selectedAdIds ?? []), ...(body.selectedAdId ? [body.selectedAdId] : [])]),
     ).slice(0, 6);
     const selectedUgcVideoIds = Array.from(
@@ -129,6 +129,44 @@ export async function POST(
     const staticAds = hydratedRecord?.creatives.staticAds.length
       ? hydratedRecord.creatives.staticAds
       : readStaticAdsFromPlan(currentPlan);
+    const canonicalStaticAdIds = new Set(staticAds.map((ad) => ad.id));
+    const aliasToCanonicalStaticAdId = new Map(staticAds.map((ad) => [ad.id, ad.id]));
+    const { data: rawStaticAssetRows, error: staticAssetRowsError } = await supabase
+      .from("creative_assets")
+      .select("id, creative_id, metadata")
+      .eq("campaign_id", id)
+      .in("asset_type", ["image_frame", "thumbnail"]);
+
+    if (staticAssetRowsError) {
+      throw staticAssetRowsError;
+    }
+
+    const staticAssetRows = (Array.isArray(rawStaticAssetRows) ? rawStaticAssetRows : []) as Array<{
+      id: string;
+      creative_id: string | null;
+      metadata: unknown;
+    }>;
+
+    for (const row of staticAssetRows) {
+      const creativeId = typeof row.creative_id === "string" ? row.creative_id.trim() : "";
+      if (!creativeId || !canonicalStaticAdIds.has(creativeId)) {
+        continue;
+      }
+
+      aliasToCanonicalStaticAdId.set(row.id, creativeId);
+
+      const metadata = row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+        ? row.metadata as Record<string, unknown>
+        : null;
+      const staticAssetId = typeof metadata?.staticAssetId === "string" ? metadata.staticAssetId.trim() : "";
+      if (staticAssetId) {
+        aliasToCanonicalStaticAdId.set(staticAssetId, creativeId);
+      }
+    }
+
+    selectedAdIds = Array.from(
+      new Set(selectedAdIds.map((selectedId) => aliasToCanonicalStaticAdId.get(selectedId) ?? selectedId)),
+    ).slice(0, 6);
     const staticAdById = new Map(staticAds.map((ad) => [ad.id, ad]));
     const missingIds = selectedAdIds.filter((selectedId) => !staticAdById.has(selectedId));
 
