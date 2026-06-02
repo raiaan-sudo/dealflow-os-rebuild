@@ -36,6 +36,15 @@ function buildCampaignScopedHref(path: string, campaignId?: string | null) {
   return `${path}?${params.toString()}`;
 }
 
+function getBrandInitials(brandName: string) {
+  return brandName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "DF";
+}
+
 async function resolveOwnedActiveCampaignId(candidateCampaignId: string | null) {
   if (!candidateCampaignId) {
     return null;
@@ -121,7 +130,18 @@ export default async function AppLayout({
 
     return (
       <div className="relative min-h-screen w-screen overflow-hidden bg-transparent">
-        <header className="pointer-events-none fixed inset-x-0 top-0 z-30 flex justify-end px-4 py-3 sm:px-6">
+        <header className="pointer-events-none fixed inset-x-0 top-0 z-30 flex justify-between gap-3 px-4 py-3 sm:px-6">
+          <div className="pointer-events-auto flex min-w-0 max-w-[min(52vw,320px)] items-center gap-2 rounded-2xl border border-white/8 bg-black/40 px-2.5 py-2 shadow-[0_18px_60px_-36px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
+            <div className="grid size-8 shrink-0 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-[11px] font-semibold text-primary">
+              {getBrandInitials(brandName)}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-foreground">{brandName}</p>
+              <p className="truncate text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                {organizationName}
+              </p>
+            </div>
+          </div>
           <div className="pointer-events-auto flex max-w-full items-center gap-2 rounded-2xl border border-white/8 bg-black/40 px-2.5 py-2 shadow-[0_18px_60px_-36px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
             <div className="hidden min-w-0 items-center gap-2 sm:flex">
               <div className="grid size-7 shrink-0 place-items-center rounded-full border border-primary/20 bg-primary/10 text-[10px] font-semibold text-primary">
