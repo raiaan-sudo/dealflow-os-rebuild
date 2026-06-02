@@ -121,6 +121,15 @@ assert.match(workspaceSwitchRoute, /httpOnly: true/, "active workspace cookie mu
 assert.match(partnerDashboardShell, /No partner access/, "partner route must gracefully handle non-partner users");
 assert.match(partnerDashboardShell, /warnings\.length/, "partner dashboard must fail soft for optional metric issues");
 assert.match(partnerDashboardError, /Partner portal is recovering/, "partner route must have a customer-safe error boundary");
+assert.match(settingsPage, /export const dynamic = "force-dynamic"/, "settings must be force-dynamic for authenticated workspace data");
+assert.match(settingsPage, /export const revalidate = 0/, "settings must disable static revalidation");
+assert.match(settingsPage, /export const fetchCache = "force-no-store"/, "settings must avoid cached authenticated fetches");
+assert.match(settingsPage, /data-testid="settings-v2-root"/, "settings must expose a stable v2 proof marker");
+assert.match(settingsPage, /data-settings-version="settings-v2"/, "settings must expose a safe source/version proof marker");
+assert.match(settingsPage, /data-testid="settings-profile-form"/, "settings profile form must be test-addressable");
+assert.match(settingsPage, /data-testid="settings-workspace-form"/, "settings workspace form must be test-addressable");
+assert.match(settingsPage, /data-testid="settings-billing-card"/, "settings billing card must be test-addressable");
+assert.match(settingsPage, /data-testid="settings-credits-card"/, "settings credits card must be test-addressable");
 assert.match(settingsPage, /updateProfileAndWorkspace/, "settings must allow safe profile/workspace edits");
 assert.match(settingsPage, /Save profile settings/, "settings must expose a non-dead profile save action");
 

@@ -19,6 +19,8 @@ import { getPerformanceLeadUsageSummary } from "@/lib/services/performance-lead-
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 type SettingsBillingSummary =
   | Awaited<ReturnType<typeof getBillingSummary>>
@@ -246,7 +248,7 @@ export default async function SettingsPage({
     isInternalAdminEmail(appContext?.user.email ?? appContext?.profile?.email ?? null);
 
   return (
-    <PageShell className="max-w-[1280px]">
+    <PageShell className="max-w-[1280px]" data-testid="settings-v2-root" data-settings-version="settings-v2">
       <PageHeader
         eyebrow="Workspace"
         title="Settings"
@@ -254,7 +256,7 @@ export default async function SettingsPage({
       />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <Card className="p-5 sm:p-6">
+        <Card className="p-5 sm:p-6" data-testid="settings-profile-form">
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Account</p>
           <h2 className="mt-2 text-xl font-semibold">Profile and workspace</h2>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -273,7 +275,11 @@ export default async function SettingsPage({
           <p className="mt-4 text-sm leading-6 text-muted-foreground">
             Campaign-facing agent name, brokerage, and phone are updated in the Build flow so lead alerts stay tied to the active campaign.
           </p>
-          <form action={updateProfileAndWorkspace} className="mt-5 grid gap-3 sm:grid-cols-2">
+          <form
+            action={updateProfileAndWorkspace}
+            className="mt-5 grid gap-3 sm:grid-cols-2"
+            data-testid="settings-workspace-form"
+          >
             <label className="block text-sm">
               <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Edit name</span>
               <input
@@ -307,7 +313,7 @@ export default async function SettingsPage({
           </form>
         </Card>
 
-        <Card className="p-5 sm:p-6">
+        <Card className="p-5 sm:p-6" data-testid="settings-credits-card">
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Credits</p>
             <h2 className="mt-2 text-xl font-semibold">Generation credits</h2>
@@ -359,7 +365,7 @@ export default async function SettingsPage({
         </Card>
       </div>
 
-      <Card className="p-5 sm:p-6">
+      <Card className="p-5 sm:p-6" data-testid="settings-billing-card">
         <div className="space-y-5">
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Billing</p>
