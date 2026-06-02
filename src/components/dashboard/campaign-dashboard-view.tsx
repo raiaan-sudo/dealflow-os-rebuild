@@ -942,7 +942,7 @@ export function CampaignDashboardView({
 
           <DashboardChartPanel
             title="Funnel movement"
-            subtitle="Bars stay honest: zero means DealFlow has not received that signal yet."
+            subtitle="Bars stay honest: zero means the workspace has not received that signal yet."
             badge={hasMetricData ? "Synced" : "Pending"}
           >
             <MiniBarChart items={funnelBars.map((item) => ({ ...item, max: maxFunnelValue }))} />
@@ -1062,7 +1062,7 @@ export function CampaignDashboardView({
               </div>
             </div>
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">DealFlow is monitoring</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">System monitoring</p>
               <div className="mt-3 space-y-2">
                 {valueReport.monitoringNext.map((item) => (
                   <p key={item} className="text-sm leading-7 text-muted-foreground">{item}</p>
@@ -1500,7 +1500,7 @@ export function CampaignDashboardView({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                {canUseAutonomyControls ? "DealFlow Pro Autopilot" : "DealFlow recommendations"}
+                {canUseAutonomyControls ? "Pro Autopilot" : "Recommendations"}
               </p>
               <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">
                 {canUseAutonomyControls
@@ -1509,8 +1509,8 @@ export function CampaignDashboardView({
               </h3>
               <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
                 {canUseAutonomyControls
-                  ? "DealFlow monitors and optimizes within your rules. Safe actions can run automatically only when production flags and customer settings allow it, and high-impact growth moves need approval. It does not claim that an action executed unless the action history says so."
-                  : "Starter keeps you in control with guided recommendations. DealFlow recommends what to do next, but budget, audience, funnel, provider, launch, and Meta execution stay manual unless you upgrade to Pro."}
+                  ? "The system monitors and optimizes within your rules. Safe actions can run automatically only when production flags and customer settings allow it, and high-impact growth moves need approval. It does not claim that an action executed unless the action history says so."
+                  : "Starter keeps you in control with guided recommendations. The system recommends what to do next, but budget, audience, funnel, provider, launch, and Meta execution stay manual unless you upgrade to Pro."}
               </p>
             </div>
             <div className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
@@ -1529,7 +1529,7 @@ export function CampaignDashboardView({
                   ? autonomyNeedsApproval
                     ? "Approval is required before execution."
                     : "Safe actions may run only inside configured guardrails."
-                  : "Upgrade to Pro to let DealFlow execute safe optimizations for you."}
+                  : "Upgrade to Pro to enable safe optimization execution."}
               </p>
             </div>
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">

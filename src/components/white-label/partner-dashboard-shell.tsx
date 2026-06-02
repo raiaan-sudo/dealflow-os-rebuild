@@ -59,7 +59,7 @@ export async function PartnerDashboardShell({ section = "Overview" }: { section?
         <p className="df-eyebrow">Partner Portal</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em]">{section}</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Read-only partner visibility. Billing, provider, launch, and platform controls remain DealFlow-owned.
+          Read-only partner visibility. Billing, launch, and platform controls remain centrally managed.
         </p>
       </div>
 
@@ -113,7 +113,7 @@ export async function PartnerDashboardShell({ section = "Overview" }: { section?
       <div className="rounded-df-panel border border-white/10 bg-white/[0.035] p-5">
         <h2 className="text-lg font-semibold">Safety Boundary</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Partner users cannot access native DealFlow customers, other partners, provider secrets, raw webhooks,
+          Partner users cannot access native platform customers, other partners, provider secrets, raw webhooks,
           Stripe internals, Meta tokens, or platform-wide admin controls.
         </p>
       </div>

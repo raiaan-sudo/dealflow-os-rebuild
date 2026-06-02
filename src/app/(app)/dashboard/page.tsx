@@ -313,7 +313,7 @@ function SubscriptionLifecycleBanner({
     <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-foreground">
       <p className="font-semibold">Campaign infrastructure is paused</p>
       <p className="mt-1 text-muted-foreground">
-        This dashboard stays read-only while billing is inactive. DealFlow-managed Meta objects,
+        This dashboard stays read-only while billing is inactive. managed Meta objects,
         lead capture, alerts, and automation jobs remain paused until billing is reactivated.
       </p>
       <Button asChild className="mt-3" size="sm">

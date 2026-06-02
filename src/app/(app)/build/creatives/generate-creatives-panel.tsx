@@ -65,7 +65,7 @@ export function GenerateCreativesPanel({
             Generate your creative test set
           </h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-            DealFlow uses the campaign you just built to prepare static ads, copy angles, and video concepts before final review.
+            Your campaign details prepare static ads, copy angles, and video concepts before final review.
           </p>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-3">

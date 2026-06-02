@@ -10,7 +10,7 @@ function getStatusForPath(pathname: string) {
     return {
       label: "Launch status",
       title: "Launch workflow in progress",
-      description: "DealFlow is confirming the campaign handoff before opening the launch receipt.",
+      description: "The system is confirming the campaign handoff before opening the launch receipt.",
       tone: "active" as StatusTone,
     };
   }

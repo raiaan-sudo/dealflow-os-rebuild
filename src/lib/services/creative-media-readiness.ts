@@ -528,7 +528,7 @@ export function getVideoLaunchReadinessReason(video: VideoCreativeReadinessInput
   }
 
   if (video.storageNormalized !== true || video.storageBucket !== "creative-assets") {
-    return "The playable video still needs final DealFlow preparation before launch.";
+    return "The playable video still needs final launch preparation before launch.";
   }
 
   if (!hasSupportedLaunchVideoContentType(video.storageContentType)) {
@@ -572,11 +572,11 @@ export function getVideoLaunchReadinessReason(video: VideoCreativeReadinessInput
   }
 
   if (!hasAcceptedVideoQa(video)) {
-    return "The playable video is review-only until DealFlow review accepts it for launch.";
+    return "The playable video is review-only until launch review accepts it.";
   }
 
   if (!hasAcceptedProductQualityGate(video)) {
-    return "The playable video is review-only until DealFlow review confirms the hook, market problem, creator point of view, source relevance, and CTA.";
+    return "The playable video is review-only until launch review confirms the hook, market problem, creator point of view, source relevance, and CTA.";
   }
 
   return null;

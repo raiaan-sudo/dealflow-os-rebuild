@@ -490,7 +490,7 @@ export default async function PreviewPage({
               </div>
               {!videoMediaReady ? (
                 <p className="mt-3 rounded-[14px] border border-amber-300/18 bg-amber-300/[0.08] px-3 py-2 text-sm leading-6 text-amber-100">
-                  Video is review-only until the campaign-specific source and DealFlow review are accepted for launch.
+                  Video is review-only until the campaign-specific source and launch review are accepted.
                   {selectedUgcVideoIds.length === 0 ? " Choose an approved UGC video in Creative Studio before launch." : ""}
                 </p>
               ) : null}

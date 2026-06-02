@@ -77,7 +77,7 @@ function getBillingStatusCopy(billing: SettingsBillingSummary | null) {
       tone: "danger",
       title: "Subscription inactive",
       detail:
-        "DealFlow-managed campaign assets have been removed or are being removed. Launch, funnel capture, lead alerts, and optimization stay unavailable until billing is reactivated.",
+        "Managed campaign assets have been removed or are being removed. Launch, funnel capture, lead alerts, and optimization stay unavailable until billing is reactivated.",
     };
   }
 
@@ -94,7 +94,7 @@ function getBillingStatusCopy(billing: SettingsBillingSummary | null) {
     return {
       tone: "warning",
       title: "Subscription scheduled to cancel",
-      detail: `Access remains active until ${formatPeriodEnd(billing.currentPeriodEnd)}. DealFlow-created campaign assets will be removed when access ends unless billing is reactivated.`,
+      detail: `Access remains active until ${formatPeriodEnd(billing.currentPeriodEnd)}. Managed campaign assets will be removed when access ends unless billing is reactivated.`,
     };
   }
 
@@ -232,7 +232,7 @@ export default async function SettingsPage({
   const workspaceName =
     appContext?.organization.name ??
     appContext?.businessProfile?.business_name ??
-    "DealFlow workspace";
+    "Workspace";
   const launchAccessLabel = billing?.launchAllowed
     ? billing.launchOverrideSource === "qa_billing_acceptance"
       ? "Enabled (owner/test override)"
@@ -241,7 +241,7 @@ export default async function SettingsPage({
         : "Enabled"
     : "Not enabled";
   const billingPlanLabel = billing?.partnerPlanLabel ?? billing?.planTier ?? "starter";
-  const billingProductLabel = billing?.partnerProductName ?? "DealFlow";
+  const billingProductLabel = billing?.partnerProductName ?? "Workspace";
   const canEditWorkspace =
     appContext?.activeWorkspaceAccess === "owner" ||
     appContext?.activeWorkspaceAccess === "platform_admin" ||
@@ -421,7 +421,7 @@ export default async function SettingsPage({
                 ))}
               </div>
               <p className="mt-3 text-sm leading-6 text-cyan-50/80">
-                Spam, duplicate, test, invalid, internal, and imported leads are skipped. Usage appears on the Stripe invoice after DealFlow reports the metered lead event.
+                Spam, duplicate, test, invalid, internal, and imported leads are skipped. Usage appears on the Stripe invoice after the metered lead event is reported.
               </p>
               {performanceUsage?.failedLeadCount || performanceUsage?.pendingLeadCount ? (
                 <p className="mt-3 text-sm font-semibold text-amber-100">
@@ -443,7 +443,7 @@ export default async function SettingsPage({
                 <div>
                   <p className="text-sm font-medium text-foreground">Manage or cancel subscription</p>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                    Cancellation and payment changes happen in Stripe Portal. DealFlow records the reason only so support can reduce failed-payment churn and disputes. If the issue is lead quality, setup, or a temporary pause, leave a note here before opening Stripe so support can help recover the workspace.
+                    Cancellation and payment changes happen in Stripe Portal. This note helps support reduce failed-payment churn and disputes. If the issue is lead quality, setup, or a temporary pause, leave a note here before opening Stripe so support can help recover the workspace.
                   </p>
                 </div>
                 <CancellationIntentForm />

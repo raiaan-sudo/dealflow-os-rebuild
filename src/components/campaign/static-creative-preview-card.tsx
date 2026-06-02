@@ -198,7 +198,7 @@ export function StaticCreativePreviewCard({
         </div>
         {!compact ? (
           <p className="rounded-2xl border border-cyan-300/14 bg-cyan-300/[0.055] px-3 py-2 text-xs leading-5 text-cyan-100">
-            Full-resolution creative files stay inside DealFlow and are used through the launch workflow.
+            Full-resolution creative files stay inside this workspace and are used through the launch workflow.
           </p>
         ) : null}
       </div>

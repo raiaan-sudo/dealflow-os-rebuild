@@ -146,11 +146,11 @@ function getBillingLaunchBlockCopy(billing: Awaited<ReturnType<typeof getBilling
   }
 
   if (billing.requiresSuspension) {
-    return "Billing is inactive. DealFlow-managed campaign assets have been removed or are being removed, and launch remains unavailable until billing is reactivated.";
+    return "Billing is inactive. Managed campaign assets have been removed or are being removed, and launch remains unavailable until billing is reactivated.";
   }
 
   if (billing.cancelAtPeriodEnd) {
-    return "This subscription is scheduled to cancel. Launch remains available during the paid period, and DealFlow-created campaign assets will be removed when access ends unless billing is reactivated.";
+    return "This subscription is scheduled to cancel. Launch remains available during the paid period, and managed campaign assets will be removed when access ends unless billing is reactivated.";
   }
 
   return "Activate billing before this workspace can launch to Meta. The launch button stays disabled and no live ad launch runs until billing is active.";
@@ -510,12 +510,12 @@ export default async function LaunchAliasPage({
             ? undefined
             : "Unlimited",
       detail: budgetCapMissingForLaunch
-        ? "Configure META_DAILY_BUDGET_CAP_CENTS before production Meta object creation. DealFlow will fail closed until a finite cap is present."
+        ? "Configure META_DAILY_BUDGET_CAP_CENTS before production Meta object creation. the platform will fail closed until a finite cap is present."
         : budgetWasCapped
-        ? `Requested daily budget is ${formatBudgetCap(dailyBudgetCents)}; the launch will use the DealFlow cap of ${formatBudgetCap(effectiveDailyBudgetCents)}/day unless support adjusts the cap.`
+        ? `Requested daily budget is ${formatBudgetCap(dailyBudgetCents)}; the launch will use the platform cap of ${formatBudgetCap(effectiveDailyBudgetCents)}/day unless support adjusts the cap.`
         : budgetCapCents !== null
-          ? `DealFlow launch is capped at ${formatBudgetCap(budgetCapCents)}/day; requested daily budget is ${formatBudgetCap(dailyBudgetCents)}.`
-          : `No DealFlow budget cap is applied. Launch will use the requested daily budget of ${formatBudgetCap(dailyBudgetCents)}.`,
+          ? `Launch is capped at ${formatBudgetCap(budgetCapCents)}/day; requested daily budget is ${formatBudgetCap(dailyBudgetCents)}.`
+          : `No platform budget cap is applied. Launch will use the requested daily budget of ${formatBudgetCap(dailyBudgetCents)}.`,
     },
     {
       label: "Tracking / live activation",
@@ -530,7 +530,7 @@ export default async function LaunchAliasPage({
       ready: providerLaunchEnabled,
       detail: providerLaunchEnabled
         ? "Final launch approval is enabled. Meta campaigns are still created paused for review."
-        : "Final launch approval is pending, so DealFlow will not create Meta campaign objects yet.",
+        : "Final launch approval is pending, so Meta campaign objects will not be created yet.",
     },
   ];
   const metaStatusText = metaLaunchReady
@@ -551,7 +551,7 @@ export default async function LaunchAliasPage({
           billing?.billingState === "payment_issue"
             ? "Update the payment method in Settings, then return here after Stripe confirms recovery."
             : billing?.requiresSuspension
-              ? "Reactivate billing in Settings before DealFlow resumes launch, funnel capture, alerts, or optimization."
+              ? "Reactivate billing in Settings before launch, funnel capture, alerts, or optimization resume."
               : "Activate billing from Settings or the activation page before attempting launch.",
         ]
       : []),
@@ -560,7 +560,7 @@ export default async function LaunchAliasPage({
           metaSelectionReady
             ? metaSelectionInvalid
               ? "Meta selections were saved, but Meta can no longer verify the selected ad account, Page, or pixel. Re-save the selections or reconnect Meta if the check stays blocked."
-              : "Meta selections were saved, but launch preflight has not passed yet. Configure DealFlow's verified platform launch domain and publish the public funnel before attempting launch."
+              : "Meta selections were saved, but launch preflight has not passed yet. Configure the verified platform launch domain and publish the public funnel before attempting launch."
             : "Save the ad account, Facebook Page, and pixel in the Meta setup section.",
         ]
       : []),
@@ -577,7 +577,7 @@ export default async function LaunchAliasPage({
       : []),
     ...(!providerLaunchEnabled
       ? [
-          "Final launch approval is pending. DealFlow will not create Meta campaign objects until support enables live launch approvals.",
+          "Final launch approval is pending. Meta campaign objects will not be created until support enables live launch approvals.",
         ]
       : []),
     ...(budgetCapMissingForLaunch
@@ -669,7 +669,7 @@ export default async function LaunchAliasPage({
                 ))}
               </div>
               <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                This page is a recovery checklist while blocked. DealFlow will not create or recover Meta objects until every gate below is ready.
+                This page is a recovery checklist while blocked. Meta objects will not be created or recovered until every gate below is ready.
               </p>
               {selectedCreatives.length === 0 ? (
                 <div className="mt-4">
@@ -730,7 +730,7 @@ export default async function LaunchAliasPage({
                   : metaSelectionInvalid
                     ? "The saved Meta selection is no longer valid. Re-select the ad account, Page, and pixel before launch."
                     : metaTrackingPreflightBlocked
-                      ? "The saved Meta selections are valid, but launch preflight is blocked by DealFlow's platform domain or destination requirements."
+                      ? "The saved Meta selections are valid, but launch preflight is blocked by the platform domain or destination requirements."
                     : launchRoomReady
                   ? "Preflight passed for paused Meta setup. Owner funds and live activation approval are still separate."
                   : `Before launch: ${blockingReasons.join(" • ")}.`}

@@ -30,7 +30,7 @@ const modes: Array<{
   {
     value: "manual",
     label: "Off / manual recommendations",
-    description: "DealFlow recommends changes only. Nothing is approved or executed by the system.",
+    description: "Recommendations only. Nothing is approved or executed by the system.",
     requiresAutonomyAccess: false,
   },
   {

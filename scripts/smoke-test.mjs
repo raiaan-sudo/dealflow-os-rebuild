@@ -497,7 +497,7 @@ function runOfflineChecks() {
   assertIncludes(staticCreativeStorageBackfillAudit, "alreadyNormalizedRowsSkipped", "Static storage backfill idempotency", "legacy provider-url backfill skips already-normalized rows");
   assertIncludes(staticCreativeStorageBackfillAudit, "rollbackPlan", "Static storage backfill rollback plan", "legacy provider-url backfill reports rollback guidance before mutation");
   assertIncludes(creativeChatIntake, "Confirm the offer, choose the static style, approve the UGC script", "Creative chat intake UI", "guided intake collects creative direction before paid image or video rendering");
-  assertIncludes(creativeChatIntake, "Final media only becomes launch-ready after it is saved to your creative library and passes DealFlow review", "Creative intake render boundary", "creative chat intake explains that paid render work waits for approval");
+  assertIncludes(creativeChatIntake, "Final media only becomes launch-ready after it is saved to your creative library and passes launch review", "Creative intake render boundary", "creative chat intake explains that paid render work waits for approval");
   assertIncludes(creativeChatIntake, "Clean Local Expert", "Creative intake static style copy", "creative intake separates static ad direction from UGC script approval");
   assertExcludes(creativeChatIntake, "Higgsfield", "Creative intake provider name hidden", "creative intake does not expose provider names to customers");
   assertIncludes(creativeChatIntake, "Open Marketing Studio chat", "Creative intake Marketing Studio surface", "creative intake exposes DealFlow's customer-facing Marketing Studio without provider names");
@@ -568,7 +568,7 @@ function runOfflineChecks() {
   assertExcludes(autonomyActionsFeed, "Mutation {", "Dashboard mutation copy hidden", "dashboard action feed labels platform updates without mutation jargon");
   assertExcludes(dashboardView, "Estimated recommendation", "Dashboard fake live label removed", "dashboard no longer labels empty recommendations as estimated live analytics");
   assertIncludes(dashboardView, "autonomySnapshot", "Dashboard Pro Autopilot snapshot", "dashboard receives and renders Pro Autopilot state");
-  assertIncludes(dashboardView, "DealFlow Pro Autopilot", "Dashboard Pro Autopilot surface", "customer dashboard surfaces recommendations and action history");
+  assertIncludes(dashboardView, "Pro Autopilot", "Dashboard Pro Autopilot surface", "customer dashboard surfaces recommendations and action history");
   assertIncludes(autonomyModeControl, "Manual keeps all actions human-driven", "Autopilot safe mode copy", "manual mode remains the default safe posture");
   assertIncludes(autonomyModeControl, "Assisted stages high-confidence actions for approval", "Autopilot assisted mode copy", "assisted mode requires operator approval before execution");
   assertIncludes(controlRoomPage, "Autonomy queue", "Control-room Pro Autopilot surface", "300-client control room must show Autopilot queue, applied, blocked, or health state");
@@ -660,7 +660,7 @@ function runOfflineChecks() {
   assertIncludes(launchPage, "Reconnect Meta", "Launch Meta error reconnect CTA", "Meta OAuth failure banners provide a direct reconnect action");
   assertIncludes(launchPage, "metaTrackingPreflightBlocked", "Launch Meta tracking blocker copy", "launch distinguishes invalid Meta selections from domain or destination preflight blockers");
   assertIncludes(launchPage, "Paused only", "Launch paused-only tracking warning", "partial tracking keeps paused object creation visible while blocking live activation");
-  assertIncludes(launchPage, "Configure DealFlow's verified platform launch domain", "Launch Meta domain blocker action", "launch tells operators to fix DealFlow's platform domain instead of asking agents for their own domain by default");
+  assertIncludes(launchPage, "Configure the verified platform launch domain", "Launch Meta domain blocker action", "launch tells operators to fix DealFlow's platform domain instead of asking agents for their own domain by default");
   assertIncludes(launchPage, "Clear message", "Launch Meta error clear CTA", "stale Meta OAuth failure URLs can be cleared without leaving launch");
   assertIncludes(launchPage, "metaReconnectHref", "Launch Meta reconnect target", "Meta reconnect preserves the campaign-scoped launch return path from the error banner");
   assertIncludes(launchPage, "Why launch is blocked", "Launch blocker explanation", "launch page explains exactly why the launch button is disabled");
@@ -673,7 +673,7 @@ function runOfflineChecks() {
   assertIncludes(campaignPublishPanel, "rel=\"noreferrer\"", "Publish panel external link isolation", "published funnel links opened in a new tab do not retain opener access");
   assertIncludes(campaignEntitlements, "getCurrentBillingOverrideForOrganization", "Campaign publish billing override", "campaign-scoped entitlements honor the current billing override for owner launch walkthroughs");
   assertIncludes(campaignEntitlements, "launchOverride", "Campaign entitlement override propagation", "publish and launch entitlement checks receive billing override state");
-  assertIncludes(launchMetaSelectionPanel, "Meta selections saved. DealFlow is checking the launch gates now.", "Meta selection save confirmation", "saving Meta assets gives immediate confirmation");
+  assertIncludes(launchMetaSelectionPanel, "Meta selections saved. Launch gates are being checked now.", "Meta selection save confirmation", "saving Meta assets gives immediate confirmation");
   assertIncludes(launchMetaSelectionPanel, "setIsSaving(true)", "Meta selection explicit saving state", "Meta asset save button tracks the full async save lifecycle");
   assertIncludes(launchingPage, "launchIntent", "Launch start intent gate", "direct launch-room visits must return to launch gates before showing the start control");
   assertIncludes(launchingPage, "await syncCampaignStatus(currentCampaignId)", "Post-launch Meta confirmation", "successful launches request a fresh Meta sync before landing on the success page");
@@ -711,10 +711,10 @@ function runOfflineChecks() {
   assertIncludes(selectAdRoute, "selected_ad_not_launch_safe", "Select-ad image quality gate", "creative selection rejects generated images that are unsafe for launch");
   assertIncludes(selectAdRoute, "isLaunchReadyStaticCreative", "Select-ad visual contract", "creative selection applies the same text-free generated image contract before saving launch choices");
   assertIncludes(selectAdRoute, "assertCampaignCanLaunch", "Select-ad billing entitlement gate", "inactive or unpaid customers cannot approve a creative launch set");
-  assertIncludes(creativeWizard, "Full-resolution creative files stay inside DealFlow", "Creative no-download policy copy", "customer creative workspace explains raw creative files stay inside DealFlow");
+  assertIncludes(creativeWizard, "Full-resolution creative files stay inside this workspace", "Creative no-download policy copy", "customer creative workspace explains raw creative files stay inside DealFlow");
   assertIncludes(buildCreativesPage, "mapVideoCreativeAssets", "Creative Studio current video asset read", "Creative Studio reads current video creative_assets instead of stale campaign-plan video concepts");
   assertIncludes(buildCreativesPage, "persistedVideoAds = mappedVideoAssets", "Creative Studio video asset precedence", "current playable UGC assets win over stale generating plan state");
-  assertIncludes(staticCreativePreviewCard, "Full-resolution creative files stay inside DealFlow and are used through the launch workflow", "Creative direct-file copy", "customer preview cards avoid presenting generated files as raw files");
+  assertIncludes(staticCreativePreviewCard, "Full-resolution creative files stay inside this workspace and are used through the launch workflow", "Creative direct-file copy", "customer preview cards avoid presenting generated files as raw files");
   assertExcludes(creativeWizard, /Download|Save Image|Open original|Copy URL|Export/, "Creative wizard download affordances absent", "customer creative workspace does not expose direct download/export/copy-url actions");
   assertIncludes(creativeWizard, "controlsList=\"nodownload noplaybackrate\"", "Creative video no-download controls", "customer video previews request native controls without download affordances");
   assertIncludes(previewPage, "controlsList=\"nodownload noplaybackrate\"", "Preview video no-download controls", "customer preview page requests native controls without download affordances");

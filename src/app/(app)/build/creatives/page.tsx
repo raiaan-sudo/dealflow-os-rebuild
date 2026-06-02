@@ -180,7 +180,7 @@ export default async function BuildCreativesPage({
         <PageHeader
           eyebrow="Build"
           title="Shape the creative direction"
-          description="Review the structured creative brief before DealFlow prepares paid image or video renders."
+          description="Review the structured creative brief before paid image or video renders are prepared."
         />
         <CreativeChatIntake
           campaignId={ensuredRecord.campaign.id}
@@ -199,7 +199,7 @@ export default async function BuildCreativesPage({
         <PageHeader
           eyebrow="Build"
           title="Generate your creative test set"
-          description="DealFlow uses the campaign you just built to prepare static ads, copy angles, and video concepts before final review."
+          description="Your campaign details prepare static ads, copy angles, and video concepts before final review."
         />
         <GenerateCreativesPanel
           campaignId={ensuredRecord.campaign.id}
@@ -336,7 +336,7 @@ export default async function BuildCreativesPage({
       <PageHeader
         eyebrow="Build"
         title="Choose your creative test set"
-        description="Select at least 3 launch-ready static ads, add up to 6 for larger split tests, and choose one approved AI UGC video. DealFlow preserves the full launch package across Preview and Launch."
+        description="Select at least 3 launch-ready static ads, add up to 6 for larger split tests, and choose one approved AI UGC video. The full launch package stays synced across Preview and Launch."
       />
       {creativeIntakeEnabled ? (
         <CreativeChatIntake

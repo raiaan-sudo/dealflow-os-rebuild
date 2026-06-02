@@ -247,7 +247,7 @@ function CampaignHeader({ mode }: { mode: "guided" | "autonomous" }) {
                   Autonomy watchlist
                 </p>
                 <p className="mt-2 text-sm leading-6 text-white/66">
-                  DealFlow watches the thresholds that would require intervention.
+                  The system watches the thresholds that would require intervention.
                 </p>
               </div>
             </div>

@@ -135,7 +135,7 @@ export function LaunchMetaSelectionPanel({
         setSelectedAccountId(nextConnection.accountId ?? selectedAccountId);
         setSelectedPageId(nextConnection.pageId ?? selectedPageId);
         setSelectedPixelId(nextConnection.tracking.pixelId ?? selectedPixelId);
-        setConfirmation("Meta selections saved. DealFlow is checking the launch gates now.");
+        setConfirmation("Meta selections saved. Launch gates are being checked now.");
         startTransition(() => {
           router.refresh();
         });

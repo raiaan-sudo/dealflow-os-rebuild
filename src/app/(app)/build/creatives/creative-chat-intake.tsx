@@ -616,7 +616,7 @@ export function CreativeChatIntake({
                 Build the creative set before anything renders
               </h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Confirm the offer, choose the static style, approve the UGC script, then generate the creative set. Final media only becomes launch-ready after it is saved to your creative library and passes DealFlow review.
+                Confirm the offer, choose the static style, approve the UGC script, then generate the creative set. Final media only becomes launch-ready after it is saved to your creative library and passes launch review.
               </p>
             </div>
           </div>
@@ -667,7 +667,7 @@ export function CreativeChatIntake({
                 <div className="rounded-[20px] border border-white/10 bg-white/[0.035] p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Auto-detected audience</p>
                   <p className="mt-2 text-lg font-semibold text-foreground">{audienceLabel || "Audience detected from campaign"}</p>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">DealFlow uses the campaign type and saved strategy here, so customers do not need to re-answer targeting setup.</p>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">The campaign type and saved strategy are already applied here, so customers do not need to re-answer targeting setup.</p>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="space-y-2 text-sm">
@@ -800,7 +800,7 @@ export function CreativeChatIntake({
             {activeStep === 3 ? (
               <div className="grid gap-4">
                 <p className="text-sm leading-6 text-muted-foreground">
-                  Static previews and the approved UGC script are ready immediately. Final AI-rendered media updates after rendering completes and DealFlow accepts the asset.
+                  Static previews and the approved UGC script are ready immediately. Final AI-rendered media updates after rendering completes and the asset passes launch review.
                 </p>
                 <PreviewList
                   title="Ready checklist"
@@ -859,7 +859,7 @@ export function CreativeChatIntake({
           </div>
           <div className="mt-5 rounded-[20px] border border-emerald-300/16 bg-emerald-300/[0.055] p-4 text-sm leading-6 text-muted-foreground">
             <FileCheck2 className="mb-3 size-4 text-emerald-100" />
-            Static previews appear immediately. Final AI-rendered media updates after rendering completes and passes DealFlow review.
+            Static previews appear immediately. Final AI-rendered media updates after rendering completes and passes launch review.
           </div>
           <div className="mt-5 rounded-[20px] border border-cyan-300/16 bg-cyan-300/[0.055] p-4 text-sm leading-6 text-muted-foreground">
             <PencilLine className="mb-3 size-4 text-cyan-100" />

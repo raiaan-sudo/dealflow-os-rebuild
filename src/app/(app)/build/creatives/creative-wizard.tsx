@@ -1016,7 +1016,7 @@ export function CreativeWizard({
     : imageRenderPastThreeMinutes
         ? `${requiredStaticProgressLabel}. You can keep setting up Meta, billing, and preview while final ads finish. Launch unlocks only after 3 ads are ready.`
         : imageActionPending || imageWorkerQueued
-          ? `${requiredStaticProgressLabel}. DealFlow is prioritizing the first 3 required ads; optional polish variants wait until the launch floor is ready.`
+          ? `${requiredStaticProgressLabel}. The first 3 required ads are prioritized before optional polish variants.`
           : `${requiredStaticProgressLabel}. Click Render assets to render the launch floor first. Optional polish variants do not need to finish before setup can continue.`;
   const staticProgressTone = hasCreditBlocker
     ? "border-amber-400/24 bg-amber-400/10 text-amber-50"
@@ -1082,7 +1082,7 @@ export function CreativeWizard({
             Approved brief source: saved creative intake. Current offer, brand, CTA, and script version control which assets can become launch-ready.
           </div>
           <div className="rounded-2xl border border-cyan-300/18 bg-cyan-300/[0.06] px-4 py-3 text-sm leading-6 text-cyan-100 lg:max-w-md">
-            Full-resolution creative files stay inside DealFlow. Preview, approve, request revisions, and use assets through the launch workflow.
+            Full-resolution creative files stay inside this workspace. Preview, approve, request revisions, and use assets through the launch workflow.
           </div>
         </div>
         {approvedBriefContext ? (
@@ -1198,10 +1198,10 @@ export function CreativeWizard({
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               {savedSelectionMatchesCurrent && staticReadiness.allSelectedReady
-                ? `${staticReadiness.selectedReadyLabel}. DealFlow will use the first saved ad as the primary creative and keep the rest as static launch variants once every launch gate is ready.`
+                ? `${staticReadiness.selectedReadyLabel}. The first saved ad becomes the primary creative, and the rest stay as static launch variants once every launch gate is ready.`
                 : staticReadiness.selectedMinimumMet
                   ? `${staticReadiness.selectedReadyLabel}. Save at least 3 static ads plus one approved UGC video before launch can continue; 4-6 static ads are optional for larger budgets.`
-                  : `${requiredStaticProgressLabel}. DealFlow renders the first 3 required ads before optional polish variants; Launch stays blocked until the required set passes review.`}
+                  : `${requiredStaticProgressLabel}. The first 3 required ads render before optional polish variants; Launch stays blocked until the required set passes review.`}
             </p>
             <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm leading-6 ${staticProgressTone}`} aria-live="polite">
               <p className="font-semibold">{staticProgressTitle}</p>
@@ -1447,7 +1447,7 @@ export function CreativeWizard({
                     </p>
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     {!activeVideoMatchesApprovedScript && isPlayableVideoCreative(activeVideoCreative)
-                      ? "DealFlow is not showing a video because the approved script needs a current campaign-specific render. Prepare a current static source, then render the video."
+                      ? "The approved script needs a current campaign-specific render. Prepare a current static source, then render the video."
                       : currentVideoRenderView?.customerMessage ?? getVideoReadinessMessage(activeVideoCreative)}
                     {videoBlockedByMissingStaticSource ? (
                       <span className="mt-2 block text-cyan-100">
@@ -1566,7 +1566,7 @@ export function CreativeWizard({
                 </span>
               ) : (
                 <span className="rounded-full border border-amber-300/20 bg-amber-300/[0.08] px-3 py-2 text-xs font-semibold text-amber-100">
-                  Review-only until DealFlow accepts it for launch
+                  Review-only until accepted for launch
                 </span>
               )}
               {activeVideoLaunchReadinessReason ? (
