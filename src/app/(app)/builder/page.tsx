@@ -440,6 +440,7 @@ export default async function BuilderPage({
         guidance={wantsNewCampaign ? "New campaigns are secondary to the active launch path." : "Keep edits focused on what blocks review or launch."}
       />
       <CampaignBuilderWorkspace
+        key={setupRecord?.campaign.id ?? "new-campaign"}
         initialStrategy={buildInitialStrategyFromPlan(setupRecord?.strategy)}
         initialTab={initialTab}
         initialCampaignId={setupRecord?.campaign.id ?? null}
