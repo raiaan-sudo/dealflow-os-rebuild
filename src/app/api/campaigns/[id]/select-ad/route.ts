@@ -14,7 +14,11 @@ import {
   getSelectedUgcVideoIdsFromPlan,
   withSelectedLaunchMedia,
 } from "@/lib/services/campaign-plan-document";
-import { getCampaignById, mapVideoCreativeAssets } from "@/lib/services/campaign-persistence";
+import {
+  getCampaignById,
+  mapStaticCreativeAssets,
+  mapVideoCreativeAssets,
+} from "@/lib/services/campaign-persistence";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import {
   getStaticCreativeReadiness,
@@ -126,16 +130,16 @@ export async function POST(
         }
       : null;
     const hydratedRecord = await getCampaignById(id);
-    const staticAds = hydratedRecord?.creatives.staticAds.length
-      ? hydratedRecord.creatives.staticAds
-      : readStaticAdsFromPlan(currentPlan);
-    const canonicalStaticAdIds = new Set(staticAds.map((ad) => ad.id));
-    const aliasToCanonicalStaticAdId = new Map(staticAds.map((ad) => [ad.id, ad.id]));
+    const staticAssetOwnerUserId = typeof row.user_id === "string" && row.user_id.length > 0
+      ? row.user_id
+      : auth.userId;
     const { data: rawStaticAssetRows, error: staticAssetRowsError } = await supabase
       .from("creative_assets")
-      .select("id, creative_id, metadata")
+      .select("*")
       .eq("campaign_id", id)
-      .in("asset_type", ["image_frame", "thumbnail"]);
+      .eq("user_id", staticAssetOwnerUserId)
+      .in("asset_type", ["image_frame", "thumbnail", "static_image", "image"])
+      .order("created_at", { ascending: false });
 
     if (staticAssetRowsError) {
       throw staticAssetRowsError;
@@ -146,6 +150,15 @@ export async function POST(
       creative_id: string | null;
       metadata: unknown;
     }>;
+    const mappedStaticAssets = mapStaticCreativeAssets(Array.isArray(rawStaticAssetRows) ? rawStaticAssetRows : []);
+    const staticAds = mappedStaticAssets.length > 0
+      ? mappedStaticAssets
+      : hydratedRecord?.creatives.staticAds.length
+        ? hydratedRecord.creatives.staticAds
+        : readStaticAdsFromPlan(currentPlan);
+    const canonicalStaticAdIds = new Set(staticAds.map((ad) => ad.id));
+    const aliasToCanonicalStaticAdId = new Map(staticAds.map((ad) => [ad.id, ad.id]));
+    const metadataAliasCandidates = new Map<string, Set<string>>();
 
     for (const row of staticAssetRows) {
       const creativeId = typeof row.creative_id === "string" ? row.creative_id.trim() : "";
@@ -160,7 +173,15 @@ export async function POST(
         : null;
       const staticAssetId = typeof metadata?.staticAssetId === "string" ? metadata.staticAssetId.trim() : "";
       if (staticAssetId) {
-        aliasToCanonicalStaticAdId.set(staticAssetId, creativeId);
+        const candidates = metadataAliasCandidates.get(staticAssetId) ?? new Set<string>();
+        candidates.add(creativeId);
+        metadataAliasCandidates.set(staticAssetId, candidates);
+      }
+    }
+
+    for (const [staticAssetId, candidates] of metadataAliasCandidates.entries()) {
+      if (candidates.size === 1) {
+        aliasToCanonicalStaticAdId.set(staticAssetId, Array.from(candidates)[0]);
       }
     }
 
