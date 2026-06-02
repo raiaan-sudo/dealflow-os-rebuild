@@ -80,10 +80,14 @@ assert.match(launchPage, /Saved creative set missing/, "launch must still block 
 assert.match(launchPage, /selectedCreativeMediaReady/, "launch must keep selected creative media readiness gate");
 assert.doesNotMatch(launchPage, /Approve a campaign-specific UGC video before launch|render or approve a campaign-specific UGC video before launch/i, "launch must not block on optional UGC/video");
 assert.match(launchPage, /Optional UGC video/, "launch must present UGC as optional");
+assert.doesNotMatch(read("src/app/api/campaigns/create/route.ts"), /selectedUgcVideoIds\.length === 0/, "actual launch creation must not require optional UGC/video");
+assert.match(read("src/app/api/campaigns/create/route.ts"), /selectedUgcVideoIds\.length > 0/, "selected UGC videos must still be validated when present");
 assert.match(launchPage, /Open Creative Studio/, "launch missing-creative CTA copy must match the Creative Studio target");
 assert.match(launchPage, /\/build\/creatives\?campaignId=/, "launch missing-creative CTA must return to Creative Studio");
 assert.doesNotMatch(launchPage, /\/builder\?campaignId=\$\{encodeURIComponent\(savedRecord\.campaign\.id\)\}/, "launch missing-creative CTA must not send users back to the generic builder");
 assert.match(selectAdRoute, /!ad\s*\|\|\s*!isLaunchReadyStaticCreative\(ad,/, "review-only or placeholder static media must not be selectable for launch");
 assert.match(selectAdRoute, /selected_static_minimum_not_met/, "launch selection must still require the static creative floor");
+assert.match(selectAdRoute, /mergeCreativeAssetsIntoPlan/, "saving launch media must hydrate campaign plan creatives from durable creative assets");
+assert.match(selectAdRoute, /currentPlanHasSelectedStaticAssets\s*&&[\s\S]{0,240}existingSelectedAdIds\.length/, "unchanged selection short-circuit must only run after selected static assets are present in the plan");
 
 console.log("Public self-serve acceptance guards passed.");

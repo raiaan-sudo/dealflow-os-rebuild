@@ -61,6 +61,36 @@ function readStaticAdsFromPlan(value: unknown): StaticCreativeAsset[] {
   return staticAds as StaticCreativeAsset[];
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function mergeCreativeAssetsIntoPlan(
+  currentPlan: unknown,
+  staticAds: StaticCreativeAsset[],
+  videoAds: unknown[],
+) {
+  const plan = asRecord(currentPlan);
+  const existingCreatives = asRecord(plan.creatives);
+
+  return {
+    ...plan,
+    staticAds,
+    creatives: {
+      ...existingCreatives,
+      staticAds,
+      ...(videoAds.length > 0 ? { videoAds } : {}),
+    },
+  };
+}
+
+function hasSelectedStaticAssetsInPlan(currentPlan: unknown, selectedAdIds: string[]) {
+  const staticAdIds = new Set(readStaticAdsFromPlan(currentPlan).map((ad) => ad.id));
+  return selectedAdIds.every((selectedId) => staticAdIds.has(selectedId));
+}
+
 export async function POST(
   request: Request,
   context: { params: Promise<Record<string, string>> },
@@ -258,7 +288,10 @@ export async function POST(
       );
     }
 
+    const currentPlanHasSelectedStaticAssets = hasSelectedStaticAssetsInPlan(currentPlan, selectedAdIds);
+
     if (
+      currentPlanHasSelectedStaticAssets &&
       existingSelectedAdIds.length === selectedAdIds.length &&
       existingSelectedAdIds.every((selectedId, index) => selectedId === selectedAdIds[index]) &&
       existingSelectedUgcVideoIds.length === selectedUgcVideoIds.length &&
@@ -274,10 +307,13 @@ export async function POST(
       });
     }
 
-    const nextPlan = withSelectedLaunchMedia(currentPlan, {
-      selectedAdIds,
-      selectedUgcVideoIds,
-    });
+    const nextPlan = withSelectedLaunchMedia(
+      mergeCreativeAssetsIntoPlan(currentPlan, staticAds, videoAds),
+      {
+        selectedAdIds,
+        selectedUgcVideoIds,
+      },
+    );
 
     await persistCampaignPlanDocumentUpdate({
       supabase,

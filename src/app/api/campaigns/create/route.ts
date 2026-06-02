@@ -986,26 +986,28 @@ async function launchCampaignToMeta(
       .map((id) => record.creatives.videoAds.find((video) => video.id === id) ?? null)
       .filter((video): video is NonNullable<typeof video> => Boolean(video));
 
-	    if (
-	      selectedUgcVideoIds.length === 0 ||
-	      selectedUgcVideos.length !== selectedUgcVideoIds.length ||
-	      selectedUgcVideos.some((video) =>
-	        video.conceptType !== "customer_ugc" ||
-	        !isLaunchReadyVideoCreative(video) ||
-	        (
-	          creativeIntakeContext?.ugcScriptHash
-	            ? video.ugcScriptHash !== creativeIntakeContext.ugcScriptHash &&
-	              video.scriptHash !== creativeIntakeContext.ugcScriptHash
-	            : false
-	        ),
-	      )
-	    ) {
-      throw new ApiError(
-        400,
-        "Select one campaign-specific app-owned UGC video before launch.",
-        "ugc_video_not_launch_ready",
-      );
-    }
+    if (
+      selectedUgcVideoIds.length > 0 &&
+      (
+        selectedUgcVideos.length !== selectedUgcVideoIds.length ||
+        selectedUgcVideos.some((video) =>
+          video.conceptType !== "customer_ugc" ||
+          !isLaunchReadyVideoCreative(video) ||
+          (
+            creativeIntakeContext?.ugcScriptHash
+              ? video.ugcScriptHash !== creativeIntakeContext.ugcScriptHash &&
+                video.scriptHash !== creativeIntakeContext.ugcScriptHash
+              : false
+          ),
+        )
+      )
+    ) {
+	      throw new ApiError(
+	        400,
+	        "Selected UGC video is optional, but selected videos must be campaign-specific and app-owned before launch.",
+	        "ugc_video_not_launch_ready",
+	      );
+	    }
 
     const selectedCopy =
       record.creatives.copy.find(

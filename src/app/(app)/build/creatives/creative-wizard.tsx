@@ -1113,7 +1113,7 @@ export function CreativeWizard({
               Choose the launch test set from the approved brief
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              The creative brief approval is saved in the intake step. Select at least 3 launch-ready static ads, add up to 6 for higher-budget split tests, and choose one launch-ready AI UGC video for the final launch package.
+              The creative brief approval is saved in the intake step. Select at least 3 launch-ready static ads, add up to 6 for higher-budget split tests, and add UGC video later if needed.
             </p>
           </div>
           <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.07] px-4 py-3 text-sm leading-6 text-emerald-100 lg:max-w-md">
@@ -1165,12 +1165,12 @@ export function CreativeWizard({
             {currentPhaseLabel} review
           </p>
           <h3 className="mt-1 text-lg font-semibold text-foreground">
-            {activePhase === "static_ads" ? "Static ads are the launch test set" : "AI UGC videos are selectable launch ads"}
+            {activePhase === "static_ads" ? "Static ads are the launch test set" : "Optional UGC videos"}
           </h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
             {activePhase === "static_ads"
               ? `Pick at least ${STATIC_LAUNCH_MIN_CREATIVE_COUNT} launch-ready static ads. Up to ${STATIC_LAUNCH_MAX_CREATIVE_COUNT} can be used for higher-budget split tests; draft/retry concepts do not count toward the saved launch package.`
-              : "Review scripts, render only when the brief is ready, and select one launch-ready campaign-specific UGC video for Preview and Launch."}
+              : "Review scripts and render video only when needed. UGC is optional and does not block the static launch package."}
           </p>
         </div>
       </section>
