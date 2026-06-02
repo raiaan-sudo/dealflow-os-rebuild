@@ -18,6 +18,8 @@ import { getCreditSummaryForCurrentUser } from "@/lib/services/credit-service";
 import { getPerformanceLeadUsageSummary } from "@/lib/services/performance-lead-billing-service";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 
+export const dynamic = "force-dynamic";
+
 type SettingsBillingSummary =
   | Awaited<ReturnType<typeof getBillingSummary>>
   | Awaited<ReturnType<typeof getBillingSummaryForCampaign>>;
