@@ -36,7 +36,6 @@ import {
 } from "@/lib/services/creative-media-readiness";
 import {
   getCreativeAssetTierLabel,
-  rankBestAvailableStaticCreatives,
 } from "@/lib/services/creative-asset-status";
 
 export const dynamic = "force-dynamic";
@@ -239,9 +238,8 @@ export default async function PreviewPage({
   const selectedAds = previewPlan.creatives.staticAds
     .filter((ad) => selectedAdIds.includes(ad.id))
     .sort((left, right) => selectedAdIds.indexOf(left.id) - selectedAdIds.indexOf(right.id));
-  const fallbackDisplayAds = rankBestAvailableStaticCreatives(previewPlan.creatives.staticAds).slice(0, 4);
-  const displayStaticAds = selectedAds.length > 0 ? selectedAds : fallbackDisplayAds;
-  const usingInstantFallbackPreview = selectedAds.length === 0 && displayStaticAds.length > 0;
+  const displayStaticAds = selectedAds;
+  const usingInstantFallbackPreview = false;
   const videoAds = previewPlan.creatives.videoAds;
   const isCurrentLaunchReadyUgcVideo = (video: (typeof videoAds)[number]) =>
     video.conceptType === "customer_ugc" &&

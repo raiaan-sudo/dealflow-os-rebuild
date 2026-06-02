@@ -495,13 +495,15 @@ const productionLikeCreativeAssets = [
 const productionMappedStatic = mapStaticCreativeAssets(productionLikeCreativeAssets);
 const productionStaticReadiness = getStaticCreativeReadiness(productionMappedStatic, stalePlanSelectedIds);
 assert.equal(productionStaticReadiness.selectedReadyCount, 0);
-assert.equal(productionStaticReadiness.selectedBlockedCount, 3);
+assert.equal(productionStaticReadiness.selectedBlockedCount, 0, "stale selected IDs must not create a fake current-campaign selection");
 assert.equal(productionStaticReadiness.selectedMinimumMet, false);
 assert.equal(productionStaticReadiness.allSelectedReady, false);
-assert.equal(productionStaticReadiness.readyLabel, "0 selected launch-ready previews");
-assert.equal(productionMappedStatic.find((asset) => asset.id === "primary")?.imageGenerationState, "failed");
-assert.doesNotMatch(productionMappedStatic.find((asset) => asset.id === "primary")?.headline ?? "", /Delivered through|property selection/i);
-assert.doesNotMatch(productionMappedStatic.find((asset) => asset.id === "primary")?.primaryText ?? "", /Delivered through|property selection/i);
+assert.equal(productionStaticReadiness.readyLabel, "0 launch-ready previews available");
+assert.equal(productionMappedStatic.some((asset) => asset.id === "primary"), false, "stale metadata staticAssetId cannot replace same-campaign creative IDs");
+const productionPrimary = productionMappedStatic.find((asset) => asset.id === "campaign-1-creative-0");
+assert.equal(productionPrimary?.imageGenerationState, "failed");
+assert.doesNotMatch(productionPrimary?.headline ?? "", /Delivered through|property selection/i);
+assert.doesNotMatch(productionPrimary?.primaryText ?? "", /Delivered through|property selection/i);
 
 const fallbackPreview = buildComposedStaticAdPreview({
   headline: "Toronto seller plan",
@@ -785,6 +787,8 @@ const buildCreativesPageSource = fs.readFileSync("src/app/(app)/build/creatives/
 const selectAdRouteSource = fs.readFileSync("src/app/api/campaigns/[id]/select-ad/route.ts", "utf8");
 const previewSource = fs.readFileSync("src/app/(app)/preview/page.tsx", "utf8");
 const launchSource = fs.readFileSync("src/app/(app)/launch/page.tsx", "utf8");
+const campaignPersistenceSource = fs.readFileSync("src/lib/services/campaign-persistence.ts", "utf8");
+const canonicalCampaignSource = fs.readFileSync("src/lib/services/canonical-campaign.ts", "utf8");
 const customerVideoPlayerSource = fs.readFileSync("src/components/campaign/customer-video-player.tsx", "utf8");
 const paywallAccessSource = fs.readFileSync("src/lib/paywall-access.ts", "utf8");
 const funnelPreviewSource = fs.readFileSync("src/components/funnel/funnel-preview.tsx", "utf8");
@@ -818,6 +822,10 @@ assert.match(creativeWizardSource, /currentVideoStatusJob/, "Creative Studio tra
 assert.match(creativeWizardSource, /currentVideoRenderJob/, "Creative Studio uses a unified video render job state for customer messaging and polling");
 assert.match(creativeWizardSource, /setActiveVideoJobId\(data\.job\.id\)/, "Creative Studio keeps deferred UGC jobs active for browser polling");
 assert.doesNotMatch(creativeWizardSource, /window\.setInterval\(\(\) => \{\s*router\.refresh\(\);\s*\}, 15_000\)/s, "Creative Studio must not auto-refresh static renders before the user clicks Show preview renders");
+assert.match(buildCreativesPageSource, /let persistedStaticAds:[\s\S]*= \[\];/, "Creative Studio must start from durable campaign assets, not canonical fallback static ads");
+assert.match(buildCreativesPageSource, /if \(mappedStaticAssets\.length > 0\) \{\s*persistedStaticAds = mappedStaticAssets;\s*\}/, "Creative Studio may render only same-campaign creative_assets rows");
+assert.doesNotMatch(previewSource, /rankBestAvailableStaticCreatives/, "Preview must not show fallback static creatives when no selected campaign assets exist");
+assert.match(previewSource, /const displayStaticAds = selectedAds;/, "Preview must render only selected same-campaign static ads");
 assert.match(buildCreativesPageSource, /creativeIntake\?\.brief\?\.ugcScriptHash \?\?/, "Creative Studio must pass the canonical approved UGC script hash to the client");
 assert.match(selectAdRouteSource, /mapVideoCreativeAssets/, "Save launch package must validate UGC selections against current creative_assets video rows");
 assert.match(selectAdRouteSource, /if \(!videoById\.has\(video\.id\)\)/, "Save launch package must preserve the newest launch-ready UGC asset when duplicate creative IDs exist");
@@ -840,10 +848,12 @@ assert.doesNotMatch(creativeWizardSource, /Video concept is ready/);
 assert.doesNotMatch(paywallAccessSource, /campaignId: requestedCampaignId,\s*record: null/s, "invalid requested campaign IDs must not become active campaign context");
 assert.match(paywallAccessSource, /campaignId: resolvedRecord\?\.campaign\.id \?\? null/, "campaign context must come from an owned resolved record");
 assert.match(
-  fs.readFileSync("src/lib/services/campaign-persistence.ts", "utf8"),
+  campaignPersistenceSource,
   /selected_static_asset_ids: generationPreferredStaticAssetIds/,
   "capped static regeneration must target the selected or default launch set",
 );
+assert.match(campaignPersistenceSource, /sameCampaignStaticAssetKey/, "creative asset grouping must ignore stale staticAssetId values from another campaign context");
+assert.match(canonicalCampaignSource, /length >= 3;/, "saved finished static ads trust threshold must match the 3-creative launch floor");
 
 console.log("creative media readiness regression checks passed");
 process.exit(0);

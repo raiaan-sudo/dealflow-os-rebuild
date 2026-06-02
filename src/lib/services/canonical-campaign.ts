@@ -166,7 +166,7 @@ function hasHiggsfieldFinishedStaticAds(value: CampaignCreatives["staticAds"]) {
       qa?.mode === "finished_ad" &&
       qa.decision === "accept"
     );
-  }).length >= 4;
+  }).length >= 3;
 }
 
 function runtimeHasRecordedLaunch(value: Record<string, unknown> | null) {

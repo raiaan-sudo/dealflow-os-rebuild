@@ -77,8 +77,8 @@ export default async function BuildCreativesPage({
   let intakePlanValue: unknown = null;
   let persistedSelectedAdIds: string[] = [];
   let persistedSelectedUgcVideoIds: string[] = [];
-  let persistedStaticAds = ensuredRecord.creatives.staticAds;
-  let persistedVideoAds = ensuredRecord.creatives.videoAds;
+  let persistedStaticAds: typeof ensuredRecord.creatives.staticAds = [];
+  let persistedVideoAds: typeof ensuredRecord.creatives.videoAds = [];
   let activeRenderJobs: NonNullable<Parameters<typeof CreativeWizard>[0]["initialRenderJobs"]> = [];
   const generationCredits = await getCreditSummaryForCurrentUser().catch(() => null);
   const generationCreditOverrideActive =

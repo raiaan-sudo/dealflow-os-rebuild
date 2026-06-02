@@ -277,6 +277,27 @@ function assetErrorMessage(row: CreativeAssetRow, metadata: Record<string, Json>
         : null;
 }
 
+function sameCampaignStaticAssetKey(row: CreativeAssetRow, metadata: Record<string, Json> | null) {
+  const campaignId = typeof row.campaign_id === "string" ? row.campaign_id : "";
+  const creativeId = typeof row.creative_id === "string" && row.creative_id.trim() ? row.creative_id : row.id;
+  const metadataStaticAssetId =
+    typeof metadata?.staticAssetId === "string" && metadata.staticAssetId.trim()
+      ? metadata.staticAssetId.trim()
+      : null;
+
+  if (
+    metadataStaticAssetId &&
+    (
+      metadataStaticAssetId === creativeId ||
+      (campaignId && metadataStaticAssetId.startsWith(`${campaignId}-`))
+    )
+  ) {
+    return metadataStaticAssetId;
+  }
+
+  return creativeId;
+}
+
 export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[] {
   const grouped = new Map<string, CreativeAssetRow[]>();
 
@@ -286,10 +307,7 @@ export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativ
       continue;
     }
 
-    const key =
-      (typeof metadata?.staticAssetId === "string" && metadata.staticAssetId.trim()) ||
-      row.creative_id ||
-      row.id;
+    const key = sameCampaignStaticAssetKey(row, metadata);
     const existing = grouped.get(key) ?? [];
     existing.push(row);
     grouped.set(key, existing);
