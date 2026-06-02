@@ -78,6 +78,9 @@ assert.match(permissions, /requireAccountAccess/, "account access guard must exi
 assert.match(attribution, /partner_accounts[\s\S]*onConflict: "account_id"/, "partner attribution must lock account attribution");
 assert.match(attribution, /partner_slug/, "signup metadata must support slug attribution");
 assert.match(attribution, /partner_invite_code/, "signup metadata must support invite attribution");
+assert.match(attribution, /findActivePartnerFromOrganization/, "authenticated app attribution must trust durable organization partner_id");
+assert.match(attribution, /organization\.partner_id/, "organization partner attribution must be preserved after login");
+assert.match(attribution, /attribution_detail: "organization\.partner_id"/, "organization partner attribution must create an auditable partner account link");
 
 assert.match(loginForm, /partnerAttribution/, "LoginForm must accept partner attribution");
 assert.match(loginForm, /partner_slug/, "sign-up must pass partner_slug to auth metadata");
@@ -111,6 +114,8 @@ assert.match(appLayout, /listManagedWorkspacesForContext/, "app layout must load
 assert.match(sidebar, /BrandMark/, "sidebar must render a safe brand mark");
 assert.match(sidebar, /onError=\{\(\) => setLogoFailed\(true\)\}/, "sidebar logo must fall back on broken images");
 assert.doesNotMatch(sidebar, /<Logo/, "authenticated shell must not force the default DealFlow logo");
+assert.match(sidebar, /displayBrandName = brandName \|\| "DealFlow"/, "authenticated shell brand text must come from canonical brand props before native fallback");
+assert.match(sidebar, /alt=\{`\$\{brandName\} logo`\}/, "partner logo alt text must use the partner brand, not DealFlow");
 assert.match(sidebar, /WorkspaceSwitcher/, "sidebar must include the agency workspace switcher");
 assert.match(topBar, /managedWorkspaces/, "mobile top bar must receive managed workspace options");
 assert.match(workspaceAccess, /resolveWorkspaceAccessForUser/, "workspace switching must validate access server-side");

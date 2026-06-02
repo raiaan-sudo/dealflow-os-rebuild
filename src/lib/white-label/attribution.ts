@@ -46,6 +46,34 @@ async function findExistingPartnerAccount(supabase: SupabaseLike, organizationId
   } | null;
 }
 
+async function findActivePartnerFromOrganization(supabase: SupabaseLike, organizationId: string) {
+  const { data: organization, error: organizationError } = await supabase
+    .from("organizations")
+    .select("partner_id")
+    .eq("id", organizationId)
+    .maybeSingle();
+
+  if (organizationError) throw organizationError;
+
+  const partnerId = typeof organization?.partner_id === "string" && organization.partner_id.trim()
+    ? organization.partner_id.trim()
+    : null;
+
+  if (!partnerId) {
+    return null;
+  }
+
+  const { data: partner, error: partnerError } = await supabase
+    .from("partners")
+    .select("id,status")
+    .eq("id", partnerId)
+    .maybeSingle();
+
+  if (partnerError) throw partnerError;
+
+  return partner?.id && partner.status === "active" ? partner.id as string : null;
+}
+
 async function findPartnerFromInvite(supabase: SupabaseLike, inviteCode: string) {
   const { data, error } = await supabase
     .from("partner_invites")
@@ -103,6 +131,25 @@ export async function ensurePartnerAttributionForWorkspace({
         supabase.from("users").update({ partner_id: existing.partner_id } satisfies Database["public"]["Tables"][string]["Update"]).eq("id", user.id),
       ]);
       return existingPartner?.id ?? existing.partner_id;
+    }
+
+    const organizationPartnerId = await findActivePartnerFromOrganization(supabase, organization.id);
+    if (organizationPartnerId) {
+      await Promise.all([
+        supabase.from("partner_accounts").upsert(
+          {
+            partner_id: organizationPartnerId,
+            account_id: organization.id,
+            user_id: user.id,
+            attribution_source: "admin",
+            attribution_detail: "organization.partner_id",
+            locked: true,
+          },
+          { onConflict: "account_id" },
+        ),
+        supabase.from("users").update({ partner_id: organizationPartnerId } satisfies Database["public"]["Tables"][string]["Update"]).eq("id", user.id),
+      ]);
+      return organizationPartnerId;
     }
 
     const inviteCode = metadataText(user.user_metadata, "partner_invite_code");
