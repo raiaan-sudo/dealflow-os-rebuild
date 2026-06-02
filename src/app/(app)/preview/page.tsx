@@ -280,7 +280,7 @@ export default async function PreviewPage({
       : videoAds;
   const launchReadyVideoCount = selectedLaunchReadyVideos.length;
   const videoMediaReady = launchReadyVideoCount > 0;
-  const mediaReadyForLaunch = selectedStaticMediaReady && videoMediaReady;
+  const mediaReadyForLaunch = selectedStaticMediaReady;
   const campaignIdForFlow = record?.campaign.id ?? null;
 
   await recordActivationEventForCurrentUser({
@@ -487,9 +487,8 @@ export default async function PreviewPage({
                 ))}
               </div>
               {!videoMediaReady ? (
-                <p className="mt-3 rounded-[14px] border border-amber-300/18 bg-amber-300/[0.08] px-3 py-2 text-sm leading-6 text-amber-100">
-                  Video is review-only until the campaign-specific source and launch review are accepted.
-                  {selectedUgcVideoIds.length === 0 ? " Choose an approved UGC video in Creative Studio before launch." : ""}
+                <p className="mt-3 rounded-[14px] border border-cyan-300/18 bg-cyan-300/[0.08] px-3 py-2 text-sm leading-6 text-cyan-100">
+                  UGC video is optional and can be added later. The static ad set is the media requirement for moving into launch review.
                 </p>
               ) : null}
             </section>
@@ -499,7 +498,7 @@ export default async function PreviewPage({
 
       <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-between">
         <Button asChild size="lg" variant="secondary">
-          <Link href={campaignIdForFlow ? `/builder?campaignId=${encodeURIComponent(campaignIdForFlow)}` : "/builder"}>
+          <Link href={campaignIdForFlow ? `/builder?campaignId=${encodeURIComponent(campaignIdForFlow)}&mode=edit` : "/builder?mode=edit"}>
             Back to build
           </Link>
         </Button>
@@ -511,7 +510,7 @@ export default async function PreviewPage({
           </Button>
         ) : (
           <Button size="lg" disabled>
-            Media review needed
+            Static review needed
           </Button>
         )}
       </div>

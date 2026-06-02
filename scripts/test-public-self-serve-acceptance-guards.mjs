@@ -72,10 +72,14 @@ assert.match(previewPage, /ReviewOnlyCreativePreview/, "preview must expose a re
 assert.match(previewPage, /cannot satisfy Meta launch gates/, "review-only preview copy must state it cannot satisfy launch gates");
 assert.doesNotMatch(previewPage, /selectedAds\.length\s*===\s*0[\s\S]{0,120}redirect\(/, "preview must not redirect fresh campaigns back to Creative Intake solely because no selected creatives exist");
 assert.doesNotMatch(previewPage, /generate-static-ads|generate-video/, "preview render must not queue provider generation");
-assert.match(previewPage, /Media review needed/, "preview must keep launch CTA disabled until real media is ready");
+assert.match(previewPage, /mediaReadyForLaunch\s*=\s*selectedStaticMediaReady/, "preview media readiness must be driven by the static launch set");
+assert.doesNotMatch(previewPage, /mediaReadyForLaunch\s*=\s*selectedStaticMediaReady\s*&&\s*videoMediaReady/, "preview must not require optional UGC/video for launch review");
+assert.match(previewPage, /UGC video is optional and can be added later/, "preview must label missing UGC as optional");
 
 assert.match(launchPage, /Saved creative set missing/, "launch must still block when no saved creative set exists");
 assert.match(launchPage, /selectedCreativeMediaReady/, "launch must keep selected creative media readiness gate");
+assert.doesNotMatch(launchPage, /Approve a campaign-specific UGC video before launch|render or approve a campaign-specific UGC video before launch/i, "launch must not block on optional UGC/video");
+assert.match(launchPage, /Optional UGC video/, "launch must present UGC as optional");
 assert.match(launchPage, /Open Creative Studio/, "launch missing-creative CTA copy must match the Creative Studio target");
 assert.match(launchPage, /\/build\/creatives\?campaignId=/, "launch missing-creative CTA must return to Creative Studio");
 assert.doesNotMatch(launchPage, /\/builder\?campaignId=\$\{encodeURIComponent\(savedRecord\.campaign\.id\)\}/, "launch missing-creative CTA must not send users back to the generic builder");

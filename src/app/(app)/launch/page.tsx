@@ -415,9 +415,6 @@ export default async function LaunchAliasPage({
   if (!selectedCreativeMediaReady) {
     blockingReasons.push("Finish rendering clean creative images before launch.");
   }
-  if (!videoMediaReady) {
-    blockingReasons.push("Approve a campaign-specific UGC video before launch.");
-  }
   const dailyBudgetInput =
     plan.runtime.budgetDailyInput && plan.runtime.budgetDailyInput > 0
       ? plan.runtime.budgetDailyInput
@@ -435,7 +432,6 @@ export default async function LaunchAliasPage({
     billingLaunchAllowed &&
     metaLaunchReady &&
     selectedCreativeMediaReady &&
-    videoMediaReady &&
     publicFunnelPublished &&
     !budgetCapMissingForLaunch &&
     providerLaunchEnabled;
@@ -484,11 +480,12 @@ export default async function LaunchAliasPage({
             : "Choose the creative test set first",
     },
     {
-      label: "Video preview ready",
-      ready: videoMediaReady,
+      label: "Optional UGC video",
+      ready: true,
+      statusLabel: videoMediaReady ? undefined : "Optional",
       detail: videoMediaReady
         ? `${launchReadyVideos.length} campaign-specific UGC video ${launchReadyVideos.length === 1 ? "preview is" : "previews are"} launch-ready`
-        : "Render or approve a campaign-specific UGC video before launch",
+        : "UGC video can be added later. The selected static ad set is the media requirement for launch review.",
     },
     {
       label: "Funnel published",
@@ -571,9 +568,6 @@ export default async function LaunchAliasPage({
             ? `Open Creative Studio and save at least ${staticReadiness.minimumRequiredCount} launch-ready static ads before launch.`
             : "Return to Creatives and refresh unfinished previews before saving the launch set again.",
         ]
-      : []),
-    ...(!videoMediaReady
-      ? ["Return to Creatives and render or approve a campaign-specific UGC video before launch."]
       : []),
     ...(!providerLaunchEnabled
       ? [
@@ -829,11 +823,11 @@ export default async function LaunchAliasPage({
                   <div>
                     <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Video preview</p>
                     <h3 className="mt-2 text-sm font-semibold text-foreground">
-                      {videoMediaReady ? "Campaign-specific UGC is ready" : "Video review needed"}
+                      {videoMediaReady ? "Campaign-specific UGC is ready" : "Optional UGC can be added later"}
                     </h3>
                   </div>
-                  <span className={videoMediaReady ? "text-sm font-semibold text-emerald-300" : "text-sm font-semibold text-amber-300"}>
-                    {videoMediaReady ? "Ready" : "Blocked"}
+                  <span className={videoMediaReady ? "text-sm font-semibold text-emerald-300" : "text-sm font-semibold text-cyan-300"}>
+                    {videoMediaReady ? "Ready" : "Optional"}
                   </span>
                 </div>
                 <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
