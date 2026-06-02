@@ -17,8 +17,41 @@ function money(cents: number) {
 }
 
 export async function PartnerDashboardShell({ section = "Overview" }: { section?: string }) {
-  const { membership } = await requirePartnerMembership();
-  const summary = await getPartnerDashboardSummary(membership.partner_id);
+  const scoped = await requirePartnerMembership().catch(() => null);
+
+  if (!scoped?.membership?.partner_id) {
+    return (
+      <div className="mx-auto flex min-h-[60vh] max-w-2xl flex-col justify-center">
+        <div className="rounded-df-panel border border-white/10 bg-white/[0.035] p-6">
+          <p className="df-eyebrow">Partner Portal</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">No partner access</h1>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            This area is for partner agency users. Customer workspaces can continue from the main dashboard.
+          </p>
+          <Link
+            href="/dashboard"
+            className="mt-5 inline-flex h-11 items-center rounded-full border border-primary/20 bg-primary/10 px-5 text-sm font-semibold text-primary"
+          >
+            Return to dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const summary = await getPartnerDashboardSummary(scoped.membership.partner_id).catch(() => ({
+    signups: 0,
+    activeTrials: 0,
+    paidCustomers: 0,
+    attributedMrrCents: 0,
+    churnedCustomers: 0,
+    commissionPendingCents: 0,
+    commissionApprovedCents: 0,
+    commissionPaidCents: 0,
+    inviteLinks: [],
+    campaignStatusSummary: { total: 0, live: 0, launchReady: 0, blocked: 0 },
+    warnings: ["Partner dashboard metrics are temporarily unavailable."],
+  }));
 
   return (
     <div className="space-y-6">
@@ -46,6 +79,8 @@ export async function PartnerDashboardShell({ section = "Overview" }: { section?
           ["Attributed MRR", money(summary.attributedMrrCents)],
           ["Pending commission", money(summary.commissionPendingCents)],
           ["Approved commission", money(summary.commissionApprovedCents)],
+          ["Paid commission", money(summary.commissionPaidCents)],
+          ["Churned customers", String(summary.churnedCustomers)],
         ].map(([label, value]) => (
           <div key={label} className="rounded-df-panel border border-white/10 bg-white/[0.035] p-5">
             <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{label}</p>
@@ -53,6 +88,15 @@ export async function PartnerDashboardShell({ section = "Overview" }: { section?
           </div>
         ))}
       </div>
+
+      {summary.warnings.length > 0 ? (
+        <div className="rounded-df-panel border border-amber-300/20 bg-amber-300/10 p-5 text-sm leading-6 text-amber-100">
+          <p className="font-semibold">Some partner metrics are temporarily unavailable.</p>
+          <p className="mt-2 text-amber-50/80">
+            The portal remains usable. Missing optional metrics are hidden until their data source recovers.
+          </p>
+        </div>
+      ) : null}
 
       <div className="rounded-df-panel border border-white/10 bg-white/[0.035] p-5">
         <h2 className="text-lg font-semibold">Campaign Status</h2>

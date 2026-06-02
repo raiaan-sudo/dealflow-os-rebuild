@@ -19,7 +19,19 @@ function safeArray<T = Record<string, unknown>>(value: unknown): T[] {
 export async function getPartnerDashboardSummary(partnerId: string) {
   const admin = createAdminClient();
   if (!admin) {
-    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+    return {
+      signups: 0,
+      activeTrials: 0,
+      paidCustomers: 0,
+      attributedMrrCents: 0,
+      churnedCustomers: 0,
+      commissionPendingCents: 0,
+      commissionApprovedCents: 0,
+      commissionPaidCents: 0,
+      inviteLinks: [],
+      campaignStatusSummary: { total: 0, live: 0, launchReady: 0, blocked: 0 },
+      warnings: ["Partner dashboard service client is unavailable."],
+    };
   }
 
   const [
@@ -36,18 +48,23 @@ export async function getPartnerDashboardSummary(partnerId: string) {
     admin.from("campaign_plans").select("id,launch_status,created_at").eq("partner_id", partnerId).limit(500),
   ]);
 
-  for (const result of [accountsResult, billingResult, commissionsResult, invitesResult, campaignsResult]) {
-    if (result.error) {
-      throw new ApiError(500, result.error.message, "partner_dashboard_query_failed");
-    }
-  }
+  const warningSources = [
+    { label: "accounts", result: accountsResult },
+    { label: "billing", result: billingResult },
+    { label: "commissions", result: commissionsResult },
+    { label: "invites", result: invitesResult },
+    { label: "campaigns", result: campaignsResult },
+  ];
+  const warnings = warningSources
+    .filter(({ result }) => result.error)
+    .map(({ label, result }) => `${label} unavailable: ${result.error?.message ?? "query failed"}`);
 
-  const billingRows = (billingResult.data ?? []) as Array<{ status?: string | null; plan_tier?: string | null }>;
-  const commissionRows = (commissionsResult.data ?? []) as Array<{ status?: string | null; commission_amount?: number | null }>;
-  const campaignRows = (campaignsResult.data ?? []) as Array<{ launch_status?: string | null }>;
+  const billingRows = (billingResult.error ? [] : billingResult.data ?? []) as Array<{ status?: string | null; plan_tier?: string | null }>;
+  const commissionRows = (commissionsResult.error ? [] : commissionsResult.data ?? []) as Array<{ status?: string | null; commission_amount?: number | null }>;
+  const campaignRows = (campaignsResult.error ? [] : campaignsResult.data ?? []) as Array<{ launch_status?: string | null }>;
 
   return {
-    signups: accountsResult.count ?? accountsResult.data?.length ?? 0,
+    signups: accountsResult.error ? 0 : accountsResult.count ?? accountsResult.data?.length ?? 0,
     activeTrials: billingRows.filter((row) => row.status === "trialing").length,
     paidCustomers: billingRows.filter((row) => row.status === "active" || row.status === "past_due").length,
     attributedMrrCents: billingRows.filter((row) => row.status === "active" || row.status === "past_due").length * 9700,
@@ -61,13 +78,14 @@ export async function getPartnerDashboardSummary(partnerId: string) {
     commissionPaidCents: commissionRows
       .filter((row) => row.status === "paid")
       .reduce((sum, row) => sum + (row.commission_amount ?? 0), 0),
-    inviteLinks: invitesResult.data ?? [],
+    inviteLinks: invitesResult.error ? [] : invitesResult.data ?? [],
     campaignStatusSummary: {
       total: campaignRows.length,
       live: campaignRows.filter((row) => row.launch_status === "live").length,
       launchReady: campaignRows.filter((row) => row.launch_status === "launch_ready").length,
       blocked: campaignRows.filter((row) => row.launch_status === "blocked").length,
     },
+    warnings,
   };
 }
 

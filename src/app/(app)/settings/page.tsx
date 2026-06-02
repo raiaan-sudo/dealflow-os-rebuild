@@ -5,7 +5,10 @@ import { CreditTopUpButton } from "@/components/billing/credit-top-up-button";
 import { PortalButton } from "@/components/billing/portal-button";
 import { Card } from "@/components/ui/card";
 import { PageShell } from "@/components/ui/page-shell";
+import { isInternalAdminEmail } from "@/lib/env";
 import { getAppContext } from "@/lib/services/app-context";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { revalidatePath } from "next/cache";
 import {
   getBillingSummary,
   getBillingSummaryForCampaign,
@@ -145,6 +148,33 @@ function statusToneClass(tone: string) {
   return "border-white/10 bg-white/[0.04] text-muted-foreground";
 }
 
+async function updateProfileAndWorkspace(formData: FormData) {
+  "use server";
+
+  const context = await getAppContext();
+  const admin = createAdminClient();
+  if (!context || !admin) {
+    return;
+  }
+
+  const fullName = String(formData.get("fullName") ?? "").trim().slice(0, 120);
+  const workspaceName = String(formData.get("workspaceName") ?? "").trim().slice(0, 160);
+  const canEditWorkspace =
+    context.activeWorkspaceAccess === "owner" ||
+    context.activeWorkspaceAccess === "platform_admin" ||
+    isInternalAdminEmail(context.user.email ?? context.profile?.email ?? null);
+
+  if (fullName) {
+    await admin.from("users").update({ full_name: fullName } as never).eq("id", context.user.id);
+  }
+
+  if (workspaceName && canEditWorkspace) {
+    await admin.from("organizations").update({ name: workspaceName } as never).eq("id", context.organization.id);
+  }
+
+  revalidatePath("/settings");
+}
+
 export default async function SettingsPage({
   searchParams,
 }: {
@@ -208,6 +238,10 @@ export default async function SettingsPage({
     : "Not enabled";
   const billingPlanLabel = billing?.partnerPlanLabel ?? billing?.planTier ?? "starter";
   const billingProductLabel = billing?.partnerProductName ?? "DealFlow";
+  const canEditWorkspace =
+    appContext?.activeWorkspaceAccess === "owner" ||
+    appContext?.activeWorkspaceAccess === "platform_admin" ||
+    isInternalAdminEmail(appContext?.user.email ?? appContext?.profile?.email ?? null);
 
   return (
     <PageShell className="max-w-[1280px]">
@@ -237,6 +271,38 @@ export default async function SettingsPage({
           <p className="mt-4 text-sm leading-6 text-muted-foreground">
             Campaign-facing agent name, brokerage, and phone are updated in the Build flow so lead alerts stay tied to the active campaign.
           </p>
+          <form action={updateProfileAndWorkspace} className="mt-5 grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm">
+              <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Edit name</span>
+              <input
+                name="fullName"
+                defaultValue={accountName}
+                className="mt-2 h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-3 text-sm outline-none transition focus:border-primary/35"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Edit workspace</span>
+              <input
+                name="workspaceName"
+                defaultValue={workspaceName}
+                disabled={!canEditWorkspace}
+                className="mt-2 h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-3 text-sm outline-none transition disabled:cursor-not-allowed disabled:opacity-55 focus:border-primary/35"
+              />
+            </label>
+            <div className="sm:col-span-2">
+              <button
+                type="submit"
+                className="inline-flex h-11 items-center rounded-full border border-primary/20 bg-primary/10 px-5 text-sm font-semibold text-primary"
+              >
+                Save profile settings
+              </button>
+              {!canEditWorkspace ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Workspace name changes are limited to workspace owners and platform admins.
+                </p>
+              ) : null}
+            </div>
+          </form>
         </Card>
 
         <Card className="p-5 sm:p-6">

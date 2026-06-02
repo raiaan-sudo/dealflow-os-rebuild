@@ -148,8 +148,53 @@ export function buildPartnerBranding(params: {
 }
 
 export function partnerBrandingCssVars(branding: PartnerBranding): CSSProperties {
+  const primaryHsl = hexToHsl(branding.primaryColor);
+  const accentHsl = hexToHsl(branding.accentColor ?? branding.primaryColor);
+  const secondaryHsl = branding.secondaryColor ? hexToHsl(branding.secondaryColor) : null;
+
   return {
     "--df-primary": branding.primaryColor,
     "--df-accent": branding.accentColor ?? branding.primaryColor,
+    ...(primaryHsl ? { "--primary": primaryHsl, "--ring": primaryHsl } : {}),
+    ...(accentHsl ? { "--accent": accentHsl } : {}),
+    ...(secondaryHsl ? { "--secondary": secondaryHsl, "--muted": secondaryHsl } : {}),
   } as CSSProperties;
+}
+
+function hexToHsl(hexValue: string | null | undefined) {
+  if (!isSafeBrandColor(hexValue)) {
+    return null;
+  }
+
+  let hex = String(hexValue).trim().replace("#", "");
+  if (hex.length === 3) {
+    hex = hex.split("").map((char) => `${char}${char}`).join("");
+  }
+
+  const red = Number.parseInt(hex.slice(0, 2), 16) / 255;
+  const green = Number.parseInt(hex.slice(2, 4), 16) / 255;
+  const blue = Number.parseInt(hex.slice(4, 6), 16) / 255;
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  let hue = 0;
+  let saturation = 0;
+  const lightness = (max + min) / 2;
+
+  if (max !== min) {
+    const delta = max - min;
+    saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+    switch (max) {
+      case red:
+        hue = (green - blue) / delta + (green < blue ? 6 : 0);
+        break;
+      case green:
+        hue = (blue - red) / delta + 2;
+        break;
+      default:
+        hue = (red - green) / delta + 4;
+    }
+    hue /= 6;
+  }
+
+  return `${Math.round(hue * 360)} ${Math.round(saturation * 100)}% ${Math.round(lightness * 100)}%`;
 }

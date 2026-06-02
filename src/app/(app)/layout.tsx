@@ -10,7 +10,10 @@ import { SignOutButton } from "@/components/layout/sign-out-button";
 import { isInternalAdminEmail } from "@/lib/env";
 import { ACTIVE_CAMPAIGN_COOKIE } from "@/lib/paywall-access";
 import { getAppContext } from "@/lib/services/app-context";
+import { listManagedWorkspacesForContext } from "@/lib/services/workspace-access";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveAuthenticatedBrandContext } from "@/lib/white-label/authenticated-brand";
 import { getInitials } from "@/lib/utils";
 import type { CampaignExperienceStage } from "@/lib/services/campaign-plan-service";
 
@@ -63,12 +66,14 @@ export default async function AppLayout({
     pathname.startsWith("/preview") ||
     pathname.startsWith("/paywall");
   const appContext = await getAppContext().catch(() => null);
+  const brandContext = await resolveAuthenticatedBrandContext(appContext).catch(() => null);
+  const managedWorkspaces = await listManagedWorkspacesForContext(createAdminClient(), appContext).catch(() => []);
   const isAdmin = isInternalAdminEmail(appContext?.user.email ?? appContext?.profile?.email ?? null);
   const organizationName =
     appContext?.organization.name?.trim() ||
     appContext?.businessProfile?.business_name?.trim() ||
     "DealFlow Workspace";
-  const brandName = appContext?.partner?.brand_name?.trim() || "DealFlow";
+  const brandName = brandContext?.displayName || appContext?.partner?.brand_name?.trim() || "DealFlow";
   const userName =
     appContext?.profile?.full_name?.trim() ||
     appContext?.user.email?.split("@")[0] ||
@@ -137,7 +142,7 @@ export default async function AppLayout({
             <SignOutButton />
           </div>
         </header>
-        <main className="min-h-screen px-5 pb-5 pt-20 sm:px-6 sm:pb-6 sm:pt-24 lg:px-8 lg:pb-8">
+        <main className="min-h-screen px-5 pb-5 pt-20 sm:px-6 sm:pb-6 sm:pt-24 lg:px-8 lg:pb-8" style={brandContext?.cssVars}>
           {children}
         </main>
         <SupportWidget activeCampaignId={activeCampaignId} />
@@ -146,11 +151,14 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="app-shell relative flex h-screen w-screen overflow-hidden bg-transparent">
+    <div className="app-shell relative flex h-screen w-screen overflow-hidden bg-transparent" style={brandContext?.cssVars}>
       <AppSidebar
         activeCampaignId={activeCampaignId}
         brandName={brandName}
+        brandLogoUrl={brandContext?.logoUrl ?? null}
+        isPartnerBranded={Boolean(brandContext?.isPartnerBranded)}
         isAdmin={isAdmin}
+        managedWorkspaces={managedWorkspaces}
         organizationName={organizationName}
         stage={getStageForPath(pathname)}
       />
@@ -159,6 +167,8 @@ export default async function AppLayout({
           userName={userName}
           userEmail={userEmail}
           organizationName={organizationName}
+          brandName={brandName}
+          managedWorkspaces={managedWorkspaces}
           activeCampaignId={activeCampaignId}
         />
         <main className="flex-1 overflow-hidden">

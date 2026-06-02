@@ -19,6 +19,16 @@ const billingService = read("src/lib/services/billing-service.ts");
 const stripeService = read("src/lib/integrations/stripe/service.ts");
 const proxy = read("src/proxy.ts");
 const adminPartnerRoute = read("src/app/api/admin/partners/route.ts");
+const appContext = read("src/lib/services/app-context.ts");
+const appLayout = read("src/app/(app)/layout.tsx");
+const sidebar = read("src/components/layout/sidebar.tsx");
+const topBar = read("src/components/layout/top-bar.tsx");
+const authenticatedBrand = read("src/lib/white-label/authenticated-brand.ts");
+const workspaceAccess = read("src/lib/services/workspace-access.ts");
+const workspaceSwitchRoute = read("src/app/api/workspaces/switch/route.ts");
+const partnerDashboardShell = read("src/components/white-label/partner-dashboard-shell.tsx");
+const partnerDashboardError = read("src/app/(app)/partner/error.tsx");
+const settingsPage = read("src/app/(app)/settings/page.tsx");
 
 for (const table of [
   "partners",
@@ -90,6 +100,30 @@ assert.match(partnerCreateForm, /logoUrl/, "new-partner form must support logo U
 assert.match(partnerCreateForm, /faviconUrl/, "new-partner form must support favicon URL entry");
 assert.match(partnerCreateForm, /Short link also works/, "new-partner form must explain the short partner URL");
 
+assert.match(appContext, /resolveRequestedWorkspaceForUser/, "app context must support server-validated active workspace switching");
+assert.match(appContext, /requestedWorkspace\?\.access && requestedWorkspace\.access !== "owner"/, "managed workspace viewing must avoid owner-only partner attribution writes");
+assert.match(appContext, /logo_url,favicon_url,primary_color,secondary_color,accent_color/, "authenticated app context must load full partner branding fields");
+assert.match(authenticatedBrand, /resolveAuthenticatedBrandContext/, "authenticated brand resolver must exist");
+assert.match(authenticatedBrand, /BrandContext/, "authenticated brand context type must exist");
+assert.match(appLayout, /resolveAuthenticatedBrandContext/, "app layout must consume canonical brand context");
+assert.match(appLayout, /style=\{brandContext\?\.cssVars\}/, "app layout must apply partner theme variables");
+assert.match(appLayout, /listManagedWorkspacesForContext/, "app layout must load eligible managed workspaces");
+assert.match(sidebar, /BrandMark/, "sidebar must render a safe brand mark");
+assert.match(sidebar, /onError=\{\(\) => setLogoFailed\(true\)\}/, "sidebar logo must fall back on broken images");
+assert.doesNotMatch(sidebar, /<Logo/, "authenticated shell must not force the default DealFlow logo");
+assert.match(sidebar, /WorkspaceSwitcher/, "sidebar must include the agency workspace switcher");
+assert.match(topBar, /managedWorkspaces/, "mobile top bar must receive managed workspace options");
+assert.match(workspaceAccess, /resolveWorkspaceAccessForUser/, "workspace switching must validate access server-side");
+assert.match(workspaceAccess, /partner_memberships[\s\S]*partner_accounts/, "partner workspace access must be scoped through partner accounts");
+assert.match(workspaceSwitchRoute, /resolveWorkspaceAccessForUser/, "workspace switch route must validate target workspace");
+assert.match(workspaceSwitchRoute, /assertSameOriginRequest/, "workspace switch route must require same-origin requests");
+assert.match(workspaceSwitchRoute, /httpOnly: true/, "active workspace cookie must be httpOnly");
+assert.match(partnerDashboardShell, /No partner access/, "partner route must gracefully handle non-partner users");
+assert.match(partnerDashboardShell, /warnings\.length/, "partner dashboard must fail soft for optional metric issues");
+assert.match(partnerDashboardError, /Partner portal is recovering/, "partner route must have a customer-safe error boundary");
+assert.match(settingsPage, /updateProfileAndWorkspace/, "settings must allow safe profile/workspace edits");
+assert.match(settingsPage, /Save profile settings/, "settings must expose a non-dead profile save action");
+
 assert.match(proxy, /pathname\.startsWith\("\/p\/"\)/, "partner slug routes must be public before auth");
 assert.match(proxy, /pathname\.startsWith\("\/invite\/"\)/, "custom-domain invite routes must be public before auth");
 assert.match(proxy, /RESERVED_ROOT_PATHS/, "short partner URLs must reserve app root routes");
@@ -108,12 +142,14 @@ for (const route of [
   "src/app/(app)/partner/commissions/page.tsx",
   "src/app/(app)/partner/invite-links/page.tsx",
   "src/app/(app)/partner/settings/page.tsx",
+  "src/app/(app)/partner/error.tsx",
   "src/app/(app)/admin/partners/page.tsx",
   "src/app/(app)/admin/partners/[partnerId]/branding/page.tsx",
   "src/app/(app)/admin/partners/[partnerId]/domains/page.tsx",
   "src/app/(app)/admin/partners/[partnerId]/commissions/page.tsx",
   "src/app/(app)/admin/partners/[partnerId]/audit-log/page.tsx",
   "src/app/api/admin/partners/route.ts",
+  "src/app/api/workspaces/switch/route.ts",
 ]) {
   assert.equal(exists(route), true, `${route} must exist`);
 }
