@@ -390,8 +390,8 @@ export function CreativeWizard({
   const topUgcCreatives = launchReadyCreatives
     .filter((creative) => /\bugc\b/i.test(`${creative.id} ${creative.formatLabel ?? ""}`))
     .slice(0, 2);
-  const availableIds = new Set(rankedCreatives.map((creative) => creative.id));
-  const launchReadyIds = new Set(launchReadyCreatives.map((creative) => creative.id));
+  const availableIds = useMemo(() => new Set(rankedCreatives.map((creative) => creative.id)), [rankedCreatives]);
+  const launchReadyIds = useMemo(() => new Set(launchReadyCreatives.map((creative) => creative.id)), [launchReadyCreatives]);
   const savedSelectedIds = persistedSelectedAdIds
     .filter((id) => availableIds.has(id) && launchReadyIds.has(id))
     .slice(0, 6);
@@ -540,7 +540,7 @@ export function CreativeWizard({
   );
   const videoSelectionRequired = true;
   const selectedUgcReady = !videoSelectionRequired || selectedLaunchReadyUgcVideos.length > 0;
-  const staticLaunchPackageReady = canContinue && ugcQuotaSatisfied && selectedMediaReady;
+  const staticLaunchPackageReady = canContinue && selectedMediaReady;
   const videoNeedsGeneration = Boolean(
     primaryVideoCreative &&
     !primaryVideoCreative.videoUrl &&
@@ -857,11 +857,52 @@ export function CreativeWizard({
     setActiveCreativeId(primaryCreative?.id ?? rankedCreatives[0]?.id ?? null);
   }, [activeCreativeId, primaryCreative?.id, rankedCreatives]);
 
+  useEffect(() => {
+    if (recommendedSelectedIds.length === 0) {
+      return;
+    }
+
+    setSelectedIds((current) => {
+      const currentLaunchReadyIds = current.filter((id) => launchReadyIds.has(id)).slice(0, maxSelected);
+
+      if (currentLaunchReadyIds.length >= STATIC_LAUNCH_MIN_CREATIVE_COUNT) {
+        return currentLaunchReadyIds.length === current.length ? current : currentLaunchReadyIds;
+      }
+
+      const reconciled = [...currentLaunchReadyIds];
+      for (const id of recommendedSelectedIds) {
+        if (reconciled.length >= STATIC_LAUNCH_MIN_CREATIVE_COUNT) {
+          break;
+        }
+
+        if (!reconciled.includes(id) && launchReadyIds.has(id)) {
+          reconciled.push(id);
+        }
+      }
+
+      return reconciled.length === current.length && reconciled.every((id, index) => id === current[index])
+        ? current
+        : reconciled;
+    });
+
+    setActiveCreativeId((current) =>
+      current && launchReadyIds.has(current)
+        ? current
+        : recommendedSelectedIds.find((id) => launchReadyIds.has(id)) ?? current,
+    );
+  }, [launchReadyIds, maxSelected, recommendedSelectedIds]);
+
   function toggleCreative(creativeId: string) {
     setActiveCreativeId(creativeId);
     const launchReady = launchReadyIds.has(creativeId);
     setSelectedIds((current) => {
       if (current.includes(creativeId)) {
+        const launchReadySelectedCount = current.filter((id) => launchReadyIds.has(id)).length;
+        if (launchReady && launchReadySelectedCount <= STATIC_LAUNCH_MIN_CREATIVE_COUNT) {
+          setError(`Keep at least ${STATIC_LAUNCH_MIN_CREATIVE_COUNT} launch-ready static ads selected.`);
+          return current;
+        }
+
         return current.filter((id) => id !== creativeId);
       }
 
@@ -875,7 +916,9 @@ export function CreativeWizard({
 
       return [...current, creativeId];
     });
-    setError(null);
+    if (!selectedIds.includes(creativeId) && launchReady) {
+      setError(null);
+    }
   }
 
   function selectUgcVideo(video: VideoCreativeOption) {
@@ -895,11 +938,6 @@ export function CreativeWizard({
           ? `Select ${STATIC_LAUNCH_MIN_CREATIVE_COUNT}-${maxSelected} launch-ready static ads to continue.`
           : `${STATIC_LAUNCH_MIN_CREATIVE_COUNT} launch-ready static ads are required. Refresh or generate more static ads before launch.`,
       );
-      return;
-    }
-
-    if (!ugcQuotaSatisfied) {
-      setError("Keep at least one native-style concept in the selected creative set.");
       return;
     }
 
@@ -1200,7 +1238,7 @@ export function CreativeWizard({
               {savedSelectionMatchesCurrent && staticReadiness.allSelectedReady
                 ? `${staticReadiness.selectedReadyLabel}. The first saved ad becomes the primary creative, and the rest stay as static launch variants once every launch gate is ready.`
                 : staticReadiness.selectedMinimumMet
-                  ? `${staticReadiness.selectedReadyLabel}. Save at least 3 static ads plus one approved UGC video before launch can continue; 4-6 static ads are optional for larger budgets.`
+                  ? `${staticReadiness.selectedReadyLabel}. Save the 3 static ads now; UGC can be added later if needed.`
                   : `${requiredStaticProgressLabel}. The first 3 required ads render before optional polish variants; Launch stays blocked until the required set passes review.`}
             </p>
             <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm leading-6 ${staticProgressTone}`} aria-live="polite">
@@ -1386,7 +1424,7 @@ export function CreativeWizard({
                     : rankedCreatives.length >= 2
                       ? selectedUgcReady
                         ? `Use at least ${STATIC_LAUNCH_MIN_CREATIVE_COUNT} static ads. The recommended set keeps at least one native-style concept selected; 5-6 static ads are optional for larger budgets.`
-                        : "UGC video can be added later. Save the static launch set now, then continue setup."
+                        : "Save the static launch set now. UGC video can be added later."
                       : "Select at least one creative to continue.")}
             </p>
           </div>

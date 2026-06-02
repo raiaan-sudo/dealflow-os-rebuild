@@ -365,7 +365,8 @@ function runOfflineChecks() {
   assertExcludes(builderPanels, "provider job completes", "Builder video provider jargon hidden", "builder video status copy does not expose provider-job language to customers");
   assertExcludes(builderPanels, "asset.provider_name", "Builder asset provider names hidden", "builder asset rows avoid exposing raw provider names in customer-facing copy");
   assertIncludes(creativeWizard, "snap-x", "Creative carousel readable cards", "creative carousel uses full preview cards instead of compressed summary-only tiles");
-  assertIncludes(creativeWizard, "Keep at least one native-style concept", "Creative native-style quota gate", "selected creative sets must retain a native-style concept when available");
+  assertIncludes(creativeWizard, "Save the 3 static ads now; UGC can be added later if needed.", "Creative static package save gate", "selected creative sets can continue with the three launch-ready static ads without requiring UGC");
+  assertExcludes(creativeWizard, "Keep at least one native-style concept", "Creative native-style quota removed", "native-style/UGC quota cannot block saving the static launch package");
   assertIncludes(creativeWizard, "Retry render", "Creative retry secondary action", "retry/regenerate remains a secondary failed-state action");
   assertIncludes(creativeWizard, "Video preview", "Creative video preview panel", "creative selection exposes the video concept and render status");
   assertIncludes(creativeWizard, "/generate-video", "Creative video render", "creative selection can queue the campaign video render from the video panel");
