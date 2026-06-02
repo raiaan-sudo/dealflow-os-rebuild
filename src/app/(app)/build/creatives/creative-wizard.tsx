@@ -540,6 +540,7 @@ export function CreativeWizard({
   );
   const videoSelectionRequired = true;
   const selectedUgcReady = !videoSelectionRequired || selectedLaunchReadyUgcVideos.length > 0;
+  const staticLaunchPackageReady = canContinue && ugcQuotaSatisfied && selectedMediaReady;
   const videoNeedsGeneration = Boolean(
     primaryVideoCreative &&
     !primaryVideoCreative.videoUrl &&
@@ -906,12 +907,6 @@ export function CreativeWizard({
       setError(staticReadiness.selectedStaleCount > 0
         ? "Regenerate stale creatives before saving this launch set."
         : "Refresh unfinished previews before saving this launch set.");
-      return;
-    }
-
-    if (!selectedUgcReady) {
-      setError("Select one launch-ready AI UGC video before saving the launch package.");
-      setActivePhase("ugc_videos");
       return;
     }
 
@@ -1374,7 +1369,7 @@ export function CreativeWizard({
                   Back to build
                 </Link>
               </Button>
-              <Button onClick={() => void handleNext()} type="button" disabled={saving || !canContinue || !ugcQuotaSatisfied || !selectedMediaReady || !selectedUgcReady}>
+              <Button onClick={() => void handleNext()} type="button" disabled={saving || !staticLaunchPackageReady}>
                 {saving ? "Saving..." : "Save launch package"}
               </Button>
             </div>
@@ -1391,7 +1386,7 @@ export function CreativeWizard({
                     : rankedCreatives.length >= 2
                       ? selectedUgcReady
                         ? `Use at least ${STATIC_LAUNCH_MIN_CREATIVE_COUNT} static ads. The recommended set keeps at least one native-style concept selected; 5-6 static ads are optional for larger budgets.`
-                        : "Select a launch-ready AI UGC video before saving the launch package."
+                        : "UGC video can be added later. Save the static launch set now, then continue setup."
                       : "Select at least one creative to continue.")}
             </p>
           </div>

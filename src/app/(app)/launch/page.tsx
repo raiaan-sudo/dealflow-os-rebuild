@@ -478,7 +478,7 @@ export default async function LaunchAliasPage({
         selectedCreativeMediaReady
           ? `${staticReadiness.selectionLabel}; ${staticReadiness.selectedReadyLabel}`
           : savedCreativeSetMissing
-            ? "Saved creative set missing. Open Creative Studio and save at least four launch-ready static ads before launch."
+            ? `Saved creative set missing. Open Creative Studio and save at least ${staticReadiness.minimumRequiredCount} launch-ready static ads before launch.`
           : selectedCreatives.length > 0
             ? "Regenerate selected creatives until clean image renders are ready"
             : "Choose the creative test set first",
@@ -568,7 +568,7 @@ export default async function LaunchAliasPage({
     ...(!selectedCreativeMediaReady
       ? [
           savedCreativeSetMissing
-            ? "Open Creative Studio and save at least four launch-ready static ads before launch."
+            ? `Open Creative Studio and save at least ${staticReadiness.minimumRequiredCount} launch-ready static ads before launch.`
             : "Return to Creatives and refresh unfinished previews before saving the launch set again.",
         ]
       : []),
