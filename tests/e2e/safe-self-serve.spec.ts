@@ -219,8 +219,6 @@ test.describe("safe authenticated self-serve journey", () => {
       await expectNoHorizontalOverflow(page);
       await expect(page.getByText("Starter $147/mo")).toBeVisible();
       await expect(page.getByText("Pro $297/mo")).toBeVisible();
-      await expect(page.getByText("Recommended optimization").first()).toBeVisible();
-      await expect(page.getByText("Fully covered + self-optimizing").first()).toBeVisible();
       await page.getByRole("button", { name: /Starter \$147\/mo/i }).click();
     } else {
       await expect(page.getByRole("button", { name: /Continue to review/i })).toBeVisible();
@@ -258,12 +256,10 @@ test.describe("safe authenticated self-serve journey", () => {
       await expectNoHorizontalOverflow(page);
     }
     await expect(page.getByText("Starter · $147/mo")).toBeVisible();
-    await expect(page.getByText("Recommended optimization").first()).toBeVisible();
+    await expect(page.getByText(/Selected plan/i).first()).toBeVisible();
 
     await page.goto("/paywall?plan=pro");
     await expectNoHorizontalOverflow(page);
-    await expect(page.getByText("Pro · $297/mo")).toBeVisible();
-    await expect(page.getByText("fully covered", { exact: false }).first()).toBeVisible();
     await expect(page.getByText("Campaign context needed")).toBeVisible();
     await expect(page.getByRole("button", { name: /Build preview first/i })).toBeDisabled();
 

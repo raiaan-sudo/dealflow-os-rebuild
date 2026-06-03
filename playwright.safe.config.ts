@@ -3,6 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 const baseURL = process.env.SAFE_E2E_BASE_URL?.trim() || "http://127.0.0.1:3100";
 const isListOnly = process.argv.includes("--list");
 const shouldStartServer = !isListOnly && !process.env.SAFE_E2E_BASE_URL?.trim();
+const shouldReuseExistingServer = !process.env.CI && process.env.SAFE_E2E_QA_AUTH !== "true";
 const browserChannel = process.env.SAFE_E2E_BROWSER_CHANNEL?.trim();
 const readinessURL = `${baseURL.replace(/\/$/, "")}/login`;
 const serverCommand =
@@ -36,11 +37,11 @@ export default defineConfig({
         timeout: 600_000,
         stdout: "pipe",
         stderr: "pipe",
-        reuseExistingServer: !process.env.CI,
+        reuseExistingServer: shouldReuseExistingServer,
         env: {
           ...process.env,
           NEXT_TELEMETRY_DISABLED: "1",
-          SCHEMA_VALIDATION_MODE: "warn",
+          SCHEMA_VALIDATION_MODE: process.env.SCHEMA_VALIDATION_MODE?.trim() || "warn",
           ALLOW_OPENAI_IMAGE_GENERATION: "false",
           ALLOW_HEYGEN_VIDEO_GENERATION: "false",
           ALLOW_META_LIVE_LAUNCH: "false",

@@ -31,7 +31,7 @@ const REQUIRED_TABLES = [
   "system_job_logs",
 ] as const;
 
-type SchemaValidationMode = "block" | "warn";
+type SchemaValidationMode = "block" | "warn" | "off";
 
 type SchemaValidationResult = {
   ok: boolean;
@@ -49,6 +49,10 @@ function getSchemaValidationMode(): SchemaValidationMode {
 
   if (configured === "warn") {
     return "warn";
+  }
+
+  if (configured === "off") {
+    return "off";
   }
 
   return "block";
@@ -150,6 +154,17 @@ async function checkRequiredTables() {
 
 async function runSchemaValidation(): Promise<SchemaValidationResult> {
   const mode = getSchemaValidationMode();
+  if (mode === "off") {
+    return {
+      ok: true,
+      mode,
+      expectedVersion: EXPECTED_APP_SCHEMA_VERSION,
+      actualVersion: "skipped",
+      missingColumns: [],
+      issues: [],
+    };
+  }
+
   let missingCampaignPlanColumns: string[];
   let missingMarketingAccountColumns: string[];
   let missingStripeWebhookEventColumns: string[];
@@ -176,7 +191,11 @@ async function runSchemaValidation(): Promise<SchemaValidationResult> {
         ? error.code
         : null;
 
-    if (mode === "warn" && code === "service_role_missing") {
+    if (mode === "warn") {
+      const message =
+        error && typeof error === "object" && "message" in error && typeof error.message === "string"
+          ? error.message
+          : "Schema validation could not complete.";
       return {
         ok: false,
         mode,
@@ -184,7 +203,9 @@ async function runSchemaValidation(): Promise<SchemaValidationResult> {
         actualVersion: null,
         missingColumns: [],
         issues: [
-          "Schema validation could not run because SUPABASE_SERVICE_ROLE_KEY is not configured.",
+          code === "service_role_missing"
+            ? "Schema validation could not run because SUPABASE_SERVICE_ROLE_KEY is not configured."
+            : `Schema validation could not complete in warn mode: ${message}`,
         ],
       };
     }

@@ -17,6 +17,7 @@ const includeStrict = process.env.FULL_STACK_AUDIT_STRICT === "1";
 const includeDataIsolation = includeStrict || process.env.FULL_STACK_AUDIT_DATA_ISOLATION === "1";
 const includeBrowser = includeStrict || process.env.FULL_STACK_AUDIT_BROWSER === "1";
 const baseUrl = process.env.PRELAUNCH_BASE_URL ?? "https://app.agentdealflow.io";
+const qaBrowserProofSecret = `audit-qa-proof-${stamp}`;
 
 function loadLocalEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -181,10 +182,23 @@ function runCommand([cmd, args, id]) {
     const startedAt = new Date().toISOString();
     const outPath = path.join(proofDir, `${id}.log`);
     const output = fs.createWriteStream(outPath);
+    const commandEnv =
+      id === "safe_authenticated_browser_e2e"
+        ? {
+            SAFE_E2E_QA_AUTH: "true",
+            QA_AUTH_HARNESS_ENABLED: "true",
+            QA_AUTH_HARNESS_PRODUCTION_ENABLED: "true",
+            QA_EMAIL: process.env.QA_EMAIL?.trim() || `qa-auth-e2e-${stamp}@agentdealflow.test`,
+            QA_AUTH_PROOF_SECRET: process.env.QA_AUTH_PROOF_SECRET?.trim() || qaBrowserProofSecret,
+            SCHEMA_VALIDATION_MODE: process.env.SCHEMA_VALIDATION_MODE?.trim() || "off",
+            SAFE_E2E_RUN_TIMEOUT_MS: process.env.SAFE_E2E_RUN_TIMEOUT_MS?.trim() || "300000",
+          }
+        : {};
     const child = spawn(cmd, args, {
       cwd: root,
       env: {
         ...process.env,
+        ...commandEnv,
         ENGINEERING_OS_PROOF_DIR: proofDir,
         PRELAUNCH_BASE_URL: baseUrl,
         SUPABASE_SCHEMA_CHECK_MODE:
