@@ -19,6 +19,7 @@ import { buildCreativeSystem } from "@/lib/services/creative-engine";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import {
+  CREATIVE_CHAT_INTAKE_PLAN_KEY,
   isCreativeChatIntakeEnabled,
   isCreativeIntakeApproved,
   readCreativeChatIntakeFromPlan,
@@ -67,6 +68,7 @@ async function persistSupplementalCreativeFields(params: {
   strategy: Record<string, unknown>;
   items: unknown[];
   copy: unknown[];
+  preservedCreativeIntake?: unknown;
 }) {
   const supabase = await createRouteHandlerClient();
 
@@ -95,6 +97,9 @@ async function persistSupplementalCreativeFields(params: {
       strategy: params.strategy,
       items: params.items,
       copy: params.copy,
+      ...(params.preservedCreativeIntake
+        ? { [CREATIVE_CHAT_INTAKE_PLAN_KEY]: params.preservedCreativeIntake }
+        : {}),
     }),
     source: "generate_creatives_metadata",
   });
@@ -142,6 +147,7 @@ export async function POST(request: Request) {
               .maybeSingle()
           : { data: null };
         const intakeRow = intakeRowData as { plan?: unknown } | null;
+        const existingPlanDocument = readCampaignPlanDocument(intakeRow?.plan);
         const intake = readCreativeChatIntakeFromPlan(intakeRow?.plan);
         const approvedIntake = isCreativeIntakeApproved(intakeRow?.plan)
           ? intake
@@ -198,6 +204,7 @@ export async function POST(request: Request) {
           strategy,
           items: creativePackage.items,
           copy,
+          preservedCreativeIntake: existingPlanDocument[CREATIVE_CHAT_INTAKE_PLAN_KEY],
         });
 
         return {

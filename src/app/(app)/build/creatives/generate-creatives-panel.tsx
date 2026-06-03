@@ -48,6 +48,7 @@ export function GenerateCreativesPanel({
         throw new Error(data?.error || "Could not generate creatives yet.");
       }
 
+      router.replace(`/build/creatives?campaignId=${encodeURIComponent(campaignId)}`);
       router.refresh();
     } catch (generateError) {
       setError(generateError instanceof Error ? generateError.message : "Could not generate creatives yet.");

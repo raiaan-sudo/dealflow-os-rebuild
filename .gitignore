@@ -59,3 +59,4 @@ recovery-report.json
 .vercel
 data/engineering-proof-artifacts/
 performance-reports/
+.lighthouseci/

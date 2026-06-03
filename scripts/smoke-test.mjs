@@ -996,6 +996,8 @@ function runOfflineChecks() {
   assertIncludes(builderPage, "Current next step", "Builder duplicate CTA removed", "campaign slots panel summarizes the next step without adding a second primary CTA loop");
   assertIncludes(buildCreativesPage, "Generate your creative test set", "Creative generation state", "creative workspace has a customer-facing generation state when assets are not ready");
   assertIncludes(buildCreativesPage, "GenerateCreativesPanel", "Creative generation panel", "missing creative campaigns stay on the creative workspace instead of bouncing to Builder");
+  assertIncludes("src/app/api/generate-creatives/route.ts", "preservedCreativeIntake", "Creative draft generation preserves intake", "legacy creative draft generation cannot delete the approved creative_chat_intake block");
+  assertIncludes("src/app/(app)/build/creatives/generate-creatives-panel.tsx", "router.replace(`/build/creatives?campaignId=", "Creative draft generation returns to workspace", "post-generation navigation reloads the canonical creative workspace instead of leaving a stale intake view");
   assertExcludes(buildCreativesPage, "missingArtifacts", "Creative missing-artifact recovery removed", "customers do not see or trigger technical missing artifact recovery logic");
   assertIncludes(billingService, "apply_billing_subscription_webhook", "Stripe webhook ordering guard", "subscription sync uses DB-backed stale event protection");
   assertIncludes(billingService, "stripe_subscription_stale_event_ignored", "Stripe stale event observability", "out-of-order subscription events are logged and ignored");

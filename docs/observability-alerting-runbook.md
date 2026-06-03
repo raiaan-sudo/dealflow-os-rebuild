@@ -335,11 +335,14 @@ Never describe estimated scale readiness, prior proof, or manual browser checks 
 For customer-impacting issues, collect this packet before escalation:
 
 - Workspace, campaign ID, user email, and public funnel slug if relevant.
+- Affected organization ID, user ID, campaign ID, partner ID, and lead IDs where relevant.
+- Whether the issue is isolated to one tenant or could affect cross-tenant data isolation.
 - Issue radar row reference from `/admin/issues`.
 - Durable row IDs for jobs, webhooks, provider usage, leads, or campaign plans.
 - UTC timestamps and the most recent structured log event names.
 - Whether the customer experienced billing, launch, lead capture, SMS, or generation impact.
 - Whether any provider action could create charges, Meta objects, or outbound SMS.
+- Immediate rollback, disablement, or restore path for the affected route, job kind, campaign, or integration.
 
 Escalate to owner approval before:
 
