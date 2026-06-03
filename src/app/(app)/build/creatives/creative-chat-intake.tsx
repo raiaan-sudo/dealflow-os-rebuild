@@ -183,7 +183,7 @@ function defaultAnswers(defaults: CreativeIntakeCampaignDefaults): CreativeIntak
     platformPlacement: "Meta feed and story placements",
     propertyType: defaults.propertyType ?? "",
     outputMode: "finished_ad",
-    generationPhase: "static_and_ugc",
+    generationPhase: "static",
     targetDurationSeconds: 20,
     creatorPersona: "Local Agent",
     hookAngle,
@@ -525,7 +525,7 @@ export function CreativeChatIntake({
             ? "Revision requested. Paid rendering stays blocked until the updated brief is approved."
             : scriptApproved
               ? "Draft saved. Your approved brief is ready for generation."
-              : "Draft saved. Approve the UGC script before generating media.",
+              : "Draft saved. Static ads can be generated now; UGC can be added later.",
       );
       router.refresh();
     } catch (nextError) {
@@ -594,7 +594,7 @@ export function CreativeChatIntake({
   const steps = [
     ["Basics", "Confirm campaign"],
     ["Static", "Choose style"],
-    ["UGC Script", "Approve script"],
+    ["UGC", "Optional later"],
     ["Review", "Generate set"],
   ] as const;
   const brandLabel = answers.brokerageBrand === "custom"
@@ -616,7 +616,7 @@ export function CreativeChatIntake({
                 Build the creative set before anything renders
               </h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Confirm the offer, choose the static style, approve the UGC script, then generate the creative set. Final media only becomes launch-ready after it is saved to your creative library and passes launch review.
+                Confirm the offer and static style, then generate the static launch set. UGC video is optional and can be added later.
               </p>
             </div>
           </div>
@@ -780,7 +780,7 @@ export function CreativeChatIntake({
                   <PreviewList title="On-screen text" items={answers.ugcOnScreenText?.length ? answers.ugcOnScreenText : ugcDraft.onScreenText} />
                 </div>
                 {scriptValidation.accepted ? (
-                  <p className="rounded-2xl border border-emerald-300/18 bg-emerald-300/[0.08] p-3 text-sm text-emerald-100">Script quality checks pass. Approve it before generating media.</p>
+                  <p className="rounded-2xl border border-emerald-300/18 bg-emerald-300/[0.08] p-3 text-sm text-emerald-100">Script quality checks pass. Approve it when you want to add UGC video.</p>
                 ) : (
                   <p className="rounded-2xl border border-amber-300/18 bg-amber-300/[0.08] p-3 text-sm text-amber-100">
                     Fix before approval: {scriptValidation.reasons.map(describeScriptReason).join("; ")}.
@@ -800,14 +800,14 @@ export function CreativeChatIntake({
             {activeStep === 3 ? (
               <div className="grid gap-4">
                 <p className="text-sm leading-6 text-muted-foreground">
-                  Static previews and the approved UGC script are ready immediately. Final AI-rendered media updates after rendering completes and the asset passes launch review.
+                  Static previews are ready immediately. UGC video can be added later; final AI-rendered media updates after rendering completes and the asset passes launch review.
                 </p>
                 <PreviewList
                   title="Ready checklist"
                   items={[
                     answers.market?.trim() ? "Campaign basics complete" : "Campaign basics incomplete",
                     answers.staticStyle || answers.creativeStyle ? "Static direction selected" : "Static direction needed",
-                    scriptApproved ? "UGC script approved" : "UGC script approval needed",
+                    scriptApproved ? "UGC script approved" : "UGC can be added later",
                     complete ? "Creative set ready to generate" : "Complete the missing items before approval",
                   ]}
                 />
@@ -835,7 +835,7 @@ export function CreativeChatIntake({
             </div>
             {!complete && activeStep === 3 ? (
               <p className="text-sm leading-6 text-muted-foreground">
-                Confirm campaign basics, choose a static direction, and approve the UGC script before generating the creative set.
+                Confirm campaign basics and choose a static direction before generating the static launch set.
               </p>
             ) : null}
             {notice ? <p className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-3 text-sm text-emerald-100" aria-live="polite">{notice}</p> : null}

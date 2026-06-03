@@ -130,7 +130,7 @@ export async function POST(
             jobId: null,
             blockedReason: "manual_render_required",
             launchReadyCount: 0,
-            missingCount: 4,
+            missingCount: 3,
           }
         : null,
     });
