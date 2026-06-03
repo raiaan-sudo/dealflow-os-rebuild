@@ -816,6 +816,8 @@ for (const [name, source] of [
 }
 assert.match(creativeWizardSource, /draft concept\{draftCreatives\.length === 1 \? "" : "s"\} need regeneration/, "Creative Studio separates draft concepts from launch-ready carousel");
 assert.match(creativeWizardSource, /Pick at least \$\{STATIC_LAUNCH_MIN_CREATIVE_COUNT\} launch-ready static ads/, "Creative Studio treats the configured static ads as the launch floor");
+assert.match(creativeWizardSource, /const selectableCreatives =\s*launchReadyCreatives\.length > 0\s*\?\s*launchReadyCreatives\s*:\s*rankedCreatives;/, "Creative Studio carousel must keep every launch-ready creative visible instead of narrowing to only selected creatives");
+assert.match(creativeWizardSource, /const fillCandidateIds = Array\.from\(\s*new Set\(\[\s*\.\.\.recommendedSelectedIds,\s*\.\.\.launchReadyCreatives\.map\(\(creative\) => creative\.id\),\s*\]\),\s*\);/s, "Creative Studio selection reconciliation must fill to the launch floor from all launch-ready creatives");
 assert.match(creativeWizardSource, /Render fresh UGC video/, "stale UGC renders can be refreshed against the approved script");
 assert.match(creativeWizardSource, /videoMatchesApprovedScript/, "Creative Studio blocks stale UGC videos whose script hash no longer matches the approved script");
 assert.match(creativeWizardSource, /currentVideoStatusJob/, "Creative Studio tracks video status polling jobs after the initial render job completes");
