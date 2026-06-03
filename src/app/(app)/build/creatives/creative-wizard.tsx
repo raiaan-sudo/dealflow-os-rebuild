@@ -444,11 +444,9 @@ export function CreativeWizard({
   );
   const draftCreatives = rankedCreatives.filter((creative) => !isStaticLaunchReady(creative));
   const selectableCreatives =
-    selectedLaunchReadyCreatives.length > 0
-      ? selectedLaunchReadyCreatives
-      : launchReadyCreatives.length > 0
-        ? launchReadyCreatives
-        : rankedCreatives;
+    launchReadyCreatives.length > 0
+      ? launchReadyCreatives
+      : rankedCreatives;
   const carouselMaxSelected = Math.min(maxSelected, Math.max(minSelected, selectableCreatives.length || rankedCreatives.length));
   const staticReadiness = getStaticCreativeReadiness(rankedCreatives, selectedIds, staticBriefReadinessContext);
   const primaryCreative = selectedCreatives[0] ?? rankedCreatives[0] ?? null;
@@ -869,8 +867,14 @@ export function CreativeWizard({
         return currentLaunchReadyIds.length === current.length ? current : currentLaunchReadyIds;
       }
 
+      const fillCandidateIds = Array.from(
+        new Set([
+          ...recommendedSelectedIds,
+          ...launchReadyCreatives.map((creative) => creative.id),
+        ]),
+      );
       const reconciled = [...currentLaunchReadyIds];
-      for (const id of recommendedSelectedIds) {
+      for (const id of fillCandidateIds) {
         if (reconciled.length >= STATIC_LAUNCH_MIN_CREATIVE_COUNT) {
           break;
         }
@@ -890,7 +894,7 @@ export function CreativeWizard({
         ? current
         : recommendedSelectedIds.find((id) => launchReadyIds.has(id)) ?? current,
     );
-  }, [launchReadyIds, maxSelected, recommendedSelectedIds]);
+  }, [launchReadyCreatives, launchReadyIds, maxSelected, recommendedSelectedIds]);
 
   function toggleCreative(creativeId: string) {
     setActiveCreativeId(creativeId);
