@@ -376,7 +376,7 @@ export function LoginForm({
       <div className="mb-6">
         {branding?.logoUrl && !logoFailed ? (
           <div className="mb-5 flex items-center">
-            <div className="flex max-h-14 max-w-[220px] items-center justify-start rounded-2xl border border-white/10 bg-white p-3 shadow-[0_18px_60px_-36px_rgba(0,0,0,0.8)]">
+            <div className="flex max-h-14 max-w-[220px] items-center justify-start rounded-2xl border border-white/10 bg-black/25 p-3 shadow-[0_18px_60px_-36px_rgba(0,0,0,0.8)]">
               {/* eslint-disable-next-line @next/next/no-img-element -- Partner logos are runtime-configured URLs and need client-side fallback. */}
               <img
                 src={branding.logoUrl}
