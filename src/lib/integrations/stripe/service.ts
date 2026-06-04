@@ -2,7 +2,9 @@ import type Stripe from "stripe";
 import { getPublicAppUrl, getStripeEnv } from "@/lib/env";
 import { getStripeBillingProvider } from "@/lib/integrations/stripe/provider";
 import {
+  PERFORMANCE_LEAD_BILLING_MODEL,
   PERFORMANCE_LEAD_METER_EVENT_NAME,
+  PERFORMANCE_LEAD_UNIT_AMOUNT_CENTS,
   normalizeBillingPlanTier,
   type BillingPlanTier,
 } from "@/lib/billing/plans";
@@ -59,30 +61,31 @@ export function getStripePlanPriceConfiguration(
   const partnerPlan = getPartnerPlanConfig(partnerPricing, planTier);
 
   if (partnerPlan && planTier === "performance") {
-    if (!partnerPlan.basePriceId || !partnerPlan.meteredLeadPriceId) {
+    if (!partnerPlan.basePriceId) {
       return partnerPricing?.allowDefaultDealFlowPrices
         ? getStripePlanPriceConfiguration(planTier, null)
         : null;
     }
 
-    const priceIds = [partnerPlan.basePriceId, partnerPlan.meteredLeadPriceId];
+    const priceIds = [partnerPlan.basePriceId];
+    const partnerPriceIds: Record<string, string> = {
+      performance_base: partnerPlan.basePriceId,
+    };
+    if (partnerPlan.meteredLeadPriceId) {
+      partnerPriceIds.performance_metered_lead_legacy = partnerPlan.meteredLeadPriceId;
+    }
+
     return {
       planTier,
       primaryPriceId: partnerPlan.basePriceId,
-      meteredPriceId: partnerPlan.meteredLeadPriceId,
+      meteredPriceId: partnerPlan.meteredLeadPriceId ?? null,
       priceIds,
-      priceSignature: priceIds.slice().sort().join("+"),
-      lineItems: [
-        { price: partnerPlan.basePriceId, quantity: 1 },
-        { price: partnerPlan.meteredLeadPriceId },
-      ],
+      priceSignature: `${priceIds.slice().sort().join("+")}:${PERFORMANCE_LEAD_BILLING_MODEL}`,
+      lineItems: [{ price: partnerPlan.basePriceId, quantity: 1 }],
       meterEventName: getPartnerMeterEventName(partnerPlan),
       partnerProductName: partnerPricing?.displayProductName ?? null,
       partnerPlanLabel: getPartnerPlanLabel(partnerPricing, planTier),
-      partnerPriceIds: {
-        performance_base: partnerPlan.basePriceId,
-        performance_metered_lead: partnerPlan.meteredLeadPriceId,
-      },
+      partnerPriceIds,
     };
   }
 
@@ -120,25 +123,27 @@ export function getStripePlanPriceConfiguration(
   }
 
   if (planTier === "performance") {
-    if (!env.performanceBasePriceId || !env.performanceLeadPriceId) {
+    if (!env.performanceBasePriceId) {
       return null;
     }
 
-    const priceIds = [env.performanceBasePriceId, env.performanceLeadPriceId];
+    const priceIds = [env.performanceBasePriceId];
+    const partnerPriceIds: Record<string, string> = {};
+    if (env.performanceLeadPriceId) {
+      partnerPriceIds.performance_metered_lead_legacy = env.performanceLeadPriceId;
+    }
+
     return {
       planTier,
       primaryPriceId: env.performanceBasePriceId,
-      meteredPriceId: env.performanceLeadPriceId,
+      meteredPriceId: env.performanceLeadPriceId ?? null,
       priceIds,
-      priceSignature: priceIds.slice().sort().join("+"),
-      lineItems: [
-        { price: env.performanceBasePriceId, quantity: 1 },
-        { price: env.performanceLeadPriceId },
-      ],
+      priceSignature: `${priceIds.slice().sort().join("+")}:${PERFORMANCE_LEAD_BILLING_MODEL}`,
+      lineItems: [{ price: env.performanceBasePriceId, quantity: 1 }],
       meterEventName: env.performanceLeadMeterEventName || PERFORMANCE_LEAD_METER_EVENT_NAME,
       partnerProductName: null,
       partnerPlanLabel: null,
-      partnerPriceIds: {},
+      partnerPriceIds,
     };
   }
 
@@ -196,10 +201,6 @@ export function getPlanTierFromSubscriptionPriceIds(priceIds: string[]) {
 
   const priceSet = new Set(priceIds.filter(Boolean));
   if (env.performanceBasePriceId && priceSet.has(env.performanceBasePriceId)) {
-    if (!env.performanceLeadPriceId || !priceSet.has(env.performanceLeadPriceId)) {
-      return null;
-    }
-
     return "performance" satisfies BillingPlanTier;
   }
 
@@ -234,7 +235,7 @@ export function getPartnerPlanTierFromSubscriptionPriceIds(params: {
     return null;
   }
 
-  if (metadataTier === "performance" && metadataPriceIds.length < 2) {
+  if (metadataTier === "performance" && metadataPriceIds.length < 1) {
     return null;
   }
 
@@ -294,6 +295,14 @@ export function buildStripeCheckoutMetadata(params: {
     partner_product_name: params.partnerProductName ?? "",
     partner_plan_label: params.partnerPlanLabel ?? "",
     partner_price_ids: params.partnerPriceIds?.join(",") ?? "",
+    billing_model:
+      normalizeBillingPlanTier(params.planTier) === "performance"
+        ? PERFORMANCE_LEAD_BILLING_MODEL
+        : "licensed_subscription",
+    lead_charge_amount_cents:
+      normalizeBillingPlanTier(params.planTier) === "performance"
+        ? String(PERFORMANCE_LEAD_UNIT_AMOUNT_CENTS)
+        : "",
     commission_rate_snapshot:
       typeof params.commissionRateSnapshot === "number" && Number.isFinite(params.commissionRateSnapshot)
         ? String(params.commissionRateSnapshot)

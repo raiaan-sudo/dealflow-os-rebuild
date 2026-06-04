@@ -16,7 +16,9 @@ import {
 import { getStripeBillingProvider } from "@/lib/integrations/stripe/provider";
 import {
   hasFeatureAccess,
+  PERFORMANCE_LEAD_BILLING_MODEL,
   PERFORMANCE_LEAD_METER_EVENT_NAME,
+  PERFORMANCE_LEAD_UNIT_AMOUNT_CENTS,
   getSelfServeTrialPeriodDays,
   normalizeBillingPlanTier,
   type BillingFeature,
@@ -496,6 +498,40 @@ function getSubscriptionItemByPriceId(subscription: Stripe.Subscription, priceId
   return subscription.items.data.find((item) => item.price?.id === priceId) ?? null;
 }
 
+function getSubscriptionDefaultPaymentMethodId(subscription: Stripe.Subscription) {
+  const defaultPaymentMethod = subscription.default_payment_method;
+  if (typeof defaultPaymentMethod === "string") {
+    return defaultPaymentMethod;
+  }
+
+  if (defaultPaymentMethod && typeof defaultPaymentMethod === "object" && "id" in defaultPaymentMethod) {
+    return typeof defaultPaymentMethod.id === "string" ? defaultPaymentMethod.id : null;
+  }
+
+  const invoiceSettingsDefaultPaymentMethod =
+    typeof subscription.customer === "object" &&
+    subscription.customer &&
+    "invoice_settings" in subscription.customer
+      ? subscription.customer.invoice_settings?.default_payment_method
+      : null;
+
+  if (typeof invoiceSettingsDefaultPaymentMethod === "string") {
+    return invoiceSettingsDefaultPaymentMethod;
+  }
+
+  if (
+    invoiceSettingsDefaultPaymentMethod &&
+    typeof invoiceSettingsDefaultPaymentMethod === "object" &&
+    "id" in invoiceSettingsDefaultPaymentMethod
+  ) {
+    return typeof invoiceSettingsDefaultPaymentMethod.id === "string"
+      ? invoiceSettingsDefaultPaymentMethod.id
+      : null;
+  }
+
+  return null;
+}
+
 function getMetadataPartnerPriceIds(metadata: Stripe.Metadata) {
   return (metadata.partner_price_ids ?? "")
     .split(",")
@@ -513,27 +549,23 @@ function buildPartnerPriceConfigFromSubscriptionMetadata(
   }
 
   if (planTier === "performance") {
-    const [basePriceId, meteredPriceId] = priceIds;
-    if (!basePriceId || !meteredPriceId) {
+    const [basePriceId] = priceIds;
+    if (!basePriceId) {
       return null;
     }
 
     return {
       planTier,
       primaryPriceId: basePriceId,
-      meteredPriceId,
-      priceIds,
-      priceSignature: priceIds.slice().sort().join("+"),
-      lineItems: [
-        { price: basePriceId, quantity: 1 },
-        { price: meteredPriceId },
-      ],
+      meteredPriceId: null,
+      priceIds: [basePriceId],
+      priceSignature: `${basePriceId}:${PERFORMANCE_LEAD_BILLING_MODEL}`,
+      lineItems: [{ price: basePriceId, quantity: 1 }],
       meterEventName: metadata.performance_meter_event_name || PERFORMANCE_LEAD_METER_EVENT_NAME,
       partnerProductName: metadata.partner_product_name || null,
       partnerPlanLabel: metadata.partner_plan_label || null,
       partnerPriceIds: {
         performance_base: basePriceId,
-        performance_metered_lead: meteredPriceId,
       },
     };
   }
@@ -960,6 +992,12 @@ export async function createBillingCheckoutSession(params: {
     ...metadata,
     price_signature: priceConfig.priceSignature,
     price_ids: priceConfig.priceIds.join(","),
+    ...(params.planTier === "performance"
+      ? {
+          billing_model: PERFORMANCE_LEAD_BILLING_MODEL,
+          lead_charge_amount_cents: String(PERFORMANCE_LEAD_UNIT_AMOUNT_CENTS),
+        }
+      : {}),
     ...(priceConfig.meteredPriceId
       ? {
           performance_metered_price_id: priceConfig.meteredPriceId,
@@ -1065,6 +1103,20 @@ export async function createBillingCheckoutSession(params: {
         success_url: urls.successUrl,
         cancel_url: urls.cancelUrl,
         allow_promotion_codes: true,
+        payment_method_collection: "always",
+        ...(params.planTier === "performance"
+          ? {
+              saved_payment_method_options: {
+                payment_method_save: "enabled",
+              },
+              custom_text: {
+                submit: {
+                  message:
+                    "By starting Performance, you authorize DealFlow to charge your saved payment method $3 immediately for each qualified lead received, in addition to your $97 monthly subscription.",
+                },
+              },
+            }
+          : {}),
         metadata: checkoutMetadata,
         subscription_data: {
           ...(checkoutTrialPeriodDays ? { trial_period_days: checkoutTrialPeriodDays } : {}),
@@ -1437,13 +1489,7 @@ export async function syncBillingSubscriptionFromStripe(
   }
   const primaryItem = getSubscriptionItemByPriceId(subscription, priceConfig.primaryPriceId);
   const meteredItem = getSubscriptionItemByPriceId(subscription, priceConfig.meteredPriceId);
-  if (planTier === "performance" && (!priceConfig.meteredPriceId || !meteredItem)) {
-    throw new ApiError(
-      400,
-      "Performance subscription is missing the metered lead subscription item.",
-      "stripe_performance_metered_item_missing",
-    );
-  }
+  const defaultPaymentMethodId = getSubscriptionDefaultPaymentMethodId(subscription);
   const periodItem = primaryItem ?? subscription.items.data[0];
   const priceId = priceConfig.primaryPriceId;
   const periodEnd =
@@ -1466,11 +1512,14 @@ export async function syncBillingSubscriptionFromStripe(
         : subscription.metadata.commission_rate_snapshot ?? "",
     ...(planTier === "performance"
       ? {
+          billing_model: PERFORMANCE_LEAD_BILLING_MODEL,
+          lead_charge_amount_cents: String(PERFORMANCE_LEAD_UNIT_AMOUNT_CENTS),
           performance_base_price_id: priceConfig.primaryPriceId,
           performance_base_subscription_item_id: primaryItem?.id ?? null,
-          performance_metered_price_id: priceConfig.meteredPriceId,
+          performance_metered_price_id: priceConfig.meteredPriceId ?? null,
           performance_subscription_item_id: meteredItem?.id ?? null,
           performance_meter_event_name: priceConfig.meterEventName ?? "dealflow_billable_lead",
+          stripe_default_payment_method_id: defaultPaymentMethodId,
         }
       : {}),
   } satisfies Json;

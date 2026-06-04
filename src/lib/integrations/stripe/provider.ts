@@ -42,6 +42,11 @@ export type StripeBillingExecuteRequest =
       idempotencyKey?: string;
     }
   | {
+      action: "create_payment_intent";
+      params: Stripe.PaymentIntentCreateParams;
+      idempotencyKey?: string;
+    }
+  | {
       action: "construct_webhook_event";
       payload: string;
       signature: string;
@@ -52,6 +57,7 @@ type StripeBillingRawResult =
   | Stripe.Checkout.Session
   | Stripe.BillingPortal.Session
   | Stripe.Subscription
+  | Stripe.PaymentIntent
   | Stripe.Event
   | Record<string, unknown>;
 
@@ -198,7 +204,7 @@ class ConfiguredStripeBillingProvider implements StripeBillingProvider
 
     if (request.action === "retrieve_subscription") {
       return client.subscriptions.retrieve(request.subscriptionId, {
-        expand: ["items.data.price"],
+        expand: ["items.data.price", "default_payment_method", "customer"],
       });
     }
 
@@ -221,6 +227,13 @@ class ConfiguredStripeBillingProvider implements StripeBillingProvider
           payload: request.payload,
           identifier: request.identifier,
         },
+        request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : undefined,
+      );
+    }
+
+    if (request.action === "create_payment_intent") {
+      return client.paymentIntents.create(
+        request.params,
         request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : undefined,
       );
     }

@@ -10,6 +10,7 @@ export const SELF_SERVE_TRIAL_PERIOD_DAYS = 7;
 export const PERFORMANCE_BASE_AMOUNT_CENTS = 9700;
 export const PERFORMANCE_LEAD_UNIT_AMOUNT_CENTS = 300;
 export const PERFORMANCE_LEAD_METER_EVENT_NAME = "dealflow_billable_lead";
+export const PERFORMANCE_LEAD_BILLING_MODEL = "base_plus_immediate_lead_charge";
 
 export const BILLING_PLANS: Record<
   BillingPlanTier,
@@ -21,7 +22,7 @@ export const BILLING_PLANS: Record<
 > = {
   performance: {
     name: "Performance",
-    priceLabel: "$97/mo + $3/qualified lead",
+    priceLabel: "$97/mo + $3/qualified lead charged immediately",
     rank: 1,
   },
   starter: {

@@ -14,13 +14,9 @@ type SetupResult = {
       name?: string;
       livemode?: boolean;
     };
-    meter?: {
-      id?: string;
-      eventName?: string;
-    };
     prices?: {
       performanceBasePriceId?: string;
-      performanceMeteredLeadPriceId?: string;
+      immediateLeadChargeAmountCents?: number;
     };
     configWritten?: boolean;
   };
@@ -62,7 +58,6 @@ export function PartnerStripeSetupPanel({
           productName,
           checkoutHeadline: "EGEN Accelerator",
           performanceLabel: "EGEN Accelerator",
-          meterEventName: "dealflow_billable_lead",
           baseAmountCents: 9700,
           leadAmountCents: 300,
         }),
@@ -87,8 +82,8 @@ export function PartnerStripeSetupPanel({
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/75">Stripe setup</p>
           <p className="mt-2 text-sm leading-6 text-cyan-50">
-            Creates or verifies the EGEN product, $97/mo base price, $3 metered lead price, and billing meter inside
-            DealFlow&apos;s Stripe account using server-side Vercel env.
+            Creates or verifies the EGEN product and $97/mo base subscription price inside DealFlow&apos;s Stripe
+            account. Qualified leads are configured as immediate $3 saved-card charges handled by DealFlow.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -121,9 +116,11 @@ export function PartnerStripeSetupPanel({
         <div className="mt-4 grid gap-2 text-xs text-cyan-50 sm:grid-cols-2">
           <span>Mode: {lastResult.setup.mode}</span>
           <span>Product: {shortId(lastResult.setup.product?.id)}</span>
-          <span>Meter: {shortId(lastResult.setup.meter?.id)}</span>
           <span>Base price: {shortId(lastResult.setup.prices?.performanceBasePriceId)}</span>
-          <span>Lead price: {shortId(lastResult.setup.prices?.performanceMeteredLeadPriceId)}</span>
+          <span>
+            Lead charge: $
+            {(((lastResult.setup.prices?.immediateLeadChargeAmountCents ?? 300) as number) / 100).toFixed(2)}
+          </span>
           <span>Checkout config written: {lastResult.setup.configWritten ? "yes" : "test metadata only"}</span>
         </div>
       ) : null}

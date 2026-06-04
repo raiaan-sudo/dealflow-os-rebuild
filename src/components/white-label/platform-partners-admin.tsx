@@ -123,7 +123,7 @@ export async function PartnerDetailDashboard({ partnerId }: { partnerId: string 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Users signed up" value={metrics.totalSignups} detail={`Latest: ${date(metrics.latestSignup)}`} />
         <MetricCard label="Active customers" value={metrics.activeCustomers} detail={`${metrics.trialingCustomers} trialing, ${metrics.pastDueCustomers} past due`} />
-        <MetricCard label="MRR estimate" value={money(metrics.baseMrrCents)} detail={`${money(metrics.leadRevenueCents)} metered lead revenue tracked`} />
+        <MetricCard label="MRR estimate" value={money(metrics.baseMrrCents)} detail={`${money(metrics.leadRevenueCents)} lead charge revenue tracked`} />
         <MetricCard label="Commission owed" value={money(metrics.unpaidCommissionBalanceCents)} detail={`Paid lifetime: ${money(metrics.paidCommissionCents)}`} />
       </div>
 
@@ -165,8 +165,8 @@ export async function PartnerDetailDashboard({ partnerId }: { partnerId: string 
               ["Default price fallback", pricing.allowDefaultDealFlowPrices ? "enabled" : "disabled"],
               ["Performance label", text(performance?.label)],
               ["Performance base price", text(performance?.basePriceId)],
-              ["Performance lead price", text(performance?.meteredLeadPriceId)],
-              ["Meter event", text(performance?.meterEventName, "dealflow_billable_lead")],
+              ["Lead charge model", pricing.billingModel === "base_plus_metered_usage" ? "legacy metered usage" : "immediate $3 per qualified lead"],
+              ["Legacy lead price", text(performance?.meteredLeadPriceId)],
             ]}
           />
         </div>

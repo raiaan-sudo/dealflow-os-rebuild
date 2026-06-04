@@ -1,6 +1,6 @@
 import { ApiError } from "@/lib/api/route";
 import {
-  PERFORMANCE_LEAD_METER_EVENT_NAME,
+  PERFORMANCE_LEAD_BILLING_MODEL,
   PERFORMANCE_LEAD_UNIT_AMOUNT_CENTS,
 } from "@/lib/billing/plans";
 import { getStripeBillingProvider } from "@/lib/integrations/stripe/provider";
@@ -42,13 +42,20 @@ function getLedgerIdempotencyKey(params: {
   campaignId: string;
   leadId: string;
 }) {
-  return `performance_lead:${params.organizationId}:${params.campaignId}:${params.leadId}`;
+  return `performance_lead_charge:${params.organizationId}:${params.campaignId}:${params.leadId}`;
 }
 
 function getBillingMetadata(row: BillingRow | null) {
   return row?.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
     ? row.metadata
     : {};
+}
+
+function getDefaultPaymentMethodId(row: BillingRow | null) {
+  const metadata = getBillingMetadata(row);
+  const paymentMethodId = metadata.stripe_default_payment_method_id;
+
+  return typeof paymentMethodId === "string" && paymentMethodId.trim() ? paymentMethodId.trim() : null;
 }
 
 function getNonBillableReason(params: {
@@ -92,11 +99,13 @@ function getNonBillableReason(params: {
   const metadata = getBillingMetadata(params.billing);
   if (
     !params.billing.stripe_customer_id ||
-    !params.billing.stripe_subscription_id ||
-    typeof metadata.performance_subscription_item_id !== "string" ||
-    typeof metadata.performance_metered_price_id !== "string"
+    !params.billing.stripe_subscription_id
   ) {
-    return "performance_meter_metadata_missing";
+    return "performance_subscription_metadata_missing";
+  }
+
+  if (!getDefaultPaymentMethodId(params.billing)) {
+    return "default_payment_method_missing";
   }
 
   return null;
@@ -121,7 +130,7 @@ async function upsertSkippedLedger(params: {
         campaign_id: params.payload.campaignId,
         lead_id: params.payload.leadId,
         amount_cents: PERFORMANCE_LEAD_UNIT_AMOUNT_CENTS,
-        meter_event_name: PERFORMANCE_LEAD_METER_EVENT_NAME,
+        currency: "usd",
         status: "skipped",
         skip_reason: params.reason,
         idempotency_key: params.idempotencyKey,
@@ -130,6 +139,7 @@ async function upsertSkippedLedger(params: {
           requestId: params.payload.requestId,
           leadSource: params.lead?.source ?? null,
           consentSource: params.lead?.consent_source ?? null,
+          billingModel: PERFORMANCE_LEAD_BILLING_MODEL,
         } satisfies Json,
         updated_at: new Date().toISOString(),
       } as never,
@@ -169,7 +179,7 @@ export async function getPerformanceLeadUsageSummary(organizationId: string) {
       : null;
   const query = admin
     .from("lead_billing_events")
-    .select("status,amount_cents,reported_at,created_at")
+    .select("status,amount_cents,reported_at,charged_at,created_at")
     .eq("organization_id", organizationId);
   const { data, error } = periodStart ? await query.gte("created_at", periodStart) : await query;
 
@@ -181,23 +191,34 @@ export async function getPerformanceLeadUsageSummary(organizationId: string) {
     return null;
   }
 
-  const rows = Array.isArray(data) ? data as Array<{ status?: string | null; amount_cents?: number | null; reported_at?: string | null }> : [];
-  const billableRows = rows.filter((row) => row.status === "reported" || row.status === "pending" || row.status === "failed");
+  const rows = Array.isArray(data) ? data as Array<{
+    status?: string | null;
+    amount_cents?: number | null;
+    reported_at?: string | null;
+    charged_at?: string | null;
+  }> : [];
+  const billableRows = rows.filter((row) =>
+    ["charged", "reported", "pending", "charging", "failed"].includes(row.status ?? ""),
+  );
+  const chargedRows = rows.filter((row) => row.status === "charged");
   const reportedRows = rows.filter((row) => row.status === "reported");
-  const pendingRows = rows.filter((row) => row.status === "pending");
+  const pendingRows = rows.filter((row) => row.status === "pending" || row.status === "charging");
   const failedRows = rows.filter((row) => row.status === "failed");
   const latestReportedAt = reportedRows
-    .map((row) => row.reported_at)
+    .map((row) => row.reported_at ?? row.charged_at)
+    .concat(chargedRows.map((row) => row.charged_at))
     .filter((value): value is string => Boolean(value))
     .sort()
     .at(-1) ?? null;
 
   return {
     billableLeadCount: billableRows.length,
-    reportedLeadCount: reportedRows.length,
+    reportedLeadCount: reportedRows.length + chargedRows.length,
+    chargedLeadCount: chargedRows.length,
     pendingLeadCount: pendingRows.length,
     failedLeadCount: failedRows.length,
     estimatedLeadChargesCents: billableRows.reduce((sum, row) => sum + (row.amount_cents ?? 0), 0),
+    collectedLeadChargesCents: chargedRows.reduce((sum, row) => sum + (row.amount_cents ?? 0), 0),
     baseSubscriptionCents: 9700,
     latestReportedAt,
   };
@@ -271,12 +292,7 @@ export async function runPerformanceLeadBillingJob(payload: PerformanceLeadBilli
   const metadata = getBillingMetadata(billing);
   const stripeCustomerId = billing?.stripe_customer_id as string;
   const stripeSubscriptionId = billing?.stripe_subscription_id as string;
-  const stripeSubscriptionItemId = metadata.performance_subscription_item_id as string;
-  const stripeMeteredPriceId = metadata.performance_metered_price_id as string;
-  const meterEventName =
-    typeof metadata.performance_meter_event_name === "string"
-      ? metadata.performance_meter_event_name
-      : PERFORMANCE_LEAD_METER_EVENT_NAME;
+  const defaultPaymentMethodId = getDefaultPaymentMethodId(billing);
 
   const { data: existingLedgerData, error: existingLedgerError } = await admin
     .from("lead_billing_events")
@@ -292,15 +308,28 @@ export async function runPerformanceLeadBillingJob(payload: PerformanceLeadBilli
     id: string;
     status?: string | null;
     stripe_meter_event_id?: string | null;
+    stripe_payment_intent_id?: string | null;
+    stripe_charge_id?: string | null;
     skip_reason?: string | null;
   } | null;
 
   if (existingLedger?.status === "reported" && existingLedger.stripe_meter_event_id) {
     return {
-      status: "reported",
+      status: "charged",
+      legacyMetered: true,
       reusedExisting: true,
       ledgerId: existingLedger.id,
       stripeMeterEventId: existingLedger.stripe_meter_event_id,
+    };
+  }
+
+  if (existingLedger?.status === "charged" && existingLedger.stripe_payment_intent_id) {
+    return {
+      status: "charged",
+      reusedExisting: true,
+      ledgerId: existingLedger.id,
+      stripePaymentIntentId: existingLedger.stripe_payment_intent_id,
+      stripeChargeId: existingLedger.stripe_charge_id ?? null,
     };
   }
 
@@ -322,15 +351,15 @@ export async function runPerformanceLeadBillingJob(payload: PerformanceLeadBilli
         lead_id: payload.leadId,
         stripe_customer_id: stripeCustomerId,
         stripe_subscription_id: stripeSubscriptionId,
-        stripe_subscription_item_id: stripeSubscriptionItemId,
-        stripe_metered_price_id: stripeMeteredPriceId,
         amount_cents: PERFORMANCE_LEAD_UNIT_AMOUNT_CENTS,
-        meter_event_name: meterEventName,
+        currency: "usd",
         status: "pending",
         idempotency_key: idempotencyKey,
         metadata: {
           source: payload.source,
           requestId: payload.requestId,
+          billingModel: PERFORMANCE_LEAD_BILLING_MODEL,
+          stripeDefaultPaymentMethodId: defaultPaymentMethodId,
         } satisfies Json,
         updated_at: new Date().toISOString(),
       } as never,
@@ -343,44 +372,88 @@ export async function runPerformanceLeadBillingJob(payload: PerformanceLeadBilli
     throw new ApiError(500, ledgerError?.message ?? "Lead billing ledger could not be created.", "lead_billing_ledger_failed");
   }
 
-  const ledger = ledgerData as { id: string; status?: string | null; stripe_meter_event_id?: string | null };
+  const ledger = ledgerData as {
+    id: string;
+    status?: string | null;
+    stripe_meter_event_id?: string | null;
+    stripe_payment_intent_id?: string | null;
+    stripe_charge_id?: string | null;
+  };
   if (ledger.status === "reported" && ledger.stripe_meter_event_id) {
     return {
-      status: "reported",
+      status: "charged",
+      legacyMetered: true,
       reusedExisting: true,
       ledgerId: ledger.id,
       stripeMeterEventId: ledger.stripe_meter_event_id,
     };
   }
 
+  if (ledger.status === "charged" && ledger.stripe_payment_intent_id) {
+    return {
+      status: "charged",
+      reusedExisting: true,
+      ledgerId: ledger.id,
+      stripePaymentIntentId: ledger.stripe_payment_intent_id,
+      stripeChargeId: ledger.stripe_charge_id ?? null,
+    };
+  }
+
   try {
+    await admin
+      .from("lead_billing_events")
+      .update({
+        status: "charging",
+        attempt_count: Number((ledger as { attempt_count?: number | null }).attempt_count ?? 0) + 1,
+        updated_at: new Date().toISOString(),
+      } as never)
+      .eq("id", ledger.id);
+
     const result = await getStripeBillingProvider().execute({
-      action: "create_meter_event",
-      eventName: meterEventName,
-      identifier: idempotencyKey,
+      action: "create_payment_intent",
       idempotencyKey,
-      payload: {
-        stripe_customer_id: stripeCustomerId,
-        value: 1,
-        lead_id: payload.leadId,
-        campaign_id: payload.campaignId,
-        organization_id: payload.organizationId,
+      params: {
+        amount: PERFORMANCE_LEAD_UNIT_AMOUNT_CENTS,
+        currency: "usd",
+        customer: stripeCustomerId,
+        payment_method: defaultPaymentMethodId ?? undefined,
+        off_session: true,
+        confirm: true,
+        description: "DealFlow qualified lead",
+        metadata: {
+          lead_id: payload.leadId,
+          campaign_id: payload.campaignId,
+          organization_id: payload.organizationId,
+          billing_model: PERFORMANCE_LEAD_BILLING_MODEL,
+        },
       },
-    });
-    const stripeMeterEventId = typeof result.id === "string" ? result.id : idempotencyKey;
+    }) as {
+      id?: string;
+      latest_charge?: string | { id?: string | null } | null;
+      status?: string;
+    };
+    const stripePaymentIntentId = typeof result.id === "string" ? result.id : idempotencyKey;
+    const stripeChargeId =
+      typeof result.latest_charge === "string"
+        ? result.latest_charge
+        : result.latest_charge?.id ?? null;
 
     await admin
       .from("lead_billing_events")
       .update({
-        status: "reported",
-        stripe_meter_event_id: stripeMeterEventId,
+        status: "charged",
+        stripe_payment_intent_id: stripePaymentIntentId,
+        stripe_charge_id: stripeChargeId,
+        charged_at: new Date().toISOString(),
         reported_at: new Date().toISOString(),
+        failure_code: null,
+        failure_message: null,
         skip_reason: null,
         updated_at: new Date().toISOString(),
       } as never)
       .eq("id", ledger.id);
 
-    logOperationalEvent("performance_lead_billing.reported", {
+    logOperationalEvent("performance_lead_billing.charged", {
       requestId: payload.requestId,
       leadId: payload.leadId,
       organizationId: payload.organizationId,
@@ -388,20 +461,42 @@ export async function runPerformanceLeadBillingJob(payload: PerformanceLeadBilli
     });
 
     return {
-      status: "reported",
+      status: "charged",
       reusedExisting: false,
       ledgerId: ledger.id,
-      stripeMeterEventId,
+      stripePaymentIntentId,
+      stripeChargeId,
     };
   } catch (error) {
+    const stripeLikeError = error as {
+      code?: string;
+      decline_code?: string;
+      message?: string;
+      raw?: { code?: string; decline_code?: string; message?: string };
+    };
+    const failureCode =
+      stripeLikeError.code ??
+      stripeLikeError.decline_code ??
+      stripeLikeError.raw?.code ??
+      stripeLikeError.raw?.decline_code ??
+      "stripe_payment_intent_failed";
+    const failureMessage =
+      stripeLikeError.message ??
+      stripeLikeError.raw?.message ??
+      (error instanceof Error ? error.message : "Unknown Stripe lead charge failure");
+
     await admin
       .from("lead_billing_events")
       .update({
         status: "failed",
+        failure_code: failureCode,
+        failure_message: failureMessage,
+        next_retry_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
         metadata: {
           source: payload.source,
           requestId: payload.requestId,
-          failure: error instanceof Error ? error.message : "Unknown Stripe meter event failure",
+          billingModel: PERFORMANCE_LEAD_BILLING_MODEL,
+          failure: failureMessage,
         } satisfies Json,
         updated_at: new Date().toISOString(),
       } as never)
@@ -411,7 +506,8 @@ export async function runPerformanceLeadBillingJob(payload: PerformanceLeadBilli
       requestId: payload.requestId,
       leadId: payload.leadId,
       organizationId: payload.organizationId,
-      message: error instanceof Error ? error.message : "Unknown Stripe meter event failure",
+      code: failureCode,
+      message: failureMessage,
     });
 
     throw error;

@@ -38,7 +38,6 @@ const stripe = new Stripe(secretKey.trim(), {
 const productName = args.get("product-name") ?? "EGEN ACCELERATOR";
 const checkoutHeadline = args.get("checkout-headline") ?? "EGEN Accelerator";
 const performanceLabel = args.get("performance-label") ?? "EGEN Accelerator";
-const meterEventName = args.get("meter-event-name") ?? "dealflow_billable_lead";
 const baseAmount = Number(args.get("base-cents") ?? 9700);
 const leadAmount = Number(args.get("lead-cents") ?? 300);
 const commissionRate = Number(args.get("commission-rate") ?? 0.5);
@@ -93,35 +92,6 @@ async function findRecurringPrice(productId, role, unitAmount, recurring) {
   }) ?? null;
 }
 
-async function findOrCreateMeter() {
-  const billingApi = stripe.billing;
-  if (!billingApi?.meters?.list || !billingApi?.meters?.create) {
-    throw new Error("Stripe SDK does not expose billing.meters; cannot create usage meter.");
-  }
-
-  const meters = await billingApi.meters.list({ limit: 100 });
-  const existing = meters.data.find((meter) => meter.event_name === meterEventName);
-  if (existing) return existing;
-
-  return billingApi.meters.create(
-    {
-      display_name: "DealFlow qualified leads",
-      event_name: meterEventName,
-      default_aggregation: {
-        formula: "sum",
-      },
-      customer_mapping: {
-        type: "by_id",
-        event_payload_key: "stripe_customer_id",
-      },
-      value_settings: {
-        event_payload_key: "value",
-      },
-    },
-    { idempotencyKey: `partner_stripe_meter:${mode}:${partnerSlug}:${meterEventName}` },
-  );
-}
-
 async function findOrCreateBasePrice(productId) {
   const existing = await findRecurringPrice(productId, "performance_base", baseAmount, {
     interval: "month",
@@ -149,36 +119,7 @@ async function findOrCreateBasePrice(productId) {
   );
 }
 
-async function findOrCreateMeteredPrice(productId, meterId) {
-  const existing = await findRecurringPrice(productId, "performance_lead", leadAmount, {
-    interval: "month",
-    usage_type: "metered",
-  });
-  if (existing) return existing;
-
-  return stripe.prices.create(
-    {
-      product: productId,
-      currency: "usd",
-      unit_amount: leadAmount,
-      recurring: {
-        interval: "month",
-        usage_type: "metered",
-        meter: meterId,
-      },
-      nickname: `${productName} qualified lead`,
-      metadata: {
-        dealflow_partner_slug: partnerSlug,
-        dealflow_price_role: "performance_lead",
-        internal_plan_tier: "performance",
-        meter_event_name: meterEventName,
-      },
-    },
-    { idempotencyKey: `partner_stripe_metered_price:${mode}:${partnerSlug}:${leadAmount}:${meterId}` },
-  );
-}
-
-async function updatePartnerConfig(basePrice, meteredPrice) {
+async function updatePartnerConfig(basePrice) {
   if (!writeConfig) return null;
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -212,10 +153,10 @@ async function updatePartnerConfig(basePrice, meteredPrice) {
       performance: {
         label: performanceLabel,
         basePriceId: basePrice.id,
-        meteredLeadPriceId: meteredPrice.id,
-        meterEventName,
       },
     },
+    billingModel: "base_plus_immediate_lead_charge",
+    leadChargeAmountCents: leadAmount,
     stripeMode: mode,
   };
 
@@ -271,10 +212,8 @@ async function updatePartnerConfig(basePrice, meteredPrice) {
 }
 
 const product = await findOrCreateProduct();
-const meter = await findOrCreateMeter();
 const basePrice = await findOrCreateBasePrice(product.id);
-const meteredPrice = await findOrCreateMeteredPrice(product.id, meter.id);
-const partnerConfig = await updatePartnerConfig(basePrice, meteredPrice);
+const partnerConfig = await updatePartnerConfig(basePrice);
 
 console.log(JSON.stringify({
   status: "PASS",
@@ -284,12 +223,8 @@ console.log(JSON.stringify({
     id: product.id,
     name: product.name,
   },
-  meter: {
-    id: meter.id,
-    eventName: meter.event_name,
-  },
   prices: {
     performanceBasePriceId: basePrice.id,
-    performanceMeteredLeadPriceId: meteredPrice.id,
+    immediateLeadChargeAmountCents: leadAmount,
   },
 }, null, 2));

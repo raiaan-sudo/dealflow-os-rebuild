@@ -119,7 +119,6 @@ export function PartnerCreateForm() {
                 label: form.performanceLabel.trim() || form.productName.trim() || null,
                 basePriceId: form.performanceBasePriceId.trim() || null,
                 meteredLeadPriceId: form.performanceLeadPriceId.trim() || null,
-                meterEventName: "dealflow_billable_lead",
               },
               starter: {
                 label: form.starterLabel.trim() || null,
@@ -339,11 +338,11 @@ export function PartnerCreateForm() {
             />
           </label>
           <label className="space-y-2">
-            <span className="text-sm font-medium text-white">Performance lead price</span>
+            <span className="text-sm font-medium text-white">Legacy metered lead price optional</span>
             <input
               value={form.performanceLeadPriceId}
               onChange={(event) => updateField("performanceLeadPriceId", event.target.value)}
-              placeholder="price_..."
+              placeholder="Optional legacy price_..."
               className="h-11 w-full rounded-df-control border border-white/10 bg-black/20 px-3 text-sm text-white outline-none transition focus:border-cyan-200/50"
             />
           </label>

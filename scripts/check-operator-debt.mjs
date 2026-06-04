@@ -460,7 +460,7 @@ async function main() {
     ),
     countRows(supabase, "lead_billing_events", (query) =>
       query
-        .eq("status", "pending")
+        .in("status", ["pending", "charging"])
         .lt("created_at", new Date(Date.now() - 30 * 60 * 1000).toISOString()),
     ),
     countUnreviewedFailedProviderEvents(supabase),

@@ -174,7 +174,7 @@ async function buildReport() {
     readRows(supabase, "provider_usage_limits", supabase.from("provider_usage_limits").select("provider,operation,usage_count,limit_count,usage_date,updated_at").gte("usage_date", today).order("updated_at", { ascending: false }).limit(1000), warnings),
     readRows(supabase, "billing_subscriptions", supabase.from("billing_subscriptions").select("organization_id,plan_tier,status,current_period_end,cancel_at_period_end,created_at,updated_at").limit(5000), warnings),
     readRows(supabase, "stripe_webhook_events", supabase.from("stripe_webhook_events").select("id,stripe_event_type,status,error_code,created_at,updated_at").gte("created_at", sevenDaysAgoIso).order("created_at", { ascending: false }).limit(2000), warnings),
-    readRows(supabase, "lead_billing_events", supabase.from("lead_billing_events").select("id,organization_id,campaign_id,status,skip_reason,amount_cents,created_at,reported_at").gte("created_at", sevenDaysAgoIso).order("created_at", { ascending: false }).limit(5000), warnings),
+    readRows(supabase, "lead_billing_events", supabase.from("lead_billing_events").select("id,organization_id,campaign_id,status,skip_reason,amount_cents,created_at,reported_at,charged_at").gte("created_at", sevenDaysAgoIso).order("created_at", { ascending: false }).limit(5000), warnings),
     readRows(supabase, "leads", supabase.from("leads").select("id,status,created_at").gte("created_at", sevenDaysAgoIso).order("created_at", { ascending: false }).limit(5000), warnings),
     readRows(supabase, "lead_notifications", supabase.from("lead_notifications").select("id,status,created_at,updated_at,delivered_at,failed_at").gte("created_at", sevenDaysAgoIso).order("created_at", { ascending: false }).limit(5000), warnings),
     readRows(supabase, "campaign_sync_snapshots", supabase.from("campaign_sync_snapshots").select("id,organization_id,user_id,meta_campaign_id,sync_result,campaign_status,delivery_metrics,sync_errors,synced_at").order("synced_at", { ascending: false }).limit(500), warnings),
@@ -233,8 +233,8 @@ async function buildReport() {
     (row) => row.skip_reason ?? "unknown",
   );
   const performanceFailedEvents = leadBillingEvents.filter((row) => row.status === "failed").length;
-  const performancePendingEvents = leadBillingEvents.filter((row) => row.status === "pending").length;
-  const performanceBillableLeadEvents = leadBillingEvents.filter((row) => ["pending", "reported", "failed"].includes(row.status ?? ""));
+  const performancePendingEvents = leadBillingEvents.filter((row) => row.status === "pending" || row.status === "charging").length;
+  const performanceBillableLeadEvents = leadBillingEvents.filter((row) => ["pending", "charging", "charged", "reported", "failed"].includes(row.status ?? ""));
   const performanceUsageRevenueCents = performanceBillableLeadEvents.reduce((sum, row) => sum + Number(row.amount_cents ?? 0), 0);
   const notificationsByStatus = countBy(notifications, (row) => row.status ?? "unknown");
   const failedLeadNotificationRows = notifications.filter((row) => row.status === "failed" || row.status === "undelivered");

@@ -400,14 +400,14 @@ export default async function SettingsPage({
           {billing?.planTier === "performance" ? (
             <div className="rounded-[20px] border border-cyan-300/16 bg-cyan-300/[0.055] p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-cyan-100/75">Performance usage</p>
-              <h3 className="mt-2 text-lg font-semibold text-white">$97/mo base + $3 per qualified lead</h3>
+              <h3 className="mt-2 text-lg font-semibold text-white">$97/mo base + $3 per qualified lead charged immediately</h3>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {[
                   ["Billable leads", String(performanceUsage?.billableLeadCount ?? 0)],
-                  ["Lead usage estimate", formatCurrencyFromCents(performanceUsage?.estimatedLeadChargesCents ?? 0)],
+                  ["Lead charges", formatCurrencyFromCents(performanceUsage?.estimatedLeadChargesCents ?? 0)],
                   ["Base subscription", formatCurrencyFromCents(performanceUsage?.baseSubscriptionCents ?? 9700)],
                   [
-                    "Current estimate",
+                    "Current total",
                     formatCurrencyFromCents(
                       (performanceUsage?.baseSubscriptionCents ?? 9700) +
                         (performanceUsage?.estimatedLeadChargesCents ?? 0),
@@ -421,16 +421,16 @@ export default async function SettingsPage({
                 ))}
               </div>
               <p className="mt-3 text-sm leading-6 text-cyan-50/80">
-                Spam, duplicate, test, invalid, internal, and imported leads are skipped. Usage appears on the Stripe invoice after the metered lead event is reported.
+                Spam, duplicate, test, invalid, internal, and imported leads are skipped. Qualified leads are charged immediately to your saved payment method.
               </p>
               {performanceUsage?.failedLeadCount || performanceUsage?.pendingLeadCount ? (
                 <p className="mt-3 text-sm font-semibold text-amber-100">
-                  Usage reporting needs review: {performanceUsage.pendingLeadCount} pending, {performanceUsage.failedLeadCount} failed.
+                  Lead charge review needed: {performanceUsage.pendingLeadCount} pending, {performanceUsage.failedLeadCount} failed.
                 </p>
               ) : null}
               {performanceUsage?.latestReportedAt ? (
                 <p className="mt-2 text-xs text-cyan-100/70">
-                  Last reported usage: {formatPeriodEnd(performanceUsage.latestReportedAt)}
+                  Last successful lead charge: {formatPeriodEnd(performanceUsage.latestReportedAt)}
                 </p>
               ) : null}
             </div>

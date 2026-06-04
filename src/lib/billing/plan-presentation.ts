@@ -38,16 +38,16 @@ export const PLAN_PRESENTATION: Record<SelectablePlanTier, PlanPresentation> = {
     eyebrow: "Lower base + usage",
     positioning: "Best first launch option",
     summary:
-      "Same guided launch access as Starter with a lower monthly base and qualified leads billed on your Stripe invoice.",
+      "Same guided launch access as Starter with a lower monthly base and qualified leads charged immediately to your saved payment method.",
     features: [
       "Guided campaign setup",
       "Offer-led funnel and creative preview",
       "Recommended optimization checklist",
       "Meta readiness and launch gates",
       "Spam, duplicate, test, and invalid leads are not billed",
-      "Lead usage appears on your Stripe invoice",
+      "Qualified leads are charged immediately at $3 each",
     ],
-    footer: "Lower base, usage tied to qualified leads",
+    footer: "Lower base, immediate lead charges",
   },
   starter: {
     tier: "starter",

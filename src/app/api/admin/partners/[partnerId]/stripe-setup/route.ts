@@ -11,7 +11,6 @@ const setupSchema = z.object({
   productName: z.string().min(2).max(120).optional(),
   checkoutHeadline: z.string().min(2).max(120).optional(),
   performanceLabel: z.string().min(2).max(120).optional(),
-  meterEventName: z.string().min(2).max(120).optional(),
   baseAmountCents: z.number().int().positive().optional(),
   leadAmountCents: z.number().int().positive().optional(),
 });
@@ -36,7 +35,6 @@ export async function POST(
       productName: body.productName,
       checkoutHeadline: body.checkoutHeadline,
       performanceLabel: body.performanceLabel,
-      meterEventName: body.meterEventName,
       baseAmountCents: body.baseAmountCents,
       leadAmountCents: body.leadAmountCents,
     });

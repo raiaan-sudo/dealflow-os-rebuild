@@ -35,7 +35,8 @@ assert.equal(
 assert.match(partnerBillingConfig, /parsePartnerPricingConfig/, "partner pricing parser must exist");
 assert.match(partnerBillingConfig, /validatePartnerPricingConfig/, "partner pricing validator must exist");
 assert.match(partnerBillingConfig, /Performance base price ID must start with price_/, "performance base price must be validated");
-assert.match(partnerBillingConfig, /Performance metered lead price ID must start with price_/, "performance metered price must be validated");
+assert.match(partnerBillingConfig, /Performance legacy metered lead price ID must start with price_/, "legacy performance metered price must be optional but validated when present");
+assert.match(partnerBillingConfig, /base_plus_immediate_lead_charge/, "partner pricing config must support immediate lead charges");
 assert.match(partnerBillingConfig, /allowDefaultDealFlowPrices/, "default DealFlow price fallback must be explicit");
 
 assert.match(stripeService, /partnerPricing\?: PartnerPricingConfig/, "Stripe price config must accept partner pricing");
@@ -64,7 +65,7 @@ assert.match(paywallSelector, /planPresentations/, "Client selector must render 
 
 assert.match(partnerCreateForm, /Product display name/, "Partner admin form must capture product display name");
 assert.match(partnerCreateForm, /Performance base price/, "Partner admin form must capture performance base price");
-assert.match(partnerCreateForm, /Performance lead price/, "Partner admin form must capture performance metered price");
+assert.match(partnerCreateForm, /Legacy metered lead price optional/, "Partner admin form must label the old metered lead price as optional legacy config");
 assert.match(partnerCreateForm, /Allow default DealFlow prices/, "Partner admin form must expose explicit fallback toggle");
 assert.match(adminPartnerRoute, /partner_pricing_invalid/, "Admin create API must fail closed on invalid active partner pricing");
 assert.match(adminPartnerRoute, /partner_branding/, "Admin create API must write partner branding/pricing config");
@@ -78,12 +79,14 @@ assert.match(partnerQueries, /getPlatformPartnerDetail/, "Partner detail query m
 assert.match(partnerQueries, /partner_billing_attribution/, "Partner detail must include billing attribution");
 assert.match(partnerQueries, /lead_billing_events/, "Partner detail must include performance lead usage events");
 assert.match(partnerQueries, /partner_audit_logs/, "Partner detail must include audit trail");
-assert.match(setupPartnerStripe, /billing\.meters/, "Stripe setup must create or verify billing meters");
-assert.match(setupPartnerStripe, /usage_type: "metered"/, "Stripe setup must create metered recurring lead price");
+assert.doesNotMatch(setupPartnerStripe, /billing\.meters/, "Stripe setup must not create billing meters for immediate lead charges");
+assert.doesNotMatch(setupPartnerStripe, /usage_type: "metered"/, "Stripe setup must not create metered recurring lead prices");
+assert.match(setupPartnerStripe, /immediateLeadChargeAmountCents/, "Stripe setup must write immediate lead charge config");
 assert.match(setupPartnerStripe, /STRIPE_TEST_SECRET_KEY/, "Stripe setup must support test-mode setup");
 assert.match(setupPartnerStripe, /STRIPE_SECRET_KEY/, "Stripe setup must support live-mode setup");
 assert.match(setupPartnerStripe, /partner_branding/, "Stripe setup must write partner pricing config");
-assert.match(setupPartnerStripeService, /billing\?: \{ meters\?: StripeBillingMetersApi \}/, "Server-side Stripe setup must create or verify billing meters");
+assert.doesNotMatch(setupPartnerStripeService, /StripeBillingMetersApi|billing\?: \{ meters\?:/, "Server-side Stripe setup must not depend on Stripe meters");
+assert.match(setupPartnerStripeService, /immediateLeadChargeAmountCents/, "Server-side Stripe setup must return immediate charge config");
 assert.match(setupPartnerStripeService, /mode === "live"/, "Live setup must write checkout-active partner pricing");
 assert.match(setupPartnerStripeService, /stripeTestSetup/, "Test setup must not overwrite live checkout pricing");
 assert.match(setupPartnerStripeRoute, /assertSameOriginRequest/, "Stripe setup route must be same-origin protected");

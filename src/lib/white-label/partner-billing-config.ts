@@ -19,6 +19,8 @@ export type PartnerPricingConfig = {
   checkoutHeadline: string | null;
   visiblePlans: PartnerPricingPlanKey[];
   allowDefaultDealFlowPrices: boolean;
+  billingModel?: "base_plus_immediate_lead_charge" | "base_plus_metered_usage" | null;
+  leadChargeAmountCents?: number | null;
   plans: Partial<Record<PartnerPricingPlanKey, PartnerPricingPlanConfig>>;
 };
 
@@ -73,6 +75,16 @@ export function parsePartnerPricingConfig(value: unknown): PartnerPricingConfig 
     checkoutHeadline: optionalText(record.checkoutHeadline),
     visiblePlans: normalizeVisiblePlans(record.visiblePlans),
     allowDefaultDealFlowPrices: record.allowDefaultDealFlowPrices === true,
+    billingModel:
+      record.billingModel === "base_plus_metered_usage"
+        ? "base_plus_metered_usage"
+        : record.billingModel === "base_plus_immediate_lead_charge"
+          ? "base_plus_immediate_lead_charge"
+          : null,
+    leadChargeAmountCents:
+      typeof record.leadChargeAmountCents === "number" && Number.isInteger(record.leadChargeAmountCents)
+        ? record.leadChargeAmountCents
+        : null,
     plans,
   };
 }
@@ -83,6 +95,8 @@ export function serializePartnerPricingConfig(config: PartnerPricingConfig): Jso
     checkoutHeadline: config.checkoutHeadline,
     visiblePlans: config.visiblePlans,
     allowDefaultDealFlowPrices: config.allowDefaultDealFlowPrices,
+    billingModel: config.billingModel ?? null,
+    leadChargeAmountCents: config.leadChargeAmountCents ?? null,
     plans: config.plans,
   } satisfies Json;
 }
@@ -132,8 +146,8 @@ export function validatePartnerPricingConfig(pricing: PartnerPricingConfig) {
       if (!isStripePriceId(plan.basePriceId)) {
         issues.push("Performance base price ID must start with price_.");
       }
-      if (!isStripePriceId(plan.meteredLeadPriceId)) {
-        issues.push("Performance metered lead price ID must start with price_.");
+      if (plan.meteredLeadPriceId && !isStripePriceId(plan.meteredLeadPriceId)) {
+        issues.push("Performance legacy metered lead price ID must start with price_.");
       }
       continue;
     }

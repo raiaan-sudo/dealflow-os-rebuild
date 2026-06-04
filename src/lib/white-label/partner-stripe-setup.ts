@@ -12,21 +12,6 @@ const STRIPE_API_VERSION = "2026-04-22.dahlia";
 const DEFAULT_PRODUCT_NAME = "EGEN ACCELERATOR";
 const DEFAULT_CHECKOUT_HEADLINE = "EGEN Accelerator";
 const DEFAULT_PERFORMANCE_LABEL = "EGEN Accelerator";
-const DEFAULT_METER_EVENT_NAME = "dealflow_billable_lead";
-
-type StripeBillingMeter = {
-  id: string;
-  event_name: string;
-  display_name?: string | null;
-};
-
-type StripeBillingMetersApi = {
-  list: (params?: { limit?: number }) => Promise<{ data: StripeBillingMeter[] }>;
-  create: (
-    params: Record<string, unknown>,
-    options?: { idempotencyKey?: string },
-  ) => Promise<StripeBillingMeter>;
-};
 
 export type PartnerStripeSetupMode = "test" | "live";
 
@@ -39,13 +24,9 @@ export type PartnerStripeSetupResult = {
     name: string;
     livemode: boolean;
   };
-  meter: {
-    id: string;
-    eventName: string;
-  };
   prices: {
     performanceBasePriceId: string;
-    performanceMeteredLeadPriceId: string;
+    immediateLeadChargeAmountCents: number;
   };
   configWritten: boolean;
 };
@@ -56,7 +37,6 @@ type SetupOptions = {
   productName?: string | null;
   checkoutHeadline?: string | null;
   performanceLabel?: string | null;
-  meterEventName?: string | null;
   baseAmountCents?: number | null;
   leadAmountCents?: number | null;
 };
@@ -153,50 +133,6 @@ async function findRecurringPrice(params: {
   ) ?? null;
 }
 
-function getMetersApi(stripe: Stripe) {
-  return (stripe as unknown as { billing?: { meters?: StripeBillingMetersApi } }).billing?.meters ?? null;
-}
-
-async function findOrCreateMeter(params: {
-  stripe: Stripe;
-  mode: PartnerStripeSetupMode;
-  partnerSlug: string;
-  meterEventName: string;
-}) {
-  const metersApi = getMetersApi(params.stripe);
-  if (!metersApi?.list || !metersApi.create) {
-    throw new ApiError(
-      503,
-      "Stripe billing meters API is not available in this runtime.",
-      "stripe_billing_meters_unavailable",
-    );
-  }
-
-  const meters = await metersApi.list({ limit: 100 });
-  const existing = meters.data.find((meter) => meter.event_name === params.meterEventName);
-  if (existing) {
-    return existing;
-  }
-
-  return metersApi.create(
-    {
-      display_name: "DealFlow qualified leads",
-      event_name: params.meterEventName,
-      default_aggregation: {
-        formula: "sum",
-      },
-      customer_mapping: {
-        type: "by_id",
-        event_payload_key: "stripe_customer_id",
-      },
-      value_settings: {
-        event_payload_key: "value",
-      },
-    },
-    { idempotencyKey: `partner_stripe_meter:${params.mode}:${params.partnerSlug}:${params.meterEventName}` },
-  );
-}
-
 async function findOrCreateBasePrice(params: {
   stripe: Stripe;
   mode: PartnerStripeSetupMode;
@@ -236,52 +172,6 @@ async function findOrCreateBasePrice(params: {
   );
 }
 
-async function findOrCreateMeteredPrice(params: {
-  stripe: Stripe;
-  mode: PartnerStripeSetupMode;
-  partnerSlug: string;
-  productId: string;
-  productName: string;
-  meterId: string;
-  leadAmountCents: number;
-  meterEventName: string;
-}) {
-  const existing = await findRecurringPrice({
-    stripe: params.stripe,
-    productId: params.productId,
-    role: "performance_lead",
-    unitAmount: params.leadAmountCents,
-    usageType: "metered",
-  });
-  if (existing) {
-    return existing;
-  }
-
-  return params.stripe.prices.create(
-    {
-      product: params.productId,
-      currency: "usd",
-      unit_amount: params.leadAmountCents,
-      recurring: {
-        interval: "month",
-        usage_type: "metered",
-        meter: params.meterId,
-      },
-      nickname: `${params.productName} qualified lead`,
-      metadata: {
-        dealflow_partner_slug: params.partnerSlug,
-        dealflow_price_role: "performance_lead",
-        internal_plan_tier: "performance",
-        meter_event_name: params.meterEventName,
-      },
-    },
-    {
-      idempotencyKey:
-        `partner_stripe_metered_price:${params.mode}:${params.partnerSlug}:${params.leadAmountCents}:${params.meterId}`,
-    },
-  );
-}
-
 function updatePricingForMode(params: {
   existing: PartnerPricingConfig;
   mode: PartnerStripeSetupMode;
@@ -289,8 +179,7 @@ function updatePricingForMode(params: {
   checkoutHeadline: string;
   performanceLabel: string;
   basePriceId: string;
-  meteredLeadPriceId: string;
-  meterEventName: string;
+  leadAmountCents: number;
 }) {
   const liveConfig = {
     displayProductName: params.productName,
@@ -301,10 +190,10 @@ function updatePricingForMode(params: {
       performance: {
         label: params.performanceLabel,
         basePriceId: params.basePriceId,
-        meteredLeadPriceId: params.meteredLeadPriceId,
-        meterEventName: params.meterEventName,
       },
     },
+    billingModel: "base_plus_immediate_lead_charge",
+    leadChargeAmountCents: params.leadAmountCents,
   } satisfies PartnerPricingConfig;
 
   if (params.mode === "live") {
@@ -324,8 +213,7 @@ function updatePricingForMode(params: {
       checkoutHeadline: params.checkoutHeadline,
       performanceLabel: params.performanceLabel,
       basePriceId: params.basePriceId,
-      meteredLeadPriceId: params.meteredLeadPriceId,
-      meterEventName: params.meterEventName,
+      leadChargeAmountCents: params.leadAmountCents,
       updatedAt: new Date().toISOString(),
     },
   };
@@ -358,7 +246,6 @@ export async function setupPartnerStripeProducts(options: SetupOptions): Promise
   const productName = normalizeText(options.productName, DEFAULT_PRODUCT_NAME);
   const checkoutHeadline = normalizeText(options.checkoutHeadline, DEFAULT_CHECKOUT_HEADLINE);
   const performanceLabel = normalizeText(options.performanceLabel, DEFAULT_PERFORMANCE_LABEL);
-  const meterEventName = normalizeText(options.meterEventName, DEFAULT_METER_EVENT_NAME);
   const stripe = new Stripe(requireSecretKey(options.mode), {
     apiVersion: STRIPE_API_VERSION,
   });
@@ -369,12 +256,6 @@ export async function setupPartnerStripeProducts(options: SetupOptions): Promise
     partnerSlug: partner.slug,
     productName,
   });
-  const meter = await findOrCreateMeter({
-    stripe,
-    mode: options.mode,
-    partnerSlug: partner.slug,
-    meterEventName,
-  });
   const basePrice = await findOrCreateBasePrice({
     stripe,
     mode: options.mode,
@@ -383,17 +264,6 @@ export async function setupPartnerStripeProducts(options: SetupOptions): Promise
     productName,
     baseAmountCents,
   });
-  const meteredPrice = await findOrCreateMeteredPrice({
-    stripe,
-    mode: options.mode,
-    partnerSlug: partner.slug,
-    productId: product.id,
-    productName,
-    meterId: meter.id,
-    leadAmountCents,
-    meterEventName,
-  });
-
   const { data: branding } = await admin
     .from("partner_branding")
     .select("pricing_json,theme_json")
@@ -407,8 +277,7 @@ export async function setupPartnerStripeProducts(options: SetupOptions): Promise
     checkoutHeadline,
     performanceLabel,
     basePriceId: basePrice.id,
-    meteredLeadPriceId: meteredPrice.id,
-    meterEventName,
+    leadAmountCents,
   });
 
   const { error: brandingError } = await admin.from("partner_branding").upsert(
@@ -433,9 +302,8 @@ export async function setupPartnerStripeProducts(options: SetupOptions): Promise
     metadata_json: {
       mode: options.mode,
       product_id: product.id,
-      meter_id: meter.id,
       base_price_id: basePrice.id,
-      metered_lead_price_id: meteredPrice.id,
+      immediate_lead_charge_amount_cents: leadAmountCents,
       config_written_to_checkout: options.mode === "live",
     },
   } as never);
@@ -449,13 +317,9 @@ export async function setupPartnerStripeProducts(options: SetupOptions): Promise
       name: product.name,
       livemode: product.livemode,
     },
-    meter: {
-      id: meter.id,
-      eventName: meter.event_name,
-    },
     prices: {
       performanceBasePriceId: basePrice.id,
-      performanceMeteredLeadPriceId: meteredPrice.id,
+      immediateLeadChargeAmountCents: leadAmountCents,
     },
     configWritten: options.mode === "live",
   };

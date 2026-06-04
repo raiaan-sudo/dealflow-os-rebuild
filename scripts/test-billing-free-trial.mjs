@@ -102,7 +102,9 @@ assert.match(
   /trial_period_days: String\(params\.trialPeriodDays\)/,
   "Stripe metadata should expose the configured trial length for safe audit and reuse checks",
 );
-assert.match(stripeService, /performanceBasePriceId[\s\S]*performanceLeadPriceId/, "Stripe pricing config must support Performance base plus metered lead prices");
+assert.match(stripeService, /PERFORMANCE_LEAD_BILLING_MODEL/, "Stripe pricing config must support Performance immediate lead charges");
+assert.match(stripeService, /priceSignature:\s*`\$\{priceIds\.slice\(\)\.sort\(\)\.join\("\+"\)\}:\$\{PERFORMANCE_LEAD_BILLING_MODEL\}`/, "Performance checkout price signature must use base plus immediate lead charge model");
+assert.doesNotMatch(stripeService, /priceSet\.has\(env\.performanceLeadPriceId\)/, "Performance subscription mapping must not require the legacy metered lead price");
 assert.match(
   billingService,
   /subscription\.status === "trialing" && subscription\.trial_end[\s\S]*\? subscription\.trial_end[\s\S]*: periodItem\?\.current_period_end/,
