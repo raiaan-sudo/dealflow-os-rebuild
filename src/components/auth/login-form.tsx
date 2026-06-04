@@ -10,6 +10,7 @@ type LoginFormProps = {
   isConfigured: boolean;
   branding?: {
     appName?: string;
+    logoUrl?: string | null;
     loginEyebrow?: string;
     loginHeadline?: string;
     loginSubheadline?: string;
@@ -77,6 +78,7 @@ export function LoginForm({
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
+  const [logoFailed, setLogoFailed] = useState(false);
   const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
   const turnstileWidgetIdRef = useRef<string | null>(null);
   const turnstileEnabled = Boolean(TURNSTILE_SITE_KEY);
@@ -372,6 +374,19 @@ export function LoginForm({
   return (
     <div className="surface-guided w-full min-w-0 max-w-[calc(100vw-40px)] rounded-df-panel border border-white/10 p-6 shadow-df-elevated sm:max-w-none sm:p-8">
       <div className="mb-6">
+        {branding?.logoUrl && !logoFailed ? (
+          <div className="mb-5 flex items-center">
+            <div className="flex max-h-14 max-w-[220px] items-center justify-start rounded-2xl border border-white/10 bg-white p-3 shadow-[0_18px_60px_-36px_rgba(0,0,0,0.8)]">
+              {/* eslint-disable-next-line @next/next/no-img-element -- Partner logos are runtime-configured URLs and need client-side fallback. */}
+              <img
+                src={branding.logoUrl}
+                alt={`${branding.appName ?? "Partner"} logo`}
+                className="max-h-9 max-w-[180px] object-contain"
+                onError={() => setLogoFailed(true)}
+              />
+            </div>
+          </div>
+        ) : null}
         <p className="df-eyebrow">
           {branding?.loginEyebrow ?? "Replace your agency"}
         </p>
