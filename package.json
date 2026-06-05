@@ -55,6 +55,7 @@
     "test:scale-monitoring": "node ./scripts/test-scale-monitoring.mjs",
     "test:offer-normalization": "node ./scripts/test-offer-normalization.mjs",
     "test:direct-response-funnels": "node ./scripts/test-direct-response-funnels.mjs",
+    "test:funnel-personalization-v2": "node ./scripts/test-funnel-personalization-v2.mjs",
     "test:client-error-telemetry": "node ./scripts/test-client-error-telemetry.mjs",
     "test:e2e:safe": "node ./scripts/run-safe-e2e.mjs",
     "smoke:offline": "node ./scripts/smoke-test.mjs offline",

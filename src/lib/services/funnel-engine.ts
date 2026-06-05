@@ -60,6 +60,15 @@ export type FunnelEngineInput = {
   audience?: string;
   offer?: string;
   key_offer?: string;
+  agentName?: string;
+  agent_name?: string;
+  brokerage?: string;
+  partnerName?: string;
+  partner_name?: string;
+  whiteLabelEnabled?: boolean;
+  white_label_enabled?: boolean;
+  brandMode?: "dealflow" | "partner" | "agent";
+  brand_mode?: "dealflow" | "partner" | "agent";
   headline?: string;
   subheadline?: string;
   mechanism?: string;
@@ -107,7 +116,138 @@ export type FunnelBlueprint = {
   form_fields: string[];
   follow_up_action: string;
   optimization_notes: string[];
+  personalization_version?: "v1" | "funnel_strategy_v2";
+  strategy_brief?: FunnelStrategyBriefV2;
+  render_schema?: FunnelRenderV2;
+  qa_result?: FunnelQaResultV2;
+  fallback_used?: boolean;
 } & Partial<DirectResponseFunnelMetadata>;
+
+export type FunnelArchetypeId =
+  | "local_expert_buyer"
+  | "local_expert_seller"
+  | "home_valuation"
+  | "first_time_buyer"
+  | "luxury_listing"
+  | "relocation"
+  | "investor_opportunity"
+  | "new_construction"
+  | "downsizer"
+  | "move_up_buyer"
+  | "expired_listing"
+  | "open_house_followup"
+  | "generic_buyer_seller_fallback";
+
+export type FunnelCampaignTypeV2 =
+  | "buyer"
+  | "seller"
+  | "both"
+  | "investor"
+  | "relocation"
+  | "luxury"
+  | "new_construction"
+  | "home_valuation"
+  | "first_time_buyer"
+  | "downsizer"
+  | "move_up_buyer"
+  | "expired_listing"
+  | "open_house_followup"
+  | "generic";
+
+export type FunnelStrategyBriefV2 = {
+  version: "funnel_strategy_v2";
+  campaign_id: string;
+  workspace_id: string;
+  agent: {
+    name: string;
+    brokerage: string;
+    market: string;
+    state_or_province: string;
+    brand_assets_available: boolean;
+  };
+  white_label: {
+    enabled: boolean;
+    partner_name: string;
+    brand_mode: "dealflow" | "partner" | "agent";
+  };
+  campaign: {
+    type: FunnelCampaignTypeV2;
+    offer: string;
+    primary_goal: string;
+    audience: string;
+    lead_magnet: string;
+    cta: string;
+  };
+  archetype: {
+    id: FunnelArchetypeId;
+    name: string;
+    reason: string;
+  };
+  copy_direction: {
+    tone: string;
+    headline_angle: string;
+    trust_angle: string;
+    urgency_angle: string;
+    objection_handling: string[];
+  };
+  visual_direction: {
+    style: string;
+    layout: string;
+    color_direction: string;
+    imagery_direction: string;
+    brokerage_branding_mode: "none" | "subtle" | "strong" | "partner_brand" | "agent_brand";
+  };
+  sections: string[];
+  qa_requirements: {
+    must_include: string[];
+    must_avoid: string[];
+    compliance_notes: string[];
+  };
+};
+
+export type FunnelRenderV2 = {
+  version: "funnel_render_v2";
+  strategy_id: string;
+  campaign_id: string;
+  theme: {
+    mode: "dealflow" | "partner" | "agent";
+    accent: string;
+    typography: string;
+    visualStyle: string;
+  };
+  sections: {
+    id: string;
+    type: FunnelSectionType;
+    headline: string;
+    subheadline: string;
+    body: string;
+    cta: string;
+    proof_items: string[];
+    visual_notes: string;
+  }[];
+  form: {
+    fields: string[];
+    cta: string;
+  };
+  tracking: Record<string, string | boolean>;
+  compliance: {
+    fairHousing: boolean;
+    consentCopyRequired: boolean;
+    unsupportedClaimsBlocked: boolean;
+  };
+  metadata: {
+    archetype_id: FunnelArchetypeId;
+    generated_at: string;
+    fallback_used: boolean;
+  };
+};
+
+export type FunnelQaResultV2 = {
+  status: "pass" | "warning" | "block";
+  hardFailures: string[];
+  warnings: string[];
+  checkedAt: string;
+};
 
 type NormalizedInput = {
   location: string;
@@ -145,6 +285,22 @@ type FunnelVariation = {
   };
 };
 
+type FunnelArchetypeDefinition = {
+  id: FunnelArchetypeId;
+  name: string;
+  whenToUse: string[];
+  targetAudience: string;
+  headlineStyle: string;
+  sectionStructure: FunnelSectionType[];
+  ctaStyle: string;
+  trustProofStyle: string;
+  visualDirection: string;
+  goodOutputExamples: string[];
+  avoidExamples: string[];
+  complianceConstraints: string[];
+  fallbackConditions: string[];
+};
+
 const FUNNEL_TYPE_BY_GOAL: Record<FunnelGoal, FunnelType> = {
   lead_form: "landing_page_form",
   survey: "landing_page_survey",
@@ -161,6 +317,204 @@ const FOLLOW_UP_ACTION_BY_GOAL: Record<FunnelGoal, FunnelBlueprint["follow_up_ac
   lead_form: "send_to_follow_up_sequence",
   survey: "show_thank_you_page",
   book_call: "redirect_to_calendar",
+};
+
+export const FUNNEL_ARCHETYPES_V2: Record<FunnelArchetypeId, FunnelArchetypeDefinition> = {
+  local_expert_buyer: {
+    id: "local_expert_buyer",
+    name: "Local Expert Buyer",
+    whenToUse: ["buyer campaigns", "market-specific buyer access", "general home search leads"],
+    targetAudience: "Move-ready buyers comparing local options",
+    headlineStyle: "market-specific buyer access with clear outcome",
+    sectionStructure: ["hero", "trust_bar", "market_snapshot", "process", "benefits", "faq", "form", "closing_cta"],
+    ctaStyle: "show matching homes or get shortlist",
+    trustProofStyle: "local market filtering and fast qualification",
+    visualDirection: "local neighborhood, clean listings, practical buyer path",
+    goodOutputExamples: ["See Greater Austin homes that match your timing and budget"],
+    avoidExamples: ["Generic dream home copy", "unsupported private inventory promises"],
+    complianceConstraints: ["No steering language", "No protected-class targeting"],
+    fallbackConditions: ["missing campaign type", "missing market"],
+  },
+  local_expert_seller: {
+    id: "local_expert_seller",
+    name: "Local Expert Seller",
+    whenToUse: ["seller campaigns", "listing consultation", "homeowner demand capture"],
+    targetAudience: "Homeowners considering selling",
+    headlineStyle: "local sale clarity before listing",
+    sectionStructure: ["hero", "trust_bar", "proof_metrics", "market_snapshot", "process", "objections", "faq", "form", "closing_cta"],
+    ctaStyle: "get sale plan or request pricing update",
+    trustProofStyle: "pricing, demand, and positioning proof",
+    visualDirection: "calm seller strategy, home value, neighborhood demand",
+    goodOutputExamples: ["See what serious buyers may pay for your home in this market"],
+    avoidExamples: ["Guaranteed sale claims", "fake buyer demand"],
+    complianceConstraints: ["No guaranteed sale unless explicitly approved", "No fake testimonials"],
+    fallbackConditions: ["seller intent unclear"],
+  },
+  home_valuation: {
+    id: "home_valuation",
+    name: "Home Valuation",
+    whenToUse: ["home value", "valuation", "CMA", "price check"],
+    targetAudience: "Homeowners curious about current value",
+    headlineStyle: "current value range and timing clarity",
+    sectionStructure: ["hero", "trust_bar", "proof_metrics", "process", "faq", "form", "closing_cta"],
+    ctaStyle: "check my value",
+    trustProofStyle: "market signals and pricing factors",
+    visualDirection: "valuation dashboard, neighborhood price cues",
+    goodOutputExamples: ["Check your home's current value range before you make a move"],
+    avoidExamples: ["Instant exact appraisal", "guaranteed price"],
+    complianceConstraints: ["No appraisal replacement claims"],
+    fallbackConditions: ["no property/market signal"],
+  },
+  first_time_buyer: {
+    id: "first_time_buyer",
+    name: "First-Time Buyer",
+    whenToUse: ["first-time buyer", "approval", "credit", "starter home"],
+    targetAudience: "First-time buyers who need buying-path clarity",
+    headlineStyle: "qualification clarity and realistic first step",
+    sectionStructure: ["hero", "trust_bar", "market_snapshot", "process", "objections", "faq", "form", "closing_cta"],
+    ctaStyle: "see if you qualify",
+    trustProofStyle: "budget fit and approval path",
+    visualDirection: "approachable, clear steps, no pressure",
+    goodOutputExamples: ["Know what you can buy before touring the wrong homes"],
+    avoidExamples: ["Guaranteed approval", "credit repair promises"],
+    complianceConstraints: ["No guaranteed lending outcome"],
+    fallbackConditions: ["buyer offer lacks finance context"],
+  },
+  luxury_listing: {
+    id: "luxury_listing",
+    name: "Luxury Listing",
+    whenToUse: ["luxury", "premium listing", "high-end property"],
+    targetAudience: "Luxury buyers or sellers",
+    headlineStyle: "private, selective, high-signal inventory or positioning",
+    sectionStructure: ["hero", "image", "trust_bar", "proof_metrics", "process", "form", "closing_cta"],
+    ctaStyle: "request private details",
+    trustProofStyle: "discretion, selectivity, market expertise",
+    visualDirection: "editorial luxury, restrained color, premium photography",
+    goodOutputExamples: ["Request private details for select Miami luxury opportunities"],
+    avoidExamples: ["Cheap urgency", "loud template copy"],
+    complianceConstraints: ["No exclusionary language"],
+    fallbackConditions: ["luxury signal weak"],
+  },
+  relocation: {
+    id: "relocation",
+    name: "Relocation",
+    whenToUse: ["relocation", "moving to", "out of state", "new city"],
+    targetAudience: "People relocating into a market",
+    headlineStyle: "move plan and neighborhood clarity",
+    sectionStructure: ["hero", "trust_bar", "market_snapshot", "benefits", "process", "faq", "form", "closing_cta"],
+    ctaStyle: "get relocation shortlist",
+    trustProofStyle: "local orientation and timing fit",
+    visualDirection: "neighborhood guide, move timeline, helpful concierge",
+    goodOutputExamples: ["Plan your Tampa move with a clearer shortlist"],
+    avoidExamples: ["Best neighborhood for families", "protected-class steering"],
+    complianceConstraints: ["No steering by protected class"],
+    fallbackConditions: ["market missing"],
+  },
+  investor_opportunity: {
+    id: "investor_opportunity",
+    name: "Investor Opportunity",
+    whenToUse: ["investor", "cash flow", "ROI", "rental", "deal flow"],
+    targetAudience: "Real estate investors underwriting opportunities",
+    headlineStyle: "numbers-first opportunity filtering",
+    sectionStructure: ["hero", "proof_metrics", "market_snapshot", "process", "objections", "form", "closing_cta"],
+    ctaStyle: "see matching deals",
+    trustProofStyle: "underwriting criteria and deal-fit filters",
+    visualDirection: "analytical deal cards, yield context, no hype",
+    goodOutputExamples: ["Review Dallas deals filtered for cash-flow fit"],
+    avoidExamples: ["Guaranteed ROI", "risk-free investment"],
+    complianceConstraints: ["No guaranteed returns"],
+    fallbackConditions: ["no investor signal"],
+  },
+  new_construction: {
+    id: "new_construction",
+    name: "New Construction",
+    whenToUse: ["new construction", "pre-construction", "builder", "deposit"],
+    targetAudience: "Buyers comparing new-build options",
+    headlineStyle: "builder inventory and timeline clarity",
+    sectionStructure: ["hero", "trust_bar", "market_snapshot", "process", "benefits", "faq", "form", "closing_cta"],
+    ctaStyle: "view new-build options",
+    trustProofStyle: "deposit, completion, and builder comparison",
+    visualDirection: "clean builder/community visuals and timeline cues",
+    goodOutputExamples: ["Compare Orlando new-build options before incentives change"],
+    avoidExamples: ["Guaranteed appreciation"],
+    complianceConstraints: ["No investment return promises"],
+    fallbackConditions: ["new construction signal weak"],
+  },
+  downsizer: {
+    id: "downsizer",
+    name: "Downsizer",
+    whenToUse: ["downsizer", "right-size", "empty nester"],
+    targetAudience: "Owners planning a simpler next move",
+    headlineStyle: "sell-and-buy transition clarity",
+    sectionStructure: ["hero", "trust_bar", "process", "benefits", "objections", "faq", "form", "closing_cta"],
+    ctaStyle: "plan my next move",
+    trustProofStyle: "timing, equity, and transition clarity",
+    visualDirection: "calm, refined, practical transition",
+    goodOutputExamples: ["Plan a simpler Scottsdale move before listing"],
+    avoidExamples: ["Age-targeting or protected-class framing"],
+    complianceConstraints: ["Avoid protected-class or age-discriminatory language"],
+    fallbackConditions: ["downsizer signal weak"],
+  },
+  move_up_buyer: {
+    id: "move_up_buyer",
+    name: "Move-Up Buyer",
+    whenToUse: ["move-up", "bigger home", "sell and buy"],
+    targetAudience: "Owners buying their next larger home",
+    headlineStyle: "coordinate sell and buy without chaos",
+    sectionStructure: ["hero", "trust_bar", "market_snapshot", "process", "benefits", "faq", "form", "closing_cta"],
+    ctaStyle: "map my move-up plan",
+    trustProofStyle: "timing and equity coordination",
+    visualDirection: "next-home planning, practical upgrade path",
+    goodOutputExamples: ["Map your Denver move-up plan before making an offer"],
+    avoidExamples: ["Guaranteed home sale timing"],
+    complianceConstraints: ["No fake guarantee"],
+    fallbackConditions: ["move-up signal weak"],
+  },
+  expired_listing: {
+    id: "expired_listing",
+    name: "Expired Listing",
+    whenToUse: ["expired listing", "didn't sell", "relist"],
+    targetAudience: "Owners whose listing did not sell",
+    headlineStyle: "diagnose why it did not sell and relaunch better",
+    sectionStructure: ["hero", "proof_metrics", "market_snapshot", "process", "objections", "form", "closing_cta"],
+    ctaStyle: "get relaunch plan",
+    trustProofStyle: "pricing, positioning, and demand diagnosis",
+    visualDirection: "diagnostic, professional, direct",
+    goodOutputExamples: ["Find out why your Atlanta listing did not sell"],
+    avoidExamples: ["Blaming prior agent", "guaranteed sale"],
+    complianceConstraints: ["No disparagement", "No guaranteed outcome"],
+    fallbackConditions: ["expired signal weak"],
+  },
+  open_house_followup: {
+    id: "open_house_followup",
+    name: "Open House Follow-Up",
+    whenToUse: ["open house", "event follow-up", "visitor"],
+    targetAudience: "Open house visitors and warm prospects",
+    headlineStyle: "specific follow-up and next-best option",
+    sectionStructure: ["hero", "trust_bar", "process", "benefits", "form", "closing_cta"],
+    ctaStyle: "get the follow-up list",
+    trustProofStyle: "property fit and next-step clarity",
+    visualDirection: "warm follow-up, property recap, simple CTA",
+    goodOutputExamples: ["Get the Charlotte open-house follow-up and matching options"],
+    avoidExamples: ["Cold traffic scare tactics"],
+    complianceConstraints: ["No misleading scarcity"],
+    fallbackConditions: ["event context missing"],
+  },
+  generic_buyer_seller_fallback: {
+    id: "generic_buyer_seller_fallback",
+    name: "Generic Buyer/Seller Fallback",
+    whenToUse: ["missing data", "unclear campaign type"],
+    targetAudience: "Qualified local prospects",
+    headlineStyle: "clear local next step",
+    sectionStructure: ["hero", "trust_bar", "process", "benefits", "faq", "form", "closing_cta"],
+    ctaStyle: "request details",
+    trustProofStyle: "local clarity and fast follow-up",
+    visualDirection: "neutral, clean, non-branded",
+    goodOutputExamples: ["See the best next step for your local move"],
+    avoidExamples: ["Generic futuristic SaaS copy"],
+    complianceConstraints: ["No fake claims", "No protected-class language"],
+    fallbackConditions: ["strategy input insufficient"],
+  },
 };
 
 function safeText(input: any): string {
@@ -964,7 +1318,525 @@ function buildSections(input: NormalizedInput, parsed: ParsedOffer, headline: st
   ];
 }
 
-export function generateFunnel(input?: FunnelEngineInput | null): FunnelBlueprint {
+function getFunnelPersonalizationV2Enabled() {
+  return process.env.FUNNEL_PERSONALIZATION_V2 === "true";
+}
+
+function inferCampaignTypeV2(input: NormalizedInput, raw: FunnelEngineInput): FunnelCampaignTypeV2 {
+  const haystack = [
+    raw.market_type,
+    raw.audienceType,
+    raw.audience_type,
+    raw.offerType,
+    raw.offer_type,
+    raw.funnelVariant,
+    raw.funnel_variant,
+    raw.headline,
+    raw.subheadline,
+    input.audience,
+    input.offer,
+    input.mechanism,
+    ...input.painPoints,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (/expired|relist|didn'?t sell|withdrawn/.test(haystack)) return "expired_listing";
+  if (/open house|event follow[- ]?up|visitor/.test(haystack)) return "open_house_followup";
+  if (/first[- ]?time|starter home|approval|credit|see if you qualify|pre[- ]?qualif|mortgage qualif/.test(haystack)) return "first_time_buyer";
+  if (/home value|valuation|cma|price update|what.*worth/.test(haystack)) return "home_valuation";
+  if (/\bluxury\b|luxury listing|estate home|premium listing|private listing|high[- ]end|waterfront|penthouse/.test(haystack)) return "luxury";
+  if (/relocat|moving to|out of state|new city/.test(haystack)) return "relocation";
+  if (/new construction|pre[- ]?construction|builder|new build|deposit|completion/.test(haystack)) return "new_construction";
+  if (/downsizer|right[- ]?size|empty nester|simpler next move/.test(haystack)) return "downsizer";
+  if (/move[- ]?up|bigger home|upgrade|sell and buy/.test(haystack)) return "move_up_buyer";
+  if (/invest|cash[- ]?flow|roi|rental|deal flow|cap rate/.test(haystack) || input.marketType === "investor") return "investor";
+  if (/seller|homeowner|sell|listing/.test(haystack) || input.marketType === "seller") return "seller";
+  if (/buyer|homes|listings|inventory|shortlist/.test(haystack) || input.marketType === "buyer") return "buyer";
+
+  return "generic";
+}
+
+function selectFunnelArchetypeV2(
+  input: NormalizedInput,
+  raw: FunnelEngineInput,
+): { archetype: FunnelArchetypeDefinition; campaignType: FunnelCampaignTypeV2; reason: string } {
+  const campaignType = inferCampaignTypeV2(input, raw);
+  const map: Record<FunnelCampaignTypeV2, FunnelArchetypeId> = {
+    buyer: "local_expert_buyer",
+    seller: "local_expert_seller",
+    both: "generic_buyer_seller_fallback",
+    investor: "investor_opportunity",
+    relocation: "relocation",
+    luxury: "luxury_listing",
+    new_construction: "new_construction",
+    home_valuation: "home_valuation",
+    first_time_buyer: "first_time_buyer",
+    downsizer: "downsizer",
+    move_up_buyer: "move_up_buyer",
+    expired_listing: "expired_listing",
+    open_house_followup: "open_house_followup",
+    generic: "generic_buyer_seller_fallback",
+  };
+  const id = map[campaignType] || "generic_buyer_seller_fallback";
+
+  return {
+    archetype: FUNNEL_ARCHETYPES_V2[id],
+    campaignType,
+    reason: `${FUNNEL_ARCHETYPES_V2[id].name} selected from campaign type "${campaignType}", market "${input.location}", and offer "${input.offer}".`,
+  };
+}
+
+function stateOrProvinceFromLocation(location: string) {
+  const parts = safeText(location).split(",").map((part) => part.trim()).filter(Boolean);
+  return parts.length > 1 ? parts[parts.length - 1] : "";
+}
+
+function buildFunnelStrategyBriefV2(
+  raw: FunnelEngineInput,
+  input: NormalizedInput,
+  selected: ReturnType<typeof selectFunnelArchetypeV2>,
+): FunnelStrategyBriefV2 {
+  const agentName = safeText(raw.agentName) || safeText(raw.agent_name);
+  const brokerage = safeText(raw.brokerage);
+  const partnerName = safeText(raw.partnerName) || safeText(raw.partner_name);
+  const brandMode = raw.brandMode || raw.brand_mode || (partnerName ? "partner" : brokerage || agentName ? "agent" : "dealflow");
+  const parsed = parseOffer(input);
+  const cta =
+    safeText(raw.primaryCTA) ||
+    safeText(raw.primary_cta) ||
+    (selected.campaignType === "home_valuation"
+      ? "Check My Value"
+      : selected.campaignType === "seller"
+        ? "Get My Sale Plan"
+        : selected.campaignType === "investor"
+          ? "See Matching Deals"
+          : selected.campaignType === "relocation"
+            ? "Get My Shortlist"
+            : selectMediaBuyerCta(input.campaignCategory));
+
+  return {
+    version: "funnel_strategy_v2",
+    campaign_id: safeText((raw as any).campaign_id) || safeText((raw as any).campaignId),
+    workspace_id: safeText((raw as any).workspace_id) || safeText((raw as any).workspaceId),
+    agent: {
+      name: agentName,
+      brokerage,
+      market: input.location,
+      state_or_province: stateOrProvinceFromLocation(input.location),
+      brand_assets_available: Boolean(brokerage || agentName || partnerName),
+    },
+    white_label: {
+      enabled: Boolean(raw.whiteLabelEnabled || raw.white_label_enabled || partnerName),
+      partner_name: partnerName,
+      brand_mode: brandMode,
+    },
+    campaign: {
+      type: selected.campaignType,
+      offer: input.offer,
+      primary_goal: input.funnelGoal,
+      audience: input.audience,
+      lead_magnet: safeText(raw.leadMagnetTitle) || safeText(raw.lead_magnet_title) || conciseOfferPhrase(input.offer),
+      cta,
+    },
+    archetype: {
+      id: selected.archetype.id,
+      name: selected.archetype.name,
+      reason: selected.reason,
+    },
+    copy_direction: {
+      tone:
+        selected.campaignType === "luxury"
+          ? "restrained, premium, direct"
+          : selected.campaignType === "investor"
+            ? "analytical, specific, no-hype"
+            : "clear, local, practical",
+      headline_angle: selected.archetype.headlineStyle,
+      trust_angle: selected.archetype.trustProofStyle,
+      urgency_angle: parsed.timeHorizon || "current market timing without fake scarcity",
+      objection_handling: buildObjections(input, parsed).slice(0, 3),
+    },
+    visual_direction: {
+      style: selected.archetype.visualDirection,
+      layout: selected.archetype.sectionStructure.join(" -> "),
+      color_direction:
+        brandMode === "partner"
+          ? "partner brand colors with DealFlow readability constraints"
+          : brokerage
+            ? "brokerage-aware accenting without copying trademarked assets unless provided"
+            : "DealFlow default contrast with local imagery",
+      imagery_direction: selected.archetype.visualDirection,
+      brokerage_branding_mode: brandMode === "partner" ? "partner_brand" : brokerage ? "subtle" : "none",
+    },
+    sections: selected.archetype.sectionStructure,
+    qa_requirements: {
+      must_include: [
+        input.location,
+        input.offer,
+        input.audience,
+        cta,
+        selected.archetype.name,
+      ].filter(Boolean),
+      must_avoid: selected.archetype.avoidExamples,
+      compliance_notes: selected.archetype.complianceConstraints,
+    },
+  };
+}
+
+function sectionCopyForV2(
+  type: FunnelSectionType,
+  strategy: FunnelStrategyBriefV2,
+  input: NormalizedInput,
+  parsed: ParsedOffer,
+): FunnelRenderV2["sections"][number] {
+  const market = strategy.agent.market || input.location;
+  const offer = strategy.campaign.offer || input.offer;
+  const audience = strategy.campaign.audience || input.audience;
+  const cta = strategy.campaign.cta;
+  const brokeragePrefix = strategy.agent.brokerage ? `${strategy.agent.brokerage} context: ` : "";
+  const archetype = strategy.archetype.name;
+
+  const copyByType: Record<FunnelSectionType, { headline: string; body: string; proof: string[]; notes: string }> = {
+    hero: {
+      headline:
+        strategy.campaign.type === "seller"
+          ? `${market} homeowners can get a clearer sale plan`
+          : strategy.campaign.type === "home_valuation"
+            ? `Check your ${market} home value before you decide`
+            : strategy.campaign.type === "investor"
+              ? `${market} investment opportunities filtered for fit`
+              : strategy.campaign.type === "luxury"
+                ? `Private ${market} opportunities with a sharper next step`
+                : `${market} ${archetype.replace(/local expert /i, "").toLowerCase()} campaign built around ${conciseOfferPhrase(offer)}`,
+      body: `${brokeragePrefix}${audience} get a focused path around ${conciseOfferPhrase(offer)} without a generic landing page or vague follow-up.`,
+      proof: buildTrustBar(input, parsed).slice(0, 3),
+      notes: "Above-fold message must mirror campaign offer, audience, market, and CTA.",
+    },
+    trust_bar: {
+      headline: `Why this ${market} page is different`,
+      body: `The page leads with ${strategy.copy_direction.headline_angle}, then supports the offer with ${strategy.copy_direction.trust_angle}.`,
+      proof: buildTrustBar(input, parsed),
+      notes: "Short credibility strip below hero.",
+    },
+    benefits: {
+      headline: "What prospects get from this next step",
+      body: buildBenefits(input).join(" "),
+      proof: buildBenefits(input).slice(0, 3),
+      notes: "Benefit cards stay concrete and market-specific.",
+    },
+    proof_metrics: {
+      headline: "Proof before commitment",
+      body: `Use concrete market signals, fit filters, and process clarity before asking ${audience} to submit the form.`,
+      proof: buildProofMetrics(input, parsed),
+      notes: "Avoid fake metrics; proof items are qualitative unless supplied.",
+    },
+    social_proof: {
+      headline: "Local context that builds confidence",
+      body: `${market} context and a clear follow-up path make the offer feel specific without inventing testimonials.`,
+      proof: [`Focused on ${market}`, "No fake testimonials", "Offer-matched follow-up"],
+      notes: "No fabricated reviews.",
+    },
+    market_snapshot: {
+      headline:
+        strategy.campaign.type === "seller"
+          ? `What ${market} sellers need to know before listing`
+          : strategy.campaign.type === "investor"
+            ? `Why generic ${market} deal flow wastes time`
+            : `Why the normal ${market} search path creates friction`,
+      body: buildMarketSnapshot(input, parsed).join(" "),
+      proof: buildMarketSnapshot(input, parsed),
+      notes: "Problem and mechanism must be tied to the approved campaign.",
+    },
+    objections: {
+      headline: "Questions to answer before the form",
+      body: strategy.copy_direction.objection_handling.join(" "),
+      proof: strategy.copy_direction.objection_handling,
+      notes: "Objection handling is advisory and non-pressuring.",
+    },
+    process: {
+      headline: "How it works",
+      body: buildProcess(input).join(" "),
+      proof: buildProcess(input),
+      notes: "Three-step path from interest to follow-up.",
+    },
+    faq: {
+      headline: "Common questions before moving forward",
+      body: buildFaq(input).join(" "),
+      proof: buildFaq(input),
+      notes: "FAQ reduces friction without making unsupported claims.",
+    },
+    vsl: {
+      headline: "Optional quick breakdown",
+      body: `Use this slot for a short explanation of ${conciseOfferPhrase(offer)} if the campaign needs more education.`,
+      proof: ["Optional video", "Not required for launch"],
+      notes: "Hidden by default unless a video exists.",
+    },
+    image: {
+      headline: "Visual proof area",
+      body: `Use app-owned images that match ${market}, ${audience}, and the approved offer.`,
+      proof: ["App-owned media only", "Current campaign context"],
+      notes: "No provider/private URLs.",
+    },
+    form: {
+      headline:
+        strategy.campaign.type === "seller"
+          ? "Request the sale plan"
+          : strategy.campaign.type === "home_valuation"
+            ? "Request the value check"
+            : strategy.campaign.type === "investor"
+              ? "Request matching opportunities"
+              : "Request the shortlist",
+      body: `Collect the minimum fields needed to follow up on ${conciseOfferPhrase(offer)} in ${market}.`,
+      proof: [`CTA: ${cta}`, `Fields: ${FORM_FIELDS_BY_GOAL[input.funnelGoal].join(", ")}`],
+      notes: "Form stays short and consent copy remains outside this strategy layer.",
+    },
+    closing_cta: {
+      headline: "Ready for the next step?",
+      body: `${audience} can use ${cta} to move from interest to a clear follow-up on ${conciseOfferPhrase(offer)}.`,
+      proof: [`Primary CTA: ${cta}`, `Market: ${market}`],
+      notes: "Final CTA repeats approved message match.",
+    },
+  };
+
+  const base = copyByType[type] || copyByType.benefits;
+
+  return {
+    id: type,
+    type,
+    headline: trimWords(cleanMarketingCopy(base.headline), 14),
+    subheadline: trimWords(cleanMarketingCopy(base.body), 28),
+    body: cleanMarketingCopy(base.body),
+    cta,
+    proof_items: uniqueFragments(base.proof).slice(0, 4),
+    visual_notes: base.notes,
+  };
+}
+
+function buildFunnelRenderV2(
+  strategy: FunnelStrategyBriefV2,
+  raw: FunnelEngineInput,
+  input: NormalizedInput,
+  fallback: FunnelBlueprint,
+): FunnelRenderV2 {
+  const parsed = parseOffer(input);
+  const sectionTypes = strategy.sections.length ? strategy.sections : FUNNEL_ARCHETYPES_V2.generic_buyer_seller_fallback.sectionStructure;
+  const sections = uniqueFragments(sectionTypes).map((type) =>
+    sectionCopyForV2(type as FunnelSectionType, strategy, input, parsed),
+  );
+
+  if (!sections.some((section) => section.type === "hero")) {
+    sections.unshift(sectionCopyForV2("hero", strategy, input, parsed));
+  }
+
+  if (!sections.some((section) => section.type === "form")) {
+    sections.push(sectionCopyForV2("form", strategy, input, parsed));
+  }
+
+  if (!sections.some((section) => section.type === "closing_cta")) {
+    sections.push(sectionCopyForV2("closing_cta", strategy, input, parsed));
+  }
+
+  return {
+    version: "funnel_render_v2",
+    strategy_id: `${strategy.archetype.id}:${strategy.agent.market}:${strategy.campaign.offer}`.toLowerCase().replace(/[^a-z0-9:]+/g, "-"),
+    campaign_id: strategy.campaign_id,
+    theme: {
+      mode: strategy.white_label.brand_mode,
+      accent:
+        strategy.white_label.brand_mode === "partner"
+          ? "partner-accent"
+          : strategy.agent.brokerage
+            ? "brokerage-aware"
+            : "dealflow-cyan",
+      typography: "clear high-contrast sans-serif",
+      visualStyle: strategy.visual_direction.style,
+    },
+    sections,
+    form: {
+      fields: fallback.form_fields.length ? fallback.form_fields : FORM_FIELDS_BY_GOAL[input.funnelGoal],
+      cta: strategy.campaign.cta || fallback.cta,
+    },
+    tracking: {
+      archetype: strategy.archetype.id,
+      market: strategy.agent.market,
+      whiteLabel: strategy.white_label.enabled,
+    },
+    compliance: {
+      fairHousing: true,
+      consentCopyRequired: true,
+      unsupportedClaimsBlocked: true,
+    },
+    metadata: {
+      archetype_id: strategy.archetype.id,
+      generated_at: new Date(0).toISOString(),
+      fallback_used: false,
+    },
+  };
+}
+
+function validateFunnelStrategyBriefV2(strategy: FunnelStrategyBriefV2) {
+  const failures: string[] = [];
+
+  if (strategy.version !== "funnel_strategy_v2") failures.push("strategy_version_invalid");
+  if (!strategy.agent.market) failures.push("strategy_market_missing");
+  if (!strategy.campaign.offer) failures.push("strategy_offer_missing");
+  if (!strategy.campaign.audience) failures.push("strategy_audience_missing");
+  if (!strategy.campaign.cta) failures.push("strategy_cta_missing");
+  if (!FUNNEL_ARCHETYPES_V2[strategy.archetype.id]) failures.push("strategy_archetype_unknown");
+  if (!strategy.sections.length) failures.push("strategy_sections_missing");
+
+  return failures;
+}
+
+function validateFunnelRenderV2(render: FunnelRenderV2) {
+  const failures: string[] = [];
+
+  if (render.version !== "funnel_render_v2") failures.push("render_version_invalid");
+  if (!render.sections.some((section) => section.type === "hero")) failures.push("render_hero_missing");
+  if (!render.sections.some((section) => section.type === "form")) failures.push("render_form_missing");
+  if (!render.sections.some((section) => section.type === "closing_cta")) failures.push("render_closing_cta_missing");
+  if (!render.form.fields.length) failures.push("render_form_fields_missing");
+  if (!render.form.cta) failures.push("render_form_cta_missing");
+  for (const section of render.sections) {
+    if (!section.headline || !section.body) failures.push(`render_section_incomplete:${section.type}`);
+  }
+
+  return failures;
+}
+
+function qaFunnelRenderV2(strategy: FunnelStrategyBriefV2, render: FunnelRenderV2): FunnelQaResultV2 {
+  const hardFailures = [
+    ...validateFunnelStrategyBriefV2(strategy),
+    ...validateFunnelRenderV2(render),
+  ];
+  const warnings: string[] = [];
+  const joined = JSON.stringify(render).toLowerCase();
+  const customerCopy = JSON.stringify(
+    render.sections.map((section) => ({
+      headline: section.headline,
+      subheadline: section.subheadline,
+      body: section.body,
+      cta: section.cta,
+      proof_items: section.proof_items,
+    })),
+  ).toLowerCase();
+  const market = strategy.agent.market.toLowerCase();
+  const offerTokens = strategy.campaign.offer
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 4);
+
+  if (market && !joined.includes(market)) hardFailures.push("market_missing_from_render");
+  if (offerTokens.length && !offerTokens.some((token) => joined.includes(token))) hardFailures.push("offer_missing_from_render");
+  if (strategy.campaign.cta && !joined.includes(strategy.campaign.cta.toLowerCase())) hardFailures.push("cta_missing_from_render");
+  if (/\b(guaranteed|guarantee)\s+(approval|profit|roi|sale|return|appreciation|availability)\b/i.test(customerCopy)) {
+    hardFailures.push("unsupported_guarantee_or_claim");
+  }
+  if (/\b(families with kids|family neighborhood|safe neighborhood|low crime|good schools|christian|muslim|jewish|asian|black|white|hispanic)\b/i.test(customerCopy)) {
+    hardFailures.push("protected_class_or_steering_language");
+  }
+  if (strategy.campaign.type === "seller" && /\bbuy your next home\b/i.test(joined)) {
+    hardFailures.push("buyer_seller_mismatch");
+  }
+  if (strategy.campaign.type === "buyer" && /\bsell your home\b/i.test(joined)) {
+    hardFailures.push("buyer_seller_mismatch");
+  }
+  if (/futuristic|ai-powered real estate portal|generic lead page/i.test(joined)) {
+    warnings.push("generic_or_futuristic_template_language");
+  }
+  if (!strategy.agent.brokerage) warnings.push("brokerage_missing");
+  if (render.sections.length < 6) warnings.push("section_depth_low");
+
+  return {
+    status: hardFailures.length ? "block" : warnings.length ? "warning" : "pass",
+    hardFailures: uniqueFragments(hardFailures),
+    warnings: uniqueFragments(warnings),
+    checkedAt: new Date(0).toISOString(),
+  };
+}
+
+function sectionStyleForV2(type: FunnelSectionType): FunnelSectionStyle {
+  return {
+    spacing: type === "hero" || type === "closing_cta" ? "spacious" : type === "trust_bar" ? "compact" : "comfortable",
+    width: type === "hero" || type === "form" || type === "closing_cta" ? "content" : "full",
+    align: type === "hero" ? "left" : "left",
+    theme: type === "hero" || type === "form" || type === "closing_cta" ? "dark" : type === "trust_bar" || type === "proof_metrics" ? "accent" : "light",
+  };
+}
+
+function renderV2ToBlueprint(
+  strategy: FunnelStrategyBriefV2,
+  render: FunnelRenderV2,
+  qa: FunnelQaResultV2,
+  input: NormalizedInput,
+  fallback: FunnelBlueprint,
+): FunnelBlueprint {
+  const hero = render.sections.find((section) => section.type === "hero") || render.sections[0];
+  const sections: FunnelSection[] = render.sections.map((section) => ({
+    id: `${render.metadata.archetype_id}-${section.id}`,
+    type: section.type,
+    variant: render.metadata.archetype_id,
+    title: section.headline,
+    content: uniqueFragments([
+      section.subheadline,
+      section.body,
+      ...section.proof_items,
+      `Primary CTA: ${section.cta}`,
+    ]).filter(Boolean),
+    visible: section.type !== "vsl" && section.type !== "image",
+    style: sectionStyleForV2(section.type),
+    media:
+      section.type === "vsl"
+        ? { kind: "video" as const, label: "Optional Video", caption: "Add an app-owned explainer video if available." }
+        : section.type === "image"
+          ? { kind: "image" as const, label: "Optional Image", caption: "Add app-owned market or listing imagery if available." }
+          : null,
+  }));
+
+  return {
+    ...fallback,
+    funnel_type: FUNNEL_TYPE_BY_GOAL[input.funnelGoal],
+    headline: hero?.headline || fallback.headline,
+    subheadline: hero?.subheadline || fallback.subheadline,
+    cta: render.form.cta || fallback.cta,
+    sections,
+    form_fields: render.form.fields,
+    follow_up_action:
+      input.funnelGoal === "book_call"
+        ? FOLLOW_UP_ACTION_BY_GOAL[input.funnelGoal]
+        : "show_thank_you_page_call_5_15_minutes",
+    optimization_notes: uniqueFragments([
+      `Funnel Personalization V2 selected ${strategy.archetype.name}.`,
+      `Strategy reason: ${strategy.archetype.reason}`,
+      ...qa.warnings.map((warning) => `Advisory: ${warning}`),
+      ...buildOptimizationNotes(input),
+    ]),
+    personalization_version: "funnel_strategy_v2",
+    strategy_brief: strategy,
+    render_schema: render,
+    qa_result: qa,
+    fallback_used: false,
+  };
+}
+
+function generatePersonalizedFunnelV2(input?: FunnelEngineInput | null, fallback?: FunnelBlueprint): FunnelBlueprint {
+  const raw = input || {};
+  const normalized = normalizeInput(raw);
+  const selected = selectFunnelArchetypeV2(normalized, raw);
+  const strategy = buildFunnelStrategyBriefV2(raw, normalized, selected);
+  const stableFallback = fallback || generateFunnelV1(input);
+  const render = buildFunnelRenderV2(strategy, raw, normalized, stableFallback);
+  const qa = qaFunnelRenderV2(strategy, render);
+
+  if (qa.status === "block") {
+    throw new Error(`funnel_personalization_v2_qa_block:${qa.hardFailures.join(",")}`);
+  }
+
+  return renderV2ToBlueprint(strategy, render, qa, normalized, stableFallback);
+}
+
+function generateFunnelV1(input?: FunnelEngineInput | null): FunnelBlueprint {
   const raw = input || {};
 
   if (resolveDirectResponseFunnelVariant(raw)) {
@@ -1019,4 +1891,39 @@ export function generateFunnel(input?: FunnelEngineInput | null): FunnelBlueprin
         : "show_thank_you_page_call_5_15_minutes",
     optimization_notes: buildOptimizationNotes(normalized),
   };
+}
+
+export function generateFunnel(input?: FunnelEngineInput | null): FunnelBlueprint {
+  const raw = input || {};
+
+  if (resolveDirectResponseFunnelVariant(raw)) {
+    return buildDirectResponseFunnel({
+      ...raw,
+      market: raw.market || raw.location,
+    });
+  }
+
+  const fallback = {
+    ...generateFunnelV1(input),
+    personalization_version: "v1" as const,
+  };
+
+  if (!getFunnelPersonalizationV2Enabled()) {
+    return fallback;
+  }
+
+  try {
+    return generatePersonalizedFunnelV2(input, fallback);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    return {
+      ...fallback,
+      fallback_used: true,
+      optimization_notes: uniqueFragments([
+        ...fallback.optimization_notes,
+        `Funnel Personalization V2 fallback used: ${message}`,
+      ]),
+    };
+  }
 }
