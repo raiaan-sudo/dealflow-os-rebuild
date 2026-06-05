@@ -303,6 +303,29 @@ function resolvePostdeployBaseUrl(args) {
   return args.baseUrl || process.env.POSTDEPLOY_BASE_URL || process.env.SAFE_POSTDEPLOY_BASE_URL || null;
 }
 
+function resolvePostdeployCookieHeader() {
+  const rawCookie = process.env.SAFE_POSTDEPLOY_COOKIE || process.env.POSTDEPLOY_COOKIE || "";
+  if (rawCookie.trim()) return rawCookie.trim();
+
+  const cookieFile = process.env.SAFE_POSTDEPLOY_COOKIE_FILE || process.env.POSTDEPLOY_COOKIE_FILE || "";
+  if (!cookieFile) return "";
+  if (!fs.existsSync(cookieFile)) return "";
+
+  const cookieLines = fs.readFileSync(cookieFile, "utf8")
+    .split(/\r?\n/)
+    .filter((line) => line.trim() && !line.startsWith("#"));
+  const cookies = [];
+  for (const line of cookieLines) {
+    const parts = line.split("\t");
+    if (parts.length >= 7) {
+      cookies.push(`${parts[5]}=${parts[6]}`);
+    }
+  }
+  return cookies.join("; ");
+}
+
+const SAFE_POSTDEPLOY_USER_AGENT = "DealFlowPostdeployProof/1.0 Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/137 Safari/537.36";
+
 async function runPostdeploySuite(args) {
   const missionId = args.missionId ?? `postdeploy-${Date.now()}`;
   const proofDir = args.proofDir ?? process.env.ENGINEERING_OS_PROOF_DIR ?? defaultProofRoot();
@@ -325,12 +348,19 @@ async function runPostdeploySuite(args) {
   let stdout = "";
   let stderr = "";
   let failed = false;
+  const cookieHeader = resolvePostdeployCookieHeader();
   for (const probe of SAFE_POSTDEPLOY_PATHS) {
     const url = new URL(probe.path, baseUrl).toString();
     try {
+      const headers = {
+        "user-agent": SAFE_POSTDEPLOY_USER_AGENT,
+        accept: probe.method === "GET" ? "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" : "application/json,text/plain,*/*",
+        ...(probe.headers ?? {}),
+        ...(cookieHeader ? { cookie: cookieHeader } : {}),
+      };
       const response = await fetch(url, {
         method: probe.method,
-        headers: probe.headers,
+        headers,
         body: probe.body
           ? typeof probe.body === "string"
             ? probe.body

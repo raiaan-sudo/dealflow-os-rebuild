@@ -204,6 +204,7 @@ function runK6(script, extraEnv = {}) {
       BASE_URL,
       STRESS_TEST_MODE: "true",
       STRESS_TEST_ALLOW_PROD: ALLOW_PROD ? "true" : "false",
+      STRESS_TEST_COOKIE: process.env.PERFORMANCE_COOKIE ?? process.env.STRESS_TEST_COOKIE ?? "",
       ...extraEnv,
     },
   });
@@ -216,6 +217,7 @@ function k6MatrixScriptForMode(mode) {
   if (mode === "spike") return "tests/load/scripts/spike-test.js";
   if (mode === "soak") return "tests/load/scripts/soak-test.js";
   if (mode === "breakpoint") return "tests/load/scripts/breakpoint-test.js";
+  if (mode === "500-certification") return "tests/load/scripts/human-paced-500-certification.js";
   return "tests/load/scripts/public-pages-load.js";
 }
 
@@ -257,6 +259,15 @@ async function main() {
     artifacts.results[`load${vus}`] = runK6(k6MatrixScriptForMode("public"), { VUS: vus, DURATION: process.env.PERFORMANCE_DURATION ?? "10m" });
   } else if (MODE === "spike" || MODE === "soak" || MODE === "breakpoint") {
     artifacts.results[MODE] = runK6(k6MatrixScriptForMode(MODE), { VUS: process.env.VUS ?? "100" });
+  } else if (MODE === "500-certification") {
+    artifacts.results[MODE] = runK6(k6MatrixScriptForMode(MODE), {
+      VUS: process.env.VUS ?? "500",
+      RAMP_UP: process.env.PERFORMANCE_RAMP_UP ?? "8m",
+      HOLD: process.env.PERFORMANCE_HOLD ?? "10m",
+      RAMP_DOWN: process.env.PERFORMANCE_RAMP_DOWN ?? "3m",
+      PROTECTED_START: process.env.PERFORMANCE_PROTECTED_START ?? "1m",
+      INVALID_START: process.env.PERFORMANCE_INVALID_START ?? "2m",
+    });
   } else if (MODE === "performance:all") {
     artifacts.results.k6Matrix = MATRIX_LEVELS.map((vus) => ({
       vus,

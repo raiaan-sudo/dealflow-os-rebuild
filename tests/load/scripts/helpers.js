@@ -26,6 +26,7 @@ export function requireWriteSafety() {
 
 export function getRoute(path, tags = {}) {
   const response = http.get(`${getBaseUrl()}${path}`, {
+    headers: getRequestHeaders(),
     tags: { endpoint: path, ...tags },
   });
   routeDuration.add(response.timings.duration);
@@ -38,7 +39,7 @@ export function getRoute(path, tags = {}) {
 
 export function invalidPost(path, body = {}) {
   const response = http.post(`${getBaseUrl()}${path}`, JSON.stringify(body), {
-    headers: { "content-type": "application/json", "x-performance-audit": "true" },
+    headers: { ...getRequestHeaders(), "content-type": "application/json", "x-performance-audit": "true" },
     tags: { endpoint: path, method: "POST" },
   });
   const ok = check(response, {
@@ -51,4 +52,13 @@ export function invalidPost(path, body = {}) {
 
 export function think(min = 0.25, max = 1.5) {
   sleep(min + Math.random() * (max - min));
+}
+
+export function getRequestHeaders() {
+  const headers = {
+    "user-agent": __ENV.STRESS_TEST_USER_AGENT || "DealFlowLoadProof/1.0 Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/137 Safari/537.36",
+    accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  };
+  if (__ENV.STRESS_TEST_COOKIE) headers.cookie = __ENV.STRESS_TEST_COOKIE;
+  return headers;
 }

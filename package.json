@@ -67,6 +67,7 @@
     "test:load:200": "node ./scripts/performance-audit.mjs 200",
     "test:load:300": "node ./scripts/performance-audit.mjs 300",
     "test:load:500": "node ./scripts/performance-audit.mjs 500",
+    "test:load:500-certification": "node ./scripts/performance-audit.mjs 500-certification",
     "test:load:1000": "node ./scripts/performance-audit.mjs 1000",
     "test:load:lead-capture": "node ./scripts/performance-audit.mjs lead-capture",
     "test:load:spike": "node ./scripts/performance-audit.mjs spike",

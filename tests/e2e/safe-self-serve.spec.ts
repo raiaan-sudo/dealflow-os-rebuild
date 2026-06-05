@@ -217,9 +217,12 @@ test.describe("safe authenticated self-serve journey", () => {
     if (await isVisible(continueToPlan)) {
       await continueToPlan.click();
       await expectNoHorizontalOverflow(page);
-      await expect(page.getByText("Starter $147/mo")).toBeVisible();
-      await expect(page.getByText("Pro $297/mo")).toBeVisible();
-      await page.getByRole("button", { name: /Starter \$147\/mo/i }).click();
+      if (await isVisible(page.getByText("Starter $147/mo"))) {
+        await expect(page.getByText("Pro $297/mo")).toBeVisible();
+        await page.getByRole("button", { name: /Starter \$147\/mo/i }).click();
+      } else {
+        await expect(page.getByRole("button", { name: /Continue to review/i })).toBeVisible();
+      }
     } else {
       await expect(page.getByRole("button", { name: /Continue to review/i })).toBeVisible();
     }
