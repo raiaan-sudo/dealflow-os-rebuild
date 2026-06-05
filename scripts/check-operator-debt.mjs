@@ -50,7 +50,7 @@ async function countRows(supabase, table, queryBuilder) {
 }
 
 async function fetchCampaignPlanRowsPaged(supabase, selectColumns, options = {}) {
-  const pageSize = options.pageSize ?? 100;
+  const pageSize = options.pageSize ?? 25;
   const rows = [];
 
   for (let offset = 0; ; offset += pageSize) {
