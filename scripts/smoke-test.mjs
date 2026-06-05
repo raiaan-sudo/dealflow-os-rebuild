@@ -740,6 +740,8 @@ function runOfflineChecks() {
   assertIncludes(metaLaunchService, "status: \"paused\"", "Meta publish activation disabled", "publish step reports paused instead of activating Meta objects");
   assertIncludes(metaConnect, "value.startsWith(\"//\")", "Meta OAuth return path guard", "protocol-relative return paths are rejected");
   assertIncludes(metaConnect, "createMetaOAuthState", "Meta OAuth signed state", "connect route sends a short-lived signed state instead of relying only on hostname cookies");
+  assertIncludes(metaConnect, "env.scopes", "Meta OAuth configurable scopes", "connect route uses META_SCOPES so production can request only approved Meta permissions");
+  assertExcludes(metaConnect, "\"ads_management,ads_read,business_management,pages_show_list,pages_read_engagement\"", "Meta OAuth hardcoded page scopes removed", "connect route does not force page scopes that can block Facebook Login when app review is incomplete");
   assertIncludes(metaCallback, "resolved.origin === appOrigin", "Meta OAuth callback origin guard", "callback redirects stay on the app origin");
   assertIncludes(metaCallback, "verifyMetaOAuthState", "Meta OAuth state fallback", "callback can safely verify state when a provider returns on an alternate app hostname");
   assertIncludes(metaCallback, "verifiedState?.organizationId", "Meta OAuth workspace fallback", "signed state preserves workspace ownership if auth cookies are unavailable on callback host");
