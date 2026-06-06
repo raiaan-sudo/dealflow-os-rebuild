@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { ComponentType } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -33,6 +34,8 @@ import { cn } from "@/lib/utils";
 
 type CampaignMode = "buyer" | "seller" | "investor" | "commercial";
 type OnboardingStepKey = "intent" | "market" | "property" | "offer" | "agent" | "plan" | "review";
+type LeadCaptureGoal = "quality" | "volume";
+type CaptureMethod = "website_funnel" | "meta_instant_form";
 
 type DraftState = {
   agentFirstName: string;
@@ -46,6 +49,8 @@ type DraftState = {
   priceRange: string;
   dailyBudget: string;
   offer: string;
+  leadCaptureGoal: LeadCaptureGoal;
+  captureMethod: CaptureMethod;
   planTier: Extract<BillingPlanTier, "performance" | "starter" | "pro">;
   idempotencySeed: string;
 };
@@ -187,6 +192,8 @@ const DEFAULT_DRAFT: DraftState = {
   priceRange: MODE_DEFAULTS.buyer.priceRange,
   dailyBudget: "30",
   offer: MODE_DEFAULTS.buyer.offer,
+  leadCaptureGoal: "quality",
+  captureMethod: "website_funnel",
   planTier: "performance",
   idempotencySeed: "",
 };
@@ -200,6 +207,34 @@ const DAILY_BUDGETS = [
   { label: "$75/day", value: "75" },
   { label: "$100/day", value: "100" },
 ] as const;
+const LEAD_CAPTURE_OPTIONS: Array<{
+  goal: LeadCaptureGoal;
+  method: CaptureMethod;
+  title: string;
+  label: string;
+  description: string;
+  detail: string;
+  icon: ComponentType<{ className?: string }>;
+}> = [
+  {
+    goal: "quality",
+    method: "website_funnel",
+    title: "Quality leads",
+    label: "Funnel",
+    description: "Send prospects to the DealFlow funnel so they see the offer, context, consent, and lead form before submitting.",
+    detail: "Best for stronger intent and cleaner qualification.",
+    icon: ShieldCheck,
+  },
+  {
+    goal: "volume",
+    method: "meta_instant_form",
+    title: "Volume-based",
+    label: "Instant lead form",
+    description: "Use a Meta instant lead form path for lower-friction lead capture when speed and volume matter most.",
+    detail: "Best for more submissions with lighter friction.",
+    icon: Target,
+  },
+];
 const MIN_DAILY_BUDGET_CENTS = 500;
 const MAX_DAILY_BUDGET_CENTS = 50_000;
 
@@ -268,6 +303,22 @@ function createIdempotencySeed() {
 
 function isCampaignMode(value: unknown): value is CampaignMode {
   return value === "buyer" || value === "seller" || value === "investor" || value === "commercial";
+}
+
+function isLeadCaptureGoal(value: unknown): value is LeadCaptureGoal {
+  return value === "quality" || value === "volume";
+}
+
+function isCaptureMethod(value: unknown): value is CaptureMethod {
+  return value === "website_funnel" || value === "meta_instant_form";
+}
+
+function leadCaptureOptionFromDraft(draft: Pick<DraftState, "leadCaptureGoal" | "captureMethod">) {
+  return (
+    LEAD_CAPTURE_OPTIONS.find(
+      (option) => option.goal === draft.leadCaptureGoal && option.method === draft.captureMethod,
+    ) ?? LEAD_CAPTURE_OPTIONS[0]
+  );
 }
 
 function parseCurrencyCents(value: string) {
@@ -358,7 +409,7 @@ function IconTile({
   icon: Icon,
   tone = "cyan",
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   tone?: "cyan" | "violet" | "green" | "amber";
 }) {
   const toneClass = {
@@ -608,6 +659,60 @@ function OfferCoach({
   );
 }
 
+function LeadCapturePathSelector({
+  draft,
+  onSelect,
+}: {
+  draft: Pick<DraftState, "leadCaptureGoal" | "captureMethod">;
+  onSelect: (goal: LeadCaptureGoal, method: CaptureMethod) => void;
+}) {
+  return (
+    <div className="rounded-[22px] border border-cyan-200/16 bg-cyan-300/[0.045] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-white">Lead path</p>
+          <p className="mt-1 text-xs leading-5 text-white/58">
+            Choose how this campaign captures leads after the ad click.
+          </p>
+        </div>
+        <Badge className="border-cyan-200/20 bg-cyan-300/[0.06] text-cyan-100">Lead volume</Badge>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {LEAD_CAPTURE_OPTIONS.map((option) => {
+          const active = draft.leadCaptureGoal === option.goal && draft.captureMethod === option.method;
+
+          return (
+            <button
+              key={`${option.goal}:${option.method}`}
+              type="button"
+              onClick={() => onSelect(option.goal, option.method)}
+              className={cn(
+                "min-h-[154px] rounded-[20px] border p-4 text-left transition hover:-translate-y-0.5",
+                active
+                  ? "border-cyan-200/28 bg-[linear-gradient(145deg,rgba(116,199,255,0.14),rgba(255,255,255,0.035))] shadow-[0_22px_70px_-48px_rgba(103,232,249,0.7)]"
+                  : "border-white/10 bg-white/[0.025] hover:border-cyan-200/18 hover:bg-cyan-300/[0.045]",
+              )}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <IconTile icon={option.icon} tone={active ? "cyan" : "violet"} />
+                {active ? <BadgeCheck className="size-5 text-cyan-100" /> : null}
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <p className="text-lg font-semibold tracking-[-0.045em] text-white">{option.title}</p>
+                <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100">
+                  {option.label}
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-white/64">{option.description}</p>
+              <p className="mt-3 text-xs font-semibold leading-5 text-cyan-100">{option.detail}</p>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
   const [hydrated, setHydrated] = useState(false);
@@ -638,6 +743,7 @@ export default function OnboardingPage() {
     () => normalizeOfferForCampaign(draft.offer, draft.campaignMode),
     [draft.campaignMode, draft.offer],
   );
+  const leadCaptureOption = leadCaptureOptionFromDraft(draft);
   const normalizedDraft = useMemo(
     () => ({ ...draft, offer: offerInsight.normalizedOffer }),
     [draft, offerInsight.normalizedOffer],
@@ -682,6 +788,10 @@ export default function OnboardingPage() {
           ...saved,
           campaignMode,
           dailyBudget,
+          leadCaptureGoal: isLeadCaptureGoal(saved.leadCaptureGoal)
+            ? saved.leadCaptureGoal
+            : DEFAULT_DRAFT.leadCaptureGoal,
+          captureMethod: isCaptureMethod(saved.captureMethod) ? saved.captureMethod : DEFAULT_DRAFT.captureMethod,
           planTier: saved.planTier === "pro" ? "pro" : saved.planTier === "performance" ? "performance" : "starter",
           idempotencySeed: saved.idempotencySeed || nextDraft.idempotencySeed,
         };
@@ -750,9 +860,11 @@ export default function OnboardingPage() {
         route: "onboarding",
         mode: draft.campaignMode,
         planTier: draft.planTier,
+        leadCaptureGoal: draft.leadCaptureGoal,
+        captureMethod: draft.captureMethod,
       },
     });
-  }, [draft.campaignMode, draft.idempotencySeed, draft.planTier, hydrated]);
+  }, [draft.campaignMode, draft.captureMethod, draft.idempotencySeed, draft.leadCaptureGoal, draft.planTier, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -846,6 +958,8 @@ export default function OnboardingPage() {
           daily_budget_cents: dailyBudgetCents,
           budget: internalMonthlyBudget,
           goal: preparedDraft.offer,
+          lead_capture_goal: preparedDraft.leadCaptureGoal,
+          capture_method: preparedDraft.captureMethod,
           idempotencySeed: preparedDraft.idempotencySeed,
         }),
       });
@@ -911,6 +1025,8 @@ export default function OnboardingPage() {
         stepKey: currentStep,
         mode: draft.campaignMode,
         planTier: draft.planTier,
+        leadCaptureGoal: draft.leadCaptureGoal,
+        captureMethod: draft.captureMethod,
       },
     });
     goToStep(visibleSteps[nextIndex].key);
@@ -1127,7 +1243,10 @@ export default function OnboardingPage() {
                 />
                 {errors.offer ? <p className="text-sm text-rose-400">{errors.offer}</p> : null}
               </div>
-              <OfferCoach insight={offerInsight} onApply={applyOffer} />
+              <LeadCapturePathSelector
+                draft={draft}
+                onSelect={(leadCaptureGoal, captureMethod) => updateDraft({ leadCaptureGoal, captureMethod })}
+              />
             </div>
           ) : null}
 
@@ -1197,6 +1316,7 @@ export default function OnboardingPage() {
                   ["Daily ad spend", formatDailyBudgetFromDraft(draft)],
                   ["30-day estimate", formatMonthlyEstimateFromDraft(draft)?.replace("Estimated 30-day media spend: ", "").replace(/\.$/, "") ?? "Not set"],
                   ["Offer", normalizedDraft.offer],
+                  ["Lead path", `${leadCaptureOption.title}: ${leadCaptureOption.label}`],
                   [
                     "Launch access",
                     canUseExistingLaunchAccess

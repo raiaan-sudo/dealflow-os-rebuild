@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import Module from "node:module";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -48,6 +49,27 @@ const {
   buildMetaLeadFormPreview,
   createMetaLeadForm,
 } = require("../src/lib/services/meta-lead-form-service.ts");
+
+const onboardingPageSource = fs.readFileSync("src/app/(app)/onboarding/page.tsx", "utf8");
+assert.match(onboardingPageSource, /Quality leads/, "Onboarding should expose the quality lead path.");
+assert.match(onboardingPageSource, /Volume-based/, "Onboarding should expose the volume-based lead path.");
+assert.match(onboardingPageSource, /Funnel/, "Onboarding should label the quality path as Funnel.");
+assert.match(onboardingPageSource, /Instant lead form/, "Onboarding should label the volume path as Instant lead form.");
+assert.match(
+  onboardingPageSource,
+  /lead_capture_goal:\s*preparedDraft\.leadCaptureGoal/,
+  "Onboarding should send lead_capture_goal to the plan API.",
+);
+assert.match(
+  onboardingPageSource,
+  /capture_method:\s*preparedDraft\.captureMethod/,
+  "Onboarding should send capture_method to the plan API.",
+);
+assert.doesNotMatch(
+  onboardingPageSource,
+  /<OfferCoach\s+insight=\{offerInsight\}/,
+  "Offer Coach should remain hidden from the customer-facing offer step.",
+);
 
 const disabledEnv = {
   LEAD_CAPTURE_STRATEGY_ENABLED: "false",
