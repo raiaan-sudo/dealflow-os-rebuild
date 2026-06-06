@@ -10,6 +10,10 @@ import type { PersistedAssetGenerationState } from "@/lib/services/asset-generat
 import { persistStaticCreativeAssets } from "@/lib/services/static-creative-asset-service";
 import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
 import {
+  normalizeLeadCaptureStrategy,
+  type LeadCaptureStrategy,
+} from "@/lib/services/lead-capture-strategy-service";
+import {
   buildCampaignPlanCriticalFieldPatch,
   CURRENT_CAMPAIGN_PLAN_VERSION,
   getLaunchStatusFromPlan,
@@ -58,6 +62,21 @@ export type PersistedCampaignPlanPayload = {
   creative_brief: CampaignPlan["creativeBrief"];
   creatives: CampaignPlan["creatives"];
   ads: CampaignPlan["ads"];
+  lead_capture_strategy?: LeadCaptureStrategy;
+  lead_capture_goal?: LeadCaptureStrategy["lead_capture_goal"];
+  capture_method?: LeadCaptureStrategy["capture_method"];
+  form_friction_level?: LeadCaptureStrategy["form_friction_level"];
+  lead_form_template_id?: string | null;
+  meta_lead_form_id?: string | null;
+  funnel_id?: string | null;
+  privacy_policy_url?: string | null;
+  terms_url?: string | null;
+  sms_consent_enabled?: boolean;
+  lead_delivery_destination?: LeadCaptureStrategy["lead_delivery_destination"];
+  special_ad_category?: LeadCaptureStrategy["special_ad_category"];
+  lead_capture_status?: LeadCaptureStrategy["lead_capture_status"];
+  lead_capture_ready_at?: string | null;
+  lead_capture_last_error?: string | null;
   funnel?: CampaignPlan["funnel"];
   runtime: CampaignPlan["runtime"];
 };
@@ -781,6 +800,7 @@ export function buildPersistedCampaignPlanPayload(params: {
     creativeBrief: CampaignPlan["creativeBrief"];
     creatives: CampaignPlan["creatives"];
     ads: CampaignPlan["ads"];
+    leadCaptureStrategy?: CampaignPlan["leadCaptureStrategy"] | Partial<LeadCaptureStrategy> | null;
     funnel?: CampaignPlan["funnel"] | GeneratedPreviewFunnel;
     runtime?: CampaignPlan["runtime"];
     assetGeneration?: PersistedAssetGenerationState;
@@ -788,6 +808,11 @@ export function buildPersistedCampaignPlanPayload(params: {
   runtime: CampaignPlan["runtime"];
 }): PersistedCampaignPlanPayload {
   const { generatedPlan, runtime } = params;
+  const leadCaptureStrategy = generatedPlan.leadCaptureStrategy
+    ? normalizeLeadCaptureStrategy(generatedPlan.leadCaptureStrategy, {
+        intent: generatedPlan.intent,
+      })
+    : null;
 
   return {
     version: CURRENT_CAMPAIGN_PLAN_VERSION,
@@ -819,6 +844,25 @@ export function buildPersistedCampaignPlanPayload(params: {
     creative_brief: generatedPlan.creativeBrief,
     creatives: generatedPlan.creatives,
     ads: generatedPlan.ads,
+    ...(leadCaptureStrategy
+      ? {
+          lead_capture_strategy: leadCaptureStrategy,
+          lead_capture_goal: leadCaptureStrategy.lead_capture_goal,
+          capture_method: leadCaptureStrategy.capture_method,
+          form_friction_level: leadCaptureStrategy.form_friction_level,
+          lead_form_template_id: leadCaptureStrategy.lead_form_template_id,
+          meta_lead_form_id: leadCaptureStrategy.meta_lead_form_id,
+          funnel_id: leadCaptureStrategy.funnel_id,
+          privacy_policy_url: leadCaptureStrategy.privacy_policy_url,
+          terms_url: leadCaptureStrategy.terms_url,
+          sms_consent_enabled: leadCaptureStrategy.sms_consent_enabled,
+          lead_delivery_destination: leadCaptureStrategy.lead_delivery_destination,
+          special_ad_category: leadCaptureStrategy.special_ad_category,
+          lead_capture_status: leadCaptureStrategy.lead_capture_status,
+          lead_capture_ready_at: leadCaptureStrategy.lead_capture_ready_at,
+          lead_capture_last_error: leadCaptureStrategy.lead_capture_last_error,
+        }
+      : {}),
     ...(generatedPlan.assetGeneration
       ? { assetGeneration: generatedPlan.assetGeneration }
       : {}),

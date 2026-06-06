@@ -108,7 +108,11 @@
     "proof:latest": "node ./scripts/summarize-proof-artifacts.mjs",
     "proof:verify": "node ./scripts/verify-proof-artifacts.mjs",
     "proof:self-test": "node ./scripts/run-with-timeout.mjs --self-test",
-    "engineering:classify": "node ./scripts/engineering-mission-classifier.mjs"
+    "engineering:classify": "node ./scripts/engineering-mission-classifier.mjs",
+    "test:lead-capture-strategy": "node ./scripts/test-lead-capture-strategy.mjs",
+    "test:lead-form-templates": "node ./scripts/test-lead-form-templates.mjs",
+    "test:lead-ingestion": "node ./scripts/test-lead-ingestion.mjs",
+    "test:lead-capture-readiness": "node ./scripts/test-lead-capture-readiness.mjs"
   },
   "dependencies": {
     "@higgsfield/client": "^0.2.1",

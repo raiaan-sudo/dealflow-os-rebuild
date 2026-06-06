@@ -10,11 +10,18 @@ type MetaTrackingStateLike = {
   } | null;
 } | null;
 
+export type LeadCaptureLaunchRequirement = {
+  ready: boolean;
+  blockers?: string[];
+} | null;
+
 export type LaunchRequirements = {
   campaignSaved: boolean;
   metaConnected: boolean;
   pixelReady: boolean;
   domainReady: boolean;
+  leadCaptureReady?: boolean;
+  leadCaptureBlockers?: string[];
 };
 
 export function getLaunchBlockingReasons(requirements: LaunchRequirements) {
@@ -23,6 +30,9 @@ export function getLaunchBlockingReasons(requirements: LaunchRequirements) {
     !requirements.metaConnected ? "Connect a real Meta ad account" : null,
     !requirements.pixelReady ? "Configure the Meta pixel" : null,
     !requirements.domainReady ? "Verify the launch domain" : null,
+    requirements.leadCaptureReady === false
+      ? (requirements.leadCaptureBlockers?.[0] ?? "Complete lead capture setup")
+      : null,
   ].filter((reason): reason is string => Boolean(reason));
 }
 
@@ -65,6 +75,7 @@ export function getLaunchRequirements(params: {
   campaignSaved: boolean;
   metaConnected: boolean;
   metaTrackingState: MetaTrackingStateLike;
+  leadCapture?: LeadCaptureLaunchRequirement;
 }): LaunchRequirements {
   const pixelConfigured = getPixelReady(params.metaTrackingState);
   const domainConfigured = getLaunchDomainReady(params.metaTrackingState);
@@ -75,5 +86,7 @@ export function getLaunchRequirements(params: {
     metaConnected: params.metaConnected,
     pixelReady: pixelConfigured,
     domainReady: domainConfigured && domainVerificationReady,
+    leadCaptureReady: params.leadCapture ? params.leadCapture.ready : undefined,
+    leadCaptureBlockers: params.leadCapture?.blockers ?? [],
   };
 }

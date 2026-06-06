@@ -6,6 +6,7 @@ import { ACTIVE_CAMPAIGN_COOKIE } from "@/lib/paywall-access";
 import { normalizePhone } from "@/lib/phone";
 import { recordActivationEvent } from "@/lib/services/activation-telemetry-service";
 import { upsertAgentProfile } from "@/lib/services/internal-lead-notification-service";
+import { normalizeLeadCaptureStrategy } from "@/lib/services/lead-capture-strategy-service";
 import { normalizeOfferForCampaign } from "@/lib/services/offer-normalization-service";
 
 export const runtime = "nodejs";
@@ -28,6 +29,13 @@ type OnboardingPayload = {
   daily_budget_cents?: number | string;
   budget?: number | string;
   goal?: string;
+  lead_capture_goal?: string;
+  capture_method?: string;
+  form_friction_level?: string;
+  privacy_policy_url?: string;
+  terms_url?: string;
+  sms_consent_enabled?: boolean;
+  lead_delivery_destination?: string;
   idempotencySeed?: string;
 };
 
@@ -47,6 +55,8 @@ type SafeOnboardingPayloadLog = {
   dailyBudgetCentsPresent: boolean;
   goalPresent: boolean;
   servicePresent: boolean;
+  leadCaptureGoal: string;
+  captureMethod: string;
   idempotencySeedPresent: boolean;
 };
 
@@ -100,6 +110,8 @@ function buildSafePayloadLog(payload: OnboardingPayload | null): SafeOnboardingP
       typeof payload?.daily_budget_cents === "number" || typeof payload?.daily_budget_cents === "string",
     goalPresent: safeText(payload?.goal).length > 0,
     servicePresent: safeText(payload?.service).length > 0,
+    leadCaptureGoal: safeText(payload?.lead_capture_goal),
+    captureMethod: safeText(payload?.capture_method),
     idempotencySeedPresent: safeText(payload?.idempotencySeed).length > 0,
   };
 }
@@ -765,18 +777,38 @@ export async function POST(req: Request) {
       return NextResponse.json(responseBody);
     }
 
+    const leadCaptureStrategy = normalizeLeadCaptureStrategy(
+      {
+        lead_capture_goal: payload?.lead_capture_goal,
+        capture_method: payload?.capture_method,
+        form_friction_level: payload?.form_friction_level,
+        privacy_policy_url: payload?.privacy_policy_url,
+        terms_url: payload?.terms_url,
+        sms_consent_enabled: payload?.sms_consent_enabled,
+        lead_delivery_destination: payload?.lead_delivery_destination,
+      },
+      {
+        intent: businessType,
+        privacyPolicyUrl: payload?.privacy_policy_url,
+        termsUrl: payload?.terms_url,
+      },
+    );
+
     const savedPlan = await campaignPlanServiceModule.saveCampaignPlan(
       realEstateMode
-        ? getRealEstateOnboardingDefaults({
-            businessType,
-            businessName,
-            location,
-            service: focus,
-            propertyType,
-            priceRange,
-            goal: service,
-            budget: budget.monthlyBudget,
-          })
+        ? {
+            ...getRealEstateOnboardingDefaults({
+              businessType,
+              businessName,
+              location,
+              service: focus,
+              propertyType,
+              priceRange,
+              goal: service,
+              budget: budget.monthlyBudget,
+            }),
+            leadCaptureStrategy,
+          }
         : {
             clientName: businessName,
             businessName,
@@ -800,6 +832,7 @@ export async function POST(req: Request) {
               "Acquisition costs are too high",
             ],
             mechanism: `${service} campaign system`,
+            leadCaptureStrategy,
           },
     );
 

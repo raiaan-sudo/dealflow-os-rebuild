@@ -54,6 +54,10 @@ import {
 export type { CampaignCreativeStrategy } from "@/lib/services/campaign-creative-strategy";
 import { getCategoryRulePack } from "@/lib/services/campaign-category-rule-packs";
 import { buildMarketingOptimizationBlueprint } from "@/lib/optimization-engine";
+import {
+  normalizeLeadCaptureStrategy,
+  type LeadCaptureStrategy,
+} from "@/lib/services/lead-capture-strategy-service";
 
 type CampaignPlanRow = Database["public"]["Tables"]["campaign_plans"]["Row"];
 
@@ -70,6 +74,7 @@ export type OnboardingInput = {
   keyOffer: string;
   painPoints: string[];
   mechanism: string;
+  leadCaptureStrategy?: Partial<LeadCaptureStrategy> | null;
 };
 
 export type CampaignAd = {
@@ -177,6 +182,7 @@ export type CampaignPlan = {
   creativeBrief: CreativeBrief;
   creatives: CampaignCreatives;
   ads: CampaignAd[];
+  leadCaptureStrategy?: LeadCaptureStrategy;
   funnel: {
     funnelType: string;
     headline: string;
@@ -547,6 +553,9 @@ function buildPlanFromGenerated(
     creativeBrief: generated.creativeBrief,
     creatives: generated.creatives,
     ads: withAdImageFallback(generated.ads),
+    leadCaptureStrategy: normalizeLeadCaptureStrategy(generated.leadCaptureStrategy, {
+      intent: generated.intent,
+    }),
     funnel: generated.funnel
       ? buildPlanFunnel({
           funnelType: generated.funnelType,
@@ -669,6 +678,29 @@ function mapPayloadToPlan(
           })),
         )
       : [],
+    leadCaptureStrategy: normalizeLeadCaptureStrategy(
+      payload.lead_capture_strategy && typeof payload.lead_capture_strategy === "object"
+        ? (payload.lead_capture_strategy as Partial<LeadCaptureStrategy>)
+        : {
+            lead_capture_goal: payload.lead_capture_goal,
+            capture_method: payload.capture_method,
+            form_friction_level: payload.form_friction_level,
+            lead_form_template_id: payload.lead_form_template_id,
+            meta_lead_form_id: payload.meta_lead_form_id,
+            funnel_id: payload.funnel_id,
+            privacy_policy_url: payload.privacy_policy_url,
+            terms_url: payload.terms_url,
+            sms_consent_enabled: payload.sms_consent_enabled,
+            lead_delivery_destination: payload.lead_delivery_destination,
+            special_ad_category: payload.special_ad_category,
+            lead_capture_status: payload.lead_capture_status,
+            lead_capture_ready_at: payload.lead_capture_ready_at,
+            lead_capture_last_error: payload.lead_capture_last_error,
+          },
+      {
+        intent: payload.intent,
+      },
+    ),
     funnel: payload.funnel && typeof payload.funnel === "object"
       ? payload.funnel
       : buildPlanFunnel({
@@ -1277,6 +1309,10 @@ export async function persistCampaignPlan(plan: CampaignPlan) {
       summary: plan.summary,
     }),
     runtime: normalizeCampaignRuntime(plan.runtime),
+    leadCaptureStrategy: normalizeLeadCaptureStrategy(plan.leadCaptureStrategy, {
+      intent: plan.intent,
+      funnelId: plan.leadCaptureStrategy?.funnel_id ?? plan.id,
+    }),
   };
 
   if (!supabase) {
