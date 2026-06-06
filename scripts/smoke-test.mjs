@@ -754,6 +754,11 @@ function runOfflineChecks() {
   assertIncludes(metaCallback, "application/x-www-form-urlencoded", "Meta OAuth form body", "token exchange sends credentials in an encoded form body");
   assertIncludes(metaCallback, "preservedConnectionMetadata", "Meta reconnect metadata preservation", "callback preserves selected Meta asset metadata before refreshing the OAuth token");
   assertIncludes(metaCallback, "...preservedConnectionMetadata", "Meta token refresh metadata merge", "token refresh does not wipe selected account, Page, pixel, or discovery metadata");
+  assertIncludes(metaCallback, "normalizeMetaAccountId", "Meta OAuth account ID normalization", "callback normalizes raw and act_ account IDs before saving or comparing selections");
+  assertIncludes(metaCallback, "account.account_id ?? normalizeMetaAccountId(account.id)", "Meta OAuth raw account ID persistence", "callback stores the raw ad account id so reconnects and selection checks agree");
+  assertIncludes(metaCallback, "availableAccounts.length === 1", "Meta OAuth single account auto-selection", "callback auto-selects a single available ad account after reconnect");
+  assertIncludes(metaCallback, "availablePages.length === 1", "Meta OAuth single page auto-selection", "callback auto-selects a single available Page after reconnect");
+  assertIncludes(metaCallback, "availablePixels.length === 1", "Meta OAuth single pixel auto-selection", "callback auto-selects a single available pixel after reconnect");
   assertIncludes(metaOauthState, "timingSafeEqual", "Meta OAuth state timing-safe compare", "state signatures are compared without string equality leaks");
   assertIncludes(metaOauthState, "STATE_TTL_MS = 10 * 60 * 1000", "Meta OAuth state expiry", "signed OAuth state is short-lived");
 

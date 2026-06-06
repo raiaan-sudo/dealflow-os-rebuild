@@ -80,6 +80,11 @@ function getConnectionMetadata(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function normalizeMetaAccountId(value: string | null | undefined) {
+  const normalized = value?.trim().replace(/^act_/, "") ?? "";
+  return normalized.length > 0 ? normalized : null;
+}
+
 export async function GET(req: NextRequest) {
   const requestId = crypto.randomUUID();
 
@@ -298,7 +303,7 @@ export async function GET(req: NextRequest) {
         { data?: MetaAdAccount[]; error?: unknown } | null
       >(
         `https://graph.facebook.com/v18.0/me/adaccounts` +
-          `?fields=id,name,account_status,currency,timezone_name` +
+          `?fields=id,account_id,name,account_status,currency,timezone_name` +
           `&access_token=${encodeURIComponent(access_token)}`,
         {
           purpose: "discovery",
@@ -313,7 +318,7 @@ export async function GET(req: NextRequest) {
       availableAccounts = Array.isArray(accounts?.data)
         ? (accounts.data as MetaAdAccount[]).map((account) => ({
             id: account.id ?? null,
-            external_account_id: account.id ?? null,
+            external_account_id: account.account_id ?? normalizeMetaAccountId(account.id),
             name: account.name ?? null,
             status:
               typeof account.account_status !== "undefined"
@@ -381,17 +386,23 @@ export async function GET(req: NextRequest) {
     const selectedAccount =
       selectedExternalAccountId
         ? availableAccounts.find(
-            (account) => account.id === selectedExternalAccountId,
+            (account) =>
+              normalizeMetaAccountId(account.id) === normalizeMetaAccountId(selectedExternalAccountId) ||
+              normalizeMetaAccountId(account.external_account_id) === normalizeMetaAccountId(selectedExternalAccountId),
           ) ?? null
-        : null;
+        : availableAccounts.length === 1
+          ? availableAccounts[0] ?? null
+          : null;
+    const nextSelectedExternalAccountId = selectedAccount?.external_account_id ?? selectedExternalAccountId;
 
-    if (selectedExternalAccountId) {
-      if (selectedAccount?.id) {
+    if (nextSelectedExternalAccountId) {
+      if (selectedAccount?.id || selectedAccount?.external_account_id) {
         try {
+          const accountIdForPixels = selectedAccount.external_account_id ?? selectedAccount.id;
           const { response: pixelsRes, data: pixelsData } = await fetchMetaJson<
             { data?: MetaPixel[]; error?: unknown } | null
           >(
-            `https://graph.facebook.com/v18.0/act_${selectedAccount.id.replace(/^act_/, "")}/adspixels` +
+            `https://graph.facebook.com/v18.0/act_${normalizeMetaAccountId(accountIdForPixels)}/adspixels` +
               `?fields=id,name` +
               `&access_token=${encodeURIComponent(access_token)}`,
             {
@@ -442,11 +453,15 @@ export async function GET(req: NextRequest) {
     const selectedPixelId =
       existingSelectedPixelId && availablePixels.some((pixel) => pixel.id === existingSelectedPixelId)
         ? existingSelectedPixelId
-        : null;
+        : availablePixels.length === 1
+          ? availablePixels[0]?.id ?? null
+          : null;
     const selectedPage =
       selectedPageId
         ? availablePages.find((page) => page.id === selectedPageId) ?? null
-        : null;
+        : availablePages.length === 1
+          ? availablePages[0] ?? null
+          : null;
     const discoveryErrors = [accountsError, pagesError, pixelsError].filter(
       (value): value is string => Boolean(value),
     );
@@ -480,7 +495,7 @@ export async function GET(req: NextRequest) {
       token_last_synced_at: now,
       name: selectedAccount?.name ?? storedMarketingRow?.name ?? "Meta Ads",
       account_name: selectedAccount?.name ?? storedMarketingRow?.account_name ?? "Meta Ads",
-      external_account_id: selectedAccount?.id ?? selectedExternalAccountId,
+      external_account_id: nextSelectedExternalAccountId,
       pixel_id: selectedPixelId,
       connection_metadata: {
         ...existingMetadata,
@@ -503,7 +518,7 @@ export async function GET(req: NextRequest) {
           errors: discoveryErrors,
           last_checked_at: now,
         },
-        selected_external_account_id: selectedAccount?.id ?? selectedExternalAccountId,
+        selected_external_account_id: nextSelectedExternalAccountId,
         selected_account_name:
           selectedAccount?.name ??
           (typeof existingMetadata.selected_account_name === "string"
