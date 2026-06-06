@@ -1041,6 +1041,11 @@ function runOfflineChecks() {
   assertIncludes(creditService, "assertGenerationCreditsAvailableForUser", "Generation credit preflight", "paid generation routes preflight credits before queueing provider work");
   assertIncludes(creditService, "grant_user_credits", "Credit top-up ledger", "credit grants and refunds use the append-only DB ledger");
   assertIncludes(creditService, "CREDIT_TOP_UP_MINIMUM_CENTS = 1_000", "Credit top-up minimum", "generation credit top-ups require the intended $10 minimum");
+  assertIncludes(creditService, "WELCOME_GENERATION_CREDIT_CENTS = CREDIT_TOP_UP_MINIMUM_CENTS", "Welcome credit amount", "new paid accounts receive the canonical $10 generation credit");
+  assertIncludes(creditService, "buildWelcomeGenerationCreditIdempotencyKey", "Welcome credit idempotency", "welcome credits cannot duplicate across webhook and checkout-return ordering");
+  assertIncludes(billingService, "grantWelcomeGenerationCreditForSyncedSubscription", "Welcome credit subscription grant", "paid subscription activation grants first-render credits after billing sync");
+  assertIncludes(billingService, "payment_status === \"paid\"", "Welcome credit paid-only guard", "unpaid or trial checkout sessions cannot grant welcome credits");
+  assertIncludes(unlockPage, "in generation credits added", "Unlock welcome credit copy", "paid checkout handoff confirms the first creative top-up");
   assertIncludes(creditService, "bypassedByBillingOverride", "Credit billing override", "billing override users can test paid generation without internal credit balance friction");
   assertIncludes("src/components/billing/generation-credit-top-up-panel.tsx", "Add $10.00 credits", "Creative top-up prompt", "insufficient generation credits surface a compact $10 top-up action");
   assertIncludes("supabase/migrations/20260510014500_enable_generation_credit_overdrafts.sql", "next_balance := current_balance - p_amount", "Historical credit ledger compatibility", "credit ledger keeps backward-compatible support for prior overdraft-cap migrations");

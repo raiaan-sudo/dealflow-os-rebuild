@@ -49,6 +49,7 @@
     "test:creative-render-state": "node ./scripts/test-creative-render-state.mjs",
     "test:campaign-value-report": "node ./scripts/test-campaign-value-report.mjs",
     "test:billing-recovery": "node ./scripts/test-billing-recovery.mjs",
+    "test:welcome-generation-credit": "node ./scripts/test-welcome-generation-credit.mjs",
     "test:customer-success": "node ./scripts/test-customer-success-layer.mjs",
     "test:provider-cost-watch": "node ./scripts/test-provider-cost-watch.mjs",
     "test:scale-readiness-report": "node ./scripts/test-scale-readiness-report.mjs",

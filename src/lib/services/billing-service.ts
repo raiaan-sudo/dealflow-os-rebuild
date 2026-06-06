@@ -26,6 +26,7 @@ import {
 } from "@/lib/billing/plans";
 import {
   CREDIT_TOP_UP_MINIMUM_CENTS,
+  grantWelcomeGenerationCredits,
   grantUserCredits,
 } from "@/lib/services/credit-service";
 import {
@@ -96,6 +97,17 @@ type StripeSubscriptionSyncSource = {
   eventId: string | null;
   eventCreated: number | null;
   eventType: string | null;
+};
+
+type BillingSubscriptionSyncResult = {
+  applied: boolean;
+  ignoredReason: string | null;
+  organizationId: string | null;
+  userId: string | null;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  planTier: BillingPlanTier | null;
+  subscriptionStatus: string | null;
 };
 
 type PartnerBillingConfigBundle = {
@@ -1391,6 +1403,14 @@ export async function reconcileBillingCheckoutSuccess(sessionId: string) {
     eventCreated: session.created,
     eventType: "checkout.success_reconciliation",
   });
+  if (isPaidSubscriptionCheckoutSession(session)) {
+    await grantWelcomeGenerationCreditForSyncedSubscription({
+      syncResult,
+      source: "checkout_return",
+      stripeCheckoutSessionId: session.id,
+      livemode: session.livemode,
+    });
+  }
 
   logOperationalEvent("checkout_success_reconciled", {
     organizationId: context.organization.id,
@@ -1458,7 +1478,7 @@ export async function syncBillingSubscriptionFromStripe(
     eventCreated: Math.floor(Date.now() / 1000),
     eventType: null,
   },
-) {
+): Promise<BillingSubscriptionSyncResult> {
   const admin = createAdminClient();
 
   if (!admin) {
@@ -1466,6 +1486,12 @@ export async function syncBillingSubscriptionFromStripe(
   }
 
   const organizationId = subscription.metadata.organization_id;
+  const subscriptionUserId =
+    typeof subscription.metadata.user_id === "string" && subscription.metadata.user_id.trim()
+      ? subscription.metadata.user_id.trim()
+      : null;
+  const stripeCustomerId =
+    typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id ?? null;
   const partnerId =
     typeof subscription.metadata.partner_id === "string" && subscription.metadata.partner_id.trim()
       ? subscription.metadata.partner_id.trim()
@@ -1525,10 +1551,9 @@ export async function syncBillingSubscriptionFromStripe(
   } satisfies Json;
   const subscriptionRow: BillingInsert = {
     organization_id: organizationId,
-    user_id: subscription.metadata.user_id || null,
+    user_id: subscriptionUserId,
     partner_id: partnerId,
-    stripe_customer_id:
-      typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id ?? null,
+    stripe_customer_id: stripeCustomerId,
     stripe_subscription_id: subscription.id,
     stripe_price_id: priceId,
     plan_tier: planTier,
@@ -1585,6 +1610,12 @@ export async function syncBillingSubscriptionFromStripe(
     return {
       applied: false,
       ignoredReason: applyResult.ignored_reason ?? "stale_event",
+      organizationId,
+      userId: subscriptionUserId,
+      stripeCustomerId,
+      stripeSubscriptionId: subscription.id,
+      planTier,
+      subscriptionStatus: subscription.status,
     };
   }
 
@@ -1652,8 +1683,7 @@ export async function syncBillingSubscriptionFromStripe(
       {
         partner_id: partnerId,
         account_id: organizationId,
-        stripe_customer_id:
-          typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id ?? null,
+        stripe_customer_id: stripeCustomerId,
         stripe_subscription_id: subscription.id,
         pricing_plan_key: planTier,
         attribution_source: "stripe_subscription_metadata",
@@ -1680,6 +1710,12 @@ export async function syncBillingSubscriptionFromStripe(
   return {
     applied: true,
     ignoredReason: null,
+    organizationId,
+    userId: subscriptionUserId,
+    stripeCustomerId,
+    stripeSubscriptionId: subscription.id,
+    planTier,
+    subscriptionStatus: subscription.status,
   };
 }
 
@@ -1807,6 +1843,12 @@ async function syncBillingSubscriptionFromEventObject(event: Stripe.Event) {
     return {
       applied: false,
       ignoredReason: "subscription_missing",
+      organizationId: null,
+      userId: null,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      planTier: null,
+      subscriptionStatus: null,
     };
   }
 
@@ -1817,6 +1859,114 @@ async function syncBillingSubscriptionFromEventObject(event: Stripe.Event) {
   })) as Stripe.Subscription;
 
   return syncBillingSubscriptionFromStripe(subscription, source);
+}
+
+function getStripeInvoiceSubscriptionId(
+  invoice: Stripe.Invoice & { subscription?: string | { id?: string | null } | null },
+) {
+  return typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id ?? null;
+}
+
+function isPaidSubscriptionCheckoutSession(session: Stripe.Checkout.Session) {
+  return (
+    session.mode === "subscription" &&
+    session.payment_status === "paid" &&
+    Boolean(getStripeSubscriptionIdFromSession(session))
+  );
+}
+
+function isFirstPaidSubscriptionInvoice(invoice: Stripe.Invoice) {
+  return invoice.billing_reason === "subscription_create" && (invoice.amount_paid ?? invoice.total ?? 0) > 0;
+}
+
+async function grantWelcomeGenerationCreditForSyncedSubscription(params: {
+  syncResult: BillingSubscriptionSyncResult;
+  source: "checkout_session_completed" | "invoice_payment_succeeded" | "checkout_return";
+  stripeEventId?: string | null;
+  stripeInvoiceId?: string | null;
+  stripeCheckoutSessionId?: string | null;
+  livemode?: boolean | null;
+}) {
+  const { syncResult } = params;
+
+  if (
+    !syncResult.applied ||
+    !syncResult.organizationId ||
+    !syncResult.userId ||
+    !syncResult.stripeSubscriptionId ||
+    syncResult.subscriptionStatus !== "active"
+  ) {
+    return null;
+  }
+
+  const result = await grantWelcomeGenerationCredits({
+    userId: syncResult.userId,
+    organizationId: syncResult.organizationId,
+    stripeSubscriptionId: syncResult.stripeSubscriptionId,
+    stripeCustomerId: syncResult.stripeCustomerId,
+    stripeInvoiceId: params.stripeInvoiceId ?? null,
+    stripeCheckoutSessionId: params.stripeCheckoutSessionId ?? null,
+    stripeEventId: params.stripeEventId ?? null,
+    planTier: syncResult.planTier,
+    source: params.source,
+    livemode: params.livemode ?? null,
+  });
+
+  logOperationalEvent("welcome_generation_credit_processed", {
+    organizationId: syncResult.organizationId,
+    userId: syncResult.userId,
+    stripeSubscriptionId: syncResult.stripeSubscriptionId,
+    stripeCustomerId: syncResult.stripeCustomerId,
+    stripeInvoiceId: params.stripeInvoiceId ?? null,
+    checkoutSessionId: params.stripeCheckoutSessionId ?? null,
+    stripeEventId: params.stripeEventId ?? null,
+    planTier: syncResult.planTier,
+    ledgerId: result.ledgerId,
+    reusedExisting: result.reusedExisting,
+    source: params.source,
+  });
+
+  return result;
+}
+
+async function maybeGrantWelcomeGenerationCreditForStripeEvent(
+  event: Stripe.Event,
+  syncResult: BillingSubscriptionSyncResult,
+) {
+  if (event.type === "checkout.session.completed" && event.data.object.object === "checkout.session") {
+    const session = event.data.object as Stripe.Checkout.Session;
+    if (!isPaidSubscriptionCheckoutSession(session)) {
+      return null;
+    }
+
+    return grantWelcomeGenerationCreditForSyncedSubscription({
+      syncResult,
+      source: "checkout_session_completed",
+      stripeEventId: event.id,
+      stripeCheckoutSessionId: session.id,
+      livemode: event.livemode,
+    });
+  }
+
+  if (event.type === "invoice.payment_succeeded" && event.data.object.object === "invoice") {
+    const invoice = event.data.object as Stripe.Invoice & { subscription?: string | { id?: string | null } | null };
+    if (
+      !isFirstPaidSubscriptionInvoice(invoice) ||
+      getStripeInvoiceSubscriptionId(invoice) !== syncResult.stripeSubscriptionId
+    ) {
+      return null;
+    }
+
+    return grantWelcomeGenerationCreditForSyncedSubscription({
+      syncResult,
+      source: "invoice_payment_succeeded",
+      stripeEventId: event.id,
+      stripeInvoiceId: invoice.id ?? null,
+      livemode: event.livemode,
+    });
+  }
+
+  return null;
 }
 
 function isCreditTopUpCheckoutSession(object: Stripe.Event.Data.Object): object is Stripe.Checkout.Session {
@@ -1995,6 +2145,7 @@ export async function handleStripeBillingEvent(event: Stripe.Event) {
         };
       }
 
+      await maybeGrantWelcomeGenerationCreditForStripeEvent(event, syncResult);
       await createPartnerCommissionEventForInvoice(event);
 
       await markStripeWebhookEvent({

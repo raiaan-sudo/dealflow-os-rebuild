@@ -21,6 +21,8 @@ export type GenerationCreditBucket =
   | "heygen_video_generation";
 
 export const CREDIT_TOP_UP_MINIMUM_CENTS = 1_000;
+export const WELCOME_GENERATION_CREDIT_CENTS = CREDIT_TOP_UP_MINIMUM_CENTS;
+export const WELCOME_GENERATION_CREDIT_REASON = "new_paid_account_welcome_credit";
 const DEFAULT_GENERATION_CREDIT_OVERDRAFT_LIMIT_CENTS = 0;
 
 const DEFAULT_GENERATION_CREDIT_COSTS_CENTS: Record<GenerationCreditBucket, number> = {
@@ -495,6 +497,49 @@ export async function grantUserCredits(params: {
     ledgerId: typeof row.ledger_id === "string" ? row.ledger_id : null,
     reusedExisting: row.reused_existing === true,
   };
+}
+
+export function buildWelcomeGenerationCreditIdempotencyKey(params: {
+  organizationId: string;
+  stripeSubscriptionId: string;
+}) {
+  return `welcome_generation_credit:${params.organizationId}:${params.stripeSubscriptionId}`;
+}
+
+export async function grantWelcomeGenerationCredits(params: {
+  userId: string;
+  organizationId: string;
+  stripeSubscriptionId: string;
+  stripeCustomerId?: string | null;
+  stripeInvoiceId?: string | null;
+  stripeCheckoutSessionId?: string | null;
+  stripeEventId?: string | null;
+  planTier?: string | null;
+  source: "checkout_session_completed" | "invoice_payment_succeeded" | "checkout_return";
+  livemode?: boolean | null;
+}) {
+  return grantUserCredits({
+    userId: params.userId,
+    organizationId: params.organizationId,
+    amount: WELCOME_GENERATION_CREDIT_CENTS,
+    reason: WELCOME_GENERATION_CREDIT_REASON,
+    referenceType: "stripe_subscription",
+    referenceId: params.stripeSubscriptionId,
+    idempotencyKey: buildWelcomeGenerationCreditIdempotencyKey({
+      organizationId: params.organizationId,
+      stripeSubscriptionId: params.stripeSubscriptionId,
+    }),
+    metadata: {
+      creditKind: "welcome_generation_credit",
+      stripeCustomerId: params.stripeCustomerId ?? null,
+      stripeInvoiceId: params.stripeInvoiceId ?? null,
+      stripeCheckoutSessionId: params.stripeCheckoutSessionId ?? null,
+      stripeEventId: params.stripeEventId ?? null,
+      planTier: params.planTier ?? null,
+      source: params.source,
+      livemode: params.livemode ?? null,
+    },
+  });
 }
 
 export async function refundCreditsForProviderUsageEvent(params: {

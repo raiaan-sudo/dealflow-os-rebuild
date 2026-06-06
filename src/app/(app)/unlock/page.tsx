@@ -13,6 +13,10 @@ import {
   reconcileBillingCheckoutSuccess,
 } from "@/lib/services/billing-service";
 import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
+import {
+  formatCreditCurrency,
+  WELCOME_GENERATION_CREDIT_CENTS,
+} from "@/lib/services/credit-service";
 import { ensureStaticCreativeRenderQueuedForCampaign } from "@/lib/services/static-creative-render-queue-service";
 
 function formatPlanName(value: string | null | undefined) {
@@ -55,8 +59,9 @@ export default async function UnlockPage({
   const launchAllowed = billing?.launchAllowed ?? false;
   const checkoutCancelled = checkoutState === "cancelled";
   const checkoutOverride = checkoutState === "override" && billing?.launchOverride === true;
+  const paidCheckoutActivated = checkoutState === "success" && launchAllowed && !reconciliationError;
   const activatedByCheckout =
-    checkoutOverride || (checkoutState === "success" && launchAllowed && !reconciliationError);
+    checkoutOverride || paidCheckoutActivated;
   const activatedPlanName = formatPlanName(plan ?? billing?.planTier);
   const activeCampaign = campaignId
     ? await resolveActiveCampaignRecord(campaignId).catch(() => null)
@@ -186,6 +191,17 @@ export default async function UnlockPage({
                   <Sparkles className="size-6" />
                 </div>
               </div>
+
+              {paidCheckoutActivated ? (
+                <div className="mt-5 rounded-[20px] border border-emerald-300/18 bg-emerald-300/[0.07] p-4">
+                  <p className="text-sm font-semibold text-emerald-100">
+                    {formatCreditCurrency(WELCOME_GENERATION_CREDIT_CENTS)} in generation credits added
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    We added the first creative top-up so this campaign can start rendering right away. Future paid renders use your available credit balance.
+                  </p>
+                </div>
+              ) : null}
 
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 {[
