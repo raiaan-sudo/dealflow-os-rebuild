@@ -69,6 +69,14 @@ assert.match(resolver, /byInvite\.partner\.slug === normalizedSlug/, "partner in
 assert.match(resolver, /verification_status", "verified"/, "resolver must reject unverified custom domains");
 assert.match(resolver, /nativeFallback/, "resolver must have native fallback");
 assert.match(resolver, /isInviteUsableForPartner/, "invite route must validate expiry and use limits");
+assert.match(resolver, /isNativeDealFlowHost/, "resolver must fast-path native DealFlow hosts without partner DB lookups");
+assert.match(resolver, /NATIVE_DEALFLOW_HOSTS[\s\S]*app\.agentdealflow\.io/, "native app host must be recognized as non-partner traffic");
+assert.match(resolver, /domain\.endsWith\("\.vercel\.app"\)/, "Vercel preview hosts must use native fallback unless routed by slug");
+assert.match(resolver, /getCached[\s\S]*PARTNER_RESOLUTION_CACHE_TTL_MS/, "partner resolution must use a bounded cache");
+assert.match(resolver, /brandingBundleCache/, "partner branding bundle must be cached for public entry pages");
+assert.match(resolver, /partnerDomainCache/, "verified-domain partner resolution must be cached");
+assert.match(resolver, /partnerSlugCache/, "slug partner resolution must be cached");
+assert.match(resolver, /if \(!inviteCode && !partnerSlug && isNativeDealFlowHost\(hostname\)\)/, "native hosts must return before domain lookup");
 
 assert.match(permissions, /requirePlatformAdmin/, "platform admin guard must exist");
 assert.match(permissions, /requirePartnerMembership/, "partner membership guard must exist");

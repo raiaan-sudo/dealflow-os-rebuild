@@ -14,6 +14,62 @@ type PartnerLookup = {
   verifiedDomain: boolean;
 };
 
+type BrandingBundle = {
+  branding: Record<string, unknown> | null;
+  support: Record<string, unknown> | null;
+  vertical: Record<string, unknown> | null;
+};
+
+type CacheEntry<T> = {
+  expiresAt: number;
+  promise: Promise<T>;
+};
+
+const PARTNER_RESOLUTION_CACHE_TTL_MS = 60_000;
+const brandingBundleCache = new Map<string, CacheEntry<BrandingBundle>>();
+const partnerDomainCache = new Map<string, CacheEntry<PartnerLookup | null>>();
+const partnerSlugCache = new Map<string, CacheEntry<PartnerLookup | null>>();
+
+const NATIVE_DEALFLOW_HOSTS = new Set([
+  "agentdealflow.io",
+  "www.agentdealflow.io",
+  "app.agentdealflow.io",
+  "localhost",
+  "127.0.0.1",
+  "::1",
+]);
+
+function getCached<T>(
+  cache: Map<string, CacheEntry<T>>,
+  key: string,
+  loader: () => Promise<T>,
+): Promise<T> {
+  const now = Date.now();
+  const existing = cache.get(key);
+  if (existing && existing.expiresAt > now) {
+    return existing.promise;
+  }
+
+  const promise = loader().catch((error) => {
+    cache.delete(key);
+    throw error;
+  });
+  cache.set(key, {
+    expiresAt: now + PARTNER_RESOLUTION_CACHE_TTL_MS,
+    promise,
+  });
+  return promise;
+}
+
+function isNativeDealFlowHost(hostname: string | null | undefined) {
+  const domain = normalizePartnerDomain(hostname);
+  if (!domain) {
+    return false;
+  }
+
+  return NATIVE_DEALFLOW_HOSTS.has(domain) || domain.endsWith(".vercel.app");
+}
+
 function isMissingWhiteLabelTable(error: unknown) {
   const message = error && typeof error === "object" && "message" in error ? String((error as { message?: unknown }).message ?? "") : "";
   const code = error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
@@ -45,7 +101,11 @@ export function extractPartnerRouteParams(pathname: string | null | undefined) {
   };
 }
 
-async function fetchBrandingBundle(partnerId: string) {
+async function fetchBrandingBundle(partnerId: string): Promise<BrandingBundle> {
+  return getCached(brandingBundleCache, partnerId, async () => fetchBrandingBundleUncached(partnerId));
+}
+
+async function fetchBrandingBundleUncached(partnerId: string): Promise<BrandingBundle> {
   const admin = createAdminClient();
   if (!admin) {
     return { branding: null, support: null, vertical: null };
@@ -66,8 +126,16 @@ async function fetchBrandingBundle(partnerId: string) {
 
 async function findPartnerByVerifiedDomain(hostname: string | null): Promise<PartnerLookup | null> {
   const domain = normalizePartnerDomain(hostname);
+  if (!domain) {
+    return null;
+  }
+
+  return getCached(partnerDomainCache, domain, async () => findPartnerByVerifiedDomainUncached(domain));
+}
+
+async function findPartnerByVerifiedDomainUncached(domain: string): Promise<PartnerLookup | null> {
   const admin = createAdminClient();
-  if (!domain || !admin) {
+  if (!admin) {
     return null;
   }
 
@@ -102,8 +170,16 @@ async function findPartnerByVerifiedDomain(hostname: string | null): Promise<Par
 
 async function findPartnerBySlug(slugInput: string | null | undefined): Promise<PartnerLookup | null> {
   const slug = normalizePartnerSlug(slugInput);
+  if (!slug) {
+    return null;
+  }
+
+  return getCached(partnerSlugCache, slug, async () => findPartnerBySlugUncached(slug));
+}
+
+async function findPartnerBySlugUncached(slug: string): Promise<PartnerLookup | null> {
   const admin = createAdminClient();
-  if (!slug || !admin) {
+  if (!admin) {
     return null;
   }
 
@@ -239,6 +315,10 @@ export async function resolvePartnerContext(input: PartnerResolutionInput): Prom
   const hostname = normalizePartnerDomain(input.hostname);
   const inviteCode = input.inviteCode ?? routeParams.inviteCode;
   const partnerSlug = input.partnerSlug ?? routeParams.partnerSlug;
+
+  if (!inviteCode && !partnerSlug && isNativeDealFlowHost(hostname)) {
+    return NATIVE_PARTNER_CONTEXT;
+  }
 
   const byInvite = await findPartnerByInvite(inviteCode);
   if (byInvite) {
