@@ -15,6 +15,7 @@ async function saveMetaSelections(input: {
   externalAccountId: string;
   pageId?: string;
   pixelId?: string;
+  campaignId?: string | null;
 }) {
   const response = await fetch("/api/integrations/meta/selections", {
     method: "POST",
@@ -94,7 +95,7 @@ export function LaunchMetaSelectionPanel({
     }
 
     setIsSaving(true);
-    void saveMetaSelections({ externalAccountId: nextAccountId })
+    void saveMetaSelections({ externalAccountId: nextAccountId, campaignId })
       .then((nextConnection) => {
         setLiveConnection(nextConnection);
         setSelectedAccountId(nextConnection.accountId ?? nextAccountId);
@@ -129,6 +130,7 @@ export function LaunchMetaSelectionPanel({
       externalAccountId: selectedAccountId,
       pageId: selectedPageId,
       pixelId: selectedPixelId,
+      campaignId,
     })
       .then((nextConnection) => {
         setLiveConnection(nextConnection);

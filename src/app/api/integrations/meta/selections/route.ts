@@ -7,14 +7,62 @@ import {
   selectMetaAdAccount,
   updateMetaLaunchSelections,
 } from "@/lib/integrations/meta/service";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { recordActivationEvent } from "@/lib/services/activation-telemetry-service";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
+import { isInternalAdminEmail } from "@/lib/env";
 
 type SelectionBody = {
   externalAccountId?: string;
   pageId?: string;
   pixelId?: string;
+  campaignId?: string | null;
 };
+
+async function resolveSelectionOrganizationId(params: {
+  campaignId?: string | null;
+  fallbackOrganizationId: string;
+  userId: string;
+  userEmail?: string | null;
+}) {
+  const campaignId = params.campaignId?.trim();
+
+  if (!campaignId) {
+    return params.fallbackOrganizationId;
+  }
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new ApiError(503, "Supabase is not configured.", "config_missing");
+  }
+
+  const { data: campaign, error } = await admin
+    .from("campaign_plans")
+    .select("id,user_id,owner_id,organization_id")
+    .eq("id", campaignId)
+    .maybeSingle();
+
+  if (error || !campaign) {
+    throw new ApiError(404, "Campaign not found.", "campaign_not_found");
+  }
+
+  const campaignRecord = campaign as {
+    user_id?: string | null;
+    owner_id?: string | null;
+    organization_id?: string | null;
+  };
+  const userOwnsCampaign =
+    campaignRecord.user_id === params.userId || campaignRecord.owner_id === params.userId;
+  const sameWorkspace = campaignRecord.organization_id === params.fallbackOrganizationId;
+  const platformAdmin = isInternalAdminEmail(params.userEmail ?? null);
+
+  if (!userOwnsCampaign && !sameWorkspace && !platformAdmin) {
+    throw new ApiError(403, "You do not have access to this campaign.", "campaign_access_denied");
+  }
+
+  return campaignRecord.organization_id ?? params.fallbackOrganizationId;
+}
 
 export async function POST(request: Request) {
   const requestId = crypto.randomUUID();
@@ -35,6 +83,12 @@ export async function POST(request: Request) {
     const externalAccountId = body?.externalAccountId?.trim() ?? "";
     const pageId = body?.pageId?.trim() ?? "";
     const pixelId = body?.pixelId?.trim() ?? "";
+    const targetOrganizationId = await resolveSelectionOrganizationId({
+      campaignId: body?.campaignId,
+      fallbackOrganizationId: auth.organizationId,
+      userId: auth.userId,
+      userEmail: auth.context.user.email ?? auth.context.profile?.email ?? null,
+    });
 
     if (!externalAccountId) {
       return NextResponse.json(
@@ -49,8 +103,9 @@ export async function POST(request: Request) {
             externalAccountId,
             pageId,
             pixelId,
+            organizationId: targetOrganizationId,
           })
-        : await selectMetaAdAccount(externalAccountId);
+        : await selectMetaAdAccount(externalAccountId, targetOrganizationId);
 
     if (!connection) {
       connection = await getMetaConnectionState();
@@ -66,8 +121,9 @@ export async function POST(request: Request) {
         hasAdAccount: Boolean(externalAccountId),
         hasPage: Boolean(pageId),
         hasPixel: Boolean(pixelId),
+        campaignScoped: Boolean(body?.campaignId),
       },
-      idempotencyKey: `meta_selection_completed:${auth.organizationId}:${externalAccountId}:${Boolean(pageId)}:${Boolean(pixelId)}`,
+      idempotencyKey: `meta_selection_completed:${targetOrganizationId}:${externalAccountId}:${Boolean(pageId)}:${Boolean(pixelId)}`,
     }).catch(() => undefined);
 
     return NextResponse.json({ connection });

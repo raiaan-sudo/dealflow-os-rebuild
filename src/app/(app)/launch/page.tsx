@@ -40,6 +40,7 @@ export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 import {
   getMetaConnectionState,
+  getMetaConnectionStateForOrganization,
   getDefaultMetaConnectionState,
   validateMetaLaunchSelections,
 } from "@/lib/integrations/meta/service";
@@ -232,16 +233,20 @@ export default async function LaunchAliasPage({
     typeof params.meta_request_id === "string" && params.meta_request_id.length > 0
       ? params.meta_request_id
       : null;
-  const [record, metaConnection, metaProviderState] = await Promise.all([
+  const record = await withTimeout(
+    resolveActiveCampaignRecord(requestedCampaignId)
+      .then((resolved) => resolved?.record ?? null)
+      .catch(() => null),
+    null,
+    4_000,
+  );
+  const metaOrganizationId = record?.campaign.organization_id ?? null;
+  const [metaConnection, metaProviderState] = await Promise.all([
     withTimeout(
-      resolveActiveCampaignRecord(requestedCampaignId)
-        .then((resolved) => resolved?.record ?? null)
-        .catch(() => null),
-      null,
-      4_000,
-    ),
-    withTimeout(
-      getMetaConnectionState().catch(() => getDefaultMetaConnectionState()),
+      (metaOrganizationId
+        ? getMetaConnectionStateForOrganization(metaOrganizationId)
+        : getMetaConnectionState()
+      ).catch(() => getDefaultMetaConnectionState()),
       getDefaultMetaConnectionState(),
       2_500,
     ),
@@ -255,6 +260,7 @@ export default async function LaunchAliasPage({
   const metaPreflight = await withTimeout(
     validateMetaLaunchSelections({
       destinationUrl: getPublicFunnelDestinationUrl(record?.publish.slug),
+      organizationId: metaOrganizationId,
     }).catch(() => null),
     null,
     5_000,
@@ -319,9 +325,7 @@ export default async function LaunchAliasPage({
   }
 
   const intentLabel = getCampaignIntentLabel(plan.intent, { capitalized: true });
-  const metaConnected =
-    metaConnection.connectionStatus === "connected" &&
-    Boolean(metaConnection.accountId);
+  const metaConnected = metaConnection.connectionStatus === "connected";
   const metaSelectionReady =
     metaConnected &&
     Boolean(metaConnection.accountId) &&
@@ -445,7 +449,7 @@ export default async function LaunchAliasPage({
     {
       label: "Meta connection",
       ready: metaConnected,
-      detail: metaConnected ? "Workspace connected" : "Connect Meta before launch",
+      detail: metaConnected ? "Workspace connected. Choose launch assets below." : "Connect Meta before launch",
     },
     {
       label: "Ad account / Page / pixel",
@@ -748,7 +752,7 @@ export default async function LaunchAliasPage({
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Meta setup</p>
               <p className="mt-3 text-sm font-semibold">
                 {metaConnected
-                  ? metaConnection.accountName || "Workspace linked"
+                  ? metaConnection.accountName || metaConnection.pageName || "Workspace linked"
                   : "Connect Meta to continue"}
               </p>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">

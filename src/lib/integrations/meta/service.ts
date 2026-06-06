@@ -3,6 +3,7 @@ import { getDealFlowPlatformLaunchDomainEnv, getMetaEnv } from "@/lib/env";
 import { createMetaApiError, mapMetaError } from "@/lib/integrations/meta/error-mapper";
 import { decryptSecret } from "@/lib/integrations/meta-crypto";
 import { fetchMetaJson } from "@/lib/integrations/meta/request";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getAppContext } from "@/lib/services/app-context";
 import type {
@@ -652,7 +653,12 @@ async function getMetaSupabaseContext() {
 }
 
 async function getExistingMetaRecord(organizationId: string) {
-  const { supabase } = await getMetaSupabaseContext();
+  const supabase = createAdminClient();
+
+  if (!supabase) {
+    throw new ApiError(503, "Supabase is not configured.", "config_missing");
+  }
+
   const { data } = await supabase
     .from("marketing_accounts")
     .select("*")
@@ -706,9 +712,16 @@ export async function getMetaConnectionState() {
   return toConnectionState(row);
 }
 
-export async function getMetaWorkspaceCredentials(): Promise<MetaWorkspaceCredentials> {
+export async function getMetaConnectionStateForOrganization(organizationId: string) {
+  await getMetaSupabaseContext();
+  const row = await getExistingMetaRecord(organizationId);
+  return toConnectionState(row);
+}
+
+export async function getMetaWorkspaceCredentials(organizationId?: string | null): Promise<MetaWorkspaceCredentials> {
   const { context } = await getMetaSupabaseContext();
-  const row = await getExistingMetaRecord(context.organization.id);
+  const targetOrganizationId = organizationId ?? context.organization.id;
+  const row = await getExistingMetaRecord(targetOrganizationId);
 
   if (!row) {
     throw new ApiError(
@@ -785,7 +798,7 @@ export async function getMetaWorkspaceCredentials(): Promise<MetaWorkspaceCreden
   }
 
   return {
-    workspaceId: context.organization.id,
+    workspaceId: targetOrganizationId,
     connectionId: row.id,
     adAccountId: selectedAccount.externalAccountId,
     pageId,
@@ -796,11 +809,12 @@ export async function getMetaWorkspaceCredentials(): Promise<MetaWorkspaceCreden
 
 export async function validateMetaLaunchSelections(options?: {
   destinationUrl?: string | null;
+  organizationId?: string | null;
 }): Promise<MetaLaunchPreflightState> {
   const checkedAt = new Date().toISOString();
 
   try {
-    const credentials = await getMetaWorkspaceCredentials();
+    const credentials = await getMetaWorkspaceCredentials(options?.organizationId);
     const existingRow = await getExistingMetaRecord(credentials.workspaceId);
     const existingMetadata = normalizeMetaConnectionMetadata(existingRow?.connection_metadata ?? null);
     const derivedTracking = await persistDerivedLaunchDomainFromDestination({
@@ -982,9 +996,16 @@ export async function validateMetaLaunchSelections(options?: {
   }
 }
 
-export async function selectMetaAdAccount(externalAccountId: string) {
-  const { context, supabase } = await getMetaSupabaseContext();
-  const existing = await getExistingMetaRecord(context.organization.id);
+export async function selectMetaAdAccount(externalAccountId: string, organizationId?: string | null) {
+  const { context } = await getMetaSupabaseContext();
+  const targetOrganizationId = organizationId ?? context.organization.id;
+  const supabase = createAdminClient();
+
+  if (!supabase) {
+    throw new ApiError(503, "Supabase is not configured.", "config_missing");
+  }
+
+  const existing = await getExistingMetaRecord(targetOrganizationId);
 
   if (!existing) {
     throw new ApiError(404, "No Meta connection exists for this workspace.", "meta_connection_missing");
@@ -1054,7 +1075,7 @@ export async function selectMetaAdAccount(externalAccountId: string) {
     throw new ApiError(500, error.message, "meta_account_selection_failed");
   }
 
-  const refreshed = await getExistingMetaRecord(context.organization.id);
+  const refreshed = await getExistingMetaRecord(targetOrganizationId);
   return toConnectionState(refreshed);
 }
 
@@ -1062,9 +1083,17 @@ export async function updateMetaLaunchSelections(input: {
   externalAccountId?: string | null;
   pageId?: string | null;
   pixelId?: string | null;
+  organizationId?: string | null;
 }) {
-  const { context, supabase } = await getMetaSupabaseContext();
-  const existing = await getExistingMetaRecord(context.organization.id);
+  const { context } = await getMetaSupabaseContext();
+  const targetOrganizationId = input.organizationId ?? context.organization.id;
+  const supabase = createAdminClient();
+
+  if (!supabase) {
+    throw new ApiError(503, "Supabase is not configured.", "config_missing");
+  }
+
+  const existing = await getExistingMetaRecord(targetOrganizationId);
 
   if (!existing) {
     throw new ApiError(404, "No Meta connection exists for this workspace.", "meta_connection_missing");
@@ -1162,7 +1191,7 @@ export async function updateMetaLaunchSelections(input: {
     throw new ApiError(500, error.message, "meta_selection_update_failed");
   }
 
-  const refreshed = await getExistingMetaRecord(context.organization.id);
+  const refreshed = await getExistingMetaRecord(targetOrganizationId);
   return toConnectionState(refreshed);
 }
 

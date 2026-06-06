@@ -657,8 +657,11 @@ function runOfflineChecks() {
   assertIncludes(launchPage, "Tracking / live activation", "Launch tracking activation visibility", "launch separates paused object creation from live activation tracking readiness");
   assertIncludes(launchPage, "label: \"Meta preflight\"", "Launch Meta preflight visibility", "saved Meta selections and provider preflight are separate readiness gates");
   assertIncludes(launchPage, "Save the Meta ad account, Page, and pixel before launch.", "Launch selection blocker copy", "launch does not tell users to reconnect Meta after selections are already saved");
+  assertIncludes(launchPage, "getMetaConnectionStateForOrganization(metaOrganizationId)", "Launch campaign-scoped Meta state", "launch reads Meta connection state from the resolved campaign workspace instead of ambient workspace state");
+  assertIncludes(launchPage, "const metaConnected = metaConnection.connectionStatus === \"connected\";", "Launch Meta OAuth gate", "launch treats OAuth connection as separate from ad account/Page/pixel selection");
   assertIncludes("src/lib/env.ts", "DEALFLOW_PLATFORM_LAUNCH_DOMAIN", "Platform launch domain env", "DealFlow-hosted funnels can use the platform verified domain instead of per-customer domains");
   assertIncludes("src/lib/integrations/meta/service.ts", "getDealFlowPlatformTrackingFallback", "Meta platform domain fallback", "Meta preflight can use the verified DealFlow platform domain for DealFlow-hosted funnel traffic");
+  assertIncludes("src/lib/integrations/meta/service.ts", "getMetaWorkspaceCredentials(options?.organizationId)", "Meta campaign-scoped preflight", "launch preflight validates the same campaign workspace Meta row that the page displays");
   assertIncludes("src/lib/integrations/meta/service.ts", "persistDerivedLaunchDomainFromDestination", "Meta derived launch domain persistence", "Meta preflight stores the final destination hostname as the workspace launch domain when missing");
   assertIncludes("src/lib/integrations/meta/service.ts", "liveActivationBlocked", "Meta live activation tracking guard", "partial tracking blocks live activation while paused creation can stay available");
   assertIncludes("src/lib/integrations/meta/service.ts", "ready = accountValid && pageValid && pixelValid && domainValid", "Meta preflight hard gate", "launch preflight still requires valid Meta assets and verified destination domain");
@@ -681,6 +684,7 @@ function runOfflineChecks() {
   assertIncludes(campaignEntitlements, "launchOverride", "Campaign entitlement override propagation", "publish and launch entitlement checks receive billing override state");
   assertIncludes(launchMetaSelectionPanel, "Meta selections saved. Launch gates are being checked now.", "Meta selection save confirmation", "saving Meta assets gives immediate confirmation");
   assertIncludes(launchMetaSelectionPanel, "setIsSaving(true)", "Meta selection explicit saving state", "Meta asset save button tracks the full async save lifecycle");
+  assertIncludes(launchMetaSelectionPanel, "campaignId", "Meta selection campaign scope", "Meta selection requests preserve campaign scope when saving ad account/Page/pixel choices");
   assertIncludes(launchingPage, "launchIntent", "Launch start intent gate", "direct launch-room visits must return to launch gates before showing the start control");
   assertIncludes(launchingPage, "await syncCampaignStatus(currentCampaignId)", "Post-launch Meta confirmation", "successful launches request a fresh Meta sync before landing on the success page");
   assertIncludes(launchingPage, "Premium launch sequence", "Launching premium sequence", "launching page has an elevated customer-facing launch sequence");
@@ -745,7 +749,9 @@ function runOfflineChecks() {
   assertIncludes(metaLaunchService, "status: \"paused\"", "Meta publish activation disabled", "publish step reports paused instead of activating Meta objects");
   assertIncludes(metaConnect, "value.startsWith(\"//\")", "Meta OAuth return path guard", "protocol-relative return paths are rejected");
   assertIncludes(metaConnect, "createMetaOAuthState", "Meta OAuth signed state", "connect route sends a short-lived signed state instead of relying only on hostname cookies");
+  assertIncludes(metaConnect, "resolveOAuthOrganizationId", "Meta OAuth campaign workspace scope", "connect route signs OAuth state with the campaign workspace when reconnect starts from launch");
   assertIncludes(metaConnect, "env.scopes", "Meta OAuth configurable scopes", "connect route uses META_SCOPES so production can request only approved Meta permissions");
+  assertIncludes("src/app/api/integrations/meta/selections/route.ts", "resolveSelectionOrganizationId", "Meta selections campaign workspace scope", "Meta selection saves resolve campaign workspace instead of relying on ambient active workspace");
   assertExcludes(metaConnect, "\"ads_management,ads_read,business_management,pages_show_list,pages_read_engagement\"", "Meta OAuth hardcoded page scopes removed", "connect route does not force page scopes that can block Facebook Login when app review is incomplete");
   assertIncludes(metaCallback, "resolved.origin === appOrigin", "Meta OAuth callback origin guard", "callback redirects stay on the app origin");
   assertIncludes(metaCallback, "verifyMetaOAuthState", "Meta OAuth state fallback", "callback can safely verify state when a provider returns on an alternate app hostname");
