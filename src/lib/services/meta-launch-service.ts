@@ -276,7 +276,7 @@ function assertBudgetSafety(payload: BuiltMetaAdSetPayload) {
   if (dailyBudget > capCents || lifetimeBudget > capCents) {
     throw new ApiError(
       400,
-      `Meta launch budget exceeds the ${capCents} cent safety cap.`,
+      `Meta launch budget exceeds the enabled ${capCents} cent owner budget cap.`,
       "meta_budget_cap_exceeded",
     );
   }

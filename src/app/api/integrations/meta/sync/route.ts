@@ -1,6 +1,7 @@
 import { ApiError, apiSuccess, assertSameOriginRequest, parseOptionalJsonBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { createMetaFailureResponse } from "@/lib/integrations/meta/error-mapper";
+import { getMetaConnectionState } from "@/lib/integrations/meta/service";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { syncMetaCampaignStatus } from "@/lib/services/meta-campaign-sync-service";
 import { runTrackedSystemJob } from "@/lib/services/system-job-service";
@@ -27,6 +28,11 @@ export async function POST(request: Request) {
       typeof body?.campaignId === "string" && body.campaignId.trim().length > 0
         ? body.campaignId.trim()
         : null;
+    const connection = await getMetaConnectionState();
+    if (connection.connectionStatus !== "connected") {
+      throw new ApiError(400, "Connect a Meta ad account before syncing status.", "meta_not_connected");
+    }
+
     const { output, jobId, correlationId } = await runTrackedSystemJob({
       organizationId: auth.organizationId,
       userId: auth.userId,

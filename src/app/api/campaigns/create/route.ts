@@ -140,7 +140,7 @@ function assertMetaLiveLaunchEnabled() {
   } catch {
     throw new ApiError(
       503,
-      "Production Meta launch approval requires META_DAILY_BUDGET_CAP_CENTS before paused objects can be created.",
+      "Production Meta launch approval requires META_DAILY_BUDGET_CAP_CENTS when META_DAILY_BUDGET_CAP_ENABLED=true.",
       "meta_budget_cap_missing",
     );
   }
@@ -478,7 +478,7 @@ function normalizeObjective(value?: string | null) {
 
 function toMinorDailyBudget(value?: number | null) {
   const normalized = Number(value ?? 0);
-  const fallbackCents = getMetaDailyBudgetCapCents() ?? 200;
+  const fallbackCents = getMetaDailyBudgetCapCents() ?? 500;
 
   if (!Number.isFinite(normalized) || normalized <= 0) {
     return String(fallbackCents);

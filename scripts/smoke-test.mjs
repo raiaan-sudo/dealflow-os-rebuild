@@ -647,8 +647,8 @@ function runOfflineChecks() {
   assertIncludes(campaignPlanDocument, "selectedAdIds", "Selected creative camel-case normalization", "launch media selection survives saved-document and browser handoff shapes");
   assertIncludes(campaignPlanDocument, "nestedPlan", "Selected creative nested normalization", "launch media selection survives nested campaign plan documents");
   assertExcludes(launchPage, "recommended", "Launch recommended fallback removed", "launch preview does not use recommended fallback");
-  assertIncludes(launchPage, "budgetCapMissingForLaunch", "Launch budget cap fail-closed visibility", "launch readiness blocks production Meta object creation when the cap is missing");
-  assertIncludes(launchPage, "effectiveDailyBudgetCents", "Launch effective budget visibility", "launch readiness shows the effective capped budget instead of only the campaign budget");
+  assertIncludes(launchPage, "budgetCapMissingForLaunch", "Launch budget cap fail-closed visibility", "launch readiness blocks production Meta object creation only when an enabled cap is missing");
+  assertIncludes(launchPage, "effectiveDailyBudgetCents", "Launch effective budget visibility", "launch readiness shows the effective budget under optional caps");
   assertIncludes(launchPage, "Tracking / live activation", "Launch tracking activation visibility", "launch separates paused object creation from live activation tracking readiness");
   assertIncludes(launchPage, "label: \"Meta preflight\"", "Launch Meta preflight visibility", "saved Meta selections and provider preflight are separate readiness gates");
   assertIncludes(launchPage, "Save the Meta ad account, Page, and pixel before launch.", "Launch selection blocker copy", "launch does not tell users to reconnect Meta after selections are already saved");
@@ -740,6 +740,8 @@ function runOfflineChecks() {
   assertIncludes(metaLaunchService, "status: \"paused\"", "Meta publish activation disabled", "publish step reports paused instead of activating Meta objects");
   assertIncludes(metaConnect, "value.startsWith(\"//\")", "Meta OAuth return path guard", "protocol-relative return paths are rejected");
   assertIncludes(metaConnect, "createMetaOAuthState", "Meta OAuth signed state", "connect route sends a short-lived signed state instead of relying only on hostname cookies");
+  assertIncludes(metaConnect, "env.scopes", "Meta OAuth configurable scopes", "connect route uses META_SCOPES so production can request only approved Meta permissions");
+  assertExcludes(metaConnect, "\"ads_management,ads_read,business_management,pages_show_list,pages_read_engagement\"", "Meta OAuth hardcoded page scopes removed", "connect route does not force page scopes that can block Facebook Login when app review is incomplete");
   assertIncludes(metaCallback, "resolved.origin === appOrigin", "Meta OAuth callback origin guard", "callback redirects stay on the app origin");
   assertIncludes(metaCallback, "verifyMetaOAuthState", "Meta OAuth state fallback", "callback can safely verify state when a provider returns on an alternate app hostname");
   assertIncludes(metaCallback, "verifiedState?.organizationId", "Meta OAuth workspace fallback", "signed state preserves workspace ownership if auth cookies are unavailable on callback host");
@@ -1034,9 +1036,9 @@ function runOfflineChecks() {
   assertIncludes(higgsfieldClient, "withPolling: true", "Higgsfield image polling", "image generation waits for a completed result before surfacing a file URL");
   assertIncludes(higgsfieldClient, "withPolling: false", "Higgsfield async video start", "video generation stays async and does not block the request path");
   assertIncludes(launchRoute, "assertMetaLiveLaunchEnabled", "Reachable Meta live launch kill switch", "direct Meta launch route fails closed unless ALLOW_META_LIVE_LAUNCH=true");
-  assertIncludes("src/lib/integrations/meta/budget-cap.ts", "/^(0|none|off|unlimited)$/i", "Meta budget unlimited policy", "unset, zero, off, none, or unlimited budget cap config removes the DealFlow cap");
-  assertIncludes("src/lib/integrations/meta/budget-cap.ts", "isMetaDailyBudgetCapRequiredForProductionLaunch", "Production budget cap requirement", "production Meta launch approval requires a finite owner-configured cap");
-  assertIncludes(metaExecution, "meta_budget_cap_missing", "Live Meta budget cap required", "live Meta launch fails closed when a finite budget cap is missing");
+  assertIncludes("src/lib/integrations/meta/budget-cap.ts", "META_DAILY_BUDGET_CAP_ENABLED", "Meta budget cap opt-in policy", "DealFlow is uncapped unless the owner explicitly enables a cap");
+  assertIncludes("src/lib/integrations/meta/budget-cap.ts", "isMetaDailyBudgetCapRequiredForProductionLaunch", "Production budget cap requirement", "production Meta launch approval requires a finite cap only when cap enforcement is enabled");
+  assertIncludes(metaExecution, "meta_budget_cap_missing", "Live Meta budget cap required", "live Meta launch fails closed when cap enforcement is enabled but no finite cap is configured");
   assertIncludes(metaLaunchService, "getMetaDailyBudgetCapCents()", "Reachable Meta budget policy", "direct Meta launch uses the shared owner-configured budget cap policy");
   assertIncludes(sessionCostGuard, "reserve_provider_usage", "Atomic provider usage reservation", "paid-generation guard reserves provider budget through DB RPC");
   assertIncludes(sessionCostGuard, "HIGGSFIELD_IMAGE_DAILY_LIMIT", "Configurable Higgsfield image cap", "Higgsfield image generation can be capped below the default for production tests");

@@ -72,6 +72,25 @@ async function fetchCampaignPlanRowsPaged(supabase, selectColumns, options = {})
   }
 }
 
+async function readRowsPaginated(buildQuery, pageSize = 1000) {
+  const rows = [];
+
+  for (let from = 0; ; from += pageSize) {
+    const to = from + pageSize - 1;
+    const { data, error } = await buildQuery().range(from, to);
+
+    if (error) {
+      throw error;
+    }
+
+    rows.push(...(data ?? []));
+
+    if (!data || data.length < pageSize) {
+      return rows;
+    }
+  }
+}
+
 async function countUnreviewedFailedProviderEvents(supabase) {
   const { data, error } = await supabase
     .from("provider_usage_events")
@@ -194,19 +213,16 @@ async function getSelectedBlockedStaticAssetDebt(supabase) {
   }
 
   const campaignIds = [...selectedByCampaign.keys()];
-  const assets = [];
-  for (const campaignId of campaignIds) {
-    const { data, error: assetError } = await supabase
-      .from("creative_assets")
-      .select("id,campaign_id,creative_id,generation_method,provider_name,metadata")
-      .eq("campaign_id", campaignId)
-      .limit(100);
-
-    if (assetError) {
-      throw new Error(`creative_assets selected static scan: ${assetError.message}`);
-    }
-
-    assets.push(...(data ?? []));
+  let assets;
+  try {
+    assets = await readRowsPaginated(() =>
+      supabase
+        .from("creative_assets")
+        .select("id,campaign_id,creative_id,generation_method,provider_name,metadata")
+        .in("campaign_id", campaignIds),
+    );
+  } catch (assetError) {
+    throw new Error(`creative_assets selected static scan: ${assetError.message}`);
   }
 
   const assetsBySelectedId = new Map();

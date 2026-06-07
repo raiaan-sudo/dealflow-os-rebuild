@@ -243,6 +243,20 @@ function cloneCampaignSnapshot(campaign: BuiltCampaign): BuiltCampaign {
   return structuredClone(campaign);
 }
 
+function updateCampaignStrategyOnly(
+  campaign: BuiltCampaign,
+  nextStrategy: CampaignStrategyInput,
+): BuiltCampaign {
+  return {
+    ...campaign,
+    strategy: createInitialStrategy(nextStrategy),
+  };
+}
+
+function updateCampaignOfferOnly(campaign: BuiltCampaign, offer: string): BuiltCampaign {
+  return updateCampaignStrategyOnly(campaign, { ...campaign.strategy, offer });
+}
+
 function toCopyAssistantInput(strategy: CampaignStrategyInput) {
   return {
     offer: strategy.offer,
@@ -1039,6 +1053,15 @@ export function CampaignBuilderWorkspace({
     setBuilderError(null);
 
     try {
+      if (savedCampaignId) {
+        replaceCampaignWithoutRevision(
+          updateCampaignStrategyOnly(campaign, campaign.strategy),
+        );
+        setSaveError(null);
+        setActiveTab("funnel");
+        return;
+      }
+
       const built = buildCampaign(strategy);
       replaceCampaignWithoutRevision(built);
       setCampaignRevisions([]);
@@ -1156,7 +1179,7 @@ export function CampaignBuilderWorkspace({
   }
 
   function applyOfferVariation(value: string) {
-    setCampaign((current) => buildCampaign({ ...current.strategy, offer: value }), {
+    setCampaign((current) => updateCampaignOfferOnly(current, value), {
       source: "manual",
       label: "Changed offer variation",
     });
@@ -1547,7 +1570,7 @@ export function CampaignBuilderWorkspace({
 
     const timeout = setTimeout(() => {
       replaceCampaignWithoutRevision(
-        buildCampaign({
+        updateCampaignStrategyOnly(campaign, {
           ...campaign.strategy,
           location: normalizeDeferredField("location", campaign.strategy.location || ""),
         }),
@@ -1565,7 +1588,7 @@ export function CampaignBuilderWorkspace({
 
     const timeout = setTimeout(() => {
       replaceCampaignWithoutRevision(
-        buildCampaign({
+        updateCampaignStrategyOnly(campaign, {
           ...campaign.strategy,
           audience: normalizeDeferredField("audience", campaign.strategy.audience || ""),
         }),
@@ -1583,7 +1606,7 @@ export function CampaignBuilderWorkspace({
 
     const timeout = setTimeout(() => {
       replaceCampaignWithoutRevision(
-        buildCampaign({
+        updateCampaignStrategyOnly(campaign, {
           ...campaign.strategy,
           offer: normalizeDeferredField("offer", campaign.strategy.offer || ""),
         }),
@@ -1621,11 +1644,22 @@ export function CampaignBuilderWorkspace({
       : activeTab === "funnel"
         ? "Make the landing page offer obvious."
         : "Review the creative set and move to preview.";
+  const savedReviewHref = savedCampaignId
+    ? `/preview?campaignId=${encodeURIComponent(savedCampaignId)}`
+    : "/preview";
+  const savedCreativesHref = savedCampaignId
+    ? `/build/creatives?campaignId=${encodeURIComponent(savedCampaignId)}`
+    : "/build/creatives";
+  const savedStaticAdCount = initialStaticAds.length;
 
   useEffect(() => {
     const nextAssistant = generateCreativeCopyAssistant(toCopyAssistantInput(strategy));
 
     setCopyAssistant(nextAssistant);
+    if (savedCampaignId) {
+      return;
+    }
+
     if (
       campaign.funnel.headline === nextAssistant.headline &&
       campaign.funnel.subheadline === nextAssistant.subheadline &&
@@ -1643,10 +1677,44 @@ export function CampaignBuilderWorkspace({
         cta: nextAssistant.cta,
       },
     });
-  }, [campaign, strategy]);
+  }, [campaign, savedCampaignId, strategy]);
 
   return (
     <div className="space-y-5">
+      {savedCampaignId ? (
+        <Card className="border-cyan-300/15 bg-cyan-300/[0.055] p-5 sm:p-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="max-w-3xl">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="border-cyan-300/20 bg-cyan-300/10 text-cyan-100">
+                  Draft editor
+                </Badge>
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100/60">
+                  {campaignName || "Saved campaign"}
+                </span>
+              </div>
+              <h3 className="mt-3 text-xl font-semibold tracking-[-0.03em]">
+                Editing saved campaign draft
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-cyan-50/76">
+                This edits the current campaign. The saved launch package stays unchanged until you save.
+              </p>
+              <p className="mt-2 text-xs font-medium text-cyan-100/68">
+                {savedStaticAdCount} saved creative{savedStaticAdCount === 1 ? "" : "s"} available from the current campaign context.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Button asChild variant="secondary">
+                <Link href={savedReviewHref}>Review saved launch package</Link>
+              </Button>
+              <Button asChild variant="secondary">
+                <Link href={savedCreativesHref}>View saved creatives</Link>
+              </Button>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+
       {activeTab === "funnel" ? (
       <Card className="p-5 sm:p-6">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">

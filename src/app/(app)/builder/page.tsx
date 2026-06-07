@@ -184,9 +184,9 @@ function getBuilderNextAction(plan: CampaignPlan, campaignId: string, hasSelecte
   }
 
   return {
-    label: "Continue campaign form",
+    label: "Edit funnel/campaign draft",
     href: scoped("/builder?mode=edit"),
-    detail: "Continue the campaign form, then return here for the next step.",
+    detail: "Edit the saved campaign draft only when you need to change copy, funnel, or setup details.",
   };
 }
 
@@ -279,7 +279,7 @@ function ActiveCampaignWorkspace({
               </div>
               <Button asChild variant="secondary">
                 <Link href={`/builder?campaignId=${encodeURIComponent(campaignId)}&mode=edit`}>
-                  Continue campaign form
+                  Edit funnel/campaign draft
                 </Link>
               </Button>
             </div>
@@ -435,9 +435,9 @@ export default async function BuilderPage({
     <div className="mx-auto w-full max-w-[1360px] space-y-5">
       <PageHeader
         eyebrow="Build"
-        title={wantsNewCampaign ? "Launch another campaign" : "Edit campaign"}
-        description={wantsNewCampaign ? "Start a new campaign slot without changing the current active campaign." : "Adjust the active campaign details, then return to review."}
-        guidance={wantsNewCampaign ? "New campaigns are secondary to the active launch path." : "Keep edits focused on what blocks review or launch."}
+        title={wantsNewCampaign ? "Launch another campaign" : "Edit saved campaign draft"}
+        description={wantsNewCampaign ? "Start a new campaign slot without changing the current active campaign." : "Adjust the current campaign draft. Review and launch use the saved package until you save changes."}
+        guidance={wantsNewCampaign ? "New campaigns are secondary to the active launch path." : "Use this only when you intentionally need to edit the saved funnel, copy, or campaign setup."}
       />
       <CampaignBuilderWorkspace
         key={setupRecord?.campaign.id ?? "new-campaign"}

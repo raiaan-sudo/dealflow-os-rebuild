@@ -201,7 +201,7 @@ const DAILY_BUDGETS = [
   { label: "$100/day", value: "100" },
 ] as const;
 const MIN_DAILY_BUDGET_CENTS = 500;
-const MAX_DAILY_BUDGET_CENTS = 50_000;
+const MAX_DAILY_BUDGET_CENTS: number | null = null;
 
 const OFFER_SUGGESTIONS: Record<CampaignMode, string[]> = {
   buyer: [
@@ -400,8 +400,8 @@ function validateStep(step: OnboardingStepKey, draft: DraftState) {
     if (!draft.priceRange.trim()) errors.priceRange = "Choose a price range.";
     if (!dailyBudgetCents || dailyBudgetCents < MIN_DAILY_BUDGET_CENTS) {
       errors.dailyBudget = "Choose or enter a daily ad spend of at least $5/day.";
-    } else if (dailyBudgetCents > MAX_DAILY_BUDGET_CENTS) {
-      errors.dailyBudget = "Daily ad spend must be $500/day or less for self-serve setup.";
+    } else if (MAX_DAILY_BUDGET_CENTS !== null && dailyBudgetCents > MAX_DAILY_BUDGET_CENTS) {
+      errors.dailyBudget = "Daily ad spend is above the current owner-approved limit.";
     }
     if (!draft.offer.trim()) errors.offer = "Add the offer or lead magnet for this campaign.";
   }

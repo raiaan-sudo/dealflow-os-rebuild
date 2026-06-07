@@ -747,11 +747,11 @@ export async function validateCampaignForLaunch(
   const budgetCapCents = getMetaDailyBudgetCapCents();
 
   if (budgetCapCents !== null && budgetType === "daily" && dailyBudget && toMinorUnits(dailyBudget) > budgetCapCents) {
-    errors.push(`Daily budget must be ${budgetCapCents} cents or lower for beta launch safety.`);
+    errors.push(`Daily budget must be ${budgetCapCents} cents or lower for the enabled owner budget cap.`);
   }
 
   if (budgetCapCents !== null && budgetType === "lifetime" && lifetimeBudget && toMinorUnits(lifetimeBudget) > budgetCapCents) {
-    errors.push(`Lifetime budget must be ${budgetCapCents} cents or lower for beta launch safety.`);
+    errors.push(`Lifetime budget must be ${budgetCapCents} cents or lower for the enabled owner budget cap.`);
   }
 
   const selectedPixelId = launchInput.pixel_id?.trim() || getMetaAccountPixelId(metaAccount);

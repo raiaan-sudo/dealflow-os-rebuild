@@ -42,7 +42,8 @@ assert.doesNotMatch(onboardingPage, /Monthly ad budget|\$1\.5k\/mo|\$3k\/mo|\$5k
 
 assert.match(onboardingPage, /parseCurrencyCents/, "client validation must parse cents without float regex ambiguity");
 assert.match(onboardingPage, /MIN_DAILY_BUDGET_CENTS = 500/, "custom daily budget must have a minimum");
-assert.match(onboardingPage, /MAX_DAILY_BUDGET_CENTS = 50_000/, "custom daily budget must have a self-serve maximum");
+assert.match(onboardingPage, /MAX_DAILY_BUDGET_CENTS: number \| null = null/, "custom daily budget must be uncapped by default");
+assert.doesNotMatch(onboardingPage, /\$500\/day or less/, "customer daily budget copy must not claim a $500/day maximum");
 assert.match(onboardingPage, /daily_budget:\s*dailyBudget/, "submit payload must include daily budget dollars");
 assert.match(onboardingPage, /daily_budget_cents:\s*dailyBudgetCents/, "submit payload must include daily budget cents");
 assert.match(onboardingPage, /budget:\s*internalMonthlyBudget/, "legacy budget payload must be an explicitly derived internal monthly cap");
@@ -72,7 +73,7 @@ assert.ok(
   metaLaunchService.includes("const dailyBudget = Number(payload.daily_budget ?? 0);"),
   "Meta launch safety must still read daily budget payloads",
 );
-assert.match(metaLaunchService, /meta_budget_cap_exceeded/, "Meta launch must still enforce daily budget cap");
+assert.match(metaLaunchService, /meta_budget_cap_exceeded/, "Meta launch must still enforce an explicitly enabled daily budget cap");
 assert.match(autonomyShared, /dailyBudgetCapCents:[\s\S]*Math\.min\(envDailyBudgetCapCents, approvedDailyBudgetCapCents\)/, "Autopilot must keep the stricter daily cap");
 assert.match(autonomyExecution, /budgetDelta > 0[\s\S]*high_impact/, "Autopilot budget increases must stay approval-required");
 

@@ -372,7 +372,7 @@ export function getMetaExecutionMode() {
     } catch {
       throw new ApiError(
         503,
-        "Live Meta launch requires a configured daily budget cap before campaign creation can continue.",
+        "Live Meta launch requires a configured daily budget cap only when META_DAILY_BUDGET_CAP_ENABLED=true.",
         "meta_budget_cap_missing",
       );
     }

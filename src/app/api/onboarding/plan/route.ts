@@ -208,7 +208,7 @@ function normalizeIdempotencyPart(value: unknown) {
 }
 
 const MIN_DAILY_BUDGET_CENTS = 500;
-const MAX_DAILY_BUDGET_CENTS = 50_000;
+const MAX_DAILY_BUDGET_CENTS: number | null = null;
 const DEFAULT_DAILY_BUDGET_CENTS = 3_000;
 
 function parseCurrencyCents(value: unknown) {
@@ -259,8 +259,8 @@ function toOnboardingBudget(payload: OnboardingPayload | null) {
       throw new Error("Daily ad spend must be at least $5/day.");
     }
 
-    if (dailyBudgetCents > MAX_DAILY_BUDGET_CENTS) {
-      throw new Error("Daily ad spend must be $500/day or less for self-serve setup.");
+    if (MAX_DAILY_BUDGET_CENTS !== null && dailyBudgetCents > MAX_DAILY_BUDGET_CENTS) {
+      throw new Error("Daily ad spend is above the current owner-approved limit.");
     }
 
     return {

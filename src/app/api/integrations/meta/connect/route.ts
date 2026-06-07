@@ -55,10 +55,13 @@ export async function GET(request: Request) {
 
     url.searchParams.set("client_id", env.appId);
     url.searchParams.set("redirect_uri", redirectUri);
-    url.searchParams.set(
-      "scope",
-      "ads_management,ads_read,business_management,pages_show_list,pages_read_engagement",
-    );
+    const requestedScopes = env.scopes
+      .split(",")
+      .map((scope) => scope.trim())
+      .filter(Boolean)
+      .join(",");
+
+    url.searchParams.set("scope", requestedScopes);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("state", state);
 

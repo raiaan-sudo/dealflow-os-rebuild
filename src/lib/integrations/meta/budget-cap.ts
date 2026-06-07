@@ -1,4 +1,12 @@
+export function isMetaDailyBudgetCapEnabled() {
+  return process.env.META_DAILY_BUDGET_CAP_ENABLED === "true";
+}
+
 export function getMetaDailyBudgetCapCents() {
+  if (!isMetaDailyBudgetCapEnabled()) {
+    return null;
+  }
+
   const raw = process.env.META_DAILY_BUDGET_CAP_CENTS?.trim();
 
   if (!raw || /^(0|none|off|unlimited)$/i.test(raw)) {
@@ -14,7 +22,8 @@ export function getMetaDailyBudgetCapCents() {
 export function isMetaDailyBudgetCapRequiredForProductionLaunch() {
   return (
     process.env.NODE_ENV === "production" &&
-    process.env.ALLOW_META_LIVE_LAUNCH === "true"
+    process.env.ALLOW_META_LIVE_LAUNCH === "true" &&
+    isMetaDailyBudgetCapEnabled()
   );
 }
 
@@ -24,7 +33,7 @@ export function assertMetaDailyBudgetCapConfiguredForLiveLaunch() {
   }
 
   if (getMetaDailyBudgetCapCents() === null) {
-    throw new Error("META_DAILY_BUDGET_CAP_CENTS must be finite before production Meta launch approval can create paused objects.");
+    throw new Error("META_DAILY_BUDGET_CAP_CENTS must be finite when META_DAILY_BUDGET_CAP_ENABLED=true.");
   }
 }
 

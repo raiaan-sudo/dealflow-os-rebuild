@@ -506,14 +506,14 @@ export default async function LaunchAliasPage({
           ? "Capped"
           : budgetCapApplied
             ? undefined
-            : "Unlimited",
+            : "Uncapped",
       detail: budgetCapMissingForLaunch
-        ? "Configure META_DAILY_BUDGET_CAP_CENTS before production Meta object creation. the platform will fail closed until a finite cap is present."
+        ? "Configure META_DAILY_BUDGET_CAP_CENTS or disable META_DAILY_BUDGET_CAP_ENABLED before production Meta object creation."
         : budgetWasCapped
-        ? `Requested daily budget is ${formatBudgetCap(dailyBudgetCents)}; the launch will use the platform cap of ${formatBudgetCap(effectiveDailyBudgetCents)}/day unless support adjusts the cap.`
+        ? `Requested daily budget is ${formatBudgetCap(dailyBudgetCents)}; launch will use the explicitly enabled owner cap of ${formatBudgetCap(effectiveDailyBudgetCents)}/day unless support adjusts the cap.`
         : budgetCapCents !== null
-          ? `Launch is capped at ${formatBudgetCap(budgetCapCents)}/day; requested daily budget is ${formatBudgetCap(dailyBudgetCents)}.`
-          : `No platform budget cap is applied. Launch will use the requested daily budget of ${formatBudgetCap(dailyBudgetCents)}.`,
+          ? `Launch is capped by the explicitly enabled owner cap at ${formatBudgetCap(budgetCapCents)}/day; requested daily budget is ${formatBudgetCap(dailyBudgetCents)}.`
+          : `Uncapped. Launch will use the requested daily budget of ${formatBudgetCap(dailyBudgetCents)}.`,
     },
     {
       label: "Tracking / live activation",
@@ -576,7 +576,7 @@ export default async function LaunchAliasPage({
         ]
       : []),
     ...(budgetCapMissingForLaunch
-      ? ["Configure META_DAILY_BUDGET_CAP_CENTS before attempting a production Meta launch."]
+      ? ["Configure META_DAILY_BUDGET_CAP_CENTS or disable META_DAILY_BUDGET_CAP_ENABLED before attempting a production Meta launch."]
       : []),
   ];
 

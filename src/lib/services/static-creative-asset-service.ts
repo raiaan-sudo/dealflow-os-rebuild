@@ -449,7 +449,7 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
           }
         : asset.imageQa ?? null;
     const finalRasterAccepted =
-      acceptedHiggsfieldFinishedAd &&
+      Boolean(readyUrl) &&
       persistedImageQa?.usable === true &&
       persistedImageQa?.decision === "accept";
     const normalizedGenerationState = readyUrl && finalRasterAccepted

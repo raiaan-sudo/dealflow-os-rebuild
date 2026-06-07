@@ -34,30 +34,28 @@ const trackingReadinessSync = read("scripts/sync-meta-tracking-readiness.mjs");
 
 const monthlyBudgetDollars = 3000;
 const impliedDailyBudgetCents = Math.round(Math.round(monthlyBudgetDollars / 30) * 100);
-const cappedDailyBudgetCents = Math.min(impliedDailyBudgetCents, 300);
 
-assert.equal(impliedDailyBudgetCents, 10000, "$3000 monthly budget should imply $100/day before cap");
-assert.equal(cappedDailyBudgetCents, 300, "$3000 monthly budget should cap to 300 cents/day");
+assert.equal(impliedDailyBudgetCents, 10000, "$3000 monthly budget should imply $100/day");
 
 assertIncludes(
   budgetCap,
-  "isMetaDailyBudgetCapRequiredForProductionLaunch",
-  "production budget-cap requirement helper",
+  "isMetaDailyBudgetCapEnabled",
+  "budget-cap opt-in helper",
 );
 assertIncludes(
   budgetCap,
-  "process.env.NODE_ENV === \"production\"",
-  "production cap requirement is production scoped",
+  "process.env.META_DAILY_BUDGET_CAP_ENABLED === \"true\"",
+  "budget cap is opt-in",
 );
 assertIncludes(
   budgetCap,
-  "process.env.ALLOW_META_LIVE_LAUNCH === \"true\"",
-  "cap requirement is tied to owner launch approval",
+  "return null;",
+  "budget cap defaults to uncapped",
 );
 assertIncludes(
   launchCreateRoute,
   "assertMetaDailyBudgetCapConfiguredForLiveLaunch();",
-  "direct internal launch route enforces configured budget cap",
+  "direct internal launch route enforces configured budget cap when enabled",
 );
 assertIncludes(
   launchCreateRoute,
@@ -77,7 +75,7 @@ assertIncludes(
 assertIncludes(
   launchCreateRoute,
   "applyMetaDailyBudgetCapCents(Math.round(normalized * 100))",
-  "direct launch route caps daily budget payload",
+  "direct launch route uses shared opt-in daily budget cap policy",
 );
 assertOrder(
   launchCreateRoute,
@@ -155,17 +153,17 @@ assertIncludes(
 assertIncludes(
   launchPage,
   "budgetCapMissingForLaunch",
-  "launch UI blocks production object creation when cap is missing",
+  "launch UI blocks production object creation when an enabled cap is missing",
 );
 assertIncludes(
   launchPage,
   "effectiveDailyBudgetCents",
-  "launch UI calculates effective capped daily budget",
+  "launch UI calculates effective daily budget under optional caps",
 );
 assertIncludes(
   launchPage,
-  "Configure META_DAILY_BUDGET_CAP_CENTS before production Meta object creation.",
-  "launch UI names missing budget cap",
+  "Uncapped. Launch will use the requested daily budget",
+  "launch UI shows uncapped spend policy by default",
 );
 assertIncludes(
   launchPage,
