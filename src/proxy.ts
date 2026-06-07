@@ -149,6 +149,27 @@ function isAuthorizedQaAuthHarnessRequest(request: NextRequest) {
 function applySecurityHeaders(response: NextResponse, startedAt?: number) {
   const isProduction = process.env.NODE_ENV === "production";
   const requestOrigin = response.headers.get("x-dealflow-request-origin");
+  const supabaseOrigin = (() => {
+    const supabaseEnv = getSupabaseEnv();
+    if (!supabaseEnv?.url) {
+      return null;
+    }
+    try {
+      return new URL(supabaseEnv.url).origin;
+    } catch {
+      return null;
+    }
+  })();
+  const knownImageOrigins = [
+    requestOrigin,
+    supabaseOrigin,
+    "https://images.unsplash.com",
+    "https://www.facebook.com",
+    "https://connect.facebook.net",
+    "https://challenges.cloudflare.com",
+    "https://egenmedia.com",
+    "https://www.egenmedia.com",
+  ].filter(Boolean);
   response.headers.delete("x-dealflow-request-origin");
   const scriptSrc = [
     "'self'",
@@ -163,6 +184,7 @@ function applySecurityHeaders(response: NextResponse, startedAt?: number) {
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("Cross-Origin-Opener-Policy", "same-origin");
+  response.headers.set("Cross-Origin-Embedder-Policy", "credentialless");
   response.headers.set("Cross-Origin-Resource-Policy", "same-origin");
   response.headers.set("Origin-Agent-Cluster", "?1");
   response.headers.set("X-DNS-Prefetch-Control", "off");
@@ -178,10 +200,10 @@ function applySecurityHeaders(response: NextResponse, startedAt?: number) {
       `script-src ${scriptSrc.join(" ")}`,
       "script-src-attr 'none'",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https:",
+      `img-src 'self' data: blob: ${knownImageOrigins.join(" ")}`,
       "font-src 'self' data:",
-      "media-src 'self' blob: https:",
-      "connect-src 'self' https://*.supabase.co https://api.stripe.com https://graph.facebook.com https://www.facebook.com https://api.openai.com https://api.heygen.com https://challenges.cloudflare.com",
+      `media-src 'self' blob: ${[requestOrigin, supabaseOrigin].filter(Boolean).join(" ")}`,
+      `connect-src 'self' ${supabaseOrigin ?? ""} https://api.stripe.com https://graph.facebook.com https://www.facebook.com https://api.openai.com https://api.heygen.com https://challenges.cloudflare.com`,
       "frame-src https://js.stripe.com https://hooks.stripe.com https://www.facebook.com https://challenges.cloudflare.com",
       "form-action 'self'",
       "object-src 'none'",
