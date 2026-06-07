@@ -81,6 +81,8 @@ export type FullCampaignRecord = {
         creative_strategy: CampaignPlan["creativeStrategy"];
         pain_points: string[];
         monthly_budget: number;
+        language_code: CampaignPlan["languageCode"];
+        campaign_language?: CampaignPlan["campaignLanguage"] | null;
         summary: string;
         targeting_summary: string;
         offer_summary: string;

@@ -10,6 +10,7 @@ import {
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { assertCampaignCanLaunch } from "@/lib/services/campaign-entitlements";
 import {
+  getCampaignLanguageFromPlan,
   getSelectedAdIdsFromPlan,
   getSelectedUgcVideoIdsFromPlan,
   withSelectedLaunchMedia,
@@ -148,17 +149,17 @@ export async function POST(
 
     const existingSelectedAdIds = getSelectedAdIdsFromPlan(currentPlan);
     const existingSelectedUgcVideoIds = getSelectedUgcVideoIdsFromPlan(currentPlan);
+    const campaignLanguageCode = getCampaignLanguageFromPlan(currentPlan);
     const creativeIntakeContext = isCreativeChatIntakeEnabled()
       ? getApprovedCreativeIntakeGenerationContext(currentPlan)
       : null;
-    const staticBriefReadinessContext = creativeIntakeContext
-      ? {
-          staticBriefHash: creativeIntakeContext.staticBriefHash,
-          offerHash: creativeIntakeContext.offerHash,
-          ctaHash: creativeIntakeContext.ctaHash,
-          brandHash: creativeIntakeContext.brandHash,
-        }
-      : null;
+    const staticBriefReadinessContext = {
+      staticBriefHash: creativeIntakeContext?.staticBriefHash,
+      offerHash: creativeIntakeContext?.offerHash,
+      ctaHash: creativeIntakeContext?.ctaHash,
+      brandHash: creativeIntakeContext?.brandHash,
+      languageCode: campaignLanguageCode,
+    };
     const hydratedRecord = await getCampaignById(id);
     const staticAssetOwnerUserId = typeof row.user_id === "string" && row.user_id.length > 0
       ? row.user_id

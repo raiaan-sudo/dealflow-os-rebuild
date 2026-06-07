@@ -1,5 +1,11 @@
 import { evaluateStaticCreativeLaunchSafety } from "@/lib/services/static-creative-visual-qa";
 import type { FallbackLaunchQaResult } from "@/lib/services/creative-asset-status";
+import {
+  evaluateCampaignLanguageSafety,
+  normalizeCampaignLanguage,
+  type CampaignLanguage,
+  type CampaignLanguageSafetyGate,
+} from "@/lib/services/campaign-language";
 export const STATIC_LAUNCH_MIN_CREATIVE_COUNT = 3;
 export const STATIC_LAUNCH_MAX_CREATIVE_COUNT = 6;
 
@@ -64,6 +70,14 @@ type StaticCreativeReadinessInput = {
   approvedOfferTitle?: string | null;
   approvedCta?: string | null;
   approvedBrand?: string | null;
+  languageCode?: CampaignLanguage | string | null;
+  languageLabel?: string | null;
+  languageSafetyGate?: CampaignLanguageSafetyGate | null;
+  hook?: string | null;
+  overlayText?: string | null;
+  primaryText?: string | null;
+  headline?: string | null;
+  cta?: string | null;
 };
 
 export type StaticCreativeBriefReadinessContext = {
@@ -71,6 +85,7 @@ export type StaticCreativeBriefReadinessContext = {
   offerHash?: string | null;
   ctaHash?: string | null;
   brandHash?: string | null;
+  languageCode?: CampaignLanguage | string | null;
 };
 
 export type VideoCreativeReadinessInput = {
@@ -171,9 +186,34 @@ export function pluralizeCount(count: number, singular: string, plural = `${sing
 }
 
 export function getStaticCreativeBriefMismatchReason(
-  creative: Pick<StaticCreativeReadinessInput, "staticBriefHash" | "offerHash" | "ctaHash" | "brandHash">,
+  creative: Pick<
+    StaticCreativeReadinessInput,
+    | "staticBriefHash"
+    | "offerHash"
+    | "ctaHash"
+    | "brandHash"
+    | "languageCode"
+    | "hook"
+    | "overlayText"
+    | "primaryText"
+    | "headline"
+    | "cta"
+  >,
   context?: StaticCreativeBriefReadinessContext | null,
 ) {
+  const expectedLanguage = normalizeCampaignLanguage(context?.languageCode);
+  if (expectedLanguage !== "en") {
+    const languageSafety = evaluateCampaignLanguageSafety({
+      expectedLanguage,
+      assetLanguage: creative.languageCode,
+      texts: [creative.hook, creative.overlayText, creative.primaryText, creative.headline, creative.cta],
+    });
+
+    if (!languageSafety.passed) {
+      return languageSafety.blockers[0] ?? "language_code_mismatch";
+    }
+  }
+
   if (!context?.staticBriefHash) {
     return null;
   }
@@ -228,6 +268,12 @@ export function isLaunchReadyStaticCreative(creative: Pick<
     | "offerHash"
     | "ctaHash"
     | "brandHash"
+    | "languageCode"
+    | "hook"
+    | "overlayText"
+    | "primaryText"
+    | "headline"
+    | "cta"
 >, context?: StaticCreativeBriefReadinessContext | null) {
   if (getStaticCreativeBriefMismatchReason(creative, context) !== null) {
     return false;

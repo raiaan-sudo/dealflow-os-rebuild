@@ -7,6 +7,7 @@ import { normalizePhone } from "@/lib/phone";
 import { recordActivationEvent } from "@/lib/services/activation-telemetry-service";
 import { upsertAgentProfile } from "@/lib/services/internal-lead-notification-service";
 import { normalizeLeadCaptureStrategy } from "@/lib/services/lead-capture-strategy-service";
+import { getCampaignLanguageProfile, normalizeCampaignLanguage } from "@/lib/services/campaign-language";
 import { normalizeOfferForCampaign } from "@/lib/services/offer-normalization-service";
 
 export const runtime = "nodejs";
@@ -31,6 +32,9 @@ type OnboardingPayload = {
   goal?: string;
   lead_capture_goal?: string;
   capture_method?: string;
+  language_code?: string;
+  languageCode?: string;
+  campaign_language?: string;
   form_friction_level?: string;
   privacy_policy_url?: string;
   terms_url?: string;
@@ -57,6 +61,7 @@ type SafeOnboardingPayloadLog = {
   servicePresent: boolean;
   leadCaptureGoal: string;
   captureMethod: string;
+  languageCode: string;
   idempotencySeedPresent: boolean;
 };
 
@@ -112,6 +117,7 @@ function buildSafePayloadLog(payload: OnboardingPayload | null): SafeOnboardingP
     servicePresent: safeText(payload?.service).length > 0,
     leadCaptureGoal: safeText(payload?.lead_capture_goal),
     captureMethod: safeText(payload?.capture_method),
+    languageCode: normalizeCampaignLanguage(payload?.language_code ?? payload?.languageCode ?? payload?.campaign_language),
     idempotencySeedPresent: safeText(payload?.idempotencySeed).length > 0,
   };
 }
@@ -323,6 +329,7 @@ function buildOnboardingIdempotencyKey(
     businessType: string;
     location: string;
     service: string;
+    languageCode: string;
     budget: number;
     idempotencySeed?: string;
   },
@@ -333,6 +340,7 @@ function buildOnboardingIdempotencyKey(
       normalizeIdempotencyPart(params.businessType),
       normalizeIdempotencyPart(params.location),
       normalizeIdempotencyPart(params.service),
+      normalizeIdempotencyPart(params.languageCode),
       String(params.budget),
     ].join("|");
 
@@ -699,6 +707,8 @@ export async function POST(req: Request) {
 	            ? "Home Equity Snapshot Report"
 	            : "Curated Home List");
     const service = normalizeOfferForCampaign(rawService, focus).normalizedOffer;
+    const languageCode = normalizeCampaignLanguage(payload?.language_code ?? payload?.languageCode ?? payload?.campaign_language);
+    const campaignLanguage = getCampaignLanguageProfile(languageCode);
     const budget = toOnboardingBudget(payload);
     const realEstateMode = isRealEstateBusinessType(businessType) || safeText(payload?.focus).length > 0;
     const normalizedAgentPhone = normalizePhone(agentPhone);
@@ -716,6 +726,7 @@ export async function POST(req: Request) {
       businessType: businessName,
       location,
       service: `${focus}|${priceRange}|${service}`,
+      languageCode,
       budget: budget.monthlyBudget,
       idempotencySeed: payload?.idempotencySeed,
     });
@@ -755,6 +766,7 @@ export async function POST(req: Request) {
             metadata: {
               mode: focus,
               sourceStage: "existing_campaign",
+              languageCode,
             },
             idempotencyKey: `onboarding_completed:${idempotencyKey}`,
           }),
@@ -767,6 +779,7 @@ export async function POST(req: Request) {
             metadata: {
               mode: focus,
               sourceStage: "existing_campaign",
+              languageCode,
             },
             idempotencyKey: `campaign_plan_persisted:${idempotencyKey}`,
           }),
@@ -808,6 +821,7 @@ export async function POST(req: Request) {
               budget: budget.monthlyBudget,
             }),
             leadCaptureStrategy,
+            languageCode,
           }
         : {
             clientName: businessName,
@@ -833,6 +847,7 @@ export async function POST(req: Request) {
             ],
             mechanism: `${service} campaign system`,
             leadCaptureStrategy,
+            languageCode,
           },
     );
 
@@ -872,6 +887,8 @@ export async function POST(req: Request) {
         onboarding_daily_budget: budget.dailyBudget,
         onboarding_monthly_cap_cents: Math.round(budget.monthlyBudget * 100),
         onboarding_budget_source: budget.source,
+        language_code: languageCode,
+        campaign_language: campaignLanguage,
       }),
       source: "onboarding_idempotency_metadata",
     });
@@ -901,6 +918,7 @@ export async function POST(req: Request) {
             sourceStage: "new_campaign",
             dailyBudgetCents: budget.dailyBudgetCents,
             budgetSource: budget.source,
+            languageCode,
           },
           idempotencyKey: `onboarding_completed:${idempotencyKey}`,
         }),
@@ -915,6 +933,7 @@ export async function POST(req: Request) {
             sourceStage: "new_campaign",
             dailyBudgetCents: budget.dailyBudgetCents,
             budgetSource: budget.source,
+            languageCode,
           },
           idempotencyKey: `campaign_plan_persisted:${idempotencyKey}`,
         }),

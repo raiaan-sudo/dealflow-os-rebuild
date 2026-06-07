@@ -29,6 +29,12 @@ import { PageShell } from "@/components/ui/page-shell";
 import type { BillingPlanTier } from "@/lib/billing/plans";
 import { getPlanPresentation, SELECTABLE_PLAN_TIERS, type SelectablePlanTier } from "@/lib/billing/plan-presentation";
 import { normalizePhone } from "@/lib/phone";
+import {
+  SUPPORTED_CAMPAIGN_LANGUAGES,
+  getCampaignLanguageProfile,
+  normalizeCampaignLanguage,
+  type CampaignLanguage,
+} from "@/lib/services/campaign-language";
 import { normalizeOfferForCampaign, type NormalizedOfferResult } from "@/lib/services/offer-normalization-service";
 import { cn } from "@/lib/utils";
 
@@ -49,6 +55,7 @@ type DraftState = {
   priceRange: string;
   dailyBudget: string;
   offer: string;
+  languageCode: CampaignLanguage;
   leadCaptureGoal: LeadCaptureGoal;
   captureMethod: CaptureMethod;
   planTier: Extract<BillingPlanTier, "performance" | "starter" | "pro">;
@@ -192,6 +199,7 @@ const DEFAULT_DRAFT: DraftState = {
   priceRange: MODE_DEFAULTS.buyer.priceRange,
   dailyBudget: "30",
   offer: MODE_DEFAULTS.buyer.offer,
+  languageCode: "en",
   leadCaptureGoal: "quality",
   captureMethod: "website_funnel",
   planTier: "performance",
@@ -319,6 +327,10 @@ function leadCaptureOptionFromDraft(draft: Pick<DraftState, "leadCaptureGoal" | 
       (option) => option.goal === draft.leadCaptureGoal && option.method === draft.captureMethod,
     ) ?? LEAD_CAPTURE_OPTIONS[0]
   );
+}
+
+function languageProfileFromDraft(draft: Pick<DraftState, "languageCode">) {
+  return getCampaignLanguageProfile(draft.languageCode);
 }
 
 function parseCurrencyCents(value: string) {
@@ -713,6 +725,52 @@ function LeadCapturePathSelector({
   );
 }
 
+function CampaignLanguageSelector({
+  languageCode,
+  onSelect,
+}: {
+  languageCode: CampaignLanguage;
+  onSelect: (languageCode: CampaignLanguage) => void;
+}) {
+  const selectedProfile = getCampaignLanguageProfile(languageCode);
+
+  return (
+    <div className="rounded-[22px] border border-white/10 bg-white/[0.03] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-white">Campaign language</p>
+          <p className="mt-1 text-xs leading-5 text-white/58">
+            Controls the funnel, ad copy, static creative text, and UGC scripts for this campaign.
+          </p>
+        </div>
+        <Badge className="border-cyan-200/20 bg-cyan-300/[0.06] text-cyan-100">{selectedProfile.label}</Badge>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        {SUPPORTED_CAMPAIGN_LANGUAGES.map((profile) => {
+          const active = profile.code === languageCode;
+
+          return (
+            <button
+              key={profile.code}
+              type="button"
+              onClick={() => onSelect(profile.code)}
+              className={cn(
+                "rounded-2xl border px-4 py-3 text-left transition hover:-translate-y-0.5",
+                active
+                  ? "border-cyan-200/28 bg-cyan-300/[0.07] text-cyan-100"
+                  : "border-white/10 bg-white/[0.035] text-white/72 hover:border-cyan-200/18",
+              )}
+            >
+              <span className="block text-sm font-semibold text-white">{profile.label}</span>
+              <span className="mt-1 block text-xs leading-5 text-white/54">{profile.nativeLabel}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
   const [hydrated, setHydrated] = useState(false);
@@ -744,6 +802,7 @@ export default function OnboardingPage() {
     [draft.campaignMode, draft.offer],
   );
   const leadCaptureOption = leadCaptureOptionFromDraft(draft);
+  const selectedLanguageProfile = languageProfileFromDraft(draft);
   const normalizedDraft = useMemo(
     () => ({ ...draft, offer: offerInsight.normalizedOffer }),
     [draft, offerInsight.normalizedOffer],
@@ -792,6 +851,7 @@ export default function OnboardingPage() {
             ? saved.leadCaptureGoal
             : DEFAULT_DRAFT.leadCaptureGoal,
           captureMethod: isCaptureMethod(saved.captureMethod) ? saved.captureMethod : DEFAULT_DRAFT.captureMethod,
+          languageCode: normalizeCampaignLanguage(saved.languageCode),
           planTier: saved.planTier === "pro" ? "pro" : saved.planTier === "performance" ? "performance" : "starter",
           idempotencySeed: saved.idempotencySeed || nextDraft.idempotencySeed,
         };
@@ -862,9 +922,10 @@ export default function OnboardingPage() {
         planTier: draft.planTier,
         leadCaptureGoal: draft.leadCaptureGoal,
         captureMethod: draft.captureMethod,
+        languageCode: draft.languageCode,
       },
     });
-  }, [draft.campaignMode, draft.captureMethod, draft.idempotencySeed, draft.leadCaptureGoal, draft.planTier, hydrated]);
+  }, [draft.campaignMode, draft.captureMethod, draft.idempotencySeed, draft.languageCode, draft.leadCaptureGoal, draft.planTier, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -958,6 +1019,7 @@ export default function OnboardingPage() {
           daily_budget_cents: dailyBudgetCents,
           budget: internalMonthlyBudget,
           goal: preparedDraft.offer,
+          language_code: preparedDraft.languageCode,
           lead_capture_goal: preparedDraft.leadCaptureGoal,
           capture_method: preparedDraft.captureMethod,
           idempotencySeed: preparedDraft.idempotencySeed,
@@ -1027,6 +1089,7 @@ export default function OnboardingPage() {
         planTier: draft.planTier,
         leadCaptureGoal: draft.leadCaptureGoal,
         captureMethod: draft.captureMethod,
+        languageCode: draft.languageCode,
       },
     });
     goToStep(visibleSteps[nextIndex].key);
@@ -1247,6 +1310,10 @@ export default function OnboardingPage() {
                 draft={draft}
                 onSelect={(leadCaptureGoal, captureMethod) => updateDraft({ leadCaptureGoal, captureMethod })}
               />
+              <CampaignLanguageSelector
+                languageCode={draft.languageCode}
+                onSelect={(languageCode) => updateDraft({ languageCode })}
+              />
             </div>
           ) : null}
 
@@ -1317,6 +1384,7 @@ export default function OnboardingPage() {
                   ["30-day estimate", formatMonthlyEstimateFromDraft(draft)?.replace("Estimated 30-day media spend: ", "").replace(/\.$/, "") ?? "Not set"],
                   ["Offer", normalizedDraft.offer],
                   ["Lead path", `${leadCaptureOption.title}: ${leadCaptureOption.label}`],
+                  ["Language", selectedLanguageProfile.label],
                   [
                     "Launch access",
                     canUseExistingLaunchAccess

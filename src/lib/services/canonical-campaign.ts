@@ -3,6 +3,7 @@ import { inferCampaignIntent, type CampaignIntent } from "@/lib/campaign-intent"
 import { readCampaignPlanDocumentWithDriftGuard } from "@/lib/services/campaign-plan-persistence-service";
 import { readPersistedAssetGenerationState } from "@/lib/services/asset-generation-lifecycle";
 import { normalizeCreativeStrategy } from "@/lib/services/campaign-creative-strategy";
+import { getCampaignLanguageProfile, normalizeCampaignLanguage } from "@/lib/services/campaign-language";
 import { markInstantFallbackStaticAssets } from "@/lib/services/creative-asset-status";
 import type {
   CampaignAd,
@@ -39,6 +40,9 @@ export type SavedCampaignDocument = {
   copy?: unknown;
   ads?: unknown;
   funnel?: Record<string, unknown> | null;
+  language_code?: unknown;
+  languageCode?: unknown;
+  campaign_language?: unknown;
   launch?: {
     runtime?: Partial<CampaignRuntime> | null;
   } | null;
@@ -220,6 +224,8 @@ function adaptModernPersistedPlanDocument(value: Record<string, unknown>): Saved
   return {
     name: value.business_name ?? value.client_name ?? value.name,
     plan: value,
+    language_code: value.language_code,
+    campaign_language: value.campaign_language,
     strategy: {
       location: safeText(value.market),
       audience: safeText(value.audience),
@@ -234,6 +240,7 @@ function adaptModernPersistedPlanDocument(value: Record<string, unknown>): Saved
         mechanism: safeText(value.mechanism),
       }),
       funnel_goal: funnelGoalFromPlan(value),
+      language_code: normalizeCampaignLanguage(value.language_code),
     },
     creatives: value.creatives,
     staticAds: value.staticAds ?? creatives?.staticAds,
@@ -658,6 +665,15 @@ export function normalizeCanonicalCampaign(params: {
   const updatedAt = params.campaign.updated_at ?? createdAt;
   const planRecord = params.planRecord ?? null;
   const planSource = params.savedDocument?.plan ?? {};
+  const languageCode = normalizeCampaignLanguage(
+    planSource.language_code ??
+      planSource.languageCode ??
+      params.savedDocument?.language_code ??
+      params.savedDocument?.languageCode ??
+      strategy.language_code ??
+      planRecord?.languageCode,
+  );
+  const campaignLanguage = getCampaignLanguageProfile(languageCode);
   const intent = inferCampaignIntent({
     intent: planSource.intent ?? planRecord?.intent ?? strategy.market_type,
     marketType: strategy.market_type,
@@ -824,6 +840,8 @@ export function normalizeCanonicalCampaign(params: {
       creative_strategy: creativeStrategy,
       pain_points: painPoints,
       monthly_budget: monthlyBudget,
+      language_code: languageCode,
+      campaign_language: campaignLanguage,
       summary,
       targeting_summary: targetingSummary,
       offer_summary: offerSummary,
@@ -894,6 +912,8 @@ export function canonicalCampaignToPlan(record: FullCampaignRecord): CampaignPla
     organizationId: record.campaign.user_id,
     clientName: record.plan.client_name || "New client",
     businessName: record.plan.business_name || record.campaign.name,
+    languageCode: normalizeCampaignLanguage(record.plan.language_code),
+    campaignLanguage: getCampaignLanguageProfile(record.plan.language_code),
     intent: record.plan.intent,
     market: record.plan.market,
     monthlyBudget: record.plan.monthly_budget,
@@ -927,6 +947,7 @@ export function canonicalCampaignToPlan(record: FullCampaignRecord): CampaignPla
       pain_points: record.plan.pain_points,
       desired_result: record.plan.primary_goal,
       market_type: record.plan.intent,
+      language_code: record.plan.language_code,
     }),
     creatives: {
       staticAds: record.creatives.staticAds,

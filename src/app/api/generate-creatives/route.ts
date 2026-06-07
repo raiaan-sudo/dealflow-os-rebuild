@@ -166,6 +166,7 @@ export async function POST(request: Request) {
           pain_points: plan.painPoints,
           market_type: plan.intent,
           creative_strategy: plan.creativeStrategy,
+          language_code: plan.languageCode,
         });
 
         const savedPlan = await persistCampaignPlan({

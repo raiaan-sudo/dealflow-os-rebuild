@@ -282,14 +282,13 @@ export default async function LaunchAliasPage({
 	  const selectedAdIds = launchMediaSelection.selectedAdIds;
 	  const selectedUgcVideoIds = launchMediaSelection.selectedUgcVideoIds;
 	  const creativeIntakeContext = launchMediaSelection.creativeIntakeContext;
-	  const staticBriefReadinessContext = creativeIntakeContext
-	    ? {
-	        staticBriefHash: creativeIntakeContext.staticBriefHash,
-	        offerHash: creativeIntakeContext.offerHash,
-	        ctaHash: creativeIntakeContext.ctaHash,
-	        brandHash: creativeIntakeContext.brandHash,
-	      }
-	    : null;
+	  const staticBriefReadinessContext = {
+	    staticBriefHash: creativeIntakeContext?.staticBriefHash,
+	    offerHash: creativeIntakeContext?.offerHash,
+	    ctaHash: creativeIntakeContext?.ctaHash,
+	    brandHash: creativeIntakeContext?.brandHash,
+	    languageCode: plan?.languageCode,
+	  };
 	  const publicFunnelSnapshotCurrent = launchMediaSelection.publicFunnelSnapshotMatchesCurrentPlan;
   const metaErrorCopy = getMetaQueryUiCopy(metaError, "oauth_callback");
   const discoveryIncomplete =

@@ -51,6 +51,13 @@ import {
   type OfferQualityEvaluation,
 } from "@/lib/services/media-buyer-framework";
 import { selectMediaBuyerCta } from "@/lib/optimization-engine/media-buying-rules";
+import {
+  localizeStaticCreativeAsset,
+  localizeVideoCreativeAsset,
+  normalizeCampaignLanguage,
+  type CampaignLanguage,
+  type CampaignLanguageSafetyGate,
+} from "@/lib/services/campaign-language";
 
 export type CreativeEngineInput = {
   campaign_id?: string;
@@ -63,6 +70,8 @@ export type CreativeEngineInput = {
   desired_result?: string;
   pain_points?: string[];
   market_type?: CampaignIntent;
+  language_code?: CampaignLanguage | string | null;
+  languageCode?: CampaignLanguage | string | null;
   creative_strategy?: CampaignCreativeStrategy;
   provider_usage_context?: {
     createForAsset: (asset: StaticCreativeAsset) => ImageProviderUsageContext | null;
@@ -82,6 +91,10 @@ export type StaticCreativeAsset = {
   angle: "guarantee" | "urgency" | "contrarian" | "opportunity" | "authority";
   location?: string | null;
   audience?: string | null;
+  languageCode?: CampaignLanguage | string | null;
+  languageLabel?: string | null;
+  campaignLanguage?: Record<string, unknown> | null;
+  languageSafetyGate?: CampaignLanguageSafetyGate | null;
   creativeAssetSource?: CreativeAssetSource | string | null;
   creativeAssetStatus?: CreativeAssetLifecycleStatus | string | null;
   creativeAssetQaStatus?: CreativeAssetQaStatus | string | null;
@@ -215,6 +228,10 @@ export type VideoCreativeAsset = {
     reasons?: string[] | null;
   } | null;
   sampleOnly?: boolean | null;
+  languageCode?: CampaignLanguage | string | null;
+  languageLabel?: string | null;
+  campaignLanguage?: Record<string, unknown> | null;
+  languageSafetyGate?: CampaignLanguageSafetyGate | null;
   cta: string;
   creatorStyle: string;
   voiceStyle: string;
@@ -279,6 +296,7 @@ type RequiredCreativeInput = {
   desiredResult: string;
   painPoints: string[];
   marketType: CampaignIntent;
+  languageCode: CampaignLanguage;
   creativeStrategy: CampaignCreativeStrategy;
 };
 
@@ -305,6 +323,7 @@ function toTitleCase(value: string) {
 function normalizeInput(input?: CreativeEngineInput | null): RequiredCreativeInput {
   const raw: Partial<CreativeEngineInput> = input ?? {};
   const marketType = raw.market_type ?? "buyer";
+  const languageCode = normalizeCampaignLanguage(raw.language_code ?? raw.languageCode);
   const audience = safeText(raw.audience) || "motivated local buyers";
   const propertyType = safeText(raw.property_type) || "homes";
   const offer = safeText(raw.offer) || "a stronger buying opportunity";
@@ -323,6 +342,7 @@ function normalizeInput(input?: CreativeEngineInput | null): RequiredCreativeInp
     desiredResult,
     painPoints,
     marketType,
+    languageCode,
     creativeStrategy:
       raw.creative_strategy ??
       buildDefaultCreativeStrategy({
@@ -2185,9 +2205,12 @@ export function buildCreativeSystem(input?: CreativeEngineInput | null): Creativ
     desired_result: inferDesiredResult(normalized),
     pain_points: normalized.painPoints.length > 0 ? normalized.painPoints : [shortPain(normalized)],
     market_type: normalized.marketType,
+    language_code: normalized.languageCode,
   });
-  const staticAds = buildStaticCreatives(brief, normalized.creativeStrategy, normalized.rawOffer);
-  const videoAds = buildVideoCreativeDrafts(brief, normalized.rawOffer || normalized.offer);
+  const staticAds = buildStaticCreatives(brief, normalized.creativeStrategy, normalized.rawOffer)
+    .map((asset) => localizeStaticCreativeAsset(asset, normalized.languageCode) as StaticCreativeAsset);
+  const videoAds = buildVideoCreativeDrafts(brief, normalized.rawOffer || normalized.offer)
+    .map((asset) => localizeVideoCreativeAsset(asset, normalized.languageCode) as VideoCreativeAsset);
 
   return {
     brief,

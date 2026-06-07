@@ -78,6 +78,7 @@ export async function POST(request: Request) {
           pain_points: plan.painPoints,
           market_type: plan.intent,
           funnel_goal: deriveFunnelGoal(plan.funnelType),
+          language_code: plan.languageCode,
         });
 
         const savedPlan = await persistCampaignPlan({

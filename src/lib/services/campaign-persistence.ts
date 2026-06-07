@@ -10,6 +10,7 @@ import {
 } from "@/lib/services/canonical-campaign";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import {
+  getCampaignLanguageFromPlan,
   getSelectedAdIdFromPlan,
   getSelectedAdIdsFromPlan,
   getSelectedUgcVideoIdFromPlan,
@@ -428,6 +429,16 @@ export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativ
 	      approvedBrand: metadataString(metadata, "approvedBrand"),
 	      location: metadataString(metadata, "location"),
 	      audience: metadataString(metadata, "audience"),
+	      languageCode: metadataString(metadata, "languageCode"),
+	      languageLabel: metadataString(metadata, "languageLabel"),
+	      campaignLanguage:
+	        metadata?.campaignLanguage && typeof metadata.campaignLanguage === "object"
+	          ? metadata.campaignLanguage as StaticCreativeAsset["campaignLanguage"]
+	          : null,
+	      languageSafetyGate:
+	        metadata?.languageSafetyGate && typeof metadata.languageSafetyGate === "object"
+	          ? metadata.languageSafetyGate as StaticCreativeAsset["languageSafetyGate"]
+	          : null,
 	      score: typeof metadata?.score === "number" ? metadata.score : 0,
 	      recommended: metadata?.recommended === true,
 	    } satisfies StaticCreativeAsset;
@@ -1351,6 +1362,7 @@ export async function regenerateStaticCreativeAssetsForUser(
       market_type: currentRecord.strategy.market_type,
       creative_strategy: currentRecord.plan.creative_strategy,
       campaign_id: campaignId,
+      language_code: getCampaignLanguageFromPlan(savedDocument),
       reuse_static_assets: currentRecord.creatives.staticAds,
       max_static_image_generations: options?.maxGenerations,
       selected_static_asset_ids: generationPreferredStaticAssetIds,

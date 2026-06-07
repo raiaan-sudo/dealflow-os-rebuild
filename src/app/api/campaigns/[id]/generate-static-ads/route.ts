@@ -117,14 +117,14 @@ export async function POST(
       return buildRateLimitResponse(rateLimit.resetAt);
     }
 
-    const staticBriefReadinessContext = creativeIntakeContext
-      ? {
-          staticBriefHash: creativeIntakeContext.staticBriefHash,
-          offerHash: creativeIntakeContext.offerHash,
-          ctaHash: creativeIntakeContext.ctaHash,
-          brandHash: creativeIntakeContext.brandHash,
-        }
-      : null;
+    const campaignLanguageCode = campaign.plan.language_code;
+    const staticBriefReadinessContext = {
+      staticBriefHash: creativeIntakeContext?.staticBriefHash,
+      offerHash: creativeIntakeContext?.offerHash,
+      ctaHash: creativeIntakeContext?.ctaHash,
+      brandHash: creativeIntakeContext?.brandHash,
+      languageCode: campaignLanguageCode,
+    };
     const launchReadyStaticCount = campaign.creatives.staticAds
       .filter((creative) => isLaunchReadyStaticCreative(creative, staticBriefReadinessContext))
       .length;
@@ -182,6 +182,7 @@ export async function POST(
           creativeIntakeContext?.offerHash ?? "offer",
           creativeIntakeContext?.ctaHash ?? "cta",
           creativeIntakeContext?.brandHash ?? "brand",
+          campaignLanguageCode ?? "en",
           `window:${Math.floor(Date.now() / (10 * 60_000))}`,
         ].join(":");
     const idempotencyKey = `static_creative_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${requestScope}`;
@@ -199,6 +200,7 @@ export async function POST(
         promoteThreshold: STATIC_LAUNCH_MIN_CREATIVE_COUNT,
         outputMode: "finished_ad",
         provider: "higgsfield_marketing_studio",
+        languageCode: campaignLanguageCode,
         creativeIntake: creativeIntakeContext,
         ...(maxGenerations ? { maxGenerations } : {}),
       },

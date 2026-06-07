@@ -47,6 +47,7 @@
     "test:creative-fallback-resilience": "node ./scripts/test-creative-fallback-resilience.mjs",
     "test:creative-media-readiness": "node ./scripts/test-creative-media-readiness.mjs",
     "test:creative-render-state": "node ./scripts/test-creative-render-state.mjs",
+    "test:campaign-language": "node ./scripts/test-campaign-language.mjs",
     "test:campaign-value-report": "node ./scripts/test-campaign-value-report.mjs",
     "test:billing-recovery": "node ./scripts/test-billing-recovery.mjs",
     "test:welcome-generation-credit": "node ./scripts/test-welcome-generation-credit.mjs",

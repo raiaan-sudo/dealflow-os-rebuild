@@ -7,6 +7,7 @@ import { getPublicAppUrl } from "@/lib/env";
 import {
   buildCampaignPlanCriticalFieldPatch,
   getCampaignPayloadFromPlan,
+  getCampaignLanguageFromPlan,
   getLaunchRuntimeFromPlan,
   getSelectedUgcVideoIdsFromPlan,
   readCampaignPlanDocument,
@@ -937,17 +938,17 @@ async function launchCampaignToMeta(
       ].map((value) => String(value).trim()).filter(Boolean)),
     );
 	    const selectedAdId = selectedAdIds[0] ?? null;
+	    const campaignLanguageCode = getCampaignLanguageFromPlan(currentPlan);
 	    const creativeIntakeContext = isCreativeChatIntakeEnabled()
 	      ? getApprovedCreativeIntakeGenerationContext(currentPlan)
 	      : null;
-	    const staticBriefReadinessContext = creativeIntakeContext
-	      ? {
-	          staticBriefHash: creativeIntakeContext.staticBriefHash,
-	          offerHash: creativeIntakeContext.offerHash,
-	          ctaHash: creativeIntakeContext.ctaHash,
-	          brandHash: creativeIntakeContext.brandHash,
-	        }
-	      : null;
+	    const staticBriefReadinessContext = {
+	      staticBriefHash: creativeIntakeContext?.staticBriefHash,
+	      offerHash: creativeIntakeContext?.offerHash,
+	      ctaHash: creativeIntakeContext?.ctaHash,
+	      brandHash: creativeIntakeContext?.brandHash,
+	      languageCode: campaignLanguageCode,
+	    };
 
     if (!selectedAdId) {
       throw new ApiError(

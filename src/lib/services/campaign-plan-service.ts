@@ -58,12 +58,20 @@ import {
   normalizeLeadCaptureStrategy,
   type LeadCaptureStrategy,
 } from "@/lib/services/lead-capture-strategy-service";
+import {
+  getCampaignLanguageProfile,
+  localizeCampaignText,
+  localizeCampaignTextList,
+  normalizeCampaignLanguage,
+  type CampaignLanguage,
+} from "@/lib/services/campaign-language";
 
 type CampaignPlanRow = Database["public"]["Tables"]["campaign_plans"]["Row"];
 
 export type OnboardingInput = {
   clientName: string;
   businessName: string;
+  languageCode?: CampaignLanguage | string | null;
   intent: CampaignIntent;
   market: string;
   monthlyBudget: number;
@@ -163,6 +171,8 @@ export type CampaignPlan = {
   organizationId: string;
   clientName: string;
   businessName: string;
+  languageCode: CampaignLanguage;
+  campaignLanguage: ReturnType<typeof getCampaignLanguageProfile>;
   intent: CampaignIntent;
   market: string;
   monthlyBudget: number;
@@ -245,7 +255,9 @@ function buildPlanFunnel(params: {
   keyOffer?: string;
   market?: string;
   summary?: string;
+  languageCode?: CampaignLanguage | string | null;
 }) {
+  const languageCode = normalizeCampaignLanguage(params.languageCode);
   const ads = Array.isArray(params.ads) ? params.ads : [];
   const sections = Array.isArray(params.sections)
     ? params.sections.map((section, index) => ({
@@ -266,17 +278,20 @@ function buildPlanFunnel(params: {
     : [];
   return {
     funnelType: params.funnelType || "landing_page_survey",
-    headline: params.headline?.trim() || ads[0]?.headline?.trim() || params.keyOffer?.trim() || `Explore ${params.market ?? "your market"} opportunities`,
+    headline: localizeCampaignText(params.headline?.trim() || ads[0]?.headline?.trim() || params.keyOffer?.trim() || `Explore ${params.market ?? "your market"} opportunities`, languageCode),
     subheadline:
-      params.subheadline?.trim() ||
-      params.summary?.trim() ||
-      ads[0]?.body?.trim() ||
-      "See the core campaign promise and first-step experience.",
-    cta: params.cta?.trim() || ads[0]?.cta?.trim() || "Book My Strategy Call",
+      localizeCampaignText(
+        params.subheadline?.trim() ||
+          params.summary?.trim() ||
+          ads[0]?.body?.trim() ||
+          "See the core campaign promise and first-step experience.",
+        languageCode,
+      ),
+    cta: localizeCampaignText(params.cta?.trim() || ads[0]?.cta?.trim() || "Book My Strategy Call", languageCode),
     sections,
-    formFields: Array.isArray(params.formFields) && params.formFields.length > 0 ? params.formFields : ["name", "email", "phone"],
-    followUpAction: params.followUpAction?.trim() || "Send the next-step response and qualify interest.",
-    optimizationNotes: Array.isArray(params.optimizationNotes) ? params.optimizationNotes : [],
+    formFields: localizeCampaignTextList(Array.isArray(params.formFields) && params.formFields.length > 0 ? params.formFields : ["name", "email", "phone"], languageCode),
+    followUpAction: localizeCampaignText(params.followUpAction?.trim() || "Send the next-step response and qualify interest.", languageCode),
+    optimizationNotes: localizeCampaignTextList(Array.isArray(params.optimizationNotes) ? params.optimizationNotes : [], languageCode),
   };
 }
 
@@ -493,6 +508,7 @@ function buildPlanPayloadFromPlan(plan: CampaignPlan): PersistedPlanPayload {
     generatedPlan: {
       clientName: plan.clientName,
       businessName: plan.businessName,
+      languageCode: plan.languageCode,
       intent: plan.intent,
       market: plan.market,
       monthlyBudget: plan.monthlyBudget,
@@ -534,6 +550,8 @@ function buildPlanFromGenerated(
     organizationId,
     clientName: generated.clientName,
     businessName: generated.businessName,
+    languageCode: normalizeCampaignLanguage(generated.languageCode),
+    campaignLanguage: getCampaignLanguageProfile(generated.languageCode),
     intent: generated.intent,
     market: generated.market,
     monthlyBudget: generated.monthlyBudget,
@@ -569,6 +587,7 @@ function buildPlanFromGenerated(
           keyOffer: generated.keyOffer,
           market: generated.market,
           summary: generated.summary,
+          languageCode: generated.languageCode,
         })
       : buildPlanFunnel({
           funnelType: generated.funnelType,
@@ -579,6 +598,7 @@ function buildPlanFromGenerated(
           keyOffer: generated.keyOffer,
           market: generated.market,
           summary: generated.summary,
+          languageCode: generated.languageCode,
         }),
     runtime: getDefaultCampaignRuntime(),
     createdAt: new Date().toISOString(),
@@ -594,6 +614,8 @@ function mapPayloadToPlan(
     organizationId: row.owner_id,
     clientName: payload.client_name,
     businessName: payload.business_name,
+    languageCode: normalizeCampaignLanguage(payload.language_code),
+    campaignLanguage: getCampaignLanguageProfile(payload.language_code),
     intent: payload.intent,
     market: payload.market,
     monthlyBudget: payload.monthly_budget,
@@ -643,6 +665,7 @@ function mapPayloadToPlan(
             pain_points: payload.pain_points,
             desired_result: payload.primary_goal,
             market_type: payload.intent,
+            language_code: payload.language_code,
           }),
     creatives:
       payload.creatives && typeof payload.creatives === "object"
@@ -725,6 +748,7 @@ function mapPayloadToPlan(
       keyOffer: payload.key_offer,
       market: payload.market,
       summary: payload.summary,
+      languageCode: payload.language_code,
     }),
     runtime: normalizeCampaignRuntime(payload.runtime),
     createdAt: row.created_at,
@@ -749,6 +773,8 @@ function getLegacyPayload(row: Record<string, unknown>): PersistedPlanPayload | 
     version: 1,
     client_name: String(row.client_name),
     business_name: String(row.business_name),
+    language_code: "en",
+    campaign_language: getCampaignLanguageProfile("en"),
     intent: legacyIntent,
     market: String(row.market ?? ""),
     monthly_budget: Number(row.monthly_budget ?? 0),
@@ -795,6 +821,7 @@ function getLegacyPayload(row: Record<string, unknown>): PersistedPlanPayload | 
         primaryGoal: row.primary_goal,
         mechanism: row.mechanism,
       }),
+      language_code: "en",
     }),
     creatives: { staticAds: [], videoAds: [] },
     ads: Array.isArray(row.ads)
@@ -900,6 +927,10 @@ function canReuseCampaignAssets(input: OnboardingInput, plan: CampaignPlan | nul
     return false;
   }
 
+  if (normalizeCampaignLanguage(plan.languageCode) !== normalizeCampaignLanguage(input.languageCode)) {
+    return false;
+  }
+
   return (
     plan.intent === input.intent &&
     plan.market.trim().toLowerCase() === input.market.trim().toLowerCase() &&
@@ -922,6 +953,7 @@ export async function generateCampaignPlan(
     deferAssetGeneration?: boolean;
   },
 ) {
+  const languageCode = normalizeCampaignLanguage(input.languageCode);
   const context = buildMarketingContext(input);
   const isBuyer = isBuyerLikeCampaignIntent(context.intent);
   const isInvestor = isInvestorCampaignIntent(context.intent);
@@ -1047,6 +1079,7 @@ export async function generateCampaignPlan(
               desired_result: input.primaryGoal,
               pain_points: painPoints,
               market_type: context.intent,
+              language_code: languageCode,
             }),
           staticAds: [] as StaticCreativeAsset[],
           videoAds: [] as VideoCreativeAsset[],
@@ -1065,6 +1098,7 @@ export async function generateCampaignPlan(
               desired_result: input.primaryGoal,
               pain_points: painPoints,
               market_type: context.intent,
+              language_code: languageCode,
             }),
           staticAds: cachedAssets?.creatives?.staticAds ?? [],
           videoAds: cachedAssets?.creatives?.videoAds ?? [],
@@ -1078,6 +1112,7 @@ export async function generateCampaignPlan(
           desired_result: input.primaryGoal,
           pain_points: painPoints,
           market_type: context.intent,
+          language_code: languageCode,
           creative_strategy: creativeStrategy,
         });
   const ads: CampaignAd[] = creativePatterns.map((pattern, index) => {
@@ -1115,44 +1150,47 @@ export async function generateCampaignPlan(
 
   const normalizedAds = withAdImageFallback(ads).map((ad) => ({
     ...ad,
-    overlayText: ad.overlayText,
-    headline: ad.headline,
-    body: ad.body,
+    overlayText: localizeCampaignText(ad.overlayText, languageCode),
+    headline: localizeCampaignText(ad.headline, languageCode),
+    body: localizeCampaignText(ad.body, languageCode),
+    cta: localizeCampaignText(ad.cta, languageCode),
   }));
 
   return {
     ...input,
+    languageCode,
+    campaignLanguage: getCampaignLanguageProfile(languageCode),
     audience: audienceLabel,
     propertyType: propertyLabel,
     keyOffer: offerLabel,
     painPoints,
     mechanism: mechanismLabel,
     funnelType,
-    targetingSummary: ensureCopyContext(targetingSummary, {
+    targetingSummary: localizeCampaignText(ensureCopyContext(targetingSummary, {
       audience: audienceLabel,
       propertyType: propertyLabel,
       keyOffer: offerLabel,
       market: context.market,
-    }),
-    offerSummary: ensureCopyContext(offerSummary, {
+    }), languageCode),
+    offerSummary: localizeCampaignText(ensureCopyContext(offerSummary, {
       audience: audienceLabel,
       propertyType: propertyLabel,
       keyOffer: offerLabel,
       market: context.market,
-    }),
+    }), languageCode),
     summary: isBuyer
-      ? ensureCopyContext(`Built from the ${funnelFramework.name} framework for ${audienceLabel} looking for ${marketContext}. The message opens on a situation-based pattern interrupt, names the internal problem, positions ${mechanismLabel} as the mechanism, and uses proof to reduce uncertainty before the next step. Creative direction is anchored in ${leadAngle} hooks that already show up across high-performing patterns.`, {
+      ? localizeCampaignText(ensureCopyContext(`Built from the ${funnelFramework.name} framework for ${audienceLabel} looking for ${marketContext}. The message opens on a situation-based pattern interrupt, names the internal problem, positions ${mechanismLabel} as the mechanism, and uses proof to reduce uncertainty before the next step. Creative direction is anchored in ${leadAngle} hooks that already show up across high-performing patterns.`, {
           audience: audienceLabel,
           propertyType: propertyLabel,
           keyOffer: offerLabel,
           market: context.market,
-        })
-      : ensureCopyContext(`Built from the ${funnelFramework.name} framework for ${audienceLabel} in ${context.market}. The message opens on a situation-based pattern interrupt, names the internal problem, positions ${mechanismLabel} as the mechanism, and uses proof to reduce uncertainty before the next step. Creative direction is anchored in ${leadAngle} hooks that are already recurring in high-performing seller patterns.`, {
+        }), languageCode)
+      : localizeCampaignText(ensureCopyContext(`Built from the ${funnelFramework.name} framework for ${audienceLabel} in ${context.market}. The message opens on a situation-based pattern interrupt, names the internal problem, positions ${mechanismLabel} as the mechanism, and uses proof to reduce uncertainty before the next step. Creative direction is anchored in ${leadAngle} hooks that are already recurring in high-performing seller patterns.`, {
           audience: audienceLabel,
           propertyType: propertyLabel,
           keyOffer: offerLabel,
           market: context.market,
-        }),
+        }), languageCode),
     creativeStrategy: {
       ...creativeStrategy,
       mechanism:
@@ -1171,12 +1209,12 @@ export async function generateCampaignPlan(
           : [...categoryRulePack.overlayLogic],
     },
     funnelSteps: funnelSteps.map((step) =>
-      ensureCopyContext(step, {
+      localizeCampaignText(ensureCopyContext(step, {
         audience: audienceLabel,
         propertyType: propertyLabel,
         keyOffer: offerLabel,
         market: context.market,
-      }),
+      }), languageCode),
     ),
     creativeBrief: creativePackage.brief,
     creatives: {
@@ -1185,12 +1223,12 @@ export async function generateCampaignPlan(
     },
     ads: normalizedAds,
     funnel: {
-      headline: funnelHeadline,
-      subheadline: cleanSentence(funnelSubheadline),
-      cta: funnelCta,
-      formFields: optimizationBlueprint.funnelConfig.structure.formFields,
-      followUpAction: optimizationBlueprint.funnelConfig.followUpAction,
-      optimizationNotes: optimizationBlueprint.optimizationNotes,
+      headline: localizeCampaignText(funnelHeadline, languageCode),
+      subheadline: cleanSentence(localizeCampaignText(funnelSubheadline, languageCode)),
+      cta: localizeCampaignText(funnelCta, languageCode),
+      formFields: localizeCampaignTextList(optimizationBlueprint.funnelConfig.structure.formFields, languageCode),
+      followUpAction: localizeCampaignText(optimizationBlueprint.funnelConfig.followUpAction, languageCode),
+      optimizationNotes: localizeCampaignTextList(optimizationBlueprint.optimizationNotes, languageCode),
     },
   };
 }
@@ -1293,6 +1331,8 @@ export async function persistCampaignPlan(plan: CampaignPlan) {
   const normalizedPlan: CampaignPlan = {
     ...plan,
     organizationId,
+    languageCode: normalizeCampaignLanguage(plan.languageCode),
+    campaignLanguage: getCampaignLanguageProfile(plan.languageCode),
     ads: withAdImageFallback(plan.ads),
     funnel: buildPlanFunnel({
       funnelType: plan.funnel?.funnelType ?? plan.funnelType,
@@ -1307,6 +1347,7 @@ export async function persistCampaignPlan(plan: CampaignPlan) {
       keyOffer: plan.keyOffer,
       market: plan.market,
       summary: plan.summary,
+      languageCode: plan.languageCode,
     }),
     runtime: normalizeCampaignRuntime(plan.runtime),
     leadCaptureStrategy: normalizeLeadCaptureStrategy(plan.leadCaptureStrategy, {

@@ -89,6 +89,7 @@ type SystemJobPayloadMap = {
     provider?: "higgsfield_marketing_studio" | string;
     queueReason?: string;
     providerUsageRunId?: string | null;
+    languageCode?: string | null;
     creativeIntake?: CreativeIntakeGenerationContext | null;
   };
   video_generation: VideoGenerationJobPayload;

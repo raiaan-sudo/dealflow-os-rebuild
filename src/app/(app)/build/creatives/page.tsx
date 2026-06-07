@@ -152,6 +152,8 @@ export default async function BuildCreativesPage({
         market: creativeIntake.brief.market,
         brand: creativeIntake.brief.brokerageBrand,
         cta: creativeIntake.brief.cta,
+        languageCode: plan.languageCode,
+        languageLabel: plan.campaignLanguage?.label ?? null,
         staticStyle: creativeIntake.brief.staticStyle ?? creativeIntake.brief.creativeStyle,
         revisionNumber: creativeIntake.revisionNumber,
         briefHash: creativeIntake.brief.briefHash ?? null,
@@ -161,7 +163,23 @@ export default async function BuildCreativesPage({
         brandHash: creativeIntake.brief.brandHash ?? null,
         ugcScriptHash: creativeIntake.brief.ugcScriptHash ?? approvedUgcScriptHash,
       }
-    : null;
+    : {
+        offerTitle: plan.offerSummary || plan.keyOffer,
+        audience: plan.audience,
+        market: plan.market,
+        brand: plan.businessName,
+        cta: plan.funnel?.cta ?? null,
+        languageCode: plan.languageCode,
+        languageLabel: plan.campaignLanguage?.label ?? null,
+        staticStyle: null,
+        revisionNumber: null,
+        briefHash: null,
+        staticBriefHash: null,
+        offerHash: null,
+        ctaHash: null,
+        brandHash: null,
+        ugcScriptHash: approvedUgcScriptHash,
+      };
   const creativeIntakeDefaults: CreativeIntakeCampaignDefaults = {
     campaignId: ensuredRecord.campaign.id,
     market: plan.market,
@@ -171,6 +189,7 @@ export default async function BuildCreativesPage({
     campaignType: plan.intent,
     cta: ensuredRecord.funnel.cta || plan.funnel?.cta || null,
     brand: plan.businessName,
+    languageCode: plan.languageCode,
   };
 
   if (creativeIntakeEnabled && (!creativeIntakeApproved || editCreativeBrief)) {

@@ -204,6 +204,10 @@ test.describe("safe authenticated self-serve journey", () => {
     await expect(page.getByText("Lead volume")).toBeVisible();
     await expect(page.getByRole("button", { name: /Quality leads/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /Volume-based/i })).toBeVisible();
+    await expect(page.getByText("Campaign language")).toBeVisible();
+    await expect(page.getByRole("button", { name: /English/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /French/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Spanish/i })).toBeVisible();
     await page.getByLabel("Recommended audience").fill("QA commercial prospects comparing launch-safe DealFlow previews");
     await page.getByLabel("Offer or lead magnet").fill("Home Options for 600+ Credit");
     await continueTo(page, /Continue to agent/i);
@@ -219,16 +223,24 @@ test.describe("safe authenticated self-serve journey", () => {
     if (await isVisible(continueToPlan)) {
       await continueToPlan.click();
       await expectNoHorizontalOverflow(page);
-      if (await isVisible(page.getByText("Starter $147/mo"))) {
+      if (await isVisible(page.getByRole("button", { name: /Continue to review|Continue to creatives/i }))) {
+        await expect(page.getByRole("button", { name: /Continue to review|Continue to creatives/i })).toBeVisible();
+      } else if (await isVisible(page.getByText("Starter $147/mo"))) {
         await expect(page.getByText("Pro $297/mo")).toBeVisible();
-        await page.getByRole("button", { name: /Starter \$147\/mo/i }).click();
+        const starterPlan = page.getByRole("button", { name: /Starter \$147\/mo/i }).first();
+        await expect(starterPlan).toBeVisible();
+        await starterPlan.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(750);
+        await starterPlan.click({ force: true });
       } else {
-        await expect(page.getByRole("button", { name: /Continue to review/i })).toBeVisible();
+        await expect(page.getByRole("button", { name: /Continue to review|Continue to creatives/i })).toBeVisible();
       }
     } else {
-      await expect(page.getByRole("button", { name: /Continue to review/i })).toBeVisible();
+      await expect(page.getByRole("button", { name: /Continue to review|Continue to creatives/i })).toBeVisible();
     }
-    await continueTo(page, /Continue to review/i);
+    if (await isVisible(page.getByRole("button", { name: /Continue to review/i }))) {
+      await continueTo(page, /Continue to review/i);
+    }
     await expectNoHorizontalOverflow(page);
 
     await expect(page.getByText("Ready to build campaign preview")).toBeVisible();

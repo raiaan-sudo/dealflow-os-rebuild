@@ -525,6 +525,13 @@ export async function persistStaticCreativeAssets(params: PersistStaticCreativeA
       renderedBrand: compositionMetadata?.renderedBrand ?? null,
       location: asset.location ?? asset.creativeIntake?.market ?? null,
       audience: asset.audience ?? asset.creativeIntake?.targetAudience ?? null,
+      languageCode:
+        typeof asset.languageCode === "string"
+          ? asset.languageCode
+            : null,
+      languageLabel: typeof asset.languageLabel === "string" ? asset.languageLabel : null,
+      campaignLanguage: (asset.campaignLanguage ?? null) as Json,
+      languageSafetyGate: (asset.languageSafetyGate ?? null) as Json,
       creativeIntakePromptVersionUsed: (asset.creativeIntake?.promptVersion ?? null) as Json,
       creativeIntakeGenerationContext: asset.creativeIntake
         ? ({

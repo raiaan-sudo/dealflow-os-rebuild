@@ -15,6 +15,7 @@ export type CampaignStrategyInput = {
   price_point?: string;
   market_type?: CampaignIntent;
   funnel_goal?: "lead_form" | "survey" | "book_call";
+  language_code?: string;
 };
 
 export type BuiltCampaign = {

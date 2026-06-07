@@ -210,6 +210,8 @@ type CreativeWizardProps = {
     market?: string | null;
     brand?: string | null;
     cta?: string | null;
+    languageCode?: string | null;
+    languageLabel?: string | null;
     staticStyle?: string | null;
     revisionNumber?: number | null;
     briefHash?: string | null;
@@ -367,6 +369,7 @@ export function CreativeWizard({
         offerHash: approvedBriefContext.offerHash,
         ctaHash: approvedBriefContext.ctaHash,
         brandHash: approvedBriefContext.brandHash,
+        languageCode: approvedBriefContext.languageCode,
       }
     : null, [approvedBriefContext]);
   const isStaticLaunchReady = useCallback(
@@ -1128,12 +1131,13 @@ export function CreativeWizard({
           </div>
         </div>
         {approvedBriefContext ? (
-          <div className="mt-4 grid gap-2 rounded-2xl border border-white/10 bg-black/18 p-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
+          <div className="mt-4 grid gap-2 rounded-2xl border border-white/10 bg-black/18 p-3 text-sm sm:grid-cols-3 lg:grid-cols-7">
             <BriefSummaryItem label="Offer" value={approvedBriefContext.offerTitle} />
             <BriefSummaryItem label="Audience" value={approvedBriefContext.audience} />
             <BriefSummaryItem label="Market" value={approvedBriefContext.market} />
             <BriefSummaryItem label="Brand" value={approvedBriefContext.brand} />
             <BriefSummaryItem label="CTA" value={approvedBriefContext.cta} />
+            <BriefSummaryItem label="Language" value={approvedBriefContext.languageLabel ?? approvedBriefContext.languageCode ?? "English"} />
             <BriefSummaryItem label="UGC script" value={approvedBriefContext.ugcScriptHash ? `Revision ${approvedBriefContext.revisionNumber ?? 0}` : "Not approved"} />
           </div>
         ) : null}

@@ -1,5 +1,9 @@
 import { z } from "zod";
 import type { Json } from "@/lib/supabase/types";
+import {
+  getCampaignLanguageProfile,
+  normalizeCampaignLanguage,
+} from "@/lib/services/campaign-language";
 
 export const CURRENT_CAMPAIGN_PLAN_VERSION = 3;
 
@@ -61,6 +65,8 @@ const campaignPlanDocumentSchema = z
     onboarding_focus: z.string().trim().min(1).optional(),
     onboarding_price_range: z.string().trim().min(1).optional(),
     onboarding_goal: z.string().trim().min(1).optional(),
+    language_code: z.enum(["en", "fr", "es"]).optional().default("en"),
+    campaign_language: z.record(z.string(), z.unknown()).nullable().optional(),
   })
   .passthrough();
 
@@ -160,6 +166,15 @@ function migrateCampaignPlanDocument(value: Record<string, unknown>) {
   const currentLaunchRuntime = asObjectRecord(value.launch_runtime);
   const currentRuntime = asObjectRecord(value.runtime);
   const currentFirstWeekSuccess = asObjectRecord(value.first_week_success);
+  const campaignPayload = currentPayload ?? camelPayload ?? nestedPayload;
+  const languageProfile = getCampaignLanguageProfile(
+    value.language_code ??
+      value.languageCode ??
+      campaignPayload?.language_code ??
+      campaignPayload?.languageCode ??
+      nestedPlan?.language_code ??
+      nestedPlan?.languageCode,
+  );
   const hasVersion = Object.hasOwn(value, "version");
   const hasLeadLoopVerified = Object.hasOwn(value, "lead_loop_verified");
   const selectedAdId =
@@ -239,6 +254,8 @@ function migrateCampaignPlanDocument(value: Record<string, unknown>) {
     selected_ugc_video_ids: mergedSelectedUgcVideoIds,
     launch_status: deriveLaunchStatusFromPlanValue(value),
     public_slug: derivePublicSlugFromPlanValue(value),
+    language_code: languageProfile.code,
+    campaign_language: languageProfile,
     runtime: currentRuntime ?? undefined,
     launch_runtime: currentLaunchRuntime ?? undefined,
     first_week_success: currentFirstWeekSuccess ?? undefined,
@@ -249,6 +266,8 @@ function migrateCampaignPlanDocument(value: Record<string, unknown>) {
           ...(mergedSelectedAdIds.length > 0 ? { selected_ad_ids: mergedSelectedAdIds } : {}),
           ...(selectedUgcVideoId ? { selected_ugc_video_id: selectedUgcVideoId } : {}),
           ...(mergedSelectedUgcVideoIds.length > 0 ? { selected_ugc_video_ids: mergedSelectedUgcVideoIds } : {}),
+          language_code: languageProfile.code,
+          campaign_language: languageProfile,
         }
       : undefined,
     lead_loop_verified: hasLeadLoopVerified ? value.lead_loop_verified : false,
@@ -273,6 +292,8 @@ export function readCampaignPlanDocument(value: unknown): CampaignPlanDocument {
     return {
       version: CURRENT_CAMPAIGN_PLAN_VERSION,
       lead_loop_verified: false,
+      language_code: "en",
+      campaign_language: getCampaignLanguageProfile("en"),
     };
   }
 
@@ -337,6 +358,10 @@ export function getSelectedUgcVideoIdsFromPlan(value: unknown) {
 
 export function getLeadLoopVerifiedFromPlan(value: unknown) {
   return readCampaignPlanDocument(value).lead_loop_verified === true;
+}
+
+export function getCampaignLanguageFromPlan(value: unknown) {
+  return normalizeCampaignLanguage(readCampaignPlanDocument(value).language_code);
 }
 
 export function getLaunchStatusFromPlan(value: unknown) {

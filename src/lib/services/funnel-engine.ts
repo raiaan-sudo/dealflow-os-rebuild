@@ -15,6 +15,11 @@ import {
   selectMediaBuyerCta,
 } from "@/lib/optimization-engine/media-buying-rules";
 import { selectMediaBuyerCampaignPackage } from "@/lib/services/media-buyer-framework";
+import {
+  localizeFunnelBlueprint,
+  normalizeCampaignLanguage,
+  type CampaignLanguage,
+} from "@/lib/services/campaign-language";
 
 export type FunnelMarketType = CampaignIntent;
 export type FunnelGoal = "lead_form" | "survey" | "book_call";
@@ -94,6 +99,8 @@ export type FunnelEngineInput = {
   message_match_source?: string;
   adHook?: string;
   ad_hook?: string;
+  language_code?: CampaignLanguage | string | null;
+  languageCode?: CampaignLanguage | string | null;
 };
 
 export type FunnelSection = {
@@ -121,6 +128,9 @@ export type FunnelBlueprint = {
   render_schema?: FunnelRenderV2;
   qa_result?: FunnelQaResultV2;
   fallback_used?: boolean;
+  language_code?: CampaignLanguage;
+  languageCode?: CampaignLanguage;
+  languageLabel?: string;
 } & Partial<DirectResponseFunnelMetadata>;
 
 export type FunnelArchetypeId =
@@ -258,6 +268,7 @@ type NormalizedInput = {
   marketType: FunnelMarketType;
   campaignCategory: CampaignCategory;
   funnelGoal: FunnelGoal;
+  languageCode: CampaignLanguage;
 };
 
 type ParsedOffer = {
@@ -558,6 +569,7 @@ function normalizeInput(input?: FunnelEngineInput | null): NormalizedInput {
   const offer = normalizeText(raw.key_offer) || normalizeText(raw.offer) || "a clearer next step";
   const mechanism = normalizeText(raw.mechanism);
   const painPoints = safeArray(raw.pain_points ?? []);
+  const languageCode = normalizeCampaignLanguage(raw.language_code ?? raw.languageCode);
   const category = inferFunnelCampaignCategory({
     marketType: raw.market_type ?? "buyer",
     audience,
@@ -575,6 +587,7 @@ function normalizeInput(input?: FunnelEngineInput | null): NormalizedInput {
     marketType: raw.market_type ?? "buyer",
     campaignCategory: category,
     funnelGoal: raw.funnel_goal ?? "survey",
+    languageCode,
   };
 }
 
@@ -1895,16 +1908,17 @@ function generateFunnelV1(input?: FunnelEngineInput | null): FunnelBlueprint {
 
 export function generateFunnel(input?: FunnelEngineInput | null): FunnelBlueprint {
   const raw = input || {};
+  const languageCode = normalizeCampaignLanguage(raw.language_code ?? raw.languageCode);
 
   if (resolveDirectResponseFunnelVariant(raw)) {
-    return buildDirectResponseFunnel({
+    return localizeFunnelBlueprint(buildDirectResponseFunnel({
       ...raw,
       market: raw.market || raw.location,
-    });
+    }), languageCode) as FunnelBlueprint;
   }
 
   const fallback = {
-    ...generateFunnelV1(input),
+    ...localizeFunnelBlueprint(generateFunnelV1(input), languageCode),
     personalization_version: "v1" as const,
   };
 
@@ -1913,7 +1927,7 @@ export function generateFunnel(input?: FunnelEngineInput | null): FunnelBlueprin
   }
 
   try {
-    return generatePersonalizedFunnelV2(input, fallback);
+    return localizeFunnelBlueprint(generatePersonalizedFunnelV2(input, fallback), languageCode) as FunnelBlueprint;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 

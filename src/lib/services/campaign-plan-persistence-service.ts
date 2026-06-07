@@ -14,6 +14,10 @@ import {
   type LeadCaptureStrategy,
 } from "@/lib/services/lead-capture-strategy-service";
 import {
+  getCampaignLanguageProfile,
+  type CampaignLanguage,
+} from "@/lib/services/campaign-language";
+import {
   buildCampaignPlanCriticalFieldPatch,
   CURRENT_CAMPAIGN_PLAN_VERSION,
   getLaunchStatusFromPlan,
@@ -36,6 +40,8 @@ export type PersistedCampaignPlanPayload = {
   version: number;
   client_name: string;
   business_name: string;
+  language_code: CampaignLanguage;
+  campaign_language?: Record<string, unknown>;
   intent: CampaignIntent;
   market: string;
   monthly_budget: number;
@@ -537,6 +543,8 @@ function mapPlanRow(
     organizationId: row.owner_id ?? row.user_id,
     clientName: payload.client_name,
     businessName: payload.business_name,
+    languageCode: payload.language_code,
+    campaignLanguage: getCampaignLanguageProfile(payload.language_code),
     intent: payload.intent,
     market: payload.market,
     monthlyBudget: payload.monthly_budget,
@@ -781,6 +789,7 @@ export function buildPersistedCampaignPlanPayload(params: {
   generatedPlan: {
     clientName: string;
     businessName: string;
+    languageCode?: CampaignLanguage | string | null;
     intent: CampaignIntent;
     market: string;
     monthlyBudget: number;
@@ -808,6 +817,7 @@ export function buildPersistedCampaignPlanPayload(params: {
   runtime: CampaignPlan["runtime"];
 }): PersistedCampaignPlanPayload {
   const { generatedPlan, runtime } = params;
+  const languageProfile = getCampaignLanguageProfile(generatedPlan.languageCode);
   const leadCaptureStrategy = generatedPlan.leadCaptureStrategy
     ? normalizeLeadCaptureStrategy(generatedPlan.leadCaptureStrategy, {
         intent: generatedPlan.intent,
@@ -818,6 +828,8 @@ export function buildPersistedCampaignPlanPayload(params: {
     version: CURRENT_CAMPAIGN_PLAN_VERSION,
     client_name: generatedPlan.clientName,
     business_name: generatedPlan.businessName,
+    language_code: languageProfile.code,
+    campaign_language: languageProfile,
     intent: generatedPlan.intent,
     market: generatedPlan.market,
     monthly_budget: generatedPlan.monthlyBudget,

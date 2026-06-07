@@ -5,6 +5,12 @@ import {
   isSellerCampaignIntent,
   type CampaignIntent,
 } from "@/lib/campaign-intent";
+import {
+  localizeCampaignText,
+  localizeCampaignTextList,
+  normalizeCampaignLanguage,
+  type CampaignLanguage,
+} from "@/lib/services/campaign-language";
 
 export type CreativeBriefInput = {
   location?: string;
@@ -16,6 +22,8 @@ export type CreativeBriefInput = {
   pain_points?: string[];
   desired_result?: string;
   market_type?: CampaignIntent;
+  language_code?: CampaignLanguage | string | null;
+  languageCode?: CampaignLanguage | string | null;
 };
 
 export type CreativeBrief = {
@@ -30,6 +38,7 @@ export type CreativeBrief = {
   hooks: string[];
   visualDirection: string;
   scriptStyle: string;
+  languageCode: CampaignLanguage;
 };
 
 function safeText(input: unknown): string {
@@ -329,6 +338,7 @@ function inferScriptStyle(params: {
 
 export function buildCreativeBrief(input?: CreativeBriefInput | null): CreativeBrief {
   const raw: Partial<CreativeBriefInput> = input ?? {};
+  const languageCode = normalizeCampaignLanguage(raw.language_code ?? raw.languageCode);
   const location = safeText(raw.location) || "your market";
   const rawAudience = safeText(raw.audience);
   const rawPropertyType = safeText(raw.property_type);
@@ -354,21 +364,22 @@ export function buildCreativeBrief(input?: CreativeBriefInput | null): CreativeB
 
   return {
     location,
-    audience: enforceAudienceLanguage({
+    audience: localizeCampaignText(enforceAudienceLanguage({
       value: audience,
       marketType,
       offer: keyOffer,
       location,
-    }),
+    }), languageCode),
     propertyType,
-    keyOffer,
-    mechanism,
-    painPoints,
-    tone: inferTone({ audience, marketType }),
-    angles: inferAngles({ location, audience, keyOffer, painPoints, marketType }),
-    hooks: inferHooks({ location, audience, keyOffer, painPoints, marketType }),
-    visualDirection: inferVisualDirection({ location, propertyType, marketType }),
-    scriptStyle: inferScriptStyle({ marketType, audience }),
+    keyOffer: localizeCampaignText(keyOffer, languageCode),
+    mechanism: localizeCampaignText(mechanism, languageCode),
+    painPoints: localizeCampaignTextList(painPoints, languageCode),
+    tone: localizeCampaignText(inferTone({ audience, marketType }), languageCode),
+    angles: localizeCampaignTextList(inferAngles({ location, audience, keyOffer, painPoints, marketType }), languageCode),
+    hooks: localizeCampaignTextList(inferHooks({ location, audience, keyOffer, painPoints, marketType }), languageCode),
+    visualDirection: localizeCampaignText(inferVisualDirection({ location, propertyType, marketType }), languageCode),
+    scriptStyle: localizeCampaignText(inferScriptStyle({ marketType, audience }), languageCode),
+    languageCode,
   };
 }
 import { enhanceOffer } from "@/lib/copy/offer-enhancement";

@@ -251,6 +251,7 @@ export type CreativeIntakeCampaignDefaults = {
   campaignType?: CampaignIntent | string | null;
   cta?: string | null;
   brand?: string | null;
+  languageCode?: string | null;
 };
 
 const targetAudienceLabels: Record<CreativeIntakeTargetAudience, string> = {
