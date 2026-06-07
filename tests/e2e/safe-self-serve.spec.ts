@@ -199,11 +199,13 @@ test.describe("safe authenticated self-serve journey", () => {
     await expectNoHorizontalOverflow(page);
     await expect(page.getByText("We chose this because", { exact: false })).toBeVisible();
     await expect(page.getByRole("button", { name: "Available spaces shortlist", exact: true })).toBeVisible();
-    await expect(page.getByText("Offer coach")).toBeVisible();
+    await expect(page.getByText("Offer coach")).toHaveCount(0);
+    await expect(page.getByText("Lead path")).toBeVisible();
+    await expect(page.getByText("Lead volume")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Quality leads/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Volume-based/i })).toBeVisible();
     await page.getByLabel("Recommended audience").fill("QA commercial prospects comparing launch-safe DealFlow previews");
-    await page.getByLabel("Offer or lead magnet").fill("Guaranteed approvl for 600 n up credit");
-    await page.getByRole("button", { name: /Use polished offer/i }).click();
-    await expect(page.getByLabel("Offer or lead magnet")).toHaveValue("Home Options for 600+ Credit");
+    await page.getByLabel("Offer or lead magnet").fill("Home Options for 600+ Credit");
     await continueTo(page, /Continue to agent/i);
     await expectNoHorizontalOverflow(page);
     await expect(page.getByLabel("Agent first name")).toBeVisible();
