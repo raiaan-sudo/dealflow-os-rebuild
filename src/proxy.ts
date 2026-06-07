@@ -148,6 +148,8 @@ function isAuthorizedQaAuthHarnessRequest(request: NextRequest) {
 
 function applySecurityHeaders(response: NextResponse, startedAt?: number) {
   const isProduction = process.env.NODE_ENV === "production";
+  const requestOrigin = response.headers.get("x-dealflow-request-origin");
+  response.headers.delete("x-dealflow-request-origin");
   const scriptSrc = [
     "'self'",
     "'unsafe-inline'",
@@ -161,8 +163,10 @@ function applySecurityHeaders(response: NextResponse, startedAt?: number) {
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("Cross-Origin-Opener-Policy", "same-origin");
+  response.headers.set("Cross-Origin-Resource-Policy", "same-origin");
   response.headers.set("Origin-Agent-Cluster", "?1");
   response.headers.set("X-DNS-Prefetch-Control", "off");
+  response.headers.set("Access-Control-Allow-Origin", requestOrigin || "https://app.agentdealflow.io");
   response.headers.set(
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=(), payment=()",
@@ -206,6 +210,7 @@ export async function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", request.nextUrl.pathname);
   let response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("x-dealflow-request-origin", request.nextUrl.origin);
   const pathname = request.nextUrl.pathname;
 
   if (isPublicRequest(pathname)) {

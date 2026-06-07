@@ -1,3 +1,12 @@
+function configuredAppOrigin() {
+  const fallback = "https://app.agentdealflow.io";
+  try {
+    return new URL(process.env.NEXT_PUBLIC_APP_URL || fallback).origin;
+  } catch {
+    return fallback;
+  }
+}
+
 const baseSecurityHeaders = [
   {
     key: "Referrer-Policy",
@@ -14,6 +23,14 @@ const baseSecurityHeaders = [
   {
     key: "Cross-Origin-Opener-Policy",
     value: "same-origin",
+  },
+  {
+    key: "Cross-Origin-Resource-Policy",
+    value: "same-origin",
+  },
+  {
+    key: "Access-Control-Allow-Origin",
+    value: configuredAppOrigin(),
   },
   {
     key: "Origin-Agent-Cluster",
