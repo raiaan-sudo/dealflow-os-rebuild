@@ -176,6 +176,7 @@ function runOfflineChecks() {
   const campaignPersistence = "src/lib/services/campaign-persistence.ts";
   const campaignPlanDocument = "src/lib/services/campaign-plan-document.ts";
   const campaignPlanPersistence = "src/lib/services/campaign-plan-persistence-service.ts";
+  const campaignReviewContext = "src/lib/services/campaign-review-context.ts";
   const directHeyGenClient = "src/lib/ai/heygen.ts";
   const videoGenerationErrors = "src/lib/ai/video-generation-errors.ts";
   const avatarProvider = "src/lib/integrations/creative/avatar-provider.ts";
@@ -534,8 +535,9 @@ function runOfflineChecks() {
   assertIncludes(launchPage, "The first saved ad is the primary creative", "Launch primary creative copy", "launch review explains primary creative versus review variants");
   assertIncludes(launchPage, "selectedCreativeMediaReady", "Launch creative media gate", "launch readiness requires selected creatives to have clean rendered images");
   assertIncludes(launchPage, "Creative media ready", "Launch creative readiness label", "launch page tells users creative media must be ready before launch");
-  assertIncludes(previewPage, "applyCreativeIntakePreviewContext", "Preview approved creative context", "preview uses the approved creative-intake context to prevent CTA and seller/buyer drift");
-  assertIncludes(previewPage, "Pricing and demand clarity", "Preview seller trust copy", "seller previews avoid stale buyer/private-access positioning copy");
+  assertIncludes(previewPage, "applyCreativeIntakeReviewContext", "Preview approved creative context", "preview uses the shared approved creative-intake context to prevent CTA and seller/buyer drift");
+  assertIncludes(builderPage, "applyCreativeIntakeReviewContext", "Builder approved creative context", "builder edit mode hydrates from the same approved creative-intake context as preview");
+  assertIncludes(campaignReviewContext, "Pricing and demand clarity", "Shared seller trust copy", "seller review contexts avoid stale buyer/private-access positioning copy");
   assertIncludes(builderPage, "Active campaign workspace", "Builder active campaign shell", "builder defaults to the active campaign workspace when a campaign exists");
   assertIncludes(builderPage, "activeCampaignCopy", "Builder active campaign count copy", "builder uses the real campaign count in active-campaign guidance");
   assertIncludes(builderPage, "mode=edit", "Builder edit gate", "full campaign editing is explicit instead of the default existing-campaign view");
@@ -647,8 +649,8 @@ function runOfflineChecks() {
   assertIncludes(campaignPlanDocument, "selectedAdIds", "Selected creative camel-case normalization", "launch media selection survives saved-document and browser handoff shapes");
   assertIncludes(campaignPlanDocument, "nestedPlan", "Selected creative nested normalization", "launch media selection survives nested campaign plan documents");
   assertExcludes(launchPage, "recommended", "Launch recommended fallback removed", "launch preview does not use recommended fallback");
-  assertIncludes(launchPage, "budgetCapMissingForLaunch", "Launch budget cap fail-closed visibility", "launch readiness blocks production Meta object creation when the cap is missing");
-  assertIncludes(launchPage, "effectiveDailyBudgetCents", "Launch effective budget visibility", "launch readiness shows the effective capped budget instead of only the campaign budget");
+  assertExcludes(launchPage, "budgetCapMissingForLaunch", "Launch budget cap missing blocker removed", "launch readiness no longer blocks production Meta object creation only because no finite platform cap is configured");
+  assertIncludes(launchPage, "effectiveDailyBudgetCents", "Launch effective budget visibility", "launch readiness still shows the effective capped budget when an owner explicitly configures a cap");
   assertIncludes(launchPage, "Tracking / live activation", "Launch tracking activation visibility", "launch separates paused object creation from live activation tracking readiness");
   assertIncludes(launchPage, "label: \"Meta preflight\"", "Launch Meta preflight visibility", "saved Meta selections and provider preflight are separate readiness gates");
   assertIncludes(launchPage, "Save the Meta ad account, Page, and pixel before launch.", "Launch selection blocker copy", "launch does not tell users to reconnect Meta after selections are already saved");
@@ -1035,8 +1037,8 @@ function runOfflineChecks() {
   assertIncludes(higgsfieldClient, "withPolling: false", "Higgsfield async video start", "video generation stays async and does not block the request path");
   assertIncludes(launchRoute, "assertMetaLiveLaunchEnabled", "Reachable Meta live launch kill switch", "direct Meta launch route fails closed unless ALLOW_META_LIVE_LAUNCH=true");
   assertIncludes("src/lib/integrations/meta/budget-cap.ts", "/^(0|none|off|unlimited)$/i", "Meta budget unlimited policy", "unset, zero, off, none, or unlimited budget cap config removes the DealFlow cap");
-  assertIncludes("src/lib/integrations/meta/budget-cap.ts", "isMetaDailyBudgetCapRequiredForProductionLaunch", "Production budget cap requirement", "production Meta launch approval requires a finite owner-configured cap");
-  assertIncludes(metaExecution, "meta_budget_cap_missing", "Live Meta budget cap required", "live Meta launch fails closed when a finite budget cap is missing");
+  assertIncludes("src/lib/integrations/meta/budget-cap.ts", "isMetaDailyBudgetCapRequiredForProductionLaunch", "Production budget cap policy", "production Meta launch can run uncapped unless an owner explicitly configures a cap");
+  assertExcludes(metaExecution, /meta_budget_cap_missing/, "Live Meta budget cap optional", "live Meta launch no longer fails closed only because a finite budget cap is missing");
   assertIncludes(metaLaunchService, "getMetaDailyBudgetCapCents()", "Reachable Meta budget policy", "direct Meta launch uses the shared owner-configured budget cap policy");
   assertIncludes(sessionCostGuard, "reserve_provider_usage", "Atomic provider usage reservation", "paid-generation guard reserves provider budget through DB RPC");
   assertIncludes(sessionCostGuard, "HIGGSFIELD_IMAGE_DAILY_LIMIT", "Configurable Higgsfield image cap", "Higgsfield image generation can be capped below the default for production tests");

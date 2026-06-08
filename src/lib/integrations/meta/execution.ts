@@ -366,17 +366,7 @@ export function getMetaExecutionMode() {
     );
   }
 
-  if (executionMode === "live") {
-    try {
-      assertMetaDailyBudgetCapConfiguredForLiveLaunch();
-    } catch {
-      throw new ApiError(
-        503,
-        "Live Meta launch requires a configured daily budget cap before campaign creation can continue.",
-        "meta_budget_cap_missing",
-      );
-    }
-  }
+  assertMetaDailyBudgetCapConfiguredForLiveLaunch();
 
   return executionMode;
 }

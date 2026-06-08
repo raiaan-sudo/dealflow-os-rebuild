@@ -423,7 +423,6 @@ export default async function LaunchAliasPage({
   const dailyBudgetCents = Math.max(0, Math.round(dailyBudgetInput * 100));
   const budgetCapCents = getMetaDailyBudgetCapCents();
   const budgetCapApplied = budgetCapCents !== null;
-  const budgetCapMissingForLaunch = providerLaunchEnabled && budgetCapRequiredForLaunch && budgetCapCents === null;
   const effectiveDailyBudgetCents = budgetCapCents !== null
     ? Math.min(dailyBudgetCents, budgetCapCents)
     : dailyBudgetCents;
@@ -434,7 +433,6 @@ export default async function LaunchAliasPage({
     metaLaunchReady &&
     selectedCreativeMediaReady &&
     publicFunnelPublished &&
-    !budgetCapMissingForLaunch &&
     providerLaunchEnabled;
   const readinessItems = [
     {
@@ -499,17 +497,9 @@ export default async function LaunchAliasPage({
     },
     {
       label: "Budget",
-      ready: !budgetCapMissingForLaunch,
-      statusLabel: budgetCapMissingForLaunch
-        ? "Blocked"
-        : budgetWasCapped
-          ? "Capped"
-          : budgetCapApplied
-            ? undefined
-            : "Unlimited",
-      detail: budgetCapMissingForLaunch
-        ? "Configure META_DAILY_BUDGET_CAP_CENTS before production Meta object creation. the platform will fail closed until a finite cap is present."
-        : budgetWasCapped
+      ready: true,
+      statusLabel: budgetWasCapped ? "Capped" : "Ready",
+      detail: budgetWasCapped
         ? `Requested daily budget is ${formatBudgetCap(dailyBudgetCents)}; the launch will use the platform cap of ${formatBudgetCap(effectiveDailyBudgetCents)}/day unless support adjusts the cap.`
         : budgetCapCents !== null
           ? `Launch is capped at ${formatBudgetCap(budgetCapCents)}/day; requested daily budget is ${formatBudgetCap(dailyBudgetCents)}.`
@@ -574,9 +564,6 @@ export default async function LaunchAliasPage({
       ? [
           "Final launch approval is pending. Meta campaign objects will not be created until support enables live launch approvals.",
         ]
-      : []),
-    ...(budgetCapMissingForLaunch
-      ? ["Configure META_DAILY_BUDGET_CAP_CENTS before attempting a production Meta launch."]
       : []),
   ];
 

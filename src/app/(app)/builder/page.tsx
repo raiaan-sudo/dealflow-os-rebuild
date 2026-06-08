@@ -18,6 +18,7 @@ import {
 import { getBillingSummary } from "@/lib/services/billing-service";
 import { listCampaignsForUser } from "@/lib/services/campaign-persistence";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
+import { applyCreativeIntakeReviewContext } from "@/lib/services/campaign-review-context";
 import type {
   BuiltCampaign,
   CampaignStrategyInput,
@@ -27,16 +28,27 @@ import type { CreativeIdea, StaticCreativeAsset } from "@/lib/services/creative-
 import type { FunnelType } from "@/lib/services/funnel-engine";
 import type { FullCampaignRecord } from "@/lib/types/campaign-records";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
+import {
+  getApprovedCreativeIntakeGenerationContext,
+  isCreativeChatIntakeEnabled,
+  type CreativeIntakeGenerationContext,
+} from "@/lib/services/creative-chat-intake-service";
 
-async function loadPersistedSelectedAdIds(campaignId: string | null) {
+async function loadPersistedReviewState(campaignId: string | null) {
   if (!campaignId) {
-    return [];
+    return {
+      selectedAdIds: [],
+      creativeIntakeContext: null as CreativeIntakeGenerationContext | null,
+    };
   }
 
   const supabase = await createRouteHandlerClient();
 
   if (!supabase) {
-    return [];
+    return {
+      selectedAdIds: [],
+      creativeIntakeContext: null as CreativeIntakeGenerationContext | null,
+    };
   }
 
   const { data } = await supabase
@@ -46,12 +58,31 @@ async function loadPersistedSelectedAdIds(campaignId: string | null) {
     .maybeSingle();
 
   const row = (data as { plan?: unknown } | null) ?? null;
-  return getSelectedAdIdsFromPlan(readCampaignPlanDocument(row?.plan));
+  const plan = readCampaignPlanDocument(row?.plan);
+
+  return {
+    selectedAdIds: getSelectedAdIdsFromPlan(plan),
+    creativeIntakeContext: isCreativeChatIntakeEnabled()
+      ? getApprovedCreativeIntakeGenerationContext(plan)
+      : null,
+  };
 }
 
 function buildInitialStrategyFromPlan(
   strategy?: CampaignStrategyInput | null,
+  reviewPlan?: CampaignPlan | null,
 ): CampaignStrategyInput {
+  if (reviewPlan) {
+    return {
+      location: reviewPlan.market,
+      audience: reviewPlan.audience,
+      offer: reviewPlan.keyOffer,
+      price_point: strategy?.price_point ?? "",
+      market_type: reviewPlan.intent,
+      funnel_goal: "survey",
+    };
+  }
+
   if (!strategy) {
     return {
       location: "",
@@ -73,7 +104,10 @@ function buildInitialStrategyFromPlan(
   };
 }
 
-function buildInitialCampaignFromRecord(record?: FullCampaignRecord | null): BuiltCampaign | null {
+function buildInitialCampaignFromRecord(
+  record?: FullCampaignRecord | null,
+  reviewPlan?: CampaignPlan | null,
+): BuiltCampaign | null {
   if (!record) {
     return null;
   }
@@ -123,16 +157,16 @@ function buildInitialCampaignFromRecord(record?: FullCampaignRecord | null): Bui
         }));
 
   return {
-    strategy: buildInitialStrategyFromPlan(record.strategy),
+    strategy: buildInitialStrategyFromPlan(record.strategy, reviewPlan),
     items: creativeItems,
     creatives,
     copy,
     funnel: {
       funnel_type: record.funnel.funnel_type as FunnelType,
-      headline: record.funnel.headline,
-      subheadline: record.funnel.subheadline,
-      cta: record.funnel.cta,
-      sections: record.funnel.sections ?? [],
+      headline: reviewPlan?.funnel.headline ?? record.funnel.headline,
+      subheadline: reviewPlan?.funnel.subheadline ?? record.funnel.subheadline,
+      cta: reviewPlan?.funnel.cta ?? record.funnel.cta,
+      sections: reviewPlan?.funnel.sections ?? record.funnel.sections ?? [],
       form_fields: record.funnel.form_fields ?? [],
       follow_up_action: record.funnel.follow_up_action,
       optimization_notes: record.funnel.optimization_notes ?? [],
@@ -184,9 +218,9 @@ function getBuilderNextAction(plan: CampaignPlan, campaignId: string, hasSelecte
   }
 
   return {
-    label: "Continue campaign form",
+    label: "Edit funnel draft",
     href: scoped("/builder?mode=edit"),
-    detail: "Continue the campaign form, then return here for the next step.",
+    detail: "Edit the saved campaign draft, then return to review.",
   };
 }
 
@@ -279,7 +313,7 @@ function ActiveCampaignWorkspace({
               </div>
               <Button asChild variant="secondary">
                 <Link href={`/builder?campaignId=${encodeURIComponent(campaignId)}&mode=edit`}>
-                  Continue campaign form
+                  Edit funnel draft
                 </Link>
               </Button>
             </div>
@@ -397,7 +431,10 @@ export default async function BuilderPage({
     listCampaignsForUser().catch(() => []),
     getBillingSummary().catch(() => null),
   ]);
-  const selectedAdIds = await loadPersistedSelectedAdIds(record.campaign.id).catch(() => []);
+  const reviewState = await loadPersistedReviewState(record.campaign.id).catch(() => ({
+    selectedAdIds: [],
+    creativeIntakeContext: null as CreativeIntakeGenerationContext | null,
+  }));
   const planTier = normalizeBillingPlanTier(
     billing?.planTier ?? context.organization.plan_tier ?? "starter",
   );
@@ -416,7 +453,7 @@ export default async function BuilderPage({
         campaignCount={campaignCount}
         planTier={planTier}
         billingLaunchOverride={billing?.launchOverride === true}
-        hasSelectedCreativeSet={selectedAdIds.length > 0}
+        hasSelectedCreativeSet={reviewState.selectedAdIds.length > 0}
       />
     );
   }
@@ -430,6 +467,10 @@ export default async function BuilderPage({
         ? "funnel"
         : "setup";
   const setupRecord = wantsNewCampaign ? null : record;
+  const reviewPlan =
+    setupRecord
+      ? applyCreativeIntakeReviewContext(canonicalCampaignToPlan(setupRecord), reviewState.creativeIntakeContext)
+      : null;
 
   return (
     <div className="mx-auto w-full max-w-[1360px] space-y-5">
@@ -441,10 +482,10 @@ export default async function BuilderPage({
       />
       <CampaignBuilderWorkspace
         key={setupRecord?.campaign.id ?? "new-campaign"}
-        initialStrategy={buildInitialStrategyFromPlan(setupRecord?.strategy)}
+        initialStrategy={buildInitialStrategyFromPlan(setupRecord?.strategy, reviewPlan)}
         initialTab={initialTab}
         initialCampaignId={setupRecord?.campaign.id ?? null}
-        initialCampaign={buildInitialCampaignFromRecord(setupRecord)}
+        initialCampaign={buildInitialCampaignFromRecord(setupRecord, reviewPlan)}
         initialStaticAds={(setupRecord?.creatives.staticAds ?? []) as StaticCreativeAsset[]}
         initialCreativeStrategy={setupRecord?.plan.creative_strategy ?? null}
         initialCampaignName={setupRecord?.campaign.name ?? null}

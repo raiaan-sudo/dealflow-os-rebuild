@@ -12,6 +12,13 @@ function assertIncludes(source, needle, label) {
   );
 }
 
+function assertExcludes(source, needle, label) {
+  assert.ok(
+    !source.includes(needle),
+    `${label}: expected not to find ${JSON.stringify(needle)}`,
+  );
+}
+
 function assertOrder(source, first, second, label) {
   const firstIndex = source.indexOf(first);
   const secondIndex = source.indexOf(second);
@@ -34,10 +41,10 @@ const trackingReadinessSync = read("scripts/sync-meta-tracking-readiness.mjs");
 
 const monthlyBudgetDollars = 3000;
 const impliedDailyBudgetCents = Math.round(Math.round(monthlyBudgetDollars / 30) * 100);
-const cappedDailyBudgetCents = Math.min(impliedDailyBudgetCents, 300);
+const uncappedDailyBudgetCents = impliedDailyBudgetCents;
 
 assert.equal(impliedDailyBudgetCents, 10000, "$3000 monthly budget should imply $100/day before cap");
-assert.equal(cappedDailyBudgetCents, 300, "$3000 monthly budget should cap to 300 cents/day");
+assert.equal(uncappedDailyBudgetCents, 10000, "$3000 monthly budget should stay $100/day when no cap is configured");
 
 assertIncludes(
   budgetCap,
@@ -46,23 +53,18 @@ assertIncludes(
 );
 assertIncludes(
   budgetCap,
-  "process.env.NODE_ENV === \"production\"",
-  "production cap requirement is production scoped",
-);
-assertIncludes(
-  budgetCap,
-  "process.env.ALLOW_META_LIVE_LAUNCH === \"true\"",
-  "cap requirement is tied to owner launch approval",
+  "return false",
+  "production cap requirement is disabled by default",
 );
 assertIncludes(
   launchCreateRoute,
   "assertMetaDailyBudgetCapConfiguredForLiveLaunch();",
-  "direct internal launch route enforces configured budget cap",
+  "direct internal launch route still calls shared budget policy",
 );
-assertIncludes(
+assertExcludes(
   launchCreateRoute,
   "meta_budget_cap_missing",
-  "direct launch route fails closed when production cap is missing",
+  "direct launch route does not block uncapped production budgets",
 );
 assertIncludes(
   launchCreateRoute,
@@ -152,10 +154,10 @@ assertIncludes(
   "direct launch route opts out of multi-advertiser ads",
 );
 
-assertIncludes(
+assertExcludes(
   launchPage,
   "budgetCapMissingForLaunch",
-  "launch UI blocks production object creation when cap is missing",
+  "launch UI removes the missing-cap blocker",
 );
 assertIncludes(
   launchPage,
@@ -164,8 +166,8 @@ assertIncludes(
 );
 assertIncludes(
   launchPage,
-  "Configure META_DAILY_BUDGET_CAP_CENTS before production Meta object creation.",
-  "launch UI names missing budget cap",
+  "No platform budget cap is applied. Launch will use the requested daily budget",
+  "launch UI treats missing cap as uncapped",
 );
 assertIncludes(
   launchPage,

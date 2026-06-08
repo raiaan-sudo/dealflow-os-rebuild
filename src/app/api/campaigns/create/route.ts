@@ -135,15 +135,7 @@ function assertMetaLiveLaunchEnabled() {
     );
   }
 
-  try {
-    assertMetaDailyBudgetCapConfiguredForLiveLaunch();
-  } catch {
-    throw new ApiError(
-      503,
-      "Production Meta launch approval requires META_DAILY_BUDGET_CAP_CENTS before paused objects can be created.",
-      "meta_budget_cap_missing",
-    );
-  }
+  assertMetaDailyBudgetCapConfiguredForLiveLaunch();
 }
 
 function buildStageFailureMessage(rawMessage: string, stage: LaunchStage) {
