@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiSuccess, ApiError, handleApiError, parseTextBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
+import { hasSupabaseEnv } from "@/lib/env";
 import { logOperationalEvent } from "@/lib/logging";
 
 export const runtime = "nodejs";
@@ -8,6 +9,10 @@ export const dynamic = "force-dynamic";
 
 const MAX_REPORT_BYTES = 16 * 1024;
 const MAX_FIELD_LENGTH = 600;
+const DROP_RESPONSE_HEADERS = {
+  "Cache-Control": "no-store",
+  "X-Robots-Tag": "noindex",
+};
 
 const cspReportSchema = z
   .object({
@@ -82,11 +87,30 @@ function normalizeReportPayload(payload: unknown) {
 
 export async function POST(request: Request) {
   try {
-    const rateLimit = await consumeRateLimit({
-      key: getRateLimitKey(request, "client-csp-reports"),
-      limit: 60,
-      windowMs: 60_000,
-    });
+    if (!hasSupabaseEnv()) {
+      return apiSuccess(
+        { success: true, recorded: 0, dropped: true, reason: "supabase_env_unavailable" },
+        { headers: DROP_RESPONSE_HEADERS },
+      );
+    }
+
+    let rateLimit;
+    try {
+      rateLimit = await consumeRateLimit({
+        key: getRateLimitKey(request, "client-csp-reports"),
+        limit: 60,
+        windowMs: 60_000,
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "rate_limit_unavailable") {
+        return apiSuccess(
+          { success: true, recorded: 0, dropped: true, reason: "rate_limit_unavailable" },
+          { headers: DROP_RESPONSE_HEADERS },
+        );
+      }
+
+      throw error;
+    }
 
     if (rateLimit && !rateLimit.allowed) {
       return buildRateLimitResponse(rateLimit.resetAt);
@@ -124,10 +148,7 @@ export async function POST(request: Request) {
     return apiSuccess(
       { success: true, recorded: reports.length },
       {
-        headers: {
-          "Cache-Control": "no-store",
-          "X-Robots-Tag": "noindex",
-        },
+        headers: DROP_RESPONSE_HEADERS,
       },
     );
   } catch (error) {

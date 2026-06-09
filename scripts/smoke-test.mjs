@@ -787,6 +787,9 @@ function runOfflineChecks() {
   assertIncludes(semgrepConfig, "/src/app/api/client-errors/csp/route.ts", "CSP report Semgrep exception", "public CSP report intake is explicitly excluded from private mutation CSRF findings");
   assertIncludes(clientCspReportRoute, "MAX_REPORT_BYTES", "CSP report body limit", "CSP reports are bounded before parsing");
   assertIncludes(clientCspReportRoute, "consumeRateLimit", "CSP report rate limit", "CSP report intake is rate limited");
+  assertIncludes(clientCspReportRoute, "hasSupabaseEnv()", "CSP report no-env preflight", "observability-only CSP reports are dropped quietly before rate limiting when Supabase env is unavailable");
+  assertIncludes(clientCspReportRoute, "reason: \"supabase_env_unavailable\"", "CSP report no-env quiet drop", "observability-only CSP reports do not create route errors when local Supabase env is unavailable");
+  assertIncludes(clientCspReportRoute, "reason: \"rate_limit_unavailable\"", "CSP report rate-limit quiet drop", "observability-only CSP reports do not create route errors when durable rate limiting is unavailable");
   assertIncludes(clientCspReportRoute, "safeUrlHost", "CSP report URL redaction", "CSP report logging stores URL origin/path context instead of full raw URLs");
   assertIncludes(fullStackAuditScript, "const normalizedValue = value.trim()", "Strict audit env normalization", "blank pulled env values are normalized before strict preflight");
   assertIncludes(fullStackAuditScript, "if (!normalizedValue)", "Strict audit blank env guard", "blank Vercel-pulled env values do not poison strict proof");
