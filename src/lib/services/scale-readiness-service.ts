@@ -432,7 +432,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function isSyntheticMetaSnapshot(snapshot: RawMetaSnapshot) {
   const metaCampaignId = snapshot.meta_campaign_id ?? "";
-  return /^qa-/i.test(metaCampaignId) || /autopilot-proof/i.test(metaCampaignId);
+  return /^qa-/i.test(metaCampaignId) || /^simulated_/i.test(metaCampaignId) || /autopilot-proof|demo/i.test(metaCampaignId);
 }
 
 function statusFromCounts(params: { critical?: number; high?: number; watch?: number }): ScaleHealthStatus {

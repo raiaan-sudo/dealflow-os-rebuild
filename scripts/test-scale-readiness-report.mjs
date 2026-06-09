@@ -144,7 +144,7 @@ function latestMetaSnapshotsByKeyFixture(rows) {
 }
 
 function isSyntheticMetaSnapshotFixture(row) {
-  return /^qa-/i.test(row.meta_campaign_id ?? "") || /autopilot-proof/i.test(row.meta_campaign_id ?? "");
+  return /^qa-/i.test(row.meta_campaign_id ?? "") || /^simulated_/i.test(row.meta_campaign_id ?? "") || /autopilot-proof|demo/i.test(row.meta_campaign_id ?? "");
 }
 
 const now = Date.parse("2026-05-19T03:00:00.000Z");
@@ -160,6 +160,7 @@ assert.equal(
 );
 const syntheticMetaRows = [
   { id: "synthetic", organization_id: "org", user_id: "user", meta_campaign_id: "qa-meta-campaign-autopilot-proof-1", synced_at: "2026-05-18T01:00:00.000Z", sync_result: "success" },
+  { id: "simulated", organization_id: "org", user_id: "user", meta_campaign_id: "simulated_buyer_leads_greater_austin", synced_at: "2026-05-18T01:00:00.000Z", sync_result: "success" },
 ];
 assert.equal(
   latestMetaSnapshotsByKeyFixture(syntheticMetaRows.filter((row) => !isSyntheticMetaSnapshotFixture(row))).length,

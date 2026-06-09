@@ -141,7 +141,7 @@ function latestMetaSnapshotsByKey(rows) {
 
 function isSyntheticMetaSnapshot(row) {
   const metaCampaignId = row.meta_campaign_id ?? "";
-  return /^qa-/i.test(metaCampaignId) || /autopilot-proof/i.test(metaCampaignId);
+  return /^qa-/i.test(metaCampaignId) || /^simulated_/i.test(metaCampaignId) || /autopilot-proof|demo/i.test(metaCampaignId);
 }
 
 async function buildReport() {
