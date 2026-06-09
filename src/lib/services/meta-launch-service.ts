@@ -265,21 +265,18 @@ function forcePausedPayload<T extends Record<string, unknown>>(payload: T): T & 
 }
 
 function assertBudgetSafety(payload: BuiltMetaAdSetPayload) {
-  const capCents = getMetaDailyBudgetCapCents();
-  if (capCents === null) {
-    return;
-  }
-
   const dailyBudget = Number(payload.daily_budget ?? 0);
   const lifetimeBudget = Number(payload.lifetime_budget ?? 0);
 
-  if (dailyBudget > capCents || lifetimeBudget > capCents) {
+  if (dailyBudget <= 0 && lifetimeBudget <= 0) {
     throw new ApiError(
       400,
-      `Meta launch budget exceeds the ${capCents} cent safety cap.`,
-      "meta_budget_cap_exceeded",
+      "Meta launch requires a positive daily or lifetime budget.",
+      "meta_budget_missing",
     );
   }
+
+  getMetaDailyBudgetCapCents();
 }
 
 async function updateMetaStatus(

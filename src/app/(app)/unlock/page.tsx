@@ -181,6 +181,9 @@ export default async function UnlockPage({
                   <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
                     DealFlow has the offer, market, audience, funnel, and launch path. The next step is the creative test set that will carry this campaign into review.
                   </p>
+                  <p className="mt-3 max-w-2xl rounded-2xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm leading-6 text-emerald-50">
+                    We added $10.00 in generation credits so your first creative render can start without a separate top-up.
+                  </p>
                 </div>
                 <div className="grid size-14 place-items-center rounded-2xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-100">
                   <Sparkles className="size-6" />
@@ -191,6 +194,7 @@ export default async function UnlockPage({
                 {[
                   "Campaign saved",
                   `${activatedPlanName} access active`,
+                  "$10.00 generation credits added",
                   "Funnel ready",
                   hasStaticCreatives ? `${staticCreativeCount} static creatives ready` : "Creative set ready to generate",
                   videoConceptCount > 0 ? `${videoConceptCount} video concepts prepared` : "Video concepts prepared after creative generation",

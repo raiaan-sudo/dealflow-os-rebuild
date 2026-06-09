@@ -26,6 +26,7 @@ import {
 } from "@/lib/billing/plans";
 import {
   CREDIT_TOP_UP_MINIMUM_CENTS,
+  grantSignupGenerationCredits,
   grantUserCredits,
 } from "@/lib/services/credit-service";
 import {
@@ -1598,6 +1599,39 @@ export async function syncBillingSubscriptionFromStripe(
 
   if (organizationError) {
     throw new ApiError(500, organizationError.message, "organization_plan_update_failed");
+  }
+
+  const subscriptionUserId =
+    typeof subscriptionRow.user_id === "string" && subscriptionRow.user_id.trim().length > 0
+      ? subscriptionRow.user_id
+      : null;
+
+  if (subscription.status === "active" && subscriptionUserId) {
+    await grantSignupGenerationCredits({
+      userId: subscriptionUserId,
+      organizationId,
+      stripeSubscriptionId: subscription.id,
+      sourceEventId: source.eventId,
+    })
+      .then((result) => {
+        logOperationalEvent("signup_generation_credit_granted", {
+          organizationId,
+          userId: subscriptionUserId,
+          stripeSubscriptionId: subscription.id,
+          eventId: source.eventId,
+          ledgerId: result.ledgerId,
+          reusedExisting: result.reusedExisting,
+        });
+      })
+      .catch((error) => {
+        logError("signup_generation_credit_grant_failed", {
+          organizationId,
+          userId: subscriptionUserId,
+          stripeSubscriptionId: subscription.id,
+          eventId: source.eventId,
+          message: error instanceof Error ? error.message : "Unknown credit grant failure",
+        });
+      });
   }
 
   await admin

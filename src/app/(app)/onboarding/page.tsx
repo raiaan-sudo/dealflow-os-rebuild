@@ -32,6 +32,8 @@ import { normalizeOfferForCampaign, type NormalizedOfferResult } from "@/lib/ser
 import { cn } from "@/lib/utils";
 
 type CampaignMode = "buyer" | "seller" | "investor" | "commercial";
+type FunnelLanguage = "en" | "fr" | "es";
+type LeadCaptureMode = "quality_funnel" | "volume_lead_form" | "deep_qualification";
 type OnboardingStepKey = "intent" | "market" | "property" | "offer" | "agent" | "plan" | "review";
 
 type DraftState = {
@@ -46,6 +48,12 @@ type DraftState = {
   priceRange: string;
   dailyBudget: string;
   offer: string;
+  funnelLanguage: FunnelLanguage;
+  leadCaptureMode: LeadCaptureMode;
+  themePrimaryColor: string;
+  themeSecondaryColor: string;
+  themeAccentColor: string;
+  logoUrl: string;
   planTier: Extract<BillingPlanTier, "performance" | "starter" | "pro">;
   idempotencySeed: string;
 };
@@ -187,6 +195,12 @@ const DEFAULT_DRAFT: DraftState = {
   priceRange: MODE_DEFAULTS.buyer.priceRange,
   dailyBudget: "30",
   offer: MODE_DEFAULTS.buyer.offer,
+  funnelLanguage: "en",
+  leadCaptureMode: "quality_funnel",
+  themePrimaryColor: "#17212c",
+  themeSecondaryColor: "#f3eee5",
+  themeAccentColor: "#f59e42",
+  logoUrl: "",
   planTier: "performance",
   idempotencySeed: "",
 };
@@ -201,7 +215,44 @@ const DAILY_BUDGETS = [
   { label: "$100/day", value: "100" },
 ] as const;
 const MIN_DAILY_BUDGET_CENTS = 500;
-const MAX_DAILY_BUDGET_CENTS = 50_000;
+const MAX_DAILY_BUDGET_CENTS: number | null = null;
+
+const LEAD_CAPTURE_MODES: Record<LeadCaptureMode, { title: string; label: string; body: string }> = {
+  quality_funnel: {
+    title: "Quality leads",
+    label: "Funnel",
+    body: "Use the winning funnel to balance lead quality and conversion rate.",
+  },
+  volume_lead_form: {
+    title: "Volume leads",
+    label: "Instant lead form",
+    body: "Use a shorter capture path when speed and lead volume matter most.",
+  },
+  deep_qualification: {
+    title: "Highest quality",
+    label: "Deeper qualification",
+    body: "Use more qualification before the contact step.",
+  },
+};
+
+const FUNNEL_LANGUAGES: Record<FunnelLanguage, { label: string; body: string }> = {
+  en: { label: "English", body: "Generate funnel and ad copy in English." },
+  fr: { label: "French", body: "Generate funnel and ad copy in French." },
+  es: { label: "Spanish", body: "Generate funnel and ad copy in Spanish." },
+};
+
+function isFunnelLanguage(value: unknown): value is FunnelLanguage {
+  return value === "en" || value === "fr" || value === "es";
+}
+
+function isLeadCaptureMode(value: unknown): value is LeadCaptureMode {
+  return value === "quality_funnel" || value === "volume_lead_form" || value === "deep_qualification";
+}
+
+function normalizeHexColor(value: string, fallback: string) {
+  const normalized = value.trim();
+  return /^#[0-9a-f]{6}$/i.test(normalized) ? normalized : fallback;
+}
 
 const OFFER_SUGGESTIONS: Record<CampaignMode, string[]> = {
   buyer: [
@@ -400,7 +451,7 @@ function validateStep(step: OnboardingStepKey, draft: DraftState) {
     if (!draft.priceRange.trim()) errors.priceRange = "Choose a price range.";
     if (!dailyBudgetCents || dailyBudgetCents < MIN_DAILY_BUDGET_CENTS) {
       errors.dailyBudget = "Choose or enter a daily ad spend of at least $5/day.";
-    } else if (dailyBudgetCents > MAX_DAILY_BUDGET_CENTS) {
+    } else if (MAX_DAILY_BUDGET_CENTS !== null && dailyBudgetCents > MAX_DAILY_BUDGET_CENTS) {
       errors.dailyBudget = "Daily ad spend must be $500/day or less for self-serve setup.";
     }
     if (!draft.offer.trim()) errors.offer = "Add the offer or lead magnet for this campaign.";
@@ -677,12 +728,20 @@ export default function OnboardingPage() {
           typeof saved.dailyBudget === "string" && saved.dailyBudget.trim()
             ? saved.dailyBudget
             : migrateLegacyMonthlyBudgetToDaily(saved.monthlyBudget);
+        const funnelLanguage = isFunnelLanguage(saved.funnelLanguage) ? saved.funnelLanguage : DEFAULT_DRAFT.funnelLanguage;
+        const leadCaptureMode = isLeadCaptureMode(saved.leadCaptureMode) ? saved.leadCaptureMode : DEFAULT_DRAFT.leadCaptureMode;
         nextDraft = {
           ...nextDraft,
           ...saved,
           campaignMode,
+          funnelLanguage,
+          leadCaptureMode,
           dailyBudget,
           planTier: saved.planTier === "pro" ? "pro" : saved.planTier === "performance" ? "performance" : "starter",
+          themePrimaryColor: normalizeHexColor(saved.themePrimaryColor ?? "", DEFAULT_DRAFT.themePrimaryColor),
+          themeSecondaryColor: normalizeHexColor(saved.themeSecondaryColor ?? "", DEFAULT_DRAFT.themeSecondaryColor),
+          themeAccentColor: normalizeHexColor(saved.themeAccentColor ?? "", DEFAULT_DRAFT.themeAccentColor),
+          logoUrl: typeof saved.logoUrl === "string" ? saved.logoUrl : "",
           idempotencySeed: saved.idempotencySeed || nextDraft.idempotencySeed,
         };
         setDraft(nextDraft);
@@ -846,6 +905,14 @@ export default function OnboardingPage() {
           daily_budget_cents: dailyBudgetCents,
           budget: internalMonthlyBudget,
           goal: preparedDraft.offer,
+          language: preparedDraft.funnelLanguage,
+          lead_capture_mode: preparedDraft.leadCaptureMode,
+          theme: {
+            primaryColor: normalizeHexColor(preparedDraft.themePrimaryColor, DEFAULT_DRAFT.themePrimaryColor),
+            secondaryColor: normalizeHexColor(preparedDraft.themeSecondaryColor, DEFAULT_DRAFT.themeSecondaryColor),
+            accentColor: normalizeHexColor(preparedDraft.themeAccentColor, DEFAULT_DRAFT.themeAccentColor),
+            logoUrl: preparedDraft.logoUrl.trim() || null,
+          },
           idempotencySeed: preparedDraft.idempotencySeed,
         }),
       });
@@ -1083,7 +1150,7 @@ export default function OnboardingPage() {
                 </div>
                 <label className="mt-3 block space-y-2">
                   <span className="text-xs font-semibold uppercase tracking-[0.16em] text-white/48">Custom daily amount</span>
-                  <Input type="number" min={5} max={500} step="1" inputMode="decimal" value={draft.dailyBudget} onChange={(event) => updateDraft({ dailyBudget: event.target.value })} placeholder="30" aria-label="Custom daily ad spend amount" />
+                  <Input type="number" min={5} step="1" inputMode="decimal" value={draft.dailyBudget} onChange={(event) => updateDraft({ dailyBudget: event.target.value })} placeholder="30" aria-label="Custom daily ad spend amount" />
                 </label>
                 <p className="mt-2 text-xs leading-5 text-white/52">
                   Starter keeps you in control. This is a daily media budget input, not a monthly commitment.
@@ -1092,6 +1159,119 @@ export default function OnboardingPage() {
                   <p className="mt-1 text-xs leading-5 text-white/42">{formatMonthlyEstimateFromDraft(draft)}</p>
                 ) : null}
                 {errors.dailyBudget ? <p className="mt-2 text-sm text-rose-400">{errors.dailyBudget}</p> : null}
+              </div>
+
+              <div className="rounded-[22px] border border-white/10 bg-white/[0.025] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Lead capture style</p>
+                    <p className="mt-1 text-xs leading-5 text-white/52">
+                      Choose how the funnel should capture the lead. This changes the funnel path without changing launch safety gates.
+                    </p>
+                  </div>
+                  <Badge className="border-cyan-200/20 bg-cyan-300/[0.06] text-cyan-100">
+                    Funnel mode
+                  </Badge>
+                </div>
+                <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                  {(Object.keys(LEAD_CAPTURE_MODES) as LeadCaptureMode[]).map((mode) => {
+                    const option = LEAD_CAPTURE_MODES[mode];
+                    const selected = draft.leadCaptureMode === mode;
+
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => updateDraft({ leadCaptureMode: mode })}
+                        className={cn(
+                          "rounded-[18px] border p-4 text-left transition hover:-translate-y-0.5",
+                          selected
+                            ? "border-cyan-200/28 bg-cyan-300/[0.07] text-cyan-100"
+                            : "border-white/10 bg-white/[0.035] text-white/72 hover:border-cyan-200/18",
+                        )}
+                      >
+                        <span className="block text-sm font-semibold text-white">{option.title}</span>
+                        <span className="mt-1 block text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100/72">
+                          {option.label}
+                        </span>
+                        <span className="mt-2 block text-xs leading-5 text-white/58">{option.body}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="grid gap-4 rounded-[22px] border border-white/10 bg-white/[0.025] p-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Language</p>
+                  <p className="mt-1 text-xs leading-5 text-white/52">
+                    Pick the language for the funnel, ad copy, and creative prompts.
+                  </p>
+                  <div className="mt-3 grid gap-2">
+                    {(Object.keys(FUNNEL_LANGUAGES) as FunnelLanguage[]).map((language) => {
+                      const option = FUNNEL_LANGUAGES[language];
+                      const selected = draft.funnelLanguage === language;
+
+                      return (
+                        <button
+                          key={language}
+                          type="button"
+                          onClick={() => updateDraft({ funnelLanguage: language })}
+                          className={cn(
+                            "rounded-2xl border px-4 py-3 text-left transition",
+                            selected
+                              ? "border-cyan-200/28 bg-cyan-300/[0.07]"
+                              : "border-white/10 bg-white/[0.035] hover:border-cyan-200/18",
+                          )}
+                        >
+                          <span className="block text-sm font-semibold text-white">{option.label}</span>
+                          <span className="mt-1 block text-xs leading-5 text-white/54">{option.body}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium text-foreground">Funnel branding</p>
+                  <p className="mt-1 text-xs leading-5 text-white/52">
+                    Set the colors and optional logo used by the winning funnel preview and public page.
+                  </p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    {[
+                      ["Primary", "themePrimaryColor"],
+                      ["Background", "themeSecondaryColor"],
+                      ["Accent", "themeAccentColor"],
+                    ].map(([label, key]) => (
+                      <label key={key} className="space-y-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/48">
+                        <span>{label}</span>
+                        <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/18 p-2">
+                          <input
+                            type="color"
+                            value={draft[key as "themePrimaryColor" | "themeSecondaryColor" | "themeAccentColor"]}
+                            onChange={(event) => updateDraft({ [key]: event.target.value } as Partial<DraftState>)}
+                            className="h-9 w-10 rounded-md border border-white/10 bg-transparent"
+                            aria-label={`${label} funnel color`}
+                          />
+                          <Input
+                            value={draft[key as "themePrimaryColor" | "themeSecondaryColor" | "themeAccentColor"]}
+                            onChange={(event) => updateDraft({ [key]: event.target.value } as Partial<DraftState>)}
+                            className="h-9"
+                            aria-label={`${label} funnel hex color`}
+                          />
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  <label className="mt-3 block space-y-2 text-sm">
+                    <span className="text-muted-foreground">Logo URL optional</span>
+                    <Input
+                      value={draft.logoUrl}
+                      onChange={(event) => updateDraft({ logoUrl: event.target.value })}
+                      placeholder="https://example.com/logo.png"
+                    />
+                  </label>
+                </div>
               </div>
 
               <div className="space-y-3">
@@ -1127,7 +1307,6 @@ export default function OnboardingPage() {
                 />
                 {errors.offer ? <p className="text-sm text-rose-400">{errors.offer}</p> : null}
               </div>
-              <OfferCoach insight={offerInsight} onApply={applyOffer} />
             </div>
           ) : null}
 

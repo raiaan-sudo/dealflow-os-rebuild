@@ -1,6 +1,5 @@
 import {
   BILLING_PLANS,
-  SELF_SERVE_TRIAL_PERIOD_DAYS,
   type BillingPlanTier,
 } from "@/lib/billing/plans";
 import {
@@ -23,10 +22,6 @@ export type PlanPresentation = {
   features: string[];
   footer: string;
 };
-
-function priceAfterTrialLabel(priceLabel: string) {
-  return `${priceLabel} after ${SELF_SERVE_TRIAL_PERIOD_DAYS}-day free trial`;
-}
 
 export const PLAN_PRESENTATION: Record<SelectablePlanTier, PlanPresentation> = {
   performance: {
@@ -52,9 +47,9 @@ export const PLAN_PRESENTATION: Record<SelectablePlanTier, PlanPresentation> = {
   starter: {
     tier: "starter",
     name: BILLING_PLANS.starter.name,
-    priceLabel: priceAfterTrialLabel(BILLING_PLANS.starter.priceLabel),
+    priceLabel: BILLING_PLANS.starter.priceLabel,
     recurringPriceLabel: BILLING_PLANS.starter.priceLabel,
-    checkoutCtaLabel: `Start ${SELF_SERVE_TRIAL_PERIOD_DAYS}-day free trial`,
+    checkoutCtaLabel: "Start Starter",
     eyebrow: "Guided launch",
     positioning: "Recommended optimization",
     summary: "DealFlow maps the optimizations while you approve and apply each next step.",
@@ -70,9 +65,9 @@ export const PLAN_PRESENTATION: Record<SelectablePlanTier, PlanPresentation> = {
   pro: {
     tier: "pro",
     name: BILLING_PLANS.pro.name,
-    priceLabel: priceAfterTrialLabel(BILLING_PLANS.pro.priceLabel),
+    priceLabel: BILLING_PLANS.pro.priceLabel,
     recurringPriceLabel: BILLING_PLANS.pro.priceLabel,
-    checkoutCtaLabel: `Start ${SELF_SERVE_TRIAL_PERIOD_DAYS}-day free trial`,
+    checkoutCtaLabel: "Start Pro",
     eyebrow: "Operator launch",
     positioning: "Fully covered + self-optimizing",
     summary: "DealFlow keeps the launch fully covered with self-optimizing checks and richer launch guidance.",

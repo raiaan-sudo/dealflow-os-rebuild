@@ -129,7 +129,7 @@ export async function GET(req: NextRequest) {
       code,
     });
     const { response: tokenRes, data: tokenData } = await fetchMetaJson<{ access_token?: string }>(
-      "https://graph.facebook.com/v18.0/oauth/access_token",
+      `https://graph.facebook.com/${env.apiVersion}/oauth/access_token`,
       {
         method: "POST",
         headers: {
@@ -297,7 +297,7 @@ export async function GET(req: NextRequest) {
       const { response: accountsRes, data: accounts } = await fetchMetaJson<
         { data?: MetaAdAccount[]; error?: unknown } | null
       >(
-        `https://graph.facebook.com/v18.0/me/adaccounts` +
+        `https://graph.facebook.com/${env.apiVersion}/me/adaccounts` +
           `?fields=id,name,account_status,currency,timezone_name` +
           `&access_token=${encodeURIComponent(access_token)}`,
         {
@@ -339,7 +339,7 @@ export async function GET(req: NextRequest) {
       const { response: pagesRes, data: pages } = await fetchMetaJson<
         { data?: MetaPage[]; error?: unknown } | null
       >(
-        `https://graph.facebook.com/v18.0/me/accounts` +
+        `https://graph.facebook.com/${env.apiVersion}/me/accounts` +
           `?fields=id,name` +
           `&access_token=${encodeURIComponent(access_token)}`,
         {
@@ -391,7 +391,7 @@ export async function GET(req: NextRequest) {
           const { response: pixelsRes, data: pixelsData } = await fetchMetaJson<
             { data?: MetaPixel[]; error?: unknown } | null
           >(
-            `https://graph.facebook.com/v18.0/act_${selectedAccount.id.replace(/^act_/, "")}/adspixels` +
+            `https://graph.facebook.com/${env.apiVersion}/act_${selectedAccount.id.replace(/^act_/, "")}/adspixels` +
               `?fields=id,name` +
               `&access_token=${encodeURIComponent(access_token)}`,
             {

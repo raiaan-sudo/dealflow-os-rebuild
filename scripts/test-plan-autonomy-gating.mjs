@@ -30,7 +30,7 @@ assert.equal(
 assert.match(plans, /starter:[\s\S]*priceLabel:\s*"\$147\/mo"/, "Starter must stay $147/mo");
 assert.match(plans, /pro:[\s\S]*priceLabel:\s*"\$297\/mo"/, "Pro must stay $297/mo");
 assert.match(plans, /growth:[\s\S]*priceLabel:\s*"\$497\/mo"/, "Growth must not interfere with Starter/Pro pricing");
-assert.match(plans, /performance:[\s\S]*priceLabel:\s*"\$97\/mo \+ \$3\/qualified lead"/, "Performance must be the only $97 base plan");
+assert.match(plans, /performance:[\s\S]*priceLabel:\s*"\$97\/mo \+ \$3\/qualified lead charged immediately"/, "Performance must be the only $97 base plan");
 assert.match(plans, /autonomy_access:\s*"pro"/, "autonomy access must remain Pro-gated");
 
 assert.match(entitlements, /ACTIVE_SUBSCRIPTION_STATUSES = new Set\(\["active", "trialing"\]\)/, "active and trialing billing are active states");
@@ -51,7 +51,8 @@ assert.match(shared, /Optimization recommendations require active billing/, "ina
 assert.match(shared, /Customer Autopilot mode is not enabled for this campaign/, "Pro Autopilot execution must require customer settings");
 assert.match(shared, /A current published funnel snapshot is required before Autopilot execution/, "Autopilot must require a current funnel snapshot");
 assert.match(shared, /Meta\/app campaign identity drift blocks automation/, "Autopilot must block Meta/app drift");
-assert.match(shared, /dailyBudgetCapCents:[\s\S]*Math\.min\(envDailyBudgetCapCents, approvedDailyBudgetCapCents\)/, "budget cap must use the stricter production/customer cap");
+assert.match(shared, /dailyBudgetCapCents:\s*approvedDailyBudgetCapCents/, "autonomy budget cap must use explicit customer or campaign caps only");
+assert.doesNotMatch(shared, /META_DAILY_BUDGET_CAP_CENTS|envDailyBudgetCapCents/, "removed platform budget cap must not constrain autonomy recommendations");
 
 assert.match(route, /body\.mode !== "manual"[\s\S]*assertAutonomyExecutionAccess\(result\.campaignId\)/, "Starter cannot enable assisted or Autopilot modes");
 assert.match(route, /updateCampaignAutonomyMode/, "Pro mode selection must persist to campaign Autopilot settings");
@@ -63,7 +64,7 @@ assert.doesNotMatch(runRoute, /executeMetaCampaignLaunch|stripe\.checkout|sendSm
 assert.match(modeControl, /planTier === "starter"/, "Starter mode controls must stay locked");
 assert.match(modeControl, /autonomyEntitled/, "mode controls must require Pro autonomy entitlement");
 assert.match(dashboard, /Starter keeps you in control with guided recommendations/, "Starter dashboard copy must be guided");
-assert.match(dashboard, /Upgrade to Pro to let DealFlow execute safe optimizations for you/, "Starter dashboard must show Pro upgrade path");
+assert.match(dashboard, /Upgrade to Pro to enable safe optimization execution/, "Starter dashboard must show Pro upgrade path");
 assert.match(dashboard, /planTier !== "starter" && autonomyEntitled/, "dashboard action controls must require non-Starter entitlement");
 assert.match(feed, /Starter keeps execution manual/, "Starter feed must not show executable approval controls");
 assert.doesNotMatch(dashboard, /Autopilot can execute without approval|executed successfully from this dashboard/i, "dashboard must not overclaim execution");

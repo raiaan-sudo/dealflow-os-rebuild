@@ -21,6 +21,8 @@ export type GenerationCreditBucket =
   | "heygen_video_generation";
 
 export const CREDIT_TOP_UP_MINIMUM_CENTS = 1_000;
+export const SIGNUP_GENERATION_CREDIT_GRANT_CENTS = 1_000;
+export const SIGNUP_GENERATION_CREDIT_REASON = "signup_generation_credit";
 const DEFAULT_GENERATION_CREDIT_OVERDRAFT_LIMIT_CENTS = 0;
 
 const DEFAULT_GENERATION_CREDIT_COSTS_CENTS: Record<GenerationCreditBucket, number> = {
@@ -495,6 +497,28 @@ export async function grantUserCredits(params: {
     ledgerId: typeof row.ledger_id === "string" ? row.ledger_id : null,
     reusedExisting: row.reused_existing === true,
   };
+}
+
+export async function grantSignupGenerationCredits(params: {
+  userId: string;
+  organizationId: string;
+  stripeSubscriptionId?: string | null;
+  sourceEventId?: string | null;
+}) {
+  return grantUserCredits({
+    userId: params.userId,
+    organizationId: params.organizationId,
+    amount: SIGNUP_GENERATION_CREDIT_GRANT_CENTS,
+    reason: SIGNUP_GENERATION_CREDIT_REASON,
+    referenceType: "billing_subscription",
+    referenceId: params.stripeSubscriptionId ?? params.organizationId,
+    idempotencyKey: `signup_generation_credit_v1:${params.organizationId}`,
+    metadata: {
+      source: "paid_subscription_activation",
+      stripeSubscriptionId: params.stripeSubscriptionId ?? null,
+      sourceEventId: params.sourceEventId ?? null,
+    },
+  });
 }
 
 export async function refundCreditsForProviderUsageEvent(params: {

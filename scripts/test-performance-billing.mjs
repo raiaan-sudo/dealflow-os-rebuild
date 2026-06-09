@@ -32,7 +32,7 @@ assert.match(plans, /PERFORMANCE_LEAD_BILLING_MODEL = "base_plus_immediate_lead_
 assert.match(plans, /performance:[\s\S]*priceLabel:\s*"\$97\/mo \+ \$3\/qualified lead charged immediately"/);
 assert.match(plans, /performance:[\s\S]*includedActiveCampaigns:\s*1/);
 assert.match(plans, /autonomy_access:\s*"pro"/, "Performance must not receive Pro autonomy access");
-assert.match(plans, /planTier === "starter" \|\| planTier === "pro"\s*\? SELF_SERVE_TRIAL_PERIOD_DAYS\s*:\s*null/, "Performance must have no V1 free trial");
+assert.match(plans, /export function getSelfServeTrialPeriodDays\(_planTier: BillingPlanTier\)[\s\S]*return null;/, "Performance must have no V1 free trial");
 
 assert.match(presentation, /SELECTABLE_PLAN_TIERS = \["performance", "starter", "pro"\]/);
 assert.match(presentation, /checkoutCtaLabel:\s*"Start Performance checkout"/);

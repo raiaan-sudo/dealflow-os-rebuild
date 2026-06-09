@@ -416,7 +416,10 @@ export function getMetaEnv() {
   const appSecret = process.env.META_APP_SECRET;
   const redirectUri = process.env.META_REDIRECT_URI;
   const encryptionKey = process.env.META_TOKEN_ENCRYPTION_KEY;
-  const scopes = process.env.META_SCOPES ?? "ads_management,ads_read,business_management";
+  const apiVersion = process.env.META_GRAPH_API_VERSION?.trim() || "v23.0";
+  const scopes =
+    process.env.META_SCOPES ??
+    "ads_management,ads_read,business_management,pages_show_list,pages_read_engagement";
   const executionMode = process.env.META_EXECUTION_MODE ?? "sandbox";
 
   if (!appId || !appSecret || !redirectUri || !encryptionKey) {
@@ -428,6 +431,7 @@ export function getMetaEnv() {
     appSecret,
     redirectUri,
     encryptionKey,
+    apiVersion,
     scopes,
     executionMode: executionMode === "live" ? "live" : "sandbox",
   };

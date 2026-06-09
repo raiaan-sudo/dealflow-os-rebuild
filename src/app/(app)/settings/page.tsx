@@ -99,12 +99,12 @@ function getBillingStatusCopy(billing: SettingsBillingSummary | null) {
   }
 
   if (billing.subscriptionStatus === "trialing") {
-    const trialEnd = billing.currentPeriodEnd ? ` until ${formatPeriodEnd(billing.currentPeriodEnd)}` : "";
+    const accessThrough = billing.currentPeriodEnd ? ` through ${formatPeriodEnd(billing.currentPeriodEnd)}` : "";
 
     return {
       tone: "success",
-      title: "Free trial active",
-      detail: `Trial access is enabled for this workspace${trialEnd}. Stripe subscription status is trialing, not paid active.`,
+      title: "Legacy access active",
+      detail: `Stripe still records this historical subscription as trialing, not paid active. Access remains available${accessThrough}. New checkout sessions now require direct payment.`,
     };
   }
 
@@ -386,7 +386,7 @@ export default async function SettingsPage({
             </div>
             {billing?.currentPeriodEnd ? (
               <p className="mt-3 text-sm text-muted-foreground">
-                {billing.subscriptionStatus === "trialing" ? "Trial ends" : "Paid-through date"}:{" "}
+                {billing.subscriptionStatus === "trialing" ? "Access-through date" : "Paid-through date"}:{" "}
                 {formatPeriodEnd(billing.currentPeriodEnd)}
               </p>
             ) : null}

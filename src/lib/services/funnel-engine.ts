@@ -9,6 +9,8 @@ import {
   type DirectResponseFunnelVariant,
   type DirectResponseOfferType,
 } from "@/lib/direct-response-funnel";
+import { buildWinningFunnel } from "@/lib/funnels/winning-template/build-winning-funnel";
+import type { WinningFunnelMetadata } from "@/lib/funnels/winning-template/schema";
 import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
 import {
   getCategoryCtaOptions,
@@ -85,6 +87,21 @@ export type FunnelEngineInput = {
   message_match_source?: string;
   adHook?: string;
   ad_hook?: string;
+  language?: string;
+  leadCaptureMode?: string;
+  lead_capture_mode?: string;
+  campaignAngle?: string;
+  campaign_angle?: string;
+  agentName?: string;
+  agent_name?: string;
+  brokerageName?: string;
+  brokerage_name?: string;
+  phone?: string;
+  email?: string;
+  proofBadges?: string[];
+  proof_badges?: string[];
+  testimonials?: unknown[];
+  theme?: unknown;
 };
 
 export type FunnelSection = {
@@ -107,7 +124,7 @@ export type FunnelBlueprint = {
   form_fields: string[];
   follow_up_action: string;
   optimization_notes: string[];
-} & Partial<DirectResponseFunnelMetadata>;
+} & Partial<DirectResponseFunnelMetadata> & Partial<WinningFunnelMetadata>;
 
 type NormalizedInput = {
   location: string;
@@ -964,7 +981,7 @@ function buildSections(input: NormalizedInput, parsed: ParsedOffer, headline: st
   ];
 }
 
-export function generateFunnel(input?: FunnelEngineInput | null): FunnelBlueprint {
+export function generateLegacyFunnel(input?: FunnelEngineInput | null): FunnelBlueprint {
   const raw = input || {};
 
   if (resolveDirectResponseFunnelVariant(raw)) {
@@ -1019,4 +1036,8 @@ export function generateFunnel(input?: FunnelEngineInput | null): FunnelBlueprin
         : "show_thank_you_page_call_5_15_minutes",
     optimization_notes: buildOptimizationNotes(normalized),
   };
+}
+
+export function generateFunnel(input?: FunnelEngineInput | null): FunnelBlueprint {
+  return buildWinningFunnel(input);
 }

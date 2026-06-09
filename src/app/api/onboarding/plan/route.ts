@@ -28,6 +28,10 @@ type OnboardingPayload = {
   daily_budget_cents?: number | string;
   budget?: number | string;
   goal?: string;
+  language?: string;
+  lead_capture_mode?: string;
+  leadCaptureMode?: string;
+  theme?: unknown;
   idempotencySeed?: string;
 };
 
@@ -47,6 +51,9 @@ type SafeOnboardingPayloadLog = {
   dailyBudgetCentsPresent: boolean;
   goalPresent: boolean;
   servicePresent: boolean;
+  language: string;
+  leadCaptureMode: string;
+  themePresent: boolean;
   idempotencySeedPresent: boolean;
 };
 
@@ -76,6 +83,38 @@ function safeText(value: unknown) {
   return (value ?? "").toString().trim();
 }
 
+function normalizeFunnelLanguage(value: unknown) {
+  const normalized = safeText(value).toLowerCase();
+  return normalized === "fr" || normalized === "es" ? normalized : "en";
+}
+
+function normalizeLeadCaptureMode(value: unknown) {
+  const normalized = safeText(value).toLowerCase();
+
+  if (normalized === "volume_lead_form") return "volume_lead_form";
+  if (normalized === "deep_qualification") return "deep_qualification";
+
+  return "quality_funnel";
+}
+
+function normalizeHexColor(value: unknown, fallback: string) {
+  const normalized = safeText(value);
+  return /^#[0-9a-f]{6}$/i.test(normalized) ? normalized : fallback;
+}
+
+function normalizeTheme(value: unknown) {
+  const record = isRecord(value) ? value : {};
+  const logoUrl = safeText(record.logoUrl);
+
+  return {
+    primaryColor: normalizeHexColor(record.primaryColor, "#17212c"),
+    secondaryColor: normalizeHexColor(record.secondaryColor, "#f3eee5"),
+    accentColor: normalizeHexColor(record.accentColor, "#f59e42"),
+    logoUrl: /^https?:\/\//i.test(logoUrl) ? logoUrl : undefined,
+    fontPreset: "modern",
+  };
+}
+
 function buildSafePayloadLog(payload: OnboardingPayload | null): SafeOnboardingPayloadLog {
   return {
     businessType: safeText(payload?.business_type),
@@ -100,6 +139,9 @@ function buildSafePayloadLog(payload: OnboardingPayload | null): SafeOnboardingP
       typeof payload?.daily_budget_cents === "number" || typeof payload?.daily_budget_cents === "string",
     goalPresent: safeText(payload?.goal).length > 0,
     servicePresent: safeText(payload?.service).length > 0,
+    language: safeText(payload?.language),
+    leadCaptureMode: safeText(payload?.lead_capture_mode ?? payload?.leadCaptureMode),
+    themePresent: isRecord(payload?.theme),
     idempotencySeedPresent: safeText(payload?.idempotencySeed).length > 0,
   };
 }
@@ -687,6 +729,9 @@ export async function POST(req: Request) {
 	            ? "Home Equity Snapshot Report"
 	            : "Curated Home List");
     const service = normalizeOfferForCampaign(rawService, focus).normalizedOffer;
+    const funnelLanguage = normalizeFunnelLanguage(payload?.language);
+    const leadCaptureMode = normalizeLeadCaptureMode(payload?.lead_capture_mode ?? payload?.leadCaptureMode);
+    const funnelTheme = normalizeTheme(payload?.theme);
     const budget = toOnboardingBudget(payload);
     const realEstateMode = isRealEstateBusinessType(businessType) || safeText(payload?.focus).length > 0;
     const normalizedAgentPhone = normalizePhone(agentPhone);
@@ -703,7 +748,16 @@ export async function POST(req: Request) {
       userId: user.id,
       businessType: businessName,
       location,
-      service: `${focus}|${priceRange}|${service}`,
+      service: [
+        focus,
+        priceRange,
+        service,
+        funnelLanguage,
+        leadCaptureMode,
+        funnelTheme.primaryColor,
+        funnelTheme.secondaryColor,
+        funnelTheme.accentColor,
+      ].join("|"),
       budget: budget.monthlyBudget,
       idempotencySeed: payload?.idempotencySeed,
     });
@@ -743,6 +797,8 @@ export async function POST(req: Request) {
             metadata: {
               mode: focus,
               sourceStage: "existing_campaign",
+              language: funnelLanguage,
+              leadCaptureMode,
             },
             idempotencyKey: `onboarding_completed:${idempotencyKey}`,
           }),
@@ -755,6 +811,8 @@ export async function POST(req: Request) {
             metadata: {
               mode: focus,
               sourceStage: "existing_campaign",
+              language: funnelLanguage,
+              leadCaptureMode,
             },
             idempotencyKey: `campaign_plan_persisted:${idempotencyKey}`,
           }),
@@ -765,18 +823,32 @@ export async function POST(req: Request) {
       return NextResponse.json(responseBody);
     }
 
+    const agentName = [agentFirstName, agentLastName].filter(Boolean).join(" ");
+    const sharedFunnelInput = {
+      language: funnelLanguage,
+      leadCaptureMode,
+      theme: funnelTheme,
+      agentName,
+      brokerageName: agentCompanyName,
+      phone: normalizedAgentPhone,
+      email: user.email || undefined,
+    };
+
     const savedPlan = await campaignPlanServiceModule.saveCampaignPlan(
       realEstateMode
-        ? getRealEstateOnboardingDefaults({
-            businessType,
-            businessName,
-            location,
-            service: focus,
-            propertyType,
-            priceRange,
-            goal: service,
-            budget: budget.monthlyBudget,
-          })
+        ? {
+            ...getRealEstateOnboardingDefaults({
+              businessType,
+              businessName,
+              location,
+              service: focus,
+              propertyType,
+              priceRange,
+              goal: service,
+              budget: budget.monthlyBudget,
+            }),
+            ...sharedFunnelInput,
+          }
         : {
             clientName: businessName,
             businessName,
@@ -800,6 +872,7 @@ export async function POST(req: Request) {
               "Acquisition costs are too high",
             ],
             mechanism: `${service} campaign system`,
+            ...sharedFunnelInput,
           },
     );
 
@@ -839,6 +912,9 @@ export async function POST(req: Request) {
         onboarding_daily_budget: budget.dailyBudget,
         onboarding_monthly_cap_cents: Math.round(budget.monthlyBudget * 100),
         onboarding_budget_source: budget.source,
+        funnel_language: funnelLanguage,
+        lead_capture_mode: leadCaptureMode,
+        funnel_theme: funnelTheme,
       }),
       source: "onboarding_idempotency_metadata",
     });
@@ -868,6 +944,8 @@ export async function POST(req: Request) {
             sourceStage: "new_campaign",
             dailyBudgetCents: budget.dailyBudgetCents,
             budgetSource: budget.source,
+            language: funnelLanguage,
+            leadCaptureMode,
           },
           idempotencyKey: `onboarding_completed:${idempotencyKey}`,
         }),
@@ -882,6 +960,8 @@ export async function POST(req: Request) {
             sourceStage: "new_campaign",
             dailyBudgetCents: budget.dailyBudgetCents,
             budgetSource: budget.source,
+            language: funnelLanguage,
+            leadCaptureMode,
           },
           idempotencyKey: `campaign_plan_persisted:${idempotencyKey}`,
         }),

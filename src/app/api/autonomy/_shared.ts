@@ -165,11 +165,6 @@ function buildPendingActions(
   }));
 }
 
-function centsFromEnv(name: string) {
-  const parsed = Number.parseInt(process.env[name] ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
 function dailyBudgetCentsFromRuntime(value: unknown, monthlyBudget: number) {
   if (typeof value === "number" && Number.isFinite(value) && value > 0) {
     return Math.round(value * 100);
@@ -485,7 +480,6 @@ export async function evaluateAutonomy(
     pendingActions,
     effectiveMode === "manual" ? [] : executionGuardReasons,
   );
-  const envDailyBudgetCapCents = centsFromEnv("META_DAILY_BUDGET_CAP_CENTS");
   const approvedDailyBudgetCapCents = getApprovedDailyBudgetCapCents({
     settings,
     monthlyBudget: plan.monthlyBudget,
@@ -502,10 +496,7 @@ export async function evaluateAutonomy(
         plan.runtime.budgetDailyInput ?? plan.runtime.budgetDaily,
         plan.monthlyBudget,
       ),
-      dailyBudgetCapCents:
-        envDailyBudgetCapCents !== null && approvedDailyBudgetCapCents !== null
-          ? Math.min(envDailyBudgetCapCents, approvedDailyBudgetCapCents)
-          : approvedDailyBudgetCapCents ?? envDailyBudgetCapCents,
+      dailyBudgetCapCents: approvedDailyBudgetCapCents,
     },
     metrics,
     candidates: guardedPendingActions,

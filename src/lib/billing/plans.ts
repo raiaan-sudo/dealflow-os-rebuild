@@ -6,7 +6,7 @@ export type CampaignLimitPolicy = {
   label: string;
 };
 
-export const SELF_SERVE_TRIAL_PERIOD_DAYS = 7;
+export const SELF_SERVE_TRIAL_PERIOD_DAYS = 0;
 export const PERFORMANCE_BASE_AMOUNT_CENTS = 9700;
 export const PERFORMANCE_LEAD_UNIT_AMOUNT_CENTS = 300;
 export const PERFORMANCE_LEAD_METER_EVENT_NAME = "dealflow_billable_lead";
@@ -91,8 +91,8 @@ export function getCampaignLimitPolicy(planTier: BillingPlanTier) {
   return CAMPAIGN_LIMITS[normalizeBillingPlanTier(planTier)];
 }
 
-export function getSelfServeTrialPeriodDays(planTier: BillingPlanTier) {
-  return planTier === "starter" || planTier === "pro" ? SELF_SERVE_TRIAL_PERIOD_DAYS : null;
+export function getSelfServeTrialPeriodDays(_planTier: BillingPlanTier) {
+  return null;
 }
 
 export function canCreateAdditionalCampaign(params: {

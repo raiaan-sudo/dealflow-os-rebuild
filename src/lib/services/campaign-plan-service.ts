@@ -54,6 +54,16 @@ import {
 export type { CampaignCreativeStrategy } from "@/lib/services/campaign-creative-strategy";
 import { getCategoryRulePack } from "@/lib/services/campaign-category-rule-packs";
 import { buildMarketingOptimizationBlueprint } from "@/lib/optimization-engine";
+import {
+  WINNING_FUNNEL_TEMPLATE_ID,
+  WINNING_FUNNEL_ANGLES,
+  WINNING_FUNNEL_LANGUAGES,
+  WINNING_FUNNEL_LEAD_CAPTURE_MODES,
+  WINNING_FUNNEL_LEAD_TYPES,
+  WINNING_FUNNEL_TEMPLATE_VERSION,
+  type WinningFunnelMetadata,
+} from "@/lib/funnels/winning-template/schema";
+import { generateFunnel } from "@/lib/services/funnel-engine";
 
 type CampaignPlanRow = Database["public"]["Tables"]["campaign_plans"]["Row"];
 
@@ -70,6 +80,13 @@ export type OnboardingInput = {
   keyOffer: string;
   painPoints: string[];
   mechanism: string;
+  language?: string;
+  leadCaptureMode?: string;
+  theme?: unknown;
+  agentName?: string;
+  brokerageName?: string;
+  phone?: string;
+  email?: string;
 };
 
 export type CampaignAd = {
@@ -221,10 +238,79 @@ export type CampaignPlan = {
     formFields: string[];
     followUpAction: string;
     optimizationNotes: string[];
-  };
+  } & Partial<WinningFunnelMetadata>;
   runtime: CampaignRuntime;
   createdAt: string;
 };
+
+function pickWinningFunnelMetadata(value: unknown): Partial<WinningFunnelMetadata> {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  const source = value as Partial<WinningFunnelMetadata>;
+
+  if (source.funnelTemplateId !== WINNING_FUNNEL_TEMPLATE_ID) {
+    return {};
+  }
+
+  const metadata: Partial<WinningFunnelMetadata> = {
+    funnelTemplateId: WINNING_FUNNEL_TEMPLATE_ID,
+  };
+
+  if (typeof source.leadType === "string" && (WINNING_FUNNEL_LEAD_TYPES as readonly string[]).includes(source.leadType)) {
+    metadata.leadType = source.leadType;
+  }
+
+  if (typeof source.campaignAngle === "string" && (WINNING_FUNNEL_ANGLES as readonly string[]).includes(source.campaignAngle)) {
+    metadata.campaignAngle = source.campaignAngle;
+  }
+
+  if (typeof source.language === "string" && (WINNING_FUNNEL_LANGUAGES as readonly string[]).includes(source.language)) {
+    metadata.language = source.language;
+  }
+
+  if (
+    typeof source.leadCaptureMode === "string" &&
+    (WINNING_FUNNEL_LEAD_CAPTURE_MODES as readonly string[]).includes(source.leadCaptureMode)
+  ) {
+    metadata.leadCaptureMode = source.leadCaptureMode;
+  }
+
+  if (source.theme && typeof source.theme === "object") {
+    metadata.theme = source.theme;
+  }
+
+  if (source.agent && typeof source.agent === "object") {
+    metadata.agent = source.agent;
+  }
+
+  if (source.funnelTemplateVersion === WINNING_FUNNEL_TEMPLATE_VERSION) {
+    metadata.funnelTemplateVersion = WINNING_FUNNEL_TEMPLATE_VERSION;
+  }
+
+  if (source.templateLocked === true) {
+    metadata.templateLocked = true;
+  }
+
+  if (Array.isArray(source.allowedEditSlots)) {
+    metadata.allowedEditSlots = source.allowedEditSlots.map(String);
+  }
+
+  if (Array.isArray(source.quizSteps)) {
+    metadata.quizSteps = source.quizSteps;
+  }
+
+  if (Array.isArray(source.proofBadges)) {
+    metadata.proofBadges = source.proofBadges.map(String);
+  }
+
+  if (Array.isArray(source.testimonials)) {
+    metadata.testimonials = source.testimonials;
+  }
+
+  return metadata;
+}
 
 function buildPlanFunnel(params: {
   funnelType: string;
@@ -522,6 +608,23 @@ function buildPlanFromGenerated(
     budget: Number((generated.monthlyBudget / 30).toFixed(2)),
     offer: generated.keyOffer,
   });
+  const generatedFunnel = generated.funnel
+    ? (generated.funnel as typeof generated.funnel & {
+        sections?: CampaignPlan["funnel"]["sections"];
+        form_fields?: string[];
+        formFields?: string[];
+        follow_up_action?: string;
+        followUpAction?: string;
+        optimization_notes?: string[];
+        optimizationNotes?: string[];
+      })
+    : null;
+  const generatedFormFields =
+    generatedFunnel?.form_fields ?? generatedFunnel?.formFields ?? [];
+  const generatedFollowUpAction =
+    generatedFunnel?.follow_up_action ?? generatedFunnel?.followUpAction ?? "";
+  const generatedOptimizationNotes =
+    generatedFunnel?.optimization_notes ?? generatedFunnel?.optimizationNotes ?? [];
 
   return {
     id: `local-${organizationId}`,
@@ -547,20 +650,28 @@ function buildPlanFromGenerated(
     creativeBrief: generated.creativeBrief,
     creatives: generated.creatives,
     ads: withAdImageFallback(generated.ads),
-    funnel: generated.funnel
-      ? buildPlanFunnel({
-          funnelType: generated.funnelType,
-          headline: generated.funnel.headline,
-          subheadline: generated.funnel.subheadline,
-          cta: generated.funnel.cta,
-          formFields: optimizationBlueprint.funnelConfig.structure.formFields,
-          followUpAction: optimizationBlueprint.funnelConfig.followUpAction,
-          optimizationNotes: optimizationBlueprint.optimizationNotes,
-          ads: generated.ads,
-          keyOffer: generated.keyOffer,
-          market: generated.market,
-          summary: generated.summary,
-        })
+    funnel: generatedFunnel
+      ? {
+          ...buildPlanFunnel({
+            funnelType: generated.funnelType,
+            headline: generatedFunnel.headline,
+            subheadline: generatedFunnel.subheadline,
+            cta: generatedFunnel.cta,
+            sections: generatedFunnel.sections,
+            formFields: generatedFormFields.length
+              ? generatedFormFields
+              : optimizationBlueprint.funnelConfig.structure.formFields,
+            followUpAction: generatedFollowUpAction || optimizationBlueprint.funnelConfig.followUpAction,
+            optimizationNotes: generatedOptimizationNotes.length
+              ? generatedOptimizationNotes
+              : optimizationBlueprint.optimizationNotes,
+            ads: generated.ads,
+            keyOffer: generated.keyOffer,
+            market: generated.market,
+            summary: generated.summary,
+          }),
+          ...pickWinningFunnelMetadata(generatedFunnel),
+        }
       : buildPlanFunnel({
           funnelType: generated.funnelType,
           formFields: optimizationBlueprint.funnelConfig.structure.formFields,
@@ -985,6 +1096,25 @@ export async function generateCampaignPlan(
   const funnelHeadline = leadCopy.headline;
   const funnelSubheadline = leadCopy.subheadline;
   const funnelCta = leadCopy.cta;
+  const winningFunnel = generateFunnel({
+    market: context.market,
+    location: context.market,
+    audience: audienceLabel,
+    offer: offerLabel,
+    key_offer: offerLabel,
+    headline: funnelHeadline,
+    subheadline: funnelSubheadline,
+    primaryCTA: funnelCta,
+    market_type: context.intent,
+    funnel_goal: input.leadCaptureMode === "volume_lead_form" ? "lead_form" : "survey",
+    language: input.language,
+    leadCaptureMode: input.leadCaptureMode,
+    theme: input.theme,
+    agentName: input.agentName,
+    brokerageName: input.brokerageName || input.businessName,
+    phone: input.phone,
+    email: input.email,
+  });
   const funnelSteps = [
     ...funnelFramework.bodySteps.map((step) => fillPattern(step, knowledgeContext)),
     `Lead with a ${leadAngle} promise using "${leadHook}" so the page and ads stay consistent for ${audienceLabel}.`,
@@ -1153,12 +1283,10 @@ export async function generateCampaignPlan(
     },
     ads: normalizedAds,
     funnel: {
-      headline: funnelHeadline,
-      subheadline: cleanSentence(funnelSubheadline),
-      cta: funnelCta,
-      formFields: optimizationBlueprint.funnelConfig.structure.formFields,
-      followUpAction: optimizationBlueprint.funnelConfig.followUpAction,
-      optimizationNotes: optimizationBlueprint.optimizationNotes,
+      ...winningFunnel,
+      headline: winningFunnel.headline,
+      subheadline: cleanSentence(winningFunnel.subheadline),
+      cta: winningFunnel.cta,
     },
   };
 }

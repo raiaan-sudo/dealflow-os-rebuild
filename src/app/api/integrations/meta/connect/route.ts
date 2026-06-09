@@ -27,8 +27,8 @@ export async function GET(request: Request) {
 
     const requestUrl = new URL(request.url);
     const returnTo = getSafeReturnTo(requestUrl.searchParams.get("returnTo"));
-    const url = new URL("https://www.facebook.com/v18.0/dialog/oauth");
     const env = getMetaEnvOrThrow();
+    const url = new URL(`https://www.facebook.com/${env.apiVersion}/dialog/oauth`);
     const redirectUri = env.redirectUri;
     const state = createMetaOAuthState({
       organizationId: auth.organizationId,
@@ -55,10 +55,7 @@ export async function GET(request: Request) {
 
     url.searchParams.set("client_id", env.appId);
     url.searchParams.set("redirect_uri", redirectUri);
-    url.searchParams.set(
-      "scope",
-      "ads_management,ads_read,business_management,pages_show_list,pages_read_engagement",
-    );
+    url.searchParams.set("scope", env.scopes);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("state", state);
 

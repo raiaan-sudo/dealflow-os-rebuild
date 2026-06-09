@@ -1036,10 +1036,10 @@ function runOfflineChecks() {
   assertIncludes(higgsfieldClient, "withPolling: true", "Higgsfield image polling", "image generation waits for a completed result before surfacing a file URL");
   assertIncludes(higgsfieldClient, "withPolling: false", "Higgsfield async video start", "video generation stays async and does not block the request path");
   assertIncludes(launchRoute, "assertMetaLiveLaunchEnabled", "Reachable Meta live launch kill switch", "direct Meta launch route fails closed unless ALLOW_META_LIVE_LAUNCH=true");
-  assertIncludes("src/lib/integrations/meta/budget-cap.ts", "/^(0|none|off|unlimited)$/i", "Meta budget unlimited policy", "unset, zero, off, none, or unlimited budget cap config removes the DealFlow cap");
-  assertIncludes("src/lib/integrations/meta/budget-cap.ts", "isMetaDailyBudgetCapRequiredForProductionLaunch", "Production budget cap policy", "production Meta launch can run uncapped unless an owner explicitly configures a cap");
+  assertIncludes("src/lib/integrations/meta/budget-cap.ts", "return null;", "Meta budget unlimited policy", "DealFlow does not apply a platform daily budget cap");
+  assertIncludes("src/lib/integrations/meta/budget-cap.ts", "isMetaDailyBudgetCapRequiredForProductionLaunch", "Production budget cap policy", "production Meta launch runs uncapped from DealFlow unless Meta rejects the account-side budget");
   assertExcludes(metaExecution, /meta_budget_cap_missing/, "Live Meta budget cap optional", "live Meta launch no longer fails closed only because a finite budget cap is missing");
-  assertIncludes(metaLaunchService, "getMetaDailyBudgetCapCents()", "Reachable Meta budget policy", "direct Meta launch uses the shared owner-configured budget cap policy");
+  assertIncludes(metaLaunchService, "meta_budget_missing", "Reachable Meta budget policy", "direct Meta launch requires a positive budget but no DealFlow platform cap");
   assertIncludes(sessionCostGuard, "reserve_provider_usage", "Atomic provider usage reservation", "paid-generation guard reserves provider budget through DB RPC");
   assertIncludes(sessionCostGuard, "HIGGSFIELD_IMAGE_DAILY_LIMIT", "Configurable Higgsfield image cap", "Higgsfield image generation can be capped below the default for production tests");
   assertIncludes(sessionCostGuard, "DURABLE_PROVIDER_USAGE_LIMITS", "Durable provider cap default", "production provider caps allow a full six-creative render plus retries without falling back to the browser-session limit");
