@@ -15,7 +15,6 @@ import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { getIntegrationProviderState } from "@/lib/integrations/provider-registry";
 import {
-  getMetaDailyBudgetCapCents,
   isMetaDailyBudgetCapRequiredForProductionLaunch,
 } from "@/lib/integrations/meta/budget-cap";
 import {
@@ -421,12 +420,6 @@ export default async function LaunchAliasPage({
       ? plan.runtime.budgetDailyInput
       : Math.round(plan.monthlyBudget / 30);
   const dailyBudgetCents = Math.max(0, Math.round(dailyBudgetInput * 100));
-  const budgetCapCents = getMetaDailyBudgetCapCents();
-  const budgetCapApplied = budgetCapCents !== null;
-  const effectiveDailyBudgetCents = budgetCapCents !== null
-    ? Math.min(dailyBudgetCents, budgetCapCents)
-    : dailyBudgetCents;
-  const budgetWasCapped = budgetCapCents !== null && dailyBudgetCents > budgetCapCents;
   const liveActivationBlocked = metaPreflight?.liveActivationBlocked ?? false;
   const launchRoomReady =
     billingLaunchAllowed &&
@@ -498,12 +491,8 @@ export default async function LaunchAliasPage({
     {
       label: "Budget",
       ready: true,
-      statusLabel: budgetWasCapped ? "Capped" : "Ready",
-      detail: budgetWasCapped
-        ? `Requested daily budget is ${formatBudgetCap(dailyBudgetCents)}; the launch will use the platform cap of ${formatBudgetCap(effectiveDailyBudgetCents)}/day unless support adjusts the cap.`
-        : budgetCapCents !== null
-          ? `Launch is capped at ${formatBudgetCap(budgetCapCents)}/day; requested daily budget is ${formatBudgetCap(dailyBudgetCents)}.`
-          : `No platform budget cap is applied. Launch will use the requested daily budget of ${formatBudgetCap(dailyBudgetCents)}.`,
+      statusLabel: "Ready",
+      detail: `No platform budget cap is applied. Launch will use the requested daily budget of ${formatBudgetCap(dailyBudgetCents)}.`,
     },
     {
       label: "Tracking / live activation",
@@ -887,7 +876,7 @@ export default async function LaunchAliasPage({
             >
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold text-foreground">{item.label}</p>
-                <span className={item.ready && item.statusLabel !== "Capped" ? "text-sm font-semibold text-emerald-300" : "text-sm font-semibold text-amber-300"}>
+                <span className={item.ready ? "text-sm font-semibold text-emerald-300" : "text-sm font-semibold text-amber-300"}>
                   {item.statusLabel ?? (item.ready ? "Ready" : "Blocked")}
                 </span>
               </div>

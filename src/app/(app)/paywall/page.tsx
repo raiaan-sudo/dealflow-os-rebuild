@@ -159,7 +159,7 @@ export default async function PaywallPage({
               <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
                 {performanceConfigured
                   ? "Performance gives the same guided launch access as Starter with a lower base and qualified-lead usage on your Stripe invoice. Pro adds recommendation-only autonomy checks and richer monitoring while execution stays approval-gated during beta. Paid image or video generation remains credit-gated after activation."
-                  : "Starter gives guided launch access with a free trial. Pro adds recommendation-only autonomy checks and richer monitoring while execution stays approval-gated during beta. Paid image or video generation remains credit-gated after activation."}
+                  : "Starter gives guided launch access. Pro adds recommendation-only autonomy checks and richer monitoring while execution stays approval-gated during beta. Paid image or video generation remains credit-gated after activation."}
               </p>
             </div>
             <div className="mt-5">

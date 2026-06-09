@@ -190,7 +190,7 @@ export default function UIDirectionPage() {
             items={[
               "High-impact growth moves need approval",
               "Budget increases, new ads, audiences, and funnel publishing stay approval-required",
-              "Monthly budget cap protection stays visible",
+              "Requested daily budget stays visible before launch",
               "User can arm, pause, or adjust Autopilot guardrails",
             ]}
             pro

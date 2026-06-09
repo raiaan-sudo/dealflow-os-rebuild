@@ -161,13 +161,18 @@ assertExcludes(
 );
 assertIncludes(
   launchPage,
-  "effectiveDailyBudgetCents",
-  "launch UI calculates effective capped daily budget",
-);
-assertIncludes(
-  launchPage,
   "No platform budget cap is applied. Launch will use the requested daily budget",
   "launch UI treats missing cap as uncapped",
+);
+assertExcludes(
+  launchPage,
+  "Capped",
+  "launch UI must not show capped budget state",
+);
+assertExcludes(
+  launchPage,
+  "platform cap of",
+  "launch UI must not show stale platform-cap copy",
 );
 assertIncludes(
   launchPage,

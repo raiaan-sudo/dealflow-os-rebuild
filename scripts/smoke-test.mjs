@@ -653,7 +653,9 @@ function runOfflineChecks() {
   assertIncludes(campaignPlanDocument, "nestedPlan", "Selected creative nested normalization", "launch media selection survives nested campaign plan documents");
   assertExcludes(launchPage, "recommended", "Launch recommended fallback removed", "launch preview does not use recommended fallback");
   assertExcludes(launchPage, "budgetCapMissingForLaunch", "Launch budget cap missing blocker removed", "launch readiness no longer blocks production Meta object creation only because no finite platform cap is configured");
-  assertIncludes(launchPage, "effectiveDailyBudgetCents", "Launch effective budget visibility", "launch readiness still shows the effective capped budget when an owner explicitly configures a cap");
+  assertIncludes(launchPage, "No platform budget cap is applied", "Launch uncapped budget visibility", "launch readiness shows the requested daily budget without a DealFlow platform cap");
+  assertExcludes(launchPage, "platform cap of", "Launch budget cap copy removed", "launch readiness no longer tells users their requested spend will be capped by DealFlow");
+  assertExcludes(launchPage, "Capped", "Launch budget capped label removed", "launch readiness no longer labels requested spend as capped by DealFlow");
   assertIncludes(launchPage, "Tracking / live activation", "Launch tracking activation visibility", "launch separates paused object creation from live activation tracking readiness");
   assertIncludes(launchPage, "label: \"Meta preflight\"", "Launch Meta preflight visibility", "saved Meta selections and provider preflight are separate readiness gates");
   assertIncludes(launchPage, "Save the Meta ad account, Page, and pixel before launch.", "Launch selection blocker copy", "launch does not tell users to reconnect Meta after selections are already saved");
@@ -1003,7 +1005,7 @@ function runOfflineChecks() {
   assertIncludes(billingService, "billing_checkout_bypass", "Billing override checkout bypass", "override users do not create live Stripe checkout sessions");
   assertIncludes(paywallPage, "launchOverride={billing?.launchOverride === true}", "Paywall override handoff", "billing override state is passed into the paywall CTA");
   assertIncludes("src/components/billing/paywall-plan-selector.tsx", "Activate {selectedPlan.name}", "Paywall simulated override CTA", "billing override users see normal activation copy without opening Stripe checkout");
-  assertIncludes("src/components/billing/paywall-plan-selector.tsx", "label={selectedPlan.checkoutCtaLabel}", "Paywall free-trial checkout CTA", "normal customers see the 7-day free trial checkout copy");
+  assertIncludes("src/components/billing/paywall-plan-selector.tsx", "label={selectedPlan.checkoutCtaLabel}", "Paywall direct-payment checkout CTA", "normal customers see direct-payment checkout copy");
   assertIncludes(unlockPage, "Checkout cancelled", "Unlock cancelled state", "Stripe cancel returns to a clear cancellation state instead of an access-active page");
   assertIncludes(unlockPage, "Back to build", "Unlock cancelled CTA", "cancelled checkout sends the user back to Build instead of dashboard by default");
   assertIncludes(unlockPage, "Welcome to DealFlow OS", "Unlock welcome activation state", "post-checkout activation feels like a customer-facing welcome handoff");

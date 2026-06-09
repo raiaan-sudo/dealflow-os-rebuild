@@ -480,6 +480,14 @@ export default async function BuilderPage({
         description={wantsNewCampaign ? "Start a new campaign slot without changing the current active campaign." : "Adjust the active campaign details, then return to review."}
         guidance={wantsNewCampaign ? "New campaigns are secondary to the active launch path." : "Keep edits focused on what blocks review or launch."}
       />
+      {!wantsNewCampaign && setupRecord ? (
+        <Card className="border-amber-300/20 bg-amber-300/[0.07] p-4">
+          <p className="text-sm font-semibold text-amber-100">You are editing a draft.</p>
+          <p className="mt-1 text-sm leading-6 text-amber-100/78">
+            Saved launch package is unchanged until you save. Use Continue review to inspect the approved funnel and selected creative set.
+          </p>
+        </Card>
+      ) : null}
       <CampaignBuilderWorkspace
         key={setupRecord?.campaign.id ?? "new-campaign"}
         initialStrategy={buildInitialStrategyFromPlan(setupRecord?.strategy, reviewPlan)}
