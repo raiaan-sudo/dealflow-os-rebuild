@@ -207,6 +207,9 @@ function runOfflineChecks() {
   const clientErrorMigration = "supabase/migrations/20260504223000_create_client_error_events.sql";
   const metaSyncOptimizationMigration = "supabase/migrations/20260509020000_create_meta_sync_and_optimization_tables.sql";
   const clientErrorRoute = "src/app/api/client-errors/route.ts";
+  const clientCspReportRoute = "src/app/api/client-errors/csp/route.ts";
+  const fullStackAuditScript = "scripts/audit-full-stack-prelaunch.mjs";
+  const semgrepConfig = ".semgrep.yml";
   const clientErrorListener = "src/components/telemetry/client-error-listener.tsx";
   const clientErrorService = "src/lib/services/client-error-telemetry-service.ts";
   const commandCenterPage = "src/app/(app)/admin/command-center/page.tsx";
@@ -778,6 +781,16 @@ function runOfflineChecks() {
   assertIncludes(loginForm, "NEXT_PUBLIC_ENABLE_GOOGLE_AUTH", "Google auth feature gate", "Google OAuth button is hidden unless Supabase Google provider is intentionally enabled");
   assertIncludes(loginForm, "GOOGLE_AUTH_ENABLED &&", "Google auth disabled-safe UI", "disabled Supabase Google provider cannot expose a broken OAuth button");
   assertIncludes(middleware, "https://challenges.cloudflare.com", "Turnstile CSP allowlist", "production CSP allows Cloudflare Turnstile script, frame, and verification traffic");
+  assertIncludes(middleware, "Content-Security-Policy-Report-Only", "Staged CSP hardening", "strict CSP tightening is collected in report-only mode before enforcement");
+  assertIncludes(middleware, "Cross-Origin-Embedder-Policy-Report-Only", "Staged COEP hardening", "COEP is staged in report-only mode before enforcing cross-origin isolation");
+  assertIncludes(middleware, "/api/client-errors/csp", "CSP report endpoint allowlist", "CSP violation reports are sent to a sanitized app-owned endpoint");
+  assertIncludes(semgrepConfig, "/src/app/api/client-errors/csp/route.ts", "CSP report Semgrep exception", "public CSP report intake is explicitly excluded from private mutation CSRF findings");
+  assertIncludes(clientCspReportRoute, "MAX_REPORT_BYTES", "CSP report body limit", "CSP reports are bounded before parsing");
+  assertIncludes(clientCspReportRoute, "consumeRateLimit", "CSP report rate limit", "CSP report intake is rate limited");
+  assertIncludes(clientCspReportRoute, "safeUrlHost", "CSP report URL redaction", "CSP report logging stores URL origin/path context instead of full raw URLs");
+  assertIncludes(fullStackAuditScript, "const normalizedValue = value.trim()", "Strict audit env normalization", "blank pulled env values are normalized before strict preflight");
+  assertIncludes(fullStackAuditScript, "if (!normalizedValue)", "Strict audit blank env guard", "blank Vercel-pulled env values do not poison strict proof");
+  assertIncludes(fullStackAuditScript, "String(process.env[key] ?? \"\").trim()", "Strict audit env fallback", "later nonblank env files can fill values missing from blank pulled env files");
   assertIncludes(rateLimitHelpers, "rate_limit_unavailable", "Durable rate limiting fails closed", "production rate limiting no longer falls back to in-memory buckets");
   assertIncludes(rateLimitHelpers, "p_bucket_key", "Durable rate-limit RPC contract", "rate limiter calls the Supabase RPC with versioned parameter names");
   assertIncludes(apiRouteHelpers, "Request body is too large.", "API body size limit helper", "shared request parsing rejects oversized bodies");
@@ -876,6 +889,7 @@ function runOfflineChecks() {
   assertIncludes(clientErrorMigration, "force row level security", "Client error forced RLS", "client error telemetry table is force-RLS protected");
   assertIncludes(clientErrorRoute, "assertSameOriginRequest", "Client error same-origin guard", "browser error telemetry rejects cross-site POSTs");
   assertIncludes(clientErrorRoute, "consumeRateLimit", "Client error rate limit", "browser error telemetry is rate limited");
+  assertIncludes(clientCspReportRoute, "logOperationalEvent(\"client_csp_report_received\"", "CSP report operational event", "report-only CSP and COEP violations are observable without exposing raw report bodies");
   assertIncludes(clientErrorListener, "unhandledrejection", "Unhandled rejection listener", "global browser promise rejections are captured");
   assertIncludes(clientErrorListener, "window.addEventListener(\"error\"", "Window error listener", "global browser errors are captured");
   assertIncludes(clientErrorService, "FORBIDDEN_TEXT_PATTERN", "Client error privacy scrubber", "browser error messages/stacks are scrubbed before persistence");

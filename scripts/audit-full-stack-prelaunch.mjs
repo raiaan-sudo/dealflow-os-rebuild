@@ -34,7 +34,7 @@ function loadLocalEnvFile(filePath) {
     const equalsAt = trimmed.indexOf("=");
     const key = trimmed.slice(0, equalsAt).trim();
     let value = trimmed.slice(equalsAt + 1).trim();
-    if (!key || process.env[key] !== undefined) {
+    if (!key) {
       continue;
     }
 
@@ -45,7 +45,16 @@ function loadLocalEnvFile(filePath) {
       value = value.slice(1, -1);
     }
 
-    process.env[key] = value;
+    const normalizedValue = value.trim();
+    if (!normalizedValue) {
+      continue;
+    }
+
+    if (String(process.env[key] ?? "").trim()) {
+      continue;
+    }
+
+    process.env[key] = normalizedValue;
   }
 }
 

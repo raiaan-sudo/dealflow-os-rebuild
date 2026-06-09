@@ -52,6 +52,7 @@ rules:
         - "/src/app/api/webhooks/twilio/status/route.ts"
         - "/src/app/api/meta/data-deletion/route.ts"
         - "/src/app/api/client-errors/route.ts"
+        - "/src/app/api/client-errors/csp/route.ts"
     patterns:
       - pattern-either:
           - pattern: |

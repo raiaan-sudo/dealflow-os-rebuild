@@ -23,6 +23,7 @@ const PUBLIC_API_PATHS = new Set([
   "/api/webhooks/twilio/status",
   "/api/stripe/webhook",
   "/api/client-errors",
+  "/api/client-errors/csp",
 ]);
 const RESERVED_ROOT_PATHS = new Set([
   "admin",
@@ -156,6 +157,39 @@ function applySecurityHeaders(request: NextRequest, response: NextResponse, star
     "https://connect.facebook.net",
     "https://challenges.cloudflare.com",
   ];
+  const cspReportUri = "/api/client-errors/csp";
+  const cspDirectives = [
+    "default-src 'self'",
+    `script-src ${scriptSrc.join(" ")}`,
+    "script-src-attr 'none'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    "media-src 'self' blob: https:",
+    "connect-src 'self' https://*.supabase.co https://api.stripe.com https://graph.facebook.com https://www.facebook.com https://api.openai.com https://api.heygen.com https://challenges.cloudflare.com",
+    "frame-src https://js.stripe.com https://hooks.stripe.com https://www.facebook.com https://challenges.cloudflare.com",
+    "form-action 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+    ...(isProduction ? ["upgrade-insecure-requests"] : []),
+  ];
+  const stagedCspDirectives = [
+    "default-src 'self'",
+    "script-src 'self' https://js.stripe.com https://connect.facebook.net https://challenges.cloudflare.com",
+    "script-src-attr 'none'",
+    "style-src 'self'",
+    "img-src 'self' data: blob: https://*.supabase.co https://agentdealflow.io https://www.agentdealflow.io https://app.agentdealflow.io https://*.agentdealflow.io",
+    "font-src 'self' data:",
+    "media-src 'self' blob: https://*.supabase.co https://agentdealflow.io https://www.agentdealflow.io https://app.agentdealflow.io https://*.agentdealflow.io",
+    "connect-src 'self' https://*.supabase.co https://api.stripe.com https://graph.facebook.com https://www.facebook.com https://api.openai.com https://api.heygen.com https://challenges.cloudflare.com",
+    "frame-src https://js.stripe.com https://hooks.stripe.com https://www.facebook.com https://challenges.cloudflare.com",
+    "form-action 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+    `report-uri ${cspReportUri}`,
+  ];
 
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("X-Content-Type-Options", "nosniff");
@@ -172,25 +206,9 @@ function applySecurityHeaders(request: NextRequest, response: NextResponse, star
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=(), payment=()",
   );
-  response.headers.set(
-    "Content-Security-Policy",
-    [
-      "default-src 'self'",
-      `script-src ${scriptSrc.join(" ")}`,
-      "script-src-attr 'none'",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https:",
-      "font-src 'self' data:",
-      "media-src 'self' blob: https:",
-      "connect-src 'self' https://*.supabase.co https://api.stripe.com https://graph.facebook.com https://www.facebook.com https://api.openai.com https://api.heygen.com https://challenges.cloudflare.com",
-      "frame-src https://js.stripe.com https://hooks.stripe.com https://www.facebook.com https://challenges.cloudflare.com",
-      "form-action 'self'",
-      "object-src 'none'",
-      "base-uri 'self'",
-      "frame-ancestors 'none'",
-      ...(isProduction ? ["upgrade-insecure-requests"] : []),
-    ].join("; "),
-  );
+  response.headers.set("Content-Security-Policy", cspDirectives.join("; "));
+  response.headers.set("Content-Security-Policy-Report-Only", stagedCspDirectives.join("; "));
+  response.headers.set("Cross-Origin-Embedder-Policy-Report-Only", "require-corp");
 
   if (isProduction) {
     response.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
