@@ -50,18 +50,37 @@ async function countRows(supabase, table, queryBuilder) {
 }
 
 async function fetchCampaignPlanRowsPaged(supabase, selectColumns, options = {}) {
-  const pageSize = options.pageSize ?? 100;
+  const pageSize = options.pageSize ?? 20;
+  const maxAttempts = options.maxAttempts ?? 3;
   const rows = [];
 
   for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabase
-      .from("campaign_plans")
-      .select(selectColumns)
-      .order("id", { ascending: true })
-      .range(offset, offset + pageSize - 1);
+    let data = null;
+    let lastError = null;
 
-    if (error) {
-      throw new Error(`campaign_plans paged scan: ${error.message}`);
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const result = await supabase
+        .from("campaign_plans")
+        .select(selectColumns)
+        .order("id", { ascending: true })
+        .range(offset, offset + pageSize - 1);
+
+      if (!result.error) {
+        data = result.data;
+        lastError = null;
+        break;
+      }
+
+      lastError = result.error;
+      if (!/timeout|canceling statement|connection|fetch failed/i.test(result.error.message ?? "")) {
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+    }
+
+    if (lastError) {
+      throw new Error(`campaign_plans paged scan: ${lastError.message}`);
     }
 
     rows.push(...(data ?? []));
