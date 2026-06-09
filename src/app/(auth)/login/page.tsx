@@ -18,10 +18,14 @@ export default async function LoginPage({
     resolvedSearchParams && typeof resolvedSearchParams.redirectedFrom === "string"
       ? resolvedSearchParams.redirectedFrom
       : undefined;
+  const emailConfirmed =
+    resolvedSearchParams && resolvedSearchParams.confirmed === "1";
   const reason =
-    resolvedSearchParams && typeof resolvedSearchParams.reason === "string"
-      ? resolvedSearchParams.reason
-      : undefined;
+    emailConfirmed
+      ? "confirmed"
+      : resolvedSearchParams && typeof resolvedSearchParams.reason === "string"
+        ? resolvedSearchParams.reason
+        : undefined;
   const initialMode =
     resolvedSearchParams && resolvedSearchParams.mode === "sign-up"
       ? "sign-up"

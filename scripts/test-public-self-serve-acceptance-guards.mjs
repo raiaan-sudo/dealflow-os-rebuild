@@ -25,6 +25,8 @@ function listFiles(directory) {
 }
 
 const signupPage = "src/app/signup/page.tsx";
+const loginPage = read("src/app/(auth)/login/page.tsx");
+const loginForm = read("src/components/auth/login-form.tsx");
 const proxy = read("src/proxy.ts");
 const appLayout = read("src/app/(app)/layout.tsx");
 const builderPage = read("src/app/(app)/builder/page.tsx");
@@ -37,6 +39,11 @@ const selectAdRoute = read("src/app/api/campaigns/[id]/select-ad/route.ts");
 assert.equal(exists(signupPage), true, "/signup route must exist");
 assert.match(read(signupPage), /mode:\s*"sign-up"/, "/signup must preserve canonical sign-up mode");
 assert.match(read(signupPage), /redirect\(`\/login\?\$\{target\.toString\(\)\}`\)/, "/signup must redirect to /login");
+assert.match(loginForm, /emailRedirectTo:\s*getEmailConfirmationRedirectUrl\(redirectedFrom\)/, "Supabase signup must set an explicit confirmation email redirect");
+assert.match(loginForm, /confirmed["']?,\s*["']1["']?/, "confirmation redirect must land on an explicit confirmed login state");
+assert.match(loginForm, /Check your inbox for the DealFlow confirmation email/, "signup success copy must clearly tell users to confirm email");
+assert.match(loginPage, /resolvedSearchParams\.confirmed\s*===\s*"1"/, "login page must recognize confirmed email redirects");
+assert.match(loginForm, /Email confirmed\. Sign in to continue your DealFlow workspace\./, "login page must show clear confirmed-email copy");
 assert.match(proxy, /"\/signup"/, "/signup must be public before auth middleware redirects");
 assert.match(appLayout, /resolveOwnedActiveCampaignId/, "app layout must validate active campaign cookies before scoping navigation");
 assert.match(appLayout, /getCampaignById\(candidateCampaignId\)\.catch\(\(\) => null\)/, "stale or cross-user active campaign cookies must fail closed");

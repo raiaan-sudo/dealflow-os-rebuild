@@ -100,6 +100,14 @@ export function LoginForm({
     return value;
   }
 
+  function getEmailConfirmationRedirectUrl(value?: string) {
+    const nextPath = getSafeRedirectPath(value);
+    const redirectTo = new URL("/login", window.location.origin);
+    redirectTo.searchParams.set("confirmed", "1");
+    redirectTo.searchParams.set("redirectedFrom", nextPath);
+    return redirectTo.toString();
+  }
+
   async function handleProviderLogin(provider: "google") {
     setError(null);
     setMessage(null);
@@ -211,6 +219,7 @@ export function LoginForm({
         password,
         options: {
           captchaToken: turnstileEnabled ? turnstileToken : undefined,
+          emailRedirectTo: getEmailConfirmationRedirectUrl(redirectedFrom),
           data: {
             full_name: fullName,
             ...(partnerAttribution?.partnerSlug ? { partner_slug: partnerAttribution.partnerSlug } : {}),
@@ -232,7 +241,7 @@ export function LoginForm({
       }
 
       setMessage(
-        "Account created. If email confirmation is enabled in Supabase, confirm your inbox before signing in.",
+        "Account created. Check your inbox for the DealFlow confirmation email, then confirm your email before signing in. If you do not see it, check spam or promotions.",
       );
       setMode("sign-in");
       resetTurnstile();
@@ -492,6 +501,12 @@ export function LoginForm({
         {reason === "expired" ? (
           <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-sm text-white/70">
             Your session expired or could not be refreshed. Sign in again to continue.
+          </div>
+        ) : null}
+
+        {reason === "confirmed" ? (
+          <div className="rounded-2xl border border-primary/20 bg-primary/10 p-3 text-sm text-primary">
+            Email confirmed. Sign in to continue your DealFlow workspace.
           </div>
         ) : null}
 
