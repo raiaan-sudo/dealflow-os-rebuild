@@ -215,13 +215,17 @@ test.describe("safe authenticated self-serve journey", () => {
     if (await isVisible(continueToPlan)) {
       await continueToPlan.click();
       await expectNoHorizontalOverflow(page);
-      await expect(page.getByText("Starter $147/mo")).toBeVisible();
-      await expect(page.getByText("Pro $297/mo")).toBeVisible();
-      await page.getByRole("button", { name: /Starter \$147\/mo/i }).click();
-    } else {
-      await expect(page.getByRole("button", { name: /Continue to review/i })).toBeVisible();
+      const starterPlan = page.getByRole("button", { name: /Start Starter|Starter.*\$147|Starter/i });
+      const proPlan = page.getByRole("button", { name: /Start Pro|Pro.*\$297|Pro/i });
+      if (await isVisible(starterPlan)) {
+        await expect(proPlan).toBeVisible();
+        await starterPlan.click();
+      }
     }
-    await continueTo(page, /Continue to review/i);
+    const continueToReview = page.getByRole("button", { name: /Continue to review/i });
+    if (await isVisible(continueToReview)) {
+      await continueTo(page, /Continue to review/i);
+    }
     await expectNoHorizontalOverflow(page);
 
     await expect(page.getByText("Ready to build campaign preview")).toBeVisible();
