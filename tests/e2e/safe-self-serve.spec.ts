@@ -79,6 +79,31 @@ async function isVisible(locator: ReturnType<Page["getByRole"]>, timeout = 1_500
   return locator.isVisible({ timeout }).catch(() => false);
 }
 
+async function maybeApproveCreativeBriefGate(page: Page) {
+  const creativeBriefHeading = page.getByRole("heading", { name: /Build the creative set before anything renders/i });
+  if (!(await creativeBriefHeading.isVisible({ timeout: 2_000 }).catch(() => false))) {
+    return;
+  }
+
+  await expect(page.getByText(/UGC video is optional and can be added later/i)).toBeVisible();
+  for (let index = 0; index < 3; index += 1) {
+    const continueButton = page.getByRole("button", { name: /^Continue$/i });
+    if (!(await isVisible(continueButton))) {
+      break;
+    }
+    await continueButton.click();
+  }
+
+  const creativeIntakeResponse = page.waitForResponse(
+    (response) => response.url().includes("/creative-intake") && response.request().method() === "POST",
+    { timeout: 45_000 },
+  );
+  await page.getByRole("button", { name: /Generate Creative Set/i }).click();
+  const response = await creativeIntakeResponse;
+  expect(response.ok(), `creative intake approval should return 2xx, got ${response.status()}`).toBeTruthy();
+  await expect(page.getByText(/Creative brief approved|Paid rendering can continue/i).first()).toBeVisible({ timeout: 15_000 });
+}
+
 async function expectNoHorizontalOverflow(page: Page) {
   await expect
     .poll(() =>
@@ -238,7 +263,7 @@ test.describe("safe authenticated self-serve journey", () => {
         (response) => response.url().includes("/api/onboarding/plan") && response.request().method() === "POST",
         { timeout: 90_000 },
       );
-      await continueTo(page, /Continue to checkout|Continue to creatives/i);
+      await continueTo(page, /Continue to checkout|Continue to creatives|Continue/i);
       const response = await onboardingPlanResponse;
       const responseBody = await response.text();
       let onboardingPlanPayload: { success?: boolean; campaignId?: string; data?: { campaignId?: string }; error?: string } = {};
@@ -255,6 +280,8 @@ test.describe("safe authenticated self-serve journey", () => {
       expect(campaignId, "onboarding plan save should return a campaign id").toBeTruthy();
       await expect(page).toHaveURL(new RegExp(`/(paywall|build/creatives)\\?campaignId=${campaignId}`), { timeout: 60_000 });
     }
+    await maybeApproveCreativeBriefGate(page);
+    campaignId = campaignId || new URL(page.url()).searchParams.get("campaignId") || "";
     expect(campaignId, "creative handoff should preserve a campaign id").toBeTruthy();
     await expectNoHorizontalOverflow(page);
     if (!page.url().includes("/paywall")) {
