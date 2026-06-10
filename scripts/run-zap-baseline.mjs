@@ -21,6 +21,29 @@ const date = new Date().toISOString().slice(0, 10);
 const outDir = path.join(process.cwd(), "data", "engineering-proof-artifacts", date, "zap-baseline");
 fs.mkdirSync(outDir, { recursive: true });
 
+function dockerEnv() {
+  const configDir = path.join(outDir, ".docker-config");
+  fs.mkdirSync(configDir, { recursive: true });
+  const configPath = path.join(configDir, "config.json");
+  if (!fs.existsSync(configPath)) {
+    fs.writeFileSync(configPath, "{}\n");
+  }
+
+  const env = {
+    ...process.env,
+    DOCKER_CONFIG: process.env.DEALFLOW_ZAP_DOCKER_CONFIG || configDir,
+  };
+
+  const colimaSocket = path.join(os.homedir(), ".colima", "default", "docker.sock");
+  if (!env.DOCKER_HOST && fs.existsSync(colimaSocket)) {
+    env.DOCKER_HOST = `unix://${colimaSocket}`;
+  }
+
+  return env;
+}
+
+const dockerProcessEnv = dockerEnv();
+
 function dockerCandidates() {
   const candidates = ["docker"];
   if (process.platform === "darwin") {
@@ -36,7 +59,7 @@ function commandExists(command) {
   const result = spawnSync(command, ["--version"], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    env: process.env,
+    env: dockerProcessEnv,
   });
   return !result.error && result.status === 0;
 }
@@ -49,7 +72,7 @@ function assertDockerReady(command) {
   const result = spawnSync(command, ["info", "--format", "{{json .ServerVersion}}"], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    env: process.env,
+    env: dockerProcessEnv,
   });
 
   if (result.error) {
@@ -93,6 +116,8 @@ if (!dockerReady.ok) {
 const dockerArgs = [
   "run",
   "--rm",
+  "--user",
+  "0:0",
   "-v",
   `${outDir}:/zap/wrk:rw`,
   "ghcr.io/zaproxy/zaproxy:stable",
@@ -110,7 +135,7 @@ const dockerArgs = [
 
 const result = spawnSync(dockerCommand, dockerArgs, {
   stdio: "inherit",
-  env: process.env,
+  env: dockerProcessEnv,
 });
 
 if (result.error) {
