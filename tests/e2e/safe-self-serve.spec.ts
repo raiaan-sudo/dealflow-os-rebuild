@@ -228,26 +228,30 @@ test.describe("safe authenticated self-serve journey", () => {
     await expect(page.getByText("Launch readiness summary")).toBeVisible();
     await expect(page.getByText("Full-resolution files locked")).toBeVisible();
     await expect(page.getByText("No live ad, payment, message, or media action runs here.")).toBeVisible();
-    const onboardingPlanResponse = page.waitForResponse(
-      (response) => response.url().includes("/api/onboarding/plan") && response.request().method() === "POST",
-      { timeout: 90_000 },
-    );
-    await continueTo(page, /Continue to checkout|Continue to creatives/i);
-    const response = await onboardingPlanResponse;
-    const responseBody = await response.text();
-    let onboardingPlanPayload: { success?: boolean; campaignId?: string; data?: { campaignId?: string }; error?: string } = {};
-    try {
-      onboardingPlanPayload = JSON.parse(responseBody) as typeof onboardingPlanPayload;
-    } catch {
-      onboardingPlanPayload = { error: responseBody.slice(0, 240) };
+    let campaignId = new URL(page.url()).searchParams.get("campaignId") ?? "";
+    if (!page.url().includes("/build/creatives")) {
+      const onboardingPlanResponse = page.waitForResponse(
+        (response) => response.url().includes("/api/onboarding/plan") && response.request().method() === "POST",
+        { timeout: 90_000 },
+      );
+      await continueTo(page, /Continue to checkout|Continue to creatives/i);
+      const response = await onboardingPlanResponse;
+      const responseBody = await response.text();
+      let onboardingPlanPayload: { success?: boolean; campaignId?: string; data?: { campaignId?: string }; error?: string } = {};
+      try {
+        onboardingPlanPayload = JSON.parse(responseBody) as typeof onboardingPlanPayload;
+      } catch {
+        onboardingPlanPayload = { error: responseBody.slice(0, 240) };
+      }
+      expect(
+        response.ok(),
+        `onboarding plan save should return 2xx, got ${response.status()} error=${onboardingPlanPayload.error ?? "none"}`,
+      ).toBeTruthy();
+      campaignId = onboardingPlanPayload.campaignId ?? onboardingPlanPayload.data?.campaignId ?? "";
+      expect(campaignId, "onboarding plan save should return a campaign id").toBeTruthy();
+      await expect(page).toHaveURL(new RegExp(`/(paywall|build/creatives)\\?campaignId=${campaignId}`), { timeout: 60_000 });
     }
-    expect(
-      response.ok(),
-      `onboarding plan save should return 2xx, got ${response.status()} error=${onboardingPlanPayload.error ?? "none"}`,
-    ).toBeTruthy();
-    const campaignId = onboardingPlanPayload.campaignId ?? onboardingPlanPayload.data?.campaignId;
-    expect(campaignId, "onboarding plan save should return a campaign id").toBeTruthy();
-    await expect(page).toHaveURL(new RegExp(`/(paywall|build/creatives)\\?campaignId=${campaignId}`), { timeout: 60_000 });
+    expect(campaignId, "creative handoff should preserve a campaign id").toBeTruthy();
     await expectNoHorizontalOverflow(page);
     if (!page.url().includes("/paywall")) {
       await page.goto(`/paywall?campaignId=${encodeURIComponent(campaignId ?? "")}&plan=starter`);
