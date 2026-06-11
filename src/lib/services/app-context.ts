@@ -1,6 +1,6 @@
 import { subDays } from "date-fns/subDays";
 import { slugify } from "@/lib/utils";
-import { logError, logWarn } from "@/lib/logging";
+import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ensurePartnerAttributionForWorkspace } from "@/lib/white-label/attribution";
@@ -313,7 +313,7 @@ export async function ensureMembership(
   }
 
   if (!recoveredMembershipRaw) {
-    logWarn("Membership bootstrap recovery required a second-pass owner check", {
+    logOperationalEvent("membership_bootstrap_owner_second_pass", {
       userId: profile.id,
       organizationId: organization.id,
     });
@@ -357,7 +357,7 @@ export async function ensureMembership(
     }
 
     if (!finalMembershipRaw) {
-      logWarn("Falling back to synthesized owner membership during bootstrap", {
+      logOperationalEvent("membership_bootstrap_synthesized_owner_context", {
         userId: profile.id,
         organizationId: organization.id,
       });

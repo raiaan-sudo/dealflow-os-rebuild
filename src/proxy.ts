@@ -147,8 +147,31 @@ function isAuthorizedQaAuthHarnessRequest(request: NextRequest) {
   };
 }
 
+function getConfiguredOrigin(value: string | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(value);
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
 function applySecurityHeaders(request: NextRequest, response: NextResponse, startedAt?: number) {
   const isProduction = process.env.NODE_ENV === "production";
+  const supabaseOrigin = getConfiguredOrigin(process.env.NEXT_PUBLIC_SUPABASE_URL);
+  const appUrlOrigin = getConfiguredOrigin(process.env.NEXT_PUBLIC_APP_URL);
+  const appAssetSources = [
+    request.nextUrl.origin,
+    appUrlOrigin,
+    "https://agentdealflow.io",
+    "https://www.agentdealflow.io",
+    "https://app.agentdealflow.io",
+    supabaseOrigin,
+  ].filter((source): source is string => Boolean(source));
   const scriptSrc = [
     "'self'",
     "'unsafe-inline'",
@@ -163,10 +186,10 @@ function applySecurityHeaders(request: NextRequest, response: NextResponse, star
     `script-src ${scriptSrc.join(" ")}`,
     "script-src-attr 'none'",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https:",
+    `img-src 'self' data: blob: ${appAssetSources.join(" ")}`,
     "font-src 'self' data:",
-    "media-src 'self' blob: https:",
-    "connect-src 'self' https://*.supabase.co https://api.stripe.com https://graph.facebook.com https://www.facebook.com https://api.openai.com https://api.heygen.com https://challenges.cloudflare.com",
+    `media-src 'self' blob: ${appAssetSources.join(" ")}`,
+    `connect-src 'self' ${supabaseOrigin ?? ""} https://api.stripe.com https://graph.facebook.com https://www.facebook.com https://api.openai.com https://api.heygen.com https://challenges.cloudflare.com`,
     "frame-src https://js.stripe.com https://hooks.stripe.com https://www.facebook.com https://challenges.cloudflare.com",
     "form-action 'self'",
     "object-src 'none'",
@@ -179,10 +202,10 @@ function applySecurityHeaders(request: NextRequest, response: NextResponse, star
     "script-src 'self' https://js.stripe.com https://connect.facebook.net https://challenges.cloudflare.com",
     "script-src-attr 'none'",
     "style-src 'self'",
-    "img-src 'self' data: blob: https://*.supabase.co https://agentdealflow.io https://www.agentdealflow.io https://app.agentdealflow.io https://*.agentdealflow.io",
+    `img-src 'self' data: blob: ${appAssetSources.join(" ")}`,
     "font-src 'self' data:",
-    "media-src 'self' blob: https://*.supabase.co https://agentdealflow.io https://www.agentdealflow.io https://app.agentdealflow.io https://*.agentdealflow.io",
-    "connect-src 'self' https://*.supabase.co https://api.stripe.com https://graph.facebook.com https://www.facebook.com https://api.openai.com https://api.heygen.com https://challenges.cloudflare.com",
+    `media-src 'self' blob: ${appAssetSources.join(" ")}`,
+    `connect-src 'self' ${supabaseOrigin ?? ""} https://api.stripe.com https://graph.facebook.com https://www.facebook.com https://api.openai.com https://api.heygen.com https://challenges.cloudflare.com`,
     "frame-src https://js.stripe.com https://hooks.stripe.com https://www.facebook.com https://challenges.cloudflare.com",
     "form-action 'self'",
     "object-src 'none'",
@@ -198,9 +221,6 @@ function applySecurityHeaders(request: NextRequest, response: NextResponse, star
   response.headers.set("Cross-Origin-Resource-Policy", "same-origin");
   response.headers.set("Origin-Agent-Cluster", "?1");
   response.headers.set("X-DNS-Prefetch-Control", "off");
-  response.headers.set("Access-Control-Allow-Origin", request.nextUrl.origin);
-  response.headers.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  response.headers.set("Access-Control-Allow-Headers", "authorization,content-type,x-internal-system-key");
   response.headers.set("Cache-Control", "private, no-cache, no-store, max-age=0, must-revalidate");
   response.headers.set(
     "Permissions-Policy",

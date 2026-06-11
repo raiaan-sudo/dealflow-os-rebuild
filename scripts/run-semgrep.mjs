@@ -11,11 +11,11 @@ function commandExists(command) {
 }
 
 const semgrepCommand = commandExists('semgrep')
-  ? { command: 'semgrep', args: ['scan', '--config', '.semgrep.yml', '--error'] }
+  ? { command: 'semgrep', args: ['scan', '--quiet', '--config', '.semgrep.yml', '--error'] }
   : fs.existsSync(`${os.homedir()}/Library/Python/3.9/bin/semgrep`)
-    ? { command: `${os.homedir()}/Library/Python/3.9/bin/semgrep`, args: ['scan', '--config', '.semgrep.yml', '--error'] }
+    ? { command: `${os.homedir()}/Library/Python/3.9/bin/semgrep`, args: ['scan', '--quiet', '--config', '.semgrep.yml', '--error'] }
     : commandExists('npx')
-      ? { command: 'npx', args: ['--yes', 'semgrep', 'scan', '--config', '.semgrep.yml', '--error'] }
+      ? { command: 'npx', args: ['--yes', 'semgrep', 'scan', '--quiet', '--config', '.semgrep.yml', '--error'] }
       : null;
 
 if (!semgrepCommand) {
@@ -35,6 +35,10 @@ const result = spawnSync(semgrepCommand.command, semgrepCommand.args, {
   env: {
     ...process.env,
     PATH: `${os.homedir()}/Library/Python/3.9/bin:${process.env.PATH ?? ''}`,
+    PYTHONWARNINGS: [
+      'ignore:urllib3 v2 only supports OpenSSL',
+      process.env.PYTHONWARNINGS ?? '',
+    ].filter(Boolean).join(','),
   },
 });
 

@@ -85,6 +85,14 @@ function normalizeReportPayload(payload: unknown) {
   return browserReportSchema.or(cspReportSchema).parse(payload);
 }
 
+function isExpectedClientAbort(error: unknown) {
+  if (error instanceof Error) {
+    return error.name === "AbortError" || /aborted|body.*cancel/i.test(error.message);
+  }
+
+  return /aborted/i.test(String(error ?? ""));
+}
+
 export async function POST(request: Request) {
   try {
     if (!hasSupabaseEnv()) {
@@ -152,6 +160,13 @@ export async function POST(request: Request) {
       },
     );
   } catch (error) {
+    if (isExpectedClientAbort(error)) {
+      return apiSuccess(
+        { success: true, recorded: 0, dropped: true, reason: "client_aborted" },
+        { headers: DROP_RESPONSE_HEADERS },
+      );
+    }
+
     return handleApiError(error, "CSP report");
   }
 }

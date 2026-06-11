@@ -38,7 +38,7 @@ import {
   getCreativePerformanceSummaryForCampaign,
   getLatestCreativePerformanceSummary,
 } from "@/lib/services/creative-performance-service";
-import { logError } from "@/lib/logging";
+import { logError, logOperationalEvent } from "@/lib/logging";
 import { getDashboardData, type DashboardMetrics } from "@/lib/services/dashboard-service";
 import {
   buildFirstWeekSuccessState,
@@ -408,10 +408,24 @@ async function loadDashboardStateForCampaign(
       (resolvedCampaignId
         ? await withTimeout(
             evaluateAutonomy(resolvedCampaignId).catch((error) => {
-              logError("Dashboard autonomy evaluation failed", {
-                campaignId: resolvedCampaignId,
-                message: error instanceof Error ? error.message : "Unknown autonomy evaluation error",
-              });
+              const message = error instanceof Error ? error.message : "Unknown autonomy evaluation error";
+              const code = typeof error === "object" && error !== null && "code" in error
+                ? String((error as { code?: unknown }).code ?? "")
+                : "";
+              if (
+                code === "billing_optimization_payment_required" ||
+                message === "Optimization recommendations require active billing."
+              ) {
+                logOperationalEvent("dashboard_autonomy_evaluation_billing_gated", {
+                  campaignId: resolvedCampaignId,
+                  code: "billing_optimization_payment_required",
+                });
+              } else {
+                logError("Dashboard autonomy evaluation failed", {
+                  campaignId: resolvedCampaignId,
+                  message,
+                });
+              }
               return null;
             }),
             null,
