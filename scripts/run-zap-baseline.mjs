@@ -113,6 +113,12 @@ if (!dockerReady.ok) {
   process.exit(1);
 }
 
+const baselineConfigPath = path.join(process.cwd(), "config", "zap-baseline.conf");
+const baselineConfig = fs.existsSync(baselineConfigPath)
+  ? fs.readFileSync(baselineConfigPath, "utf8")
+  : "";
+const baselineConfigTarget = "/zap/wrk/dealflow-zap-baseline.conf";
+
 const dockerArgs = [
   "run",
   "--rm",
@@ -121,16 +127,30 @@ const dockerArgs = [
   "-v",
   `${outDir}:/zap/wrk:rw`,
   "ghcr.io/zaproxy/zaproxy:stable",
-  "zap-baseline.py",
-  "-t",
-  target,
-  "-r",
-  "zap-report.html",
-  "-J",
-  "zap-report.json",
-  "-w",
-  "zap-report.md",
-  "-I"
+  "sh",
+  "-lc",
+  [
+    baselineConfig
+      ? `printf '%b' ${JSON.stringify(baselineConfig)} > ${baselineConfigTarget}`
+      : `rm -f ${baselineConfigTarget}`,
+    "cd /zap/wrk",
+    [
+      "/zap/zap-baseline.py",
+      "--autooff",
+      "-t",
+      JSON.stringify(target),
+      "-r",
+      "zap-report.html",
+      "-J",
+      "zap-report.json",
+      "-w",
+      "zap-report.md",
+      baselineConfig ? "-c dealflow-zap-baseline.conf" : "",
+      "-I",
+    ]
+      .filter(Boolean)
+      .join(" "),
+  ].join(" && "),
 ];
 
 const result = spawnSync(dockerCommand, dockerArgs, {

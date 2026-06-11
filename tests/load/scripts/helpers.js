@@ -49,6 +49,8 @@ export function invalidPost(path, body = {}) {
   return response;
 }
 
-export function think(min = 0.25, max = 1.5) {
-  sleep(min + Math.random() * (max - min));
+export function think(min = Number(__ENV.THINK_MIN_SECONDS || 0.25), max = Number(__ENV.THINK_MAX_SECONDS || 1.5)) {
+  const safeMin = Number.isFinite(min) && min >= 0 ? min : 0.25;
+  const safeMax = Number.isFinite(max) && max >= safeMin ? max : safeMin;
+  sleep(safeMin + Math.random() * (safeMax - safeMin));
 }

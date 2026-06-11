@@ -254,7 +254,14 @@ async function main() {
 
   if (["100", "200", "300", "500", "1000"].includes(MODE)) {
     const vus = MODE;
-    artifacts.results[`load${vus}`] = runK6(k6MatrixScriptForMode("public"), { VUS: vus, DURATION: process.env.PERFORMANCE_DURATION ?? "10m" });
+    const realisticUserProfile = process.env.PERFORMANCE_PROFILE !== "hammer";
+    artifacts.results[`load${vus}`] = runK6(k6MatrixScriptForMode("public"), {
+      VUS: vus,
+      DURATION: process.env.PERFORMANCE_DURATION ?? "10m",
+      THINK_MIN_SECONDS: process.env.THINK_MIN_SECONDS ?? (realisticUserProfile ? "8" : "0.25"),
+      THINK_MAX_SECONDS: process.env.THINK_MAX_SECONDS ?? (realisticUserProfile ? "20" : "1.5"),
+      PERFORMANCE_PROFILE: realisticUserProfile ? "realistic-users" : "hammer",
+    });
   } else if (MODE === "spike" || MODE === "soak" || MODE === "breakpoint") {
     artifacts.results[MODE] = runK6(k6MatrixScriptForMode(MODE), { VUS: process.env.VUS ?? "100" });
   } else if (MODE === "performance:all") {
