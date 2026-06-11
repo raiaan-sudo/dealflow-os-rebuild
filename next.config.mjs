@@ -24,6 +24,10 @@ const baseSecurityHeaders = [
     value: "off",
   },
   {
+    key: "Access-Control-Allow-Origin",
+    value: "https://app.agentdealflow.io",
+  },
+  {
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=(), payment=()",
   },
