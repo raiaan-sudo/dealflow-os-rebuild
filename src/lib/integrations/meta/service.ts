@@ -3,6 +3,7 @@ import { getDealFlowPlatformLaunchDomainEnv, getMetaEnv } from "@/lib/env";
 import { createMetaApiError, mapMetaError } from "@/lib/integrations/meta/error-mapper";
 import { decryptSecret } from "@/lib/integrations/meta-crypto";
 import { fetchMetaJson } from "@/lib/integrations/meta/request";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getAppContext } from "@/lib/services/app-context";
 import type {
@@ -704,6 +705,31 @@ export async function getMetaConnectionState() {
   const { context } = await getMetaSupabaseContext();
   const row = await getExistingMetaRecord(context.organization.id);
   return toConnectionState(row);
+}
+
+export async function getMetaConnectionStateForOrganization(organizationId: string) {
+  const supabase = createAdminClient();
+
+  if (!supabase) {
+    throw new ApiError(503, "Supabase admin client is unavailable.", "supabase_unavailable");
+  }
+
+  const { data, error } = await supabase
+    .from("marketing_accounts")
+    .select("*")
+    .eq("organization_id", organizationId)
+    .eq("platform", "meta_ads")
+    .maybeSingle();
+
+  if (error) {
+    throw new ApiError(
+      500,
+      error.message,
+      "meta_connection_lookup_failed",
+    );
+  }
+
+  return toConnectionState(data as MetaConnectionRecord | null);
 }
 
 export async function getMetaWorkspaceCredentials(): Promise<MetaWorkspaceCredentials> {

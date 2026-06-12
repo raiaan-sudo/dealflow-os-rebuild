@@ -39,6 +39,7 @@ export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 import {
   getMetaConnectionState,
+  getMetaConnectionStateForOrganization,
   getDefaultMetaConnectionState,
   validateMetaLaunchSelections,
 } from "@/lib/integrations/meta/service";
@@ -231,18 +232,13 @@ export default async function LaunchAliasPage({
     typeof params.meta_request_id === "string" && params.meta_request_id.length > 0
       ? params.meta_request_id
       : null;
-  const [record, metaConnection, metaProviderState] = await Promise.all([
+  const [record, metaProviderState] = await Promise.all([
     withTimeout(
       resolveActiveCampaignRecord(requestedCampaignId)
         .then((resolved) => resolved?.record ?? null)
         .catch(() => null),
       null,
       4_000,
-    ),
-    withTimeout(
-      getMetaConnectionState().catch(() => getDefaultMetaConnectionState()),
-      getDefaultMetaConnectionState(),
-      2_500,
     ),
     withTimeout(
       getIntegrationProviderState("meta_marketing_api").catch(() => null),
@@ -317,10 +313,20 @@ export default async function LaunchAliasPage({
     return null;
   }
 
+  const metaConnection = await withTimeout(
+    savedRecord.campaign.organization_id
+      ? getMetaConnectionStateForOrganization(savedRecord.campaign.organization_id).catch(() =>
+          getMetaConnectionState().catch(() => getDefaultMetaConnectionState()),
+        )
+      : getMetaConnectionState().catch(() => getDefaultMetaConnectionState()),
+    getDefaultMetaConnectionState(),
+    2_500,
+  );
+
   const intentLabel = getCampaignIntentLabel(plan.intent, { capitalized: true });
   const metaConnected =
     metaConnection.connectionStatus === "connected" &&
-    Boolean(metaConnection.accountId);
+    metaConnection.hasAccessToken;
   const metaSelectionReady =
     metaConnected &&
     Boolean(metaConnection.accountId) &&
