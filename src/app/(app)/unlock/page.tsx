@@ -12,8 +12,10 @@ import {
   getBillingSummaryForCampaign,
   reconcileBillingCheckoutSuccess,
 } from "@/lib/services/billing-service";
+import { getSignupGenerationCreditGrant } from "@/lib/services/credit-service";
 import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
 import { ensureStaticCreativeRenderQueuedForCampaign } from "@/lib/services/static-creative-render-queue-service";
+import { getAppContext } from "@/lib/services/app-context";
 
 function formatPlanName(value: string | null | undefined) {
   const normalized = (value ?? "pro").trim().toLowerCase();
@@ -52,6 +54,7 @@ export default async function UnlockPage({
   const billing = campaignId
     ? await getBillingSummaryForCampaign(campaignId).catch(() => getBillingSummary().catch(() => null))
     : await getBillingSummary().catch(() => null);
+  const appContext = await getAppContext().catch(() => null);
   const launchAllowed = billing?.launchAllowed ?? false;
   const checkoutCancelled = checkoutState === "cancelled";
   const checkoutOverride = checkoutState === "override" && billing?.launchOverride === true;
@@ -64,6 +67,20 @@ export default async function UnlockPage({
   const staticCreativeCount = activeCampaign?.record?.creatives.staticAds.length ?? 0;
   const videoConceptCount = activeCampaign?.record?.creatives.videoAds.length ?? 0;
   const hasStaticCreatives = staticCreativeCount > 0;
+  const signupCreditGrant =
+    appContext?.user.id && appContext.organization.id
+      ? await getSignupGenerationCreditGrant({
+          userId: appContext.user.id,
+          organizationId: appContext.organization.id,
+        }).catch(() => null)
+      : null;
+  const signupCreditsConfirmed = Boolean(signupCreditGrant);
+  const signupCreditMessage = signupCreditsConfirmed
+    ? "We added $10.00 in generation credits so your first creative render can start without a separate top-up."
+    : "Your included $10.00 generation credit is syncing. Refresh in a moment before starting paid creative rendering.";
+  const signupCreditChecklistItem = signupCreditsConfirmed
+    ? "$10.00 generation credits added"
+    : "$10.00 generation credits syncing";
   const paywallHref = `/paywall${campaignId ? `?campaignId=${encodeURIComponent(campaignId)}${plan ? `&plan=${encodeURIComponent(plan)}` : ""}` : plan ? `?plan=${encodeURIComponent(plan)}` : ""}`;
   const buildHref = campaignId
     ? `/builder?campaignId=${encodeURIComponent(campaignId)}`
@@ -182,7 +199,7 @@ export default async function UnlockPage({
                     DealFlow has the offer, market, audience, funnel, and launch path. The next step is the creative test set that will carry this campaign into review.
                   </p>
                   <p className="mt-3 max-w-2xl rounded-2xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm leading-6 text-emerald-50">
-                    We added $10.00 in generation credits so your first creative render can start without a separate top-up.
+                    {signupCreditMessage}
                   </p>
                 </div>
                 <div className="grid size-14 place-items-center rounded-2xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-100">
@@ -194,7 +211,7 @@ export default async function UnlockPage({
                 {[
                   "Campaign saved",
                   `${activatedPlanName} access active`,
-                  "$10.00 generation credits added",
+                  signupCreditChecklistItem,
                   "Funnel ready",
                   hasStaticCreatives ? `${staticCreativeCount} static creatives ready` : "Creative set ready to generate",
                   videoConceptCount > 0 ? `${videoConceptCount} video concepts prepared` : "Video concepts prepared after creative generation",

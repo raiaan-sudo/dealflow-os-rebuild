@@ -171,9 +171,10 @@ export async function GET(req: NextRequest) {
       logMetaWarning({
         context: "oauth_callback",
         requestId,
-        message: "Meta OAuth callback state cookie was missing or did not match; signed state verified.",
+        message: "Meta OAuth callback state cookie was missing or did not match.",
         extra: { hasStoredState: Boolean(storedState) },
       });
+      return redirectWithMetaError("invalid_state");
     }
 
     cookieStore.delete(META_STATE_COOKIE);

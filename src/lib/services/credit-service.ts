@@ -521,6 +521,42 @@ export async function grantSignupGenerationCredits(params: {
   });
 }
 
+export async function getSignupGenerationCreditGrant(params: {
+  userId: string;
+  organizationId: string;
+}) {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return null;
+  }
+
+  const { data, error } = await admin
+    .from("user_credit_ledger")
+    .select("id, delta, balance_after, created_at")
+    .eq("user_id", params.userId)
+    .eq("organization_id", params.organizationId)
+    .eq("reason", SIGNUP_GENERATION_CREDIT_REASON)
+    .eq("idempotency_key", `signup_generation_credit_v1:${params.organizationId}`)
+    .gt("delta", 0)
+    .maybeSingle();
+
+  if (error) {
+    throw new ApiError(500, error.message, "signup_credit_grant_lookup_failed");
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return data as {
+    id: string;
+    delta: number;
+    balance_after: number | null;
+    created_at: string;
+  };
+}
+
 export async function refundCreditsForProviderUsageEvent(params: {
   providerUsageEventId: string;
   status: "released" | "failed";

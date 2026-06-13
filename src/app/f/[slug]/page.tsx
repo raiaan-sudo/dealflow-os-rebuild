@@ -1,10 +1,14 @@
 import { notFound, redirect } from "next/navigation";
+import Image from "next/image";
 import { getPublishedCampaignBySlug } from "@/lib/services/campaign-persistence";
 import { LeadCaptureForm } from "@/app/f/[slug]/lead-capture-form";
 import { getMetaPixelIdForOrganization } from "@/lib/integrations/meta/conversions";
 import { getCampaignEntitlementsForOrganization } from "@/lib/services/campaign-entitlements";
 import { cn } from "@/lib/utils";
 import type { FullCampaignRecord } from "@/lib/types/campaign-records";
+import { normalizeWinningFunnelTheme } from "@/lib/funnels/winning-template/theme";
+import type { WinningFunnelTheme } from "@/lib/funnels/winning-template/schema";
+import type { CSSProperties } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +21,13 @@ type PublicFunnelSection = FullCampaignRecord["funnel"]["sections"][number] & {
   variant?: string;
   title: string;
   content: string[];
+};
+
+type PublicFunnelAgent = {
+  name: string | null;
+  brokerageName: string | null;
+  phone: string | null;
+  email: string | null;
 };
 
 const DIRECT_RESPONSE_SIGNAL =
@@ -79,14 +90,67 @@ function splitFaqItem(item: string) {
   };
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function safeText(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function isSafeHttpUrl(value: unknown) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function getPublicFunnelTheme(funnel: FullCampaignRecord["funnel"]): WinningFunnelTheme {
+  const metadata = asRecord(funnel);
+  const rawTheme = asRecord(metadata.theme);
+
+  return normalizeWinningFunnelTheme({
+    ...rawTheme,
+    logoUrl: isSafeHttpUrl(rawTheme.logoUrl) ? String(rawTheme.logoUrl) : null,
+    agentPhotoUrl: isSafeHttpUrl(rawTheme.agentPhotoUrl) ? String(rawTheme.agentPhotoUrl) : null,
+  });
+}
+
+function getPublicFunnelAgent(funnel: FullCampaignRecord["funnel"]): PublicFunnelAgent {
+  const agent = asRecord(asRecord(funnel).agent);
+
+  return {
+    name: safeText(agent.name),
+    brokerageName: safeText(agent.brokerageName),
+    phone: safeText(agent.phone),
+    email: safeText(agent.email),
+  };
+}
+
+function getFunnelCssVars(theme: WinningFunnelTheme) {
+  return {
+    "--funnel-primary": theme.primaryColor,
+    "--funnel-secondary": theme.secondaryColor,
+    "--funnel-accent": theme.accentColor,
+  } as CSSProperties;
+}
+
 function RepeatedCta({ cta }: { cta: string }) {
   return (
-    <div className="rounded-[20px] border border-primary/20 bg-primary/[0.08] px-5 py-4 sm:flex sm:items-center sm:justify-between sm:gap-5">
+    <div className="rounded-[20px] border border-white/10 bg-white/[0.08] px-5 py-4 sm:flex sm:items-center sm:justify-between sm:gap-5">
       <p className="text-sm font-medium leading-6 text-white/78">
         Ready to see whether this is a fit? Start with the short form.
       </p>
       <a
-        className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 sm:mt-0 sm:w-auto"
+        className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-[var(--funnel-accent)] px-5 py-3 text-sm font-semibold text-white transition opacity-95 hover:opacity-100 sm:mt-0 sm:w-auto"
         href="#lead-capture"
       >
         {cta}
@@ -120,7 +184,7 @@ function RenderPublicSection({
         {content.map((item, itemIndex) => (
           <div
             key={`${key}-trust-${itemIndex}`}
-            className="rounded-[18px] border border-primary/18 bg-primary/[0.08] px-4 py-3 text-sm font-medium leading-6 text-white/82"
+            className="rounded-[18px] border border-white/10 bg-white/[0.08] px-4 py-3 text-sm font-medium leading-6 text-white/82"
           >
             {item}
           </div>
@@ -131,8 +195,8 @@ function RenderPublicSection({
 
   if (kind === "proof") {
     return (
-      <section key={key} className={cn(baseShell, "border-primary/18 bg-primary/[0.07]")}>
-        <p className="text-xs font-semibold uppercase text-primary/85">{label}</p>
+      <section key={key} className={cn(baseShell, "border-white/10 bg-white/[0.07]")}>
+        <p className="text-xs font-semibold uppercase text-[var(--funnel-accent)]">{label}</p>
         <h2 className="mt-3 break-words text-2xl font-semibold text-white [overflow-wrap:anywhere]">{section.title}</h2>
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
           {content.map((item, itemIndex) => (
@@ -148,12 +212,12 @@ function RenderPublicSection({
   if (kind === "process") {
     return (
       <section key={key} className={cn(baseShell, lightShell)}>
-        <p className="text-xs font-semibold uppercase text-primary/85">How it works</p>
+        <p className="text-xs font-semibold uppercase text-[var(--funnel-accent)]">How it works</p>
         <h2 className="mt-3 break-words text-2xl font-semibold text-white [overflow-wrap:anywhere]">{section.title}</h2>
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           {content.map((item, itemIndex) => (
             <div key={`${key}-step-${itemIndex}`} className="rounded-[18px] border border-white/10 bg-black/16 p-4">
-              <div className="grid size-8 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+              <div className="grid size-8 place-items-center rounded-full bg-[var(--funnel-accent)] text-sm font-semibold text-white">
                 {itemIndex + 1}
               </div>
               <p className="mt-3 break-words text-sm leading-7 text-white/74 [overflow-wrap:anywhere]">{item}</p>
@@ -167,7 +231,7 @@ function RenderPublicSection({
   if (kind === "faq") {
     return (
       <section key={key} className={cn(baseShell, lightShell)}>
-        <p className="text-xs font-semibold uppercase text-primary/85">FAQ</p>
+        <p className="text-xs font-semibold uppercase text-[var(--funnel-accent)]">FAQ</p>
         <h2 className="mt-3 break-words text-2xl font-semibold text-white [overflow-wrap:anywhere]">{section.title}</h2>
         <div className="mt-5 space-y-3">
           {content.map((item, itemIndex) => {
@@ -196,7 +260,7 @@ function RenderPublicSection({
   if (kind === "compliance") {
     return (
       <section key={key} className="rounded-[20px] border border-white/10 bg-white/[0.035] p-5">
-        <p className="text-xs font-semibold uppercase text-primary/85">Compliance & fit</p>
+        <p className="text-xs font-semibold uppercase text-[var(--funnel-accent)]">Compliance & fit</p>
         <h2 className="mt-3 break-words text-xl font-semibold text-white [overflow-wrap:anywhere]">{section.title}</h2>
         <div className="mt-4 space-y-3">
           {content.map((item, itemIndex) => (
@@ -211,8 +275,8 @@ function RenderPublicSection({
 
   if (kind === "conversion") {
     return (
-      <section key={key} className={cn(baseShell, "border-primary/20 bg-primary/[0.09]")}>
-        <p className="text-xs font-semibold uppercase text-primary/85">Next step</p>
+      <section key={key} className={cn(baseShell, "border-white/10 bg-white/[0.09]")}>
+        <p className="text-xs font-semibold uppercase text-[var(--funnel-accent)]">Next step</p>
         <h2 className="mt-3 break-words text-2xl font-semibold text-white [overflow-wrap:anywhere]">{section.title}</h2>
         <div className="mt-4 space-y-3">
           {content.map((item, itemIndex) => (
@@ -222,7 +286,7 @@ function RenderPublicSection({
           ))}
         </div>
         <a
-          className="mt-5 inline-flex w-full items-center justify-center rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 sm:w-auto"
+          className="mt-5 inline-flex w-full items-center justify-center rounded-2xl bg-[var(--funnel-accent)] px-5 py-3 text-sm font-semibold text-white transition opacity-95 hover:opacity-100 sm:w-auto"
           href="#lead-capture"
         >
           {cta}
@@ -233,7 +297,7 @@ function RenderPublicSection({
 
   return (
     <section key={key} className={cn(baseShell, directResponseLayout ? lightShell : "border-white/8 bg-white/[0.03]")}>
-      <p className="text-xs font-semibold uppercase text-primary/85">{label}</p>
+      <p className="text-xs font-semibold uppercase text-[var(--funnel-accent)]">{label}</p>
       <h2 className="mt-3 break-words text-2xl font-semibold text-white [overflow-wrap:anywhere]">{section.title}</h2>
       <div className="mt-4 space-y-3">
         {content.map((item, itemIndex) => (
@@ -282,13 +346,44 @@ export default async function PublicFunnelPage({
   const directResponseLayout = detailSections.some(isDirectResponseSection);
   const heroSupport = heroSections.flatMap((section) => section.content).find((item) => !/^primary cta:/i.test(item));
   const cta = record.funnel.cta || "Submit";
+  const theme = getPublicFunnelTheme(record.funnel);
+  const agent = getPublicFunnelAgent(record.funnel);
+  const brandLabel = agent.brokerageName ?? record.plan.business_name ?? record.campaign.name;
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,rgba(122,200,255,0.14),transparent_28%),linear-gradient(180deg,#030712,#07111d_42%,#030712)] px-5 py-6 sm:px-6 lg:py-10">
+    <main
+      className="min-h-screen overflow-hidden px-5 py-6 sm:px-6 lg:py-10"
+      style={{
+        ...getFunnelCssVars(theme),
+        background: `radial-gradient(circle at top, color-mix(in srgb, var(--funnel-accent) 24%, transparent), transparent 28%), linear-gradient(180deg, var(--funnel-primary), #030712 72%)`,
+      }}
+    >
       <div className="mx-auto w-full max-w-[1120px]">
         <section className="grid gap-6 rounded-[28px] border border-white/10 bg-white/[0.035] p-5 shadow-[0_28px_100px_-70px_rgba(0,0,0,0.9)] sm:p-7 lg:grid-cols-[minmax(0,1fr)_390px] lg:items-start">
           <div className="min-w-0 pt-1 lg:pt-5">
-            <p className="text-xs font-semibold uppercase text-primary/80">
+            <div className="mb-6 flex min-w-0 flex-wrap items-center gap-3">
+              {theme.logoUrl ? (
+                <Image
+                  alt={`${brandLabel} logo`}
+                  className="max-h-12 max-w-[180px] rounded-xl border border-white/10 bg-white/90 object-contain p-2"
+                  height={48}
+                  src={theme.logoUrl}
+                  unoptimized
+                  width={180}
+                />
+              ) : (
+                <div className="grid size-12 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/10 text-sm font-semibold text-white">
+                  {brandLabel.slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-white">{brandLabel}</p>
+                {agent.name ? (
+                  <p className="truncate text-xs text-white/62">{agent.name}</p>
+                ) : null}
+              </div>
+            </div>
+            <p className="text-xs font-semibold uppercase text-[var(--funnel-accent)]">
               {record.campaign.name}
             </p>
             <h1 className="mt-4 break-words text-3xl font-semibold leading-tight text-white [overflow-wrap:anywhere] sm:text-5xl">
@@ -304,7 +399,7 @@ export default async function PublicFunnelPage({
             ) : null}
             <div className="mt-6 flex flex-wrap gap-3">
               <a
-                className="inline-flex w-full items-center justify-center rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 sm:w-auto"
+                className="inline-flex w-full items-center justify-center rounded-2xl bg-[var(--funnel-accent)] px-5 py-3 text-sm font-semibold text-white transition opacity-95 hover:opacity-100 sm:w-auto"
                 href="#lead-capture"
               >
                 {cta}
@@ -359,6 +454,14 @@ export default async function PublicFunnelPage({
           ))}
           {directResponseLayout && detailSections.length > 0 ? <RepeatedCta cta={cta} /> : null}
         </div>
+        <footer className="mt-8 rounded-[20px] border border-white/10 bg-white/[0.035] p-5 text-sm leading-6 text-white/64">
+          <p className="font-semibold text-white">{brandLabel}</p>
+          {agent.name || agent.phone || agent.email ? (
+            <p className="mt-1">
+              {[agent.name, agent.phone, agent.email].filter(Boolean).join(" · ")}
+            </p>
+          ) : null}
+        </footer>
       </div>
     </main>
   );

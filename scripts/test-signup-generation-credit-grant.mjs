@@ -29,6 +29,11 @@ assert.match(
 );
 assert.match(
   creditService,
+  /export async function getSignupGenerationCreditGrant/,
+  "signup credit grant lookup helper must be exported for post-checkout UI truth",
+);
+assert.match(
+  creditService,
   /idempotencyKey:\s*`signup_generation_credit_v1:\$\{params\.organizationId\}`/,
   "signup credit grant must be idempotent per organization",
 );
@@ -61,13 +66,18 @@ assert.match(
 
 assert.match(
   unlockPage,
-  /\$10\.00 in generation credits/,
-  "post-checkout unlock page must tell customers their $10 generation credits were added",
+  /getSignupGenerationCreditGrant/,
+  "post-checkout unlock page must verify the signup credit ledger before claiming credits were added",
 );
 assert.match(
   unlockPage,
   /\$10\.00 generation credits added/,
-  "post-checkout activation checklist must include the credit grant",
+  "post-checkout activation checklist must include confirmed credit grant copy",
+);
+assert.match(
+  unlockPage,
+  /\$10\.00 generation credits syncing/,
+  "post-checkout activation checklist must show a syncing state when the credit ledger is not confirmed",
 );
 
 assert.match(

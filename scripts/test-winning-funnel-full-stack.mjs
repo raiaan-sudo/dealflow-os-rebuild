@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import Module from "node:module";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -43,6 +44,7 @@ const {
 } = require("../src/lib/funnels/winning-template/snapshot.ts");
 const { validateWinningFunnel } = require("../src/lib/funnels/winning-template/validation.ts");
 const { WINNING_FUNNEL_TEMPLATE_ID } = require("../src/lib/funnels/winning-template/schema.ts");
+const publicFunnelPage = fs.readFileSync("src/app/f/[slug]/page.tsx", "utf8");
 
 function buildFixture(overrides = {}) {
   return buildWinningFunnel({
@@ -111,5 +113,26 @@ const volume = buildFixture({ language: "es", leadCaptureMode: "volume_lead_form
 assert.equal(volume.language, "es", "Spanish language must persist");
 assert.equal(volume.leadCaptureMode, "volume_lead_form", "lead form volume mode must persist");
 assert.ok(volume.sections.some((section) => /low-friction lead form/i.test(section.content.join(" "))), "volume mode copy must be reflected");
+
+assert.match(
+  publicFunnelPage,
+  /getPublicFunnelTheme\(record\.funnel\)/,
+  "public funnel renderer must load theme from the published funnel snapshot",
+);
+assert.match(
+  publicFunnelPage,
+  /getPublicFunnelAgent\(record\.funnel\)/,
+  "public funnel renderer must load agent identity from the published funnel snapshot",
+);
+assert.match(
+  publicFunnelPage,
+  /--funnel-accent/,
+  "public funnel renderer must expose saved theme colors as CSS variables",
+);
+assert.match(
+  publicFunnelPage,
+  /theme\.logoUrl/,
+  "public funnel renderer must render the saved logo when present",
+);
 
 console.log("winning funnel full-stack regression checks passed.");

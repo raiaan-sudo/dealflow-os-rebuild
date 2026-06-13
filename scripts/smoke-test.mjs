@@ -751,8 +751,9 @@ function runOfflineChecks() {
   assertIncludes(metaConnect, "createMetaOAuthState", "Meta OAuth signed state", "connect route sends a short-lived signed state instead of relying only on hostname cookies");
   assertIncludes(metaConnect, "auth_type", "Meta OAuth permission rerequest", "reconnect prompts Meta to re-request previously declined permissions");
   assertIncludes(metaCallback, "resolved.origin === appOrigin", "Meta OAuth callback origin guard", "callback redirects stay on the app origin");
-  assertIncludes(metaCallback, "verifyMetaOAuthState", "Meta OAuth state fallback", "callback can safely verify state when a provider returns on an alternate app hostname");
-  assertIncludes(metaCallback, "verifiedState?.organizationId", "Meta OAuth workspace fallback", "signed state preserves workspace ownership if auth cookies are unavailable on callback host");
+  assertIncludes(metaCallback, "verifyMetaOAuthState", "Meta OAuth signed state verification", "callback validates the signed state payload before token exchange");
+  assertIncludes(metaCallback, "!stateMatchesCookie", "Meta OAuth cookie binding", "callback rejects missing or mismatched OAuth state cookies before storing tokens");
+  assertIncludes(metaCallback, "return redirectWithMetaError(\"invalid_state\")", "Meta OAuth login-CSRF guard", "callback fails closed on OAuth state cookie mismatch");
   assertIncludes(metaCallback, "method: \"POST\"", "Meta OAuth token POST", "token exchange avoids putting app secret and code in the request URL");
   assertIncludes(metaCallback, "application/x-www-form-urlencoded", "Meta OAuth form body", "token exchange sends credentials in an encoded form body");
   assertIncludes(metaCallback, "fb_exchange_token", "Meta long-lived token exchange", "OAuth callback exchanges the short-lived token before storing it");
