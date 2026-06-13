@@ -2209,6 +2209,26 @@ export function hasUsableStaticCreativeImage(asset: StaticCreativeAsset | null |
   return evaluateStaticVisualAssetDecision(asset).usable;
 }
 
+function hasPreservableStaticCreativeImage(asset: StaticCreativeAsset | null | undefined) {
+  if (!asset?.imageUrl) {
+    return false;
+  }
+
+  if (asset.imageGenerationState === "failed") {
+    return false;
+  }
+
+  if (asset.imageQa && (asset.imageQa.usable === false || asset.imageQa.decision === "reject")) {
+    return false;
+  }
+
+  if (asset.visualQualityGate?.accepted === false || asset.premiumQualityGate?.accepted === false) {
+    return false;
+  }
+
+  return true;
+}
+
 function hasImageFetchFailedQa(asset: StaticCreativeAsset | null | undefined) {
   const reasons = Array.isArray(asset?.imageQa?.reasons) ? asset.imageQa.reasons : [];
   return reasons.includes("image_fetch_failed");
@@ -2301,7 +2321,7 @@ export function mergeStaticCreativeImageResults(
 ): StaticCreativeAsset[] {
   const reusableStaticAssets = new Map(
     (previousAssets ?? [])
-      .filter(hasUsableStaticCreativeImage)
+      .filter(hasPreservableStaticCreativeImage)
       .map((asset) => [asset.id, asset]),
   );
 
@@ -2310,7 +2330,7 @@ export function mergeStaticCreativeImageResults(
   }
 
   return nextAssets.map((asset) => {
-    if (hasUsableStaticCreativeImage(asset)) {
+    if (hasPreservableStaticCreativeImage(asset)) {
       return asset;
     }
 
@@ -2467,7 +2487,7 @@ export async function generateStaticCreativeAds(
     (input?.reuse_static_assets ?? [])
       .filter(() => input?.force !== true)
       .filter((asset) => staticAssetMatchesCreativeIntake(asset, creativeIntake))
-      .filter(hasUsableStaticCreativeImage)
+      .filter(hasPreservableStaticCreativeImage)
       .map((asset) => [asset.id, asset]),
   );
   const previousStaticAssets = new Map(
