@@ -198,7 +198,7 @@ export async function POST(
     if (!videoProviderReadiness.ready) {
       return Response.json(
         {
-          error: "Video previews are saved as a concept for now. Static creatives can still be reviewed, but launch needs an approved campaign-specific UGC video.",
+          error: "Video previews are saved as a concept for now. Static creatives can still be reviewed and launched; UGC video can be added later.",
           code: "video_generation_disabled",
         },
         { status: 409 },

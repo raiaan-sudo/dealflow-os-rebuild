@@ -371,6 +371,8 @@ function runOfflineChecks() {
   assertIncludes(creativeWizard, "snap-x", "Creative carousel readable cards", "creative carousel uses full preview cards instead of compressed summary-only tiles");
   assertIncludes(creativeWizard, "Save the 3 static ads now; UGC can be added later if needed.", "Creative static package save gate", "selected creative sets can continue with the three launch-ready static ads without requiring UGC");
   assertExcludes(creativeWizard, "Keep at least one native-style concept", "Creative native-style quota removed", "native-style/UGC quota cannot block saving the static launch package");
+  assertIncludes(creativeWizard, "const videoSelectionRequired = false", "Creative UGC optional save gate", "UGC video selection cannot block saving the static launch package");
+  assertIncludes(videoRoute, "UGC video can be added later", "Creative UGC optional provider copy", "disabled video rendering does not tell customers UGC is required for launch");
   assertIncludes(creativeWizard, "Retry render", "Creative retry secondary action", "retry/regenerate remains a secondary failed-state action");
   assertIncludes(creativeWizard, "Video preview", "Creative video preview panel", "creative selection exposes the video concept and render status");
   assertIncludes(creativeWizard, "/generate-video", "Creative video render", "creative selection can queue the campaign video render from the video panel");
@@ -747,13 +749,17 @@ function runOfflineChecks() {
   assertIncludes(metaLaunchService, "status: \"paused\"", "Meta publish activation disabled", "publish step reports paused instead of activating Meta objects");
   assertIncludes(metaConnect, "value.startsWith(\"//\")", "Meta OAuth return path guard", "protocol-relative return paths are rejected");
   assertIncludes(metaConnect, "createMetaOAuthState", "Meta OAuth signed state", "connect route sends a short-lived signed state instead of relying only on hostname cookies");
+  assertIncludes(metaConnect, "auth_type", "Meta OAuth permission rerequest", "reconnect prompts Meta to re-request previously declined permissions");
   assertIncludes(metaCallback, "resolved.origin === appOrigin", "Meta OAuth callback origin guard", "callback redirects stay on the app origin");
   assertIncludes(metaCallback, "verifyMetaOAuthState", "Meta OAuth state fallback", "callback can safely verify state when a provider returns on an alternate app hostname");
   assertIncludes(metaCallback, "verifiedState?.organizationId", "Meta OAuth workspace fallback", "signed state preserves workspace ownership if auth cookies are unavailable on callback host");
   assertIncludes(metaCallback, "method: \"POST\"", "Meta OAuth token POST", "token exchange avoids putting app secret and code in the request URL");
   assertIncludes(metaCallback, "application/x-www-form-urlencoded", "Meta OAuth form body", "token exchange sends credentials in an encoded form body");
+  assertIncludes(metaCallback, "fb_exchange_token", "Meta long-lived token exchange", "OAuth callback exchanges the short-lived token before storing it");
+  assertIncludes(metaCallback, "/me/permissions", "Meta permission validation", "OAuth callback records missing required Meta permissions instead of marking discovery ready blindly");
   assertIncludes(metaCallback, "preservedConnectionMetadata", "Meta reconnect metadata preservation", "callback preserves selected Meta asset metadata before refreshing the OAuth token");
   assertIncludes(metaCallback, "...preservedConnectionMetadata", "Meta token refresh metadata merge", "token refresh does not wipe selected account, Page, pixel, or discovery metadata");
+  assertIncludes(".env.example", "pages_show_list,pages_read_engagement", "Meta scope env example", "env example includes Page discovery permissions required by launch selection");
   assertIncludes(metaOauthState, "timingSafeEqual", "Meta OAuth state timing-safe compare", "state signatures are compared without string equality leaks");
   assertIncludes(metaOauthState, "STATE_TTL_MS = 10 * 60 * 1000", "Meta OAuth state expiry", "signed OAuth state is short-lived");
 

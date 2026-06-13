@@ -57,6 +57,7 @@ export async function GET(request: Request) {
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("scope", env.scopes);
     url.searchParams.set("response_type", "code");
+    url.searchParams.set("auth_type", "rerequest");
     url.searchParams.set("state", state);
 
     await recordActivationEvent({

@@ -536,7 +536,7 @@ export function CreativeWizard({
   const selectedLaunchReadyUgcVideos = selectedUgcVideos.filter(
     (video) => video.conceptType === "customer_ugc" && isCurrentLaunchReadyVideo(video),
   );
-  const videoSelectionRequired = true;
+  const videoSelectionRequired = false;
   const selectedUgcReady = !videoSelectionRequired || selectedLaunchReadyUgcVideos.length > 0;
   const staticLaunchPackageReady = canContinue && selectedMediaReady;
   const videoNeedsGeneration = Boolean(
