@@ -20,6 +20,21 @@ const nextConfig = {
         permanent: false,
       },
       {
+        source: "/signup",
+        destination: `${appBaseUrl}/signup`,
+        permanent: false,
+      },
+      {
+        source: "/start",
+        destination: `${appBaseUrl}/start`,
+        permanent: false,
+      },
+      {
+        source: "/unlock",
+        destination: `${appBaseUrl}/unlock`,
+        permanent: false,
+      },
+      {
         source: "/dashboard",
         destination: `${appBaseUrl}/dashboard`,
         permanent: false,
@@ -57,6 +72,46 @@ const nextConfig = {
       {
         source: "/results",
         destination: `${appBaseUrl}/results`,
+        permanent: false,
+      },
+      {
+        source: "/f/:path*",
+        destination: `${appBaseUrl}/f/:path*`,
+        permanent: false,
+      },
+      {
+        source: "/p/:path*",
+        destination: `${appBaseUrl}/p/:path*`,
+        permanent: false,
+      },
+      {
+        source: "/partner/:path*",
+        destination: `${appBaseUrl}/partner/:path*`,
+        permanent: false,
+      },
+      {
+        source: "/admin/:path*",
+        destination: `${appBaseUrl}/admin/:path*`,
+        permanent: false,
+      },
+      {
+        source: "/campaign-built",
+        destination: `${appBaseUrl}/campaign-built`,
+        permanent: false,
+      },
+      {
+        source: "/launch-success",
+        destination: `${appBaseUrl}/launch-success`,
+        permanent: false,
+      },
+      {
+        source: "/launching",
+        destination: `${appBaseUrl}/launching`,
+        permanent: false,
+      },
+      {
+        source: "/api/:path*",
+        destination: `${appBaseUrl}/api/:path*`,
         permanent: false,
       },
     ];
