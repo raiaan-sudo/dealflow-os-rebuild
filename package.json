@@ -25,6 +25,7 @@
     "audit:pre-saas-launch": "node ./scripts/audit-pre-saas-launch.mjs",
     "audit:full-stack": "node ./scripts/audit-full-stack-prelaunch.mjs",
     "audit:security-coverage": "node ./scripts/audit-security-coverage-matrix.mjs",
+    "audit:meta-public-oauth": "node ./scripts/audit-meta-public-oauth-readiness.mjs",
     "audit:semgrep": "node ./scripts/run-semgrep.mjs",
     "audit:lighthouse": "npx --yes @lhci/cli autorun --config=./lighthouserc.json",
     "audit:zap:baseline": "node ./scripts/run-zap-baseline.mjs",

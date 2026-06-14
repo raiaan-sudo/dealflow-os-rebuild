@@ -16,6 +16,7 @@ const includeProduction = process.env.FULL_STACK_AUDIT_PRODUCTION === "1";
 const includeStrict = process.env.FULL_STACK_AUDIT_STRICT === "1";
 const includeDataIsolation = includeStrict || process.env.FULL_STACK_AUDIT_DATA_ISOLATION === "1";
 const includeBrowser = includeStrict || process.env.FULL_STACK_AUDIT_BROWSER === "1";
+const includePublicMeta = process.env.FULL_STACK_AUDIT_PUBLIC_META === "1";
 const baseUrl = process.env.PRELAUNCH_BASE_URL ?? "https://app.agentdealflow.io";
 const qaBrowserProofSecret = `audit-qa-proof-${stamp}`;
 
@@ -147,6 +148,7 @@ const commands = [
   ["npm", ["run", "test:launch-budget-tracking-safety"], "launch_budget_tracking_safety"],
   ["npm", ["run", "test:meta-app-state-drift"], "meta_app_state_drift"],
   ["npm", ["run", "test:meta-public-connect-readiness"], "meta_public_connect_readiness"],
+  ["npm", ["run", "audit:meta-public-oauth"], "meta_public_oauth_readiness"],
   ["npm", ["run", "test:lead-notification-status"], "lead_notification_status"],
   ["npm", ["run", "test:support-freshdesk"], "support_freshdesk"],
   ["npm", ["audit", "--audit-level=high"], "npm_audit_high"],
@@ -209,6 +211,9 @@ function runCommand([cmd, args, id]) {
       env: {
         ...process.env,
         ...commandEnv,
+        ...(id === "meta_public_oauth_readiness" && includePublicMeta
+          ? { META_REQUIRE_PUBLIC_NON_ADMIN_PROOF: "1" }
+          : {}),
         ENGINEERING_OS_PROOF_DIR: proofDir,
         PRELAUNCH_BASE_URL: baseUrl,
         SUPABASE_SCHEMA_CHECK_MODE:
@@ -266,12 +271,14 @@ const report = {
   includeStrict,
   includeDataIsolation,
   includeBrowser,
+  includePublicMeta,
   commands: results,
   skipped: [
     ...(includeExternal ? [] : ["external scanners skipped; set FULL_STACK_AUDIT_EXTERNAL=1 to run Semgrep/Lighthouse/ZAP"]),
     ...(includeProduction ? [] : ["production operator/postdeploy checks skipped; set FULL_STACK_AUDIT_PRODUCTION=1 to run them"]),
     ...(includeDataIsolation ? [] : ["live cross-tenant RLS/fixture proof skipped; set FULL_STACK_AUDIT_DATA_ISOLATION=1 or FULL_STACK_AUDIT_STRICT=1"]),
     ...(includeBrowser ? [] : ["authenticated browser walkthrough skipped; set FULL_STACK_AUDIT_BROWSER=1 or FULL_STACK_AUDIT_STRICT=1"]),
+    ...(includePublicMeta ? [] : ["public non-admin Meta OAuth proof skipped; set FULL_STACK_AUDIT_PUBLIC_META=1 to require business verification, app review, and non-admin proof"]),
   ],
   unsafeActions: [
     "no launch",
