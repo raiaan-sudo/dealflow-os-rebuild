@@ -146,6 +146,7 @@ const commands = [
   ["npm", ["run", "test:campaign-offboarding"], "campaign_offboarding"],
   ["npm", ["run", "test:launch-budget-tracking-safety"], "launch_budget_tracking_safety"],
   ["npm", ["run", "test:meta-app-state-drift"], "meta_app_state_drift"],
+  ["npm", ["run", "test:meta-public-connect-readiness"], "meta_public_connect_readiness"],
   ["npm", ["run", "test:lead-notification-status"], "lead_notification_status"],
   ["npm", ["run", "test:support-freshdesk"], "support_freshdesk"],
   ["npm", ["audit", "--audit-level=high"], "npm_audit_high"],

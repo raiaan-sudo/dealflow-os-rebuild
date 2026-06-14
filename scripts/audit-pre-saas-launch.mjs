@@ -46,6 +46,7 @@ const REQUIRED_SCRIPT_STEPS = [
   "test:subscription-lifecycle",
   "test:campaign-offboarding",
   "test:meta-app-state-drift",
+  "test:meta-public-connect-readiness",
   "test:launch-budget-tracking-safety",
   "test:support-freshdesk",
   "test:client-error-telemetry",

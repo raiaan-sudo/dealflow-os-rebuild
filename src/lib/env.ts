@@ -416,6 +416,7 @@ export function getMetaEnv() {
   const appSecret = process.env.META_APP_SECRET;
   const redirectUri = process.env.META_REDIRECT_URI;
   const encryptionKey = process.env.META_TOKEN_ENCRYPTION_KEY;
+  const loginConfigId = process.env.META_LOGIN_CONFIG_ID?.trim() || null;
   const apiVersion = process.env.META_GRAPH_API_VERSION?.trim() || "v23.0";
   const scopes =
     process.env.META_SCOPES ??
@@ -431,6 +432,7 @@ export function getMetaEnv() {
     appSecret,
     redirectUri,
     encryptionKey,
+    loginConfigId,
     apiVersion,
     scopes,
     executionMode: executionMode === "live" ? "live" : "sandbox",

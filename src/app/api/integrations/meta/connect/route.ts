@@ -59,6 +59,9 @@ export async function GET(request: Request) {
     url.searchParams.set("response_type", "code");
     url.searchParams.set("auth_type", "rerequest");
     url.searchParams.set("state", state);
+    if (env.loginConfigId) {
+      url.searchParams.set("config_id", env.loginConfigId);
+    }
 
     await recordActivationEvent({
       organizationId: auth.organizationId,
@@ -68,6 +71,7 @@ export async function GET(request: Request) {
       metadata: {
         route: "meta_connect",
         returnTo: returnTo.startsWith("/launch") ? "launch" : "other",
+        loginConfigEnabled: Boolean(env.loginConfigId),
       },
       idempotencyKey: `meta_connect_started:${auth.organizationId}`,
     }).catch(() => undefined);
