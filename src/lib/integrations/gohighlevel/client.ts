@@ -232,8 +232,6 @@ export class GoHighLevelClient {
       body: {
         name: payload.name,
         ...(payload.companyId ? { companyId: payload.companyId } : {}),
-        ...(payload.firstName ? { firstName: payload.firstName } : {}),
-        ...(payload.lastName ? { lastName: payload.lastName } : {}),
         ...(payload.email ? { email: payload.email } : {}),
         ...(payload.phone ? { phone: payload.phone } : {}),
         ...(payload.address ? { address: payload.address } : {}),

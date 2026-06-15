@@ -53,6 +53,12 @@ assert.match(ghlClient, /GhlUserProvisioningPayload/);
 assert.match(ghlClient, /createUser/);
 assert.match(ghlClient, /\/users\//);
 
+const createLocationBody = ghlClient.match(/async createLocation[^]*?body: \{([^]*?)\n      \},\n    \}\);/)?.[1] ?? "";
+assert.doesNotMatch(createLocationBody, /firstName|lastName/, "GHL location creation must not send rejected owner name fields");
+const createUserBody = ghlClient.match(/async createUser[^]*?body: \{([^]*?)\n      \},\n    \}\);/)?.[1] ?? "";
+assert.match(createUserBody, /firstName/);
+assert.match(createUserBody, /lastName/);
+
 assert.match(provisioningService, /buildGhlProvisioningIdempotencyKey/);
 assert.match(provisioningService, /queueGhlWorkspaceProvisioningJob/);
 assert.match(provisioningService, /provisionGhlWorkspaceForDealFlowWorkspace/);
