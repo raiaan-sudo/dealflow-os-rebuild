@@ -45,6 +45,7 @@ assert.match(env, /GHL_PROVISIONING_WRITES_ENABLED/);
 assert.match(env, /isGhlWorkflowEnrollmentEnabled/);
 
 assert.match(ghlClient, /GhlLocationProvisioningPayload/);
+assert.match(ghlClient, /replace\(\/\^Bearer\\s\+/);
 assert.match(ghlClient, /createLocation/);
 assert.match(ghlClient, /\/locations\//);
 assert.match(ghlClient, /GhlUserProvisioningPayload/);

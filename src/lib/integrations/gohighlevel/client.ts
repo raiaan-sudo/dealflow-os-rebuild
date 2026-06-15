@@ -67,7 +67,16 @@ function normalizeCredentialEnvKey(ref: string) {
 
 export function getGhlPrivateTokenFromCredentialRef(ref: string) {
   const normalized = normalizeCredentialEnvKey(ref);
-  const token = process.env[normalized]?.trim();
+  const normalizeToken = (value: string | undefined) => {
+    const token = value?.trim();
+
+    if (!token) {
+      return null;
+    }
+
+    return token.replace(/^Bearer\s+/i, "").trim() || null;
+  };
+  const token = normalizeToken(process.env[normalized]);
 
   if (token) {
     return token;
@@ -78,9 +87,9 @@ export function getGhlPrivateTokenFromCredentialRef(ref: string) {
     normalized === "GHL_CLICK_TO_SCALE_PRIVATE_INTEGRATION_TOKEN"
   ) {
     return (
-      process.env.CLICKTOSCALE_GHL_PRIVATE_INTEGRATION?.trim() ||
-      process.env.GHL_CLICK_TO_SCALE_PRIVATE_INTEGRATION_TOKEN?.trim() ||
-      process.env.GHL_PRIVATE_INTEGRATION_TOKEN?.trim() ||
+      normalizeToken(process.env.CLICKTOSCALE_GHL_PRIVATE_INTEGRATION) ||
+      normalizeToken(process.env.GHL_CLICK_TO_SCALE_PRIVATE_INTEGRATION_TOKEN) ||
+      normalizeToken(process.env.GHL_PRIVATE_INTEGRATION_TOKEN) ||
       null
     );
   }
