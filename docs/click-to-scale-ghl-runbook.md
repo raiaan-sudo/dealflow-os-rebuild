@@ -93,6 +93,8 @@ Safe validation:
 ```bash
 npm run ghl:validate-provisioning
 npm run ghl:check-production-readiness
+npm run ghl:reconcile-workspaces
+npm run ghl:proof-lead-sync
 ```
 
 `ghl:check-production-readiness` is read-only. It verifies production env names,
@@ -109,6 +111,99 @@ npm run ghl:provision-workspace -- \
 ```
 
 Add `--apply` only to queue the internal DealFlow system job. External GHL writes still require the server-side write flag.
+
+## Lead Sync Proof
+
+Use the admin-only production proof route when local secrets are not available.
+It creates a controlled QA lead, syncs only that lead to the mapped Click to
+Scale GHL location, then repeats the same sync to prove idempotency. It does
+not queue `lead_side_effects`, does not send SMS/email, does not send Meta
+conversions, does not charge Stripe, does not create Freshdesk tickets, does
+not generate provider assets, and does not launch anything.
+
+Local preflight:
+
+```bash
+npm run ghl:proof-lead-sync -- --workspace-id=<organization_uuid>
+```
+
+Production admin route:
+
+```text
+GET  /api/admin/click-to-scale/ghl-lead-sync-proof
+POST /api/admin/click-to-scale/ghl-lead-sync-proof
+```
+
+POST body:
+
+```json
+{
+  "workspaceId": "<organization_uuid>",
+  "campaignId": null,
+  "apply": true
+}
+```
+
+Acceptance:
+
+- response `success=true`
+- response `idempotencyProven=true`
+- first sync creates or updates one GHL contact in the mapped location
+- second sync returns `already_synced`
+- one `lead_crm_sync_events` row is attached to the proof lead
+- no opportunity is created until pipeline and stage IDs are configured
+
+## Backfill / Reconciliation
+
+Run reconciliation before and after enabling Click to Scale for existing paid
+workspaces:
+
+```bash
+npm run ghl:reconcile-workspaces
+```
+
+Dry-run mode reports:
+
+- active Click to Scale workspaces
+- existing enabled mappings
+- missing mappings
+- disabled mappings
+
+Apply mode queues internal provisioning jobs only:
+
+```bash
+npm run ghl:reconcile-workspaces -- --apply
+```
+
+The worker and GHL write flags still control whether external GHL writes happen.
+Do not use apply mode to create GHL locations until the token, company ID, and
+scopes have passed readiness checks.
+
+## Review accepted provisioning failures
+
+Old QA proof failures should not stay as unexplained operator debt after the
+root cause is fixed or accepted as deferred. Use the review script only for
+known Click to Scale proof failures such as:
+
+- old invalid token
+- old missing company ID
+- old rejected location payload shape
+- GHL account plan does not have user invite API access yet
+
+Dry-run:
+
+```bash
+npm run ghl:review-provisioning-failures
+```
+
+Apply:
+
+```bash
+npm run ghl:review-provisioning-failures -- --apply --reason=ghl_user_invite_api_upgrade_pending
+```
+
+This writes review metadata only. It does not call GHL and does not change
+mapping, lead sync, billing, Meta, SMS/email, Freshdesk, providers, or launch.
 
 ## Workflow Enrollment
 

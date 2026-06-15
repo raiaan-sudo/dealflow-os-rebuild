@@ -18,6 +18,9 @@ const systemJobs = readFileSync("src/lib/services/system-job-service.ts", "utf8"
 const notification = readFileSync("src/lib/services/internal-lead-notification-service.ts", "utf8");
 const runbook = readFileSync("docs/click-to-scale-ghl-runbook.md", "utf8");
 const setupScript = readFileSync("scripts/setup-click-to-scale-ghl.mjs", "utf8");
+const leadSyncProofRoute = readFileSync("src/app/api/admin/click-to-scale/ghl-lead-sync-proof/route.ts", "utf8");
+const readinessScript = readFileSync("scripts/check-click-to-scale-ghl-production-readiness.mjs", "utf8");
+const leadSyncProofScript = readFileSync("scripts/proof-click-to-scale-ghl-lead-sync.mjs", "utf8");
 
 assert.match(partnerConfig, /id: "click_to_scale"/);
 assert.match(partnerConfig, /displayName: "Click to Scale"/);
@@ -101,8 +104,23 @@ assert.match(setupScript, /required\("location-id"\)/);
 assert.match(setupScript, /--apply/);
 assert.match(setupScript, /CLICKTOSCALE_GHL_PRIVATE_INTEGRATION/);
 assert.match(setupScript, /workspace_partner_attribution/);
+assert.match(leadSyncProofRoute, /requirePlatformAdmin/);
+assert.match(leadSyncProofRoute, /assertSameOriginRequest/);
+assert.match(leadSyncProofRoute, /syncLeadToPartnerCrm/);
+assert.match(leadSyncProofRoute, /click_to_scale_ghl_lead_sync_proof/);
+assert.match(leadSyncProofRoute, /secondSync/);
+assert.match(leadSyncProofRoute, /already_synced/);
+assert.match(leadSyncProofRoute, /noSms: true/);
+assert.match(leadSyncProofRoute, /noMeta: true/);
+assert.match(leadSyncProofRoute, /noStripe: true/);
+assert.doesNotMatch(leadSyncProofRoute, /safeNotifyAssignedAgentOfNewLead|safeSendMetaLeadConversion|createCheckoutSession|createFreshdesk/i);
+assert.match(readinessScript, /lead_crm_sync_events/);
+assert.match(readinessScript, /failed_lead_crm_sync_events/);
+assert.match(readinessScript, /enabled_workspace_mapping_missing/);
+assert.match(leadSyncProofScript, /admin-only production proof route/);
 assert.match(runbook, /Rollback/);
 assert.match(runbook, /lead_side_effects/);
+assert.match(runbook, /Lead Sync Proof/);
 assert.match(runbook, /Click to Scale SMS alerts are notification-only/);
 
 console.log("Click to Scale white-label GHL static integration tests passed.");

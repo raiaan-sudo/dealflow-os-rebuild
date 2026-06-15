@@ -51,12 +51,46 @@ where kind = 'ghl_workspace_provisioning'
 group by kind, status, last_error_code
 order by kind, status, last_error_code;
 `;
+const failedProvisioningSql = `
+select status, last_error_code, count(*)::int as count
+from public.ghl_provisioning_jobs
+where partner_id = '${partnerId}'
+  and status in ('failed','dead_letter')
+  and coalesce((metadata->>'accepted_deferred')::boolean, false) = false
+group by status, last_error_code
+order by status, last_error_code;
+`;
+const failedLeadSyncSql = `
+select status, last_error_code, count(*)::int as count
+from public.lead_crm_sync_events
+where partner_id = '${partnerId}'
+  and status in ('failed','dead_letter')
+  and coalesce((metadata->>'accepted_deferred')::boolean, false) = false
+group by status, last_error_code
+order by status, last_error_code;
+`;
+const mappingHealthSql = `
+select
+  count(*) filter (where sync_enabled = true and nullif(trim(ghl_location_id), '') is not null)::int as enabled_mapped_count,
+  count(*) filter (where sync_enabled = false)::int as disabled_count,
+  count(*) filter (where sync_enabled = true and nullif(trim(ghl_location_id), '') is null)::int as enabled_missing_location_count
+from public.workspace_ghl_mapping
+where partner_id = '${partnerId}';
+`;
 
 const configResult = parseSupabaseJson(run("supabase", ["db", "query", "--linked", configSql]));
 const failedJobsResult = parseSupabaseJson(run("supabase", ["db", "query", "--linked", failedJobsSql]));
+const failedProvisioningResult = parseSupabaseJson(run("supabase", ["db", "query", "--linked", failedProvisioningSql]));
+const failedLeadSyncResult = parseSupabaseJson(run("supabase", ["db", "query", "--linked", failedLeadSyncSql]));
+const mappingHealthResult = parseSupabaseJson(run("supabase", ["db", "query", "--linked", mappingHealthSql]));
 const envList = run("npx", ["vercel", "env", "ls", "production"]);
 
 const config = configResult.rows?.[0] ?? null;
+const mappingHealth = mappingHealthResult.rows?.[0] ?? {
+  enabled_mapped_count: 0,
+  disabled_count: 0,
+  enabled_missing_location_count: 0,
+};
 const checks = {
   partnerConfigExists: Boolean(config),
   partnerConfigEnabled: config?.enabled === true,
@@ -67,6 +101,10 @@ const checks = {
   workflowFlagPresent: boolFromVercelPresence(envList, "GHL_WORKFLOW_ENROLLMENT_ENABLED"),
   companyIdConfigured: Boolean(config?.company_id?.trim()),
   noUnreviewedFailedProvisioningJobs: (failedJobsResult.rows ?? []).length === 0,
+  noUnacceptedFailedGhlProvisioningJobs: (failedProvisioningResult.rows ?? []).length === 0,
+  noFailedLeadCrmSyncEvents: (failedLeadSyncResult.rows ?? []).length === 0,
+  hasAtLeastOneEnabledMapping: Number(mappingHealth.enabled_mapped_count ?? 0) > 0,
+  noEnabledMappingMissingLocation: Number(mappingHealth.enabled_missing_location_count ?? 0) === 0,
 };
 
 const blockers = [];
@@ -79,6 +117,10 @@ if (!checks.writeFlagPresent) blockers.push("write_flag_missing");
 if (!checks.workflowFlagPresent) blockers.push("workflow_flag_missing");
 if (!checks.companyIdConfigured) blockers.push("ghl_company_id_missing");
 if (!checks.noUnreviewedFailedProvisioningJobs) blockers.push("unreviewed_failed_provisioning_jobs");
+if (!checks.noUnacceptedFailedGhlProvisioningJobs) blockers.push("unaccepted_failed_ghl_provisioning_jobs");
+if (!checks.noFailedLeadCrmSyncEvents) blockers.push("failed_lead_crm_sync_events");
+if (!checks.hasAtLeastOneEnabledMapping) blockers.push("enabled_workspace_mapping_missing");
+if (!checks.noEnabledMappingMissingLocation) blockers.push("enabled_workspace_mapping_location_missing");
 
 const report = {
   ok: blockers.length === 0,
@@ -97,6 +139,9 @@ const report = {
       }
     : null,
   failedJobs: failedJobsResult.rows ?? [],
+  failedGhlProvisioningJobs: failedProvisioningResult.rows ?? [],
+  failedLeadCrmSyncEvents: failedLeadSyncResult.rows ?? [],
+  mappingHealth,
   safety: {
     printedSecrets: false,
     mutatedDatabase: false,
