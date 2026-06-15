@@ -599,6 +599,33 @@ export async function provisionGhlWorkspaceForDealFlowWorkspace(payload: GhlWork
     return { provisioned: false, skipped: true, reason: "dry_run", jobId: job.id };
   }
 
+  if (!config.company_id?.trim()) {
+    const message = "Click to Scale GoHighLevel company_id is required before live workspace provisioning.";
+    await appendProvisioningEvent({
+      supabase,
+      jobId: job.id,
+      workspaceId: payload.workspaceId,
+      partnerId: payload.partnerId,
+      step: "configuration",
+      status: "failed",
+      errorCode: "ghl_company_id_missing",
+      errorMessage: message,
+      metadata: {
+        credential_ref_present: Boolean(config.encrypted_credential_ref),
+        writes_enabled: isGhlProvisioningWritesEnabled(),
+      },
+    });
+    await markProvisioningJob({
+      supabase,
+      jobId: job.id,
+      status: "dead_letter",
+      errorCode: "ghl_company_id_missing",
+      errorMessage: message,
+      nextRetryAt: null,
+    });
+    throw new ApiError(500, message, "ghl_company_id_missing");
+  }
+
   const client = new GoHighLevelClient({ token });
 
   try {

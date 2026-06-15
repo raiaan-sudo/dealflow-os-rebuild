@@ -63,6 +63,16 @@ Required environment:
 - `GHL_AUTO_PROVISIONING_ENABLED=true`
 - `GHL_PROVISIONING_WRITES_ENABLED=true` only after token scopes and a dry run are confirmed.
 
+Required database configuration:
+
+- `partner_ghl_config.company_id` for `partner_id='click_to_scale'`
+  - This must be the GoHighLevel agency/company ID that owns the created sub-accounts.
+  - Live provisioning fails closed with `ghl_company_id_missing` when this is blank.
+- Optional after the lead workflow is selected:
+  - `partner_ghl_config.default_pipeline_id`
+  - `partner_ghl_config.default_stage_id`
+  - `partner_ghl_template_config.snapshot_id`
+
 Required private integration scopes:
 
 - Lead sync only:

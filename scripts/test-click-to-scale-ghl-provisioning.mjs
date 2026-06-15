@@ -63,6 +63,8 @@ assert.match(provisioningService, /partner_ghl_workflow_config|workflow_mapping_
 assert.match(provisioningService, /isGhlProvisioningWritesEnabled/);
 assert.match(provisioningService, /dry_run/);
 assert.match(provisioningService, /ghl_auth_missing/);
+assert.match(provisioningService, /ghl_company_id_missing/);
+assert.match(provisioningService, /Click to Scale GoHighLevel company_id is required/);
 assert.doesNotMatch(provisioningService, /console\.log\(.*token/i);
 
 assert.match(systemJobs, /ghl_workspace_provisioning/);
