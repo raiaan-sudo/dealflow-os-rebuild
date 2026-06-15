@@ -708,6 +708,7 @@ export async function provisionGhlWorkspaceForDealFlowWorkspace(payload: GhlWork
     }
 
     let ghlUserId: string | null = null;
+    let ghlInviteStatus: "invited" | "failed" | "skipped" = "skipped";
     if (resolvedPayload.customerEmail?.trim()) {
       await appendProvisioningEvent({
         supabase,
@@ -718,22 +719,48 @@ export async function provisionGhlWorkspaceForDealFlowWorkspace(payload: GhlWork
         status: "started",
         externalId: locationId,
       });
-      ghlUserId = await client.createUser({
-        locationId,
-        companyId: config.company_id,
-        firstName: name.firstName,
-        lastName: name.lastName,
-        email: resolvedPayload.customerEmail.trim().toLowerCase(),
-      });
-      await appendProvisioningEvent({
-        supabase,
-        jobId: job.id,
-        workspaceId: payload.workspaceId,
-        partnerId: payload.partnerId,
-        step: "user_invite",
-        status: "succeeded",
-        externalId: ghlUserId,
-      });
+      try {
+        ghlUserId = await client.createUser({
+          locationId,
+          companyId: config.company_id,
+          firstName: name.firstName,
+          lastName: name.lastName,
+          email: resolvedPayload.customerEmail.trim().toLowerCase(),
+        });
+        ghlInviteStatus = "invited";
+        await appendProvisioningEvent({
+          supabase,
+          jobId: job.id,
+          workspaceId: payload.workspaceId,
+          partnerId: payload.partnerId,
+          step: "user_invite",
+          status: "succeeded",
+          externalId: ghlUserId,
+        });
+      } catch (inviteError) {
+        const inviteCode = inviteError instanceof ApiError ? inviteError.code : "ghl_user_invite_failed";
+        const inviteMessage = inviteError instanceof Error ? inviteError.message : "Unknown GHL user invite failure.";
+        ghlInviteStatus = "failed";
+        await appendProvisioningEvent({
+          supabase,
+          jobId: job.id,
+          workspaceId: payload.workspaceId,
+          partnerId: payload.partnerId,
+          step: "user_invite",
+          status: "failed",
+          externalId: locationId,
+          errorCode: inviteCode,
+          errorMessage: inviteMessage,
+          metadata: { non_blocking: true },
+        });
+        logWarn("ghl_user_invite_non_blocking_failed", {
+          jobId: job.id,
+          workspaceId: payload.workspaceId,
+          partnerId: payload.partnerId,
+          code: inviteCode,
+          message: inviteMessage,
+        });
+      }
     }
 
     await persistWorkspaceMapping({
@@ -749,7 +776,7 @@ export async function provisionGhlWorkspaceForDealFlowWorkspace(payload: GhlWork
       payload: resolvedPayload,
       locationId,
       userId: ghlUserId,
-      inviteStatus: ghlUserId ? "invited" : "skipped",
+      inviteStatus: ghlInviteStatus,
     });
 
     if (isGhlWorkflowEnrollmentEnabled()) {
@@ -768,6 +795,7 @@ export async function provisionGhlWorkspaceForDealFlowWorkspace(payload: GhlWork
       metadata: {
         ghl_location_id: locationId,
         ghl_user_id: ghlUserId,
+        ghl_user_invite_status: ghlInviteStatus,
         workflow_enrollment: "disabled",
       },
     });
