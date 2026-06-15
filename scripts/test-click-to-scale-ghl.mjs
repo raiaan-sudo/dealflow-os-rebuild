@@ -57,7 +57,7 @@ assert.match(whiteLabelSeedMigration, /'Click to Scale DealFlow'/);
 
 assert.match(ghlClient, /services\.leadconnectorhq\.com/);
 assert.match(ghlClient, /Version: GHL_API_VERSION/);
-assert.match(ghlClient, /GHL_CLICK_TO_SCALE_PRIVATE_INTEGRATION_TOKEN/);
+assert.match(ghlClient, /CLICKTOSCALE_GHL_PRIVATE_INTEGRATION/);
 assert.match(ghlClient, /ghl_rate_limited/);
 assert.match(ghlClient, /searchContact/);
 assert.match(ghlClient, /upsertContact/);
@@ -92,7 +92,7 @@ assert.match(notification, /Copy\/paste reply for/);
 assert.match(setupScript, /required\("workspace-id"\)/);
 assert.match(setupScript, /required\("location-id"\)/);
 assert.match(setupScript, /--apply/);
-assert.match(setupScript, /GHL_CLICK_TO_SCALE_PRIVATE_INTEGRATION_TOKEN/);
+assert.match(setupScript, /CLICKTOSCALE_GHL_PRIVATE_INTEGRATION/);
 assert.match(setupScript, /workspace_partner_attribution/);
 assert.match(runbook, /Rollback/);
 assert.match(runbook, /lead_side_effects/);

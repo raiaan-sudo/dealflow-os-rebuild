@@ -21,7 +21,7 @@ const workspaceId = required("workspace-id");
 const locationId = required("location-id");
 const pipelineId = arg("pipeline-id");
 const stageId = arg("stage-id");
-const credentialRef = arg("credential-ref") || "GHL_CLICK_TO_SCALE_PRIVATE_INTEGRATION_TOKEN";
+const credentialRef = arg("credential-ref") || "CLICKTOSCALE_GHL_PRIVATE_INTEGRATION";
 const assignedBy = arg("assigned-by");
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

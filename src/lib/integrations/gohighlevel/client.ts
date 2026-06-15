@@ -26,6 +26,33 @@ export type GhlOpportunityPayload = {
   source: string;
 };
 
+export type GhlLocationProvisioningPayload = {
+  name: string;
+  companyId?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  postalCode?: string | null;
+  timezone?: string | null;
+  snapshotId?: string | null;
+  metadata?: Record<string, string | number | boolean | null>;
+};
+
+export type GhlUserProvisioningPayload = {
+  locationId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role?: "user" | "admin" | string;
+  type?: "account" | "agency" | string;
+  permissions?: Record<string, boolean>;
+};
+
 type GhlRequestOptions = {
   method?: "GET" | "POST" | "PUT";
   body?: unknown;
@@ -46,8 +73,16 @@ export function getGhlPrivateTokenFromCredentialRef(ref: string) {
     return token;
   }
 
-  if (normalized === "GHL_CLICK_TO_SCALE_PRIVATE_INTEGRATION_TOKEN") {
-    return process.env.GHL_PRIVATE_INTEGRATION_TOKEN?.trim() || null;
+  if (
+    normalized === "CLICKTOSCALE_GHL_PRIVATE_INTEGRATION" ||
+    normalized === "GHL_CLICK_TO_SCALE_PRIVATE_INTEGRATION_TOKEN"
+  ) {
+    return (
+      process.env.CLICKTOSCALE_GHL_PRIVATE_INTEGRATION?.trim() ||
+      process.env.GHL_CLICK_TO_SCALE_PRIVATE_INTEGRATION_TOKEN?.trim() ||
+      process.env.GHL_PRIVATE_INTEGRATION_TOKEN?.trim() ||
+      null
+    );
   }
 
   return null;
@@ -177,6 +212,63 @@ export class GoHighLevelClient {
     const id = result?.opportunity?.id ?? result?.id ?? null;
     if (!id) {
       throw new ApiError(502, "GoHighLevel opportunity response did not include an ID.", "ghl_opportunity_failed");
+    }
+
+    return id;
+  }
+
+  async createLocation(payload: GhlLocationProvisioningPayload) {
+    const result = await this.request<{ location?: { id?: string }; id?: string }>("/locations/", {
+      method: "POST",
+      body: {
+        name: payload.name,
+        ...(payload.companyId ? { companyId: payload.companyId } : {}),
+        ...(payload.firstName ? { firstName: payload.firstName } : {}),
+        ...(payload.lastName ? { lastName: payload.lastName } : {}),
+        ...(payload.email ? { email: payload.email } : {}),
+        ...(payload.phone ? { phone: payload.phone } : {}),
+        ...(payload.address ? { address: payload.address } : {}),
+        ...(payload.city ? { city: payload.city } : {}),
+        ...(payload.state ? { state: payload.state } : {}),
+        ...(payload.country ? { country: payload.country } : {}),
+        ...(payload.postalCode ? { postalCode: payload.postalCode } : {}),
+        ...(payload.timezone ? { timezone: payload.timezone } : {}),
+        ...(payload.snapshotId ? { snapshotId: payload.snapshotId } : {}),
+        ...(payload.metadata ? { metadata: payload.metadata } : {}),
+      },
+    });
+
+    const id = result?.location?.id ?? result?.id ?? null;
+    if (!id) {
+      throw new ApiError(502, "GoHighLevel location response did not include an ID.", "ghl_location_create_failed");
+    }
+
+    return id;
+  }
+
+  async createUser(payload: GhlUserProvisioningPayload) {
+    const result = await this.request<{ user?: { id?: string }; id?: string }>("/users/", {
+      method: "POST",
+      body: {
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+        email: payload.email,
+        locationIds: [payload.locationId],
+        role: payload.role ?? "user",
+        type: payload.type ?? "account",
+        permissions: payload.permissions ?? {
+          contactsEnabled: true,
+          opportunitiesEnabled: true,
+          campaignsEnabled: false,
+          workflowsEnabled: false,
+          settingsEnabled: false,
+        },
+      },
+    });
+
+    const id = result?.user?.id ?? result?.id ?? null;
+    if (!id) {
+      throw new ApiError(502, "GoHighLevel user response did not include an ID.", "ghl_user_create_failed");
     }
 
     return id;

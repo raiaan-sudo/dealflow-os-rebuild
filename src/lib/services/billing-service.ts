@@ -37,6 +37,7 @@ import {
 } from "@/lib/services/campaign-entitlements";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { queueSubscriptionSuspensionJobsForOrganization } from "@/lib/services/subscription-suspension-service";
+import { queueGhlWorkspaceProvisioningSystemJob } from "@/lib/services/system-job-service";
 import type { Database, Json } from "@/lib/supabase/types";
 import {
   hasPartnerPricingConfiguration,
@@ -1711,6 +1712,42 @@ export async function syncBillingSubscriptionFromStripe(
         });
       }
     });
+  }
+
+  if (subscription.status === "active" && partnerId && subscriptionUserId) {
+    await queueGhlWorkspaceProvisioningSystemJob({
+      organizationId,
+      userId: subscriptionUserId,
+      payload: {
+        source: "stripe_subscription",
+        workspaceId: organizationId,
+        userId: subscriptionUserId,
+        partnerId,
+        stripeCustomerId:
+          typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id ?? null,
+        stripeSubscriptionId: subscription.id,
+        stripeEventId: source.eventId,
+        apply: true,
+      },
+    })
+      .then((job) => {
+        logOperationalEvent("ghl_provisioning_system_job_queued", {
+          organizationId,
+          partnerId,
+          stripeSubscriptionId: subscription.id,
+          eventId: source.eventId,
+          jobId: job.id,
+        });
+      })
+      .catch((error) => {
+        logError("ghl_provisioning_system_job_queue_failed", {
+          organizationId,
+          partnerId,
+          stripeSubscriptionId: subscription.id,
+          eventId: source.eventId,
+          message: error instanceof Error ? error.message : "Unknown GHL provisioning queue failure",
+        });
+      });
   }
 
   return {

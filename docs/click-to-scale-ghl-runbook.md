@@ -16,7 +16,7 @@ Click to Scale is a white-label DealFlow partner. DealFlow remains the source of
 
 1. Apply migration `20260614193000_click_to_scale_partner_ghl_sync.sql`.
 2. Add the private integration token to server env:
-   - `GHL_CLICK_TO_SCALE_PRIVATE_INTEGRATION_TOKEN`
+   - `CLICKTOSCALE_GHL_PRIVATE_INTEGRATION`
 3. Map each Click to Scale workspace. The setup script writes both `workspace_partner_attribution` and `workspace_ghl_mapping`:
 
 ```bash
@@ -25,7 +25,7 @@ npm run setup:click-to-scale-ghl -- \
   --location-id=<ghl_location_id> \
   --pipeline-id=<optional_pipeline_id> \
   --stage-id=<optional_stage_id> \
-  --credential-ref=GHL_CLICK_TO_SCALE_PRIVATE_INTEGRATION_TOKEN \
+  --credential-ref=CLICKTOSCALE_GHL_PRIVATE_INTEGRATION \
   --apply
 ```
 
@@ -44,6 +44,68 @@ For every lead captured in DealFlow:
 
 Click to Scale SMS alerts are keyed from `workspace_partner_attribution`, not from the GHL mapping. That means a Click to Scale workspace stays notification-only even when CRM sync is temporarily disabled.
 
+## Automatic Workspace Provisioning
+
+DealFlow can provision a Click to Scale GoHighLevel sub-account after a Stripe subscription becomes active. This is intentionally separated from lead sync:
+
+1. Stripe webhook applies the active subscription to the DealFlow workspace.
+2. DealFlow queues a `ghl_workspace_provisioning` system job.
+3. The worker creates or reuses a `ghl_provisioning_jobs` row with an idempotency key.
+4. If a `workspace_ghl_mapping` already exists, the job reuses it and exits successfully.
+5. If no mapping exists, the job resolves the workspace/user from server-side IDs.
+6. If `GHL_AUTO_PROVISIONING_ENABLED=true` and `GHL_PROVISIONING_WRITES_ENABLED=true`, the worker can create a GHL location and user invite.
+7. The worker writes `workspace_partner_attribution`, `workspace_ghl_mapping`, and `workspace_ghl_users`.
+8. Lead capture continues to work even if the provisioning job fails.
+
+Required environment:
+
+- `CLICKTOSCALE_GHL_PRIVATE_INTEGRATION`
+- `GHL_AUTO_PROVISIONING_ENABLED=true`
+- `GHL_PROVISIONING_WRITES_ENABLED=true` only after token scopes and a dry run are confirmed.
+
+Required private integration scopes:
+
+- Lead sync only:
+  - `contacts.readonly`
+  - `contacts.write`
+  - `opportunities.readonly`
+  - `opportunities.write`
+  - `locations.readonly`
+- Automatic sub-account provisioning:
+  - all lead sync scopes above
+  - `locations.write`
+  - `users.readonly`
+  - `users.write`
+- Do not select broad admin scopes such as SaaS billing, snapshots, documents, phone numbers, Twilio, companies, or custom menu links unless a later implementation explicitly uses them and adds tests for that surface.
+
+Safe validation:
+
+```bash
+npm run ghl:validate-provisioning
+```
+
+Queue a workspace provisioning job without calling GHL:
+
+```bash
+npm run ghl:provision-workspace -- \
+  --workspace-id=<organization_uuid> \
+  --user-id=<auth_user_uuid> \
+  --partner=click_to_scale
+```
+
+Add `--apply` only to queue the internal DealFlow system job. External GHL writes still require the server-side write flag.
+
+## Workflow Enrollment
+
+Workflow enrollment is deliberately disabled until Christian supplies the exact workflow ID and location mapping. The schema stores `partner_ghl_workflow_config`, but `enabled=false` and `enrollment_trigger='disabled'` by default.
+
+Do not enable workflow enrollment until:
+
+- the correct Click to Scale workflow ID is confirmed,
+- a test lead has synced to the correct GHL location,
+- the workflow is verified to send the intended follow-up only once,
+- opt-out/compliance behavior is verified in GHL.
+
 ## Failure Modes
 
 - `crm_not_configured`: no mapping exists; lead remains in DealFlow.
@@ -53,6 +115,10 @@ Click to Scale SMS alerts are keyed from `workspace_partner_attribution`, not fr
 - `ghl_rate_limited`: GHL returned 429; retry later.
 - `ghl_contact_upsert_failed`: contact sync failed.
 - `ghl_opportunity_failed`: contact synced but opportunity failed.
+- `partner_ghl_disabled`: partner-level GHL config is disabled.
+- `workspace_not_found`: provisioning was requested for a DealFlow workspace that does not exist.
+- `ghl_location_create_failed`: GHL location/sub-account creation returned no ID.
+- `ghl_user_create_failed`: GHL user invite creation returned no ID.
 
 ## Rollback
 

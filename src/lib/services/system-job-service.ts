@@ -26,6 +26,7 @@ import type { CreativeIntakeGenerationContext } from "@/lib/services/creative-ch
 import type { SubscriptionSuspensionJobPayload } from "@/lib/services/subscription-suspension-service";
 import type { CampaignOffboardingCleanupPayload } from "@/lib/services/campaign-offboarding-cleanup-service";
 import type { PerformanceLeadBillingJobPayload } from "@/lib/services/performance-lead-billing-service";
+import type { GhlWorkspaceProvisioningPayload } from "@/lib/services/ghl-provisioning-service";
 import { isTransientStaticCreativePersistenceError } from "@/lib/services/static-creative-render-resilience";
 
 type SystemJobRow = Database["public"]["Tables"]["system_jobs"]["Row"];
@@ -44,6 +45,7 @@ export type SystemJobKind =
   | "lead_capture_retry"
   | "lead_side_effects"
   | "performance_lead_billing"
+  | "ghl_workspace_provisioning"
   | "subscription_suspension"
   | "campaign_offboarding_cleanup";
 export type SystemJobStatus = "pending" | "processing" | "completed" | "failed";
@@ -171,6 +173,7 @@ type SystemJobPayloadMap = {
     };
   };
   performance_lead_billing: PerformanceLeadBillingJobPayload;
+  ghl_workspace_provisioning: GhlWorkspaceProvisioningPayload;
   subscription_suspension: SubscriptionSuspensionJobPayload;
   campaign_offboarding_cleanup: CampaignOffboardingCleanupPayload;
 };
@@ -509,6 +512,22 @@ export async function queuePerformanceLeadBillingJob(params: {
     kind: "performance_lead_billing",
     payload: params.payload,
     idempotencyKey: `performance_lead_billing:${params.payload.organizationId}:${params.payload.campaignId}:${params.payload.leadId}`,
+    maxAttempts: 3,
+  });
+}
+
+export async function queueGhlWorkspaceProvisioningSystemJob(params: {
+  organizationId: string;
+  userId: string;
+  payload: SystemJobPayloadMap["ghl_workspace_provisioning"];
+}) {
+  return createSystemJob({
+    organizationId: params.organizationId,
+    userId: params.userId,
+    campaignId: null,
+    kind: "ghl_workspace_provisioning",
+    payload: params.payload,
+    idempotencyKey: `ghl_workspace_provisioning:${params.payload.partnerId}:${params.payload.workspaceId}:${params.payload.stripeSubscriptionId ?? "manual"}`,
     maxAttempts: 3,
   });
 }
@@ -1179,6 +1198,11 @@ export async function processSystemJob(jobId: string) {
       const { runPerformanceLeadBillingJob } = await import("@/lib/services/performance-lead-billing-service");
       result = await runPerformanceLeadBillingJob(
         processingJob.payload as SystemJobPayloadMap["performance_lead_billing"],
+      ) as unknown as Json;
+    } else if (result === undefined && processingJob.kind === "ghl_workspace_provisioning") {
+      const { provisionGhlWorkspaceForDealFlowWorkspace } = await import("@/lib/services/ghl-provisioning-service");
+      result = await provisionGhlWorkspaceForDealFlowWorkspace(
+        processingJob.payload as SystemJobPayloadMap["ghl_workspace_provisioning"],
       ) as unknown as Json;
     } else if (result === undefined && processingJob.kind === "subscription_suspension") {
       const { runSubscriptionSuspensionJob } = await import("@/lib/services/subscription-suspension-service");

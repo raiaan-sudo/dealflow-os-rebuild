@@ -4,7 +4,7 @@ import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 
 const repoRoot = process.cwd();
-const expectedSchemaVersion = "20260614203000";
+const expectedSchemaVersion = "20260615104000";
 const schemaCheckMode = process.env.SUPABASE_SCHEMA_CHECK_MODE?.trim().toLowerCase() ?? "remote";
 const requiredMigrationFiles = [
   "20260426110000_add_campaign_plan_critical_fields.sql",
@@ -51,8 +51,12 @@ const requiredMigrationFiles = [
   "20260519023000_create_scale_monitor_incidents.sql",
   "20260519033000_create_autonomy_execution_tables.sql",
   "20260519043000_harden_autonomy_anon_access.sql",
+  "20260605210000_add_lead_capture_strategy.sql",
   "20260614193000_click_to_scale_partner_ghl_sync.sql",
   "20260614203000_seed_click_to_scale_white_label_partner.sql",
+  "20260615100000_create_ghl_provisioning_pipeline.sql",
+  "20260615103000_seed_click_to_scale_ghl_provisioning_config.sql",
+  "20260615104000_update_click_to_scale_ghl_credential_ref.sql",
 ];
 
 const { loadEnvConfig } = nextEnv;

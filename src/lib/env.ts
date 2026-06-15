@@ -411,6 +411,18 @@ export function isCreativeStorageOffboardingDeletionEnabled() {
   return process.env.ENABLE_CREATIVE_STORAGE_OFFBOARDING_DELETION === "true";
 }
 
+export function isGhlAutoProvisioningEnabled() {
+  return process.env.GHL_AUTO_PROVISIONING_ENABLED === "true";
+}
+
+export function isGhlProvisioningWritesEnabled() {
+  return process.env.GHL_PROVISIONING_WRITES_ENABLED === "true";
+}
+
+export function isGhlWorkflowEnrollmentEnabled() {
+  return process.env.GHL_WORKFLOW_ENROLLMENT_ENABLED === "true";
+}
+
 export function getMetaEnv() {
   const appId = process.env.META_APP_ID;
   const appSecret = process.env.META_APP_SECRET;
