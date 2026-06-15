@@ -124,7 +124,8 @@
     "proof:verify": "node ./scripts/verify-proof-artifacts.mjs",
     "proof:self-test": "node ./scripts/run-with-timeout.mjs --self-test",
     "engineering:classify": "node ./scripts/engineering-mission-classifier.mjs",
-    "test:meta-oauth-state": "node ./scripts/test-meta-oauth-state-binding.mjs"
+    "test:meta-oauth-state": "node ./scripts/test-meta-oauth-state-binding.mjs",
+    "ghl:check-production-readiness": "node ./scripts/check-click-to-scale-ghl-production-readiness.mjs"
   },
   "dependencies": {
     "@higgsfield/client": "^0.2.1",

@@ -92,7 +92,12 @@ Safe validation:
 
 ```bash
 npm run ghl:validate-provisioning
+npm run ghl:check-production-readiness
 ```
+
+`ghl:check-production-readiness` is read-only. It verifies production env names,
+partner GHL database config, and unreviewed provisioning failures without
+printing tokens, calling GHL, changing Vercel, or writing database rows.
 
 Queue a workspace provisioning job without calling GHL:
 
