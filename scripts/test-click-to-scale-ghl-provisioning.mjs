@@ -56,6 +56,7 @@ assert.match(ghlClient, /\/users\//);
 const createLocationBody = ghlClient.match(/async createLocation[^]*?body: \{([^]*?)\n      \},\n    \}\);/)?.[1] ?? "";
 assert.doesNotMatch(createLocationBody, /firstName|lastName/, "GHL location creation must not send rejected owner name fields");
 const createUserBody = ghlClient.match(/async createUser[^]*?body: \{([^]*?)\n      \},\n    \}\);/)?.[1] ?? "";
+assert.match(createUserBody, /companyId/, "GHL user invite must include companyId for agency-scoped private integrations");
 assert.match(createUserBody, /firstName/);
 assert.match(createUserBody, /lastName/);
 
@@ -72,6 +73,7 @@ assert.match(provisioningService, /dry_run/);
 assert.match(provisioningService, /ghl_auth_missing/);
 assert.match(provisioningService, /ghl_company_id_missing/);
 assert.match(provisioningService, /Click to Scale GoHighLevel company_id is required/);
+assert.match(provisioningService, /companyId: config\.company_id/);
 assert.doesNotMatch(provisioningService, /console\.log\(.*token/i);
 
 assert.match(systemJobs, /ghl_workspace_provisioning/);

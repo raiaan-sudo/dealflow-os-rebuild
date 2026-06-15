@@ -45,6 +45,7 @@ export type GhlLocationProvisioningPayload = {
 
 export type GhlUserProvisioningPayload = {
   locationId: string;
+  companyId?: string | null;
   firstName: string;
   lastName: string;
   email: string;
@@ -257,6 +258,7 @@ export class GoHighLevelClient {
     const result = await this.request<{ user?: { id?: string }; id?: string }>("/users/", {
       method: "POST",
       body: {
+        ...(payload.companyId ? { companyId: payload.companyId } : {}),
         firstName: payload.firstName,
         lastName: payload.lastName,
         email: payload.email,

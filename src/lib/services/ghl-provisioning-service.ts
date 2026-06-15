@@ -673,6 +673,7 @@ export async function provisionGhlWorkspaceForDealFlowWorkspace(payload: GhlWork
       });
       ghlUserId = await client.createUser({
         locationId,
+        companyId: config.company_id,
         firstName: name.firstName,
         lastName: name.lastName,
         email: resolvedPayload.customerEmail.trim().toLowerCase(),
