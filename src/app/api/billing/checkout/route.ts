@@ -3,12 +3,15 @@ import { ApiError, assertSameOriginRequest, handleApiError, parseJsonBody } from
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { createBillingCheckoutSession } from "@/lib/services/billing-service";
 import { normalizeBillingPlanTier } from "@/lib/billing/plans";
+import { getWhiteLabelPartnerBySlug } from "@/lib/partners/partner-config";
 import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
 import { isBillingCheckoutSafeModeEnabled } from "@/lib/env";
 
 const checkoutSchema = z.object({
   planTier: z.enum(["performance", "starter", "pro", "growth"]).default("performance"),
   campaignId: z.string().min(1).optional(),
+  partner: z.string().trim().min(1).max(80).optional(),
+  partnerSlug: z.string().trim().min(1).max(80).optional(),
 });
 
 export async function POST(request: Request) {
@@ -33,9 +36,12 @@ export async function POST(request: Request) {
     }
 
     const body = await parseJsonBody(request, checkoutSchema);
+    const partner = getWhiteLabelPartnerBySlug(body.partnerSlug ?? body.partner ?? null);
     const session = await createBillingCheckoutSession({
       planTier: normalizeBillingPlanTier(body.planTier),
       campaignId: body.campaignId,
+      partnerId: partner?.id ?? null,
+      partnerName: partner?.displayName ?? null,
     });
     await recordActivationEventForCurrentUser({
       eventName: "checkout_started",

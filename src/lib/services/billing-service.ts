@@ -877,6 +877,8 @@ export async function createBillingCheckoutSession(params: {
   campaignId?: string | null;
   customerName?: string;
   customerEmail?: string;
+  partnerId?: string | null;
+  partnerName?: string | null;
 }) {
   const [context, supabase] = await Promise.all([getAppContext(), createClient()]);
   const stripeProvider = getStripeBillingProvider();

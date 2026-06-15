@@ -1150,9 +1150,11 @@ export async function processSystemJob(jobId: string) {
       } else {
       const { safeNotifyAssignedAgentOfNewLead } = await import("@/lib/services/internal-lead-notification-service");
       const { safeSendMetaLeadConversion } = await import("@/lib/integrations/meta/conversions");
-      const [notificationResult, metaConversionResult] = await Promise.all([
+      const { safeSyncLeadToPartnerCrm } = await import("@/lib/services/partner-crm-sync-service");
+      const [notificationResult, metaConversionResult, crmSyncResult] = await Promise.all([
         safeNotifyAssignedAgentOfNewLead(payload.lead),
         safeSendMetaLeadConversion(payload.metaConversion),
+        safeSyncLeadToPartnerCrm(payload.lead),
       ]);
 
       logOperationalEvent("lead_capture.side_effects_processed", {
@@ -1162,6 +1164,7 @@ export async function processSystemJob(jobId: string) {
         jobId: processingJob.id,
         notificationResult,
         metaConversionResult,
+        crmSyncResult,
       });
 
       result = {
@@ -1169,6 +1172,7 @@ export async function processSystemJob(jobId: string) {
         leadId: payload.lead.id,
         notificationResult,
         metaConversionResult,
+        crmSyncResult,
       } as Json;
       }
     } else if (result === undefined && processingJob.kind === "performance_lead_billing") {

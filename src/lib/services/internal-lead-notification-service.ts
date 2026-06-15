@@ -112,6 +112,21 @@ Interested in:
 ${campaignInterest(lead)}`;
 }
 
+function buildClickToScaleLeadAlertSms(lead: LeadRecord) {
+  const name = splitLeadName(lead);
+  const phone = formatPhoneForSms(lead.phone_e164 || lead.phone_raw || lead.phone || null);
+  const email = lead.email?.trim() || "No email provided";
+  const source = lead.source?.trim() || lead.utm_source?.trim() || "DealFlow";
+  const campaign = campaignInterest(lead);
+
+  return `New DealFlow lead:
+Name: ${name.fullName}
+Phone: ${phone}
+Email: ${email}
+Source: ${source}
+Campaign: ${campaign}`;
+}
+
 function buildLeadReplyTemplateSms(lead: LeadRecord, agent: AgentProfile) {
   const name = splitLeadName(lead);
   const agentFirstName = agent.first_name?.trim() || "the team";
@@ -129,6 +144,39 @@ Saw you were interested in ${campaignInterest(lead)}.
 Just put together something for you.
 
 Want me to send it over?`;
+}
+
+async function getWorkspacePartnerId(params: {
+  supabase: AdminClient;
+  tenantId: string;
+}) {
+  const { data: attribution, error: attributionError } = await params.supabase
+    .from("workspace_partner_attribution")
+    .select("partner_id")
+    .eq("workspace_id", params.tenantId)
+    .eq("active", true)
+    .maybeSingle();
+
+  if (attributionError) {
+    throw attributionError;
+  }
+
+  if (typeof attribution?.partner_id === "string") {
+    return attribution.partner_id;
+  }
+
+  const { data, error } = await params.supabase
+    .from("workspace_ghl_mapping")
+    .select("partner_id")
+    .eq("workspace_id", params.tenantId)
+    .eq("sync_enabled", true)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return typeof data?.partner_id === "string" ? data.partner_id : null;
 }
 
 async function getCampaignContext(params: {
@@ -470,27 +518,32 @@ export async function notifyAssignedAgentOfNewLead(lead: LeadRecord) {
     agentId: agent.id,
     status: "assigned",
   });
+  const partnerId = await getWorkspacePartnerId({ supabase, tenantId });
+  const isClickToScale = partnerId === "click_to_scale";
 
   const alert = await sendNotificationIfMissing({
     tenantId,
     leadId: lead.id,
     agent,
     purpose: "new_lead_alert",
-    body: buildLeadAlertSms(enrichedLead),
+    body: isClickToScale ? buildClickToScaleLeadAlertSms(enrichedLead) : buildLeadAlertSms(enrichedLead),
   });
-  const reply = await sendNotificationIfMissing({
-    tenantId,
-    leadId: lead.id,
-    agent,
-    purpose: "lead_reply_template",
-    body: buildLeadReplyTemplateSms(enrichedLead, agent),
-  });
+  const reply = isClickToScale
+    ? { status: "skipped", reason: "click_to_scale_notification_only" }
+    : await sendNotificationIfMissing({
+        tenantId,
+        leadId: lead.id,
+        agent,
+        purpose: "lead_reply_template",
+        body: buildLeadReplyTemplateSms(enrichedLead, agent),
+      });
 
   return {
     notified: alert.status === "sent" || reply.status === "sent",
     agentId: agent.id,
     alertStatus: alert.status,
     replyStatus: reply.status,
+    partnerId,
   };
 }
 
