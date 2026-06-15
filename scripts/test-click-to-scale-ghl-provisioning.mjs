@@ -16,6 +16,7 @@ const runbook = readFileSync("docs/click-to-scale-ghl-runbook.md", "utf8");
 const schemaCheck = readFileSync("scripts/check-required-schema.mjs", "utf8");
 const validateScript = readFileSync("scripts/validate-ghl-provisioning.mjs", "utf8");
 const provisionScript = readFileSync("scripts/provision-ghl-workspace.mjs", "utf8");
+const adminProofRoute = readFileSync("src/app/api/admin/click-to-scale/ghl-proof/route.ts", "utf8");
 
 assert.match(migration, /create table if not exists public\.ghl_provisioning_jobs/);
 assert.match(migration, /create table if not exists public\.ghl_provisioning_events/);
@@ -92,6 +93,13 @@ assert.match(validateScript, /liveGhlWriteAttempted: false/);
 assert.match(provisionScript, /Dry run only/);
 assert.match(provisionScript, /liveGhlWriteAttempted: false/);
 assert.match(provisionScript, /GHL_PROVISIONING_WRITES_ENABLED=true/);
+assert.match(adminProofRoute, /requirePlatformAdmin/);
+assert.match(adminProofRoute, /assertSameOriginRequest/);
+assert.match(adminProofRoute, /isQaProofEmail/);
+assert.match(adminProofRoute, /GHL proof only allows QA\/test users/);
+assert.match(adminProofRoute, /printedSecrets: false/);
+assert.match(adminProofRoute, /externalWriteAttempted/);
+assert.doesNotMatch(adminProofRoute, /return apiSuccess\([^]*token/i);
 
 assert.match(runbook, /Automatic Workspace Provisioning/);
 assert.match(runbook, /GHL_AUTO_PROVISIONING_ENABLED/);
