@@ -12,6 +12,7 @@ const migration = read("supabase/migrations/20260531160000_create_white_label_pa
 const resolver = read("src/lib/white-label/resolver.ts");
 const permissions = read("src/lib/white-label/permissions.ts");
 const attribution = read("src/lib/white-label/attribution.ts");
+const branding = read("src/lib/white-label/branding.ts");
 const loginForm = read("src/components/auth/login-form.tsx");
 const partnerCreateForm = read("src/components/white-label/partner-create-form.tsx");
 const platformPartnersAdmin = read("src/components/white-label/platform-partners-admin.tsx");
@@ -81,6 +82,8 @@ assert.match(attribution, /partner_invite_code/, "signup metadata must support i
 assert.match(attribution, /findActivePartnerFromOrganization/, "authenticated app attribution must trust durable organization partner_id");
 assert.match(attribution, /organization\.partner_id/, "organization partner attribution must be preserved after login");
 assert.match(attribution, /attribution_detail: "organization\.partner_id"/, "organization partner attribution must create an auditable partner account link");
+assert.match(branding, /isSafeBrandAssetUrl/, "brand resolver must allow app-owned root-relative logo assets");
+assert.match(branding, /\^\\\/\[a-z0-9\/_\\\-\.\]\+/, "brand asset allowlist must stay path-scoped");
 
 assert.match(loginForm, /partnerAttribution/, "LoginForm must accept partner attribution");
 assert.match(loginForm, /partner_slug/, "sign-up must pass partner_slug to auth metadata");

@@ -22,6 +22,11 @@ const setupScript = readFileSync("scripts/setup-click-to-scale-ghl.mjs", "utf8")
 assert.match(partnerConfig, /id: "click_to_scale"/);
 assert.match(partnerConfig, /displayName: "Click to Scale"/);
 assert.match(partnerConfig, /productName: "Click to Scale DealFlow"/);
+assert.match(partnerConfig, /primary: "#2999B6"/);
+assert.match(partnerConfig, /secondary: "#00254E"/);
+assert.match(partnerConfig, /accent: "#225273"/);
+assert.match(partnerConfig, /background: "#020610"/);
+assert.match(partnerConfig, /logoUrl: "\/partners\/click-to-scale\/logo\.png"/);
 assert.match(partnerConfig, /ghl:\s*{[\s\S]*enabled: true/);
 assert.match(partnerConfig, /smsTemplate: "click_to_scale_lead_alert"/);
 assert.match(partnerConfig, /getWhiteLabelPartnerBySlug/);
@@ -54,6 +59,8 @@ assert.match(whiteLabelSeedMigration, /insert into public\.partners/);
 assert.match(whiteLabelSeedMigration, /'click-to-scale'/);
 assert.match(whiteLabelSeedMigration, /insert into public\.partner_branding/);
 assert.match(whiteLabelSeedMigration, /'Click to Scale DealFlow'/);
+assert.match(whiteLabelSeedMigration, /'#2999B6'/);
+assert.match(whiteLabelSeedMigration, /'\/partners\/click-to-scale\/logo\.png'/);
 
 assert.match(ghlClient, /services\.leadconnectorhq\.com/);
 assert.match(ghlClient, /Version: GHL_API_VERSION/);

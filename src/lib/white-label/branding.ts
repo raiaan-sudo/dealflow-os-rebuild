@@ -59,6 +59,19 @@ export function isSafeHttpUrl(value: unknown) {
   }
 }
 
+export function isSafeBrandAssetUrl(value: unknown) {
+  if (isSafeHttpUrl(value)) {
+    return true;
+  }
+
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const path = value.trim();
+  return /^\/[a-z0-9/_\-.]+$/i.test(path) && !path.startsWith("//") && !path.includes("..");
+}
+
 export function isSafeEmail(value: unknown) {
   return typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
@@ -103,15 +116,15 @@ export function buildPartnerBranding(params: {
       ? String(partner?.accent_color)
       : DEFAULT_PARTNER_BRANDING.accentColor;
 
-  const logoUrl = isSafeHttpUrl(theme.logoUrl)
+  const logoUrl = isSafeBrandAssetUrl(theme.logoUrl)
     ? String(theme.logoUrl)
-    : isSafeHttpUrl(partner?.logo_url)
+    : isSafeBrandAssetUrl(partner?.logo_url)
       ? String(partner?.logo_url)
       : null;
 
-  const faviconUrl = isSafeHttpUrl(theme.faviconUrl)
+  const faviconUrl = isSafeBrandAssetUrl(theme.faviconUrl)
     ? String(theme.faviconUrl)
-    : isSafeHttpUrl(partner?.favicon_url)
+    : isSafeBrandAssetUrl(partner?.favicon_url)
       ? String(partner?.favicon_url)
       : null;
 
