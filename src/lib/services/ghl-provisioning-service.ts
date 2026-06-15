@@ -17,6 +17,8 @@ type PartnerTableResponse = Promise<{ data: unknown; error: { message: string; c
 type PartnerTableBuilder = {
   select: (...args: unknown[]) => PartnerTableBuilder;
   eq: (...args: unknown[]) => PartnerTableBuilder;
+  order: (...args: unknown[]) => PartnerTableBuilder;
+  limit: (...args: unknown[]) => PartnerTableBuilder;
   maybeSingle: () => PartnerTableResponse;
   insert: (value: unknown) => PartnerTableBuilder;
   update: (value: unknown) => PartnerTableBuilder;
@@ -212,6 +214,31 @@ async function readExistingMapping(params: {
     ghl_stage_id: string | null;
     sync_enabled: boolean;
   } | null;
+}
+
+async function readLatestSuccessfulLocationEvent(params: {
+  supabase: AdminClient;
+  workspaceId: string;
+  partnerId: string;
+}) {
+  const db = newPartnerTables(params.supabase);
+  const { data, error } = await db
+    .from("ghl_provisioning_events")
+    .select("external_id")
+    .eq("workspace_id", params.workspaceId)
+    .eq("partner_id", params.partnerId)
+    .eq("step", "location_create")
+    .eq("status", "succeeded")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new ApiError(500, error.message, "ghl_location_event_fetch_failed");
+  }
+
+  const event = data as { external_id?: string | null } | null;
+  return event?.external_id?.trim() || null;
 }
 
 async function readProvisioningIdentity(params: {
@@ -629,36 +656,56 @@ export async function provisionGhlWorkspaceForDealFlowWorkspace(payload: GhlWork
   const client = new GoHighLevelClient({ token });
 
   try {
-    await appendProvisioningEvent({
+    const reusableLocationId = await readLatestSuccessfulLocationEvent({
       supabase,
-      jobId: job.id,
       workspaceId: payload.workspaceId,
       partnerId: payload.partnerId,
-      step: "location_create",
-      status: "started",
-      metadata: { workspace_name: workspaceName, snapshot_configured: Boolean(template?.snapshot_id) },
     });
-    const locationId = await client.createLocation({
-      name: workspaceName,
-      companyId: config.company_id,
-      firstName: name.firstName,
-      lastName: name.lastName,
-      email: resolvedPayload.customerEmail,
-      snapshotId: template?.snapshot_id,
-      metadata: {
-        dealflow_workspace_id: payload.workspaceId,
-        dealflow_partner_id: payload.partnerId,
-      },
-    });
-    await appendProvisioningEvent({
-      supabase,
-      jobId: job.id,
-      workspaceId: payload.workspaceId,
-      partnerId: payload.partnerId,
-      step: "location_create",
-      status: "succeeded",
-      externalId: locationId,
-    });
+    let locationId = reusableLocationId;
+
+    if (locationId) {
+      await appendProvisioningEvent({
+        supabase,
+        jobId: job.id,
+        workspaceId: payload.workspaceId,
+        partnerId: payload.partnerId,
+        step: "location_reuse",
+        status: "succeeded",
+        externalId: locationId,
+        metadata: { reason: "previous_location_create_succeeded" },
+      });
+    } else {
+      await appendProvisioningEvent({
+        supabase,
+        jobId: job.id,
+        workspaceId: payload.workspaceId,
+        partnerId: payload.partnerId,
+        step: "location_create",
+        status: "started",
+        metadata: { workspace_name: workspaceName, snapshot_configured: Boolean(template?.snapshot_id) },
+      });
+      locationId = await client.createLocation({
+        name: workspaceName,
+        companyId: config.company_id,
+        firstName: name.firstName,
+        lastName: name.lastName,
+        email: resolvedPayload.customerEmail,
+        snapshotId: template?.snapshot_id,
+        metadata: {
+          dealflow_workspace_id: payload.workspaceId,
+          dealflow_partner_id: payload.partnerId,
+        },
+      });
+      await appendProvisioningEvent({
+        supabase,
+        jobId: job.id,
+        workspaceId: payload.workspaceId,
+        partnerId: payload.partnerId,
+        step: "location_create",
+        status: "succeeded",
+        externalId: locationId,
+      });
+    }
 
     let ghlUserId: string | null = null;
     if (resolvedPayload.customerEmail?.trim()) {
