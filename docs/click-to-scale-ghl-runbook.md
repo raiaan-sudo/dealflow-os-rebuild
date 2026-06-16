@@ -76,16 +76,17 @@ Required database configuration:
 Required private integration scopes:
 
 - Lead sync only:
-  - `contacts.readonly`
   - `contacts.write`
-  - `opportunities.readonly`
-  - `opportunities.write`
   - `locations.readonly`
+  - Do not select contact read/list scopes for the current lead-sync path. DealFlow uses GHL's native contact upsert endpoint so it does not need to search/list contacts first.
 - Automatic sub-account provisioning:
   - all lead sync scopes above
   - `locations.write`
   - `users.readonly`
   - `users.write`
+- Future pipeline/workflow phase after Christian supplies IDs:
+  - `opportunities.write` only if DealFlow creates opportunities in a selected pipeline/stage
+  - workflow-specific scopes only after workflow enrollment is implemented and tested
 - Do not select broad admin scopes such as SaaS billing, snapshots, documents, phone numbers, Twilio, companies, or custom menu links unless a later implementation explicitly uses them and adds tests for that surface.
 
 Safe validation:

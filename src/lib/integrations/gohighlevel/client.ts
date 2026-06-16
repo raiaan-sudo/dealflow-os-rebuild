@@ -193,17 +193,17 @@ export class GoHighLevelClient {
   }
 
   async upsertContact(payload: GhlContactPayload) {
-    const existingId = await this.searchContact({
-      locationId: payload.locationId,
-      email: payload.email,
-      phone: payload.phone,
+    const result = await this.request<{ contact?: { id?: string }; id?: string }>("/contacts/upsert", {
+      method: "POST",
+      body: payload,
     });
 
-    if (existingId) {
-      return this.updateContact(existingId, payload);
+    const id = result?.contact?.id ?? result?.id ?? null;
+    if (!id) {
+      throw new ApiError(502, "GoHighLevel contact upsert response did not include an ID.", "ghl_contact_upsert_failed");
     }
 
-    return this.createContact(payload);
+    return id;
   }
 
   async createOpportunity(payload: GhlOpportunityPayload) {

@@ -71,6 +71,7 @@ assert.match(ghlClient, /CLICKTOSCALE_GHL_PRIVATE_INTEGRATION/);
 assert.match(ghlClient, /ghl_rate_limited/);
 assert.match(ghlClient, /searchContact/);
 assert.match(ghlClient, /upsertContact/);
+assert.match(ghlClient, /\/contacts\/upsert/);
 assert.match(ghlClient, /createOpportunity/);
 
 assert.match(crmSync, /buildPartnerCrmSyncIdempotencyKey/);
