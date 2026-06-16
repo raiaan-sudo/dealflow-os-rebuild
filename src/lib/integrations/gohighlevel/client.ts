@@ -60,7 +60,7 @@ type GhlRequestOptions = {
 };
 
 const GHL_BASE_URL = "https://services.leadconnectorhq.com";
-const GHL_API_VERSION = "2021-07-28";
+const GHL_API_VERSION = "v3";
 
 function normalizeCredentialEnvKey(ref: string) {
   return ref.trim().replace(/[^A-Z0-9_]/gi, "_").toUpperCase();
