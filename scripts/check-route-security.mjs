@@ -105,6 +105,20 @@ const expectedInternalApiRoutes = new Map([
       "workflowEnrollment: false",
     ],
   }],
+  ["/api/internal/martine-sms-test", {
+    methods: new Set(["POST"]),
+    markers: [
+      "assertInternalSystemRequest",
+      "MARTINE_SMS_TEST_ENABLED",
+      "TARGET_PHONE_E164",
+      "createdLead: false",
+      "createdSystemJob: false",
+      "mutatedMeta: false",
+      "mutatedGhl: false",
+      "createdStripeCharge: false",
+      "ranProviderGeneration: false",
+    ],
+  }],
   ["/api/internal/partner-crm-sync-dry-proof", {
     methods: new Set(["POST"]),
     markers: [
