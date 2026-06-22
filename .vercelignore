@@ -11,6 +11,8 @@ test-results/
 .tmp-playwright/
 playwright-report/
 screenshots/
+docs/launch-reports/
+performance-reports/
 supabase/.temp/
 recovery-report.json
 
