@@ -5,6 +5,7 @@ import {
 } from "@/lib/paywall-access";
 import { PageHeader } from "@/components/app/page-header";
 import { CampaignDashboardView } from "@/components/dashboard/campaign-dashboard-view";
+import { AutonomyModeControl } from "@/components/dashboard/autonomy-mode-control";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
@@ -37,7 +38,7 @@ import {
   getCreativePerformanceSummaryForCampaign,
   getLatestCreativePerformanceSummary,
 } from "@/lib/services/creative-performance-service";
-import { logError } from "@/lib/logging";
+import { logError, logOperationalEvent } from "@/lib/logging";
 import { getDashboardData, type DashboardMetrics } from "@/lib/services/dashboard-service";
 import {
   buildFirstWeekSuccessState,
@@ -87,19 +88,13 @@ function withTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs: number) {
 }
 
 function formatLastUpdated(value: string) {
-  const diffMs = Date.now() - new Date(value).getTime();
-  const diffSeconds = Math.max(0, Math.round(diffMs / 1000));
+  const timestamp = new Date(value).getTime();
 
-  if (diffSeconds <= 1) {
-    return "Last updated just now";
+  if (!Number.isFinite(timestamp)) {
+    return "Last updated";
   }
 
-  if (diffSeconds < 60) {
-    return `Last updated ${diffSeconds} seconds ago`;
-  }
-
-  const diffMinutes = Math.round(diffSeconds / 60);
-  return `Last updated ${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+  return `Last updated ${new Date(timestamp).toISOString().slice(11, 16)} UTC`;
 }
 
 function parseCostPerLeadRange(value: string) {
@@ -318,7 +313,7 @@ function SubscriptionLifecycleBanner({
     <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-foreground">
       <p className="font-semibold">Campaign infrastructure is paused</p>
       <p className="mt-1 text-muted-foreground">
-        This dashboard stays read-only while billing is inactive. DealFlow-managed Meta objects,
+        This dashboard stays read-only while billing is inactive. managed Meta objects,
         lead capture, alerts, and automation jobs remain paused until billing is reactivated.
       </p>
       <Button asChild className="mt-3" size="sm">
@@ -388,7 +383,7 @@ async function loadDashboardStateForCampaign(
         ? withTimeout(
             evaluateAutonomy(resolvedCampaignId).catch(() => null),
             null,
-            3_500,
+            7_000,
           )
         : Promise.resolve(null),
       organizationId
@@ -408,6 +403,35 @@ async function loadDashboardStateForCampaign(
       ),
       withTimeout(loadLeadLoopVerified(resolvedCampaignId).catch(() => false), false, 2_500),
     ]);
+    const resolvedAutonomyResult =
+      autonomyResult ??
+      (resolvedCampaignId
+        ? await withTimeout(
+            evaluateAutonomy(resolvedCampaignId).catch((error) => {
+              const message = error instanceof Error ? error.message : "Unknown autonomy evaluation error";
+              const code = typeof error === "object" && error !== null && "code" in error
+                ? String((error as { code?: unknown }).code ?? "")
+                : "";
+              if (
+                code === "billing_optimization_payment_required" ||
+                message === "Optimization recommendations require active billing."
+              ) {
+                logOperationalEvent("dashboard_autonomy_evaluation_billing_gated", {
+                  campaignId: resolvedCampaignId,
+                  code: "billing_optimization_payment_required",
+                });
+              } else {
+                logError("Dashboard autonomy evaluation failed", {
+                  campaignId: resolvedCampaignId,
+                  message,
+                });
+              }
+              return null;
+            }),
+            null,
+            7_000,
+          )
+        : null);
     const recentLeads = dashboardData?.recentLeads ?? [];
     const publish = resolvedCampaign?.record?.publish ?? null;
     const publicFunnelPublished = Boolean(
@@ -469,7 +493,7 @@ async function loadDashboardStateForCampaign(
       launchRecord,
       dashboardData,
       creativePerformanceSummary,
-      autonomySnapshot: autonomyResult?.snapshot ?? null,
+      autonomySnapshot: resolvedAutonomyResult?.snapshot ?? null,
       entitlements,
       selectedAdSummary,
       leadLoopVerified,
@@ -585,6 +609,18 @@ export default async function DashboardPage({
       />
       <p className="text-sm text-muted-foreground">{formatLastUpdated(state.lastUpdatedAt)}</p>
       <SubscriptionLifecycleBanner entitlements={state.entitlements} />
+      <AutonomyModeControl
+        campaignId={state.campaignId}
+        mode={state.autonomySnapshot?.mode ?? "manual"}
+        systemStatus={state.autonomySnapshot?.systemStatus ?? "paused"}
+        alert={state.autonomySnapshot?.alert ?? null}
+        executionSyncedAt={state.autonomySnapshot?.executionSyncedAt ?? null}
+        queuedCount={state.autonomySnapshot?.queuedCount ?? 0}
+        appliedCount={state.autonomySnapshot?.appliedCount ?? 0}
+        blockedCount={state.autonomySnapshot?.blockedCount ?? 0}
+        planTier={state.entitlements?.planTier ?? "starter"}
+        autonomyEntitled={state.entitlements?.canRunAutonomy ?? false}
+      />
       <CampaignDashboardView
         plan={state.plan}
         metaConnection={state.metaConnection}
@@ -604,6 +640,8 @@ export default async function DashboardPage({
         firstWeekSuccess={state.firstWeekSuccess}
         valueReport={state.valueReport}
         renderedAt={state.lastUpdatedAt}
+        planTier={state.entitlements?.planTier ?? "starter"}
+        autonomyEntitled={state.entitlements?.canRunAutonomy ?? false}
         optimizerResult={analyzeCampaign(
           buildOptimizerInput({
             plan: state.plan,

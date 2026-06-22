@@ -3,6 +3,7 @@ import { inferCampaignIntent, type CampaignIntent } from "@/lib/campaign-intent"
 import { readCampaignPlanDocumentWithDriftGuard } from "@/lib/services/campaign-plan-persistence-service";
 import { readPersistedAssetGenerationState } from "@/lib/services/asset-generation-lifecycle";
 import { normalizeCreativeStrategy } from "@/lib/services/campaign-creative-strategy";
+import { markInstantFallbackStaticAssets } from "@/lib/services/creative-asset-status";
 import type {
   CampaignAd,
   CampaignCreatives,
@@ -88,6 +89,11 @@ function normalizeFunnelType(value: unknown, fallback: FunnelType): FunnelType {
     : fallback;
 }
 
+function normalizeFunnelLanguage(value: unknown): CampaignFunnel["language"] {
+  const language = safeText(value).toLowerCase();
+  return language === "en" || language === "fr" || language === "es" ? language : undefined;
+}
+
 function applySavedStaticGenerationLifecycle(
   staticAds: CampaignCreatives["staticAds"],
   savedDocument?: SavedCampaignDocument | null,
@@ -150,6 +156,22 @@ function safeRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+function hasHiggsfieldFinishedStaticAds(value: CampaignCreatives["staticAds"]) {
+  return value.filter((asset) => {
+    const qa = asset.imageQa;
+
+    return (
+      asset.imageGenerationProvider === "higgsfield_marketing_studio" &&
+      asset.qualityTier === "higgsfield_finished_ad" &&
+      asset.appComposedFinal !== true &&
+      asset.storageNormalized === true &&
+      Boolean(asset.imageUrl) &&
+      qa?.mode === "finished_ad" &&
+      qa.decision === "accept"
+    );
+  }).length >= 3;
 }
 
 function runtimeHasRecordedLaunch(value: Record<string, unknown> | null) {
@@ -219,8 +241,8 @@ function adaptModernPersistedPlanDocument(value: Record<string, unknown>): Saved
       funnel_goal: funnelGoalFromPlan(value),
     },
     creatives: value.creatives,
-    staticAds: creatives?.staticAds,
-    videoAds: creatives?.videoAds,
+    staticAds: value.staticAds ?? creatives?.staticAds,
+    videoAds: value.videoAds ?? creatives?.videoAds,
     creative_chat_intake: value.creative_chat_intake,
     selected_ad_id: value.selected_ad_id,
     selected_ad_ids: value.selected_ad_ids,
@@ -594,17 +616,20 @@ function normalizeFunnel(
   createdAt: string,
 ): CampaignFunnel {
   const source = value ?? {};
+  const formFields = source.form_fields ?? source.formFields;
+  const optimizationNotes = source.optimization_notes ?? source.optimizationNotes;
 
   return {
-    funnel_type: normalizeFunnelType(source.funnel_type, built.funnel.funnel_type),
+    funnel_type: normalizeFunnelType(source.funnel_type ?? source.funnelType, built.funnel.funnel_type),
+    language: normalizeFunnelLanguage(source.language),
     headline: safeText(source.headline) || built.funnel.headline,
     subheadline: safeText(source.subheadline) || built.funnel.subheadline,
     cta: safeText(source.cta) || built.funnel.cta,
     sections: normalizeCanonicalFunnelSections(source.sections, built.funnel.sections),
-    form_fields: Array.isArray(source.form_fields) ? source.form_fields.map(String) : built.funnel.form_fields,
-    follow_up_action: safeText(source.follow_up_action) || built.funnel.follow_up_action,
-    optimization_notes: Array.isArray(source.optimization_notes)
-      ? source.optimization_notes.map(String)
+    form_fields: Array.isArray(formFields) ? formFields.map(String) : built.funnel.form_fields,
+    follow_up_action: safeText(source.follow_up_action ?? source.followUpAction) || built.funnel.follow_up_action,
+    optimization_notes: Array.isArray(optimizationNotes)
+      ? optimizationNotes.map(String)
       : built.funnel.optimization_notes,
   };
 }
@@ -691,11 +716,18 @@ export function normalizeCanonicalCampaign(params: {
   const funnelSteps = Array.isArray(planSource.funnel_steps)
     ? planSource.funnel_steps.map(String)
     : planRecord?.funnelSteps ?? [];
-  const savedStaticAds =
-    params.staticAds ??
-    safeArray<CampaignCreatives["staticAds"][number]>(params.savedDocument?.staticAds) ??
-    planRecord?.creatives?.staticAds ??
-    [];
+  const documentStaticAds = safeArray<CampaignCreatives["staticAds"][number]>(
+    params.savedDocument?.staticAds,
+  );
+  const persistedStaticAds = params.staticAds ?? [];
+  const planRecordStaticAds = planRecord?.creatives?.staticAds ?? [];
+  const savedStaticAds = hasHiggsfieldFinishedStaticAds(documentStaticAds)
+    ? documentStaticAds
+    : persistedStaticAds.length > 0
+      ? persistedStaticAds
+      : documentStaticAds.length > 0
+        ? documentStaticAds
+        : planRecordStaticAds;
   const savedVideoAds =
     params.videoAds ??
     safeArray<CampaignCreatives["videoAds"][number]>(params.savedDocument?.videoAds) ??
@@ -709,7 +741,7 @@ export function normalizeCanonicalCampaign(params: {
   );
   const staticAds = savedStaticAds.length > 0
     ? savedStaticAds
-    : items
+    : markInstantFallbackStaticAssets(items
         .filter((item) => item.kind === "static")
         .map((item) => ({
           id: item.id,
@@ -731,7 +763,7 @@ export function normalizeCanonicalCampaign(params: {
           cta: item.cta,
           score: item.score,
           recommended: item.recommended,
-        }));
+        })));
   const lifecycleAwareStaticAds = applySavedStaticGenerationLifecycle(staticAds, params.savedDocument);
   const videoAds = savedVideoAds.length > 0
     ? savedVideoAds
@@ -911,6 +943,7 @@ export function canonicalCampaignToPlan(record: FullCampaignRecord): CampaignPla
     ads: fallbackAds,
     funnel: {
       funnelType: record.funnel.funnel_type,
+      language: record.funnel.language,
       headline: record.funnel.headline,
       subheadline: record.funnel.subheadline,
       cta: record.funnel.cta,

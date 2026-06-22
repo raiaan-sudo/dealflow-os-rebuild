@@ -15,11 +15,24 @@ const videoErrors = fs.readFileSync("src/lib/ai/video-generation-errors.ts", "ut
 const launchCreateRoute = fs.readFileSync("src/app/api/campaigns/create/route.ts", "utf8");
 
 assert.match(videoRoute, /getVideoProviderReadiness/, "video route preflights provider readiness");
+assert.match(videoRoute, /assertProviderGenerationHardCapsConfigured/, "video route requires hard provider spend caps before queueing paid provider work");
 assert.ok(
-  videoRoute.indexOf("if (!videoProviderReadiness.ready)") < videoRoute.indexOf("const activeJobs"),
-  "video route blocks disabled/unconfigured providers before job lookup/queue",
+  videoRoute.indexOf("const activeJobs") < videoRoute.indexOf("if (!videoProviderReadiness.ready)"),
+  "video route returns existing active render jobs before disabled provider gates can hide stale/deferred state",
+);
+assert.ok(
+  videoRoute.indexOf("if (!videoProviderReadiness.ready)") < videoRoute.indexOf("const job = await createSystemJob"),
+  "video route blocks disabled/unconfigured providers before creating new jobs",
+);
+assert.ok(
+  videoRoute.indexOf("assertProviderGenerationHardCapsConfigured") < videoRoute.indexOf("const job = await createSystemJob"),
+  "video route blocks incomplete hard caps before creating new paid generation jobs",
 );
 assert.doesNotMatch(videoRoute, /processSystemJob/, "video route remains enqueue-only");
+assert.match(videoRoute, /createHash\("sha256"\)/, "video route scopes idempotency to the approved creative brief");
+assert.match(videoRoute, /safeIdempotencyPart\(selectedVideo\.id\)/, "video route scopes idempotency to the selected video creative");
+assert.match(videoRoute, /!job\.reviewed_at/, "video route does not reuse reviewed stale jobs as active render work");
+assert.match(videoRoute, /!job\.dead_lettered_at/, "video route does not reuse dead-lettered jobs as active render work");
 
 assert.match(systemJobService, /providerUsageRunId: `\$\{processingJob\.id\}:\$\{processingJob\.attempt_count \?\? 0\}`/, "video provider usage idempotency is scoped to the claimed job attempt");
 assert.match(videoJob, /providerUsageRunId/, "video generation accepts a provider usage run id");
@@ -32,9 +45,11 @@ assert.match(videoJob, /buildVideoProductQualityGate/, "completed videos persist
 assert.match(videoJob, /videoProductQualityGate: existingVideoProductQualityGate/, "async video status completion reuses accepted product-quality gate in deterministic QA");
 assert.match(videoJob, /videoPatch: \{[\s\S]*videoQualityGate: nextVideoQualityGate,[\s\S]*videoProductQualityGate: existingVideoProductQualityGate/, "async video status completion persists launch-ready QA metadata back into the campaign plan");
 assert.match(videoJob, /hook in the first 1-2 seconds/, "UGC prompts require an immediate hook");
-assert.match(videoJob, /specific buyer pain or market problem/, "UGC prompts require a campaign-specific market problem");
+assert.match(videoJob, /specific buyer or seller pain or market problem/, "UGC prompts require a campaign-specific market problem");
 assert.match(videoJob, /relatable creator\/agent POV/, "UGC prompts require a creator or agent point of view");
-assert.match(videoJob, /buyer gets better options, a shortlist, qualification help, or early access/, "UGC prompts require a clear buyer mechanism");
+assert.match(videoJob, /Mechanism should follow the approved script/, "UGC prompts preserve approved script mechanism");
+assert.match(videoRoute, /approvedScript\?\.lines/, "video route uses the approved UGC script when present");
+assert.match(videoRoute, /approvedScript\?\.version/, "video route idempotency includes approved script version or hash");
 assert.match(videoJob, /accepted static source image as visual context/, "UGC prompts require source-static relevance");
 assert.match(videoJob, /Do not use fake documents, fake UI, fake testimonials, unsupported guarantees/, "UGC prompts block unsupported claims and fake artifacts");
 assert.match(videoJob, /status: "released"[\s\S]{0,240}providerJobCreated: false/, "pre-provider failures release provider usage instead of creating failed debt");
@@ -77,6 +92,16 @@ assert.match(resolveDebt, /76cfe4df-a488-49ff-8f3f-c616889c5c34/, "known video p
 assert.match(resolveDebt, /operatorReviewedAt/, "known failed provider event is reviewed without rewriting execution status");
 
 assert.match(creativeWizard, /customerVideoMessage/, "creative wizard sanitizes video failure messages");
+assert.match(creativeWizard, /hasCurrentStaticVideoSource/, "creative wizard checks for a current launch-ready static source before UGC render");
+assert.match(creativeWizard, /Render static creatives first/, "creative wizard blocks UGC render until static source media is ready");
+assert.match(creativeWizard, /UGC video preview needs a launch-ready image source/, "creative wizard explains why video render cannot start");
+assert.match(creativeWizard, /activeVideoHasCurrentPlayableRender/, "creative wizard only loads playable UGC video when it matches the approved script");
+assert.match(creativeWizard, /Fresh UGC render required/, "creative wizard replaces stale playable videos with a fresh-render state");
+assert.match(creativeWizard, /Prepare current static source/, "creative wizard gives users an action when fresh UGC needs current static source media");
+assert.match(creativeWizard, /Render fresh UGC video/, "creative wizard gives users a fresh render action instead of showing stale approved-script media");
+assert.match(creativeWizard, /currentVideoStatusJob/, "creative wizard follows video status jobs until app-owned media is visible");
+assert.match(creativeWizard, /setActiveVideoJobId\(data\.job\.id\)/, "creative wizard keeps queued UGC render jobs active even when worker processing is deferred");
+assert.match(creativeWizard, /window\.setInterval\(\(\) => \{\s*router\.refresh\(\);\s*\}, 10_000\)/s, "creative wizard polls server-rendered UGC state while video jobs are active");
 assert.match(previewPage, /customerVideoMessage/, "preview page sanitizes video failure messages");
 assert.doesNotMatch(videoErrors, /Review the operator diagnostics/, "operator diagnostics are not exposed in video errors");
 assert.match(launchCreateRoute, /isLaunchReadyVideoCreative/, "launch API enforces video readiness server-side");

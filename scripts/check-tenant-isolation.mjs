@@ -63,9 +63,47 @@ function assertNoUnscopedAdminWrite(relativePath, table, name) {
   pass(name, `${relativePath} has tenant predicates near ${table} admin writes`);
 }
 
+function listFiles(dir, predicate) {
+  const fullDir = path.join(root, dir);
+  const entries = fs.readdirSync(fullDir, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    const relativePath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...listFiles(relativePath, predicate));
+      continue;
+    }
+
+    if (entry.isFile() && predicate(relativePath)) {
+      files.push(relativePath);
+    }
+  }
+
+  return files;
+}
+
+function assertNoCustomerRouteSecretExposure() {
+  const customerRouteFiles = listFiles("src/app", (relativePath) =>
+    relativePath.endsWith("route.ts") &&
+    !relativePath.includes("src/app/api/admin/") &&
+    !relativePath.includes("src/app/api/internal/"),
+  );
+  const secretPattern = /encrypted_credential_ref|getGhlPrivateTokenFromCredentialRef|CLICKTOSCALE_GHL_PRIVATE_INTEGRATION|GHL_CLICK_TO_SCALE_PRIVATE_INTEGRATION_TOKEN|GHL_PRIVATE_INTEGRATION_TOKEN/;
+
+  for (const relativePath of customerRouteFiles) {
+    if (secretPattern.test(read(relativePath))) {
+      fail("GHL token route exposure", `${relativePath} exposes GHL credential material in a customer-facing route`);
+      return;
+    }
+  }
+
+  pass("GHL token route exposure", "customer-facing routes do not reference GHL credential refs or token envs");
+}
+
 includes(
   "src/lib/services/campaign-persistence.ts",
-  ".or(`user_id.eq.${userId},owner_id.eq.${ownerId}`)",
+  ".or(`user_id.eq.${userId},owner_id.eq.${ownerId},organization_id.eq.${ownerId}`)",
   "Campaign read ownership",
   "campaign lookup is scoped to current user or owning organization",
 );
@@ -197,6 +235,51 @@ orderedIncludes(
   "System job retry ownership",
   "user-triggered job retry verifies job ownership before service-role update",
 );
+
+includes(
+  "supabase/migrations/20260617170000_create_partner_ghl_integration.sql",
+  "workspace_id uuid not null references public.organizations (id)",
+  "GHL mapping workspace FK",
+  "workspace_ghl_mapping and CRM sync tables reference organizations(id)",
+);
+includes(
+  "supabase/migrations/20260617170000_create_partner_ghl_integration.sql",
+  "lead_id uuid not null references public.leads (id)",
+  "GHL lead event FK",
+  "lead_crm_sync_events references leads(id)",
+);
+includes(
+  "supabase/migrations/20260617170000_create_partner_ghl_integration.sql",
+  "partner_id uuid not null references public.partners (id)",
+  "GHL partner FK",
+  "GHL tables reference partners(id), not stale text partner registries",
+);
+includes(
+  "src/app/api/admin/click-to-scale/ghl-mapping-repair/route.ts",
+  "requirePlatformAdmin",
+  "GHL mapping proof admin guard",
+  "mapping proof route is platform-admin only",
+);
+includes(
+  "src/app/api/admin/click-to-scale/ghl-mapping-repair/route.ts",
+  "assertSameOriginRequest(request)",
+  "GHL mapping proof CSRF guard",
+  "mapping proof route requires same-origin POST",
+);
+includes(
+  "src/app/api/admin/click-to-scale/ghl-lead-sync-proof/route.ts",
+  "requirePlatformAdmin",
+  "GHL lead proof admin guard",
+  "lead-sync proof route is platform-admin only",
+);
+includes(
+  "src/app/api/admin/click-to-scale/ghl-lead-sync-proof/route.ts",
+  "assertSameOriginRequest(request)",
+  "GHL lead proof CSRF guard",
+  "lead-sync proof route requires same-origin POST",
+);
+
+assertNoCustomerRouteSecretExposure();
 
 if (failures > 0) {
   process.exitCode = 1;

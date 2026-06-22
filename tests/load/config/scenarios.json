@@ -1,0 +1,20 @@
+{
+  "trafficModel": {
+    "anonymousPublic": 20,
+    "signupOnboarding": 20,
+    "existingCustomerDashboard": 20,
+    "creativeStudioJobs": 15,
+    "previewLaunchChecklist": 10,
+    "leadCapture": 10,
+    "billingSafeFlow": 5
+  },
+  "concurrencyMatrix": [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000],
+  "stressExtensions": [1250, 1500, 2000],
+  "defaultStageDurations": {
+    "warmup": "5m",
+    "sustain": "10m",
+    "cooldown": "2m",
+    "soakExpectedPeak": "2h",
+    "soakHighStable": "30m"
+  }
+}

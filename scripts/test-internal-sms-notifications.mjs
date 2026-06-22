@@ -6,8 +6,13 @@ const smsSource = readFileSync("src/lib/services/sms-service.ts", "utf8");
 const notificationSource = readFileSync("src/lib/services/internal-lead-notification-service.ts", "utf8");
 const leadCaptureSource = readFileSync("src/app/api/lead-capture/route.ts", "utf8");
 const systemJobSource = readFileSync("src/lib/services/system-job-service.ts", "utf8");
+const leadSideEffectsCrmProofRoute = readFileSync("src/app/api/internal/lead-side-effects-crm-proof/route.ts", "utf8");
+const partnerCrmSyncDryProofRoute = readFileSync("src/app/api/internal/partner-crm-sync-dry-proof/route.ts", "utf8");
+const partnerCrmSyncLiveContactProofRoute = readFileSync("src/app/api/internal/partner-crm-sync-live-contact-proof/route.ts", "utf8");
 const migrationSource = readFileSync("supabase/migrations/20260429230000_internal_sms_lead_notifications.sql", "utf8");
 const hardeningMigrationSource = readFileSync("supabase/migrations/20260430010000_public_launch_final_hardening.sql", "utf8");
+const leadSideEffectsHelper =
+  systemJobSource.match(/export async function runLeadSideEffects[\s\S]*?function getJobClient/)?.[0] ?? "";
 
 function normalizePhone(input, defaultCountry = "US") {
   const raw = typeof input === "string" ? input.trim() : "";
@@ -61,9 +66,21 @@ assert.match(notificationSource, /params\.agent\.phone_e164/);
 assert.doesNotMatch(notificationSource, /lead\.phone_e164\)\s*;/);
 assert.match(leadCaptureSource, /queueLeadSideEffectsJob/);
 assert.match(systemJobSource, /kind: "lead_side_effects"/);
-assert.match(systemJobSource, /safeNotifyAssignedAgentOfNewLead/);
-assert.match(systemJobSource, /safeSendMetaLeadConversion/);
+assert.match(systemJobSource, /runLeadSideEffects\(\{/);
+assert.match(leadSideEffectsHelper, /safeNotifyAssignedAgentOfNewLead/);
+assert.match(leadSideEffectsHelper, /safeSendMetaLeadConversion/);
+assert.match(leadSideEffectsHelper, /safeSyncLeadToPartnerCrm/);
+assert.match(leadSideEffectsHelper, /const \[notificationResult, metaConversionResult, crmSyncResult\] = await Promise\.all/);
+assert.match(leadSideEffectsHelper, /crmSyncResult/);
 assert.match(systemJobSource, /sideEffectJobId/);
+assert.match(leadSideEffectsCrmProofRoute, /proof_sms_stub_no_send/);
+assert.match(leadSideEffectsCrmProofRoute, /smsEmailSent: false/);
+assert.match(leadSideEffectsCrmProofRoute, /safeNotifyAssignedAgentOfNewLead: async/);
+assert.doesNotMatch(leadSideEffectsCrmProofRoute, /sendSms|sendNotificationIfMissing|TWILIO/i);
+assert.match(partnerCrmSyncDryProofRoute, /smsEmailSent: false/);
+assert.doesNotMatch(partnerCrmSyncDryProofRoute, /safeNotifyAssignedAgentOfNewLead|sendSms|sendNotificationIfMissing|TWILIO/i);
+assert.match(partnerCrmSyncLiveContactProofRoute, /smsEmailSent: false/);
+assert.doesNotMatch(partnerCrmSyncLiveContactProofRoute, /safeNotifyAssignedAgentOfNewLead|sendSms|sendNotificationIfMissing|TWILIO/i);
 assert.match(systemJobSource, /queueLeadSideEffectsJob\({[\s\S]*requestId: payload\.requestId[\s\S]*metaConversion:/);
 assert.match(leadCaptureSource, /return process\.env\.NODE_ENV !== "production";/);
 assert.doesNotMatch(leadCaptureSource, /ALLOW_PUBLIC_LEAD_NO_TURNSTILE/);

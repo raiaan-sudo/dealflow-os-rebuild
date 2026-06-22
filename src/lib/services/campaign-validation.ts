@@ -29,6 +29,11 @@ function normalizeOptionalText(value: unknown) {
   return safeText(value);
 }
 
+function normalizeOptionalFunnelLanguage(value: unknown): CampaignPlan["funnel"]["language"] {
+  const language = safeText(value).toLowerCase();
+  return language === "en" || language === "fr" || language === "es" ? language : undefined;
+}
+
 function normalizePainPoints(value: unknown) {
   if (!Array.isArray(value)) {
     return [];
@@ -155,6 +160,7 @@ export function normalizeCampaign(campaign: CampaignEnvelope): CampaignEnvelope 
       ads: normalizeAds(plan.ads),
       funnel: {
         funnelType: normalizeOptionalText(plan.funnel?.funnelType ?? plan.funnelType),
+        language: normalizeOptionalFunnelLanguage(plan.funnel?.language),
         headline: normalizeOptionalText(plan.funnel?.headline),
         subheadline: normalizeOptionalText(plan.funnel?.subheadline),
         cta: normalizeOptionalText(plan.funnel?.cta),

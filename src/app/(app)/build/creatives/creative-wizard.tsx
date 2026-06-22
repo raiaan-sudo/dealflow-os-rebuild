@@ -1,18 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
+import { Captions, Clapperboard, Gauge, Image as ImageIcon, Mic2, Sparkles } from "lucide-react";
 import {
   StaticCreativePreviewCard,
 } from "@/components/campaign/static-creative-preview-card";
 import { CustomerVideoPlayer } from "@/components/campaign/customer-video-player";
+import { GenerationCreditTopUpPanel } from "@/components/billing/generation-credit-top-up-panel";
 import { Button } from "@/components/ui/button";
 import {
+  classifyCreativeRenderJob,
+  isMarketingStudioWorkerDeferredRunAt,
+  type CreativeRenderStateView,
+} from "@/lib/services/creative-render-state";
+import {
   getStaticCreativeReadiness,
+  getStaticCreativeBriefMismatchReason,
   getStaticPreviewStatusMessage,
   getVideoReadinessLabel,
   getVideoReadinessMessage,
+  getVideoLaunchReadinessReason,
   isLaunchReadyStaticCreative,
   isLaunchReadyVideoCreative,
   isPlayableVideoCreative,
@@ -20,7 +29,10 @@ import {
   STATIC_LAUNCH_MIN_CREATIVE_COUNT,
 } from "@/lib/services/creative-media-readiness";
 import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
-import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
+import {
+  evaluateStaticCreativeLaunchSafety,
+  evaluateStaticCreativeQualityAdvisory,
+} from "@/lib/services/static-creative-visual-qa";
 
 type CreativeOption = {
   id: string;
@@ -31,7 +43,18 @@ type CreativeOption = {
   recommended?: boolean;
   imageUrl?: string | null;
   storageNormalized?: boolean | null;
+  appComposedFinal?: boolean | null;
+  qualityTier?: string | null;
+  compositionVersion?: string | null;
+  sourceBackgroundKind?: string | null;
+  sourceBackgroundProvider?: string | null;
+  sourceBackgroundAssetId?: string | null;
   imageGenerationState?: string | null;
+  imageGenerationProvider?: string | null;
+  generationMethod?: string | null;
+  providerName?: string | null;
+  generationMode?: string | null;
+  assetRole?: string | null;
   imageGenerationMessage?: string | null;
   imagePrompt?: string | null;
   imagePromptConfig?: {
@@ -48,7 +71,26 @@ type CreativeOption = {
     accepted?: boolean | null;
     hardFailures?: string[] | null;
   } | null;
+  visualQualityGate?: {
+    accepted?: boolean | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+  } | null;
+  premiumQualityGate?: {
+    accepted?: boolean | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+  } | null;
   imageQa?: {
+    usable?: boolean | null;
+    decision?: "accept" | "reject" | "review" | string | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+    textDensity?: number | null;
+    layoutRisk?: number | null;
+    detectedTextSamples?: string[] | null;
+  } | null;
+  sourceImageQa?: {
     usable?: boolean | null;
     decision?: "accept" | "reject" | "review" | string | null;
     mode?: string | null;
@@ -66,6 +108,14 @@ type CreativeOption = {
     visualLogic?: string[] | null;
     overlayLogic?: string[] | null;
   } | null;
+  briefHash?: string | null;
+  staticBriefHash?: string | null;
+  offerHash?: string | null;
+  ctaHash?: string | null;
+  brandHash?: string | null;
+  approvedOfferTitle?: string | null;
+  approvedCta?: string | null;
+  approvedBrand?: string | null;
   breakdown?: {
     hook?: string;
     concept?: string;
@@ -104,6 +154,9 @@ type VideoCreativeOption = {
   promptSource?: string | null;
   promptHash?: string | null;
   scriptHash?: string | null;
+  briefHash?: string | null;
+  ugcScriptHash?: string | null;
+  briefRevisionNumber?: number | null;
   campaignSpecificContext?: {
     campaignId?: string | null;
     creativeId?: string | null;
@@ -151,9 +204,28 @@ type VideoCreativeOption = {
 type CreativeWizardProps = {
   campaignId: string;
   creatives: CreativeOption[];
+  approvedBriefContext?: {
+    offerTitle?: string | null;
+    audience?: string | null;
+    market?: string | null;
+    brand?: string | null;
+    cta?: string | null;
+    staticStyle?: string | null;
+    revisionNumber?: number | null;
+    briefHash?: string | null;
+    staticBriefHash?: string | null;
+    offerHash?: string | null;
+    ctaHash?: string | null;
+    brandHash?: string | null;
+    ugcScriptHash?: string | null;
+  } | null;
+  approvedUgcScriptHash?: string | null;
+  approvedUgcScriptLines?: string[];
   persistedSelectedAdIds?: string[];
   persistedSelectedUgcVideoIds?: string[];
   videoCreatives?: VideoCreativeOption[];
+  initialRenderJobs?: SystemJob[];
+  generationCreditOverrideActive?: boolean;
 };
 
 type StudioPhase = "static_ads" | "ugc_videos";
@@ -162,20 +234,63 @@ type SystemJob = {
   id: string;
   kind?: string | null;
   status?: string | null;
+  created_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  next_run_at?: string | null;
+  locked_by?: string | null;
+  locked_until?: string | null;
+  attempt_count?: number | null;
+  retry_count?: number | null;
+  max_attempts?: number | null;
+  reviewed_at?: string | null;
+  dead_lettered_at?: string | null;
+  last_error_code?: string | null;
   error_message?: string | null;
+  payload?: {
+    creativeIndex?: number | null;
+    creativeIntake?: {
+      ugcScriptHash?: string | null;
+      briefHash?: string | null;
+      staticBriefHash?: string | null;
+    } | null;
+  } | null;
   result?: {
     staticAds?: CreativeOption[] | null;
   } | null;
+  renderState?: CreativeRenderStateView | null;
 };
+
+function jobRenderView(job: SystemJob | null | undefined) {
+  return job?.renderState ?? classifyCreativeRenderJob(job);
+}
+
+function isOpenRenderJob(job: SystemJob | null | undefined) {
+  if (job?.reviewed_at || job?.dead_lettered_at) {
+    return false;
+  }
+
+  return job?.status === "pending" || job?.status === "processing";
+}
+
+function upsertRenderJob(jobs: SystemJob[], job: SystemJob) {
+  return [job, ...jobs.filter((candidate) => candidate.id !== job.id)].slice(0, 12);
+}
 
 function isUgcCreative(creative: CreativeOption) {
   return /\bugc\b/i.test(`${creative.id} ${creative.formatLabel ?? ""} ${creative.breakdown?.concept ?? ""}`);
 }
 
-function creativeNeedsImageGeneration(creative: CreativeOption) {
+function videoMatchesApprovedScript(video: VideoCreativeOption, approvedUgcScriptHash?: string | null) {
+  return !approvedUgcScriptHash || video.ugcScriptHash === approvedUgcScriptHash || video.scriptHash === approvedUgcScriptHash;
+}
+
+function creativeNeedsImageGeneration(creative: CreativeOption, approvedBriefContext?: CreativeWizardProps["approvedBriefContext"]) {
+  const launchSafety = evaluateStaticCreativeLaunchSafety(creative);
+
   return !creative.imageUrl ||
-    creative.imageGenerationState === "failed" ||
-    !evaluateStaticVisualAssetDecision(creative).usable;
+    !launchSafety.passed ||
+    getStaticCreativeBriefMismatchReason(creative, approvedBriefContext) !== null;
 }
 
 function customerVideoMessage(message?: string | null) {
@@ -209,6 +324,16 @@ function customerImageMessage(message?: string | null) {
   return text;
 }
 
+const STATIC_RENDER_TIMEFRAME_MESSAGE =
+  "Sent for generation. Usually takes 90 seconds to 3 minutes. Preview renders unlock when they are ready.";
+
+const STATIC_RENDER_READY_TO_LOAD_MESSAGE =
+  "Preview renders are ready. Click Show preview renders to load the finished assets into this page.";
+
+function isCreditsInsufficient(code?: string | null, message?: string | null) {
+  return code === "credits_insufficient" || /credits?\s+insufficient|generation credits/i.test(message ?? "");
+}
+
 function getImageLimitMessage(creatives: CreativeOption[]) {
   const blockedCreative = creatives.find((creative) =>
     /maximum \d+ AI image generation|maximum \d+ AI image generations|daily image generation limit|provider_usage_limit_reached|session already used the maximum/i.test(
@@ -224,31 +349,52 @@ function getImageLimitMessage(creatives: CreativeOption[]) {
 export function CreativeWizard({
   campaignId,
   creatives,
+  approvedBriefContext = null,
+  approvedUgcScriptHash = null,
+  approvedUgcScriptLines = [],
+  initialRenderJobs = [],
   persistedSelectedAdIds = [],
   persistedSelectedUgcVideoIds = [],
   videoCreatives = [],
+  generationCreditOverrideActive = false,
 }: CreativeWizardProps) {
   const router = useRouter();
   const jobStreamsRef = useRef<Map<string, EventSource>>(new Map());
   const autoVideoStartedRef = useRef(false);
+  const staticBriefReadinessContext = useMemo(() => approvedBriefContext
+    ? {
+        staticBriefHash: approvedBriefContext.staticBriefHash,
+        offerHash: approvedBriefContext.offerHash,
+        ctaHash: approvedBriefContext.ctaHash,
+        brandHash: approvedBriefContext.brandHash,
+      }
+    : null, [approvedBriefContext]);
+  const isStaticLaunchReady = useCallback(
+    (creative: CreativeOption) => isLaunchReadyStaticCreative(creative, staticBriefReadinessContext),
+    [staticBriefReadinessContext],
+  );
   const buildHref = `/builder?campaignId=${encodeURIComponent(campaignId)}`;
   const rankedCreatives = useMemo(
     () => [...creatives].sort((left, right) => {
-      const readinessDelta = Number(isLaunchReadyStaticCreative(right)) - Number(isLaunchReadyStaticCreative(left));
+      const readinessDelta = Number(isStaticLaunchReady(right)) - Number(isStaticLaunchReady(left));
       return readinessDelta || (right.score ?? 0) - (left.score ?? 0);
     }),
-    [creatives],
+    [creatives, isStaticLaunchReady],
   );
+  const launchReadyCreatives = rankedCreatives.filter(isStaticLaunchReady);
   const recommendedStaticCount =
-    rankedCreatives.length >= STATIC_LAUNCH_MIN_CREATIVE_COUNT
-      ? Math.min(STATIC_LAUNCH_MAX_CREATIVE_COUNT, rankedCreatives.length)
-      : rankedCreatives.length;
-  const topCreatives = rankedCreatives.slice(0, recommendedStaticCount);
-  const topUgcCreatives = rankedCreatives
+    launchReadyCreatives.length >= STATIC_LAUNCH_MIN_CREATIVE_COUNT
+      ? STATIC_LAUNCH_MIN_CREATIVE_COUNT
+      : launchReadyCreatives.length;
+  const topCreatives = launchReadyCreatives.slice(0, recommendedStaticCount);
+  const topUgcCreatives = launchReadyCreatives
     .filter((creative) => /\bugc\b/i.test(`${creative.id} ${creative.formatLabel ?? ""}`))
     .slice(0, 2);
-  const availableIds = new Set(rankedCreatives.map((creative) => creative.id));
-  const savedSelectedIds = persistedSelectedAdIds.filter((id) => availableIds.has(id)).slice(0, 6);
+  const availableIds = useMemo(() => new Set(rankedCreatives.map((creative) => creative.id)), [rankedCreatives]);
+  const launchReadyIds = useMemo(() => new Set(launchReadyCreatives.map((creative) => creative.id)), [launchReadyCreatives]);
+  const savedSelectedIds = persistedSelectedAdIds
+    .filter((id) => availableIds.has(id) && launchReadyIds.has(id))
+    .slice(0, 6);
   const recommendedSelectedIds = topCreatives.length > 0
     ? Array.from(
         new Set(
@@ -262,46 +408,54 @@ export function CreativeWizard({
             : topCreatives.map((creative) => creative.id),
         ),
       )
-    : rankedCreatives.slice(0, 1).map((creative) => creative.id);
+    : [];
   const defaultSelectedIds = savedSelectedIds.length > 0 ? savedSelectedIds : recommendedSelectedIds;
   const minSelected = rankedCreatives.length >= STATIC_LAUNCH_MIN_CREATIVE_COUNT
     ? STATIC_LAUNCH_MIN_CREATIVE_COUNT
     : rankedCreatives.length;
-  const maxSelected = Math.min(STATIC_LAUNCH_MAX_CREATIVE_COUNT, rankedCreatives.length);
+  const maxSelected = Math.min(
+    STATIC_LAUNCH_MAX_CREATIVE_COUNT,
+    Math.max(minSelected, launchReadyCreatives.length || rankedCreatives.length),
+  );
   const [selectedIds, setSelectedIds] = useState<string[]>(defaultSelectedIds);
   const [saving, setSaving] = useState(false);
   const [renderingImages, setRenderingImages] = useState(false);
   const [renderingVideo, setRenderingVideo] = useState(false);
   const [activeImageJobId, setActiveImageJobId] = useState<string | null>(null);
   const [activeVideoJobId, setActiveVideoJobId] = useState<string | null>(null);
+  const [renderJobs, setRenderJobs] = useState<SystemJob[]>(initialRenderJobs);
   const [renderMessage, setRenderMessage] = useState<string | null>(null);
+  const [previewRendersReadyToLoad, setPreviewRendersReadyToLoad] = useState(false);
+  const [previewRendersLoading, setPreviewRendersLoading] = useState(false);
   const [videoMessage, setVideoMessage] = useState<string | null>(null);
+  const [renderClockMs, setRenderClockMs] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
+  const [creditTopUpSurface, setCreditTopUpSurface] = useState<"image" | "video" | null>(null);
   const [fullVideoOpen, setFullVideoOpen] = useState(false);
+  const [expandedStaticCreativeId, setExpandedStaticCreativeId] = useState<string | null>(null);
   const [activePhase, setActivePhase] = useState<StudioPhase>("static_ads");
   const [activeCreativeId, setActiveCreativeId] = useState<string | null>(
     defaultSelectedIds[0] ?? rankedCreatives[0]?.id ?? null,
   );
   const selectedCreatives = rankedCreatives.filter((creative) => selectedIds.includes(creative.id));
-  const launchReadyCreatives = rankedCreatives.filter(isLaunchReadyStaticCreative);
-  const selectedLaunchReadyCreatives = selectedCreatives.filter(isLaunchReadyStaticCreative);
-  const selectedLaunchReadyIds = new Set(selectedLaunchReadyCreatives.map((creative) => creative.id));
-  const unselectedLaunchReadyCreatives = launchReadyCreatives.filter(
-    (creative) => !selectedLaunchReadyIds.has(creative.id),
-  );
-  const draftCreatives = rankedCreatives.filter((creative) => !isLaunchReadyStaticCreative(creative));
-  const selectableCreatives =
-    selectedLaunchReadyCreatives.length > 0
-      ? selectedLaunchReadyCreatives
-      : launchReadyCreatives.length > 0
-        ? launchReadyCreatives
-        : rankedCreatives;
-  const carouselMaxSelected = Math.min(maxSelected, Math.max(minSelected, selectableCreatives.length || rankedCreatives.length));
-  const staticReadiness = getStaticCreativeReadiness(rankedCreatives, selectedIds);
+  const selectedLaunchReadyCreatives = selectedCreatives.filter(isStaticLaunchReady);
+  const launchPackageCreatives = selectedLaunchReadyCreatives.slice(0, maxSelected);
+  const staticReadiness = getStaticCreativeReadiness(rankedCreatives, selectedIds, staticBriefReadinessContext);
   const primaryCreative = selectedCreatives[0] ?? rankedCreatives[0] ?? null;
   const activeCreative =
     rankedCreatives.find((creative) => creative.id === activeCreativeId) ??
     primaryCreative;
+  const activeCreativeLaunchReady = activeCreative ? isStaticLaunchReady(activeCreative) : false;
+  const activeCreativeLaunchSafety = activeCreative ? evaluateStaticCreativeLaunchSafety(activeCreative) : null;
+  const activeCreativeQualityAdvisory = activeCreative ? evaluateStaticCreativeQualityAdvisory(activeCreative) : null;
+  const activeCreativeHardBlocked = Boolean(
+    activeCreative &&
+    !activeCreativeLaunchReady &&
+    (
+      activeCreative.imageGenerationState === "failed" ||
+      (activeCreativeLaunchSafety?.blockers.length ?? 0) > 0
+    ),
+  );
   const canContinue = selectedCreatives.length >= minSelected && selectedCreatives.length <= maxSelected;
   const selectedMediaReady =
     staticReadiness.allSelectedReady;
@@ -309,28 +463,33 @@ export function CreativeWizard({
     savedSelectedIds.length === selectedIds.length &&
     savedSelectedIds.every((selectedId, index) => selectedId === selectedIds[index]);
   const allImagesMissing = rankedCreatives.every((creative) => !creative.imageUrl);
-  const needsImageGeneration = rankedCreatives.some(creativeNeedsImageGeneration);
-  const selectedNeedsImageGeneration = selectedCreatives.some(creativeNeedsImageGeneration);
+  const needsImageGeneration = rankedCreatives.some((creative) => creativeNeedsImageGeneration(creative, approvedBriefContext));
+  const selectedNeedsImageGeneration = selectedCreatives.some((creative) => creativeNeedsImageGeneration(creative, approvedBriefContext));
   const hasGeneratedImages = rankedCreatives.some((creative) => Boolean(creative.imageUrl));
+  const hasCurrentStaticVideoSource = launchReadyCreatives.some((creative) => Boolean(creative.imageUrl));
   const hasAttemptedImageGeneration = rankedCreatives.some(
     (creative) => Boolean(creative.imageGenerationMessage) || Boolean(creative.imageGenerationState),
   );
-  const hasCreditBlocker = rankedCreatives.some((creative) =>
+  const hasPersistedCreditBlocker = rankedCreatives.some((creative) =>
     /insufficient credits|add at least/i.test(creative.imageGenerationMessage ?? ""),
   );
+  const hasCreditBlocker = !generationCreditOverrideActive && hasPersistedCreditBlocker;
   const imageLimitMessage = getImageLimitMessage(rankedCreatives);
   const ugcQuotaAvailable = rankedCreatives.some(isUgcCreative);
   const selectedUgcCount = selectedCreatives.filter(isUgcCreative).length;
   const ugcQuotaSatisfied = !ugcQuotaAvailable || selectedUgcCount >= 1;
-  const launchReadyVideoCreatives = videoCreatives.filter(isLaunchReadyVideoCreative);
+  const isCurrentLaunchReadyVideo = (video: VideoCreativeOption) =>
+    isLaunchReadyVideoCreative(video) &&
+    videoMatchesApprovedScript(video, approvedUgcScriptHash);
+  const launchReadyVideoCreatives = videoCreatives.filter(isCurrentLaunchReadyVideo);
   const reviewableVideoCreatives =
     launchReadyVideoCreatives.length > 0 ? launchReadyVideoCreatives : videoCreatives;
   const savedSelectedUgcVideoIds = persistedSelectedUgcVideoIds
-    .filter((id) => videoCreatives.some((video) => video.id === id))
+    .filter((id) => videoCreatives.some((video) => video.id === id && isCurrentLaunchReadyVideo(video)))
     .slice(0, 3);
   const primaryVideoCreative =
     reviewableVideoCreatives.find((video) => savedSelectedUgcVideoIds.includes(video.id)) ??
-    reviewableVideoCreatives.find((video) => video.conceptType === "customer_ugc" && isLaunchReadyVideoCreative(video)) ??
+    reviewableVideoCreatives.find((video) => video.conceptType === "customer_ugc" && isCurrentLaunchReadyVideo(video)) ??
     reviewableVideoCreatives.find((video) => video.conceptType === "customer_ugc") ??
     reviewableVideoCreatives[0] ??
     null;
@@ -339,18 +498,91 @@ export function CreativeWizard({
   const activeVideoCreative =
     reviewableVideoCreatives.find((video) => video.id === activeVideoId) ??
     primaryVideoCreative;
+  const activeVideoMatchesApprovedScript = activeVideoCreative
+    ? videoMatchesApprovedScript(activeVideoCreative, approvedUgcScriptHash)
+    : false;
+  const activeVideoLaunchReady = Boolean(
+    activeVideoCreative &&
+    activeVideoCreative.conceptType === "customer_ugc" &&
+    isCurrentLaunchReadyVideo(activeVideoCreative),
+  );
+  const activeVideoHasCurrentPlayableRender = Boolean(
+    activeVideoCreative &&
+    activeVideoMatchesApprovedScript &&
+    isPlayableVideoCreative(activeVideoCreative),
+  );
+  const activeVideoLaunchReadinessReason =
+    activeVideoCreative && !activeVideoLaunchReady
+      ? getVideoLaunchReadinessReason(activeVideoCreative)
+      : null;
+  const activeVideoPlayableReviewOnly = Boolean(
+    activeVideoCreative &&
+    isPlayableVideoCreative(activeVideoCreative) &&
+    !activeVideoLaunchReady,
+  );
+  const activeVideoDisplayScript =
+    !activeVideoMatchesApprovedScript && approvedUgcScriptLines.length > 0
+      ? approvedUgcScriptLines
+      : activeVideoCreative?.script ?? [];
   const selectedUgcVideos = videoCreatives.filter((video) => selectedUgcVideoIds.includes(video.id));
   const selectedLaunchReadyUgcVideos = selectedUgcVideos.filter(
-    (video) => video.conceptType === "customer_ugc" && isLaunchReadyVideoCreative(video),
+    (video) => video.conceptType === "customer_ugc" && isCurrentLaunchReadyVideo(video),
   );
-  const videoSelectionRequired = true;
+  const videoSelectionRequired = false;
   const selectedUgcReady = !videoSelectionRequired || selectedLaunchReadyUgcVideos.length > 0;
+  const staticLaunchPackageReady = canContinue && selectedMediaReady;
   const videoNeedsGeneration = Boolean(
     primaryVideoCreative &&
     !primaryVideoCreative.videoUrl &&
     primaryVideoCreative.videoGenerationState !== "generating" &&
     primaryVideoCreative.videoGenerationState !== "generated",
   );
+  const currentImageJob =
+    renderJobs.find((job) =>
+      job.kind === "static_creative_generation" &&
+      isOpenRenderJob(job),
+    ) ?? null;
+  const currentImageRenderView = currentImageJob ? jobRenderView(currentImageJob) : null;
+  const currentVideoJob =
+    activeVideoCreative
+      ? renderJobs.find((job) =>
+          job.kind === "video_generation" &&
+          isOpenRenderJob(job) &&
+          Number(job.payload?.creativeIndex ?? 0) === activeVideoCreative.index &&
+          (!approvedUgcScriptHash || job.payload?.creativeIntake?.ugcScriptHash === approvedUgcScriptHash),
+        ) ?? null
+      : null;
+  const currentVideoStatusJob =
+    activeVideoCreative
+      ? renderJobs.find((job) =>
+          job.kind === "video_generation_status" &&
+          isOpenRenderJob(job),
+        ) ?? null
+      : null;
+  const currentVideoRenderJob = currentVideoJob ?? currentVideoStatusJob;
+  const currentVideoRenderView = currentVideoRenderJob ? jobRenderView(currentVideoRenderJob) : null;
+
+  useEffect(() => {
+    if (!currentImageJob) {
+      return;
+    }
+
+    setRenderClockMs(Date.now());
+    const interval = window.setInterval(() => setRenderClockMs(Date.now()), 30_000);
+    return () => window.clearInterval(interval);
+  }, [currentImageJob?.id]);
+
+  useEffect(() => {
+    if (!currentVideoRenderJob && !activeVideoJobId) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      router.refresh();
+    }, 10_000);
+
+    return () => window.clearInterval(interval);
+  }, [activeVideoJobId, currentVideoRenderJob?.id, currentVideoRenderJob?.status, router]);
 
   const subscribeToJob = useCallback((jobId: string, surface: "image" | "video") => {
     if (jobStreamsRef.current.has(jobId)) {
@@ -372,36 +604,52 @@ export function CreativeWizard({
         setActiveImageJobId((current) => current === jobId ? null : current);
       }
     };
-
     source.addEventListener("job", (event) => {
       try {
         const job = JSON.parse((event as MessageEvent).data) as SystemJob;
+        const renderView = jobRenderView(job);
+        setRenderJobs((current) => upsertRenderJob(current, job));
 
         if (job.status === "completed") {
           if (surface === "video") {
             setVideoMessage("Video preview is processing. This page will update when it is ready.");
           } else {
-            const staticAds = job.result?.staticAds ?? [];
-            setRenderMessage(
-              getImageLimitMessage(staticAds) ??
-                getStaticPreviewStatusMessage(getStaticCreativeReadiness(staticAds, selectedIds)) ??
-                "Image previews are ready.",
-            );
+            setPreviewRendersReadyToLoad(true);
+            setRenderMessage(STATIC_RENDER_READY_TO_LOAD_MESSAGE);
           }
           source.close();
           jobStreamsRef.current.delete(jobId);
           clearActiveJob();
-          router.refresh();
-        } else if (job.status === "failed") {
           if (surface === "video") {
-            setVideoMessage(customerVideoMessage(job.error_message) || "Video preview rendering failed.");
+            router.refresh();
+          }
+        } else if (job.status === "failed") {
+          if (isCreditsInsufficient(job.last_error_code, job.error_message)) {
+            setCreditTopUpSurface(surface);
+          }
+          if (surface === "video") {
+            setVideoMessage(customerVideoMessage(renderView.customerMessage || job.error_message) || "Render needs retry.");
           } else {
-            setRenderMessage(customerImageMessage(job.error_message) || "Image preview rendering failed.");
+            setRenderMessage(customerImageMessage(renderView.customerMessage || job.error_message) || "Render needs retry.");
           }
           source.close();
           jobStreamsRef.current.delete(jobId);
           clearActiveJob();
-          router.refresh();
+          if (surface === "video") {
+            router.refresh();
+          }
+        } else if (isMarketingStudioWorkerDeferredRunAt(job.next_run_at)) {
+          if (surface === "video") {
+            setVideoMessage(renderView.customerMessage);
+          } else {
+            setRenderMessage(renderView.customerMessage);
+          }
+        } else if (job.status === "pending" || job.status === "processing") {
+          if (surface === "video") {
+            setVideoMessage(renderView.customerMessage);
+          } else {
+            setRenderMessage(renderView.customerMessage);
+          }
         }
       } catch {
         source.close();
@@ -415,7 +663,7 @@ export function CreativeWizard({
       jobStreamsRef.current.delete(jobId);
       clearActiveJob();
     });
-  }, [router, selectedIds]);
+  }, [router, selectedIds, staticBriefReadinessContext]);
 
   const queueImagePreviews = useCallback(async ({ force = false, automatic = false, missingOnly = false } = {}) => {
     if (renderingImages) {
@@ -424,11 +672,10 @@ export function CreativeWizard({
 
     setRenderingImages(true);
     setError(null);
-    setRenderMessage(
-      automatic
-        ? "Preparing image previews automatically. You can review the creative set while visuals finish."
-        : "Preparing image previews.",
-    );
+    setCreditTopUpSurface(null);
+    setPreviewRendersReadyToLoad(false);
+    setPreviewRendersLoading(false);
+    setRenderMessage(STATIC_RENDER_TIMEFRAME_MESSAGE);
 
     try {
       const response = await fetch(`/api/campaigns/${encodeURIComponent(campaignId)}/generate-static-ads`, {
@@ -439,17 +686,29 @@ export function CreativeWizard({
         body: JSON.stringify({
           force,
           missingOnly,
+          maxGenerations: STATIC_LAUNCH_MIN_CREATIVE_COUNT,
         }),
       });
       const data = (await response.json().catch(() => null)) as
-        | { job?: SystemJob | null; error?: string | null }
+        | { job?: SystemJob | null; error?: string | null; code?: string | null; previewUpdated?: boolean }
         | null;
 
       if (!response.ok || !data?.job?.id) {
+        if (isCreditsInsufficient(data?.code, data?.error)) {
+          setCreditTopUpSurface("image");
+          setRenderMessage(null);
+          return;
+        }
         throw new Error(data?.error || "Image preview rendering could not start.");
       }
 
-      setRenderMessage("Image previews are being prepared. This page will update when the visuals are ready.");
+      const renderView = jobRenderView(data.job);
+      setRenderJobs((current) => upsertRenderJob(current, data.job as SystemJob));
+      setRenderMessage(
+        data.previewUpdated
+          ? "Draft previews are visible while final ads render."
+          : renderView.customerMessage || STATIC_RENDER_TIMEFRAME_MESSAGE,
+      );
       subscribeToJob(data.job.id, "image");
     } catch (renderError) {
       setRenderMessage(null);
@@ -460,7 +719,25 @@ export function CreativeWizard({
     } finally {
       setRenderingImages(false);
     }
-  }, [campaignId, renderingImages, subscribeToJob]);
+  }, [campaignId, renderingImages, router, subscribeToJob]);
+
+  useEffect(() => {
+    if (!currentImageJob?.id) {
+      return;
+    }
+
+    subscribeToJob(currentImageJob.id, "image");
+  }, [currentImageJob?.id, subscribeToJob]);
+
+  const showPreviewRenders = useCallback(() => {
+    if (!previewRendersReadyToLoad || previewRendersLoading) {
+      return;
+    }
+
+    setPreviewRendersLoading(true);
+    setRenderMessage("Loading finished preview renders...");
+    router.refresh();
+  }, [previewRendersLoading, previewRendersReadyToLoad, router]);
 
   const queueVideoPreview = useCallback(async ({
     force = false,
@@ -477,9 +754,15 @@ export function CreativeWizard({
       return;
     }
 
+    if (!hasCurrentStaticVideoSource) {
+      setVideoMessage("Render at least one current static creative first. UGC video preview needs a launch-ready image source before video rendering can start.");
+      return;
+    }
+
     setActiveVideoId(selectedVideo.id);
     setRenderingVideo(true);
     setError(null);
+    setCreditTopUpSurface(null);
     setVideoMessage(
       automatic
         ? "Preparing video preview automatically. You can keep choosing static creatives while it renders."
@@ -498,25 +781,37 @@ export function CreativeWizard({
         }),
       });
       const data = (await response.json().catch(() => null)) as
-        | { job?: SystemJob | null; error?: string | null }
+        | { job?: SystemJob | null; error?: string | null; code?: string | null }
         | null;
 
       if (!response.ok || !data?.job?.id) {
+        if (isCreditsInsufficient(data?.code, data?.error)) {
+          setCreditTopUpSurface("video");
+          setVideoMessage(null);
+          return;
+        }
         throw new Error(data?.error || "Video preview rendering could not start.");
       }
 
-      setVideoMessage("Video preview is processing. This page will update when it is ready.");
-      subscribeToJob(data.job.id, "video");
+      const renderView = jobRenderView(data.job);
+      setRenderJobs((current) => upsertRenderJob(current, data.job as SystemJob));
+      setActiveVideoJobId(data.job.id);
+      setVideoMessage(renderView.customerMessage);
+      if (!isMarketingStudioWorkerDeferredRunAt(data.job.next_run_at)) {
+        subscribeToJob(data.job.id, "video");
+      } else {
+        router.refresh();
+      }
     } catch (videoError) {
-      setVideoMessage(null);
-      setError(
+      const customerMessage =
         customerVideoMessage(videoError instanceof Error ? videoError.message : null) ??
-          "Video preview rendering could not start.",
-      );
+        "Video preview rendering could not start.";
+      setVideoMessage(customerMessage);
+      setError(customerMessage);
     } finally {
       setRenderingVideo(false);
     }
-  }, [activeVideoCreative, campaignId, renderingVideo, setActiveVideoId, subscribeToJob]);
+  }, [activeVideoCreative, campaignId, hasCurrentStaticVideoSource, renderingVideo, router, setActiveVideoId, subscribeToJob]);
 
   useEffect(() => {
     const streams = jobStreamsRef.current;
@@ -552,25 +847,65 @@ export function CreativeWizard({
     setActiveCreativeId(primaryCreative?.id ?? rankedCreatives[0]?.id ?? null);
   }, [activeCreativeId, primaryCreative?.id, rankedCreatives]);
 
-  function toggleCreative(creativeId: string) {
-    setActiveCreativeId(creativeId);
+  useEffect(() => {
+    if (!expandedStaticCreativeId) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setExpandedStaticCreativeId(null);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [expandedStaticCreativeId]);
+
+  useEffect(() => {
+    if (recommendedSelectedIds.length === 0) {
+      return;
+    }
+
     setSelectedIds((current) => {
-      if (current.includes(creativeId)) {
-        return current.filter((id) => id !== creativeId);
+      const currentLaunchReadyIds = current.filter((id) => launchReadyIds.has(id)).slice(0, maxSelected);
+
+      if (currentLaunchReadyIds.length >= STATIC_LAUNCH_MIN_CREATIVE_COUNT) {
+        return currentLaunchReadyIds.length === current.length ? current : currentLaunchReadyIds;
       }
 
-      if (current.length >= maxSelected) {
-        return current;
+      const fillCandidateIds = Array.from(
+        new Set([
+          ...recommendedSelectedIds,
+          ...launchReadyCreatives.map((creative) => creative.id),
+        ]),
+      );
+      const reconciled = [...currentLaunchReadyIds];
+      for (const id of fillCandidateIds) {
+        if (reconciled.length >= STATIC_LAUNCH_MIN_CREATIVE_COUNT) {
+          break;
+        }
+
+        if (!reconciled.includes(id) && launchReadyIds.has(id)) {
+          reconciled.push(id);
+        }
       }
 
-      return [...current, creativeId];
+      return reconciled.length === current.length && reconciled.every((id, index) => id === current[index])
+        ? current
+        : reconciled;
     });
-    setError(null);
-  }
+
+    setActiveCreativeId((current) =>
+      current && launchReadyIds.has(current)
+        ? current
+        : recommendedSelectedIds.find((id) => launchReadyIds.has(id)) ?? current,
+    );
+  }, [launchReadyCreatives, launchReadyIds, maxSelected, recommendedSelectedIds]);
 
   function selectUgcVideo(video: VideoCreativeOption) {
     setActiveVideoId(video.id);
-    setSelectedUgcVideoIds(isLaunchReadyVideoCreative(video) && video.conceptType === "customer_ugc" ? [video.id] : []);
+    setSelectedUgcVideoIds(isCurrentLaunchReadyVideo(video) && video.conceptType === "customer_ugc" ? [video.id] : []);
     setError(null);
   }
 
@@ -588,19 +923,10 @@ export function CreativeWizard({
       return;
     }
 
-    if (!ugcQuotaSatisfied) {
-      setError("Keep at least one native-style concept in the selected creative set.");
-      return;
-    }
-
     if (!selectedMediaReady) {
-      setError("Refresh unfinished previews before saving this launch set.");
-      return;
-    }
-
-    if (!selectedUgcReady) {
-      setError("Select one launch-ready AI UGC video before saving the launch package.");
-      setActivePhase("ugc_videos");
+      setError(staticReadiness.selectedStaleCount > 0
+        ? "Regenerate stale creatives before saving this launch set."
+        : "Refresh unfinished previews before saving this launch set.");
       return;
     }
 
@@ -667,11 +993,55 @@ export function CreativeWizard({
     );
   }
 
-  const activeCreativeIndex = Math.max(0, rankedCreatives.findIndex((creative) => creative.id === activeCreative.id));
-  const activeCreativeSelected = selectedIds.includes(activeCreative.id);
-  const imageRenderPending = renderingImages || Boolean(activeImageJobId);
-  const imageActionPending = renderingImages || Boolean(activeImageJobId);
-  const videoActionPending = renderingVideo || Boolean(activeVideoJobId);
+  const imageRenderActive = Boolean(currentImageRenderView?.active);
+  const imageOperatorActionRequired = currentImageRenderView?.state === "operator_action_required";
+  const imageWorkerQueued = currentImageRenderView?.state === "deferred_worker_required";
+  const imageRenderPending = renderingImages || imageRenderActive || imageWorkerQueued || Boolean(activeImageJobId);
+  const imageActionPending = imageRenderPending;
+  const showPreviewRendersVisible =
+    previewRendersReadyToLoad ||
+    imageActionPending ||
+    Boolean(activeImageJobId) ||
+    Boolean(currentImageJob);
+  const videoActionPending = renderingVideo || Boolean(currentVideoJob);
+  const imageWorkerDeferred = Boolean(
+    currentImageJob && isMarketingStudioWorkerDeferredRunAt(currentImageJob.next_run_at),
+  );
+  const optionalOnlyNeedsPolish =
+    staticReadiness.allSelectedReady &&
+    staticReadiness.optionalIssueCount > 0 &&
+    staticReadiness.selectedBlockedCount === 0 &&
+    staticReadiness.selectedStaleCount === 0;
+  const imageRenderStartedAtMs = currentImageJob?.created_at ? Date.parse(currentImageJob.created_at) : null;
+  const imageRenderElapsedMs = imageRenderStartedAtMs ? Math.max(0, renderClockMs - imageRenderStartedAtMs) : 0;
+  const imageRenderPastThreeMinutes = imageActionPending && imageRenderElapsedMs >= 180_000;
+  const requiredStaticProgressLabel = `${staticReadiness.requiredReadyCount}/${staticReadiness.minimumRequiredCount} launch-ready static ads ready`;
+  const staticProgressTitle = hasCreditBlocker
+    ? "Add credits to render final ads"
+    : staticReadiness.selectedMinimumMet
+      ? "First 3 static ads are launch-ready"
+      : imageRenderPastThreeMinutes
+        ? "Final ads are still rendering in the background"
+        : imageActionPending || imageWorkerQueued
+          ? "Preparing first 3 launch-ready ads"
+          : staticReadiness.requiredReadyCount > 0
+            ? requiredStaticProgressLabel
+            : "Final static ads are not ready yet";
+  const staticProgressBody = hasCreditBlocker
+    ? "Top up generation credits to start paid rendering. Draft previews stay visible, but Launch remains blocked until 3 final ads are ready."
+    : staticReadiness.selectedMinimumMet
+      ? "You can save the required static set now. Optional 5th and 6th polish variants can finish later and do not block the first launch package."
+    : imageRenderPastThreeMinutes
+        ? `${requiredStaticProgressLabel}. You can keep setting up Meta, billing, and preview while final ads finish. Launch unlocks only after 3 ads are ready.`
+        : imageActionPending || imageWorkerQueued
+          ? `${requiredStaticProgressLabel}. The first 3 required ads are prioritized before optional polish variants.`
+          : `${requiredStaticProgressLabel}. Click Render assets to render the launch floor first. Optional polish variants do not need to finish before setup can continue.`;
+  const staticProgressTone = hasCreditBlocker
+    ? "border-amber-400/24 bg-amber-400/10 text-amber-50"
+    : staticReadiness.selectedMinimumMet
+      ? "border-emerald-300/20 bg-emerald-300/[0.08] text-emerald-50"
+      : "border-cyan-300/18 bg-cyan-300/[0.07] text-cyan-50";
+  const videoBlockedByMissingStaticSource = !hasCurrentStaticVideoSource;
   const imagePendingMessage = "Image preview is being prepared. This page will update when the visual is ready.";
   const imageStatusMessage = selectedNeedsImageGeneration
     ? imageLimitMessage ??
@@ -680,15 +1050,44 @@ export function CreativeWizard({
       : getStaticPreviewStatusMessage(staticReadiness) ??
         "Some optional previews need another attempt. Launch-ready selected previews stay available.")
     : null;
-  const getDisplayCreative = (creative: CreativeOption): CreativeOption =>
-    imageRenderPending && creativeNeedsImageGeneration(creative)
+  const getDisplayCreative = (creative: CreativeOption): CreativeOption => {
+    const staleReason = getStaticCreativeBriefMismatchReason(creative, staticBriefReadinessContext);
+
+    if (staleReason) {
+      return {
+        ...creative,
+        imageGenerationState: "failed",
+        imageGenerationMessage: "Older render, needs refresh to match the approved brief.",
+        qualityGate: {
+          ...(creative.qualityGate ?? {}),
+          accepted: false,
+          hardFailures: Array.from(new Set([...(creative.qualityGate?.hardFailures ?? []), staleReason])),
+        },
+      };
+    }
+
+    return imageRenderPending && creativeNeedsImageGeneration(creative, approvedBriefContext)
       ? {
           ...creative,
-          imageGenerationState: "generating",
-          imageGenerationMessage: imagePendingMessage,
+          imageGenerationState:
+            currentImageRenderView?.state === "processing" ||
+            currentImageRenderView?.state === "provider_processing"
+              ? "generating"
+              : creative.imageGenerationState ?? "unavailable",
+          imageGenerationMessage: currentImageRenderView?.customerMessage ?? imagePendingMessage,
         }
       : creative;
-  const displayActiveCreative = getDisplayCreative(activeCreative);
+  };
+  const launchReviewCandidateCreatives = selectedCreatives.length > 0 ? selectedCreatives : rankedCreatives;
+  const visibleStaticReviewCreatives = [
+    ...launchPackageCreatives,
+    ...launchReviewCandidateCreatives.filter(
+      (creative) => !launchPackageCreatives.some((launchCreative) => launchCreative.id === creative.id),
+    ),
+  ].slice(0, STATIC_LAUNCH_MIN_CREATIVE_COUNT);
+  const expandedStaticCreative = expandedStaticCreativeId
+    ? rankedCreatives.find((creative) => creative.id === expandedStaticCreativeId) ?? null
+    : null;
   const currentPhaseLabel = activePhase === "static_ads" ? "Static Ads" : "UGC Videos";
 
   return (
@@ -700,44 +1099,60 @@ export function CreativeWizard({
               Creative review workspace
             </p>
             <h2 className="mt-2 text-2xl font-semibold text-foreground">
-              Choose the launch test set from the approved brief
+              Review the launch-ready creative set
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              The creative brief approval is saved in the intake step. Select 4-6 static ads and one launch-ready AI UGC video for the final launch package.
+              DealFlow automatically keeps the launch-ready static ads selected and shows the required set side by side. Use Marketing Studio only when you need to adjust the brief before rendering or launch review.
             </p>
           </div>
-          <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.07] px-4 py-3 text-sm leading-6 text-emerald-100 lg:max-w-md">
-            Approved brief source: saved creative intake. This screen only selects creatives, reviews variants, and starts explicit preview renders.
-          </div>
-          <div className="rounded-2xl border border-cyan-300/18 bg-cyan-300/[0.06] px-4 py-3 text-sm leading-6 text-cyan-100 lg:max-w-md">
-            Full-resolution creative files stay inside DealFlow. Preview, approve, request revisions, and use assets through the launch workflow.
-          </div>
         </div>
+        {approvedBriefContext ? (
+          <div className="mt-4 grid gap-2 rounded-2xl border border-white/10 bg-black/18 p-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
+            <BriefSummaryItem label="Offer" value={approvedBriefContext.offerTitle} />
+            <BriefSummaryItem label="Audience" value={approvedBriefContext.audience} />
+            <BriefSummaryItem label="Market" value={approvedBriefContext.market} />
+            <BriefSummaryItem label="Brand" value={approvedBriefContext.brand} />
+            <BriefSummaryItem label="CTA" value={approvedBriefContext.cta} />
+            <BriefSummaryItem label="UGC script" value={approvedBriefContext.ugcScriptHash ? `Revision ${approvedBriefContext.revisionNumber ?? 0}` : "Not approved"} />
+          </div>
+        ) : null}
 
-        <div className="mt-5 flex flex-wrap gap-2" role="tablist" aria-label="Creative Studio phases">
-          {([
-            ["static_ads", "Static Ads", "Native-style static ads and composed image variants"],
-            ["ugc_videos", "UGC Videos", "Creator-style scripts and video preview renders"],
-          ] as const).map(([phase, label, description]) => {
-            const active = activePhase === phase;
-            return (
-              <button
-                key={phase}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                className={`rounded-2xl border px-4 py-3 text-left transition ${
-                  active
-                    ? "border-primary/50 bg-primary/12 text-foreground"
-                    : "border-white/10 bg-black/18 text-muted-foreground hover:border-white/20"
-                }`}
-                onClick={() => setActivePhase(phase)}
-              >
-                <span className="block text-sm font-semibold">{label}</span>
-                <span className="mt-1 block text-xs leading-5">{description}</span>
-              </button>
-            );
-          })}
+        <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-stretch lg:justify-between">
+          <div className="flex flex-wrap gap-2" role="tablist" aria-label="Creative Studio phases">
+            {([
+              ["static_ads", "Static Ads", "Native-style static ads and composed image variants"],
+              ["ugc_videos", "UGC Videos", "Creator-style scripts and video preview renders"],
+            ] as const).map(([phase, label, description]) => {
+              const active = activePhase === phase;
+              return (
+                <button
+                  key={phase}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  className={`rounded-2xl border px-4 py-3 text-left transition ${
+                    active
+                      ? "border-primary/50 bg-primary/12 text-foreground"
+                      : "border-white/10 bg-black/18 text-muted-foreground hover:border-white/20"
+                  }`}
+                  onClick={() => setActivePhase(phase)}
+                >
+                  <span className="block text-sm font-semibold">{label}</span>
+                  <span className="mt-1 block text-xs leading-5">{description}</span>
+                </button>
+              );
+            })}
+          </div>
+          <Button
+            asChild
+            type="button"
+            variant="secondary"
+            className="!h-auto min-h-[72px] w-full justify-center rounded-2xl px-5 py-3 text-center lg:w-auto lg:min-w-[280px]"
+          >
+            <Link href={`/build/creatives?campaignId=${encodeURIComponent(campaignId)}&creativeBrief=edit`}>
+              Open Marketing Studio chat
+            </Link>
+          </Button>
         </div>
 
         <div className="mt-5 rounded-2xl border border-white/10 bg-black/18 p-4">
@@ -745,212 +1160,387 @@ export function CreativeWizard({
             {currentPhaseLabel} review
           </p>
           <h3 className="mt-1 text-lg font-semibold text-foreground">
-            {activePhase === "static_ads" ? "Static ads are the launch test set" : "AI UGC videos are selectable launch ads"}
+            {activePhase === "static_ads" ? "Static ads are the launch test set" : "Optional UGC videos"}
           </h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
             {activePhase === "static_ads"
-              ? `Pick ${STATIC_LAUNCH_MIN_CREATIVE_COUNT}-${maxSelected} launch-ready static ads. Draft/retry concepts do not count toward the saved launch package.`
-              : "Review scripts, render only when the brief is ready, and select one launch-ready campaign-specific UGC video for Preview and Launch."}
+              ? `Pick at least ${STATIC_LAUNCH_MIN_CREATIVE_COUNT} launch-ready static ads. Up to ${STATIC_LAUNCH_MAX_CREATIVE_COUNT} can be used for higher-budget split tests; draft/retry concepts do not count toward the saved launch package.`
+              : "Review scripts and render video only when needed. UGC is optional and does not block the static launch package."}
           </p>
         </div>
       </section>
 
-      <section className={`${activePhase === "static_ads" ? "grid" : "hidden"} gap-4 rounded-2xl border border-border bg-card p-4 sm:p-5 lg:grid-cols-[minmax(340px,0.82fr)_minmax(420px,1.18fr)]`}>
-        <div className="min-w-0 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Creative {activeCreativeIndex + 1}
-              </p>
-              <h2 className="mt-1 text-xl font-semibold text-foreground">
-                {activeCreativeSelected ? "Selected creative preview" : "Creative preview"}
-              </h2>
-            </div>
-            <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-              {selectedCreatives.length}/{maxSelected} selected
-            </span>
+      <section className={`${activePhase === "static_ads" ? "block" : "hidden"} rounded-2xl border border-border bg-card p-4 sm:p-5`}>
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Launch package</p>
+            <h2 className="mt-1 text-2xl font-semibold text-foreground">{staticReadiness.selectionLabel}</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {savedSelectionMatchesCurrent && staticReadiness.allSelectedReady
+                ? `${staticReadiness.selectedReadyLabel}. These are the static ads DealFlow will send into the launch review.`
+                : staticReadiness.selectedMinimumMet
+                  ? `${staticReadiness.selectedReadyLabel}. Save the 3 static ads now; UGC can be added later if needed.`
+                  : `${requiredStaticProgressLabel}. The first 3 required ads render before optional polish variants; Launch stays blocked until the required set passes review.`}
+            </p>
           </div>
-          <StaticCreativePreviewCard
-            category={displayActiveCreative.category}
-            cta={displayActiveCreative.cta}
-            headline={displayActiveCreative.headline}
-            imageGenerationMessage={displayActiveCreative.imageGenerationMessage}
-            imageGenerationState={displayActiveCreative.imageGenerationState}
-            imagePrompt={displayActiveCreative.imagePrompt}
-            imagePromptConfig={displayActiveCreative.imagePromptConfig}
-            imageUrl={displayActiveCreative.imageUrl}
-            storageNormalized={displayActiveCreative.storageNormalized}
-            location={displayActiveCreative.location}
-            formatLabel={displayActiveCreative.formatLabel}
-            offer={displayActiveCreative.offer}
-            overlayText={displayActiveCreative.overlayText}
-            primaryText={displayActiveCreative.primaryText}
-            qualityGate={displayActiveCreative.qualityGate}
-            imageQa={displayActiveCreative.imageQa}
-            score={displayActiveCreative.score}
-            selectedCount={activeCreativeSelected && isLaunchReadyStaticCreative(activeCreative) ? staticReadiness.selectedReadyCount : null}
-            visualPromptBrief={displayActiveCreative.visualPromptBrief}
-          />
+          <span className="w-fit rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+            {selectedCreatives.length}/{maxSelected} selected
+          </span>
         </div>
 
-        <div className="flex min-w-0 flex-col gap-4">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">Recommended test set</p>
-            <h2 className="mt-1 text-2xl font-semibold text-foreground">
-              {staticReadiness.selectionLabel}
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {savedSelectionMatchesCurrent
-                ? `${staticReadiness.selectedReadyLabel}. DealFlow will use the first saved ad as the primary creative and keep the rest as static launch variants once every launch gate is ready.`
-                : `${staticReadiness.selectedReadyLabel}. Save 4-6 static ads plus one approved UGC video before launch can continue.`}
+        <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm leading-6 ${staticProgressTone}`} aria-live="polite">
+          <p className="font-semibold">{staticProgressTitle}</p>
+          <p className="mt-1 text-white/72">{staticProgressBody}</p>
+          {staticReadiness.issueLabel ? (
+            <p className={staticReadiness.selectedBlockedCount > 0 ? "mt-2 text-amber-100" : "mt-2 text-white/72"}>
+              {staticReadiness.issueLabel}
             </p>
-            {staticReadiness.issueLabel ? (
-              <p className={staticReadiness.selectedBlockedCount > 0 ? "mt-2 text-sm leading-6 text-amber-200" : "mt-2 text-sm leading-6 text-muted-foreground"}>
-                {staticReadiness.issueLabel}
-              </p>
+          ) : null}
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          {needsImageGeneration || hasGeneratedImages ? (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void queueImagePreviews({
+                force: hasCreditBlocker,
+                missingOnly: true,
+              })}
+              disabled={imageActionPending || imageWorkerDeferred || Boolean(imageLimitMessage)}
+            >
+              {imageLimitMessage
+                ? "Daily image limit reached"
+                : imageOperatorActionRequired
+                ? "Retry render"
+                : imageWorkerQueued
+                ? "Render assets"
+                : imageActionPending
+                ? "Render assets"
+                : optionalOnlyNeedsPolish
+                  ? "Render assets"
+                  : needsImageGeneration
+                    ? staticReadiness.staleCount > 0
+                    ? "Regenerate stale render assets"
+                    : "Render assets"
+                  : "Render assets"}
+            </Button>
+          ) : null}
+          {showPreviewRendersVisible ? (
+            <Button
+              type="button"
+              variant={previewRendersReadyToLoad ? "default" : "secondary"}
+              onClick={showPreviewRenders}
+              disabled={!previewRendersReadyToLoad || previewRendersLoading}
+            >
+              {previewRendersLoading
+                ? "Loading preview renders..."
+                : previewRendersReadyToLoad
+                  ? "Show preview renders"
+                  : "Preview renders locked until ready"}
+            </Button>
+          ) : null}
+          {activeCreativeHardBlocked ? (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void queueImagePreviews({ force: imageOperatorActionRequired, missingOnly: true })}
+              disabled={imageActionPending || Boolean(imageLimitMessage)}
+            >
+              {imageLimitMessage
+                ? "Daily image limit reached"
+                : imageActionPending
+                ? "Retrying..."
+                : "Retry render"}
+            </Button>
+          ) : null}
+        </div>
+
+        {activeCreativeLaunchReady && activeCreativeQualityAdvisory?.canImproveLater ? (
+          <div className="mt-4 rounded-2xl border border-cyan-300/16 bg-cyan-300/[0.055] px-4 py-3 text-sm leading-6 text-cyan-100" aria-live="polite">
+            <span className="font-semibold text-cyan-50">Optional polish.</span>{" "}
+            This creative is launch-ready. Quality notes can be improved later.
+          </div>
+        ) : null}
+        {renderMessage ? (
+          <div className="mt-4 rounded-2xl border border-cyan-300/16 bg-cyan-300/[0.055] px-4 py-3 text-sm leading-6 text-cyan-100" aria-live="polite">
+            {renderMessage}
+          </div>
+        ) : null}
+        {creditTopUpSurface === "image" || hasCreditBlocker ? (
+          <div className="mt-4">
+            <GenerationCreditTopUpPanel surface="image" />
+          </div>
+        ) : null}
+        {selectedNeedsImageGeneration ? (
+          <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm leading-6 text-amber-100">
+            {hasCreditBlocker
+              ? "Your strategy, copy, and creative concepts are ready. Add credits to render paid premium ads."
+              : imageStatusMessage}
+            {hasCreditBlocker ? (
+              <button
+                type="button"
+                className="ml-2 font-semibold text-amber-50 underline decoration-amber-200/50 underline-offset-4"
+                onClick={() => void queueImagePreviews({ force: true, missingOnly: true })}
+                disabled={imageActionPending}
+              >
+                Retry image previews
+              </button>
+            ) : hasAttemptedImageGeneration && !imageActionPending && !imageLimitMessage ? (
+              <button
+                type="button"
+                className="ml-2 font-semibold text-amber-50 underline decoration-amber-200/50 underline-offset-4"
+                onClick={() => void queueImagePreviews({ force: imageOperatorActionRequired, missingOnly: true })}
+              >
+                Retry render
+              </button>
             ) : null}
           </div>
-          {needsImageGeneration || hasGeneratedImages ? (
-            <div className="flex flex-wrap items-center gap-3">
-              {needsImageGeneration || hasGeneratedImages ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => void queueImagePreviews({
-                    force: hasCreditBlocker,
-                    missingOnly: true,
-                  })}
-                  disabled={imageActionPending || Boolean(imageLimitMessage)}
-                >
-                  {imageLimitMessage
-                    ? "Daily image limit reached"
-                    : imageActionPending
-                    ? "Refreshing previews..."
-                    : needsImageGeneration
-                      ? "Refresh unfinished previews"
-                      : "Refresh image previews"}
-                </Button>
-              ) : null}
-              {activeCreative.imageGenerationState === "failed" || activeCreative.qualityGate?.accepted === false ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => void queueImagePreviews({ missingOnly: true })}
-                  disabled={imageActionPending || Boolean(imageLimitMessage)}
-                >
-                  {imageLimitMessage ? "Daily image limit reached" : imageActionPending ? "Retrying..." : "Retry preview render"}
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
-          {renderMessage ? (
-            <div className="rounded-2xl border border-cyan-300/16 bg-cyan-300/[0.055] px-4 py-3 text-sm leading-6 text-cyan-100" aria-live="polite">
-              {renderMessage}
-            </div>
-          ) : null}
-          {selectedNeedsImageGeneration ? (
-            <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm leading-6 text-amber-100">
-              {hasCreditBlocker
-                ? "Your strategy, copy, and creative concepts are ready. The previous render stopped before credit overdraft was enabled."
-                : imageStatusMessage}
-              {hasCreditBlocker ? (
-                <button
-                  type="button"
-                  className="ml-2 font-semibold text-amber-50 underline decoration-amber-200/50 underline-offset-4"
-                  onClick={() => void queueImagePreviews({ force: true, missingOnly: true })}
-                  disabled={imageActionPending}
-                >
-                  Retry image previews
-                </button>
-              ) : hasAttemptedImageGeneration && !imageActionPending && !imageLimitMessage ? (
-                <button
-                  type="button"
-                  className="ml-2 font-semibold text-amber-50 underline decoration-amber-200/50 underline-offset-4"
-                  onClick={() => void queueImagePreviews({ missingOnly: true })}
-                >
-                  Retry image previews
-                </button>
-              ) : null}
-            </div>
-          ) : null}
+        ) : null}
 
-          <div className="grid content-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {selectedCreatives.map((creative, index) => {
+        {visibleStaticReviewCreatives.length > 0 ? (
+          <div className="mt-5 grid gap-4 lg:grid-cols-3">
+            {visibleStaticReviewCreatives.map((creative, index) => {
               const displayCreative = getDisplayCreative(creative);
+              const launchReady = isStaticLaunchReady(creative);
+              const active = activeCreative.id === creative.id;
+
               return (
-                <div className="space-y-2" key={displayCreative.id}>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    {index === 0 ? "Primary creative" : `Review variant ${index}`}
+                <article
+                  className={`group flex min-w-0 flex-col rounded-2xl border p-3 transition ${
+                    active
+                      ? "border-primary/70 bg-primary/[0.09]"
+                      : launchReady
+                        ? "border-primary/35 bg-primary/[0.045] hover:border-primary/60 hover:bg-primary/[0.075]"
+                        : "border-white/10 bg-black/16 hover:border-white/20"
+                  }`}
+                  key={creative.id}
+                >
+                  <button
+                    type="button"
+                    className="block min-w-0 rounded-[18px] text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
+                    onClick={() => {
+                      setActiveCreativeId(creative.id);
+                      setExpandedStaticCreativeId(creative.id);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setActiveCreativeId(creative.id);
+                        setExpandedStaticCreativeId(creative.id);
+                      }
+                    }}
+                    aria-label={`Open launch creative ${index + 1}`}
+                  >
+                    <StaticCreativePreviewCard
+                      category={displayCreative.category}
+                      compact
+                      cta={displayCreative.cta}
+                      formatLabel={displayCreative.formatLabel}
+                      headline={displayCreative.headline}
+                      imageGenerationMessage={displayCreative.imageGenerationMessage}
+                      imageGenerationProvider={displayCreative.imageGenerationProvider}
+                      imageGenerationState={displayCreative.imageGenerationState}
+                      generationMethod={displayCreative.generationMethod}
+                      providerName={displayCreative.providerName}
+                      generationMode={displayCreative.generationMode}
+                      assetRole={displayCreative.assetRole}
+                      imagePrompt={displayCreative.imagePrompt}
+                      imagePromptConfig={displayCreative.imagePromptConfig}
+                      imageUrl={displayCreative.imageUrl}
+                      storageNormalized={displayCreative.storageNormalized}
+                      appComposedFinal={displayCreative.appComposedFinal}
+                      qualityTier={displayCreative.qualityTier}
+                      compositionVersion={displayCreative.compositionVersion}
+                      sourceBackgroundKind={displayCreative.sourceBackgroundKind}
+                      sourceBackgroundProvider={displayCreative.sourceBackgroundProvider}
+                      sourceBackgroundAssetId={displayCreative.sourceBackgroundAssetId}
+                      location={displayCreative.location}
+                      offer={displayCreative.offer}
+                      overlayText={displayCreative.overlayText}
+                      primaryText={displayCreative.primaryText}
+                      qualityGate={displayCreative.qualityGate}
+                      visualQualityGate={displayCreative.visualQualityGate}
+                      premiumQualityGate={displayCreative.premiumQualityGate}
+                      imageQa={displayCreative.imageQa}
+                      sourceImageQa={displayCreative.sourceImageQa}
+                      score={displayCreative.score}
+                      selectedCount={launchReady ? staticReadiness.selectedReadyCount : null}
+                      launchReady={launchReady}
+                      visualPromptBrief={displayCreative.visualPromptBrief}
+                    />
+                  </button>
+                  <div className="mt-3 grid flex-1 gap-3 rounded-[18px] border border-white/10 bg-black/18 p-3 text-sm">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Headline</p>
+                      <p className="mt-1 line-clamp-2 font-semibold leading-5 text-foreground">{displayCreative.headline}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Primary text</p>
+                      <p className="mt-1 line-clamp-3 leading-5 text-muted-foreground">{displayCreative.primaryText}</p>
+                    </div>
+                    <div className="mt-auto flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">CTA</p>
+                        <p className="mt-1 truncate font-semibold text-foreground">{displayCreative.cta}</p>
+                      </div>
+                      <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                        launchReady
+                          ? "border-emerald-300/20 bg-emerald-300/[0.08] text-emerald-100"
+                          : "border-amber-300/20 bg-amber-300/[0.08] text-amber-100"
+                      }`}>
+                        {launchReady ? "Ready" : "Rendering"}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-center text-xs font-semibold text-cyan-100 opacity-80 transition group-hover:opacity-100">
+                    Open preview
                   </p>
-                  <StaticCreativePreviewCard
-                    category={displayCreative.category}
-                    compact
-                    cta={displayCreative.cta}
-                    formatLabel={displayCreative.formatLabel}
-                    headline={displayCreative.headline}
-                    imageGenerationMessage={displayCreative.imageGenerationMessage}
-                    imageGenerationState={displayCreative.imageGenerationState}
-                    imagePrompt={displayCreative.imagePrompt}
-                    imagePromptConfig={displayCreative.imagePromptConfig}
-                    imageUrl={displayCreative.imageUrl}
-                    storageNormalized={displayCreative.storageNormalized}
-                    location={displayCreative.location}
-                    offer={displayCreative.offer}
-                    overlayText={displayCreative.overlayText}
-                    primaryText={displayCreative.primaryText}
-                    qualityGate={displayCreative.qualityGate}
-                    imageQa={displayCreative.imageQa}
-                    score={displayCreative.score}
-                    selectedCount={isLaunchReadyStaticCreative(creative) ? staticReadiness.selectedReadyCount : null}
-                    visualPromptBrief={displayCreative.visualPromptBrief}
-                  />
-                </div>
+                </article>
               );
             })}
           </div>
+        ) : (
+          <p className="mt-5 rounded-2xl border border-white/10 bg-black/14 p-4 text-sm leading-6 text-muted-foreground">
+            Generate or refresh the static set to create launch-ready ads. Nothing is sent to Meta until launch review.
+          </p>
+        )}
 
-          <div className="mt-auto rounded-2xl border border-white/10 bg-black/18 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
-              <Button asChild type="button" variant="secondary">
-                <Link href={buildHref}>
-                  Back to build
-                </Link>
-              </Button>
-              <Button onClick={() => void handleNext()} type="button" disabled={saving || !canContinue || !ugcQuotaSatisfied || !selectedMediaReady || !selectedUgcReady}>
-                {saving ? "Saving..." : "Save launch package"}
-              </Button>
-            </div>
-            <p className={error ? "mt-3 text-sm text-rose-400" : "mt-3 text-sm text-muted-foreground"}>
-              {error ??
-                (!selectedMediaReady
-                  ? staticReadiness.selectedBlockedCount > 0
-                    ? "Refresh selected previews before saving this launch set."
-                    : "Select launch-ready previews before saving this launch set."
-                  : !savedSelectionMatchesCurrent
-                    ? "Draft selection only. Launch remains blocked until this set is saved."
-                    : rankedCreatives.length >= 2
-                      ? selectedUgcReady
-                        ? `Use ${STATIC_LAUNCH_MIN_CREATIVE_COUNT}-${maxSelected} static ads. The recommended set keeps at least one native-style concept selected.`
-                        : "Select a launch-ready AI UGC video before saving the launch package."
-                      : "Select at least one creative to continue.")}
-            </p>
+        <div className="mt-5 rounded-2xl border border-white/10 bg-black/18 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
+            <Button asChild type="button" variant="secondary">
+              <Link href={buildHref}>
+                Back to build
+              </Link>
+            </Button>
+            <Button onClick={() => void handleNext()} type="button" disabled={saving || !staticLaunchPackageReady}>
+              {saving ? "Saving..." : "Save launch package and continue"}
+            </Button>
           </div>
-
-          <details className="rounded-2xl border border-border p-4">
-            <summary className="cursor-pointer text-sm font-medium text-foreground">
-              View creative reasoning
-            </summary>
-            <div className="mt-4 space-y-3 text-sm text-muted-foreground">
-              <p><strong className="text-foreground">Hook:</strong> {activeCreative.breakdown?.hook || "Not available"}</p>
-              <p><strong className="text-foreground">Concept:</strong> {activeCreative.breakdown?.concept || "Not available"}</p>
-            </div>
-          </details>
+          <p className={error ? "mt-3 text-sm text-rose-400" : "mt-3 text-sm text-muted-foreground"}>
+            {error ??
+              (!selectedMediaReady
+                ? staticReadiness.selectedStaleCount > 0
+                  ? "Regenerate stale selected premium ads before saving this launch set."
+                  : staticReadiness.selectedBlockedCount > 0
+                  ? "Prepare selected premium ads before saving this launch set."
+                  : "Select premium launch-ready ads before saving this launch set."
+                : !savedSelectionMatchesCurrent
+                  ? "Draft selection only. Launch remains blocked until this set is saved."
+                  : rankedCreatives.length >= 2
+                    ? selectedUgcReady
+                      ? `Use at least ${STATIC_LAUNCH_MIN_CREATIVE_COUNT} static ads. The recommended set keeps at least one native-style concept selected; 5-6 static ads are optional for larger budgets.`
+                      : "Save the static launch set now. UGC video can be added later."
+                    : "Select at least one creative to continue.")}
+          </p>
         </div>
+
+        <details className="mt-4 rounded-2xl border border-border p-4">
+          <summary className="cursor-pointer text-sm font-medium text-foreground">
+            View creative reasoning
+          </summary>
+          <div className="mt-4 space-y-3 text-sm text-muted-foreground">
+            <p><strong className="text-foreground">Hook:</strong> {activeCreative.breakdown?.hook || "Not available"}</p>
+            <p><strong className="text-foreground">Concept:</strong> {activeCreative.breakdown?.concept || "Not available"}</p>
+          </div>
+        </details>
+
+        {expandedStaticCreative ? (
+          <div
+            aria-modal="true"
+            className="fixed inset-0 z-50 grid place-items-center bg-black/82 p-4"
+            role="dialog"
+            onClick={() => setExpandedStaticCreativeId(null)}
+          >
+            <div
+              className="max-h-[calc(100dvh-2rem)] w-full max-w-[980px] overflow-y-auto rounded-[22px] border border-white/12 bg-background shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Launch creative
+                  </p>
+                  <h3 className="mt-1 truncate text-sm font-semibold text-foreground">
+                    {getDisplayCreative(expandedStaticCreative).headline}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Close launch creative preview"
+                  className="shrink-0 rounded-full border border-white/12 px-3 py-2 text-xs font-semibold text-foreground transition hover:border-primary/40 hover:bg-primary/10"
+                  onClick={() => setExpandedStaticCreativeId(null)}
+                >
+                  Close
+                </button>
+              </div>
+              <div className="grid gap-4 p-4 lg:grid-cols-[minmax(360px,0.9fr)_minmax(0,1fr)]">
+                <StaticCreativePreviewCard
+                  category={getDisplayCreative(expandedStaticCreative).category}
+                  cta={getDisplayCreative(expandedStaticCreative).cta}
+                  formatLabel={getDisplayCreative(expandedStaticCreative).formatLabel}
+                  headline={getDisplayCreative(expandedStaticCreative).headline}
+                  imageGenerationMessage={getDisplayCreative(expandedStaticCreative).imageGenerationMessage}
+                  imageGenerationProvider={getDisplayCreative(expandedStaticCreative).imageGenerationProvider}
+                  imageGenerationState={getDisplayCreative(expandedStaticCreative).imageGenerationState}
+                  generationMethod={getDisplayCreative(expandedStaticCreative).generationMethod}
+                  providerName={getDisplayCreative(expandedStaticCreative).providerName}
+                  generationMode={getDisplayCreative(expandedStaticCreative).generationMode}
+                  assetRole={getDisplayCreative(expandedStaticCreative).assetRole}
+                  imagePrompt={getDisplayCreative(expandedStaticCreative).imagePrompt}
+                  imagePromptConfig={getDisplayCreative(expandedStaticCreative).imagePromptConfig}
+                  imageUrl={getDisplayCreative(expandedStaticCreative).imageUrl}
+                  storageNormalized={getDisplayCreative(expandedStaticCreative).storageNormalized}
+                  appComposedFinal={getDisplayCreative(expandedStaticCreative).appComposedFinal}
+                  qualityTier={getDisplayCreative(expandedStaticCreative).qualityTier}
+                  compositionVersion={getDisplayCreative(expandedStaticCreative).compositionVersion}
+                  sourceBackgroundKind={getDisplayCreative(expandedStaticCreative).sourceBackgroundKind}
+                  sourceBackgroundProvider={getDisplayCreative(expandedStaticCreative).sourceBackgroundProvider}
+                  sourceBackgroundAssetId={getDisplayCreative(expandedStaticCreative).sourceBackgroundAssetId}
+                  location={getDisplayCreative(expandedStaticCreative).location}
+                  offer={getDisplayCreative(expandedStaticCreative).offer}
+                  overlayText={getDisplayCreative(expandedStaticCreative).overlayText}
+                  primaryText={getDisplayCreative(expandedStaticCreative).primaryText}
+                  qualityGate={getDisplayCreative(expandedStaticCreative).qualityGate}
+                  visualQualityGate={getDisplayCreative(expandedStaticCreative).visualQualityGate}
+                  premiumQualityGate={getDisplayCreative(expandedStaticCreative).premiumQualityGate}
+                  imageQa={getDisplayCreative(expandedStaticCreative).imageQa}
+                  sourceImageQa={getDisplayCreative(expandedStaticCreative).sourceImageQa}
+                  score={getDisplayCreative(expandedStaticCreative).score}
+                  selectedCount={isStaticLaunchReady(expandedStaticCreative) ? staticReadiness.selectedReadyCount : null}
+                  launchReady={isStaticLaunchReady(expandedStaticCreative)}
+                  showFullCreativeButton={false}
+                  visualPromptBrief={getDisplayCreative(expandedStaticCreative).visualPromptBrief}
+                />
+                <div className="space-y-4 rounded-2xl border border-white/10 bg-black/18 p-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Headline</p>
+                    <p className="mt-2 text-xl font-semibold leading-7 text-foreground">
+                      {getDisplayCreative(expandedStaticCreative).headline}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Primary text</p>
+                    <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                      {getDisplayCreative(expandedStaticCreative).primaryText}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">CTA</p>
+                    <p className="mt-2 text-lg font-semibold text-foreground">
+                      {getDisplayCreative(expandedStaticCreative).cta}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       {activePhase === "ugc_videos" && activeVideoCreative ? (
-        <section className="grid gap-4 rounded-2xl border border-border bg-card p-4 sm:p-5 lg:grid-cols-[minmax(280px,0.82fr)_minmax(0,1.18fr)]">
-          <div className="space-y-3">
+        <section className="grid min-w-0 gap-4 rounded-2xl border border-border bg-card p-4 sm:p-5 lg:grid-cols-[minmax(280px,0.82fr)_minmax(0,1.18fr)]">
+          <div className="min-w-0 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -959,17 +1549,20 @@ export function CreativeWizard({
                 <h3 className="mt-1 text-xl font-semibold text-foreground">{activeVideoCreative.title}</h3>
               </div>
               <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${
-                isLaunchReadyVideoCreative(activeVideoCreative)
+                activeVideoLaunchReady
                   ? "border-emerald-300/20 bg-emerald-300/[0.08] text-emerald-100"
                   : isPlayableVideoCreative(activeVideoCreative)
                     ? "border-amber-300/25 bg-amber-300/[0.08] text-amber-100"
                     : "border-white/10 bg-white/[0.04] text-muted-foreground"
               }`}>
-                {getVideoReadinessLabel(activeVideoCreative)}
+                {currentVideoRenderView?.customerLabel ??
+                  (!activeVideoMatchesApprovedScript && isPlayableVideoCreative(activeVideoCreative)
+                    ? "Render needed for approved script"
+                    : getVideoReadinessLabel(activeVideoCreative))}
               </span>
             </div>
-            <div className="mx-auto w-full max-w-[360px] overflow-hidden rounded-[18px] border border-white/10 bg-black/28">
-              {isPlayableVideoCreative(activeVideoCreative) ? (
+            <div className="mx-auto w-full max-w-full overflow-hidden rounded-[18px] border border-white/10 bg-black/28 sm:max-w-[360px]">
+              {activeVideoHasCurrentPlayableRender ? (
                 <CustomerVideoPlayer
                   className="border-0"
                   videoClassName="aspect-[9/16] max-h-[70dvh] w-full bg-black object-contain"
@@ -983,17 +1576,26 @@ export function CreativeWizard({
                 <div className="grid aspect-[9/16] place-items-center bg-[linear-gradient(135deg,rgba(94,234,212,0.12),rgba(139,92,246,0.12)),radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.12),transparent_24%)] p-5 text-center">
                   <div>
                     <p className="text-sm font-semibold text-foreground">
-                      {videoActionPending ? "Rendering" : getVideoReadinessLabel(activeVideoCreative)}
+                      {!activeVideoMatchesApprovedScript && isPlayableVideoCreative(activeVideoCreative)
+                        ? "Fresh UGC render required"
+                        : currentVideoRenderView?.customerLabel ?? getVideoReadinessLabel(activeVideoCreative)}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                      {getVideoReadinessMessage(activeVideoCreative)}
+                    {!activeVideoMatchesApprovedScript && isPlayableVideoCreative(activeVideoCreative)
+                      ? "The approved script needs a current campaign-specific render. Prepare a current static source, then render the video."
+                      : currentVideoRenderView?.customerMessage ?? getVideoReadinessMessage(activeVideoCreative)}
+                    {videoBlockedByMissingStaticSource ? (
+                      <span className="mt-2 block text-cyan-100">
+                        Render static creatives first so the video preview has a current image source.
+                      </span>
+                    ) : null}
                     </p>
                   </div>
                 </div>
               )}
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              {isPlayableVideoCreative(activeVideoCreative) ? (
+              {activeVideoHasCurrentPlayableRender ? (
                 <Button
                   type="button"
                   variant="secondary"
@@ -1001,24 +1603,91 @@ export function CreativeWizard({
                 >
                   View full video
                 </Button>
-              ) : (
+              ) : null}
+              {activeVideoPlayableReviewOnly && activeVideoMatchesApprovedScript ? (
                 <Button
                   type="button"
                   variant="secondary"
                   onClick={() => void queueVideoPreview({
-                    force: activeVideoCreative.videoGenerationState === "failed",
+                    force: true,
                     video: activeVideoCreative,
                   })}
-                  disabled={videoActionPending || activeVideoCreative.videoGenerationState === "generating"}
+                  disabled={videoBlockedByMissingStaticSource || videoActionPending}
                 >
-                  {videoActionPending || activeVideoCreative.videoGenerationState === "generating"
+                  {videoBlockedByMissingStaticSource
+                    ? "Render static creatives first"
+                    : videoActionPending
+                    ? "Retrying UGC video..."
+                    : "Retry UGC video"}
+                </Button>
+              ) : null}
+              {!activeVideoMatchesApprovedScript && isPlayableVideoCreative(activeVideoCreative) ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    if (videoBlockedByMissingStaticSource) {
+                      void queueImagePreviews({ missingOnly: true });
+                      return;
+                    }
+
+                    void queueVideoPreview({
+                      force: true,
+                      video: activeVideoCreative,
+                    });
+                  }}
+                  disabled={videoActionPending || imageActionPending || Boolean(imageLimitMessage)}
+                >
+                  {videoBlockedByMissingStaticSource
+                    ? imageActionPending
+                      ? "Preparing current static source..."
+                      : imageLimitMessage
+                        ? "Daily image limit reached"
+                        : "Prepare current static source"
+                    : videoActionPending
+                    ? "Rendering approved script..."
+                    : "Render fresh UGC video"}
+                </Button>
+              ) : !isPlayableVideoCreative(activeVideoCreative) ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    if (videoBlockedByMissingStaticSource) {
+                      void queueImagePreviews({ missingOnly: true });
+                      return;
+                    }
+
+                    void queueVideoPreview({
+                      force: activeVideoCreative.videoGenerationState === "failed",
+                      video: activeVideoCreative,
+                    });
+                  }}
+                  disabled={videoActionPending || imageActionPending || Boolean(imageLimitMessage) || (
+                    activeVideoCreative.videoGenerationState === "generating" &&
+                    Boolean(activeVideoCreative.providerAssetId || activeVideoCreative.providerStatus)
+                  )}
+                >
+                  {videoBlockedByMissingStaticSource
+                    ? imageActionPending
+                      ? "Preparing current static source..."
+                      : imageLimitMessage
+                        ? "Daily image limit reached"
+                        : "Prepare current static source"
+                    : currentVideoRenderView?.state === "deferred_worker_required" ||
+                  currentVideoRenderView?.state === "operator_action_required"
+                    ? "Video render preparing"
+                    : videoActionPending || (
+                      activeVideoCreative.videoGenerationState === "generating" &&
+                      (activeVideoCreative.providerAssetId || activeVideoCreative.providerStatus)
+                    )
                     ? "Rendering video..."
                     : activeVideoCreative.videoGenerationState === "failed"
                       ? "Retry video preview"
-                      : "Render video preview"}
+                      : "Render fresh UGC video"}
                 </Button>
-              )}
-              {isLaunchReadyVideoCreative(activeVideoCreative) && activeVideoCreative.conceptType === "customer_ugc" ? (
+              ) : null}
+              {activeVideoLaunchReady ? (
                 <Button
                   type="button"
                   variant={selectedUgcVideoIds.includes(activeVideoCreative.id) ? "default" : "secondary"}
@@ -1026,33 +1695,47 @@ export function CreativeWizard({
                 >
                   {selectedUgcVideoIds.includes(activeVideoCreative.id) ? "Selected for launch" : "Select UGC for launch"}
                 </Button>
+              ) : !activeVideoMatchesApprovedScript && isPlayableVideoCreative(activeVideoCreative) ? (
+                <span className="rounded-full border border-amber-300/20 bg-amber-300/[0.08] px-3 py-2 text-xs font-semibold text-amber-100">
+                  Approved script needs a current video
+                </span>
               ) : (
                 <span className="rounded-full border border-amber-300/20 bg-amber-300/[0.08] px-3 py-2 text-xs font-semibold text-amber-100">
-                  Review-only until product QA accepts
+                  Review-only until accepted for launch
                 </span>
               )}
+              {activeVideoLaunchReadinessReason ? (
+                <span className="text-sm leading-6 text-amber-100">
+                  {activeVideoLaunchReadinessReason}
+                </span>
+              ) : null}
               {customerVideoMessage(videoMessage || activeVideoCreative.videoGenerationMessage) ? (
                 <span className="text-sm leading-6 text-muted-foreground">
                   {customerVideoMessage(videoMessage || activeVideoCreative.videoGenerationMessage)}
                 </span>
               ) : null}
+              {creditTopUpSurface === "video" ? (
+                <div className="w-full">
+                  <GenerationCreditTopUpPanel surface="video" />
+                </div>
+              ) : null}
             </div>
             {reviewableVideoCreatives.length > 1 ? (
-              <div className="flex gap-2 overflow-x-auto pb-1">
+              <div className="grid max-w-full gap-2 sm:flex sm:overflow-x-auto sm:pb-1">
                 {reviewableVideoCreatives.map((video, index) => {
                   const active = video.id === activeVideoCreative.id;
                   return (
                     <button
                       key={video.id}
                       type="button"
-                      className={`min-w-[180px] rounded-2xl border px-3 py-3 text-left transition ${
+                      className={`w-full rounded-2xl border px-3 py-3 text-left transition sm:min-w-[150px] sm:max-w-[240px] ${
                         active
                           ? "border-emerald-300/35 bg-emerald-300/[0.08]"
                           : "border-white/10 bg-black/18 hover:border-white/20"
                       }`}
                       onClick={() => {
                         setActiveVideoId(video.id);
-                        if (isLaunchReadyVideoCreative(video) && video.conceptType === "customer_ugc") {
+                        if (isCurrentLaunchReadyVideo(video) && video.conceptType === "customer_ugc") {
                           setSelectedUgcVideoIds([video.id]);
                         }
                       }}
@@ -1064,11 +1747,13 @@ export function CreativeWizard({
                       <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-foreground">
                         {video.title}
                       </p>
-                      <p className={isLaunchReadyVideoCreative(video) ? "mt-2 text-[11px] text-emerald-200" : "mt-2 text-[11px] text-muted-foreground"}>
+                      <p className={isCurrentLaunchReadyVideo(video) ? "mt-2 text-[11px] text-emerald-200" : "mt-2 text-[11px] text-muted-foreground"}>
                         {selectedUgcVideoIds.includes(video.id)
                           ? "Selected UGC"
-                          : video.id === activeVideoId && activeVideoJobId
-                            ? "Rendering"
+                          : video.id === activeVideoId && currentVideoRenderView
+                            ? currentVideoRenderView.customerLabel
+                            : !videoMatchesApprovedScript(video, approvedUgcScriptHash) && isPlayableVideoCreative(video)
+                              ? "Needs approved-script render"
                             : getVideoReadinessLabel(video)}
                       </p>
                     </button>
@@ -1077,11 +1762,37 @@ export function CreativeWizard({
               </div>
             ) : null}
           </div>
-          <div className="grid gap-3">
+          <div className="grid min-w-0 gap-3">
+            <div className="rounded-2xl border border-cyan-300/15 bg-[radial-gradient(circle_at_10%_0%,rgba(103,232,249,0.12),transparent_34%),linear-gradient(135deg,rgba(8,14,26,0.95),rgba(5,9,18,0.86))] p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/80">Creator studio</p>
+                  <h3 className="mt-2 text-lg font-semibold text-foreground">Script, source, and render controls</h3>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                    Review the presenter style, voice, pacing, source static, captions, and energy before rendering or approving this campaign-specific video.
+                  </p>
+                </div>
+                <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${
+                  activeVideoLaunchReady
+                    ? "border-emerald-300/20 bg-emerald-300/[0.08] text-emerald-100"
+                    : "border-amber-300/20 bg-amber-300/[0.08] text-amber-100"
+                }`}>
+                  {activeVideoLaunchReady ? "Launch-ready" : "Review needed"}
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <CreatorStudioSetting icon={Clapperboard} label="Presenter" value={activeVideoCreative.creatorStyle} />
+                <CreatorStudioSetting icon={Mic2} label="Voice" value={activeVideoCreative.voiceStyle} />
+                <CreatorStudioSetting icon={Gauge} label="Pacing" value={activeVideoCreative.targetDurationSeconds ? `${activeVideoCreative.targetDurationSeconds}s target` : "Fast direct response"} />
+                <CreatorStudioSetting icon={ImageIcon} label="Source static" value={videoBlockedByMissingStaticSource ? "Current static needed" : activeVideoCreative.sourceStaticAssetId ? "Current static selected" : "Static source pending"} />
+                <CreatorStudioSetting icon={Captions} label="Captions" value={activeVideoCreative.onScreenText?.[0] || "Hook captions ready"} />
+                <CreatorStudioSetting icon={Sparkles} label="Energy" value={activeVideoCreative.conceptType === "customer_ugc" ? "Customer-style proof" : "Expert explainer"} />
+              </div>
+            </div>
             <div className="rounded-2xl border border-white/10 bg-black/18 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Script</p>
               <div className="mt-3 space-y-2">
-                {activeVideoCreative.script.slice(0, 6).map((line, index) => (
+                {activeVideoDisplayScript.slice(0, 6).map((line, index) => (
                   <p className="text-sm leading-6 text-foreground" key={`${activeVideoCreative.id}-script-${index}`}>
                     {line}
                   </p>
@@ -1150,164 +1861,37 @@ export function CreativeWizard({
         </section>
       ) : null}
 
-      <section className={`${activePhase === "static_ads" ? "block" : "hidden"} rounded-2xl border border-border bg-card p-4 sm:p-5`}>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">Creative carousel</p>
-            <h3 className="mt-1 text-xl font-semibold text-foreground">
-              {launchReadyCreatives.length > 0
-                ? `${staticReadiness.selectedReadyLabel} selected`
-                : `View all creatives and choose ${minSelected}-${maxSelected}`}
-            </h3>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Click any card to view it large above. Selected launch-ready cards are shown first. {selectedLaunchReadyCreatives.length || selectedCreatives.length}/{carouselMaxSelected} selected.
-          </p>
-        </div>
-        {draftCreatives.length > 0 && launchReadyCreatives.length > 0 ? (
-          <p className="mt-3 rounded-[14px] border border-amber-300/16 bg-amber-300/[0.075] px-3 py-2 text-sm leading-6 text-amber-100">
-            Showing {selectedLaunchReadyCreatives.length || launchReadyCreatives.length} selected launch-ready candidate{(selectedLaunchReadyCreatives.length || launchReadyCreatives.length) === 1 ? "" : "s"}.
-            {" "}
-            {draftCreatives.length} draft concept{draftCreatives.length === 1 ? "" : "s"} need regeneration and are separated below.
-            {unselectedLaunchReadyCreatives.length > 0 ? ` ${unselectedLaunchReadyCreatives.length} optional launch-ready candidate${unselectedLaunchReadyCreatives.length === 1 ? "" : "s"} can be added after review.` : ""}
-          </p>
-        ) : null}
-        <div className="mt-5 flex snap-x gap-4 overflow-x-auto pb-3">
-          {selectableCreatives.map((creative, index) => {
-            const displayCreative = getDisplayCreative(creative);
-            const selected = selectedIds.includes(creative.id);
-            const active = activeCreative.id === creative.id;
-            return (
-              <article
-                className={`min-w-[min(84vw,430px)] max-w-[430px] snap-start rounded-2xl border p-3 transition ${
-                  active
-                    ? "border-primary bg-primary/10"
-                    : selected
-                      ? "border-primary/40 bg-primary/[0.06]"
-                      : "border-border bg-background"
-                }`}
-                key={creative.id}
-              >
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    className="min-w-0 text-left text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground transition hover:text-foreground"
-                    onClick={() => setActiveCreativeId(creative.id)}
-                  >
-                    Creative {index + 1}
-                  </button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={selected ? "default" : "secondary"}
-                    onClick={() => toggleCreative(creative.id)}
-                  >
-                    {selected
-                      ? selectedIds[0] === creative.id
-                        ? "Primary creative"
-                        : "Review variant"
-                      : "Add to review set"}
-                  </Button>
-                </div>
-                <button
-                  type="button"
-                  className="block w-full rounded-[16px] text-left"
-                  onClick={() => setActiveCreativeId(creative.id)}
-                >
-                  <StaticCreativePreviewCard
-                    category={displayCreative.category}
-                    compact
-                    cta={displayCreative.cta}
-                    formatLabel={displayCreative.formatLabel}
-                    headline={displayCreative.headline}
-                    imageGenerationMessage={displayCreative.imageGenerationMessage}
-                    imageGenerationState={displayCreative.imageGenerationState}
-                    imagePrompt={displayCreative.imagePrompt}
-                    imagePromptConfig={displayCreative.imagePromptConfig}
-                    imageUrl={displayCreative.imageUrl}
-                    storageNormalized={displayCreative.storageNormalized}
-                    location={displayCreative.location}
-                    offer={displayCreative.offer}
-                    overlayText={displayCreative.overlayText}
-                    primaryText={displayCreative.primaryText}
-                    qualityGate={displayCreative.qualityGate}
-                    imageQa={displayCreative.imageQa}
-                    score={displayCreative.score}
-                    selectedCount={selected ? selectedCreatives.length : null}
-                    visualPromptBrief={displayCreative.visualPromptBrief}
-                  />
-                </button>
-              </article>
-            );
-          })}
-        </div>
-        {draftCreatives.length > 0 ? (
-          <details className="mt-4 rounded-2xl border border-white/10 bg-black/14 p-4">
-            <summary className="cursor-pointer text-sm font-semibold text-foreground">
-              {draftCreatives.length} draft concept{draftCreatives.length === 1 ? "" : "s"} need regeneration
-            </summary>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              These concepts are not launch-ready and are not selectable as final launch media until accepted app-owned imagery is generated.
-            </p>
-            <div className="mt-4 grid gap-4 lg:grid-cols-3">
-              {draftCreatives.map((creative, index) => {
-                const displayCreative = getDisplayCreative(creative);
-                const active = activeCreative.id === creative.id;
+    </div>
+  );
+}
 
-                return (
-                  <article
-                    className={`rounded-2xl border p-3 transition ${
-                      active ? "border-amber-300/35 bg-amber-300/[0.06]" : "border-white/10 bg-background/70"
-                    }`}
-                    key={creative.id}
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <button
-                        type="button"
-                        className="min-w-0 text-left text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground transition hover:text-foreground"
-                        onClick={() => setActiveCreativeId(creative.id)}
-                      >
-                        Draft concept {index + 1}
-                      </button>
-                      <span className="rounded-full border border-amber-300/20 bg-amber-300/[0.08] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-100">
-                        Needs regeneration
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="block w-full rounded-[16px] text-left"
-                      onClick={() => setActiveCreativeId(creative.id)}
-                    >
-                      <StaticCreativePreviewCard
-                        category={displayCreative.category}
-                        compact
-                        cta={displayCreative.cta}
-                        formatLabel={displayCreative.formatLabel}
-                        headline={displayCreative.headline}
-                        imageGenerationMessage={displayCreative.imageGenerationMessage}
-                        imageGenerationState={displayCreative.imageGenerationState}
-                        imagePrompt={displayCreative.imagePrompt}
-                        imagePromptConfig={displayCreative.imagePromptConfig}
-                        imageUrl={displayCreative.imageUrl}
-                        storageNormalized={displayCreative.storageNormalized}
-                        location={displayCreative.location}
-                        offer={displayCreative.offer}
-                        overlayText={displayCreative.overlayText}
-                        primaryText={displayCreative.primaryText}
-                        qualityGate={displayCreative.qualityGate}
-                        imageQa={displayCreative.imageQa}
-                        score={displayCreative.score}
-                        selectedCount={null}
-                        visualPromptBrief={displayCreative.visualPromptBrief}
-                      />
-                    </button>
-                  </article>
-                );
-              })}
-            </div>
-          </details>
-        ) : null}
-      </section>
+function BriefSummaryItem({ label, value }: { label: string; value?: string | number | null }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-foreground">{value || "Not set"}</p>
+    </div>
+  );
+}
+
+function CreatorStudioSetting({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  value?: string | number | null;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/18 p-4">
+      <div className="flex items-center gap-2">
+        <span className="grid size-8 place-items-center rounded-xl border border-cyan-300/18 bg-cyan-300/[0.07] text-cyan-100">
+          <Icon className="size-4" />
+        </span>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+      </div>
+      <p className="mt-3 text-sm font-semibold leading-5 text-foreground">{value || "Ready for review"}</p>
     </div>
   );
 }

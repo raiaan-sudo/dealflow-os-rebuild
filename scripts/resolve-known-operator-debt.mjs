@@ -12,6 +12,22 @@ const KNOWN_VIDEO_GENERATION_DEBT = {
   providerEventId: "76cfe4df-a488-49ff-8f3f-c616889c5c34",
   campaignId: "a18d77f7-398b-4920-8d93-8332dfff2d44",
 };
+const KNOWN_PUBLIC_QA_BILLING_DEBT = {
+  jobId: "8f7ce814-85eb-48df-a4dc-f1f168335394",
+  leadId: "e7fe6165-f3c5-4fde-8417-4f058326f5b6",
+  campaignId: "acbf7508-b782-479e-bc0e-841ffc421818",
+  organizationId: "2e3b0144-23a9-483a-9e11-61173b4099c4",
+};
+const KNOWN_GHL_OPPORTUNITY_V1_AUTH_DEBT_IDS = [
+  "0a86eca1-2ad9-4b02-bfa7-b05796645531",
+  "04757dd1-3ab2-492c-b920-9ff22c57186b",
+];
+const KNOWN_HISTORICAL_CLIENT_ERROR_IDS = [
+  "26a6c3f7-4bba-4477-b5a8-b7812373956d",
+  "df11dd2a-686c-4de8-8c06-b4f71c906820",
+  "c17f6667-269f-4959-9cf1-fa92b2306189",
+  "ed79559b-0536-484d-b61d-335302fedc71",
+];
 
 function requireEnv(name) {
   const value = process.env[name]?.trim();
@@ -315,6 +331,134 @@ async function main() {
   }
 
   log("Known failed video provider usage events reviewed", String(safeVideoProviderRows.length));
+
+  const { data: publicQaBillingRows, error: publicQaBillingReadError } = await supabase
+    .from("system_jobs")
+    .select("id,status,kind,organization_id,campaign_id,last_error_code,dead_lettered_at,error_message,dead_letter_reason,payload")
+    .eq("id", KNOWN_PUBLIC_QA_BILLING_DEBT.jobId)
+    .eq("organization_id", KNOWN_PUBLIC_QA_BILLING_DEBT.organizationId)
+    .eq("campaign_id", KNOWN_PUBLIC_QA_BILLING_DEBT.campaignId)
+    .eq("kind", "performance_lead_billing")
+    .eq("status", "failed")
+    .eq("last_error_code", "lead_billing_lead_fetch_failed")
+    .not("dead_lettered_at", "is", null)
+    .is("reviewed_at", null);
+
+  if (publicQaBillingReadError) {
+    throw new Error(`Failed to read known public QA performance billing job: ${publicQaBillingReadError.message}`);
+  }
+
+  const safePublicQaBillingRows = (publicQaBillingRows ?? []).filter((row) =>
+    row.error_message === "column leads.consent_source does not exist" &&
+    row.dead_letter_reason === "column leads.consent_source does not exist" &&
+    row.payload?.leadId === KNOWN_PUBLIC_QA_BILLING_DEBT.leadId &&
+    row.payload?.source === "public_lead_capture" &&
+    row.payload?.loadTest === true
+  );
+
+  if (safePublicQaBillingRows.length > 0) {
+    const { error } = await supabase
+      .from("system_jobs")
+      .update({
+        reviewed_at: now,
+        reviewed_by: REVIEWED_BY,
+        resolution_note:
+          "Reviewed as historical public QA lead proof residue. The performance billing consent source lookup was fixed to use leads.consent_metadata.source, later public-form billing proof completed through the current path, and this dead-letter row is retained as evidence only.",
+      })
+      .in(
+        "id",
+        safePublicQaBillingRows.map((row) => row.id),
+      );
+
+    if (error) {
+      throw new Error(`Failed to mark public QA performance billing job reviewed: ${error.message}`);
+    }
+  }
+
+  log("Known public QA performance billing jobs reviewed", String(safePublicQaBillingRows.length));
+
+  const { data: ghlOpportunityRows, error: ghlOpportunityReadError } = await supabase
+    .from("lead_crm_sync_events")
+    .select("id,status,last_error_code,last_error_message,metadata")
+    .in("id", KNOWN_GHL_OPPORTUNITY_V1_AUTH_DEBT_IDS)
+    .eq("status", "dead_letter");
+
+  if (ghlOpportunityReadError) {
+    throw new Error(`Failed to read known GHL opportunity proof CRM events: ${ghlOpportunityReadError.message}`);
+  }
+
+  const safeGhlOpportunityRows = (ghlOpportunityRows ?? []).filter((row) =>
+    row.metadata?.proof_run_id === "ghl_opportunity_v1_20260618_01" &&
+    row.metadata?.reason === "ghl_opportunity_create_failed" &&
+    row.metadata?.operatorReviewedAt === undefined &&
+    ["ghl_auth_failed", "ghl_request_failed"].includes(row.last_error_code)
+  );
+
+  for (const row of safeGhlOpportunityRows) {
+    const { error } = await supabase
+      .from("lead_crm_sync_events")
+      .update({
+        metadata: {
+          ...(row.metadata ?? {}),
+          operatorReviewedAt: now,
+          operatorReviewedBy: REVIEWED_BY,
+          operatorReviewNote:
+            "Reviewed as historical GHL Opportunity V1 proof residue. Token scope/config was corrected and later contact, opportunity, workflow, and public lead full-path proofs completed through the current path.",
+        },
+        updated_at: now,
+      })
+      .eq("id", row.id);
+
+    if (error) {
+      throw new Error(`Failed to mark known GHL opportunity proof CRM event reviewed: ${error.message}`);
+    }
+  }
+
+  log("Known GHL opportunity proof CRM events reviewed", String(safeGhlOpportunityRows.length));
+
+  const { data: clientErrorRows, error: clientErrorReadError } = await supabase
+    .from("client_error_events")
+    .select("id,route_path,source,severity,error_name,message,reviewed_at")
+    .in("id", KNOWN_HISTORICAL_CLIENT_ERROR_IDS)
+    .is("reviewed_at", null);
+
+  if (clientErrorReadError) {
+    throw new Error(`Failed to read known historical client errors: ${clientErrorReadError.message}`);
+  }
+
+  const safeClientErrorRows = (clientErrorRows ?? []).filter((row) => {
+    if (row.id === "26a6c3f7-4bba-4477-b5a8-b7812373956d") {
+      return row.route_path === "/admin/partners" && row.source === "app_error_boundary" && row.severity === "high";
+    }
+
+    if (row.id === "c17f6667-269f-4959-9cf1-fa92b2306189") {
+      return row.route_path === "/login" && row.error_name === "TypeError" && row.message?.includes("Cannot redefine property: ethereum");
+    }
+
+    return row.message?.includes("Minified React error #418") === true;
+  });
+
+  if (safeClientErrorRows.length > 0) {
+    const { error } = await supabase
+      .from("client_error_events")
+      .update({
+        reviewed_at: now,
+        reviewed_by: REVIEWED_BY,
+        resolution_note:
+          "Reviewed as historical browser telemetry after operator shell reconciliation and current production build validation. The rows are retained as evidence; no customer data or secrets were exposed.",
+        updated_at: now,
+      })
+      .in(
+        "id",
+        safeClientErrorRows.map((row) => row.id),
+      );
+
+    if (error) {
+      throw new Error(`Failed to mark known historical client errors reviewed: ${error.message}`);
+    }
+  }
+
+  log("Known historical client errors reviewed", String(safeClientErrorRows.length));
 }
 
 main().catch((error) => {

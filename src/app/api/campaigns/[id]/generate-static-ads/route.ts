@@ -4,11 +4,20 @@ import { logWarn } from "@/lib/logging";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import {
+  isLaunchReadyStaticCreative,
+  STATIC_LAUNCH_MIN_CREATIVE_COUNT,
+} from "@/lib/services/creative-media-readiness";
+import {
   creativeIntakeIncludesStatic,
   getApprovedCreativeIntakeGenerationContext,
   hasSameCreativeIntakeGenerationContext,
   isCreativeChatIntakeEnabled,
 } from "@/lib/services/creative-chat-intake-service";
+import { assertGenerationCreditsAvailableForUser } from "@/lib/services/credit-service";
+import {
+  assertProviderGenerationHardCapsConfigured,
+  isProviderGenerationLiveEnvEnabled,
+} from "@/lib/services/provider-generation-spend-guard";
 import { isMarketingStudioStaticGenerationPayload } from "@/lib/services/marketing-studio-worker-contract";
 import { createSystemJob, listSystemJobs } from "@/lib/services/system-job-service";
 import { z } from "zod";
@@ -112,7 +121,39 @@ export async function POST(
       return buildRateLimitResponse(rateLimit.resetAt);
     }
 
-    const maxGenerations = body.maxGenerations ?? (body.missingOnly === true ? 2 : undefined);
+    const staticBriefReadinessContext = creativeIntakeContext
+      ? {
+          staticBriefHash: creativeIntakeContext.staticBriefHash,
+          offerHash: creativeIntakeContext.offerHash,
+          ctaHash: creativeIntakeContext.ctaHash,
+          brandHash: creativeIntakeContext.brandHash,
+        }
+      : null;
+    const launchReadyStaticCount = campaign.creatives.staticAds
+      .filter((creative) => isLaunchReadyStaticCreative(creative, staticBriefReadinessContext))
+      .length;
+    const missingLaunchReadyFloorCount = Math.max(0, STATIC_LAUNCH_MIN_CREATIVE_COUNT - launchReadyStaticCount);
+    let previewUpdated = false;
+
+    const maxGenerations = body.maxGenerations ??
+      (body.missingOnly === true
+        ? Math.min(STATIC_LAUNCH_MIN_CREATIVE_COUNT, Math.max(1, missingLaunchReadyFloorCount))
+        : STATIC_LAUNCH_MIN_CREATIVE_COUNT);
+
+    await assertGenerationCreditsAvailableForUser({
+      bucket: "image_generation",
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      campaignId,
+      quantity: maxGenerations,
+    });
+
+    if (isProviderGenerationLiveEnvEnabled("image_generation")) {
+      assertProviderGenerationHardCapsConfigured({
+        operation: "image_generation",
+        requestedCount: maxGenerations,
+      });
+    }
 
     const activeJobs = await listSystemJobs({
       userId: auth.userId,
@@ -124,12 +165,15 @@ export async function POST(
       activeJobs.find((job) => {
         const payload = job.payload as { creativeIntake?: typeof creativeIntakeContext };
         return (
-          !creativeIntakeContext ||
-          hasSameCreativeIntakeGenerationContext(payload.creativeIntake, creativeIntakeContext)
+          isMarketingStudioStaticGenerationPayload(job.payload) &&
+          (
+            !creativeIntakeContext ||
+            hasSameCreativeIntakeGenerationContext(payload.creativeIntake, creativeIntakeContext)
+          )
         );
       }) ?? null;
 
-    if (existingActiveJob) {
+    if (existingActiveJob && body.force !== true) {
       scheduleStaticCreativeJob(existingActiveJob.id, existingActiveJob.payload as { creativeIntake?: unknown });
 
       return apiSuccess({
@@ -137,14 +181,20 @@ export async function POST(
         campaignId,
         job: existingActiveJob,
         reusedExistingJob: true,
+        previewUpdated,
       });
     }
 
     const requestScope = body.force === true
       ? `force:${crypto.randomUUID()}`
-      : body.missingOnly === true
-        ? `missing:${crypto.randomUUID()}`
-        : `attempt:${Date.now()}`;
+      : [
+          "finished",
+          creativeIntakeContext?.staticBriefHash ?? creativeIntakeContext?.briefHash ?? "brief",
+          creativeIntakeContext?.offerHash ?? "offer",
+          creativeIntakeContext?.ctaHash ?? "cta",
+          creativeIntakeContext?.brandHash ?? "brand",
+          `window:${Math.floor(Date.now() / (10 * 60_000))}`,
+        ].join(":");
     const idempotencyKey = `static_creative_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${requestScope}`;
 
     const job = await createSystemJob({
@@ -156,6 +206,10 @@ export async function POST(
       payload: {
         force: body.force === true,
         missingOnly: body.missingOnly === true,
+        targetVariantCount: STATIC_LAUNCH_MIN_CREATIVE_COUNT,
+        promoteThreshold: STATIC_LAUNCH_MIN_CREATIVE_COUNT,
+        outputMode: "finished_ad",
+        provider: "higgsfield_marketing_studio",
         creativeIntake: creativeIntakeContext,
         ...(maxGenerations ? { maxGenerations } : {}),
       },
@@ -166,6 +220,7 @@ export async function POST(
       success: true,
       campaignId,
       job,
+      previewUpdated,
     });
   } catch (error) {
     return handleApiError(error, "Generate static ads");

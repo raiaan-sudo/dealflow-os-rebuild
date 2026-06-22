@@ -41,6 +41,11 @@ const require = createRequire(import.meta.url);
 const {
   evaluateStaticCreativeImageQa,
 } = require("../src/lib/services/static-creative-image-qa.ts");
+const {
+  evaluateStaticVisualAssetDecision,
+  evaluateStaticCreativeLaunchSafety,
+  evaluateStaticCreativeQualityAdvisory,
+} = require("../src/lib/services/static-creative-visual-qa.ts");
 
 function svgData(body, attrs = "width=\"512\" height=\"512\" viewBox=\"0 0 512 512\"") {
   return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" ${attrs}>${body}</svg>`)}`;
@@ -199,6 +204,29 @@ const cleanFinishedAd = await qa(
 );
 assert.equal(cleanFinishedAd.decision, "accept", "clean finished ad accepted in finished_ad QA mode");
 assert.equal(cleanFinishedAd.mode, "finished_ad");
+
+const optionalBrandOmitted = await qa(
+  "finished-ad-optional-brand-omitted",
+  `
+    <rect width="512" height="512" fill="#f7f3eb"/>
+    <rect x="28" y="28" width="456" height="456" rx="18" fill="#ffffff"/>
+    <rect x="48" y="58" width="416" height="220" rx="14" fill="#d9e8d5"/>
+    <text x="56" y="332" font-size="34">Preview 14-Day Home Sale Plan</text>
+    <text x="56" y="372" font-size="18">Focused seller review this week</text>
+    <rect x="56" y="410" width="248" height="42" rx="21" fill="#183a2b"/>
+    <text x="86" y="437" font-size="18" fill="#fff">Review My Sale Plan</text>
+  `,
+  {
+    mode: "finished_ad",
+    prompt: "Brand/logo text is optional; if exact brand rendering is uncertain, omit it. If brand text is used, spell it exactly: RE/MAX.",
+    campaignContext: {
+      cta: "Review My Sale Plan",
+      offer: "Preview 14-Day Home Sale Plan",
+    },
+  },
+);
+assert.equal(optionalBrandOmitted.decision, "accept", "finished_ad accepts clean rasters that omit optional brokerage text");
+assert.equal(optionalBrandOmitted.reasons.includes("brand_misspelled"), false);
 
 const missingRequiredCta = await qa(
   "finished-ad-missing-cta",
@@ -430,5 +458,94 @@ const redirectPrivate = await evaluateStaticCreativeImageQa({
 globalThis.fetch = originalFetch;
 assert.equal(redirectPrivate.decision, "reject", "redirect-to-private QA fetch rejected");
 assert.ok(redirectPrivate.reasons.includes("image_fetch_failed"));
+
+const legacyAppComposedFinal = evaluateStaticVisualAssetDecision({
+  imageUrl: "https://example.com/storage/v1/object/public/creative-assets/final.png",
+  storageNormalized: true,
+  appComposedFinal: true,
+  qualityTier: null,
+  sourceBackgroundKind: "higgsfield_visual_background",
+  sourceBackgroundProvider: "higgsfield_marketing_studio",
+  sourceBackgroundAssetId: null,
+  qualityGate: { accepted: false },
+  imageQa: {
+    mode: "app_composed_final",
+    usable: true,
+    decision: "accept",
+    reasons: [],
+  },
+});
+assert.equal(
+  legacyAppComposedFinal.usable,
+  false,
+  "legacy app-owned Higgsfield composed finals cannot stay promotable without fresh source provenance",
+);
+
+const launchSafeFinishedRender = {
+  imageUrl: "https://example.com/storage/v1/object/public/creative-assets/user/campaign/final.png",
+  storageNormalized: true,
+  appComposedFinal: false,
+  imageGenerationProvider: "higgsfield_marketing_studio",
+  generationMethod: "higgsfield_marketing_studio",
+  providerName: "higgsfield_marketing_studio",
+  generationMode: "finished_ad",
+  assetRole: "final_static_ad",
+  qualityTier: "higgsfield_finished_ad",
+  qualityGate: {
+    accepted: false,
+    score: 68,
+    hardFailures: ["Offer needs risk reversal"],
+    improvementHints: ["Sharper hook could improve conversion later"],
+  },
+  visualQualityGate: { accepted: true },
+  premiumQualityGate: { accepted: true },
+  imageQa: {
+    mode: "finished_ad",
+    usable: true,
+    decision: "accept",
+    reasons: [],
+  },
+};
+const advisorySafeGate = evaluateStaticCreativeLaunchSafety(launchSafeFinishedRender);
+assert.equal(advisorySafeGate.passed, true, "soft qualityGate rejection cannot block launch-safe Higgsfield finished renders");
+assert.deepEqual(advisorySafeGate.blockers, []);
+const advisory = evaluateStaticCreativeQualityAdvisory(launchSafeFinishedRender);
+assert.equal(advisory.canImproveLater, true, "soft quality notes remain available as advisory metadata");
+assert.ok(advisory.reasons.includes("offer_needs_risk_reversal"));
+assert.ok(advisory.reasons.includes("hook_could_be_stronger"));
+
+assert.deepEqual(
+  evaluateStaticCreativeLaunchSafety({ ...launchSafeFinishedRender, imageUrl: "" }).blockers,
+  ["missing_image"],
+  "missing image remains a hard launch blocker",
+);
+assert.ok(
+  evaluateStaticCreativeLaunchSafety({ ...launchSafeFinishedRender, storageNormalized: false }).blockers.includes("storage_not_app_owned"),
+  "non app-owned storage remains a hard launch blocker",
+);
+assert.ok(
+  evaluateStaticCreativeLaunchSafety({
+    ...launchSafeFinishedRender,
+    imageQa: {
+      mode: "finished_ad",
+      usable: false,
+      decision: "reject",
+      reasons: ["required_cta_missing"],
+    },
+  }).blockers.includes("required_cta_missing"),
+  "finished render missing a required CTA remains blocked",
+);
+
+const softImageQaGate = evaluateStaticCreativeLaunchSafety({
+  ...launchSafeFinishedRender,
+  imageQa: {
+    mode: "finished_ad",
+    usable: false,
+    decision: "reject",
+    reasons: ["text_heavy", "fake_ad_layout", "button_or_fake_cta_detected"],
+  },
+});
+assert.equal(softImageQaGate.passed, true, "subjective image QA concerns are advisory for app-owned Higgsfield finished renders");
+assert.deepEqual(softImageQaGate.blockers, []);
 
 console.log("Static creative image QA tests passed.");

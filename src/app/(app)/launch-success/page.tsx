@@ -7,7 +7,11 @@ import { LaunchSuccessRecheckButton } from "@/components/campaign/launch/launch-
 import { LaunchReceiptCopyButton } from "@/components/campaign/launch/launch-receipt-copy-button";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
-import { getMetaConnectionState, getDefaultMetaConnectionState } from "@/lib/integrations/meta/service";
+import {
+  getMetaConnectionState,
+  getMetaConnectionStateForOrganization,
+  getDefaultMetaConnectionState,
+} from "@/lib/integrations/meta/service";
 import { getMetaCampaignSyncSnapshotForCampaign } from "@/lib/services/meta-campaign-sync-service";
 import { getCampaignLaunchRecordForCampaign } from "@/lib/services/campaign-launch-audit-service";
 
@@ -152,7 +156,13 @@ export default async function LaunchSuccessPage({
       : null;
   const activeCampaign = await resolveActiveCampaignRecord(campaignId).catch(() => null);
   const plan = activeCampaign?.record ? canonicalCampaignToPlan(activeCampaign.record) : null;
-  const metaConnection = await getMetaConnectionState().catch(() => getDefaultMetaConnectionState());
+  const campaignOrganizationId = activeCampaign?.record?.campaign.organization_id ?? null;
+  const campaignUserId = activeCampaign?.record?.campaign.user_id ?? null;
+  const metaConnection = campaignOrganizationId
+    ? await getMetaConnectionStateForOrganization(campaignOrganizationId).catch(() =>
+        getDefaultMetaConnectionState(),
+      )
+    : await getMetaConnectionState().catch(() => getDefaultMetaConnectionState());
   const persistedCampaignId = plan?.runtime.campaignId ?? null;
   const persistedAdSetId = plan?.runtime.adSetId ?? plan?.runtime.metaAdSetIds?.[0] ?? null;
   const persistedAdId = plan?.runtime.adId ?? plan?.runtime.metaAdIds?.[0] ?? null;
@@ -173,6 +183,8 @@ export default async function LaunchSuccessPage({
       ? await getMetaCampaignSyncSnapshotForCampaign({
           campaignName: resolvedCampaignName,
           metaCampaignId: resolvedMetaCampaignId,
+          organizationId: campaignOrganizationId,
+          userId: campaignUserId,
         }).catch(() => null)
       : null;
   const syncedAdSetStatuses = Array.isArray(syncSnapshot?.adSetStatuses)
@@ -194,7 +206,7 @@ export default async function LaunchSuccessPage({
     plan?.runtime.budgetDailyInput && plan.runtime.budgetDailyInput > 0
       ? `${currency(plan.runtime.budgetDailyInput)}/day`
       : plan?.monthlyBudget && plan.monthlyBudget > 0
-        ? `${currency(plan.monthlyBudget)}/month`
+        ? `${currency(Number((plan.monthlyBudget / 30).toFixed(2)))}/day`
         : "Budget not recorded";
   const resolvedStatus =
     syncSnapshot?.campaignStatus ??
@@ -238,9 +250,14 @@ export default async function LaunchSuccessPage({
     plan?.runtime.launchedAt ??
     plan?.runtime.statusUpdatedAt ??
     lastConfirmedAt;
+  const resolvedAdAccountLabel =
+    metaConnection.accountName ??
+    launchRecord?.accountName ??
+    metaConnection.accountId ??
+    "No ad account selected";
   const receiptItems: Array<{ label: string; value: string }> = [
     { label: "Campaign name", value: resolvedCampaignName },
-    { label: "Ad account", value: String(metaConnection.accountName ?? metaConnection.accountId ?? launchRecord?.accountName ?? "No ad account selected") },
+    { label: "Ad account", value: String(resolvedAdAccountLabel) },
     { label: "Budget", value: resolvedBudget },
     { label: "Status", value: String(resolvedStatus) },
     { label: "Launch time", value: formatDateTime(launchTime ?? null) },

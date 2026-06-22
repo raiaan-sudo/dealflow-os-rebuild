@@ -634,9 +634,10 @@ export const MEDIA_BUYER_CAMPAIGN_PACKAGES: Partial<Record<CampaignCategory, Med
       primaryText:
         "See a shortlist of homes shaped around your budget, lifestyle, and preferred areas. Less noise, clearer matches, and a faster next step.",
       headline: "See Your Home Matches",
-      cta: "Get List",
-      funnelHeadline: "View homes that actually match your criteria",
-      funnelSubheadline: "Get a focused home shortlist based on your preferred location, price range, and buying timeline.",
+      cta: "Get My List",
+      funnelHeadline: "Get Your Free Custom Home List",
+      funnelSubheadline:
+        "We'll put together a personalized list of homes matched to your budget, location, and timeline so you can move forward with clarity and zero pressure.",
       formFields: ["Budget range", "Locations", "Must-haves"],
       creativeDirection: "Clean listing grid, neighborhood shortlist, and matched-home cards.",
       complianceNotes: [
@@ -753,7 +754,7 @@ export const MEDIA_BUYER_CAMPAIGN_PACKAGES: Partial<Record<CampaignCategory, Med
         "Get a focused list of new-build opportunities shaped around your budget, property type, timeline, and preferred area.",
       headline: "Get The Pre-Con Shortlist",
       cta: "Get The Shortlist",
-      funnelHeadline: "Get a pre-con shortlist matched to your criteria",
+      funnelHeadline: "Get a pre-con shortlist shaped around your buying plan",
       funnelSubheadline: "Review new-build options by budget, area, property type, and expected timeline.",
       formFields: ["Budget range", "Preferred area", "Property type"],
       creativeDirection: "Buyer reviewing new-build options in a sales-center or home setting, without documents or readable signage.",
@@ -888,7 +889,7 @@ const CATEGORY_SAFE_OFFERS: Record<CampaignCategory, string> = {
   buyer: "Get a Curated Home List matched to your budget",
   precon: "View deposit and completion options before prices move",
   luxury: "Request private access to rare listings",
-  investor: "Get a Cash Flow Deal List matched to your criteria",
+  investor: "Get a Cash Flow Deal List shaped around your goals",
   commercial: "Get commercial spaces matched to your operating requirements",
 };
 
@@ -938,11 +939,11 @@ function hasRiskReversal(text: string, category: CampaignCategory) {
     return /\b(private|request|limited|rare|not publicly available|preview)\b/.test(text);
   }
 
-  return /\b(guarantee|free|no obligation|without|before|off-market|private access|qualify|priority|low deposit|below-market|under|list|preview|refund|work for free)\b/.test(text);
+  return /\b(guarantee|free|no obligation|without|before|off-market|private access|qualify|review|priority|low deposit|below-market|under|list|preview|refund|work for free|we buy it|we'?ll buy it|buyout|buy it|purchase it)\b/.test(text);
 }
 
 function hasMechanismSignal(text: string) {
-  return /\b(system|process|strategy|framework|network|filter|matching|access|pre-market|demand test|phased|micro-market|underwriting|sequence|workflow|structure)\b/.test(text);
+  return /\b(system|process|strategy|framework|network|filter|matching|access|pre-market|demand test|phased|micro-market|underwriting|sequence|workflow|structure|we buy it|we'?ll buy it|buyout|buy it|purchase it)\b/.test(text);
 }
 
 function hasLowFrictionStep(text: string) {
@@ -976,7 +977,18 @@ function containsB2BAgentOfferLeak(text: string) {
 }
 
 function containsUnsafeGuarantee(text: string) {
-  return /\b(guaranteed income|guaranteed deals?|guaranteed roi|guaranteed profit|guaranteed revenue|guaranteed return)\b/.test(text);
+  return /\b(guaranteed?\s+(?:approval|approved|financing|mortgage|loan|income|deals?|roi|profit|revenue|return|buyers?|appointments?|availability|showings?))\b/.test(text) ||
+    /\bguaranteed?\b.{0,32}\b(?:600\+?\s*credit|credit\s*score|fico|approval|approved|financing|mortgage|loan)\b/.test(text);
+}
+
+function containsUnsafeHousingOrUrgencyClaim(text: string) {
+  return (
+    /\b(?:only|perfect|ideal|best)\s+for\s+(?:families|singles|young professionals|christians|muslims|seniors|retirees|students|immigrants|newcomers)\b/.test(text) ||
+    /\b(?:no|not for|avoid)\s+(?:families|children|kids|students|seniors|immigrants|newcomers|section\s*8)\b/.test(text) ||
+    /\b(?:safe|good)\s+(?:family\s+)?neighbou?rhood\b/.test(text) ||
+    /\b(?:last chance|act now|only \d+ (?:spots?|homes?) left|expires today)\b/.test(text) ||
+    /\b(?:buyers?|investors?)\s+(?:are\s+)?(?:lined up|waiting|guaranteed|ready to buy)\b/.test(text)
+  );
 }
 
 function hasMediaBuyerReferenceLogic(text: string) {
@@ -1109,8 +1121,13 @@ export function evaluateOfferQuality(params: {
   }
 
   if (containsUnsafeGuarantee(text)) {
-    hardFailures.push("Offer contains unsafe guaranteed-income/deal language.");
-    improvementHints.push("Use effort, appointment, access, or qualification guarantees instead of revenue/deal guarantees.");
+    hardFailures.push("Offer contains unsafe guaranteed approval, financing, sale, ROI, or buyer-outcome language.");
+    improvementHints.push("Use qualification, review, access, or estimate language without promising approval, financing, ROI, buyers, or sales.");
+  }
+
+  if (containsUnsafeHousingOrUrgencyClaim(text)) {
+    hardFailures.push("Offer contains unsafe urgency, fake buyer, or housing steering language.");
+    improvementHints.push("Use factual availability, audience-neutral eligibility, and customer-controlled timing language.");
   }
 
   const rawScore =
@@ -1123,6 +1140,7 @@ export function evaluateOfferQuality(params: {
     components.lowFrictionNextStep * 0.13 -
     Math.min(3, countVagueWords(text) * 0.8) -
     (containsUnsafeGuarantee(text) ? 4 : 0) -
+    (containsUnsafeHousingOrUrgencyClaim(text) ? 4 : 0) -
     (!b2bAgentCampaign && containsB2BAgentOfferLeak(text) ? 4 : 0);
   const score = clampScore(rawScore);
 
@@ -1193,6 +1211,7 @@ export function evaluateCreativeQuality(params: {
     !imagePrompt || hasMediaBuyerReferenceLogic(imagePrompt) || hasMediaBuyerReferenceLogic(combined);
   const unusablePreviewState = hasUnusablePreviewState(combined);
   const genericStockRisk = hasGenericStockRisk(combined);
+  const unsafeClaim = containsUnsafeGuarantee(combined) || containsUnsafeHousingOrUrgencyClaim(combined);
 
   if (blockedHook) hardFailures.push("Hook matches a blocked/generic media-buyer pattern.");
   if (longIntro) hardFailures.push("Script starts with a slow self-introduction.");
@@ -1203,6 +1222,7 @@ export function evaluateCreativeQuality(params: {
   if (!mediaBuyerReferenceReady) hardFailures.push("Image prompt is missing media-buyer layout reference logic.");
   if (genericStockRisk) hardFailures.push("Creative risks looking like generic stock-photo real estate output.");
   if (unusablePreviewState) hardFailures.push("Creative preview has a detectable readability or overlay/crop issue.");
+  if (unsafeClaim) hardFailures.push("Creative contains unsafe guarantee, fake urgency, fake buyer, or housing steering language.");
 
   if (blockedHook) improvementHints.push("Rewrite the hook as a situation or decision moment, not an obvious marketing callout.");
   if (genericPropertyFirst) improvementHints.push("Lead with the internal tension, mechanism, or proof instead of the property itself.");
@@ -1210,6 +1230,7 @@ export function evaluateCreativeQuality(params: {
   if (!mediaBuyerReferenceReady) improvementHints.push("Add a concrete media-buyer reference layout with hook, proof, negative space, and CTA-safe zones.");
   if (genericStockRisk) improvementHints.push("Replace stock-photo-looking direction with a specific decision moment, proof artifact, or native UGC frame.");
   if (unusablePreviewState) improvementHints.push("Repair the layout so text remains readable and no overlay, crop, or image artifact covers the creative.");
+  if (unsafeClaim) improvementHints.push("Rewrite regulated or housing-sensitive copy as conditional review, estimate, availability, or qualification language.");
 
   const hasPatternInterrupt = /\b(before|most|if you|still|nobody|you don't|by the time|this is how|here's how|stop|watch|isn't for everyone)\b/.test(hook);
   const hasMechanism = hasMechanismSignal(normalize([params.mechanism, combined].join(" ")));
@@ -1230,6 +1251,7 @@ export function evaluateCreativeQuality(params: {
       (agentFirst ? 3 : 0) +
       (overlyPolished ? 2 : 0) +
       (containsAny(combined, strategy.antiPatterns) ? 3 : 0) +
+      (unsafeClaim ? 5 : 0) +
       (/generic|vague|learn more|contact us|click here/.test(combined) ? 2 : 0),
   );
   const components = {

@@ -40,8 +40,19 @@ export type StaticAdTemplateInput = {
   offer?: string | null;
   imageUrl?: string | null;
   storageNormalized?: boolean | null;
+  appComposedFinal?: boolean | null;
+  qualityTier?: string | null;
+  compositionVersion?: string | null;
+  sourceBackgroundKind?: string | null;
+  sourceBackgroundProvider?: string | null;
+  sourceBackgroundAssetId?: string | null;
   imageGenerationState?: string | null;
   imageGenerationMessage?: string | null;
+  imageGenerationProvider?: string | null;
+  generationMethod?: string | null;
+  providerName?: string | null;
+  generationMode?: string | null;
+  assetRole?: string | null;
   imagePrompt?: string | null;
   imagePromptConfig?: {
     prompt?: string | null;
@@ -67,13 +78,30 @@ export type StaticAdTemplateInput = {
     accepted?: boolean | null;
     hardFailures?: string[] | null;
   } | null;
+  visualQualityGate?: {
+    accepted?: boolean | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+  } | null;
+  premiumQualityGate?: {
+    accepted?: boolean | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+  } | null;
   imageQa?: {
     usable?: boolean | null;
     decision?: "accept" | "reject" | "review" | string | null;
+    mode?: "background_only" | "finished_ad" | "app_composed_final" | string | null;
     reasons?: string[] | null;
     textDensity?: number | null;
     layoutRisk?: number | null;
     detectedTextSamples?: string[] | null;
+  } | null;
+  sourceImageQa?: {
+    usable?: boolean | null;
+    decision?: "accept" | "reject" | "review" | string | null;
+    mode?: "background_only" | "finished_ad" | "app_composed_final" | string | null;
+    reasons?: string[] | null;
   } | null;
   offerQuality?: {
     score?: number | null;
@@ -177,6 +205,39 @@ function titleCase(value: string) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function stripCustomerFacingMechanism(value: string) {
+  return compactWhitespace(value)
+    .replace(/^preview\s+/i, "")
+    .replace(/[.!?]\s+(?:delivered|powered|built)\s+through\b[\s\S]*$/i, "")
+    .replace(/\b(?:delivered|powered|built)\s+through\b[\s\S]*$/i, "")
+    .replace(/\bthrough\s+a\s+buyer\s+consultation(?:\s+and\s+qualification\s+system)?\b[\s\S]*$/i, "")
+    .replace(/\bfor\s+home\s+buyers\b[\s\S]*$/i, "")
+    .replace(/\s+/g, " ")
+    .replace(/\s+[.!?,:;]$/g, "")
+    .trim();
+}
+
+function hasBuyerLanguage(value: string) {
+  return /\b(buyer consultation|home buyers|buying power|pre[-\s]?approval|credit score|mortgage approval)\b/i.test(value);
+}
+
+function buildSellerFallbackLine(offer: string) {
+  const cleanOffer = stripCustomerFacingMechanism(offer);
+  return cleanOffer
+    ? `${cleanOffer} helps homeowners review pricing, demand, and the next move before they list.`
+    : "Review pricing, demand, and the next move before you list.";
+}
+
+function cleanCustomerFacingStaticCopy(value: string, category: CampaignCategory, fallback?: string) {
+  const stripped = stripCustomerFacingMechanism(value);
+
+  if (category === "seller" && hasBuyerLanguage(stripped)) {
+    return compactWhitespace(fallback || buildSellerFallbackLine(stripped));
+  }
+
+  return stripped;
 }
 
 function includesAny(value: string, patterns: RegExp[]) {
@@ -338,8 +399,12 @@ export function fitStaticAdText(input: {
 }
 
 function buildStatus(input: StaticAdTemplateInput): StaticAdTemplateStatus {
+  if (input.imageUrl && evaluateStaticVisualAssetDecision(input).usable) {
+    return "final_composed";
+  }
+
   if (input.imageUrl) {
-    return evaluateStaticVisualAssetDecision(input).usable ? "final_composed" : "background_rejected";
+    return "background_rejected";
   }
 
   if (input.imageGenerationState === "generating") {
@@ -361,22 +426,22 @@ function buildBackgroundMessage(input: StaticAdTemplateInput, status: StaticAdTe
       : null;
 
   if (status === "final_composed") {
-    return "Launch-ready app-owned creative with accepted text-free generated background imagery and exact app-rendered copy.";
+    return "Final ad ready with exact approved copy.";
   }
 
   if (status === "background_generating") {
-    return customerSafeImageMessage || "Final generated imagery is rendering; draft concept remains visible.";
+    return customerSafeImageMessage || "Premium visual polish is preparing; final ads remain visible.";
   }
 
   if (status === "background_rejected") {
-    return "This visual needs a cleaner background before it can be used as launch-ready media.";
+    return "Premium visual polish needs another attempt. Launch-ready final ads remain available when selected.";
   }
 
   if (status === "background_failed") {
-    return customerSafeImageMessage || "Final generated imagery needs retry before this can be used as launch-ready media.";
+    return customerSafeImageMessage || "Premium visual polish needs another attempt. Final ads remain visible.";
   }
 
-  return "Draft concept is shown while launch-ready generated imagery is unavailable.";
+  return "Concept preview is ready while final ads are prepared.";
 }
 
 function buildEyebrow(category: CampaignCategory, location: string, templateId: StaticAdTemplateKind) {
@@ -404,19 +469,25 @@ export function buildComposedStaticAdPreview(input: StaticAdTemplateInput): Comp
   const numbers = extractNumberTokens(input);
   const status = buildStatus(input);
   const backgroundDecision = evaluateStaticVisualAssetDecision(input);
-  const safeCta = VAGUE_CTA_PATTERN.test(safeText(input.cta)) || !safeText(input.cta)
-    ? CATEGORY_CTAS[category]
-    : safeText(input.cta);
-  const headlineSource = safeText(input.headline) || safeText(input.hook) || safeText(input.offer) || fallbackHeadline(category, location);
+  const rawCta = safeText(input.cta);
+  const safeCta = rawCta
+    ? cleanCustomerFacingStaticCopy(rawCta, category, CATEGORY_CTAS[category])
+    : CATEGORY_CTAS[category];
+  const cleanOffer = cleanCustomerFacingStaticCopy(safeText(input.offer), category);
+  const headlineSourceRaw = safeText(input.headline) || safeText(input.hook) || cleanOffer || fallbackHeadline(category, location);
+  const headlineSource = cleanCustomerFacingStaticCopy(headlineSourceRaw, category, cleanOffer || fallbackHeadline(category, location));
   const overlaySource =
-    safeText(input.overlayText) ||
-    safeText(input.offer) ||
-    safeText(input.visualPromptBrief?.proofStyle) ||
+    cleanCustomerFacingStaticCopy(safeText(input.overlayText), category, cleanOffer) ||
+    cleanOffer ||
+    cleanCustomerFacingStaticCopy(safeText(input.visualPromptBrief?.proofStyle), category, cleanOffer) ||
     headlineSource;
+  const primaryFallback = category === "seller"
+    ? buildSellerFallbackLine(cleanOffer || headlineSource)
+    : `Use this ${CATEGORY_LABELS[category].toLowerCase()} to reduce uncertainty before the next move.`;
   const primarySource =
-    safeText(input.primaryText) ||
-    safeText(input.offer) ||
-    `Use this ${CATEGORY_LABELS[category].toLowerCase()} to reduce uncertainty before the next move.`;
+    cleanCustomerFacingStaticCopy(safeText(input.primaryText), category, primaryFallback) ||
+    cleanOffer ||
+    primaryFallback;
   const fitted = fitStaticAdText({
     headline: headlineSource,
     overlayText: overlaySource,

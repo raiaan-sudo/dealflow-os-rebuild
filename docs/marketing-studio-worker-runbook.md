@@ -73,7 +73,7 @@ npm run worker:marketing-studio -- --max-jobs=1
 Run as a polling worker:
 
 ```bash
-npm run worker:marketing-studio -- --poll --max-jobs=1 --interval-ms=30000
+npm run worker:marketing-studio -- --poll --max-jobs=2 --interval-ms=5000
 ```
 
 ## Job flow
@@ -97,17 +97,24 @@ Marketing Studio finished-ad output is not launch-ready until all of these are t
 - static visual QA marks the asset launch-eligible;
 - user selection points to a QA-accepted primary creative.
 
+Provider original URLs in job results are proof that Higgsfield returned output, not proof that DealFlow has a launchable asset. Final proof requires app-owned storage normalization and a campaign plan readback that points Creative Studio / Preview / Launch at the durable `creative_assets.file_url`.
+
+Brand/logo text is optional unless a prompt explicitly requires visible brand presence. If exact brand rendering is uncertain, the provider should omit the brand text. QA should reject visible misspellings or distorted brand-like text, not a clean finished ad that simply omits optional brokerage text.
+
 If vision QA is disabled, unavailable, or cannot inspect the JPEG/PNG/WebP, the finished ad fails closed and remains non-ready.
 
 Marketing Studio UGC video output is not launch-ready until all of these are true:
 
 - a ready, accepted static source creative exists in app-owned `creative-assets` storage;
+- the customer has approved a structured UGC script and shot list in Creative Studio;
 - the CLI returns a provider job/result id and a playable video file;
 - the video is copied into app-owned `creative-assets` storage;
 - provider original URL remains metadata only;
 - prompt hash, script hash, source static asset id, and campaign context are persisted;
 - deterministic video provenance QA passes;
 - UGC product-quality QA confirms hook, market problem, creator POV, mechanism, source relevance, and CTA.
+
+The worker should render the approved script, not generate new customer-facing concepts. Immediate UGC state in the app means script, shot list, on-screen text, and CTA are available without provider spend. Final provider media remains asynchronous and worker-owned. If the approved script changes, the video job idempotency identity should change through the script version or hash; repeat clicks on the same approved script must not double-spend.
 
 The Higgsfield CLI `generate create --wait` path returns result URLs rather than a separate generic asset-download command. If a future CLI version writes local files, the worker accepts only files under `MARKETING_STUDIO_WORKER_OUTPUT_DIR`, `HIGGSFIELD_OUTPUT_DIR`, `HIGGSFIELD_CACHE_DIR`, or the process temp directory. Remote provider URLs are fetched through the hardened static creative fetcher and must match `STATIC_CREATIVE_PROVIDER_IMAGE_HOSTS` or the built-in approved provider CDN hosts.
 
@@ -138,3 +145,9 @@ the operator audit trail. Do not use this override for normal customer
 generation.
 
 Do not use this worker for broad campaign retries until the capped proof has produced an app-owned, vision-QA-accepted finished ad and operator debt remains clean.
+
+For one-job production proof, run `--dry-run` immediately before `--max-jobs=1` and proceed only when the eligible job list contains exactly the intended fresh/current job. If a provider attempt fails, preserve evidence and do not retry automatically; fix the classified root cause first, then request a separately scoped proof.
+
+UGC video proofs can run materially longer than static finished-ad renders. Treat a long-running single scoped video attempt as active while the job remains `processing` without `last_error_code` or provider debt. Do not start a second attempt in another shell. After completion, prove the result by checking the `video_generation` job result, one consumed `provider_usage_events` row, an app-owned `creative_assets.asset_type = ugc_video` row with `file_url`, `storageNormalized = true`, duration metadata, accepted video provenance QA, accepted UGC product-quality QA, and persisted `selected_ugc_video_ids`.
+
+If local `next build` appears to hang before or during startup, inspect stale local build processes and remove only generated `.next` cache/lock output before rerunning. Do not commit `.next`, build logs, screenshots, or temporary proof artifacts.

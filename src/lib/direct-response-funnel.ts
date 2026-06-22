@@ -246,7 +246,7 @@ const VARIANT_CONFIGS: Record<DirectResponseFunnelVariant, VariantConfig> = {
     proofClaims: [
       "Budget-first list request for buyers who want fewer weak-fit options",
       "Filters around timing, location, and must-haves",
-      "No obligation to tour or write an offer",
+      "No pressure to tour or write an offer",
     ],
     howItWorks: [
       "Confirm your budget and preferred areas",

@@ -7,31 +7,40 @@ import { CheckoutButton } from "@/components/billing/checkout-button";
 import {
   getPlanPresentation,
   SELECTABLE_PLAN_TIERS,
+  type PlanPresentation,
   type SelectablePlanTier,
 } from "@/lib/billing/plan-presentation";
 
 export function PaywallPlanSelector({
   initialPlanTier,
+  availablePlanTiers = SELECTABLE_PLAN_TIERS,
   campaignId,
   disabled = false,
   launchOverride = false,
+  planPresentations,
 }: {
   initialPlanTier: SelectablePlanTier;
+  availablePlanTiers?: readonly SelectablePlanTier[];
   campaignId: string | null;
   disabled?: boolean;
   launchOverride?: boolean;
+  planPresentations?: Record<SelectablePlanTier, PlanPresentation>;
 }) {
-  const [selectedTier, setSelectedTier] = useState<SelectablePlanTier>(initialPlanTier);
-  const selectedPlan = getPlanPresentation(selectedTier);
+  const initialAvailableTier = availablePlanTiers.includes(initialPlanTier)
+    ? initialPlanTier
+    : availablePlanTiers[0] ?? "pro";
+  const [selectedTier, setSelectedTier] = useState<SelectablePlanTier>(initialAvailableTier);
+  const getPresentation = (tier: SelectablePlanTier) => planPresentations?.[tier] ?? getPlanPresentation(tier);
+  const selectedPlan = getPresentation(selectedTier);
   const overrideHref = `/unlock?checkout=override&plan=${encodeURIComponent(selectedTier)}${
     campaignId ? `&campaignId=${encodeURIComponent(campaignId)}` : ""
   }`;
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 lg:grid-cols-2">
-        {SELECTABLE_PLAN_TIERS.map((tier) => {
-          const plan = getPlanPresentation(tier);
+      <div className="grid gap-4 lg:grid-cols-3">
+        {availablePlanTiers.map((tier) => {
+          const plan = getPresentation(tier);
           const selected = selectedTier === tier;
 
           return (
@@ -84,6 +93,9 @@ export function PaywallPlanSelector({
               </div>
 
               <div className="mt-auto pt-5">
+                <span className="mb-4 inline-flex rounded-full bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950">
+                  {plan.checkoutCtaLabel}
+                </span>
                 <span className="text-xs font-semibold uppercase tracking-[0.16em] text-white/44">
                   {plan.footer}
                 </span>

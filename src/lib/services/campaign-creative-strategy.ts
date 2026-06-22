@@ -146,6 +146,10 @@ export function inferCampaignCategory(input: StrategyDefaultsInput): CampaignCat
     return "precon";
   }
 
+  if (isSellerCampaignIntent(input.intent)) {
+    return "seller";
+  }
+
   if (
     matchesAny(haystack, [
       /\bluxury\b/,
@@ -188,10 +192,6 @@ export function inferCampaignCategory(input: StrategyDefaultsInput): CampaignCat
     ])
   ) {
     return "investor";
-  }
-
-  if (isSellerCampaignIntent(input.intent)) {
-    return "seller";
   }
 
   return "buyer";

@@ -1,8 +1,10 @@
-import { subDays } from "date-fns";
+import { subDays } from "date-fns/subDays";
 import { slugify } from "@/lib/utils";
-import { logError, logWarn } from "@/lib/logging";
+import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { ensurePartnerAttributionForWorkspace } from "@/lib/white-label/attribution";
+import { resolveRequestedWorkspaceForUser } from "@/lib/services/workspace-access";
 import type { Database } from "@/lib/supabase/types";
 import type { AppContext } from "@/types/app";
 import {
@@ -311,7 +313,7 @@ export async function ensureMembership(
   }
 
   if (!recoveredMembershipRaw) {
-    logWarn("Membership bootstrap recovery required a second-pass owner check", {
+    logOperationalEvent("membership_bootstrap_owner_second_pass", {
       userId: profile.id,
       organizationId: organization.id,
     });
@@ -355,7 +357,7 @@ export async function ensureMembership(
     }
 
     if (!finalMembershipRaw) {
-      logWarn("Falling back to synthesized owner membership during bootstrap", {
+      logOperationalEvent("membership_bootstrap_synthesized_owner_context", {
         userId: profile.id,
         organizationId: organization.id,
       });
@@ -455,9 +457,34 @@ export async function ensureAppContext() {
   try {
     const bootstrapSupabase = (createAdminClient() as SupabaseClient | null) ?? supabase;
     const profile = await ensureUserProfile(bootstrapSupabase, user);
-    const organization = await ensureWorkspace(bootstrapSupabase, profile);
-    const membership = await ensureMembership(bootstrapSupabase, profile, organization);
-    const businessProfile = await ensureBusinessProfile(bootstrapSupabase, organization, profile);
+    const requestedWorkspace = await resolveRequestedWorkspaceForUser(bootstrapSupabase, profile);
+    const organization = requestedWorkspace?.organization ?? await ensureWorkspace(bootstrapSupabase, profile);
+    const membership = requestedWorkspace?.membership ?? await ensureMembership(bootstrapSupabase, profile, organization);
+    const businessProfile =
+      requestedWorkspace?.access && requestedWorkspace.access !== "owner"
+        ? ((await bootstrapSupabase
+            .from("business_profiles")
+            .select("*")
+            .eq("organization_id", organization.id)
+            .maybeSingle()).data as Row<"business_profiles"> | null)
+        : await ensureBusinessProfile(bootstrapSupabase, organization, profile);
+    const partnerId =
+      requestedWorkspace?.access && requestedWorkspace.access !== "owner"
+        ? organization.partner_id ?? null
+        : await ensurePartnerAttributionForWorkspace({
+            supabase: bootstrapSupabase,
+            user,
+            organization,
+          });
+    let partner: AppContext["partner"] = null;
+    if (partnerId) {
+      const { data: partnerRow } = await bootstrapSupabase
+        .from("partners")
+        .select("id,slug,brand_name,legal_name,logo_url,favicon_url,primary_color,secondary_color,accent_color,support_email,support_phone,powered_by_dealflow,status")
+        .eq("id", partnerId)
+        .maybeSingle();
+      partner = (partnerRow as AppContext["partner"]) ?? null;
+    }
 
     const context: AppContext = {
       user,
@@ -465,6 +492,8 @@ export async function ensureAppContext() {
       organization,
       membership,
       businessProfile,
+      partner,
+      activeWorkspaceAccess: requestedWorkspace?.access ?? "owner",
     };
 
     try {

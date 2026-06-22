@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/api/route";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
   fetchAdInsights,
@@ -30,6 +31,10 @@ import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { logError, logWarn } from "@/lib/logging";
 import type { Json } from "@/lib/supabase/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/supabase/types";
+
+type MetaSyncSupabase = SupabaseClient<Database>;
 
 function mapEntityStatuses(value: unknown): MetaEntityStatus[] {
   if (!Array.isArray(value)) {
@@ -148,8 +153,11 @@ async function getMetaSyncContext() {
   return { context, supabase };
 }
 
-async function getConnectedMetaAccount(organizationId: string) {
-  const { supabase } = await getMetaSyncContext();
+async function getConnectedMetaAccount(
+  organizationId: string,
+  supabaseOverride?: MetaSyncSupabase | null,
+) {
+  const supabase = supabaseOverride ?? (await getMetaSyncContext()).supabase;
   const { data } = await supabase
     .from("marketing_accounts")
     .select("*")
@@ -194,15 +202,23 @@ export async function getLatestMetaCampaignSyncSnapshot() {
 export async function getMetaCampaignSyncSnapshotForCampaign(params: {
   campaignName: string;
   metaCampaignId?: string | null;
+  organizationId?: string | null;
+  userId?: string | null;
 }) {
   const { context, supabase } = await getMetaSyncContext();
+  const explicitOrganizationId = params.organizationId?.trim() || null;
+  const explicitUserId = params.userId?.trim() || null;
+  const querySupabase =
+    explicitOrganizationId || explicitUserId ? createAdminClient() ?? supabase : supabase;
+  const organizationId = explicitOrganizationId ?? context.organization.id;
+  const userId = explicitUserId ?? context.user.id;
 
   const buildQuery = () =>
-    supabase
+    querySupabase
       .from("campaign_sync_snapshots")
       .select("*")
-      .eq("organization_id", context.organization.id)
-      .eq("user_id", context.user.id)
+      .eq("organization_id", organizationId)
+      .eq("user_id", userId)
       .order("synced_at", { ascending: false })
       .limit(1);
 
@@ -241,7 +257,16 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
     );
   }
 
-  const connection = await getConnectedMetaAccount(context.organization.id);
+  const effectiveOrganizationId =
+    scopedRecord?.campaign.organization_id ??
+    scopedRecord?.campaign.user_id ??
+    context.organization.id;
+  const effectiveUserId = scopedRecord?.campaign.user_id ?? context.user.id;
+  const effectiveSupabase = scopedRecord ? createAdminClient() ?? supabase : supabase;
+  const isCurrentSessionCampaign =
+    effectiveOrganizationId === context.organization.id && effectiveUserId === context.user.id;
+
+  const connection = await getConnectedMetaAccount(effectiveOrganizationId, effectiveSupabase);
 
   if (!connection) {
     throw new ApiError(400, "Connect a Meta ad account before syncing status.", "meta_not_connected");
@@ -381,8 +406,8 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
   const syncedAt = new Date().toISOString();
 
   const insertPayload = {
-    organization_id: context.organization.id,
-    user_id: context.user.id,
+    organization_id: effectiveOrganizationId,
+    user_id: effectiveUserId,
     campaign_name: launchRecord?.campaignName ?? plan.businessName,
     account_name: connection.account_name,
     launch_mode: plan.runtime.launchMode ?? "test",
@@ -406,7 +431,7 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
     synced_at: syncedAt,
   };
 
-  const { error: insertError } = await supabase
+  const { error: insertError } = await effectiveSupabase
     .from("campaign_sync_snapshots")
     .insert(insertPayload as never);
 
@@ -418,7 +443,7 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
     throw new ApiError(500, "Meta account record is missing its internal ID.", "meta_account_id_missing");
   }
 
-  const { error: accountUpdateError } = await supabase
+  const { error: accountUpdateError } = await effectiveSupabase
     .from("marketing_accounts")
     .update({ last_sync_at: syncedAt } as never)
     .eq("id", connection.id);
@@ -430,15 +455,17 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
   const snapshot = await getMetaCampaignSyncSnapshotForCampaign({
     campaignName: launchRecord?.campaignName ?? plan.businessName,
     metaCampaignId: ids.campaignId,
+    organizationId: effectiveOrganizationId,
+    userId: effectiveUserId,
   });
 
   if (!snapshot) {
     throw new ApiError(500, "Synced snapshot could not be loaded.", "campaign_sync_snapshot_missing");
   }
 
-  const { error: performanceTrackingError } = await supabase.from("performance_tracking").insert({
-    organization_id: context.organization.id,
-    user_id: context.user.id,
+  const { error: performanceTrackingError } = await effectiveSupabase.from("performance_tracking").insert({
+    organization_id: effectiveOrganizationId,
+    user_id: effectiveUserId,
     source_snapshot_id: snapshot.id,
     campaign_id: snapshot.metaCampaignId ?? snapshot.campaignName,
     spend: deliveryMetrics.spend,
@@ -460,10 +487,12 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
     });
   }
 
-  await recordCreativePerformanceSnapshot({
-    plan,
-    snapshot,
-  }).catch(() => null);
+  if (isCurrentSessionCampaign) {
+    await recordCreativePerformanceSnapshot({
+      plan,
+      snapshot,
+    }).catch(() => null);
+  }
 
   const targetingPattern = `${plan.audience} in ${plan.market} using ${plan.keyOffer}`;
   const targetingPerformanceTag =
@@ -475,12 +504,12 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
   const targetingSuccess = targetingPerformanceTag === "high" ? 1 : 0;
   const targetingFailure = deliveryMetrics.leads === 0 && deliveryMetrics.spend > 15 ? 1 : 0;
 
-  const { error: targetingUpsertError } = await supabase
+  const { error: targetingUpsertError } = await effectiveSupabase
     .from("targeting_intelligence_patterns")
     .upsert(
       {
-        organization_id: context.organization.id,
-        user_id: context.user.id,
+        organization_id: effectiveOrganizationId,
+        user_id: effectiveUserId,
         audience: plan.audience,
         location: plan.market,
         targeting_pattern: targetingPattern,
@@ -511,8 +540,10 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
     // Targeting intelligence should not block the primary sync snapshot.
   }
 
-  const suggestions = await refreshCampaignActionSuggestions(snapshot);
-  await refreshCampaignDraftActions(suggestions);
+  if (isCurrentSessionCampaign) {
+    const suggestions = await refreshCampaignActionSuggestions(snapshot);
+    await refreshCampaignDraftActions(suggestions);
+  }
 
   return snapshot;
 }

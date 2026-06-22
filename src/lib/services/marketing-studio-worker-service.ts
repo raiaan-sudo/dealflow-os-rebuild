@@ -1,4 +1,3 @@
-import { ApiError } from "@/lib/api/route";
 import { getAiEnv, getHiggsfieldMarketingStudioEnv, getMediaGenerationProvider } from "@/lib/env";
 import { checkHiggsfieldMarketingStudioReadiness } from "@/lib/ai/higgsfield";
 import { logOperationalEvent, logWarn } from "@/lib/logging";
@@ -10,15 +9,24 @@ import {
   isMarketingStudioWorkerOwnedJob,
   isMarketingStudioWorkerRuntimeEnabled,
 } from "@/lib/services/marketing-studio-worker-contract";
-import {
-  appendSystemJobLog,
-  claimSystemJobByIdForWorker,
-  processSystemJob,
-  type SystemJobRecord,
-} from "@/lib/services/system-job-service";
 
 type SystemJobRow = Database["public"]["Tables"]["system_jobs"]["Row"];
 type WorkerClient = SupabaseClient<Database>;
+type SystemJobRecord = SystemJobRow & {
+  payload: unknown;
+};
+
+class WorkerApiError extends Error {
+  status: number;
+  code: string;
+
+  constructor(status: number, message: string, code: string) {
+    super(message);
+    this.name = "WorkerApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
 
 export type MarketingStudioWorkerReadiness = {
   ready: boolean;
@@ -51,7 +59,7 @@ function getWorkerClient() {
   const client = createAdminClient();
 
   if (!client) {
-    throw new ApiError(503, "Supabase service role is not configured.", "config_missing");
+    throw new WorkerApiError(503, "Supabase service role is not configured.", "config_missing");
   }
 
   return client;
@@ -59,6 +67,14 @@ function getWorkerClient() {
 
 function parseJob(row: SystemJobRow) {
   return row as unknown as SystemJobRecord;
+}
+
+async function loadSystemJobProcessor() {
+  return import("@/lib/services/system-job-service") as Promise<{
+    appendSystemJobLog: typeof import("@/lib/services/system-job-service").appendSystemJobLog;
+    claimSystemJobByIdForWorker: typeof import("@/lib/services/system-job-service").claimSystemJobByIdForWorker;
+    processSystemJob: typeof import("@/lib/services/system-job-service").processSystemJob;
+  }>;
 }
 
 function isExpiredLease(value: string | null) {
@@ -116,11 +132,12 @@ export async function listEligibleMarketingStudioWorkerJobs(params?: {
     .in("kind", ["static_creative_generation", "video_generation"])
     .in("status", ["pending", "processing"])
     .is("dead_lettered_at", null)
+    .is("reviewed_at", null)
     .order("created_at", { ascending: true })
     .limit(50);
 
   if (error) {
-    throw new ApiError(500, error.message, "marketing_studio_worker_job_list_failed");
+    throw new WorkerApiError(500, error.message, "marketing_studio_worker_job_list_failed");
   }
 
   return ((Array.isArray(data) ? data : []) as SystemJobRow[])
@@ -174,6 +191,11 @@ export async function runMarketingStudioWorkerBatch(params?: {
   }
 
   const processedJobIds: string[] = [];
+  const {
+    appendSystemJobLog,
+    claimSystemJobByIdForWorker,
+    processSystemJob,
+  } = await loadSystemJobProcessor();
 
   for (const job of jobs) {
     const workerId = `${MARKETING_STUDIO_WORKER_RUNTIME}:${crypto.randomUUID()}`;

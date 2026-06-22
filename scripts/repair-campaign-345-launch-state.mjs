@@ -463,19 +463,65 @@ function safePlanRuntime(plan) {
 
 function validateMetaProof(metaProof) {
   const failures = [];
+  const status = (value) => String(value ?? "").trim().toUpperCase();
+  const pausedByCampaign = (value) => status(value) === "CAMPAIGN_PAUSED" || status(value) === "PAUSED";
+  const configuredPausedOrActive = (value) => status(value) === "PAUSED" || status(value) === "ACTIVE";
   if (metaProof.campaign?.id !== CAMPAIGN_345_REPAIR.meta.campaignId) failures.push("campaign_id_mismatch");
   if (metaProof.campaign?.status !== "PAUSED" || metaProof.campaign?.effective_status !== "PAUSED") failures.push("campaign_not_paused");
   if (metaProof.adset?.id !== CAMPAIGN_345_REPAIR.meta.adSetId) failures.push("adset_id_mismatch");
   if (metaProof.adset?.campaign_id !== CAMPAIGN_345_REPAIR.meta.campaignId) failures.push("adset_campaign_mismatch");
   if (metaProof.adset?.daily_budget !== CAMPAIGN_345_REPAIR.meta.dailyBudget) failures.push("adset_daily_budget_mismatch");
-  if (metaProof.adset?.status !== "PAUSED" || metaProof.adset?.effective_status !== "PAUSED") failures.push("adset_not_paused");
+  if (!configuredPausedOrActive(metaProof.adset?.status) || !pausedByCampaign(metaProof.adset?.effective_status)) failures.push("adset_not_paused");
   if (metaProof.ad?.id !== CAMPAIGN_345_REPAIR.meta.adId) failures.push("ad_id_mismatch");
   if (metaProof.ad?.campaign_id !== CAMPAIGN_345_REPAIR.meta.campaignId) failures.push("ad_campaign_mismatch");
   if (metaProof.ad?.adset_id !== CAMPAIGN_345_REPAIR.meta.adSetId) failures.push("ad_adset_mismatch");
   if (metaProof.ad?.creative_id !== CAMPAIGN_345_REPAIR.meta.creativeId) failures.push("ad_creative_mismatch");
-  if (metaProof.ad?.status !== "PAUSED" || metaProof.ad?.effective_status !== "PAUSED") failures.push("ad_not_paused");
+  if (!configuredPausedOrActive(metaProof.ad?.status) || !pausedByCampaign(metaProof.ad?.effective_status)) failures.push("ad_not_paused");
   if (metaProof.creative?.id !== CAMPAIGN_345_REPAIR.meta.creativeId) failures.push("creative_id_mismatch");
   return failures;
+}
+
+function buildPausedSyncSnapshot({ campaignRow, metaProof, now }) {
+  return {
+    organization_id: CAMPAIGN_345_REPAIR.organizationId,
+    user_id: CAMPAIGN_345_REPAIR.userId,
+    campaign_name: metaProof.campaign.name ?? "Campaign 345 paused Meta classification",
+    account_name: null,
+    launch_mode: "live",
+    sync_result: "success",
+    meta_campaign_id: CAMPAIGN_345_REPAIR.meta.campaignId,
+    meta_ad_set_ids: [CAMPAIGN_345_REPAIR.meta.adSetId],
+    meta_ad_ids: [CAMPAIGN_345_REPAIR.meta.adId],
+    campaign_status: metaProof.campaign.status,
+    ad_set_statuses: [
+      {
+        id: metaProof.adset.id,
+        name: metaProof.adset.name,
+        status: metaProof.adset.status,
+        effective_status: metaProof.adset.effective_status,
+        daily_budget: metaProof.adset.daily_budget,
+      },
+    ],
+    ad_statuses: [
+      {
+        id: metaProof.ad.id,
+        name: metaProof.ad.name,
+        status: metaProof.ad.status,
+        effective_status: metaProof.ad.effective_status,
+      },
+    ],
+    delivery_metrics: {},
+    sync_metadata: {
+      source: "campaign_345_paused_launch_state_repair",
+      read_only_meta_verification: true,
+      intentionally_inactive_non_blocking: true,
+      app_campaign_id: campaignRow.id,
+      destination_url: metaProof.creative.destinationLink,
+      budget_daily_cents: metaProof.adset.daily_budget,
+    },
+    sync_errors: [],
+    synced_at: now,
+  };
 }
 
 async function fetchMetaProof(supabase, row) {
@@ -714,10 +760,12 @@ async function main() {
   }
 
   const metaProof = await fetchMetaProof(supabase, campaignRow);
+  const now = new Date().toISOString();
   const decision = buildRepairDecision({
     campaignRow,
     assets: assets ?? [],
     metaProof,
+    now,
   });
 
   if (!apply) {
@@ -748,6 +796,16 @@ async function main() {
     }
   }
 
+  const { data: insertedSnapshot, error: snapshotError } = await supabase
+    .from("campaign_sync_snapshots")
+    .insert(buildPausedSyncSnapshot({ campaignRow, metaProof, now }))
+    .select("id")
+    .single();
+
+  if (snapshotError) {
+    throw new Error(`campaign_sync_snapshots insert failed: ${snapshotError.message}`);
+  }
+
   const verifyRows = await supabase
     .from("campaign_plans")
     .select("*")
@@ -764,6 +822,7 @@ async function main() {
 
   console.log(JSON.stringify({
     applied: !decision.idempotentNoop,
+    insertedSnapshotId: insertedSnapshot?.id ?? null,
     dryRunBeforeApply: printableDecision(decision),
     verificationAfterApply: printableDecision(postDecision),
   }, null, 2));

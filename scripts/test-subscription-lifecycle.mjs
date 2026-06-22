@@ -7,6 +7,7 @@ import ts from "typescript";
 
 const source = fs.readFileSync("src/lib/services/campaign-entitlements.ts", "utf8");
 const suspensionSource = fs.readFileSync("src/lib/services/subscription-suspension-service.ts", "utf8");
+const offboardingSource = fs.readFileSync("src/lib/services/campaign-offboarding-cleanup-service.ts", "utf8");
 const systemJobSource = fs.readFileSync("src/lib/services/system-job-service.ts", "utf8");
 const leadRouteSource = fs.readFileSync("src/app/api/lead-capture/route.ts", "utf8");
 const publicFunnelSource = fs.readFileSync("src/app/f/[slug]/page.tsx", "utf8");
@@ -48,10 +49,10 @@ const sandbox = {
     if (specifier === "@/lib/billing/plans") {
       return {
         normalizeBillingPlanTier(value) {
-          return value === "pro" || value === "starter" ? value : "starter";
+          return value === "performance" || value === "pro" || value === "starter" ? value : "starter";
         },
         hasFeatureAccess(planTier, feature) {
-          if (feature === "meta_launch") return planTier === "starter" || planTier === "pro";
+          if (feature === "meta_launch") return planTier === "performance" || planTier === "starter" || planTier === "pro";
           if (feature === "autonomy_access") return planTier === "pro";
           return false;
         },
@@ -214,7 +215,14 @@ assert.match(suspensionSource, /runtime\.metaAdIds/);
 assert.match(suspensionSource, /idempotencyKey: `subscription_suspension:/);
 assert.match(suspensionSource, /dryRun: process\.env\.DEALFLOW_SUSPENSION_DRY_RUN === "true"/);
 assert.doesNotMatch(suspensionSource, /delete\s*\(/i);
+assert.match(suspensionSource, /queueCampaignOffboardingCleanupJobsForOrganization/);
+assert.match(offboardingSource, /campaign_offboarding_cleanup/);
+assert.match(offboardingSource, /isMetaOffboardingDeletionEnabled/);
+assert.match(offboardingSource, /isCreativeStorageOffboardingDeletionEnabled/);
+assert.match(offboardingSource, /skipped_reactivated/);
+assert.match(offboardingSource, /selectedLaunchMediaAudit/);
 assert.match(systemJobSource, /"subscription_suspension"/);
+assert.match(systemJobSource, /"campaign_offboarding_cleanup"/);
 assert.match(systemJobSource, /SUBSCRIPTION_GATED_JOB_KINDS/);
 assert.match(systemJobSource, /subscription_inactive/);
 assert.match(leadRouteSource, /campaign_subscription_inactive/);

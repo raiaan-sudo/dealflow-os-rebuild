@@ -8,11 +8,14 @@ import {
 type StaticAdComposedPreviewProps = StaticAdTemplateInput & {
   className?: string;
   compact?: boolean;
+  launchReady?: boolean;
   selectedCount?: number | null;
   showRawAssetState?: boolean;
+  appComposedFinal?: boolean | null;
 };
 
-function statusLabel(status: ReturnType<typeof buildComposedStaticAdPreview>["status"]) {
+function statusLabel(status: ReturnType<typeof buildComposedStaticAdPreview>["status"], launchReady?: boolean) {
+  if (launchReady) return "Launch-ready creative";
   if (status === "final_composed") return "Launch-ready creative";
   if (status === "background_generating") return "Draft concept";
   if (status === "background_rejected") return "Retry needed";
@@ -20,7 +23,11 @@ function statusLabel(status: ReturnType<typeof buildComposedStaticAdPreview>["st
   return "Draft concept";
 }
 
-function qualityLabel(preview: ReturnType<typeof buildComposedStaticAdPreview>) {
+function qualityLabel(preview: ReturnType<typeof buildComposedStaticAdPreview>, launchReady?: boolean) {
+  if (launchReady) {
+    return "Launch-ready image";
+  }
+
   if (preview.status === "final_composed") {
     return "Launch-ready image";
   }
@@ -366,13 +373,57 @@ function renderTemplateDetails(preview: ReturnType<typeof buildComposedStaticAdP
               ))}
             </div>
           ) : null}
-          <div className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-[22px] border border-black/12 bg-white px-4 py-3 text-black shadow-[0_16px_36px_-22px_rgba(0,0,0,0.5)]">
+          <div
+            className={cn(
+              "grid items-center rounded-[22px] border border-black/12 bg-white px-4 py-3 text-black shadow-[0_16px_36px_-22px_rgba(0,0,0,0.5)]",
+              compact ? "grid-cols-1 gap-2" : "grid-cols-[minmax(0,1fr)_auto] gap-3",
+            )}
+          >
             <div className="min-w-0">
               <p className={cn("break-words font-black leading-tight", compact ? "text-sm" : "text-xl")}>
                 {preview.headline}
               </p>
             </div>
-            <div className="rounded-full border border-black/12 px-3 py-2 text-xs font-black">
+            <div className={cn("rounded-full border border-black/12 px-3 py-2 text-center text-xs font-black leading-tight", compact ? "w-fit max-w-full" : "")}>
+              {preview.cta}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (preview.category === "seller") {
+    return (
+      <div className="absolute inset-0 flex flex-col p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="max-w-[72%] rounded-full border border-white/55 bg-white/90 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-950 shadow-sm">
+            {preview.eyebrow}
+          </div>
+        </div>
+        <div className="mt-auto space-y-3">
+          {preview.proofChips.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {preview.proofChips.slice(0, 3).map((chip, index) => (
+                <span key={`${chip}-${index}`} className="rounded-full bg-white/92 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-black shadow-sm">
+                  {chip}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <div
+            className={cn(
+              "grid items-center rounded-[22px] border border-black/12 bg-white px-4 py-3 text-black shadow-[0_16px_36px_-22px_rgba(0,0,0,0.5)]",
+              compact ? "grid-cols-1 gap-2" : "grid-cols-[minmax(0,1fr)_auto] gap-3",
+            )}
+          >
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-black/55">{preview.location} homeowners</p>
+              <p className={cn("break-words font-black leading-tight", compact ? "text-sm" : "text-xl")}>
+                {preview.headline}
+              </p>
+            </div>
+            <div className={cn("rounded-full border border-black/12 px-3 py-2 text-center text-xs font-black leading-tight", compact ? "w-fit max-w-full" : "max-w-[152px]")}>
               {preview.cta}
             </div>
           </div>
@@ -400,12 +451,17 @@ function renderTemplateDetails(preview: ReturnType<typeof buildComposedStaticAdP
             ))}
           </div>
         ) : null}
-        <div className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-full border border-black/12 bg-white px-4 py-3 text-black shadow-lg">
+        <div
+          className={cn(
+            "grid items-center border border-black/12 bg-white px-4 py-3 text-black shadow-lg",
+            compact ? "grid-cols-1 gap-2 rounded-[22px]" : "grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-full",
+          )}
+        >
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-black/55">{preview.eyebrow}</p>
             <p className="break-words text-sm font-black leading-tight">{preview.headline}</p>
           </div>
-          <div className="rounded-full border border-black/12 px-3 py-2 text-xs font-black">
+          <div className={cn("rounded-full border border-black/12 px-3 py-2 text-center text-xs font-black leading-tight", compact ? "w-fit max-w-full" : "")}>
             {preview.cta}
           </div>
         </div>
@@ -417,13 +473,21 @@ function renderTemplateDetails(preview: ReturnType<typeof buildComposedStaticAdP
 export function StaticAdComposedPreview({
   className,
   compact = false,
+  launchReady = false,
   selectedCount,
   showRawAssetState = true,
   ...input
 }: StaticAdComposedPreviewProps) {
   const preview = buildComposedStaticAdPreview(input);
-  const label = statusLabel(preview.status);
-  const quality = qualityLabel(preview);
+  const label = statusLabel(preview.status, launchReady);
+  const quality = qualityLabel(preview, launchReady);
+  const displayBackgroundImageUrl =
+    launchReady && input.imageUrl
+      ? input.imageUrl
+      : preview.backgroundImageUrl;
+  const renderStoredFinalOnly =
+    Boolean(displayBackgroundImageUrl) &&
+    (launchReady || preview.status === "final_composed");
 
   return (
     <div className={cn("overflow-hidden rounded-[20px] border border-white/10 bg-black/20", className)}>
@@ -434,19 +498,20 @@ export function StaticAdComposedPreview({
           backgroundClass(preview.category),
         )}
       >
-        {preview.backgroundImageUrl ? (
+        {displayBackgroundImageUrl ? (
           <Image
             alt={preview.headline}
             fill
             unoptimized
+            loading={renderStoredFinalOnly ? "eager" : "lazy"}
             className="object-cover"
-            src={preview.backgroundImageUrl}
+            src={displayBackgroundImageUrl}
           />
         ) : (
           renderInstantVisualScene(preview, compact)
         )}
-        {preview.backgroundImageUrl ? <div className="absolute inset-0 bg-black/8" /> : null}
-        {renderTemplateDetails(preview, compact)}
+        {displayBackgroundImageUrl && !renderStoredFinalOnly ? <div className="absolute inset-0 bg-black/8" /> : null}
+        {renderStoredFinalOnly ? null : renderTemplateDetails(preview, compact)}
       </div>
 
       <div className={cn("space-y-3", compact ? "p-3" : "p-4")}>
@@ -465,8 +530,8 @@ export function StaticAdComposedPreview({
         </div>
         {showRawAssetState ? (
           <p className="text-xs leading-5 text-muted-foreground">
-            {preview.status === "final_composed"
-              ? preview.backgroundMessage
+            {launchReady
+              ? "Finished ad passed review and is available for the launch package."
               : preview.backgroundMessage}
           </p>
         ) : null}
@@ -482,11 +547,6 @@ export function StaticAdComposedPreview({
               {preview.cta}
             </div>
           </div>
-        ) : null}
-        {preview.overflowRisk ? (
-          <p className="text-xs leading-5 text-amber-300">
-            Long copy was fitted into the template to prevent visual overflow.
-          </p>
         ) : null}
       </div>
     </div>

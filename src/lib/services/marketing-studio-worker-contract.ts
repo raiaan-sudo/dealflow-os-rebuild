@@ -1,15 +1,23 @@
 import {
-  creativeIntakeIncludesStatic,
-  creativeIntakeIncludesUgcVideo,
-  type CreativeIntakeGenerationContext,
-} from "@/lib/services/creative-chat-intake-service";
-import { getMediaGenerationProvider } from "@/lib/env";
+  getHiggsfieldMarketingStudioEnv,
+  getMediaGenerationFallbackProvider,
+  getMediaGenerationProvider,
+  validateHiggsfieldEnv,
+} from "@/lib/env";
+import {
+  MARKETING_STUDIO_WORKER_DEFERRED_UNTIL,
+  MARKETING_STUDIO_WORKER_RUNTIME,
+} from "@/lib/services/creative-render-state";
 
-export const MARKETING_STUDIO_WORKER_RUNTIME = "marketing_studio_cli_worker";
-export const MARKETING_STUDIO_WORKER_DEFERRED_UNTIL = "2099-01-01T00:00:00.000Z";
+export { MARKETING_STUDIO_WORKER_DEFERRED_UNTIL, MARKETING_STUDIO_WORKER_RUNTIME };
 
 type StaticCreativeGenerationPayload = {
-  creativeIntake?: CreativeIntakeGenerationContext | null;
+  outputMode?: string | null;
+  provider?: string | null;
+  creativeIntake?: {
+    outputMode?: string | null;
+    generationPhase?: string | null;
+  } | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -30,9 +38,27 @@ export function isMarketingStudioStaticGenerationPayload(
   }
 
   return (
+    paramsOutputMode(payload) === "finished_ad" &&
+    paramsProvider(payload) === "higgsfield_marketing_studio" &&
     creativeIntake.outputMode === "finished_ad" &&
     creativeIntakeIncludesStatic(String(creativeIntake.generationPhase))
   );
+}
+
+function paramsOutputMode(payload: StaticCreativeGenerationPayload) {
+  return typeof payload.outputMode === "string" ? payload.outputMode : null;
+}
+
+function paramsProvider(payload: StaticCreativeGenerationPayload) {
+  return typeof payload.provider === "string" ? payload.provider : null;
+}
+
+function creativeIntakeIncludesStatic(phase?: string | null) {
+  return phase === "static" || phase === "static_and_ugc";
+}
+
+function creativeIntakeIncludesUgcVideo(phase?: string | null) {
+  return phase === "ugc_video" || phase === "static_and_ugc";
 }
 
 export function isMarketingStudioWorkerRuntimeEnabled() {
@@ -69,10 +95,26 @@ export function isMarketingStudioVideoGenerationJob(params: {
   kind?: string | null;
   payload?: unknown;
 }) {
+  if (params.kind !== "video_generation") {
+    return false;
+  }
+
+  if (getMediaGenerationProvider() !== "higgsfield_marketing_studio") {
+    return false;
+  }
+
+  const fallbackIsConfigured =
+    getMediaGenerationFallbackProvider() === "higgsfield" &&
+    process.env.ALLOW_HIGGSFIELD_VIDEO_GENERATION === "true" &&
+    validateHiggsfieldEnv().configured;
+
+  if (fallbackIsConfigured) {
+    return false;
+  }
+
   return (
-    params.kind === "video_generation" &&
-    (getMediaGenerationProvider() === "higgsfield_marketing_studio" ||
-      isMarketingStudioVideoGenerationPayload(params.payload))
+    getHiggsfieldMarketingStudioEnv().ugcVideoModel === "marketing_studio_video" &&
+    isMarketingStudioVideoGenerationPayload(params.payload)
   );
 }
 

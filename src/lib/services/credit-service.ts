@@ -20,8 +20,10 @@ export type GenerationCreditBucket =
   | "openai_image_generation"
   | "heygen_video_generation";
 
-export const CREDIT_TOP_UP_MINIMUM_CENTS = 2_000;
-const DEFAULT_GENERATION_CREDIT_OVERDRAFT_LIMIT_CENTS = CREDIT_TOP_UP_MINIMUM_CENTS;
+export const CREDIT_TOP_UP_MINIMUM_CENTS = 1_000;
+export const SIGNUP_GENERATION_CREDIT_GRANT_CENTS = 1_000;
+export const SIGNUP_GENERATION_CREDIT_REASON = "signup_generation_credit";
+const DEFAULT_GENERATION_CREDIT_OVERDRAFT_LIMIT_CENTS = 0;
 
 const DEFAULT_GENERATION_CREDIT_COSTS_CENTS: Record<GenerationCreditBucket, number> = {
   image_generation: 100,
@@ -387,6 +389,68 @@ export async function consumeCreditsForGeneration(params: {
   };
 }
 
+export async function assertGenerationCreditsAvailableForUser(params: {
+  bucket: GenerationCreditBucket;
+  userId: string;
+  organizationId?: string | null;
+  campaignId?: string | null;
+  quantity?: number | null;
+}) {
+  const unitAmount = getGenerationCreditCostCents(params.bucket);
+  const quantity =
+    typeof params.quantity === "number" && Number.isFinite(params.quantity) && params.quantity > 0
+      ? Math.floor(params.quantity)
+      : 1;
+  const amount = unitAmount * quantity;
+
+  if (amount <= 0) {
+    return;
+  }
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+  }
+
+  const billingOverrideEmail = await getBillingOverrideEmailForUser(params.userId);
+  if (billingOverrideEmail) {
+    return;
+  }
+
+  const qaGenerationCreditOverride = await getQaGenerationCreditOverrideForUser({
+    userId: params.userId,
+    organizationId: params.organizationId ?? null,
+    campaignId: params.campaignId ?? null,
+    amountCents: unitAmount,
+  });
+  if (qaGenerationCreditOverride) {
+    return;
+  }
+
+  const overdraftLimitCents = getGenerationCreditOverdraftLimitCents();
+  const { data: creditRowRaw, error: creditFetchError } = await admin
+    .from("user_credits")
+    .select("balance")
+    .eq("user_id", params.userId)
+    .maybeSingle();
+
+  if (creditFetchError) {
+    throw new ApiError(500, creditFetchError.message, "credit_balance_fetch_failed");
+  }
+
+  const creditRow = creditRowRaw as { balance?: unknown } | null;
+  const currentBalance = typeof creditRow?.balance === "number" ? creditRow.balance : 0;
+
+  if (currentBalance - amount < -overdraftLimitCents) {
+    throw new ApiError(
+      402,
+      `Add ${formatCreditCurrency(CREDIT_TOP_UP_MINIMUM_CENTS)} in generation credits before rendering paid creatives.`,
+      "credits_insufficient",
+    );
+  }
+}
+
 export async function grantUserCredits(params: {
   userId: string;
   organizationId?: string | null;
@@ -432,6 +496,64 @@ export async function grantUserCredits(params: {
     balance: typeof row.balance === "number" ? row.balance : null,
     ledgerId: typeof row.ledger_id === "string" ? row.ledger_id : null,
     reusedExisting: row.reused_existing === true,
+  };
+}
+
+export async function grantSignupGenerationCredits(params: {
+  userId: string;
+  organizationId: string;
+  stripeSubscriptionId?: string | null;
+  sourceEventId?: string | null;
+}) {
+  return grantUserCredits({
+    userId: params.userId,
+    organizationId: params.organizationId,
+    amount: SIGNUP_GENERATION_CREDIT_GRANT_CENTS,
+    reason: SIGNUP_GENERATION_CREDIT_REASON,
+    referenceType: "billing_subscription",
+    referenceId: params.stripeSubscriptionId ?? params.organizationId,
+    idempotencyKey: `signup_generation_credit_v1:${params.organizationId}`,
+    metadata: {
+      source: "paid_subscription_activation",
+      stripeSubscriptionId: params.stripeSubscriptionId ?? null,
+      sourceEventId: params.sourceEventId ?? null,
+    },
+  });
+}
+
+export async function getSignupGenerationCreditGrant(params: {
+  userId: string;
+  organizationId: string;
+}) {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    return null;
+  }
+
+  const { data, error } = await admin
+    .from("user_credit_ledger")
+    .select("id, delta, balance_after, created_at")
+    .eq("user_id", params.userId)
+    .eq("organization_id", params.organizationId)
+    .eq("reason", SIGNUP_GENERATION_CREDIT_REASON)
+    .eq("idempotency_key", `signup_generation_credit_v1:${params.organizationId}`)
+    .gt("delta", 0)
+    .maybeSingle();
+
+  if (error) {
+    throw new ApiError(500, error.message, "signup_credit_grant_lookup_failed");
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return data as {
+    id: string;
+    delta: number;
+    balance_after: number | null;
+    created_at: string;
   };
 }
 

@@ -14,13 +14,21 @@ import {
   getSelectedUgcVideoIdsFromPlan,
   withSelectedLaunchMedia,
 } from "@/lib/services/campaign-plan-document";
-import { getCampaignById } from "@/lib/services/campaign-persistence";
+import {
+  getCampaignById,
+  mapStaticCreativeAssets,
+  mapVideoCreativeAssets,
+} from "@/lib/services/campaign-persistence";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import {
   getStaticCreativeReadiness,
   isLaunchReadyStaticCreative,
   isLaunchReadyVideoCreative,
 } from "@/lib/services/creative-media-readiness";
+import {
+  getApprovedCreativeIntakeGenerationContext,
+  isCreativeChatIntakeEnabled,
+} from "@/lib/services/creative-chat-intake-service";
 import type { StaticCreativeAsset } from "@/lib/services/creative-engine";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 
@@ -53,6 +61,36 @@ function readStaticAdsFromPlan(value: unknown): StaticCreativeAsset[] {
   return staticAds as StaticCreativeAsset[];
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function mergeCreativeAssetsIntoPlan(
+  currentPlan: unknown,
+  staticAds: StaticCreativeAsset[],
+  videoAds: unknown[],
+) {
+  const plan = asRecord(currentPlan);
+  const existingCreatives = asRecord(plan.creatives);
+
+  return {
+    ...plan,
+    staticAds,
+    creatives: {
+      ...existingCreatives,
+      staticAds,
+      ...(videoAds.length > 0 ? { videoAds } : {}),
+    },
+  };
+}
+
+function hasSelectedStaticAssetsInPlan(currentPlan: unknown, selectedAdIds: string[]) {
+  const staticAdIds = new Set(readStaticAdsFromPlan(currentPlan).map((ad) => ad.id));
+  return selectedAdIds.every((selectedId) => staticAdIds.has(selectedId));
+}
+
 export async function POST(
   request: Request,
   context: { params: Promise<Record<string, string>> },
@@ -62,7 +100,7 @@ export async function POST(
     const auth = await getAuthenticatedContext();
     const { id } = await parseRouteParams(context.params, paramsSchema);
     const body = await parseJsonBody(request, bodySchema);
-    const selectedAdIds = Array.from(
+    let selectedAdIds = Array.from(
       new Set([...(body.selectedAdIds ?? []), ...(body.selectedAdId ? [body.selectedAdId] : [])]),
     ).slice(0, 6);
     const selectedUgcVideoIds = Array.from(
@@ -110,10 +148,76 @@ export async function POST(
 
     const existingSelectedAdIds = getSelectedAdIdsFromPlan(currentPlan);
     const existingSelectedUgcVideoIds = getSelectedUgcVideoIdsFromPlan(currentPlan);
+    const creativeIntakeContext = isCreativeChatIntakeEnabled()
+      ? getApprovedCreativeIntakeGenerationContext(currentPlan)
+      : null;
+    const staticBriefReadinessContext = creativeIntakeContext
+      ? {
+          staticBriefHash: creativeIntakeContext.staticBriefHash,
+          offerHash: creativeIntakeContext.offerHash,
+          ctaHash: creativeIntakeContext.ctaHash,
+          brandHash: creativeIntakeContext.brandHash,
+        }
+      : null;
     const hydratedRecord = await getCampaignById(id);
-    const staticAds = hydratedRecord?.creatives.staticAds.length
-      ? hydratedRecord.creatives.staticAds
-      : readStaticAdsFromPlan(currentPlan);
+    const staticAssetOwnerUserId = typeof row.user_id === "string" && row.user_id.length > 0
+      ? row.user_id
+      : auth.userId;
+    const { data: rawStaticAssetRows, error: staticAssetRowsError } = await supabase
+      .from("creative_assets")
+      .select("*")
+      .eq("campaign_id", id)
+      .eq("user_id", staticAssetOwnerUserId)
+      .in("asset_type", ["image_frame", "thumbnail", "static_image", "image"])
+      .order("created_at", { ascending: false });
+
+    if (staticAssetRowsError) {
+      throw staticAssetRowsError;
+    }
+
+    const staticAssetRows = (Array.isArray(rawStaticAssetRows) ? rawStaticAssetRows : []) as Array<{
+      id: string;
+      creative_id: string | null;
+      metadata: unknown;
+    }>;
+    const mappedStaticAssets = mapStaticCreativeAssets(Array.isArray(rawStaticAssetRows) ? rawStaticAssetRows : []);
+    const staticAds = mappedStaticAssets.length > 0
+      ? mappedStaticAssets
+      : hydratedRecord?.creatives.staticAds.length
+        ? hydratedRecord.creatives.staticAds
+        : readStaticAdsFromPlan(currentPlan);
+    const canonicalStaticAdIds = new Set(staticAds.map((ad) => ad.id));
+    const aliasToCanonicalStaticAdId = new Map(staticAds.map((ad) => [ad.id, ad.id]));
+    const metadataAliasCandidates = new Map<string, Set<string>>();
+
+    for (const row of staticAssetRows) {
+      const creativeId = typeof row.creative_id === "string" ? row.creative_id.trim() : "";
+      if (!creativeId || !canonicalStaticAdIds.has(creativeId)) {
+        continue;
+      }
+
+      aliasToCanonicalStaticAdId.set(row.id, creativeId);
+
+      const metadata = row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+        ? row.metadata as Record<string, unknown>
+        : null;
+      const staticAssetId = typeof metadata?.staticAssetId === "string" ? metadata.staticAssetId.trim() : "";
+      if (staticAssetId) {
+        const candidates = metadataAliasCandidates.get(staticAssetId) ?? new Set<string>();
+        candidates.add(creativeId);
+        metadataAliasCandidates.set(staticAssetId, candidates);
+      }
+    }
+
+    for (const [staticAssetId, candidates] of metadataAliasCandidates.entries()) {
+      if (candidates.size === 1) {
+        aliasToCanonicalStaticAdId.set(staticAssetId, Array.from(candidates)[0]);
+      }
+    }
+
+    selectedAdIds = Array.from(
+      new Set(selectedAdIds.map((selectedId) => aliasToCanonicalStaticAdId.get(selectedId) ?? selectedId)),
+    ).slice(0, 6);
     const staticAdById = new Map(staticAds.map((ad) => [ad.id, ad]));
     const missingIds = selectedAdIds.filter((selectedId) => !staticAdById.has(selectedId));
 
@@ -123,14 +227,14 @@ export async function POST(
 
     const rejectedIds = selectedAdIds.filter((selectedId) => {
       const ad = staticAdById.get(selectedId);
-      return !ad || !isLaunchReadyStaticCreative(ad);
+      return !ad || !isLaunchReadyStaticCreative(ad, staticBriefReadinessContext);
     });
 
     if (rejectedIds.length > 0) {
       throw new ApiError(400, "Regenerate the selected creative before saving it to the launch set.", "selected_ad_not_launch_safe");
     }
 
-    const staticReadiness = getStaticCreativeReadiness(staticAds, selectedAdIds);
+    const staticReadiness = getStaticCreativeReadiness(staticAds, selectedAdIds, staticBriefReadinessContext);
 
     if (!staticReadiness.selectedMinimumMet) {
       throw new ApiError(
@@ -140,8 +244,28 @@ export async function POST(
       );
     }
 
-    const videoAds = hydratedRecord?.creatives.videoAds ?? [];
-    const videoById = new Map(videoAds.map((video) => [video.id, video]));
+    const { data: videoAssetData, error: videoAssetError } = await supabase
+      .from("creative_assets")
+      .select("*")
+      .eq("campaign_id", id)
+      .eq("user_id", auth.userId)
+      .in("asset_type", ["ugc_video", "talking_head_video", "montage_video", "video"])
+      .order("created_at", { ascending: false });
+
+    if (videoAssetError) {
+      throw videoAssetError;
+    }
+
+    const mappedVideoAssets = mapVideoCreativeAssets(Array.isArray(videoAssetData) ? videoAssetData : []);
+    const videoAds = mappedVideoAssets.length > 0
+      ? mappedVideoAssets
+      : hydratedRecord?.creatives.videoAds ?? [];
+    const videoById = new Map<string, (typeof videoAds)[number]>();
+    for (const video of videoAds) {
+      if (!videoById.has(video.id)) {
+        videoById.set(video.id, video);
+      }
+    }
     const missingVideoIds = selectedUgcVideoIds.filter((selectedId) => !videoById.has(selectedId));
 
     if (missingVideoIds.length > 0) {
@@ -150,7 +274,10 @@ export async function POST(
 
     const rejectedVideoIds = selectedUgcVideoIds.filter((selectedId) => {
       const video = videoById.get(selectedId);
-      return !video || !isLaunchReadyVideoCreative(video) || video.conceptType !== "customer_ugc";
+      return !video ||
+        !isLaunchReadyVideoCreative(video) ||
+        video.conceptType !== "customer_ugc" ||
+        (creativeIntakeContext?.ugcScriptHash ? video.ugcScriptHash !== creativeIntakeContext.ugcScriptHash && video.scriptHash !== creativeIntakeContext.ugcScriptHash : false);
     });
 
     if (rejectedVideoIds.length > 0) {
@@ -161,7 +288,10 @@ export async function POST(
       );
     }
 
+    const currentPlanHasSelectedStaticAssets = hasSelectedStaticAssetsInPlan(currentPlan, selectedAdIds);
+
     if (
+      currentPlanHasSelectedStaticAssets &&
       existingSelectedAdIds.length === selectedAdIds.length &&
       existingSelectedAdIds.every((selectedId, index) => selectedId === selectedAdIds[index]) &&
       existingSelectedUgcVideoIds.length === selectedUgcVideoIds.length &&
@@ -177,10 +307,13 @@ export async function POST(
       });
     }
 
-    const nextPlan = withSelectedLaunchMedia(currentPlan, {
-      selectedAdIds,
-      selectedUgcVideoIds,
-    });
+    const nextPlan = withSelectedLaunchMedia(
+      mergeCreativeAssetsIntoPlan(currentPlan, staticAds, videoAds),
+      {
+        selectedAdIds,
+        selectedUgcVideoIds,
+      },
+    );
 
     await persistCampaignPlanDocumentUpdate({
       supabase,

@@ -12,6 +12,7 @@ import {
 import { loadCampaignValueReportIssues } from "@/lib/services/campaign-value-report-service";
 import { loadClientErrorIssues } from "@/lib/services/client-error-telemetry-service";
 import { loadCustomerSuccessIssues } from "@/lib/services/customer-success-service";
+import { getProviderGenerationSpendGateSnapshot } from "@/lib/services/provider-generation-spend-guard";
 
 type RawCampaignPlanRow = {
   id: string;
@@ -551,6 +552,51 @@ function providerUsageRatio(row: RawProviderUsageLimitRow) {
   return usageCount / limitCount;
 }
 
+function loadProviderSpendGateIssues(): OperatorIssueRow[] {
+  const snapshot = getProviderGenerationSpendGateSnapshot();
+  const liveOperations = [
+    snapshot.image.liveEnvEnabled ? "image" : null,
+    snapshot.video.liveEnvEnabled ? "video" : null,
+  ].filter(Boolean);
+
+  if (liveOperations.length === 0) {
+    return [];
+  }
+
+  const missing: string[] = [];
+  if (!snapshot.hardCapsEnabled) missing.push("PROVIDER_GENERATION_HARD_CAPS_ENABLED=true");
+  if (snapshot.killSwitchEnabled) missing.push("PROVIDER_GENERATION_KILL_SWITCH must be false/off");
+  if (!snapshot.dailyCostCapCents) missing.push("PROVIDER_GENERATION_DAILY_COST_CAP_CENTS");
+  if (snapshot.image.liveEnvEnabled) {
+    if (!snapshot.image.dailyCountCap) missing.push("PROVIDER_GENERATION_IMAGE_DAILY_CAP");
+    if (!snapshot.image.maxPerRequest) missing.push("PROVIDER_GENERATION_IMAGE_MAX_PER_REQUEST");
+    if (!snapshot.image.estimatedCostCents) missing.push("PROVIDER_GENERATION_IMAGE_ESTIMATED_COST_CENTS");
+  }
+  if (snapshot.video.liveEnvEnabled) {
+    if (!snapshot.video.dailyCountCap) missing.push("PROVIDER_GENERATION_VIDEO_DAILY_CAP");
+    if (!snapshot.video.maxPerRequest) missing.push("PROVIDER_GENERATION_VIDEO_MAX_PER_REQUEST");
+    if (!snapshot.video.estimatedCostCents) missing.push("PROVIDER_GENERATION_VIDEO_ESTIMATED_COST_CENTS");
+  }
+
+  if (missing.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      id: "provider-generation-spend-gates",
+      source: "provider_cost",
+      severity: "critical",
+      title: "Paid provider generation enabled without complete hard caps",
+      detail: `Live provider generation envs are enabled for ${liveOperations.join(", ")} generation, but required spend gates are incomplete: ${missing.join(", ")}.`,
+      status: "open",
+      createdAt: new Date().toISOString(),
+      route: "/admin/issues",
+      rawReference: "provider-generation-spend-gates",
+    },
+  ];
+}
+
 export async function loadIssueLogRows(
   limit = 80,
   preloadedCampaigns?: LaunchMonitorRow[],
@@ -786,6 +832,7 @@ export async function loadIssueLogRows(
       rawReference: row.user_id,
     };
   });
+  const providerSpendGateIssues = loadProviderSpendGateIssues();
 
   const campaignIssues = campaigns
     .filter((row) => row.consistencyMismatch || row.consistencyMissingFields.length > 0)
@@ -835,6 +882,7 @@ export async function loadIssueLogRows(
     ...providerLimitIssues,
     ...dailyProviderCostIssue,
     ...lowCreditIssues,
+    ...providerSpendGateIssues,
     ...campaignIssues,
     ...activationOperatorIssues,
     ...valueReportOperatorIssues,

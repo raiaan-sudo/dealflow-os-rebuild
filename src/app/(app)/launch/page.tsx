@@ -10,12 +10,12 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
 import { StatusPill, getStatusTone } from "@/components/ui/status-pill";
+import { isInstantFormCampaign } from "@/lib/campaign-destination";
 import { getCampaignIntentLabel } from "@/lib/campaign-intent";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { getIntegrationProviderState } from "@/lib/integrations/provider-registry";
 import {
-  getMetaDailyBudgetCapCents,
   isMetaDailyBudgetCapRequiredForProductionLaunch,
 } from "@/lib/integrations/meta/budget-cap";
 import {
@@ -23,18 +23,24 @@ import {
   getSelectedUgcVideoIdsFromPlan,
   readCampaignPlanDocument,
 } from "@/lib/services/campaign-plan-document";
-import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getBillingSummary, getBillingSummaryForCampaign } from "@/lib/services/billing-service";
 import { getMetaQueryUiCopy } from "@/lib/integrations/meta/error-mapper";
+import { getApprovedCreativeIntakeGenerationContext, isCreativeChatIntakeEnabled } from "@/lib/services/creative-chat-intake-service";
 import {
   getStaticCreativeReadiness,
   getVideoReadinessLabel,
   getVideoReadinessMessage,
+  isLaunchReadyStaticCreative,
   isLaunchReadyVideoCreative,
   isPlayableVideoCreative,
 } from "@/lib/services/creative-media-readiness";
+
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 import {
   getMetaConnectionState,
+  getMetaConnectionStateForOrganization,
   getDefaultMetaConnectionState,
   validateMetaLaunchSelections,
 } from "@/lib/integrations/meta/service";
@@ -73,6 +79,34 @@ function formatLastVerified(value: string | null | undefined) {
   return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
 }
 
+function formatLaunchDomainStatus(status: Awaited<ReturnType<typeof validateMetaLaunchSelections>>["launchDomainStatus"] | undefined) {
+  switch (status) {
+    case "launch_domain_verified":
+      return "verified";
+    case "launch_domain_not_verified":
+      return "not verified";
+    case "launch_domain_hosts_missing":
+      return "host mismatch";
+    case "launch_domain_missing":
+    default:
+      return "missing";
+  }
+}
+
+function formatBusinessVerificationStatus(
+  status: Awaited<ReturnType<typeof validateMetaLaunchSelections>>["businessVerificationStatus"] | undefined,
+) {
+  switch (status) {
+    case "business_verification_verified":
+      return "verified";
+    case "business_verification_pending":
+      return "pending";
+    case "business_verification_required":
+    default:
+      return "required";
+  }
+}
+
 function getPublicFunnelDestinationUrl(slug: string | null | undefined) {
   if (!slug) {
     return null;
@@ -98,7 +132,13 @@ function normalizeFunnelText(value: unknown) {
 function getFunnelSnapshotSignature(value: unknown) {
   const record = asPlainRecord(value);
   const campaign = asPlainRecord(record?.campaign);
-  const funnel = asPlainRecord(record?.funnel) ?? asPlainRecord(campaign?.funnel);
+  const nestedPlan = asPlainRecord(record?.plan);
+  const campaignPayload = asPlainRecord(record?.campaign_payload) ?? asPlainRecord(nestedPlan?.campaign_payload);
+  const funnel =
+    asPlainRecord(record?.funnel) ??
+    asPlainRecord(nestedPlan?.funnel) ??
+    asPlainRecord(campaignPayload?.funnel) ??
+    asPlainRecord(campaign?.funnel);
 
   if (!funnel) {
     return null;
@@ -109,6 +149,49 @@ function getFunnelSnapshotSignature(value: unknown) {
     normalizeFunnelText(funnel.subheadline),
     normalizeFunnelText(funnel.cta),
   ].join("|");
+}
+
+function readPersistedStaticAdsFromPlan(value: unknown) {
+  const record = asPlainRecord(value);
+  const creatives = asPlainRecord(record?.creatives);
+  const rootStaticAds = Array.isArray(record?.staticAds) ? record.staticAds : [];
+  const creativeStaticAds = Array.isArray(creatives?.staticAds) ? creatives.staticAds : [];
+
+  return [...rootStaticAds, ...creativeStaticAds].filter((item): item is Record<string, unknown> =>
+    Boolean(asPlainRecord(item)?.id),
+  );
+}
+
+function mergeLaunchStaticAds(
+  canonicalStaticAds: Array<Record<string, unknown>>,
+  persistedStaticAds: Array<Record<string, unknown>>,
+  selectedAdIds: string[],
+) {
+  if (persistedStaticAds.length === 0) {
+    return canonicalStaticAds;
+  }
+
+  const byId = new Map<string, Record<string, unknown>>();
+  for (const ad of canonicalStaticAds) {
+    if (typeof ad.id === "string" && ad.id.trim()) {
+      byId.set(ad.id, ad);
+    }
+  }
+
+  for (const ad of persistedStaticAds) {
+    if (typeof ad.id === "string" && ad.id.trim()) {
+      byId.set(ad.id, {
+        ...(byId.get(ad.id) ?? {}),
+        ...ad,
+      });
+    }
+  }
+
+  const merged = Array.from(byId.values());
+  const selectedIds = new Set(selectedAdIds);
+  const selectedCount = merged.filter((ad) => typeof ad.id === "string" && selectedIds.has(ad.id)).length;
+
+  return selectedCount > 0 ? merged : canonicalStaticAds;
 }
 
 function publishedFunnelSnapshotMatchesCurrentPlan(params: {
@@ -142,11 +225,11 @@ function getBillingLaunchBlockCopy(billing: Awaited<ReturnType<typeof getBilling
   }
 
   if (billing.requiresSuspension) {
-    return "Billing is inactive, so DealFlow-managed launch, funnel capture, alerts, and optimization are paused until the subscription is reactivated.";
+    return "Billing is inactive. Managed campaign assets have been removed or are being removed, and launch remains unavailable until billing is reactivated.";
   }
 
   if (billing.cancelAtPeriodEnd) {
-    return "This subscription is scheduled to cancel. Launch remains available during the paid period, but reactivation is required after the period ends.";
+    return "This subscription is scheduled to cancel. Launch remains available during the paid period, and managed campaign assets will be removed when access ends unless billing is reactivated.";
   }
 
   return "Activate billing before this workspace can launch to Meta. The launch button stays disabled and no live ad launch runs until billing is active.";
@@ -166,19 +249,23 @@ async function loadPersistedLaunchMediaSelection(campaignId: string | null) {
     return {
       selectedAdIds: [],
       selectedUgcVideoIds: [],
+      persistedStaticAds: [],
+      creativeIntakeContext: null,
       publicFunnelSnapshotMatchesCurrentPlan: false,
     };
-  }
+	  }
 
-  const supabase = await createRouteHandlerClient();
+  const supabase = createAdminClient();
 
   if (!supabase) {
     return {
       selectedAdIds: [],
       selectedUgcVideoIds: [],
+      persistedStaticAds: [],
+      creativeIntakeContext: null,
       publicFunnelSnapshotMatchesCurrentPlan: false,
     };
-  }
+	  }
 
   const { data } = await supabase
     .from("campaign_plans")
@@ -189,12 +276,16 @@ async function loadPersistedLaunchMediaSelection(campaignId: string | null) {
   const row = (data as { plan?: unknown; published_snapshot?: unknown } | null) ?? null;
   const plan = readCampaignPlanDocument(row?.plan);
 
-  return {
-    selectedAdIds: getSelectedAdIdsFromPlan(plan),
-    selectedUgcVideoIds: getSelectedUgcVideoIdsFromPlan(plan),
-    publicFunnelSnapshotMatchesCurrentPlan: publishedFunnelSnapshotMatchesCurrentPlan({
-      currentPlan: plan,
-      publishedSnapshot: row?.published_snapshot,
+	  return {
+	    selectedAdIds: getSelectedAdIdsFromPlan(plan),
+	    selectedUgcVideoIds: getSelectedUgcVideoIdsFromPlan(plan),
+	    persistedStaticAds: readPersistedStaticAdsFromPlan(plan),
+	    creativeIntakeContext: isCreativeChatIntakeEnabled()
+	      ? getApprovedCreativeIntakeGenerationContext(plan)
+	      : null,
+	    publicFunnelSnapshotMatchesCurrentPlan: publishedFunnelSnapshotMatchesCurrentPlan({
+	      currentPlan: plan,
+	      publishedSnapshot: row?.published_snapshot,
     }),
   };
 }
@@ -222,7 +313,7 @@ export default async function LaunchAliasPage({
     typeof params.meta_request_id === "string" && params.meta_request_id.length > 0
       ? params.meta_request_id
       : null;
-  const [record, metaConnection, metaProviderState] = await Promise.all([
+  const [record, metaProviderState] = await Promise.all([
     withTimeout(
       resolveActiveCampaignRecord(requestedCampaignId)
         .then((resolved) => resolved?.record ?? null)
@@ -231,24 +322,29 @@ export default async function LaunchAliasPage({
       4_000,
     ),
     withTimeout(
-      getMetaConnectionState().catch(() => getDefaultMetaConnectionState()),
-      getDefaultMetaConnectionState(),
-      2_500,
-    ),
-    withTimeout(
       getIntegrationProviderState("meta_marketing_api").catch(() => null),
       null,
       2_000,
     ),
   ]);
   const plan = record ? canonicalCampaignToPlan(record) : null;
-  const metaPreflight = await withTimeout(
-    validateMetaLaunchSelections({
-      destinationUrl: getPublicFunnelDestinationUrl(record?.publish.slug),
-    }).catch(() => null),
-    null,
-    5_000,
-  );
+  const instantFormCampaign = record
+    ? isInstantFormCampaign({
+        funnel: record.funnel,
+        plan: record.plan,
+        strategy: record.strategy,
+      }) || isInstantFormCampaign(plan)
+    : false;
+  const metaPreflight = instantFormCampaign
+    ? null
+    : await withTimeout(
+        validateMetaLaunchSelections({
+          destinationUrl: getPublicFunnelDestinationUrl(record?.publish.slug),
+          organizationId: record?.campaign.organization_id,
+        }).catch(() => null),
+        null,
+        5_000,
+      );
   const resolvedCampaignId = record?.campaign.id ?? requestedCampaignId;
   const launchReturnTo = resolvedCampaignId
     ? `/launch?campaignId=${encodeURIComponent(resolvedCampaignId)}`
@@ -262,10 +358,6 @@ export default async function LaunchAliasPage({
   );
   const metaReconnectHref = `/api/integrations/meta/connect?returnTo=${encodeURIComponent(launchReturnTo)}`;
   const cleanLaunchHref = launchReturnTo;
-  const launchMediaSelection = await loadPersistedLaunchMediaSelection(resolvedCampaignId);
-  const selectedAdIds = launchMediaSelection.selectedAdIds;
-  const selectedUgcVideoIds = launchMediaSelection.selectedUgcVideoIds;
-  const publicFunnelSnapshotCurrent = launchMediaSelection.publicFunnelSnapshotMatchesCurrentPlan;
   const metaErrorCopy = getMetaQueryUiCopy(metaError, "oauth_callback");
   const discoveryIncomplete =
     metaWarning === "asset_discovery_incomplete"
@@ -299,16 +391,45 @@ export default async function LaunchAliasPage({
     return null;
   }
 
+  const launchMediaSelection = await loadPersistedLaunchMediaSelection(savedRecord.campaign.id);
+  const selectedAdIds = launchMediaSelection.selectedAdIds;
+  const selectedUgcVideoIds = launchMediaSelection.selectedUgcVideoIds;
+  const creativeIntakeContext = launchMediaSelection.creativeIntakeContext;
+  const staticBriefReadinessContext = creativeIntakeContext
+    ? {
+        staticBriefHash: creativeIntakeContext.staticBriefHash,
+        offerHash: creativeIntakeContext.offerHash,
+        ctaHash: creativeIntakeContext.ctaHash,
+        brandHash: creativeIntakeContext.brandHash,
+      }
+    : null;
+  const publicFunnelSnapshotCurrent = launchMediaSelection.publicFunnelSnapshotMatchesCurrentPlan;
+  const launchStaticAds = mergeLaunchStaticAds(
+    plan.creatives.staticAds,
+    launchMediaSelection.persistedStaticAds,
+    selectedAdIds,
+  ) as typeof plan.creatives.staticAds;
+
+  const metaConnection = await withTimeout(
+    savedRecord.campaign.organization_id
+      ? getMetaConnectionStateForOrganization(savedRecord.campaign.organization_id).catch(() =>
+          getMetaConnectionState().catch(() => getDefaultMetaConnectionState()),
+        )
+      : getMetaConnectionState().catch(() => getDefaultMetaConnectionState()),
+    getDefaultMetaConnectionState(),
+    2_500,
+  );
+
   const intentLabel = getCampaignIntentLabel(plan.intent, { capitalized: true });
   const metaConnected =
     metaConnection.connectionStatus === "connected" &&
-    Boolean(metaConnection.accountId);
+    metaConnection.hasAccessToken;
   const metaSelectionReady =
     metaConnected &&
     Boolean(metaConnection.accountId) &&
     Boolean(metaConnection.pageId) &&
     Boolean(metaConnection.tracking.pixelId);
-  const metaPreflightReady = metaPreflight?.ready ?? false;
+  const metaPreflightReady = instantFormCampaign ? metaSelectionReady : metaPreflight?.ready ?? false;
   const metaLaunchReady = metaSelectionReady && metaPreflightReady;
   const billingLaunchAllowed = billing?.launchAllowed ?? false;
   const billingOverride = billing?.launchOverride ?? false;
@@ -335,6 +456,7 @@ export default async function LaunchAliasPage({
       !metaPreflight.pixelValid
     );
   const metaTrackingPreflightBlocked =
+    !instantFormCampaign &&
     metaSelectionReady &&
     metaPreflight !== null &&
     !metaPreflightReady &&
@@ -346,21 +468,36 @@ export default async function LaunchAliasPage({
     ...(metaSelectionReady && !metaPreflightReady ? metaPreflight?.errors ?? ["Meta preflight failed."] : []),
     ...(!providerLaunchEnabled ? ["Final launch approval is pending."] : []),
   ];
-  const selectedCreatives = plan.creatives.staticAds.filter((ad) => selectedAdIds.includes(ad.id));
-  const staticReadiness = getStaticCreativeReadiness(plan.creatives.staticAds, selectedAdIds);
+  const selectedCreatives = launchStaticAds.filter((ad) => selectedAdIds.includes(ad.id));
+  const staticReadiness = getStaticCreativeReadiness(launchStaticAds, selectedAdIds, staticBriefReadinessContext);
   const selectedCreativeMediaReady =
     staticReadiness.allSelectedReady;
+  const savedCreativeSetMissing = selectedCreatives.length === 0;
+  const isCurrentLaunchReadyUgcVideo = (video: (typeof plan.creatives.videoAds)[number]) =>
+    video.conceptType === "customer_ugc" &&
+    isLaunchReadyVideoCreative(video) &&
+    (!creativeIntakeContext?.ugcScriptHash ||
+      video.ugcScriptHash === creativeIntakeContext.ugcScriptHash ||
+      video.scriptHash === creativeIntakeContext.ugcScriptHash);
+  const dedupeVideoIds = (videos: typeof plan.creatives.videoAds) => {
+    const seen = new Set<string>();
+    return videos.filter((video) => {
+      if (seen.has(video.id)) {
+        return false;
+      }
+
+      seen.add(video.id);
+      return true;
+    });
+  };
   const selectedUgcVideos = selectedUgcVideoIds.length > 0
-    ? plan.creatives.videoAds
+    ? dedupeVideoIds(plan.creatives.videoAds
         .filter((video) => selectedUgcVideoIds.includes(video.id))
-        .sort((left, right) => selectedUgcVideoIds.indexOf(left.id) - selectedUgcVideoIds.indexOf(right.id))
+        .filter(isCurrentLaunchReadyUgcVideo)
+        .sort((left, right) => selectedUgcVideoIds.indexOf(left.id) - selectedUgcVideoIds.indexOf(right.id)))
     : [];
-  const launchReadyVideos = selectedUgcVideos.filter(
-    (video) => video.conceptType === "customer_ugc" && isLaunchReadyVideoCreative(video),
-  );
-  const fallbackDisplayVideos = plan.creatives.videoAds.filter(
-    (video) => video.conceptType === "customer_ugc" && isLaunchReadyVideoCreative(video),
-  );
+  const launchReadyVideos = selectedUgcVideos;
+  const fallbackDisplayVideos = dedupeVideoIds(plan.creatives.videoAds.filter(isCurrentLaunchReadyUgcVideo));
   const displayVideoAds = selectedUgcVideos.length > 0
     ? selectedUgcVideos
     : fallbackDisplayVideos.length > 0
@@ -372,7 +509,13 @@ export default async function LaunchAliasPage({
     Boolean(savedRecord.publish.slug) &&
     savedRecord.publish.hasPublishedSnapshot &&
     publicFunnelSnapshotCurrent;
-  if (!publicFunnelPublished) {
+  const instantFormSetupReady = !instantFormCampaign;
+  const campaignDestinationReady = instantFormCampaign ? instantFormSetupReady : publicFunnelPublished;
+
+  if (instantFormCampaign && !instantFormSetupReady) {
+    blockingReasons.push("Meta Instant Form setup is operator-assisted and must be verified before launch.");
+  }
+  if (!instantFormCampaign && !publicFunnelPublished) {
     blockingReasons.push(
       savedRecord.publish.state === "published" && savedRecord.publish.hasPublishedSnapshot && !publicFunnelSnapshotCurrent
         ? "Republish the public funnel because the live snapshot no longer matches the current campaign plan."
@@ -382,35 +525,32 @@ export default async function LaunchAliasPage({
   if (!selectedCreativeMediaReady) {
     blockingReasons.push("Finish rendering clean creative images before launch.");
   }
-  if (!videoMediaReady) {
-    blockingReasons.push("Approve a campaign-specific UGC video before launch.");
-  }
   const dailyBudgetInput =
     plan.runtime.budgetDailyInput && plan.runtime.budgetDailyInput > 0
       ? plan.runtime.budgetDailyInput
       : Math.round(plan.monthlyBudget / 30);
   const dailyBudgetCents = Math.max(0, Math.round(dailyBudgetInput * 100));
-  const budgetCapCents = getMetaDailyBudgetCapCents();
-  const budgetCapApplied = budgetCapCents !== null;
-  const budgetCapMissingForLaunch = providerLaunchEnabled && budgetCapRequiredForLaunch && budgetCapCents === null;
-  const effectiveDailyBudgetCents = budgetCapCents !== null
-    ? Math.min(dailyBudgetCents, budgetCapCents)
-    : dailyBudgetCents;
-  const budgetWasCapped = budgetCapCents !== null && dailyBudgetCents > budgetCapCents;
   const liveActivationBlocked = metaPreflight?.liveActivationBlocked ?? false;
+  const pausedSetupTrackingReady = instantFormCampaign ? false : metaPreflightReady;
   const launchRoomReady =
     billingLaunchAllowed &&
     metaLaunchReady &&
     selectedCreativeMediaReady &&
-    videoMediaReady &&
-    publicFunnelPublished &&
-    !budgetCapMissingForLaunch &&
+    campaignDestinationReady &&
     providerLaunchEnabled;
   const readinessItems = [
     {
       label: "Billing",
       ready: billingLaunchAllowed,
       detail: billingLaunchAllowed ? billingReadyDetail : billingBlockCopy,
+    },
+    {
+      label: "Meta app access",
+      ready: metaConnected,
+      statusLabel: metaConnected ? metaConnection.operatorAssisted.label : "Operator-assisted",
+      detail: metaConnected
+        ? `${metaConnection.operatorAssisted.label}: workspace connection exists. ${metaConnection.operatorAssisted.publicSelfServeBlocker}`
+        : metaConnection.operatorAssisted.notice,
     },
     {
       label: "Meta connection",
@@ -444,58 +584,59 @@ export default async function LaunchAliasPage({
       detail:
         selectedCreativeMediaReady
           ? `${staticReadiness.selectionLabel}; ${staticReadiness.selectedReadyLabel}`
+          : savedCreativeSetMissing
+            ? `Saved creative set missing. Open Creative Studio and save at least ${staticReadiness.minimumRequiredCount} launch-ready static ads before launch.`
           : selectedCreatives.length > 0
             ? "Regenerate selected creatives until clean image renders are ready"
             : "Choose the creative test set first",
     },
     {
-      label: "Video preview ready",
-      ready: videoMediaReady,
+      label: "Optional UGC video",
+      ready: true,
+      statusLabel: videoMediaReady ? undefined : "Optional",
       detail: videoMediaReady
         ? `${launchReadyVideos.length} campaign-specific UGC video ${launchReadyVideos.length === 1 ? "preview is" : "previews are"} launch-ready`
-        : "Render or approve a campaign-specific UGC video before launch",
+        : "UGC video can be added later. The selected static ad set is the media requirement for launch review.",
     },
-    {
-      label: "Funnel published",
-      ready: publicFunnelPublished,
-      detail: publicFunnelPublished
-        ? `Published at /f/${savedRecord.publish.slug}`
-        : savedRecord.publish.state === "published" && savedRecord.publish.hasPublishedSnapshot && !publicFunnelSnapshotCurrent
-          ? "The public funnel is published, but its live snapshot is stale. Republish before sending paid traffic."
-        : "Publish the public funnel before sending traffic",
-    },
+    instantFormCampaign
+      ? {
+          label: "Instant form setup",
+          ready: instantFormSetupReady,
+          statusLabel: "Operator-assisted",
+          detail:
+            "This campaign uses a native Meta Instant Form. Public funnel publish checks are not required, but the operator must verify the form fields, privacy policy, and GHL delivery path before launch.",
+        }
+      : {
+          label: "Funnel published",
+          ready: publicFunnelPublished,
+          detail: publicFunnelPublished
+            ? `Published at /f/${savedRecord.publish.slug}`
+            : savedRecord.publish.state === "published" && savedRecord.publish.hasPublishedSnapshot && !publicFunnelSnapshotCurrent
+              ? "The public funnel is published, but its live snapshot is stale. Republish before sending paid traffic."
+            : "Publish the public funnel before sending traffic",
+        },
     {
       label: "Budget",
-      ready: !budgetCapMissingForLaunch,
-      statusLabel: budgetCapMissingForLaunch
-        ? "Blocked"
-        : budgetWasCapped
-          ? "Capped"
-          : budgetCapApplied
-            ? undefined
-            : "Unlimited",
-      detail: budgetCapMissingForLaunch
-        ? "Configure META_DAILY_BUDGET_CAP_CENTS before production Meta object creation. DealFlow will fail closed until a finite cap is present."
-        : budgetWasCapped
-        ? `Requested daily budget is ${formatBudgetCap(dailyBudgetCents)}; the launch will use the DealFlow cap of ${formatBudgetCap(effectiveDailyBudgetCents)}/day unless support adjusts the cap.`
-        : budgetCapCents !== null
-          ? `DealFlow launch is capped at ${formatBudgetCap(budgetCapCents)}/day; requested daily budget is ${formatBudgetCap(dailyBudgetCents)}.`
-          : `No DealFlow budget cap is applied. Launch will use the requested daily budget of ${formatBudgetCap(dailyBudgetCents)}.`,
+      ready: true,
+      statusLabel: "Ready",
+      detail: `No platform budget cap is applied. Launch will use the requested daily budget of ${formatBudgetCap(dailyBudgetCents)}.`,
     },
     {
-      label: "Tracking / live activation",
-      ready: !liveActivationBlocked,
-      statusLabel: liveActivationBlocked ? "Paused only" : undefined,
-      detail: liveActivationBlocked
-        ? `Paused Meta object creation may proceed with the verified destination preflight, but live activation is blocked until ${metaPreflight?.effectiveLaunchDomain ?? "the launch domain"} is verified and tracking is fully configured.`
-        : "Launch domain and tracking are ready for live activation review.",
+      label: instantFormCampaign ? "Instant Form activation" : "Tracking / live activation",
+      ready: pausedSetupTrackingReady,
+      statusLabel: instantFormCampaign ? "Operator-assisted" : liveActivationBlocked ? "Paused setup ready" : undefined,
+      detail: instantFormCampaign
+        ? "Native Meta lead form activation remains operator-assisted. No public funnel URL or pixel-domain blocker is required for this destination."
+        : liveActivationBlocked
+          ? `Paused Meta object creation may proceed with the verified destination preflight, but live activation stays blocked until ${metaPreflight?.effectiveLaunchDomain ?? "the launch domain"} tracking and Meta Business verification are fully approved.`
+          : "Launch domain and tracking are ready for live activation review.",
     },
     {
       label: "Launch approval",
       ready: providerLaunchEnabled,
       detail: providerLaunchEnabled
         ? "Final launch approval is enabled. Meta campaigns are still created paused for review."
-        : "Final launch approval is pending, so DealFlow will not create Meta campaign objects yet.",
+        : "Final launch approval is pending, so Meta campaign objects will not be created yet.",
     },
   ];
   const metaStatusText = metaLaunchReady
@@ -516,7 +657,7 @@ export default async function LaunchAliasPage({
           billing?.billingState === "payment_issue"
             ? "Update the payment method in Settings, then return here after Stripe confirms recovery."
             : billing?.requiresSuspension
-              ? "Reactivate billing in Settings before DealFlow resumes launch, funnel capture, alerts, or optimization."
+              ? "Reactivate billing in Settings before launch, funnel capture, alerts, or optimization resume."
               : "Activate billing from Settings or the activation page before attempting launch.",
         ]
       : []),
@@ -525,24 +666,27 @@ export default async function LaunchAliasPage({
           metaSelectionReady
             ? metaSelectionInvalid
               ? "Meta selections were saved, but Meta can no longer verify the selected ad account, Page, or pixel. Re-save the selections or reconnect Meta if the check stays blocked."
-              : "Meta selections were saved, but launch preflight has not passed yet. Configure DealFlow's verified platform launch domain and publish the public funnel before attempting launch."
+              : instantFormCampaign
+                ? "Meta selections were saved, but Instant Form launch remains operator-assisted until the native form setup is verified."
+                : "Meta selections were saved, but launch preflight has not passed yet. Configure the verified platform launch domain and publish the public funnel before attempting launch."
             : "Save the ad account, Facebook Page, and pixel in the Meta setup section.",
         ]
       : []),
-    ...(!publicFunnelPublished ? ["Publish the public funnel snapshot so Meta has a live destination URL."] : []),
-    ...(!selectedCreativeMediaReady
-      ? ["Return to Creatives and refresh unfinished previews before saving the launch set again."]
+    ...(instantFormCampaign && !instantFormSetupReady
+      ? ["Verify the Meta Instant Form fields, privacy policy, and GHL delivery path before launch."]
       : []),
-    ...(!videoMediaReady
-      ? ["Return to Creatives and render or approve a campaign-specific UGC video before launch."]
+    ...(!instantFormCampaign && !publicFunnelPublished ? ["Publish the public funnel snapshot so Meta has a live destination URL."] : []),
+    ...(!selectedCreativeMediaReady
+      ? [
+          savedCreativeSetMissing
+            ? `Open Creative Studio and save at least ${staticReadiness.minimumRequiredCount} launch-ready static ads before launch.`
+            : "Return to Creatives and refresh unfinished previews before saving the launch set again.",
+        ]
       : []),
     ...(!providerLaunchEnabled
       ? [
-          "Final launch approval is pending. DealFlow will not create Meta campaign objects until support enables live launch approvals.",
+          "Final launch approval is pending. Meta campaign objects will not be created until support enables live launch approvals.",
         ]
-      : []),
-    ...(budgetCapMissingForLaunch
-      ? ["Configure META_DAILY_BUDGET_CAP_CENTS before attempting a production Meta launch."]
       : []),
   ];
 
@@ -561,36 +705,6 @@ export default async function LaunchAliasPage({
     }).catch(() => undefined);
   }
 
-  if (selectedCreatives.length === 0) {
-    return (
-      <PageShell>
-        <WizardSteps current="launch" />
-        <PageHeader
-          eyebrow="Launch"
-          title="Saved creative set missing"
-          description="Save a launch-ready static creative set before paused Meta setup can continue."
-        />
-        <EmptyState
-          title="Choose the creative test set first"
-          description="Creative Studio must save the selected static ads and UGC video before this page can review launch readiness."
-        />
-        <div>
-          <Button asChild>
-            <Link
-              href={
-                savedRecord?.campaign.id
-                  ? `/build/creatives?campaignId=${encodeURIComponent(savedRecord.campaign.id)}`
-                  : "/build/creatives"
-              }
-            >
-              Open Creative Studio
-            </Link>
-          </Button>
-        </div>
-      </PageShell>
-    );
-  }
-
   return (
     <PageShell className="max-w-[1640px]">
       <WizardSteps current="launch" />
@@ -599,6 +713,11 @@ export default async function LaunchAliasPage({
         title="Paused launch readiness review"
         description="Confirm the campaign, selected media, owner blockers, and paused Meta object readiness."
       />
+      <div className="rounded-[22px] border border-cyan-300/15 bg-cyan-300/[0.065] px-5 py-4 text-sm leading-6 text-cyan-100">
+        <p className="font-semibold">{metaConnection.operatorAssisted.label}</p>
+        <p className="mt-1">{metaConnection.operatorAssisted.notice}</p>
+        <p className="mt-1 text-cyan-100/75">{metaConnection.operatorAssisted.publicSelfServeBlocker}</p>
+      </div>
       {metaConnectedFlag ? (
         <div className="rounded-[22px] border border-emerald-400/15 bg-emerald-400/10 px-5 py-4 text-sm font-medium text-emerald-100">
           Meta connection saved. Finish the required selections below to continue.
@@ -660,8 +779,23 @@ export default async function LaunchAliasPage({
                 ))}
               </div>
               <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                This page is a recovery checklist while blocked. DealFlow will not create or recover Meta objects until every gate below is ready.
+                This page is a recovery checklist while blocked. Meta objects will not be created or recovered until every gate below is ready.
               </p>
+              {selectedCreatives.length === 0 ? (
+                <div className="mt-4">
+                  <Button asChild>
+                    <Link
+                      href={
+                        savedRecord?.campaign.id
+                          ? `/build/creatives?campaignId=${encodeURIComponent(savedRecord.campaign.id)}`
+                          : "/build/creatives"
+                      }
+                    >
+                      Open Creative Studio
+                    </Link>
+                  </Button>
+                </div>
+              ) : null}
             </div>
             <StatusPill tone="warning">Blocked</StatusPill>
           </div>
@@ -685,7 +819,10 @@ export default async function LaunchAliasPage({
                 <div>
                   <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Budget</p>
                   <p className="mt-2 text-sm leading-6 text-foreground">
-                    ${plan.monthlyBudget.toLocaleString()}/month
+                    {formatBudgetCap(dailyBudgetCents)}/day
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    30-day estimate {formatBudgetCap(dailyBudgetCents * 30)}
                   </p>
                 </div>
                 <div>
@@ -703,12 +840,14 @@ export default async function LaunchAliasPage({
                   : metaSelectionInvalid
                     ? "The saved Meta selection is no longer valid. Re-select the ad account, Page, and pixel before launch."
                     : metaTrackingPreflightBlocked
-                      ? "The saved Meta selections are valid, but launch preflight is blocked by DealFlow's platform domain or destination requirements."
+                      ? "The saved Meta selections are valid, but launch preflight is blocked by the platform domain or destination requirements."
+                    : instantFormCampaign
+                      ? "This campaign is configured for a native Meta Instant Form. No public funnel publish gate is required, but launch stays operator-assisted until form setup and delivery are verified."
                     : launchRoomReady
                   ? "Preflight passed for paused Meta setup. Owner funds and live activation approval are still separate."
                   : `Before launch: ${blockingReasons.join(" • ")}.`}
               </p>
-              {metaSelectionReady ? (
+              {metaSelectionReady && !instantFormCampaign ? (
                 <div className="mt-4 rounded-[18px] border border-white/8 bg-black/20 p-4 text-sm text-muted-foreground">
                   <p className="font-medium text-foreground">Pre-launch check</p>
                   <p className="mt-2 leading-6">
@@ -717,8 +856,23 @@ export default async function LaunchAliasPage({
                     {metaPreflight?.pageValid ? "valid" : "invalid"} · Pixel:{" "}
                     {metaPreflight?.pixelValid ? "valid" : "invalid"}
                   </p>
+                  <p className="mt-2 leading-6">
+                    Launch domain: {formatLaunchDomainStatus(metaPreflight?.launchDomainStatus)} · Business verification:{" "}
+                    {formatBusinessVerificationStatus(metaPreflight?.businessVerificationStatus)}
+                  </p>
                   <p className="mt-2 leading-6">Last verified at: {metaVerifiedAtText}</p>
                   <p className="mt-2 leading-6">Meta state may change before launch.</p>
+                </div>
+              ) : null}
+              {instantFormCampaign ? (
+                <div className="mt-4 rounded-[18px] border border-cyan-300/14 bg-cyan-300/[0.055] p-4 text-sm text-cyan-50/82">
+                  <p className="font-medium text-cyan-50">Instant Form destination</p>
+                  <p className="mt-2 leading-6">
+                    Lead destination: Meta Instant Form. Required fields: full name, email, and phone. Public funnel snapshot checks are intentionally skipped for this campaign type.
+                  </p>
+                  <p className="mt-2 leading-6">
+                    Operator-assisted blocker: verify the native form, privacy policy, and GHL delivery before paid traffic starts.
+                  </p>
                 </div>
               ) : null}
             </div>
@@ -742,6 +896,8 @@ export default async function LaunchAliasPage({
                 <h2 className="mt-2 text-lg font-semibold text-foreground">
                   {selectedCreativeMediaReady
                     ? staticReadiness.selectionLabel
+                    : savedCreativeSetMissing
+                      ? "Saved creative set missing"
                     : `${selectedCreatives.length} selected, rendering needed`}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
@@ -763,23 +919,35 @@ export default async function LaunchAliasPage({
                     cta={selectedCreative.cta}
                     headline={selectedCreative.headline}
                     imageGenerationMessage={selectedCreative.imageGenerationMessage}
+                    imageGenerationProvider={selectedCreative.imageGenerationProvider}
                     imageGenerationState={selectedCreative.imageGenerationState}
                     imagePrompt={selectedCreative.imagePrompt}
                     imagePromptConfig={selectedCreative.imagePromptConfig}
-                    imageUrl={selectedCreative.imageUrl}
-                    storageNormalized={selectedCreative.storageNormalized}
+	                    imageUrl={selectedCreative.imageUrl}
+	                    storageNormalized={selectedCreative.storageNormalized}
+	                    appComposedFinal={selectedCreative.appComposedFinal}
+                    qualityTier={selectedCreative.qualityTier}
+                    compositionVersion={selectedCreative.compositionVersion}
+                    sourceBackgroundKind={selectedCreative.sourceBackgroundKind}
+                    sourceBackgroundProvider={selectedCreative.sourceBackgroundProvider}
+                    sourceBackgroundAssetId={selectedCreative.sourceBackgroundAssetId}
                     location={plan.market}
                     offer={plan.offerSummary || plan.keyOffer}
                     overlayText={selectedCreative.overlayText}
                     primaryText={selectedCreative.primaryText}
                     qualityGate={selectedCreative.qualityGate}
+                    visualQualityGate={selectedCreative.visualQualityGate}
+                    premiumQualityGate={selectedCreative.premiumQualityGate}
                     imageQa={selectedCreative.imageQa}
-                    score={selectedCreative.score}
-                    index={index}
-                    selected
-                    selectedCount={selectedCreatives.length}
-                    visualPromptBrief={selectedCreative.visualPromptBrief}
-                  />
+                    sourceImageQa={selectedCreative.sourceImageQa}
+                    prominent
+	                    score={selectedCreative.score}
+	                    index={index}
+	                    selected
+	                    selectedCount={selectedCreatives.length}
+	                    launchReady={isLaunchReadyStaticCreative(selectedCreative, staticBriefReadinessContext)}
+	                    visualPromptBrief={selectedCreative.visualPromptBrief}
+	                  />
                 </div>
               ))}
             </div>
@@ -789,11 +957,11 @@ export default async function LaunchAliasPage({
                   <div>
                     <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Video preview</p>
                     <h3 className="mt-2 text-sm font-semibold text-foreground">
-                      {videoMediaReady ? "Campaign-specific UGC is ready" : "Video review needed"}
+                      {videoMediaReady ? "Campaign-specific UGC is ready" : "Optional UGC can be added later"}
                     </h3>
                   </div>
-                  <span className={videoMediaReady ? "text-sm font-semibold text-emerald-300" : "text-sm font-semibold text-amber-300"}>
-                    {videoMediaReady ? "Ready" : "Blocked"}
+                  <span className={videoMediaReady ? "text-sm font-semibold text-emerald-300" : "text-sm font-semibold text-cyan-300"}>
+                    {videoMediaReady ? "Ready" : "Optional"}
                   </span>
                 </div>
                 <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -832,7 +1000,7 @@ export default async function LaunchAliasPage({
         </div>
       </Card>
       <LaunchMetaSelectionPanel connection={metaConnection} campaignId={resolvedCampaignId} />
-      {!publicFunnelPublished ? (
+      {!instantFormCampaign && !publicFunnelPublished ? (
         <CampaignPublishPanel
           campaignId={savedRecord.campaign.id}
           campaignName={plan.businessName || `${plan.market} ${intentLabel} Campaign`}
@@ -848,8 +1016,14 @@ export default async function LaunchAliasPage({
               {launchRoomReady ? "All launch gates are ready" : "Launch gates still need attention"}
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-7 text-muted-foreground">
-              Paused setup remains blocked until billing, Meta selections, launch checks, selected creative,
-              published funnel, and final owner approval all pass.
+              {launchRoomReady
+                ? "Paused Meta setup is ready for operator review. Live activation remains separate and still requires final owner approval plus verified tracking."
+                : (
+                  <>
+                    Paused setup remains blocked until billing, Meta selections, launch checks, selected creative,
+                    {instantFormCampaign ? " instant form setup," : " published funnel,"} and final owner approval all pass.
+                  </>
+                )}
             </p>
           </div>
           <StatusPill tone={launchRoomReady ? "success" : "warning"}>
@@ -864,7 +1038,7 @@ export default async function LaunchAliasPage({
             >
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold text-foreground">{item.label}</p>
-                <span className={item.ready && item.statusLabel !== "Capped" ? "text-sm font-semibold text-emerald-300" : "text-sm font-semibold text-amber-300"}>
+                <span className={item.ready ? "text-sm font-semibold text-emerald-300" : "text-sm font-semibold text-amber-300"}>
                   {item.statusLabel ?? (item.ready ? "Ready" : "Blocked")}
                 </span>
               </div>

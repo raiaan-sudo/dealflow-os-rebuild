@@ -22,6 +22,7 @@ import {
   readPersistedAssetGenerationState,
   shouldReuseStaticGeneration,
   startAssetGenerationLifecycle,
+  updateAssetGenerationLifecycleStage,
 } from "@/lib/services/asset-generation-lifecycle";
 import { debugLog } from "@/lib/debug";
 import {
@@ -43,6 +44,12 @@ import {
   STATIC_LAUNCH_MIN_CREATIVE_COUNT,
 } from "@/lib/services/creative-media-readiness";
 import { persistStaticCreativeAssets } from "@/lib/services/static-creative-asset-service";
+import {
+  isTransientStaticCreativePersistenceError,
+  retryStaticCreativePersistence,
+  toStaticCreativePersistenceApiError,
+  type StaticCreativeGenerationStage,
+} from "@/lib/services/static-creative-render-resilience";
 import {
   consumeSessionCostBudget,
   markSessionCostBudgetEvent,
@@ -153,6 +160,46 @@ function getErrorMessage(error: unknown) {
   return "Unknown error";
 }
 
+function withStaticAssetGenerationStage(
+  savedDocument: SavedCampaignDocument | Record<string, unknown> | null | undefined,
+  stage: StaticCreativeGenerationStage,
+) {
+  const generationState = readPersistedAssetGenerationState(savedDocument?.assetGeneration);
+
+  return {
+    ...((savedDocument as Record<string, unknown> | null) ?? {}),
+    assetGeneration: {
+      ...((savedDocument?.assetGeneration as Record<string, unknown> | null) ?? {}),
+      staticAds: updateAssetGenerationLifecycleStage(generationState.staticAds, stage),
+    },
+  } as Json;
+}
+
+async function persistStaticCampaignPlanDocumentUpdate(params: {
+  supabase: PersistenceClient;
+  campaignId: string;
+  userId: string;
+  plan: Json;
+  source: string;
+  existingRow: CampaignPlanRow;
+  transientCode: string;
+}) {
+  try {
+    await retryStaticCreativePersistence(() =>
+      persistCampaignPlanDocumentUpdate({
+        supabase: params.supabase,
+        campaignId: params.campaignId,
+        userId: params.userId,
+        plan: params.plan,
+        source: params.source,
+        existingRow: params.existingRow,
+      }),
+    );
+  } catch (error) {
+    throw toStaticCreativePersistenceApiError(error, params.transientCode);
+  }
+}
+
 async function requireUserSession() {
   const supabase = await createRouteHandlerClient();
 
@@ -167,6 +214,7 @@ async function requireUserSession() {
       supabase,
       userId: context.user.id,
       ownerId: context.organization.id ?? context.user.id,
+      activeWorkspaceAccess: context.activeWorkspaceAccess,
     };
   }
 
@@ -179,7 +227,7 @@ async function requireUserSession() {
     throw new ApiError(401, "Authentication is required for this route.", "unauthorized");
   }
 
-  return { supabase, userId: user.id, ownerId: user.id };
+  return { supabase, userId: user.id, ownerId: user.id, activeWorkspaceAccess: "owner" as const };
 }
 
 function asStringArray(value: Json): string[] {
@@ -230,6 +278,27 @@ function assetErrorMessage(row: CreativeAssetRow, metadata: Record<string, Json>
         : null;
 }
 
+function sameCampaignStaticAssetKey(row: CreativeAssetRow, metadata: Record<string, Json> | null) {
+  const campaignId = typeof row.campaign_id === "string" ? row.campaign_id : "";
+  const creativeId = typeof row.creative_id === "string" && row.creative_id.trim() ? row.creative_id : row.id;
+  const metadataStaticAssetId =
+    typeof metadata?.staticAssetId === "string" && metadata.staticAssetId.trim()
+      ? metadata.staticAssetId.trim()
+      : null;
+
+  if (
+    metadataStaticAssetId &&
+    (
+      metadataStaticAssetId === creativeId ||
+      (campaignId && metadataStaticAssetId.startsWith(`${campaignId}-`))
+    )
+  ) {
+    return metadataStaticAssetId;
+  }
+
+  return creativeId;
+}
+
 export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[] {
   const grouped = new Map<string, CreativeAssetRow[]>();
 
@@ -239,10 +308,7 @@ export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativ
       continue;
     }
 
-    const key =
-      (typeof metadata?.staticAssetId === "string" && metadata.staticAssetId.trim()) ||
-      row.creative_id ||
-      row.id;
+    const key = sameCampaignStaticAssetKey(row, metadata);
     const existing = grouped.get(key) ?? [];
     existing.push(row);
     grouped.set(key, existing);
@@ -250,6 +316,14 @@ export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativ
 
   return Array.from(grouped.entries()).map(([key, assetRows]) => {
     const preferredRow =
+      assetRows.find((row) => {
+        const metadata = asObjectRecord(row.metadata);
+        return metadata?.role === "higgsfield_finished_static_ad" && isAcceptedSourceStaticRow(row);
+      }) ??
+      assetRows.find((row) => {
+        const metadata = asObjectRecord(row.metadata);
+        return metadata?.role === "app_composed_final_static" && isAcceptedSourceStaticRow(row);
+      }) ??
       assetRows.find((row) => {
         const metadata = asObjectRecord(row.metadata);
         return metadata?.role === "background_image" && isAcceptedSourceStaticRow(row);
@@ -302,14 +376,36 @@ export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativ
         typeof metadata?.imageGenerationProvider === "string"
           ? metadata.imageGenerationProvider
           : preferredRow.provider_name ?? null,
-      visualConcept: typeof metadata?.visualConcept === "string" ? metadata.visualConcept : "",
-      imagePrompt: typeof metadata?.imagePrompt === "string" ? metadata.imagePrompt : "",
+      generationMethod: preferredRow.generation_method ?? null,
+      providerName: preferredRow.provider_name ?? null,
+      generationMode: metadataString(metadata, "generationMode"),
+      assetRole: metadataString(metadata, "assetRole"),
+	      visualConcept: typeof metadata?.visualConcept === "string" ? metadata.visualConcept : "",
+	      appComposedFinal: metadata?.appComposedFinal === true,
+	      qualityTier: metadataString(metadata, "qualityTier"),
+	      compositionVersion: metadataString(metadata, "compositionVersion"),
+	      sourceBackgroundKind: metadataString(metadata, "sourceBackgroundKind"),
+	      sourceBackgroundProvider: metadataString(metadata, "sourceBackgroundProvider"),
+	      sourceBackgroundAssetId: metadataString(metadata, "sourceBackgroundAssetId"),
+	      imagePrompt: typeof metadata?.imagePrompt === "string" ? metadata.imagePrompt : "",
       imagePromptConfig: asImagePromptConfig(metadata?.imagePromptConfig),
       preferredImageModel,
       visualPromptBrief: asVisualPromptBrief(metadata?.visualPromptBrief),
       imageQa:
         metadata?.imageQa && typeof metadata.imageQa === "object"
           ? metadata.imageQa as StaticCreativeAsset["imageQa"]
+          : null,
+      sourceImageQa:
+        metadata?.sourceImageQa && typeof metadata.sourceImageQa === "object"
+          ? metadata.sourceImageQa as StaticCreativeAsset["sourceImageQa"]
+          : null,
+      visualQualityGate:
+        metadata?.visualQualityGate && typeof metadata.visualQualityGate === "object"
+          ? metadata.visualQualityGate as StaticCreativeAsset["visualQualityGate"]
+          : null,
+      premiumQualityGate:
+        metadata?.premiumQualityGate && typeof metadata.premiumQualityGate === "object"
+          ? metadata.premiumQualityGate as StaticCreativeAsset["premiumQualityGate"]
           : null,
       scoreBreakdown: asScoreBreakdown(metadata?.scoreBreakdown),
       offerQuality:
@@ -319,12 +415,23 @@ export function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativ
       qualityGate,
       hook: typeof metadata?.overlayText === "string" ? metadata.overlayText : "",
       overlayText: typeof metadata?.overlayText === "string" ? metadata.overlayText : "",
-      primaryText: typeof metadata?.primaryText === "string" ? metadata.primaryText : "",
-      headline: typeof metadata?.headline === "string" ? metadata.headline : "",
-      cta: typeof metadata?.cta === "string" ? metadata.cta : "",
-      score: typeof metadata?.score === "number" ? metadata.score : 0,
-      recommended: metadata?.recommended === true,
-    } satisfies StaticCreativeAsset;
+      primaryText: cleanPersistedStaticCopy(metadata?.primaryText),
+	      headline: cleanPersistedStaticCopy(metadata?.headline),
+	      cta: typeof metadata?.cta === "string" ? metadata.cta : "",
+	      briefHash: metadataString(metadata, "briefHash"),
+	      staticBriefHash: metadataString(metadata, "staticBriefHash"),
+	      offerHash: metadataString(metadata, "offerHash"),
+	      ctaHash: metadataString(metadata, "ctaHash"),
+	      brandHash: metadataString(metadata, "brandHash"),
+	      briefRevisionNumber: metadataNumber(metadata, "briefRevisionNumber"),
+	      approvedOfferTitle: metadataString(metadata, "approvedOfferTitle"),
+	      approvedCta: metadataString(metadata, "approvedCta"),
+	      approvedBrand: metadataString(metadata, "approvedBrand"),
+	      location: metadataString(metadata, "location"),
+	      audience: metadataString(metadata, "audience"),
+	      score: typeof metadata?.score === "number" ? metadata.score : 0,
+	      recommended: metadata?.recommended === true,
+	    } satisfies StaticCreativeAsset;
     const visualDecision = evaluateStaticVisualAssetDecision(assetDraft);
     const generationState =
       imageUrl
@@ -375,6 +482,20 @@ function metadataString(metadata: Record<string, Json> | null, key: string) {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+function cleanPersistedStaticCopy(value: unknown) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value
+    .replace(/\bDelivered through\b[^.?!]*(?:[.?!]|$)/gi, "")
+    .replace(/\bthrough a tighter property selection process\b[^.?!]*(?:[.?!]|$)/gi, "")
+    .replace(/\bA tighter property selection process\b[^.?!]*(?:[.?!]|$)/gi, "")
+    .replace(/\s+([,.!?])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function metadataNumber(metadata: Record<string, Json> | null, key: string) {
   const value = metadata?.[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -383,12 +504,26 @@ function metadataNumber(metadata: Record<string, Json> | null, key: string) {
 function isAcceptedSourceStaticRow(row: CreativeAssetRow) {
   const metadata = asObjectRecord(row.metadata);
   const imageUrl = row.file_url ?? row.thumbnail_url ?? "";
-  const assetDraft = {
-    imageUrl,
-    storageNormalized:
-      metadata?.storageNormalized === true ||
-      (metadata?.storageNormalizationReusedExistingAppAsset === true && typeof metadata?.storagePath === "string"),
-    imagePrompt: typeof metadata?.imagePrompt === "string" ? metadata.imagePrompt : "",
+	    const assetDraft = {
+	    imageUrl,
+	    storageNormalized:
+	      metadata?.storageNormalized === true ||
+	      (metadata?.storageNormalizationReusedExistingAppAsset === true && typeof metadata?.storagePath === "string"),
+	    appComposedFinal: metadata?.appComposedFinal === true,
+    imageGenerationProvider:
+      typeof metadata?.imageGenerationProvider === "string"
+        ? metadata.imageGenerationProvider
+        : row.provider_name ?? null,
+    generationMethod: row.generation_method ?? null,
+    providerName: row.provider_name ?? null,
+    generationMode: metadataString(metadata, "generationMode"),
+    assetRole: metadataString(metadata, "assetRole"),
+	    qualityTier: metadataString(metadata, "qualityTier"),
+	    compositionVersion: metadataString(metadata, "compositionVersion"),
+	    sourceBackgroundKind: metadataString(metadata, "sourceBackgroundKind"),
+	    sourceBackgroundProvider: metadataString(metadata, "sourceBackgroundProvider"),
+	    sourceBackgroundAssetId: metadataString(metadata, "sourceBackgroundAssetId"),
+	    imagePrompt: typeof metadata?.imagePrompt === "string" ? metadata.imagePrompt : "",
     imagePromptConfig: asImagePromptConfig(metadata?.imagePromptConfig),
     visualPromptBrief: asVisualPromptBrief(metadata?.visualPromptBrief),
     qualityGate:
@@ -398,6 +533,18 @@ function isAcceptedSourceStaticRow(row: CreativeAssetRow) {
     imageQa:
       metadata?.imageQa && typeof metadata.imageQa === "object"
         ? metadata.imageQa as StaticCreativeAsset["imageQa"]
+        : null,
+    sourceImageQa:
+      metadata?.sourceImageQa && typeof metadata.sourceImageQa === "object"
+        ? metadata.sourceImageQa as StaticCreativeAsset["sourceImageQa"]
+        : null,
+    visualQualityGate:
+      metadata?.visualQualityGate && typeof metadata.visualQualityGate === "object"
+        ? metadata.visualQualityGate as StaticCreativeAsset["visualQualityGate"]
+        : null,
+    premiumQualityGate:
+      metadata?.premiumQualityGate && typeof metadata.premiumQualityGate === "object"
+        ? metadata.premiumQualityGate as StaticCreativeAsset["premiumQualityGate"]
         : null,
   };
 
@@ -505,12 +652,16 @@ export function mapVideoCreativeAssets(rows: CreativeAssetRow[]): VideoCreativeA
       targetDurationSeconds: metadataNumber(metadata, "targetDurationSeconds"),
       sourceStaticAssetId,
       sourceImageUrl: metadataString(metadata, "sourceImageUrl"),
-      sourceStaticAccepted: sourceStaticAccepted(rows, sourceStaticAssetId),
+      sourceStaticAccepted: metadata?.sourceStaticAccepted === true || sourceStaticAccepted(rows, sourceStaticAssetId),
       promptUsed,
-      promptSource: metadataString(metadata, "promptSource"),
-      promptHash: metadataString(metadata, "promptHash"),
-      scriptHash: metadataString(metadata, "scriptHash"),
-      campaignSpecificContext:
+	      promptSource: metadataString(metadata, "promptSource"),
+	      promptHash: metadataString(metadata, "promptHash"),
+	      scriptHash: metadataString(metadata, "scriptHash"),
+	      ugcScriptHash: metadataString(metadata, "ugcScriptHash") ?? metadataString(metadata, "scriptHash"),
+	      sourceContextHash: metadataString(metadata, "sourceContextHash"),
+	      briefHash: metadataString(metadata, "briefHash"),
+	      briefRevisionNumber: metadataNumber(metadata, "briefRevisionNumber"),
+	      campaignSpecificContext:
         metadata?.campaignSpecificContext && typeof metadata.campaignSpecificContext === "object"
           ? metadata.campaignSpecificContext as VideoCreativeAsset["campaignSpecificContext"]
           : {
@@ -558,10 +709,12 @@ async function loadStaticCreativeAssets(
   campaignId: string,
 ) {
   try {
-    const { data, error } = await supabase
+    const readClient = createAdminClient() ?? supabase;
+    const { data, error } = await readClient
       .from("creative_assets")
       .select("*")
       .eq("campaign_id", campaignId)
+      .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -580,10 +733,12 @@ async function loadVideoCreativeAssets(
   campaignId: string,
 ) {
   try {
-    const { data, error } = await supabase
+    const readClient = createAdminClient() ?? supabase;
+    const { data, error } = await readClient
       .from("creative_assets")
       .select("*")
       .eq("campaign_id", campaignId)
+      .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -614,23 +769,21 @@ async function persistGeneratedStaticAdsToCampaignPlan(params: {
       staticAds: completeAssetGenerationLifecycle({
         previous: previousGenerationState.staticAds,
         status: deriveStaticGenerationStatus(params.staticAds),
+        stage: "completed",
         error: params.generationError ?? null,
       }),
     },
   } as Json;
 
-  try {
-    await persistCampaignPlanDocumentUpdate({
-      supabase: params.supabase,
-      campaignId: params.campaignId,
-      userId: params.userId,
-      plan: nextPlan,
-      source: "campaign_static_ads_save",
-      existingRow: params.row,
-    });
-  } catch (error) {
-    throw new ApiError(500, getErrorMessage(error), "campaign_static_ads_save_failed");
-  }
+  await persistStaticCampaignPlanDocumentUpdate({
+    supabase: params.supabase,
+    campaignId: params.campaignId,
+    userId: params.userId,
+    plan: nextPlan,
+    source: "campaign_static_ads_save",
+    existingRow: params.row,
+    transientCode: "campaign_static_generation_final_save_failed",
+  });
 
   return {
     ...(savedDocument as Record<string, unknown>),
@@ -640,6 +793,7 @@ async function persistGeneratedStaticAdsToCampaignPlan(params: {
       staticAds: completeAssetGenerationLifecycle({
         previous: previousGenerationState.staticAds,
         status: deriveStaticGenerationStatus(params.staticAds),
+        stage: "completed",
         error: params.generationError ?? null,
       }),
     },
@@ -769,8 +923,9 @@ async function assertCampaignOwnership(
   row: CampaignPlanRow;
   campaign: Campaign;
 }> {
-  const { supabase, userId, ownerId } = await requireUserSession();
-  const row = await loadCampaignPlanRowForUser(supabase, userId, ownerId, campaignId);
+  const { supabase, userId, ownerId, activeWorkspaceAccess } = await requireUserSession();
+  const readSupabase = activeWorkspaceAccess === "owner" ? supabase : (createAdminClient() ?? supabase);
+  const row = await loadCampaignPlanRowForUser(readSupabase, userId, ownerId, campaignId);
   return { supabase, userId, row, campaign: mapCampaignRow(row) };
 }
 
@@ -786,7 +941,7 @@ async function loadCampaignPlanRowForUser(
     .from("campaign_plans")
     .select("*")
     .eq("id", campaignId)
-    .or(`user_id.eq.${userId},owner_id.eq.${ownerId}`)
+    .or(`user_id.eq.${userId},owner_id.eq.${ownerId},organization_id.eq.${ownerId}`)
     .maybeSingle();
 
   if (error) {
@@ -953,70 +1108,11 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
         error.message,
       )
     ) {
-      const { data: existingRow, error: existingRowError } = await supabase
-        .from("campaign_plans")
-        .select("id, plan")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (existingRowError) {
-        throw new ApiError(500, existingRowError.message, "campaign_save_failed");
-      }
-
-      const existingCampaignId =
-        existingRow && typeof (existingRow as Pick<CampaignPlanRow, "id">).id === "string"
-          ? (existingRow as Pick<CampaignPlanRow, "id">).id
-          : "";
-
-      if (existingCampaignId) {
-        const recoveredExistingDocument = getSavedCampaignDocumentFromRow(existingRow as CampaignPlanRow);
-        const currentPersistencePlan = persistencePayload.plan as Record<string, unknown>;
-        const recoveredPlan = recoveredExistingDocument
-          ? {
-              ...currentPersistencePlan,
-              plan: {
-                ...((recoveredExistingDocument.plan as Record<string, unknown> | null) ?? {}),
-                ...((currentPersistencePlan.plan as Record<string, unknown> | null) ?? {}),
-              },
-              strategy: {
-                ...((recoveredExistingDocument.strategy as Record<string, unknown> | null) ?? {}),
-                ...((currentPersistencePlan.strategy as Record<string, unknown> | null) ?? {}),
-              },
-              funnel: {
-                ...((recoveredExistingDocument.funnel as Record<string, unknown> | null) ?? {}),
-                ...((currentPersistencePlan.funnel as Record<string, unknown> | null) ?? {}),
-              },
-              ...(recoveredExistingDocument.assetGeneration
-                ? { assetGeneration: recoveredExistingDocument.assetGeneration }
-                : {}),
-            }
-          : currentPersistencePlan;
-        const recoveredUpdatePayload = {
-          ...(persistencePayload as Record<string, unknown>),
-          id: existingCampaignId,
-          plan: recoveredPlan,
-        };
-        const { data: recoveredData, error: recoveredError } = await supabase
-          .from("campaign_plans")
-          .update(recoveredUpdatePayload as never)
-          .eq("id", existingCampaignId)
-          .eq("user_id", userId)
-          .select("*")
-          .single();
-
-        if (recoveredError) {
-          throw new ApiError(500, recoveredError.message, "campaign_save_failed");
-        }
-
-        if (recoveredData) {
-          return {
-            success: true,
-            campaignId: (recoveredData as CampaignPlanRow).id,
-          };
-        }
-      }
+      throw new ApiError(
+        409,
+        "Fresh campaign creation is blocked by a legacy single-campaign database constraint.",
+        "campaign_creation_constraint",
+      );
     }
 
     debugLog("campaign-save-failed", {
@@ -1154,6 +1250,7 @@ export async function regenerateStaticCreativeAssetsForUser(
     creativeIntake?: CreativeEngineInput["creative_intake"];
     supabase?: PersistenceClient;
     providerUsageRunId?: string | null;
+    finishedAdOnly?: boolean;
   },
 ): Promise<FullCampaignRecord> {
   const supabase =
@@ -1233,22 +1330,19 @@ export async function regenerateStaticCreativeAssetsForUser(
     ...((savedDocument as Record<string, unknown> | null) ?? {}),
     assetGeneration: {
       ...((savedDocument?.assetGeneration as Record<string, unknown> | null) ?? {}),
-      staticAds: startAssetGenerationLifecycle(generationState.staticAds),
+      staticAds: startAssetGenerationLifecycle(generationState.staticAds, "rendering"),
     },
   } as Json;
 
-  try {
-    await persistCampaignPlanDocumentUpdate({
-      supabase,
-      campaignId,
-      userId,
-      plan: nextPlan,
-      source: "campaign_static_generation_state_save",
-      existingRow: row,
-    });
-  } catch (error) {
-    throw new ApiError(500, getErrorMessage(error), "campaign_static_generation_state_save_failed");
-  }
+  await persistStaticCampaignPlanDocumentUpdate({
+    supabase,
+    campaignId,
+    userId,
+    plan: nextPlan,
+    source: "campaign_static_generation_state_save",
+    existingRow: row,
+    transientCode: "campaign_static_generation_state_save_failed",
+  });
 
   try {
     const generatedStaticAds = await generateStaticCreativeAds({
@@ -1289,31 +1383,74 @@ export async function regenerateStaticCreativeAssetsForUser(
       currentRecord.creatives.staticAds,
     );
 
+    const assetsPersistingPlan = withStaticAssetGenerationStage(
+      nextPlan as Record<string, unknown>,
+      "assets_persisting",
+    );
+    await persistStaticCampaignPlanDocumentUpdate({
+      supabase,
+      campaignId,
+      userId,
+      plan: assetsPersistingPlan,
+      source: "campaign_static_generation_assets_persisting",
+      existingRow: {
+        ...row,
+        plan: nextPlan,
+      } as CampaignPlanRow,
+      transientCode: "campaign_static_generation_state_save_failed",
+    });
+
     await persistStaticCreativeAssets({
       supabase,
       userId,
       campaignId,
       staticAds,
+      allowAppComposition: options?.finishedAdOnly === true ? false : undefined,
+    });
+    const persistedStaticAdsAfterSave = await loadStaticCreativeAssets(supabase, userId, campaignId);
+    const planStaticAds =
+      persistedStaticAdsAfterSave.length > 0
+        ? mergeStaticCreativeImageResults(staticAds, persistedStaticAdsAfterSave)
+        : staticAds;
+    const planFinalizingPlan = withStaticAssetGenerationStage(
+      assetsPersistingPlan as Record<string, unknown>,
+      "plan_finalizing",
+    );
+    await persistStaticCampaignPlanDocumentUpdate({
+      supabase,
+      campaignId,
+      userId,
+      plan: planFinalizingPlan,
+      source: "campaign_static_generation_plan_finalizing",
+      existingRow: {
+        ...row,
+        plan: assetsPersistingPlan,
+      } as CampaignPlanRow,
+      transientCode: "campaign_static_generation_final_save_failed",
     });
 
     const updatedSavedDocument = await persistGeneratedStaticAdsToCampaignPlan({
       supabase,
       campaignId,
       userId,
-      staticAds,
+      staticAds: planStaticAds,
       row: {
         ...row,
-        plan: nextPlan,
+        plan: planFinalizingPlan,
       } as CampaignPlanRow,
     });
 
     return normalizeCanonicalCampaign({
       campaign,
       savedDocument: updatedSavedDocument,
-      staticAds,
+      staticAds: planStaticAds,
       publish: mapPublishRecord(row),
     });
   } catch (error) {
+    const retryablePersistenceFailure = isTransientStaticCreativePersistenceError(error);
+    const errorCode = error instanceof ApiError ? error.code : retryablePersistenceFailure
+      ? "campaign_static_generation_state_save_failed"
+      : "campaign_static_generation_failed";
     const failurePlan = {
       ...((savedDocument as Record<string, unknown> | null) ?? {}),
       assetGeneration: {
@@ -1321,22 +1458,50 @@ export async function regenerateStaticCreativeAssetsForUser(
         staticAds: completeAssetGenerationLifecycle({
           previous: startAssetGenerationLifecycle(generationState.staticAds),
           status: "failed",
+          stage: retryablePersistenceFailure ? "retryable_save_failed" : "failed",
+          errorCode,
           error: error instanceof Error ? error.message : "Static generation failed.",
         }),
       },
     } as Json;
 
-    await persistCampaignPlanDocumentUpdate({
-      supabase,
-      campaignId,
-      userId,
-      plan: failurePlan,
-      source: "campaign_static_generation_failure",
-      existingRow: row,
-    });
+    try {
+      await persistStaticCampaignPlanDocumentUpdate({
+        supabase,
+        campaignId,
+        userId,
+        plan: failurePlan,
+        source: "campaign_static_generation_failure",
+        existingRow: row,
+        transientCode: retryablePersistenceFailure
+          ? "campaign_static_generation_state_save_failed"
+          : "campaign_static_generation_final_save_failed",
+      });
+    } catch {
+      // Preserve the root render failure. The system job retry path will recover
+      // when even the failure-state checkpoint cannot be saved.
+    }
 
     throw error;
   }
+}
+
+export async function regenerateHiggsfieldFinishedStaticAdsForUser(
+  campaignId: string,
+  userId: string,
+  options?: {
+    force?: boolean;
+    missingOnly?: boolean;
+    maxGenerations?: number;
+    creativeIntake?: CreativeEngineInput["creative_intake"];
+    supabase?: PersistenceClient;
+    providerUsageRunId?: string | null;
+  },
+): Promise<FullCampaignRecord> {
+  return regenerateStaticCreativeAssetsForUser(campaignId, userId, {
+    ...options,
+    finishedAdOnly: true,
+  });
 }
 
 export async function updateCampaignPublishState(params: {

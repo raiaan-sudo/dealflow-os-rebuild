@@ -10,6 +10,7 @@ const PUBLIC_PATHS = new Set([
   "/privacy",
   "/terms",
   "/data-deletion",
+  "/start",
   "/robots.txt",
   "/sitemap.xml",
   "/opengraph-image",
@@ -22,6 +23,36 @@ const PUBLIC_API_PATHS = new Set([
   "/api/webhooks/twilio/status",
   "/api/stripe/webhook",
   "/api/client-errors",
+  "/api/client-errors/csp",
+]);
+const RESERVED_ROOT_PATHS = new Set([
+  "admin",
+  "api",
+  "build",
+  "builder",
+  "campaign-built",
+  "dashboard",
+  "data-deletion",
+  "f",
+  "invite",
+  "launch",
+  "launch-success",
+  "launching",
+  "login",
+  "onboarding",
+  "p",
+  "partner",
+  "paywall",
+  "preview",
+  "privacy",
+  "results",
+  "settings",
+  "signup",
+  "start",
+  "terms",
+  "ui-direction",
+  "unlock",
+  "welcome",
 ]);
 
 function isPublicRequest(pathname: string) {
@@ -37,6 +68,15 @@ function isPublicRequest(pathname: string) {
   }
 
   if (pathname.startsWith("/f/")) {
+    return true;
+  }
+
+  if (pathname.startsWith("/p/") || pathname.startsWith("/invite/")) {
+    return true;
+  }
+
+  const rootSlugMatch = pathname.match(/^\/([a-z0-9][a-z0-9-]{1,62}[a-z0-9])\/?$/);
+  if (rootSlugMatch && !RESERVED_ROOT_PATHS.has(rootSlugMatch[1])) {
     return true;
   }
 
@@ -68,6 +108,45 @@ function isInternalApiRequest(pathname: string) {
   return pathname === "/api/internal" || pathname.startsWith("/api/internal/");
 }
 
+function getQaAuthHarnessSecrets() {
+  return Array.from(
+    new Set(
+      [
+        process.env.QA_AUTH_PROOF_SECRET,
+        ...getInternalSystemJobSecrets(),
+      ]
+        .map((value) => value?.trim() ?? "")
+        .filter(Boolean),
+    ),
+  );
+}
+
+function getLeadSideEffectsCrmProofSecrets() {
+  return Array.from(
+    new Set(
+      [
+        process.env.LEAD_SIDE_EFFECTS_CRM_PROOF_SECRET,
+        ...getInternalSystemJobSecrets(),
+      ]
+        .map((value) => value?.trim() ?? "")
+        .filter(Boolean),
+    ),
+  );
+}
+
+function getPartnerCrmSyncDryProofSecrets() {
+  return Array.from(
+    new Set(
+      [
+        process.env.PARTNER_CRM_SYNC_DRY_PROOF_SECRET,
+        ...getInternalSystemJobSecrets(),
+      ]
+        .map((value) => value?.trim() ?? "")
+        .filter(Boolean),
+    ),
+  );
+}
+
 function isAuthorizedInternalRequest(request: NextRequest) {
   const secrets = getInternalSystemJobSecrets();
   const token =
@@ -81,8 +160,70 @@ function isAuthorizedInternalRequest(request: NextRequest) {
   };
 }
 
-function applySecurityHeaders(response: NextResponse, startedAt?: number) {
+function isAuthorizedLeadSideEffectsCrmProofRequest(request: NextRequest) {
+  const secrets = getLeadSideEffectsCrmProofSecrets();
+  const token =
+    getBearerToken(request) ??
+    request.headers.get("x-internal-system-key")?.trim() ??
+    null;
+
+  return {
+    configured: secrets.length > 0,
+    authorized: secrets.some((secret) => timingSafeTokenEquals(token, secret)),
+  };
+}
+
+function isAuthorizedPartnerCrmSyncDryProofRequest(request: NextRequest) {
+  const secrets = getPartnerCrmSyncDryProofSecrets();
+  const token =
+    getBearerToken(request) ??
+    request.headers.get("x-internal-system-key")?.trim() ??
+    null;
+
+  return {
+    configured: secrets.length > 0,
+    authorized: secrets.some((secret) => timingSafeTokenEquals(token, secret)),
+  };
+}
+
+function isAuthorizedQaAuthHarnessRequest(request: NextRequest) {
+  const secrets = getQaAuthHarnessSecrets();
+  const token =
+    getBearerToken(request) ??
+    request.headers.get("x-internal-system-key")?.trim() ??
+    null;
+
+  return {
+    configured: secrets.length > 0,
+    authorized: secrets.some((secret) => timingSafeTokenEquals(token, secret)),
+  };
+}
+
+function getConfiguredOrigin(value: string | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(value);
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+function applySecurityHeaders(request: NextRequest, response: NextResponse, startedAt?: number) {
   const isProduction = process.env.NODE_ENV === "production";
+  const supabaseOrigin = getConfiguredOrigin(process.env.NEXT_PUBLIC_SUPABASE_URL);
+  const appUrlOrigin = getConfiguredOrigin(process.env.NEXT_PUBLIC_APP_URL);
+  const appAssetSources = [
+    request.nextUrl.origin,
+    appUrlOrigin,
+    "https://agentdealflow.io",
+    "https://www.agentdealflow.io",
+    "https://app.agentdealflow.io",
+    supabaseOrigin,
+  ].filter((source): source is string => Boolean(source));
   const scriptSrc = [
     "'self'",
     "'unsafe-inline'",
@@ -91,36 +232,63 @@ function applySecurityHeaders(response: NextResponse, startedAt?: number) {
     "https://connect.facebook.net",
     "https://challenges.cloudflare.com",
   ];
+  const cspReportUri = "/api/client-errors/csp";
+  const metaTrackingConnectSources = [
+    "https://graph.facebook.com",
+    "https://www.facebook.com",
+    "https://capig.datah04.com",
+  ];
+  const metaTrackingImageSources = [
+    "https://www.facebook.com",
+  ];
+  const cspDirectives = [
+    "default-src 'self'",
+    `script-src ${scriptSrc.join(" ")}`,
+    "script-src-attr 'none'",
+    "style-src 'self' 'unsafe-inline'",
+    `img-src 'self' data: blob: ${appAssetSources.join(" ")} ${metaTrackingImageSources.join(" ")}`,
+    "font-src 'self' data:",
+    `media-src 'self' blob: ${appAssetSources.join(" ")}`,
+    `connect-src 'self' ${supabaseOrigin ?? ""} https://api.stripe.com ${metaTrackingConnectSources.join(" ")} https://api.openai.com https://api.heygen.com https://challenges.cloudflare.com`,
+    "frame-src https://js.stripe.com https://hooks.stripe.com https://www.facebook.com https://challenges.cloudflare.com",
+    "form-action 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+    ...(isProduction ? ["upgrade-insecure-requests"] : []),
+  ];
+  const stagedCspDirectives = [
+    "default-src 'self'",
+    "script-src 'self' https://js.stripe.com https://connect.facebook.net https://challenges.cloudflare.com",
+    "script-src-attr 'none'",
+    "style-src 'self'",
+    `img-src 'self' data: blob: ${appAssetSources.join(" ")} ${metaTrackingImageSources.join(" ")}`,
+    "font-src 'self' data:",
+    `media-src 'self' blob: ${appAssetSources.join(" ")}`,
+    `connect-src 'self' ${supabaseOrigin ?? ""} https://api.stripe.com ${metaTrackingConnectSources.join(" ")} https://api.openai.com https://api.heygen.com https://challenges.cloudflare.com`,
+    "frame-src https://js.stripe.com https://hooks.stripe.com https://www.facebook.com https://challenges.cloudflare.com",
+    "form-action 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+    `report-uri ${cspReportUri}`,
+  ];
 
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("Cross-Origin-Opener-Policy", "same-origin");
+  response.headers.set("Cross-Origin-Resource-Policy", "same-origin");
   response.headers.set("Origin-Agent-Cluster", "?1");
   response.headers.set("X-DNS-Prefetch-Control", "off");
+  response.headers.set("Cache-Control", "private, no-cache, no-store, max-age=0, must-revalidate");
   response.headers.set(
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=(), payment=()",
   );
-  response.headers.set(
-    "Content-Security-Policy",
-    [
-      "default-src 'self'",
-      `script-src ${scriptSrc.join(" ")}`,
-      "script-src-attr 'none'",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https:",
-      "font-src 'self' data:",
-      "media-src 'self' blob: https:",
-      "connect-src 'self' https://*.supabase.co https://api.stripe.com https://graph.facebook.com https://www.facebook.com https://api.openai.com https://api.heygen.com https://challenges.cloudflare.com",
-      "frame-src https://js.stripe.com https://hooks.stripe.com https://www.facebook.com https://challenges.cloudflare.com",
-      "form-action 'self'",
-      "object-src 'none'",
-      "base-uri 'self'",
-      "frame-ancestors 'none'",
-      ...(isProduction ? ["upgrade-insecure-requests"] : []),
-    ].join("; "),
-  );
+  response.headers.set("Content-Security-Policy", cspDirectives.join("; "));
+  response.headers.set("Content-Security-Policy-Report-Only", stagedCspDirectives.join("; "));
+  response.headers.set("Cross-Origin-Embedder-Policy-Report-Only", "require-corp");
 
   if (isProduction) {
     response.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
@@ -137,7 +305,7 @@ function applySecurityHeaders(response: NextResponse, startedAt?: number) {
 
 export async function proxy(request: NextRequest) {
   const startedAt = Date.now();
-  const finalize = (nextResponse: NextResponse) => applySecurityHeaders(nextResponse, startedAt);
+  const finalize = (nextResponse: NextResponse) => applySecurityHeaders(request, nextResponse, startedAt);
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", request.nextUrl.pathname);
   let response = NextResponse.next({ request: { headers: requestHeaders } });
@@ -148,7 +316,14 @@ export async function proxy(request: NextRequest) {
   }
 
   if (isInternalApiRequest(pathname)) {
-    const { configured, authorized } = isAuthorizedInternalRequest(request);
+    const { configured, authorized } =
+      pathname === "/api/internal/qa-auth-session"
+        ? isAuthorizedQaAuthHarnessRequest(request)
+        : pathname === "/api/internal/lead-side-effects-crm-proof"
+          ? isAuthorizedLeadSideEffectsCrmProofRequest(request)
+          : pathname === "/api/internal/partner-crm-sync-dry-proof"
+            ? isAuthorizedPartnerCrmSyncDryProofRequest(request)
+        : isAuthorizedInternalRequest(request);
 
     if (!configured) {
       return finalize(NextResponse.json(

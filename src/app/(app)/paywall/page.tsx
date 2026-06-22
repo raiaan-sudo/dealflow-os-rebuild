@@ -10,13 +10,45 @@ import {
   type PrepaywallCampaignPreviewDraft,
 } from "@/components/onboarding/prepaywall-campaign-preview";
 import { normalizeBillingPlanTier } from "@/lib/billing/plans";
-import { getBillingSummary } from "@/lib/services/billing-service";
+import { getStripePlanPriceConfiguration } from "@/lib/integrations/stripe/service";
+import {
+  getPlanPresentationsForPartner,
+  SELECTABLE_PLAN_TIERS,
+  type SelectablePlanTier,
+} from "@/lib/billing/plan-presentation";
+import { getBillingSummary, getBillingSummaryForCampaign } from "@/lib/services/billing-service";
+import { getAppContext } from "@/lib/services/app-context";
 import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { hasPartnerPricingConfiguration, parsePartnerPricingConfig } from "@/lib/white-label/partner-billing-config";
 
 function buildHomeHref(campaignId: string | null) {
   return campaignId ? `/builder?campaignId=${encodeURIComponent(campaignId)}` : "/onboarding";
+}
+
+async function loadPartnerPricingForCurrentWorkspace() {
+  const context = await getAppContext().catch(() => null);
+  const partnerId = context?.partner?.id ?? null;
+  const admin = createAdminClient();
+
+  if (!partnerId || !admin) {
+    return null;
+  }
+
+  const { data } = await admin
+    .from("partner_branding")
+    .select("pricing_json")
+    .eq("partner_id", partnerId)
+    .maybeSingle();
+
+  if (!data) {
+    return null;
+  }
+
+  const pricing = parsePartnerPricingConfig((data as { pricing_json?: unknown } | null)?.pricing_json);
+  return hasPartnerPricingConfiguration(pricing) ? pricing : null;
 }
 
 function toPreviewCampaignMode(intent: string): PrepaywallCampaignPreviewDraft["campaignMode"] {
@@ -29,7 +61,7 @@ function toPreviewCampaignMode(intent: string): PrepaywallCampaignPreviewDraft["
 
 async function loadPersistedPreviewDraft(
   campaignId: string | null,
-  selectedPlanTier: "starter" | "pro",
+  selectedPlanTier: "performance" | "starter" | "pro",
 ): Promise<PrepaywallCampaignPreviewDraft | null> {
   if (!campaignId) {
     return null;
@@ -49,6 +81,7 @@ async function loadPersistedPreviewDraft(
     market: plan.market,
     audience: plan.audience,
     propertyType: plan.propertyType,
+    dailyBudget: String(plan.runtime.budgetDailyInput ?? Number((plan.monthlyBudget / 30).toFixed(2))),
     monthlyBudget: String(plan.monthlyBudget),
     offer: plan.keyOffer,
     agentCompanyName: plan.businessName,
@@ -64,11 +97,23 @@ export default async function PaywallPage({
   const params = searchParams ? await searchParams : {};
   const campaignId =
     typeof params.campaignId === "string" && params.campaignId.length > 0 ? params.campaignId : null;
-  const selectedPlanTier =
-    typeof params.plan === "string" ? normalizeBillingPlanTier(params.plan) : "starter";
-  const billing = await getBillingSummary().catch(() => null);
-  const selectedPreviewPlanTier = selectedPlanTier === "pro" ? "pro" : "starter";
-  const selectablePlanTier = selectedPlanTier === "pro" ? "pro" : "starter";
+  const requestedPlanTier =
+    typeof params.plan === "string" ? normalizeBillingPlanTier(params.plan) : "pro";
+  const partnerPricing = await loadPartnerPricingForCurrentWorkspace();
+  const planPresentations = getPlanPresentationsForPartner(partnerPricing);
+  const availablePlanTiers: readonly SelectablePlanTier[] = SELECTABLE_PLAN_TIERS.filter((tier) =>
+    Boolean(getStripePlanPriceConfiguration(tier, partnerPricing) ?? getStripePlanPriceConfiguration(tier, null)),
+  );
+  const displayedPlanTiers = availablePlanTiers.length > 0 ? availablePlanTiers : SELECTABLE_PLAN_TIERS;
+  const selectedPlanTier = availablePlanTiers.includes(requestedPlanTier as SelectablePlanTier)
+    ? requestedPlanTier
+    : "pro";
+  const billing = campaignId
+    ? await getBillingSummaryForCampaign(campaignId).catch(() => getBillingSummary().catch(() => null))
+    : await getBillingSummary().catch(() => null);
+  const selectedPreviewPlanTier =
+    selectedPlanTier === "pro" ? "pro" : selectedPlanTier === "performance" ? "performance" : "starter";
+  const selectablePlanTier = selectedPreviewPlanTier;
   const persistedPreviewDraft = await loadPersistedPreviewDraft(campaignId, selectedPreviewPlanTier);
   const paymentIssue = billing?.billingState === "payment_issue";
   const suspended = billing?.requiresSuspension === true;
@@ -105,18 +150,22 @@ export default async function PaywallPage({
         <div className="min-w-0 space-y-4 xl:order-2">
           <Card className="p-5 sm:p-6">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Choose launch access</p>
-              <h2 className="mt-2 text-2xl font-semibold">Pick how DealFlow should optimize this launch</h2>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Launch access</p>
+              <h2 className="mt-2 text-2xl font-semibold">Activate Operator Launch</h2>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
-                Starter gives you recommended optimizations to approve and apply. Pro adds recommendation-only autonomy checks and richer monitoring while execution stays approval-gated during beta. Paid image or video generation remains credit-gated after activation.
+                New workspaces use one launch plan: $297/month for the campaign workspace, readiness checks,
+                creative review, and operator-guided launch flow. Archived Performance and Starter plans remain
+                available only to users already on them.
               </p>
             </div>
             <div className="mt-5">
               <PaywallPlanSelector
                 campaignId={checkoutCampaignId}
-                disabled={!hasServerPreview}
+                disabled={!hasServerPreview || availablePlanTiers.length === 0}
                 initialPlanTier={selectablePlanTier}
+                availablePlanTiers={displayedPlanTiers}
                 launchOverride={billing?.launchOverride === true}
+                planPresentations={planPresentations}
               />
             </div>
           </Card>

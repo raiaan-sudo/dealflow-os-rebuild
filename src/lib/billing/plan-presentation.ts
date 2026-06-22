@@ -1,10 +1,14 @@
 import {
   BILLING_PLANS,
-  SELF_SERVE_TRIAL_PERIOD_DAYS,
   type BillingPlanTier,
 } from "@/lib/billing/plans";
+import {
+  getPartnerPlanConfig,
+  getPartnerPlanLabel,
+  type PartnerPricingConfig,
+} from "@/lib/white-label/partner-billing-config";
 
-export type SelectablePlanTier = Extract<BillingPlanTier, "starter" | "pro">;
+export type SelectablePlanTier = Extract<BillingPlanTier, "performance" | "starter" | "pro">;
 
 export type PlanPresentation = {
   tier: SelectablePlanTier;
@@ -19,17 +23,33 @@ export type PlanPresentation = {
   footer: string;
 };
 
-function priceAfterTrialLabel(priceLabel: string) {
-  return `${priceLabel} after ${SELF_SERVE_TRIAL_PERIOD_DAYS}-day free trial`;
-}
-
 export const PLAN_PRESENTATION: Record<SelectablePlanTier, PlanPresentation> = {
+  performance: {
+    tier: "performance",
+    name: BILLING_PLANS.performance.name,
+    priceLabel: BILLING_PLANS.performance.priceLabel,
+    recurringPriceLabel: BILLING_PLANS.performance.priceLabel,
+    checkoutCtaLabel: "Start Performance checkout",
+    eyebrow: "Lower base + usage",
+    positioning: "Best first launch option",
+    summary:
+      "Same guided launch access as Starter with a lower monthly base and qualified leads charged immediately to your saved payment method.",
+    features: [
+      "Guided campaign setup",
+      "Offer-led funnel and creative preview",
+      "Recommended optimization checklist",
+      "Meta readiness and launch gates",
+      "Spam, duplicate, test, and invalid leads are not billed",
+      "Qualified leads are charged immediately at $3 each",
+    ],
+    footer: "Lower base, immediate lead charges",
+  },
   starter: {
     tier: "starter",
     name: BILLING_PLANS.starter.name,
-    priceLabel: priceAfterTrialLabel(BILLING_PLANS.starter.priceLabel),
+    priceLabel: BILLING_PLANS.starter.priceLabel,
     recurringPriceLabel: BILLING_PLANS.starter.priceLabel,
-    checkoutCtaLabel: `Start ${SELF_SERVE_TRIAL_PERIOD_DAYS}-day free trial`,
+    checkoutCtaLabel: "Start Starter",
     eyebrow: "Guided launch",
     positioning: "Recommended optimization",
     summary: "DealFlow maps the optimizations while you approve and apply each next step.",
@@ -45,26 +65,58 @@ export const PLAN_PRESENTATION: Record<SelectablePlanTier, PlanPresentation> = {
   pro: {
     tier: "pro",
     name: BILLING_PLANS.pro.name,
-    priceLabel: priceAfterTrialLabel(BILLING_PLANS.pro.priceLabel),
+    priceLabel: BILLING_PLANS.pro.priceLabel,
     recurringPriceLabel: BILLING_PLANS.pro.priceLabel,
-    checkoutCtaLabel: `Start ${SELF_SERVE_TRIAL_PERIOD_DAYS}-day free trial`,
+    checkoutCtaLabel: "Get started now",
     eyebrow: "Operator launch",
-    positioning: "Fully covered + self-optimizing",
-    summary: "DealFlow keeps the launch fully covered with self-optimizing checks and richer launch guidance.",
+    positioning: "Only launch plan",
+    summary: "DealFlow builds the campaign workspace, launch checks, creative review, and operator guidance under one monthly plan.",
     features: [
-      "Everything in Starter",
+      "Guided campaign setup",
+      "Offer-led funnel and creative preview",
+      "Meta readiness and launch gates",
+      "Selected creative review before launch",
+      "Operator launch workspace",
       "Unlimited active campaigns",
-      "Fully covered launch workspace",
-      "Self-optimizing campaign checks",
       "Autonomous readiness monitoring",
-      "Expanded performance recommendations",
     ],
-    footer: "DealFlow monitors and guides the full path",
+    footer: "One plan for launch access",
   },
 };
 
-export const SELECTABLE_PLAN_TIERS = ["starter", "pro"] as const;
+export const SELECTABLE_PLAN_TIERS = ["pro"] as const satisfies readonly SelectablePlanTier[];
 
 export function getPlanPresentation(tier: SelectablePlanTier) {
   return PLAN_PRESENTATION[tier];
+}
+
+export function getPlanPresentationsForPartner(
+  pricing: PartnerPricingConfig | null | undefined,
+): Record<SelectablePlanTier, PlanPresentation> {
+  if (!pricing) {
+    return PLAN_PRESENTATION;
+  }
+
+  return (Object.keys(PLAN_PRESENTATION) as SelectablePlanTier[]).reduce(
+    (presentations, tier) => {
+      const defaultPlan = PLAN_PRESENTATION[tier];
+      const partnerPlan = getPartnerPlanConfig(pricing, tier);
+      const partnerLabel = getPartnerPlanLabel(pricing, tier);
+
+      presentations[tier] = {
+        ...defaultPlan,
+        name: partnerLabel ?? defaultPlan.name,
+        checkoutCtaLabel:
+          tier === "performance" && partnerLabel
+            ? `Start ${partnerLabel} checkout`
+            : defaultPlan.checkoutCtaLabel,
+        summary:
+          partnerPlan?.label || pricing.displayProductName
+            ? defaultPlan.summary.replace("DealFlow", pricing.checkoutHeadline ?? pricing.displayProductName ?? "DealFlow")
+            : defaultPlan.summary,
+      };
+      return presentations;
+    },
+    {} as Record<SelectablePlanTier, PlanPresentation>,
+  );
 }

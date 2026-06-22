@@ -1,0 +1,18 @@
+{
+  "local": {
+    "baseUrl": "http://127.0.0.1:3100",
+    "productionLike": false,
+    "writesAllowedByDefault": false
+  },
+  "staging": {
+    "baseUrl": "REPLACE_WITH_STAGING_URL",
+    "productionLike": false,
+    "writesAllowedByDefault": false
+  },
+  "production": {
+    "baseUrl": "https://app.agentdealflow.io",
+    "productionLike": true,
+    "writesAllowedByDefault": false,
+    "allowedDefaultModes": ["discover", "smoke", "rate-limit", "frontend"]
+  }
+}

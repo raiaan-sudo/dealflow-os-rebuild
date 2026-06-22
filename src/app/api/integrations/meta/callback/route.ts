@@ -32,6 +32,17 @@ type MetaPage = {
   name?: string;
 };
 
+type MetaTokenResponse = {
+  access_token?: string;
+  expires_in?: number;
+  token_type?: string;
+};
+
+type MetaPermission = {
+  permission?: string;
+  status?: string;
+};
+
 type MetaDiscoveryStatus = "success" | "failed" | "skipped";
 
 const META_STATE_COOKIE = "dealflow_meta_oauth_state";
@@ -80,6 +91,44 @@ function getConnectionMetadata(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function getRequiredMetaScopes(scopes: string) {
+  return scopes
+    .split(",")
+    .map((scope) => scope.trim())
+    .filter(Boolean);
+}
+
+function getGrantedPermissionNames(permissions: MetaPermission[] | undefined) {
+  return new Set(
+    (permissions ?? [])
+      .filter((permission) => permission.status === "granted" && permission.permission)
+      .map((permission) => String(permission.permission)),
+  );
+}
+
+async function exchangeForLongLivedToken(params: {
+  env: ReturnType<typeof getMetaEnvOrThrow>;
+  requestId: string;
+  shortLivedToken: string;
+}) {
+  const exchangeUrl = new URL(`https://graph.facebook.com/${params.env.apiVersion}/oauth/access_token`);
+  exchangeUrl.searchParams.set("grant_type", "fb_exchange_token");
+  exchangeUrl.searchParams.set("client_id", params.env.appId);
+  exchangeUrl.searchParams.set("client_secret", params.env.appSecret);
+  exchangeUrl.searchParams.set("fb_exchange_token", params.shortLivedToken);
+
+  const { response, data } = await fetchMetaJson<MetaTokenResponse>(exchangeUrl.toString(), {
+    purpose: "oauth",
+    requestId: params.requestId,
+  });
+
+  if (!response.ok || !data?.access_token) {
+    throw new Error(getMetaErrorMessage(data, "Meta long-lived token exchange failed."));
+  }
+
+  return data;
+}
+
 export async function GET(req: NextRequest) {
   const requestId = crypto.randomUUID();
 
@@ -95,7 +144,6 @@ export async function GET(req: NextRequest) {
     const env = getMetaEnvOrThrow();
     const verifiedState = verifyMetaOAuthState(returnedState, env.encryptionKey);
     const stateMatchesCookie = Boolean(returnedState && storedState && returnedState === storedState);
-    const stateVerified = stateMatchesCookie && Boolean(verifiedState);
     const returnTo = verifiedState?.returnTo ?? cookieReturnTo;
     const redirectBase = getSafeRedirectBase(returnTo, appUrl);
     const redirectWithMetaError = (metaErrorCode: string) => {
@@ -115,7 +163,17 @@ export async function GET(req: NextRequest) {
       return redirectWithMetaError("no_code");
     }
 
-    if (!returnedState || !storedState || !stateVerified) {
+    if (!returnedState || !verifiedState) {
+      return redirectWithMetaError("invalid_state");
+    }
+
+    if (!stateMatchesCookie) {
+      logMetaWarning({
+        context: "oauth_callback",
+        requestId,
+        message: "Meta OAuth callback state cookie was missing or did not match.",
+        extra: { hasStoredState: Boolean(storedState) },
+      });
       return redirectWithMetaError("invalid_state");
     }
 
@@ -128,8 +186,8 @@ export async function GET(req: NextRequest) {
       redirect_uri: env.redirectUri,
       code,
     });
-    const { response: tokenRes, data: tokenData } = await fetchMetaJson<{ access_token?: string }>(
-      "https://graph.facebook.com/v18.0/oauth/access_token",
+    const { response: tokenRes, data: tokenData } = await fetchMetaJson<MetaTokenResponse>(
+      `https://graph.facebook.com/${env.apiVersion}/oauth/access_token`,
       {
         method: "POST",
         headers: {
@@ -143,6 +201,32 @@ export async function GET(req: NextRequest) {
 
     if (!tokenRes.ok || !tokenData?.access_token) {
       return redirectWithMetaError("no_token");
+    }
+
+    let access_token = tokenData.access_token;
+    let tokenExchangeStatus: "success" | "failed" | "skipped" = "skipped";
+    let tokenExchangeError: string | null = null;
+    let tokenExpiresIn = tokenData.expires_in ?? null;
+
+    try {
+      const longLivedToken = await exchangeForLongLivedToken({
+        env,
+        requestId,
+        shortLivedToken: tokenData.access_token,
+      });
+      access_token = longLivedToken.access_token ?? access_token;
+      tokenExpiresIn = longLivedToken.expires_in ?? tokenExpiresIn;
+      tokenExchangeStatus = "success";
+    } catch (exchangeError) {
+      tokenExchangeStatus = "failed";
+      tokenExchangeError =
+        exchangeError instanceof Error ? exchangeError.message : "Meta long-lived token exchange failed.";
+      logMetaWarning({
+        context: "oauth_callback",
+        requestId,
+        message: tokenExchangeError,
+        extra: { stage: "long_lived_token_exchange" },
+      });
     }
 
     const routeSupabase = await createRouteHandlerClient();
@@ -162,7 +246,6 @@ export async function GET(req: NextRequest) {
       return redirectWithMetaError("supabase_unavailable");
     }
 
-    const access_token = tokenData.access_token;
     const encryptedAccessToken = encryptSecret(access_token, env.encryptionKey);
     const now = new Date().toISOString();
 
@@ -208,6 +291,13 @@ export async function GET(req: NextRequest) {
         ...preservedConnectionMetadata,
         provider: "meta",
         auth_flow: "oauth",
+        required_scopes: getRequiredMetaScopes(env.scopes),
+        token_exchange: {
+          status: tokenExchangeStatus,
+          error: tokenExchangeError,
+          expires_in: tokenExpiresIn,
+          last_checked_at: now,
+        },
       },
     };
 
@@ -292,12 +382,52 @@ export async function GET(req: NextRequest) {
     }> = [];
     let availablePages: Array<{ id: string; name: string }> = [];
     let availablePixels: Array<{ id: string; name: string }> = [];
+    let permissionsError: string | null = null;
+    let permissionsStatus: MetaDiscoveryStatus = "success";
+    let grantedPermissions: string[] = [];
+    let missingPermissions: string[] = [];
+
+    try {
+      const { response: permissionsRes, data: permissionsData } = await fetchMetaJson<
+        { data?: MetaPermission[]; error?: unknown } | null
+      >(
+        `https://graph.facebook.com/${env.apiVersion}/me/permissions` +
+          `?access_token=${encodeURIComponent(access_token)}`,
+        {
+          purpose: "discovery",
+          requestId,
+        },
+      );
+
+      if (!permissionsRes.ok) {
+        throw new Error(getMetaErrorMessage(permissionsData, "Meta permission discovery failed."));
+      }
+
+      const granted = getGrantedPermissionNames(permissionsData?.data);
+      const requiredScopes = getRequiredMetaScopes(env.scopes);
+      grantedPermissions = Array.from(granted);
+      missingPermissions = requiredScopes.filter((scope) => !granted.has(scope));
+      if (missingPermissions.length > 0) {
+        permissionsStatus = "failed";
+        permissionsError = `Missing required Meta permissions: ${missingPermissions.join(", ")}`;
+      }
+    } catch (discoveryError) {
+      permissionsStatus = "failed";
+      permissionsError =
+        discoveryError instanceof Error ? discoveryError.message : "Meta permission discovery failed.";
+      logMetaWarning({
+        context: "asset_fetch",
+        requestId,
+        message: permissionsError,
+        extra: { stage: "permissions" },
+      });
+    }
 
     try {
       const { response: accountsRes, data: accounts } = await fetchMetaJson<
         { data?: MetaAdAccount[]; error?: unknown } | null
       >(
-        `https://graph.facebook.com/v18.0/me/adaccounts` +
+        `https://graph.facebook.com/${env.apiVersion}/me/adaccounts` +
           `?fields=id,name,account_status,currency,timezone_name` +
           `&access_token=${encodeURIComponent(access_token)}`,
         {
@@ -339,7 +469,7 @@ export async function GET(req: NextRequest) {
       const { response: pagesRes, data: pages } = await fetchMetaJson<
         { data?: MetaPage[]; error?: unknown } | null
       >(
-        `https://graph.facebook.com/v18.0/me/accounts` +
+        `https://graph.facebook.com/${env.apiVersion}/me/accounts` +
           `?fields=id,name` +
           `&access_token=${encodeURIComponent(access_token)}`,
         {
@@ -391,7 +521,7 @@ export async function GET(req: NextRequest) {
           const { response: pixelsRes, data: pixelsData } = await fetchMetaJson<
             { data?: MetaPixel[]; error?: unknown } | null
           >(
-            `https://graph.facebook.com/v18.0/act_${selectedAccount.id.replace(/^act_/, "")}/adspixels` +
+            `https://graph.facebook.com/${env.apiVersion}/act_${selectedAccount.id.replace(/^act_/, "")}/adspixels` +
               `?fields=id,name` +
               `&access_token=${encodeURIComponent(access_token)}`,
             {
@@ -447,10 +577,11 @@ export async function GET(req: NextRequest) {
       selectedPageId
         ? availablePages.find((page) => page.id === selectedPageId) ?? null
         : null;
-    const discoveryErrors = [accountsError, pagesError, pixelsError].filter(
+    const discoveryErrors = [permissionsError, accountsError, pagesError, pixelsError].filter(
       (value): value is string => Boolean(value),
     );
     const discoveryReady =
+      permissionsStatus === "success" &&
       accountsStatus === "success" &&
       pagesStatus === "success" &&
       (pixelsStatus === "success" || pixelsStatus === "skipped");
@@ -486,7 +617,25 @@ export async function GET(req: NextRequest) {
         ...existingMetadata,
         provider: "meta",
         auth_flow: "oauth",
+        required_scopes: getRequiredMetaScopes(env.scopes),
+        granted_permissions: grantedPermissions,
+        missing_permissions: missingPermissions,
+        permissions: {
+          status: permissionsStatus,
+          error: permissionsError,
+          last_checked_at: now,
+        },
+        token_exchange: {
+          status: tokenExchangeStatus,
+          error: tokenExchangeError,
+          expires_in: tokenExpiresIn,
+          last_checked_at: now,
+        },
         asset_discovery: {
+          permissions: {
+            status: permissionsStatus,
+            error: permissionsError,
+          },
           ad_accounts: {
             status: accountsStatus,
             error: accountsError,
@@ -564,6 +713,9 @@ export async function GET(req: NextRequest) {
       redirectUrl.searchParams.set("meta_request_id", requestId);
       if (accountsStatus !== "success") {
         redirectUrl.searchParams.set("meta_accounts_status", accountsStatus);
+      }
+      if (permissionsStatus !== "success") {
+        redirectUrl.searchParams.set("meta_permissions_status", permissionsStatus);
       }
       if (pagesStatus !== "success") {
         redirectUrl.searchParams.set("meta_pages_status", pagesStatus);

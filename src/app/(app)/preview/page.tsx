@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
+import { isInstantFormCampaign } from "@/lib/campaign-destination";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import {
@@ -25,13 +26,25 @@ import { FunnelPreview } from "@/components/funnel/funnel-preview";
 import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
 import { CustomerVideoPlayer } from "@/components/campaign/customer-video-player";
 import { StaticCreativeSummaryCard } from "@/components/campaign/static-creative-preview-card";
+import { applyCreativeIntakeReviewContext } from "@/lib/services/campaign-review-context";
 import {
   getStaticCreativeReadiness,
   getVideoReadinessLabel,
   getVideoReadinessMessage,
+  isLaunchReadyStaticCreative,
   isLaunchReadyVideoCreative,
   isPlayableVideoCreative,
 } from "@/lib/services/creative-media-readiness";
+import {
+  getCreativeAssetTierLabel,
+} from "@/lib/services/creative-asset-status";
+
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+import {
+  getApprovedCreativeIntakeGenerationContext,
+  isCreativeChatIntakeEnabled,
+} from "@/lib/services/creative-chat-intake-service";
 
 function customerVideoMessage(message?: string | null) {
   const text = message?.trim();
@@ -64,12 +77,13 @@ function ReviewOnlyCreativePreview({ plan }: { plan: CampaignPlan }) {
         className="border-amber-300/18 bg-black/18"
         cta={cta}
         headline={headline}
-        imageGenerationMessage="Review-only placeholder. Select 4-6 launch-ready static ads in Creative Studio before launch."
+        imageGenerationMessage="Review-only placeholder. Select at least 3 launch-ready static ads in Creative Studio before launch."
         imageGenerationState="unavailable"
         imagePrompt={null}
         imagePromptConfig={null}
         imageUrl={null}
         storageNormalized={false}
+        appComposedFinal={false}
         index={0}
         location={plan.market}
         offer={plan.keyOffer}
@@ -89,15 +103,56 @@ function ReviewOnlyCreativePreview({ plan }: { plan: CampaignPlan }) {
   );
 }
 
+function InstantFormPreviewPanel({ plan }: { plan: CampaignPlan }) {
+  const fields = ["Full name", "Email", "Phone number"];
+
+  return (
+    <div className="grid h-full min-h-[420px] content-start gap-4 rounded-[22px] border border-cyan-300/14 bg-[radial-gradient(circle_at_top_left,rgba(103,232,249,0.14),transparent_32%),linear-gradient(145deg,rgba(15,23,42,0.96),rgba(2,6,23,0.99))] p-5">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/72">Meta Instant Form Setup</p>
+        <h3 className="mt-2 text-2xl font-semibold tracking-[-0.045em] text-white">
+          Native lead form preview
+        </h3>
+        <p className="mt-2 text-sm leading-6 text-white/62">
+          {plan.keyOffer || plan.offerSummary || "This campaign"} collects leads inside Facebook and Instagram. There is no public funnel preview or public funnel publish gate for this destination.
+        </p>
+      </div>
+      <div className="rounded-[18px] border border-white/10 bg-black/18 p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/44">Required fields</p>
+        <div className="mt-3 grid gap-2">
+          {fields.map((field) => (
+            <div key={field} className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.035] px-3 py-2 text-sm">
+              <span className="font-medium text-white/84">{field}</span>
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-200">Required</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="grid gap-2">
+        {[
+          "Meta ad account and Facebook Page must be selected",
+          "Operator verifies the native form and privacy policy",
+          "GHL contact and opportunity delivery runs only when configured",
+          "No Meta form, campaign, SMS, email, provider job, or public lead is created from preview",
+        ].map((item) => (
+          <div key={item} className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm leading-6 text-white/64">
+            {item}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 async function loadPersistedLaunchMediaSelection(campaignId: string | null) {
   if (!campaignId) {
-    return { selectedAdIds: [], selectedUgcVideoIds: [] };
+    return { selectedAdIds: [], selectedUgcVideoIds: [], creativeIntakeContext: null };
   }
 
   const supabase = await createRouteHandlerClient();
 
   if (!supabase) {
-    return { selectedAdIds: [], selectedUgcVideoIds: [] };
+    return { selectedAdIds: [], selectedUgcVideoIds: [], creativeIntakeContext: null };
   }
 
   const { data } = await supabase
@@ -112,6 +167,9 @@ async function loadPersistedLaunchMediaSelection(campaignId: string | null) {
   return {
     selectedAdIds: getSelectedAdIdsFromPlan(plan),
     selectedUgcVideoIds: getSelectedUgcVideoIdsFromPlan(plan),
+    creativeIntakeContext: isCreativeChatIntakeEnabled()
+      ? getApprovedCreativeIntakeGenerationContext(plan)
+      : null,
   };
 }
 
@@ -132,6 +190,15 @@ export default async function PreviewPage({
   const launchMediaSelection = await loadPersistedLaunchMediaSelection(resolvedCampaignId);
   const selectedAdIds = launchMediaSelection.selectedAdIds;
   const selectedUgcVideoIds = launchMediaSelection.selectedUgcVideoIds;
+  const creativeIntakeContext = launchMediaSelection.creativeIntakeContext;
+  const staticBriefReadinessContext = creativeIntakeContext
+    ? {
+        staticBriefHash: creativeIntakeContext.staticBriefHash,
+        offerHash: creativeIntakeContext.offerHash,
+        ctaHash: creativeIntakeContext.ctaHash,
+        brandHash: creativeIntakeContext.brandHash,
+      }
+    : null;
 
   if (!plan) {
     redirect("/builder");
@@ -144,23 +211,53 @@ export default async function PreviewPage({
   }
 
   const safeCampaign = normalizeCampaign(validated);
-  const previewPlan = safeCampaign.plan;
+  const previewPlan = applyCreativeIntakeReviewContext(safeCampaign.plan, creativeIntakeContext);
+  const instantFormCampaign = record
+    ? isInstantFormCampaign({
+        funnel: record.funnel,
+        plan: record.plan,
+        strategy: record.strategy,
+      }) || isInstantFormCampaign(previewPlan)
+    : isInstantFormCampaign(previewPlan);
   const expectedOutcomes = getExpectedOutcomes(previewPlan);
   const selectedAds = previewPlan.creatives.staticAds
     .filter((ad) => selectedAdIds.includes(ad.id))
     .sort((left, right) => selectedAdIds.indexOf(left.id) - selectedAdIds.indexOf(right.id));
+  const displayStaticAds = selectedAds;
+  const usingInstantFallbackPreview = false;
   const videoAds = previewPlan.creatives.videoAds;
-  const staticReadiness = getStaticCreativeReadiness(previewPlan.creatives.staticAds, selectedAdIds);
+  const isCurrentLaunchReadyUgcVideo = (video: (typeof videoAds)[number]) =>
+    video.conceptType === "customer_ugc" &&
+    isLaunchReadyVideoCreative(video) &&
+    (!creativeIntakeContext?.ugcScriptHash || video.ugcScriptHash === creativeIntakeContext.ugcScriptHash || video.scriptHash === creativeIntakeContext.ugcScriptHash);
+  const dedupeVideoIds = (videos: typeof videoAds) => {
+    const seen = new Set<string>();
+    return videos.filter((video) => {
+      if (seen.has(video.id)) {
+        return false;
+      }
+
+      seen.add(video.id);
+      return true;
+    });
+  };
+  const staticReadiness = getStaticCreativeReadiness(previewPlan.creatives.staticAds, selectedAdIds, staticBriefReadinessContext);
+  const isCurrentLaunchReadyStatic = (ad: (typeof previewPlan.creatives.staticAds)[number] | null | undefined) => {
+    if (!ad) {
+      return false;
+    }
+
+    return isLaunchReadyStaticCreative(ad, staticBriefReadinessContext);
+  };
   const selectedStaticMediaReady = staticReadiness.allSelectedReady;
   const selectedUgcVideos = selectedUgcVideoIds.length > 0
-    ? videoAds
+    ? dedupeVideoIds(videoAds
         .filter((video) => selectedUgcVideoIds.includes(video.id))
-        .sort((left, right) => selectedUgcVideoIds.indexOf(left.id) - selectedUgcVideoIds.indexOf(right.id))
+        .filter(isCurrentLaunchReadyUgcVideo)
+        .sort((left, right) => selectedUgcVideoIds.indexOf(left.id) - selectedUgcVideoIds.indexOf(right.id)))
     : [];
-  const selectedLaunchReadyVideos = selectedUgcVideos.filter(
-    (video) => video.conceptType === "customer_ugc" && isLaunchReadyVideoCreative(video),
-  );
-  const launchReadyVideos = videoAds.filter((video) => video.conceptType === "customer_ugc" && isLaunchReadyVideoCreative(video));
+  const selectedLaunchReadyVideos = selectedUgcVideos;
+  const launchReadyVideos = dedupeVideoIds(videoAds.filter(isCurrentLaunchReadyUgcVideo));
   const displayVideoAds = selectedUgcVideos.length > 0
     ? selectedUgcVideos
     : launchReadyVideos.length > 0
@@ -168,7 +265,7 @@ export default async function PreviewPage({
       : videoAds;
   const launchReadyVideoCount = selectedLaunchReadyVideos.length;
   const videoMediaReady = launchReadyVideoCount > 0;
-  const mediaReadyForLaunch = selectedStaticMediaReady && videoMediaReady;
+  const mediaReadyForLaunch = selectedStaticMediaReady;
   const campaignIdForFlow = record?.campaign.id ?? null;
 
   await recordActivationEventForCurrentUser({
@@ -191,26 +288,40 @@ export default async function PreviewPage({
           <PageHeader
             eyebrow="Preview"
             title="Final preview"
-            description="Review the selected funnel and creative test set, then move into launch."
+            description={
+              instantFormCampaign
+                ? "Review the native Meta Instant Form setup and creative test set, then move into launch readiness."
+                : "Review the selected funnel and creative test set, then move into launch."
+            }
           />
           <section className="surface-strong rounded-df-card border border-white/10 p-4 sm:p-5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Selected funnel</p>
-                <h2 className="mt-1 text-lg font-semibold text-foreground">Landing page preview</h2>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  {instantFormCampaign ? "Selected destination" : "Selected funnel"}
+                </p>
+                <h2 className="mt-1 text-lg font-semibold text-foreground">
+                  {instantFormCampaign ? "Meta Instant Form preview" : "Canonical funnel preview"}
+                </h2>
               </div>
               <span className="rounded-full border border-cyan-300/20 bg-cyan-300/[0.06] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100">
                 Preview
               </span>
             </div>
             <div className="relative h-[520px] overflow-hidden rounded-[22px] border border-white/8 bg-white/[0.03]">
-              <FunnelPreview
-                compact
-                plan={previewPlan}
-                expectedOutcomes={expectedOutcomes}
-                strategyWhy={getStrategyWhy(previewPlan)}
-              />
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#06101d] to-transparent" />
+              {instantFormCampaign ? (
+                <InstantFormPreviewPanel plan={previewPlan} />
+              ) : (
+                <>
+                  <FunnelPreview
+                    compact
+                    plan={previewPlan}
+                    expectedOutcomes={expectedOutcomes}
+                    strategyWhy={getStrategyWhy(previewPlan)}
+                  />
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#06101d] to-transparent" />
+                </>
+              )}
             </div>
           </section>
         </div>
@@ -219,69 +330,102 @@ export default async function PreviewPage({
           <div className="mb-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Selected creative test set</p>
             <h2 className="mt-1 text-lg font-semibold text-foreground">
-              {selectedAds.length > 0 ? staticReadiness.selectionLabel : "Review-only creative preview"}
+              {selectedAds.length > 0
+                ? staticReadiness.selectionLabel
+                : usingInstantFallbackPreview
+                  ? "Instant creative preview"
+                  : "Review-only creative preview"}
             </h2>
             {selectedAds.length > 0 ? (
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 {staticReadiness.selectedReadyLabel}
                 {staticReadiness.issueLabel ? `; ${staticReadiness.issueLabel}` : ""}
               </p>
+            ) : usingInstantFallbackPreview ? (
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Preview creatives are available now. Premium launch-ready renders still need review before they can satisfy launch gates.
+              </p>
             ) : null}
             {selectedAds.length > 0 && !selectedStaticMediaReady ? (
               <p className="mt-2 rounded-[14px] border border-amber-300/18 bg-amber-300/[0.08] px-3 py-2 text-sm leading-6 text-amber-100">
                 Selected creative media is not launch-ready yet. Return to Creative Studio and refresh the selected previews before launch.
               </p>
+            ) : usingInstantFallbackPreview ? (
+              <p className="mt-2 rounded-[14px] border border-cyan-300/18 bg-cyan-300/[0.08] px-3 py-2 text-sm leading-6 text-cyan-100">
+                These instant fallback creatives keep Preview usable while premium renders prepare. They are not launch-approved and cannot satisfy Meta launch gates until QA-approved.
+              </p>
             ) : null}
           </div>
-          {selectedAds.length > 0 ? (
+          {displayStaticAds.length > 0 ? (
             <div className="space-y-3">
               <div className="rounded-df-card border border-primary/30 bg-primary/[0.08] p-3">
                 <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">
-                  Primary creative
+                  {usingInstantFallbackPreview ? "Primary preview creative" : "Primary creative"}
                 </p>
                 <StaticCreativeSummaryCard
-                  angleLabel={selectedAds[0]?.angle}
+                  angleLabel={displayStaticAds[0]?.angle}
                   category={previewPlan.creativeStrategy.campaignCategory}
                   className="border-primary/35 bg-black/18"
-                  cta={selectedAds[0]?.cta || "Learn More"}
-                  headline={selectedAds[0]?.headline || previewPlan.keyOffer}
-                  imageGenerationMessage={selectedAds[0]?.imageGenerationMessage}
-                  imageGenerationState={selectedAds[0]?.imageGenerationState}
-                  imagePrompt={selectedAds[0]?.imagePrompt}
-                  imagePromptConfig={selectedAds[0]?.imagePromptConfig}
-                  imageUrl={selectedAds[0]?.imageUrl}
-                  storageNormalized={selectedAds[0]?.storageNormalized}
+                  cta={displayStaticAds[0]?.cta || "Learn More"}
+                  headline={displayStaticAds[0]?.headline || previewPlan.keyOffer}
+                  imageGenerationMessage={displayStaticAds[0]?.imageGenerationMessage}
+                  imageGenerationProvider={displayStaticAds[0]?.imageGenerationProvider}
+                  imageGenerationState={displayStaticAds[0]?.imageGenerationState}
+                  imagePrompt={displayStaticAds[0]?.imagePrompt}
+                  imagePromptConfig={displayStaticAds[0]?.imagePromptConfig}
+	                  imageUrl={displayStaticAds[0]?.imageUrl}
+	                  storageNormalized={displayStaticAds[0]?.storageNormalized}
+                  appComposedFinal={displayStaticAds[0]?.appComposedFinal}
+                  qualityTier={displayStaticAds[0]?.qualityTier}
+                  compositionVersion={displayStaticAds[0]?.compositionVersion}
+                  sourceBackgroundKind={displayStaticAds[0]?.sourceBackgroundKind}
+                  sourceBackgroundProvider={displayStaticAds[0]?.sourceBackgroundProvider}
+                  sourceBackgroundAssetId={displayStaticAds[0]?.sourceBackgroundAssetId}
+                  formatLabel={getCreativeAssetTierLabel(displayStaticAds[0])}
                   index={0}
                   location={previewPlan.market}
                   offer={previewPlan.keyOffer}
-                  overlayText={selectedAds[0]?.overlayText}
-                  primaryText={selectedAds[0]?.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
-                  qualityGate={selectedAds[0]?.qualityGate}
-                  imageQa={selectedAds[0]?.imageQa}
-                  score={selectedAds[0]?.score}
-                  selected
-                  selectedCount={selectedAds.length}
-                  visualPromptBrief={selectedAds[0]?.visualPromptBrief}
+                  overlayText={displayStaticAds[0]?.overlayText}
+                  primaryText={displayStaticAds[0]?.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
+                  qualityGate={displayStaticAds[0]?.qualityGate}
+                  visualQualityGate={displayStaticAds[0]?.visualQualityGate}
+                  premiumQualityGate={displayStaticAds[0]?.premiumQualityGate}
+                  imageQa={displayStaticAds[0]?.imageQa}
+                  sourceImageQa={displayStaticAds[0]?.sourceImageQa}
+                  prominent
+                  score={displayStaticAds[0]?.score}
+                  selected={selectedAds.length > 0}
+                  selectedCount={displayStaticAds.length}
+                  launchReady={isCurrentLaunchReadyStatic(displayStaticAds[0])}
+                  visualPromptBrief={displayStaticAds[0]?.visualPromptBrief}
                 />
               </div>
 
-              {selectedAds.length > 1 ? (
+              {displayStaticAds.length > 1 ? (
                 <div className="grid gap-2">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Review variants
+                    {usingInstantFallbackPreview ? "Instant draft variants" : "Review variants"}
                   </p>
-                  {selectedAds.slice(1).map((selectedAd, index) => (
+                  {displayStaticAds.slice(1).map((selectedAd, index) => (
                     <StaticCreativeSummaryCard
                       angleLabel={selectedAd.angle}
                       category={previewPlan.creativeStrategy.campaignCategory}
                       cta={selectedAd.cta || "Learn More"}
                       headline={selectedAd.headline || previewPlan.keyOffer}
                       imageGenerationMessage={selectedAd.imageGenerationMessage}
+                      imageGenerationProvider={selectedAd.imageGenerationProvider}
                       imageGenerationState={selectedAd.imageGenerationState}
                       imagePrompt={selectedAd.imagePrompt}
                       imagePromptConfig={selectedAd.imagePromptConfig}
-                      imageUrl={selectedAd.imageUrl}
-                      storageNormalized={selectedAd.storageNormalized}
+	                      imageUrl={selectedAd.imageUrl}
+	                      storageNormalized={selectedAd.storageNormalized}
+	                      appComposedFinal={selectedAd.appComposedFinal}
+                      qualityTier={selectedAd.qualityTier}
+                      compositionVersion={selectedAd.compositionVersion}
+                      sourceBackgroundKind={selectedAd.sourceBackgroundKind}
+                      sourceBackgroundProvider={selectedAd.sourceBackgroundProvider}
+                      sourceBackgroundAssetId={selectedAd.sourceBackgroundAssetId}
+                      formatLabel={getCreativeAssetTierLabel(selectedAd)}
                       index={index + 1}
                       key={selectedAd.id}
                       location={previewPlan.market}
@@ -289,9 +433,14 @@ export default async function PreviewPage({
                       overlayText={selectedAd.overlayText}
                       primaryText={selectedAd.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
                       qualityGate={selectedAd.qualityGate}
+                      visualQualityGate={selectedAd.visualQualityGate}
+                      premiumQualityGate={selectedAd.premiumQualityGate}
                       imageQa={selectedAd.imageQa}
+                      sourceImageQa={selectedAd.sourceImageQa}
+                      prominent
                       score={selectedAd.score}
-                      selectedCount={selectedAds.length}
+                      selectedCount={displayStaticAds.length}
+                      launchReady={isCurrentLaunchReadyStatic(selectedAd)}
                       visualPromptBrief={selectedAd.visualPromptBrief}
                     />
                   ))}
@@ -337,9 +486,8 @@ export default async function PreviewPage({
                 ))}
               </div>
               {!videoMediaReady ? (
-                <p className="mt-3 rounded-[14px] border border-amber-300/18 bg-amber-300/[0.08] px-3 py-2 text-sm leading-6 text-amber-100">
-                  Video is review-only until campaign-specific prompt, source, and QA metadata are accepted for launch.
-                  {selectedUgcVideoIds.length === 0 ? " Choose an approved UGC video in Creative Studio before launch." : ""}
+                <p className="mt-3 rounded-[14px] border border-cyan-300/18 bg-cyan-300/[0.08] px-3 py-2 text-sm leading-6 text-cyan-100">
+                  UGC video is optional and can be added later. The static ad set is the media requirement for moving into launch review.
                 </p>
               ) : null}
             </section>
@@ -349,7 +497,7 @@ export default async function PreviewPage({
 
       <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-between">
         <Button asChild size="lg" variant="secondary">
-          <Link href={campaignIdForFlow ? `/builder?campaignId=${encodeURIComponent(campaignIdForFlow)}` : "/builder"}>
+          <Link href={campaignIdForFlow ? `/builder?campaignId=${encodeURIComponent(campaignIdForFlow)}&mode=edit` : "/builder?mode=edit"}>
             Back to build
           </Link>
         </Button>
@@ -361,7 +509,7 @@ export default async function PreviewPage({
           </Button>
         ) : (
           <Button size="lg" disabled>
-            Media review needed
+            Static review needed
           </Button>
         )}
       </div>

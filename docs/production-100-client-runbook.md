@@ -275,7 +275,7 @@ Controls:
 - Static image generation must go through the guarded static generation route.
 - Provider usage is tracked in `provider_usage_limits`.
 - Each OpenAI image call reserves its own `provider_usage_events` row before the provider request and must be capped with `OPENAI_IMAGE_DAILY_LIMIT` during production tests.
-- Customers fund paid image/video generation through generation-credit top-ups. The minimum top-up is `$20.00`; credit purchases are separate Stripe payment-mode checkout sessions and credits are granted only after the paid Stripe webhook is processed.
+- Customers fund paid image/video generation through generation-credit top-ups. The minimum top-up is `$10.00`; credit purchases are separate Stripe payment-mode checkout sessions and credits are granted only after the paid Stripe webhook is processed.
 - Operator issues with source `provider_cost` mean one of three things needs review: daily provider quota is near/exceeded, daily provider cost is above the warning threshold, or a customer balance is below the minimum top-up and paid generation will block.
 - Retries should reuse existing jobs/assets where possible.
 

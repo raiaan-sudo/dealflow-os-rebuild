@@ -274,8 +274,8 @@ export async function POST(request: Request) {
               : null,
           },
           budget_plan: {
-            monthly_budget: record.plan.monthly_budget,
-            estimated_daily_budget: Math.max(1, Math.round((record.plan.monthly_budget ?? 0) / 30)),
+            daily_budget: Math.max(1, Math.round((record.plan.monthly_budget ?? 0) / 30)),
+            internal_monthly_cap: record.plan.monthly_budget,
           },
           meta_ready_payload: {
             objective: "LEAD_GENERATION",

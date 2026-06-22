@@ -4,8 +4,9 @@ import Module from "node:module";
 import path from "node:path";
 import ts from "typescript";
 import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
 
-const repoRoot = process.cwd();
+const repoRoot = process.env.DEALFLOW_REPO_ROOT || process.cwd();
 const { loadEnvConfig } = nextEnv;
 loadEnvConfig(repoRoot);
 
@@ -17,7 +18,15 @@ Module._load = function load(request, parent, isMain) {
     return {};
   }
 
-  return originalLoad.call(this, request, parent, isMain);
+  if (process.env.MARKETING_STUDIO_WORKER_TRACE_IMPORTS === "true") {
+    process.stderr.write(`[worker-import:start] ${request}\n`);
+  }
+  const loaded = originalLoad.call(this, request, parent, isMain);
+  if (process.env.MARKETING_STUDIO_WORKER_TRACE_IMPORTS === "true") {
+    process.stderr.write(`[worker-import:done] ${request}\n`);
+  }
+
+  return loaded;
 };
 
 Module._resolveFilename = function resolveFilename(request, parent, isMain, options) {
@@ -50,17 +59,28 @@ Module._extensions[".ts"] = function loadTs(module, filename) {
 };
 
 const require = createRequire(import.meta.url);
-const {
-  getMarketingStudioWorkerReadiness,
-  runMarketingStudioWorkerBatch,
-} = require("../src/lib/services/marketing-studio-worker-service.ts");
+let workerService;
+
+function getWorkerService() {
+  if (!workerService) {
+    log("info", "marketing_studio_worker.service_import_start", {
+      runtime: "marketing_studio_cli_worker",
+    });
+    workerService = require("../src/lib/services/marketing-studio-worker-service.ts");
+    log("info", "marketing_studio_worker.service_import_complete", {
+      runtime: "marketing_studio_cli_worker",
+    });
+  }
+
+  return workerService;
+}
 
 function parseArgs(argv) {
   const options = {
     dryRun: false,
     maxJobs: 1,
     poll: false,
-    intervalMs: 30_000,
+    intervalMs: 5_000,
   };
 
   for (const arg of argv) {
@@ -102,7 +122,44 @@ function log(level, event, payload) {
   })}\n`);
 }
 
+function getCommitSha() {
+  const explicit = process.env.DEALFLOW_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA;
+
+  if (explicit) {
+    return explicit;
+  }
+
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return "unknown";
+  }
+}
+
+async function logStartupFingerprint(options) {
+  const { getMarketingStudioWorkerReadiness } = getWorkerService();
+  const readiness = await getMarketingStudioWorkerReadiness();
+  log("info", "marketing_studio_worker.startup", {
+    commitSha: getCommitSha(),
+    runtime: readiness.runtime,
+    poll: options.poll,
+    intervalMs: options.intervalMs,
+    maxJobs: options.maxJobs,
+    ready: readiness.ready,
+    checks: readiness.checks,
+    missing: readiness.missing,
+  });
+}
+
 async function runOnce(options) {
+  const {
+    getMarketingStudioWorkerReadiness,
+    runMarketingStudioWorkerBatch,
+  } = getWorkerService();
   const readiness = await getMarketingStudioWorkerReadiness();
   log(readiness.ready ? "info" : "warn", "marketing_studio_worker.readiness", {
     ready: readiness.ready,
@@ -126,6 +183,8 @@ async function runOnce(options) {
 const options = parseArgs(process.argv.slice(2));
 
 try {
+  await logStartupFingerprint(options);
+
   if (options.poll) {
     // Long-running operator process. Keep the loop simple so supervisors can
     // restart on crash and collect one JSON line per cycle.
@@ -138,6 +197,10 @@ try {
     }
   } else {
     await runOnce(options);
+    // The Supabase/admin client stack can leave process handles open after a
+    // one-shot dry-run. Poll mode is the long-running path; one-shot mode must
+    // terminate cleanly for operator proof and automation.
+    process.exit(process.exitCode ?? 0);
   }
 } catch (error) {
   log("error", "marketing_studio_worker.fatal", {

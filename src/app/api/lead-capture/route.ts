@@ -22,7 +22,7 @@ import {
   queueFailedPublicLeadCapture,
 } from "@/lib/services/lead-handler-service";
 import { getPublicFunnelEntitlements } from "@/lib/services/campaign-entitlements";
-import { queueLeadSideEffectsJob } from "@/lib/services/system-job-service";
+import { queueLeadSideEffectsJob, queuePerformanceLeadBillingJob } from "@/lib/services/system-job-service";
 
 const leadCaptureSchema = z
   .object({
@@ -478,6 +478,38 @@ async function handleLeadCaptureRequest(req: Request) {
       jobId: sideEffectJob.id,
       loadTest: isLoadTestBypass,
     });
+
+    const performanceLeadBillingJob = await queuePerformanceLeadBillingJob({
+      organizationId: lead.organization_id,
+      userId: lead.user_id,
+      campaignId: lead.campaign_id,
+      payload: {
+        source: "public_lead_capture",
+        requestId,
+        leadId: lead.id,
+        organizationId: lead.organization_id,
+        campaignId: lead.campaign_id,
+        loadTest: isLoadTestBypass,
+      },
+    }).catch((error) => {
+      logError("Performance lead billing job queue failed", {
+        requestId,
+        leadId: lead.id,
+        organizationId: lead.organization_id,
+        message: error instanceof Error ? error.message : "Unknown performance lead billing queue failure",
+      });
+      return null;
+    });
+
+    if (performanceLeadBillingJob) {
+      logOperationalEvent("lead_capture.performance_billing_queued", {
+        requestId,
+        leadId: lead.id,
+        organizationId: lead.organization_id,
+        jobId: performanceLeadBillingJob.id,
+        loadTest: isLoadTestBypass,
+      });
+    }
 
     if (isDevelopment) {
       debugLog("lead-capture", {

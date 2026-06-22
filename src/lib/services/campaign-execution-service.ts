@@ -26,6 +26,10 @@ import {
   createMetaCreative,
   publishMetaCampaignIfNeeded,
 } from "@/lib/services/meta-launch-service";
+import {
+  applyMetaCreativeOptOut,
+  buildMetaMarketGeoLocations,
+} from "@/lib/integrations/meta/launch-payload-guardrails";
 import type { MetaConnectionRecord } from "@/lib/integrations/meta/types";
 import type { FullCampaignRecord } from "@/lib/types/campaign-records";
 import { getLaunchReadyCreativeMedia } from "@/lib/services/creative-builder-service";
@@ -247,9 +251,9 @@ function getNormalizedAds(plan: CampaignPlan) {
 }
 
 export function buildExecutableCampaign(plan: CampaignPlan): ExecutableCampaign {
-  const totalBudget = Math.max(plan.monthlyBudget, 0);
-  const primaryBudget = Math.round(totalBudget * 0.7);
-  const retargetingBudget = Math.max(totalBudget - primaryBudget, 0);
+  const totalBudget = Math.max(plan.runtime.budgetDailyInput ?? Number((plan.monthlyBudget / 30).toFixed(2)), 0);
+  const primaryBudget = Number((totalBudget * 0.7).toFixed(2));
+  const retargetingBudget = Math.max(Number((totalBudget - primaryBudget).toFixed(2)), 0);
   const campaignStatus = getExecutionStatus(plan);
   const destinationUrl = "/funnel";
   const normalizedAds = getNormalizedAds(plan);
@@ -260,7 +264,7 @@ export function buildExecutableCampaign(plan: CampaignPlan): ExecutableCampaign 
     status: campaignStatus,
     objective: getObjective(plan),
     destinationUrl,
-    budget: `${formatCurrency(totalBudget)}/month`,
+    budget: `${formatCurrency(totalBudget)}/day`,
     adSets: [
       {
         id: buildObjectId("adset", `${plan.market}-primary`),
@@ -274,7 +278,7 @@ export function buildExecutableCampaign(plan: CampaignPlan): ExecutableCampaign 
           location: plan.market,
         },
         location: plan.market,
-        budget: `${formatCurrency(primaryBudget)}/month`,
+        budget: `${formatCurrency(primaryBudget)}/day`,
         ads: normalizedAds.slice(0, 2).map((ad, index) => ({
           id: buildObjectId("ad", `${plan.market}-primary-${index + 1}`),
           name: `${ad.variant || "Primary"} ${index + 1}`,
@@ -315,7 +319,7 @@ export function buildExecutableCampaign(plan: CampaignPlan): ExecutableCampaign 
           location: plan.market,
         },
         location: plan.market,
-        budget: `${formatCurrency(retargetingBudget)}/month`,
+        budget: `${formatCurrency(retargetingBudget)}/day`,
         ads: normalizedAds.slice(1, 3).map((ad, index) => ({
           id: buildObjectId("ad", `${plan.market}-retargeting-${index + 1}`),
           name: `Retargeting ${index + 1}`,
@@ -420,20 +424,6 @@ function getMetaTrackingPreflightErrors(
 
 function buildMetaName(baseName: string, campaignId: string, stage: string) {
   return `${baseName} | DF-${campaignId.slice(0, 8)}-${stage}`.trim();
-}
-
-function inferCountryCode(location: string) {
-  const normalized = location.toLowerCase();
-
-  if (
-    /\btoronto\b|\bontario\b|\bvancouver\b|\bcalgary\b|\bedmonton\b|\bmontreal\b|\bcanada\b/.test(
-      normalized,
-    )
-  ) {
-    return "CA";
-  }
-
-  return "US";
 }
 
 function getAgeRange(marketType?: FullCampaignRecord["strategy"]["market_type"]) {
@@ -879,16 +869,7 @@ export function buildMetaAdSetPayloads(
         ? { daily_budget: toMinorUnits(config.dailyBudget ?? 0) }
         : { lifetime_budget: toMinorUnits(config.lifetimeBudget ?? 0) }),
       targeting: {
-        geo_locations: {
-          countries: [inferCountryCode(campaignRecord.strategy.location)],
-          custom_locations: [
-            {
-              address_string: campaignRecord.strategy.location,
-              radius: 25,
-              distance_unit: "mile",
-            },
-          ],
-        },
+        geo_locations: buildMetaMarketGeoLocations(campaignRecord.strategy.location),
         age_min: ageRange.min,
         age_max: ageRange.max,
         interests,
@@ -924,7 +905,7 @@ export function buildMetaAdPayloads(
     })(),
   })).map(({ asset, mediaUrl }, index) => ({
     asset,
-    creativePayload: {
+    creativePayload: applyMetaCreativeOptOut({
       name: buildMetaName(
         `${campaignRecord.campaign.name} | Creative ${index + 1}`,
         campaignRecord.campaign.id,
@@ -945,7 +926,7 @@ export function buildMetaAdPayloads(
           },
         },
       },
-    },
+    }),
     adPayload: {
       name: buildMetaName(
         `${campaignRecord.campaign.name} | Ad ${index + 1}`,

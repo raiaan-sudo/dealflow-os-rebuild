@@ -10,8 +10,8 @@ const repoRoot = process.cwd();
 const originalResolve = Module._resolveFilename;
 const originalLoad = Module._load;
 
-process.env.NEXT_PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://supabase.example.test";
-process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "anon-test";
+process.env.NEXT_PUBLIC_SUPABASE_URL = "https://supabase.example.test";
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-test";
 process.env.STATIC_CREATIVE_PROVIDER_IMAGE_HOSTS = "example.com,api.openai.com";
 
 Module._load = function load(request, parent, isMain) {
@@ -124,7 +124,7 @@ const legacyProviderVisual = {
     visualAssetRole: "text_free_background",
   },
   qualityGate: { accepted: true },
-  imageQa: { usable: true, decision: "accept", reasons: [] },
+  imageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
 };
 assert.equal(
   evaluateStaticVisualAssetDecision(legacyProviderVisual).usable,
@@ -198,7 +198,12 @@ await assert.rejects(
 );
 globalThis.fetch = originalFetch;
 
-function fakeSupabase({ uploadFails = false, uploadFailuresRemaining = uploadFails ? Number.POSITIVE_INFINITY : 0, insertFails = false } = {}) {
+function fakeSupabase({
+  uploadFails = false,
+  uploadFailuresRemaining = uploadFails ? Number.POSITIVE_INFINITY : 0,
+  insertFails = false,
+  existingRows = [],
+} = {}) {
   const operations = [];
 
   return {
@@ -239,18 +244,76 @@ function fakeSupabase({ uploadFails = false, uploadFailuresRemaining = uploadFai
     },
     from() {
       return {
+        select(columns) {
+          const filters = [];
+          operations.push({ op: "select", columns, filters });
+          const chain = {
+            eq(column, value) {
+              filters.push({ column, value });
+              return chain;
+            },
+            order(column, options) {
+              operations.push({ op: "order", column, options });
+              return chain;
+            },
+            async limit(count) {
+              operations.push({ op: "limit", count });
+              return { data: existingRows, error: null };
+            },
+          };
+          return chain;
+        },
+        update(payload) {
+          operations.push({ op: "update", payload });
+          const chain = {
+            eq(column, value) {
+              operations.push({ op: "update.eq", column, value });
+              return chain;
+            },
+            select() {
+              return {
+                async single() {
+                  return {
+                    data: {
+                      ...(existingRows[0] ?? {}),
+                      ...payload,
+                      id: existingRows[0]?.id ?? "updated-0",
+                    },
+                    error: null,
+                  };
+                },
+              };
+            },
+          };
+          return chain;
+        },
         insert(rows) {
-          operations.push({ op: "insert", rows });
+          const insertedRows = Array.isArray(rows) ? rows : [rows];
+          operations.push({ op: "insert", rows: insertedRows });
 
           return {
-            async select() {
-              if (insertFails) {
-                return { data: null, error: new Error("insert failed") };
-              }
-
+            select() {
               return {
-                data: rows.map((row, index) => ({ ...row, id: `new-${index}` })),
-                error: null,
+                async single() {
+                  if (insertFails) {
+                    return { data: null, error: new Error("insert failed") };
+                  }
+
+                  return {
+                    data: { ...insertedRows[0], id: "new-0" },
+                    error: null,
+                  };
+                },
+                then(resolve) {
+                  if (insertFails) {
+                    return Promise.resolve({ data: null, error: new Error("insert failed") }).then(resolve);
+                  }
+
+                  return Promise.resolve({
+                    data: insertedRows.map((row, index) => ({ ...row, id: `new-${index}` })),
+                    error: null,
+                  }).then(resolve);
+                },
               };
             },
           };
@@ -308,7 +371,7 @@ function buildAsset(imageUrl = providerDataUri) {
         aspectRatio: "1:1",
       },
     },
-    imageQa: { usable: true, decision: "accept", reasons: [] },
+    imageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
     scoreBreakdown: null,
     hook: "See matched homes",
     overlayText: "See matched homes",
@@ -409,15 +472,55 @@ await persistStaticCreativeAssets({
 });
 const successfulInsert = successfulDb.operations.find((item) => item.op === "insert");
 assert.ok(successfulInsert, "creative asset rows are inserted");
-const [imageFrame] = successfulInsert.rows;
-assert.equal(imageFrame.status, "ready");
+const imageFrame = successfulDb.operations
+  .filter((item) => item.op === "insert")
+  .flatMap((item) => item.rows)
+  .find((row) => row.metadata?.role === "app_composed_final_static");
+assert.ok(imageFrame, "app-composed final static row is inserted");
+assert.equal(imageFrame.status, "requires_review", "app-composed finals remain review-only and are not launch-ready Higgsfield rasters");
 assert.match(imageFrame.file_url, /\/storage\/v1\/object\/public\/creative-assets\//);
 assert.notEqual(imageFrame.file_url, providerDataUri, "provider URL is not the primary durable URL");
 assert.equal(imageFrame.thumbnail_url, imageFrame.file_url);
 assert.equal(imageFrame.metadata.provider_original_url, providerDataUri);
 assert.equal(imageFrame.metadata.storageBucket, "creative-assets");
 assert.equal(imageFrame.metadata.storageNormalized, true);
-assert.equal(successfulDb.operations.some((item) => item.op === "delete"), true, "all-ready replacement can clean old rows");
+assert.equal(imageFrame.metadata.appComposedFinal, true);
+assert.equal(imageFrame.metadata.imageQa.mode, "app_composed_final");
+assert.equal(imageFrame.metadata.imageQa.decision, "accept");
+assert.match(
+  imageFrame.metadata.storagePath,
+  /^user-test\/campaign-test\/app-composed-static\/campaign-test-creative-0\/[a-f0-9]{24}\.png$/,
+  "app-composed final storage path is deterministic by composition hash",
+);
+assert.equal(successfulDb.operations.some((item) => item.op === "delete"), false, "all-ready replacement preserves historical evidence rows");
+
+const existingRows = successfulInsert.rows.map((row, index) => ({
+  ...row,
+  id: `existing-${index}`,
+  created_at: "2026-05-21T00:00:00.000Z",
+  updated_at: "2026-05-21T00:00:00.000Z",
+}));
+const idempotentDb = fakeSupabase({ existingRows });
+const idempotentRows = await persistStaticCreativeAssets({
+  supabase: idempotentDb,
+  userId: "user-test",
+  campaignId: "campaign-test",
+  staticAds: [buildAsset()],
+});
+assert.equal(
+  idempotentDb.operations.some((item) => item.op === "insert"),
+  false,
+  "same app-composed composition reuses existing current rows instead of inserting duplicates",
+);
+assert.equal(idempotentRows.length, 2);
+assert.equal(idempotentRows.every((row) => String(row.id).startsWith("existing-")), true);
+assert.deepEqual(
+  idempotentDb.operations
+    .filter((item) => item.op === "upload")
+    .map((item) => item.storagePath),
+  [imageFrame.metadata.storagePath],
+  "retrying the same composition upserts the same durable storage object path",
+);
 
 const finishedAdDb = fakeSupabase();
 await persistStaticCreativeAssets({
@@ -427,6 +530,8 @@ await persistStaticCreativeAssets({
   staticAds: [
     {
       ...buildAsset(),
+      imageGenerationProvider: "higgsfield_marketing_studio",
+      qualityTier: "higgsfield_finished_ad",
       storageNormalized: false,
       imagePrompt: "MARKETING STUDIO FINISHED AD CREATIVE. Required CTA text: Check My Options.",
       imagePromptConfig: {
@@ -453,13 +558,25 @@ await persistStaticCreativeAssets({
   ],
 });
 const finishedAdInsert = finishedAdDb.operations.find((item) => item.op === "insert");
+assert.equal(
+  finishedAdDb.operations.some((item) => item.op === "order" && item.column === "updated_at"),
+  false,
+  "creative asset persistence must not query updated_at because production creative_assets does not have that column",
+);
+assert.equal(
+  finishedAdDb.operations.some((item) => item.op === "order" && item.column === "created_at"),
+  true,
+  "creative asset persistence uses created_at to find existing rows before insert/update",
+);
 assert.ok(
   finishedAdDb.operations.some((item) => item.op === "upload"),
   "accepted finished_ad provider rasters are normalized before final launch readiness",
 );
 assert.equal(finishedAdInsert.rows[0].status, "ready");
 assert.match(finishedAdInsert.rows[0].file_url, /\/storage\/v1\/object\/public\/creative-assets\//);
+assert.match(finishedAdInsert.rows[0].metadata.storagePath, /^user-test\/campaign-test\/generated-static\//);
 assert.equal(finishedAdInsert.rows[0].metadata.imageQa.decision, "accept");
+assert.equal(finishedAdInsert.rows[0].metadata.imageQa.mode, "finished_ad");
 assert.equal(finishedAdInsert.rows[0].metadata.storageNormalized, true);
 
 const uploadFailDb = fakeSupabase({ uploadFails: true });
@@ -486,15 +603,25 @@ assert.equal(
 );
 
 const appOwnedDb = fakeSupabase();
+globalThis.fetch = async (url) => {
+  assert.equal(String(url), appOwnedUrl, "old app-owned creative source is fetched for recomposition");
+  return new Response(Buffer.from(providerDataUri.split(",")[1], "base64"), {
+    status: 200,
+    headers: {
+      "content-type": "image/png",
+    },
+  });
+};
 await persistStaticCreativeAssets({
   supabase: appOwnedDb,
   userId: "user-test",
   campaignId: "campaign-test",
   staticAds: [buildAsset(appOwnedUrl)],
 });
+globalThis.fetch = originalFetch;
 const appOwnedInsert = appOwnedDb.operations.find((item) => item.op === "insert");
-assert.equal(appOwnedDb.operations.some((item) => item.op === "upload"), false, "old app-owned assets remain readable without reupload");
-assert.equal(appOwnedInsert.rows[0].file_url, appOwnedUrl);
-assert.equal(appOwnedInsert.rows[0].metadata.storageNormalizationReusedExistingAppAsset, true);
+assert.equal(appOwnedDb.operations.some((item) => item.op === "upload"), true, "old app-owned assets are recomposed into current launch-ready finals");
+assert.notEqual(appOwnedInsert.rows[0].file_url, appOwnedUrl);
+assert.equal(appOwnedInsert.rows[0].metadata.appComposedFinal, true);
 
 console.log("Static creative storage normalization tests passed.");

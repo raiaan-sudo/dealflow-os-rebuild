@@ -1,4 +1,6 @@
 import {
+  Activity,
+  AlertTriangle,
   BarChart3,
   BrainCircuit,
   Bug,
@@ -13,6 +15,9 @@ export const appNavigation = [
 ] as const;
 
 export const adminNavigation = [
+  { href: "/admin/control-room", label: "Control Room", icon: Activity },
+  { href: "/admin/partners", label: "Partners", icon: BarChart3 },
+  { href: "/admin/incidents", label: "Incidents", icon: AlertTriangle },
   { href: "/admin/command-center", label: "Command Center", icon: BrainCircuit },
   { href: "/admin/launch-monitor", label: "Launch Monitor", icon: BarChart3 },
   { href: "/admin/issues", label: "Issue Logs", icon: Bug },

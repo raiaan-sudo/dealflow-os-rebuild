@@ -4,13 +4,16 @@ import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib
 import { createMetaFailureResponse } from "@/lib/integrations/meta/error-mapper";
 import {
   getMetaConnectionState,
+  getMetaConnectionStateForOrganization,
   selectMetaAdAccount,
   updateMetaLaunchSelections,
 } from "@/lib/integrations/meta/service";
 import { recordActivationEvent } from "@/lib/services/activation-telemetry-service";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
+import { getCampaignById } from "@/lib/services/campaign-persistence";
 
 type SelectionBody = {
+  campaignId?: string;
   externalAccountId?: string;
   pageId?: string;
   pixelId?: string;
@@ -32,6 +35,7 @@ export async function POST(request: Request) {
     }
 
     const body = (await parseOptionalJsonBody(request, { parse: (input) => input }, null)) as SelectionBody | null;
+    const campaignId = body?.campaignId?.trim() ?? "";
     const externalAccountId = body?.externalAccountId?.trim() ?? "";
     const pageId = body?.pageId?.trim() ?? "";
     const pixelId = body?.pixelId?.trim() ?? "";
@@ -43,21 +47,38 @@ export async function POST(request: Request) {
       );
     }
 
+    let targetOrganizationId = auth.organizationId;
+    if (campaignId) {
+      const record = await getCampaignById(campaignId);
+
+      if (!record) {
+        throw new ApiError(404, "Campaign not found.", "campaign_not_found");
+      }
+
+      targetOrganizationId = record.campaign.organization_id ?? auth.organizationId;
+    }
+
     let connection =
       pageId && pixelId
         ? await updateMetaLaunchSelections({
             externalAccountId,
+            organizationId: targetOrganizationId,
             pageId,
             pixelId,
           })
-        : await selectMetaAdAccount(externalAccountId);
+        : await selectMetaAdAccount(externalAccountId, {
+            organizationId: targetOrganizationId,
+          });
 
     if (!connection) {
-      connection = await getMetaConnectionState();
+      connection =
+        targetOrganizationId === auth.organizationId
+          ? await getMetaConnectionState()
+          : await getMetaConnectionStateForOrganization(targetOrganizationId);
     }
 
     await recordActivationEvent({
-      organizationId: auth.organizationId,
+      organizationId: targetOrganizationId,
       userId: auth.userId,
       eventName: "meta_selection_completed",
       source: "meta_selections_route",
@@ -67,7 +88,7 @@ export async function POST(request: Request) {
         hasPage: Boolean(pageId),
         hasPixel: Boolean(pixelId),
       },
-      idempotencyKey: `meta_selection_completed:${auth.organizationId}:${externalAccountId}:${Boolean(pageId)}:${Boolean(pixelId)}`,
+      idempotencyKey: `meta_selection_completed:${targetOrganizationId}:${externalAccountId}:${Boolean(pageId)}:${Boolean(pixelId)}`,
     }).catch(() => undefined);
 
     return NextResponse.json({ connection });

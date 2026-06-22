@@ -493,6 +493,12 @@ function buildLowFrictionCta(
   category: CampaignCreativeStrategy["campaignCategory"],
   context: MarketingContext,
 ) {
+  if (isSellerCampaignIntent(context.intent)) {
+    return /comparison|sale|demand|timing/i.test(context.keyOffer)
+      ? "Get My Sale Comparison"
+      : "Check My Sale Plan";
+  }
+
   if (category === "seller") {
     return "Get My Equity Report";
   }

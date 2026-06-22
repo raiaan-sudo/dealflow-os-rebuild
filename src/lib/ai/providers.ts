@@ -189,12 +189,12 @@ export async function createImageAd(
       const configuredPrompt = staticAsset?.imagePromptConfig?.prompt ?? staticAsset?.imagePrompt ?? null;
       const configuredNegativePrompt = staticAsset?.imagePromptConfig?.negativePrompt ?? null;
       const marketingStudioPrompt = configuredPrompt ?? [
-        `Create a finished, launch-ready real estate paid social ad for ${audience} in ${market}.`,
-        `Headline: ${staticAsset?.headline || hook}.`,
-        `Offer: ${offer}.`,
-        `Body: ${staticAsset?.primaryText || creativeBrief.visualDirection}.`,
-        `CTA: ${staticAsset?.cta || "Get My List"}.`,
-        "Use clean professional layout, readable typography, real-estate branding direction, strong CTA hierarchy, and no fake dashboard, listing sheet, chart, table, UI screenshot, gibberish, or misspelled text.",
+        "TEXT-FREE PREMIUM REAL ESTATE VISUAL BACKGROUND ONLY.",
+        `Create a premium photographic real estate background for ${audience} in ${market}.`,
+        `Use this offer only as visual direction, not visible text: ${offer}.`,
+        `Scene: ${creativeBrief.visualDirection || hook}.`,
+        "DealFlow will compose the exact headline, offer, brand, proof chips, and CTA after generation.",
+        "Do not render text, captions, CTA, buttons, logos, flyers, posters, UI, dashboards, tables, listing sheets, fake forms, or typography.",
       ].join(" ");
       const backgroundOnlyPrompt =
         configuredPrompt ??
@@ -207,7 +207,7 @@ export async function createImageAd(
             : staticAsset?.preferredImageModel ?? getImageGenerationEnv()?.model ?? "gpt-image-1.5",
         prompt: imageProvider.name === "higgsfield_marketing_studio" ? marketingStudioPrompt : backgroundOnlyPrompt,
         negativePrompt: imageProvider.name === "higgsfield_marketing_studio"
-          ? configuredNegativePrompt ?? "gibberish text; misspelled brand names; fake dashboard; listing sheet; chart; table; UI screenshot; unreadable typography"
+          ? configuredNegativePrompt ?? "text; captions; letters; numbers; words; logo; CTA button; flyer; poster; fake dashboard; listing sheet; chart; table; UI screenshot; unreadable typography"
           : configuredNegativePrompt,
       });
       const parsed = imageProvider.parseResult(result);

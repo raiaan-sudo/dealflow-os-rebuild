@@ -32,7 +32,19 @@ import { normalizeOfferForCampaign, type NormalizedOfferResult } from "@/lib/ser
 import { cn } from "@/lib/utils";
 
 type CampaignMode = "buyer" | "seller" | "investor" | "commercial";
-type OnboardingStepKey = "intent" | "market" | "property" | "offer" | "agent" | "plan" | "review";
+type FunnelLanguage = "en" | "fr" | "es";
+type LeadCaptureMode = "quality_funnel" | "volume_lead_form" | "deep_qualification";
+type OnboardingStepKey =
+  | "intent"
+  | "market"
+  | "property"
+  | "audience"
+  | "budget"
+  | "setup"
+  | "offer"
+  | "agent"
+  | "plan"
+  | "review";
 
 type DraftState = {
   agentFirstName: string;
@@ -44,9 +56,17 @@ type DraftState = {
   audience: string;
   propertyType: string;
   priceRange: string;
-  monthlyBudget: string;
+  dailyBudget: string;
   offer: string;
-  planTier: Extract<BillingPlanTier, "starter" | "pro">;
+  funnelLanguage: FunnelLanguage;
+  leadCaptureMode: LeadCaptureMode;
+  leadFormQuestions: string[];
+  leadFormQuestionDraft: string;
+  themePrimaryColor: string;
+  themeSecondaryColor: string;
+  themeAccentColor: string;
+  logoUrl: string;
+  planTier: Extract<BillingPlanTier, "performance" | "starter" | "pro">;
   idempotencySeed: string;
 };
 
@@ -71,9 +91,12 @@ const STEPS: { key: OnboardingStepKey; label: string; title: string }[] = [
   { key: "intent", label: "Type", title: "Choose campaign type" },
   { key: "market", label: "Market", title: "Pick the city or market" },
   { key: "property", label: "Property", title: "Choose inventory focus" },
-  { key: "offer", label: "Offer", title: "Shape the audience and offer" },
+  { key: "audience", label: "Audience", title: "Define audience and price" },
+  { key: "budget", label: "Budget", title: "Set budget and capture style" },
+  { key: "setup", label: "Setup", title: "Configure capture path" },
+  { key: "offer", label: "Offer", title: "Choose offer or lead magnet" },
   { key: "agent", label: "Agent", title: "Identify the agent" },
-  { key: "plan", label: "Plan", title: "Select behavior" },
+  { key: "plan", label: "Plan", title: "Confirm launch plan" },
   { key: "review", label: "Review", title: "Confirm and build" },
 ];
 
@@ -95,7 +118,7 @@ const MODE_DEFAULTS: Record<
     summary: "Attract active buyers with sharper search intent, a focused funnel, and a fast path to a consultation.",
     path: "Buyer leads in the selected market who are ready to compare listings and book a call.",
     audience: "Move-ready buyers actively comparing homes",
-    propertyType: "Detached homes",
+    propertyType: "Single Family Homes",
     priceRange: "$600k-$900k",
     offer: "Private listings and a fast buyer strategy call",
     icon: Home,
@@ -134,13 +157,12 @@ const MODE_DEFAULTS: Record<
 
 const PROPERTY_TYPE_OPTIONS: Record<CampaignMode, { label: string; description: string }[]> = {
   buyer: [
-    { label: "Detached homes", description: "Move-ready detached inventory for active residential buyers." },
-    { label: "Townhomes", description: "Townhome shoppers comparing space, schools, and affordability." },
+    { label: "Single Family Homes", description: "Detached homes, townhomes, freestanding homes, and homes on larger lots." },
+    { label: "First Time Buyer Homes", description: "Entry-point options for buyers who need a clearer first step." },
+    { label: "New Construction", description: "Builder inventory, pre-construction, and newly built homes." },
+    { label: "Luxury Homes", description: "Higher-intent buyers seeking premium private access." },
     { label: "Condos", description: "Condo buyers looking for sharper building and neighborhood fit." },
-    { label: "First-time buyer homes", description: "Entry-point options for buyers who need a clearer first step." },
-    { label: "Move-up homes", description: "Families upgrading into more space or a better location." },
-    { label: "New construction", description: "Builder inventory, pre-construction, and newer homes." },
-    { label: "Luxury homes", description: "Higher-intent buyers seeking premium private access." },
+    { label: "Multi Unit Homes", description: "Duplexes, triplexes, and other multi-unit homes for buyers comparing income or flexible living options." },
   ],
   seller: [
     { label: "Detached homes", description: "Listing conversations with detached homeowners." },
@@ -185,21 +207,81 @@ const DEFAULT_DRAFT: DraftState = {
   audience: MODE_DEFAULTS.buyer.audience,
   propertyType: MODE_DEFAULTS.buyer.propertyType,
   priceRange: MODE_DEFAULTS.buyer.priceRange,
-  monthlyBudget: "3000",
+  dailyBudget: "30",
   offer: MODE_DEFAULTS.buyer.offer,
-  planTier: "starter",
+  funnelLanguage: "en",
+  leadCaptureMode: "quality_funnel",
+  leadFormQuestions: [],
+  leadFormQuestionDraft: "",
+  themePrimaryColor: "#17212c",
+  themeSecondaryColor: "#f3eee5",
+  themeAccentColor: "#f59e42",
+  logoUrl: "",
+  planTier: "pro",
   idempotencySeed: "",
 };
 
 const PRICE_RANGES = ["$400k-$600k", "$600k-$900k", "$900k-$1.5M", "$1.5M+"] as const;
 const INVESTOR_PRICE_RANGES = ["<$500k", "$500k-$1.5M", "$1.5M-$3M", "$3M+"] as const;
 const COMMERCIAL_PRICE_RANGES = ["Lease-ready", "$750k-$1.5M", "$1.5M-$3M", "$3M+"] as const;
-const BUDGETS = [
-  { label: "$1.5k/mo", value: "1500" },
-  { label: "$3k/mo", value: "3000" },
-  { label: "$5k/mo", value: "5000" },
-  { label: "$7.5k+/mo", value: "7500" },
+const DAILY_BUDGETS = [
+  { label: "$10/day", value: "10" },
+  { label: "$20/day", value: "20" },
+  { label: "$30/day", value: "30" },
+  { label: "$50/day", value: "50" },
+  { label: "$75/day", value: "75" },
+  { label: "$100/day", value: "100" },
 ] as const;
+const MIN_DAILY_BUDGET_CENTS = 500;
+const MAX_DAILY_BUDGET_CENTS: number | null = null;
+
+const LEAD_CAPTURE_MODE_ORDER: LeadCaptureMode[] = ["volume_lead_form", "quality_funnel", "deep_qualification"];
+
+const LEAD_CAPTURE_MODES: Record<LeadCaptureMode, { title: string; label: string; body: string }> = {
+  volume_lead_form: {
+    title: "Volume leads",
+    label: "Instant lead form",
+    body: "Use the lowest-friction Meta form when budget is tight and consistent lead flow matters most.",
+  },
+  quality_funnel: {
+    title: "Quality leads",
+    label: "Funnel",
+    body: "Use the winning funnel when the budget can support a stronger qualification path and warmer handoff.",
+  },
+  deep_qualification: {
+    title: "Highest quality",
+    label: "Deeper qualification",
+    body: "Use more qualification before the contact step when budget gives the campaign room to filter harder.",
+  },
+};
+
+const LEAD_FORM_QUESTION_PRESETS = [
+  "What price range are you targeting?",
+  "When are you hoping to move?",
+  "Are you already pre-approved?",
+  "What city or neighbourhood are you focused on?",
+  "Do you have a property to sell first?",
+  "What is your ideal property type?",
+] as const;
+
+const FUNNEL_LANGUAGES: Record<FunnelLanguage, { label: string; body: string }> = {
+  en: { label: "English", body: "Generate funnel and ad copy in English." },
+  fr: { label: "French", body: "Generate funnel and ad copy in French." },
+  es: { label: "Spanish", body: "Generate funnel and ad copy in Spanish." },
+};
+
+function isFunnelLanguage(value: unknown): value is FunnelLanguage {
+  return value === "en" || value === "fr" || value === "es";
+}
+
+function isLeadCaptureMode(value: unknown): value is LeadCaptureMode {
+  return value === "quality_funnel" || value === "volume_lead_form" || value === "deep_qualification";
+}
+
+function normalizeHexColor(value: string, fallback: string) {
+  const normalized = value.trim();
+  return /^#[0-9a-f]{6}$/i.test(normalized) ? normalized : fallback;
+}
 
 const OFFER_SUGGESTIONS: Record<CampaignMode, string[]> = {
   buyer: [
@@ -268,6 +350,108 @@ function isCampaignMode(value: unknown): value is CampaignMode {
   return value === "buyer" || value === "seller" || value === "investor" || value === "commercial";
 }
 
+function parseCurrencyCents(value: string) {
+  const normalized = value.trim().replace(/,/g, "");
+
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+    return null;
+  }
+
+  const [dollarsPart, centsPart = ""] = normalized.split(".");
+  const dollars = Number.parseInt(dollarsPart, 10);
+  const cents = Number.parseInt(centsPart.padEnd(2, "0"), 10) || 0;
+  const total = dollars * 100 + cents;
+
+  return Number.isSafeInteger(total) ? total : null;
+}
+
+function dailyBudgetCentsFromDraft(draft: Pick<DraftState, "dailyBudget">) {
+  return parseCurrencyCents(draft.dailyBudget);
+}
+
+function dailyBudgetDollarsFromCents(cents: number) {
+  return cents / 100;
+}
+
+function monthlyCapDollarsFromDailyCents(cents: number) {
+  return Math.round(cents * 30) / 100;
+}
+
+function formatAdSpend(value: number) {
+  return new Intl.NumberFormat("en-CA", {
+    style: "currency",
+    currency: "CAD",
+    maximumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    minimumFractionDigits: 0,
+  }).format(value);
+}
+
+function formatDailyBudgetFromDraft(draft: Pick<DraftState, "dailyBudget">) {
+  const cents = dailyBudgetCentsFromDraft(draft);
+
+  if (!cents || cents <= 0) {
+    return "Daily budget not set";
+  }
+
+  return `${formatAdSpend(dailyBudgetDollarsFromCents(cents))}/day`;
+}
+
+function formatMonthlyEstimateFromDraft(draft: Pick<DraftState, "dailyBudget">) {
+  const cents = dailyBudgetCentsFromDraft(draft);
+
+  if (!cents || cents <= 0) {
+    return null;
+  }
+
+  return `Estimated 30-day media spend: ${formatAdSpend(monthlyCapDollarsFromDailyCents(cents))}.`;
+}
+
+function recommendLeadCaptureMode(dailyBudgetCents: number | null): LeadCaptureMode {
+  if (!dailyBudgetCents || dailyBudgetCents < 3000) return "volume_lead_form";
+  if (dailyBudgetCents >= 10000) return "deep_qualification";
+  return "quality_funnel";
+}
+
+function getLeadCaptureRecommendation(dailyBudgetCents: number | null) {
+  const mode = recommendLeadCaptureMode(dailyBudgetCents);
+  const option = LEAD_CAPTURE_MODES[mode];
+
+  if (mode === "volume_lead_form") {
+    return {
+      mode,
+      title: "Recommended: Volume leads",
+      label: option.label,
+      body: "Because this budget is under $30/day, keep friction low with Meta instant forms. Name, email, and phone are enough to keep leads coming in consistently.",
+    };
+  }
+
+  if (mode === "deep_qualification") {
+    return {
+      mode,
+      title: "Recommended: Highest quality",
+      label: option.label,
+      body: "At $100/day or more, the campaign has enough budget to add deeper qualification before the contact step and filter for stronger intent.",
+    };
+  }
+
+  return {
+    mode,
+    title: "Recommended: Quality leads",
+    label: option.label,
+    body: "A $30-$75/day starting range works best with the funnel path because it balances conversion volume with better lead quality.",
+  };
+}
+
+function migrateLegacyMonthlyBudgetToDaily(value: unknown) {
+  const cents = parseCurrencyCents(String(value ?? ""));
+
+  if (!cents || cents <= 0) {
+    return DEFAULT_DRAFT.dailyBudget;
+  }
+
+  return String(Math.max(1, Math.round(cents / 30 / 100)));
+}
+
 async function recordActivationEvent(params: {
   eventName: string;
   idempotencyKey: string;
@@ -309,7 +493,7 @@ function IconTile({
 
 function validateStep(step: OnboardingStepKey, draft: DraftState) {
   const errors: FieldErrors = {};
-  const budget = Number.parseFloat(draft.monthlyBudget.replace(/[^0-9.]/g, ""));
+  const dailyBudgetCents = dailyBudgetCentsFromDraft(draft);
 
   if (step === "agent" || step === "review") {
     if (!draft.agentFirstName.trim()) errors.agentFirstName = "Add the agent first name.";
@@ -327,10 +511,26 @@ function validateStep(step: OnboardingStepKey, draft: DraftState) {
     if (!draft.propertyType.trim()) errors.propertyType = "Add the property type or inventory focus.";
   }
 
-  if (step === "offer" || step === "review") {
+  if (step === "audience" || step === "review") {
     if (!draft.audience.trim()) errors.audience = "Describe who the campaign should attract.";
     if (!draft.priceRange.trim()) errors.priceRange = "Choose a price range.";
-    if (!Number.isFinite(budget) || budget <= 0) errors.monthlyBudget = "Choose or enter a realistic monthly ad budget.";
+  }
+
+  if (step === "budget" || step === "review") {
+    if (!dailyBudgetCents || dailyBudgetCents < MIN_DAILY_BUDGET_CENTS) {
+      errors.dailyBudget = "Choose or enter a daily ad spend of at least $5/day.";
+    } else if (MAX_DAILY_BUDGET_CENTS !== null && dailyBudgetCents > MAX_DAILY_BUDGET_CENTS) {
+      errors.dailyBudget = "Daily ad spend must be $500/day or less for self-serve setup.";
+    }
+  }
+
+  if (step === "setup" || step === "review") {
+    if (draft.leadFormQuestions.length > 3) {
+      errors.leadFormQuestionDraft = "Use at most 3 custom lead form questions.";
+    }
+  }
+
+  if (step === "offer" || step === "review") {
     if (!draft.offer.trim()) errors.offer = "Add the offer or lead magnet for this campaign.";
   }
 
@@ -360,7 +560,7 @@ function StepProgress({
       <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
         <div className="h-full rounded-full bg-[linear-gradient(90deg,#7c5cff,#55d5ff)] transition-all" style={{ width: `${progress}%` }} />
       </div>
-      <div className="mt-3 grid gap-2 md:grid-cols-4 xl:grid-cols-7">
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-10">
         {steps.map((step, index) => {
           const active = step.key === currentStep;
           const available = index <= furthestStepIndex;
@@ -484,6 +684,9 @@ function PlanChoiceCard({
           </div>
         ))}
       </div>
+      <div className="mt-5 inline-flex w-fit rounded-full bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950">
+        {plan.checkoutCtaLabel}
+      </div>
       <p className="mt-auto pt-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/42">
         {plan.footer}
       </p>
@@ -566,6 +769,10 @@ export default function OnboardingPage() {
     () => normalizeOfferForCampaign(draft.offer, draft.campaignMode),
     [draft.campaignMode, draft.offer],
   );
+  const dailyBudgetCents = dailyBudgetCentsFromDraft(draft);
+  const leadCaptureRecommendation = getLeadCaptureRecommendation(dailyBudgetCents);
+  const instantLeadFormSelected = draft.leadCaptureMode === "volume_lead_form";
+  const lowBudgetLeadForm = (dailyBudgetCents ?? 0) < 3000;
   const normalizedDraft = useMemo(
     () => ({ ...draft, offer: offerInsight.normalizedOffer }),
     [draft, offerInsight.normalizedOffer],
@@ -577,7 +784,9 @@ export default function OnboardingPage() {
   );
 
   useEffect(() => {
-    const shouldStartFresh = new URLSearchParams(window.location.search).get("new") === "1";
+    const searchParams = new URLSearchParams(window.location.search);
+    const shouldStartFresh = searchParams.get("new") === "1" || (!searchParams.get("resume") && !searchParams.get("campaignId"));
+    const shouldRecoverDraft = !shouldStartFresh && (searchParams.get("resume") === "1" || Boolean(searchParams.get("campaignId")));
     setIsNewCampaignFlow(shouldStartFresh);
     if (shouldStartFresh) {
       window.localStorage.removeItem(STORAGE_KEY);
@@ -588,21 +797,43 @@ export default function OnboardingPage() {
       return;
     }
 
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = shouldRecoverDraft ? window.localStorage.getItem(STORAGE_KEY) : null;
     let nextDraft = { ...DEFAULT_DRAFT, idempotencySeed: createIdempotencySeed() };
 
     if (raw) {
       try {
         const saved = JSON.parse(raw) as Partial<DraftState> & {
+          monthlyBudget?: string;
           currentStep?: OnboardingStepKey;
           furthestStepIndex?: number;
         };
         const campaignMode = isCampaignMode(saved.campaignMode) ? saved.campaignMode : "buyer";
+        const dailyBudget =
+          typeof saved.dailyBudget === "string" && saved.dailyBudget.trim()
+            ? saved.dailyBudget
+            : migrateLegacyMonthlyBudgetToDaily(saved.monthlyBudget);
+        const funnelLanguage = isFunnelLanguage(saved.funnelLanguage) ? saved.funnelLanguage : DEFAULT_DRAFT.funnelLanguage;
+        const leadCaptureMode = isLeadCaptureMode(saved.leadCaptureMode) ? saved.leadCaptureMode : DEFAULT_DRAFT.leadCaptureMode;
+        const leadFormQuestions = Array.isArray(saved.leadFormQuestions)
+          ? saved.leadFormQuestions
+              .map((question) => (typeof question === "string" ? question.trim() : ""))
+              .filter(Boolean)
+              .slice(0, 3)
+          : DEFAULT_DRAFT.leadFormQuestions;
         nextDraft = {
           ...nextDraft,
           ...saved,
           campaignMode,
-          planTier: saved.planTier === "pro" ? "pro" : "starter",
+          funnelLanguage,
+          leadCaptureMode,
+          leadFormQuestions,
+          leadFormQuestionDraft: typeof saved.leadFormQuestionDraft === "string" ? saved.leadFormQuestionDraft : "",
+          dailyBudget,
+          planTier: "pro",
+          themePrimaryColor: normalizeHexColor(saved.themePrimaryColor ?? "", DEFAULT_DRAFT.themePrimaryColor),
+          themeSecondaryColor: normalizeHexColor(saved.themeSecondaryColor ?? "", DEFAULT_DRAFT.themeSecondaryColor),
+          themeAccentColor: normalizeHexColor(saved.themeAccentColor ?? "", DEFAULT_DRAFT.themeAccentColor),
+          logoUrl: typeof saved.logoUrl === "string" ? saved.logoUrl : "",
           idempotencySeed: saved.idempotencySeed || nextDraft.idempotencySeed,
         };
         setDraft(nextDraft);
@@ -715,6 +946,40 @@ export default function OnboardingPage() {
     updateDraft({ offer: normalizeOfferForCampaign(offer, draft.campaignMode).normalizedOffer });
   }
 
+  function updateDailyBudget(value: string) {
+    const nextBudgetCents = parseCurrencyCents(value);
+    updateDraft({
+      dailyBudget: value,
+      leadCaptureMode: recommendLeadCaptureMode(nextBudgetCents),
+    });
+  }
+
+  function toggleLeadFormQuestion(question: string) {
+    const normalizedQuestion = question.trim();
+    if (!normalizedQuestion) return;
+
+    const alreadySelected = draft.leadFormQuestions.includes(normalizedQuestion);
+    if (alreadySelected) {
+      updateDraft({
+        leadFormQuestions: draft.leadFormQuestions.filter((selectedQuestion) => selectedQuestion !== normalizedQuestion),
+      });
+      return;
+    }
+
+    if (draft.leadFormQuestions.length >= 3) return;
+    updateDraft({ leadFormQuestions: [...draft.leadFormQuestions, normalizedQuestion] });
+  }
+
+  function addCustomLeadFormQuestion() {
+    const normalizedQuestion = draft.leadFormQuestionDraft.trim();
+    if (!normalizedQuestion || draft.leadFormQuestions.length >= 3) return;
+
+    updateDraft({
+      leadFormQuestions: [...draft.leadFormQuestions.filter((question) => question !== normalizedQuestion), normalizedQuestion].slice(0, 3),
+      leadFormQuestionDraft: "",
+    });
+  }
+
   function goToStep(step: OnboardingStepKey) {
     setCurrentStep(step);
     setErrors({});
@@ -736,6 +1001,14 @@ export default function OnboardingPage() {
     setSubmitting(true);
 
     try {
+      const dailyBudgetCents = dailyBudgetCentsFromDraft(preparedDraft);
+
+      if (!dailyBudgetCents) {
+        throw new Error("Choose or enter a valid daily ad spend.");
+      }
+
+      const dailyBudget = dailyBudgetDollarsFromCents(dailyBudgetCents);
+      const internalMonthlyBudget = monthlyCapDollarsFromDailyCents(dailyBudgetCents);
       const response = await fetch("/api/onboarding/plan", {
         method: "POST",
         headers: {
@@ -754,8 +1027,19 @@ export default function OnboardingPage() {
           service: preparedDraft.offer,
           property_type: preparedDraft.propertyType,
           price_range: preparedDraft.priceRange,
-          budget: preparedDraft.monthlyBudget,
+          daily_budget: dailyBudget,
+          daily_budget_cents: dailyBudgetCents,
+          budget: internalMonthlyBudget,
           goal: preparedDraft.offer,
+          language: preparedDraft.funnelLanguage,
+          lead_capture_mode: preparedDraft.leadCaptureMode,
+          theme: {
+            primaryColor: normalizeHexColor(preparedDraft.themePrimaryColor, DEFAULT_DRAFT.themePrimaryColor),
+            secondaryColor: normalizeHexColor(preparedDraft.themeSecondaryColor, DEFAULT_DRAFT.themeSecondaryColor),
+            accentColor: normalizeHexColor(preparedDraft.themeAccentColor, DEFAULT_DRAFT.themeAccentColor),
+            logoUrl: preparedDraft.logoUrl.trim() || null,
+            leadFormQuestions: preparedDraft.leadFormQuestions.slice(0, 3),
+          },
           idempotencySeed: preparedDraft.idempotencySeed,
         }),
       });
@@ -775,14 +1059,31 @@ export default function OnboardingPage() {
           currentStep: "review",
           furthestStepIndex: visibleSteps.length - 1,
           campaignId,
+          lastSubmittedCampaignId: campaignId,
           completedAt: new Date().toISOString(),
         }),
       );
-      router.push(
-        canUseExistingLaunchAccess
-          ? `/build/creatives?campaignId=${encodeURIComponent(campaignId)}`
-          : `/paywall?campaignId=${encodeURIComponent(campaignId)}&plan=${preparedDraft.planTier}`,
-      );
+      if (canUseExistingLaunchAccess) {
+        router.push(`/build/creatives?campaignId=${encodeURIComponent(campaignId)}`);
+        return;
+      }
+
+      const checkoutResponse = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ campaignId, planTier: "pro" }),
+      });
+      const checkoutData = (await checkoutResponse.json().catch(() => null)) as
+        | { url?: string; error?: string }
+        | null;
+
+      if (!checkoutResponse.ok || !checkoutData?.url) {
+        throw new Error(checkoutData?.error ?? "Checkout could not be started.");
+      }
+
+      window.location.assign(checkoutData.url);
     } catch (error) {
       setSubmitting(false);
       setErrors((current) => ({
@@ -828,6 +1129,7 @@ export default function OnboardingPage() {
   function resetDraft() {
     const freshDraft = { ...DEFAULT_DRAFT, idempotencySeed: createIdempotencySeed() };
     window.localStorage.removeItem(STORAGE_KEY);
+    setIsNewCampaignFlow(true);
     setDraft(freshDraft);
     setCurrentStep("intent");
     setFurthestStepIndex(0);
@@ -850,6 +1152,9 @@ export default function OnboardingPage() {
               One decision at a time. DealFlow recommends the strategy, updates the preview, and keeps the next click obvious.
             </p>
           </div>
+          <Button type="button" variant="secondary" onClick={resetDraft}>
+            New campaign
+          </Button>
         </div>
       </Card>
 
@@ -936,7 +1241,7 @@ export default function OnboardingPage() {
             </div>
           ) : null}
 
-          {currentStep === "offer" ? (
+          {currentStep === "audience" ? (
             <div className="mt-6 grid gap-6">
               <label className="space-y-2 text-sm">
                 <span className="text-muted-foreground">Recommended audience</span>
@@ -967,17 +1272,40 @@ export default function OnboardingPage() {
                 {errors.priceRange ? <p className="mt-2 text-sm text-rose-400">{errors.priceRange}</p> : null}
               </div>
 
+              <label className="space-y-2 text-sm">
+                <span className="text-muted-foreground">Custom price range or deal size</span>
+                <Input
+                  value={draft.priceRange}
+                  onChange={(event) => updateDraft({ priceRange: event.target.value })}
+                  placeholder="$600k-$900k, lease-ready, or custom deal size"
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {currentStep === "budget" ? (
+            <div className="mt-6 grid gap-6">
               <div>
-                <p className="text-sm font-medium text-foreground">Monthly ad budget</p>
+                <p className="text-sm font-medium text-foreground">Daily ad spend budget</p>
+                <p className="mt-1 text-sm leading-6 text-white/58">
+                  This is the media budget that goes directly to Facebook. DealFlow uses it to recommend the right lead
+                  capture path before anything is launched.
+                </p>
+                <div className="mt-3 rounded-[20px] border border-emerald-300/18 bg-emerald-300/[0.055] p-4">
+                  <p className="text-sm font-semibold text-emerald-100">Recommended starting budget: $30-$50/day</p>
+                  <p className="mt-1 text-xs leading-5 text-white/58">
+                    That range is usually enough to balance lead quality with enough daily signal for Meta to learn.
+                  </p>
+                </div>
                 <div className="mt-3 grid gap-3 sm:grid-cols-4">
-                  {BUDGETS.map((budget) => (
+                  {DAILY_BUDGETS.map((budget) => (
                     <button
                       key={budget.value}
                       type="button"
-                      onClick={() => updateDraft({ monthlyBudget: budget.value })}
+                      onClick={() => updateDailyBudget(budget.value)}
                       className={cn(
                         "rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition",
-                        draft.monthlyBudget === budget.value
+                        draft.dailyBudget === budget.value
                           ? "border-cyan-200/28 bg-cyan-300/[0.07] text-cyan-100"
                           : "border-white/10 bg-white/[0.035] text-white/72 hover:border-cyan-200/18",
                       )}
@@ -986,10 +1314,245 @@ export default function OnboardingPage() {
                     </button>
                   ))}
                 </div>
-                <Input className="mt-3" type="number" inputMode="numeric" value={draft.monthlyBudget} onChange={(event) => updateDraft({ monthlyBudget: event.target.value })} placeholder="3000" />
-                {errors.monthlyBudget ? <p className="mt-2 text-sm text-rose-400">{errors.monthlyBudget}</p> : null}
+                <label className="mt-3 block space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-white/48">Custom daily amount</span>
+                  <Input type="number" min={5} step="1" inputMode="decimal" value={draft.dailyBudget} onChange={(event) => updateDailyBudget(event.target.value)} placeholder="30" aria-label="Custom daily ad spend amount" />
+                </label>
+                <p className="mt-2 text-xs leading-5 text-white/52">
+                  Starter keeps you in control. This is a daily media budget input, not a monthly commitment.
+                </p>
+                {formatMonthlyEstimateFromDraft(draft) ? (
+                  <p className="mt-1 text-xs leading-5 text-white/42">{formatMonthlyEstimateFromDraft(draft)}</p>
+                ) : null}
+                {errors.dailyBudget ? <p className="mt-2 text-sm text-rose-400">{errors.dailyBudget}</p> : null}
               </div>
 
+              <div className="rounded-[22px] border border-white/10 bg-white/[0.025] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Lead capture style</p>
+                    <p className="mt-1 text-xs leading-5 text-white/52">
+                      Choose how the funnel should capture the lead. This changes the funnel path without changing launch safety gates.
+                    </p>
+                  </div>
+                  <Badge className="border-cyan-200/20 bg-cyan-300/[0.06] text-cyan-100">
+                    {leadCaptureRecommendation.label}
+                  </Badge>
+                </div>
+                <div className="mt-3 rounded-[18px] border border-cyan-200/16 bg-cyan-300/[0.045] p-4 transition">
+                  <p className="text-sm font-semibold text-cyan-100">{leadCaptureRecommendation.title}</p>
+                  <p className="mt-1 text-xs leading-5 text-white/60">{leadCaptureRecommendation.body}</p>
+                </div>
+                <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                  {LEAD_CAPTURE_MODE_ORDER.map((mode) => {
+                    const option = LEAD_CAPTURE_MODES[mode];
+                    const selected = draft.leadCaptureMode === mode;
+                    const recommended = leadCaptureRecommendation.mode === mode;
+
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => updateDraft({ leadCaptureMode: mode })}
+                        className={cn(
+                          "rounded-[18px] border p-4 text-left transition hover:-translate-y-0.5",
+                          selected
+                            ? "border-cyan-200/28 bg-cyan-300/[0.07] text-cyan-100"
+                            : "border-white/10 bg-white/[0.035] text-white/72 hover:border-cyan-200/18",
+                        )}
+                      >
+                        <span className="block text-sm font-semibold text-white">{option.title}</span>
+                        <span className="mt-1 block text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100/72">
+                          {option.label}
+                        </span>
+                        <span className="mt-2 block text-xs leading-5 text-white/58">{option.body}</span>
+                        {recommended ? (
+                          <span className="mt-3 block w-fit rounded-full border border-emerald-300/18 bg-emerald-300/[0.06] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-100">
+                            Recommended
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {currentStep === "setup" ? (
+            <div className="mt-6 grid gap-6">
+              <div className="grid gap-4 rounded-[22px] border border-white/10 bg-white/[0.025] p-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Language</p>
+                  <p className="mt-1 text-xs leading-5 text-white/52">
+                    Pick the language for the funnel, ad copy, and creative prompts.
+                  </p>
+                  <div className="mt-3 grid gap-2">
+                    {(Object.keys(FUNNEL_LANGUAGES) as FunnelLanguage[]).map((language) => {
+                      const option = FUNNEL_LANGUAGES[language];
+                      const selected = draft.funnelLanguage === language;
+
+                      return (
+                        <button
+                          key={language}
+                          type="button"
+                          onClick={() => updateDraft({ funnelLanguage: language })}
+                          className={cn(
+                            "rounded-2xl border px-4 py-3 text-left transition",
+                            selected
+                              ? "border-cyan-200/28 bg-cyan-300/[0.07]"
+                              : "border-white/10 bg-white/[0.035] hover:border-cyan-200/18",
+                          )}
+                        >
+                          <span className="block text-sm font-semibold text-white">{option.label}</span>
+                          <span className="mt-1 block text-xs leading-5 text-white/54">{option.body}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {instantLeadFormSelected ? (
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Instant lead form questions</p>
+                    <p className="mt-1 text-xs leading-5 text-white/52">
+                      Meta already collects full name, email, and phone number. Add up to 3 questions only when the
+                      budget can support more friction.
+                    </p>
+                    <div
+                      className={cn(
+                        "mt-3 rounded-[18px] border p-4",
+                        lowBudgetLeadForm
+                          ? "border-amber-300/20 bg-amber-300/[0.055]"
+                          : "border-cyan-200/16 bg-cyan-300/[0.045]",
+                      )}
+                    >
+                      <p className={cn("text-sm font-semibold", lowBudgetLeadForm ? "text-amber-100" : "text-cyan-100")}>
+                        {lowBudgetLeadForm
+                          ? "Under $30/day: keep the form simple"
+                          : "Budget supports light qualification"}
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-white/60">
+                        {lowBudgetLeadForm
+                          ? "We recommend no extra questions beyond name, email, and phone so the campaign can produce enough leads to learn."
+                          : "You can add 1-3 qualification questions to improve quality while keeping the form usable."}
+                      </p>
+                    </div>
+                    <div className="mt-3 grid gap-2">
+                      {LEAD_FORM_QUESTION_PRESETS.map((question) => {
+                        const selected = draft.leadFormQuestions.includes(question);
+                        const disabled = !selected && draft.leadFormQuestions.length >= 3;
+
+                        return (
+                          <button
+                            key={question}
+                            type="button"
+                            disabled={disabled}
+                            onClick={() => toggleLeadFormQuestion(question)}
+                            className={cn(
+                              "rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-45",
+                              selected
+                                ? "border-cyan-200/28 bg-cyan-300/[0.07] text-cyan-100"
+                                : "border-white/10 bg-white/[0.035] text-white/72 hover:border-cyan-200/18",
+                            )}
+                          >
+                            {question}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <Input
+                        value={draft.leadFormQuestionDraft}
+                        onChange={(event) => updateDraft({ leadFormQuestionDraft: event.target.value })}
+                        placeholder="Add a custom qualification question"
+                        aria-label="Custom lead form question"
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={addCustomLeadFormQuestion}
+                        disabled={draft.leadFormQuestions.length >= 3 || !draft.leadFormQuestionDraft.trim()}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                    <p className="mt-2 text-xs leading-5 text-white/48">
+                      Selected {draft.leadFormQuestions.length}/3. Standard fields are always included.
+                    </p>
+                    {errors.leadFormQuestionDraft ? <p className="mt-2 text-sm text-rose-400">{errors.leadFormQuestionDraft}</p> : null}
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Funnel branding</p>
+                    <p className="mt-1 text-xs leading-5 text-white/52">
+                      Set the colors and optional logo used by the winning funnel preview and public page.
+                    </p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                      {[
+                        ["Primary", "themePrimaryColor"],
+                        ["Background", "themeSecondaryColor"],
+                        ["Accent", "themeAccentColor"],
+                      ].map(([label, key]) => (
+                        <label key={key} className="space-y-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/48">
+                          <span>{label}</span>
+                          <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/18 p-2">
+                            <input
+                              type="color"
+                              value={draft[key as "themePrimaryColor" | "themeSecondaryColor" | "themeAccentColor"]}
+                              onChange={(event) => updateDraft({ [key]: event.target.value } as Partial<DraftState>)}
+                              className="h-9 w-10 rounded-md border border-white/10 bg-transparent"
+                              aria-label={`${label} funnel color`}
+                            />
+                            <Input
+                              value={draft[key as "themePrimaryColor" | "themeSecondaryColor" | "themeAccentColor"]}
+                              onChange={(event) => updateDraft({ [key]: event.target.value } as Partial<DraftState>)}
+                              className="h-9"
+                              aria-label={`${label} funnel hex color`}
+                            />
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                    <label className="mt-3 block space-y-2 text-sm">
+                      <span className="text-muted-foreground">Logo URL optional</span>
+                      <Input
+                        value={draft.logoUrl}
+                        onChange={(event) => updateDraft({ logoUrl: event.target.value })}
+                        placeholder="https://example.com/logo.png"
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {currentStep === "offer" ? (
+            <div className="mt-6 grid gap-6">
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-4">
+                  <p className="text-sm font-semibold text-white">Why this matters</p>
+                  <p className="mt-2 text-xs leading-5 text-white/58">
+                    The offer is the reason someone gives you their contact info. It should make the next step obvious
+                    and useful before they talk to the agent.
+                  </p>
+                </div>
+                <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-4">
+                  <p className="text-sm font-semibold text-white">What makes it good</p>
+                  <p className="mt-2 text-xs leading-5 text-white/58">
+                    Strong offers are specific, low pressure, and tied to a clear benefit: a shortlist, valuation,
+                    plan, market check, or matched options.
+                  </p>
+                </div>
+                <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-4">
+                  <p className="text-sm font-semibold text-white">Improve quality</p>
+                  <p className="mt-2 text-xs leading-5 text-white/58">
+                    Risk reversals like free, no obligation, private review, and truthful timeframes help people
+                    respond while keeping expectations clear.
+                  </p>
+                </div>
+              </div>
               <div className="space-y-3">
                 <div>
                   <p className="text-sm font-medium text-foreground">Offer or lead magnet</p>
@@ -1023,7 +1586,6 @@ export default function OnboardingPage() {
                 />
                 {errors.offer ? <p className="text-sm text-rose-400">{errors.offer}</p> : null}
               </div>
-              <OfferCoach insight={offerInsight} onApply={applyOffer} />
             </div>
           ) : null}
 
@@ -1056,15 +1618,22 @@ export default function OnboardingPage() {
           ) : null}
 
           {currentStep === "plan" ? (
-            <div className="mt-6 grid items-stretch gap-4 md:grid-cols-2">
+            <div className="mt-6 grid items-stretch gap-4">
               {SELECTABLE_PLAN_TIERS.map((tier) => (
                 <PlanChoiceCard
                   key={tier}
                   tier={tier}
-                  active={draft.planTier === tier}
-                  onClick={() => updateDraft({ planTier: tier })}
+                  active
+                  onClick={() => updateDraft({ planTier: "pro" })}
                 />
               ))}
+              <div className="rounded-[22px] border border-cyan-300/16 bg-cyan-300/[0.045] p-4 text-sm leading-6 text-cyan-50/78">
+                <p className="font-semibold text-white">One plan only.</p>
+                <p className="mt-1">
+                  Performance usage billing and guided-launch-only behavior are archived for new signups.
+                  Existing users keep their current access, but new campaigns activate through Operator Launch at $297/month.
+                </p>
+              </div>
             </div>
           ) : null}
 
@@ -1078,7 +1647,7 @@ export default function OnboardingPage() {
                     <p className="mt-2 text-sm leading-7 text-white/64">
                       {canUseExistingLaunchAccess
                         ? "Continue saves the campaign, updates the agent profile for lead alerts, and opens creative selection. No live ad, payment, message, or media action runs here."
-                        : "Continue saves the campaign, updates the agent profile for lead alerts, and opens checkout. No live ad, payment, message, or media action runs here."}
+                        : "Continue saves the campaign, updates the agent profile for lead alerts, and opens Pro activation. No live ad, message, or media action runs here."}
                     </p>
                   </div>
                 </div>
@@ -1090,7 +1659,8 @@ export default function OnboardingPage() {
                   ["Market", draft.market],
                   ["Property type", draft.propertyType],
                   ["Price/deal size", draft.priceRange],
-                  ["Budget", `$${draft.monthlyBudget}/month`],
+                  ["Daily ad spend", formatDailyBudgetFromDraft(draft)],
+                  ["30-day estimate", formatMonthlyEstimateFromDraft(draft)?.replace("Estimated 30-day media spend: ", "").replace(/\.$/, "") ?? "Not set"],
                   ["Offer", normalizedDraft.offer],
                   [
                     "Launch access",
@@ -1128,7 +1698,7 @@ export default function OnboardingPage() {
                   </>
                 ) : currentStep === "review" ? (
                   <>
-                    {canUseExistingLaunchAccess ? "Continue to creatives" : "Continue to checkout"}
+                    {canUseExistingLaunchAccess ? "Continue to creatives" : "Activate Pro"}
                     {canUseExistingLaunchAccess ? <ArrowRight className="size-4" /> : <BarChart3 className="size-4" />}
                   </>
                 ) : (

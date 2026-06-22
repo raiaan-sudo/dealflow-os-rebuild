@@ -258,6 +258,10 @@ export function isBillingAdminOverrideEnabled() {
   return process.env.ALLOW_BILLING_ADMIN_OVERRIDE === "true";
 }
 
+export function isBillingCheckoutSafeModeEnabled() {
+  return process.env.BILLING_CHECKOUT_SAFE_MODE === "true";
+}
+
 export function getQaBillingAcceptanceOverrideEmails() {
   return (process.env.QA_BILLING_ACCEPTANCE_OVERRIDE_EMAILS ?? "")
     .split(",")
@@ -399,12 +403,43 @@ export function isQaGenerationCreditOverrideEnabled() {
   return process.env.ALLOW_QA_GENERATION_CREDIT_OVERRIDE === "true";
 }
 
+export function isMetaOffboardingDeletionEnabled() {
+  return process.env.ENABLE_META_OFFBOARDING_DELETION === "true";
+}
+
+export function isCreativeStorageOffboardingDeletionEnabled() {
+  return process.env.ENABLE_CREATIVE_STORAGE_OFFBOARDING_DELETION === "true";
+}
+
+export function isGhlAutoProvisioningEnabled() {
+  return process.env.GHL_AUTO_PROVISIONING_ENABLED === "true";
+}
+
+export function isGhlContactWritesEnabled() {
+  return process.env.GHL_CONTACT_WRITES_ENABLED === "true";
+}
+
+export function isGhlOpportunityWritesEnabled() {
+  return process.env.GHL_OPPORTUNITY_WRITES_ENABLED === "true";
+}
+
+export function isGhlProvisioningWritesEnabled() {
+  return process.env.GHL_PROVISIONING_WRITES_ENABLED === "true";
+}
+
+export function isGhlWorkflowEnrollmentEnabled() {
+  return process.env.GHL_WORKFLOW_ENROLLMENT_ENABLED === "true";
+}
+
 export function getMetaEnv() {
   const appId = process.env.META_APP_ID;
   const appSecret = process.env.META_APP_SECRET;
   const redirectUri = process.env.META_REDIRECT_URI;
   const encryptionKey = process.env.META_TOKEN_ENCRYPTION_KEY;
-  const scopes = process.env.META_SCOPES ?? "ads_management,ads_read,business_management";
+  const apiVersion = process.env.META_GRAPH_API_VERSION?.trim() || "v23.0";
+  const scopes =
+    process.env.META_SCOPES ??
+    "ads_management,ads_read,business_management,pages_show_list,pages_read_engagement";
   const executionMode = process.env.META_EXECUTION_MODE ?? "sandbox";
 
   if (!appId || !appSecret || !redirectUri || !encryptionKey) {
@@ -416,6 +451,7 @@ export function getMetaEnv() {
     appSecret,
     redirectUri,
     encryptionKey,
+    apiVersion,
     scopes,
     executionMode: executionMode === "live" ? "live" : "sandbox",
   };
@@ -523,6 +559,16 @@ export function getStripeEnv() {
   const growthPriceId = useTestEnv
     ? process.env.STRIPE_TEST_GROWTH_PRICE_ID
     : process.env.STRIPE_GROWTH_PRICE_ID;
+  const performanceBasePriceId = useTestEnv
+    ? process.env.STRIPE_TEST_PERFORMANCE_BASE_PRICE_ID
+    : process.env.STRIPE_PERFORMANCE_BASE_PRICE_ID;
+  const performanceLeadPriceId = useTestEnv
+    ? process.env.STRIPE_TEST_PERFORMANCE_LEAD_PRICE_ID
+    : process.env.STRIPE_PERFORMANCE_LEAD_PRICE_ID;
+  const performanceLeadMeterEventName =
+    (useTestEnv
+      ? process.env.STRIPE_TEST_PERFORMANCE_LEAD_METER_EVENT_NAME
+      : process.env.STRIPE_PERFORMANCE_LEAD_METER_EVENT_NAME) || "dealflow_billable_lead";
 
   if (!secretKey || !webhookSecret || !starterPriceId || !proPriceId) {
     return null;
@@ -534,6 +580,9 @@ export function getStripeEnv() {
     starterPriceId,
     proPriceId,
     growthPriceId: growthPriceId ?? null,
+    performanceBasePriceId: performanceBasePriceId ?? null,
+    performanceLeadPriceId: performanceLeadPriceId ?? null,
+    performanceLeadMeterEventName,
   };
 }
 

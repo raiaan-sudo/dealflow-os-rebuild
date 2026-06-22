@@ -7,6 +7,10 @@ import {
   consumeCreditsForGeneration,
   refundCreditsForProviderUsageEvent,
 } from "@/lib/services/credit-service";
+import {
+  assertProviderGenerationSpendAllowed,
+  type ProviderGenerationOperation,
+} from "@/lib/services/provider-generation-spend-guard";
 
 export type SessionCostBucket =
   | "image_generation"
@@ -114,7 +118,17 @@ export async function consumeSessionCostBudget(params: {
 
   if (admin) {
     const provider = getProviderForBucket(params.bucket);
-    const operation = normalizedBucket;
+    const operation = normalizedBucket as ProviderGenerationOperation;
+    const spendGuard = await assertProviderGenerationSpendAllowed({
+      admin,
+      provider,
+      operation,
+      userId: params.userId,
+      organizationId: params.organizationId ?? null,
+      campaignId: params.campaignId ?? null,
+      estimatedCost: params.estimatedCost ?? null,
+    });
+    const effectiveLimit = Math.min(limit, spendGuard.dailyCountCap);
     const { data: reservationRaw, error: reservationError } = await (admin as any).rpc(
       "reserve_provider_usage",
       {
@@ -123,9 +137,9 @@ export async function consumeSessionCostBudget(params: {
         p_campaign_id: params.campaignId ?? null,
         p_provider: provider,
         p_operation: operation,
-        p_limit_count: limit,
+        p_limit_count: effectiveLimit,
         p_idempotency_key: params.idempotencyKey ?? null,
-        p_estimated_cost: params.estimatedCost ?? null,
+        p_estimated_cost: params.estimatedCost ?? spendGuard.estimatedCost,
       },
     );
 
@@ -153,14 +167,14 @@ export async function consumeSessionCostBudget(params: {
         userId: params.userId,
         organizationId: params.organizationId ?? null,
         campaignId: params.campaignId ?? null,
-        limit,
+        limit: effectiveLimit,
         currentCount: Number(reservation.current_count ?? 0),
       });
       throw new ApiError(
         429,
         normalizedBucket === "image_generation"
-          ? `This workspace already used the maximum ${limit} AI image generation${limit === 1 ? "" : "s"} for this campaign today.`
-          : `This workspace already used the maximum ${limit} AI video generation${limit === 1 ? "" : "s"} for this campaign today.`,
+          ? `This workspace already used the maximum ${effectiveLimit} AI image generation${effectiveLimit === 1 ? "" : "s"} for this campaign today.`
+          : `This workspace already used the maximum ${effectiveLimit} AI video generation${effectiveLimit === 1 ? "" : "s"} for this campaign today.`,
         "provider_usage_limit_reached",
       );
     }
@@ -242,6 +256,7 @@ export async function consumeSessionCostBudget(params: {
       currentCount: Number(reservation.current_count ?? 0),
       nextCount: Number(reservation.next_count ?? 1),
       limit,
+      hardCapLimit: effectiveLimit,
       eventId,
     };
   }

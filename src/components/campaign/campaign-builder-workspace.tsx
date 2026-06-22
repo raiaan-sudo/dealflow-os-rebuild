@@ -1856,18 +1856,29 @@ export function CampaignBuilderWorkspace({
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                Page direction
+                Funnel AI editor
               </p>
               <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
-                Describe how you want this page to feel
+                Tell DealFlow what to change before you save
               </h3>
               <p className="mt-2 text-sm leading-6 text-white/68">
-                Type requests like “make this black and red, cinematic, and more luxury” or “make the funnel feel more investor-grade and editorial.”
+                Type requests like “make this more luxury” or “tighten the CTA section.” Changes stay in this builder draft until you review and save them.
               </p>
             </div>
             <div className="rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
-              Guided help
+              Draft-safe
             </div>
+          </div>
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            {[
+              "Protect approved offer and CTA unless explicitly changed",
+              "Preserve compliance and consent copy",
+              "Preview the result before moving to Creative Studio",
+            ].map((item) => (
+              <div key={item} className="rounded-[18px] border border-white/8 bg-black/20 px-4 py-3 text-sm leading-6 text-white/70">
+                {item}
+              </div>
+            ))}
           </div>
           <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto]">
             <textarea

@@ -76,6 +76,7 @@ type PersistPlanParams = {
   userId: string;
   ownerId: string;
   payload: PersistedCampaignPlanPayload;
+  allowLegacySingleCampaignUpdate?: boolean;
 };
 
 type MinimalPersistParams = {
@@ -136,6 +137,11 @@ function getMismatchedCriticalFields(
   );
 }
 
+function requiresPublicSlugForLaunchStatus(status: string | null) {
+  const normalized = status?.trim().toLowerCase() ?? "";
+  return ["live", "paused", "launched", "launching", "published"].includes(normalized);
+}
+
 function getMissingCriticalFields(values: CampaignPlanCriticalFieldSnapshot) {
   const missing: string[] = [];
 
@@ -143,7 +149,7 @@ function getMissingCriticalFields(values: CampaignPlanCriticalFieldSnapshot) {
     missing.push("launch_status");
   }
 
-  if (!values.public_slug) {
+  if (requiresPublicSlugForLaunchStatus(values.launch_status) && !values.public_slug) {
     missing.push("public_slug");
   }
 
@@ -715,11 +721,19 @@ async function persistCampaignPlanRow(params: PersistPlanParams) {
 
   if (!insertResult.error && !insertResult.data) {
     const latestRow = await findLatestCampaignPlanRow();
-    return updateExistingCampaignPlan(latestRow.id);
+    if (latestRow.id === params.campaignId || params.allowLegacySingleCampaignUpdate) {
+      return updateExistingCampaignPlan(latestRow.id);
+    }
+
+    throw new Error("Campaign plan insert returned no row; refusing to update an existing campaign implicitly.");
   }
 
   if (!isLegacySingleCampaignConstraintError(insertResult.error)) {
     throw insertResult.error ?? new Error("DB write returned null");
+  }
+
+  if (!params.allowLegacySingleCampaignUpdate) {
+    throw new Error("Fresh campaign creation is blocked by a legacy single-campaign database constraint.");
   }
 
   const existingResult = (await client

@@ -14,8 +14,19 @@ type StaticCreativePreviewCardProps = {
   location?: string | null;
   imageUrl?: string | null;
   storageNormalized?: boolean | null;
+  appComposedFinal?: boolean | null;
+  qualityTier?: string | null;
+  compositionVersion?: string | null;
+  sourceBackgroundKind?: string | null;
+  sourceBackgroundProvider?: string | null;
+  sourceBackgroundAssetId?: string | null;
   imageGenerationState?: "generated" | "generating" | "unavailable" | "failed" | string | null;
   imageGenerationMessage?: string | null;
+  imageGenerationProvider?: string | null;
+  generationMethod?: string | null;
+  providerName?: string | null;
+  generationMode?: string | null;
+  assetRole?: string | null;
   imagePrompt?: string | null;
   imagePromptConfig?: {
     prompt?: string | null;
@@ -28,7 +39,26 @@ type StaticCreativePreviewCardProps = {
     accepted?: boolean | null;
     hardFailures?: string[] | null;
   } | null;
+  visualQualityGate?: {
+    accepted?: boolean | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+  } | null;
+  premiumQualityGate?: {
+    accepted?: boolean | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+  } | null;
   imageQa?: {
+    usable?: boolean | null;
+    decision?: "accept" | "reject" | "review" | string | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+    textDensity?: number | null;
+    layoutRisk?: number | null;
+    detectedTextSamples?: string[] | null;
+  } | null;
+  sourceImageQa?: {
     usable?: boolean | null;
     decision?: "accept" | "reject" | "review" | string | null;
     mode?: string | null;
@@ -47,9 +77,11 @@ type StaticCreativePreviewCardProps = {
     overlayLogic?: string[] | null;
   } | null;
   selectedCount?: number | null;
+  launchReady?: boolean;
   formatLabel?: string | null;
   className?: string;
   compact?: boolean;
+  showFullCreativeButton?: boolean;
 };
 
 export function StaticCreativePreviewCard({
@@ -61,19 +93,35 @@ export function StaticCreativePreviewCard({
   location,
   imageUrl,
   storageNormalized,
+  appComposedFinal,
+  qualityTier,
+  compositionVersion,
+  sourceBackgroundKind,
+  sourceBackgroundProvider,
+  sourceBackgroundAssetId,
   imageGenerationState,
   imageGenerationMessage,
+  imageGenerationProvider,
+  generationMethod,
+  providerName,
+  generationMode,
+  assetRole,
   imagePrompt,
   imagePromptConfig,
   overlayText,
   score,
   qualityGate,
+  visualQualityGate,
+  premiumQualityGate,
   imageQa,
+  sourceImageQa,
   visualPromptBrief,
   selectedCount,
+  launchReady,
   formatLabel,
   className,
   compact = false,
+  showFullCreativeButton = true,
 }: StaticCreativePreviewCardProps) {
   const safeHeadline = headline || offer || "Campaign creative";
   const safeCta = cta || "Learn More";
@@ -88,24 +136,39 @@ export function StaticCreativePreviewCard({
         cta={safeCta}
         headline={safeHeadline}
         imageGenerationMessage={imageGenerationMessage}
+        imageGenerationProvider={imageGenerationProvider}
         imageGenerationState={imageGenerationState}
+        generationMethod={generationMethod}
+        providerName={providerName}
+        generationMode={generationMode}
+        assetRole={assetRole}
         imagePrompt={imagePrompt}
         imagePromptConfig={imagePromptConfig}
         imageUrl={imageUrl}
         storageNormalized={storageNormalized}
+        appComposedFinal={appComposedFinal}
+        qualityTier={qualityTier}
+        compositionVersion={compositionVersion}
+        sourceBackgroundKind={sourceBackgroundKind}
+        sourceBackgroundProvider={sourceBackgroundProvider}
+        sourceBackgroundAssetId={sourceBackgroundAssetId}
         location={location}
         offer={safeOffer}
         overlayText={overlayText}
         primaryText={primaryText}
         qualityGate={qualityGate}
+        visualQualityGate={visualQualityGate}
+        premiumQualityGate={premiumQualityGate}
         imageQa={imageQa}
+        sourceImageQa={sourceImageQa}
         score={score}
         selectedCount={selectedCount}
-        showRawAssetState={!compact}
+        launchReady={launchReady}
+        showRawAssetState={false}
         visualPromptBrief={visualPromptBrief}
       />
       <div className={cn("space-y-4", compact ? "p-3" : "p-6")}>
-        {!compact ? (
+        {!compact && showFullCreativeButton ? (
           <button
             type="button"
             className="inline-flex items-center rounded-full border border-white/12 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-foreground transition hover:border-primary/40 hover:bg-primary/10"
@@ -135,13 +198,8 @@ export function StaticCreativePreviewCard({
           <p className="text-sm font-medium text-muted-foreground">CTA</p>
           <p className="mt-1 text-sm font-semibold text-foreground">{safeCta}</p>
         </div>
-        {!compact ? (
-          <p className="rounded-2xl border border-cyan-300/14 bg-cyan-300/[0.055] px-3 py-2 text-xs leading-5 text-cyan-100">
-            Full-resolution creative files stay inside DealFlow and are used through the launch workflow.
-          </p>
-        ) : null}
       </div>
-      {fullCreativeOpen ? (
+      {fullCreativeOpen && showFullCreativeButton ? (
         <div
           aria-modal="true"
           className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4"
@@ -173,20 +231,33 @@ export function StaticCreativePreviewCard({
                 cta={safeCta}
                 headline={safeHeadline}
                 imageGenerationMessage={imageGenerationMessage}
+                imageGenerationProvider={imageGenerationProvider}
                 imageGenerationState={imageGenerationState}
+                generationMethod={generationMethod}
+                providerName={providerName}
+                generationMode={generationMode}
+                assetRole={assetRole}
                 imagePrompt={imagePrompt}
                 imagePromptConfig={imagePromptConfig}
                 imageUrl={imageUrl}
                 storageNormalized={storageNormalized}
+                appComposedFinal={appComposedFinal}
+                qualityTier={qualityTier}
+                sourceBackgroundKind={sourceBackgroundKind}
+                sourceBackgroundProvider={sourceBackgroundProvider}
+                sourceBackgroundAssetId={sourceBackgroundAssetId}
                 location={location}
                 offer={safeOffer}
                 overlayText={overlayText}
                 primaryText={primaryText}
                 qualityGate={qualityGate}
+                visualQualityGate={visualQualityGate}
+                premiumQualityGate={premiumQualityGate}
                 imageQa={imageQa}
                 score={score}
                 selectedCount={selectedCount}
-                showRawAssetState
+                launchReady={launchReady}
+                showRawAssetState={false}
                 visualPromptBrief={visualPromptBrief}
               />
             </div>
@@ -201,6 +272,7 @@ type StaticCreativeSummaryCardProps = StaticCreativePreviewCardProps & {
   angleLabel?: string | null;
   selected?: boolean;
   index?: number;
+  prominent?: boolean;
 };
 
 export function StaticCreativeSummaryCard({
@@ -212,21 +284,37 @@ export function StaticCreativeSummaryCard({
   location,
   imageUrl,
   storageNormalized,
+  appComposedFinal,
+  qualityTier,
+  compositionVersion,
+  sourceBackgroundKind,
+  sourceBackgroundProvider,
+  sourceBackgroundAssetId,
   imageGenerationState,
   imageGenerationMessage,
+  imageGenerationProvider,
+  generationMethod,
+  providerName,
+  generationMode,
+  assetRole,
   imagePrompt,
   imagePromptConfig,
   overlayText,
   score,
   qualityGate,
+  visualQualityGate,
+  premiumQualityGate,
   imageQa,
+  sourceImageQa,
   visualPromptBrief,
   selectedCount,
+  launchReady,
   className,
   angleLabel,
   formatLabel,
   selected = false,
   index,
+  prominent = false,
 }: StaticCreativeSummaryCardProps) {
   const safeHeadline = headline || offer || "Campaign creative";
   const safeCta = cta || "Learn More";
@@ -236,6 +324,84 @@ export function StaticCreativeSummaryCard({
     visualPromptBrief?.mechanism ||
     visualPromptBrief?.proofStyle ||
     (category ? String(category).replaceAll("_", " ") : "Creative angle");
+
+  if (prominent) {
+    return (
+      <div
+        className={cn(
+          "min-w-0 overflow-hidden rounded-df-card border bg-black/18 transition",
+          selected ? "border-primary/35 bg-primary/[0.08]" : "border-white/10",
+          className,
+        )}
+      >
+        <StaticAdComposedPreview
+          category={category}
+          cta={safeCta}
+          headline={safeHeadline}
+          imageGenerationMessage={imageGenerationMessage}
+          imageGenerationProvider={imageGenerationProvider}
+          imageGenerationState={imageGenerationState}
+          generationMethod={generationMethod}
+          providerName={providerName}
+          generationMode={generationMode}
+          assetRole={assetRole}
+          imagePrompt={imagePrompt}
+          imagePromptConfig={imagePromptConfig}
+          imageUrl={imageUrl}
+          storageNormalized={storageNormalized}
+          appComposedFinal={appComposedFinal}
+          qualityTier={qualityTier}
+          compositionVersion={compositionVersion}
+          sourceBackgroundKind={sourceBackgroundKind}
+          sourceBackgroundProvider={sourceBackgroundProvider}
+          sourceBackgroundAssetId={sourceBackgroundAssetId}
+          location={location}
+          offer={safeOffer}
+          overlayText={overlayText}
+          primaryText={primaryText}
+          qualityGate={qualityGate}
+          visualQualityGate={visualQualityGate}
+          premiumQualityGate={premiumQualityGate}
+          imageQa={imageQa}
+          sourceImageQa={sourceImageQa}
+          score={score}
+          selectedCount={selectedCount}
+          launchReady={launchReady}
+          showRawAssetState={false}
+          visualPromptBrief={visualPromptBrief}
+        />
+        <div className="space-y-3 p-4">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              {typeof index === "number" ? `Creative ${index + 1}` : "Creative"}
+            </span>
+            <span className="min-w-0 truncate rounded-full border border-cyan-300/16 bg-cyan-300/[0.055] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100">
+              {resolvedAngle}
+            </span>
+            {typeof score === "number" ? (
+              <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-white/62">
+                {score.toFixed(1)}/10
+              </span>
+            ) : null}
+            {formatLabel ? (
+              <span className="rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-100">
+                {formatLabel}
+              </span>
+            ) : null}
+          </div>
+          <div className="min-w-0">
+            <h3 className="line-clamp-2 text-base font-semibold leading-6 text-foreground">
+              {safeHeadline}
+            </h3>
+            <p className="mt-2 line-clamp-3 text-sm leading-6 text-muted-foreground">
+              {primaryText || safeOffer}
+            </p>
+            <p className="mt-3 text-sm font-semibold text-primary">CTA: {safeCta}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -253,19 +419,34 @@ export function StaticCreativeSummaryCard({
           cta={safeCta}
           headline={safeHeadline}
           imageGenerationMessage={imageGenerationMessage}
+          imageGenerationProvider={imageGenerationProvider}
           imageGenerationState={imageGenerationState}
+          generationMethod={generationMethod}
+          providerName={providerName}
+          generationMode={generationMode}
+          assetRole={assetRole}
           imagePrompt={imagePrompt}
           imagePromptConfig={imagePromptConfig}
           imageUrl={imageUrl}
           storageNormalized={storageNormalized}
+          appComposedFinal={appComposedFinal}
+          qualityTier={qualityTier}
+          compositionVersion={compositionVersion}
+          sourceBackgroundKind={sourceBackgroundKind}
+          sourceBackgroundProvider={sourceBackgroundProvider}
+          sourceBackgroundAssetId={sourceBackgroundAssetId}
           location={location}
           offer={safeOffer}
           overlayText={overlayText}
           primaryText={primaryText}
           qualityGate={qualityGate}
+          visualQualityGate={visualQualityGate}
+          premiumQualityGate={premiumQualityGate}
           imageQa={imageQa}
+          sourceImageQa={sourceImageQa}
           score={score}
           selectedCount={selectedCount}
+          launchReady={launchReady}
           showRawAssetState={false}
           visualPromptBrief={visualPromptBrief}
         />

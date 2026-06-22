@@ -8,12 +8,41 @@ import { Card } from "@/components/ui/card";
 
 const WELCOME_STORAGE_KEY = "dealflow-welcome-transition-v1";
 
+function titleCaseBrandSlug(value: string | null) {
+  if (!value) {
+    return "DealFlow";
+  }
+
+  const smallWords = new Set(["a", "an", "and", "for", "in", "of", "on", "the", "to"]);
+  const words = value
+    .replace(/[^a-z0-9]+/gi, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (words.length === 0) {
+    return "DealFlow";
+  }
+
+  return words
+    .map((word, index) => {
+      const normalized = word.toLowerCase();
+      if (index > 0 && smallWords.has(normalized)) {
+        return normalized;
+      }
+
+      return `${normalized.slice(0, 1).toUpperCase()}${normalized.slice(1)}`;
+    })
+    .join(" ");
+}
+
 export default function WelcomePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [progress, setProgress] = useState(0);
   const [ready, setReady] = useState(false);
   const forceWelcome = searchParams.get("fresh") === "1" || searchParams.get("fromAuth") === "1";
+  const brandName = titleCaseBrandSlug(searchParams.get("partner"));
 
   const steps = useMemo(
     () => [
@@ -64,10 +93,10 @@ export default function WelcomePage() {
               First campaign
             </div>
             <h1 className="mt-5 max-w-3xl text-4xl font-semibold tracking-[-0.065em] text-white sm:text-6xl">
-              Welcome to DealFlow
+              Welcome to {brandName}
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-white/64 sm:text-lg">
-              Let’s build your first real estate campaign. DealFlow will recommend the strategy, show the preview, and keep the next click obvious.
+              Let’s build your first real estate campaign. {brandName} will recommend the strategy, show the preview, and keep the next click obvious.
             </p>
             <div className="mt-7 h-2 overflow-hidden rounded-full bg-white/10">
               <div
@@ -94,7 +123,7 @@ export default function WelcomePage() {
               Start guided onboarding
             </h2>
             <p className="mt-3 text-sm leading-6 text-white/58">
-              One decision at a time: campaign type, market, inventory, offer, agent, plan, then preview.
+              One decision at a time: campaign type, market, inventory, audience, budget, setup, offer, agent, plan, then preview.
             </p>
             <Button
               className="mt-5 w-full"

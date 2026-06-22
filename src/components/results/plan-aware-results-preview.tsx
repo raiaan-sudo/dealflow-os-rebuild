@@ -27,7 +27,7 @@ import { Card } from "@/components/ui/card";
 import { BILLING_PLANS, type BillingPlanTier } from "@/lib/billing/plans";
 import { cn } from "@/lib/utils";
 
-type SupportedPlanTier = Extract<BillingPlanTier, "starter" | "pro">;
+type SupportedPlanTier = Extract<BillingPlanTier, "performance" | "starter" | "pro">;
 
 type PlanAwareResultsPreviewProps = {
   planTier: SupportedPlanTier;
@@ -247,7 +247,7 @@ function CampaignHeader({ mode }: { mode: "guided" | "autonomous" }) {
                   Autonomy watchlist
                 </p>
                 <p className="mt-2 text-sm leading-6 text-white/66">
-                  DealFlow watches the thresholds that would require intervention.
+                  The system watches the thresholds that would require intervention.
                 </p>
               </div>
             </div>

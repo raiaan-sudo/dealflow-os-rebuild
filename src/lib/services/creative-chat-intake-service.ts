@@ -1,5 +1,11 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { Json } from "@/lib/supabase/types";
+import {
+  creativeLanguageInstructions,
+  creativeLanguageLabels,
+  type CreativeIntakeTargetLanguage,
+} from "@/lib/services/creative-intake-language";
 import {
   mergeCampaignPlanDocument,
   readCampaignPlanDocument,
@@ -7,6 +13,26 @@ import {
 } from "@/lib/services/campaign-plan-document";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import type { CampaignIntent } from "@/lib/campaign-intent";
+import {
+  buildCreativeUgcScriptDraft,
+  normalizeCreativeOfferTitle,
+  validateCreativeUgcScriptDraft,
+  type CreativeUgcScriptDraft,
+  type CreativeUgcScriptValidation,
+} from "@/lib/services/creative-ugc-script-service";
+import {
+  CREATIVE_INTAKE_LOCKED_CTA,
+  CREATIVE_INTAKE_LOCKED_STATIC_STYLE,
+  CREATIVE_INTAKE_LOCKED_STATIC_STYLE_LABEL,
+  CREATIVE_INTAKE_LOCKED_TARGET_DURATION_SECONDS,
+} from "@/lib/services/creative-intake-constants";
+
+export {
+  CREATIVE_INTAKE_LOCKED_CTA,
+  CREATIVE_INTAKE_LOCKED_STATIC_STYLE,
+  CREATIVE_INTAKE_LOCKED_STATIC_STYLE_LABEL,
+  CREATIVE_INTAKE_LOCKED_TARGET_DURATION_SECONDS,
+} from "@/lib/services/creative-intake-constants";
 
 export const CREATIVE_CHAT_INTAKE_VERSION = 1;
 export const CREATIVE_CHAT_INTAKE_PLAN_KEY = "creative_chat_intake";
@@ -31,6 +57,7 @@ export type CreativeIntakeBrand =
   | "royal_lepage"
   | "exp"
   | "keller_williams"
+  | "century_21"
   | "custom";
 
 export type CreativeIntakeStyle =
@@ -38,21 +65,28 @@ export type CreativeIntakeStyle =
   | "bold_poster_ad"
   | "luxury"
   | "local_expert"
-  | "simple_direct_response";
+  | "simple_direct_response"
+  | "clean_local_expert"
+  | "bold_offer_focused"
+  | "premium_home_sale_guide";
 
 export type CreativeIntakeApprovalStatus = "draft" | "approved" | "revision_requested";
 export type CreativeIntakeOutputMode = "finished_ad" | "background_only";
 export type CreativeIntakeGenerationPhase = "static" | "ugc_video" | "static_and_ugc";
 
 export type CreativeIntakeAnswers = {
+  targetLanguage?: CreativeIntakeTargetLanguage;
   targetAudience?: CreativeIntakeTargetAudience;
   customAudience?: string | null;
   offer?: CreativeIntakeOffer;
   customOffer?: string | null;
+  offerTitle?: string | null;
+  offerMechanism?: string | null;
   brokerageBrand?: CreativeIntakeBrand;
   customBrokerageBrand?: string | null;
   market?: string | null;
   creativeStyle?: CreativeIntakeStyle;
+  staticStyle?: "clean_local_expert" | "bold_offer_focused" | "premium_home_sale_guide" | null;
   constraints?: string | null;
   cta?: string | null;
   platformPlacement?: string | null;
@@ -72,6 +106,11 @@ export type CreativeIntakeAnswers = {
   mustAvoid?: string | null;
   selectedUgcConceptId?: string | null;
   ugcDefaultStyleAccepted?: boolean;
+  ugcApprovedScript?: string | null;
+  ugcShotList?: string[] | null;
+  ugcOnScreenText?: string[] | null;
+  ugcScriptApprovedAt?: string | null;
+  ugcScriptVersion?: string | null;
 };
 
 export type CreativeIntakeUgcConcept = {
@@ -84,21 +123,55 @@ export type CreativeIntakeUgcConcept = {
   cta: string;
 };
 
+export type CreativeIntakeComplianceExplanation = {
+  field: "offer" | "cta" | "constraints";
+  originalInput: string;
+  blockedPhrase: string;
+  reason: string;
+  suggestedReplacement: string;
+};
+
 export type CreativeIntakeBrief = {
+  targetLanguage: CreativeIntakeTargetLanguage;
+  targetLanguageLabel: string;
+  languageInstruction: string;
   targetAudience: string;
   offer: string;
+  offerTitle: string;
+  offerMechanism: string;
+  campaignType?: string | null;
   market: string;
   brokerageBrand: string;
+  customBrokerageBrand?: string | null;
   propertyType: string;
   creativeStyle: string;
+  staticStyle: string;
   platformPlacement: string;
   cta: string;
   mustUseCopy: string[];
   complianceNotes: string[];
   softenedClaims: string[];
+  complianceExplanations: CreativeIntakeComplianceExplanation[];
   outputMode: CreativeIntakeOutputMode;
   generationPhase: CreativeIntakeGenerationPhase;
+  creativeBriefApprovedAt?: string | null;
+  revisionNumber?: number | null;
+  briefHash: string;
+  staticBriefHash: string;
+  offerHash: string;
+  ctaHash: string;
+  brandHash: string;
+  ugcScriptHash: string | null;
   ugcStyleBrief?: {
+    resolvedCampaignType?: string | null;
+    scriptAngle?: string | null;
+    sourceContextHash?: string | null;
+    campaignTypeHash?: string | null;
+    audienceHash?: string | null;
+    marketHash?: string | null;
+    offerHash?: string | null;
+    leadMagnetHash?: string | null;
+    ctaHash?: string | null;
     targetDurationSeconds: number;
     creatorPersona: string;
     hookAngle: string;
@@ -113,6 +186,10 @@ export type CreativeIntakeBrief = {
     defaultStyleAccepted: boolean;
     selectedConceptId: string | null;
     concepts: CreativeIntakeUgcConcept[];
+    approvedScript: CreativeUgcScriptDraft;
+    scriptValidation: CreativeUgcScriptValidation;
+    scriptApprovedAt: string | null;
+    scriptVersion: string;
   };
   completion: {
     complete: boolean;
@@ -132,15 +209,26 @@ export type CreativeIntakeGenerationContext = {
   version: number;
   conversationId: string;
   campaignId: string;
+  targetLanguage?: CreativeIntakeTargetLanguage;
   revisionNumber: number;
   approvedAt: string | null;
   outputMode: CreativeIntakeOutputMode;
   generationPhase: CreativeIntakeGenerationPhase;
   requiredOffer?: string | null;
+  requiredOfferTitle?: string | null;
   requiredCta?: string | null;
   market?: string | null;
   targetAudience?: string | null;
   brokerageBrand?: string | null;
+  campaignType?: string | null;
+  propertyType?: string | null;
+  staticStyle?: string | null;
+  briefHash?: string | null;
+  staticBriefHash?: string | null;
+  offerHash?: string | null;
+  ctaHash?: string | null;
+  brandHash?: string | null;
+  ugcScriptHash?: string | null;
   ugcStyleBrief?: CreativeIntakeBrief["ugcStyleBrief"] | null;
   promptVersion: CreativeIntakePromptVersion;
 };
@@ -210,6 +298,7 @@ const brandLabels: Record<CreativeIntakeBrand, string> = {
   royal_lepage: "Royal LePage",
   exp: "eXp",
   keller_williams: "Keller Williams",
+  century_21: "Century 21",
   custom: "Custom brokerage brand",
 };
 
@@ -219,17 +308,24 @@ const styleLabels: Record<CreativeIntakeStyle, string> = {
   luxury: "Luxury real estate",
   local_expert: "Local expert",
   simple_direct_response: "Simple direct-response",
+  clean_local_expert: "Clean Local Expert",
+  bold_offer_focused: "Bold Offer Focused",
+  premium_home_sale_guide: "Premium Home Sale Guide",
 };
 
 export const creativeIntakeAnswersSchema = z.object({
+  targetLanguage: z.enum(["en", "fr", "es"]).optional(),
   targetAudience: z.enum(["sellers", "buyers", "first_time_buyers", "investors", "expired_listings", "custom"]).optional(),
   customAudience: z.string().max(220).nullable().optional(),
   offer: z.enum(["free_home_valuation", "buyer_consultation", "credit_preapproval_help", "listing_consultation", "custom"]).optional(),
   customOffer: z.string().max(260).nullable().optional(),
-  brokerageBrand: z.enum(["remax", "royal_lepage", "exp", "keller_williams", "custom"]).optional(),
+  offerTitle: z.string().max(120).nullable().optional(),
+  offerMechanism: z.string().max(320).nullable().optional(),
+  brokerageBrand: z.enum(["remax", "royal_lepage", "exp", "keller_williams", "century_21", "custom"]).optional(),
   customBrokerageBrand: z.string().max(160).nullable().optional(),
   market: z.string().max(160).nullable().optional(),
-  creativeStyle: z.enum(["ugc", "bold_poster_ad", "luxury", "local_expert", "simple_direct_response"]).optional(),
+  creativeStyle: z.enum(["ugc", "bold_poster_ad", "luxury", "local_expert", "simple_direct_response", "clean_local_expert", "bold_offer_focused", "premium_home_sale_guide"]).optional(),
+  staticStyle: z.enum(["clean_local_expert", "bold_offer_focused", "premium_home_sale_guide"]).nullable().optional(),
   constraints: z.string().max(800).nullable().optional(),
   cta: z.string().max(80).nullable().optional(),
   platformPlacement: z.string().max(120).nullable().optional(),
@@ -249,6 +345,11 @@ export const creativeIntakeAnswersSchema = z.object({
   mustAvoid: z.string().max(800).nullable().optional(),
   selectedUgcConceptId: z.string().max(120).nullable().optional(),
   ugcDefaultStyleAccepted: z.boolean().optional(),
+  ugcApprovedScript: z.string().max(1600).nullable().optional(),
+  ugcShotList: z.array(z.string().max(180)).max(8).nullable().optional(),
+  ugcOnScreenText: z.array(z.string().max(120)).max(6).nullable().optional(),
+  ugcScriptApprovedAt: z.string().max(80).nullable().optional(),
+  ugcScriptVersion: z.string().max(120).nullable().optional(),
 });
 
 export function creativeIntakeIncludesStatic(phase?: CreativeIntakeGenerationPhase | string | null) {
@@ -261,6 +362,136 @@ export function creativeIntakeIncludesUgcVideo(phase?: CreativeIntakeGenerationP
 
 function safeText(value: unknown) {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+}
+
+function withLockedCreativeCta(answers: CreativeIntakeAnswers): CreativeIntakeAnswers {
+  return {
+    ...answers,
+    cta: CREATIVE_INTAKE_LOCKED_CTA,
+    creativeStyle: CREATIVE_INTAKE_LOCKED_STATIC_STYLE,
+    staticStyle: CREATIVE_INTAKE_LOCKED_STATIC_STYLE,
+    targetDurationSeconds: CREATIVE_INTAKE_LOCKED_TARGET_DURATION_SECONDS,
+  };
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
+      .join(",")}}`;
+  }
+
+  return JSON.stringify(value ?? null);
+}
+
+function sha256Short(value: unknown) {
+  return createHash("sha256")
+    .update(stableStringify(value))
+    .digest("hex")
+    .slice(0, 24);
+}
+
+function buildCreativeBriefHashSet(params: {
+  campaignType?: string | null;
+  targetLanguage?: CreativeIntakeTargetLanguage;
+  offerTitle: string;
+  cta: string;
+  targetAudience: string;
+  market: string;
+  brokerageBrand: string;
+  propertyType: string;
+  staticStyle: string;
+  ugcStyleBrief?: CreativeIntakeBrief["ugcStyleBrief"] | null;
+}) {
+  const ugcScriptHash = params.ugcStyleBrief
+    ? sha256Short({
+        lines: params.ugcStyleBrief.approvedScript.lines,
+        shotList: params.ugcStyleBrief.approvedScript.shotList,
+        onScreenText: params.ugcStyleBrief.approvedScript.onScreenText,
+        version: params.ugcStyleBrief.scriptVersion,
+        sourceContextHash: params.ugcStyleBrief.sourceContextHash ?? params.ugcStyleBrief.approvedScript.contextHash ?? null,
+        resolvedCampaignType: params.ugcStyleBrief.resolvedCampaignType ?? params.ugcStyleBrief.approvedScript.campaignType ?? null,
+      })
+    : null;
+  const offerHash = sha256Short({ offerTitle: params.offerTitle });
+  const ctaHash = sha256Short({ cta: params.cta });
+  const brandHash = sha256Short({ brokerageBrand: params.brokerageBrand });
+  const staticBriefHash = sha256Short({
+    targetLanguage: params.targetLanguage ?? "en",
+    offerTitle: params.offerTitle,
+    cta: params.cta,
+    targetAudience: params.targetAudience,
+    market: params.market,
+    brokerageBrand: params.brokerageBrand,
+    propertyType: params.propertyType,
+    staticStyle: params.staticStyle,
+  });
+  const briefHash = sha256Short({
+    campaignType: params.campaignType ?? null,
+    targetLanguage: params.targetLanguage ?? "en",
+    offerTitle: params.offerTitle,
+    cta: params.cta,
+    targetAudience: params.targetAudience,
+    market: params.market,
+    brokerageBrand: params.brokerageBrand,
+    propertyType: params.propertyType,
+    staticStyle: params.staticStyle,
+    ugcTargetLength: params.ugcStyleBrief?.targetDurationSeconds ?? null,
+    ugcCreatorPersona: params.ugcStyleBrief?.creatorPersona ?? null,
+    ugcHookAngle: params.ugcStyleBrief?.hookAngle ?? null,
+    ugcVisualStyle: params.ugcStyleBrief?.visualStyle ?? null,
+    ugcSourceContextHash: params.ugcStyleBrief?.sourceContextHash ?? params.ugcStyleBrief?.approvedScript.contextHash ?? null,
+    ugcScriptHash,
+  });
+
+  return {
+    briefHash,
+    staticBriefHash,
+    offerHash,
+    ctaHash,
+    brandHash,
+    ugcScriptHash,
+  };
+}
+
+export function hydrateCreativeIntakeBriefHashes(
+  brief: CreativeIntakeBrief,
+  fallback?: { campaignType?: string | null; revisionNumber?: number | null; approvedAt?: string | null },
+): CreativeIntakeBrief {
+  const staticStyle = brief.staticStyle || brief.creativeStyle;
+  const hashes = buildCreativeBriefHashSet({
+    campaignType: brief.campaignType ?? fallback?.campaignType ?? null,
+    targetLanguage: brief.targetLanguage ?? "en",
+    offerTitle: brief.offerTitle || brief.offer,
+    cta: brief.cta,
+    targetAudience: brief.targetAudience,
+    market: brief.market,
+    brokerageBrand: brief.brokerageBrand,
+    propertyType: brief.propertyType,
+    staticStyle,
+    ugcStyleBrief: brief.ugcStyleBrief ?? null,
+  });
+
+  return {
+    ...brief,
+    targetLanguage: brief.targetLanguage ?? "en",
+    targetLanguageLabel: brief.targetLanguageLabel ?? creativeLanguageLabels[brief.targetLanguage ?? "en"],
+    languageInstruction: brief.languageInstruction ?? creativeLanguageInstructions[brief.targetLanguage ?? "en"],
+    staticStyle,
+    briefHash: brief.briefHash || hashes.briefHash,
+    staticBriefHash: brief.staticBriefHash || hashes.staticBriefHash,
+    offerHash: brief.offerHash || hashes.offerHash,
+    ctaHash: brief.ctaHash || hashes.ctaHash,
+    brandHash: brief.brandHash || hashes.brandHash,
+    ugcScriptHash: brief.ugcScriptHash || hashes.ugcScriptHash,
+    creativeBriefApprovedAt: brief.creativeBriefApprovedAt ?? fallback?.approvedAt ?? null,
+    revisionNumber: brief.revisionNumber ?? fallback?.revisionNumber ?? null,
+  };
 }
 
 function nowIso() {
@@ -295,6 +526,10 @@ function resolveAnswerLabel<T extends string>(
   return safeText(fallback) || "";
 }
 
+function resolveCreativeTargetLanguage(value: CreativeIntakeAnswers["targetLanguage"]): CreativeIntakeTargetLanguage {
+  return value === "fr" || value === "es" ? value : "en";
+}
+
 function splitConstraints(value: string) {
   return value
     .split(/[.;\n]+/)
@@ -311,33 +546,10 @@ function splitReferenceLines(value: string) {
     .slice(0, 5);
 }
 
-function hasTimingContext(value: string) {
-  return /\b(today|now|daily|weekly|this week|this month|month|monthly|year|days?|weeks?|30|60|90|202\d|completion|deadline|before|early)\b/i.test(value);
-}
-
-function hasLowRiskAccessContext(value: string) {
-  return /\b(preview|review|private access|early access|may qualify|qualify|no obligation)\b/i.test(value);
-}
-
-function addFinishedAdTimingContext(
-  value: string,
-  fallback: string,
-  options?: { ensureLowRiskAccess?: boolean },
-) {
-  let text = safeText(value);
-  const timing = safeText(fallback) || "this week";
-
-  if (!text) {
-    return text;
-  }
-
-  if (options?.ensureLowRiskAccess && !hasLowRiskAccessContext(text)) {
-    text = `Preview ${text.charAt(0).toLowerCase()}${text.slice(1)}`;
-  }
-
-  return hasTimingContext(text)
-    ? text
-    : `${text} ${timing}`.replace(/\s+/g, " ").trim();
+function splitMultilineText(value: unknown) {
+  return typeof value === "string"
+    ? value.split(/\n+/).map((line) => safeText(line)).filter(Boolean)
+    : [];
 }
 
 export function buildUgcConceptOptions(params: {
@@ -406,49 +618,117 @@ export function buildUgcConceptOptions(params: {
 }
 
 export function softenRegulatedClaims(value: string) {
+  const originalInput = safeText(value);
   let text = safeText(value);
   const softenedClaims: string[] = [];
+  const explanations: Omit<CreativeIntakeComplianceExplanation, "field">[] = [];
 
   if (!text) {
-    return { text, softenedClaims };
+    return { text, softenedClaims, explanations };
   }
 
-  const replacements: Array<[RegExp, string, string]> = [
+  const replacements: Array<[RegExp, string | ((match: RegExpExecArray) => string), string, string]> = [
     [
       /\bguaranteed\s+approval\s+for\s+([0-9]{3}\+?)\s+credit\b/gi,
-      "options may be available for buyers with $1 credit",
+      (match) => `Home Options for ${match[1]} Credit`,
       "Softened credit approval guarantee.",
+      "Guaranteed approval language is not allowed for housing or financing-related ads.",
     ],
     [
       /\bapproved\s+with\s+([0-9]{3}\+?)\s+credit\b/gi,
-      "see if you may qualify with $1 credit",
+      (match) => `Home Options for ${match[1]} Credit`,
       "Softened credit approval claim.",
+      "Approval claims must be framed as options or qualification review, not promised outcomes.",
     ],
-    [
-      /\bguaranteed\s+approval\b/gi,
-      "see what you may qualify for",
-      "Softened guaranteed approval language.",
-    ],
-  ];
+	    [
+	      /\bguaranteed\s+approval\b/gi,
+	      "see what you may qualify for",
+	      "Softened guaranteed approval language.",
+	      "Guaranteed approval language is not allowed for housing or financing-related ads.",
+	    ],
+	    [
+	      /\bguarantee(?:d)?\s+(?:to\s+)?sell\s+(?:your\s+)?home\s+(?:in|within)\s+(?:the\s+next\s+)?([0-9]{1,3})\s+days?\b/gi,
+	      (match) => `${match[1]}-Day Home Sale Plan`,
+	      "Softened guaranteed sale claim.",
+	      "Guaranteed sale language is not allowed; the offer can describe a sale plan without promising the outcome.",
+	    ],
+	    [
+	      /\bguaranteed\s+sale\b/gi,
+	      "home sale plan",
+	      "Softened guaranteed sale claim.",
+	      "Guaranteed sale language is not allowed; the offer can describe a sale plan without promising the outcome.",
+	    ],
+	  ];
 
-  for (const [pattern, replacement, note] of replacements) {
-    if (pattern.test(text)) {
-      text = text.replace(pattern, replacement);
+  for (const [pattern, replacement, note, reason] of replacements) {
+    pattern.lastIndex = 0;
+    const matches = [...text.matchAll(pattern)];
+    if (matches.length > 0) {
+      const firstMatch = matches[0];
+      const suggestedReplacement =
+        typeof replacement === "function" ? replacement(firstMatch) : replacement;
+      text = text.replace(pattern, (...args) => {
+        const match = args.slice(0, -2) as string[];
+        return typeof replacement === "function"
+          ? replacement(match as unknown as RegExpExecArray)
+          : replacement;
+      });
       softenedClaims.push(note);
+      explanations.push({
+        originalInput,
+        blockedPhrase: firstMatch[0],
+        reason,
+        suggestedReplacement,
+      });
     }
   }
 
-  return { text, softenedClaims };
+  return { text, softenedClaims, explanations };
+}
+
+function resolveLockedUgcHookAngle(params: {
+  campaignType?: CampaignIntent | string | null;
+  targetAudience?: string | null;
+}) {
+  const campaignType = safeText(params.campaignType).toLowerCase();
+  const targetAudience = safeText(params.targetAudience).toLowerCase();
+
+  if (campaignType === "buyer" || /\bbuyer|home search|homes\b/.test(targetAudience)) {
+    return "Early Access";
+  }
+
+  if (campaignType === "investor" || /\binvestor|cash-flow|off-market\b/.test(targetAudience)) {
+    return "Off-Market Deal Flow";
+  }
+
+  if (campaignType === "commercial" || /\bcommercial|business|tenant|owner-user\b/.test(targetAudience)) {
+    return "Site Shortlist";
+  }
+
+  if (campaignType === "mixed") {
+    return "Single Primary CTA";
+  }
+
+  return "Buyer Demand";
 }
 
 export function buildCreativeIntakeBrief(
   answers: CreativeIntakeAnswers,
   defaults: CreativeIntakeCampaignDefaults,
 ): CreativeIntakeBrief {
+  const targetLanguage = resolveCreativeTargetLanguage(answers.targetLanguage);
+  const targetLanguageLabel = creativeLanguageLabels[targetLanguage];
+  const languageInstruction = creativeLanguageInstructions[targetLanguage];
   const offerRaw = resolveAnswerLabel(answers.offer, offerLabels, answers.customOffer, defaults.offer);
-  const ctaRaw = safeText(answers.cta) || safeText(defaults.cta) || "See My Options";
+  const offerTitle = normalizeCreativeOfferTitle({
+    value: safeText(answers.offerTitle) || offerRaw,
+    campaignType: defaults.campaignType,
+    audience: defaults.audience,
+  });
+  const offerMechanism = safeText(answers.offerMechanism) || safeText(offerRaw);
+  const ctaRaw = CREATIVE_INTAKE_LOCKED_CTA;
   const constraints = safeText(answers.constraints);
-  const softenedOffer = softenRegulatedClaims(offerRaw);
+  const softenedOffer = softenRegulatedClaims(offerTitle);
   const softenedCta = softenRegulatedClaims(ctaRaw);
   const softenedConstraints = softenRegulatedClaims(constraints);
   const market = safeText(answers.market) || safeText(defaults.market);
@@ -464,30 +744,71 @@ export function buildCreativeIntakeBrief(
     answers.customBrokerageBrand,
     defaults.brand,
   );
-  const creativeStyle = answers.creativeStyle ? styleLabels[answers.creativeStyle] : "";
+  const creativeStyle = CREATIVE_INTAKE_LOCKED_STATIC_STYLE_LABEL;
+  const staticStyle = creativeStyle;
   const propertyType = safeText(answers.propertyType) || safeText(defaults.propertyType) || "real estate";
   const platformPlacement = safeText(answers.platformPlacement) || "Meta feed and story placements";
   const outputMode = answers.outputMode === "background_only" ? "background_only" : "finished_ad";
   const generationPhase = answers.generationPhase === "ugc_video" || answers.generationPhase === "static_and_ugc"
     ? answers.generationPhase
     : "static";
-  const targetDurationSeconds =
-    typeof answers.targetDurationSeconds === "number" && Number.isFinite(answers.targetDurationSeconds)
-      ? Math.min(30, Math.max(15, Math.round(answers.targetDurationSeconds)))
-      : 20;
-  const offer = outputMode === "finished_ad"
-    ? addFinishedAdTimingContext(softenedOffer.text, "this week", { ensureLowRiskAccess: true })
-    : softenedOffer.text;
-  const cta = outputMode === "finished_ad"
-    ? addFinishedAdTimingContext(softenedCta.text, "this week")
-    : softenedCta.text;
+  const targetDurationSeconds = CREATIVE_INTAKE_LOCKED_TARGET_DURATION_SECONDS;
+  const offer = softenedOffer.text;
+  const cta = softenedCta.text;
   const ugcReferenceExamples = splitReferenceLines(answers.referenceExamples ?? "");
   const ugcDefaultStyleAccepted = answers.ugcDefaultStyleAccepted === true;
   const selectedUgcConceptId = safeText(answers.selectedUgcConceptId) || null;
   const ugcPersona = safeText(answers.creatorPersona) || "trusted local real estate agent or relatable buyer guide";
-  const ugcHookAngle = safeText(answers.hookAngle) || "first two seconds call out the buyer pain directly";
+  const ugcHookAngle = resolveLockedUgcHookAngle({
+    campaignType: defaults.campaignType,
+    targetAudience,
+  });
   const ugcPacing = safeText(answers.pacing) || "fast hook, clear middle, calm CTA";
   const ugcCaptionOverlayStyle = safeText(answers.captionOverlayStyle) || "large readable captions only when useful";
+  const draftScript = buildCreativeUgcScriptDraft({
+    campaignType: defaults.campaignType,
+    audience: targetAudience,
+    market,
+    offerTitle: offer,
+    offerMechanism,
+    cta,
+    propertyType,
+    targetDurationSeconds,
+    creatorPersona: ugcPersona,
+    hookAngle: ugcHookAngle,
+    visualStyle: safeText(answers.visualStyle) || "Talking-head with local captions",
+  });
+  const approvedScriptLines = splitMultilineText(answers.ugcApprovedScript).length > 0
+    ? splitMultilineText(answers.ugcApprovedScript)
+    : draftScript.lines;
+  const approvedScript: CreativeUgcScriptDraft = {
+    ...draftScript,
+    lines: approvedScriptLines,
+    hook: approvedScriptLines[0] || draftScript.hook,
+    problem: approvedScriptLines[1] || draftScript.problem,
+    offer: approvedScriptLines[2] || draftScript.offer,
+    mechanism: approvedScriptLines[3] || draftScript.mechanism,
+    proof: approvedScriptLines[4] || draftScript.proof,
+    cta: approvedScriptLines[5] || draftScript.cta,
+    body: approvedScriptLines.slice(1, -1).join(" ") || draftScript.body,
+    fullScript: approvedScriptLines.join(" ") || draftScript.fullScript,
+    shotList: Array.isArray(answers.ugcShotList) && answers.ugcShotList.length > 0
+      ? answers.ugcShotList.map((line) => safeText(line)).filter(Boolean).slice(0, 8)
+      : draftScript.shotList,
+    onScreenText: Array.isArray(answers.ugcOnScreenText) && answers.ugcOnScreenText.length > 0
+      ? answers.ugcOnScreenText.map((line) => safeText(line)).filter(Boolean).slice(0, 6)
+      : draftScript.onScreenText,
+    version: safeText(answers.ugcScriptVersion) || draftScript.version,
+  };
+  const scriptValidation = validateCreativeUgcScriptDraft({
+    script: approvedScript,
+    campaignType: defaults.campaignType,
+    audience: targetAudience,
+    market,
+    offerTitle: offer,
+    cta,
+    propertyType,
+  });
   const ugcConcepts = buildUgcConceptOptions({
     market,
     targetAudience,
@@ -500,6 +821,15 @@ export function buildCreativeIntakeBrief(
   });
   const ugcStyleBrief = creativeIntakeIncludesUgcVideo(generationPhase)
     ? {
+        resolvedCampaignType: approvedScript.campaignType,
+        scriptAngle: approvedScript.scriptAngle,
+        sourceContextHash: approvedScript.contextHash,
+        campaignTypeHash: sha256Short({ campaignType: defaults.campaignType ?? null }),
+        audienceHash: sha256Short({ targetAudience }),
+        marketHash: sha256Short({ market }),
+        offerHash: sha256Short({ offer }),
+        leadMagnetHash: sha256Short({ leadMagnet: offer }),
+        ctaHash: sha256Short({ cta }),
         targetDurationSeconds,
         creatorPersona: ugcPersona,
         hookAngle: ugcHookAngle,
@@ -514,6 +844,10 @@ export function buildCreativeIntakeBrief(
         defaultStyleAccepted: ugcDefaultStyleAccepted,
         selectedConceptId: selectedUgcConceptId,
         concepts: ugcConcepts,
+        approvedScript,
+        scriptValidation,
+        scriptApprovedAt: safeText(answers.ugcScriptApprovedAt) || null,
+        scriptVersion: approvedScript.version,
       }
     : undefined;
   const missing = [
@@ -522,21 +856,46 @@ export function buildCreativeIntakeBrief(
     market ? null : "market",
     brokerageBrand ? null : "brokerage_brand",
     creativeStyle ? null : "creative_style",
-    creativeIntakeIncludesUgcVideo(generationPhase) && ugcReferenceExamples.length === 0 && !ugcDefaultStyleAccepted
-      ? "ugc_reference_or_default_style_acceptance"
+    creativeIntakeIncludesUgcVideo(generationPhase) && !scriptValidation.accepted
+      ? "ugc_script_quality"
       : null,
-    creativeIntakeIncludesUgcVideo(generationPhase) && !ugcConcepts.some((concept) => concept.id === selectedUgcConceptId)
-      ? "selected_ugc_concept"
+    creativeIntakeIncludesUgcVideo(generationPhase) && !safeText(answers.ugcScriptApprovedAt)
+      ? "ugc_script_approval"
       : null,
   ].filter((item): item is string => Boolean(item));
-
-  return {
+  const hashes = buildCreativeBriefHashSet({
+    campaignType: defaults.campaignType ?? null,
+    targetLanguage,
+    offerTitle: offer,
+    cta,
     targetAudience,
-    offer,
     market,
     brokerageBrand,
     propertyType,
+    staticStyle,
+    ugcStyleBrief,
+  });
+  const complianceExplanations: CreativeIntakeComplianceExplanation[] = [
+    ...softenedOffer.explanations.map((item) => ({ ...item, field: "offer" as const })),
+    ...softenedCta.explanations.map((item) => ({ ...item, field: "cta" as const })),
+    ...softenedConstraints.explanations.map((item) => ({ ...item, field: "constraints" as const })),
+  ];
+
+  return {
+    targetLanguage,
+    targetLanguageLabel,
+    languageInstruction,
+    targetAudience,
+    offer,
+    offerTitle: offer,
+    offerMechanism,
+    campaignType: safeText(defaults.campaignType),
+    market,
+    brokerageBrand,
+    customBrokerageBrand: answers.brokerageBrand === "custom" ? safeText(answers.customBrokerageBrand) : null,
+    propertyType,
     creativeStyle,
+    staticStyle,
     platformPlacement,
     cta,
     mustUseCopy: splitConstraints(softenedConstraints.text).filter((item) => !/disclaim|not guarantee|subject to/i.test(item)),
@@ -551,8 +910,17 @@ export function buildCreativeIntakeBrief(
       ...softenedCta.softenedClaims,
       ...softenedConstraints.softenedClaims,
     ],
+    complianceExplanations,
     outputMode,
     generationPhase,
+    creativeBriefApprovedAt: null,
+    revisionNumber: null,
+    briefHash: hashes.briefHash,
+    staticBriefHash: hashes.staticBriefHash,
+    offerHash: hashes.offerHash,
+    ctaHash: hashes.ctaHash,
+    brandHash: hashes.brandHash,
+    ugcScriptHash: hashes.ugcScriptHash,
     ugcStyleBrief,
     completion: {
       complete: missing.length === 0,
@@ -565,18 +933,18 @@ export function buildCreativeIntakePromptVersion(
   brief: CreativeIntakeBrief,
   revisionNumber: number,
 ): CreativeIntakePromptVersion {
-  const selectedUgcConcept = brief.ugcStyleBrief?.concepts.find(
-    (concept) => concept.id === brief.ugcStyleBrief?.selectedConceptId,
-  ) ?? null;
+  const approvedUgcScript = brief.ugcStyleBrief?.approvedScript ?? null;
   const ugcPromptSection = brief.ugcStyleBrief
     ? [
       "MARKETING STUDIO AI UGC VIDEO BRIEF.",
-      "Create multiple customer-ready UGC video concepts before rendering. Do not spend provider credits until the user selects a concept and explicitly starts rendering.",
+      "Render the approved customer-reviewed UGC script and shot list. Do not invent a new offer, rewrite the campaign strategy, or create alternate concepts.",
       `Target duration: ${brief.ugcStyleBrief.targetDurationSeconds} seconds, within the 15-30 second launch-quality range. Do not create a 5-second sample, teaser, reused stock clip, or placeholder.`,
-      "Structure every concept with a strong first 2-second hook, a clear buyer or seller pain point, a simple mechanism, a believable creator/agent POV, and a direct CTA.",
+      "Keep the first two seconds focused on the approved hook, then follow the approved problem, mechanism, proof, offer, and CTA sequence.",
+      `Language contract: ${brief.languageInstruction}`,
       `Market/city context: ${brief.market}.`,
       `Audience: ${brief.targetAudience}.`,
-      `Offer: ${brief.offer}.`,
+      `Offer title: ${brief.offerTitle}.`,
+      brief.offerMechanism ? `Internal mechanism context: ${brief.offerMechanism}.` : null,
       `CTA: ${brief.cta}.`,
       `Creator/agent persona: ${brief.ugcStyleBrief.creatorPersona}.`,
       `Hook angle: ${brief.ugcStyleBrief.hookAngle}.`,
@@ -584,9 +952,9 @@ export function buildCreativeIntakePromptVersion(
       `Pacing: ${brief.ugcStyleBrief.pacing}.`,
       `Camera style: ${brief.ugcStyleBrief.cameraStyle}.`,
       `Caption/overlay style: ${brief.ugcStyleBrief.captionOverlayStyle}.`,
-      selectedUgcConcept
-        ? `Selected pre-render concept: ${selectedUgcConcept.title}. Hook: ${selectedUgcConcept.hook}. Script: ${selectedUgcConcept.script}. Shot list: ${selectedUgcConcept.shotList.join(" / ")}. Overlay plan: ${selectedUgcConcept.overlayPlan}.`
-        : "No UGC concept is selected; keep the brief in revision and do not render.",
+      approvedUgcScript
+        ? `Approved script lines: ${approvedUgcScript.lines.join(" / ")}. Approved shot list: ${approvedUgcScript.shotList.join(" / ")}. On-screen text: ${approvedUgcScript.onScreenText.join(" / ")}. Script version: ${brief.ugcStyleBrief.scriptVersion}.`
+        : "No approved UGC script exists; keep the brief in revision and do not render.",
       brief.ugcStyleBrief.referenceExamples.length > 0
         ? `Reference examples: ${brief.ugcStyleBrief.referenceExamples.join(" | ")}.`
         : "Reference examples: user accepted the default native social UGC style.",
@@ -599,28 +967,30 @@ export function buildCreativeIntakePromptVersion(
       brief.ugcStyleBrief.mustAvoid.length > 0
         ? `Must-avoid constraints: ${brief.ugcStyleBrief.mustAvoid.join("; ")}.`
         : null,
-      "Reject generic creator output, awkward pacing, tiny overlays, mismatched CTAs, fake dashboards, fake listing sheets, unsupported guarantees, fake testimonials, invented logos, and anything that looks like a sample clip.",
+      "Reject repetitive script delivery, generic creator output, awkward pacing, tiny overlays, mismatched CTAs, fake dashboards, fake listing sheets, unsupported guarantees, fake testimonials, invented logos, and anything that looks like a sample clip.",
     ].filter(Boolean).join(" ")
     : "";
   const staticPromptSection = brief.outputMode === "finished_ad"
     ? [
       "MARKETING STUDIO FINISHED AD CREATIVE.",
       "Create ONE polished finished real-estate social ad poster, not a chart, not a dashboard, not a listing sheet, not a web/app UI screenshot.",
-      "Use a clean premium poster layout with this exact hierarchy: short headline, clear timed offer, one concise proof/support line, and one clear CTA button or CTA bar.",
+	      "Use a clean premium poster layout with this exact hierarchy: short headline, exact approved offer, one concise proof/support line, and one clear CTA button or CTA bar.",
+      `Language contract: ${brief.languageInstruction}`,
       "Media-buyer reference layout: one dominant hook area, one proof area, strong negative space, and a clear CTA-safe zone.",
       "Keep all text large and mobile-feed readable. Use generous safe margins on all sides, no tiny text, no cropped CTA, no overlapping panels, and no text over busy image detail.",
       `Market/city text that should appear: ${brief.market}.`,
       `Audience text context: ${brief.targetAudience}.`,
-      `Required offer text that must be readable in the final raster: ${brief.offer}.`,
+      `Required offer text that must be readable in the final raster: ${brief.offerTitle}.`,
       `Required CTA text that must be readable in the final raster: ${brief.cta}.`,
-      `Brokerage or brand direction: ${brief.brokerageBrand}.`,
+      `Brokerage or brand direction: ${brief.brokerageBrand}. Brand/logo text is optional; if exact brand rendering is uncertain, omit it. If brand text is used, spell it exactly and do not invent or approximate logos.`,
       `Property focus: ${brief.propertyType}.`,
       `Creative style: ${brief.creativeStyle}.`,
+      `Approved creative brief hash: ${brief.staticBriefHash}.`,
       `Placement: ${brief.platformPlacement}.`,
       brief.mustUseCopy.length > 0 ? `Must-use copy: ${brief.mustUseCopy.join("; ")}.` : null,
       "The final image should look like a high-performing real estate Facebook/Instagram ad made in a marketing studio, with no spreadsheet/table/grid/data-panel visuals.",
       "Use clean typography, realistic real estate imagery, clear text hierarchy, and a direct-response CTA. Keep text short enough to be legible at mobile feed size.",
-      "Do not create gibberish, pseudo text, misspell the brokerage, invent fake MLS/listing sheets, show dashboards, charts, tables, app UI, landing pages, data panels, tiny text, unreadable pricing cards, or broken text.",
+      "Do not create gibberish, pseudo text, misspell visible brokerage text, invent fake MLS/listing sheets, show dashboards, charts, tables, app UI, landing pages, data panels, tiny text, unreadable pricing cards, or broken text.",
       "Do not invent logos, guaranteed-approval claims, guaranteed financing, or any compliance-sensitive promise beyond the required offer text.",
       brief.complianceNotes.length > 0
         ? `Compliance guidance: ${brief.complianceNotes.join("; ")}.`
@@ -629,6 +999,7 @@ export function buildCreativeIntakePromptVersion(
     : [
     "TEXT-FREE BACKGROUND ASSET ONLY.",
     "Create realistic premium real-estate source photography for DealFlow to compose into a finished ad later.",
+    `Language contract for any unavoidable contextual signage or later DealFlow copy: ${brief.languageInstruction}`,
     `Market: ${brief.market}.`,
     `Audience: ${brief.targetAudience}.`,
     `Offer context: ${brief.offer}.`,
@@ -680,15 +1051,15 @@ export function buildCreativeIntakePromptVersion(
     negativePrompt,
     sanitizedPreview: [
       `${brief.creativeStyle} creative for ${brief.targetAudience} in ${brief.market}`,
-      `Offer: ${brief.offer}`,
+      `Language: ${brief.targetLanguageLabel}`,
+      `Offer: ${brief.offerTitle}`,
       `Brand direction: ${brief.brokerageBrand}`,
       brief.outputMode === "finished_ad" ? `CTA in raster: ${brief.cta}` : `CTA DealFlow will render: ${brief.cta}`,
+      `Brief hash: ${brief.staticBriefHash}`,
       creativeIntakeIncludesUgcVideo(brief.generationPhase) && brief.ugcStyleBrief
         ? `UGC duration: ${brief.ugcStyleBrief.targetDurationSeconds}s`
         : null,
-      selectedUgcConcept ? `Selected UGC concept: ${selectedUgcConcept.title}` : null,
-      `Mode: ${brief.outputMode}`,
-      `Phase: ${brief.generationPhase}`,
+      approvedUgcScript ? `Approved UGC script: ${brief.ugcStyleBrief?.scriptVersion ?? approvedUgcScript.version}` : null,
     ].join(" | "),
     createdAt: nowIso(),
   };
@@ -699,7 +1070,7 @@ export function createCreativeIntakeState(params: {
   defaults: CreativeIntakeCampaignDefaults;
   answers?: CreativeIntakeAnswers;
 }): CreativeChatIntakeState {
-  const answers = creativeIntakeAnswersSchema.parse(params.answers ?? {});
+  const answers = withLockedCreativeCta(creativeIntakeAnswersSchema.parse(params.answers ?? {}));
   const brief = buildCreativeIntakeBrief(answers, params.defaults);
   const timestamp = nowIso();
 
@@ -723,7 +1094,7 @@ function buildMessagesFromAnswers(answers: CreativeIntakeAnswers): CreativeIntak
   const timestamp = nowIso();
   const entries = [
     ["Who are you targeting?", resolveAnswerLabel(answers.targetAudience, targetAudienceLabels, answers.customAudience)],
-    ["What offer are you promoting?", resolveAnswerLabel(answers.offer, offerLabels, answers.customOffer)],
+    ["What offer are you promoting?", safeText(answers.offerTitle) || resolveAnswerLabel(answers.offer, offerLabels, answers.customOffer)],
     ["What brokerage or brand should this match?", resolveAnswerLabel(answers.brokerageBrand, brandLabels, answers.customBrokerageBrand)],
     ["What city or market is this for?", safeText(answers.market)],
     ["What creative style do you want?", answers.creativeStyle ? styleLabels[answers.creativeStyle] : ""],
@@ -735,7 +1106,7 @@ function buildMessagesFromAnswers(answers: CreativeIntakeAnswers): CreativeIntak
           ? "AI UGC video ads"
           : "Static ads",
     ],
-    ["Which UGC concept is selected?", safeText(answers.selectedUgcConceptId ?? "")],
+    ["Is the UGC script approved?", safeText(answers.ugcScriptApprovedAt) ? "UGC script approved" : ""],
     ["Any must-have copy or compliance constraints?", safeText(answers.constraints)],
   ].filter(([, answer]) => Boolean(answer));
 
@@ -769,7 +1140,20 @@ export function readCreativeChatIntakeFromPlan(planValue: unknown): CreativeChat
     return null;
   }
 
-  return raw as CreativeChatIntakeState;
+  const intake = raw as CreativeChatIntakeState;
+
+  if (!intake.brief) {
+    return intake;
+  }
+
+  return {
+    ...intake,
+    brief: hydrateCreativeIntakeBriefHashes(intake.brief, {
+      campaignType: intake.brief.campaignType ?? null,
+      revisionNumber: intake.revisionNumber,
+      approvedAt: intake.approvedAt ?? null,
+    }),
+  };
 }
 
 export function isCreativeIntakeApproved(planValue: unknown) {
@@ -797,11 +1181,22 @@ export function getApprovedCreativeIntakeGenerationContext(
     approvedAt: intake.approvedAt ?? null,
     outputMode: intake.brief.outputMode,
     generationPhase: intake.brief.generationPhase,
+    targetLanguage: intake.brief.targetLanguage ?? "en",
     requiredOffer: intake.brief.offer,
+    requiredOfferTitle: intake.brief.offerTitle,
     requiredCta: intake.brief.cta,
     market: intake.brief.market,
     targetAudience: intake.brief.targetAudience,
     brokerageBrand: intake.brief.brokerageBrand,
+    campaignType: intake.brief.campaignType ?? null,
+    propertyType: intake.brief.propertyType,
+    staticStyle: intake.brief.staticStyle ?? intake.brief.creativeStyle,
+    briefHash: intake.brief.briefHash ?? null,
+    staticBriefHash: intake.brief.staticBriefHash ?? null,
+    offerHash: intake.brief.offerHash ?? null,
+    ctaHash: intake.brief.ctaHash ?? null,
+    brandHash: intake.brief.brandHash ?? null,
+    ugcScriptHash: intake.brief.ugcScriptHash ?? null,
     ugcStyleBrief: intake.brief.ugcStyleBrief ?? null,
     promptVersion: intake.promptVersion,
   };
@@ -819,8 +1214,13 @@ export function hasSameCreativeIntakeGenerationContext(
     left.revisionNumber === right.revisionNumber &&
     left.outputMode === right.outputMode &&
     left.generationPhase === right.generationPhase &&
+    (left.targetLanguage ?? "en") === (right.targetLanguage ?? "en") &&
     (left.requiredOffer ?? null) === (right.requiredOffer ?? null) &&
+    (left.requiredOfferTitle ?? null) === (right.requiredOfferTitle ?? null) &&
     (left.requiredCta ?? null) === (right.requiredCta ?? null) &&
+    (left.staticBriefHash ?? null) === (right.staticBriefHash ?? null) &&
+    (left.briefHash ?? null) === (right.briefHash ?? null) &&
+    (left.ugcScriptHash ?? null) === (right.ugcScriptHash ?? null) &&
     JSON.stringify(left.ugcStyleBrief ?? null) === JSON.stringify(right.ugcStyleBrief ?? null) &&
     left.promptVersion.revisionNumber === right.promptVersion.revisionNumber &&
     left.promptVersion.createdAt === right.promptVersion.createdAt &&
@@ -872,18 +1272,23 @@ export async function persistCreativeChatIntake(params: {
   }
 
   const existing = readCreativeChatIntakeFromPlan(data.plan);
-  const mergedAnswers = {
+  const mergedAnswers = withLockedCreativeCta({
     ...(existing?.answers ?? {}),
     ...(params.answers ?? {}),
-  };
+  });
   const brief = buildCreativeIntakeBrief(mergedAnswers, params.defaults);
   const revisionNumber = params.action === "revise"
     ? (existing?.revisionNumber ?? 0) + 1
     : existing?.revisionNumber ?? 0;
   const timestamp = nowIso();
   const approved = params.action === "approve";
+  const persistedBrief: CreativeIntakeBrief = {
+    ...brief,
+    revisionNumber,
+    creativeBriefApprovedAt: approved ? timestamp : existing?.brief?.creativeBriefApprovedAt ?? null,
+  };
   const promptVersion = approved
-    ? buildCreativeIntakePromptVersion(brief, revisionNumber)
+    ? buildCreativeIntakePromptVersion(persistedBrief, revisionNumber)
     : params.action === "revise"
       ? null
       : existing?.promptVersion ?? null;
@@ -925,11 +1330,11 @@ export async function persistCreativeChatIntake(params: {
     approvalStatus: approved ? "approved" : params.action === "revise" ? "revision_requested" : "draft",
     revisionNumber,
     answers: mergedAnswers,
-    brief,
+    brief: persistedBrief,
     promptVersion,
     messages: [
       ...(existing?.messages ?? []),
-      ...buildMessagesFromAnswers(params.answers ?? {}),
+      ...buildMessagesFromAnswers(withLockedCreativeCta(params.answers ?? {})),
       ...revisionMessages,
     ].slice(-80),
     previousRevisions,
@@ -938,8 +1343,8 @@ export async function persistCreativeChatIntake(params: {
     approvedAt: approved ? timestamp : null,
   };
 
-  if (approved && !brief.completion.complete) {
-    throw new Error(`Creative brief is incomplete: ${brief.completion.missing.join(", ")}`);
+  if (approved && !persistedBrief.completion.complete) {
+    throw new Error(`Creative brief is incomplete: ${persistedBrief.completion.missing.join(", ")}`);
   }
 
   await persistCampaignPlanDocumentUpdate({

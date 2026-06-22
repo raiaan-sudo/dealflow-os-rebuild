@@ -4,13 +4,13 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
 export function CheckoutButton({
-  planTier = "starter",
+  planTier = "pro",
   campaignId = null,
   label = "Activate to launch",
   className,
   buttonClassName,
 }: {
-  planTier?: "starter" | "pro" | "growth";
+  planTier?: "performance" | "starter" | "pro" | "growth";
   campaignId?: string | null;
   label?: string;
   className?: string;

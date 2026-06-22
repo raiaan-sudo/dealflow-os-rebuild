@@ -12,26 +12,46 @@ function read(relativePath) {
 
 const creditService = read("src/lib/services/credit-service.ts");
 const creditTopUpButton = read("src/components/billing/credit-top-up-button.tsx");
+const generationCreditTopUpPanel = read("src/components/billing/generation-credit-top-up-panel.tsx");
+const staticAdsRoute = read("src/app/api/campaigns/[id]/generate-static-ads/route.ts");
+const videoRoute = read("src/app/api/campaigns/[id]/generate-video/route.ts");
+const creativeWizard = read("src/app/(app)/build/creatives/creative-wizard.tsx");
 const settingsPage = read("src/app/(app)/settings/page.tsx");
 const billingService = read("src/lib/services/billing-service.ts");
 const envExample = read(".env.example");
 const internalLaunchMonitor = read("src/lib/services/internal-launch-monitor.ts");
+const providerSpendGuard = read("src/lib/services/provider-generation-spend-guard.ts");
 const observabilityRunbook = read("docs/observability-alerting-runbook.md");
 const productionRunbook = read("docs/production-100-client-runbook.md");
 
 assert.match(
   creditService,
-  /CREDIT_TOP_UP_MINIMUM_CENTS\s*=\s*2_000/,
-  "credit service must enforce the $20 minimum top-up",
+  /CREDIT_TOP_UP_MINIMUM_CENTS\s*=\s*1_000/,
+  "credit service must enforce the $10 minimum top-up",
+);
+assert.match(
+  creditService,
+  /DEFAULT_GENERATION_CREDIT_OVERDRAFT_LIMIT_CENTS\s*=\s*0/,
+  "normal generation credit policy must be prepaid by default",
+);
+assert.match(
+  creditService,
+  /GENERATION_CREDIT_OVERDRAFT_LIMIT_CENTS/,
+  "operator-configured generation credit overdraft remains available as an explicit env override",
 );
 assert.match(
   creditTopUpButton,
-  /amountCents\s*=\s*2000/,
-  "credit top-up button fallback must use the $20 minimum",
+  /amountCents\s*=\s*1000/,
+  "credit top-up button fallback must use the $10 minimum",
 );
 assert.ok(
-  settingsPage.includes('formattedMinimumTopUp ?? "$20.00"'),
-  "settings fallback copy must show $20.00",
+  generationCreditTopUpPanel.includes("CreditTopUpButton") &&
+    generationCreditTopUpPanel.includes("Add $10.00 credits"),
+  "generation surfaces must show a compact top-up action when credits are insufficient",
+);
+assert.ok(
+  settingsPage.includes('formattedMinimumTopUp ?? "$10.00"'),
+  "settings fallback copy must show $10.00",
 );
 assert.ok(
   billingService.includes("CREDIT_TOP_UP_MINIMUM_CENTS"),
@@ -81,6 +101,37 @@ assert.match(
 );
 assert.match(
   creditService,
+  /assertGenerationCreditsAvailableForUser/,
+  "generation routes must have a non-mutating credit preflight before queueing paid work",
+);
+assert.ok(
+  staticAdsRoute.includes("assertGenerationCreditsAvailableForUser") &&
+    staticAdsRoute.includes('bucket: "image_generation"'),
+  "static generation route preflights image credits before queueing provider work",
+);
+assert.ok(
+  staticAdsRoute.indexOf("await assertGenerationCreditsAvailableForUser") <
+    staticAdsRoute.indexOf("const activeJobs = await listSystemJobs"),
+  "static generation route must check current credit balance before reusing a queued render job",
+);
+assert.ok(
+  videoRoute.includes("assertGenerationCreditsAvailableForUser") &&
+    videoRoute.includes('bucket: "video_generation"'),
+  "video generation route preflights video credits before queueing provider work",
+);
+assert.ok(
+  creativeWizard.includes("GenerationCreditTopUpPanel") &&
+    creativeWizard.includes("credits_insufficient"),
+  "Creative Studio renders the top-up panel for insufficient generation-credit responses",
+);
+assert.ok(
+  creativeWizard.includes("generationCreditOverrideActive") &&
+    creativeWizard.includes("hasPersistedCreditBlocker") &&
+    creativeWizard.includes("!generationCreditOverrideActive && hasPersistedCreditBlocker"),
+  "Creative Studio must suppress stale persisted credit-blocker UI when a scoped generation-credit override is active",
+);
+assert.match(
+  creditService,
   /getQaGenerationCreditOverrideForUser\({[\s\S]*amountCents: amount,[\s\S]*}\)/,
   "QA generation credit override evaluation uses the actual requested reservation amount",
 );
@@ -106,6 +157,21 @@ assert.ok(
   "provider quota watch must have a quota pressure threshold",
 );
 assert.ok(
+  internalLaunchMonitor.includes("loadProviderSpendGateIssues") &&
+    internalLaunchMonitor.includes("Paid provider generation enabled without complete hard caps"),
+  "operator issue source must warn when live provider envs are enabled without complete hard caps",
+);
+assert.ok(
+  providerSpendGuard.includes("PROVIDER_GENERATION_HARD_CAPS_ENABLED") &&
+    providerSpendGuard.includes("PROVIDER_GENERATION_DAILY_COST_CAP_CENTS") &&
+    providerSpendGuard.includes("PROVIDER_GENERATION_KILL_SWITCH"),
+  "provider generation must have explicit hard caps and a kill switch",
+);
+assert.ok(
+  providerSpendGuard.includes("provider_generation_daily_cost_cap_reached"),
+  "provider generation must block before paid calls when the daily cost cap is reached",
+);
+assert.ok(
   internalLaunchMonitor.includes("CREDIT_TOP_UP_MINIMUM_CENTS"),
   "operator credit watch must use the canonical top-up minimum",
 );
@@ -115,8 +181,8 @@ assert.ok(
   "observability docs must explain provider cost/quota issue source",
 );
 assert.ok(
-  productionRunbook.includes("$20.00"),
-  "production runbook must document the $20 credit minimum",
+  productionRunbook.includes("$10.00"),
+  "production runbook must document the $10 credit minimum",
 );
 assert.ok(
   envExample.includes("ALLOW_QA_GENERATION_CREDIT_OVERRIDE=false"),
@@ -133,6 +199,12 @@ assert.ok(
 assert.ok(
   envExample.includes("QA_GENERATION_CREDIT_OVERRIDE_MAX_CENTS="),
   "QA generation credit override max cents guard is documented",
+);
+assert.ok(
+  envExample.includes("PROVIDER_GENERATION_HARD_CAPS_ENABLED=false") &&
+    envExample.includes("PROVIDER_GENERATION_KILL_SWITCH=true") &&
+    envExample.includes("PROVIDER_GENERATION_DAILY_COST_CAP_CENTS="),
+  "provider generation hard cap envs are documented disabled by default",
 );
 
 console.log("PASS provider cost and credit watch assertions");

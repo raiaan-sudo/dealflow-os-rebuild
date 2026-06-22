@@ -5,6 +5,7 @@ import {
 } from "@/lib/ai/creative-brief";
 import type { ImagePromptConfig } from "@/lib/types/creative-assets";
 import type { ImageProviderUsageContext } from "@/lib/ai/providers";
+import { getMediaGenerationProvider } from "@/lib/env";
 import {
   selectAvatarProfile,
   selectVoiceProfile,
@@ -33,6 +34,13 @@ import {
   evaluateStaticVisualAssetDecision,
   type StaticCreativeImageQaResult,
 } from "@/lib/services/static-creative-visual-qa";
+import {
+  markInstantFallbackStaticAssets,
+  type CreativeAssetLifecycleStatus,
+  type CreativeAssetQaStatus,
+  type CreativeAssetSource,
+  type FallbackLaunchQaResult,
+} from "@/lib/services/creative-asset-status";
 import {
   evaluateCreativeQuality,
   evaluateOfferQuality,
@@ -72,19 +80,59 @@ export type CreativeFormat = "talking_head" | "ugc" | "montage";
 export type StaticCreativeAsset = {
   id: string;
   angle: "guarantee" | "urgency" | "contrarian" | "opportunity" | "authority";
+  location?: string | null;
+  audience?: string | null;
+  creativeAssetSource?: CreativeAssetSource | string | null;
+  creativeAssetStatus?: CreativeAssetLifecycleStatus | string | null;
+  creativeAssetQaStatus?: CreativeAssetQaStatus | string | null;
+  fallbackUsed?: boolean | null;
+  durationMs?: number | null;
+  errorReason?: string | null;
+  storagePath?: string | null;
+  fallbackLaunchQa?: FallbackLaunchQaResult | null;
   imageUrl: string;
   storageNormalized?: boolean | null;
+  appComposedFinal?: boolean | null;
+  qualityTier?: string | null;
+  compositionVersion?: string | null;
+  sourceBackgroundKind?: string | null;
+  sourceBackgroundProvider?: string | null;
+  sourceBackgroundAssetId?: string | null;
   imageGenerationState: "generated" | "generating" | "unavailable" | "failed";
   imageGenerationMessage: string | null;
   imageGenerationModel: string | null;
   imageGenerationProvider?: string | null;
+  generationMethod?: string | null;
+  providerName?: string | null;
+  generationMode?: string | null;
+  assetRole?: string | null;
   visualConcept: string;
   imagePrompt: string;
   imagePromptConfig: ImagePromptConfig | null;
   preferredImageModel: OpenAiImageModel;
   visualPromptBrief: StaticVisualPromptBrief | null;
   imageQa?: StaticCreativeImageQaResult | null;
+  sourceImageQa?: StaticCreativeImageQaResult | null;
+  visualQualityGate?: {
+    accepted?: boolean | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+  } | null;
+  premiumQualityGate?: {
+    accepted?: boolean | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+  } | null;
   creativeIntake?: CreativeIntakeGenerationContext | null;
+  briefHash?: string | null;
+  staticBriefHash?: string | null;
+  offerHash?: string | null;
+  ctaHash?: string | null;
+  brandHash?: string | null;
+  briefRevisionNumber?: number | null;
+  approvedOfferTitle?: string | null;
+  approvedCta?: string | null;
+  approvedBrand?: string | null;
   scoreBreakdown: CreativeScoreBreakdown | null;
   hook: string;
   overlayText: string;
@@ -126,6 +174,10 @@ export type VideoCreativeAsset = {
   promptSource?: string | null;
   promptHash?: string | null;
   scriptHash?: string | null;
+  briefHash?: string | null;
+  ugcScriptHash?: string | null;
+  sourceContextHash?: string | null;
+  briefRevisionNumber?: number | null;
   campaignSpecificContext?: {
     campaignId?: string | null;
     creativeId?: string | null;
@@ -535,7 +587,24 @@ function buildStructuredPrimaryText(params: {
   outcome: string;
   cta: string;
 }) {
-  return `${shortSentence(params.hook)} ${sentenceCase(params.problem)} ${sentenceCase(params.outcome)} ${params.cta}.`;
+  const parts = [
+    shortSentence(params.hook),
+    sentenceCase(params.problem),
+    sentenceCase(params.outcome),
+    `${shortSentence(params.cta)}.`,
+  ]
+    .map((part) => cleanCreativeCopy(part))
+    .filter(Boolean);
+  const seen = new Set<string>();
+
+  return parts
+    .filter((part) => {
+      const key = normalizeForOfferMatch(part);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join(" ");
 }
 
 function normalizeForOfferMatch(value: string) {
@@ -588,6 +657,10 @@ function shouldPreserveExplicitOffer(
   return isTimeboxedSellerOffer(offer, category) || /\b(guarantee|guaranteed|off-market|cash[- ]?flow|deposit|private)\b/i.test(offer);
 }
 
+function isOffMarketOffer(offer: string) {
+  return /\boff[-\s]?market\b|private\s+(listing|inventory|property)|distressed\s+sale/i.test(offer);
+}
+
 function buildOfferAlignedCta(
   offer: string,
   category: CampaignCreativeStrategy["campaignCategory"],
@@ -601,8 +674,8 @@ function buildOfferAlignedCta(
     return "Check My Sale Plan";
   }
 
-  if (/\boff-market\b/i.test(offer)) {
-    return "See Off-Market Options";
+  if (isOffMarketOffer(offer)) {
+    return "Get Off-Market Access";
   }
 
   if (/\bcash[- ]?flow|yield|roi\b/i.test(offer)) {
@@ -610,6 +683,58 @@ function buildOfferAlignedCta(
   }
 
   return fallback;
+}
+
+const COMMON_AUTOGENERATED_CTA_PHRASES = [
+  "Check My 90-Day Sale Plan",
+  "Check Your Home Value",
+  "Get My Home List",
+  "See Matching Homes",
+  "Check My Options",
+  "Start My Buyer Plan",
+  "Get Off-Market Access",
+  "Review The Deal Plan",
+  "Check My Sale Plan",
+  "View Homes",
+  "Get Started",
+];
+
+function normalizeCtaPhrase(value: string) {
+  return safeText(value).toLowerCase().replace(/[^\w\s]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripUnapprovedCtaPhrases(value: string, approvedCta: string) {
+  let next = value;
+  const normalizedApproved = normalizeCtaPhrase(approvedCta);
+
+  for (const phrase of COMMON_AUTOGENERATED_CTA_PHRASES) {
+    if (normalizeCtaPhrase(phrase) === normalizedApproved) {
+      continue;
+    }
+
+    next = next.replace(new RegExp(`\\b${escapeRegExp(phrase)}\\b`, "gi"), " ");
+  }
+
+  return safeText(next).replace(/\s+/g, " ");
+}
+
+function replaceVerboseApprovedOfferReference(value: string, fullOffer: string | null | undefined, offerTitle: string | null | undefined) {
+  const title = safeText(offerTitle);
+  const full = safeText(fullOffer);
+
+  if (!value || !title || !full || normalizeForOfferMatch(full) === normalizeForOfferMatch(title)) {
+    return value;
+  }
+
+  return value
+    .replace(new RegExp(escapeRegExp(full), "gi"), title)
+    .replace(/\bDelivered through\b[^.?!]*(?:[.?!]|$)/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function buildOfferLedHeadline(params: {
@@ -629,6 +754,10 @@ function buildOfferLedHeadline(params: {
   }
 
   if (shouldPreserveExplicitOffer(cleanOffer, params.category)) {
+    if (params.category === "buyer" && isOffMarketOffer(cleanOffer)) {
+      return `Access off-market properties in ${params.market}`;
+    }
+
     return `${trimWords(cleanOffer, 8)} for ${params.market}`;
   }
 
@@ -645,10 +774,14 @@ function buildOfferLedHook(params: {
   const cleanOffer = shortSentence(params.offer);
 
   if (isTimeboxedSellerOffer(cleanOffer, params.category)) {
-    return `${params.market} sellers: review the ${cleanOffer.toLowerCase()} before you list.`;
+    return `${params.market} homeowners: check your 90-day sale plan before you list.`;
   }
 
   if (shouldPreserveExplicitOffer(cleanOffer, params.category)) {
+    if (params.category === "buyer" && isOffMarketOffer(cleanOffer)) {
+      return `${params.market} buyers: get access to off-market properties before they hit public search.`;
+    }
+
     return `${params.audience} in ${params.market}: compare your next move against ${cleanOffer}.`;
   }
 
@@ -674,11 +807,15 @@ function buildOfferLedPrimaryText(params: {
 
   const problem =
     params.category === "seller"
-      ? `Most homeowners wait until they are already listing to discover pricing gaps, timing risk, and weak demand signals.`
+      ? `Most homeowners do not see pricing gaps, timing risk, or weak demand signals until the listing is already live.`
+      : params.category === "buyer" && isOffMarketOffer(cleanOffer)
+        ? `Most buyers only see the same public listings after competition has already moved in.`
       : `Most ${params.audience} wait until the obvious move is already crowded.`;
   const outcome =
     params.category === "seller"
-      ? `${sentenceCase(params.mechanism)} keeps ${cleanOffer} at the center with ${params.proof.toLowerCase()} before you commit to the wrong listing path.`
+      ? `${sentenceCase(params.mechanism)} gives you ${params.proof.toLowerCase()} around ${cleanOffer} before you commit to the wrong listing path.`
+      : params.category === "buyer" && isOffMarketOffer(cleanOffer)
+        ? `${sentenceCase(params.mechanism)} keeps off-market property access at the center so buyers can review private or distressed-sale opportunities before the broad search gets crowded.`
       : `${sentenceCase(params.mechanism)} keeps ${cleanOffer} at the center with ${params.proof.toLowerCase()} so the next move is easier to judge.`;
 
   return buildStructuredPrimaryText({
@@ -699,33 +836,7 @@ function cleanCreativeCopy(value: string) {
     .trim();
 }
 
-function hasStaticTimingContext(value: string) {
-  return /\b(today|now|daily|weekly|this week|this month|month|monthly|year|days?|weeks?|30|60|90|202\d|completion|deadline|before|early)\b/i.test(value);
-}
-
-function hasStaticLowRiskAccessContext(value: string) {
-  return /\b(preview|review|private access|early access|may qualify|qualify|no obligation)\b/i.test(value);
-}
-
-function addFinishedAdDefaultTiming(
-  value: string,
-  fallback = "this week",
-  options?: { ensureLowRiskAccess?: boolean },
-) {
-  let text = cleanCreativeCopy(value);
-
-  if (!text) {
-    return text;
-  }
-
-  if (options?.ensureLowRiskAccess && !hasStaticLowRiskAccessContext(text)) {
-    text = cleanCreativeCopy(`Preview ${text.charAt(0).toLowerCase()}${text.slice(1)}`);
-  }
-
-  return hasStaticTimingContext(text) ? text : cleanCreativeCopy(`${text} ${fallback}`);
-}
-
-function buildFinishedAdPromptContract(params: {
+function buildTextFreeBackgroundPromptContract(params: {
   prompt: string;
   market: string;
   audience: string;
@@ -733,18 +844,34 @@ function buildFinishedAdPromptContract(params: {
   cta: string;
   brand?: string | null;
 }) {
+  const promptHasFinishedAdTextRisk =
+    /\b(finished|poster|raster|required .*text|must be readable|cta button|cta bar|typography|text hierarchy|headline|proof\/support|marketing studio)\b/i.test(params.prompt);
+  const sourceVisualPrompt = (promptHasFinishedAdTextRisk
+    ? "Premium real estate source photography with realistic property, homeowner, buyer, or agent context and clean negative space."
+    : params.prompt)
+    .replace(/\bMARKETING STUDIO FINISHED AD CREATIVE\.\s*/gi, "")
+    .replace(/\bCreate one finished paid[- ]social real estate ad raster\b/gi, "Create one premium real estate background")
+    .replace(/\bwith a clear headline, offer, and CTA\b/gi, "with natural negative space")
+    .replace(/\bfinished paid[- ]social\b/gi, "premium real estate")
+    .replace(/\bfinished ad\b/gi, "visual background")
+    .replace(/\bad raster\b/gi, "background image")
+    .trim();
+
   return [
-    params.prompt,
-    "Finished-ad quality contract:",
-    "Use a clean hierarchy with one short headline, one clear timed offer, one minimal support line, and one CTA.",
-    "Media-buyer reference layout: one dominant hook area, one proof area, strong negative space, and a clear CTA-safe zone.",
-    `Timed offer that must be readable: ${params.offer}.`,
-    `CTA that must be readable and uncropped: ${params.cta}.`,
+    "TEXT-FREE PREMIUM REAL ESTATE VISUAL BACKGROUND ONLY.",
+	    sourceVisualPrompt,
+	    "Create a premium real estate visual background suitable for DealFlow to compose exact approved ad copy on top.",
+	    "Do not render text, captions, CTA, buttons, logos, flyers, posters, UI, dashboards, tables, listing sheets, fake forms, or typography.",
+	    "Use the approved offer only as visual direction, not as visible raster text.",
+	    `Approved offer context for visual direction only: ${params.offer}.`,
+    `CTA context for DealFlow text layer only, do not render it: ${params.cta}.`,
     `Market and audience context: ${params.market}; ${params.audience}.`,
-    params.brand ? `Brand text, if used, must be spelled exactly: ${params.brand}.` : null,
-    "Keep all live text large enough for mobile social feed viewing with generous safe margins.",
-    "Leave clean padding around the headline and CTA; do not place text over busy image detail.",
-    "No tiny text, cropped CTA, overlapping panels, fake dashboard, fake table, fake listing sheet, app UI, gibberish, invented logo, guaranteed-approval claim, or guaranteed-financing claim.",
+    params.brand
+      ? `Brand style context only: ${params.brand}. Do not render the brokerage name, logo, or approximated logo in the image.`
+      : null,
+    "Media-buyer source imagery logic: one dominant hook area, one proof area, and clear CTA-safe negative space; DealFlow will place exact text later.",
+    "Leave natural negative space for the app-rendered headline and CTA layer.",
+    "Avoid any visible type, pseudo-letters, interface elements, documents, forms, or regulated lending/sale promise visuals.",
   ].filter(Boolean).join(" ");
 }
 
@@ -801,6 +928,13 @@ function creativeAngleLabel(ad: StaticCreativeAsset) {
 
 function preventDuplicateStaticCreativeCopy(ads: StaticCreativeAsset[]) {
   const seen = new Set<string>();
+  const angleCopy: Record<string, string> = {
+    "Expert angle": "Use a clearer pricing and demand read before you commit.",
+    "Offer-led": "Put the offer in front of homeowners while the decision is still flexible.",
+    "Opportunity": "Make the next step feel specific before another listing cycle passes.",
+    "Problem-solution": "Show the risk first, then give homeowners a practical next step.",
+    "Proof story": "Lead with proof and make the response feel easier to trust.",
+  };
 
   return ads.map((ad, index) => {
     const key = normalizeForOfferMatch(`${ad.headline}|${ad.primaryText}|${ad.cta}`);
@@ -811,7 +945,7 @@ function preventDuplicateStaticCreativeCopy(ads: StaticCreativeAsset[]) {
 
     const label = creativeAngleLabel(ad);
     const headline = cleanCreativeCopy(`${label}: ${ad.headline}`);
-    const primaryText = cleanCreativeCopy(`${ad.primaryText} This variation tests the ${label.toLowerCase()} angle.`);
+    const primaryText = cleanCreativeCopy(`${ad.primaryText} ${angleCopy[label] ?? "Give the same offer a clearer reason to act."}`);
     seen.add(normalizeForOfferMatch(`${headline}|${primaryText}|${ad.cta}|${index}`));
 
     return {
@@ -869,6 +1003,64 @@ function repairStaticCreativeForMediaBuyerQuality(params: {
       ...params.ad,
       offerQuality,
       qualityGate: initialQuality,
+    };
+  }
+
+  if (params.strategy.campaignCategory === "buyer" && isOffMarketOffer(params.offer)) {
+    const safeOffer = shortSentence(params.offer) || "Off-market property access";
+    const cta = buildOfferAlignedCta(safeOffer, params.strategy.campaignCategory, params.ad.cta);
+    const hook = `${params.market} buyers: review private and off-market properties before the public search gets crowded.`;
+    const repairedPrompt =
+      `${params.ad.imagePrompt.replace(params.offer, safeOffer)} Core offer: ${safeOffer}. Show private inventory access, off-market opportunities, and buyer access context. Avoid credit-score, approval-path, generic home-list, or weekend-crowd language unless the approved offer says it.`;
+    const repaired: StaticCreativeAsset = {
+      ...params.ad,
+      hook,
+      overlayText: clampOverlayLine(safeOffer),
+      headline: `Access off-market properties in ${params.market}`,
+      primaryText: buildStructuredPrimaryText({
+        hook,
+        problem: `Most buyers only see the same public listings after competition has already moved in.`,
+        outcome: `${sentenceCase(params.strategy.mechanism || "private property review")} keeps private inventory and distressed-sale opportunities at the center before the broad search gets crowded.`,
+        cta,
+      }),
+      cta,
+      visualConcept: `Buyer-access creative for ${safeOffer}: private inventory, off-market opportunities, and pre-public-search access.`,
+      imagePrompt: repairedPrompt,
+      imagePromptConfig: params.ad.imagePromptConfig
+        ? {
+            ...params.ad.imagePromptConfig,
+            prompt: repairedPrompt,
+          }
+        : null,
+    };
+    const finalQuality = evaluateCreativeQuality({
+      category: params.strategy.campaignCategory,
+      offer: safeOffer,
+      mechanism: params.strategy.mechanism,
+      audience: params.audience,
+      hook: repaired.hook,
+      primaryText: repaired.primaryText,
+      headline: repaired.headline,
+      overlayText: repaired.overlayText,
+      cta: repaired.cta,
+      visualConcept: repaired.visualConcept,
+      imagePrompt: repaired.imagePrompt,
+    });
+
+    return {
+      ...repaired,
+      offerQuality,
+      qualityGate: finalQuality.accepted
+        ? finalQuality
+        : {
+            ...finalQuality,
+            hardFailures: Array.from(
+              new Set([...finalQuality.hardFailures, ...initialQuality.hardFailures]),
+            ),
+            improvementHints: Array.from(
+              new Set([...finalQuality.improvementHints, ...initialQuality.improvementHints]),
+            ),
+          },
     };
   }
 
@@ -972,6 +1164,7 @@ function buildStaticCreatives(
   const tension = buildDecisionTension(strategy, rulePack);
   const approvalFocused =
     strategy.campaignCategory === "buyer" &&
+    !isOffMarketOffer(cleanOffer) &&
     isApprovalFocusedContext({
       audience,
       offer,
@@ -999,9 +1192,9 @@ function buildStaticCreatives(
 
   const categoryOverlays = {
     buyer: [
-      trimWords(`Homes in ${market} you may not know you can afford`, 8),
-      trimWords(`Before other buyers see them in ${market}`, 8),
-      trimWords(`${market} payment path made clearer`, 7),
+      trimWords(isOffMarketOffer(cleanOffer) ? "Off-market property access" : `Homes in ${market} you may not know you can afford`, 8),
+      trimWords(isOffMarketOffer(cleanOffer) ? `Private listings before public search` : `Before other buyers see them in ${market}`, 8),
+      trimWords(isOffMarketOffer(cleanOffer) ? `Distressed-sale opportunities in ${market}` : `${market} payment path made clearer`, 7),
     ],
     seller: [
       trimWords(shouldPreserveExplicitOffer(cleanOffer, "seller") ? cleanOffer : `${market} home value update`, 7),
@@ -1118,6 +1311,8 @@ function buildStaticCreatives(
       hook:
         approvalFocused
           ? `POV: you stopped touring before knowing what you can actually qualify for in ${market}.`
+          : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+            ? `POV: you found off-market properties before they reached the crowded public search.`
           : strategy.campaignCategory === "seller"
             ? `POV: you checked demand before guessing your list price in ${market}.`
             : strategy.campaignCategory === "investor"
@@ -1131,13 +1326,21 @@ function buildStaticCreatives(
         proof,
       }),
       primaryText: buildStructuredPrimaryText({
-        hook: `Most ${audience} in ${market} do the normal search first and ask the hard questions too late.`,
-        problem: `That makes the process feel busier than it needs to be.`,
-        outcome: `${sentenceCase(mechanism)} turns ${cleanOffer} into a clearer next step with ${proof.toLowerCase()} and a more believable reason to respond.`,
+        hook: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+          ? `Most buyers in ${market} only see the same public listings after competition has already moved.`
+          : `Most ${audience} in ${market} do the normal search first and ask the hard questions too late.`,
+        problem: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+          ? `That means private, distressed-sale, and quieter opportunities are easy to miss.`
+          : `That makes the process feel busier than it needs to be.`,
+        outcome: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+          ? `${sentenceCase(mechanism)} turns off-market property access into a clearer next step with private opportunities worth reviewing.`
+          : `${sentenceCase(mechanism)} turns ${cleanOffer} into a clearer next step with ${proof.toLowerCase()} and a more believable reason to respond.`,
         cta,
       }),
       headline: approvalFocused
         ? `The buyer POV before the search starts`
+        : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+          ? `Access off-market properties before the crowd`
         : `A more believable path to ${trimWords(cleanOffer, 6)}`,
       cta,
       score: 0,
@@ -1159,6 +1362,8 @@ function buildStaticCreatives(
       hook:
         approvalFocused
           ? `This is what most ${market} buyers should check before they fall in love with a listing.`
+          : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+            ? `This is what most ${market} buyers miss when they only search public listings.`
           : strategy.campaignCategory === "seller"
             ? `Before listing, this is the demand signal most ${market} homeowners miss.`
             : strategy.campaignCategory === "luxury"
@@ -1172,12 +1377,20 @@ function buildStaticCreatives(
         proof,
       }),
       primaryText: buildStructuredPrimaryText({
-        hook: `The strongest creative should feel native to the feed, not like a generic real estate flyer.`,
-        problem: `Most ads look polished but do not make the viewer feel the problem.`,
-        outcome: `${sentenceCase(mechanism)} gives this UGC-style angle a concrete reason to care about ${cleanOffer} before the next click.`,
+        hook: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+          ? `Public listings are not the whole market.`
+          : `The strongest creative should feel native to the feed, not like a generic real estate flyer.`,
+        problem: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+          ? `Buyers who wait for the obvious options can miss private and distressed-sale opportunities.`
+          : `Most ads look polished but do not make the viewer feel the problem.`,
+        outcome: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+          ? `${sentenceCase(mechanism)} gives this UGC-style angle a concrete reason to ask for off-market property access.`
+          : `${sentenceCase(mechanism)} gives this UGC-style angle a concrete reason to care about ${cleanOffer} before the next click.`,
         cta,
       }),
-      headline: `UGC-style angle for ${trimWords(cleanOffer, 6)}`,
+      headline: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+        ? `The off-market property angle buyers understand fast`
+        : `UGC-style angle for ${trimWords(cleanOffer, 6)}`,
       cta,
       score: 0,
       recommended: false,
@@ -1220,12 +1433,16 @@ function buildStaticCreatives(
         : buildStructuredPrimaryText({
             hook: `${audience} in ${market} keep losing momentum because ${tension.toLowerCase()}.`,
             problem: `The usual process creates noise instead of clarity.`,
-            outcome: `${sentenceCase(mechanism)} turns that into a simple path toward ${cleanOffer} with ${proof.toLowerCase()} so the next move feels obvious.`,
+            outcome: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+              ? `${sentenceCase(mechanism)} turns that into a simple path toward off-market property access before public listings feel crowded.`
+              : `${sentenceCase(mechanism)} turns that into a simple path toward ${cleanOffer} with ${proof.toLowerCase()} so the next move feels obvious.`,
             cta,
           }),
       headline:
         approvalFocused
           ? `Know what you qualify for before you shop in ${market}`
+          : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+            ? `Get off-market property access in ${market}`
           : strategy.campaignCategory === "seller"
           ? `Fix the pricing problem before you list in ${market}`
           : strategy.campaignCategory === "investor"
@@ -1273,14 +1490,22 @@ function buildStaticCreatives(
             cta,
           })
         : buildStructuredPrimaryText({
-            hook: `If you are trying to secure ${cleanOffer} in ${market}, timing matters.`,
-            problem: `Most ${audience} do not move until broad attention shows up.`,
-            outcome: `${sentenceCase(mechanism)} gives a faster path around ${trigger.toLowerCase()} so you can act on the offer before the crowd catches up.`,
+            hook: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+              ? `If you are trying to access off-market properties in ${market}, timing matters.`
+              : `If you are trying to secure ${cleanOffer} in ${market}, timing matters.`,
+            problem: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+              ? `Most buyers wait until homes are broadly visible and competition is already building.`
+              : `Most ${audience} do not move until broad attention shows up.`,
+            outcome: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+              ? `${sentenceCase(mechanism)} gives a faster path to private and distressed-sale opportunities before the crowd catches up.`
+              : `${sentenceCase(mechanism)} gives a faster path around ${trigger.toLowerCase()} so you can act on the offer before the crowd catches up.`,
             cta,
           }),
       headline:
         approvalFocused
           ? `See the offer before you waste time touring`
+          : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+            ? `See off-market properties before public search`
           : strategy.campaignCategory === "precon"
           ? `Lock today's entry path before the next shift in ${market}`
           : strategy.campaignCategory === "luxury"
@@ -1329,13 +1554,19 @@ function buildStaticCreatives(
           })
         : buildStructuredPrimaryText({
             hook: `We keep seeing the same story from ${audience} in ${market}.`,
-            problem: `They spend too long reacting to surface-level options and weak-fit opportunities.`,
-            outcome: `${sentenceCase(mechanism)} helps them reach ${cleanOffer} with ${proof.toLowerCase()} and a clearer path to the right outcome.`,
+            problem: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+              ? `They spend too long reacting to public listings while private and distressed-sale options stay harder to see.`
+              : `They spend too long reacting to surface-level options and weak-fit opportunities.`,
+            outcome: strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+              ? `${sentenceCase(mechanism)} helps them review off-market property access with a clearer path to the right next step.`
+              : `${sentenceCase(mechanism)} helps them reach ${cleanOffer} with ${proof.toLowerCase()} and a clearer path to the right outcome.`,
             cta,
           }),
       headline:
         approvalFocused
           ? `A better buyer outcome starts with clarity`
+          : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+            ? `The off-market property path buyers want`
           : strategy.campaignCategory === "seller"
           ? `The seller result most homeowners want in ${market}`
           : strategy.campaignCategory === "investor"
@@ -1361,8 +1592,10 @@ function buildStaticCreatives(
       hook:
         approvalFocused
           ? `See the right ${brief.propertyType} in ${market} after your approval path is clear`
+          : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+          ? `See off-market ${brief.propertyType} in ${market} before other buyers do`
           : strategy.campaignCategory === "buyer"
-          ? fillTemplate(rulePack.approvedHookStructures[2], templateParams)
+            ? fillTemplate(rulePack.approvedHookStructures[2], templateParams)
           : strategy.campaignCategory === "luxury"
             ? fillTemplate(rulePack.approvedHookStructures[2], templateParams)
           : strategy.campaignCategory === "precon"
@@ -1379,6 +1612,8 @@ function buildStaticCreatives(
           base:
             approvalFocused
               ? "After Approval Clarity"
+            : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+              ? "Private Access"
             : strategy.campaignCategory === "buyer"
               ? "Before Other Buyers Do"
               : strategy.campaignCategory === "luxury"
@@ -1394,12 +1629,16 @@ function buildStaticCreatives(
           ? `${audience} in ${market} miss the strongest opportunities because they are unsure what they can actually buy. ${sentenceCase(mechanism)} brings approval-ready matches forward with ${proof.toLowerCase()} before everyone else reacts. ${cta}.`
         : strategy.campaignCategory === "luxury"
           ? `${sentenceCase(mechanism)} brings rare ${brief.propertyType} in ${market} to the right buyer with ${proof.toLowerCase()} and the tension of ${tension.toLowerCase()} before they become broadly visible. ${cta}.`
+          : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+            ? `${audience} in ${market} miss private and distressed-sale opportunities when they only search public listings. ${sentenceCase(mechanism)} brings off-market property access forward before the broad search gets crowded. ${cta}.`
           : `${audience} in ${market} miss the strongest opportunities because ${tension.toLowerCase()}. ${sentenceCase(mechanism)} brings the strongest matches forward with ${proof.toLowerCase()} before everyone else reacts. ${cta}.`,
       headline:
         approvalFocused
           ? `Find homes that fit your approval path in ${market}`
+        : strategy.campaignCategory === "buyer" && isOffMarketOffer(cleanOffer)
+          ? `Access off-market properties in ${market}`
         : strategy.campaignCategory === "buyer"
-          ? `See homes you may not know you can afford in ${market}`
+            ? `See homes you may not know you can afford in ${market}`
           : strategy.campaignCategory === "luxury"
             ? `Private access to rare ${brief.propertyType} in ${market}`
           : `Access stronger ${brief.propertyType} in ${market}`,
@@ -1444,7 +1683,7 @@ function buildStaticCreatives(
     },
   ].slice(0, 6) as StaticCreativeAsset[];
 
-  return preventDuplicateStaticCreativeCopy(rankStaticCreativeAssets(
+  return markInstantFallbackStaticAssets(preventDuplicateStaticCreativeCopy(rankStaticCreativeAssets(
     ads.map((ad): StaticCreativeAsset => {
       const visualBrief = buildStaticVisualPromptBrief({
         location: market,
@@ -1494,7 +1733,7 @@ function buildStaticCreatives(
     }),
     strategy,
     { market },
-  ));
+  )));
 }
 
 async function buildVideoCreatives(brief: CreativeBrief): Promise<VideoCreativeAsset[]> {
@@ -1963,7 +2202,31 @@ export function hasUsableStaticCreativeImage(asset: StaticCreativeAsset | null |
     return false;
   }
 
+  if (asset.imageGenerationState === "failed" || asset.imageQa?.usable === false || asset.imageQa?.decision === "reject") {
+    return false;
+  }
+
   return evaluateStaticVisualAssetDecision(asset).usable;
+}
+
+function hasPreservableStaticCreativeImage(asset: StaticCreativeAsset | null | undefined) {
+  if (!asset?.imageUrl) {
+    return false;
+  }
+
+  if (asset.imageGenerationState === "failed") {
+    return false;
+  }
+
+  if (asset.imageQa && (asset.imageQa.usable === false || asset.imageQa.decision === "reject")) {
+    return false;
+  }
+
+  if (asset.visualQualityGate?.accepted === false || asset.premiumQualityGate?.accepted === false) {
+    return false;
+  }
+
+  return true;
 }
 
 function hasImageFetchFailedQa(asset: StaticCreativeAsset | null | undefined) {
@@ -1987,7 +2250,23 @@ function shouldDropStaleProviderImageForRetry(
   asset: StaticCreativeAsset | null | undefined,
   creativeIntake?: CreativeIntakeGenerationContext | null,
 ) {
-  return creativeIntake?.outputMode === "finished_ad" && isStaleFailedProviderImage(asset);
+  return creativeIntake?.outputMode === "finished_ad" && (isStaleFailedProviderImage(asset) || !staticAssetMatchesCreativeIntake(asset, creativeIntake));
+}
+
+function staticAssetMatchesCreativeIntake(
+  asset: StaticCreativeAsset | null | undefined,
+  creativeIntake?: CreativeIntakeGenerationContext | null,
+) {
+  if (!asset || !creativeIntake) {
+    return true;
+  }
+
+  return (
+    (asset.staticBriefHash ?? null) === (creativeIntake.staticBriefHash ?? null) &&
+    (asset.offerHash ?? null) === (creativeIntake.offerHash ?? null) &&
+    (asset.ctaHash ?? null) === (creativeIntake.ctaHash ?? null) &&
+    (asset.brandHash ?? null) === (creativeIntake.brandHash ?? null)
+  );
 }
 
 function stripStaleProviderImageForRetry(asset: StaticCreativeAsset): StaticCreativeAsset {
@@ -2013,10 +2292,28 @@ function preserveStaticCreativeImage(
     imageGenerationMessage: null,
     imageGenerationModel: existing.imageGenerationModel ?? asset.imageGenerationModel,
     imageGenerationProvider: existing.imageGenerationProvider ?? asset.imageGenerationProvider ?? null,
-    imageQa: existing.imageQa ?? asset.imageQa ?? null,
-    qualityGate: asset.qualityGate ?? existing.qualityGate ?? null,
-  };
-}
+    generationMethod: existing.generationMethod ?? asset.generationMethod ?? null,
+    providerName: existing.providerName ?? asset.providerName ?? null,
+    generationMode: existing.generationMode ?? asset.generationMode ?? null,
+    assetRole: existing.assetRole ?? asset.assetRole ?? null,
+    creativeAssetSource: existing.creativeAssetSource ?? asset.creativeAssetSource ?? null,
+    creativeAssetStatus: existing.creativeAssetStatus ?? asset.creativeAssetStatus ?? null,
+    creativeAssetQaStatus: existing.creativeAssetQaStatus ?? asset.creativeAssetQaStatus ?? null,
+    fallbackLaunchQa: existing.fallbackLaunchQa ?? asset.fallbackLaunchQa ?? null,
+	    imageQa: existing.imageQa ?? asset.imageQa ?? null,
+	    sourceImageQa: existing.sourceImageQa ?? asset.sourceImageQa ?? null,
+	    qualityTier: existing.qualityTier ?? asset.qualityTier ?? null,
+	    sourceBackgroundKind: existing.sourceBackgroundKind ?? asset.sourceBackgroundKind ?? null,
+	    sourceBackgroundProvider: existing.sourceBackgroundProvider ?? asset.sourceBackgroundProvider ?? null,
+	    sourceBackgroundAssetId: existing.sourceBackgroundAssetId ?? asset.sourceBackgroundAssetId ?? null,
+	    visualQualityGate: existing.visualQualityGate ?? asset.visualQualityGate ?? null,
+	    premiumQualityGate: existing.premiumQualityGate ?? asset.premiumQualityGate ?? null,
+	    qualityGate: asset.qualityGate ?? existing.qualityGate ?? null,
+	    storageNormalized: existing.storageNormalized ?? asset.storageNormalized ?? null,
+	    appComposedFinal: existing.appComposedFinal ?? asset.appComposedFinal ?? null,
+      compositionVersion: existing.compositionVersion ?? asset.compositionVersion ?? null,
+	  };
+	}
 
 export function mergeStaticCreativeImageResults(
   nextAssets: StaticCreativeAsset[],
@@ -2024,7 +2321,7 @@ export function mergeStaticCreativeImageResults(
 ): StaticCreativeAsset[] {
   const reusableStaticAssets = new Map(
     (previousAssets ?? [])
-      .filter(hasUsableStaticCreativeImage)
+      .filter(hasPreservableStaticCreativeImage)
       .map((asset) => [asset.id, asset]),
   );
 
@@ -2033,13 +2330,24 @@ export function mergeStaticCreativeImageResults(
   }
 
   return nextAssets.map((asset) => {
-    if (hasUsableStaticCreativeImage(asset)) {
+    if (hasPreservableStaticCreativeImage(asset)) {
       return asset;
     }
 
     const existing = reusableStaticAssets.get(asset.id);
-    return existing ? preserveStaticCreativeImage(asset, existing) : asset;
+    return existing && staticAssetMatchesCreativeIntake(existing, asset.creativeIntake)
+      ? preserveStaticCreativeImage(asset, existing)
+      : asset;
   });
+}
+
+function staticOnlyPromptForImageGeneration(prompt: string) {
+  const withoutCombinedHeader = prompt.replace(
+    /^MARKETING STUDIO COMBINED STATIC \+ AI UGC BRIEF\.\s*/i,
+    "",
+  );
+  const [staticPrompt] = withoutCombinedHeader.split(/MARKETING STUDIO AI UGC VIDEO BRIEF\./i);
+  return staticPrompt.trim() || prompt;
 }
 
 function applyCreativeIntakePromptToStaticAsset(
@@ -2051,26 +2359,25 @@ function applyCreativeIntakePromptToStaticAsset(
     return asset;
   }
 
-  const promptVersion = creativeIntake.promptVersion;
-  const finishedAdMode = creativeIntake.outputMode === "finished_ad";
-  const timedOffer = finishedAdMode
-    ? addFinishedAdDefaultTiming(creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer, "this week", {
-        ensureLowRiskAccess: true,
-      })
-    : creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer;
-  const timedCta = finishedAdMode
-    ? addFinishedAdDefaultTiming(creativeIntake.requiredCta ?? asset.cta)
-    : creativeIntake.requiredCta ?? asset.cta;
+	  const promptVersion = creativeIntake.promptVersion;
+	  const finishedAdMode = creativeIntake.outputMode === "finished_ad";
+  const approvedOfferTitle = creativeIntake.requiredOfferTitle ?? null;
+	  const requiredOffer = approvedOfferTitle ?? creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer;
+	  const approvedOffer = finishedAdMode ? requiredOffer : creativeIntake.requiredOffer ?? asset.offer ?? normalized.offer;
+	  const approvedCta = creativeIntake.requiredCta ?? asset.cta;
+  const staticPrompt = staticOnlyPromptForImageGeneration(promptVersion.generatedPrompt);
   const prompt = finishedAdMode
-    ? buildFinishedAdPromptContract({
-        prompt: promptVersion.generatedPrompt,
-        market: creativeIntake.market ?? normalized.location,
-        audience: creativeIntake.targetAudience ?? normalized.audience,
-        offer: timedOffer,
-        cta: timedCta,
-        brand: creativeIntake.brokerageBrand,
-      })
-    : promptVersion.generatedPrompt;
+    ? [
+        staticPrompt,
+        "FINAL OUTPUT REQUIREMENT: render a complete square paid-social ad raster directly in Higgsfield Marketing Studio.",
+        "Media-buyer reference layout: one dominant hook area, one proof/support area, strong negative space, and one clear CTA-safe zone.",
+        `Required offer text that must be readable in the final raster: ${approvedOffer}.`,
+        `Required CTA text that must be readable in the final raster: ${approvedCta}.`,
+        "The returned image must already include the full ad layout, readable headline, exact offer, exact CTA, and real-estate visual.",
+        "The final image should look like a high-performing real estate Facebook/Instagram ad made in a marketing studio.",
+        "Do not return a text-free background, raw photo, browser mockup, dashboard, listing sheet, blank template, or asset for DealFlow to compose later.",
+      ].join(" ")
+    : staticPrompt;
   const negativePrompt = finishedAdMode
     ? [
         promptVersion.negativePrompt,
@@ -2096,40 +2403,54 @@ function applyCreativeIntakePromptToStaticAsset(
         prompt,
         negativePrompt,
       };
-  const primaryText = finishedAdMode
-    ? cleanCreativeCopy(`${asset.primaryText} ${timedOffer}. ${timedCta}.`)
-    : asset.primaryText;
+  const approvedOfferAlreadyPresent = textIncludesOffer(asset.primaryText, approvedOffer);
+  const approvedCtaAlreadyPresent = normalizeForOfferMatch(asset.primaryText).includes(normalizeForOfferMatch(approvedCta));
+	  const primaryText = finishedAdMode
+	    ? cleanCreativeCopy([
+          replaceVerboseApprovedOfferReference(
+            replaceVerboseApprovedOfferReference(
+              stripUnapprovedCtaPhrases(asset.primaryText, approvedCta),
+              asset.offer ?? normalized.offer,
+              approvedOfferTitle,
+            ),
+            creativeIntake.requiredOffer ?? null,
+            approvedOfferTitle,
+          ),
+          approvedOfferAlreadyPresent ? "" : approvedOffer,
+          approvedCtaAlreadyPresent ? "" : approvedCta,
+        ].filter(Boolean).join(" "))
+	    : asset.primaryText;
   const headline = finishedAdMode
     ? trimWords(cleanCreativeCopy(asset.headline), 10)
     : asset.headline;
-  const overlayText = finishedAdMode
-    ? clampOverlayLine(timedOffer)
-    : asset.overlayText;
-  const offerQuality = evaluateOfferQuality({
-    category: normalized.creativeStrategy.campaignCategory,
-    offer: timedOffer,
+	  const overlayText = finishedAdMode
+	    ? clampOverlayLine(approvedOffer)
+	    : asset.overlayText;
+	  const offerQuality = evaluateOfferQuality({
+	    category: normalized.creativeStrategy.campaignCategory,
+	    offer: approvedOffer,
     mechanism: normalized.creativeStrategy.mechanism,
     audience: creativeIntake.targetAudience ?? normalized.audience,
-    cta: timedCta,
+    cta: approvedCta,
   });
-  const qualityGate = evaluateCreativeQuality({
-    category: normalized.creativeStrategy.campaignCategory,
-    offer: timedOffer,
+	  const qualityGate = evaluateCreativeQuality({
+	    category: normalized.creativeStrategy.campaignCategory,
+	    offer: approvedOffer,
     mechanism: normalized.creativeStrategy.mechanism,
     audience: creativeIntake.targetAudience ?? normalized.audience,
     hook: asset.hook,
     primaryText,
     headline,
     overlayText,
-    cta: timedCta,
+    cta: approvedCta,
     visualConcept: asset.visualConcept,
     imagePrompt: prompt,
   });
 
   return {
-    ...asset,
-    cta: timedCta,
-    offer: timedOffer,
+	    ...asset,
+	    cta: approvedCta,
+	    offer: approvedOffer,
     headline,
     overlayText,
     primaryText,
@@ -2138,6 +2459,17 @@ function applyCreativeIntakePromptToStaticAsset(
     imagePrompt: prompt,
     imagePromptConfig,
     creativeIntake,
+    briefHash: creativeIntake.briefHash ?? null,
+    staticBriefHash: creativeIntake.staticBriefHash ?? null,
+    offerHash: creativeIntake.offerHash ?? null,
+    ctaHash: creativeIntake.ctaHash ?? null,
+    brandHash: creativeIntake.brandHash ?? null,
+    briefRevisionNumber: creativeIntake.revisionNumber ?? null,
+	    approvedOfferTitle: approvedOfferTitle ?? creativeIntake.requiredOffer ?? null,
+    approvedCta,
+    approvedBrand: creativeIntake.brokerageBrand ?? null,
+    location: creativeIntake.market ?? normalized.location,
+    audience: creativeIntake.targetAudience ?? normalized.audience,
   };
 }
 
@@ -2154,7 +2486,8 @@ export async function generateStaticCreativeAds(
   const reusableStaticAssets = new Map(
     (input?.reuse_static_assets ?? [])
       .filter(() => input?.force !== true)
-      .filter(hasUsableStaticCreativeImage)
+      .filter((asset) => staticAssetMatchesCreativeIntake(asset, creativeIntake))
+      .filter(hasPreservableStaticCreativeImage)
       .map((asset) => [asset.id, asset]),
   );
   const previousStaticAssets = new Map(
@@ -2167,7 +2500,7 @@ export async function generateStaticCreativeAds(
       .map((id, index) => [id, index]),
   );
   const maxStaticImageGenerations = Number.isFinite(input?.max_static_image_generations)
-    ? Math.min(Math.max(Math.trunc(input?.max_static_image_generations ?? 0), 1), baseStaticAds.length)
+    ? Math.min(Math.max(Math.trunc(input?.max_static_image_generations ?? 0), 0), baseStaticAds.length)
     : Number.POSITIVE_INFINITY;
   const generationCandidateAssets = baseStaticAds.filter((asset) => !reusableStaticAssets.has(asset.id));
   const boundedGenerationAssetIds = new Set(
@@ -2212,20 +2545,30 @@ export async function generateStaticCreativeAds(
       : generationCandidateAssets
     ).map((asset) => asset.id),
   );
-  const generatedStaticAds: StaticCreativeAsset[] = [];
+  const generatedStaticAds: StaticCreativeAsset[] = new Array(baseStaticAds.length);
+  const generationTasks: Array<{ index: number; asset: StaticCreativeAsset }> = [];
 
-  for (const asset of baseStaticAds) {
+  for (const [index, asset] of baseStaticAds.entries()) {
     const existing = reusableStaticAssets.get(asset.id);
     if (existing) {
-      generatedStaticAds.push({
+      generatedStaticAds[index] = {
         ...asset,
         imageUrl: existing.imageUrl,
         imageGenerationState: "generated" as const,
         imageGenerationMessage: null,
         imageGenerationModel: existing.imageGenerationModel,
-        imageGenerationProvider: existing.imageGenerationProvider ?? null,
-        imageQa: existing.imageQa ?? null,
-      });
+	        imageGenerationProvider: existing.imageGenerationProvider ?? null,
+	        imageQa: existing.imageQa ?? null,
+          sourceImageQa: existing.sourceImageQa ?? null,
+          qualityTier: existing.qualityTier ?? null,
+          compositionVersion: existing.compositionVersion ?? null,
+          sourceBackgroundKind: existing.sourceBackgroundKind ?? null,
+          sourceBackgroundProvider: existing.sourceBackgroundProvider ?? null,
+          sourceBackgroundAssetId: existing.sourceBackgroundAssetId ?? null,
+          visualQualityGate: existing.visualQualityGate ?? null,
+          premiumQualityGate: existing.premiumQualityGate ?? null,
+	        appComposedFinal: existing.appComposedFinal ?? null,
+	      };
       continue;
     }
 
@@ -2236,12 +2579,14 @@ export async function generateStaticCreativeAds(
           ? stripStaleProviderImageForRetry(previous)
           : previous;
 
-      generatedStaticAds.push(
+      generatedStaticAds[index] =
         carryForwardPrevious
           ? {
               ...asset,
               imageUrl: carryForwardPrevious.imageUrl ?? "",
-              storageNormalized: carryForwardPrevious.storageNormalized ?? null,
+	              storageNormalized: carryForwardPrevious.storageNormalized ?? null,
+	              appComposedFinal: carryForwardPrevious.appComposedFinal ?? null,
+              compositionVersion: carryForwardPrevious.compositionVersion ?? null,
               imageGenerationState: carryForwardPrevious.imageGenerationState ?? "unavailable",
               imageGenerationMessage:
                 carryForwardPrevious.imageGenerationMessage ??
@@ -2249,6 +2594,13 @@ export async function generateStaticCreativeAds(
               imageGenerationModel: carryForwardPrevious.imageGenerationModel ?? asset.preferredImageModel,
               imageGenerationProvider: carryForwardPrevious.imageGenerationProvider ?? null,
               imageQa: carryForwardPrevious.imageQa ?? null,
+              sourceImageQa: carryForwardPrevious.sourceImageQa ?? null,
+              qualityTier: carryForwardPrevious.qualityTier ?? null,
+              sourceBackgroundKind: carryForwardPrevious.sourceBackgroundKind ?? null,
+              sourceBackgroundProvider: carryForwardPrevious.sourceBackgroundProvider ?? null,
+              sourceBackgroundAssetId: carryForwardPrevious.sourceBackgroundAssetId ?? null,
+              visualQualityGate: carryForwardPrevious.visualQualityGate ?? null,
+              premiumQualityGate: carryForwardPrevious.premiumQualityGate ?? null,
               qualityGate: asset.qualityGate ?? carryForwardPrevious.qualityGate ?? null,
             }
           : {
@@ -2259,11 +2611,14 @@ export async function generateStaticCreativeAds(
               imageGenerationMessage: "A cleaner image is being prepared for this creative.",
               imageGenerationModel: asset.preferredImageModel,
               imageGenerationProvider: null,
-            },
-      );
+            };
       continue;
     }
 
+    generationTasks.push({ index, asset });
+  }
+
+  const generateOneStaticAsset = async (asset: StaticCreativeAsset): Promise<StaticCreativeAsset> => {
     try {
       const providerUsage = input?.provider_usage_context?.createForAsset(asset) ?? null;
       const { createImageAd } = await import("@/lib/ai/providers");
@@ -2286,9 +2641,10 @@ export async function generateStaticCreativeAds(
               market: creativeIntake?.market ?? normalized.location,
               campaignType: normalized.marketType,
               audience: creativeIntake?.targetAudience ?? normalized.audience,
-              offer: creativeIntake?.requiredOffer ?? normalized.offer,
-              propertyType: normalized.propertyType,
-              cta: creativeIntake?.requiredCta ?? asset.cta,
+	              offer: creativeIntake?.requiredOfferTitle ?? creativeIntake?.requiredOffer ?? normalized.offer,
+	              propertyType: normalized.propertyType,
+	              cta: creativeIntake?.requiredCta ?? asset.cta,
+	              brand: creativeIntake?.brokerageBrand ?? null,
             },
           })
         : null;
@@ -2297,17 +2653,39 @@ export async function generateStaticCreativeAds(
         Boolean(imageAd.imageUrl) &&
         imageAd.generationState === "generated" &&
         (!imageQa || imageQa.decision === "accept");
-      generatedStaticAds.push({
+      const acceptedFinishedAd =
+        imageAccepted &&
+        imageAd.generationProvider === "higgsfield_marketing_studio" &&
+        qaMode === "finished_ad";
+      return {
         ...asset,
         imageUrl: imageAd.imageUrl ?? "",
         imageGenerationState: imageAccepted ? "generated" : imageAd.imageUrl ? "failed" : imageAd.generationState,
         imageGenerationMessage: imageAccepted ? imageAd.generationMessage : qaMessage ?? imageAd.generationMessage,
         imageGenerationModel: imageAd.generationModel,
         imageGenerationProvider: imageAd.generationProvider,
+        generationMethod: acceptedFinishedAd ? "higgsfield_marketing_studio" : null,
+        providerName: acceptedFinishedAd ? "higgsfield_marketing_studio" : null,
+        generationMode: acceptedFinishedAd ? "finished_ad" : null,
+        assetRole: acceptedFinishedAd ? "final_static_ad" : null,
+        appComposedFinal: false,
+        qualityTier:
+          acceptedFinishedAd
+            ? "higgsfield_finished_ad"
+            : null,
+        compositionVersion: null,
+        visualQualityGate: acceptedFinishedAd
+          ? { accepted: true, mode: "finished_ad_qa", reasons: [] }
+          : null,
+        premiumQualityGate: acceptedFinishedAd
+          ? { accepted: true, mode: "higgsfield_finished_ad_provenance", reasons: [] }
+          : null,
         imageQa,
-      });
+        location: creativeIntake?.market ?? normalized.location,
+        audience: creativeIntake?.targetAudience ?? normalized.audience,
+      };
     } catch (error) {
-      generatedStaticAds.push({
+      return {
         ...asset,
         imageUrl: "",
         imageGenerationState: "failed" as const,
@@ -2315,11 +2693,26 @@ export async function generateStaticCreativeAds(
           error instanceof Error ? error.message : "Static image generation failed.",
         imageGenerationModel: asset.preferredImageModel,
         imageGenerationProvider: null,
-      });
+      };
+    }
+  };
+
+  const generationConcurrency = getMediaGenerationProvider() === "higgsfield_marketing_studio" ? 2 : 1;
+  for (let offset = 0; offset < generationTasks.length; offset += generationConcurrency) {
+    const batch = generationTasks.slice(offset, offset + generationConcurrency);
+    const batchResults = await Promise.all(
+      batch.map(async ({ index, asset }) => ({
+        index,
+        generated: await generateOneStaticAsset(asset),
+      })),
+    );
+
+    for (const result of batchResults) {
+      generatedStaticAds[result.index] = result.generated;
     }
   }
   const mergedStaticAds = mergeStaticCreativeImageResults(
-    generatedStaticAds,
+    generatedStaticAds.filter(Boolean),
     input?.reuse_static_assets,
   );
 

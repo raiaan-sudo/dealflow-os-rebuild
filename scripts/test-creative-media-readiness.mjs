@@ -98,14 +98,22 @@ const {
 } = require("../src/lib/services/campaign-persistence.ts");
 const {
   generateStaticCreativeAds,
+  mergeStaticCreativeImageResults,
 } = require("../src/lib/services/creative-engine.ts");
 
 function readyStatic(id) {
   return {
     id,
-    imageUrl: `https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/${id}.png`,
-    storageNormalized: true,
+	    imageUrl: `https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/${id}.png`,
+	    storageNormalized: true,
+	    appComposedFinal: false,
+    qualityTier: "higgsfield_finished_ad",
     imageGenerationState: "generated",
+    imageGenerationProvider: "higgsfield_marketing_studio",
+    generationMethod: "higgsfield_marketing_studio",
+    providerName: "higgsfield_marketing_studio",
+    generationMode: "finished_ad",
+    assetRole: "final_static_ad",
     imagePrompt: "Text-free background asset only for a real estate ad.",
     imagePromptConfig: null,
     visualPromptBrief: {
@@ -113,9 +121,13 @@ function readyStatic(id) {
       visualAssetRole: "text_free_background",
     },
     qualityGate: { accepted: true },
-    imageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
-  };
-}
+    visualQualityGate: { accepted: true },
+    premiumQualityGate: { accepted: true },
+    visualQualityGate: { accepted: true },
+    premiumQualityGate: { accepted: true },
+	    imageQa: { usable: true, decision: "accept", mode: "finished_ad", reasons: [] },
+	  };
+	}
 
 const creatives = [
   readyStatic("primary"),
@@ -138,6 +150,59 @@ const creatives = [
     storageNormalized: false,
   },
 ];
+
+const draftMissingProvenance = {
+  ...readyStatic("merge-provenance"),
+  imageUrl: "",
+  storageNormalized: false,
+  imageGenerationState: "failed",
+  imageGenerationProvider: null,
+  generationMethod: null,
+  providerName: null,
+  generationMode: null,
+  assetRole: null,
+  imageQa: null,
+  visualQualityGate: null,
+  premiumQualityGate: null,
+};
+const persistedFinishedRender = readyStatic("merge-provenance");
+const [mergedFinishedRender] = mergeStaticCreativeImageResults(
+  [draftMissingProvenance],
+  [persistedFinishedRender],
+);
+assert.equal(mergedFinishedRender.imageGenerationProvider, "higgsfield_marketing_studio");
+assert.equal(mergedFinishedRender.generationMethod, "higgsfield_marketing_studio");
+assert.equal(mergedFinishedRender.providerName, "higgsfield_marketing_studio");
+assert.equal(mergedFinishedRender.generationMode, "finished_ad");
+assert.equal(mergedFinishedRender.assetRole, "final_static_ad");
+assert.equal(
+  getStaticCreativeReadiness([mergedFinishedRender], [mergedFinishedRender.id]).launchReadyCount,
+  1,
+  "persisted Higgsfield finished renders must keep provenance fields when merged back into the campaign plan",
+);
+
+const advisoryOnlyFinishedRender = {
+  ...readyStatic("advisory-only-finished-render"),
+  qualityGate: {
+    accepted: false,
+    score: 72,
+    hardFailures: ["Offer needs risk reversal"],
+    improvementHints: ["Add a softer no-obligation promise later"],
+  },
+};
+const advisoryOnlyFinishedSet = Array.from({ length: STATIC_LAUNCH_MIN_CREATIVE_COUNT }, (_, index) => ({
+  ...advisoryOnlyFinishedRender,
+  id: `advisory-only-finished-render-${index + 1}`,
+}));
+const advisoryOnlyReadiness = getStaticCreativeReadiness(
+  advisoryOnlyFinishedSet,
+  advisoryOnlyFinishedSet.map((creative) => creative.id),
+);
+assert.equal(advisoryOnlyReadiness.launchReadyCount, STATIC_LAUNCH_MIN_CREATIVE_COUNT, "soft offer-quality notes cannot block verified Higgsfield finished renders");
+assert.equal(advisoryOnlyReadiness.selectedReadyCount, STATIC_LAUNCH_MIN_CREATIVE_COUNT, "soft offer-quality notes cannot block selection readiness");
+assert.equal(advisoryOnlyReadiness.retryCount, 0, "soft offer-quality notes cannot increment retry-needed counts");
+assert.equal(advisoryOnlyReadiness.missingCount, 0, "soft offer-quality notes are not missing media");
+assert.equal(advisoryOnlyReadiness.issueLabel, null, "soft offer-quality notes do not create launch-blocking issue copy");
 
 const reviewOnlyStaticSet = Array.from({ length: STATIC_LAUNCH_MIN_CREATIVE_COUNT }, (_, index) => ({
   id: `review-only-preview-${index + 1}`,
@@ -167,6 +232,45 @@ assert.equal(reviewOnlyReadiness.selectedReadyCount, 0);
 assert.equal(reviewOnlyReadiness.allSelectedReady, false);
 assert.equal(reviewOnlyReadiness.selectedMinimumMet, false);
 
+const unselectedPreparingReadiness = getStaticCreativeReadiness(creatives, []);
+assert.equal(unselectedPreparingReadiness.selectedReadyCount, 0);
+assert.equal(unselectedPreparingReadiness.launchReadyCount, 3);
+assert.equal(unselectedPreparingReadiness.requiredReadyCount, 3);
+assert.equal(unselectedPreparingReadiness.requiredMissingCount, 0);
+assert.equal(unselectedPreparingReadiness.optionalReadyCount, 0);
+assert.match(unselectedPreparingReadiness.issueLabel ?? "", /3 optional polish variants are still preparing; launch-ready ads are available now/);
+assert.match(getStaticPreviewStatusMessage(unselectedPreparingReadiness), /3 launch-ready previews available; 3 required for launch/);
+
+const unselectedReviewOnlyReadiness = getStaticCreativeReadiness(reviewOnlyStaticSet, []);
+assert.equal(unselectedReviewOnlyReadiness.selectedReadyCount, 0);
+assert.equal(unselectedReviewOnlyReadiness.launchReadyCount, 0);
+assert.equal(unselectedReviewOnlyReadiness.requiredReadyCount, 0);
+assert.equal(unselectedReviewOnlyReadiness.requiredMissingCount, STATIC_LAUNCH_MIN_CREATIVE_COUNT);
+assert.match(unselectedReviewOnlyReadiness.issueLabel ?? "", /3 launch-ready static ads required; 0 available now/);
+assert.doesNotMatch(unselectedReviewOnlyReadiness.issueLabel ?? "", /launch-ready ads are available now/);
+assert.match(getStaticPreviewStatusMessage(unselectedReviewOnlyReadiness), /0 launch-ready previews available; 3 required for launch/);
+assert.doesNotMatch(getStaticPreviewStatusMessage(unselectedReviewOnlyReadiness), /launch can continue/);
+
+const appFallbackTemplateReadiness = getStaticCreativeReadiness([
+  {
+    ...readyStatic("app-fallback-template"),
+    qualityTier: "draft_preview",
+    sourceBackgroundKind: "app_fallback_visual",
+    sourceBackgroundProvider: null,
+    sourceBackgroundAssetId: null,
+    visualQualityGate: { accepted: false },
+    premiumQualityGate: { accepted: false },
+    imageQa: {
+      usable: false,
+      decision: "review",
+      mode: "app_composed_final",
+      reasons: ["app_fallback_visual_not_launch_ready", "generic_template_asset"],
+    },
+  },
+], ["app-fallback-template"]);
+assert.equal(appFallbackTemplateReadiness.selectedReadyCount, 0, "app fallback template cards cannot be launch-ready");
+assert.equal(appFallbackTemplateReadiness.allSelectedReady, false, "app fallback template cards cannot satisfy static floor");
+
 const oneSelected = getStaticCreativeReadiness(creatives, ["primary"]);
 assert.equal(oneSelected.selectionLabel, "1 primary creative selected");
 assert.equal(oneSelected.readyLabel, "1 selected launch-ready preview");
@@ -177,8 +281,8 @@ assert.equal(oneSelected.selectedMinimumMet, false);
 assert.equal(oneSelected.allSelectedReady, false);
 assert.equal(oneSelected.retryCount, 2);
 assert.equal(oneSelected.missingCount, 1);
-assert.match(getStaticPreviewStatusMessage(oneSelected), /1 selected launch-ready preview; 6 recommended/);
-assert.match(getStaticPreviewStatusMessage(oneSelected), /4 launch-ready static ads required/);
+assert.match(getStaticPreviewStatusMessage(oneSelected), /1 selected launch-ready preview; 3 required for launch/);
+assert.match(getStaticPreviewStatusMessage(oneSelected), /3 launch-ready static ads required/);
 
 const blockedSelection = getStaticCreativeReadiness(creatives, ["primary", "failed-1"]);
 assert.equal(blockedSelection.selectedBlockedCount, 1);
@@ -193,20 +297,50 @@ const allFailedSelection = getStaticCreativeReadiness([
 assert.equal(allFailedSelection.selectedReadyCount, 0);
 assert.equal(allFailedSelection.selectedBlockedCount, 3);
 assert.equal(allFailedSelection.allSelectedReady, false);
-assert.match(getStaticPreviewStatusMessage(allFailedSelection), /0 selected launch-ready previews; 4 recommended/);
+assert.match(getStaticPreviewStatusMessage(allFailedSelection), /0 selected launch-ready previews; 3 required for launch/);
 assert.match(getStaticPreviewStatusMessage(allFailedSelection), /3 selected creatives need retry before launch/);
 
-const fourSelected = getStaticCreativeReadiness([
+const threeSelected = getStaticCreativeReadiness([
   readyStatic("primary"),
   readyStatic("review-1"),
   readyStatic("review-2"),
   readyStatic("review-3"),
   readyStatic("review-4"),
-], ["primary", "review-1", "review-2", "review-3"]);
-assert.equal(fourSelected.minimumRequiredCount, STATIC_LAUNCH_MIN_CREATIVE_COUNT);
-assert.equal(fourSelected.selectedMinimumMet, true);
-assert.equal(fourSelected.allSelectedReady, true);
-assert.match(getStaticPreviewStatusMessage(fourSelected), /4 selected launch-ready previews; 5 recommended/);
+], ["primary", "review-1", "review-2"]);
+assert.equal(threeSelected.minimumRequiredCount, STATIC_LAUNCH_MIN_CREATIVE_COUNT);
+assert.equal(threeSelected.selectedMinimumMet, true);
+assert.equal(threeSelected.allSelectedReady, true);
+assert.equal(threeSelected.requiredReadyCount, STATIC_LAUNCH_MIN_CREATIVE_COUNT);
+assert.equal(threeSelected.requiredMissingCount, 0);
+assert.equal(threeSelected.optionalReadyCount, 2);
+assert.match(getStaticPreviewStatusMessage(threeSelected), /3 selected launch-ready previews; 3 required for launch/);
+
+const currentBriefContext = {
+  staticBriefHash: "static-brief-current",
+  offerHash: "offer-current",
+  ctaHash: "cta-current",
+  brandHash: "brand-current",
+};
+const currentBriefCreative = {
+  ...readyStatic("current-brief-static"),
+  ...currentBriefContext,
+};
+const staleBriefCreative = {
+  ...readyStatic("stale-brief-static"),
+  staticBriefHash: "static-brief-old",
+  offerHash: "offer-current",
+  ctaHash: "cta-current",
+  brandHash: "brand-current",
+};
+const staleStaticReadiness = getStaticCreativeReadiness(
+  [currentBriefCreative, staleBriefCreative],
+  ["current-brief-static", "stale-brief-static"],
+  currentBriefContext,
+);
+assert.equal(staleStaticReadiness.selectedReadyCount, 1);
+assert.equal(staleStaticReadiness.selectedStaleCount, 1);
+assert.equal(staleStaticReadiness.allSelectedReady, false);
+assert.match(staleStaticReadiness.issueLabel ?? "", /Older render, needs refresh/);
 
 process.env.ALLOW_OPENAI_IMAGE_GENERATION = "true";
 process.env.OPENAI_API_KEY = "test-openai-key";
@@ -284,10 +418,13 @@ const productionLikeCreativeAssets = [
     metadata: {
       source: "static_ad",
       staticAssetId: "primary",
-      role: "background_image",
-      storageNormalized: true,
-      qualityGate: { accepted: true },
-      imageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
+	      role: "background_image",
+	      headline: "Sell Your Home in 90 Days. Delivered through a tighter property selection process.",
+	      primaryText: "Toronto homeowners can review a 90-day sale plan. Delivered through a tighter property selection process.",
+	      storageNormalized: true,
+	      appComposedFinal: true,
+	      qualityGate: { accepted: true },
+	      imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
       imagePrompt: "Text-free background asset only for a real estate ad.",
       imagePromptConfig: { prompt: "Text-free background asset only for a real estate ad." },
       visualPromptBrief: {
@@ -313,10 +450,11 @@ const productionLikeCreativeAssets = [
     metadata: {
       source: "static_ad",
       staticAssetId: "review-1",
-      role: "background_image",
-      storageNormalized: true,
-      qualityGate: { accepted: true },
-      imageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
+	      role: "background_image",
+	      storageNormalized: true,
+	      appComposedFinal: true,
+	      qualityGate: { accepted: true },
+	      imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
       imagePrompt: "Text-free background asset only for a real estate ad.",
       visualPromptBrief: {
         visualAssetContract: "text_free_background_v2",
@@ -341,10 +479,11 @@ const productionLikeCreativeAssets = [
     metadata: {
       source: "static_ad",
       staticAssetId: "review-2",
-      role: "background_image",
-      storageNormalized: true,
-      qualityGate: { accepted: true },
-      imageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
+	      role: "background_image",
+	      storageNormalized: true,
+	      appComposedFinal: true,
+	      qualityGate: { accepted: true },
+	      imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
       imagePrompt: "Text-free background asset only for a real estate ad.",
       visualPromptBrief: {
         visualAssetContract: "text_free_background_v2",
@@ -355,12 +494,16 @@ const productionLikeCreativeAssets = [
 ];
 const productionMappedStatic = mapStaticCreativeAssets(productionLikeCreativeAssets);
 const productionStaticReadiness = getStaticCreativeReadiness(productionMappedStatic, stalePlanSelectedIds);
-assert.equal(productionStaticReadiness.selectedReadyCount, 3);
-assert.equal(productionStaticReadiness.selectedBlockedCount, 0);
+assert.equal(productionStaticReadiness.selectedReadyCount, 0);
+assert.equal(productionStaticReadiness.selectedBlockedCount, 0, "stale selected IDs must not create a fake current-campaign selection");
 assert.equal(productionStaticReadiness.selectedMinimumMet, false);
 assert.equal(productionStaticReadiness.allSelectedReady, false);
-assert.equal(productionStaticReadiness.readyLabel, "3 selected launch-ready previews");
-assert.equal(productionMappedStatic.find((asset) => asset.id === "primary")?.imageGenerationState, "generated");
+assert.equal(productionStaticReadiness.readyLabel, "0 launch-ready previews available");
+assert.equal(productionMappedStatic.some((asset) => asset.id === "primary"), false, "stale metadata staticAssetId cannot replace same-campaign creative IDs");
+const productionPrimary = productionMappedStatic.find((asset) => asset.id === "campaign-1-creative-0");
+assert.equal(productionPrimary?.imageGenerationState, "failed");
+assert.doesNotMatch(productionPrimary?.headline ?? "", /Delivered through|property selection/i);
+assert.doesNotMatch(productionPrimary?.primaryText ?? "", /Delivered through|property selection/i);
 
 const fallbackPreview = buildComposedStaticAdPreview({
   headline: "Toronto seller plan",
@@ -370,7 +513,8 @@ const fallbackPreview = buildComposedStaticAdPreview({
   imageGenerationState: "unavailable",
 });
 assert.equal(fallbackPreview.status, "template_fallback");
-assert.doesNotMatch(fallbackPreview.backgroundMessage, /is ready/i);
+assert.match(fallbackPreview.backgroundMessage, /Concept preview is ready/i);
+assert.doesNotMatch(fallbackPreview.backgroundMessage, /launch-ready|Final ad ready/i);
 
 const rejectedPreview = buildComposedStaticAdPreview({
   headline: "Toronto seller plan",
@@ -382,6 +526,13 @@ const rejectedPreview = buildComposedStaticAdPreview({
 });
 assert.equal(rejectedPreview.status, "background_rejected");
 assert.doesNotMatch(rejectedPreview.backgroundMessage, /provider\.example|https?:\/\//);
+
+const higgsfieldFinishedPreview = buildComposedStaticAdPreview(readyStatic("higgsfield-finished-preview"));
+assert.equal(higgsfieldFinishedPreview.status, "final_composed");
+assert.equal(
+  higgsfieldFinishedPreview.backgroundImageUrl,
+  "https://supabase.example.test/storage/v1/object/public/creative-assets/user/campaign/higgsfield-finished-preview.png",
+);
 
 const readyVideo = {
   id: "campaign-video",
@@ -485,8 +636,46 @@ const productionMappedVideo = mapVideoCreativeAssets([
   ...productionLikeCreativeAssets,
 ]);
 assert.equal(productionMappedVideo.length, 1);
-assert.equal(isLaunchReadyVideoCreative(productionMappedVideo[0]), true);
-assert.equal(getVideoReadinessLabel(productionMappedVideo[0]), "Campaign-specific UGC ready");
+assert.equal(isLaunchReadyVideoCreative(productionMappedVideo[0]), false, "UGC tied to non-premium static source cannot be launch-ready");
+assert.equal(getVideoReadinessLabel(productionMappedVideo[0]), "Playable review sample");
+
+const videoOnlyMappedCreativeStudioRead = mapVideoCreativeAssets([
+  {
+    id: "video-row-video-only",
+    campaign_id: "campaign-1",
+    creative_id: "video-ugc-launch-proof",
+    copy_id: "copy-1",
+    asset_type: "ugc_video",
+    status: "ready",
+    file_url: readyVideo.videoUrl,
+    thumbnail_url: null,
+    provider_name: readyVideo.providerName,
+    provider_asset_id: readyVideo.providerAssetId,
+    error_message: null,
+    created_at: "2026-05-13T05:09:46.000Z",
+    updated_at: "2026-05-13T05:09:46.000Z",
+    metadata: {
+      storageNormalized: true,
+      storageBucket: "creative-assets",
+      storagePath: "user/campaign/video.mp4",
+      storageContentType: "video/mp4",
+      storageByteSize: 7_533_116,
+      durationSeconds: 20,
+      targetDurationSeconds: 20,
+      sourceStaticAssetId: "primary",
+      sourceStaticAccepted: true,
+      sourceImageUrl: readyVideo.sourceImageUrl,
+      promptSource: "campaign_specific_fallback",
+      promptHash: "prompt-hash",
+      scriptHash: "script-hash",
+      promptUsed: readyVideo.promptUsed,
+      campaignSpecificContext: readyVideo.campaignSpecificContext,
+      videoQualityGate: readyVideo.videoQualityGate,
+      videoProductQualityGate: readyVideo.videoProductQualityGate,
+    },
+  },
+]);
+assert.equal(isLaunchReadyVideoCreative(videoOnlyMappedCreativeStudioRead[0]), true);
 
 const buildCreativePageSource = fs.readFileSync(
   path.join(repoRoot, "src/app/(app)/build/creatives/page.tsx"),
@@ -553,7 +742,8 @@ const lowQualityUgcVideo = {
   },
 };
 assert.equal(isLaunchReadyVideoCreative(lowQualityUgcVideo), false);
-assert.match(getVideoReadinessMessage(lowQualityUgcVideo), /UGC product-quality QA/);
+assert.match(getVideoReadinessMessage(lowQualityUgcVideo), /launch review/);
+assert.doesNotMatch(getVideoReadinessMessage(lowQualityUgcVideo), /QA|metadata|storage|provider|job/i);
 assert.deepEqual(
   evaluateGeneratedVideoQualityGate(lowQualityUgcVideo, new Date("2026-05-13T00:00:00.000Z")).reasons,
   ["missing_product_quality_acceptance"],
@@ -593,8 +783,12 @@ assert.equal(getVideoReadinessLabel(conceptOnlyVideo), "Concept ready, render ne
 assert.doesNotMatch(getVideoReadinessMessage(conceptOnlyVideo), /preview is ready/i);
 
 const creativeWizardSource = fs.readFileSync("src/app/(app)/build/creatives/creative-wizard.tsx", "utf8");
+const buildCreativesPageSource = fs.readFileSync("src/app/(app)/build/creatives/page.tsx", "utf8");
+const selectAdRouteSource = fs.readFileSync("src/app/api/campaigns/[id]/select-ad/route.ts", "utf8");
 const previewSource = fs.readFileSync("src/app/(app)/preview/page.tsx", "utf8");
 const launchSource = fs.readFileSync("src/app/(app)/launch/page.tsx", "utf8");
+const campaignPersistenceSource = fs.readFileSync("src/lib/services/campaign-persistence.ts", "utf8");
+const canonicalCampaignSource = fs.readFileSync("src/lib/services/canonical-campaign.ts", "utf8");
 const customerVideoPlayerSource = fs.readFileSync("src/components/campaign/customer-video-player.tsx", "utf8");
 const paywallAccessSource = fs.readFileSync("src/lib/paywall-access.ts", "utf8");
 const funnelPreviewSource = fs.readFileSync("src/components/funnel/funnel-preview.tsx", "utf8");
@@ -613,20 +807,55 @@ for (const [name, source] of [
 assert.match(customerVideoPlayerSource, /controls=\{false\}/, "customer video player must not expose native video controls");
 assert.match(customerVideoPlayerSource, /onContextMenu=\{\(event\) => event\.preventDefault\(\)\}/, "customer video player suppresses context-menu raw file actions");
 for (const [name, source] of [
-  ["Funnel preview", funnelPreviewSource],
   ["Builder panels", builderPanelsSource],
   ["Campaign builder workspace", campaignBuilderWorkspaceSource],
 ]) {
   assert.match(source, /CustomerVideoPlayer/, `${name} must use the customer video player`);
   assert.doesNotMatch(source, /<video[\s\S]{0,260}\bcontrols\b(?!List)/, `${name} must not render native video controls`);
 }
-assert.match(creativeWizardSource, /draft concept\{draftCreatives\.length === 1 \? "" : "s"\} need regeneration/, "Creative Studio separates draft concepts from launch-ready carousel");
-assert.match(creativeWizardSource, /selectedCount=\{selected \? selectedCreatives\.length : null\}/, "retry cards cannot inherit selected count badges");
+assert.match(funnelPreviewSource, /CanonicalFunnelRenderer/, "Funnel preview must delegate to the canonical funnel renderer");
+assert.doesNotMatch(funnelPreviewSource, /<video[\s\S]{0,260}\bcontrols\b(?!List)/, "Funnel preview must not render native video controls");
+assert.match(creativeWizardSource, /visibleStaticReviewCreatives/, "Creative Studio renders the relevant static launch package cards directly");
+assert.match(creativeWizardSource, /Open launch creative/, "Creative Studio lets customers expand each launch creative from the package grid");
+assert.match(creativeWizardSource, /Pick at least \$\{STATIC_LAUNCH_MIN_CREATIVE_COUNT\} launch-ready static ads/, "Creative Studio treats the configured static ads as the launch floor");
+assert.doesNotMatch(creativeWizardSource, /const selectableCreatives =/, "Creative Studio must not keep the removed carousel chooser model");
+assert.doesNotMatch(creativeWizardSource, /Creative carousel/, "Creative Studio must not expose a customer-facing creative carousel");
+assert.match(creativeWizardSource, /Launch package/, "Creative Studio must show the automatic launch package summary");
+assert.match(creativeWizardSource, /DealFlow automatically keeps the launch-ready static ads selected/, "Creative Studio must explain automatic static creative selection");
+assert.match(creativeWizardSource, /const fillCandidateIds = Array\.from\(\s*new Set\(\[\s*\.\.\.recommendedSelectedIds,\s*\.\.\.launchReadyCreatives\.map\(\(creative\) => creative\.id\),\s*\]\),\s*\);/s, "Creative Studio selection reconciliation must fill to the launch floor from all launch-ready creatives");
+assert.match(creativeWizardSource, /Render fresh UGC video/, "stale UGC renders can be refreshed against the approved script");
+assert.match(creativeWizardSource, /videoMatchesApprovedScript/, "Creative Studio blocks stale UGC videos whose script hash no longer matches the approved script");
+assert.match(creativeWizardSource, /currentVideoStatusJob/, "Creative Studio tracks video status polling jobs after the initial render job completes");
+assert.match(creativeWizardSource, /currentVideoRenderJob/, "Creative Studio uses a unified video render job state for customer messaging and polling");
+assert.match(creativeWizardSource, /setActiveVideoJobId\(data\.job\.id\)/, "Creative Studio keeps deferred UGC jobs active for browser polling");
+assert.doesNotMatch(creativeWizardSource, /window\.setInterval\(\(\) => \{\s*router\.refresh\(\);\s*\}, 15_000\)/s, "Creative Studio must not auto-refresh static renders before the user clicks Show preview renders");
+assert.match(buildCreativesPageSource, /let persistedStaticAds:[\s\S]*= \[\];/, "Creative Studio must start from durable campaign assets, not canonical fallback static ads");
+assert.match(buildCreativesPageSource, /if \(mappedStaticAssets\.length > 0\) \{\s*persistedStaticAds = mappedStaticAssets;\s*\}/, "Creative Studio may render only same-campaign creative_assets rows");
+assert.doesNotMatch(previewSource, /rankBestAvailableStaticCreatives/, "Preview must not show fallback static creatives when no selected campaign assets exist");
+assert.match(previewSource, /const displayStaticAds = selectedAds;/, "Preview must render only selected same-campaign static ads");
+assert.match(buildCreativesPageSource, /creativeIntake\?\.brief\?\.ugcScriptHash \?\?/, "Creative Studio must pass the canonical approved UGC script hash to the client");
+assert.match(selectAdRouteSource, /mapVideoCreativeAssets/, "Save launch package must validate UGC selections against current creative_assets video rows");
+assert.match(selectAdRouteSource, /if \(!videoById\.has\(video\.id\)\)/, "Save launch package must preserve the newest launch-ready UGC asset when duplicate creative IDs exist");
+assert.match(
+  creativeWizardSource,
+  /selectedCount=\{launchReady \? staticReadiness\.selectedReadyCount : null\}/,
+  "launch package cards should show the selected package count only when the creative is launch-ready",
+);
+assert.match(
+  creativeWizardSource,
+  /selectedCount=\{isStaticLaunchReady\(expandedStaticCreative\) \? staticReadiness\.selectedReadyCount : null\}/,
+  "expanded launch creative preview should keep the same launch-ready count guard",
+);
+assert.match(creativeWizardSource, /activeCreativeHardBlocked/, "launch-ready Higgsfield renders must not keep showing a retry CTA because of legacy copy-quality flags");
+assert.doesNotMatch(creativeWizardSource, /qualityGate\?\.accepted === false\)/, "soft copy-quality flags cannot directly control the retry CTA");
+assert.match(creativeWizardSource, /Optional polish/, "soft copy-quality notes surface as optional polish instead of retry-needed copy");
 assert.match(creativeWizardSource, /selectedUgcVideoIds/, "Creative Studio persists selected UGC launch video IDs");
 assert.match(creativeWizardSource, /Select UGC for launch/, "Creative Studio lets UGC videos be selected like static creatives");
 assert.match(previewSource, /getSelectedUgcVideoIdsFromPlan/, "Preview consumes persisted selected UGC video IDs");
 assert.match(previewSource, /selectedUgcVideoIds\.length > 0 \? "Selected UGC video ads" : "UGC video options"/, "Preview labels unselected UGC fallback as options, not selected ads");
+assert.match(previewSource, /dedupeVideoIds/, "Preview dedupes duplicate UGC creative IDs before display/readiness");
 assert.match(launchSource, /getSelectedUgcVideoIdsFromPlan/, "Launch consumes persisted selected UGC video IDs");
+assert.match(launchSource, /dedupeVideoIds/, "Launch dedupes duplicate UGC creative IDs before display/readiness");
 assert.match(launchSource, /\/build\/creatives\?campaignId=/, "Launch missing-creative CTA must return to Creative Studio");
 
 assert.doesNotMatch(creativeWizardSource, /Ready to render/);
@@ -635,9 +864,12 @@ assert.doesNotMatch(creativeWizardSource, /Video concept is ready/);
 assert.doesNotMatch(paywallAccessSource, /campaignId: requestedCampaignId,\s*record: null/s, "invalid requested campaign IDs must not become active campaign context");
 assert.match(paywallAccessSource, /campaignId: resolvedRecord\?\.campaign\.id \?\? null/, "campaign context must come from an owned resolved record");
 assert.match(
-  fs.readFileSync("src/lib/services/campaign-persistence.ts", "utf8"),
+  campaignPersistenceSource,
   /selected_static_asset_ids: generationPreferredStaticAssetIds/,
   "capped static regeneration must target the selected or default launch set",
 );
+assert.match(campaignPersistenceSource, /sameCampaignStaticAssetKey/, "creative asset grouping must ignore stale staticAssetId values from another campaign context");
+assert.match(canonicalCampaignSource, /length >= 3;/, "saved finished static ads trust threshold must match the 3-creative launch floor");
 
 console.log("creative media readiness regression checks passed");
+process.exit(0);

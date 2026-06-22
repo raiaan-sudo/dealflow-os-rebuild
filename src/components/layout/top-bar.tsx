@@ -11,6 +11,14 @@ type TopBarProps = {
   userName: string;
   userEmail: string;
   organizationName: string;
+  brandName?: string | null;
+  managedWorkspaces?: Array<{
+    id: string;
+    name: string;
+    partnerId: string | null;
+    partnerName: string | null;
+    active: boolean;
+  }>;
   activeCampaignId?: string | null;
 };
 
@@ -24,9 +32,17 @@ function buildCampaignScopedHref(path: string, campaignId?: string | null) {
   return `${path}?${params.toString()}`;
 }
 
-export function TopBar({ userName, userEmail, organizationName, activeCampaignId }: TopBarProps) {
+export function TopBar({
+  userName,
+  userEmail,
+  organizationName,
+  brandName,
+  managedWorkspaces = [],
+  activeCampaignId,
+}: TopBarProps) {
   const pathname = usePathname();
   const campaignId = activeCampaignId ?? null;
+  const hasWorkspaceSwitcher = managedWorkspaces.length > 1;
 
   if (pathname.startsWith("/preview")) {
     return null;
@@ -38,12 +54,30 @@ export function TopBar({ userName, userEmail, organizationName, activeCampaignId
         <div className="flex min-w-0 items-center gap-2.5">
           <div className="min-w-0 max-w-[240px]">
             <p className="truncate text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              {organizationName}
+              {brandName || organizationName}
             </p>
             <p className="mt-0.5 truncate text-sm text-white/72">
-              Campaign workspace
+              {organizationName}
             </p>
           </div>
+          {hasWorkspaceSwitcher ? (
+            <form action="/api/workspaces/switch" method="post" className="hidden min-w-[180px] sm:block lg:hidden">
+              <label className="sr-only" htmlFor="mobile-workspace-switcher">Switch workspace</label>
+              <select
+                id="mobile-workspace-switcher"
+                name="workspaceId"
+                defaultValue={managedWorkspaces.find((workspace) => workspace.active)?.id}
+                onChange={(event) => event.currentTarget.form?.requestSubmit()}
+                className="h-9 max-w-[220px] rounded-xl border border-white/10 bg-white/[0.04] px-2 text-xs text-foreground outline-none"
+              >
+                {managedWorkspaces.map((workspace) => (
+                  <option key={workspace.id} value={workspace.id} className="bg-slate-950 text-white">
+                    {workspace.name}
+                  </option>
+                ))}
+              </select>
+            </form>
+          ) : null}
         </div>
 
         <div className="hidden min-w-0 flex-1 items-center justify-center xl:flex">

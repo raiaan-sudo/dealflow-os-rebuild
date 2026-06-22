@@ -1,0 +1,107 @@
+rules:
+  - id: dealflow-no-service-role-in-client-surface
+    languages:
+      - typescript
+    severity: ERROR
+    message: "Service-role/admin clients must not be imported or created in client-rendered surfaces."
+    paths:
+      include:
+        - "/src/app/**/*.tsx"
+        - "/src/components/**/*.tsx"
+      exclude:
+        - "/src/app/api/**"
+    patterns:
+      - pattern-inside: |
+          "use client";
+          ...
+      - pattern-either:
+          - pattern: import { createAdminClient } from "..."
+          - pattern: createAdminClient(...)
+          - pattern: process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  - id: dealflow-no-provider-url-render-in-ui
+    languages:
+      - typescript
+    severity: ERROR
+    message: "Customer UI must render app-owned asset URLs, not raw provider/private URLs."
+    paths:
+      include:
+        - "/src/app/**/*.tsx"
+        - "/src/components/**/*.tsx"
+    pattern-either:
+      - pattern: $X.higgsfieldUrl
+      - pattern: $X.providerUrl
+      - pattern: $X.provider_url
+      - pattern: $X.privateUrl
+      - pattern: $X.signedUrl
+      - pattern: $X.signed_url
+
+  - id: dealflow-private-mutation-missing-same-origin-marker
+    languages:
+      - typescript
+    severity: WARNING
+    message: "Private mutation routes should call assertSameOriginRequest(request) before mutating state."
+    paths:
+      include:
+        - "/src/app/api/**/route.ts"
+      exclude:
+        - "/src/app/api/internal/**"
+        - "/src/app/api/lead-capture/route.ts"
+        - "/src/app/api/stripe/webhook/route.ts"
+        - "/src/app/api/sms/twilio/route.ts"
+        - "/src/app/api/webhooks/twilio/status/route.ts"
+        - "/src/app/api/meta/data-deletion/route.ts"
+        - "/src/app/api/client-errors/route.ts"
+        - "/src/app/api/client-errors/csp/route.ts"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              export async function POST($REQ, ...) {
+                ...
+              }
+          - pattern: |
+              export async function PATCH($REQ, ...) {
+                ...
+              }
+          - pattern: |
+              export async function DELETE($REQ, ...) {
+                ...
+              }
+      - pattern-not: |
+          export async function $METHOD($REQ, ...) {
+            ...
+            assertSameOriginRequest($REQ);
+            ...
+          }
+
+  - id: dealflow-no-live-launch-bypass
+    languages:
+      - typescript
+    severity: ERROR
+    message: "Live Meta launch/activation code must stay behind explicit launch gates and kill switches."
+    paths:
+      include:
+        - "/src/**/*.ts"
+        - "/src/**/*.tsx"
+      exclude:
+        - "/src/lib/services/meta-launch-service.ts"
+        - "/src/app/api/campaigns/[id]/launch/route.ts"
+        - "/src/app/(app)/launch/page.tsx"
+    pattern-either:
+      - pattern: liveLaunch(...)
+      - pattern: activateCampaign(...)
+      - pattern: setStatus("ACTIVE")
+      - pattern: |
+          status: "ACTIVE"
+
+  - id: dealflow-no-secret-debug-output
+    languages:
+      - typescript
+      - javascript
+    severity: ERROR
+    message: "Do not log or return raw secret-like values."
+    pattern-either:
+      - pattern: console.log(process.env.$KEY)
+      - pattern: console.error(process.env.$KEY)
+      - pattern: return process.env.$KEY
+      - pattern: JSON.stringify(process.env)

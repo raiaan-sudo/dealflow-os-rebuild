@@ -7,6 +7,7 @@ const formSource = fs.readFileSync("src/app/f/[slug]/lead-capture-form.tsx", "ut
 const thankYouPageSource = fs.readFileSync("src/app/f/[slug]/thank-you/page.tsx", "utf8");
 const trackerSource = fs.readFileSync("src/app/f/[slug]/thank-you/thank-you-conversion-tracker.tsx", "utf8");
 const thankYouModelSource = fs.readFileSync("src/lib/public-funnel-thank-you.ts", "utf8");
+const leadHandlerSource = fs.readFileSync("src/lib/services/lead-handler-service.ts", "utf8");
 
 function assertOrdered(source, patterns, message) {
   let cursor = -1;
@@ -55,10 +56,40 @@ assertOrdered(
   ],
   "validation and delayed responses must not redirect before confirmed success",
 );
+assertOrdered(
+  formSource,
+  [
+    "const thankYouUrl = new URL",
+    "window.location.assign(thankYouUrl.toString())",
+    "return;",
+    "} catch",
+  ],
+  "successful lead capture must redirect before any post-submit cleanup can interrupt navigation",
+);
+const successRedirectBlock = formSource.slice(
+  formSource.indexOf("const leadId ="),
+  formSource.indexOf("} catch"),
+);
+assert.doesNotMatch(successRedirectBlock, /resetTurnstile\(|setName\(|setEmail\(|setPhone\(|setSmsConsent\(/, "success path must not reset form state before thank-you navigation");
 assert.match(formSource, /sms_consent: Boolean\(showPhone && normalizedPhone && smsConsent\)/, "SMS consent payload must stay intact");
 assert.match(formSource, /turnstile_token: turnstileToken \|\| undefined/, "Turnstile token payload must stay intact");
 
 assert.match(trackerSource, /CompleteRegistration/, "thank-you route should prepare a conversion event");
 assert.match(trackerSource, /sessionStorage\.getItem\(storageKey\)/, "thank-you conversion should avoid duplicate refresh tracking");
+
+assertOrdered(
+  leadHandlerSource,
+  [
+    'select("plan, public_slug")',
+    "public_slug: currentPlan.public_slug ?? campaignPlanRow?.public_slug ?? null",
+    "buildCampaignPlanCriticalFieldPatch(nextPlan)",
+  ],
+  "lead-loop verification must preserve row public_slug before writing campaign critical fields",
+);
+assert.doesNotMatch(
+  leadHandlerSource,
+  /markCampaignLeadLoopVerified[\s\S]*?select\("plan"\)[\s\S]*?buildCampaignPlanCriticalFieldPatch/,
+  "lead-loop verification must not derive public_slug from plan-only reads",
+);
 
 console.log("public funnel thank-you regression checks passed");

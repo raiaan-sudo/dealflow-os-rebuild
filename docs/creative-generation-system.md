@@ -14,6 +14,19 @@ Creative selection must always show a complete visual creative. Customers should
 
 When generated imagery is not available yet, failed, or withheld by quality checks, DealFlow renders an instant composed preview. That preview uses the same app-rendered headline, proof chips, CTA, category-specific layout, and media-buyer pattern that final generated imagery uses. Generated imagery may refresh in the background, but the customer can still inspect and choose the creative set immediately.
 
+## Creative brief contract
+
+Creative Studio uses a guided customer brief, not a backend production settings form. The customer-facing flow is:
+
+1. Confirm campaign basics: market, read-only audience, concise offer title, and CTA.
+2. Choose static ad direction: Clean Local Expert, Bold Offer Focused, or Premium Home Sale Guide.
+3. Build and approve the UGC script: target length, creator persona, hook angle, visual style, editable script, shot list, and on-screen text.
+4. Generate the creative set.
+
+Audience, placement plan, output mode, generation phase, provider, worker, queue, and QA internals are backend-owned and must not be exposed as customer-facing setup controls. Existing campaign data can still store those fields for compatibility, but the UI should present only customer-meaningful decisions.
+
+Offer copy is split into a concise customer-facing `offerTitle` and optional internal `offerMechanism`. For example, a verbose saved offer like `14-Day Home Sale Plan. Delivered through a buyer consultation...` should display as `14-Day Home Sale Plan` for seller campaigns. The deeper mechanism can remain internal context for prompting and QA, but customer surfaces and scripts should not dump the full mechanism as the offer.
+
 ## Generated imagery contract
 
 DealFlow supports two static creative modes:
@@ -22,6 +35,8 @@ DealFlow supports two static creative modes:
 - **Marketing Studio Finished Ad**: Higgsfield Marketing Studio may render the final raster with text, branding, and layout. DealFlow must validate the raster with finished-ad QA before accepting it. Gibberish, misspelled brokerage text, fake UI, fake listing sheets, dashboards, charts, tables, or unsafe claims must be rejected before launch readiness.
 
 If a generated image fails its selected mode contract or the quality gate, it can be stored for review but must not be treated as launch-ready. Launch and selection gates must keep using the static visual QA decision before saving or launching selected creatives.
+
+Marketing Studio brand/logo text is optional unless the prompt explicitly requires visible brand presence. Providers should omit brokerage/logo text when exact rendering is uncertain; QA rejects visible misspellings or distorted brand-like text, but it must not reject a clean finished ad merely because optional brand text is absent.
 
 Marketing Studio finished-ad rasters require `FINISHED_AD_VISION_QA_ENABLED=true` plus an OpenAI-compatible vision model configured by `FINISHED_AD_VISION_QA_MODEL` or `AI_VISION_MODEL`. If vision QA is unavailable, JPEG/PNG finished ads fail closed with `finished_ad_text_unverified`; SVG fixtures can still be inspected deterministically by the built-in text parser. Provider names and raw provider diagnostics remain internal.
 
@@ -49,6 +64,8 @@ Marketing Studio finished-ad and UGC video generation are intentionally split fr
    - `FINISHED_AD_VISION_QA_ENABLED=true`
    - `AI_API_KEY` or `OPENAI_API_KEY`
 6. The worker claims only eligible Marketing Studio static/video jobs, runs the existing generation pipeline, normalizes accepted provider output into app-owned `creative-assets` storage, runs finished-ad or video provenance/product QA, and writes job status/result back through `system_jobs`.
+   - Provider original URLs are evidence metadata only. Creative Studio and launch gates must read durable app-owned `creative_assets.file_url` values after storage normalization.
+   - After static assets are persisted, campaign plan persistence must reload the saved creative assets and write those app-owned URLs back into the plan snapshot. A provider-original URL in the job result is not sufficient launch proof.
 7. The CLI child process receives only the Higgsfield allowlisted environment: `NODE_ENV`, `PATH`, `HOME`, `TMPDIR`, `HF_CREDENTIALS`, `HF_API_KEY`, `HF_API_SECRET`, `HIGGSFIELD_BASE_URL`, `HIGGSFIELD_CONFIG_HOME`, `HIGGSFIELD_CACHE_DIR`, `HIGGSFIELD_OUTPUT_DIR`, and `MARKETING_STUDIO_WORKER_OUTPUT_DIR`. It must not receive full `process.env`.
 
 Use `npm run worker:marketing-studio -- --dry-run` for readiness and eligible-job proof. Do not run the worker with provider guards enabled against production until the owner has approved one capped live proof.
@@ -56,6 +73,14 @@ Use `npm run worker:marketing-studio -- --dry-run` for readiness and eligible-jo
 ## Video review contract
 
 AI UGC video concepts must be visible before render, selectable as a set, and playable when a video URL exists. Customer UI must not expose provider names, provider payloads, credentials, guard internals, or raw failure messages. Failed or unavailable video renders should present a retry-ready customer message.
+
+Immediate UGC preview means the customer can inspect and edit the script, shot list, on-screen text, CTA, and storyboard/poster state immediately. It does not mean the final playable provider video is synchronous. Final UGC launch proof requires an app-owned playable video, storage normalization, deterministic provenance/product QA acceptance, and a saved selected UGC video id in the launch package.
+
+Customer-facing pre-render UGC concept cards are not required for approval. The launch-safe gate is the approved structured script and shot list. The script quality guard must reject repeated offer phrases, buyer/seller mismatches, unsupported guarantees, fake urgency, protected-class steering, provider/internal jargon, and scripts that do not fit the selected target duration.
+
+Video rendering must use the approved script and shot list. Provider prompts may use internal context, but they must not invent a new offer, rewrite the campaign strategy, or reinterpret the customer-approved script. Video job idempotency should include the approved script version or hash so edits produce a new scoped job identity without double-spending repeat clicks.
+
+Reviewed, dead-lettered, or historical worker rows are evidence only. Creative Studio must filter them out of active queued/rendering state on both server render and client refresh paths. If no active eligible job exists, the customer state should be `Concept ready, render needed` or a safe failed/retry state, never stale `Queued for render worker`.
 
 ## Regression checks
 

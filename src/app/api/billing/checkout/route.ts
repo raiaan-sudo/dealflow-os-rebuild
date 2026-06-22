@@ -1,12 +1,13 @@
 import { z } from "zod";
-import { assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
+import { ApiError, assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { createBillingCheckoutSession } from "@/lib/services/billing-service";
 import { normalizeBillingPlanTier } from "@/lib/billing/plans";
 import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
+import { isBillingCheckoutSafeModeEnabled } from "@/lib/env";
 
 const checkoutSchema = z.object({
-  planTier: z.enum(["starter", "pro", "growth"]).default("starter"),
+  planTier: z.enum(["performance", "starter", "pro", "growth"]).default("pro"),
   campaignId: z.string().min(1).optional(),
 });
 
@@ -21,6 +22,14 @@ export async function POST(request: Request) {
 
     if (rateLimit && !rateLimit.allowed) {
       return buildRateLimitResponse(rateLimit.resetAt);
+    }
+
+    if (isBillingCheckoutSafeModeEnabled()) {
+      throw new ApiError(
+        503,
+        "Billing checkout is temporarily unavailable while billing monitoring is degraded.",
+        "billing_checkout_safe_mode",
+      );
     }
 
     const body = await parseJsonBody(request, checkoutSchema);

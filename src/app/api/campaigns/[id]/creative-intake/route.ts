@@ -123,6 +123,16 @@ export async function POST(
       success: true,
       campaignId: id,
       intake,
+      staticRenderQueue: body.action === "approve"
+        ? {
+            queued: false,
+            reusedExistingJob: false,
+            jobId: null,
+            blockedReason: "manual_render_required",
+            launchReadyCount: 0,
+            missingCount: 3,
+          }
+        : null,
     });
   } catch (error) {
     return handleApiError(error, "Creative intake");

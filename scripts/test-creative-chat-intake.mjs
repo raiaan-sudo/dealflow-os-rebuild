@@ -9,8 +9,8 @@ const repoRoot = process.cwd();
 const originalResolve = Module._resolveFilename;
 const originalLoad = Module._load;
 
-process.env.NEXT_PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://supabase.example.test";
-process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "anon-test";
+process.env.NEXT_PUBLIC_SUPABASE_URL = "https://supabase.example.test";
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-test";
 
 Module._load = function load(request, parent, isMain) {
   if (request === "server-only") {
@@ -54,6 +54,10 @@ const {
   buildCreativeIntakeBrief,
   buildCreativeIntakePromptVersion,
   createCreativeIntakeState,
+  CREATIVE_INTAKE_LOCKED_CTA,
+  CREATIVE_INTAKE_LOCKED_STATIC_STYLE,
+  CREATIVE_INTAKE_LOCKED_STATIC_STYLE_LABEL,
+  CREATIVE_INTAKE_LOCKED_TARGET_DURATION_SECONDS,
   creativeIntakeIncludesStatic,
   creativeIntakeIncludesUgcVideo,
   getApprovedCreativeIntakeGenerationContext,
@@ -61,6 +65,7 @@ const {
   isCreativeChatIntakeEnabled,
   isCreativeIntakeApproved,
   mergeCreativeChatIntakeIntoPlan,
+  readCreativeChatIntakeFromPlan,
   softenRegulatedClaims,
 } = require("../src/lib/services/creative-chat-intake-service.ts");
 const {
@@ -70,8 +75,18 @@ const {
   persistStaticCreativeAssets,
 } = require("../src/lib/services/static-creative-asset-service.ts");
 const {
+  buildCreativeUgcScriptDraft,
+  inferCreativeUgcAudienceKind,
+  normalizeCreativeOfferTitle,
+  resolveUgcScriptContext,
+  validateCreativeUgcScriptDraft,
+} = require("../src/lib/services/creative-ugc-script-service.ts");
+const {
   getSavedCampaignDocumentFromRow,
 } = require("../src/lib/services/canonical-campaign.ts");
+const {
+  normalizeOfferForCampaign,
+} = require("../src/lib/services/offer-normalization-service.ts");
 
 const creativeChatIntakeUi = fs.readFileSync("src/app/(app)/build/creatives/creative-chat-intake.tsx", "utf8");
 const creativeWizardUi = fs.readFileSync("src/app/(app)/build/creatives/creative-wizard.tsx", "utf8");
@@ -88,26 +103,68 @@ process.env.CREATIVE_CHAT_INTAKE_ENABLED = "false";
 assert.equal(isCreativeChatIntakeEnabled(), false);
 delete process.env.CREATIVE_CHAT_INTAKE_ENABLED;
 assert.match(creativeChatIntakeUi, /Draft recovered from your last session/);
-assert.match(creativeChatIntakeUi, /Paid rendering stays blocked until the updated brief is approved/);
+assert.match(creativeChatIntakeUi, /Draft saved\. Your approved brief is ready for generation\./);
+assert.match(creativeChatIntakeUi, /Draft saved\. Static ads can be generated now; UGC can be added later\./);
+assert.match(creativeChatIntakeUi, /fetch\("\/api\/generate-creatives"/);
+assert.match(creativeChatIntakeUi, /Regenerate Creative Set/);
+assert.doesNotMatch(creativeChatIntakeUi, /workspace refreshes/);
 assert.match(creativeChatIntakeUi, /aria-pressed/);
-assert.match(creativeWizardUi, /Primary creative/);
-assert.match(creativeWizardUi, /Review variant/);
-assert.match(creativeWizardUi, /Add to review set/);
-assert.match(creativeWizardUi, /Full-resolution creative files stay inside DealFlow/);
-assert.match(staticCreativePreviewCardUi, /Full-resolution creative files stay inside DealFlow and are used through the launch workflow/);
+assert.match(creativeWizardUi, /Open launch creative/);
+assert.match(creativeWizardUi, /Launch creative/);
+assert.match(creativeWizardUi, /Save launch package and continue/);
+assert.match(creativeWizardUi, /Launch package/);
+assert.match(creativeWizardUi, /DealFlow automatically keeps the launch-ready static ads selected/);
+assert.doesNotMatch(creativeWizardUi, /Creative carousel|Add to review set|View all creatives and choose|Selected creative preview|Creative preview/);
+assert.match(creativeWizardUi, /Review the launch-ready creative set/);
+assert.match(creativeWizardUi, /Open Marketing Studio chat/);
+assert.doesNotMatch(creativeWizardUi, /Approved brief source: saved creative intake|Full-resolution creative files stay inside this workspace/);
+assert.match(creativeWizardUi, /Sent for generation\. Usually takes 90 seconds to 3 minutes/);
+assert.match(creativeWizardUi, /Show preview renders/);
+assert.doesNotMatch(creativeWizardUi, /Final Higgsfield ads are queued for rendering|finished Higgsfield ads pass review/);
+assert.doesNotMatch(creativeWizardUi, /worker is available|Queued for render worker|product QA accepts|pass QA/);
+assert.match(creativeWizardUi, /Render static creatives first/);
+assert.doesNotMatch(staticAdsRoute, /regenerateStaticCreativeAssetsForUser/);
+assert.match(staticAdsRoute, /outputMode:\s*"finished_ad"/);
+assert.match(staticAdsRoute, /provider:\s*"higgsfield_marketing_studio"/);
+assert.match(staticAdsRoute, /previewUpdated/);
+assert.doesNotMatch(staticCreativePreviewCardUi, /Full-resolution creative files stay inside this workspace and are used through the launch workflow/);
 assert.match(selectAdRoute, /assertCampaignCanLaunch/);
-assert.match(selectAdRoute, /!isLaunchReadyStaticCreative\(ad\)/);
+assert.match(selectAdRoute, /!isLaunchReadyStaticCreative\(ad, staticBriefReadinessContext\)/);
 assert.doesNotMatch(selectAdRoute, /Boolean\(ad\.imageUrl\) && !evaluateStaticVisualAssetDecision/);
-assert.match(creativeChatIntakeUi, /Customer-ready static ad/);
-assert.match(creativeChatIntakeUi, /AI UGC video ads/);
-assert.match(creativeChatIntakeUi, /static_and_ugc/);
-assert.match(creativeChatIntakeUi, /DealFlow can prepare static image ads and AI UGC video direction/);
-assert.match(creativeChatIntakeUi, /Reference examples, links, screenshots, or notes/);
-assert.match(creativeChatIntakeUi, /Open Marketing Studio chat/);
-assert.match(creativeChatIntakeUi, /Pre-render UGC concepts/);
-assert.match(creativeChatIntakeUi, /Select concept/);
-assert.match(creativeChatIntakeUi, /Marketing Studio chat log/);
-assert.match(creativeChatIntakeUi, /Output mode" value=\{answers\.outputMode === "background_only" \? "Text-free visual background" : "Customer-ready static ad"\}/);
+assert.doesNotMatch(creativeChatIntakeUi, /Choose static ad direction/);
+assert.doesNotMatch(creativeChatIntakeUi, /Clean Local Expert/);
+assert.doesNotMatch(creativeChatIntakeUi, /Premium Home Sale Guide/);
+assert.match(creativeChatIntakeUi, /CREATIVE_INTAKE_LOCKED_STATIC_STYLE_LABEL/);
+assert.match(creativeChatIntakeUi, /Brokerage brand/);
+assert.match(creativeChatIntakeUi, /Century 21/);
+assert.match(creativeChatIntakeUi, /Offer wording needs a compliant version before approval/);
+assert.match(creativeChatIntakeUi, /Creative language/);
+assert.match(creativeChatIntakeUi, /creativeLanguageLabels/);
+assert.match(creativeChatIntakeUi, /UGC script/);
+assert.match(creativeChatIntakeUi, /generationPhase: "static"/);
+assert.match(creativeChatIntakeUi, /Final AI-rendered media updates after rendering completes and passes launch review/);
+assert.match(creativeChatIntakeUi, /UGC can be added later/);
+assert.match(creativeChatIntakeUi, /Approved UGC script/);
+assert.doesNotMatch(creativeChatIntakeUi, /Creative brief approved|Open Marketing Studio chat|Requesting a revision will pause paid rendering/);
+assert.doesNotMatch(creativeChatIntakeUi, /Target length/);
+assert.match(creativeChatIntakeUi, /Creator persona"[\s\S]*?updateAnswer\(\{ creatorPersona: value, ugcScriptApprovedAt: null \}\)/);
+assert.doesNotMatch(creativeChatIntakeUi, /Hook angle/);
+assert.doesNotMatch(creativeChatIntakeUi, /activeHookOptions/);
+assert.match(creativeChatIntakeUi, /Script length is locked to/);
+assert.match(creativeChatIntakeUi, /Visual style"[\s\S]*?updateAnswer\(\{ visualStyle: value, ugcScriptApprovedAt: null \}\)/);
+assert.match(creativeChatIntakeUi, /Refresh script draft/);
+assert.match(creativeChatIntakeUi, /Skip for now/);
+assert.match(creativeChatIntakeUi, /generationPhase: "static", ugcScriptApprovedAt: null/);
+assert.match(creativeChatIntakeUi, /label="UGC script" value=\{scriptApproved \? "Approved" : "Optional later"\}/);
+assert.match(creativeChatIntakeUi, /syncDerivedUgcAnswers/);
+assert.match(creativeChatIntakeUi, /ensureCurrentCtaOnScreenText/);
+assert.match(creativeChatIntakeUi, /locked Learn More CTA/);
+assert.match(creativeChatIntakeUi, /describeScriptReason/);
+assert.doesNotMatch(creativeChatIntakeUi, /Pre-render UGC concepts/);
+assert.doesNotMatch(creativeChatIntakeUi, /Select concept/);
+assert.doesNotMatch(creativeChatIntakeUi, /Placement plan/);
+assert.doesNotMatch(creativeChatIntakeUi, /Output mode/);
+assert.match(creativeChatIntakeUi, /Saved brief history/);
 const launchPageUi = fs.readFileSync("src/app/(app)/launch/page.tsx", "utf8");
 assert.match(launchPageUi, /Return to Creatives and refresh unfinished previews/);
 assert.match(creativeWizardUi, /controlsList="nodownload noplaybackrate"/);
@@ -135,10 +192,41 @@ const defaults = {
 };
 
 const softened = softenRegulatedClaims("Guaranteed Approval for 600+ Credit");
-assert.match(softened.text, /may qualify|options may be available/i);
+assert.match(softened.text, /Home Options for 600\+ Credit/i);
 assert.ok(softened.softenedClaims.length > 0, "risky approval claims are softened");
+assert.equal(softened.explanations[0].blockedPhrase, "Guaranteed Approval for 600+ Credit");
+
+const softenedSaleClaim = softenRegulatedClaims("We guarantee to sell your home in the next 90 days");
+assert.match(softenedSaleClaim.text, /90-Day Home Sale Plan/i);
+assert.ok(softenedSaleClaim.explanations.some((item) => /Guaranteed sale/i.test(item.reason)));
+
+const buyoutBackedSellerOffer = normalizeOfferForCampaign(
+  "Sell Your Home In 90 Days Or We'll Buy It",
+  "seller",
+);
+assert.equal(
+  buyoutBackedSellerOffer.normalizedOffer,
+  "Sell Your Home in 90 Days or We'll Buy It",
+  "buyout-backed seller offers must preserve the user's actual offer instead of collapsing to a generic 90-day plan",
+);
+assert.notEqual(
+  buyoutBackedSellerOffer.normalizedOffer,
+  "90-Day Home Sale Plan",
+  "non-guarantee buyout wording must not be silently rewritten to a generic plan",
+);
+
+const explicitGuaranteedSellerOffer = normalizeOfferForCampaign(
+  "Guaranteed Sale In 90 Days",
+  "seller",
+);
+assert.equal(
+  explicitGuaranteedSellerOffer.normalizedOffer,
+  "90-Day Home Sale Plan",
+  "explicit guaranteed-sale wording is still softened into a compliant sale plan",
+);
 
 const answers = {
+  targetLanguage: "fr",
   targetAudience: "first_time_buyers",
   offer: "custom",
   customOffer: "Guaranteed Approval for 600+ Credit",
@@ -146,84 +234,427 @@ const answers = {
   market: "Toronto, ON",
   creativeStyle: "ugc",
   constraints: "Avoid guarantees. Qualification is subject to lender review.",
-  cta: "Check Buying Power",
+  cta: CREATIVE_INTAKE_LOCKED_CTA,
   propertyType: "Detached homes",
   outputMode: "background_only",
   generationPhase: "static",
 };
 const brief = buildCreativeIntakeBrief(answers, defaults);
 assert.equal(brief.completion.complete, true, "complete intake brief is accepted");
-assert.match(brief.offer, /may qualify|options may be available/i);
+assert.equal(brief.staticStyle, CREATIVE_INTAKE_LOCKED_STATIC_STYLE_LABEL, "static style is locked to the single bold offer-focused direction");
+assert.equal(brief.creativeStyle, CREATIVE_INTAKE_LOCKED_STATIC_STYLE_LABEL, "creative style is locked to the single bold offer-focused direction");
+assert.equal(brief.targetLanguage, "fr");
+assert.equal(brief.targetLanguageLabel, "French");
+assert.match(brief.languageInstruction, /Do not mix in English/);
+assert.match(brief.offer, /Home Options for 600\+ Credit/i);
+assert.ok(brief.staticBriefHash, "static brief hash is persisted on the approved brief");
+assert.ok(brief.offerHash, "offer hash is persisted on the approved brief");
+assert.ok(brief.ctaHash, "CTA hash is persisted on the approved brief");
+assert.ok(brief.brandHash, "brand hash is persisted on the approved brief");
+assert.ok(brief.complianceExplanations.some((item) => item.blockedPhrase === "Guaranteed Approval for 600+ Credit"));
 assert.ok(brief.complianceNotes.some((note) => /guarantee|qualif|lender|approval|credit/i.test(note)));
 
 const prompt = buildCreativeIntakePromptVersion(brief, 2);
 assert.match(prompt.generatedPrompt, /TEXT-FREE BACKGROUND ASSET ONLY/);
+assert.match(prompt.generatedPrompt, /natural French/);
+assert.match(prompt.generatedPrompt, /Do not mix in English/);
 assert.match(prompt.generatedPrompt, /DealFlow will render the actual headline, CTA, proof chips/);
 assert.doesNotMatch(prompt.generatedPrompt, /create a finished ad/i);
 assert.match(prompt.negativePrompt, /gibberish typography/);
-assert.match(prompt.sanitizedPreview, /Check Buying Power/);
-assert.match(prompt.sanitizedPreview, /background_only/);
+assert.match(prompt.sanitizedPreview, /Learn More/);
+assert.match(prompt.sanitizedPreview, /Language: French/);
+assert.match(prompt.sanitizedPreview, /Brief hash:/);
 
 const finishedAdBrief = buildCreativeIntakeBrief({
   ...answers,
+  targetLanguage: "es",
   outputMode: "finished_ad",
 }, defaults);
 const finishedAdPrompt = buildCreativeIntakePromptVersion(finishedAdBrief, 3);
 assert.match(finishedAdPrompt.generatedPrompt, /MARKETING STUDIO FINISHED AD CREATIVE/);
-assert.match(finishedAdBrief.offer, /this week/i, "finished-ad brief adds safe timing context to the offer");
-assert.match(finishedAdBrief.cta, /this week/i, "finished-ad brief adds safe timing context to the CTA");
-assert.match(finishedAdPrompt.generatedPrompt, /Required CTA text that must be readable in the final raster: Check Buying Power this week/);
-assert.match(finishedAdPrompt.generatedPrompt, /short headline, clear timed offer, one concise proof\/support line, and one clear CTA/);
+assert.match(finishedAdPrompt.generatedPrompt, /natural Spanish/);
+assert.match(finishedAdPrompt.generatedPrompt, /Do not mix in English/);
+assert.doesNotMatch(finishedAdBrief.offer, /this week/i, "finished-ad brief keeps customer-facing offer concise");
+assert.equal(finishedAdBrief.cta, "Learn More", "finished-ad brief uses the locked Meta CTA");
+assert.match(finishedAdPrompt.generatedPrompt, /Required CTA text that must be readable in the final raster: Learn More/);
+assert.match(finishedAdPrompt.generatedPrompt, /short headline, exact approved offer, one concise proof\/support line, and one clear CTA/);
 assert.match(finishedAdPrompt.generatedPrompt, /one dominant hook area, one proof area, strong negative space, and a clear CTA-safe zone/);
 assert.match(finishedAdPrompt.generatedPrompt, /generous safe margins/);
 assert.match(finishedAdPrompt.generatedPrompt, /no tiny text, no cropped CTA, no overlapping panels/i);
 assert.match(finishedAdPrompt.generatedPrompt, /not a chart, not a dashboard, not a listing sheet/);
+assert.match(finishedAdPrompt.generatedPrompt, /Brand\/logo text is optional/);
+assert.match(finishedAdPrompt.generatedPrompt, /omit it/);
 assert.match(finishedAdPrompt.generatedPrompt, /Do not invent logos, guaranteed-approval claims, guaranteed financing/);
 assert.doesNotMatch(finishedAdPrompt.negativePrompt, /finished ad/);
 assert.doesNotMatch(finishedAdPrompt.negativePrompt, /CTA button/);
 
-const ugcBriefNeedsReference = buildCreativeIntakeBrief({
-  ...answers,
-  outputMode: "finished_ad",
-  generationPhase: "ugc_video",
+const buyerUgcDraft = buildCreativeUgcScriptDraft({
+  campaignType: defaults.campaignType,
+  audience: brief.targetAudience,
+  market: defaults.market,
+  offerTitle: brief.offer,
+  cta: CREATIVE_INTAKE_LOCKED_CTA,
+  propertyType: answers.propertyType,
   targetDurationSeconds: 20,
   creatorPersona: "Toronto buyer agent guide",
-  hookAngle: "Most buyers miss options before they hit public search",
+  hookAngle: "Speed to Sell",
   visualStyle: "native vertical creator POV",
-  pacing: "fast hook, clear explanation, direct CTA",
-  cameraStyle: "phone-camera walkthrough",
-  captionOverlayStyle: "large readable captions",
-  referenceExamples: "",
-  ugcDefaultStyleAccepted: false,
-}, defaults);
-assert.equal(ugcBriefNeedsReference.completion.complete, false);
-assert.ok(ugcBriefNeedsReference.completion.missing.includes("ugc_reference_or_default_style_acceptance"));
-assert.ok(ugcBriefNeedsReference.completion.missing.includes("selected_ugc_concept"));
+});
+assert.equal(inferCreativeUgcAudienceKind({ campaignType: "buyer", audience: "Buyers" }), "buyer");
+assert.equal(inferCreativeUgcAudienceKind({ audience: "Buyers", offer: "Access To Off Market Properties", cta: CREATIVE_INTAKE_LOCKED_CTA }), "buyer");
+assert.equal(inferCreativeUgcAudienceKind({ campaignType: "seller", audience: "Homeowners" }), "seller");
+assert.equal(inferCreativeUgcAudienceKind({ campaignType: "investor", offer: "Off-market deal flow" }), "investor");
+assert.equal(inferCreativeUgcAudienceKind({ campaignType: "commercial", offer: "Site shortlist" }), "commercial");
+assert.equal(resolveUgcScriptContext({ campaignType: "other", audience: "Prospects" }).campaignType, "unknown");
+assert.ok(resolveUgcScriptContext({ campaignType: "other", audience: "Prospects" }).rejectedReasons.includes("needs_campaign_classification"));
+const offMarketBuyerUgcDraft = buildCreativeUgcScriptDraft({
+  campaignType: "buyer",
+  audience: "Buyers",
+  market: "Toronto, ON",
+  offerTitle: "Access To Off Market Properties",
+  offerMechanism: "Access To Off Market Properties",
+  cta: CREATIVE_INTAKE_LOCKED_CTA,
+  targetDurationSeconds: 20,
+  creatorPersona: "Local Agent",
+  hookAngle: "Early Access",
+  visualStyle: "Talking-head with local captions",
+});
+const offMarketBuyerScriptText = offMarketBuyerUgcDraft.lines.join(" ");
+assert.match(offMarketBuyerScriptText, /buyers|homes|properties|off market|Learn More/i);
+assert.doesNotMatch(
+  offMarketBuyerScriptText,
+  /homeowners|selling options|before they list|listing strategy|speed to sell|sell your home/i,
+  "buyer campaign UGC script must not inherit seller/homeowner language",
+);
+assert.equal(
+  validateCreativeUgcScriptDraft({
+    script: offMarketBuyerUgcDraft,
+    campaignType: "buyer",
+    audience: "Buyers",
+    market: "Toronto, ON",
+    offerTitle: "Access To Off Market Properties",
+    cta: CREATIVE_INTAKE_LOCKED_CTA,
+  }).accepted,
+  true,
+  "off-market buyer UGC script passes buyer-safe validation",
+);
+assert.equal(
+  validateCreativeUgcScriptDraft({
+    script: {
+      ...offMarketBuyerUgcDraft,
+      lines: [
+        "Most Toronto, ON homeowners wait too long before they know their real selling options.",
+        "They need a clear plan for price, timing, demand, and the next move before they list.",
+        "Access To Off Market Properties.",
+        "It gives you a cleaner read before you commit to the wrong listing strategy.",
+        "Access To Off Market Properties.",
+        "Learn More.",
+      ],
+    },
+    campaignType: "buyer",
+    audience: "Buyers",
+    market: "Toronto, ON",
+    offerTitle: "Access To Off Market Properties",
+    cta: CREATIVE_INTAKE_LOCKED_CTA,
+  }).reasons.includes("buyer_seller_language_mismatch"),
+  true,
+  "buyer UGC validation rejects seller/homeowner script leakage",
+);
+const sellerUgcDraft = buildCreativeUgcScriptDraft({
+  campaignType: "seller",
+  audience: "Homeowners",
+  market: "Toronto, ON",
+  offerTitle: "Free Home Value And Buyer Demand Report",
+  cta: "Get Report",
+  targetDurationSeconds: 20,
+  creatorPersona: "Local Agent",
+  hookAngle: "Buyer Demand",
+  visualStyle: "Talking-head with local captions",
+});
+assert.match(sellerUgcDraft.fullScript, /own a home in Toronto|buyer demand|Get Report/i);
+assert.doesNotMatch(sellerUgcDraft.fullScript, /pre-approval|buying power|custom home list|home search/i);
+assert.equal(
+  validateCreativeUgcScriptDraft({
+    script: sellerUgcDraft,
+    campaignType: "seller",
+    audience: "Homeowners",
+    market: "Toronto, ON",
+    offerTitle: "Free Home Value And Buyer Demand Report",
+    cta: "Get Report",
+  }).accepted,
+  true,
+  "seller UGC script passes seller-safe validation",
+);
+assert.equal(
+  validateCreativeUgcScriptDraft({
+    script: {
+      ...sellerUgcDraft,
+      cta: "Get Report",
+      lines: [
+        "If you are trying to buy a home in Toronto, ON, tour homes before they disappear.",
+        "Most buyers need pre-approval and a clear home search plan.",
+        "Custom home list.",
+        "It helps with buying power.",
+        "Custom home list.",
+        "Book a home tour.",
+      ],
+    },
+    campaignType: "seller",
+    audience: "Homeowners",
+    market: "Toronto, ON",
+    offerTitle: "Free Home Value And Buyer Demand Report",
+    cta: "Get Report",
+  }).reasons.includes("seller_buyer_language_mismatch"),
+  true,
+  "seller UGC validation rejects buyer/search script leakage",
+);
+assert.equal(
+  validateCreativeUgcScriptDraft({
+    script: {
+      ...sellerUgcDraft,
+      cta: "Get My Sale Comparison",
+      lines: [
+        "If you own a home in Toronto, ON, this sale comparison gives you a clearer read on demand.",
+        "Toronto homeowners need pricing and timing context before they decide whether to list.",
+        "Neighbourhood Sale Comparison Report.",
+        "It compares local demand, recent sales, and the next seller conversation.",
+        "Neighbourhood Sale Comparison Report.",
+        "Tap Request Private Access.",
+      ],
+    },
+    campaignType: "seller",
+    audience: "Homeowners",
+    market: "Toronto, ON",
+    offerTitle: "Neighbourhood Sale Comparison Report",
+    cta: "Get My Sale Comparison",
+  }).reasons.includes("cta_mismatch"),
+  true,
+  "UGC validation rejects stale CTA drift after the campaign CTA changes",
+);
+const investorUgcDraft = buildCreativeUgcScriptDraft({
+  campaignType: "investor",
+  audience: "Investors",
+  market: "Toronto, ON",
+  offerTitle: "Off-Market Deal Review",
+  cta: "Review Deals",
+  targetDurationSeconds: 20,
+  hookAngle: "Numbers First",
+});
+assert.match(investorUgcDraft.fullScript, /investors?|deals?|numbers|risk|Review Deals/i);
+assert.equal(validateCreativeUgcScriptDraft({
+  script: investorUgcDraft,
+  campaignType: "investor",
+  audience: "Investors",
+  market: "Toronto, ON",
+  offerTitle: "Off-Market Deal Review",
+  cta: "Review Deals",
+}).accepted, true, "investor UGC scripts avoid buyer/seller defaults");
+const commercialUgcDraft = buildCreativeUgcScriptDraft({
+  campaignType: "commercial",
+  audience: "Commercial tenants",
+  market: "Toronto, ON",
+  offerTitle: "Commercial Site Shortlist",
+  cta: "Book A Tour",
+  targetDurationSeconds: 20,
+  hookAngle: "Site Shortlist",
+});
+assert.match(commercialUgcDraft.fullScript, /commercial space|shortlist|requirements|Book A Tour/i);
+assert.equal(validateCreativeUgcScriptDraft({
+  script: commercialUgcDraft,
+  campaignType: "commercial",
+  audience: "Commercial tenants",
+  market: "Toronto, ON",
+  offerTitle: "Commercial Site Shortlist",
+  cta: "Book A Tour",
+}).accepted, true, "commercial UGC scripts avoid residential defaults");
+const unknownUgcDraft = buildCreativeUgcScriptDraft({
+  campaignType: "other",
+  audience: "Prospects",
+  market: "Toronto, ON",
+  offerTitle: "Campaign Plan",
+  cta: "Learn More",
+  targetDurationSeconds: 20,
+});
+assert.ok(unknownUgcDraft.rejectedReasons.includes("needs_campaign_classification"));
+assert.ok(validateCreativeUgcScriptDraft({
+  script: unknownUgcDraft,
+  campaignType: "other",
+  audience: "Prospects",
+  market: "Toronto, ON",
+  offerTitle: "Campaign Plan",
+  cta: "Learn More",
+}).reasons.includes("needs_campaign_classification"));
+assert.ok(validateCreativeUgcScriptDraft({
+  script: {
+    ...buyerUgcDraft,
+    lines: [
+      "If you are trying to buy a home in Toronto, ON, this is for families only.",
+      "Buyers need options.",
+      "Private buyer shortlist.",
+      "It helps match timing and must-haves.",
+      "Private buyer shortlist.",
+      "Check Buying Power.",
+    ],
+  },
+  campaignType: "buyer",
+  audience: defaults.audience,
+  market: defaults.market,
+  offerTitle: defaults.offer,
+  cta: "Check Buying Power",
+}).reasons.includes("housing_protected_class_language"), "protected-class housing copy is rejected");
+assert.ok(validateCreativeUgcScriptDraft({
+  script: {
+    ...buyerUgcDraft,
+    lines: [
+      "If you are trying to buy a home in Toronto, ON, I bought with this agent last month.",
+      "Buyers need options.",
+      "Private buyer shortlist.",
+      "It helps match timing and must-haves.",
+      "Private buyer shortlist.",
+      "Check Buying Power.",
+    ],
+  },
+  campaignType: "buyer",
+  audience: defaults.audience,
+  market: defaults.market,
+  offerTitle: defaults.offer,
+  cta: "Check Buying Power",
+}).reasons.includes("testimonial_unsubstantiated"), "fake testimonial framing is rejected");
+const sellerOfferTitle = normalizeCreativeOfferTitle({
+  value: "14-Day Home Sale Plan. Delivered through a buyer consultation and qualification system for home buyers.",
+  campaignType: "seller",
+  audience: "Sellers",
+});
+assert.equal(sellerOfferTitle, "14-Day Home Sale Plan", "verbose seller offer is normalized to a concise customer-facing title");
+const buyerUgcDraftWithVerboseMechanism = buildCreativeUgcScriptDraft({
+  campaignType: "buyer",
+  audience: defaults.audience,
+  market: defaults.market,
+  offerTitle: "Off-market Property Access",
+  offerMechanism:
+    "Off-market Property Access. Delivered through a buyer consultation and qualification system for home buyers searching for $600k-$900k homes in toronto, on who want better houses options in Toronto, ON without wasting time.",
+  cta: "Click learn more for access",
+  targetDurationSeconds: 20,
+  creatorPersona: "Direct Response Narrator",
+  hookAngle: "Speed to Sell",
+  visualStyle: "Listing walkthrough style",
+});
+assert.doesNotMatch(
+  buyerUgcDraftWithVerboseMechanism.lines.join(" "),
+  /delivered through|buyer consultation|qualification system|better houses options/i,
+  "UGC script draft strips verbose internal offer mechanisms from customer-facing script text",
+);
+const naturalOffMarketScript = {
+  ...buyerUgcDraft,
+  targetDurationSeconds: 20,
+  cta: "Click learn more",
+  lines: [
+    "I'll get you into your next home for up to 50% less than the current market in the Toronto area.",
+    "You heard that right. Our team has access to hundreds of distressed sale properties that are going for up to 50% less than the market, from condos all the way to detached homes.",
+    "Now if you've held off on purchasing your next home, click learn more to speak with our team and get access to these off-market properties.",
+  ],
+};
+const naturalOffMarketValidation = validateCreativeUgcScriptDraft({
+  script: naturalOffMarketScript,
+  campaignType: defaults.campaignType,
+  audience: defaults.audience,
+  market: defaults.market,
+  offerTitle: "Off-market Property Access",
+  cta: "Click learn more",
+});
+assert.equal(
+  naturalOffMarketValidation.accepted,
+  true,
+  "UGC script validator accepts natural Hook / Info / CTA scripts without requiring literal section headings",
+);
+assert.equal(
+  naturalOffMarketValidation.reasons.includes("script_sections_missing"),
+  false,
+  "Natural three-part UGC scripts do not show the confusing script_sections_missing blocker",
+);
+const repetitiveScript = {
+  ...buyerUgcDraft,
+  lines: [
+    "Private buyer shortlist.",
+    "Private buyer shortlist.",
+    "Private buyer shortlist.",
+    "Private buyer shortlist.",
+    "Private buyer shortlist.",
+    "Check Buying Power.",
+  ],
+};
+assert.equal(
+  validateCreativeUgcScriptDraft({
+    script: repetitiveScript,
+    campaignType: defaults.campaignType,
+    audience: defaults.audience,
+    market: defaults.market,
+    offerTitle: defaults.offer,
+    cta: "Check Buying Power",
+  }).accepted,
+  false,
+  "UGC script validator rejects repeated offer phrase spam",
+);
 
-const ugcBriefNeedsConcept = buildCreativeIntakeBrief({
+const ugcBriefNeedsApproval = buildCreativeIntakeBrief({
   ...answers,
   outputMode: "finished_ad",
   generationPhase: "ugc_video",
   targetDurationSeconds: 20,
   creatorPersona: "Toronto buyer agent guide",
-  hookAngle: "Most buyers miss options before they hit public search",
+  hookAngle: buyerUgcDraft.scriptAngle,
   visualStyle: "native vertical creator POV",
   pacing: "fast hook, clear explanation, direct CTA",
   cameraStyle: "phone-camera walkthrough",
   captionOverlayStyle: "large readable captions",
-  referenceExamples: "Reference 1: agent explains buyer options in a car",
-  selectedUgcConceptId: "",
+  ugcApprovedScript: buyerUgcDraft.lines.join("\n"),
+  ugcShotList: buyerUgcDraft.shotList,
+  ugcOnScreenText: buyerUgcDraft.onScreenText,
+  ugcScriptVersion: buyerUgcDraft.version,
 }, defaults);
-assert.equal(ugcBriefNeedsConcept.completion.complete, false);
-assert.ok(ugcBriefNeedsConcept.completion.missing.includes("selected_ugc_concept"));
+assert.equal(ugcBriefNeedsApproval.completion.complete, false);
+assert.ok(ugcBriefNeedsApproval.completion.missing.includes("ugc_script_approval"));
+
+const ugcBriefWithUnsafeScript = buildCreativeIntakeBrief({
+  ...answers,
+  outputMode: "finished_ad",
+  generationPhase: "ugc_video",
+  targetDurationSeconds: 20,
+  creatorPersona: "Toronto buyer agent guide",
+  hookAngle: buyerUgcDraft.scriptAngle,
+  visualStyle: "native vertical creator POV",
+  pacing: "fast hook, clear explanation, direct CTA",
+  cameraStyle: "phone-camera walkthrough",
+  captionOverlayStyle: "large readable captions",
+  ugcApprovedScript: repetitiveScript.lines.join("\n"),
+  ugcShotList: buyerUgcDraft.shotList,
+  ugcOnScreenText: buyerUgcDraft.onScreenText,
+  ugcScriptVersion: buyerUgcDraft.version,
+  ugcScriptApprovedAt: "2026-05-20T00:00:00.000Z",
+}, defaults);
+assert.equal(ugcBriefWithUnsafeScript.completion.complete, false);
+assert.ok(ugcBriefWithUnsafeScript.completion.missing.includes("ugc_script_quality"));
+
+const lockedBuyerUgcDraft = buildCreativeUgcScriptDraft({
+  campaignType: defaults.campaignType,
+  audience: brief.targetAudience,
+  market: defaults.market,
+  offerTitle: brief.offer,
+  cta: CREATIVE_INTAKE_LOCKED_CTA,
+  propertyType: answers.propertyType,
+  targetDurationSeconds: CREATIVE_INTAKE_LOCKED_TARGET_DURATION_SECONDS,
+  creatorPersona: "Toronto buyer agent guide",
+  hookAngle: "Early Access",
+  visualStyle: "native vertical creator POV",
+});
 
 const ugcBrief = buildCreativeIntakeBrief({
   ...answers,
   outputMode: "finished_ad",
   generationPhase: "ugc_video",
-  targetDurationSeconds: 20,
+  targetDurationSeconds: 30,
   creatorPersona: "Toronto buyer agent guide",
-  hookAngle: "Most buyers miss options before they hit public search",
+  hookAngle: "Speed to Sell",
   visualStyle: "native vertical creator POV",
   pacing: "fast hook, clear explanation, direct CTA",
   cameraStyle: "phone-camera walkthrough",
@@ -232,23 +663,35 @@ const ugcBrief = buildCreativeIntakeBrief({
   goodBadExamples: "Good: natural creator energy\nBad: generic 5s stock clip",
   mustUseLanguage: "Book a 15-minute buyer strategy call this week",
   mustAvoid: "No fake dashboards. No guaranteed approval.",
-  selectedUgcConceptId: "ugc-concept-affordability-reality-check",
+  ugcApprovedScript: lockedBuyerUgcDraft.lines.join("\n"),
+  ugcShotList: lockedBuyerUgcDraft.shotList,
+  ugcOnScreenText: lockedBuyerUgcDraft.onScreenText,
+  ugcScriptVersion: lockedBuyerUgcDraft.version,
+  ugcScriptApprovedAt: "2026-05-20T00:00:00.000Z",
 }, defaults);
 assert.equal(ugcBrief.completion.complete, true);
-assert.equal(ugcBrief.ugcStyleBrief.targetDurationSeconds, 20);
+assert.equal(ugcBrief.ugcStyleBrief.targetDurationSeconds, CREATIVE_INTAKE_LOCKED_TARGET_DURATION_SECONDS);
 assert.equal(ugcBrief.ugcStyleBrief.referenceExamples.length, 2);
-assert.equal(ugcBrief.ugcStyleBrief.selectedConceptId, "ugc-concept-affordability-reality-check");
-assert.equal(ugcBrief.ugcStyleBrief.concepts.length, 3);
+assert.equal(ugcBrief.ugcStyleBrief.approvedScript.lines.join("\n"), lockedBuyerUgcDraft.lines.join("\n"));
+assert.equal(ugcBrief.ugcStyleBrief.scriptValidation.accepted, true);
+assert.equal(ugcBrief.ugcStyleBrief.resolvedCampaignType, "buyer");
+assert.equal(ugcBrief.ugcStyleBrief.scriptAngle, "early access", "customer-supplied hook angle is ignored");
+assert.equal(ugcBrief.ugcStyleBrief.sourceContextHash, lockedBuyerUgcDraft.contextHash);
+assert.ok(ugcBrief.ugcStyleBrief.campaignTypeHash);
+assert.ok(ugcBrief.ugcStyleBrief.audienceHash);
+assert.ok(ugcBrief.ugcStyleBrief.marketHash);
+assert.ok(ugcBrief.ugcStyleBrief.offerHash);
+assert.ok(ugcBrief.ugcStyleBrief.ctaHash);
 const ugcPrompt = buildCreativeIntakePromptVersion(ugcBrief, 4);
 assert.match(ugcPrompt.generatedPrompt, /MARKETING STUDIO AI UGC VIDEO BRIEF/);
 assert.match(ugcPrompt.generatedPrompt, /15-30 second launch-quality range/);
 assert.match(ugcPrompt.generatedPrompt, /Do not create a 5-second sample/);
 assert.match(ugcPrompt.generatedPrompt, /Creator\/agent persona: Toronto buyer agent guide/);
-assert.match(ugcPrompt.generatedPrompt, /Selected pre-render concept: Affordability reality check/);
-assert.match(ugcPrompt.sanitizedPreview, /Selected UGC concept: Affordability reality check/);
+assert.match(ugcPrompt.generatedPrompt, /Approved script lines:/);
+assert.match(ugcPrompt.sanitizedPreview, /Approved UGC script:/);
 assert.match(ugcPrompt.generatedPrompt, /Reference examples:/);
 assert.match(ugcPrompt.generatedPrompt, /Must-avoid constraints:/);
-assert.match(ugcPrompt.sanitizedPreview, /UGC duration: 20s/);
+assert.match(ugcPrompt.sanitizedPreview, new RegExp(`UGC duration: ${CREATIVE_INTAKE_LOCKED_TARGET_DURATION_SECONDS}s`));
 
 const combinedBrief = buildCreativeIntakeBrief({
   ...answers,
@@ -257,18 +700,59 @@ const combinedBrief = buildCreativeIntakeBrief({
   targetDurationSeconds: 20,
   creatorPersona: "Toronto buyer agent guide",
   referenceExamples: "Reference 1: agent explains buyer options in a car",
-  selectedUgcConceptId: "ugc-concept-private-shortlist",
+  ugcApprovedScript: buyerUgcDraft.lines.join("\n"),
+  ugcShotList: buyerUgcDraft.shotList,
+  ugcOnScreenText: buyerUgcDraft.onScreenText,
+  ugcScriptVersion: buyerUgcDraft.version,
+  ugcScriptApprovedAt: "2026-05-20T00:00:00.000Z",
 }, defaults);
 assert.equal(combinedBrief.completion.complete, true);
 assert.equal(combinedBrief.generationPhase, "static_and_ugc");
 assert.ok(creativeIntakeIncludesStatic(combinedBrief.generationPhase), "combined brief allows static generation");
 assert.ok(creativeIntakeIncludesUgcVideo(combinedBrief.generationPhase), "combined brief allows UGC video generation");
-assert.equal(combinedBrief.ugcStyleBrief.selectedConceptId, "ugc-concept-private-shortlist");
+assert.equal(combinedBrief.ugcStyleBrief.scriptVersion, buyerUgcDraft.version);
 const combinedPrompt = buildCreativeIntakePromptVersion(combinedBrief, 5);
 assert.match(combinedPrompt.generatedPrompt, /MARKETING STUDIO COMBINED STATIC \+ AI UGC BRIEF/);
 assert.match(combinedPrompt.generatedPrompt, /MARKETING STUDIO FINISHED AD CREATIVE/);
 assert.match(combinedPrompt.generatedPrompt, /MARKETING STUDIO AI UGC VIDEO BRIEF/);
-assert.match(combinedPrompt.sanitizedPreview, /Phase: static_and_ugc/);
+assert.match(combinedPrompt.sanitizedPreview, /Brief hash:/);
+
+const combinedStaticAds = await generateStaticCreativeAds({
+  campaign_id: defaults.campaignId,
+  location: defaults.market,
+  audience: defaults.audience,
+  offer: defaults.offer,
+  property_type: defaults.propertyType,
+  market_type: defaults.campaignType,
+  creative_intake: {
+    version: 1,
+    conversationId: "combined-static-prompt-test",
+    campaignId: defaults.campaignId,
+    revisionNumber: 5,
+    approvedAt: "2026-05-20T00:00:00.000Z",
+    outputMode: "finished_ad",
+    generationPhase: "static_and_ugc",
+    requiredOfferTitle: combinedBrief.offerTitle,
+    requiredOffer: combinedBrief.offer,
+    requiredCta: combinedBrief.cta,
+    market: combinedBrief.market,
+    targetAudience: combinedBrief.targetAudience,
+    brokerageBrand: combinedBrief.brokerageBrand,
+    promptVersion: combinedPrompt,
+    briefHash: combinedBrief.briefHash,
+    staticBriefHash: combinedBrief.staticBriefHash,
+    offerHash: combinedBrief.offerHash,
+    ctaHash: combinedBrief.ctaHash,
+    brandHash: combinedBrief.brandHash,
+    ugcScriptHash: combinedBrief.ugcScriptHash,
+  },
+  max_static_image_generations: 0,
+});
+assert.match(combinedStaticAds[0].imagePrompt, /MARKETING STUDIO FINISHED AD CREATIVE/);
+assert.match(combinedStaticAds[0].imagePrompt, /FINAL OUTPUT REQUIREMENT/);
+assert.doesNotMatch(combinedStaticAds[0].imagePrompt, /MARKETING STUDIO AI UGC VIDEO BRIEF/);
+assert.doesNotMatch(combinedStaticAds[0].imagePrompt, /Approved script lines:/);
+assert.match(combinedStaticAds[0].imagePrompt, /must be readable|CTA button|text hierarchy/i);
 
 const state = createCreativeIntakeState({
   campaignId: defaults.campaignId,
@@ -285,10 +769,38 @@ assert.equal(isCreativeIntakeApproved(plan), true, "approved complete intake gat
 const approvedContext = getApprovedCreativeIntakeGenerationContext(plan);
 assert.equal(approvedContext.outputMode, "background_only");
 assert.equal(approvedContext.generationPhase, "static");
-assert.equal(approvedContext.requiredCta, "Check Buying Power");
-assert.equal(approvedContext.requiredOffer, "options may be available for buyers with 600+ credit");
+assert.equal(approvedContext.targetLanguage, "fr");
+assert.equal(approvedContext.requiredCta, "Learn More");
+assert.equal(approvedContext.requiredOffer, "Home Options for 600+ Credit");
+assert.equal(approvedContext.staticBriefHash, approvedState.brief.staticBriefHash);
+assert.equal(approvedContext.brandHash, approvedState.brief.brandHash);
 assert.equal(approvedContext.promptVersion.generatedPrompt, prompt.generatedPrompt);
 assert.equal(hasSameCreativeIntakeGenerationContext(approvedContext, approvedContext), true);
+assert.equal(
+  hasSameCreativeIntakeGenerationContext(approvedContext, { ...approvedContext, targetLanguage: "en" }),
+  false,
+  "target language changes invalidate generation context reuse",
+);
+const legacyBriefWithoutHashes = {
+  ...approvedState.brief,
+  briefHash: "",
+  staticBriefHash: "",
+  offerHash: "",
+  ctaHash: "",
+  brandHash: "",
+  ugcScriptHash: null,
+};
+const legacyPlan = mergeCreativeChatIntakeIntoPlan(plan, {
+  ...approvedState,
+  brief: legacyBriefWithoutHashes,
+});
+const hydratedLegacyIntake = readCreativeChatIntakeFromPlan(legacyPlan);
+const hydratedLegacyContext = getApprovedCreativeIntakeGenerationContext(legacyPlan);
+assert.ok(hydratedLegacyIntake.brief.staticBriefHash, "legacy approved briefs are hydrated with a current static brief hash on read");
+assert.ok(hydratedLegacyContext.staticBriefHash, "legacy approved contexts get deterministic hashes so stale assets fail closed");
+assert.equal(hydratedLegacyContext.staticBriefHash, approvedContext.staticBriefHash);
+assert.equal(hydratedLegacyContext.ctaHash, approvedContext.ctaHash);
+assert.equal(hydratedLegacyContext.brandHash, approvedContext.brandHash);
 const adaptedModernDocument = getSavedCampaignDocumentFromRow({
   id: defaults.campaignId,
   plan: {
@@ -364,8 +876,9 @@ const finishedAdContext = {
   approvedAt: "2026-05-14T00:00:00.000Z",
   outputMode: "finished_ad",
   generationPhase: "static",
-  requiredOffer: "Private buyer shortlist",
-  requiredCta: "Book a 15-minute buyer strategy call",
+  targetLanguage: "es",
+	  requiredOffer: "Private buyer access system with 25 off-market homes this month",
+	  requiredCta: "Click Learn More",
   market: defaults.market,
   targetAudience: defaults.audience,
   brokerageBrand: defaults.brand,
@@ -388,14 +901,19 @@ const finishedAdStaticAds = await generateStaticCreativeAds({
   creative_intake: finishedAdContext,
   max_static_image_generations: 0,
 });
-assert.match(finishedAdStaticAds[0].offer, /this week/i, "finished-ad static copy gets a timing fallback");
-assert.match(finishedAdStaticAds[0].cta, /this week/i, "finished-ad CTA gets a timing fallback");
-assert.match(finishedAdStaticAds[0].imagePrompt, /Finished-ad quality contract/);
-assert.match(finishedAdStaticAds[0].imagePrompt, /Timed offer that must be readable: Preview private buyer shortlist this week/);
-assert.match(finishedAdStaticAds[0].imagePrompt, /one dominant hook area, one proof area, strong negative space, and a clear CTA-safe zone/);
-assert.match(finishedAdStaticAds[0].imagePrompt, /generous safe margins/);
-assert.match(finishedAdStaticAds[0].imagePrompt, /No tiny text, cropped CTA, overlapping panels/);
+assert.equal(finishedAdStaticAds[0].offer, "Private buyer access system with 25 off-market homes this month", "finished-ad static copy uses the approved offer exactly");
+assert.equal(finishedAdStaticAds[0].cta, "Click Learn More", "finished-ad CTA uses the approved CTA exactly");
+assert.match(finishedAdStaticAds[0].imagePrompt, /MARKETING STUDIO FINISHED AD CREATIVE/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /complete square paid-social ad raster directly in Higgsfield Marketing Studio/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /Required offer text that must be readable in the final raster: Private buyer access system with 25 off-market homes this month/);
+assert.match(finishedAdStaticAds[0].imagePrompt, /Required CTA text that must be readable in the final raster: Click Learn More/);
+assert.doesNotMatch(finishedAdStaticAds[0].overlayText, /^Preview\b/i, "finished-ad static overlays do not block the creative with a preview prefix");
+assert.match(finishedAdStaticAds[0].imagePrompt, /final image should look like a high-performing real estate Facebook\/Instagram ad/i);
+assert.match(finishedAdStaticAds[0].imagePrompt, /Media-buyer reference layout: one dominant hook area, one proof\/support area, strong negative space, and one clear CTA-safe zone/);
+assert.doesNotMatch(finishedAdStaticAds[0].imagePrompt, /DealFlow will place exact text later/);
+assert.doesNotMatch(finishedAdStaticAds[0].imagePrompt, /guaranteed-approval claim|guaranteed-financing claim/);
 assert.equal(finishedAdStaticAds[0].qualityGate.accepted, true, "finished-ad static prompt contract passes product-quality preflight");
+assert.equal(finishedAdStaticAds[0].staticBriefHash, finishedAdContext.staticBriefHash ?? null);
 
 function buildAsset() {
   return {
@@ -406,12 +924,14 @@ function buildAsset() {
     imageGenerationState: "generated",
     imageGenerationMessage: null,
     imageGenerationModel: "marketing_studio_image",
-    imageGenerationProvider: "higgsfield",
-    visualConcept: "Toronto buyer background",
-    imagePrompt: "TEXT-FREE BACKGROUND ASSET ONLY. Realistic photo.",
+    imageGenerationProvider: "higgsfield_marketing_studio",
+    appComposedFinal: false,
+    qualityTier: "higgsfield_finished_ad",
+    visualConcept: "Toronto buyer finished ad",
+    imagePrompt: "MARKETING STUDIO FINISHED AD CREATIVE. Real estate paid social ad.",
     imagePromptConfig: {
-      prompt: "TEXT-FREE BACKGROUND ASSET ONLY. Realistic photo.",
-      negativePrompt: "final ad layout; flyer; text",
+      prompt: "MARKETING STUDIO FINISHED AD CREATIVE. Real estate paid social ad.",
+      negativePrompt: "gibberish; fake dashboard; listing sheet",
       aspectRatio: "1:1",
     },
     preferredImageModel: "gpt-image-1.5",
@@ -435,8 +955,10 @@ function buildAsset() {
         aspectRatio: "1:1",
       },
     },
-    imageQa: { usable: true, decision: "accept", reasons: [] },
-    creativeIntake: approvedContext,
+    imageQa: { usable: true, decision: "accept", mode: "finished_ad", reasons: [] },
+    visualQualityGate: { accepted: true, mode: "finished_ad_qa", reasons: [] },
+    premiumQualityGate: { accepted: true, mode: "higgsfield_finished_ad_provenance", reasons: [] },
+    creativeIntake: finishedAdContext,
     scoreBreakdown: null,
     hook: "See matched homes",
     overlayText: "See matched homes",
@@ -454,6 +976,32 @@ function fakeSupabase({ insertFails = false } = {}) {
   const operations = [];
   return {
     operations,
+    storage: {
+      from(bucket) {
+        operations.push({ op: "storage.from", bucket });
+        return {
+          async upload(storagePath, body, options) {
+            operations.push({
+              op: "upload",
+              bucket,
+              storagePath,
+              byteSize: body.byteLength,
+              contentType: options.contentType,
+              upsert: options.upsert,
+            });
+            return { error: null };
+          },
+          getPublicUrl(storagePath) {
+            operations.push({ op: "getPublicUrl", bucket, storagePath });
+            return {
+              data: {
+                publicUrl: `https://example.test/storage/v1/object/public/${bucket}/${storagePath}`,
+              },
+            };
+          },
+        };
+      },
+    },
     from() {
       return {
         insert(rows) {
@@ -493,18 +1041,27 @@ await persistStaticCreativeAssets({
   staticAds: [buildAsset()],
 });
 assert.deepEqual(
-  successfulDb.operations.map((item) => item.op),
-  ["insert", "delete"],
-  "static creative assets are inserted before old rows are cleaned up",
+  successfulDb.operations.map((item) => item.op).includes("delete"),
+  false,
+  "static creative assets are inserted without deleting historical evidence rows",
 );
-assert.equal(successfulDb.operations[0].rows[0].status, "ready");
-assert.equal(successfulDb.operations[0].rows[0].metadata.generationBatchId.length > 0, true);
+const successfulInsert = successfulDb.operations.find((item) => item.op === "insert");
+assert.equal(Boolean(successfulInsert), true, "finished Higgsfield static final row is inserted");
+assert.equal(successfulInsert.rows[0].metadata.storageNormalized, true, "finished Higgsfield final is app-owned before insert");
+assert.equal(successfulInsert.rows[0].status, "ready");
+assert.equal(successfulInsert.rows[0].metadata.appComposedFinal, false);
+assert.equal(successfulInsert.rows[0].metadata.qualityTier, "higgsfield_finished_ad");
+assert.equal(successfulInsert.rows[0].metadata.role, "higgsfield_finished_static_ad");
+assert.equal(successfulInsert.rows[0].metadata.generationBatchId.length > 0, true);
 assert.equal(
-  successfulDb.operations[0].rows[0].metadata.creativeIntakePromptVersionUsed.generatedPrompt,
-  prompt.generatedPrompt,
+  successfulInsert.rows[0].metadata.creativeIntakePromptVersionUsed.generatedPrompt,
+  finishedAdContext.promptVersion.generatedPrompt,
 );
-assert.equal(successfulDb.operations[0].rows[0].metadata.creativeIntakeGenerationContext.outputMode, "background_only");
-assert.equal(successfulDb.operations[0].rows[0].metadata.creativeIntakeGenerationContext.generationPhase, "static");
+assert.equal(successfulInsert.rows[0].metadata.creativeIntakeGenerationContext.outputMode, "finished_ad");
+assert.equal(successfulInsert.rows[0].metadata.creativeIntakeGenerationContext.generationPhase, "static");
+assert.equal(successfulInsert.rows[0].metadata.creativeIntakeGenerationContext.targetLanguage, "es");
+assert.equal(successfulInsert.rows[0].metadata.staticBriefHash, finishedAdContext.staticBriefHash ?? null);
+assert.equal(successfulInsert.rows[0].metadata.ctaHash, finishedAdContext.ctaHash ?? null);
 
 const failingDb = fakeSupabase({ insertFails: true });
 await assert.rejects(
@@ -517,9 +1074,10 @@ await assert.rejects(
   /insert failed/,
 );
 assert.deepEqual(
-  failingDb.operations.map((item) => item.op),
-  ["insert"],
+  failingDb.operations.map((item) => item.op).includes("delete"),
+  false,
   "failed replacement insert never deletes previous accepted assets",
 );
 
 console.log("Creative chat intake migration tests passed.");
+process.exit(0);

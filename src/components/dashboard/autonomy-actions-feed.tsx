@@ -9,6 +9,7 @@ import type {
   AutonomyMode,
 } from "@/lib/services/autonomy-engine";
 import type { ClosedLoopAutonomyAction } from "@/lib/services/autonomy-execution-service";
+import type { BillingPlanTier } from "@/lib/billing/plans";
 
 type AutonomyActionsFeedProps = {
   mode: AutonomyMode;
@@ -17,6 +18,8 @@ type AutonomyActionsFeedProps = {
   executionQueue: ClosedLoopAutonomyAction[];
   appliedExecutionActions: ClosedLoopAutonomyAction[];
   blockedExecutionActions: ClosedLoopAutonomyAction[];
+  planTier?: BillingPlanTier;
+  autonomyEntitled?: boolean;
 };
 
 function formatDelta(value: number, suffix = "") {
@@ -45,7 +48,7 @@ function getExecutionQueueCopy(mode: AutonomyMode) {
     return "These execution actions were planned, but nothing will run until an operator approves it.";
   }
 
-  return "These execution actions were generated from the latest sync cycle and are eligible to run automatically.";
+  return "These execution actions were generated from the latest sync cycle. Autopilot can only apply safe actions that pass budget, confidence, and rollback guardrails.";
 }
 
 function formatExecutionModeLabel(mode?: string | null) {
@@ -64,10 +67,54 @@ function formatExecutionModeLabel(mode?: string | null) {
   return mode.replace(/[_-]+/g, " ");
 }
 
+function formatRiskLabel(confidenceScore: number, blockedReason?: string | null) {
+  if (blockedReason) {
+    return "blocked risk";
+  }
+
+  if (confidenceScore >= 0.82) {
+    return "low risk";
+  }
+
+  if (confidenceScore >= 0.64) {
+    return "review risk";
+  }
+
+  return "high risk";
+}
+
+function renderActionControls(prefix: string, canUseActionControls: boolean) {
+  if (!canUseActionControls) {
+    return (
+      <div className="mt-4 rounded-[18px] border border-cyan-300/18 bg-cyan-300/[0.055] p-3 text-sm leading-6 text-muted-foreground">
+        Starter keeps execution manual. Upgrade to Pro to approve or automate safe optimizations.
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 flex flex-wrap gap-2">
+      {["Approve", "Reject", "Monitor"].map((label) => (
+        <button
+          aria-label={`${label} ${prefix}`}
+          className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-white/[0.08]"
+          key={`${prefix}-${label}`}
+          type="button"
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function renderExecutionAction(
   action: ClosedLoopAutonomyAction,
   label: string,
+  canUseActionControls: boolean,
 ) {
+  const riskLabel = formatRiskLabel(action.confidenceScore, action.blockedReason);
+
   return (
     <div
       key={action.actionKey}
@@ -93,15 +140,23 @@ function renderExecutionAction(
       ) : null}
       <div className="mt-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
         <span>Confidence {(action.confidenceScore * 100).toFixed(0)}%</span>
+        <span>{riskLabel}</span>
         {action.budgetChangePercent > 0 ? (
           <span>Budget +{action.budgetChangePercent}%</span>
         ) : null}
       </div>
+      {label === "executed" ? (
+        <div className="mt-4 rounded-[18px] border border-emerald-400/18 bg-emerald-400/10 p-3 text-sm leading-6 text-emerald-100/90">
+          Execution is shown only because this action is present in the applied execution list.
+        </div>
+      ) : (
+        renderActionControls(action.actionKey, canUseActionControls)
+      )}
     </div>
   );
 }
 
-function renderRecentEntry(entry: AutonomyFeedEntry) {
+function renderRecentEntry(entry: AutonomyFeedEntry, canUseActionControls: boolean) {
   const actualOutcomeSummary =
     typeof entry.actualOutcome?.summary === "string" ? entry.actualOutcome.summary : null;
   const actualOutcomeLeadChange =
@@ -141,6 +196,10 @@ function renderRecentEntry(entry: AutonomyFeedEntry) {
         <StatusPill tone={getStatusTone(entry.status)}>{entry.status}</StatusPill>
       </div>
       <p className="mt-3 text-sm leading-6 text-muted-foreground">{entry.reason}</p>
+      <div className="mt-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+        <span>Mode {entry.executionMode}</span>
+        <span>{entry.status === "executed" || entry.status === "applied" ? "executed evidence" : "no execution claim"}</span>
+      </div>
       {blockedReason ? (
         <div className="mt-3 rounded-[18px] border border-rose-400/20 bg-rose-400/10 p-3">
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-100">
@@ -195,6 +254,9 @@ function renderRecentEntry(entry: AutonomyFeedEntry) {
           )}
         </div>
       ) : null}
+      {entry.status === "pending" || entry.status === "recommended" || entry.status === "staged" ? (
+        renderActionControls(entry.id, canUseActionControls)
+      ) : null}
     </div>
   );
 }
@@ -206,8 +268,11 @@ export function AutonomyActionsFeed({
   executionQueue,
   appliedExecutionActions,
   blockedExecutionActions,
+  planTier = "starter",
+  autonomyEntitled = false,
 }: AutonomyActionsFeedProps) {
   const queueLabel = getExecutionQueueLabel(mode);
+  const canUseActionControls = planTier !== "starter" && autonomyEntitled;
 
   if (
     recentActions.length === 0 &&
@@ -237,6 +302,38 @@ export function AutonomyActionsFeed({
         </div>
       </div>
 
+      <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <div className="rounded-[18px] border border-white/8 bg-white/[0.03] p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Approval required
+          </p>
+          <p className="mt-2 text-xl font-semibold">
+            {mode === "auto" ? blockedExecutionActions.length : pendingActions.length + executionQueue.length}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {mode === "auto"
+              ? "Only blocked or rollback-risk actions need review."
+              : "Execution remains approval-gated in this mode."}
+          </p>
+        </div>
+        <div className="rounded-[18px] border border-white/8 bg-white/[0.03] p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Optimization history
+          </p>
+          <p className="mt-2 text-xl font-semibold">{recentActions.length}</p>
+          <p className="mt-1 text-sm text-muted-foreground">Recommendation, staged, blocked, applied, and rollback events.</p>
+        </div>
+        <div className="rounded-[18px] border border-white/8 bg-white/[0.03] p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Rollback history
+          </p>
+          <p className="mt-2 text-xl font-semibold">
+            {recentActions.filter((entry) => /rollback|revert/i.test(`${entry.status} ${entry.title} ${entry.reason}`)).length}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">Only logged rollback or revert records are counted.</p>
+        </div>
+      </div>
+
       {pendingActions.length > 0 ? (
         <div className="mt-5 space-y-3">
           <div>
@@ -263,10 +360,18 @@ export function AutonomyActionsFeed({
               </div>
               <p className="mt-3 text-sm leading-6 text-muted-foreground">{action.reason}</p>
               <p className="mt-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                Expected {formatDelta(action.expectedOutcome.leadVolumeChange, " leads")} •{" "}
-                {formatDelta(action.expectedOutcome.appointmentRateChange, "pp appt")} •{" "}
-                {formatCompactCurrency(action.expectedOutcome.revenueDelta)}
+                Confidence {(action.confidenceScore * 100).toFixed(0)}% •{" "}
+                {formatRiskLabel(action.confidenceScore, action.blockedReason)} •{" "}
+                {action.budgetChangePercent > 0 ? `Spend cap check +${action.budgetChangePercent}%` : "No spend increase requested"}
               </p>
+              {action.expectedOutcome ? (
+                <p className="mt-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  Expected {formatDelta(action.expectedOutcome.leadVolumeChange, " leads")} •{" "}
+                  {formatDelta(action.expectedOutcome.appointmentRateChange, "pp appt")} •{" "}
+                  {formatCompactCurrency(action.expectedOutcome.revenueDelta)}
+                </p>
+              ) : null}
+              {renderActionControls(action.actionKey, canUseActionControls)}
             </div>
           ))}
         </div>
@@ -280,7 +385,7 @@ export function AutonomyActionsFeed({
             </p>
             <p className="mt-1 text-sm text-muted-foreground">{getExecutionQueueCopy(mode)}</p>
           </div>
-          {executionQueue.slice(0, 4).map((action) => renderExecutionAction(action, queueLabel))}
+          {executionQueue.slice(0, 4).map((action) => renderExecutionAction(action, queueLabel, canUseActionControls))}
         </div>
       ) : null}
 
@@ -294,7 +399,7 @@ export function AutonomyActionsFeed({
               Actions the ad platform actually applied.
             </p>
           </div>
-          {appliedExecutionActions.slice(0, 4).map((action) => renderExecutionAction(action, "executed"))}
+          {appliedExecutionActions.slice(0, 4).map((action) => renderExecutionAction(action, "executed", canUseActionControls))}
         </div>
       ) : null}
 
@@ -308,7 +413,7 @@ export function AutonomyActionsFeed({
               Actions the system refused to run because of guardrails, duplicate protection, or missing ad platform state.
             </p>
           </div>
-          {blockedExecutionActions.slice(0, 4).map((action) => renderExecutionAction(action, "blocked"))}
+          {blockedExecutionActions.slice(0, 4).map((action) => renderExecutionAction(action, "blocked", canUseActionControls))}
         </div>
       ) : null}
 
@@ -321,7 +426,7 @@ export function AutonomyActionsFeed({
             Logged outcomes across staged, executed, blocked, and reverted actions.
           </p>
         </div>
-        {recentActions.slice(0, 8).map(renderRecentEntry)}
+        {recentActions.slice(0, 8).map((entry) => renderRecentEntry(entry, canUseActionControls))}
       </div>
     </Card>
   );

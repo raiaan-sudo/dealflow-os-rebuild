@@ -1,4 +1,6 @@
-import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
+import nextPlugin from "@next/eslint-plugin-next";
+import nextParser from "eslint-config-next/parser";
+import globals from "globals";
 
 const config = [
   {
@@ -12,12 +14,41 @@ const config = [
       "out/**",
       "test-results/**",
       "coverage/**",
+      "src/lib/services/autonomy-execution-service 2.ts",
     ],
   },
-  ...nextCoreWebVitals,
   {
+    files: ["**/*.{js,jsx,mjs,ts,tsx}"],
+    plugins: {
+      "@next/next": nextPlugin,
+    },
+    languageOptions: {
+      parser: nextParser,
+      parserOptions: {
+        requireConfigFile: false,
+        sourceType: "module",
+        allowImportExportEverywhere: true,
+        babelOptions: {
+          presets: ["next/babel"],
+          caller: {
+            supportsTopLevelAwait: true,
+          },
+        },
+      },
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+      },
+    },
+    settings: {
+      react: {
+        version: "detect",
+      },
+    },
     rules: {
-      "react-hooks/set-state-in-effect": "off",
+      ...nextPlugin.configs.recommended.rules,
+      ...nextPlugin.configs["core-web-vitals"].rules,
+      "@next/next/no-html-link-for-pages": "off",
     },
   },
 ];

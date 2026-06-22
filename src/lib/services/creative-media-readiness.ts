@@ -1,12 +1,28 @@
-import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
-export const STATIC_LAUNCH_MIN_CREATIVE_COUNT = 4;
+import { evaluateStaticCreativeLaunchSafety } from "@/lib/services/static-creative-visual-qa";
+import type { FallbackLaunchQaResult } from "@/lib/services/creative-asset-status";
+export const STATIC_LAUNCH_MIN_CREATIVE_COUNT = 3;
 export const STATIC_LAUNCH_MAX_CREATIVE_COUNT = 6;
 
 type StaticCreativeReadinessInput = {
   id: string;
+  creativeAssetSource?: string | null;
+  creativeAssetStatus?: string | null;
+  creativeAssetQaStatus?: string | null;
+  fallbackLaunchQa?: FallbackLaunchQaResult | null;
   imageUrl?: string | null;
   storageNormalized?: boolean | null;
+  appComposedFinal?: boolean | null;
+  qualityTier?: string | null;
+  compositionVersion?: string | null;
+  sourceBackgroundKind?: string | null;
+  sourceBackgroundProvider?: string | null;
+  sourceBackgroundAssetId?: string | null;
   imageGenerationState?: string | null;
+  imageGenerationProvider?: string | null;
+  generationMethod?: string | null;
+  providerName?: string | null;
+  generationMode?: string | null;
+  assetRole?: string | null;
   imagePrompt?: string | null;
   imagePromptConfig?: {
     prompt?: string | null;
@@ -18,6 +34,16 @@ type StaticCreativeReadinessInput = {
   } | null;
   qualityGate?: {
     accepted?: boolean | null;
+    score?: number | null;
+    hardFailures?: string[] | null;
+    improvementHints?: string[] | null;
+    notes?: string[] | null;
+  } | null;
+  visualQualityGate?: {
+    accepted?: boolean | null;
+  } | null;
+  premiumQualityGate?: {
+    accepted?: boolean | null;
   } | null;
   imageQa?: {
     usable?: boolean | null;
@@ -25,6 +51,26 @@ type StaticCreativeReadinessInput = {
     mode?: string | null;
     reasons?: string[] | null;
   } | null;
+  sourceImageQa?: {
+    usable?: boolean | null;
+    decision?: string | null;
+    mode?: string | null;
+    reasons?: string[] | null;
+  } | null;
+  staticBriefHash?: string | null;
+  offerHash?: string | null;
+  ctaHash?: string | null;
+  brandHash?: string | null;
+  approvedOfferTitle?: string | null;
+  approvedCta?: string | null;
+  approvedBrand?: string | null;
+};
+
+export type StaticCreativeBriefReadinessContext = {
+  staticBriefHash?: string | null;
+  offerHash?: string | null;
+  ctaHash?: string | null;
+  brandHash?: string | null;
 };
 
 export type VideoCreativeReadinessInput = {
@@ -100,6 +146,9 @@ export type StaticCreativeReadiness = {
   selectedCount: number;
   selectedReadyCount: number;
   launchReadyCount: number;
+  requiredReadyCount: number;
+  requiredMissingCount: number;
+  optionalReadyCount: number;
   retryCount: number;
   missingCount: number;
   selectedBlockedCount: number;
@@ -113,58 +162,137 @@ export type StaticCreativeReadiness = {
   selectionLabel: string;
   readyLabel: string;
   issueLabel: string | null;
+  staleCount: number;
+  selectedStaleCount: number;
 };
 
 export function pluralizeCount(count: number, singular: string, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+export function getStaticCreativeBriefMismatchReason(
+  creative: Pick<StaticCreativeReadinessInput, "staticBriefHash" | "offerHash" | "ctaHash" | "brandHash">,
+  context?: StaticCreativeBriefReadinessContext | null,
+) {
+  if (!context?.staticBriefHash) {
+    return null;
+  }
+
+  if (!creative.staticBriefHash || creative.staticBriefHash !== context.staticBriefHash) {
+    return "brief_hash_mismatch";
+  }
+
+  if (context.offerHash && creative.offerHash !== context.offerHash) {
+    return "offer_hash_mismatch";
+  }
+
+  if (context.ctaHash && creative.ctaHash !== context.ctaHash) {
+    return "cta_hash_mismatch";
+  }
+
+  if (context.brandHash && creative.brandHash !== context.brandHash) {
+    return "brand_hash_mismatch";
+  }
+
+  return null;
+}
+
 export function isLaunchReadyStaticCreative(creative: Pick<
   StaticCreativeReadinessInput,
-  | "imageUrl"
-  | "storageNormalized"
-  | "imagePrompt"
-  | "imagePromptConfig"
-  | "visualPromptBrief"
-  | "qualityGate"
-  | "imageQa"
->) {
-  return evaluateStaticVisualAssetDecision(creative).usable;
+    | "creativeAssetSource"
+    | "creativeAssetStatus"
+    | "creativeAssetQaStatus"
+    | "fallbackLaunchQa"
+    | "imageUrl"
+    | "storageNormalized"
+    | "appComposedFinal"
+    | "qualityTier"
+    | "compositionVersion"
+    | "imageGenerationProvider"
+    | "generationMethod"
+    | "providerName"
+    | "generationMode"
+    | "assetRole"
+    | "sourceBackgroundKind"
+    | "sourceBackgroundProvider"
+    | "sourceBackgroundAssetId"
+    | "imagePrompt"
+    | "imagePromptConfig"
+    | "visualPromptBrief"
+    | "qualityGate"
+    | "visualQualityGate"
+    | "premiumQualityGate"
+    | "imageQa"
+    | "sourceImageQa"
+    | "staticBriefHash"
+    | "offerHash"
+    | "ctaHash"
+    | "brandHash"
+>, context?: StaticCreativeBriefReadinessContext | null) {
+  if (getStaticCreativeBriefMismatchReason(creative, context) !== null) {
+    return false;
+  }
+
+  const explicitlyLaunchApproved =
+    creative.creativeAssetStatus === "launch_approved" &&
+    Boolean(creative.imageUrl) &&
+    creative.storageNormalized === true &&
+    (
+      creative.creativeAssetQaStatus === "operator_approved" ||
+      creative.creativeAssetQaStatus === "passed" ||
+      (creative.creativeAssetSource === "fallback" && creative.fallbackLaunchQa?.passed === true)
+    ) &&
+    (
+      creative.creativeAssetSource === "fallback" ||
+      creative.creativeAssetSource === "branded_static" ||
+      creative.creativeAssetSource === "manual"
+    );
+
+  if (explicitlyLaunchApproved) {
+    return true;
+  }
+
+  return evaluateStaticCreativeLaunchSafety(creative).passed;
 }
 
 export function getStaticCreativeReadiness(
   creatives: StaticCreativeReadinessInput[],
   selectedIds: string[],
+  context?: StaticCreativeBriefReadinessContext | null,
 ): StaticCreativeReadiness {
   const selectedIdSet = new Set(selectedIds);
   const selectedCreatives = creatives.filter((creative) => selectedIdSet.has(creative.id));
-  const launchReadyCreatives = creatives.filter(isLaunchReadyStaticCreative);
+  const isCurrentLaunchReady = (creative: StaticCreativeReadinessInput) =>
+    isLaunchReadyStaticCreative(creative, context);
+  const staleCreatives = creatives.filter((creative) =>
+    Boolean(creative.imageUrl) && getStaticCreativeBriefMismatchReason(creative, context) !== null,
+  );
+  const selectedStaleCount = selectedCreatives.filter((creative) =>
+    getStaticCreativeBriefMismatchReason(creative, context) !== null,
+  ).length;
+  const launchReadyCreatives = creatives.filter(isCurrentLaunchReady);
   const retryCount = creatives.filter((creative) => {
-    if (isLaunchReadyStaticCreative(creative)) {
+    if (isCurrentLaunchReady(creative)) {
       return false;
     }
 
-    return (
-      creative.imageGenerationState === "failed" ||
-      creative.qualityGate?.accepted === false ||
-      Boolean(creative.imageUrl)
-    );
+    return creative.imageGenerationState === "failed" || Boolean(creative.imageUrl);
   }).length;
   const missingCount = creatives.filter(
     (creative) =>
       !creative.imageUrl &&
-      creative.imageGenerationState !== "failed" &&
-      creative.qualityGate?.accepted !== false,
+      creative.imageGenerationState !== "failed",
   ).length;
-  const selectedReadyCount = selectedCreatives.filter(isLaunchReadyStaticCreative).length;
+  const selectedReadyCount = selectedCreatives.filter(isCurrentLaunchReady).length;
   const selectedBlockedCount = selectedCreatives.length - selectedReadyCount;
   const minimumRequiredCount = STATIC_LAUNCH_MIN_CREATIVE_COUNT;
-  const recommendedRequiredCount =
-    creatives.length >= STATIC_LAUNCH_MIN_CREATIVE_COUNT
-      ? Math.min(STATIC_LAUNCH_MAX_CREATIVE_COUNT, creatives.length)
-      : STATIC_LAUNCH_MIN_CREATIVE_COUNT;
+  const recommendedRequiredCount = STATIC_LAUNCH_MIN_CREATIVE_COUNT;
   const selectedMinimumMet = selectedReadyCount >= minimumRequiredCount;
   const optionalIssueCount = Math.max(0, retryCount + missingCount - selectedBlockedCount);
+  const launchReadyMissingCount = Math.max(0, minimumRequiredCount - launchReadyCreatives.length);
+  const requiredReadyCount = Math.min(launchReadyCreatives.length, minimumRequiredCount);
+  const requiredMissingCount = Math.max(0, minimumRequiredCount - requiredReadyCount);
+  const optionalReadyCount = Math.max(0, launchReadyCreatives.length - minimumRequiredCount);
   const selectedReadyLabel =
     selectedReadyCount === 1
       ? "1 selected launch-ready preview"
@@ -179,6 +307,9 @@ export function getStaticCreativeReadiness(
     selectedCount: selectedCreatives.length,
     selectedReadyCount,
     launchReadyCount: launchReadyCreatives.length,
+    requiredReadyCount,
+    requiredMissingCount,
+    optionalReadyCount,
     retryCount,
     missingCount,
     selectedBlockedCount,
@@ -195,13 +326,19 @@ export function getStaticCreativeReadiness(
         : `${selectedCreatives.length} creatives selected`,
     readyLabel: selectedCreatives.length > 0 ? selectedReadyLabel : availableReadyLabel,
     issueLabel:
-      selectedBlockedCount > 0
+      selectedStaleCount > 0
+        ? `Older render, needs refresh: ${selectedStaleCount} selected ${selectedStaleCount === 1 ? "creative" : "creatives"}`
+        : selectedBlockedCount > 0
         ? `${selectedBlockedCount} selected ${selectedBlockedCount === 1 ? "creative needs" : "creatives need"} retry before launch`
         : selectedCreatives.length > 0 && !selectedMinimumMet
           ? `${minimumRequiredCount} launch-ready static ads required; select ${Math.max(0, minimumRequiredCount - selectedReadyCount)} more`
+        : launchReadyMissingCount > 0
+          ? `${minimumRequiredCount} launch-ready static ads required; ${launchReadyCreatives.length} available now. ${optionalIssueCount > 0 ? `${optionalIssueCount} ${optionalIssueCount === 1 ? "creative is" : "creatives are"} still preparing` : "Prepare premium ads before launch"}`
         : optionalIssueCount > 0
-          ? `${optionalIssueCount} optional ${optionalIssueCount === 1 ? "variant needs" : "variants need"} retry`
+          ? `${optionalIssueCount} optional ${optionalIssueCount === 1 ? "polish variant is" : "polish variants are"} still preparing; launch-ready ads are available now`
           : null,
+    staleCount: staleCreatives.length,
+    selectedStaleCount,
   };
 }
 
@@ -212,7 +349,7 @@ export function getStaticPreviewStatusMessage(readiness: StaticCreativeReadiness
 
   const requiredText =
     readiness.recommendedRequiredCount > 0
-      ? `${readiness.recommendedRequiredCount} recommended for the launch test set`
+      ? `${readiness.recommendedRequiredCount} required for launch`
       : null;
   const readyText = readiness.selectedCount > 0 ? readiness.selectedReadyLabel : readiness.availableReadyLabel;
   const base = requiredText
@@ -227,8 +364,12 @@ export function getStaticPreviewStatusMessage(readiness: StaticCreativeReadiness
     return `${base} ${readiness.issueLabel}.`;
   }
 
-  if (readiness.issueLabel) {
+  if (readiness.issueLabel && readiness.selectedMinimumMet) {
     return `${base} ${readiness.issueLabel}; launch can continue with the selected ready creatives.`;
+  }
+
+  if (readiness.issueLabel) {
+    return `${base} ${readiness.issueLabel}.`;
   }
 
   return base;
@@ -387,15 +528,15 @@ export function getVideoLaunchReadinessReason(video: VideoCreativeReadinessInput
   }
 
   if (video.storageNormalized !== true || video.storageBucket !== "creative-assets") {
-    return "The playable video is not normalized into DealFlow creative storage.";
+    return "The playable video still needs final launch preparation before launch.";
   }
 
   if (!hasSupportedLaunchVideoContentType(video.storageContentType)) {
-    return "The playable video is missing verified MP4/WebM/QuickTime storage metadata.";
+    return "The playable video still needs final file verification before launch.";
   }
 
   if (typeof video.storageByteSize !== "number" || video.storageByteSize <= 0) {
-    return "The playable video is missing verified file size metadata.";
+    return "The playable video still needs final file verification before launch.";
   }
 
   if (typeof video.durationSeconds !== "number" || !Number.isFinite(video.durationSeconds)) {
@@ -407,11 +548,11 @@ export function getVideoLaunchReadinessReason(video: VideoCreativeReadinessInput
   }
 
   if (!video.providerName || !video.providerAssetId) {
-    return "The playable video is missing provider job provenance.";
+    return "The playable video is missing final render proof.";
   }
 
   if (hasProviderError(video)) {
-    return "The provider reported a video issue, so this asset needs review before launch.";
+    return "The video render reported an issue, so this asset needs review before launch.";
   }
 
   if (!video.sourceStaticAssetId || !video.sourceImageUrl) {
@@ -431,11 +572,11 @@ export function getVideoLaunchReadinessReason(video: VideoCreativeReadinessInput
   }
 
   if (!hasAcceptedVideoQa(video)) {
-    return "The playable video is review-only until video QA accepts it for launch.";
+    return "The playable video is review-only until launch review accepts it.";
   }
 
   if (!hasAcceptedProductQualityGate(video)) {
-    return "The playable video is review-only until UGC product-quality QA confirms the hook, market problem, creator POV, mechanism, source relevance, and CTA.";
+    return "The playable video is review-only until launch review confirms the hook, market problem, creator point of view, source relevance, and CTA.";
   }
 
   return null;
@@ -454,12 +595,25 @@ export function getVideoReadinessLabel(video: VideoCreativeReadinessInput | null
     return "Playable review sample";
   }
 
+  if (
+    video?.videoGenerationState === "deferred_worker_required" ||
+    video?.videoGenerationState === "operator_action_required"
+  ) {
+    return "Video render preparing";
+  }
+
+  if (video?.videoGenerationState === "queued") {
+    return "Video render preparing";
+  }
+
   if (video?.videoGenerationState === "generating") {
-    return "Rendering";
+    return video.providerAssetId || video.providerStatus
+      ? "Rendering"
+      : "Video render preparing";
   }
 
   if (video?.videoGenerationState === "failed") {
-    return "Needs retry";
+    return "Render needs retry";
   }
 
   return "Concept ready, render needed";
@@ -475,12 +629,25 @@ export function getVideoReadinessMessage(video: VideoCreativeReadinessInput | nu
       "Playable video is available for review, but it is not launch-ready UGC yet.";
   }
 
+  if (
+    video?.videoGenerationState === "deferred_worker_required" ||
+    video?.videoGenerationState === "operator_action_required"
+  ) {
+    return "Video render is preparing. We'll update this when rendering starts.";
+  }
+
+  if (video?.videoGenerationState === "queued") {
+    return "Video render is preparing. We'll update this when rendering starts.";
+  }
+
   if (video?.videoGenerationState === "generating") {
-    return "Video preview is rendering. This page will update when the playable file is ready.";
+    return video.providerAssetId || video.providerStatus
+      ? "Rendering video..."
+      : "Video render is preparing. We'll update this when rendering starts.";
   }
 
   if (video?.videoGenerationState === "failed") {
-    return "Video preview needs another render attempt before it can be used for launch review.";
+    return "Render needs retry.";
   }
 
   return "Script and concept are ready. Render the video preview before treating it as playable media.";

@@ -84,6 +84,21 @@ assert.equal(seller.templateId, "seller_price_comparison");
 assert.notEqual(seller.status, "background_failed");
 assert.ok(seller.proofChips.some((chip) => /\$950K/i.test(chip)));
 
+const sellerVerboseOffer = buildComposedStaticAdPreview({
+  category: "seller",
+  location: "Brampton, ON",
+  headline: "14-Day Home Sale Plan. Delivered through a buyer consultation and qualification system for home buyers.",
+  overlayText: "Preview 14-Day Home Sale Plan",
+  primaryText: "Before you list in Brampton, ON, check your true home value range. A buyer consultation and qualification system gives you neighborhood sale options.",
+  cta: "Fill Out A Quick Form To See How We Can Review A 14-Day Home Sale Plan",
+  offer: "14-Day Home Sale Plan. Delivered through a buyer consultation and qualification system for home buyers.",
+});
+assert.equal(sellerVerboseOffer.headline, "14-Day Home Sale Plan");
+assert.equal(sellerVerboseOffer.overlayText, "14-Day Home Sale Plan");
+assert.doesNotMatch(sellerVerboseOffer.headline, /preview|buyer consultation|qualification system|home buyers/i);
+assert.doesNotMatch(sellerVerboseOffer.overlayText, /preview|buyer consultation|qualification system|home buyers/i);
+assert.doesNotMatch(sellerVerboseOffer.primaryText, /buyer consultation|qualification system|home buyers/i);
+
 const buyer = buildComposedStaticAdPreview({
   category: "buyer",
   location: "Austin",
@@ -94,7 +109,98 @@ const buyer = buildComposedStaticAdPreview({
 });
 assert.equal(buyer.category, "buyer");
 assert.equal(buyer.templateId, "buyer_affordability");
-assert.equal(buyer.cta, "See Matching Homes", "vague buyer CTA is upgraded");
+assert.equal(buyer.cta, "Learn More", "approved CTA text stays locked even when it is generic");
+
+const sellerApprovedCtaPreview = buildComposedStaticAdPreview({
+  category: "seller",
+  location: "Toronto, ON",
+  headline: "Sell Your Home in 90 Days or We Buy It.",
+  overlayText: "Sell Your Home in 90 Days or We Buy It.",
+  primaryText: "Toronto sellers can review the plan before listing.",
+  cta: "Click Learn More To Get Started",
+});
+assert.equal(sellerApprovedCtaPreview.cta, "Click Learn More To Get Started", "static visual CTA uses the approved CTA, not the category fallback");
+
+const offMarketBuyerAds = await generateStaticCreativeAds({
+  location: "Toronto, ON",
+  audience: "buyers",
+  offer: "Off-market Property Access",
+  market_type: "buyer",
+  property_type: "homes",
+});
+assert.equal(offMarketBuyerAds.length, 6, "buyer campaigns still produce a six-concept static test set");
+for (const ad of offMarketBuyerAds) {
+  const combined = `${ad.headline} ${ad.primaryText} ${ad.overlayText} ${ad.cta} ${ad.visualConcept}`;
+  assert.match(
+    combined,
+    /off[-\s]?market|private listing|private opportunit|distressed-sale|property access/i,
+    `static creative ${ad.id} must stay aligned to the off-market property access offer`,
+  );
+  assert.doesNotMatch(combined, /600\+\s*credit|approval path|home list/i, `static creative ${ad.id} must not drift back to credit/home-list copy`);
+}
+
+const zeroProviderRequestedAssetIds = [];
+const immediateConceptAds = await generateStaticCreativeAds({
+  location: "Toronto, ON",
+  audience: "homeowners",
+  offer: "Sell Your Home in 90 Days or We Buy It",
+  market_type: "seller",
+  max_static_image_generations: 0,
+  provider_usage_context: {
+    createForAsset: (asset) => {
+      zeroProviderRequestedAssetIds.push(asset.id);
+      return null;
+    },
+  },
+});
+assert.equal(immediateConceptAds.length, 6, "zero-provider static generation still produces the full app-rendered concept set");
+assert.deepEqual(zeroProviderRequestedAssetIds, [], "immediate app-rendered concepts do not call the image provider");
+assert.ok(
+  immediateConceptAds.every((ad) => ad.imageGenerationState === "unavailable" && !ad.imageUrl),
+  "immediate app-rendered concepts stay non-launch-ready until final images render",
+);
+
+const approvedSellerContext = {
+  version: 1,
+  conversationId: "seller-cta-lock-test",
+  campaignId: "campaign-seller-cta-lock",
+  revisionNumber: 1,
+  approvedAt: "2026-05-21T00:00:00.000Z",
+  outputMode: "finished_ad",
+  generationPhase: "static",
+  requiredOffer: "Sell Your Home in 90 Days or We Buy It",
+  requiredOfferTitle: "Sell Your Home in 90 Days or We Buy It",
+  requiredCta: "Click Learn More To Get Started",
+  market: "Toronto, ON",
+  targetAudience: "Sellers",
+  brokerageBrand: "eXp",
+  staticBriefHash: "seller-static-brief-current",
+  offerHash: "seller-offer-current",
+  ctaHash: "seller-cta-current",
+  brandHash: "seller-brand-current",
+  promptVersion: {
+    revisionNumber: 1,
+    generatedPrompt: "MARKETING STUDIO FINISHED AD CREATIVE. Create a seller ad with the exact approved offer and CTA.",
+    negativePrompt: "wrong CTA; generic category CTA",
+    sanitizedPreview: "Seller CTA proof prompt",
+    createdAt: "2026-05-21T00:00:00.000Z",
+  },
+};
+const approvedSellerAds = await generateStaticCreativeAds({
+  campaign_id: "campaign-seller-cta-lock",
+  location: "Toronto, ON",
+  audience: "Sellers",
+  offer: "Sell Your Home in 90 Days or We Buy It",
+  market_type: "seller",
+  creative_intake: approvedSellerContext,
+  max_static_image_generations: 0,
+});
+for (const ad of approvedSellerAds) {
+  const combined = `${ad.headline} ${ad.primaryText} ${ad.overlayText} ${ad.cta}`;
+  assert.equal(ad.cta, "Click Learn More To Get Started", `approved CTA is locked for ${ad.id}`);
+  assert.doesNotMatch(combined, /Check My 90-Day Sale Plan|Check Your Home Value/i, `autogenerated CTA drift is removed from ${ad.id}`);
+  assert.equal(ad.qualityGate?.accepted, true, `seller buyout offer is treated as a valid risk-reversal offer for ${ad.id}`);
+}
 
 const generatedCreativeInput = {
   category: "buyer",
@@ -102,25 +208,29 @@ const generatedCreativeInput = {
   headline: "Budget-matched homes before the weekend rush",
   primaryText: "A curated shortlist helps buyers compare fit before the same homes get crowded.",
   cta: "See Matching Homes",
-  imageUrl: "https://example.test/background.png",
-  storageNormalized: true,
-  imageGenerationState: "generated",
+	  imageUrl: "https://example.test/background.png",
+		  storageNormalized: true,
+		  appComposedFinal: true,
+	  imageGenerationState: "generated",
   imagePrompt: "TEXT-FREE BACKGROUND ASSET ONLY. Warm buyer reviewing homes in Austin.",
   visualPromptBrief: {
     category: "buyer",
     visualAssetContract: "text_free_background_v2",
     visualAssetRole: "text_free_background",
   },
-  qualityGate: {
-    accepted: true,
-    score: 8.2,
-  },
-};
+	  qualityGate: {
+	    accepted: true,
+	    score: 8.2,
+		  },
+      visualQualityGate: { accepted: true },
+      premiumQualityGate: { accepted: true },
+		  imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
+	};
 const generatedCreative = buildComposedStaticAdPreview(generatedCreativeInput);
-assert.equal(generatedCreative.status, "final_composed", "accepted generated images are primary creative previews");
+assert.equal(generatedCreative.status, "background_rejected", "non-premium app-composed images stay draft/review-only");
 assert.equal(
   generatedCreative.backgroundMessage,
-  "Launch-ready app-owned creative with accepted text-free generated background imagery and exact app-rendered copy.",
+  "Premium visual polish needs another attempt. Launch-ready final ads remain available when selected.",
 );
 
 const finishedAdPromptQuality = evaluateCreativeQuality({
@@ -200,12 +310,13 @@ assert.equal(
 assert.equal(rejectedGeneratedCreative.backgroundImageUrl, null);
 assert.equal(
   rejectedGeneratedCreative.backgroundMessage,
-  "This visual needs a cleaner background before it can be used as launch-ready media.",
+  "Premium visual polish needs another attempt. Launch-ready final ads remain available when selected.",
   "rejected image state uses customer-safe copy",
 );
 
 const legacyGeneratedCreative = buildComposedStaticAdPreview({
   ...generatedCreativeInput,
+  appComposedFinal: false,
   imagePrompt: "Make the result look like a finished, high-converting paid social creative frame.",
   visualPromptBrief: null,
 });
@@ -280,8 +391,50 @@ assert.deepEqual(
     visualPromptBrief: contractBrief,
     qualityGate: { accepted: true },
   }),
-  { usable: true, reason: null },
-  "negative prompt legacy terms should not reject valid text-free background assets",
+  {
+    usable: false,
+    reason: "This draft needs a finished render before it can be selected for launch.",
+  },
+  "text-free provider backgrounds are review-only and cannot satisfy final static launch readiness",
+);
+
+assert.deepEqual(
+  evaluateStaticVisualAssetDecision({
+    imageUrl: "https://example.test/app-composed-final.png",
+    storageNormalized: true,
+    appComposedFinal: true,
+    qualityTier: "draft_preview",
+    sourceBackgroundKind: "app_fallback_visual",
+    qualityGate: { accepted: true },
+    imageQa: { usable: false, decision: "review", mode: "app_composed_final", reasons: ["app_fallback_visual_not_launch_ready"] },
+  }),
+  {
+    usable: false,
+    reason: "This draft needs final approval before it can be selected for launch.",
+  },
+  "app-composed fallback statics are draft-only until premium provenance is accepted",
+);
+
+assert.deepEqual(
+  evaluateStaticVisualAssetDecision({
+    imageUrl: "https://example.test/premium-final.png",
+    storageNormalized: true,
+    appComposedFinal: true,
+    qualityTier: "premium_final",
+    sourceBackgroundKind: "higgsfield_visual_background",
+    sourceBackgroundProvider: "higgsfield_marketing_studio",
+    sourceBackgroundAssetId: "provider-source-1",
+    qualityGate: { accepted: true },
+    visualQualityGate: { accepted: true },
+    premiumQualityGate: { accepted: true },
+    imageQa: { usable: true, decision: "accept", mode: "app_composed_final", reasons: [] },
+    sourceImageQa: { usable: true, decision: "accept", mode: "background_only", reasons: [] },
+  }),
+  {
+    usable: false,
+    reason: "This draft needs final approval before it can be selected for launch.",
+  },
+  "app-composed Higgsfield-backed statics are review-only and cannot satisfy launch readiness",
 );
 
 assert.equal(
@@ -316,6 +469,16 @@ const generatedAsset = {
   },
   preferredImageModel: "gpt-image-1.5",
   scoreBreakdown: null,
+  appComposedFinal: false,
+  qualityTier: "higgsfield_finished_ad",
+  imageGenerationProvider: "higgsfield_marketing_studio",
+  generationMethod: "higgsfield_marketing_studio",
+  providerName: "higgsfield_marketing_studio",
+  generationMode: "finished_ad",
+  assetRole: "final_static_ad",
+  visualQualityGate: { accepted: true, mode: "finished_ad_qa", reasons: [] },
+  premiumQualityGate: { accepted: true, mode: "higgsfield_finished_ad_provenance", reasons: [] },
+  imageQa: { usable: true, decision: "accept", mode: "finished_ad", reasons: [] },
   hook: generatedCreativeInput.headline,
   overlayText: generatedCreativeInput.headline,
   visualConcept: "Austin buyer source photo",
@@ -326,7 +489,7 @@ const downgradedAsset = {
   ...generatedAsset,
   imageUrl: "https://example.test/bad-flyer.png",
   imageGenerationState: "failed",
-  imageGenerationMessage: "This visual needs a cleaner background. Preview is using the composed layout while the image refreshes.",
+  imageGenerationMessage: "This visual needs a cleaner final render before it can be launch-ready.",
   imageGenerationModel: "gpt-image-1.5",
   imageGenerationProvider: null,
   imageQa: {
@@ -356,16 +519,25 @@ const generationInput = {
 const baseStaticAds = buildCreativeSystem(generationInput).staticAds;
 const reusableStaticAds = baseStaticAds.slice(0, -1).map((asset) => ({
   ...asset,
-  imageUrl: `https://example.test/${asset.id}.png`,
-  storageNormalized: true,
+	  imageUrl: `https://example.test/${asset.id}.png`,
+	  storageNormalized: true,
+	  appComposedFinal: false,
+  qualityTier: "higgsfield_finished_ad",
   imageGenerationState: "generated",
   imageGenerationMessage: null,
   imageGenerationModel: "gpt-image-1.5",
-  imageGenerationProvider: "higgsfield",
-  qualityGate: {
-    ...(asset.qualityGate ?? {}),
-    accepted: true,
-  },
+  imageGenerationProvider: "higgsfield_marketing_studio",
+  generationMethod: "higgsfield_marketing_studio",
+  providerName: "higgsfield_marketing_studio",
+  generationMode: "finished_ad",
+  assetRole: "final_static_ad",
+	  qualityGate: {
+	    ...(asset.qualityGate ?? {}),
+	    accepted: true,
+	  },
+  visualQualityGate: { accepted: true, mode: "finished_ad_qa", reasons: [] },
+  premiumQualityGate: { accepted: true, mode: "higgsfield_finished_ad_provenance", reasons: [] },
+	  imageQa: { usable: true, decision: "accept", mode: "finished_ad", reasons: [] },
   imagePromptConfig: {
     ...asset.imagePromptConfig,
     negativePrompt: `${asset.imagePromptConfig?.negativePrompt ?? ""}; proof modules; poster-like typography`,
@@ -396,17 +568,26 @@ for (const reusable of reusableStaticAds) {
 const forcedRequestedAssetIds = [];
 const allReusableStaticAds = baseStaticAds.map((asset) => ({
   ...asset,
-  imageUrl: `https://example.test/ready-${asset.id}.png`,
-  storageNormalized: true,
-  imageGenerationState: "generated",
+		  imageUrl: `https://example.test/ready-${asset.id}.png`,
+		  storageNormalized: true,
+		  appComposedFinal: false,
+      qualityTier: "higgsfield_finished_ad",
+	  imageGenerationState: "generated",
   imageGenerationMessage: null,
   imageGenerationModel: "gpt-image-1.5",
-  imageGenerationProvider: "higgsfield",
-  qualityGate: {
-    ...(asset.qualityGate ?? {}),
-    accepted: true,
-  },
-}));
+  imageGenerationProvider: "higgsfield_marketing_studio",
+  generationMethod: "higgsfield_marketing_studio",
+  providerName: "higgsfield_marketing_studio",
+  generationMode: "finished_ad",
+  assetRole: "final_static_ad",
+		  qualityGate: {
+		    ...(asset.qualityGate ?? {}),
+		    accepted: true,
+		  },
+      visualQualityGate: { accepted: true, mode: "finished_ad_qa", reasons: [] },
+      premiumQualityGate: { accepted: true, mode: "higgsfield_finished_ad_provenance", reasons: [] },
+		  imageQa: { usable: true, decision: "accept", mode: "finished_ad", reasons: [] },
+	}));
 const forcedStaticAds = await generateStaticCreativeAds({
   ...generationInput,
   force: true,

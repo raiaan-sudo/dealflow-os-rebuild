@@ -148,6 +148,13 @@ export type MetaConnectionRecord = {
 export type MetaConnectionState = {
   id: string | null;
   platform: string;
+  operatorAssisted: {
+    mode: "operator_assisted_beta";
+    label: string;
+    notice: string;
+    adminChecklist: string;
+    publicSelfServeBlocker: string;
+  };
   hasAccessToken: boolean;
   accountId: string | null;
   accountName: string | null;

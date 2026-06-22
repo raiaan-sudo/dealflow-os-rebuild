@@ -30,15 +30,20 @@ type PersistedLaunchState = {
   adset_id?: string | null;
   creative_id?: string | null;
   ad_id?: string | null;
+  creative_ids?: string[] | null;
+  ad_ids?: string[] | null;
   current_stage?: "campaign" | "adset" | "creative" | "ad" | null;
   status?: "in_progress" | "failed" | "completed" | null;
+  expected_selected_ad_count?: number | null;
 };
 
 type LaunchResponsePayload = {
   campaign_id: string;
   adset_id: string;
   creative_id?: string;
+  creative_ids?: string[];
   ad_id: string;
+  ad_ids?: string[];
   already_launched?: boolean;
   stage?: "campaign" | "ad_set" | "creative" | "ad";
   error?: string;
@@ -46,6 +51,25 @@ type LaunchResponsePayload = {
 
 const inFlightLaunches = new Map<string, Promise<LaunchResponsePayload>>();
 const META_LAUNCH_LOCK_MS = 15 * 60_000;
+
+function normalizeStringArray(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : [];
+}
+
+function getExpectedSelectedAdCount(plan: Record<string, unknown> | null) {
+  const payload =
+    plan?.campaign_payload &&
+    typeof plan.campaign_payload === "object" &&
+    !Array.isArray(plan.campaign_payload)
+      ? (plan.campaign_payload as Record<string, unknown>)
+      : null;
+  const selected = [
+    ...normalizeStringArray(plan?.selected_ad_ids),
+    ...normalizeStringArray(payload?.selected_ad_ids),
+  ];
+
+  return Math.max(new Set(selected).size, 1);
+}
 
 function normalizeStage(
   stage: PersistedLaunchState["current_stage"] | LaunchResponsePayload["stage"] | undefined | null,
@@ -86,7 +110,12 @@ async function loadPersistedLaunchState(campaignId: string): Promise<PersistedLa
       ? (plan.launch_runtime as PersistedLaunchState)
       : null;
 
-  return launchRuntime;
+  return launchRuntime
+    ? {
+        ...launchRuntime,
+        expected_selected_ad_count: getExpectedSelectedAdCount(plan),
+      }
+    : null;
 }
 
 async function acquireMetaLaunchLock(campaignId: string) {
@@ -227,18 +256,24 @@ export async function POST(
     const existingCreativeId = persistedLaunchState?.creative_id ?? null;
     const existingAdId =
       persistedLaunchState?.ad_id ?? record?.launch.runtime.adId ?? record?.launch.runtime.metaAdIds?.[0] ?? null;
+    const existingAdIds = normalizeStringArray(
+      persistedLaunchState?.ad_ids?.length ? persistedLaunchState.ad_ids : record?.launch.runtime.metaAdIds,
+    );
+    const expectedSelectedAdCount = persistedLaunchState?.expected_selected_ad_count ?? 1;
 
     if (
       persistedLaunchState?.status === "completed" &&
       existingCampaignId &&
       existingAdSetId &&
-      existingAdId
+      existingAdId &&
+      existingAdIds.length >= expectedSelectedAdCount
     ) {
       return NextResponse.json({
         campaign_id: existingCampaignId,
         adset_id: existingAdSetId,
         creative_id: existingCreativeId ?? undefined,
         ad_id: existingAdId,
+        ad_ids: existingAdIds,
         already_launched: true,
       });
     }
@@ -325,6 +360,8 @@ export async function POST(
         adset_id: String(data.adset_id),
         ad_id: String(data.ad_id),
         creative_id: typeof data.creative_id === "string" ? data.creative_id : undefined,
+        creative_ids: Array.isArray(data.creative_ids) ? data.creative_ids.map(String) : undefined,
+        ad_ids: Array.isArray(data.ad_ids) ? data.ad_ids.map(String) : undefined,
         stage: "ad" as const,
       };
     })();

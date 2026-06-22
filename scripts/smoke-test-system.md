@@ -69,11 +69,11 @@ Authenticated safe journey:
 SAFE_E2E_QA_AUTH=true \
 QA_AUTH_HARNESS_ENABLED=true \
 QA_EMAIL=qa-user@example.com \
-INTERNAL_SYSTEM_JOBS_SECRET=<configured internal secret> \
+QA_AUTH_PROOF_SECRET=<configured qa proof secret> \
 npm run test:e2e:safe
 ```
 
-The authenticated path uses `/api/internal/qa-auth-session`, which is protected by the internal bearer secret and disabled unless `QA_AUTH_HARNESS_ENABLED=true`.
+The authenticated path uses `/api/internal/qa-auth-session`, which is protected by a dedicated QA proof bearer secret, also accepts the internal runner secret for compatibility, and is disabled unless `QA_AUTH_HARNESS_ENABLED=true`.
 
 When enabled, it validates:
 

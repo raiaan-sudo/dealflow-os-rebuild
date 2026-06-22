@@ -38,6 +38,16 @@ output/
 playwright-report/
 screenshots/
 test-results/
+auth.json
+.auth/
+playwright/.auth/
+storageState.json
+storage-state.json
+*.storage-state.json
+cookies.json
+*.cookies.json
+session.json
+*.session.json
 supabase/.temp/
 *.tsbuildinfo
 *screenshot*.png
@@ -45,3 +55,8 @@ supabase/.temp/
 *screenshot*.jpeg
 *screenshot*.webp
 recovery-report.json
+.env*.local
+.vercel
+data/engineering-proof-artifacts/
+performance-reports/
+.lighthouseci/

@@ -29,7 +29,7 @@ import {
   normalizeGeneratedVideoProviderFile,
 } from "@/lib/services/static-creative-storage-normalization";
 import { evaluateGeneratedVideoQualityGate } from "@/lib/services/creative-media-readiness";
-import { evaluateStaticVisualAssetDecision } from "@/lib/services/static-creative-visual-qa";
+import { evaluateStaticCreativeLaunchSafety } from "@/lib/services/static-creative-visual-qa";
 
 type VideoPersistenceClient = SupabaseClient<Database>;
 type CampaignPlanRow = Database["public"]["Tables"]["campaign_plans"]["Row"];
@@ -52,6 +52,8 @@ export type VideoGenerationJobPayload = {
   location: string | null;
   force: boolean;
   targetDurationSeconds?: number | null;
+  ugcScriptHash?: string | null;
+  sourceContextHash?: string | null;
   creativeIntake?: CreativeIntakeGenerationContext | null;
 };
 
@@ -200,15 +202,46 @@ function isLaunchReadyStaticSourceRow(row: CreativeAsset) {
     return false;
   }
 
-  return evaluateStaticVisualAssetDecision({
+  return evaluateStaticCreativeLaunchSafety({
     imageUrl,
     storageNormalized,
+    appComposedFinal: metadata?.appComposedFinal === true,
+    imageGenerationProvider:
+      typeof metadata?.imageGenerationProvider === "string"
+        ? metadata.imageGenerationProvider
+        : row.provider_name ?? null,
+    generationMethod: row.generation_method ?? null,
+    providerName: row.provider_name ?? null,
+    generationMode: typeof metadata?.generationMode === "string" ? metadata.generationMode : null,
+    assetRole: typeof metadata?.assetRole === "string" ? metadata.assetRole : null,
+    qualityTier: typeof metadata?.qualityTier === "string" ? metadata.qualityTier : null,
+    compositionVersion: typeof metadata?.compositionVersion === "string" ? metadata.compositionVersion : null,
+    sourceBackgroundKind: typeof metadata?.sourceBackgroundKind === "string" ? metadata.sourceBackgroundKind : null,
+    sourceBackgroundProvider: typeof metadata?.sourceBackgroundProvider === "string" ? metadata.sourceBackgroundProvider : null,
+    sourceBackgroundAssetId: typeof metadata?.sourceBackgroundAssetId === "string" ? metadata.sourceBackgroundAssetId : null,
     imagePrompt: typeof metadata?.imagePrompt === "string" ? metadata.imagePrompt : "",
     imagePromptConfig: asStaticPromptConfig(metadata?.imagePromptConfig),
     visualPromptBrief: asStaticVisualPromptBrief(metadata?.visualPromptBrief),
     qualityGate: asStaticQualityGate(metadata?.qualityGate),
     imageQa: asStaticImageQa(metadata?.imageQa),
-  }).usable;
+    sourceImageQa: asStaticImageQa(metadata?.sourceImageQa),
+    visualQualityGate: asStaticQualityGate(metadata?.visualQualityGate),
+    premiumQualityGate: asStaticQualityGate(metadata?.premiumQualityGate),
+  }).passed;
+}
+
+function staticSourceMatchesCreativeIntake(row: CreativeAsset, creativeIntake?: CreativeIntakeGenerationContext | null) {
+  if (!creativeIntake?.staticBriefHash) {
+    return true;
+  }
+
+  const metadata = asRecord(row.metadata);
+  return (
+    metadata?.staticBriefHash === creativeIntake.staticBriefHash &&
+    metadata?.offerHash === creativeIntake.offerHash &&
+    metadata?.ctaHash === creativeIntake.ctaHash &&
+    metadata?.brandHash === creativeIntake.brandHash
+  );
 }
 
 async function getLaunchReadyStaticVideoSource(params: {
@@ -217,6 +250,7 @@ async function getLaunchReadyStaticVideoSource(params: {
   campaignId: string;
   savedDocument: unknown;
   selectedIndex: number;
+  creativeIntake?: CreativeIntakeGenerationContext | null;
 }) {
   const { data, error } = await params.supabase
     .from("creative_assets")
@@ -232,6 +266,7 @@ async function getLaunchReadyStaticVideoSource(params: {
   const selectedIds = readSelectedStaticIds(params.savedDocument);
   const readyRows = (data as CreativeAsset[])
     .filter(isLaunchReadyStaticSourceRow)
+    .filter((row) => staticSourceMatchesCreativeIntake(row, params.creativeIntake))
     .map((row) => ({
       row,
       staticAssetId: staticAssetIdForRow(row),
@@ -266,6 +301,7 @@ async function getVideoSourceImageUrl(params: {
   campaignId: string;
   savedDocument: unknown;
   selectedIndex: number;
+  creativeIntake?: CreativeIntakeGenerationContext | null;
 }) {
   const readyStaticSource = await getLaunchReadyStaticVideoSource(params);
 
@@ -290,8 +326,17 @@ async function getVideoSourceImageUrl(params: {
     if (
       imageUrl &&
       asset.imageGenerationState === "generated" &&
-      asset.qualityGate?.accepted !== false &&
-      isAppOwnedCreativeAssetUrl(imageUrl)
+      evaluateStaticCreativeLaunchSafety(asset).passed &&
+      isAppOwnedCreativeAssetUrl(imageUrl) &&
+      (
+        !params.creativeIntake?.staticBriefHash ||
+        (
+          asset.staticBriefHash === params.creativeIntake.staticBriefHash &&
+          asset.offerHash === params.creativeIntake.offerHash &&
+          asset.ctaHash === params.creativeIntake.ctaHash &&
+          asset.brandHash === params.creativeIntake.brandHash
+        )
+      )
     ) {
       return {
         imageUrl,
@@ -345,6 +390,14 @@ function buildCreativeIntakeAssetMetadata(
       approvedAt: creativeIntake.approvedAt,
       outputMode: creativeIntake.outputMode,
       generationPhase: creativeIntake.generationPhase,
+      targetLanguage: creativeIntake.targetLanguage ?? "en",
+      briefHash: creativeIntake.briefHash ?? null,
+      staticBriefHash: creativeIntake.staticBriefHash ?? null,
+      offerHash: creativeIntake.offerHash ?? null,
+      ctaHash: creativeIntake.ctaHash ?? null,
+      brandHash: creativeIntake.brandHash ?? null,
+      ugcScriptHash: creativeIntake.ugcScriptHash ?? null,
+      sourceContextHash: creativeIntake.ugcStyleBrief?.sourceContextHash ?? null,
       ugcStyleBrief: creativeIntake.ugcStyleBrief ?? null,
       promptVersionCreatedAt: creativeIntake.promptVersion.createdAt,
     },
@@ -592,17 +645,24 @@ export async function runVideoGenerationJob(params: {
   const row = await loadCampaignPlanRow(params.supabase, params.userId, params.campaignId);
   const savedDocument = getSavedCampaignDocumentFromRow(row) ?? {};
   const creativeIntake = resolveDurableVideoCreativeIntake(savedDocument, params.payload.creativeIntake);
-  const existingVideoAds = Array.isArray(savedDocument.videoAds)
-    ? (savedDocument.videoAds as VideoCreativeAsset[])
-    : [];
-  const existingVideo = existingVideoAds[params.payload.creativeIndex] ?? null;
+	  const existingVideoAds = Array.isArray(savedDocument.videoAds)
+	    ? (savedDocument.videoAds as VideoCreativeAsset[])
+	    : [];
+	  const existingVideo = existingVideoAds[params.payload.creativeIndex] ?? null;
+	  const currentScriptHash = sha256(params.payload.scriptText);
+	  const currentUgcScriptHash = creativeIntake?.ugcScriptHash ?? currentScriptHash;
+	  const existingVideoMatchesCurrentScript =
+	    !currentUgcScriptHash ||
+	    existingVideo?.ugcScriptHash === currentUgcScriptHash ||
+	    existingVideo?.scriptHash === currentUgcScriptHash;
 
-  if (
-    params.payload.force !== true &&
-    existingVideo &&
-    (existingVideo.videoGenerationState === "generated" ||
-      existingVideo.videoGenerationState === "generating")
-  ) {
+	  if (
+	    params.payload.force !== true &&
+	    existingVideo &&
+	    existingVideoMatchesCurrentScript &&
+	    (existingVideo.videoGenerationState === "generated" ||
+	      existingVideo.videoGenerationState === "generating")
+	  ) {
     return {
       assetId: null,
       providerAssetId: existingVideo.providerAssetId ?? null,
@@ -625,6 +685,7 @@ export async function runVideoGenerationJob(params: {
     campaignId: params.campaignId,
     savedDocument,
     selectedIndex: params.payload.creativeIndex,
+    creativeIntake,
   });
 
   if (!avatarProvider.isConfigured()) {
@@ -637,6 +698,11 @@ export async function runVideoGenerationJob(params: {
       videoGenerationState: "unavailable",
       videoGenerationMessage: "AI video generation is not configured yet.",
       providerAssetId: null,
+      scriptHash: currentScriptHash,
+      ugcScriptHash: creativeIntake?.ugcScriptHash ?? currentScriptHash,
+      sourceContextHash: creativeIntake?.ugcStyleBrief?.sourceContextHash ?? params.payload.sourceContextHash ?? null,
+      briefHash: creativeIntake?.briefHash ?? null,
+      briefRevisionNumber: creativeIntake?.revisionNumber ?? null,
     };
 
     await persistVideoAdsToCampaignPlan({
@@ -675,6 +741,9 @@ export async function runVideoGenerationJob(params: {
           avatarId: params.payload.avatarProfileId,
           voiceId: params.payload.voiceProfile,
           unavailableReason: "AI video generation is not configured yet.",
+          scriptHash: currentScriptHash,
+          ugcScriptHash: creativeIntake?.ugcScriptHash ?? currentScriptHash,
+          sourceContextHash: creativeIntake?.ugcStyleBrief?.sourceContextHash ?? params.payload.sourceContextHash ?? null,
           ...buildCreativeIntakeAssetMetadata(creativeIntake),
         } as Json,
       } as never)
@@ -722,6 +791,11 @@ export async function runVideoGenerationJob(params: {
       videoGenerationState: "unavailable",
       videoGenerationMessage: "Render a ready static creative first, then retry the UGC video preview.",
       providerAssetId: null,
+      scriptHash: currentScriptHash,
+      ugcScriptHash: creativeIntake?.ugcScriptHash ?? currentScriptHash,
+      sourceContextHash: creativeIntake?.ugcStyleBrief?.sourceContextHash ?? params.payload.sourceContextHash ?? null,
+      briefHash: creativeIntake?.briefHash ?? null,
+      briefRevisionNumber: creativeIntake?.revisionNumber ?? null,
     };
 
     await persistVideoAdsToCampaignPlan({
@@ -760,9 +834,9 @@ export async function runVideoGenerationJob(params: {
   const fallbackPrompt = [
     "Create a polished native UGC-style vertical video for a real estate lead generation campaign.",
     "Target duration is 15-30 seconds. Do not render a 5-second sample, teaser, or generic placeholder clip.",
-    "Structure: hook in the first 1-2 seconds, specific buyer pain or market problem, relatable creator/agent POV, clear mechanism, source-creative visual relevance, and a direct CTA.",
+    "Structure: hook in the first 1-2 seconds, specific buyer or seller pain or market problem, relatable creator/agent POV, clear mechanism, source-creative visual relevance, and a direct CTA.",
     "Show a believable creator/customer/agent in a real home or market setting with natural phone-camera energy, not a generic stock talking-head clip.",
-    "Mechanism should explain how the buyer gets better options, a shortlist, qualification help, or early access before public search feels crowded.",
+    "Mechanism should follow the approved script. For seller campaigns, do not introduce buyer-consultation, pre-approval, or homebuyer qualification language. For buyer campaigns, do not introduce seller-sale-plan language.",
     "Use the accepted static source image as visual context and keep the setting aligned with the campaign market, offer, audience, and CTA.",
     "Do not use fake documents, fake UI, fake testimonials, unsupported guarantees, readable pricing cards, logos, watermarks, or on-screen text inside the video.",
     "Use the provided script as spoken direction only.",
@@ -773,10 +847,10 @@ export async function runVideoGenerationJob(params: {
     params.payload.scriptText,
   ].filter(Boolean).join("\n");
   const promptUsed = approvedPrompt ?? fallbackPrompt;
-  const promptSource = approvedPrompt ? "creative_intake" : "campaign_specific_fallback";
-  const promptHash = sha256(promptUsed);
-  const scriptHash = sha256(params.payload.scriptText);
-  const videoProductQualityGate = buildVideoProductQualityGate({
+	  const promptSource = approvedPrompt ? "creative_intake" : "campaign_specific_fallback";
+	  const promptHash = sha256(promptUsed);
+	  const scriptHash = currentScriptHash;
+	  const videoProductQualityGate = buildVideoProductQualityGate({
     promptUsed,
     scriptText: params.payload.scriptText,
     body: params.payload.body,
@@ -824,6 +898,11 @@ export async function runVideoGenerationJob(params: {
         videoGenerationState: "failed",
         videoGenerationMessage: SAFE_VIDEO_FAILURE_MESSAGE,
         providerAssetId: null,
+        scriptHash: currentScriptHash,
+        ugcScriptHash: creativeIntake?.ugcScriptHash ?? currentScriptHash,
+        sourceContextHash: creativeIntake?.ugcStyleBrief?.sourceContextHash ?? params.payload.sourceContextHash ?? null,
+        briefHash: creativeIntake?.briefHash ?? null,
+        briefRevisionNumber: creativeIntake?.revisionNumber ?? null,
       };
 
       await persistVideoAdsToCampaignPlan({
@@ -868,6 +947,11 @@ export async function runVideoGenerationJob(params: {
       videoGenerationState: "failed",
       videoGenerationMessage: SAFE_VIDEO_FAILURE_MESSAGE,
       providerAssetId: null,
+      scriptHash: currentScriptHash,
+      ugcScriptHash: creativeIntake?.ugcScriptHash ?? currentScriptHash,
+      sourceContextHash: creativeIntake?.ugcStyleBrief?.sourceContextHash ?? params.payload.sourceContextHash ?? null,
+      briefHash: creativeIntake?.briefHash ?? null,
+      briefRevisionNumber: creativeIntake?.revisionNumber ?? null,
     };
 
     await persistVideoAdsToCampaignPlan({
@@ -927,6 +1011,11 @@ export async function runVideoGenerationJob(params: {
         videoGenerationState: "failed",
         videoGenerationMessage: SAFE_VIDEO_FAILURE_MESSAGE,
         providerAssetId: providerVideo.providerAssetId,
+        scriptHash: currentScriptHash,
+        ugcScriptHash: creativeIntake?.ugcScriptHash ?? currentScriptHash,
+        sourceContextHash: creativeIntake?.ugcStyleBrief?.sourceContextHash ?? params.payload.sourceContextHash ?? null,
+        briefHash: creativeIntake?.briefHash ?? null,
+        briefRevisionNumber: creativeIntake?.revisionNumber ?? null,
       };
 
       await persistVideoAdsToCampaignPlan({
@@ -1022,6 +1111,13 @@ export async function runVideoGenerationJob(params: {
         promptSource,
         promptHash,
         scriptHash,
+        ugcScriptHash: currentUgcScriptHash,
+        sourceContextHash: creativeIntake?.ugcStyleBrief?.sourceContextHash ?? params.payload.sourceContextHash ?? null,
+        briefHash: creativeIntake?.briefHash ?? null,
+        staticBriefHash: creativeIntake?.staticBriefHash ?? null,
+        offerHash: creativeIntake?.offerHash ?? null,
+        ctaHash: creativeIntake?.ctaHash ?? null,
+        brandHash: creativeIntake?.brandHash ?? null,
         audience: params.payload.audience,
         location: params.payload.location,
         offer: params.payload.body,
@@ -1109,6 +1205,10 @@ export async function runVideoGenerationJob(params: {
     promptSource,
     promptHash,
     scriptHash,
+    ugcScriptHash: currentUgcScriptHash,
+    sourceContextHash: creativeIntake?.ugcStyleBrief?.sourceContextHash ?? params.payload.sourceContextHash ?? null,
+    briefHash: creativeIntake?.briefHash ?? null,
+    briefRevisionNumber: creativeIntake?.revisionNumber ?? null,
     campaignSpecificContext,
     videoQualityGate,
     videoProductQualityGate,

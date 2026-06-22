@@ -1,4 +1,4 @@
-export type BillingPlanTier = "starter" | "pro" | "growth";
+export type BillingPlanTier = "performance" | "starter" | "pro" | "growth";
 export type BillingFeature = "meta_launch" | "campaign_data_import" | "autonomy_access";
 export type CampaignLimitPolicy = {
   includedActiveCampaigns: number | null;
@@ -6,7 +6,11 @@ export type CampaignLimitPolicy = {
   label: string;
 };
 
-export const SELF_SERVE_TRIAL_PERIOD_DAYS = 7;
+export const SELF_SERVE_TRIAL_PERIOD_DAYS = 0;
+export const PERFORMANCE_BASE_AMOUNT_CENTS = 9700;
+export const PERFORMANCE_LEAD_UNIT_AMOUNT_CENTS = 300;
+export const PERFORMANCE_LEAD_METER_EVENT_NAME = "dealflow_billable_lead";
+export const PERFORMANCE_LEAD_BILLING_MODEL = "base_plus_immediate_lead_charge";
 
 export const BILLING_PLANS: Record<
   BillingPlanTier,
@@ -16,6 +20,11 @@ export const BILLING_PLANS: Record<
     rank: number;
   }
 > = {
+  performance: {
+    name: "Performance",
+    priceLabel: "$97/mo + $3/qualified lead charged immediately",
+    rank: 1,
+  },
   starter: {
     name: "Starter",
     priceLabel: "$147/mo",
@@ -40,6 +49,11 @@ const FEATURE_MIN_PLAN: Record<BillingFeature, BillingPlanTier> = {
 };
 
 export const CAMPAIGN_LIMITS: Record<BillingPlanTier, CampaignLimitPolicy> = {
+  performance: {
+    includedActiveCampaigns: 1,
+    canRequestAdditionalSlots: false,
+    label: "1 active guided campaign",
+  },
   starter: {
     includedActiveCampaigns: 1,
     canRequestAdditionalSlots: false,
@@ -59,6 +73,7 @@ export const CAMPAIGN_LIMITS: Record<BillingPlanTier, CampaignLimitPolicy> = {
 
 export function normalizeBillingPlanTier(value: unknown): BillingPlanTier {
   switch (value) {
+    case "performance":
     case "pro":
     case "growth":
     case "starter":
@@ -76,8 +91,8 @@ export function getCampaignLimitPolicy(planTier: BillingPlanTier) {
   return CAMPAIGN_LIMITS[normalizeBillingPlanTier(planTier)];
 }
 
-export function getSelfServeTrialPeriodDays(planTier: BillingPlanTier) {
-  return planTier === "starter" || planTier === "pro" ? SELF_SERVE_TRIAL_PERIOD_DAYS : null;
+export function getSelfServeTrialPeriodDays(_planTier: BillingPlanTier) {
+  return null;
 }
 
 export function canCreateAdditionalCampaign(params: {

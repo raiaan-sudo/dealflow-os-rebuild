@@ -1634,7 +1634,7 @@ async function markCampaignLeadLoopVerified(params: {
 }) {
   const { data: campaignPlanData, error: campaignPlanError } = await params.supabase
     .from("campaign_plans")
-    .select("plan")
+    .select("plan, public_slug")
     .eq("id", params.campaignId)
     .maybeSingle();
 
@@ -1646,9 +1646,12 @@ async function markCampaignLeadLoopVerified(params: {
     return;
   }
 
-  const campaignPlanRow = (campaignPlanData as { plan?: unknown } | null) ?? null;
+  const campaignPlanRow = (campaignPlanData as { plan?: unknown; public_slug?: string | null } | null) ?? null;
   const currentPlan = readCampaignPlanDocument(campaignPlanRow?.plan);
-  const nextPlan = withLeadLoopVerified(currentPlan);
+  const nextPlan = withLeadLoopVerified({
+    ...currentPlan,
+    public_slug: currentPlan.public_slug ?? campaignPlanRow?.public_slug ?? null,
+  });
 
   const { error: leadLoopUpdateError } = await params.supabase
     .from("campaign_plans")

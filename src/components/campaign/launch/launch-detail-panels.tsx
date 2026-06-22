@@ -412,6 +412,8 @@ function formatDraftProposedChange(proposedChange: Record<string, unknown>) {
     "headline",
     "overlayText",
     "proposedAudience",
+    "currentDailyBudget",
+    "proposedDailyBudget",
     "proposedMonthlyBudget",
     "instruction",
   ] as const;

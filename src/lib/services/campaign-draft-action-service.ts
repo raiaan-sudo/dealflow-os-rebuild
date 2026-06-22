@@ -595,13 +595,19 @@ export async function refreshCampaignDraftActions(pendingSuggestions?: CampaignA
   }
 
   if (suggestions.some((item) => item.type === "increase_budget_on_winner")) {
+    const currentDailyBudget = Math.round(plan.monthlyBudget / 30);
+    const proposedMonthlyBudget = Math.round(plan.monthlyBudget * 1.15);
+    const proposedDailyBudget = Math.round(proposedMonthlyBudget / 30);
+
     pushCandidate({
       campaignId,
       actionType: "budget_adjustment",
       sourceReason: "Current delivery suggests the strongest message can support more spend.",
       proposedChange: {
         currentBudget: plan.monthlyBudget,
-        proposedMonthlyBudget: Math.round(plan.monthlyBudget * 1.15),
+        currentDailyBudget,
+        proposedDailyBudget,
+        proposedMonthlyBudget,
         signature: "",
       },
       expectedImpact: "Prepare a controlled budget increase without applying it until approved.",

@@ -17,11 +17,12 @@ export type StaticCreativeImageQaInput = {
   campaignContext?: {
     market?: string;
     campaignType?: string;
-    audience?: string;
-    offer?: string;
-    propertyType?: string;
-    cta?: string;
-  };
+	    audience?: string;
+	    offer?: string;
+	    propertyType?: string;
+	    cta?: string;
+	    brand?: string | null;
+	  };
 };
 
 type FetchedImage = {
@@ -40,7 +41,7 @@ type AnalyzeResult = {
 };
 
 const BACKGROUND_ONLY_QA_MODE: StaticCreativeImageQaMode = "background_only";
-const MAX_IMAGE_BYTES = 4_000_000;
+const MAX_IMAGE_BYTES = 12_000_000;
 const PNG_SIGNATURE = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
 
 function assertServerSide() {
@@ -66,7 +67,11 @@ function clamp01(value: number) {
 }
 
 function normalizeQaMode(value: StaticCreativeImageQaInput["mode"]): StaticCreativeImageQaMode {
-  return value === "finished_ad" ? "finished_ad" : BACKGROUND_ONLY_QA_MODE;
+  if (value === "finished_ad" || value === "app_composed_final") {
+    return value;
+  }
+
+  return BACKGROUND_ONLY_QA_MODE;
 }
 
 function hasNegation(sentence: string) {
@@ -132,15 +137,32 @@ function filterReasonsForMode(
     return uniq(reasons);
   }
 
+  if (mode === "app_composed_final") {
+    return uniq(reasons.filter((reason) => (
+      reason === "gibberish_text_detected" ||
+      reason === "ui_or_dashboard_layout" ||
+      reason === "chart_or_table_detected" ||
+      reason === "listing_sheet_detected" ||
+      reason === "finished_ad_text_unverified" ||
+      reason === "required_cta_missing" ||
+      reason === "required_offer_missing" ||
+      reason === "required_brand_missing" ||
+      reason === "brand_misspelled" ||
+      reason === "image_fetch_failed" ||
+      reason === "qa_timeout"
+    )));
+  }
+
   return uniq(reasons.filter((reason) => (
     reason === "gibberish_text_detected" ||
     reason === "ui_or_dashboard_layout" ||
     reason === "chart_or_table_detected" ||
     reason === "listing_sheet_detected" ||
-    reason === "finished_ad_text_unverified" ||
-    reason === "required_cta_missing" ||
-    reason === "required_offer_missing" ||
-    reason === "brand_misspelled" ||
+	    reason === "finished_ad_text_unverified" ||
+	    reason === "required_cta_missing" ||
+	    reason === "required_offer_missing" ||
+	    reason === "required_brand_missing" ||
+	    reason === "brand_misspelled" ||
     reason === "image_fetch_failed" ||
     reason === "qa_timeout"
   )));
@@ -503,14 +525,44 @@ function requiredPhrasePresent(samples: string[], phrase: string) {
   return matched / words.length >= 0.55;
 }
 
+function promptRequiresBrandPresence(prompt?: string) {
+  return /\b(brand(?:ed)? text (?:must|required)|must include (?:the )?(?:brokerage|brand)|required brand|logo must appear)\b/i.test(prompt ?? "");
+}
+
+function sampleContainsMisspelledBrand(samples: string[], exactPattern: RegExp, fuzzyPattern: RegExp) {
+  return samples.some((sample) => fuzzyPattern.test(sample) && !exactPattern.test(sample));
+}
+
 function detectBrandMisspelling(samples: string[], prompt?: string) {
   const sourcePrompt = prompt ?? "";
   if (/\bre\s*\/\s*max\b/i.test(sourcePrompt)) {
-    return !samples.some((sample) => /\bre\s*\/\s*max\b/i.test(sample));
+    const exact = /\bre\s*\/\s*max\b/i;
+    const fuzzy = /\bre\s*[-/]?\s*ma+x+\b|\bremx\b|\bremaxx\b/i;
+
+    if (samples.some((sample) => exact.test(sample))) {
+      return false;
+    }
+
+    if (sampleContainsMisspelledBrand(samples, exact, fuzzy)) {
+      return true;
+    }
+
+    return promptRequiresBrandPresence(sourcePrompt);
   }
 
   if (/royal\s+lepage/i.test(sourcePrompt)) {
-    return !samples.some((sample) => /royal\s+lepage/i.test(sample));
+    const exact = /royal\s+lepage/i;
+    const fuzzy = /royal\s+le\s*page|royal\s+page|\blepage\b/i;
+
+    if (samples.some((sample) => exact.test(sample))) {
+      return false;
+    }
+
+    if (sampleContainsMisspelledBrand(samples, exact, fuzzy)) {
+      return true;
+    }
+
+    return promptRequiresBrandPresence(sourcePrompt);
   }
 
   return false;
@@ -529,11 +581,15 @@ function collectFinishedAdSemanticReasons(input: StaticCreativeImageQaInput, ana
     reasons.push("required_cta_missing");
   }
 
-  if (!requiredPhrasePresent(samples, input.campaignContext?.offer ?? "")) {
-    reasons.push("required_offer_missing");
-  }
+	  if (!requiredPhrasePresent(samples, input.campaignContext?.offer ?? "")) {
+	    reasons.push("required_offer_missing");
+	  }
 
-  if (detectBrandMisspelling(samples, input.prompt)) {
+	  if (input.campaignContext?.brand && promptRequiresBrandPresence(input.prompt) && !requiredPhrasePresent(samples, input.campaignContext.brand)) {
+	    reasons.push("required_brand_missing");
+	  }
+
+	  if (detectBrandMisspelling(samples, input.prompt)) {
     reasons.push("brand_misspelled");
   }
 
@@ -567,7 +623,9 @@ export async function evaluateStaticCreativeImageQa(
   const analysis = mode === "finished_ad"
     ? await analyzeFinishedAdImageWithVision(input, fetched, rawAnalysis)
     : rawAnalysis;
-  const semanticReasons = mode === "finished_ad" ? collectFinishedAdSemanticReasons(input, analysis) : [];
+  const semanticReasons = mode === "finished_ad" || mode === "app_composed_final"
+    ? collectFinishedAdSemanticReasons(input, analysis)
+    : [];
   const reasons = filterReasonsForMode([...promptReasons, ...analysis.reasons, ...semanticReasons], mode);
 
   if (mode === "background_only" && analysis.textDensity > 0.12 && !reasons.includes("text_heavy")) {
@@ -597,5 +655,5 @@ export function getCustomerSafeImageQaMessage(result: StaticCreativeImageQaResul
     return null;
   }
 
-  return "This visual needs a cleaner background. Preview is using the composed layout while the image refreshes.";
+  return "This visual needs a cleaner final render before it can be launch-ready.";
 }

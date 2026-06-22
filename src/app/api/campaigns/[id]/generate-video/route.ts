@@ -10,9 +10,13 @@ import {
   isCreativeChatIntakeEnabled,
 } from "@/lib/services/creative-chat-intake-service";
 import { getAvatarVideoProvider } from "@/lib/integrations/creative/avatar-provider";
+import { assertGenerationCreditsAvailableForUser } from "@/lib/services/credit-service";
+import { assertProviderGenerationHardCapsConfigured } from "@/lib/services/provider-generation-spend-guard";
+import { isMarketingStudioWorkerOwnedJob } from "@/lib/services/marketing-studio-worker-contract";
 import { createSystemJob, listSystemJobs } from "@/lib/services/system-job-service";
 import type { SystemJobRecord } from "@/lib/services/system-job-service";
 import type { VideoGenerationJobPayload } from "@/lib/services/video-generation-job";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -20,7 +24,15 @@ const bodySchema = z.object({
   force: z.boolean().optional(),
 });
 
-function scheduleVideoGenerationJob(jobId: string) {
+function scheduleVideoGenerationJob(jobId: string, payload?: unknown) {
+  if (isMarketingStudioWorkerOwnedJob({ kind: "video_generation", payload })) {
+    logWarn("UGC video generation deferred to Marketing Studio worker", {
+      jobId,
+      runtime: "marketing_studio_cli_worker",
+    });
+    return;
+  }
+
   logWarn("Video generation queued for claimed worker processing", {
     jobId,
     runtime: "system_job_worker",
@@ -41,6 +53,30 @@ function getVideoProviderReadiness() {
     provider,
     ready: validation.configured && generationEnabled,
   };
+}
+
+function safeIdempotencyPart(value: unknown) {
+  return String(value ?? "unknown")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._:-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "unknown";
+}
+
+function creativeIntakeHash(value: unknown) {
+  return createHash("sha256")
+    .update(JSON.stringify(value ?? null))
+    .digest("hex")
+    .slice(0, 16);
+}
+
+function isReusableActiveVideoJob(job: SystemJobRecord<"video_generation">) {
+  return (
+    (job.status === "pending" || job.status === "processing") &&
+    !job.reviewed_at &&
+    !job.dead_lettered_at
+  );
 }
 
 export async function POST(
@@ -123,18 +159,6 @@ export async function POST(
       return Response.json({ error: "Video creative was not found for this campaign." }, { status: 404 });
     }
 
-    const videoProviderReadiness = getVideoProviderReadiness();
-
-    if (!videoProviderReadiness.ready) {
-      return Response.json(
-        {
-          error: "Video previews are saved as a concept for now. Static creatives can still be reviewed, but launch needs an approved campaign-specific UGC video.",
-          code: "video_generation_disabled",
-        },
-        { status: 409 },
-      );
-    }
-
     const activeJobs = (await listSystemJobs({
       userId: auth.userId,
       campaignId,
@@ -143,13 +167,14 @@ export async function POST(
     })) as SystemJobRecord<"video_generation">[];
     const existingActiveJob =
       activeJobs.find((job) =>
+        isReusableActiveVideoJob(job) &&
         job.payload.creativeIndex === body.creativeIndex &&
         (!creativeIntakeContext ||
           hasSameCreativeIntakeGenerationContext(job.payload.creativeIntake, creativeIntakeContext)),
       ) ?? null;
 
-    if (existingActiveJob) {
-      scheduleVideoGenerationJob(existingActiveJob.id);
+	    if (existingActiveJob && body.force !== true) {
+      scheduleVideoGenerationJob(existingActiveJob.id, existingActiveJob.payload);
 
       return Response.json({
         success: true,
@@ -169,7 +194,32 @@ export async function POST(
       });
     }
 
-    const scriptLines = (selectedCopy?.script || selectedVideo.script.join("\n"))
+    const videoProviderReadiness = getVideoProviderReadiness();
+
+    if (!videoProviderReadiness.ready) {
+      return Response.json(
+        {
+          error: "Video previews are saved as a concept for now. Static creatives can still be reviewed and launched; UGC video can be added later.",
+          code: "video_generation_disabled",
+        },
+        { status: 409 },
+      );
+    }
+
+    assertProviderGenerationHardCapsConfigured({
+      operation: "video_generation",
+      requestedCount: 1,
+    });
+
+    await assertGenerationCreditsAvailableForUser({
+      bucket: "video_generation",
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      campaignId,
+    });
+
+    const approvedScript = creativeIntakeContext?.ugcStyleBrief?.approvedScript ?? null;
+    const scriptLines = (approvedScript?.lines?.join("\n") || selectedCopy?.script || selectedVideo.script.join("\n"))
       .split(/\n+/)
       .map((line) => line.trim())
       .filter(Boolean);
@@ -180,16 +230,18 @@ export async function POST(
       copyId: selectedCopy?.id ?? null,
       creativeFormat: selectedVideo.conceptType === "customer_ugc" ? "ugc" : "talking_head",
       title: selectedVideo.title || selectedCopy?.headline || `Video ${body.creativeIndex + 1}`,
-      hook: selectedVideo.hook || selectedCopy?.hook || normalizedScriptLines[0] || "",
+      hook: approvedScript?.hook || selectedVideo.hook || selectedCopy?.hook || normalizedScriptLines[0] || "",
       body:
-        selectedCopy?.primary_text ||
+        approvedScript
+          ? normalizedScriptLines.slice(1, -1).join(" ")
+          : selectedCopy?.primary_text ||
         normalizedScriptLines.slice(1, -1).join(" ") ||
         normalizedScriptLines[1] ||
         "",
-      cta: selectedVideo.cta || selectedCopy?.cta || campaign.funnel.cta || "Learn more",
+      cta: approvedScript?.cta || selectedVideo.cta || selectedCopy?.cta || campaign.funnel.cta || "Learn more",
       scriptText: normalizedScriptLines.join("\n"),
       scriptLines: normalizedScriptLines,
-      scenes: selectedVideo.shotList.map((text, index) => ({
+      scenes: (approvedScript?.shotList?.length ? approvedScript.shotList : selectedVideo.shotList).map((text, index) => ({
         id: `scene-${index + 1}`,
         text,
       })),
@@ -199,6 +251,8 @@ export async function POST(
       location: campaign.strategy.location ?? campaign.campaign.location ?? null,
       force: body.force === true,
       targetDurationSeconds: creativeIntakeContext?.ugcStyleBrief?.targetDurationSeconds ?? 20,
+      ugcScriptHash: creativeIntakeContext?.ugcScriptHash ?? null,
+      sourceContextHash: creativeIntakeContext?.ugcStyleBrief?.sourceContextHash ?? null,
       creativeIntake: creativeIntakeContext,
     };
 
@@ -209,12 +263,12 @@ export async function POST(
       kind: "video_generation",
       idempotencyKey:
         body.force === true
-          ? `video_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${body.creativeIndex}:${crypto.randomUUID()}`
-          : `video_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${body.creativeIndex}`,
+          ? `video_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${body.creativeIndex}:${safeIdempotencyPart(selectedVideo.id)}:${safeIdempotencyPart(approvedScript?.version ?? approvedScript?.hash)}:${safeIdempotencyPart(creativeIntakeContext?.ugcScriptHash)}:${safeIdempotencyPart(creativeIntakeContext?.briefHash)}:force:${crypto.randomUUID()}`
+          : `video_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${body.creativeIndex}:${safeIdempotencyPart(selectedVideo.id)}:${safeIdempotencyPart(approvedScript?.version ?? approvedScript?.hash)}:${creativeIntakeHash(creativeIntakeContext)}`,
       payload,
       maxAttempts: 1,
     });
-    scheduleVideoGenerationJob(job.id);
+    scheduleVideoGenerationJob(job.id, job.payload);
 
     return Response.json({
       success: true,

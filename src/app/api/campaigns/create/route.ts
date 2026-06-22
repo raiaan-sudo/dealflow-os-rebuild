@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ApiError, assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
+import { isInstantFormCampaign } from "@/lib/campaign-destination";
 import { getPublicAppUrl } from "@/lib/env";
 import {
   buildCampaignPlanCriticalFieldPatch,
@@ -20,6 +21,11 @@ import {
 } from "@/lib/integrations/meta/budget-cap";
 import { fetchMetaJson } from "@/lib/integrations/meta/request";
 import {
+  getMetaCreativeOptOutPayload,
+  buildMetaMarketGeoLocations,
+  getMetaSpecialAdCategoryCountries,
+} from "@/lib/integrations/meta/launch-payload-guardrails";
+import {
   getMetaWorkspaceCredentials,
   validateMetaLaunchSelections,
   type MetaWorkspaceCredentials,
@@ -31,6 +37,10 @@ import {
   isLaunchReadyStaticCreative,
   isLaunchReadyVideoCreative,
 } from "@/lib/services/creative-media-readiness";
+import {
+  getApprovedCreativeIntakeGenerationContext,
+  isCreativeChatIntakeEnabled,
+} from "@/lib/services/creative-chat-intake-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { slugify } from "@/lib/utils";
@@ -58,6 +68,8 @@ type PersistedLaunchState = {
   adset_id: string | null;
   creative_id: string | null;
   ad_id: string | null;
+  creative_ids?: string[] | null;
+  ad_ids?: string[] | null;
   current_stage: LaunchStage;
   status: "pending" | "in_progress" | "failed" | "completed";
   step_status?: LaunchStepStatus | null;
@@ -68,6 +80,14 @@ type PersistedLaunchState = {
   workspace_id?: string | null;
   error?: string | null;
   updated_at: string;
+};
+
+type LaunchStaticAd = {
+  id: string;
+  primaryText?: string | null;
+  headline?: string | null;
+  visualConcept?: string | null;
+  imageUrl?: string | null;
 };
 
 type CampaignPayloadRecord = {
@@ -126,15 +146,7 @@ function assertMetaLiveLaunchEnabled() {
     );
   }
 
-  try {
-    assertMetaDailyBudgetCapConfiguredForLiveLaunch();
-  } catch {
-    throw new ApiError(
-      503,
-      "Production Meta launch approval requires META_DAILY_BUDGET_CAP_CENTS before paused objects can be created.",
-      "meta_budget_cap_missing",
-    );
-  }
+  assertMetaDailyBudgetCapConfiguredForLiveLaunch();
 }
 
 function buildStageFailureMessage(rawMessage: string, stage: LaunchStage) {
@@ -171,20 +183,6 @@ function getMetaErrorMessage(data: Record<string, unknown> | null, fallback: str
   return [userTitle, userMessage || message].filter(Boolean).join(": ") || fallback;
 }
 
-function inferCountryCode(location: string) {
-  const normalized = location.toLowerCase();
-
-  if (
-    /\btoronto\b|\bontario\b|\bvancouver\b|\bcalgary\b|\bedmonton\b|\bmontreal\b|\bcanada\b/.test(
-      normalized,
-    )
-  ) {
-    return "CA";
-  }
-
-  return "US";
-}
-
 function inferAgeRange(audience: string, targetingSummary: string) {
   const normalized = `${audience} ${targetingSummary}`.toLowerCase();
 
@@ -204,8 +202,7 @@ function inferAgeRange(audience: string, targetingSummary: string) {
 }
 
 function buildGeoTargeting(location: string) {
-  void location;
-  return {};
+  return buildMetaMarketGeoLocations(location);
 }
 
 async function loadSavedCampaignPayload(campaignId: string): Promise<CampaignPayloadRecord | null> {
@@ -259,6 +256,10 @@ function asRecord(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+function normalizeStringArray(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : [];
 }
 
 function getNestedText(value: unknown, path: string[]) {
@@ -416,14 +417,20 @@ async function persistLaunchState(
       ? (currentPlan.runtime as Record<string, unknown>)
       : {};
 
+  const stateMetaCreativeIds = normalizeStringArray(state.creative_ids);
+  const stateMetaAdIds = normalizeStringArray(state.ad_ids);
   const nextMetaAdSetIds = state.adset_id ? [state.adset_id] : [];
-  const nextMetaAdIds = state.ad_id ? [state.ad_id] : [];
+  const nextMetaCreativeIds =
+    stateMetaCreativeIds.length > 0 ? stateMetaCreativeIds : state.creative_id ? [state.creative_id] : [];
+  const nextMetaAdIds =
+    stateMetaAdIds.length > 0 ? stateMetaAdIds : state.ad_id ? [state.ad_id] : [];
   const nextRuntime = {
     ...currentRuntime,
     campaignId: state.campaign_id ?? currentRuntime.campaignId ?? null,
     adSetId: state.adset_id ?? currentRuntime.adSetId ?? null,
     adId: state.ad_id ?? currentRuntime.adId ?? null,
     metaAdSetIds: nextMetaAdSetIds.length > 0 ? nextMetaAdSetIds : currentRuntime.metaAdSetIds ?? [],
+    metaCreativeIds: nextMetaCreativeIds.length > 0 ? nextMetaCreativeIds : currentRuntime.metaCreativeIds ?? [],
     metaAdIds: nextMetaAdIds.length > 0 ? nextMetaAdIds : currentRuntime.metaAdIds ?? [],
     metaPushStatus:
       state.status === "completed"
@@ -537,6 +544,16 @@ function buildLaunchObjectKey(params: {
   stage: LaunchStage;
 }) {
   return `${params.organizationId}:${params.campaignId}:${params.attemptId}:${params.stage}`;
+}
+
+function buildIndexedLaunchObjectKey(params: {
+  organizationId: string;
+  campaignId: string;
+  attemptId: string;
+  stage: LaunchStage;
+  selectedAdId: string;
+}) {
+  return `${buildLaunchObjectKey(params)}:${params.selectedAdId}`;
 }
 
 function shouldAllowForcedInterruption() {
@@ -697,6 +714,247 @@ async function ensureDirectMetaObjectPaused(params: {
       502,
       `Meta object ${params.objectId} could not be verified PAUSED after creation/recovery.`,
       "meta_paused_verification_failed",
+    );
+  }
+}
+
+async function createOrRecoverMetaAdForStaticCreative(params: {
+  accessToken: string;
+  externalAccountId: string;
+  pageId: string;
+  adSetId: string;
+  organizationId: string;
+  campaignId: string;
+  attemptId: string;
+  campaignName: string;
+  destinationUrl: string;
+  staticAd: LaunchStaticAd;
+  index: number;
+  existingCreativeId?: string | null;
+  existingAdId?: string | null;
+  fallbackPrimaryText: string;
+  fallbackHeadline: string;
+  fallbackCreativeConcept: string;
+  requestId: string;
+}) {
+  const primaryText = params.staticAd.primaryText?.trim() || params.fallbackPrimaryText;
+  const headline = params.staticAd.headline?.trim() || params.fallbackHeadline;
+  const creativeConcept = params.staticAd.visualConcept?.trim() || params.fallbackCreativeConcept;
+  const nameSuffix = `Creative ${params.index + 1}`;
+  const creativeMetaName = buildDeterministicMetaName({
+    organizationId: params.organizationId,
+    campaignId: params.campaignId,
+    attemptId: params.attemptId,
+    stage: "creative",
+    baseName: `${creativeConcept || headline} | ${nameSuffix}`.trim(),
+  });
+  const adMetaName = buildDeterministicMetaName({
+    organizationId: params.organizationId,
+    campaignId: params.campaignId,
+    attemptId: params.attemptId,
+    stage: "ad",
+    baseName: `${params.campaignName} | ${headline} | ${nameSuffix}`.trim(),
+  });
+  const creativeObjectKey = buildIndexedLaunchObjectKey({
+    organizationId: params.organizationId,
+    campaignId: params.campaignId,
+    attemptId: params.attemptId,
+    stage: "creative",
+    selectedAdId: params.staticAd.id,
+  });
+  const adObjectKey = buildIndexedLaunchObjectKey({
+    organizationId: params.organizationId,
+    campaignId: params.campaignId,
+    attemptId: params.attemptId,
+    stage: "ad",
+    selectedAdId: params.staticAd.id,
+  });
+  let creativeId = params.existingCreativeId?.trim() || null;
+  let adId = params.existingAdId?.trim() || null;
+
+  if (creativeId) {
+    const validation = await validateExistingMetaObject({
+      accessToken: params.accessToken,
+      objectId: creativeId,
+      fields: "id,name,account_id",
+      expectedName: creativeMetaName,
+      expectedParentField: "account_id",
+      expectedParentId: params.externalAccountId,
+      requestId: params.requestId,
+    });
+
+    if (!validation.valid) {
+      creativeId = null;
+    }
+  }
+
+  if (!creativeId) {
+    creativeId = await fetchMetaObjectByName({
+      accessToken: params.accessToken,
+      externalAccountId: params.externalAccountId,
+      edge: "adcreatives",
+      fields: "id,name",
+      name: creativeMetaName,
+      requestId: params.requestId,
+    });
+  }
+
+  if (!creativeId) {
+    const linkData: Record<string, unknown> = {
+      message: primaryText,
+      link: params.destinationUrl,
+      name: headline,
+      call_to_action: {
+        type: "LEARN_MORE",
+        value: {
+          link: params.destinationUrl,
+        },
+      },
+    };
+
+    if (params.staticAd.imageUrl) {
+      linkData.picture = params.staticAd.imageUrl;
+    }
+
+    const creativeBody = new URLSearchParams({
+      name: creativeMetaName,
+      object_story_spec: JSON.stringify({
+        page_id: params.pageId,
+        link_data: linkData,
+      }),
+      contextual_multi_ads: JSON.stringify(getMetaCreativeOptOutPayload().contextual_multi_ads),
+      access_token: params.accessToken,
+    });
+    const { response, data } = await fetchMetaJson<Record<string, unknown> | null>(
+      `https://graph.facebook.com/v18.0/act_${params.externalAccountId}/adcreatives`,
+      {
+        purpose: "launch_create",
+        requestId: params.requestId,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: creativeBody.toString(),
+      },
+    );
+
+    creativeId = data && typeof data.id === "string" ? data.id : null;
+
+    if (!response.ok || !creativeId) {
+      throw new ApiError(
+        response.ok ? 500 : response.status,
+        buildStageFailureMessage(getMetaErrorMessage(data, "Creative creation failed."), "creative"),
+        "meta_creative_create_failed",
+      );
+    }
+  }
+
+  if (adId) {
+    const validation = await validateExistingMetaObject({
+      accessToken: params.accessToken,
+      objectId: adId,
+      fields: "id,name,adset_id",
+      expectedName: adMetaName,
+      expectedParentField: "adset_id",
+      expectedParentId: params.adSetId,
+      requestId: params.requestId,
+    });
+
+    if (!validation.valid) {
+      adId = null;
+    }
+  }
+
+  if (!adId) {
+    adId = await fetchMetaObjectByName({
+      accessToken: params.accessToken,
+      externalAccountId: params.externalAccountId,
+      edge: "ads",
+      fields: "id,name,adset_id",
+      name: adMetaName,
+      requestId: params.requestId,
+    });
+  }
+
+  if (!adId) {
+    const adBody = new URLSearchParams({
+      name: adMetaName,
+      adset_id: params.adSetId,
+      creative: JSON.stringify({ creative_id: creativeId }),
+      status: "PAUSED",
+      access_token: params.accessToken,
+    });
+    const { response, data } = await fetchMetaJson<Record<string, unknown> | null>(
+      `https://graph.facebook.com/v18.0/act_${params.externalAccountId}/ads`,
+      {
+        purpose: "launch_create",
+        requestId: params.requestId,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: adBody.toString(),
+      },
+    );
+
+    adId = data && typeof data.id === "string" ? data.id : null;
+
+    if (!response.ok || !adId) {
+      throw new ApiError(
+        response.ok ? 500 : response.status,
+        buildStageFailureMessage(getMetaErrorMessage(data, "Ad creation failed."), "ad"),
+        "meta_ad_create_failed",
+      );
+    }
+  }
+
+  await ensureDirectMetaObjectPaused({
+    accessToken: params.accessToken,
+    objectId: adId,
+    requestId: params.requestId,
+  });
+
+  return {
+    creativeId,
+    adId,
+    creativeMetaName,
+    adMetaName,
+    creativeObjectKey,
+    adObjectKey,
+  };
+}
+
+async function ensureMetaCampaignHousingSettings(params: {
+  accessToken: string;
+  campaignId: string;
+  location: string;
+  requestId?: string;
+}) {
+  const body = new URLSearchParams({
+    special_ad_categories: JSON.stringify(["HOUSING"]),
+    special_ad_category_country: JSON.stringify(getMetaSpecialAdCategoryCountries(params.location)),
+    status: "PAUSED",
+    access_token: params.accessToken,
+  });
+
+  const { response, data } = await fetchMetaJson<{ success?: boolean; error?: { message?: string } } | null>(
+    `https://graph.facebook.com/v18.0/${params.campaignId}`,
+    {
+      purpose: "launch_create",
+      requestId: params.requestId,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    },
+  );
+
+  if (!response.ok || data?.success !== true) {
+    throw new ApiError(
+      502,
+      data?.error?.message ?? "Meta campaign housing settings could not be verified before ad set creation.",
+      "meta_campaign_housing_settings_failed",
     );
   }
 }
@@ -877,7 +1135,10 @@ async function launchCampaignToMeta(
     ownershipVerified = true;
     await assertCampaignCanLaunch(campaignId);
     assertMetaLiveLaunchEnabled();
-    const credentials: MetaWorkspaceCredentials = await getMetaWorkspaceCredentials();
+    const campaignOrganizationId = record.campaign.organization_id?.trim() || null;
+    const credentials: MetaWorkspaceCredentials = await getMetaWorkspaceCredentials({
+      organizationId: campaignOrganizationId,
+    });
     const storedPayload = await loadSavedCampaignPayload(campaignId);
     const currentPlan = await loadCampaignPlanDocument(campaignId);
     const publicFunnelState = await loadPublicFunnelPublishState(campaignId);
@@ -920,12 +1181,12 @@ async function launchCampaignToMeta(
       storedPayload?.business_profile?.location ??
       record.strategy.location ??
       record.plan.market;
-    const countryCode = inferCountryCode(location);
     const audience = storedPayload?.targeting_plan?.audience ?? record.strategy.audience ?? record.plan.audience;
     const targetingSummary =
       storedPayload?.targeting_plan?.summary ?? record.plan.targeting_summary ?? "";
     void audience;
     void targetingSummary;
+    const specialAdCategoryCountries = getMetaSpecialAdCategoryCountries(location);
     const dailyBudget = toMinorDailyBudget(
       storedPayload?.budget_plan?.estimated_daily_budget ??
       Math.round((record.plan.monthly_budget ?? 0) / 30),
@@ -943,7 +1204,18 @@ async function launchCampaignToMeta(
         ...(storedPayload?.selected_ad_id ? [storedPayload.selected_ad_id] : []),
       ].map((value) => String(value).trim()).filter(Boolean)),
     );
-    const selectedAdId = selectedAdIds[0] ?? null;
+	    const selectedAdId = selectedAdIds[0] ?? null;
+	    const creativeIntakeContext = isCreativeChatIntakeEnabled()
+	      ? getApprovedCreativeIntakeGenerationContext(currentPlan)
+	      : null;
+	    const staticBriefReadinessContext = creativeIntakeContext
+	      ? {
+	          staticBriefHash: creativeIntakeContext.staticBriefHash,
+	          offerHash: creativeIntakeContext.offerHash,
+	          ctaHash: creativeIntakeContext.ctaHash,
+	          brandHash: creativeIntakeContext.brandHash,
+	        }
+	      : null;
 
     if (!selectedAdId) {
       throw new ApiError(
@@ -967,10 +1239,10 @@ async function launchCampaignToMeta(
       );
     }
 
-    const staticReadiness = getStaticCreativeReadiness(record.creatives.staticAds, selectedAdIds);
+	    const staticReadiness = getStaticCreativeReadiness(record.creatives.staticAds, selectedAdIds, staticBriefReadinessContext);
 
-    if (!staticReadiness.allSelectedReady || selectedStaticAds.some((ad) => !isLaunchReadyStaticCreative(ad))) {
-      throw new ApiError(
+	    if (!staticReadiness.allSelectedReady || selectedStaticAds.some((ad) => !isLaunchReadyStaticCreative(ad, staticBriefReadinessContext))) {
+	      throw new ApiError(
         400,
         "One or more selected creative images are still rendering or need regeneration before launch.",
         "selected_ad_image_not_launch_ready",
@@ -983,16 +1255,27 @@ async function launchCampaignToMeta(
       .filter((video): video is NonNullable<typeof video> => Boolean(video));
 
     if (
-      selectedUgcVideoIds.length === 0 ||
-      selectedUgcVideos.length !== selectedUgcVideoIds.length ||
-      selectedUgcVideos.some((video) => video.conceptType !== "customer_ugc" || !isLaunchReadyVideoCreative(video))
+      selectedUgcVideoIds.length > 0 &&
+      (
+        selectedUgcVideos.length !== selectedUgcVideoIds.length ||
+        selectedUgcVideos.some((video) =>
+          video.conceptType !== "customer_ugc" ||
+          !isLaunchReadyVideoCreative(video) ||
+          (
+            creativeIntakeContext?.ugcScriptHash
+              ? video.ugcScriptHash !== creativeIntakeContext.ugcScriptHash &&
+                video.scriptHash !== creativeIntakeContext.ugcScriptHash
+              : false
+          ),
+        )
+      )
     ) {
-      throw new ApiError(
-        400,
-        "Select one campaign-specific app-owned UGC video before launch.",
-        "ugc_video_not_launch_ready",
-      );
-    }
+	      throw new ApiError(
+	        400,
+	        "Selected UGC video is optional, but selected videos must be campaign-specific and app-owned before launch.",
+	        "ugc_video_not_launch_ready",
+	      );
+	    }
 
     const selectedCopy =
       record.creatives.copy.find(
@@ -1017,6 +1300,14 @@ async function launchCampaignToMeta(
       selectedStaticAd.visualConcept ??
       storedPayload?.creatives?.creative_concepts?.[0] ??
       record.plan.summary;
+    if (isInstantFormCampaign(currentPlan) || isInstantFormCampaign(record.funnel)) {
+      throw new ApiError(
+        400,
+        "Meta Instant Form launch is operator-assisted until the native form setup and delivery path are verified.",
+        "instant_form_operator_assisted",
+      );
+    }
+
     const publicSlug = publicFunnelState.publicSlug || record.publish.slug?.trim() || currentPlan.public_slug?.trim() || "";
     const expectedDestinationUrl = publicSlug
       ? `${getPublicAppUrl()}/f/${publicSlug}`
@@ -1048,7 +1339,10 @@ async function launchCampaignToMeta(
       await persistRecoveredPublicSlug(campaignId, currentPlan, publicSlug);
     }
 
-    const preflight = await validateMetaLaunchSelections({ destinationUrl });
+    const preflight = await validateMetaLaunchSelections({
+      destinationUrl,
+      organizationId: credentials.workspaceId,
+    });
 
     if (!preflight.ready) {
       throw new ApiError(
@@ -1229,7 +1523,7 @@ async function launchCampaignToMeta(
         objective,
         status: "PAUSED",
         special_ad_categories: JSON.stringify(["HOUSING"]),
-        special_ad_category_country: JSON.stringify([countryCode]),
+        special_ad_category_country: JSON.stringify(specialAdCategoryCountries),
         is_adset_budget_sharing_enabled: "false",
         access_token: credentials.accessToken,
       });
@@ -1289,6 +1583,12 @@ async function launchCampaignToMeta(
       await ensureDirectMetaObjectPaused({
         accessToken: credentials.accessToken,
         objectId: lastKnownIds.campaign_id,
+        requestId,
+      });
+      await ensureMetaCampaignHousingSettings({
+        accessToken: credentials.accessToken,
+        campaignId: lastKnownIds.campaign_id,
+        location,
         requestId,
       });
     }
@@ -1435,10 +1735,7 @@ async function launchCampaignToMeta(
         daily_budget: dailyBudget,
         bid_strategy: "LOWEST_COST_WITHOUT_CAP",
         targeting: JSON.stringify({
-          geo_locations: {
-            countries: [countryCode],
-            ...buildGeoTargeting(location),
-          },
+          geo_locations: buildGeoTargeting(location),
         }),
         status: "PAUSED",
         access_token: credentials.accessToken,
@@ -1678,6 +1975,7 @@ async function launchCampaignToMeta(
           page_id: pageId,
           link_data: linkData,
         }),
+        contextual_multi_ads: JSON.stringify(getMetaCreativeOptOutPayload().contextual_multi_ads),
         access_token: credentials.accessToken,
       });
       const { response: creativeResponse, data: creativeResponseData } = await fetchMetaJson<Record<string, unknown> | null>(
@@ -1897,7 +2195,66 @@ async function launchCampaignToMeta(
       adStatusCode = adResponse.status;
     }
 
+    let launchedCreativeIds = normalizeStringArray(persistedLaunchState?.creative_ids);
+    let launchedAdIds = normalizeStringArray(persistedLaunchState?.ad_ids);
+
+    if (lastKnownIds.creative_id && launchedCreativeIds.length === 0) {
+      launchedCreativeIds = [lastKnownIds.creative_id];
+    }
+
+    if (lastKnownIds.ad_id && launchedAdIds.length === 0) {
+      launchedAdIds = [lastKnownIds.ad_id];
+    }
+
     if (lastKnownIds.ad_id) {
+      for (let index = 1; index < selectedStaticAds.length; index += 1) {
+        const staticAd = selectedStaticAds[index]!;
+        const matchingCopy =
+          record.creatives.copy.find(
+            (item) =>
+              item.headline === staticAd.headline ||
+              item.primary_text === staticAd.primaryText,
+          ) ?? null;
+        const additional = await createOrRecoverMetaAdForStaticCreative({
+          accessToken: credentials.accessToken,
+          externalAccountId,
+          pageId,
+          adSetId: lastKnownIds.adset_id!,
+          organizationId: workspaceId,
+          campaignId,
+          attemptId: activeAttemptId,
+          campaignName,
+          destinationUrl,
+          staticAd,
+          index,
+          existingCreativeId: launchedCreativeIds[index] ?? null,
+          existingAdId: launchedAdIds[index] ?? null,
+          fallbackPrimaryText:
+            staticAd.primaryText ??
+            matchingCopy?.primary_text ??
+            storedPayload?.creatives?.primary_text_variations?.[index] ??
+            storedPayload?.creatives?.primary_text_variations?.[0] ??
+            primaryText,
+          fallbackHeadline:
+            staticAd.headline ??
+            matchingCopy?.headline ??
+            storedPayload?.creatives?.headlines?.[index] ??
+            storedPayload?.creatives?.headlines?.[0] ??
+            headline,
+          fallbackCreativeConcept:
+            staticAd.visualConcept ??
+            storedPayload?.creatives?.creative_concepts?.[index] ??
+            storedPayload?.creatives?.creative_concepts?.[0] ??
+            creativeConcept,
+          requestId,
+        });
+        launchedCreativeIds[index] = additional.creativeId;
+        launchedAdIds[index] = additional.adId;
+      }
+
+      launchedCreativeIds = Array.from(new Set(launchedCreativeIds.filter(Boolean)));
+      launchedAdIds = Array.from(new Set(launchedAdIds.filter(Boolean)));
+
       await ensureDirectMetaObjectPaused({
         accessToken: credentials.accessToken,
         objectId: lastKnownIds.ad_id,
@@ -1908,6 +2265,8 @@ async function launchCampaignToMeta(
         campaignId,
         {
           ...lastKnownIds,
+          creative_ids: launchedCreativeIds,
+          ad_ids: launchedAdIds,
           current_stage: "ad",
           status: "completed",
           step_status: "created",
@@ -1935,6 +2294,8 @@ async function launchCampaignToMeta(
         {
           ...lastKnownIds,
           ad_id: null,
+          creative_ids: launchedCreativeIds,
+          ad_ids: launchedAdIds,
           current_stage: "ad",
           status: "failed",
           step_status: "failed",
@@ -1956,6 +2317,8 @@ async function launchCampaignToMeta(
         adset_id: lastKnownIds.adset_id,
         creative_id: lastKnownIds.creative_id,
         ad_id: lastKnownIds.ad_id,
+        creative_ids: launchedCreativeIds,
+        ad_ids: launchedAdIds,
         stage: "ad",
         error:
           !lastKnownIds.ad_id

@@ -3,9 +3,11 @@
 import assert from "node:assert/strict";
 import {
   appRuntimeReflectsActiveMeta,
+  appRuntimeReflectsPausedMeta,
   buildActiveRuntimePatch,
   getMetaProofFailures,
   latestSnapshotIsFreshActive,
+  metaProofIsCampaignLevelPaused,
 } from "./meta-app-state-drift-utils.mjs";
 
 const proof = {
@@ -62,6 +64,19 @@ const pausedRow = {
 };
 
 assert.equal(appRuntimeReflectsActiveMeta(pausedRow), false, "paused app runtime is drift when Meta is active");
+assert.equal(appRuntimeReflectsPausedMeta(pausedRow), true, "paused app runtime can classify campaign-level paused Meta as non-blocking");
+
+const campaignPausedProof = {
+  ...proof,
+  campaign: { ...proof.campaign, status: "PAUSED", effective_status: "PAUSED" },
+  adset: { ...proof.adset, status: "ACTIVE", effective_status: "CAMPAIGN_PAUSED" },
+  ad: { ...proof.ad, status: "ACTIVE", effective_status: "CAMPAIGN_PAUSED" },
+};
+assert.equal(
+  metaProofIsCampaignLevelPaused(campaignPausedProof),
+  true,
+  "campaign-level Meta pause with active child configured statuses is classified as intentionally inactive",
+);
 
 const now = "2026-05-17T04:00:00.000Z";
 const patchedPlan = buildActiveRuntimePatch(pausedRow.plan, proof, now);

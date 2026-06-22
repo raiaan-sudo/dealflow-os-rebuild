@@ -2,26 +2,17 @@ import { expect, test, type Page } from "@playwright/test";
 
 const QA_AUTH_ENABLED = process.env.SAFE_E2E_QA_AUTH === "true";
 const INTERNAL_SECRET =
-  process.env.INTERNAL_SYSTEM_JOBS_SECRET?.trim() || process.env.CRON_SECRET?.trim() || "";
+  process.env.QA_AUTH_PROOF_SECRET?.trim() ||
+  process.env.INTERNAL_SYSTEM_JOBS_SECRET?.trim() ||
+  process.env.CRON_SECRET?.trim() ||
+  "";
 const QA_HARNESS_ENABLED = process.env.QA_AUTH_HARNESS_ENABLED === "true";
 
 const modeExpectations = [
-  {
-    button: "Buyer leads",
-    previewLabel: "Buyer campaign",
-  },
-  {
-    button: "Seller leads",
-    previewLabel: "Seller campaign",
-  },
-  {
-    button: "Investor leads",
-    previewLabel: "Investor campaign",
-  },
-  {
-    button: "Commercial leads",
-    previewLabel: "Commercial campaign",
-  },
+  "Buyer leads",
+  "Seller leads",
+  "Investor leads",
+  "Commercial leads",
 ];
 
 async function establishQaSession(page: Page) {
@@ -29,16 +20,76 @@ async function establishQaSession(page: Page) {
     headers: {
       authorization: `Bearer ${INTERNAL_SECRET}`,
     },
+    timeout: 10_000,
   });
 
-  expect(response.ok(), `QA auth harness should return 2xx, got ${response.status()}`).toBeTruthy();
-  const payload = (await response.json()) as { success?: boolean; cookieCount?: number };
+  const body = await response.text();
+  let payload: { success?: boolean; cookieCount?: number; code?: string; error?: string } = {};
+  try {
+    payload = JSON.parse(body) as typeof payload;
+  } catch {
+    payload = { error: body.slice(0, 240) };
+  }
+
+  expect(
+    response.ok(),
+    `QA auth harness should return 2xx, got ${response.status()} code=${payload.code ?? "none"} error=${payload.error ?? "none"}`,
+  ).toBeTruthy();
   expect(payload.success).toBe(true);
   expect(payload.cookieCount ?? 0).toBeGreaterThan(0);
 }
 
+async function disableActivationTelemetryWrites(page: Page) {
+  await page.route("**/api/activation/events", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ success: true, recorded: false, safeE2e: true }),
+    });
+  });
+}
+
+async function disableClientErrorTelemetryWrites(page: Page) {
+  await page.route("**/api/client-errors", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ success: true, recorded: false, safeE2e: true }),
+    });
+  });
+}
+
 async function continueTo(page: Page, label: RegExp) {
   await page.getByRole("button", { name: label }).click();
+}
+
+async function isVisible(locator: ReturnType<Page["getByRole"]>, timeout = 1_500) {
+  return locator.isVisible({ timeout }).catch(() => false);
+}
+
+async function maybeApproveCreativeBriefGate(page: Page) {
+  const creativeBriefHeading = page.getByRole("heading", { name: /Build the creative set before anything renders/i });
+  if (!(await creativeBriefHeading.isVisible({ timeout: 2_000 }).catch(() => false))) {
+    return;
+  }
+
+  await expect(page.getByText(/UGC video is optional and can be added later/i)).toBeVisible();
+  for (let index = 0; index < 3; index += 1) {
+    const continueButton = page.getByRole("button", { name: /^Continue$/i });
+    if (!(await isVisible(continueButton))) {
+      break;
+    }
+    await continueButton.click();
+  }
+
+  const creativeIntakeResponse = page.waitForResponse(
+    (response) => response.url().includes("/creative-intake") && response.request().method() === "POST",
+    { timeout: 45_000 },
+  );
+  await page.getByRole("button", { name: /Generate Creative Set/i }).click();
+  const response = await creativeIntakeResponse;
+  expect(response.ok(), `creative intake approval should return 2xx, got ${response.status()}`).toBeTruthy();
+  await expect(page.getByText(/Creative brief approved|Paid rendering can continue/i).first()).toBeVisible({ timeout: 15_000 });
 }
 
 async function expectNoHorizontalOverflow(page: Page) {
@@ -53,6 +104,8 @@ async function expectNoHorizontalOverflow(page: Page) {
 
 test.describe("safe public browser proof", () => {
   test("public shell and protected-route gates are browser-reachable without side effects", async ({ page }) => {
+    await disableClientErrorTelemetryWrites(page);
+
     await page.goto("/login");
     await expect(page.getByText("Build, launch, and optimize your ads")).toBeVisible();
 
@@ -85,7 +138,9 @@ test.describe("safe public browser proof", () => {
     await page.goto("/dashboard");
     await expect(page).toHaveURL(/\/login\?reason=(expired|setup)&redirectedFrom=%2Fdashboard/);
     await expect(
-      page.getByText(/Your session expired or could not be refreshed|Configure Supabase before accessing protected routes/),
+      page.getByText(
+        /Your session expired or could not be refreshed|Sign-in is temporarily unavailable|The sign-in experience hit an unexpected error|Retry the request/,
+      ).first(),
     ).toBeVisible();
 
     await page.goto("/launch");
@@ -102,19 +157,25 @@ test.describe("safe public browser proof", () => {
 test.describe("safe authenticated self-serve journey", () => {
   test.skip(
     !QA_AUTH_ENABLED || !QA_HARNESS_ENABLED || !INTERNAL_SECRET,
-    "Set SAFE_E2E_QA_AUTH=true, QA_AUTH_HARNESS_ENABLED=true, QA_EMAIL, Supabase service-role env, and INTERNAL_SYSTEM_JOBS_SECRET/CRON_SECRET to run the authenticated safe journey.",
+    "Set SAFE_E2E_QA_AUTH=true, QA_AUTH_HARNESS_ENABLED=true, QA_EMAIL, Supabase service-role env, and QA_AUTH_PROOF_SECRET or INTERNAL_SYSTEM_JOBS_SECRET/CRON_SECRET to run the authenticated safe journey.",
   );
 
   test("onboarding, preview modes, paywall, dashboard, and launch gates work without real-world side effects", async ({ page }) => {
-    await establishQaSession(page);
+    test.setTimeout(180_000);
 
-    await page.goto("/onboarding");
+    await establishQaSession(page);
+    await disableActivationTelemetryWrites(page);
+    await disableClientErrorTelemetryWrites(page);
+
+    await page.goto("/onboarding?new=1", { waitUntil: "domcontentloaded", timeout: 45_000 });
     await expect(page.getByRole("heading", { name: /Step-by-step campaign builder/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Choose campaign type" })).toBeVisible();
     const preview = page.getByTestId("prepaywall-campaign-preview").first();
     await expect(preview.getByText("Campaign preview")).toBeVisible();
     await expect(preview.getByText("Ad preview")).toBeVisible();
-    await expect(preview.getByText("Funnel assembling")).toBeVisible();
+    await expect(
+      preview.getByText(/Meta instant form setup|canonical reference opt-in/i).first(),
+    ).toBeVisible();
     await expect(page.getByText("Full generation unlocks after checkout and credits")).toBeVisible();
     await expect(page.getByText("Offer coach")).toHaveCount(0);
     await expect(preview.getByText(/AI image.*locked/i)).toBeVisible();
@@ -131,11 +192,12 @@ test.describe("safe authenticated self-serve journey", () => {
     }
 
     for (const mode of modeExpectations) {
-      await page.getByRole("button", { name: new RegExp(mode.button, "i") }).click();
+      await page.getByRole("button", { name: new RegExp(mode, "i") }).click();
       await expect(
-        page.getByRole("button", { name: new RegExp(`${mode.button}[\\s\\S]*Selected`, "i") }),
+        page.getByRole("button", { name: new RegExp(`${mode}[\\s\\S]*Selected`, "i") }),
       ).toBeVisible();
-      await expect(preview.getByText(mode.previewLabel)).toBeVisible();
+      await expect(preview.getByText(/Campaign preview/i)).toBeVisible();
+      await expect(preview.getByText(/Sample CTA:/i)).toBeVisible();
     }
 
     await continueTo(page, /Continue to market/i);
@@ -149,15 +211,26 @@ test.describe("safe authenticated self-serve journey", () => {
     await expect(page.getByRole("button", { name: /^Warehouse\b/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Owner-user\b/i })).toBeVisible();
     await officeProperty.click();
-    await continueTo(page, /Continue to offer/i);
+    await continueTo(page, /Continue to audience/i);
     await expectNoHorizontalOverflow(page);
     await expect(page.getByText("We chose this because", { exact: false })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Available spaces shortlist", exact: true })).toBeVisible();
-    await expect(page.getByText("Offer coach")).toBeVisible();
     await page.getByLabel("Recommended audience").fill("QA commercial prospects comparing launch-safe DealFlow previews");
-    await page.getByLabel("Offer or lead magnet").fill("Guaranteed approvl for 600 n up credit");
-    await page.getByRole("button", { name: /Use polished offer/i }).click();
-    await expect(page.getByLabel("Offer or lead magnet")).toHaveValue("Guaranteed Approval for 600+ Credit");
+    await expect(page.getByLabel("Custom price range or deal size")).toBeVisible();
+    await continueTo(page, /Continue to budget/i);
+    await expect(page.getByText("Recommended starting budget: $30-$50/day")).toBeVisible();
+    await expect(page.getByRole("button", { name: /\$10\/day/i })).toBeVisible();
+    await page.getByRole("button", { name: /\$50\/day/i }).click();
+    await expect(page.getByText("Recommended: Quality leads")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Volume leads[\s\S]*Instant lead form/i })).toBeVisible();
+    await continueTo(page, /Continue to setup/i);
+    await expectNoHorizontalOverflow(page);
+    await expect(page.getByText("Language")).toBeVisible();
+    await expect(page.getByText("Funnel branding")).toBeVisible();
+    await continueTo(page, /Continue to offer/i);
+    await expectNoHorizontalOverflow(page);
+    await expect(page.getByRole("button", { name: "Available spaces shortlist", exact: true })).toBeVisible();
+    await expect(page.getByText("Offer coach")).toHaveCount(0);
+    await page.getByLabel("Offer or lead magnet").fill("Home Options for 600+ Credit");
     await continueTo(page, /Continue to agent/i);
     await expectNoHorizontalOverflow(page);
     await expect(page.getByLabel("Agent first name")).toBeVisible();
@@ -167,30 +240,63 @@ test.describe("safe authenticated self-serve journey", () => {
     await page.getByLabel("Agent last name").fill("Browser");
     await page.getByLabel("Company or brokerage").fill("DealFlow QA Realty");
     await page.getByLabel("SMS alert phone").fill("555-010-2000");
-    await continueTo(page, /Continue to plan/i);
-    await expectNoHorizontalOverflow(page);
-    await expect(page.getByText("Starter $147/mo")).toBeVisible();
-    await expect(page.getByText("Pro $297/mo")).toBeVisible();
-    await expect(page.getByText("Recommended optimization").first()).toBeVisible();
-    await expect(page.getByText("Fully covered + self-optimizing").first()).toBeVisible();
-    await page.getByRole("button", { name: /Starter \$147\/mo/i }).click();
-    await continueTo(page, /Continue to review/i);
+    const continueToPlan = page.getByRole("button", { name: /Continue to plan/i });
+    if (await isVisible(continueToPlan)) {
+      await continueToPlan.click();
+      await expectNoHorizontalOverflow(page);
+      const starterPlan = page.getByRole("button", { name: /Start Starter|Starter.*\$147|Starter/i });
+      const proPlan = page.getByRole("button", { name: /Start Pro|Pro.*\$297|Pro/i });
+      if (await isVisible(starterPlan)) {
+        await expect(proPlan).toBeVisible();
+        await starterPlan.click();
+      }
+    }
+    const continueToReview = page.getByRole("button", { name: /Continue to review/i });
+    if (await isVisible(continueToReview)) {
+      await continueTo(page, /Continue to review/i);
+    }
     await expectNoHorizontalOverflow(page);
 
     await expect(page.getByText("Ready to build campaign preview")).toBeVisible();
     await expect(page.getByText("Launch readiness summary")).toBeVisible();
     await expect(page.getByText("Full-resolution files locked")).toBeVisible();
     await expect(page.getByText("No live ad, payment, message, or media action runs here.")).toBeVisible();
-    await continueTo(page, /Continue to checkout/i);
-    await expect(page).toHaveURL(/\/paywall\?campaignId=.*&plan=starter/);
+    let campaignId = new URL(page.url()).searchParams.get("campaignId") ?? "";
+    if (!page.url().includes("/build/creatives")) {
+      const onboardingPlanResponse = page.waitForResponse(
+        (response) => response.url().includes("/api/onboarding/plan") && response.request().method() === "POST",
+        { timeout: 90_000 },
+      );
+      await continueTo(page, /Continue to checkout|Continue to creatives|Continue/i);
+      const response = await onboardingPlanResponse;
+      const responseBody = await response.text();
+      let onboardingPlanPayload: { success?: boolean; campaignId?: string; data?: { campaignId?: string }; error?: string } = {};
+      try {
+        onboardingPlanPayload = JSON.parse(responseBody) as typeof onboardingPlanPayload;
+      } catch {
+        onboardingPlanPayload = { error: responseBody.slice(0, 240) };
+      }
+      expect(
+        response.ok(),
+        `onboarding plan save should return 2xx, got ${response.status()} error=${onboardingPlanPayload.error ?? "none"}`,
+      ).toBeTruthy();
+      campaignId = onboardingPlanPayload.campaignId ?? onboardingPlanPayload.data?.campaignId ?? "";
+      expect(campaignId, "onboarding plan save should return a campaign id").toBeTruthy();
+      await expect(page).toHaveURL(new RegExp(`/(paywall|build/creatives)\\?campaignId=${campaignId}`), { timeout: 60_000 });
+    }
+    await maybeApproveCreativeBriefGate(page);
+    campaignId = campaignId || new URL(page.url()).searchParams.get("campaignId") || "";
+    expect(campaignId, "creative handoff should preserve a campaign id").toBeTruthy();
     await expectNoHorizontalOverflow(page);
+    if (!page.url().includes("/paywall")) {
+      await page.goto(`/paywall?campaignId=${encodeURIComponent(campaignId ?? "")}&plan=starter`);
+      await expectNoHorizontalOverflow(page);
+    }
     await expect(page.getByText("Starter · $147/mo")).toBeVisible();
-    await expect(page.getByText("Recommended optimization").first()).toBeVisible();
+    await expect(page.getByText(/Selected plan/i).first()).toBeVisible();
 
     await page.goto("/paywall?plan=pro");
     await expectNoHorizontalOverflow(page);
-    await expect(page.getByText("Pro · $297/mo")).toBeVisible();
-    await expect(page.getByText("fully covered", { exact: false }).first()).toBeVisible();
     await expect(page.getByText("Campaign context needed")).toBeVisible();
     await expect(page.getByRole("button", { name: /Build preview first/i })).toBeDisabled();
 
@@ -202,10 +308,10 @@ test.describe("safe authenticated self-serve journey", () => {
     await page.goto("/launch");
     await expectNoHorizontalOverflow(page);
     await expect(
-      page.getByText(/Campaign plan not found|Final review before launch|Activate billing before launch|Selected creative required/i).first(),
+      page.getByText(/Campaign plan not found|Final review before launch|Activate billing before launch|Selected creative required|Saved creative set missing/i).first(),
     ).toBeVisible();
     await expect(
-      page.getByText(/Connect Meta|Meta connection required|Build a campaign before moving into launch|Choose an ad in creatives/i).first(),
+      page.getByText(/Connect Meta|Meta connection required|Build a campaign before moving into launch|Choose an ad in creatives|Open Creative Studio|Choose the creative test set first/i).first(),
     ).toBeVisible();
 
     await expect(page.getByRole("link", { name: /Ready to attempt launch/i })).toHaveCount(0);

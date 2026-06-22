@@ -3,6 +3,14 @@ import { logError, logWarn } from "@/lib/logging";
 import { NextResponse } from "next/server";
 
 export type MetaErrorCategory =
+  | "meta_app_role_required"
+  | "app_not_live"
+  | "business_verification_required"
+  | "oauth_access_denied"
+  | "token_missing"
+  | "token_expired"
+  | "page_permission_missing"
+  | "ad_account_permission_missing"
   | "expired_token"
   | "missing_ad_account_permission"
   | "no_page_access"
@@ -51,6 +59,62 @@ const CATEGORY_CONFIG: Record<
   MetaErrorCategory,
   Omit<MetaErrorDiagnostic, "category" | "internalMessage">
 > = {
+  meta_app_role_required: {
+    code: "meta_app_role_required",
+    title: "Meta app access required",
+    userMessage: "Meta connection is currently operator-assisted.",
+    recommendedAction: "Please confirm you've been added to the Meta app before connecting.",
+    retryEligible: false,
+  },
+  app_not_live: {
+    code: "app_not_live",
+    title: "Meta app is not live yet",
+    userMessage: "Meta blocked this connection because the DealFlow Meta app is not public for this user yet.",
+    recommendedAction: "An operator must add the customer to the Meta app role or complete Meta app review before retrying.",
+    retryEligible: false,
+  },
+  business_verification_required: {
+    code: "business_verification_required",
+    title: "Meta business verification required",
+    userMessage: "Meta requires business verification or app review before this account can continue.",
+    recommendedAction: "Complete Meta business verification or use an approved operator-assisted Meta app role.",
+    retryEligible: false,
+  },
+  oauth_access_denied: {
+    code: "oauth_access_denied",
+    title: "Meta connection was not approved",
+    userMessage: "Meta did not grant the requested access.",
+    recommendedAction: "Start Meta connection again after confirming the account is approved for the DealFlow Meta app.",
+    retryEligible: true,
+  },
+  token_missing: {
+    code: "token_missing",
+    title: "Meta did not return a usable token",
+    userMessage: "Meta did not complete the connection successfully.",
+    recommendedAction: "Reconnect Meta after confirming app-role access.",
+    retryEligible: true,
+  },
+  token_expired: {
+    code: "token_expired",
+    title: "Meta connection expired",
+    userMessage: "Your Meta connection has expired.",
+    recommendedAction: "Reconnect Meta, then re-save the ad account, Page, and pixel.",
+    retryEligible: true,
+  },
+  page_permission_missing: {
+    code: "page_permission_missing",
+    title: "Facebook Page access needed",
+    userMessage: "The selected Facebook Page is not available to this Meta connection.",
+    recommendedAction: "Ask a Page admin to grant access, then reconnect Meta and re-select the Page.",
+    retryEligible: false,
+  },
+  ad_account_permission_missing: {
+    code: "ad_account_permission_missing",
+    title: "Meta ad account access needed",
+    userMessage: "This Meta account cannot create ads in the selected ad account.",
+    recommendedAction: "Ask an ad account admin to grant access, then reconnect Meta and re-select the account.",
+    retryEligible: false,
+  },
   expired_token: {
     code: "meta_expired_token",
     title: "Meta connection expired",
@@ -190,6 +254,14 @@ function inferMetaErrorCategory(input: MetaErrorInput): MetaErrorCategory {
 
   if (
     code === "access_denied" ||
+    message.includes("access denied") ||
+    message.includes("not authorized") ||
+    message.includes("not authorised")
+  ) {
+    return "oauth_access_denied";
+  }
+
+  if (
     code === "user_denied" ||
     message.includes("user denied") ||
     message.includes("cancelled")
@@ -203,9 +275,10 @@ function inferMetaErrorCategory(input: MetaErrorInput): MetaErrorCategory {
 
   if (
     code === "no_token" ||
+    code === "meta_access_token_missing" ||
     message.includes("access token") && (message.includes("missing") || message.includes("empty"))
   ) {
-    return "oauth_token_missing";
+    return "token_missing";
   }
 
   if (code === "supabase_unavailable" || code === "missing_workspace_context") {
@@ -233,7 +306,7 @@ function inferMetaErrorCategory(input: MetaErrorInput): MetaErrorCategory {
     message.includes("session has expired") ||
     code.includes("token")
   ) {
-    return "expired_token";
+    return "token_expired";
   }
 
   if (
@@ -263,7 +336,7 @@ function inferMetaErrorCategory(input: MetaErrorInput): MetaErrorCategory {
     message.includes("ad account permission") ||
     message.includes("permission to access the ad account")
   ) {
-    return "missing_ad_account_permission";
+    return "ad_account_permission_missing";
   }
 
   if (
@@ -273,7 +346,7 @@ function inferMetaErrorCategory(input: MetaErrorInput): MetaErrorCategory {
     message.includes("selected page") ||
     message.includes("page is not available")
   ) {
-    return "no_page_access";
+    return "page_permission_missing";
   }
 
   if (
@@ -302,11 +375,32 @@ function inferMetaErrorCategory(input: MetaErrorInput): MetaErrorCategory {
   }
 
   if (
+    code === "meta_app_role_required" ||
+    message.includes("not added as a tester") ||
+    message.includes("must be a developer") ||
+    message.includes("does not have a role") ||
+    message.includes("app role")
+  ) {
+    return "meta_app_role_required";
+  }
+
+  if (
+    code === "app_not_live" ||
     message.includes("development mode") ||
     message.includes("must be in public") ||
-    message.includes("app is in development")
+    message.includes("app is in development") ||
+    message.includes("app is not live")
   ) {
-    return "meta_app_development_mode";
+    return "app_not_live";
+  }
+
+  if (
+    code === "business_verification_required" ||
+    message.includes("business verification") ||
+    message.includes("app review") ||
+    message.includes("advanced access")
+  ) {
+    return "business_verification_required";
   }
 
   if (

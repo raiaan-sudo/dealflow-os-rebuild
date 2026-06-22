@@ -35,6 +35,18 @@ export type StripeBillingExecuteRequest =
       subscriptionId: string;
     }
   | {
+      action: "create_meter_event";
+      eventName: string;
+      payload: Record<string, string | number | boolean | null>;
+      identifier: string;
+      idempotencyKey?: string;
+    }
+  | {
+      action: "create_payment_intent";
+      params: Stripe.PaymentIntentCreateParams;
+      idempotencyKey?: string;
+    }
+  | {
       action: "construct_webhook_event";
       payload: string;
       signature: string;
@@ -45,7 +57,20 @@ type StripeBillingRawResult =
   | Stripe.Checkout.Session
   | Stripe.BillingPortal.Session
   | Stripe.Subscription
-  | Stripe.Event;
+  | Stripe.PaymentIntent
+  | Stripe.Event
+  | Record<string, unknown>;
+
+type StripeMeterEventsApi = {
+  create: (
+    params: {
+      event_name: string;
+      payload: Record<string, string | number | boolean | null>;
+      identifier: string;
+    },
+    options?: { idempotencyKey?: string },
+  ) => Promise<Record<string, unknown>>;
+};
 
 export type StripeBillingParsedResult = {
   success: true;
@@ -179,8 +204,38 @@ class ConfiguredStripeBillingProvider implements StripeBillingProvider
 
     if (request.action === "retrieve_subscription") {
       return client.subscriptions.retrieve(request.subscriptionId, {
-        expand: ["items.data.price"],
+        expand: ["items.data.price", "default_payment_method", "customer"],
       });
+    }
+
+    if (request.action === "create_meter_event") {
+      const meterEventsApi =
+        (client as unknown as { billing?: { meterEvents?: StripeMeterEventsApi } }).billing?.meterEvents ??
+        (client as unknown as { v2?: { billing?: { meterEvents?: StripeMeterEventsApi } } }).v2?.billing?.meterEvents;
+
+      if (!meterEventsApi?.create) {
+        throw new ApiError(
+          503,
+          "Stripe meter events API is not available in this Stripe SDK/runtime.",
+          "stripe_meter_events_unavailable",
+        );
+      }
+
+      return meterEventsApi.create(
+        {
+          event_name: request.eventName,
+          payload: request.payload,
+          identifier: request.identifier,
+        },
+        request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : undefined,
+      );
+    }
+
+    if (request.action === "create_payment_intent") {
+      return client.paymentIntents.create(
+        request.params,
+        request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : undefined,
+      );
     }
 
     return client.webhooks.constructEvent(request.payload, request.signature, env.webhookSecret);
@@ -189,7 +244,7 @@ class ConfiguredStripeBillingProvider implements StripeBillingProvider
   parseResult(raw: StripeBillingRawResult): StripeBillingParsedResult {
     return {
       success: true,
-      objectType: "object" in raw ? raw.object : "unknown",
+      objectType: "object" in raw && typeof raw.object === "string" ? raw.object : "unknown",
       id: "id" in raw && typeof raw.id === "string" ? raw.id : null,
       metadata:
         "metadata" in raw && raw.metadata && typeof raw.metadata === "object"
