@@ -13,16 +13,16 @@ The DealFlow + ClickToScale onboarding UI reconciliation is implemented, validat
 - Latest deployed source commit before this report: `97cd4efe006089cf4ff4819744476564141de84f`
 - UI reconciliation commit: `970c5f672561325c22c0161d2ddb6ba7a34b1b37`
 - Deploy artifact exclusion commit: `97cd4efe006089cf4ff4819744476564141de84f`
-- Production deploy ID: `dpl_C6CHmUzRsQzSpKikbV78tq6jyHas`
-- Deploy URL: `https://dealflow-os-rebuild-kk3kdewkb-raiaan-sudos-projects.vercel.app`
+- Production deploy ID: `dpl_86MvjXKvWtkppJQ8WkbcWSoubkkm`
+- Deploy URL: `https://dealflow-os-rebuild-eqe40l1iu-raiaan-sudos-projects.vercel.app`
 
 ## Domain Alignment
 
 | Domain | Result |
 | --- | --- |
-| `https://app.agentdealflow.io` | `dpl_C6CHmUzRsQzSpKikbV78tq6jyHas` |
-| `https://www.agentdealflow.io` | `dpl_C6CHmUzRsQzSpKikbV78tq6jyHas` |
-| `https://agentdealflow.io` | `dpl_C6CHmUzRsQzSpKikbV78tq6jyHas` |
+| `https://app.agentdealflow.io` | `dpl_86MvjXKvWtkppJQ8WkbcWSoubkkm` |
+| `https://www.agentdealflow.io` | `dpl_86MvjXKvWtkppJQ8WkbcWSoubkkm` |
+| `https://agentdealflow.io` | `dpl_86MvjXKvWtkppJQ8WkbcWSoubkkm` |
 
 No stale deploy was observed on app, www, or apex during post-deploy verification.
 
@@ -127,7 +127,7 @@ Notes:
 `npm run operator:ops-summary` after deploy:
 
 - Verdict: `OPS_READY`
-- Deploy ID in output: `dpl_C6CHmUzRsQzSpKikbV78tq6jyHas`
+- Deploy ID in output: `dpl_86MvjXKvWtkppJQ8WkbcWSoubkkm`
 - Failed jobs: 0
 - Dead letters: 0
 - Failed Stripe events: 0
@@ -248,4 +248,4 @@ This prevents historical proof bundles and performance artifacts from being uplo
 
 ## Rollback
 
-If rollback is needed, use the Vercel deploy immediately before `dpl_C6CHmUzRsQzSpKikbV78tq6jyHas` from project history. Because no production DB or external provider mutation was performed by this reconciliation, rollback is limited to web deployment aliasing.
+If rollback is needed, use the Vercel deploy immediately before `dpl_86MvjXKvWtkppJQ8WkbcWSoubkkm` from project history. Because no production DB or external provider mutation was performed by this reconciliation, rollback is limited to web deployment aliasing.
