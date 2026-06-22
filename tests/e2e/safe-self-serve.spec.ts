@@ -224,8 +224,8 @@ test.describe("safe authenticated self-serve journey", () => {
     await expect(page.getByRole("button", { name: /Volume leads[\s\S]*Instant lead form/i })).toBeVisible();
     await continueTo(page, /Continue to setup/i);
     await expectNoHorizontalOverflow(page);
-    await expect(page.getByText("Language")).toBeVisible();
-    await expect(page.getByText("Funnel branding")).toBeVisible();
+    await expect(page.getByText("Language", { exact: true })).toBeVisible();
+    await expect(page.getByText("Funnel branding", { exact: true })).toBeVisible();
     await continueTo(page, /Continue to offer/i);
     await expectNoHorizontalOverflow(page);
     await expect(page.getByRole("button", { name: "Available spaces shortlist", exact: true })).toBeVisible();
@@ -244,11 +244,9 @@ test.describe("safe authenticated self-serve journey", () => {
     if (await isVisible(continueToPlan)) {
       await continueToPlan.click();
       await expectNoHorizontalOverflow(page);
-      const starterPlan = page.getByRole("button", { name: /Start Starter|Starter.*\$147|Starter/i });
-      const proPlan = page.getByRole("button", { name: /Start Pro|Pro.*\$297|Pro/i });
-      if (await isVisible(starterPlan)) {
-        await expect(proPlan).toBeVisible();
-        await starterPlan.click();
+      const proPlan = page.getByRole("button", { name: /Get started now|Pro.*\$297|Operator launch/i });
+      if (await isVisible(proPlan)) {
+        await proPlan.click();
       }
     }
     const continueToReview = page.getByRole("button", { name: /Continue to review/i });
@@ -289,10 +287,10 @@ test.describe("safe authenticated self-serve journey", () => {
     expect(campaignId, "creative handoff should preserve a campaign id").toBeTruthy();
     await expectNoHorizontalOverflow(page);
     if (!page.url().includes("/paywall")) {
-      await page.goto(`/paywall?campaignId=${encodeURIComponent(campaignId ?? "")}&plan=starter`);
+      await page.goto(`/paywall?campaignId=${encodeURIComponent(campaignId ?? "")}&plan=pro`);
       await expectNoHorizontalOverflow(page);
     }
-    await expect(page.getByText("Starter · $147/mo")).toBeVisible();
+    await expect(page.getByText("Pro · $297/mo")).toBeVisible();
     await expect(page.getByText(/Selected plan/i).first()).toBeVisible();
 
     await page.goto("/paywall?plan=pro");
