@@ -12,11 +12,14 @@ const STRIPE_API_VERSION = "2026-04-22.dahlia";
 const DEFAULT_PRODUCT_NAME = "EGEN ACCELERATOR";
 const DEFAULT_CHECKOUT_HEADLINE = "EGEN Accelerator";
 const DEFAULT_PERFORMANCE_LABEL = "EGEN Accelerator";
+const DEFAULT_PRO_LABEL = "Pro";
 
 export type PartnerStripeSetupMode = "test" | "live";
+export type PartnerStripeSetupPlanTier = "performance" | "pro";
 
 export type PartnerStripeSetupResult = {
   mode: PartnerStripeSetupMode;
+  planTier: PartnerStripeSetupPlanTier;
   partnerId: string;
   partnerSlug: string;
   product: {
@@ -25,8 +28,9 @@ export type PartnerStripeSetupResult = {
     livemode: boolean;
   };
   prices: {
-    performanceBasePriceId: string;
-    immediateLeadChargeAmountCents: number;
+    performanceBasePriceId?: string;
+    proPriceId?: string;
+    immediateLeadChargeAmountCents?: number;
   };
   configWritten: boolean;
 };
@@ -34,9 +38,11 @@ export type PartnerStripeSetupResult = {
 type SetupOptions = {
   partnerId: string;
   mode: PartnerStripeSetupMode;
+  planTier?: PartnerStripeSetupPlanTier | null;
   productName?: string | null;
   checkoutHeadline?: string | null;
   performanceLabel?: string | null;
+  proLabel?: string | null;
   baseAmountCents?: number | null;
   leadAmountCents?: number | null;
 };
@@ -172,29 +178,94 @@ async function findOrCreateBasePrice(params: {
   );
 }
 
+async function findOrCreateProPrice(params: {
+  stripe: Stripe;
+  mode: PartnerStripeSetupMode;
+  partnerSlug: string;
+  productId: string;
+  productName: string;
+  proAmountCents: number;
+}) {
+  const existing = await findRecurringPrice({
+    stripe: params.stripe,
+    productId: params.productId,
+    role: "pro",
+    unitAmount: params.proAmountCents,
+    usageType: "licensed",
+  });
+  if (existing) {
+    return existing;
+  }
+
+  return params.stripe.prices.create(
+    {
+      product: params.productId,
+      currency: "usd",
+      unit_amount: params.proAmountCents,
+      recurring: {
+        interval: "month",
+        usage_type: "licensed",
+      },
+      nickname: `${params.productName} Pro`,
+      metadata: {
+        dealflow_partner_slug: params.partnerSlug,
+        dealflow_price_role: "pro",
+        internal_plan_tier: "pro",
+      },
+    },
+    { idempotencyKey: `partner_stripe_pro_price:${params.mode}:${params.partnerSlug}:${params.proAmountCents}` },
+  );
+}
+
 function updatePricingForMode(params: {
   existing: PartnerPricingConfig;
   mode: PartnerStripeSetupMode;
+  planTier: PartnerStripeSetupPlanTier;
   productName: string;
   checkoutHeadline: string;
   performanceLabel: string;
-  basePriceId: string;
-  leadAmountCents: number;
+  proLabel: string;
+  basePriceId?: string;
+  proPriceId?: string;
+  leadAmountCents?: number;
 }) {
-  const liveConfig = {
-    displayProductName: params.productName,
-    checkoutHeadline: params.checkoutHeadline,
-    visiblePlans: ["performance"],
-    allowDefaultDealFlowPrices: false,
-    plans: {
-      performance: {
-        label: params.performanceLabel,
-        basePriceId: params.basePriceId,
-      },
-    },
-    billingModel: "base_plus_immediate_lead_charge",
-    leadChargeAmountCents: params.leadAmountCents,
-  } satisfies PartnerPricingConfig;
+  if (params.planTier === "pro" && !params.proPriceId) {
+    throw new ApiError(500, "Pro price id was not created.", "partner_pro_price_missing");
+  }
+  if (params.planTier === "performance" && (!params.basePriceId || !params.leadAmountCents)) {
+    throw new ApiError(500, "Performance price config was not created.", "partner_performance_price_missing");
+  }
+
+  const liveConfig =
+    params.planTier === "pro"
+      ? ({
+          displayProductName: params.productName,
+          checkoutHeadline: params.checkoutHeadline,
+          visiblePlans: ["pro"],
+          allowDefaultDealFlowPrices: false,
+          plans: {
+            pro: {
+              label: params.proLabel,
+              priceId: params.proPriceId,
+            },
+          },
+          billingModel: null,
+          leadChargeAmountCents: null,
+        } satisfies PartnerPricingConfig)
+      : ({
+          displayProductName: params.productName,
+          checkoutHeadline: params.checkoutHeadline,
+          visiblePlans: ["performance"],
+          allowDefaultDealFlowPrices: false,
+          plans: {
+            performance: {
+              label: params.performanceLabel,
+              basePriceId: params.basePriceId,
+            },
+          },
+          billingModel: "base_plus_immediate_lead_charge",
+          leadChargeAmountCents: params.leadAmountCents,
+        } satisfies PartnerPricingConfig);
 
   if (params.mode === "live") {
     return serializePartnerPricingConfig(liveConfig);
@@ -209,11 +280,14 @@ function updatePricingForMode(params: {
   return {
     ...existingRecord,
     stripeTestSetup: {
+      planTier: params.planTier,
       displayProductName: params.productName,
       checkoutHeadline: params.checkoutHeadline,
       performanceLabel: params.performanceLabel,
-      basePriceId: params.basePriceId,
-      leadChargeAmountCents: params.leadAmountCents,
+      proLabel: params.proLabel,
+      basePriceId: params.basePriceId ?? null,
+      proPriceId: params.proPriceId ?? null,
+      leadChargeAmountCents: params.leadAmountCents ?? null,
       updatedAt: new Date().toISOString(),
     },
   };
@@ -238,14 +312,18 @@ export async function setupPartnerStripeProducts(options: SetupOptions): Promise
     throw new ApiError(404, "Partner not found.", "partner_not_found");
   }
 
-  const baseAmountCents = options.baseAmountCents ?? 9700;
+  const planTier = options.planTier ?? "performance";
+  const baseAmountCents = options.baseAmountCents ?? (planTier === "pro" ? 29700 : 9700);
   const leadAmountCents = options.leadAmountCents ?? 300;
   assertPositiveCents(baseAmountCents, "Base subscription amount");
-  assertPositiveCents(leadAmountCents, "Lead usage amount");
+  if (planTier === "performance") {
+    assertPositiveCents(leadAmountCents, "Lead usage amount");
+  }
 
   const productName = normalizeText(options.productName, DEFAULT_PRODUCT_NAME);
   const checkoutHeadline = normalizeText(options.checkoutHeadline, DEFAULT_CHECKOUT_HEADLINE);
   const performanceLabel = normalizeText(options.performanceLabel, DEFAULT_PERFORMANCE_LABEL);
+  const proLabel = normalizeText(options.proLabel, DEFAULT_PRO_LABEL);
   const stripe = new Stripe(requireSecretKey(options.mode), {
     apiVersion: STRIPE_API_VERSION,
   });
@@ -256,14 +334,28 @@ export async function setupPartnerStripeProducts(options: SetupOptions): Promise
     partnerSlug: partner.slug,
     productName,
   });
-  const basePrice = await findOrCreateBasePrice({
-    stripe,
-    mode: options.mode,
-    partnerSlug: partner.slug,
-    productId: product.id,
-    productName,
-    baseAmountCents,
-  });
+  const basePrice =
+    planTier === "performance"
+      ? await findOrCreateBasePrice({
+          stripe,
+          mode: options.mode,
+          partnerSlug: partner.slug,
+          productId: product.id,
+          productName,
+          baseAmountCents,
+        })
+      : null;
+  const proPrice =
+    planTier === "pro"
+      ? await findOrCreateProPrice({
+          stripe,
+          mode: options.mode,
+          partnerSlug: partner.slug,
+          productId: product.id,
+          productName,
+          proAmountCents: baseAmountCents,
+        })
+      : null;
   const { data: branding } = await admin
     .from("partner_branding")
     .select("pricing_json,theme_json")
@@ -273,11 +365,14 @@ export async function setupPartnerStripeProducts(options: SetupOptions): Promise
   const nextPricing = updatePricingForMode({
     existing: existingPricing,
     mode: options.mode,
+    planTier,
     productName,
     checkoutHeadline,
     performanceLabel,
-    basePriceId: basePrice.id,
-    leadAmountCents,
+    proLabel,
+    basePriceId: basePrice?.id,
+    proPriceId: proPrice?.id,
+    leadAmountCents: planTier === "performance" ? leadAmountCents : undefined,
   });
 
   const { error: brandingError } = await admin.from("partner_branding").upsert(
@@ -301,15 +396,18 @@ export async function setupPartnerStripeProducts(options: SetupOptions): Promise
     target_id: partner.id,
     metadata_json: {
       mode: options.mode,
+      plan_tier: planTier,
       product_id: product.id,
-      base_price_id: basePrice.id,
-      immediate_lead_charge_amount_cents: leadAmountCents,
+      base_price_id: basePrice?.id ?? null,
+      pro_price_id: proPrice?.id ?? null,
+      immediate_lead_charge_amount_cents: planTier === "performance" ? leadAmountCents : null,
       config_written_to_checkout: options.mode === "live",
     },
   } as never);
 
   return {
     mode: options.mode,
+    planTier,
     partnerId: partner.id,
     partnerSlug: partner.slug,
     product: {
@@ -318,8 +416,9 @@ export async function setupPartnerStripeProducts(options: SetupOptions): Promise
       livemode: product.livemode,
     },
     prices: {
-      performanceBasePriceId: basePrice.id,
-      immediateLeadChargeAmountCents: leadAmountCents,
+      ...(basePrice ? { performanceBasePriceId: basePrice.id } : {}),
+      ...(proPrice ? { proPriceId: proPrice.id } : {}),
+      ...(planTier === "performance" ? { immediateLeadChargeAmountCents: leadAmountCents } : {}),
     },
     configWritten: options.mode === "live",
   };

@@ -8,9 +8,11 @@ export const runtime = "nodejs";
 
 const setupSchema = z.object({
   mode: z.enum(["test", "live"]),
+  planTier: z.enum(["performance", "pro"]).optional(),
   productName: z.string().min(2).max(120).optional(),
   checkoutHeadline: z.string().min(2).max(120).optional(),
   performanceLabel: z.string().min(2).max(120).optional(),
+  proLabel: z.string().min(2).max(120).optional(),
   baseAmountCents: z.number().int().positive().optional(),
   leadAmountCents: z.number().int().positive().optional(),
 });
@@ -32,9 +34,11 @@ export async function POST(
     const result = await setupPartnerStripeProducts({
       partnerId,
       mode: body.mode,
+      planTier: body.planTier,
       productName: body.productName,
       checkoutHeadline: body.checkoutHeadline,
       performanceLabel: body.performanceLabel,
+      proLabel: body.proLabel,
       baseAmountCents: body.baseAmountCents,
       leadAmountCents: body.leadAmountCents,
     });

@@ -22,6 +22,7 @@ const settings = read("src/app/(app)/settings/page.tsx");
 const partnerQueries = read("src/lib/white-label/queries.ts");
 const partnerDetailPage = read("src/app/(app)/admin/partners/[partnerId]/page.tsx");
 const setupPartnerStripe = read("scripts/setup-partner-stripe.mjs");
+const setupClickToScaleBilling = read("scripts/configure-click-to-scale-billing.mjs");
 const setupPartnerStripeService = read("src/lib/white-label/partner-stripe-setup.ts");
 const setupPartnerStripeRoute = read("src/app/api/admin/partners/[partnerId]/stripe-setup/route.ts");
 const setupPartnerStripePanel = read("src/components/white-label/partner-stripe-setup-panel.tsx");
@@ -30,6 +31,11 @@ assert.equal(
   packageJson.scripts["test:partner-branded-billing"],
   "node ./scripts/test-partner-branded-billing.mjs",
   "partner branded billing regression script must be registered",
+);
+assert.equal(
+  packageJson.scripts["configure:click-to-scale-billing"],
+  "node ./scripts/configure-click-to-scale-billing.mjs",
+  "Click to Scale billing configuration script must be registered",
 );
 
 assert.match(partnerBillingConfig, /parsePartnerPricingConfig/, "partner pricing parser must exist");
@@ -85,15 +91,27 @@ assert.match(setupPartnerStripe, /immediateLeadChargeAmountCents/, "Stripe setup
 assert.match(setupPartnerStripe, /STRIPE_TEST_SECRET_KEY/, "Stripe setup must support test-mode setup");
 assert.match(setupPartnerStripe, /STRIPE_SECRET_KEY/, "Stripe setup must support live-mode setup");
 assert.match(setupPartnerStripe, /partner_branding/, "Stripe setup must write partner pricing config");
+assert.match(setupClickToScaleBilling, /PARTNER_SLUG = "click-to-scale"/, "Click to Scale billing setup must only target Click to Scale");
+assert.match(setupClickToScaleBilling, /PRODUCT_NAME = "Click to Scale AI Ads Platform"/, "Click to Scale billing setup must use the partner-branded Stripe product name");
+assert.match(setupClickToScaleBilling, /UNIT_AMOUNT_CENTS = 29700/, "Click to Scale billing setup must configure the $297/mo plan");
+assert.match(setupClickToScaleBilling, /visiblePlans:\s*\["pro"\]/, "Click to Scale billing setup must expose only the Pro plan");
+assert.match(setupClickToScaleBilling, /allowDefaultDealFlowPrices: false/, "Click to Scale billing setup must disable DealFlow price fallback");
+assert.match(setupClickToScaleBilling, /CONFIGURE_CLICKTOSCALE_BILLING/, "Click to Scale billing setup apply must require explicit confirmation");
 assert.doesNotMatch(setupPartnerStripeService, /StripeBillingMetersApi|billing\?: \{ meters\?:/, "Server-side Stripe setup must not depend on Stripe meters");
 assert.match(setupPartnerStripeService, /immediateLeadChargeAmountCents/, "Server-side Stripe setup must return immediate charge config");
 assert.match(setupPartnerStripeService, /mode === "live"/, "Live setup must write checkout-active partner pricing");
 assert.match(setupPartnerStripeService, /stripeTestSetup/, "Test setup must not overwrite live checkout pricing");
 assert.match(setupPartnerStripeRoute, /assertSameOriginRequest/, "Stripe setup route must be same-origin protected");
 assert.match(setupPartnerStripeRoute, /requirePlatformAdmin/, "Stripe setup route must require platform admin");
+assert.match(setupPartnerStripeRoute, /planTier: z\.enum\(\["performance", "pro"\]\)/, "Stripe setup route must allow Pro setup");
+assert.match(setupPartnerStripeRoute, /proLabel/, "Stripe setup route must accept a Pro partner label");
 assert.match(setupPartnerStripeRoute, /setupPartnerStripeProducts/, "Stripe setup route must call setup service");
 assert.match(setupPartnerStripePanel, /Setup test Stripe/, "Partner dashboard must expose a test setup action");
 assert.match(setupPartnerStripePanel, /Setup live Stripe/, "Partner dashboard must expose a live setup action");
+assert.match(setupPartnerStripeService, /PartnerStripeSetupPlanTier = "performance" \| "pro"/, "Stripe setup service must support performance and Pro setup");
+assert.match(setupPartnerStripeService, /findOrCreateProPrice/, "Stripe setup service must create or reuse a Pro price");
+assert.match(setupPartnerStripeService, /visiblePlans: \["pro"\]/, "Stripe setup service must write a Pro-only partner paywall when requested");
+assert.match(setupPartnerStripeService, /allowDefaultDealFlowPrices: false/, "Stripe setup service must disable DealFlow fallback for partner checkout");
 
 assert.match(migration, /partner_product_name text/, "Migration must add partner product name column");
 assert.match(migration, /partner_plan_label text/, "Migration must add partner plan label column");
