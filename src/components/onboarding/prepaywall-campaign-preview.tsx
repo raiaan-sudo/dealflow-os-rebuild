@@ -347,7 +347,7 @@ function MockAdPreview({
     <div
       className={cn(
         "relative overflow-hidden rounded-[22px] border border-white/10 bg-gradient-to-br",
-        compact ? "self-start p-3" : "p-4",
+        compact ? "h-full p-3" : "p-4",
         tones.frame,
         tones.glow,
       )}
@@ -445,61 +445,67 @@ function InstantFormSetupPreview({
   compact?: boolean;
 }) {
   const fields = ["Full name", "Email", "Phone number"];
-  const readiness = [
-    "Meta ad account and Page selected",
-    "Instant form reviewed by operator",
-    "Privacy policy URL ready",
-    "GHL delivery enabled when configured",
-  ];
+  const readiness = compact
+    ? ["Ad account + Page", "Operator review", "Privacy URL", "GHL gated"]
+    : [
+        "Meta ad account and Page selected",
+        "Instant form reviewed by operator",
+        "Privacy policy URL ready",
+        "GHL delivery enabled when configured",
+      ];
 
   return (
     <div
       className={cn(
         "rounded-[22px] border border-cyan-200/16 bg-[radial-gradient(circle_at_top_left,rgba(103,232,249,0.14),transparent_34%),linear-gradient(145deg,rgba(15,23,42,0.94),rgba(2,6,23,0.98))]",
-        compact ? "self-start p-3.5" : "p-5",
+        compact ? "flex h-full min-h-[356px] flex-col justify-between p-3.5" : "p-5",
       )}
       data-testid="instant-form-setup-preview"
       onContextMenu={(event) => event.preventDefault()}
     >
-      <div className="flex items-start gap-3">
-        <MiniIconTile icon={FileText} className="text-cyan-100" />
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100/70">Meta Instant Form Setup</p>
-          <h4 className={cn("mt-2 font-semibold tracking-[-0.04em] text-white", compact ? "text-base" : "text-xl")}>
-            Leads stay inside Facebook and Instagram
-          </h4>
-          <p className={cn("mt-2 text-white/62", compact ? "text-xs leading-5" : "text-sm leading-6")}>
-            {content.headline} uses a native Meta lead form instead of a public funnel preview.
-          </p>
+      <div className={cn("min-w-0", compact ? "space-y-2.5" : "space-y-4")}>
+        <div className="flex items-start gap-3">
+          <MiniIconTile icon={FileText} className={cn("text-cyan-100", compact ? "size-8 rounded-xl" : "")} />
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100/70">Meta Instant Form Setup</p>
+            <h4 className={cn("mt-1.5 font-semibold tracking-[-0.04em] text-white", compact ? "text-sm leading-5" : "text-xl")}>
+              Leads stay inside Facebook and Instagram
+            </h4>
+            <p className={cn("mt-1.5 text-white/62", compact ? "line-clamp-2 text-[11px] leading-4" : "text-sm leading-6")}>
+              {content.headline} uses a native Meta lead form instead of a public funnel preview.
+            </p>
+          </div>
         </div>
-      </div>
 
-      <div className={cn("mt-4 rounded-[18px] border border-white/10 bg-black/20", compact ? "p-3" : "p-4")}>
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/44">Lead form fields</p>
-        <div className="mt-3 grid gap-2">
-          {fields.map((field) => (
-            <div key={field} className={cn("flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-3", compact ? "py-1.5 text-xs" : "py-2 text-sm")}>
-              <span className="font-medium text-white/84">{field}</span>
-              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-200">Required</span>
+        <div className={cn("rounded-[18px] border border-white/10 bg-black/20", compact ? "p-2.5" : "p-4")}>
+          <p className={cn("font-semibold uppercase tracking-[0.16em] text-white/44", compact ? "text-[10px]" : "text-xs")}>Lead form fields</p>
+          <div className={cn("grid", compact ? "mt-2 grid-cols-1 gap-1.5" : "mt-3 gap-2")}>
+            {fields.map((field) => (
+              <div key={field} className={cn("flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-3", compact ? "py-1.5 text-[11px]" : "py-2 text-sm")}>
+                <span className="font-medium text-white/84">{field}</span>
+                <span className={cn("font-semibold uppercase tracking-[0.12em] text-emerald-200", compact ? "text-[9px]" : "text-xs")}>Required</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className={cn("grid", compact ? "grid-cols-2 gap-1.5" : "gap-2")}>
+          {readiness.map((item) => (
+            <div key={item} className={cn("flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-2.5 text-white/64", compact ? "py-1.5 text-[10px] leading-4" : "px-3 py-2 text-xs leading-5")}>
+              <BadgeCheck className={cn("shrink-0 text-cyan-100", compact ? "size-3.5" : "size-4")} />
+              <span className="min-w-0 truncate">{item}</span>
             </div>
           ))}
         </div>
+
+        <div className={cn("rounded-[18px] border border-amber-300/16 bg-amber-300/[0.055] px-3 text-amber-100/82", compact ? "py-2 text-[11px] leading-4" : "py-2.5 text-xs leading-5")}>
+          {compact
+            ? "Operator-assisted: no form, campaign, GHL record, SMS, or email is created from this preview."
+            : "Operator-assisted Meta note: this preview does not create a Meta instant form, campaign, ad set, ad, GHL record, SMS, or email. Launch stays gated until the operator verifies the native form setup and delivery path."}
+        </div>
       </div>
 
-      <div className={cn("mt-4 grid", compact ? "gap-1.5" : "gap-2")}>
-        {readiness.map((item) => (
-          <div key={item} className={cn("flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 text-xs text-white/64", compact ? "py-1.5 leading-4" : "py-2 leading-5")}>
-            <BadgeCheck className="size-4 shrink-0 text-cyan-100" />
-            <span>{item}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className={cn("mt-4 rounded-[18px] border border-amber-300/16 bg-amber-300/[0.055] px-3 text-xs text-amber-100/82", compact ? "py-2 leading-4" : "py-2.5 leading-5")}>
-        Operator-assisted Meta note: this preview does not create a Meta instant form, campaign, ad set, ad, GHL record, SMS, or email. Launch stays gated until the operator verifies the native form setup and delivery path.
-      </div>
-
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <div className={cn("grid gap-2 sm:grid-cols-2", compact ? "mt-2" : "mt-3")}>
         <div className="rounded-2xl border border-white/10 bg-black/16 px-3 py-2">
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">Campaign</p>
           <p className="mt-1 truncate text-xs font-semibold text-white/82">{getModeLabel(draft.campaignMode)}</p>
@@ -554,15 +560,15 @@ export function PrepaywallCampaignPreview({
             </div>
           </div>
 
-          <div className="grid min-w-0 items-start gap-3 lg:grid-cols-2">
+          <div className="grid min-w-0 items-stretch gap-3 lg:grid-cols-2">
             <div className="flex min-w-0 justify-center">
-              <div className="w-full max-w-[320px]">
+              <div className="h-full w-full max-w-[320px]">
                 <MockAdPreview content={content} draft={safeDraft} compact />
               </div>
             </div>
 
             <div className="flex min-w-0 justify-center">
-              <div className="w-full max-w-[320px]">
+              <div className="h-full w-full max-w-[320px]">
               {instantFormCampaign ? (
                 <InstantFormSetupPreview content={content} draft={safeDraft} compact />
               ) : (
@@ -640,17 +646,17 @@ export function PrepaywallCampaignPreview({
       </div>
 
       <div className={cn(
-        "mt-4 grid min-w-0 items-start gap-3",
+        "mt-4 grid min-w-0 items-stretch gap-3",
         sidecarMode ? "lg:grid-cols-2" : "xl:grid-cols-2",
       )}>
         <div className="flex min-w-0 justify-center">
-          <div className={cn("w-full", sidecarMode ? "max-w-[320px]" : "max-w-[420px]")}>
+          <div className={cn("h-full w-full", sidecarMode ? "max-w-[320px]" : "max-w-[420px]")}>
             <MockAdPreview content={content} draft={safeDraft} compact={sidecarMode} />
           </div>
         </div>
 
         <div className="flex min-w-0 justify-center">
-          <div className={cn("w-full", sidecarMode ? "max-w-[320px]" : "max-w-[420px]")}>
+          <div className={cn("h-full w-full", sidecarMode ? "max-w-[320px]" : "max-w-[420px]")}>
           {instantFormCampaign ? (
             <InstantFormSetupPreview content={content} draft={safeDraft} compact={sidecarMode} />
           ) : (

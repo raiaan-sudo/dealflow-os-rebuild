@@ -68,7 +68,8 @@ assert.match(onboardingPreview, /isInstantFormCampaign/, "onboarding preview mus
 assert.match(onboardingPreview, /function InstantFormSetupPreview/, "onboarding preview must have an instant form setup panel");
 assert.match(onboardingPreview, /data-testid="instant-form-setup-preview"/, "instant form setup panel must be test-addressable");
 assert.match(onboardingPreview, /compact \? "mt-7 h-\[320px\] max-h-\[42vh\]"/, "compact ad preview must use fixed viewport height instead of stretching beside instant-form setup");
-assert.match(onboardingPreview, /grid min-w-0 items-start gap-3/, "preview package grid must align preview cards to the top instead of stretching them vertically");
+assert.match(onboardingPreview, /grid min-w-0 items-stretch gap-3/, "preview package grid must keep ad and instant-form cards visually level");
+assert.match(onboardingPreview, /flex h-full min-h-\[356px\] flex-col justify-between/, "compact instant-form panel must be balanced against the ad preview height");
 assert.match(onboardingPreview, /Meta Instant Form Setup/, "instant form panel must name the native Meta setup");
 assert.match(onboardingPreview, /Full name/, "instant form panel must show full name as a required field");
 assert.match(onboardingPreview, /Email/, "instant form panel must show email as a required field");
