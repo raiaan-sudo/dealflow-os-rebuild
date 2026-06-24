@@ -20,6 +20,7 @@ import {
 import { getCreativeAssetTierLabel } from "@/lib/services/creative-asset-status";
 import { normalizeCreativeOfferTitle } from "@/lib/services/creative-ugc-script-service";
 import { getCreditSummaryForCurrentUser } from "@/lib/services/credit-service";
+import { mergeStaticCreativeLaunchFloor } from "@/lib/services/static-creative-floor";
 import { createClient } from "@/lib/supabase/server";
 import { CreativeChatIntake } from "./creative-chat-intake";
 import { CreativeWizard } from "./creative-wizard";
@@ -118,7 +119,11 @@ export default async function BuildCreativesPage({
       .order("created_at", { ascending: false });
     const mappedStaticAssets = mapStaticCreativeAssets(Array.isArray(staticAssetData) ? staticAssetData : []);
     if (mappedStaticAssets.length > 0) {
-      persistedStaticAds = mappedStaticAssets;
+      persistedStaticAds = mergeStaticCreativeLaunchFloor({
+        campaignId: ensuredRecord.campaign.id,
+        planStaticAds: ensuredRecord.creatives.staticAds,
+        persistedStaticAds: mappedStaticAssets,
+      });
     }
 
     const { data: videoAssetData } = await supabase

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { PartnerAuthEntry } from "@/components/white-label/partner-auth-entry";
+import { buildPartnerPageMetadata } from "@/lib/white-label/metadata";
 import { resolvePartnerContextBySlug } from "@/lib/white-label/resolver";
 import type { Metadata } from "next";
 
@@ -15,23 +16,9 @@ export async function generateMetadata({
     return {};
   }
 
-  const brandName = partnerContext.branding.brandName;
-  const headline = partnerContext.branding.loginHeadline;
-
-  return {
-    title: {
-      absolute: `${brandName} Launch Portal`,
-    },
-    description: headline,
-    openGraph: {
-      title: `${brandName} Launch Portal`,
-      description: headline,
-    },
-    twitter: {
-      title: `${brandName} Launch Portal`,
-      description: headline,
-    },
-  };
+  return buildPartnerPageMetadata(partnerContext, {
+    title: `${partnerContext.branding.brandName} Launch Portal`,
+  });
 }
 
 export default async function PartnerStartPage({

@@ -95,6 +95,7 @@
     "proof:lead-side-effects-crm-dry": "node ./scripts/proof-lead-side-effects-crm-dry.mjs",
     "proof:partner-crm-sync-db": "node ./scripts/proof-partner-crm-sync-db.mjs",
     "proof:live-auth-browser-qa": "node ./scripts/proof-live-authenticated-browser-qa.mjs",
+    "proof:public-browser-cleanliness": "node ./scripts/proof-public-browser-cleanliness.mjs",
     "test:subscription-lifecycle": "node ./scripts/test-subscription-lifecycle.mjs",
     "test:campaign-offboarding": "node ./scripts/test-campaign-offboarding.mjs",
     "operator:offboarding-dry-run": "node ./scripts/audit-campaign-offboarding-cleanup.mjs",

@@ -100,6 +100,9 @@ const {
   generateStaticCreativeAds,
   mergeStaticCreativeImageResults,
 } = require("../src/lib/services/creative-engine.ts");
+const {
+  mergeStaticCreativeLaunchFloor,
+} = require("../src/lib/services/static-creative-floor.ts");
 
 function readyStatic(id) {
   return {
@@ -505,6 +508,39 @@ assert.equal(productionPrimary?.imageGenerationState, "failed");
 assert.doesNotMatch(productionPrimary?.headline ?? "", /Delivered through|property selection/i);
 assert.doesNotMatch(productionPrimary?.primaryText ?? "", /Delivered through|property selection/i);
 
+const launchFloorMergedStatic = mergeStaticCreativeLaunchFloor({
+  campaignId: "campaign-1",
+  planStaticAds: [
+    readyStatic("primary"),
+    readyStatic("review-1"),
+    readyStatic("review-2"),
+    readyStatic("review-3"),
+  ].map((asset, index) => ({
+    ...asset,
+    id: ["primary", "review-1", "review-2", "review-3"][index],
+    imageUrl: "",
+    imageGenerationState: "unavailable",
+    storageNormalized: false,
+  })),
+  persistedStaticAds: [
+    readyStatic("campaign-1-creative-0"),
+    readyStatic("campaign-1-creative-1"),
+  ],
+});
+assert.equal(launchFloorMergedStatic.length, 4, "Creative Studio must preserve the launch floor when only two rendered assets exist");
+assert.deepEqual(
+  launchFloorMergedStatic.slice(0, 3).map((asset) => asset.id),
+  ["campaign-1-creative-0", "campaign-1-creative-1", "review-2"],
+  "rendered campaign-scoped assets stay first and missing concept slots are restored by campaign index",
+);
+const launchFloorReadiness = getStaticCreativeReadiness(
+  launchFloorMergedStatic,
+  launchFloorMergedStatic.slice(0, 3).map((asset) => asset.id),
+);
+assert.equal(launchFloorReadiness.requiredReadyCount, 2);
+assert.equal(launchFloorReadiness.requiredMissingCount, 1);
+assert.equal(launchFloorReadiness.selectedMinimumMet, false);
+
 const fallbackPreview = buildComposedStaticAdPreview({
   headline: "Toronto seller plan",
   primaryText: "Review the strategy before launch.",
@@ -830,7 +866,8 @@ assert.match(creativeWizardSource, /currentVideoRenderJob/, "Creative Studio use
 assert.match(creativeWizardSource, /setActiveVideoJobId\(data\.job\.id\)/, "Creative Studio keeps deferred UGC jobs active for browser polling");
 assert.doesNotMatch(creativeWizardSource, /window\.setInterval\(\(\) => \{\s*router\.refresh\(\);\s*\}, 15_000\)/s, "Creative Studio must not auto-refresh static renders before the user clicks Show preview renders");
 assert.match(buildCreativesPageSource, /let persistedStaticAds:[\s\S]*= \[\];/, "Creative Studio must start from durable campaign assets, not canonical fallback static ads");
-assert.match(buildCreativesPageSource, /if \(mappedStaticAssets\.length > 0\) \{\s*persistedStaticAds = mappedStaticAssets;\s*\}/, "Creative Studio may render only same-campaign creative_assets rows");
+assert.match(buildCreativesPageSource, /mergeStaticCreativeLaunchFloor/, "Creative Studio restores missing concept slots when durable rendered assets are below the launch floor");
+assert.match(canonicalCampaignSource, /mergeStaticCreativeLaunchFloor/, "canonical campaign records must merge durable rendered assets into the saved static launch floor");
 assert.doesNotMatch(previewSource, /rankBestAvailableStaticCreatives/, "Preview must not show fallback static creatives when no selected campaign assets exist");
 assert.match(previewSource, /const displayStaticAds = selectedAds;/, "Preview must render only selected same-campaign static ads");
 assert.match(buildCreativesPageSource, /creativeIntake\?\.brief\?\.ugcScriptHash \?\?/, "Creative Studio must pass the canonical approved UGC script hash to the client");

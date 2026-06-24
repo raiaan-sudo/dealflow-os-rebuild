@@ -83,6 +83,8 @@ assert.match(operatorDebtSource, /deliveredNotificationStatusDrift/);
 assert.match(operatorDebtSource, /failedNotificationStatusDrift/);
 assert.match(operatorDebtSource, /Lead notification status drift/);
 assert.match(repairSource, /mode: args\.apply \? "apply" : "dry-run"/);
+assert.match(repairSource, /--confirm=/);
+assert.match(repairSource, /REPAIR_LEAD_NOTIFICATION_STATUS_DRIFT/);
 assert.match(repairSource, /\.eq\("status", "queued"\)/);
 assert.match(repairSource, /\.not\("delivered_at", "is", null\)/);
 assert.match(repairSource, /status: "delivered"/);

@@ -1,12 +1,23 @@
 import { hasSupabaseEnv } from "@/lib/env";
 import { LoginForm } from "@/components/auth/login-form";
+import { buildPartnerPageMetadata } from "@/lib/white-label/metadata";
 import { resolvePartnerContextFromHeaders } from "@/lib/white-label/resolver";
 import type { Metadata } from "next";
 
-export const metadata: Metadata = {
-  title: "Sign in",
-  description: "Sign in to DealFlow OS to continue your campaign workspace.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const partnerContext = await resolvePartnerContextFromHeaders();
+
+  return buildPartnerPageMetadata(partnerContext, {
+    title: partnerContext.nativeFallback
+      ? "Sign in | DealFlow OS"
+      : `Sign in to ${partnerContext.branding.brandName}`,
+    description: partnerContext.nativeFallback
+      ? "Sign in to DealFlow OS to continue your campaign workspace."
+      : partnerContext.branding.loginSubheadline,
+    fallbackTitle: "Sign in | DealFlow OS",
+    fallbackDescription: "Sign in to DealFlow OS to continue your campaign workspace.",
+  });
+}
 
 export default async function LoginPage({
   searchParams,

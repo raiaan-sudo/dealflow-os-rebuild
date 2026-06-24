@@ -4,6 +4,7 @@ import { readCampaignPlanDocumentWithDriftGuard } from "@/lib/services/campaign-
 import { readPersistedAssetGenerationState } from "@/lib/services/asset-generation-lifecycle";
 import { normalizeCreativeStrategy } from "@/lib/services/campaign-creative-strategy";
 import { markInstantFallbackStaticAssets } from "@/lib/services/creative-asset-status";
+import { mergeStaticCreativeLaunchFloor } from "@/lib/services/static-creative-floor";
 import type {
   CampaignAd,
   CampaignCreatives,
@@ -724,7 +725,11 @@ export function normalizeCanonicalCampaign(params: {
   const savedStaticAds = hasHiggsfieldFinishedStaticAds(documentStaticAds)
     ? documentStaticAds
     : persistedStaticAds.length > 0
-      ? persistedStaticAds
+      ? mergeStaticCreativeLaunchFloor({
+          campaignId: params.campaign.id,
+          planStaticAds: documentStaticAds.length > 0 ? documentStaticAds : planRecordStaticAds,
+          persistedStaticAds,
+        })
       : documentStaticAds.length > 0
         ? documentStaticAds
         : planRecordStaticAds;

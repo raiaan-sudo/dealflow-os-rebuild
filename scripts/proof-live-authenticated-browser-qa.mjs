@@ -69,6 +69,17 @@ function classifyFailedRequest(request) {
   return "unclassified";
 }
 
+function classifyHttpErrorResponse(response) {
+  const url = response.url();
+  const status = response.status();
+  if (status < 400) return "ok";
+  if (/capig\.datah04\.com|facebook\.com|connect\.facebook\.net/i.test(url)) return "third_party_tracking";
+  if (/challenges\.cloudflare\.com|turnstile/i.test(url)) return "turnstile_third_party";
+  if (status === 404 && /\/favicon\.ico(?:$|\?)/i.test(url)) return "browser_icon_optional";
+  if (status === 404 && (url.includes("_rsc=") || url.includes("/_next/"))) return "next_navigation_prefetch";
+  return "unclassified";
+}
+
 async function createCookieState() {
   if (!userEmail) throw new Error("QA_EMAIL or --email is required.");
 
@@ -174,9 +185,23 @@ async function visitRoute(context, results, kind, route, expectedText = []) {
     results.failedRequests.push({
       kind,
       route,
+      source: "requestfailed",
       class: classifyFailedRequest(request),
       url: request.url(),
       failure: request.failure()?.errorText ?? null,
+    });
+  });
+  page.on("response", (response) => {
+    const status = response.status();
+    if (status < 400) return;
+    results.failedRequests.push({
+      kind,
+      route,
+      source: "response",
+      class: classifyHttpErrorResponse(response),
+      url: response.url(),
+      status,
+      statusText: response.statusText(),
     });
   });
 
@@ -324,6 +349,17 @@ async function run() {
   }
 
   results.finishedAt = new Date().toISOString();
+  for (const event of results.consoleEvents) {
+    if (
+      event.class === "unclassified" &&
+      /Failed to load resource: the server responded with a status of \d+/i.test(event.text)
+    ) {
+      const hasMatchingHttpFailure = results.failedRequests.some(
+        (request) => request.kind === event.kind && request.route === event.route && request.source === "response",
+      );
+      if (hasMatchingHttpFailure) event.class = "http_error_already_captured";
+    }
+  }
   results.unclassifiedConsoleCount = results.consoleEvents.filter(
     (event) => event.class === "unclassified" && ["error", "warning"].includes(event.type),
   ).length;

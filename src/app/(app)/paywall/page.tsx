@@ -22,7 +22,24 @@ import { recordActivationEventForCurrentUser } from "@/lib/services/activation-t
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { buildPartnerPageMetadata } from "@/lib/white-label/metadata";
 import { hasPartnerPricingConfiguration, parsePartnerPricingConfig } from "@/lib/white-label/partner-billing-config";
+import { resolvePartnerContextFromHeaders } from "@/lib/white-label/resolver";
+import type { Metadata } from "next";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const partnerContext = await resolvePartnerContextFromHeaders();
+  const brandName = partnerContext.branding.brandName;
+
+  return buildPartnerPageMetadata(partnerContext, {
+    title: partnerContext.nativeFallback ? "Campaign activation | DealFlow OS" : `${brandName} AI Ads Platform`,
+    description: partnerContext.nativeFallback
+      ? "Activate DealFlow Operator Launch for your campaign workspace."
+      : `Activate ${brandName} AI Ads Platform for your campaign workspace.`,
+    fallbackTitle: "Campaign activation | DealFlow OS",
+    fallbackDescription: "Activate DealFlow Operator Launch for your campaign workspace.",
+  });
+}
 
 function buildHomeHref(campaignId: string | null) {
   return campaignId ? `/builder?campaignId=${encodeURIComponent(campaignId)}` : "/onboarding";

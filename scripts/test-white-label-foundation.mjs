@@ -32,8 +32,13 @@ const partnerDashboardShell = read("src/components/white-label/partner-dashboard
 const partnerDashboardError = read("src/app/(app)/partner/error.tsx");
 const settingsPage = read("src/app/(app)/settings/page.tsx");
 const partnerStartPage = read("src/app/p/[partnerSlug]/start/page.tsx");
+const customDomainStartPage = read("src/app/start/page.tsx");
+const loginPage = read("src/app/(auth)/login/page.tsx");
+const paywallPage = read("src/app/(app)/paywall/page.tsx");
+const partnerMetadata = read("src/lib/white-label/metadata.ts");
 const welcomePage = read("src/app/(app)/welcome/page.tsx");
 const canonicalFunnelRenderer = read("src/components/funnels/canonical-funnel-renderer.tsx");
+const homePage = read("src/app/page.tsx");
 
 for (const table of [
   "partners",
@@ -147,8 +152,22 @@ assert.match(partnerDashboardShell, /No partner access/, "partner route must gra
 assert.match(partnerDashboardShell, /warnings\.length/, "partner dashboard must fail soft for optional metric issues");
 assert.match(partnerDashboardError, /Partner portal is recovering/, "partner route must have a customer-safe error boundary");
 assert.match(partnerStartPage, /generateMetadata/, "partner start page must provide partner-branded metadata");
-assert.match(partnerStartPage, /\$\{brandName\} Launch Portal/, "partner start metadata must use the partner brand name");
-assert.match(partnerStartPage, /absolute:\s*`\$\{brandName\} Launch Portal`/, "partner start metadata must avoid the native DealFlow title suffix");
+assert.match(partnerStartPage, /buildPartnerPageMetadata/, "partner slug start metadata must use the shared partner metadata helper");
+assert.match(partnerStartPage, /\$\{partnerContext\.branding\.brandName\} Launch Portal/, "partner start metadata must use the resolved partner brand name");
+assert.match(partnerMetadata, /absolute: title/, "partner metadata helper must avoid native title suffixes for partner pages");
+assert.match(partnerMetadata, /`\$\{brandName\} Launch Portal`/, "partner metadata helper must use the partner brand name by default");
+assert.match(partnerMetadata, /partnerContext\.nativeFallback/, "partner metadata helper must preserve the native DealFlow fallback path");
+assert.match(customDomainStartPage, /generateMetadata/, "custom-domain partner start page must provide partner-branded metadata");
+assert.match(customDomainStartPage, /buildPartnerPageMetadata/, "custom-domain partner start page must use the shared partner metadata helper");
+assert.match(loginPage, /generateMetadata/, "login page must use request-aware metadata for partner custom domains");
+assert.match(loginPage, /buildPartnerPageMetadata/, "login page must use the shared partner metadata helper");
+assert.doesNotMatch(loginPage, /description:\s*"Sign in to DealFlow OS to continue your campaign workspace\."/m, "login page must not expose a static DealFlow description to partner custom domains");
+assert.match(paywallPage, /generateMetadata/, "paywall page must use request-aware metadata for partner custom domains");
+assert.match(paywallPage, /\$\{brandName\} AI Ads Platform/, "partner paywall metadata must use the partner AI ads product name");
+assert.match(paywallPage, /buildPartnerPageMetadata/, "paywall page must use the shared partner metadata helper");
+assert.match(homePage, /resolvePartnerContextFromHeaders/, "root homepage must inspect verified partner custom domains");
+assert.match(homePage, /partnerContext\.verifiedDomain/, "root homepage must only redirect verified partner domains");
+assert.match(homePage, /redirect\("\/start"\)/, "verified partner custom domain root must redirect to partner start");
 assert.match(welcomePage, /titleCaseBrandSlug/, "welcome transition must derive brand text from partner attribution");
 assert.match(welcomePage, /Welcome to \{brandName\}/, "welcome transition headline must be partner-brandable");
 assert.match(canonicalFunnelRenderer, /compact \? "max-h-\[430px\] overflow-hidden/, "compact funnel renderer must constrain app preview height");

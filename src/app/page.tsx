@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ArrowRight, BarChart3, CheckCircle2, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { resolvePartnerContextFromHeaders } from "@/lib/white-label/resolver";
 
 const proofPoints = [
   "Guided campaign builder",
@@ -28,7 +30,13 @@ const productPillars = [
   },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const partnerContext = await resolvePartnerContextFromHeaders();
+
+  if (!partnerContext.nativeFallback && partnerContext.partnerStatus === "active" && partnerContext.verifiedDomain) {
+    redirect("/start");
+  }
+
   return (
     <main className="min-h-screen overflow-hidden">
       <section className="df-container px-5 py-5 sm:px-6 lg:px-8">

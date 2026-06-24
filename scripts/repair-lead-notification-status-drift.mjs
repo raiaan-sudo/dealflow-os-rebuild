@@ -14,8 +14,11 @@ function requireEnv(name) {
 }
 
 function parseArgs(argv) {
+  const confirmArg = argv.find((arg) => arg.startsWith("--confirm="));
+
   return {
     apply: argv.includes("--apply"),
+    confirm: confirmArg ? confirmArg.slice("--confirm=".length) : null,
   };
 }
 
@@ -44,6 +47,7 @@ async function main() {
   const summary = {
     mode: args.apply ? "apply" : "dry-run",
     matchedRows: rows.length,
+    confirmationRequired: args.apply ? "REPAIR_LEAD_NOTIFICATION_STATUS_DRIFT" : null,
     target: "lead_notifications where status = queued and delivered_at is not null and failed_at is null",
     rows: rows.map((row) => ({
       id: row.id,
@@ -57,6 +61,10 @@ async function main() {
   };
 
   console.log(JSON.stringify(summary, null, 2));
+
+  if (args.apply && args.confirm !== "REPAIR_LEAD_NOTIFICATION_STATUS_DRIFT") {
+    throw new Error("Apply requires --confirm=REPAIR_LEAD_NOTIFICATION_STATUS_DRIFT.");
+  }
 
   if (!args.apply || rows.length === 0) {
     return;
