@@ -39,6 +39,7 @@ import {
 } from "@/lib/services/creative-intelligence-service";
 import { getTargetingIntelligenceProfile, type TargetingIntelligenceProfile } from "@/lib/services/targeting-intelligence-service";
 import type { Database } from "@/lib/supabase/types";
+import { createAdminClient } from "@/lib/server/supabase-admin";
 import {
   buildPersistedCampaignPlanPayload,
   insertCampaignPlan,
@@ -47,6 +48,7 @@ import {
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { getLatestCampaignRecord } from "@/lib/services/campaign-persistence";
 import { debugLog } from "@/lib/debug";
+import { logWarn } from "@/lib/logging";
 import {
   normalizeCreativeStrategy,
   type CampaignCreativeStrategy,
@@ -942,18 +944,77 @@ async function resolvePlanOwner() {
       organizationId,
       userId: resolvedUserId,
     };
-  } catch {
+  } catch (error) {
+    const fallback = await resolvePlanOwnerFallback(supabase, user.id).catch((fallbackError) => {
+      logWarn("campaign_plan_owner_fallback_failed", {
+        userId: user.id,
+        contextError: error instanceof Error ? error.message : "Unknown app context error",
+        fallbackError: fallbackError instanceof Error ? fallbackError.message : "Unknown owner fallback error",
+      });
+      return null;
+    });
+
     debugLog("campaign-plan-owner", {
-      organizationId: null,
+      organizationId: fallback?.organizationId ?? user.id,
       userId: user.id,
       fallbackToUser: true,
     });
+
     return {
       supabase,
-      organizationId: null,
+      organizationId: fallback?.organizationId ?? user.id,
       userId: user.id,
     };
   }
+}
+
+async function resolvePlanOwnerFallback(
+  supabase: NonNullable<Awaited<ReturnType<typeof createRouteHandlerClient>>>,
+  userId: string,
+) {
+  const readClient = createAdminClient() ?? supabase;
+
+  const ownedOrganizationResult = await readClient
+    .from("organizations")
+    .select("id")
+    .eq("owner_user_id", userId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const ownedOrganizationError = ownedOrganizationResult.error;
+  const ownedOrganization = ownedOrganizationResult.data as { id?: string | null } | null;
+
+  if (ownedOrganizationError) {
+    throw ownedOrganizationError;
+  }
+
+  if (typeof ownedOrganization?.id === "string" && ownedOrganization.id.length > 0) {
+    return {
+      organizationId: ownedOrganization.id,
+    };
+  }
+
+  const membershipResult = await readClient
+    .from("organization_memberships")
+    .select("organization_id")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const membershipError = membershipResult.error;
+  const membership = membershipResult.data as { organization_id?: string | null } | null;
+
+  if (membershipError) {
+    throw membershipError;
+  }
+
+  if (typeof membership?.organization_id === "string" && membership.organization_id.length > 0) {
+    return {
+      organizationId: membership.organization_id,
+    };
+  }
+
+  return null;
 }
 
 function getSelectedCreativePatterns(profile: CreativeIntelligenceProfile | null) {

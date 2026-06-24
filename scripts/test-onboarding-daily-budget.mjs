@@ -67,6 +67,11 @@ assert.match(onboardingRoute, /onboarding_monthly_cap_cents/, "persisted plan me
 assert.match(campaignPlanService, /getDefaultCampaignRuntime\(dailyBudgetInput\?: number \| null\)/, "campaign runtime must accept explicit daily budget");
 assert.match(campaignPlanService, /budgetDailyInput:\s*normalizedDailyBudget/, "saved campaign runtime must persist daily budget input");
 assert.match(campaignPlanService, /requestedDailyBudget = Number\(\(params\.generatedPlan\.monthlyBudget \/ 30\)\.toFixed\(2\)\)/, "legacy monthly storage must derive runtime daily budget safely");
+assert.match(campaignPlanService, /async function resolvePlanOwnerFallback/, "campaign plan saves must recover owner context if app-context bootstrap fails");
+assert.match(campaignPlanService, /\.from\("organizations"\)[\s\S]*\.eq\("owner_user_id", userId\)/, "owner fallback must first recover the user's owned workspace");
+assert.match(campaignPlanService, /\.from\("organization_memberships"\)[\s\S]*\.eq\("user_id", userId\)/, "owner fallback must recover membership workspace if no owned workspace is found");
+assert.match(campaignPlanService, /organizationId: fallback\?\.organizationId \?\? user\.id/, "owner fallback must not return a null organization id for authenticated onboarding");
+assert.match(campaignPlanService, /campaign_plan_owner_fallback_failed/, "owner fallback failures must be logged for operator diagnosis");
 
 assert.match(prepaywallPreview, /dailyBudget\?: string/, "preview draft must accept daily budget");
 assert.match(prepaywallPreview, /formatDailyBudget/, "preview budget pill must render daily budget");
