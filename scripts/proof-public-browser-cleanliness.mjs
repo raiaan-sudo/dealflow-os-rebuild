@@ -70,10 +70,27 @@ function classifyConsoleEvent(type, text) {
   if (/Private Access Token|Privacy Pass|challenge may return a 401|Failed to load resource: the server responded with a status of 401 \(\)/i.test(text)) {
     return "turnstile_private_access_token";
   }
-  if (/%c%d font-size:0;color:transparent|JSHandle@node|function \(\) \{ \[native code\] \}|^\/\.\*\.\*=\.\/$|^\u0000: 1$|^ Error$/.test(text)) {
+  if (
+    /%c%d font-size:0;color:transparent|JSHandle@node|function \(\) \{ \[native code\] \}|^\/\.\*\.\*=.*\/$|^\u0000: 1$|^ Error$|^Error$/.test(
+      text,
+    )
+  ) {
     return "turnstile_private_access_token";
   }
-  if (["groupEnd", "startGroup", "startGroupCollapsed", "count", "dir", "dirxml", "table", "trace"].includes(type)) {
+  if (
+    [
+      "endGroup",
+      "groupEnd",
+      "startGroup",
+      "startGroupCollapsed",
+      "count",
+      "debug",
+      "dir",
+      "dirxml",
+      "table",
+      "trace",
+    ].includes(type)
+  ) {
     return "turnstile_private_access_token";
   }
   if (/WebGL|GPU|software rendering|ANGLE/i.test(text)) return "browser_gpu_noise";
@@ -207,9 +224,7 @@ function summarize(results) {
   const requestIssues = results.flatMap((result) =>
     result.requestIssues.map((event) => ({ ...event, route: result.label, profile: result.profile })),
   );
-  const unclassifiedConsole = consoleEvents.filter(
-    (event) => event.class === "unclassified" && ["error", "warning"].includes(event.type),
-  );
+  const unclassifiedConsole = consoleEvents.filter((event) => event.class === "unclassified");
   const unclassifiedRequests = requestIssues.filter((event) => event.class === "unclassified");
   const appOwnedConsole = unclassifiedConsole;
   const failedRoutes = results.filter((result) => !result.routeOk);
@@ -226,6 +241,7 @@ function summarize(results) {
     overflowCount: overflowRoutes.length,
     consoleEventCount: consoleEvents.length,
     appOwnedConsoleCount: appOwnedConsole.length,
+    unclassifiedConsoleCount: unclassifiedConsole.length,
     unclassifiedRequestCount: unclassifiedRequests.length,
     requestIssueCount: requestIssues.length,
     classifiedConsoleCounts: Object.fromEntries(
