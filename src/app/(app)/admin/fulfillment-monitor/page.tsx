@@ -194,6 +194,7 @@ export default async function FulfillmentMonitorPage({
           autoProvisioningEnabled: false,
           provisioningWritesEnabled: false,
           workflowEnrollmentEnabled: false,
+          workflowEnrollmentRetired: true,
         },
         recentCrmFailures: 0,
         recentDeadLetters: 0,
@@ -211,10 +212,11 @@ export default async function FulfillmentMonitorPage({
       gates: {
         contactWritesEnabled: false,
         opportunityWritesEnabled: false,
-        autoProvisioningEnabled: false,
-        provisioningWritesEnabled: false,
-        workflowEnrollmentEnabled: false,
-      },
+          autoProvisioningEnabled: false,
+          provisioningWritesEnabled: false,
+          workflowEnrollmentEnabled: false,
+          workflowEnrollmentRetired: true,
+        },
       rows: [],
       safety: {
         dbMutation: false,
@@ -342,7 +344,7 @@ export default async function FulfillmentMonitorPage({
               <ReadonlyField label="Failed lead jobs" value={data.health.failedLeadSideEffectJobs} />
               <ReadonlyField label="Opportunity writes" value={data.health.writeGates.opportunityWritesEnabled} />
               <ReadonlyField label="Provisioning writes" value={data.health.writeGates.provisioningWritesEnabled} />
-              <ReadonlyField label="Workflow enrollment" value={data.health.writeGates.workflowEnrollmentEnabled} />
+              <ReadonlyField label="Workflow enrollment" value="retired" />
             </div>
           </div>
 
@@ -371,7 +373,7 @@ export default async function FulfillmentMonitorPage({
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-cyan-100">GHL provisioning readiness</h2>
               <p className="mt-2 max-w-3xl text-xs leading-6 text-cyan-100/58">
-                Operator-assisted setup status for GHL location, pipeline, stage, workflow, and workspace mapping. This panel is read-only and does not create GHL locations, users, pipelines, workflows, contacts, opportunities, SMS, Meta, Stripe, or provider work.
+                Operator-assisted setup status for GHL location, pipeline, stage, and workspace mapping. Workflow enrollment is retired; ClickToScale fulfillment uses contact and opportunity delivery. This panel is read-only and does not create GHL locations, users, pipelines, contacts, opportunities, SMS, Meta, Stripe, or provider work.
               </p>
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
@@ -402,7 +404,6 @@ export default async function FulfillmentMonitorPage({
                   <ReadonlyField label="Location" value={row.locationIdMasked} />
                   <ReadonlyField label="Pipeline" value={row.pipelineIdMasked} />
                   <ReadonlyField label="Stage" value={row.stageIdMasked} />
-                  <ReadonlyField label="Workflow" value={row.workflowIdMasked} />
                   <ReadonlyField label="Latest job" value={row.latestJobStatus} />
                   <ReadonlyField label="Operator action" value={row.operatorActionNeeded} />
                 </div>

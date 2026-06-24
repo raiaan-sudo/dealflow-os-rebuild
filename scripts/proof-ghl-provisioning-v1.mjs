@@ -95,7 +95,8 @@ function gateState() {
   return {
     GHL_AUTO_PROVISIONING_ENABLED: process.env.GHL_AUTO_PROVISIONING_ENABLED === "true",
     GHL_PROVISIONING_WRITES_ENABLED: process.env.GHL_PROVISIONING_WRITES_ENABLED === "true",
-    GHL_WORKFLOW_ENROLLMENT_ENABLED: process.env.GHL_WORKFLOW_ENROLLMENT_ENABLED === "true",
+    GHL_WORKFLOW_ENROLLMENT_ENABLED: false,
+    GHL_WORKFLOW_ENROLLMENT_RETIRED: true,
     GHL_CONTACT_WRITES_ENABLED: process.env.GHL_CONTACT_WRITES_ENABLED === "true",
     GHL_OPPORTUNITY_WRITES_ENABLED: process.env.GHL_OPPORTUNITY_WRITES_ENABLED === "true",
     INTERNAL_LEAD_SMS_ENABLED: process.env.INTERNAL_LEAD_SMS_ENABLED === "true",
@@ -106,7 +107,6 @@ async function countRows(supabase) {
   const tables = [
     "partner_ghl_config",
     "workspace_ghl_mapping",
-    "partner_ghl_workflow_config",
     "ghl_provisioning_jobs",
     "ghl_provisioning_events",
     "workspace_ghl_users",
@@ -139,23 +139,21 @@ async function readState(supabase, args) {
     { data: partner, error: partnerError },
     { data: config, error: configError },
     { data: mapping, error: mappingError },
-    { data: workflow, error: workflowError },
     { data: template, error: templateError },
   ] = await Promise.all([
     supabase.from("organizations").select("id, name, partner_id").eq("id", args.workspaceId).maybeSingle(),
     supabase.from("partners").select("id, slug, brand_name, status").eq("id", args.partnerId).maybeSingle(),
     supabase.from("partner_ghl_config").select("partner_id, enabled, encrypted_credential_ref, default_location_id, default_pipeline_id, default_stage_id, default_source").eq("partner_id", args.partnerId).maybeSingle(),
     supabase.from("workspace_ghl_mapping").select("workspace_id, partner_id, ghl_location_id, ghl_pipeline_id, ghl_stage_id, sync_enabled, metadata").eq("workspace_id", args.workspaceId).eq("partner_id", args.partnerId).maybeSingle(),
-    supabase.from("partner_ghl_workflow_config").select("partner_id, enabled, workflow_id, enrollment_trigger").eq("partner_id", args.partnerId).maybeSingle(),
     supabase.from("partner_ghl_template_config").select("partner_id, snapshot_id, default_pipeline_name, default_stage_name").eq("partner_id", args.partnerId).maybeSingle(),
   ]);
 
-  const firstError = orgError ?? partnerError ?? configError ?? mappingError ?? workflowError ?? templateError;
+  const firstError = orgError ?? partnerError ?? configError ?? mappingError ?? templateError;
   if (firstError) {
     throw new Error(firstError.message);
   }
 
-  return { org, partner, config, mapping, workflow, template };
+  return { org, partner, config, mapping, template };
 }
 
 async function ghlRequest(token, path) {
@@ -195,25 +193,10 @@ function findPipelineAndStage(payload, pipelineId, stageId) {
   };
 }
 
-function findWorkflow(payload, workflowId) {
-  const workflows = Array.isArray(payload?.workflows)
-    ? payload.workflows
-    : Array.isArray(payload?.workflow)
-      ? payload.workflow
-      : [];
-  const workflow = workflows.find((item) => (item.id || item._id) === workflowId) ?? null;
-
-  return {
-    workflowFound: !workflowId || Boolean(workflow),
-    workflowName: workflow?.name || workflow?.title || null,
-  };
-}
-
 async function validateReadiness(state, args) {
   const locationId = state.mapping?.ghl_location_id || state.config?.default_location_id || null;
   const pipelineId = state.mapping?.ghl_pipeline_id || state.config?.default_pipeline_id || null;
   const stageId = state.mapping?.ghl_stage_id || state.config?.default_stage_id || null;
-  const workflowId = state.workflow?.workflow_id || null;
   const credentialRef = state.config?.encrypted_credential_ref || null;
   const missing = [
     state.org?.id ? null : "workspace",
@@ -225,7 +208,6 @@ async function validateReadiness(state, args) {
     locationId ? null : "ghl_location_id",
     pipelineId ? null : "ghl_pipeline_id",
     stageId ? null : "ghl_stage_id",
-    state.workflow?.enabled === true && workflowId ? null : "workflow_config",
   ].filter(Boolean);
   const token = tokenFromCredentialRef(credentialRef);
   const live = {
@@ -235,7 +217,6 @@ async function validateReadiness(state, args) {
     locationReadable: null,
     pipelineReadable: null,
     stageReadable: null,
-    workflowReadable: null,
     errors: [],
   };
 
@@ -258,19 +239,6 @@ async function validateReadiness(state, args) {
       live.errors.push({ area: "pipelines", code: pipelines.code, status: pipelines.status, message: pipelines.message });
     }
 
-    if (workflowId) {
-      const workflows = await ghlRequest(token, `/workflows/?locationId=${encodeURIComponent(locationId)}`);
-      live.workflowReadable = workflows.ok;
-      if (workflows.ok) {
-        const found = findWorkflow(workflows.payload, workflowId);
-        live.workflowReadable = found.workflowFound;
-        live.workflowName = found.workflowName;
-      } else {
-        live.errors.push({ area: "workflows", code: workflows.code, status: workflows.status, message: workflows.message });
-      }
-    } else {
-      live.workflowReadable = true;
-    }
   }
 
   const liveFailures = [
@@ -278,7 +246,6 @@ async function validateReadiness(state, args) {
     args.liveRead && live.locationReadable === false ? "location_not_readable" : null,
     args.liveRead && live.pipelineReadable === false ? "pipeline_not_readable" : null,
     args.liveRead && live.stageReadable === false ? "stage_not_readable" : null,
-    args.liveRead && live.workflowReadable === false ? "workflow_not_readable" : null,
   ].filter(Boolean);
   const ready = missing.length === 0 && liveFailures.length === 0;
 
@@ -291,7 +258,7 @@ async function validateReadiness(state, args) {
     locationIdMasked: maskExternalId(locationId),
     pipelineIdMasked: maskExternalId(pipelineId),
     stageIdMasked: maskExternalId(stageId),
-    workflowIdMasked: maskExternalId(workflowId),
+    workflowEnrollmentRetired: true,
     credentialRefMasked: credentialRef ? "[configured-env-ref]" : null,
     idempotencyKey: buildIdempotencyKey(args),
     liveRead: live,
@@ -454,7 +421,8 @@ async function main() {
       partnerGhlConfigEnabled: state.config?.enabled === true,
       credentialRefMasked: state.config?.encrypted_credential_ref ? "[configured-env-ref]" : null,
       workspaceMappingEnabled: state.mapping?.sync_enabled === true,
-      workflowConfigEnabled: state.workflow?.enabled === true,
+      workflowConfigRequired: false,
+      workflowEnrollmentRetired: true,
       templateSnapshotConfigured: Boolean(state.template?.snapshot_id),
     },
     applyResult,

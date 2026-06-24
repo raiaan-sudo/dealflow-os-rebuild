@@ -6,14 +6,12 @@ import {
   isGhlContactWritesEnabled,
   isGhlOpportunityWritesEnabled,
   isGhlProvisioningWritesEnabled,
-  isGhlWorkflowEnrollmentEnabled,
 } from "@/lib/env";
 import {
   getGhlPrivateTokenFromCredentialRef,
   GoHighLevelClient,
   type GhlPipelineStageSummary,
   type GhlPipelineSummary,
-  type GhlWorkflowSummary,
 } from "@/lib/integrations/gohighlevel/client";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -85,10 +83,6 @@ function normalizeStageId(stage: GhlPipelineStageSummary) {
   return stage.id ?? stage._id ?? null;
 }
 
-function normalizeWorkflowId(workflow: GhlWorkflowSummary) {
-  return workflow.id ?? workflow._id ?? null;
-}
-
 function safeErrorCode(error: unknown) {
   return error instanceof ApiError ? error.code : "ghl_read_failed";
 }
@@ -117,7 +111,8 @@ export function getGhlProvisioningGates() {
     opportunityWritesEnabled: isGhlOpportunityWritesEnabled(),
     autoProvisioningEnabled: isGhlAutoProvisioningEnabled(),
     provisioningWritesEnabled: isGhlProvisioningWritesEnabled(),
-    workflowEnrollmentEnabled: isGhlWorkflowEnrollmentEnabled(),
+    workflowEnrollmentEnabled: false,
+    workflowEnrollmentRetired: true,
   };
 }
 
@@ -173,7 +168,6 @@ async function loadCurrentState(admin: AdminClient, params: { workspaceId: strin
     { data: partner, error: partnerError },
     { data: config, error: configError },
     { data: mapping, error: mappingError },
-    { data: workflow, error: workflowError },
     { data: template, error: templateError },
     { data: jobs, error: jobsError },
     { data: users, error: usersError },
@@ -200,11 +194,6 @@ async function loadCurrentState(admin: AdminClient, params: { workspaceId: strin
       .eq("partner_id", params.partnerId)
       .maybeSingle(),
     db(admin)
-      .from("partner_ghl_workflow_config")
-      .select("partner_id, enabled, workflow_id, enrollment_trigger, metadata")
-      .eq("partner_id", params.partnerId)
-      .maybeSingle(),
-    db(admin)
       .from("partner_ghl_template_config")
       .select("partner_id, snapshot_id, default_pipeline_name, default_stage_name, metadata")
       .eq("partner_id", params.partnerId)
@@ -225,7 +214,7 @@ async function loadCurrentState(admin: AdminClient, params: { workspaceId: strin
   ]);
 
   const firstError =
-    organizationError ?? partnerError ?? configError ?? mappingError ?? workflowError ?? templateError ?? jobsError ?? usersError;
+    organizationError ?? partnerError ?? configError ?? mappingError ?? templateError ?? jobsError ?? usersError;
   if (firstError) {
     throw new ApiError(500, firstError.message, "ghl_provisioning_state_lookup_failed");
   }
@@ -235,7 +224,6 @@ async function loadCurrentState(admin: AdminClient, params: { workspaceId: strin
     partner: asRecord(partner),
     config: asRecord(config),
     mapping: asRecord(mapping),
-    workflow: asRecord(workflow),
     template: asRecord(template),
     jobs: Array.isArray(jobs) ? (jobs as JsonRecord[]) : [],
     users: Array.isArray(users) ? (users as JsonRecord[]) : [],
@@ -247,7 +235,6 @@ async function runReadOnlyGhlChecks(params: {
   locationId: string | null;
   pipelineId: string | null;
   stageId: string | null;
-  workflowId: string | null;
 }) {
   const credentialConfigured = Boolean(params.credentialRef);
   const token = params.credentialRef ? getGhlPrivateTokenFromCredentialRef(params.credentialRef) : null;
@@ -260,7 +247,6 @@ async function runReadOnlyGhlChecks(params: {
       locationReadable: false,
       pipelineReadable: false,
       stageReadable: false,
-      workflowReadable: false,
       failures: credentialConfigured ? ["credential_env_missing"] : ["credential_ref_missing"],
     };
   }
@@ -273,7 +259,6 @@ async function runReadOnlyGhlChecks(params: {
       locationReadable: false,
       pipelineReadable: false,
       stageReadable: false,
-      workflowReadable: false,
       failures: ["location_missing"],
     };
   }
@@ -283,10 +268,8 @@ async function runReadOnlyGhlChecks(params: {
   let locationReadable = false;
   let pipelineReadable = false;
   let stageReadable = false;
-  let workflowReadable = false;
   let pipelineName: string | null = null;
   let stageName: string | null = null;
-  let workflowName: string | null = null;
 
   try {
     await ghl.getLocation(params.locationId);
@@ -316,19 +299,6 @@ async function runReadOnlyGhlChecks(params: {
     failures.push(`${safeErrorCode(error)}:${safeErrorMessage(error)}`);
   }
 
-  if (params.workflowId) {
-    try {
-      const workflows = await ghl.getWorkflows(params.locationId);
-      const workflow = workflows.find((item) => normalizeWorkflowId(item) === params.workflowId);
-      workflowReadable = Boolean(workflow);
-      workflowName = workflow?.name ?? workflow?.title ?? null;
-    } catch (error) {
-      failures.push(`${safeErrorCode(error)}:${safeErrorMessage(error)}`);
-    }
-  } else {
-    workflowReadable = true;
-  }
-
   return {
     attempted: true,
     credentialConfigured,
@@ -336,10 +306,8 @@ async function runReadOnlyGhlChecks(params: {
     locationReadable,
     pipelineReadable,
     stageReadable,
-    workflowReadable,
     pipelineName,
     stageName,
-    workflowName,
     failures,
   };
 }
@@ -369,12 +337,10 @@ export async function evaluateGhlProvisioningReadiness(target: GhlProvisioningTa
 
   const config = state.config;
   const mapping = state.mapping;
-  const workflow = state.workflow;
   const credentialRef = asString(config?.encrypted_credential_ref);
   const locationId = asString(mapping?.ghl_location_id) ?? asString(config?.default_location_id);
   const pipelineId = asString(mapping?.ghl_pipeline_id) ?? asString(config?.default_pipeline_id);
   const stageId = asString(mapping?.ghl_stage_id) ?? asString(config?.default_stage_id);
-  const workflowId = asString(workflow?.workflow_id);
   const missing = [
     state.organization?.id ? null : "workspace",
     state.partner?.id ? null : "partner",
@@ -385,7 +351,6 @@ export async function evaluateGhlProvisioningReadiness(target: GhlProvisioningTa
     locationId ? null : "ghl_location_id",
     pipelineId ? null : "ghl_pipeline_id",
     stageId ? null : "ghl_stage_id",
-    asBoolean(workflow?.enabled) && workflowId ? null : "workflow_config",
   ].filter((value): value is string => Boolean(value));
   const readOnlyGhl = target.liveRead
     ? await runReadOnlyGhlChecks({
@@ -393,7 +358,6 @@ export async function evaluateGhlProvisioningReadiness(target: GhlProvisioningTa
         locationId,
         pipelineId,
         stageId,
-        workflowId,
       })
     : {
         attempted: false,
@@ -402,7 +366,6 @@ export async function evaluateGhlProvisioningReadiness(target: GhlProvisioningTa
         locationReadable: null,
         pipelineReadable: null,
         stageReadable: null,
-        workflowReadable: null,
         failures: [] as string[],
       };
   const failures = [
@@ -410,7 +373,6 @@ export async function evaluateGhlProvisioningReadiness(target: GhlProvisioningTa
     target.liveRead && readOnlyGhl.locationReadable === false ? "location_not_readable" : null,
     target.liveRead && pipelineId && readOnlyGhl.pipelineReadable === false ? "pipeline_not_readable" : null,
     target.liveRead && stageId && readOnlyGhl.stageReadable === false ? "stage_not_readable" : null,
-    target.liveRead && workflowId && readOnlyGhl.workflowReadable === false ? "workflow_not_readable" : null,
   ].filter((value): value is string => Boolean(value));
   const ready = missing.length === 0 && failures.length === 0;
   const gates = getGhlProvisioningGates();
@@ -463,9 +425,11 @@ export async function evaluateGhlProvisioningReadiness(target: GhlProvisioningTa
       updatedAt: asString(mapping?.updated_at),
     },
     workflow: {
-      enabled: asBoolean(workflow?.enabled),
-      workflowIdMasked: maskExternalId(workflowId),
-      enrollmentTrigger: asString(workflow?.enrollment_trigger),
+      enabled: false,
+      workflowIdMasked: null,
+      enrollmentTrigger: null,
+      retired: true,
+      note: "Workflow enrollment is retired; ClickToScale GHL fulfillment uses contact and opportunity delivery.",
     },
     template: {
       snapshotConfigured: Boolean(asString(state.template?.snapshot_id)),
@@ -527,7 +491,6 @@ export async function loadGhlProvisioningOverview() {
           locationIdMasked: null,
           pipelineIdMasked: null,
           stageIdMasked: null,
-          workflowIdMasked: null,
           latestJobStatus: "not_started",
           operatorActionNeeded: true,
         };
@@ -544,7 +507,6 @@ export async function loadGhlProvisioningOverview() {
         locationIdMasked: readiness.mapping.locationIdMasked,
         pipelineIdMasked: readiness.mapping.pipelineIdMasked,
         stageIdMasked: readiness.mapping.stageIdMasked,
-        workflowIdMasked: readiness.workflow.workflowIdMasked,
         latestJobStatus: readiness.latestJobs[0]?.status ?? "not_started",
         operatorActionNeeded: readiness.status !== "ready",
       };

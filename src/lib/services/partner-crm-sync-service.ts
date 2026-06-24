@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { ApiError } from "@/lib/api/route";
-import { isGhlContactWritesEnabled, isGhlOpportunityWritesEnabled, isGhlWorkflowEnrollmentEnabled } from "@/lib/env";
+import { isGhlContactWritesEnabled, isGhlOpportunityWritesEnabled } from "@/lib/env";
 import {
   getGhlPrivateTokenFromCredentialRef,
   GoHighLevelClient,
@@ -56,11 +56,6 @@ type CrmSyncEvent = {
   ghl_contact_id?: string | null;
   ghl_opportunity_id?: string | null;
   metadata?: Json | null;
-};
-
-type PartnerGhlWorkflowConfig = {
-  workflowId: string;
-  enrollmentTrigger: "lead_synced" | "manual";
 };
 
 type SyncLeadOptions = {
@@ -136,15 +131,6 @@ function mergeMetadata(options: SyncLeadOptions, values: Record<string, Json>) {
 
 function retryableGhlError(code: string | null) {
   return code === "ghl_rate_limited" || code === "ghl_unavailable" || code === "ghl_request_timeout";
-}
-
-function getWorkflowMetadataValue(metadata: Json | null | undefined, key: string) {
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
-    return null;
-  }
-
-  const value = (metadata as Record<string, Json>)[key];
-  return typeof value === "string" || typeof value === "boolean" ? value : null;
 }
 
 export function classifyPartnerCrmSyncFailure(code: string | null) {
@@ -350,33 +336,6 @@ export async function readWorkspaceGhlConfig(params: {
   } satisfies WorkspaceGhlConfig;
 }
 
-export async function readPartnerGhlWorkflowConfig(params: {
-  supabase?: AdminClient;
-  partnerId: string;
-}) {
-  const supabase = params.supabase ?? getAdminClientOrThrow();
-  const { data, error } = await db(supabase)
-    .from("partner_ghl_workflow_config")
-    .select("partner_id, enabled, workflow_id, enrollment_trigger")
-    .eq("partner_id", params.partnerId)
-    .maybeSingle();
-
-  if (error) {
-    throw new ApiError(500, error.message, "ghl_workflow_config_fetch_failed");
-  }
-
-  if (!data?.enabled || typeof data.workflow_id !== "string" || !data.workflow_id.trim()) {
-    return null;
-  }
-
-  const enrollmentTrigger = data.enrollment_trigger === "manual" ? "manual" : "lead_synced";
-
-  return {
-    workflowId: data.workflow_id.trim(),
-    enrollmentTrigger,
-  } satisfies PartnerGhlWorkflowConfig;
-}
-
 async function upsertSyncEvent(params: {
   supabase: AdminClient;
   lead: CrmSyncLeadRecord;
@@ -486,91 +445,6 @@ async function markSyncEvent(params: {
   }
 }
 
-async function maybeEnrollContactInWorkflow(params: {
-  supabase: AdminClient;
-  ghl: GoHighLevelClient;
-  config: WorkspaceGhlConfig;
-  contactId: string;
-  opportunityConfigured: boolean;
-  opportunityId: string | null;
-}) {
-  if (!isGhlWorkflowEnrollmentEnabled()) {
-    return {
-      workflowEnrollment: false,
-      workflowSkipped: true,
-      workflowReason: "workflow_enrollment_disabled",
-    };
-  }
-
-  const workflowConfig = await readPartnerGhlWorkflowConfig({
-    supabase: params.supabase,
-    partnerId: params.config.partnerId,
-  });
-
-  if (!workflowConfig) {
-    return {
-      workflowEnrollment: false,
-      workflowSkipped: true,
-      workflowReason: "workflow_config_missing",
-    };
-  }
-
-  if (workflowConfig.enrollmentTrigger === "manual") {
-    return {
-      workflowEnrollment: false,
-      workflowSkipped: true,
-      workflowReason: "workflow_trigger_manual",
-      workflowId: workflowConfig.workflowId,
-    };
-  }
-
-  if (params.opportunityConfigured && !params.opportunityId) {
-    return {
-      workflowEnrollment: false,
-      workflowSkipped: true,
-      workflowReason: "workflow_waiting_for_opportunity_sync",
-      workflowId: workflowConfig.workflowId,
-    };
-  }
-
-  try {
-    const enrollment = await params.ghl.addContactToWorkflow({
-      contactId: params.contactId,
-      workflowId: workflowConfig.workflowId,
-    });
-
-    return {
-      workflowEnrollment: true,
-      workflowSkipped: false,
-      workflowReason: "workflow_enrolled",
-      workflowId: workflowConfig.workflowId,
-      workflowEnrollmentId: enrollment.enrollmentId,
-      workflowMessage: enrollment.message,
-    };
-  } catch (error) {
-    const code = error instanceof ApiError ? error.code : "ghl_workflow_enrollment_exception";
-    const message = error instanceof Error ? error.message : "Unknown GoHighLevel workflow enrollment failure.";
-
-    logError("partner_crm_sync.workflow_enrollment_failed", {
-      partnerId: params.config.partnerId,
-      workspaceId: params.config.workspaceId,
-      locationId: params.config.locationId,
-      workflowId: workflowConfig.workflowId,
-      code,
-      message,
-    });
-
-    return {
-      workflowEnrollment: false,
-      workflowSkipped: false,
-      workflowReason: "workflow_enrollment_failed",
-      workflowId: workflowConfig.workflowId,
-      workflowErrorCode: code,
-      workflowErrorMessage: message,
-    };
-  }
-}
-
 export async function syncLeadToPartnerCrm(lead: CrmSyncLeadRecord, options: SyncLeadOptions = {}) {
   const workspaceId = lead.organization_id ?? lead.tenant_id ?? null;
   const dryRun = options.dryRun !== false;
@@ -620,9 +494,6 @@ export async function syncLeadToPartnerCrm(lead: CrmSyncLeadRecord, options: Syn
     : null;
 
   if (event?.status === "synced") {
-    const workflowEnrollment = getWorkflowMetadataValue(event.metadata, "workflow_enrollment") === true;
-    const workflowReason = getWorkflowMetadataValue(event.metadata, "workflow_reason");
-
     return {
       synced: true,
       skipped: true,
@@ -630,8 +501,8 @@ export async function syncLeadToPartnerCrm(lead: CrmSyncLeadRecord, options: Syn
       eventId: event.id,
       contactId: event.ghl_contact_id ?? null,
       opportunityId: event.ghl_opportunity_id ?? null,
-      workflowEnrollment,
-      workflowReason: workflowReason ?? (workflowEnrollment ? "workflow_already_enrolled" : "already_synced"),
+      workflowEnrollment: false,
+      workflowReason: "workflow_enrollment_retired",
     };
   }
 
@@ -659,7 +530,7 @@ export async function syncLeadToPartnerCrm(lead: CrmSyncLeadRecord, options: Syn
           opportunity_skipped: true,
           opportunity_reason: "dry_run",
           workflow_enrollment: false,
-          workflow_reason: "dry_run",
+          workflow_reason: "workflow_enrollment_retired",
           partner_resolution_source: config.partnerResolutionSource,
         }),
       });
@@ -682,7 +553,7 @@ export async function syncLeadToPartnerCrm(lead: CrmSyncLeadRecord, options: Syn
       opportunitySkipped: true,
       opportunityReason: "dry_run",
       workflowEnrollment: false,
-      workflowReason: "dry_run",
+      workflowReason: "workflow_enrollment_retired",
     };
   }
 
@@ -697,7 +568,7 @@ export async function syncLeadToPartnerCrm(lead: CrmSyncLeadRecord, options: Syn
           reason: "ghl_contact_writes_disabled",
           idempotency_key: idempotencyKey,
           workflow_enrollment: false,
-          workflow_reason: "contact_writes_disabled",
+          workflow_reason: "workflow_enrollment_retired",
           partner_resolution_source: config.partnerResolutionSource,
         }),
       });
@@ -709,7 +580,7 @@ export async function syncLeadToPartnerCrm(lead: CrmSyncLeadRecord, options: Syn
 	      reason: "ghl_contact_writes_disabled",
 	      eventId: event?.id ?? null,
         workflowEnrollment: false,
-        workflowReason: "contact_writes_disabled",
+        workflowReason: "workflow_enrollment_retired",
 	    };
 	  }
 
@@ -727,7 +598,7 @@ export async function syncLeadToPartnerCrm(lead: CrmSyncLeadRecord, options: Syn
           reason: "ghl_auth_missing",
           idempotency_key: idempotencyKey,
           workflow_enrollment: false,
-          workflow_reason: "ghl_auth_missing",
+          workflow_reason: "workflow_enrollment_retired",
           partner_resolution_source: config.partnerResolutionSource,
         }),
       });
@@ -739,7 +610,7 @@ export async function syncLeadToPartnerCrm(lead: CrmSyncLeadRecord, options: Syn
       reason: "ghl_auth_missing",
       eventId: event?.id ?? null,
       workflowEnrollment: false,
-      workflowReason: "ghl_auth_missing",
+      workflowReason: "workflow_enrollment_retired",
     };
   }
 
@@ -805,15 +676,6 @@ export async function syncLeadToPartnerCrm(lead: CrmSyncLeadRecord, options: Syn
       }
     }
 
-    const workflowResult = await maybeEnrollContactInWorkflow({
-      supabase,
-      ghl,
-      config,
-      contactId,
-      opportunityConfigured: opportunityConfigReady,
-      opportunityId,
-    });
-
 	    if (event?.id) {
 	      await markSyncEvent({
 	        supabase,
@@ -831,14 +693,8 @@ export async function syncLeadToPartnerCrm(lead: CrmSyncLeadRecord, options: Syn
           opportunity_reason: opportunityReason,
           opportunity_id_present: Boolean(opportunityId),
           provisioning: false,
-          workflow_enrollment: workflowResult.workflowEnrollment,
-          workflow_reason: workflowResult.workflowReason,
-          workflow_id: "workflowId" in workflowResult ? (workflowResult.workflowId ?? null) : null,
-          workflow_enrollment_id:
-            "workflowEnrollmentId" in workflowResult ? (workflowResult.workflowEnrollmentId ?? null) : null,
-          workflow_error_code: "workflowErrorCode" in workflowResult ? (workflowResult.workflowErrorCode ?? null) : null,
-          workflow_error_message:
-            "workflowErrorMessage" in workflowResult ? (workflowResult.workflowErrorMessage ?? null) : null,
+          workflow_enrollment: false,
+          workflow_reason: "workflow_enrollment_retired",
           partner_resolution_source: config.partnerResolutionSource,
         }),
       });
@@ -862,14 +718,10 @@ export async function syncLeadToPartnerCrm(lead: CrmSyncLeadRecord, options: Syn
 	      opportunityId,
 	      locationId: config.locationId,
       opportunitySkipped,
-      opportunityReason,
+	      opportunityReason,
 	      provisioning: false,
-	      workflowEnrollment: workflowResult.workflowEnrollment,
-        workflowReason: workflowResult.workflowReason,
-        workflowId: "workflowId" in workflowResult ? (workflowResult.workflowId ?? null) : null,
-        workflowEnrollmentId:
-          "workflowEnrollmentId" in workflowResult ? (workflowResult.workflowEnrollmentId ?? null) : null,
-        workflowErrorCode: "workflowErrorCode" in workflowResult ? (workflowResult.workflowErrorCode ?? null) : null,
+	      workflowEnrollment: false,
+        workflowReason: "workflow_enrollment_retired",
 	    };
 	  } catch (error) {
 	    const code = error instanceof ApiError ? error.code : "ghl_contact_upsert_exception";

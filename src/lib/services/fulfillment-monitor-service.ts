@@ -3,7 +3,6 @@ import {
   isGhlContactWritesEnabled,
   isGhlOpportunityWritesEnabled,
   isGhlProvisioningWritesEnabled,
-  isGhlWorkflowEnrollmentEnabled,
 } from "@/lib/env";
 import { ApiError } from "@/lib/api/route";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -62,6 +61,7 @@ export type FulfillmentMonitorHealth = {
     autoProvisioningEnabled: boolean;
     provisioningWritesEnabled: boolean;
     workflowEnrollmentEnabled: boolean;
+    workflowEnrollmentRetired: boolean;
   };
   recentCrmFailures: number;
   recentDeadLetters: number;
@@ -495,7 +495,8 @@ async function loadHealth(admin: AdminClient): Promise<FulfillmentMonitorHealth>
       opportunityWritesEnabled: isGhlOpportunityWritesEnabled(),
       autoProvisioningEnabled: isGhlAutoProvisioningEnabled(),
       provisioningWritesEnabled: isGhlProvisioningWritesEnabled(),
-      workflowEnrollmentEnabled: isGhlWorkflowEnrollmentEnabled(),
+      workflowEnrollmentEnabled: false,
+      workflowEnrollmentRetired: true,
     },
     recentCrmFailures: recentCrmFailures ?? 0,
     recentDeadLetters: recentDeadLetters ?? 0,
