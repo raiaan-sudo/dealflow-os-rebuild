@@ -250,6 +250,7 @@ function getStatusBucket(value: string | null | undefined) {
 
 type LaunchState = "draft" | "ready" | "live" | "paused";
 type DataSourceState = "disconnected" | "collecting" | "active";
+type OptimizationReadinessState = "ready" | "waiting" | "sync_degraded" | "needs_review" | "not_live";
 
 function getLaunchState(plan: CampaignPlan): LaunchState {
   if (plan.runtime.safetyState === "paused") {
@@ -299,6 +300,116 @@ function getDataSourceState(params: {
   return "collecting";
 }
 
+function getSyncMetadataValue(snapshot: MetaCampaignSyncSnapshot | null | undefined, key: string) {
+  const metadata = snapshot?.syncMetadata;
+
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+
+  return (metadata as Record<string, unknown>)[key] ?? null;
+}
+
+function getSyncErrors(snapshot: MetaCampaignSyncSnapshot | null | undefined) {
+  const rawErrors = (snapshot as { syncErrors?: unknown } | null | undefined)?.syncErrors;
+  if (!Array.isArray(rawErrors)) {
+    return [];
+  }
+
+  return rawErrors.map(String).filter(Boolean);
+}
+
+function getSyncedAt(snapshot: MetaCampaignSyncSnapshot | null | undefined) {
+  const value = (snapshot as { syncedAt?: unknown; lastSyncedAt?: unknown } | null | undefined)?.syncedAt;
+  if (typeof value === "string") {
+    return value;
+  }
+
+  const fallback = (snapshot as { lastSyncedAt?: unknown } | null | undefined)?.lastSyncedAt;
+  return typeof fallback === "string" ? fallback : null;
+}
+
+function hasSyncErrors(snapshot: MetaCampaignSyncSnapshot | null | undefined) {
+  return getSyncErrors(snapshot).length > 0;
+}
+
+function getOptimizationReadinessState(params: {
+  launchState: LaunchState;
+  metaConnection: MetaConnectionState;
+  syncSnapshot?: MetaCampaignSyncSnapshot | null;
+  hasRealDeliveryData: boolean;
+  missingPerformanceData: boolean;
+  nowMs: number;
+}): OptimizationReadinessState {
+  if (params.launchState !== "live") {
+    return "not_live";
+  }
+
+  if (params.metaConnection.connectionStatus !== "connected" || !params.syncSnapshot) {
+    return "needs_review";
+  }
+
+  const syncResult = String(params.syncSnapshot.syncResult ?? params.syncSnapshot.syncStatus ?? "").toLowerCase();
+  const deliveryStatus = String(getSyncMetadataValue(params.syncSnapshot, "delivery_metrics_status") ?? "");
+  const stale = isStaleSync(getSyncedAt(params.syncSnapshot), params.nowMs);
+
+  if (syncResult === "failed" || deliveryStatus === "unavailable") {
+    return "needs_review";
+  }
+
+  if (syncResult === "partial_success" || hasSyncErrors(params.syncSnapshot) || stale) {
+    return "sync_degraded";
+  }
+
+  if (params.hasRealDeliveryData) {
+    return "ready";
+  }
+
+  if (params.missingPerformanceData) {
+    return "waiting";
+  }
+
+  return "waiting";
+}
+
+const OPTIMIZATION_READINESS_COPY: Record<OptimizationReadinessState, {
+  label: string;
+  headline: string;
+  detail: string;
+  signal: string;
+}> = {
+  ready: {
+    label: "Ready to optimize",
+    headline: "Optimization recommendations are ready",
+    detail: "Fresh Meta delivery data is available, so recommendations can be generated from current spend, click, lead, and creative signals.",
+    signal: "Fresh delivery metrics",
+  },
+  waiting: {
+    label: "Waiting for delivery data",
+    headline: "Waiting for delivery data",
+    detail: "Meta sync is fresh, but Meta has not returned spend, impressions, clicks, or leads yet. DealFlow will not invent recommendations before delivery data exists.",
+    signal: "Fresh zero-delivery sync",
+  },
+  sync_degraded: {
+    label: "Sync degraded",
+    headline: "Meta sync needs operator review",
+    detail: "DealFlow read part of the launch state, but one or more stored Meta objects could not be read or the sync is stale. Refresh Meta sync or reconcile the saved Meta IDs before treating optimization as current.",
+    signal: "Partial or stale sync",
+  },
+  needs_review: {
+    label: "Needs Meta reconnect/review",
+    headline: "Meta reconnect or review required",
+    detail: "DealFlow cannot read enough current Meta delivery state to optimize safely. Reconnect Meta or review ad account, page, pixel, campaign, and object permissions.",
+    signal: "Readback blocked",
+  },
+  not_live: {
+    label: "Not live",
+    headline: "Launch the campaign to collect results",
+    detail: "Optimization starts after launch and Meta delivery sync. No live Meta data is required while this campaign is still in setup or paused review.",
+    signal: "Pre-launch",
+  },
+};
+
 export function CampaignDashboardView({
   plan,
   metaConnection,
@@ -325,13 +436,14 @@ export function CampaignDashboardView({
   const renderedAtMs = new Date(renderedAt ?? "1970-01-01T00:00:00.000Z").getTime();
   const stableNowMs = Number.isFinite(renderedAtMs) ? renderedAtMs : 0;
   const launchState = getLaunchState(plan);
+  const isLiveLaunch = launchState === "live";
   const dataSourceState = getDataSourceState({
     metaConnection,
     syncSnapshot,
     creativePerformanceSummary,
   });
   const liveMetrics = syncSnapshot?.deliveryMetrics;
-  const hasLivePerformance = launchState === "live" && dataSourceState === "active";
+  const hasLivePerformance = isLiveLaunch && dataSourceState === "active";
   const hasRealDeliveryData = Boolean(
     liveMetrics &&
       (Number(liveMetrics.spend ?? 0) > 0 ||
@@ -340,12 +452,21 @@ export function CampaignDashboardView({
         Number(liveMetrics.leads ?? 0) > 0),
   );
   const missingPerformanceData =
-    launchState === "live" &&
+    isLiveLaunch &&
     (!syncSnapshot ||
       (Number(liveMetrics?.spend ?? 0) <= 0 &&
         Number(liveMetrics?.leads ?? 0) <= 0 &&
         Number(liveMetrics?.impressions ?? 0) <= 0 &&
         Number(liveMetrics?.clicks ?? 0) <= 0));
+  const optimizationReadinessState = getOptimizationReadinessState({
+    launchState,
+    metaConnection,
+    syncSnapshot,
+    hasRealDeliveryData,
+    missingPerformanceData,
+    nowMs: stableNowMs,
+  });
+  const optimizationReadinessCopy = OPTIMIZATION_READINESS_COPY[optimizationReadinessState];
   const displayedLeads = hasLivePerformance
     ? Number(liveMetrics?.leads ?? 0)
     : Number(workspaceMetrics.totalLeads ?? 0);
@@ -850,8 +971,11 @@ export function CampaignDashboardView({
     },
     {
       label: "No-data guardrail",
-      value: missingPerformanceData ? "Warning" : "Clear",
-      detail: missingPerformanceData ? "No spend, lead, impression, or click signal is available yet." : "Delivery data is present or campaign is not live.",
+      value: optimizationReadinessState === "ready" || optimizationReadinessState === "not_live" ? "Clear" : optimizationReadinessCopy.label,
+      detail:
+        optimizationReadinessState === "ready" || optimizationReadinessState === "not_live"
+          ? "Delivery data is present or campaign is not live."
+          : optimizationReadinessCopy.detail,
     },
   ];
   const todayChangeItems = [
@@ -1223,8 +1347,8 @@ export function CampaignDashboardView({
           <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">
             {dataSourceState === "disconnected"
               ? "Not connected"
-              : missingPerformanceData
-                ? "Waiting for delivery data"
+              : isLiveLaunch
+                ? optimizationReadinessCopy.headline
                 : "Collecting"}
           </h3>
           <p className="mt-3 text-sm leading-7 text-muted-foreground">
@@ -1232,12 +1356,20 @@ export function CampaignDashboardView({
               ? "Launch and connect Meta to start collecting results."
               : hasRecordedPausedLaunch
                 ? "Paused launch objects are recorded. Live reporting begins only after explicit activation and Meta sync."
-              : missingPerformanceData
-                ? "Campaign live, waiting for delivery data."
-              : launchState !== "live"
-                ? "Launch the campaign to begin collecting delivery data."
-                : "Meta is connected and delivery is underway, but there is not enough live data yet to report performance."}
+              : isLiveLaunch
+                ? optimizationReadinessCopy.detail
+              : "Launch the campaign to begin collecting delivery data."}
           </p>
+          {getSyncErrors(syncSnapshot).length ? (
+            <div className="mt-4 rounded-[18px] border border-amber-300/20 bg-amber-300/10 px-4 py-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-amber-100/80">Sync detail</p>
+              <ul className="mt-2 space-y-1 text-sm leading-6 text-amber-50/80">
+                {getSyncErrors(syncSnapshot).slice(0, 3).map((error) => (
+                  <li key={error}>{error}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </Card>
       ) : null}
 
@@ -1500,7 +1632,7 @@ export function CampaignDashboardView({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                {canUseAutonomyControls ? "Pro Autopilot" : "Recommendations"}
+                {canUseAutonomyControls ? "DealFlow Pro Autopilot" : "Recommendations"}
               </p>
               <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">
                 {canUseAutonomyControls
@@ -1529,7 +1661,7 @@ export function CampaignDashboardView({
                   ? autonomyNeedsApproval
                     ? "Approval is required before execution."
                     : "Safe actions may run only inside configured guardrails."
-                  : "Upgrade to Pro to enable safe optimization execution."}
+                  : "Upgrade to Pro to enable safe optimization execution. Upgrade to Pro to let DealFlow execute safe optimizations for you."}
               </p>
             </div>
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
@@ -1620,7 +1752,9 @@ export function CampaignDashboardView({
                 </div>
               ) : (
                 <p className="mt-3 text-sm leading-7 text-muted-foreground">
-                  {missingPerformanceData ? "Waiting for delivery data." : "No autonomy recommendations are available yet."}
+                  {isLiveLaunch && optimizationReadinessState !== "ready"
+                    ? optimizationReadinessCopy.detail
+                    : "No autonomy recommendations are available yet."}
                 </p>
               )}
             </div>

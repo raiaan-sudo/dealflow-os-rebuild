@@ -97,6 +97,162 @@ async function countUnreviewedCrmSyncEvents(supabase, status, sinceIso) {
   };
 }
 
+async function fetchRowsPaged(supabase, table, selectColumns, options = {}) {
+  const pageSize = options.pageSize ?? 100;
+  const rows = [];
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from(table)
+      .select(selectColumns)
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      throw error;
+    }
+
+    rows.push(...(data ?? []));
+
+    if (!data || data.length < pageSize) {
+      return rows;
+    }
+  }
+}
+
+function launchRuntimeFromPlan(plan) {
+  if (!plan || typeof plan !== "object") {
+    return {};
+  }
+
+  const runtime = plan.runtime && typeof plan.runtime === "object" ? plan.runtime : {};
+  const launchRuntime = plan.launchRuntime && typeof plan.launchRuntime === "object" ? plan.launchRuntime : {};
+  const metaLaunch = plan.metaLaunch && typeof plan.metaLaunch === "object" ? plan.metaLaunch : {};
+
+  return {
+    ...runtime,
+    ...launchRuntime,
+    ...metaLaunch,
+  };
+}
+
+function getRuntimeCampaignId(plan) {
+  const runtime = launchRuntimeFromPlan(plan);
+  return (
+    runtime.metaCampaignId ||
+    runtime.meta_campaign_id ||
+    runtime.campaignId ||
+    runtime.campaign_id ||
+    null
+  );
+}
+
+function runtimeLooksLaunched(plan) {
+  const runtime = launchRuntimeFromPlan(plan);
+  const statusText = [
+    runtime.status,
+    runtime.launchStatus,
+    runtime.launch_status,
+    runtime.metaPushStatus,
+    runtime.meta_push_status,
+    runtime.campaignStatus,
+    runtime.campaign_status,
+  ].filter(Boolean).join(" ").toLowerCase();
+
+  return /live|launch|published|sent_to_meta|sent to meta|active/.test(statusText) && Boolean(getRuntimeCampaignId(plan));
+}
+
+function hasDeliveryMetrics(snapshot) {
+  const metrics = snapshot?.delivery_metrics;
+
+  if (!metrics || typeof metrics !== "object" || Array.isArray(metrics)) {
+    return false;
+  }
+
+  return ["spend", "impressions", "clicks", "leads", "ctr", "cpl"].some((key) => Object.hasOwn(metrics, key));
+}
+
+function snapshotErrors(snapshot) {
+  const errors = snapshot?.sync_errors;
+  return Array.isArray(errors) ? errors.filter(Boolean) : [];
+}
+
+function isFreshSnapshot(snapshot, freshnessCutoffIso) {
+  return Boolean(snapshot?.synced_at && snapshot.synced_at >= freshnessCutoffIso);
+}
+
+async function countLaunchedMetaOptimizationDebt(supabase, freshnessCutoffIso) {
+  try {
+    const campaigns = await fetchRowsPaged(supabase, "campaign_plans", "id,organization_id,user_id,plan", { pageSize: 100 });
+    const launched = campaigns
+      .filter((campaign) => runtimeLooksLaunched(campaign.plan))
+      .map((campaign) => ({
+        id: campaign.id,
+        organizationId: campaign.organization_id,
+        userId: campaign.user_id,
+        metaCampaignId: getRuntimeCampaignId(campaign.plan),
+      }))
+      .filter((campaign) => campaign.organizationId && campaign.userId && campaign.metaCampaignId);
+
+    let staleSnapshots = 0;
+    let unreadableObjects = 0;
+    let missingPerformanceRows = 0;
+
+    for (const campaign of launched) {
+      const { data: snapshots, error: snapshotError } = await supabase
+        .from("campaign_sync_snapshots")
+        .select("id,campaign_status,delivery_metrics,sync_errors,synced_at")
+        .eq("organization_id", campaign.organizationId)
+        .eq("user_id", campaign.userId)
+        .eq("meta_campaign_id", String(campaign.metaCampaignId))
+        .order("synced_at", { ascending: false })
+        .limit(1);
+
+      if (snapshotError) {
+        return { count: null, error: snapshotError.message };
+      }
+
+      const latestSnapshot = snapshots?.[0] ?? null;
+
+      if (!latestSnapshot || !isFreshSnapshot(latestSnapshot, freshnessCutoffIso)) {
+        staleSnapshots += 1;
+      }
+
+      if (snapshotErrors(latestSnapshot).length > 0) {
+        unreadableObjects += 1;
+      }
+
+      const activeCampaign = String(latestSnapshot?.campaign_status ?? "").toLowerCase() === "active";
+      if (activeCampaign && hasDeliveryMetrics(latestSnapshot)) {
+        const { count, error } = await supabase
+          .from("performance_tracking")
+          .select("*", { count: "exact", head: true })
+          .eq("organization_id", campaign.organizationId)
+          .eq("user_id", campaign.userId)
+          .eq("campaign_id", String(campaign.metaCampaignId));
+
+        if (error) {
+          return { count: null, error: error.message };
+        }
+
+        if ((count ?? 0) === 0) {
+          missingPerformanceRows += 1;
+        }
+      }
+    }
+
+    return {
+      count: staleSnapshots + unreadableObjects + missingPerformanceRows,
+      error: null,
+      staleSnapshots,
+      unreadableObjects,
+      missingPerformanceRows,
+      launchedCampaigns: launched.length,
+    };
+  } catch (error) {
+    return { count: null, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 async function fetchStatus(url, expected) {
   try {
     const response = await fetch(url, {
@@ -144,6 +300,7 @@ async function main() {
     failedLeadNotifications,
     activeMetaLocks,
     clientErrors,
+    launchedMetaOptimizationDebt,
   ] = await Promise.all([
     countRows(supabase, "system_jobs", (query) => query.eq("status", "failed").is("reviewed_at", null)),
     countRows(supabase, "system_jobs", (query) => query.not("dead_lettered_at", "is", null).is("reviewed_at", null)),
@@ -155,6 +312,7 @@ async function main() {
     countRows(supabase, "lead_notifications", (query) => query.not("failed_at", "is", null).neq("status", "failed")),
     countRows(supabase, "meta_launch_locks", (query) => query.gte("locked_until", new Date().toISOString())),
     countRows(supabase, "client_error_events", (query) => query.gte("last_seen_at", sevenDaysAgo).is("reviewed_at", null)),
+    countLaunchedMetaOptimizationDebt(supabase, thirtyMinutesAgo),
   ]);
 
   const [app, dashboard, funnel, systemJobs] = await Promise.all([
@@ -174,6 +332,7 @@ async function main() {
     failedGhlEvents.count ? `${failedGhlEvents.count} failed CRM sync event(s) in 7d` : null,
     deadLetterGhlEvents.count ? `${deadLetterGhlEvents.count} dead-letter CRM sync event(s) in 7d` : null,
     failedLeadNotifications.count ? `${failedLeadNotifications.count} lead notification status drift row(s)` : null,
+    launchedMetaOptimizationDebt.count ? `${launchedMetaOptimizationDebt.count} launched campaign Meta optimization readiness issue(s)` : null,
     clientErrors.count ? `${clientErrors.count} unresolved client error event(s) in 7d` : null,
     [app, dashboard, funnel, systemJobs].some((check) => !check.ok) ? "safe production smoke check failed" : null,
   ].filter(Boolean);
@@ -198,6 +357,7 @@ async function main() {
       deadLetterGhlEvents,
       failedLeadNotifications,
       activeMetaLocks,
+      launchedMetaOptimizationDebt,
       clientErrors,
     },
     gates,

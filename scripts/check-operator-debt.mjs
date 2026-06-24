@@ -165,6 +165,51 @@ function staticAdsFromPlan(plan) {
   ].filter((item) => item && typeof item === "object" && !Array.isArray(item));
 }
 
+function launchRuntimeFromPlan(plan) {
+  const record = asRecord(plan);
+  const nestedPlan = asRecord(record.plan);
+  const rootRuntime = asRecord(record.launch_runtime);
+  const nestedRuntime = asRecord(nestedPlan.launch_runtime);
+  return Object.keys(rootRuntime).length > 0 ? rootRuntime : nestedRuntime;
+}
+
+function getRuntimeCampaignId(plan) {
+  const runtime = launchRuntimeFromPlan(plan);
+  return String(runtime.campaign_id ?? runtime.campaignId ?? "").trim();
+}
+
+function runtimeLooksLaunched(plan) {
+  const runtime = launchRuntimeFromPlan(plan);
+  const statusText = [
+    runtime.status,
+    runtime.metaPushStatus,
+    runtime.meta_push_status,
+    runtime.launchStatus,
+    runtime.launch_status,
+  ].map((value) => String(value ?? "").toLowerCase()).join(" ");
+
+  return Boolean(getRuntimeCampaignId(plan)) && /live|published|sent_to_meta|completed/.test(statusText);
+}
+
+function snapshotErrors(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function snapshotHasDeliveryMetrics(row) {
+  const metrics = asRecord(row?.delivery_metrics);
+  return (
+    Number(metrics.spend ?? 0) > 0 ||
+    Number(metrics.impressions ?? 0) > 0 ||
+    Number(metrics.clicks ?? 0) > 0 ||
+    Number(metrics.leads ?? 0) > 0
+  );
+}
+
+function snapshotIsFresh(row, freshnessMs = 6 * 60 * 60 * 1000) {
+  const timestamp = Date.parse(row?.synced_at ?? "");
+  return Number.isFinite(timestamp) && Date.now() - timestamp <= freshnessMs;
+}
+
 function selectedStaticIdForCreative(creative) {
   const record = asRecord(creative);
   return String(record.id ?? record.creativeId ?? record.creative_id ?? "").trim();
@@ -442,6 +487,83 @@ async function getCampaign345MetaDebt(supabase) {
   };
 }
 
+async function getLaunchedCampaignMetaDebt(supabase) {
+  const campaigns = await fetchCampaignPlanRowsPaged(
+    supabase,
+    "id,organization_id,user_id,plan",
+    { pageSize: 50 },
+  );
+  const launched = campaigns
+    .filter((campaign) => runtimeLooksLaunched(campaign.plan))
+    .map((campaign) => ({
+      id: campaign.id,
+      organizationId: campaign.organization_id,
+      userId: campaign.user_id,
+      metaCampaignId: getRuntimeCampaignId(campaign.plan),
+    }))
+    .filter((campaign) => campaign.organizationId && campaign.userId && campaign.metaCampaignId);
+
+  const details = [];
+  let staleSnapshots = 0;
+  let unreadableObjects = 0;
+  let missingPerformanceRows = 0;
+
+  for (const campaign of launched) {
+    const { data: snapshots, error: snapshotError } = await supabase
+      .from("campaign_sync_snapshots")
+      .select("id,sync_result,meta_campaign_id,campaign_status,delivery_metrics,sync_metadata,sync_errors,synced_at")
+      .eq("organization_id", campaign.organizationId)
+      .eq("user_id", campaign.userId)
+      .eq("meta_campaign_id", campaign.metaCampaignId)
+      .order("synced_at", { ascending: false })
+      .limit(1);
+
+    if (snapshotError) {
+      throw new Error(`campaign_sync_snapshots launched meta scan: ${snapshotError.message}`);
+    }
+
+    const snapshot = snapshots?.[0] ?? null;
+    if (!snapshot || !snapshotIsFresh(snapshot)) {
+      staleSnapshots += 1;
+      details.push(`${campaign.id}: stale_or_missing_meta_sync`);
+    }
+
+    if (snapshot && (snapshot.sync_result === "failed" || snapshot.sync_result === "partial_success" || snapshotErrors(snapshot.sync_errors).length > 0)) {
+      unreadableObjects += 1;
+      details.push(`${campaign.id}: meta_sync_degraded`);
+    }
+
+    const campaignStatus = String(snapshot?.campaign_status ?? "").toLowerCase();
+    const activeOrUnknown = !snapshot || campaignStatus === "active" || campaignStatus === "unknown" || campaignStatus === "";
+    if (activeOrUnknown && snapshot && !snapshotHasDeliveryMetrics(snapshot)) {
+      const { data: performanceRows, error: performanceError } = await supabase
+        .from("performance_tracking")
+        .select("id")
+        .eq("organization_id", campaign.organizationId)
+        .eq("user_id", campaign.userId)
+        .eq("campaign_id", campaign.metaCampaignId)
+        .limit(1);
+
+      if (performanceError) {
+        throw new Error(`performance_tracking launched meta scan: ${performanceError.message}`);
+      }
+
+      if ((performanceRows ?? []).length === 0) {
+        missingPerformanceRows += 1;
+        details.push(`${campaign.id}: active_meta_without_performance_tracking`);
+      }
+    }
+  }
+
+  return {
+    launchedCampaigns: launched.length,
+    staleSnapshots,
+    unreadableObjects,
+    missingPerformanceRows,
+    details: unique(details).slice(0, 20),
+  };
+}
+
 async function main() {
   const supabase = createClient(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"), {
     auth: {
@@ -463,6 +585,7 @@ async function main() {
     deliveredNotificationStatusDrift,
     failedNotificationStatusDrift,
     campaign345MetaDebt,
+    launchedCampaignMetaDebt,
     offboardingDebt,
   ] = await Promise.all([
     countRows(supabase, "system_jobs", (query) =>
@@ -497,6 +620,7 @@ async function main() {
       query.not("failed_at", "is", null).neq("status", "failed"),
     ),
     getCampaign345MetaDebt(supabase),
+    getLaunchedCampaignMetaDebt(supabase),
     getOffboardingDebt(supabase),
   ]);
 
@@ -515,6 +639,9 @@ async function main() {
     metaReadOnlyVerificationErrors: campaign345MetaDebt.metaReadOnlyVerificationErrors,
     metaAppStatusDrift: campaign345MetaDebt.metaAppStatusDrift,
     staleMetaSyncSnapshots: campaign345MetaDebt.staleMetaSyncSnapshots,
+    launchedMetaStaleSyncSnapshots: launchedCampaignMetaDebt.staleSnapshots,
+    launchedMetaUnreadableObjects: launchedCampaignMetaDebt.unreadableObjects,
+    launchedMetaMissingPerformanceRows: launchedCampaignMetaDebt.missingPerformanceRows,
     offboardingFailedJobs: offboardingDebt.failedJobs,
     offboardingStaleJobs: offboardingDebt.staleJobs,
     offboardedPublishedFunnels: offboardingDebt.offboardedPublished,
@@ -603,6 +730,24 @@ async function main() {
         campaign345MetaDebt.metaDebtDetails.length
           ? `details: ${campaign345MetaDebt.metaDebtDetails.join(", ")}`
           : null,
+      ].filter(Boolean).join("; "),
+    );
+  }
+
+  if (
+    launchedCampaignMetaDebt.staleSnapshots === 0 &&
+    launchedCampaignMetaDebt.unreadableObjects === 0 &&
+    launchedCampaignMetaDebt.missingPerformanceRows === 0
+  ) {
+    pass("Launched campaign Meta optimization readiness", `${launchedCampaignMetaDebt.launchedCampaigns} launched campaign(s) scanned`);
+  } else {
+    fail(
+      "Launched campaign Meta optimization readiness",
+      [
+        `${launchedCampaignMetaDebt.staleSnapshots} stale/missing sync snapshot issue(s)`,
+        `${launchedCampaignMetaDebt.unreadableObjects} degraded Meta readback issue(s)`,
+        `${launchedCampaignMetaDebt.missingPerformanceRows} missing performance tracking issue(s)`,
+        launchedCampaignMetaDebt.details.length ? `details: ${launchedCampaignMetaDebt.details.join(", ")}` : null,
       ].filter(Boolean).join("; "),
     );
   }

@@ -3,8 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
   fetchAdInsights,
-  fetchAdSetStatuses,
-  fetchAdStatuses,
+  fetchAdSetStatusReadResults,
+  fetchAdStatusReadResults,
   fetchCampaignStatus,
   fetchDeliveryMetrics,
   getMetaSyncMode,
@@ -35,6 +35,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 
 type MetaSyncSupabase = SupabaseClient<Database>;
+
+type SyncErrorStage = "campaign" | "ad_set" | "ad" | "insights" | "connection";
+
+type SyncErrorRecord = {
+  stage: SyncErrorStage;
+  message: string;
+  target?: string;
+  code?: number;
+  subcode?: number;
+  severity?: "warning" | "error";
+};
 
 function mapEntityStatuses(value: unknown): MetaEntityStatus[] {
   if (!Array.isArray(value)) {
@@ -89,6 +100,10 @@ function mapSyncErrors(value: unknown): MetaSyncError[] {
   }
 
   return value.map((item) => {
+    if (typeof item === "string") {
+      return item;
+    }
+
     const row = item as Record<string, unknown>;
     const stage = row.stage;
     const normalizedStage =
@@ -101,13 +116,59 @@ function mapSyncErrors(value: unknown): MetaSyncError[] {
         : "campaign";
     const message = String(row.message ?? "Sync issue");
     const target = String(row.target ?? "");
+    const code = row.code !== undefined ? ` code=${String(row.code)}` : "";
 
-    return target ? `[${normalizedStage}] ${message} (${target})` : `[${normalizedStage}] ${message}`;
+    return target ? `[${normalizedStage}] ${message}${code} (${target})` : `[${normalizedStage}] ${message}${code}`;
   });
 }
 
-function formatSyncError(stage: "campaign" | "ad_set" | "ad" | "insights" | "connection", message: string, target: string) {
-  return target ? `[${stage}] ${message} (${target})` : `[${stage}] ${message}`;
+function createSyncError(
+  stage: SyncErrorStage,
+  message: string,
+  target?: string | null,
+  details?: Partial<Pick<SyncErrorRecord, "code" | "subcode" | "severity">>,
+): SyncErrorRecord {
+  return {
+    stage,
+    message,
+    target: target?.trim() || undefined,
+    code: details?.code,
+    subcode: details?.subcode,
+    severity: details?.severity ?? "error",
+  };
+}
+
+function serializeSyncErrors(errors: SyncErrorRecord[]) {
+  return errors.map((error) => {
+    const payload: SyncErrorRecord = {
+      stage: error.stage,
+      message: error.message,
+      severity: error.severity ?? "error",
+    };
+
+    if (error.target) {
+      payload.target = error.target;
+    }
+
+    if (error.code !== undefined) {
+      payload.code = error.code;
+    }
+
+    if (error.subcode !== undefined) {
+      payload.subcode = error.subcode;
+    }
+
+    return payload;
+  });
+}
+
+function hasDeliveryVolume(metrics: MetaDeliveryMetrics) {
+  return (
+    Number(metrics.spend ?? 0) > 0 ||
+    Number(metrics.impressions ?? 0) > 0 ||
+    Number(metrics.clicks ?? 0) > 0 ||
+    Number(metrics.leads ?? 0) > 0
+  );
 }
 
 function mapSyncSnapshot(row: Record<string, unknown> | null): MetaCampaignSyncSnapshot | null {
@@ -292,7 +353,7 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
     accessToken = getMetaAccessToken(connection);
   }
 
-  const errors: MetaSyncError[] = [];
+  const errors: SyncErrorRecord[] = [];
   let campaignStatus: MetaEntityStatus | null = null;
   let adSetStatuses: MetaEntityStatus[] = [];
   let adStatuses: MetaEntityStatus[] = [];
@@ -325,47 +386,54 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
       campaignId: ids.campaignId,
       message,
     });
-    errors.push(formatSyncError("campaign", message, ids.campaignId));
+    errors.push(createSyncError("campaign", message, ids.campaignId));
   }
 
   if (ids.adSetIds.length === 0) {
-    errors.push(formatSyncError("ad_set", "No Meta ad set IDs were stored for this campaign yet.", ids.campaignId));
+    errors.push(createSyncError("ad_set", "No Meta ad set IDs were stored for this campaign yet.", ids.campaignId));
   } else {
-    try {
-      adSetStatuses = await fetchAdSetStatuses({
-        adSetIds: ids.adSetIds,
-        accessToken,
-        mode,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Ad set statuses could not be loaded.";
-      logError("Meta ad set status sync failed", {
+    const result = await fetchAdSetStatusReadResults({
+      adSetIds: ids.adSetIds,
+      accessToken,
+      mode,
+    });
+    adSetStatuses = result.statuses;
+    errors.push(...result.errors.map((error) => createSyncError(error.stage, error.message, error.target, {
+      code: error.code,
+      subcode: error.subcode,
+    })));
+
+    if (result.errors.length > 0) {
+      logWarn("Meta ad set status sync partially degraded", {
         campaignId: ids.campaignId,
-        message,
+        unreadableAdSetIds: result.errors.map((error) => error.target),
       });
-      errors.push(formatSyncError("ad_set", message, ids.campaignId));
     }
   }
 
   if (ids.adIds.length === 0) {
-    errors.push(formatSyncError("ad", "No Meta ad IDs were stored for this campaign yet.", ids.campaignId));
+    errors.push(createSyncError("ad", "No Meta ad IDs were stored for this campaign yet.", ids.campaignId));
   } else {
-    try {
-      adStatuses = await fetchAdStatuses({
-        adIds: ids.adIds,
-        accessToken,
-        mode,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Ad statuses could not be loaded.";
-      logError("Meta ad status sync failed", {
+    const result = await fetchAdStatusReadResults({
+      adIds: ids.adIds,
+      accessToken,
+      mode,
+    });
+    adStatuses = result.statuses;
+    errors.push(...result.errors.map((error) => createSyncError(error.stage, error.message, error.target, {
+      code: error.code,
+      subcode: error.subcode,
+    })));
+
+    if (result.errors.length > 0) {
+      logWarn("Meta ad status sync partially degraded", {
         campaignId: ids.campaignId,
-        message,
+        unreadableAdIds: result.errors.map((error) => error.target),
       });
-      errors.push(formatSyncError("ad", message, ids.campaignId));
     }
   }
 
+  let deliveryMetricsRead = false;
   try {
     deliveryMetrics = await fetchDeliveryMetrics({
       campaignId: ids.campaignId,
@@ -373,6 +441,7 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
       mode,
       campaignStatus: campaignStatus?.status ?? null,
     });
+    deliveryMetricsRead = true;
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Delivery metrics could not be loaded.";
@@ -380,7 +449,7 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
       campaignId: ids.campaignId,
       message,
     });
-    errors.push(formatSyncError("insights", message, ids.campaignId));
+    errors.push(createSyncError("insights", message, ids.campaignId));
   }
 
   if (ids.adIds.length > 0) {
@@ -398,12 +467,26 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
         campaignId: ids.campaignId,
         message,
       });
-      errors.push(formatSyncError("ad", message, ids.campaignId));
+      errors.push(createSyncError("ad", message, ids.campaignId, { severity: "warning" }));
     }
   }
 
   const syncResult = getMetaSyncStatus(campaignStatus, errors);
   const syncedAt = new Date().toISOString();
+  const unreadableMetaObjects = errors
+    .filter((error) => error.target && (error.stage === "ad" || error.stage === "ad_set" || error.stage === "campaign"))
+    .map((error) => ({
+      stage: error.stage,
+      target: error.target,
+      code: error.code,
+      subcode: error.subcode,
+      message: error.message,
+    }));
+  const deliveryMetricsStatus = deliveryMetricsRead
+    ? hasDeliveryVolume(deliveryMetrics)
+      ? "has_delivery"
+      : "zero_delivery"
+    : "unavailable";
 
   const insertPayload = {
     organization_id: effectiveOrganizationId,
@@ -418,16 +501,22 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
     campaign_status: campaignStatus?.status ?? null,
     ad_set_statuses: adSetStatuses as unknown as Json,
     ad_statuses: adStatuses as unknown as Json,
-    delivery_metrics: deliveryMetrics as unknown as Json,
+    delivery_metrics: deliveryMetricsRead ? (deliveryMetrics as unknown as Json) : ({} as Json),
     sync_metadata: {
       mode,
       ad_insights: adInsights,
+      delivery_metrics_status: deliveryMetricsStatus,
+      readable_ad_set_count: adSetStatuses.length,
+      readable_ad_count: adStatuses.length,
+      expected_ad_set_count: ids.adSetIds.length,
+      expected_ad_count: ids.adIds.length,
+      unreadable_meta_objects: unreadableMetaObjects,
       synced_from_runtime: {
         campaignId: plan.runtime.campaignId,
         metaPushStatus: plan.runtime.metaPushStatus,
       },
     } as Json,
-    sync_errors: errors as unknown as Json,
+    sync_errors: serializeSyncErrors(errors) as unknown as Json,
     synced_at: syncedAt,
   };
 
@@ -463,27 +552,34 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
     throw new ApiError(500, "Synced snapshot could not be loaded.", "campaign_sync_snapshot_missing");
   }
 
-  const { error: performanceTrackingError } = await effectiveSupabase.from("performance_tracking").insert({
-    organization_id: effectiveOrganizationId,
-    user_id: effectiveUserId,
-    source_snapshot_id: snapshot.id,
-    campaign_id: snapshot.metaCampaignId ?? snapshot.campaignName,
-    spend: deliveryMetrics.spend,
-    impressions: deliveryMetrics.impressions,
-    clicks: deliveryMetrics.clicks,
-    ctr: Number(deliveryMetrics.ctr.toFixed(4)),
-    leads: deliveryMetrics.leads,
-    cpl:
-      deliveryMetrics.leads > 0
-        ? Number((deliveryMetrics.spend / deliveryMetrics.leads).toFixed(2))
-        : null,
-    synced_at: syncedAt,
-  } as never);
+  if (deliveryMetricsRead) {
+    const { error: performanceTrackingError } = await effectiveSupabase.from("performance_tracking").insert({
+      organization_id: effectiveOrganizationId,
+      user_id: effectiveUserId,
+      source_snapshot_id: snapshot.id,
+      campaign_id: snapshot.metaCampaignId ?? snapshot.campaignName,
+      spend: deliveryMetrics.spend,
+      impressions: deliveryMetrics.impressions,
+      clicks: deliveryMetrics.clicks,
+      ctr: Number(deliveryMetrics.ctr.toFixed(4)),
+      leads: deliveryMetrics.leads,
+      cpl:
+        deliveryMetrics.leads > 0
+          ? Number((deliveryMetrics.spend / deliveryMetrics.leads).toFixed(2))
+          : null,
+      synced_at: syncedAt,
+    } as never);
 
-  if (performanceTrackingError) {
-    logWarn("Performance tracking snapshot insert failed", {
+    if (performanceTrackingError) {
+      logWarn("Performance tracking snapshot insert failed", {
+        campaignId: snapshot.metaCampaignId,
+        message: performanceTrackingError.message,
+      });
+    }
+  } else {
+    logWarn("Performance tracking snapshot skipped because Meta delivery insights were unavailable", {
       campaignId: snapshot.metaCampaignId,
-      message: performanceTrackingError.message,
+      syncResult,
     });
   }
 

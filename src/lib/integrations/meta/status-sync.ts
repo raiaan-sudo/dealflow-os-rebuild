@@ -5,7 +5,6 @@ import type {
   MetaConnectionRecord,
   MetaDeliveryMetrics,
   MetaEntityStatus,
-  MetaSyncError,
   MetaSyncMode,
 } from "@/lib/integrations/meta/types";
 
@@ -43,6 +42,19 @@ type MetaInsightsResponse = {
   error?: { message?: string; code?: number; error_subcode?: number };
 };
 
+export type MetaObjectReadError = {
+  stage: "campaign" | "ad_set" | "ad" | "insights" | "connection";
+  target: string;
+  message: string;
+  code?: number;
+  subcode?: number;
+};
+
+export type MetaEntityStatusReadResult = {
+  statuses: MetaEntityStatus[];
+  errors: MetaObjectReadError[];
+};
+
 const LEAD_ACTION_TYPES = [
   "lead",
   "onsite_conversion.lead_grouped",
@@ -67,10 +79,24 @@ function extractLeadsFromActions(
   }, 0);
 }
 
-function parseMetaError(data: { error?: { message?: string; code?: number } } | null, fallback: string) {
-  const message = data?.error?.message ?? fallback;
+function getMetaErrorDetails(
+  data: { error?: { message?: string; code?: number; error_subcode?: number } } | null,
+  fallback: string,
+) {
+  return {
+    message: data?.error?.message ?? fallback,
+    code: data?.error?.code,
+    subcode: data?.error?.error_subcode,
+  };
+}
 
-  if (message.toLowerCase().includes("expired") || data?.error?.code === 190) {
+function parseMetaError(
+  data: { error?: { message?: string; code?: number; error_subcode?: number } } | null,
+  fallback: string,
+) {
+  const { message, code } = getMetaErrorDetails(data, fallback);
+
+  if (message.toLowerCase().includes("expired") || code === 190) {
     throw new ApiError(
       401,
       "Meta connection expired. Reconnect the ad account, then sync campaign status again.",
@@ -97,6 +123,43 @@ async function fetchMetaObject(params: {
   }
 
   return data as MetaObjectResponse;
+}
+
+async function fetchMetaObjectStatusResult(params: {
+  objectId: string;
+  accessToken: string | null;
+  fallbackName: string;
+  stage: MetaObjectReadError["stage"];
+}): Promise<{ status: MetaEntityStatus | null; error: MetaObjectReadError | null }> {
+  const url = new URL(`https://graph.facebook.com/v19.0/${params.objectId}`);
+  url.searchParams.set("fields", "id,name,status,effective_status");
+  url.searchParams.set("access_token", params.accessToken ?? "");
+
+  const response = await fetchWithRetryServer(url.toString(), { cache: "no-store" });
+  const data = (await response.json().catch(() => null)) as MetaObjectResponse | null;
+
+  if (!response.ok || !data?.id) {
+    const details = getMetaErrorDetails(data, "Meta object status could not be loaded.");
+
+    return {
+      status: null,
+      error: {
+        stage: params.stage,
+        target: params.objectId,
+        message:
+          details.code === 190 || details.message.toLowerCase().includes("expired")
+            ? "Meta connection expired. Reconnect the ad account, then sync campaign status again."
+            : details.message,
+        code: details.code,
+        subcode: details.subcode,
+      },
+    };
+  }
+
+  return {
+    status: toEntityStatus(data, params.fallbackName),
+    error: null,
+  };
 }
 
 function toEntityStatus(data: MetaObjectResponse, fallbackName: string): MetaEntityStatus {
@@ -151,6 +214,28 @@ export async function fetchAdSetStatuses(params: {
   );
 }
 
+export async function fetchAdSetStatusReadResults(params: {
+  adSetIds: string[];
+  accessToken: string | null;
+  mode: MetaSyncMode;
+}): Promise<MetaEntityStatusReadResult> {
+  const results = await Promise.all(
+    params.adSetIds.map((id, index) =>
+      fetchMetaObjectStatusResult({
+        objectId: id,
+        accessToken: params.accessToken,
+        fallbackName: `Ad Set ${index + 1}`,
+        stage: "ad_set",
+      }),
+    ),
+  );
+
+  return {
+    statuses: results.flatMap((result) => (result.status ? [result.status] : [])),
+    errors: results.flatMap((result) => (result.error ? [result.error] : [])),
+  };
+}
+
 export async function fetchAdStatuses(params: {
   adIds: string[];
   accessToken: string | null;
@@ -166,6 +251,28 @@ export async function fetchAdStatuses(params: {
       return toEntityStatus(data, `Ad ${index + 1}`);
     }),
   );
+}
+
+export async function fetchAdStatusReadResults(params: {
+  adIds: string[];
+  accessToken: string | null;
+  mode: MetaSyncMode;
+}): Promise<MetaEntityStatusReadResult> {
+  const results = await Promise.all(
+    params.adIds.map((id, index) =>
+      fetchMetaObjectStatusResult({
+        objectId: id,
+        accessToken: params.accessToken,
+        fallbackName: `Ad ${index + 1}`,
+        stage: "ad",
+      }),
+    ),
+  );
+
+  return {
+    statuses: results.flatMap((result) => (result.status ? [result.status] : [])),
+    errors: results.flatMap((result) => (result.error ? [result.error] : [])),
+  };
 }
 
 export async function fetchDeliveryMetrics(params: {
@@ -249,7 +356,7 @@ export async function fetchAdInsights(params: {
 
 export function getMetaSyncStatus(
   campaignStatus: MetaEntityStatus | null,
-  errors: MetaSyncError[],
+  errors: unknown[],
 ): MetaCampaignSyncStatus {
   if (!campaignStatus) {
     return "failed";

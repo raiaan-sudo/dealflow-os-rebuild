@@ -122,6 +122,7 @@
     "test:plan-autonomy-gating": "node ./scripts/test-plan-autonomy-gating.mjs",
     "test:meta-app-state-drift": "node ./scripts/test-meta-app-state-drift.mjs",
     "test:meta-operator-assisted-beta": "node ./scripts/test-meta-operator-assisted-beta.mjs",
+    "test:meta-optimization-readiness": "node ./scripts/test-meta-optimization-readiness.mjs",
     "test:campaign-launch-readiness-closure": "node ./scripts/test-campaign-launch-readiness-closure.mjs",
     "verify:martine-perfect-go": "node ./scripts/verify-martine-perfect-go-state.mjs",
     "test:stripe-price-guard": "node ./scripts/test-stripe-price-guard.mjs",
@@ -140,6 +141,7 @@
     "proof:configure-ghl-opportunity": "node ./scripts/configure-ghl-opportunity-proof.mjs",
     "proof:ghl-provisioning-v1": "node ./scripts/proof-ghl-provisioning-v1.mjs",
     "verify:martine-meta-readback": "node ./scripts/verify-martine-meta-readback.mjs",
+    "diagnose:martine-optimization": "node ./scripts/diagnose-martine-optimization-state.mjs",
     "reconcile:martine-meta-runtime": "node ./scripts/reconcile-martine-meta-runtime-readback.mjs"
   },
   "dependencies": {
