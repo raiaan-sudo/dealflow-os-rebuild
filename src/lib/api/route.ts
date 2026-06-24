@@ -187,11 +187,11 @@ export function assertSameOriginRequest(request: Request) {
   }
 
   addExpectedOrigins(expectedOrigins, process.env.TRUSTED_APP_ORIGINS);
+  addHostOrigin(expectedOrigins, forwardedHost, forwardedProto);
+  addHostOrigin(expectedOrigins, host, forwardedProto);
 
   if (!isProduction) {
     addExpectedOrigin(expectedOrigins, request.url);
-    addHostOrigin(expectedOrigins, forwardedHost, forwardedProto);
-    addHostOrigin(expectedOrigins, host, forwardedProto);
   }
 
   if (expectedOrigins.size === 0) {

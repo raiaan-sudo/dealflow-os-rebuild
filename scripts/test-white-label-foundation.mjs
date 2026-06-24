@@ -39,6 +39,7 @@ const partnerMetadata = read("src/lib/white-label/metadata.ts");
 const welcomePage = read("src/app/(app)/welcome/page.tsx");
 const canonicalFunnelRenderer = read("src/components/funnels/canonical-funnel-renderer.tsx");
 const homePage = read("src/app/page.tsx");
+const apiRouteHelpers = read("src/lib/api/route.ts");
 
 for (const table of [
   "partners",
@@ -168,6 +169,9 @@ assert.match(paywallPage, /buildPartnerPageMetadata/, "paywall page must use the
 assert.match(homePage, /resolvePartnerContextFromHeaders/, "root homepage must inspect verified partner custom domains");
 assert.match(homePage, /partnerContext\.verifiedDomain/, "root homepage must only redirect verified partner domains");
 assert.match(homePage, /redirect\("\/start"\)/, "verified partner custom domain root must redirect to partner start");
+assert.match(apiRouteHelpers, /addExpectedOrigins\(expectedOrigins, process\.env\.TRUSTED_APP_ORIGINS\);[\s\S]*addHostOrigin\(expectedOrigins, forwardedHost, forwardedProto\);[\s\S]*addHostOrigin\(expectedOrigins, host, forwardedProto\);[\s\S]*if \(!isProduction\)/, "same-origin guard must accept the current verified host before dev-only fallbacks");
+assert.match(apiRouteHelpers, /if \(!candidate\)[\s\S]*csrf_rejected/, "same-origin guard must still reject requests without Origin or Referer");
+assert.match(apiRouteHelpers, /if \(!expectedOrigins\.has\(candidate\)\)[\s\S]*csrf_rejected/, "same-origin guard must still reject cross-site Origin mismatches");
 assert.match(welcomePage, /titleCaseBrandSlug/, "welcome transition must derive brand text from partner attribution");
 assert.match(welcomePage, /Welcome to \{brandName\}/, "welcome transition headline must be partner-brandable");
 assert.match(canonicalFunnelRenderer, /compact \? "max-h-\[430px\] overflow-hidden/, "compact funnel renderer must constrain app preview height");
