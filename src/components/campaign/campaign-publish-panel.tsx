@@ -20,30 +20,6 @@ type Props = {
   compact?: boolean;
 };
 
-function formatPublishState(state: CampaignPublishState) {
-  if (state === "published") {
-    return "Published";
-  }
-
-  if (state === "staged") {
-    return "Staged";
-  }
-
-  return "Draft";
-}
-
-function formatTimestamp(value: string | null) {
-  if (!value) {
-    return "—";
-  }
-
-  return new Date(value).toLocaleString("en-CA", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "UTC",
-  });
-}
-
 function formatPublishErrorMessage(message: string) {
   if (/032_public_funnel_publishing\.sql|publishing migration is missing/i.test(message)) {
     return "Publishing is not available in this environment yet. Apply 032_public_funnel_publishing.sql in Supabase to enable staging and live public funnels.";
@@ -213,7 +189,7 @@ export function CampaignPublishPanel({
         <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
           Publishing
         </p>
-        <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">Save before staging or publishing</h3>
+        <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">Save before publishing</h3>
         <p className="mt-3 text-sm leading-7 text-muted-foreground">
           This workflow becomes available after the campaign is saved.
         </p>
@@ -228,48 +204,38 @@ export function CampaignPublishPanel({
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
             Publishing
           </p>
-          <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">Stage or publish the public funnel</h3>
+          <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">Publish the public funnel</h3>
           <p className="mt-3 max-w-[760px] text-sm leading-7 text-muted-foreground">
-            Draft edits stay private. Staging captures a snapshot, and publishing updates the live public funnel from that immutable snapshot.
+            Choose the public link your visitors should use, then publish the funnel live.
           </p>
         </div>
-        <Badge className="border-primary/15 bg-primary/10 text-primary">
-          {formatPublishState(publish?.state ?? "draft")}
-        </Badge>
+        {livePublished ? (
+          <Badge className="border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
+            Live
+          </Badge>
+        ) : null}
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
-        <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">State</p>
-          <p className="mt-3 text-sm font-semibold">{formatPublishState(publish?.state ?? "draft")}</p>
-        </div>
-        <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Slug</p>
-          <p className="mt-3 break-words text-sm font-semibold">
-            {persistedSlug ?? (publish?.state === "published" ? "Not set" : normalizedSlug || "Not set")}
-          </p>
-        </div>
-        <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Staged</p>
-          <p className="mt-3 text-sm font-semibold">{formatTimestamp(publish?.stagedAt ?? null)}</p>
-        </div>
-        <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Published</p>
-          <p className="mt-3 text-sm font-semibold">{formatTimestamp(publish?.publishedAt ?? null)}</p>
-        </div>
-      </div>
-
-      <div className="mt-5 grid gap-4 2xl:grid-cols-[minmax(260px,340px)_1fr]">
+      <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(260px,420px)_1fr]">
         <label className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Public slug</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">What would you like your public slug to be?</p>
           <Input
             value={slug}
             onChange={(event) => setSlug(event.target.value)}
             placeholder="my-campaign-slug"
           />
+          {normalizedSlug ? (
+            <p className="text-xs leading-5 text-muted-foreground">
+              We’ll publish this as <span className="font-semibold text-foreground">/f/{normalizedSlug}</span>.
+            </p>
+          ) : (
+            <p className="text-xs leading-5 text-muted-foreground">
+              Use lowercase letters, numbers, and dashes. We’ll format it automatically.
+            </p>
+          )}
         </label>
         <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Live URL</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Public link</p>
           {livePath ? (
             <div className="mt-3 flex flex-wrap items-center gap-3">
               {livePublished ? (
@@ -301,35 +267,22 @@ export function CampaignPublishPanel({
             <p className="mt-3 text-sm leading-7 text-muted-foreground">
               {publishedWithoutPublicSlug
                 ? "No live public URL is available until a slug is saved and the funnel is republished."
-                : "Add or accept a slug to prepare the public URL."}
+                : "Add or accept a slug to prepare the public link."}
             </p>
           )}
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            The public funnel route renders only from the published snapshot. Draft edits remain private until you publish again.
+            Publish live updates the customer-facing funnel at this link.
           </p>
         </div>
       </div>
 
       <div className="mt-5 flex flex-wrap gap-3">
         <Button
-          variant="secondary"
-          onClick={() => void updatePublishState("draft")}
-          disabled={loadingRecord || loadingState !== null}
-        >
-          {loadingState === "draft" ? "Saving Draft..." : "Keep as Draft"}
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={() => void updatePublishState("staged")}
-          disabled={loadingRecord || loadingState !== null || !normalizedSlug}
-        >
-          {loadingState === "staged" ? "Staging..." : "Stage Snapshot"}
-        </Button>
-        <Button
           onClick={() => void updatePublishState("published")}
           disabled={loadingRecord || loadingState !== null || !normalizedSlug}
+          className="min-w-[180px]"
         >
-          {loadingState === "published" ? "Publishing..." : "Publish Live"}
+          {loadingState === "published" ? "Publishing..." : "Publish live"}
         </Button>
       </div>
 
@@ -339,17 +292,17 @@ export function CampaignPublishPanel({
       {visibleError ? <p className="mt-4 text-sm text-rose-300">{visibleError}</p> : null}
       {publishedWithoutSnapshot ? (
         <p className="mt-4 text-sm text-amber-300">
-          The funnel has a published status, but the live snapshot is not ready. Click Publish Live to rebuild the public snapshot.
+          The live funnel needs to be refreshed. Click Publish live to rebuild the public page.
         </p>
       ) : null}
       {publishedWithoutPublicSlug ? (
         <p className="mt-4 text-sm text-amber-300">
-          The funnel has a published status and snapshot, but no saved public slug. Billing must be active before this can be republished with a real live URL.
+          Add a public slug and publish live to create the public link.
         </p>
       ) : null}
       {livePublished ? (
         <p className="mt-4 text-sm text-emerald-300">
-          The public funnel is serving from the published snapshot only. Draft edits will not change the live page until you publish again.
+          Your public funnel is live. Publish again whenever you want this link to reflect the latest saved changes.
         </p>
       ) : null}
     </Card>

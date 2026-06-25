@@ -432,14 +432,8 @@ export default async function LaunchAliasPage({
   const metaPreflightReady = instantFormCampaign ? metaSelectionReady : metaPreflight?.ready ?? false;
   const metaLaunchReady = metaSelectionReady && metaPreflightReady;
   const billingLaunchAllowed = billing?.launchAllowed ?? false;
-  const billingOverride = billing?.launchOverride ?? false;
-  const billingQaOverride = billing?.launchOverrideSource === "qa_billing_acceptance";
   const billingBlockCopy = getBillingLaunchBlockCopy(billing);
-  const billingReadyDetail = billingQaOverride
-    ? "Owner/test billing acceptance override is active. No Stripe subscription is being claimed for this proof."
-    : billingOverride
-      ? "Internal billing override is active. No Stripe subscription is being claimed for this proof."
-      : "Launch access active";
+  const billingReadyDetail = "Launch access active";
   const providerLaunchEnabled = process.env.ALLOW_META_LIVE_LAUNCH === "true";
   const budgetCapRequiredForLaunch = isMetaDailyBudgetCapRequiredForProductionLaunch();
   const metaVerificationTimedOut =
@@ -513,7 +507,7 @@ export default async function LaunchAliasPage({
   const campaignDestinationReady = instantFormCampaign ? instantFormSetupReady : publicFunnelPublished;
 
   if (instantFormCampaign && !instantFormSetupReady) {
-    blockingReasons.push("Meta Instant Form setup is operator-assisted and must be verified before launch.");
+    blockingReasons.push("Meta Instant Form setup must be verified before launch.");
   }
   if (!instantFormCampaign && !publicFunnelPublished) {
     blockingReasons.push(
@@ -547,10 +541,10 @@ export default async function LaunchAliasPage({
     {
       label: "Meta app access",
       ready: metaConnected,
-      statusLabel: metaConnected ? metaConnection.operatorAssisted.label : "Operator-assisted",
+      statusLabel: metaConnected ? "Ready" : "Needs connection",
       detail: metaConnected
-        ? `${metaConnection.operatorAssisted.label}: workspace connection exists. ${metaConnection.operatorAssisted.publicSelfServeBlocker}`
-        : metaConnection.operatorAssisted.notice,
+        ? "Workspace Meta connection is ready"
+        : "Connect Meta before launch",
     },
     {
       label: "Meta connection",
@@ -602,9 +596,9 @@ export default async function LaunchAliasPage({
       ? {
           label: "Instant form setup",
           ready: instantFormSetupReady,
-          statusLabel: "Operator-assisted",
+          statusLabel: "Review required",
           detail:
-            "This campaign uses a native Meta Instant Form. Public funnel publish checks are not required, but the operator must verify the form fields, privacy policy, and GHL delivery path before launch.",
+            "This campaign uses a native Meta Instant Form. Public funnel publish checks are not required, but the form fields, privacy policy, and delivery path must be verified before launch.",
         }
       : {
           label: "Funnel published",
@@ -624,9 +618,9 @@ export default async function LaunchAliasPage({
     {
       label: instantFormCampaign ? "Instant Form activation" : "Tracking / live activation",
       ready: pausedSetupTrackingReady,
-      statusLabel: instantFormCampaign ? "Operator-assisted" : liveActivationBlocked ? "Paused setup ready" : undefined,
+      statusLabel: instantFormCampaign ? "Review required" : liveActivationBlocked ? "Paused setup ready" : undefined,
       detail: instantFormCampaign
-        ? "Native Meta lead form activation remains operator-assisted. No public funnel URL or pixel-domain blocker is required for this destination."
+        ? "Native Meta lead form activation requires final form and delivery verification. No public funnel URL or pixel-domain blocker is required for this destination."
         : liveActivationBlocked
           ? `Paused Meta object creation may proceed with the verified destination preflight, but live activation stays blocked until ${metaPreflight?.effectiveLaunchDomain ?? "the launch domain"} tracking and Meta Business verification are fully approved.`
           : "Launch domain and tracking are ready for live activation review.",
@@ -667,7 +661,7 @@ export default async function LaunchAliasPage({
             ? metaSelectionInvalid
               ? "Meta selections were saved, but Meta can no longer verify the selected ad account, Page, or pixel. Re-save the selections or reconnect Meta if the check stays blocked."
               : instantFormCampaign
-                ? "Meta selections were saved, but Instant Form launch remains operator-assisted until the native form setup is verified."
+                ? "Meta selections were saved, but Instant Form launch remains blocked until the native form setup is verified."
                 : "Meta selections were saved, but launch preflight has not passed yet. Configure the verified platform launch domain and publish the public funnel before attempting launch."
             : "Save the ad account, Facebook Page, and pixel in the Meta setup section.",
         ]
@@ -685,7 +679,7 @@ export default async function LaunchAliasPage({
       : []),
     ...(!providerLaunchEnabled
       ? [
-          "Final launch approval is pending. Meta campaign objects will not be created until support enables live launch approvals.",
+          "Final launch approval is pending. Meta campaign objects will not be created until launch approvals are enabled.",
         ]
       : []),
   ];
@@ -713,11 +707,6 @@ export default async function LaunchAliasPage({
         title="Paused launch readiness review"
         description="Confirm the campaign, selected media, owner blockers, and paused Meta object readiness."
       />
-      <div className="rounded-[22px] border border-cyan-300/15 bg-cyan-300/[0.065] px-5 py-4 text-sm leading-6 text-cyan-100">
-        <p className="font-semibold">{metaConnection.operatorAssisted.label}</p>
-        <p className="mt-1">{metaConnection.operatorAssisted.notice}</p>
-        <p className="mt-1 text-cyan-100/75">{metaConnection.operatorAssisted.publicSelfServeBlocker}</p>
-      </div>
       {metaConnectedFlag ? (
         <div className="rounded-[22px] border border-emerald-400/15 bg-emerald-400/10 px-5 py-4 text-sm font-medium text-emerald-100">
           Meta connection saved. Finish the required selections below to continue.
@@ -754,13 +743,6 @@ export default async function LaunchAliasPage({
       {!billingLaunchAllowed ? (
         <div className="rounded-[22px] border border-amber-400/15 bg-amber-400/10 px-5 py-4 text-sm font-medium text-amber-100">
           Billing recovery is required before launch. {billingBlockCopy}
-        </div>
-      ) : null}
-      {billingOverride ? (
-        <div className="rounded-[22px] border border-sky-400/15 bg-sky-400/10 px-5 py-4 text-sm font-medium text-sky-100">
-          {billingQaOverride
-            ? "Owner/test billing acceptance is active for this campaign. Stripe subscription status is unchanged and no live charge is being claimed."
-            : "Launch access is active for this workspace through an internal billing override."}
         </div>
       ) : null}
       {!launchRoomReady && launchBlockerActions.length > 0 ? (
@@ -842,7 +824,7 @@ export default async function LaunchAliasPage({
                     : metaTrackingPreflightBlocked
                       ? "The saved Meta selections are valid, but launch preflight is blocked by the platform domain or destination requirements."
                     : instantFormCampaign
-                      ? "This campaign is configured for a native Meta Instant Form. No public funnel publish gate is required, but launch stays operator-assisted until form setup and delivery are verified."
+                      ? "This campaign is configured for a native Meta Instant Form. No public funnel publish gate is required, but launch stays blocked until form setup and delivery are verified."
                     : launchRoomReady
                   ? "Preflight passed for paused Meta setup. Owner funds and live activation approval are still separate."
                   : `Before launch: ${blockingReasons.join(" • ")}.`}
@@ -871,7 +853,7 @@ export default async function LaunchAliasPage({
                     Lead destination: Meta Instant Form. Required fields: full name, email, and phone. Public funnel snapshot checks are intentionally skipped for this campaign type.
                   </p>
                   <p className="mt-2 leading-6">
-                    Operator-assisted blocker: verify the native form, privacy policy, and GHL delivery before paid traffic starts.
+                    Verify the native form, privacy policy, and GHL delivery before paid traffic starts.
                   </p>
                 </div>
               ) : null}

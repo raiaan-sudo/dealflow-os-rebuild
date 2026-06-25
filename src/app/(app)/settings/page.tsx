@@ -57,18 +57,17 @@ function getBillingStatusCopy(billing: SettingsBillingSummary | null) {
   if (billing.launchOverrideSource === "qa_billing_acceptance") {
     return {
       tone: "success",
-      title: "Owner/test billing accepted",
+      title: "Launch access active",
       detail:
-        "This campaign is using the scoped owner/test billing acceptance override. Stripe subscription status is unchanged; normal customers still need active billing.",
+        "Launch access is enabled for this campaign.",
     };
   }
 
   if (billing.launchOverrideSource === "billing_admin_email") {
     return {
       tone: "success",
-      title: "Internal billing override active",
-      detail:
-        "Launch access is enabled by an explicit internal billing override. Stripe subscription status is unchanged; normal customers still need active billing.",
+      title: "Launch access active",
+      detail: "Launch access is enabled for this workspace.",
     };
   }
 

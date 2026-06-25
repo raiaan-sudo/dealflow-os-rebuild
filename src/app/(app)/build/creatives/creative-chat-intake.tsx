@@ -17,6 +17,7 @@ import {
   CREATIVE_INTAKE_LOCKED_CTA,
   CREATIVE_INTAKE_LOCKED_STATIC_STYLE,
   CREATIVE_INTAKE_LOCKED_STATIC_STYLE_LABEL,
+  CREATIVE_INTAKE_LOCKED_TONE_PREFERENCE,
   CREATIVE_INTAKE_LOCKED_TARGET_DURATION_SECONDS,
 } from "@/lib/services/creative-intake-constants";
 import { creativeLanguageLabels } from "@/lib/services/creative-intake-language";
@@ -147,7 +148,7 @@ function defaultAnswers(defaults: CreativeIntakeCampaignDefaults): CreativeIntak
     market: defaults.market ?? "",
     creativeStyle: CREATIVE_INTAKE_LOCKED_STATIC_STYLE,
     staticStyle: CREATIVE_INTAKE_LOCKED_STATIC_STYLE,
-    constraints: "",
+    constraints: CREATIVE_INTAKE_LOCKED_TONE_PREFERENCE,
     cta: CREATIVE_INTAKE_LOCKED_CTA,
     platformPlacement: "Meta feed and story placements",
     propertyType: defaults.propertyType ?? "",
@@ -211,6 +212,7 @@ function withLockedUiAnswers(defaults: CreativeIntakeCampaignDefaults, answers: 
     cta: CREATIVE_INTAKE_LOCKED_CTA,
     creativeStyle: CREATIVE_INTAKE_LOCKED_STATIC_STYLE,
     staticStyle: CREATIVE_INTAKE_LOCKED_STATIC_STYLE,
+    constraints: CREATIVE_INTAKE_LOCKED_TONE_PREFERENCE,
     targetDurationSeconds: CREATIVE_INTAKE_LOCKED_TARGET_DURATION_SECONDS,
     hookAngle: getLockedHookAngleForAnswers(defaults, answers),
   };
@@ -654,10 +656,21 @@ export function CreativeChatIntake({
                       })}
                     />
                   </div>
-                  <label className="space-y-2 text-sm">
+                  <div className="space-y-2 text-sm">
                     <span className="text-muted-foreground">Tone preference</span>
-                    <Input value={answers.constraints ?? ""} onChange={(event) => updateAnswer({ constraints: event.target.value })} placeholder="Clear, local, direct" />
-                  </label>
+                    <div
+                      aria-label={`Tone preference locked to ${CREATIVE_INTAKE_LOCKED_TONE_PREFERENCE}`}
+                      className="rounded-2xl border border-cyan-300/30 bg-cyan-300/[0.09] px-4 py-3"
+                    >
+                      <div className="flex items-center gap-2 text-sm font-semibold text-cyan-50">
+                        <CheckCircle2 className="size-4 text-emerald-100" />
+                        {CREATIVE_INTAKE_LOCKED_TONE_PREFERENCE}
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-cyan-50/62">
+                        Preset for every creative brief. Customers do not need to write tone instructions.
+                      </p>
+                    </div>
+                  </div>
                 </div>
                 {offerRewritePreview ? (
                   <div className="rounded-[20px] border border-amber-300/18 bg-amber-300/[0.07] p-4 text-sm leading-6 text-amber-100">

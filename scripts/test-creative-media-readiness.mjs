@@ -866,7 +866,8 @@ assert.match(creativeWizardSource, /currentVideoRenderJob/, "Creative Studio use
 assert.match(creativeWizardSource, /setActiveVideoJobId\(data\.job\.id\)/, "Creative Studio keeps deferred UGC jobs active for browser polling");
 assert.doesNotMatch(creativeWizardSource, /window\.setInterval\(\(\) => \{\s*router\.refresh\(\);\s*\}, 15_000\)/s, "Creative Studio must not auto-refresh static renders before the user clicks Show preview renders");
 assert.match(buildCreativesPageSource, /let persistedStaticAds:[\s\S]*= \[\];/, "Creative Studio must start from durable campaign assets, not canonical fallback static ads");
-assert.match(buildCreativesPageSource, /mergeStaticCreativeLaunchFloor/, "Creative Studio restores missing concept slots when durable rendered assets are below the launch floor");
+assert.match(buildCreativesPageSource, /persistedStaticAds = mappedStaticAssets/, "Creative Studio prefers current static creative_assets over stale campaign-plan static concepts");
+assert.doesNotMatch(buildCreativesPageSource, /mergeStaticCreativeLaunchFloor/, "Creative Studio must not merge stale campaign-plan static concepts into the customer-facing creative package");
 assert.match(canonicalCampaignSource, /mergeStaticCreativeLaunchFloor/, "canonical campaign records must merge durable rendered assets into the saved static launch floor");
 assert.doesNotMatch(previewSource, /rankBestAvailableStaticCreatives/, "Preview must not show fallback static creatives when no selected campaign assets exist");
 assert.match(previewSource, /const displayStaticAds = selectedAds;/, "Preview must render only selected same-campaign static ads");
@@ -889,7 +890,8 @@ assert.match(creativeWizardSource, /Optional polish/, "soft copy-quality notes s
 assert.match(creativeWizardSource, /selectedUgcVideoIds/, "Creative Studio persists selected UGC launch video IDs");
 assert.match(creativeWizardSource, /Select UGC for launch/, "Creative Studio lets UGC videos be selected like static creatives");
 assert.match(previewSource, /getSelectedUgcVideoIdsFromPlan/, "Preview consumes persisted selected UGC video IDs");
-assert.match(previewSource, /selectedUgcVideoIds\.length > 0 \? "Selected UGC video ads" : "UGC video options"/, "Preview labels unselected UGC fallback as options, not selected ads");
+assert.match(previewSource, /const displayVideoAds = selectedUgcVideoIds\.length > 0 \? selectedUgcVideos : \[\]/, "Preview suppresses UGC video placeholders unless UGC was selected");
+assert.doesNotMatch(previewSource, /UGC video options/, "Preview does not show unselected UGC video options after a customer skips UGC");
 assert.match(previewSource, /dedupeVideoIds/, "Preview dedupes duplicate UGC creative IDs before display/readiness");
 assert.match(launchSource, /getSelectedUgcVideoIdsFromPlan/, "Launch consumes persisted selected UGC video IDs");
 assert.match(launchSource, /dedupeVideoIds/, "Launch dedupes duplicate UGC creative IDs before display/readiness");

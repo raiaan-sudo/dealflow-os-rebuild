@@ -16,6 +16,7 @@ import { getSignupGenerationCreditGrant } from "@/lib/services/credit-service";
 import { recordActivationEventForCurrentUser } from "@/lib/services/activation-telemetry-service";
 import { ensureStaticCreativeRenderQueuedForCampaign } from "@/lib/services/static-creative-render-queue-service";
 import { getAppContext } from "@/lib/services/app-context";
+import { buildCreativeStudioHref, buildOnboardingHref } from "@/lib/routing/campaign-routes";
 
 function formatPlanName(value: string | null | undefined) {
   const normalized = (value ?? "pro").trim().toLowerCase();
@@ -82,11 +83,9 @@ export default async function UnlockPage({
     ? "$10.00 generation credits added"
     : "$10.00 generation credits syncing";
   const paywallHref = `/paywall${campaignId ? `?campaignId=${encodeURIComponent(campaignId)}${plan ? `&plan=${encodeURIComponent(plan)}` : ""}` : plan ? `?plan=${encodeURIComponent(plan)}` : ""}`;
-  const buildHref = campaignId
-    ? `/builder?campaignId=${encodeURIComponent(campaignId)}`
-    : "/builder";
+  const buildHref = buildOnboardingHref(campaignId);
   const creativesHref = campaignId
-    ? `/build/creatives?campaignId=${encodeURIComponent(campaignId)}`
+    ? buildCreativeStudioHref(campaignId)
     : buildHref;
   const primaryCreativeLabel = hasStaticCreatives ? "Choose creative test set" : "Generate creatives";
   const title = checkoutCancelled
@@ -101,7 +100,7 @@ export default async function UnlockPage({
     : activatedByCheckout
       ? "Your campaign workspace is active. DealFlow is ready to prepare the creative test set and move you into final review."
       : launchAllowed
-        ? "Launch access is confirmed. Continue the campaign path from your Build workspace."
+        ? "Launch access is confirmed. Continue the campaign path from guided setup."
         : reconciliationError
           ? "Checkout returned successfully, but we could not verify the subscription yet. Refresh after Stripe finishes syncing."
           : "Billing is still processing. Refresh after Stripe finishes syncing the subscription.";
@@ -181,7 +180,7 @@ export default async function UnlockPage({
                   <Link href={paywallHref}>Return to activation</Link>
                 </Button>
                 <Button asChild variant="secondary">
-                  <Link href={buildHref}>Back to Build</Link>
+                <Link href={buildHref}>Back to setup</Link>
                 </Button>
               </div>
             </aside>
@@ -243,7 +242,7 @@ export default async function UnlockPage({
                   <Link href={creativesHref}>{primaryCreativeLabel}</Link>
                 </Button>
                 <Button asChild variant="secondary">
-                  <Link href={buildHref}>Back to Build</Link>
+                  <Link href={buildHref}>Back to setup</Link>
                 </Button>
               </div>
             </aside>
@@ -276,7 +275,7 @@ export default async function UnlockPage({
                 <Link href={paywallHref}>Return to activation</Link>
               </Button>
               <Button asChild variant="secondary">
-                <Link href={buildHref}>Back to build</Link>
+                <Link href={buildHref}>Back to setup</Link>
               </Button>
             </>
           ) : (
@@ -285,7 +284,7 @@ export default async function UnlockPage({
                 <Link href={creativesHref}>{primaryCreativeLabel}</Link>
               </Button>
               <Button asChild variant="secondary">
-                <Link href={buildHref}>Back to build</Link>
+                <Link href={buildHref}>Back to setup</Link>
               </Button>
             </>
           )}

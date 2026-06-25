@@ -2,8 +2,12 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import nextEnv from "@next/env";
 
 const forwardedArgs = process.argv.slice(2);
+
+nextEnv.loadEnvConfig(process.cwd());
+
 const rawEnv = { ...process.env };
 const removedCodexCi = Object.prototype.hasOwnProperty.call(rawEnv, "CODEX_CI");
 
@@ -65,6 +69,44 @@ function buildE2eEnv() {
 const env = buildE2eEnv();
 
 const baseUrl = env.SAFE_E2E_BASE_URL?.trim() || "http://127.0.0.1:3100";
+const isListOnly = forwardedArgs.includes("--list");
+
+function hasSupabaseAuthEnv() {
+  return Boolean(
+    env.NEXT_PUBLIC_SUPABASE_URL?.trim() &&
+      env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() &&
+      env.SUPABASE_SERVICE_ROLE_KEY?.trim() &&
+      env.QA_EMAIL?.trim(),
+  );
+}
+
+if (!isListOnly && env.SAFE_E2E_ALLOW_PUBLIC_ONLY !== "true") {
+  if (env.SAFE_E2E_QA_AUTH !== "true" && hasSupabaseAuthEnv()) {
+    env.SAFE_E2E_QA_AUTH = "true";
+  }
+
+  if (env.SAFE_E2E_QA_AUTH !== "true") {
+    console.error(
+      JSON.stringify({
+        event: "safe_e2e.auth_required",
+        message:
+          "Safe E2E requires an authenticated journey. Load NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, and QA_EMAIL, or set SAFE_E2E_ALLOW_PUBLIC_ONLY=true for a public-only diagnostic run.",
+      }),
+    );
+    process.exit(1);
+  }
+}
+
+if (env.SAFE_E2E_QA_AUTH === "true") {
+  env.QA_AUTH_HARNESS_ENABLED = env.QA_AUTH_HARNESS_ENABLED?.trim() || "true";
+  env.QA_AUTH_HARNESS_PRODUCTION_ENABLED = env.QA_AUTH_HARNESS_PRODUCTION_ENABLED?.trim() || "true";
+  env.QA_AUTH_PROOF_SECRET =
+    env.QA_AUTH_PROOF_SECRET?.trim() ||
+    env.INTERNAL_SYSTEM_JOBS_SECRET?.trim() ||
+    env.CRON_SECRET?.trim() ||
+    `safe-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 env.TRUSTED_APP_ORIGINS = [env.TRUSTED_APP_ORIGINS, baseUrl]
   .filter((value) => typeof value === "string" && value.trim().length > 0)
   .join(",");
@@ -78,8 +120,6 @@ const playwrightBin = path.join(
   ".bin",
   process.platform === "win32" ? "playwright.cmd" : "playwright",
 );
-const isListOnly = forwardedArgs.includes("--list");
-
 console.log(
   JSON.stringify({
     event: "safe_e2e.start",

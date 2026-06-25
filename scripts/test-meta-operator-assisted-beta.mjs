@@ -11,6 +11,10 @@ function assertIncludes(source, needle, label) {
   assert.ok(source.includes(needle), `${label} must include ${needle}`);
 }
 
+function assertExcludes(source, needle, label) {
+  assert.ok(!source.includes(needle), `${label} must not include ${needle}`);
+}
+
 const operatorAssisted = read("src/lib/integrations/meta/operator-assisted.ts");
 const types = read("src/lib/integrations/meta/types.ts");
 const service = read("src/lib/integrations/meta/service.ts");
@@ -75,18 +79,23 @@ assertIncludes(
   "Meta preflight must show pending business verification truthfully",
 );
 assertIncludes(launchPage, "Meta app access", "launch readiness shows Meta app access");
-assertIncludes(launchPage, "metaConnection.operatorAssisted.notice", "launch page shows operator-assisted notice");
-assertIncludes(
+assertExcludes(launchPage, "metaConnection.operatorAssisted.notice", "launch page hides operator-assisted notice");
+assertExcludes(
   launchPage,
   "metaConnection.operatorAssisted.publicSelfServeBlocker",
-  "launch page shows public self-serve blocker",
+  "launch page hides public self-serve blocker copy",
 );
 assertIncludes(launchPage, "formatLaunchDomainStatus", "launch page must render launch-domain readiness status");
 assertIncludes(launchPage, "formatBusinessVerificationStatus", "launch page must render business-verification readiness status");
 assertIncludes(
   selectionPanel,
+  "Required selection",
+  "Meta selection panel uses customer-safe selection copy",
+);
+assertExcludes(
+  selectionPanel,
   "liveConnection.operatorAssisted.notice",
-  "Meta selection panel shows operator-assisted notice",
+  "Meta selection panel hides operator-assisted notice",
 );
 assertIncludes(
   controlRoom,

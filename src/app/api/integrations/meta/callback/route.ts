@@ -12,6 +12,7 @@ import { verifyMetaOAuthState } from "@/lib/integrations/meta/oauth-state";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { getAppContext } from "@/lib/services/app-context";
+import { sanitizeMetaReturnPath } from "@/lib/routing/campaign-routes";
 
 type MetaAdAccount = {
   id?: string;
@@ -51,16 +52,7 @@ const META_RETURN_TO_COOKIE = "dealflow_meta_oauth_return_to";
 export const dynamic = "force-dynamic";
 
 function getSafeRedirectBase(value: string | null, appUrl: string) {
-  const fallback = new URL("/launch", appUrl);
-
-  if (!value || !value.startsWith("/") || value.startsWith("//")) {
-    return fallback;
-  }
-
-  const resolved = new URL(value, appUrl);
-  const appOrigin = new URL(appUrl).origin;
-
-  return resolved.origin === appOrigin ? resolved : fallback;
+  return new URL(sanitizeMetaReturnPath(value, "/launch"), appUrl);
 }
 
 async function resolveOrganizationIdForMetaCallback(): Promise<string | null> {

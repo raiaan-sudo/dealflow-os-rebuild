@@ -33,11 +33,11 @@ function getStatusForPath(pathname: string) {
     };
   }
 
-  if (pathname.startsWith("/builder")) {
+  if (pathname.startsWith("/onboarding") || pathname.startsWith("/build")) {
     return {
       label: "Build status",
-      title: "Guided build active",
-      description: "The funnel and creative drafts update here as you shape the campaign.",
+      title: "Guided setup active",
+      description: "Complete setup, review creative, and move toward launch from the guided flow.",
       tone: "calm" as StatusTone,
     };
   }

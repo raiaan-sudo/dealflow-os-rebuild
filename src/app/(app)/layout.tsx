@@ -22,7 +22,7 @@ function getStageForPath(pathname: string): CampaignExperienceStage {
   if (pathname.startsWith("/launch")) return "launch_ready";
   if (pathname.startsWith("/dashboard") || pathname.startsWith("/results")) return "live";
   if (pathname.startsWith("/paywall")) return "paywall";
-  if (pathname.startsWith("/builder") || pathname.startsWith("/build")) return "built";
+  if (pathname.startsWith("/onboarding") || pathname.startsWith("/builder") || pathname.startsWith("/build")) return "built";
   return "built";
 }
 

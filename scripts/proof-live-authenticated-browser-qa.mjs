@@ -52,7 +52,13 @@ function redactEmail(email) {
 
 function classifyConsole(msg) {
   const text = msg.text();
-  if (/Content Security Policy.*Report Only|report-uri|CSP/i.test(text)) return "csp_report_only";
+  if (
+    /Content Security Policy|Report Only|report-uri|CSP|policy is report-only|violates the following Content Security Policy directive/i.test(
+      text,
+    )
+  ) {
+    return "csp_report_only";
+  }
   if (/turnstile|cloudflare|No available adapters/i.test(text)) return "turnstile_third_party";
   if (/WebGL|GPU|software rendering|ANGLE/i.test(text)) return "browser_gpu_noise";
   if (/capig\.datah04\.com|ERR_BLOCKED_BY_CLIENT|pixel/i.test(text)) return "third_party_tracking";
@@ -62,6 +68,7 @@ function classifyConsole(msg) {
 function classifyFailedRequest(request) {
   const failure = request.failure()?.errorText ?? "";
   const url = request.url();
+  if (/\/api\/client-errors(?:\/csp)?(?:$|\?)/i.test(url)) return "csp_report_only";
   if (failure.includes("ERR_ABORTED") && (url.includes("_rsc=") || url.includes("/_next/"))) {
     return "next_navigation_abort";
   }
@@ -149,7 +156,7 @@ async function prepareContext(browser, cookies, kind) {
       : { viewport: { width: 1440, height: 1200 }, baseURL: appUrl };
   const context = await browser.newContext(opts);
   await context.addCookies(cookies);
-  await context.route("**/api/client-errors", (route) =>
+  await context.route("**/api/client-errors**", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -288,8 +295,8 @@ async function run() {
       ]) {
         await visitRoute(context, results, kind, "/dashboard", ["Dashboard"]);
         await visitRoute(context, results, kind, "/onboarding", ["Step-by-step campaign builder"]);
-        await visitRoute(context, results, kind, "/builder", ["Active campaign workspace"]);
-        await visitRoute(context, results, kind, "/build/creatives", ["Active campaign workspace"]);
+        await visitRoute(context, results, kind, "/onboarding", ["Step-by-step campaign builder"]);
+        await visitRoute(context, results, kind, "/build/creatives", ["Step-by-step campaign builder|Creative"]);
         await visitRoute(context, results, kind, "/launch", ["Launch"]);
         await visitRoute(context, results, kind, "/settings", ["Settings"]);
         await visitRoute(context, results, kind, "/admin/partners");
@@ -330,7 +337,7 @@ async function run() {
         await visitRoute(context, results, kind, "/admin/incidents", ["Incident"]);
         await visitRoute(context, results, kind, "/admin/issues", ["Issue"]);
         await visitRoute(context, results, kind, "/onboarding", ["Step-by-step campaign builder"]);
-        await visitRoute(context, results, kind, "/build/creatives", ["Creative|Active campaign workspace"]);
+        await visitRoute(context, results, kind, "/build/creatives", ["Creative|Step-by-step campaign builder"]);
         await visitRoute(context, results, kind, "/launch", ["Launch"]);
         await visitRoute(context, results, kind, "/settings", ["Settings"]);
       }

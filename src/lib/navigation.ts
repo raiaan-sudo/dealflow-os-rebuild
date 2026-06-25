@@ -10,7 +10,7 @@ import {
 
 export const appNavigation = [
   { href: "/dashboard", label: "Command Center", icon: Sparkles },
-  { href: "/builder", label: "Builder", icon: BarChart3 },
+  { href: "/onboarding", label: "Builder", icon: BarChart3 },
   { href: "/launch", label: "Launch", icon: Rocket },
 ] as const;
 

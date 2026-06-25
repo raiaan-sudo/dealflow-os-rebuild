@@ -196,7 +196,7 @@ export function AppSidebar({
   };
   const stageLabel = stageState[stage].label;
   const productNavigation = [
-    { href: "/builder", label: "Build", icon: Wand2 },
+    { href: "/onboarding", label: "Build", icon: Wand2 },
     { href: "/preview", label: "Review", icon: Eye },
     { href: "/launch", label: "Launch", icon: Rocket },
     { href: "/dashboard", label: "Results", icon: BarChart3 },
@@ -225,8 +225,8 @@ export function AppSidebar({
           <nav className="mt-2 space-y-1">
             {productNavigation.map((item) => {
               const isActive =
-                item.href === "/builder"
-                  ? pathname.startsWith("/builder") || pathname.startsWith("/build")
+                item.href === "/onboarding"
+                  ? pathname.startsWith("/onboarding") || pathname.startsWith("/build")
                   : item.href === "/launch"
                   ? pathname.startsWith("/launch") || pathname.startsWith("/integrations") || pathname.startsWith("/campaign")
                   : item.href === "/dashboard"

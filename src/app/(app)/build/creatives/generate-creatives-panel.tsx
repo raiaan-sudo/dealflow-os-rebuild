@@ -7,6 +7,7 @@ import { CheckCircle2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusPill } from "@/components/ui/status-pill";
+import { buildOnboardingHref } from "@/lib/routing/campaign-routes";
 
 type GenerateCreativesPanelProps = {
   campaignId: string;
@@ -24,7 +25,7 @@ export function GenerateCreativesPanel({
   const router = useRouter();
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const buildHref = `/builder?campaignId=${encodeURIComponent(campaignId)}`;
+  const buildHref = buildOnboardingHref(campaignId);
 
   async function handleGenerate() {
     if (generating) {
@@ -110,7 +111,7 @@ export function GenerateCreativesPanel({
               {generating ? "Generating..." : "Generate creatives"}
             </Button>
             <Button asChild size="lg" variant="secondary">
-              <Link href={buildHref}>Back to Build</Link>
+              <Link href={buildHref}>Back to setup</Link>
             </Button>
           </div>
         </section>

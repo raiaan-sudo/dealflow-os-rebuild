@@ -38,13 +38,18 @@ import {
 import {
   getCreativeAssetTierLabel,
 } from "@/lib/services/creative-asset-status";
-
-export const dynamic = "force-dynamic";
-export const fetchCache = "force-no-store";
 import {
   getApprovedCreativeIntakeGenerationContext,
   isCreativeChatIntakeEnabled,
 } from "@/lib/services/creative-chat-intake-service";
+import {
+  buildCreativeStudioHref,
+  buildOnboardingHref,
+  buildLaunchHref,
+} from "@/lib/routing/campaign-routes";
+
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 
 function customerVideoMessage(message?: string | null) {
   const text = message?.trim();
@@ -201,13 +206,13 @@ export default async function PreviewPage({
     : null;
 
   if (!plan) {
-    redirect("/builder");
+    redirect("/onboarding");
   }
 
   const validated = validateCampaign({ plan });
 
   if (!validated) {
-    redirect(resolvedCampaignId ? `/builder?campaignId=${encodeURIComponent(resolvedCampaignId)}` : "/builder");
+    redirect(buildOnboardingHref(resolvedCampaignId));
   }
 
   const safeCampaign = normalizeCampaign(validated);
@@ -257,12 +262,7 @@ export default async function PreviewPage({
         .sort((left, right) => selectedUgcVideoIds.indexOf(left.id) - selectedUgcVideoIds.indexOf(right.id)))
     : [];
   const selectedLaunchReadyVideos = selectedUgcVideos;
-  const launchReadyVideos = dedupeVideoIds(videoAds.filter(isCurrentLaunchReadyUgcVideo));
-  const displayVideoAds = selectedUgcVideos.length > 0
-    ? selectedUgcVideos
-    : launchReadyVideos.length > 0
-      ? launchReadyVideos
-      : videoAds;
+  const displayVideoAds = selectedUgcVideoIds.length > 0 ? selectedUgcVideos : [];
   const launchReadyVideoCount = selectedLaunchReadyVideos.length;
   const videoMediaReady = launchReadyVideoCount > 0;
   const mediaReadyForLaunch = selectedStaticMediaReady;
@@ -281,8 +281,8 @@ export default async function PreviewPage({
   }).catch(() => undefined);
 
   return (
-    <PageShell className="max-w-[1500px]">
-      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)] xl:items-start">
+    <PageShell className="max-w-[1720px]">
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(390px,0.82fr)_minmax(760px,1.18fr)] xl:items-start">
         <div className="space-y-4">
           <WizardSteps current="review" />
           <PageHeader
@@ -326,7 +326,7 @@ export default async function PreviewPage({
           </section>
         </div>
 
-        <aside className="surface-strong min-w-0 rounded-df-card border border-white/10 p-4 sm:p-5 xl:sticky xl:top-6">
+        <aside className="surface-strong min-w-0 rounded-df-card border border-white/10 p-4 sm:p-5">
           <div className="mb-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Selected creative test set</p>
             <h2 className="mt-1 text-lg font-semibold text-foreground">
@@ -357,95 +357,46 @@ export default async function PreviewPage({
             ) : null}
           </div>
           {displayStaticAds.length > 0 ? (
-            <div className="space-y-3">
-              <div className="rounded-df-card border border-primary/30 bg-primary/[0.08] p-3">
-                <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-primary">
-                  {usingInstantFallbackPreview ? "Primary preview creative" : "Primary creative"}
-                </p>
+            <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+              {displayStaticAds.map((selectedAd, index) => (
                 <StaticCreativeSummaryCard
-                  angleLabel={displayStaticAds[0]?.angle}
+                  angleLabel={selectedAd.angle}
                   category={previewPlan.creativeStrategy.campaignCategory}
-                  className="border-primary/35 bg-black/18"
-                  cta={displayStaticAds[0]?.cta || "Learn More"}
-                  headline={displayStaticAds[0]?.headline || previewPlan.keyOffer}
-                  imageGenerationMessage={displayStaticAds[0]?.imageGenerationMessage}
-                  imageGenerationProvider={displayStaticAds[0]?.imageGenerationProvider}
-                  imageGenerationState={displayStaticAds[0]?.imageGenerationState}
-                  imagePrompt={displayStaticAds[0]?.imagePrompt}
-                  imagePromptConfig={displayStaticAds[0]?.imagePromptConfig}
-	                  imageUrl={displayStaticAds[0]?.imageUrl}
-	                  storageNormalized={displayStaticAds[0]?.storageNormalized}
-                  appComposedFinal={displayStaticAds[0]?.appComposedFinal}
-                  qualityTier={displayStaticAds[0]?.qualityTier}
-                  compositionVersion={displayStaticAds[0]?.compositionVersion}
-                  sourceBackgroundKind={displayStaticAds[0]?.sourceBackgroundKind}
-                  sourceBackgroundProvider={displayStaticAds[0]?.sourceBackgroundProvider}
-                  sourceBackgroundAssetId={displayStaticAds[0]?.sourceBackgroundAssetId}
-                  formatLabel={getCreativeAssetTierLabel(displayStaticAds[0])}
-                  index={0}
+                  cta={selectedAd.cta || "Learn More"}
+                  headline={selectedAd.headline || previewPlan.keyOffer}
+                  imageGenerationMessage={selectedAd.imageGenerationMessage}
+                  imageGenerationProvider={selectedAd.imageGenerationProvider}
+                  imageGenerationState={selectedAd.imageGenerationState}
+                  imagePrompt={selectedAd.imagePrompt}
+                  imagePromptConfig={selectedAd.imagePromptConfig}
+                  imageUrl={selectedAd.imageUrl}
+                  storageNormalized={selectedAd.storageNormalized}
+                  appComposedFinal={selectedAd.appComposedFinal}
+                  qualityTier={selectedAd.qualityTier}
+                  compositionVersion={selectedAd.compositionVersion}
+                  sourceBackgroundKind={selectedAd.sourceBackgroundKind}
+                  sourceBackgroundProvider={selectedAd.sourceBackgroundProvider}
+                  sourceBackgroundAssetId={selectedAd.sourceBackgroundAssetId}
+                  formatLabel={getCreativeAssetTierLabel(selectedAd)}
+                  index={index}
+                  key={selectedAd.id}
                   location={previewPlan.market}
                   offer={previewPlan.keyOffer}
-                  overlayText={displayStaticAds[0]?.overlayText}
-                  primaryText={displayStaticAds[0]?.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
-                  qualityGate={displayStaticAds[0]?.qualityGate}
-                  visualQualityGate={displayStaticAds[0]?.visualQualityGate}
-                  premiumQualityGate={displayStaticAds[0]?.premiumQualityGate}
-                  imageQa={displayStaticAds[0]?.imageQa}
-                  sourceImageQa={displayStaticAds[0]?.sourceImageQa}
+                  overlayText={selectedAd.overlayText}
+                  primaryText={selectedAd.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
+                  qualityGate={selectedAd.qualityGate}
+                  visualQualityGate={selectedAd.visualQualityGate}
+                  premiumQualityGate={selectedAd.premiumQualityGate}
+                  imageQa={selectedAd.imageQa}
+                  sourceImageQa={selectedAd.sourceImageQa}
                   prominent
-                  score={displayStaticAds[0]?.score}
+                  score={selectedAd.score}
                   selected={selectedAds.length > 0}
                   selectedCount={displayStaticAds.length}
-                  launchReady={isCurrentLaunchReadyStatic(displayStaticAds[0])}
-                  visualPromptBrief={displayStaticAds[0]?.visualPromptBrief}
+                  launchReady={isCurrentLaunchReadyStatic(selectedAd)}
+                  visualPromptBrief={selectedAd.visualPromptBrief}
                 />
-              </div>
-
-              {displayStaticAds.length > 1 ? (
-                <div className="grid gap-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    {usingInstantFallbackPreview ? "Instant draft variants" : "Review variants"}
-                  </p>
-                  {displayStaticAds.slice(1).map((selectedAd, index) => (
-                    <StaticCreativeSummaryCard
-                      angleLabel={selectedAd.angle}
-                      category={previewPlan.creativeStrategy.campaignCategory}
-                      cta={selectedAd.cta || "Learn More"}
-                      headline={selectedAd.headline || previewPlan.keyOffer}
-                      imageGenerationMessage={selectedAd.imageGenerationMessage}
-                      imageGenerationProvider={selectedAd.imageGenerationProvider}
-                      imageGenerationState={selectedAd.imageGenerationState}
-                      imagePrompt={selectedAd.imagePrompt}
-                      imagePromptConfig={selectedAd.imagePromptConfig}
-	                      imageUrl={selectedAd.imageUrl}
-	                      storageNormalized={selectedAd.storageNormalized}
-	                      appComposedFinal={selectedAd.appComposedFinal}
-                      qualityTier={selectedAd.qualityTier}
-                      compositionVersion={selectedAd.compositionVersion}
-                      sourceBackgroundKind={selectedAd.sourceBackgroundKind}
-                      sourceBackgroundProvider={selectedAd.sourceBackgroundProvider}
-                      sourceBackgroundAssetId={selectedAd.sourceBackgroundAssetId}
-                      formatLabel={getCreativeAssetTierLabel(selectedAd)}
-                      index={index + 1}
-                      key={selectedAd.id}
-                      location={previewPlan.market}
-                      offer={previewPlan.keyOffer}
-                      overlayText={selectedAd.overlayText}
-                      primaryText={selectedAd.primaryText || previewPlan.offerSummary || previewPlan.keyOffer}
-                      qualityGate={selectedAd.qualityGate}
-                      visualQualityGate={selectedAd.visualQualityGate}
-                      premiumQualityGate={selectedAd.premiumQualityGate}
-                      imageQa={selectedAd.imageQa}
-                      sourceImageQa={selectedAd.sourceImageQa}
-                      prominent
-                      score={selectedAd.score}
-                      selectedCount={displayStaticAds.length}
-                      launchReady={isCurrentLaunchReadyStatic(selectedAd)}
-                      visualPromptBrief={selectedAd.visualPromptBrief}
-                    />
-                  ))}
-                </div>
-              ) : null}
+              ))}
             </div>
           ) : (
             <ReviewOnlyCreativePreview plan={previewPlan} />
@@ -453,7 +404,7 @@ export default async function PreviewPage({
           {displayVideoAds.length > 0 ? (
             <section className="mt-5 border-t border-white/10 pt-5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                {selectedUgcVideoIds.length > 0 ? "Selected UGC video ads" : "UGC video options"}
+                Selected UGC video ads
               </p>
               <div className="mt-3 grid gap-3">
                 {displayVideoAds.map((video, index) => (
@@ -497,13 +448,13 @@ export default async function PreviewPage({
 
       <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-between">
         <Button asChild size="lg" variant="secondary">
-          <Link href={campaignIdForFlow ? `/builder?campaignId=${encodeURIComponent(campaignIdForFlow)}&mode=edit` : "/builder?mode=edit"}>
-            Back to build
+          <Link href={buildCreativeStudioHref(campaignIdForFlow)}>
+            Back to Creative Studio
           </Link>
         </Button>
         {mediaReadyForLaunch ? (
           <Button asChild size="lg">
-            <Link href={campaignIdForFlow ? `/launch?campaignId=${encodeURIComponent(campaignIdForFlow)}` : "/launch"}>
+            <Link href={buildLaunchHref(campaignIdForFlow)}>
               Next → Launch
             </Link>
           </Button>

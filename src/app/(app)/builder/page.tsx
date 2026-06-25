@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { PageHeader } from "@/components/app/page-header";
 import { CampaignBuilderWorkspace } from "@/components/campaign/campaign-builder-workspace";
-import { buildCampaignScopedPath, resolveActiveCampaignRecord } from "@/lib/paywall-access";
+import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { getSelectedAdIdsFromPlan, readCampaignPlanDocument } from "@/lib/services/campaign-plan-document";
 import { getAppContext } from "@/lib/services/app-context";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,15 @@ import { getBillingSummary } from "@/lib/services/billing-service";
 import { listCampaignsForUser } from "@/lib/services/campaign-persistence";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { applyCreativeIntakeReviewContext } from "@/lib/services/campaign-review-context";
+import { isInternalAdminEmail } from "@/lib/env";
+import {
+  buildCreativeStudioHref,
+  buildDashboardHref,
+  buildLaunchHref,
+  buildLaunchingHref,
+  buildOnboardingHref,
+  buildPreviewHref,
+} from "@/lib/routing/campaign-routes";
 import type {
   BuiltCampaign,
   CampaignStrategyInput,
@@ -175,12 +184,10 @@ function buildInitialCampaignFromRecord(
 }
 
 function getBuilderNextAction(plan: CampaignPlan, campaignId: string, hasSelectedCreativeSet: boolean) {
-  const scoped = (path: string) => buildCampaignScopedPath(path, campaignId);
-
   if (plan.runtime.metaPushStatus === "published" || plan.runtime.status === "live") {
     return {
       label: "View results",
-      href: scoped("/dashboard"),
+      href: buildDashboardHref(campaignId),
       detail: "Campaign is live. Watch spend, leads, and the next required action.",
     };
   }
@@ -188,7 +195,7 @@ function getBuilderNextAction(plan: CampaignPlan, campaignId: string, hasSelecte
   if (plan.runtime.status === "launch_ready" || plan.runtime.status === "connected") {
     return {
       label: "Go live",
-      href: scoped("/launch"),
+      href: buildLaunchHref(campaignId),
       detail: "Review billing, Meta, creative, and budget gates before launch.",
     };
   }
@@ -196,7 +203,7 @@ function getBuilderNextAction(plan: CampaignPlan, campaignId: string, hasSelecte
   if (plan.runtime.status === "launching") {
     return {
       label: "Check launch",
-      href: scoped("/launching"),
+      href: buildLaunchingHref(campaignId),
       detail: "Launch is in progress. Check the saved launch state before taking action.",
     };
   }
@@ -205,23 +212,27 @@ function getBuilderNextAction(plan: CampaignPlan, campaignId: string, hasSelecte
     if (!hasSelectedCreativeSet) {
       return {
         label: "Choose creatives",
-        href: scoped("/build/creatives"),
+        href: buildCreativeStudioHref(campaignId),
         detail: "Pick the recommended creative test set. Then the final review opens before launch.",
       };
     }
 
     return {
       label: "Continue review",
-      href: scoped("/preview"),
+      href: buildPreviewHref(campaignId),
       detail: "Approve the funnel and selected creative before going live.",
     };
   }
 
   return {
-    label: "Edit funnel draft",
-    href: scoped("/builder?mode=edit"),
-    detail: "Edit the saved campaign draft, then return to review.",
+    label: "Continue setup",
+    href: buildOnboardingHref(campaignId),
+    detail: "Continue the guided setup flow before creative review.",
   };
+}
+
+function getCanonicalBuildDestination(record: FullCampaignRecord, hasSelectedCreativeSet: boolean) {
+  return getBuilderNextAction(canonicalCampaignToPlan(record), record.campaign.id, hasSelectedCreativeSet).href;
 }
 
 function getBuiltItems(record: FullCampaignRecord) {
@@ -312,8 +323,8 @@ function ActiveCampaignWorkspace({
                 </p>
               </div>
               <Button asChild variant="secondary">
-                <Link href={`/builder?campaignId=${encodeURIComponent(campaignId)}&mode=edit`}>
-                  Edit funnel draft
+                <Link href={`/builder?campaignId=${encodeURIComponent(campaignId)}&legacy=1&mode=edit`}>
+                  Open legacy editor
                 </Link>
               </Button>
             </div>
@@ -364,9 +375,9 @@ function ActiveCampaignWorkspace({
             </p>
             <div className="mt-5 flex flex-col gap-3">
               {canCreateAnother ? (
-                <Button asChild variant="secondary">
-                  <Link href="/onboarding?new=1">Launch another campaign</Link>
-                </Button>
+              <Button asChild variant="secondary">
+                <Link href="/onboarding?new=1">Launch another campaign</Link>
+              </Button>
               ) : (
                 <Button asChild variant="secondary">
                   <Link href="/paywall">Upgrade for another campaign</Link>
@@ -422,6 +433,8 @@ export default async function BuilderPage({
       : null;
   const wantsNewCampaign = resolvedSearchParams?.new === "1";
   const wantsEditMode = modeParam === "edit";
+  const wantsLegacyAdminEditor = resolvedSearchParams?.legacy === "1";
+  const isAdmin = isInternalAdminEmail(context.user.email ?? context.profile?.email ?? null);
 
   if (wantsNewCampaign) {
     redirect("/onboarding?new=1");
@@ -445,6 +458,10 @@ export default async function BuilderPage({
       planTier,
       activeCampaignCount: campaignCount,
     });
+
+  if (!isAdmin || !wantsLegacyAdminEditor) {
+    redirect(getCanonicalBuildDestination(record, reviewState.selectedAdIds.length > 0));
+  }
 
   if (record && !wantsEditMode && (!wantsNewCampaign || !canCreateAnother)) {
     return (

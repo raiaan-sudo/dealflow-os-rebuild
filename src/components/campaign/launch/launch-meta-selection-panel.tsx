@@ -160,14 +160,11 @@ export function LaunchMetaSelectionPanel({
         <div className="space-y-4">
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-              Meta Required - {liveConnection.operatorAssisted.label}
+              Meta required
             </p>
             <p className="mt-2 text-lg font-semibold">Connect Meta before launch</p>
             <p className="mt-2 text-sm leading-7 text-muted-foreground">
               Launch stays blocked until a Meta workspace is connected. Connect Meta first, then choose the exact ad account, Facebook Page, and pixel for this campaign.
-            </p>
-            <p className="mt-3 rounded-[18px] border border-cyan-300/15 bg-cyan-300/[0.07] px-4 py-3 text-sm leading-6 text-cyan-100">
-              {liveConnection.operatorAssisted.notice}
             </p>
           </div>
           <Button
@@ -190,15 +187,12 @@ export function LaunchMetaSelectionPanel({
       <div className="space-y-5">
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            Required Selection - {liveConnection.operatorAssisted.label}
+            Required selection
           </p>
           <p className="mt-2 text-lg font-semibold">Choose the Meta assets for this launch</p>
           <p className="mt-2 text-sm leading-7 text-muted-foreground">
             The campaign cannot move into launch until a specific ad account, Facebook Page, and
             pixel are selected and saved for this workspace.
-          </p>
-          <p className="mt-3 rounded-[18px] border border-cyan-300/15 bg-cyan-300/[0.07] px-4 py-3 text-sm leading-6 text-cyan-100">
-            {liveConnection.operatorAssisted.notice}
           </p>
         </div>
         <div className="grid gap-4 lg:grid-cols-3">

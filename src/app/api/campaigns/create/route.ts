@@ -1303,7 +1303,7 @@ async function launchCampaignToMeta(
     if (isInstantFormCampaign(currentPlan) || isInstantFormCampaign(record.funnel)) {
       throw new ApiError(
         400,
-        "Meta Instant Form launch is operator-assisted until the native form setup and delivery path are verified.",
+        "Meta Instant Form launch is blocked until the native form setup and delivery path are verified.",
         "instant_form_operator_assisted",
       );
     }

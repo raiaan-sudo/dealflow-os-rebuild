@@ -57,6 +57,7 @@ const {
   CREATIVE_INTAKE_LOCKED_CTA,
   CREATIVE_INTAKE_LOCKED_STATIC_STYLE,
   CREATIVE_INTAKE_LOCKED_STATIC_STYLE_LABEL,
+  CREATIVE_INTAKE_LOCKED_TONE_PREFERENCE,
   CREATIVE_INTAKE_LOCKED_TARGET_DURATION_SECONDS,
   creativeIntakeIncludesStatic,
   creativeIntakeIncludesUgcVideo,
@@ -109,6 +110,12 @@ assert.match(creativeChatIntakeUi, /fetch\("\/api\/generate-creatives"/);
 assert.match(creativeChatIntakeUi, /Regenerate Creative Set/);
 assert.doesNotMatch(creativeChatIntakeUi, /workspace refreshes/);
 assert.match(creativeChatIntakeUi, /aria-pressed/);
+assert.match(creativeChatIntakeUi, /Tone preference/);
+assert.match(creativeChatIntakeUi, /CREATIVE_INTAKE_LOCKED_TONE_PREFERENCE/);
+assert.match(creativeChatIntakeUi, /Customers do not need to write tone instructions/);
+assert.match(creativeChatIntakeUi, /constraints:\s*CREATIVE_INTAKE_LOCKED_TONE_PREFERENCE/);
+assert.doesNotMatch(creativeChatIntakeUi, /placeholder="Clear, local, direct"/);
+assert.doesNotMatch(creativeChatIntakeUi, /onChange=\{\(event\) => updateAnswer\(\{ constraints: event\.target\.value \}\)\}/);
 assert.match(creativeWizardUi, /Open launch creative/);
 assert.match(creativeWizardUi, /Launch creative/);
 assert.match(creativeWizardUi, /Save launch package and continue/);
@@ -233,7 +240,7 @@ const answers = {
   brokerageBrand: "remax",
   market: "Toronto, ON",
   creativeStyle: "ugc",
-  constraints: "Avoid guarantees. Qualification is subject to lender review.",
+  constraints: CREATIVE_INTAKE_LOCKED_TONE_PREFERENCE,
   cta: CREATIVE_INTAKE_LOCKED_CTA,
   propertyType: "Detached homes",
   outputMode: "background_only",
@@ -243,6 +250,7 @@ const brief = buildCreativeIntakeBrief(answers, defaults);
 assert.equal(brief.completion.complete, true, "complete intake brief is accepted");
 assert.equal(brief.staticStyle, CREATIVE_INTAKE_LOCKED_STATIC_STYLE_LABEL, "static style is locked to the single bold offer-focused direction");
 assert.equal(brief.creativeStyle, CREATIVE_INTAKE_LOCKED_STATIC_STYLE_LABEL, "creative style is locked to the single bold offer-focused direction");
+assert.ok(brief.mustUseCopy.includes(CREATIVE_INTAKE_LOCKED_TONE_PREFERENCE), "tone preference is locked to Clear & Direct");
 assert.equal(brief.targetLanguage, "fr");
 assert.equal(brief.targetLanguageLabel, "French");
 assert.match(brief.languageInstruction, /Do not mix in English/);

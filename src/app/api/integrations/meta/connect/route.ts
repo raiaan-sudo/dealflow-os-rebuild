@@ -5,6 +5,7 @@ import { logMetaError } from "@/lib/integrations/meta/error-mapper";
 import { createMetaOAuthState } from "@/lib/integrations/meta/oauth-state";
 import { recordActivationEvent } from "@/lib/services/activation-telemetry-service";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
+import { sanitizeMetaReturnPath } from "@/lib/routing/campaign-routes";
 
 const META_STATE_COOKIE = "dealflow_meta_oauth_state";
 const META_RETURN_TO_COOKIE = "dealflow_meta_oauth_return_to";
@@ -12,11 +13,7 @@ const META_RETURN_TO_COOKIE = "dealflow_meta_oauth_return_to";
 export const dynamic = "force-dynamic";
 
 function getSafeReturnTo(value: string | null) {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) {
-    return "/launch";
-  }
-
-  return value;
+  return sanitizeMetaReturnPath(value, "/launch");
 }
 
 export async function GET(request: Request) {

@@ -25,6 +25,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { buildPartnerPageMetadata } from "@/lib/white-label/metadata";
 import { hasPartnerPricingConfiguration, parsePartnerPricingConfig } from "@/lib/white-label/partner-billing-config";
 import { resolvePartnerContextFromHeaders } from "@/lib/white-label/resolver";
+import { buildOnboardingHref } from "@/lib/routing/campaign-routes";
 import type { Metadata } from "next";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -42,7 +43,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 function buildHomeHref(campaignId: string | null) {
-  return campaignId ? `/builder?campaignId=${encodeURIComponent(campaignId)}` : "/onboarding";
+  return buildOnboardingHref(campaignId);
 }
 
 async function loadPartnerPricingForCurrentWorkspace() {
@@ -217,7 +218,7 @@ export default async function PaywallPage({
                   <Link href="/onboarding">Start onboarding</Link>
                 </Button>
                 <Button asChild variant="secondary">
-                  <Link href="/builder">Back to build</Link>
+                  <Link href="/onboarding">Back to setup</Link>
                 </Button>
               </div>
             </Card>
@@ -234,7 +235,7 @@ export default async function PaywallPage({
       <div className="flex justify-end">
         <Button asChild variant="secondary">
           <Link href={backHref}>
-            Back to build
+            Back to setup
           </Link>
         </Button>
       </div>

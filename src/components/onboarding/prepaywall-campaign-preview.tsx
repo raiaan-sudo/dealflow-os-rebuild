@@ -347,7 +347,7 @@ function MockAdPreview({
     <div
       className={cn(
         "relative overflow-hidden rounded-[22px] border border-white/10 bg-gradient-to-br",
-        compact ? "h-full p-3" : "p-4",
+        compact ? "self-start p-3" : "p-4",
         tones.frame,
         tones.glow,
       )}
@@ -500,8 +500,8 @@ function InstantFormSetupPreview({
 
         <div className={cn("rounded-[18px] border border-amber-300/16 bg-amber-300/[0.055] px-3 text-amber-100/82", compact ? "py-2 text-[11px] leading-4" : "py-2.5 text-xs leading-5")}>
           {compact
-            ? "Operator-assisted: no form, campaign, GHL record, SMS, or email is created from this preview."
-            : "Operator-assisted Meta note: this preview does not create a Meta instant form, campaign, ad set, ad, GHL record, SMS, or email. Launch stays gated until the operator verifies the native form setup and delivery path."}
+            ? "Preview only: no form, campaign, GHL record, SMS, or email is created here."
+            : "Preview only: this does not create a Meta instant form, campaign, ad set, ad, GHL record, SMS, or email. Launch stays gated until the native form setup and delivery path are verified."}
         </div>
       </div>
 

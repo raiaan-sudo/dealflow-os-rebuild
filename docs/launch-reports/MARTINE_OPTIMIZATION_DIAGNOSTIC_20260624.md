@@ -2,7 +2,7 @@
 
 Read-only diagnostic. No Meta mutation and no database mutation were performed by this script.
 
-- Generated at: 2026-06-24T19:21:21.687Z
+- Generated at: 2026-06-24T20:12:15.088Z
 - Campaign: 957014e8-870f-40e1-9f71-ea7256b09482
 - Organization: 42e2ccc8-8515-48c3-b105-df531f82031d
 - Classification: sync_degraded
@@ -12,7 +12,7 @@ Read-only diagnostic. No Meta mutation and no database mutation were performed b
 
 ```json
 {
-  "generatedAt": "2026-06-24T19:21:21.687Z",
+  "generatedAt": "2026-06-24T20:12:15.088Z",
   "campaign": {
     "id": "957014e8-870f-40e1-9f71-ea7256b09482",
     "organizationId": "42e2ccc8-8515-48c3-b105-df531f82031d",
@@ -76,9 +76,9 @@ Read-only diagnostic. No Meta mutation and no database mutation were performed b
         "id": "f4c1bff2-4c5e-4e19-ac28-98d68fbb0f9b",
         "organization_id": "42e2ccc8-8515-48c3-b105-df531f82031d",
         "plan_tier": "pro",
-        "status": "trialing",
-        "current_period_end": "2026-06-24T18:44:59+00:00",
-        "updated_at": "2026-06-17T18:45:05.269836+00:00"
+        "status": "active",
+        "current_period_end": "2026-07-17T18:47:30+00:00",
+        "updated_at": "2026-06-24T20:08:04.866746+00:00"
       }
     ],
     "autonomyRows": []

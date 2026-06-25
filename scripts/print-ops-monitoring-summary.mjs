@@ -161,6 +161,24 @@ function runtimeLooksLaunched(plan) {
   return /live|launch|published|sent_to_meta|sent to meta|active/.test(statusText) && Boolean(getRuntimeCampaignId(plan));
 }
 
+function isNonProductionMetaLaunch(plan) {
+  const runtime = launchRuntimeFromPlan(plan);
+  const metaCampaignId = String(getRuntimeCampaignId(plan) ?? "").toLowerCase();
+  const launchMode = String(runtime.launchMode ?? runtime.launch_mode ?? "").toLowerCase();
+  const sourceText = [
+    runtime.source,
+    runtime.proof_run_id,
+    runtime.proofRunId,
+    runtime.attempt_id,
+  ].map((value) => String(value ?? "").toLowerCase()).join(" ");
+
+  return (
+    metaCampaignId.startsWith("simulated_") ||
+    ["test", "qa", "proof", "dry_run", "dry-run"].includes(launchMode) ||
+    /\b(test|qa|proof|dry[-_ ]run)\b/.test(sourceText)
+  );
+}
+
 function hasDeliveryMetrics(snapshot) {
   const metrics = snapshot?.delivery_metrics;
 
@@ -190,14 +208,22 @@ async function countLaunchedMetaOptimizationDebt(supabase, freshnessCutoffIso) {
         organizationId: campaign.organization_id,
         userId: campaign.user_id,
         metaCampaignId: getRuntimeCampaignId(campaign.plan),
+        nonProductionLaunch: isNonProductionMetaLaunch(campaign.plan),
       }))
       .filter((campaign) => campaign.organizationId && campaign.userId && campaign.metaCampaignId);
 
     let staleSnapshots = 0;
     let unreadableObjects = 0;
     let missingPerformanceRows = 0;
+    let externalOwnerBlocked = 0;
+    let nonProductionLaunches = 0;
 
     for (const campaign of launched) {
+      if (campaign.nonProductionLaunch) {
+        nonProductionLaunches += 1;
+        continue;
+      }
+
       const { data: snapshots, error: snapshotError } = await supabase
         .from("campaign_sync_snapshots")
         .select("id,campaign_status,delivery_metrics,sync_errors,synced_at")
@@ -214,6 +240,32 @@ async function countLaunchedMetaOptimizationDebt(supabase, freshnessCutoffIso) {
       const latestSnapshot = snapshots?.[0] ?? null;
 
       if (!latestSnapshot || !isFreshSnapshot(latestSnapshot, freshnessCutoffIso)) {
+        const { data: accounts, error: accountError } = await supabase
+          .from("marketing_accounts")
+          .select("id,status,tracking_status,connection_metadata")
+          .eq("organization_id", campaign.organizationId)
+          .eq("platform", "meta_ads")
+          .limit(5);
+
+        if (accountError) {
+          return { count: null, error: accountError.message };
+        }
+
+        const hasExternalAccessBlock = (accounts ?? []).some((account) => {
+          const status = String(account.status ?? "").toLowerCase();
+          const trackingStatus = String(account.tracking_status ?? "").toLowerCase();
+          const metadata = account.connection_metadata && typeof account.connection_metadata === "object"
+            ? account.connection_metadata
+            : {};
+          const trackingMetadataStatus = String(metadata.tracking_status ?? "").toLowerCase();
+          return status !== "connected" || ["partial", "blocked", "revoked", "needs_review", "needs_reconnect"].includes(trackingStatus) || ["partial", "blocked", "revoked", "needs_review", "needs_reconnect"].includes(trackingMetadataStatus);
+        });
+
+        if (hasExternalAccessBlock) {
+          externalOwnerBlocked += 1;
+          continue;
+        }
+
         staleSnapshots += 1;
       }
 
@@ -246,6 +298,8 @@ async function countLaunchedMetaOptimizationDebt(supabase, freshnessCutoffIso) {
       staleSnapshots,
       unreadableObjects,
       missingPerformanceRows,
+      externalOwnerBlocked,
+      nonProductionLaunches,
       launchedCampaigns: launched.length,
     };
   } catch (error) {

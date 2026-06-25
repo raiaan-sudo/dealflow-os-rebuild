@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
+import { buildOnboardingHref } from "@/lib/routing/campaign-routes";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import {
   mapStaticCreativeAssets,
@@ -20,7 +21,6 @@ import {
 import { getCreativeAssetTierLabel } from "@/lib/services/creative-asset-status";
 import { normalizeCreativeOfferTitle } from "@/lib/services/creative-ugc-script-service";
 import { getCreditSummaryForCurrentUser } from "@/lib/services/credit-service";
-import { mergeStaticCreativeLaunchFloor } from "@/lib/services/static-creative-floor";
 import { createClient } from "@/lib/supabase/server";
 import { CreativeChatIntake } from "./creative-chat-intake";
 import { CreativeWizard } from "./creative-wizard";
@@ -60,14 +60,14 @@ export default async function BuildCreativesPage({
       : null;
 
   if (!campaignId) {
-    redirect("/builder");
+    redirect("/onboarding");
   }
 
   const activeCampaign = await resolveActiveCampaignRecord(campaignId).catch(() => null);
   const record = activeCampaign?.record ?? null;
 
   if (!record) {
-    redirect(`/builder?campaignId=${encodeURIComponent(campaignId)}`);
+    redirect(buildOnboardingHref(campaignId));
   }
 
   const ensuredRecord = record;
@@ -119,11 +119,7 @@ export default async function BuildCreativesPage({
       .order("created_at", { ascending: false });
     const mappedStaticAssets = mapStaticCreativeAssets(Array.isArray(staticAssetData) ? staticAssetData : []);
     if (mappedStaticAssets.length > 0) {
-      persistedStaticAds = mergeStaticCreativeLaunchFloor({
-        campaignId: ensuredRecord.campaign.id,
-        planStaticAds: ensuredRecord.creatives.staticAds,
-        persistedStaticAds: mappedStaticAssets,
-      });
+      persistedStaticAds = mappedStaticAssets;
     }
 
     const { data: videoAssetData } = await supabase

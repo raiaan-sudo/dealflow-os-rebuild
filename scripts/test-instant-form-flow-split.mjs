@@ -100,15 +100,15 @@ assert.match(
 );
 assert.match(
   launchPage,
-  /Meta Instant Form setup is operator-assisted/,
-  "launch page must block instant-form campaigns behind an operator-assisted setup gate",
+  /Meta Instant Form setup must be verified/,
+  "launch page must block instant-form campaigns behind a customer-safe setup gate",
 );
 
 assert.match(launchRoute, /isInstantFormCampaign/, "launch API must classify instant-form campaigns before public-funnel checks");
 assert.match(
   launchRoute,
   /instant_form_operator_assisted/,
-  "launch API must fail instant-form launches with an explicit operator-assisted code",
+  "launch API must fail instant-form launches with the existing machine-readable setup code",
 );
 assert.doesNotMatch(
   publicFunnelPage,

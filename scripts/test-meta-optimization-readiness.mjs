@@ -53,8 +53,12 @@ assertMatch(operatorDebt, /getLaunchedCampaignMetaDebt/, "Operator debt must sca
 assertMatch(operatorDebt, /stale_or_missing_meta_sync/, "Operator debt must catch stale or missing Meta sync snapshots");
 assertMatch(operatorDebt, /meta_sync_degraded/, "Operator debt must catch degraded Meta readback");
 assertMatch(operatorDebt, /active_meta_without_performance_tracking/, "Operator debt must catch active Meta campaigns with no performance tracking rows");
+assertMatch(operatorDebt, /external_meta_access_or_tracking_blocked/, "Operator debt must classify externally blocked Meta access separately");
+assertMatch(operatorDebt, /non_production_meta_launch_excluded/, "Operator debt must exclude non-production Meta launch artifacts");
 assertMatch(opsSummary, /countLaunchedMetaOptimizationDebt/, "Ops summary must scan launched campaigns for Meta optimization debt");
 assertMatch(opsSummary, /launched campaign Meta optimization readiness issue/, "Ops summary must block OPS_READY on launched campaign optimization debt");
+assertMatch(opsSummary, /externalOwnerBlocked/, "Ops summary must report externally blocked Meta access without counting it as app-owned debt");
+assertMatch(opsSummary, /nonProductionLaunches/, "Ops summary must report excluded non-production launch artifacts");
 
 assertMatch(diagnostic, /MARTINE_OPTIMIZATION_DIAGNOSTIC_20260624/, "Martine diagnostic must write a launch report artifact");
 assertMatch(diagnostic, /No Meta mutation and no database mutation/, "Martine diagnostic report must state read-only behavior");

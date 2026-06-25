@@ -168,9 +168,25 @@ function staticAdsFromPlan(plan) {
 function launchRuntimeFromPlan(plan) {
   const record = asRecord(plan);
   const nestedPlan = asRecord(record.plan);
+  const runtime = asRecord(record.runtime);
+  const launchRuntime = asRecord(record.launchRuntime);
+  const metaLaunch = asRecord(record.metaLaunch);
   const rootRuntime = asRecord(record.launch_runtime);
-  const nestedRuntime = asRecord(nestedPlan.launch_runtime);
-  return Object.keys(rootRuntime).length > 0 ? rootRuntime : nestedRuntime;
+  const nestedRuntime = asRecord(nestedPlan.runtime);
+  const nestedLaunchRuntime = asRecord(nestedPlan.launchRuntime);
+  const nestedMetaLaunch = asRecord(nestedPlan.metaLaunch);
+  const nestedSnakeRuntime = asRecord(nestedPlan.launch_runtime);
+
+  return {
+    ...runtime,
+    ...launchRuntime,
+    ...metaLaunch,
+    ...rootRuntime,
+    ...nestedRuntime,
+    ...nestedLaunchRuntime,
+    ...nestedMetaLaunch,
+    ...nestedSnakeRuntime,
+  };
 }
 
 function getRuntimeCampaignId(plan) {
@@ -189,6 +205,24 @@ function runtimeLooksLaunched(plan) {
   ].map((value) => String(value ?? "").toLowerCase()).join(" ");
 
   return Boolean(getRuntimeCampaignId(plan)) && /live|published|sent_to_meta|completed/.test(statusText);
+}
+
+function isNonProductionMetaLaunch(plan) {
+  const runtime = launchRuntimeFromPlan(plan);
+  const metaCampaignId = String(getRuntimeCampaignId(plan) ?? "").toLowerCase();
+  const launchMode = String(runtime.launchMode ?? runtime.launch_mode ?? "").toLowerCase();
+  const sourceText = [
+    runtime.source,
+    runtime.proof_run_id,
+    runtime.proofRunId,
+    runtime.attempt_id,
+  ].map((value) => String(value ?? "").toLowerCase()).join(" ");
+
+  return (
+    metaCampaignId.startsWith("simulated_") ||
+    ["test", "qa", "proof", "dry_run", "dry-run"].includes(launchMode) ||
+    /\b(test|qa|proof|dry[-_ ]run)\b/.test(sourceText)
+  );
 }
 
 function snapshotErrors(value) {
@@ -500,6 +534,7 @@ async function getLaunchedCampaignMetaDebt(supabase) {
       organizationId: campaign.organization_id,
       userId: campaign.user_id,
       metaCampaignId: getRuntimeCampaignId(campaign.plan),
+      nonProductionLaunch: isNonProductionMetaLaunch(campaign.plan),
     }))
     .filter((campaign) => campaign.organizationId && campaign.userId && campaign.metaCampaignId);
 
@@ -507,8 +542,16 @@ async function getLaunchedCampaignMetaDebt(supabase) {
   let staleSnapshots = 0;
   let unreadableObjects = 0;
   let missingPerformanceRows = 0;
+  let externalOwnerBlocked = 0;
+  let nonProductionLaunches = 0;
 
   for (const campaign of launched) {
+    if (campaign.nonProductionLaunch) {
+      nonProductionLaunches += 1;
+      details.push(`${campaign.id}: non_production_meta_launch_excluded`);
+      continue;
+    }
+
     const { data: snapshots, error: snapshotError } = await supabase
       .from("campaign_sync_snapshots")
       .select("id,sync_result,meta_campaign_id,campaign_status,delivery_metrics,sync_metadata,sync_errors,synced_at")
@@ -524,6 +567,31 @@ async function getLaunchedCampaignMetaDebt(supabase) {
 
     const snapshot = snapshots?.[0] ?? null;
     if (!snapshot || !snapshotIsFresh(snapshot)) {
+      const { data: accounts, error: accountError } = await supabase
+        .from("marketing_accounts")
+        .select("id,status,tracking_status,connection_metadata")
+        .eq("organization_id", campaign.organizationId)
+        .eq("platform", "meta_ads")
+        .limit(5);
+
+      if (accountError) {
+        throw new Error(`marketing_accounts launched meta scan: ${accountError.message}`);
+      }
+
+      const hasExternalAccessBlock = (accounts ?? []).some((account) => {
+        const status = String(account.status ?? "").toLowerCase();
+        const trackingStatus = String(account.tracking_status ?? "").toLowerCase();
+        const metadata = asRecord(account.connection_metadata);
+        const trackingMetadataStatus = String(metadata.tracking_status ?? "").toLowerCase();
+        return status !== "connected" || ["partial", "blocked", "revoked", "needs_review", "needs_reconnect"].includes(trackingStatus) || ["partial", "blocked", "revoked", "needs_review", "needs_reconnect"].includes(trackingMetadataStatus);
+      });
+
+      if (hasExternalAccessBlock) {
+        externalOwnerBlocked += 1;
+        details.push(`${campaign.id}: external_meta_access_or_tracking_blocked`);
+        continue;
+      }
+
       staleSnapshots += 1;
       details.push(`${campaign.id}: stale_or_missing_meta_sync`);
     }
@@ -560,6 +628,8 @@ async function getLaunchedCampaignMetaDebt(supabase) {
     staleSnapshots,
     unreadableObjects,
     missingPerformanceRows,
+    externalOwnerBlocked,
+    nonProductionLaunches,
     details: unique(details).slice(0, 20),
   };
 }
@@ -642,6 +712,8 @@ async function main() {
     launchedMetaStaleSyncSnapshots: launchedCampaignMetaDebt.staleSnapshots,
     launchedMetaUnreadableObjects: launchedCampaignMetaDebt.unreadableObjects,
     launchedMetaMissingPerformanceRows: launchedCampaignMetaDebt.missingPerformanceRows,
+    launchedMetaExternalOwnerBlocked: launchedCampaignMetaDebt.externalOwnerBlocked,
+    launchedMetaNonProductionLaunches: launchedCampaignMetaDebt.nonProductionLaunches,
     offboardingFailedJobs: offboardingDebt.failedJobs,
     offboardingStaleJobs: offboardingDebt.staleJobs,
     offboardedPublishedFunnels: offboardingDebt.offboardedPublished,
@@ -747,6 +819,8 @@ async function main() {
         `${launchedCampaignMetaDebt.staleSnapshots} stale/missing sync snapshot issue(s)`,
         `${launchedCampaignMetaDebt.unreadableObjects} degraded Meta readback issue(s)`,
         `${launchedCampaignMetaDebt.missingPerformanceRows} missing performance tracking issue(s)`,
+        `${launchedCampaignMetaDebt.externalOwnerBlocked} external access/tracking blocked item(s) excluded`,
+        `${launchedCampaignMetaDebt.nonProductionLaunches} non-production launch artifact(s) excluded`,
         launchedCampaignMetaDebt.details.length ? `details: ${launchedCampaignMetaDebt.details.join(", ")}` : null,
       ].filter(Boolean).join("; "),
     );

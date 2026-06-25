@@ -112,14 +112,14 @@ export function TopBar({
         className="flex min-w-0 gap-1.5 overflow-x-auto border-t border-white/6 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground lg:hidden"
       >
         {[
-          { href: "/builder", label: "Build" },
+          { href: "/onboarding", label: "Build" },
           { href: "/preview", label: "Review" },
           { href: "/launch", label: "Launch" },
           { href: "/dashboard", label: "Results" },
         ].map((item) => {
           const active =
-            item.href === "/builder"
-              ? pathname.startsWith("/builder") || pathname.startsWith("/build")
+            item.href === "/onboarding"
+              ? pathname.startsWith("/onboarding") || pathname.startsWith("/build")
               : pathname.startsWith(item.href);
 
           return (

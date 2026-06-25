@@ -33,6 +33,7 @@ import {
   evaluateStaticCreativeLaunchSafety,
   evaluateStaticCreativeQualityAdvisory,
 } from "@/lib/services/static-creative-visual-qa";
+import { buildOnboardingHref } from "@/lib/routing/campaign-routes";
 
 type CreativeOption = {
   id: string;
@@ -373,7 +374,7 @@ export function CreativeWizard({
     (creative: CreativeOption) => isLaunchReadyStaticCreative(creative, staticBriefReadinessContext),
     [staticBriefReadinessContext],
   );
-  const buildHref = `/builder?campaignId=${encodeURIComponent(campaignId)}`;
+  const buildHref = buildOnboardingHref(campaignId);
   const rankedCreatives = useMemo(
     () => [...creatives].sort((left, right) => {
       const readinessDelta = Number(isStaticLaunchReady(right)) - Number(isStaticLaunchReady(left));
@@ -1410,7 +1411,7 @@ export function CreativeWizard({
           <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
             <Button asChild type="button" variant="secondary">
               <Link href={buildHref}>
-                Back to build
+                Back to setup
               </Link>
             </Button>
             <Button onClick={() => void handleNext()} type="button" disabled={saving || !staticLaunchPackageReady}>

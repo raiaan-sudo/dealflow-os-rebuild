@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { buildOnboardingHref } from "@/lib/routing/campaign-routes";
 
 export default async function BuildFunnelPage({
   searchParams,
@@ -11,5 +12,5 @@ export default async function BuildFunnelPage({
       ? params.campaignId
       : null;
 
-  redirect(campaignId ? `/builder?campaignId=${encodeURIComponent(campaignId)}&mode=edit&tab=funnel` : "/builder?mode=edit&tab=funnel");
+  redirect(buildOnboardingHref(campaignId));
 }
