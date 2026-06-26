@@ -1,0 +1,114 @@
+{
+  "startedAt": "2026-06-26T17:19:09.048Z",
+  "email": "ra***@scaleholdings.co",
+  "checks": [
+    {
+      "label": "ClickToScale",
+      "beforeUrl": "https://clicktoscale.io/launch?",
+      "launchLoaded": true,
+      "connectCandidates": [
+        {
+          "text": "Connect Meta",
+          "href": "",
+          "type": "BUTTON"
+        }
+      ],
+      "clicked": true,
+      "afterUrl": "https://www.facebook.com/login.php?skip_api_login=1&api_key=1489871889475746&kid_directed_site=0&app_id=1489871889475746&signed_next=%5Bredacted%5D&next=%5Bredacted%5D&cancel_url=%5Bredacted%5D&display=page&locale=en_US&pl_dbl=0&is_business_login=1",
+      "facebookBoundary": true,
+      "consoleEvents": [
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x12c001dc800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x12c001d6e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x12c001dc200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x12c001dd400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        },
+        {
+          "type": "error",
+          "text": "ErrorUtils caught an error:\n\nThe user agent does not support public key credentials.\n\nSubsequent non-fatal errors won't be logged; see https://fburl.com/debugjs. {column: 180, clientTime: 1782494356, extra: Object, guardList: Array(0), hash: i24ist}"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "https://clicktoscale.io/admin/launch-monitor?_rsc=PWBYVZLBZafis11f",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://clicktoscale.io/launch?_rsc=PWBYVZLBZafis11f",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://clicktoscale.io/admin/control-room?_rsc=PWBYVZLBZafis11f",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://clicktoscale.io/dashboard?_rsc=PWBYVZLBZafis11f",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://clicktoscale.io/preview?_rsc=PWBYVZLBZafis11f",
+          "failure": "net::ERR_ABORTED"
+        }
+      ]
+    },
+    {
+      "label": "DealFlow app",
+      "beforeUrl": "https://app.agentdealflow.io/launch?",
+      "launchLoaded": true,
+      "connectCandidates": [
+        {
+          "text": "Connect Meta",
+          "href": "",
+          "type": "BUTTON"
+        }
+      ],
+      "clicked": true,
+      "afterUrl": "https://www.facebook.com/login.php?skip_api_login=1&api_key=1489871889475746&kid_directed_site=0&app_id=1489871889475746&signed_next=%5Bredacted%5D&next=%5Bredacted%5D&cancel_url=%5Bredacted%5D&display=page&locale=en_US&pl_dbl=0&is_business_login=1",
+      "facebookBoundary": true,
+      "consoleEvents": [
+        {
+          "type": "error",
+          "text": "ErrorUtils caught an error:\n\nThe user agent does not support public key credentials.\n\nSubsequent non-fatal errors won't be logged; see https://fburl.com/debugjs. {column: 180, clientTime: 1782494363, extra: Object, guardList: Array(0), hash: i24ist}"
+        }
+      ],
+      "failedRequests": [
+        {
+          "url": "https://app.agentdealflow.io/admin/command-center?_rsc=hNHB0-b9lTxr6eyH",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://app.agentdealflow.io/admin/issues?_rsc=PWBYVZLBZafis11f",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://app.agentdealflow.io/admin/launch-monitor?_rsc=PWBYVZLBZafis11f",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://app.agentdealflow.io/admin/command-center?_rsc=PWBYVZLBZafis11f",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://app.agentdealflow.io/admin/control-room?_rsc=PWBYVZLBZafis11f",
+          "failure": "net::ERR_ABORTED"
+        },
+        {
+          "url": "https://app.agentdealflow.io/dashboard?_rsc=PWBYVZLBZafis11f",
+          "failure": "net::ERR_ABORTED"
+        }
+      ]
+    }
+  ],
+  "finishedAt": "2026-06-26T17:19:24.936Z",
+  "pass": true
+}
