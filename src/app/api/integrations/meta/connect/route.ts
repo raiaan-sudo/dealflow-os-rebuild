@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getPublicAppUrl, getMetaEnvOrThrow } from "@/lib/env";
-import { logMetaError } from "@/lib/integrations/meta/error-mapper";
+import { logMetaError, logMetaWarning } from "@/lib/integrations/meta/error-mapper";
 import {
   createMetaOAuthState,
   hashMetaOAuthState,
@@ -72,6 +72,20 @@ async function getCampaignContext(params: {
   return { campaignId: campaignRow.id, partnerId: null };
 }
 
+function isMissingOAuthStateTableError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybeError = error as { code?: unknown; message?: unknown };
+  const message = typeof maybeError.message === "string" ? maybeError.message : "";
+
+  return (
+    maybeError.code === "42P01" ||
+    (message.includes("integration_oauth_states") && message.toLowerCase().includes("not"))
+  );
+}
+
 export async function GET(request: Request) {
   const requestId = crypto.randomUUID();
 
@@ -132,7 +146,15 @@ export async function GET(request: Request) {
         },
       } as never);
 
-    if (stateInsertError) {
+    if (stateInsertError && isMissingOAuthStateTableError(stateInsertError)) {
+      logMetaWarning({
+        context: "oauth_start",
+        requestId,
+        message:
+          "Meta OAuth server-side state ledger table is missing; continuing with signed state fallback.",
+        extra: { route: "meta_connect" },
+      });
+    } else if (stateInsertError) {
       throw stateInsertError;
     }
     const cookieStore = await cookies();

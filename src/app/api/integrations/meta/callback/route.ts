@@ -61,6 +61,20 @@ type IntegrationOAuthStateRow = {
   consumed_at: string | null;
 };
 
+function isMissingOAuthStateTableError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybeError = error as { code?: unknown; message?: unknown };
+  const message = typeof maybeError.message === "string" ? maybeError.message : "";
+
+  return (
+    maybeError.code === "42P01" ||
+    (message.includes("integration_oauth_states") && message.toLowerCase().includes("not"))
+  );
+}
+
 function getSafeRedirectBase(params: {
   appUrl: string;
   returnHost?: string | null;
@@ -203,7 +217,20 @@ export async function GET(req: NextRequest) {
       .gt("expires_at", new Date().toISOString())
       .maybeSingle();
 
-    if (stateLookupError || !stateRow) {
+    const useSignedStateFallback = stateLookupError && isMissingOAuthStateTableError(stateLookupError);
+
+    if (useSignedStateFallback) {
+      logMetaWarning({
+        context: "oauth_callback",
+        requestId,
+        message:
+          "Meta OAuth server-side state ledger table is missing; accepting signed state fallback.",
+        extra: {
+          returnHost: verifiedState.returnHost,
+          campaignId: verifiedState.campaignId,
+        },
+      });
+    } else if (stateLookupError || !stateRow) {
       logMetaWarning({
         context: "oauth_callback",
         requestId,
@@ -213,40 +240,46 @@ export async function GET(req: NextRequest) {
       return redirectWithMetaError("invalid_state");
     }
 
-    const oauthStateRow = stateRow as IntegrationOAuthStateRow;
+    if (!useSignedStateFallback) {
+      if (!stateRow) {
+        return redirectWithMetaError("invalid_state");
+      }
 
-    if (
-      oauthStateRow.organization_id !== verifiedState.organizationId ||
-      oauthStateRow.user_id !== verifiedState.userId ||
-      oauthStateRow.return_host !== verifiedState.returnHost ||
-      oauthStateRow.return_to !== verifiedState.returnTo ||
-      (verifiedState.campaignId ?? null) !== (oauthStateRow.campaign_id ?? null)
-    ) {
-      logMetaWarning({
-        context: "oauth_callback",
-        requestId,
-        message: "Meta OAuth callback state ledger did not match signed state.",
-        extra: {
-          signedReturnHost: verifiedState.returnHost,
-          rowReturnHost: oauthStateRow.return_host,
-        },
-      });
-      return redirectWithMetaError("invalid_state");
-    }
+      const oauthStateRow = stateRow as IntegrationOAuthStateRow;
 
-    const { error: consumeStateError } = await supabase
-      .from("integration_oauth_states")
-      .update({ consumed_at: new Date().toISOString() } as never)
-      .eq("id", oauthStateRow.id);
+      if (
+        oauthStateRow.organization_id !== verifiedState.organizationId ||
+        oauthStateRow.user_id !== verifiedState.userId ||
+        oauthStateRow.return_host !== verifiedState.returnHost ||
+        oauthStateRow.return_to !== verifiedState.returnTo ||
+        (verifiedState.campaignId ?? null) !== (oauthStateRow.campaign_id ?? null)
+      ) {
+        logMetaWarning({
+          context: "oauth_callback",
+          requestId,
+          message: "Meta OAuth callback state ledger did not match signed state.",
+          extra: {
+            signedReturnHost: verifiedState.returnHost,
+            rowReturnHost: oauthStateRow.return_host,
+          },
+        });
+        return redirectWithMetaError("invalid_state");
+      }
 
-    if (consumeStateError) {
-      logMetaError({
-        context: "oauth_callback",
-        requestId,
-        error: consumeStateError,
-        message: "Meta OAuth callback could not consume server-side state.",
-      });
-      return redirectWithMetaError("invalid_state");
+      const { error: consumeStateError } = await supabase
+        .from("integration_oauth_states")
+        .update({ consumed_at: new Date().toISOString() } as never)
+        .eq("id", oauthStateRow.id);
+
+      if (consumeStateError) {
+        logMetaError({
+          context: "oauth_callback",
+          requestId,
+          error: consumeStateError,
+          message: "Meta OAuth callback could not consume server-side state.",
+        });
+        return redirectWithMetaError("invalid_state");
+      }
     }
 
     cookieStore.delete(META_STATE_COOKIE);
