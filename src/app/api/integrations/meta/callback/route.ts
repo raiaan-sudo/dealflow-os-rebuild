@@ -8,11 +8,9 @@ import {
   logMetaError,
   logMetaWarning,
 } from "@/lib/integrations/meta/error-mapper";
-import { verifyMetaOAuthState } from "@/lib/integrations/meta/oauth-state";
+import { hashMetaOAuthState, verifyMetaOAuthState } from "@/lib/integrations/meta/oauth-state";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
-import { getAppContext } from "@/lib/services/app-context";
-import { sanitizeMetaReturnPath } from "@/lib/routing/campaign-routes";
+import { getMetaReturnOrigin, sanitizeMetaReturnPath } from "@/lib/routing/campaign-routes";
 
 type MetaAdAccount = {
   id?: string;
@@ -51,13 +49,27 @@ const META_RETURN_TO_COOKIE = "dealflow_meta_oauth_return_to";
 
 export const dynamic = "force-dynamic";
 
-function getSafeRedirectBase(value: string | null, appUrl: string) {
-  return new URL(sanitizeMetaReturnPath(value, "/launch"), appUrl);
-}
+type IntegrationOAuthStateRow = {
+  id: string;
+  organization_id: string;
+  user_id: string | null;
+  campaign_id: string | null;
+  partner_id: string | null;
+  return_host: string;
+  return_to: string;
+  expires_at: string;
+  consumed_at: string | null;
+};
 
-async function resolveOrganizationIdForMetaCallback(): Promise<string | null> {
-  const context = await getAppContext();
-  return context?.organization?.id ?? null;
+function getSafeRedirectBase(params: {
+  appUrl: string;
+  returnHost?: string | null;
+  returnTo: string | null;
+}) {
+  const origin = params.returnHost
+    ? getMetaReturnOrigin(params.returnHost, params.appUrl)
+    : params.appUrl;
+  return new URL(sanitizeMetaReturnPath(params.returnTo, "/launch"), origin);
 }
 
 function getMetaErrorMessage(value: unknown, fallback: string) {
@@ -137,7 +149,11 @@ export async function GET(req: NextRequest) {
     const verifiedState = verifyMetaOAuthState(returnedState, env.encryptionKey);
     const stateMatchesCookie = Boolean(returnedState && storedState && returnedState === storedState);
     const returnTo = verifiedState?.returnTo ?? cookieReturnTo;
-    const redirectBase = getSafeRedirectBase(returnTo, appUrl);
+    const redirectBase = getSafeRedirectBase({
+      appUrl,
+      returnHost: verifiedState?.returnHost,
+      returnTo,
+    });
     const redirectWithMetaError = (metaErrorCode: string) => {
       const nextUrl = new URL(redirectBase.toString());
       nextUrl.searchParams.set("meta_error", metaErrorCode);
@@ -163,8 +179,72 @@ export async function GET(req: NextRequest) {
       logMetaWarning({
         context: "oauth_callback",
         requestId,
-        message: "Meta OAuth callback state cookie was missing or did not match.",
-        extra: { hasStoredState: Boolean(storedState) },
+        message: "Meta OAuth callback state cookie was missing or did not match; validating server-side state ledger.",
+        extra: {
+          hasStoredState: Boolean(storedState),
+          returnHost: verifiedState.returnHost,
+        },
+      });
+    }
+
+    const supabase = createAdminClient();
+
+    if (!supabase) {
+      return redirectWithMetaError("supabase_unavailable");
+    }
+
+    const { data: stateRow, error: stateLookupError } = await supabase
+      .from("integration_oauth_states")
+      .select("id, organization_id, user_id, campaign_id, partner_id, return_host, return_to, expires_at, consumed_at")
+      .eq("provider", "meta")
+      .eq("nonce", verifiedState.nonce)
+      .eq("state_hash", hashMetaOAuthState(returnedState))
+      .is("consumed_at", null)
+      .gt("expires_at", new Date().toISOString())
+      .maybeSingle();
+
+    if (stateLookupError || !stateRow) {
+      logMetaWarning({
+        context: "oauth_callback",
+        requestId,
+        message: "Meta OAuth callback server-side state ledger was missing, expired, or already consumed.",
+        extra: { hasStateRow: Boolean(stateRow) },
+      });
+      return redirectWithMetaError("invalid_state");
+    }
+
+    const oauthStateRow = stateRow as IntegrationOAuthStateRow;
+
+    if (
+      oauthStateRow.organization_id !== verifiedState.organizationId ||
+      oauthStateRow.user_id !== verifiedState.userId ||
+      oauthStateRow.return_host !== verifiedState.returnHost ||
+      oauthStateRow.return_to !== verifiedState.returnTo ||
+      (verifiedState.campaignId ?? null) !== (oauthStateRow.campaign_id ?? null)
+    ) {
+      logMetaWarning({
+        context: "oauth_callback",
+        requestId,
+        message: "Meta OAuth callback state ledger did not match signed state.",
+        extra: {
+          signedReturnHost: verifiedState.returnHost,
+          rowReturnHost: oauthStateRow.return_host,
+        },
+      });
+      return redirectWithMetaError("invalid_state");
+    }
+
+    const { error: consumeStateError } = await supabase
+      .from("integration_oauth_states")
+      .update({ consumed_at: new Date().toISOString() } as never)
+      .eq("id", oauthStateRow.id);
+
+    if (consumeStateError) {
+      logMetaError({
+        context: "oauth_callback",
+        requestId,
+        error: consumeStateError,
+        message: "Meta OAuth callback could not consume server-side state.",
       });
       return redirectWithMetaError("invalid_state");
     }
@@ -221,22 +301,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const routeSupabase = await createRouteHandlerClient();
-    const organizationId = verifiedState?.organizationId ?? (await resolveOrganizationIdForMetaCallback());
-
-    if (!routeSupabase) {
-      return redirectWithMetaError("supabase_unavailable");
-    }
-
-    if (!organizationId) {
-      throw new Error("Missing workspace context");
-    }
-
-    const supabase = createAdminClient();
-
-    if (!supabase) {
-      return redirectWithMetaError("supabase_unavailable");
-    }
+    const organizationId = verifiedState.organizationId;
 
     const encryptedAccessToken = encryptSecret(access_token, env.encryptionKey);
     const now = new Date().toISOString();

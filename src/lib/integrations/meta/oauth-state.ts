@@ -1,13 +1,17 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
-const STATE_VERSION = 1;
+const STATE_VERSION = 2;
 const STATE_TTL_MS = 10 * 60 * 1000;
 
 export type MetaOAuthStatePayload = {
+  campaignId?: string | null;
   exp: number;
   nonce: string;
   organizationId: string;
+  originHost?: string | null;
+  partnerId?: string | null;
   returnTo: string;
+  returnHost?: string | null;
   userId: string;
   v: typeof STATE_VERSION;
 };
@@ -27,6 +31,16 @@ function fromBase64Url(value: string) {
 
 function signPayload(encodedPayload: string, secret: string) {
   return toBase64Url(createHmac("sha256", secret).update(encodedPayload).digest());
+}
+
+function isSafeHost(value: unknown) {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 253 &&
+    /^[a-z0-9.-]+(?::[0-9]+)?$/i.test(value) &&
+    !value.includes("..")
+  );
 }
 
 function safeEqual(left: string, right: string) {
@@ -54,14 +68,22 @@ function isPayload(value: unknown): value is MetaOAuthStatePayload {
     typeof payload.returnTo === "string" &&
     payload.returnTo.startsWith("/") &&
     !payload.returnTo.startsWith("//") &&
+    (payload.originHost == null || isSafeHost(payload.originHost)) &&
+    (payload.returnHost == null || isSafeHost(payload.returnHost)) &&
+    (payload.campaignId == null || typeof payload.campaignId === "string") &&
+    (payload.partnerId == null || typeof payload.partnerId === "string") &&
     typeof payload.exp === "number" &&
     Number.isFinite(payload.exp)
   );
 }
 
 export function createMetaOAuthState(params: {
+  campaignId?: string | null;
   organizationId: string;
+  originHost?: string | null;
+  partnerId?: string | null;
   returnTo: string;
+  returnHost?: string | null;
   secret: string;
   userId: string;
 }) {
@@ -71,12 +93,20 @@ export function createMetaOAuthState(params: {
     organizationId: params.organizationId,
     userId: params.userId,
     returnTo: params.returnTo,
+    campaignId: params.campaignId ?? null,
+    originHost: params.originHost ?? null,
+    partnerId: params.partnerId ?? null,
+    returnHost: params.returnHost ?? params.originHost ?? null,
     exp: Date.now() + STATE_TTL_MS,
   };
   const encodedPayload = toBase64Url(JSON.stringify(payload));
   const signature = signPayload(encodedPayload, params.secret);
 
   return `${encodedPayload}.${signature}`;
+}
+
+export function hashMetaOAuthState(state: string) {
+  return createHash("sha256").update(state).digest("hex");
 }
 
 export function verifyMetaOAuthState(state: string | null, secret: string): MetaOAuthStatePayload | null {

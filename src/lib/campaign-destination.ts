@@ -15,6 +15,19 @@ const INSTANT_FORM_VALUES = new Set([
   "volume_lead_form",
 ]);
 
+const QUALITY_FUNNEL_VALUES = new Set([
+  "deep_qualification",
+  "funnel",
+  "landing_page",
+  "landing_page_book_call",
+  "landing_page_form",
+  "landing_page_survey",
+  "public_funnel",
+  "quality_funnel",
+  "website",
+  "website_funnel",
+]);
+
 const DESTINATION_KEYS = new Set([
   "campaign_destination",
   "campaigndestination",
@@ -42,8 +55,10 @@ const NESTED_KEYS = new Set([
   "launch",
   "meta_ready_payload",
   "metareadypayload",
+  "metadata",
   "plan",
   "runtime",
+  "strategy",
 ]);
 
 function asRecord(value: unknown): JsonRecord | null {
@@ -66,26 +81,52 @@ function normalizeValue(value: unknown) {
     : "";
 }
 
-function hasInstantFormDestination(value: unknown, depth = 0): boolean {
+export function normalizeLeadCaptureMode(value: unknown): string | null {
+  const normalizedValue = normalizeValue(value);
+
+  if (INSTANT_FORM_VALUES.has(normalizedValue)) {
+    return "volume_lead_form";
+  }
+
+  if (QUALITY_FUNNEL_VALUES.has(normalizedValue)) {
+    return normalizedValue;
+  }
+
+  return null;
+}
+
+export function getLeadCaptureModeFromRecord(value: unknown, depth = 0): string | null {
   const record = asRecord(value);
   if (!record || depth > 5) {
-    return false;
+    return null;
   }
 
   for (const [rawKey, rawValue] of Object.entries(record)) {
     const key = normalizeKey(rawKey);
-    const normalizedValue = normalizeValue(rawValue);
 
-    if (DESTINATION_KEYS.has(key) && INSTANT_FORM_VALUES.has(normalizedValue)) {
-      return true;
+    if (DESTINATION_KEYS.has(key)) {
+      const normalizedMode = normalizeLeadCaptureMode(rawValue);
+
+      if (normalizedMode) {
+        return normalizedMode;
+      }
     }
 
-    if (NESTED_KEYS.has(key) && hasInstantFormDestination(rawValue, depth + 1)) {
-      return true;
+    if (NESTED_KEYS.has(key)) {
+      const nestedMode = getLeadCaptureModeFromRecord(rawValue, depth + 1);
+
+      if (nestedMode) {
+        return nestedMode;
+      }
     }
   }
 
-  return false;
+  return null;
+}
+
+function hasInstantFormDestination(value: unknown): boolean {
+  const mode = getLeadCaptureModeFromRecord(value);
+  return Boolean(mode && INSTANT_FORM_VALUES.has(mode));
 }
 
 export function isInstantFormCampaign(campaignPlanOrPayload: unknown): boolean {

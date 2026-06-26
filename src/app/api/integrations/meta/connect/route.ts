@@ -2,18 +2,74 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getPublicAppUrl, getMetaEnvOrThrow } from "@/lib/env";
 import { logMetaError } from "@/lib/integrations/meta/error-mapper";
-import { createMetaOAuthState } from "@/lib/integrations/meta/oauth-state";
+import {
+  createMetaOAuthState,
+  hashMetaOAuthState,
+  verifyMetaOAuthState,
+} from "@/lib/integrations/meta/oauth-state";
 import { recordActivationEvent } from "@/lib/services/activation-telemetry-service";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
-import { sanitizeMetaReturnPath } from "@/lib/routing/campaign-routes";
+import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  getCampaignIdFromMetaReturnPath,
+  getMetaReturnOrigin,
+  sanitizeMetaReturnHost,
+  sanitizeMetaReturnPath,
+} from "@/lib/routing/campaign-routes";
 
 const META_STATE_COOKIE = "dealflow_meta_oauth_state";
 const META_RETURN_TO_COOKIE = "dealflow_meta_oauth_return_to";
 
 export const dynamic = "force-dynamic";
 
+type CampaignPlanOAuthContextRow = {
+  id: string;
+  organization_id: string | null;
+};
+
 function getSafeReturnTo(value: string | null) {
   return sanitizeMetaReturnPath(value, "/launch");
+}
+
+function getRequestHost(value: string) {
+  try {
+    return new URL(value).host.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+async function getCampaignContext(params: {
+  campaignId: string | null;
+  organizationId: string;
+}) {
+  if (!params.campaignId) {
+    return { campaignId: null, partnerId: null };
+  }
+
+  const supabase = createAdminClient();
+
+  if (!supabase) {
+    throw new Error("Supabase service role is required for Meta OAuth state binding.");
+  }
+
+  const { data, error } = await supabase
+    .from("campaign_plans")
+    .select("id, organization_id")
+    .eq("id", params.campaignId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const campaignRow = data as CampaignPlanOAuthContextRow | null;
+
+  if (!campaignRow || campaignRow.organization_id !== params.organizationId) {
+    throw new Error("Meta OAuth return campaign is not in the active workspace.");
+  }
+
+  return { campaignId: campaignRow.id, partnerId: null };
 }
 
 export async function GET(request: Request) {
@@ -24,6 +80,13 @@ export async function GET(request: Request) {
 
     const requestUrl = new URL(request.url);
     const returnTo = getSafeReturnTo(requestUrl.searchParams.get("returnTo"));
+    const requestHost = sanitizeMetaReturnHost(getRequestHost(request.url));
+    const fallbackHost = sanitizeMetaReturnHost(new URL(getPublicAppUrl()).host);
+    const returnHost = requestHost ?? fallbackHost;
+    const campaignContext = await getCampaignContext({
+      campaignId: getCampaignIdFromMetaReturnPath(returnTo),
+      organizationId: auth.organizationId,
+    });
     const env = getMetaEnvOrThrow();
     const url = new URL(`https://www.facebook.com/${env.apiVersion}/dialog/oauth`);
     const redirectUri = env.redirectUri;
@@ -31,8 +94,47 @@ export async function GET(request: Request) {
       organizationId: auth.organizationId,
       userId: auth.userId,
       returnTo,
+      originHost: returnHost,
+      returnHost,
+      campaignId: campaignContext.campaignId,
+      partnerId: campaignContext.partnerId,
       secret: env.encryptionKey,
     });
+    const statePayload = verifyMetaOAuthState(state, env.encryptionKey);
+
+    if (!statePayload) {
+      throw new Error("Meta OAuth state could not be verified after creation.");
+    }
+    const supabase = createAdminClient();
+
+    if (!supabase) {
+      throw new Error("Supabase service role is required for Meta OAuth state binding.");
+    }
+
+    const { error: stateInsertError } = await supabase
+      .from("integration_oauth_states")
+      .insert({
+        provider: "meta",
+        nonce: statePayload.nonce,
+        state_hash: hashMetaOAuthState(state),
+        organization_id: auth.organizationId,
+        user_id: auth.userId,
+        campaign_id: campaignContext.campaignId,
+        partner_id: campaignContext.partnerId,
+        origin_host: returnHost ?? new URL(getPublicAppUrl()).host.toLowerCase(),
+        return_host: returnHost ?? new URL(getPublicAppUrl()).host.toLowerCase(),
+        return_to: returnTo,
+        expires_at: new Date(statePayload.exp).toISOString(),
+        metadata: {
+          purpose: "meta_oauth",
+          route: "meta_connect",
+          returnOrigin: getMetaReturnOrigin(returnHost, getPublicAppUrl()),
+        },
+      } as never);
+
+    if (stateInsertError) {
+      throw stateInsertError;
+    }
     const cookieStore = await cookies();
 
     cookieStore.set(META_STATE_COOKIE, state, {

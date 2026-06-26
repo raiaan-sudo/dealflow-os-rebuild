@@ -11,6 +11,92 @@ const META_RETURN_PATH_PREFIXES = [
   "/unlock",
 ];
 
+const DEFAULT_APPROVED_META_RETURN_HOSTS = [
+  "agentdealflow.io",
+  "app.agentdealflow.io",
+  "clicktoscale.io",
+  "localhost",
+  "www.agentdealflow.io",
+  "www.clicktoscale.io",
+  "127.0.0.1",
+];
+
+function normalizeHost(value: string | null | undefined) {
+  const host = (value ?? "").trim().toLowerCase();
+
+  if (!host || host.length > 253 || host.includes("..")) {
+    return null;
+  }
+
+  return /^[a-z0-9.-]+(?::[0-9]+)?$/.test(host) ? host : null;
+}
+
+function hostFromUrl(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return normalizeHost(new URL(value).host);
+  } catch {
+    return null;
+  }
+}
+
+function parseHostList(value: string | null | undefined) {
+  return (value ?? "")
+    .split(",")
+    .map((item) => normalizeHost(item))
+    .filter((item): item is string => Boolean(item));
+}
+
+export function getApprovedMetaReturnHosts() {
+  return Array.from(
+    new Set([
+      ...DEFAULT_APPROVED_META_RETURN_HOSTS,
+      hostFromUrl(process.env.NEXT_PUBLIC_APP_URL),
+      hostFromUrl(process.env.APP_URL),
+      hostFromUrl(process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null),
+      ...parseHostList(process.env.DEALFLOW_PLATFORM_LAUNCH_DOMAIN),
+      ...parseHostList(process.env.DEALFLOW_PLATFORM_FUNNEL_HOSTS),
+      ...parseHostList(process.env.META_OAUTH_RETURN_HOSTS),
+    ].filter((item): item is string => Boolean(item))),
+  );
+}
+
+export function sanitizeMetaReturnHost(value: string | null | undefined) {
+  const host = normalizeHost(value);
+  if (!host) {
+    return null;
+  }
+
+  const approvedHosts = getApprovedMetaReturnHosts();
+  return approvedHosts.includes(host) ? host : null;
+}
+
+export function getMetaReturnOrigin(host: string | null | undefined, fallbackUrl: string) {
+  const safeHost = sanitizeMetaReturnHost(host) ?? hostFromUrl(fallbackUrl);
+  if (!safeHost) {
+    return fallbackUrl;
+  }
+
+  const protocol = safeHost.startsWith("localhost") || safeHost.startsWith("127.0.0.1")
+    ? "http"
+    : "https";
+  return `${protocol}://${safeHost}`;
+}
+
+export function getCampaignIdFromMetaReturnPath(value: string | null | undefined) {
+  const safePath = sanitizeMetaReturnPath(value, "/launch");
+
+  try {
+    const parsed = new URL(safePath, "https://dealflow.local");
+    return parsed.searchParams.get("campaignId");
+  } catch {
+    return null;
+  }
+}
+
 function buildCampaignScopedHref(path: string, campaignId?: string | null) {
   if (!campaignId) {
     return path;

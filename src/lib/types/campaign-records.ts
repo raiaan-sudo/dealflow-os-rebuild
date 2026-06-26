@@ -86,6 +86,7 @@ export type FullCampaignRecord = {
         offer_summary: string;
         funnel_type: string;
         funnel_steps: string[];
+        lead_capture_mode?: string | null;
       };
   funnel: CampaignFunnel;
   creatives: {
@@ -118,6 +119,9 @@ export type SaveCampaignPayload = {
   campaign: BuiltCampaign;
   plan?: Partial<FullCampaignRecord["plan"]> | null;
   funnel?: Partial<CampaignFunnel> | null;
+  leadCaptureMode?: string | null;
+  lead_capture_mode?: string | null;
+  campaign_payload?: Record<string, unknown> | null;
   creatives?: Array<Partial<CampaignCreative> & Record<string, unknown>> | null;
   copy?: Array<Partial<CampaignCopy> & Record<string, unknown>> | null;
   ads?: CampaignAd[] | null;

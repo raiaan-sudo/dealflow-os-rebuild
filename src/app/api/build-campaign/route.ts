@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getLeadCaptureModeFromRecord, isInstantFormCampaign } from "@/lib/campaign-destination";
 import {
   ApiError,
   apiSuccess,
@@ -35,6 +36,10 @@ type CampaignPayloadRecord = {
   selected_ugc_video_ids?: string[];
   campaign_id?: string;
   destination_url?: string;
+  form_type?: string;
+  formType?: string;
+  lead_capture_mode?: string;
+  leadCaptureMode?: string;
   business_profile?: Record<string, unknown>;
   offer?: Record<string, unknown>;
   funnel?: Record<string, unknown>;
@@ -200,9 +205,16 @@ export async function POST(request: Request) {
             "publish_destination_missing",
           );
         }
+        const leadCaptureMode =
+          getLeadCaptureModeFromRecord(storedPlan) ??
+          getLeadCaptureModeFromRecord(record) ??
+          getLeadCaptureModeFromRecord(existingPayload);
+        const instantFormCampaign = isInstantFormCampaign({ leadCaptureMode });
 
         const campaignPayload: CampaignPayloadRecord = {
           campaign_id: campaignId,
+          ...(leadCaptureMode ? { leadCaptureMode, lead_capture_mode: leadCaptureMode } : {}),
+          ...(instantFormCampaign ? { formType: "instant_form", form_type: "instant_form" } : {}),
           selected_ad_id: existingPayload?.selected_ad_id,
           selected_ad_ids: Array.isArray(existingPayload?.selected_ad_ids)
             ? existingPayload.selected_ad_ids.map(String).filter(Boolean).slice(0, 6)

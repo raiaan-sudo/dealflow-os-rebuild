@@ -40,6 +40,10 @@ const onboardingPreview = fs.readFileSync("src/components/onboarding/prepaywall-
 const previewPage = fs.readFileSync("src/app/(app)/preview/page.tsx", "utf8");
 const launchPage = fs.readFileSync("src/app/(app)/launch/page.tsx", "utf8");
 const launchRoute = fs.readFileSync("src/app/api/campaigns/create/route.ts", "utf8");
+const buildCampaignRoute = fs.readFileSync("src/app/api/build-campaign/route.ts", "utf8");
+const canonicalCampaign = fs.readFileSync("src/lib/services/canonical-campaign.ts", "utf8");
+const campaignPersistence = fs.readFileSync("src/lib/services/campaign-persistence.ts", "utf8");
+const campaignPlanDocument = fs.readFileSync("src/lib/services/campaign-plan-document.ts", "utf8");
 const publicFunnelPage = fs.readFileSync("src/app/f/[slug]/page.tsx", "utf8");
 
 assert.equal(isInstantFormCampaign({ objective: "volume" }), false, "volume objective alone must not switch to instant form");
@@ -114,6 +118,52 @@ assert.doesNotMatch(
   publicFunnelPage,
   /instant_form_operator_assisted|Instant Form setup|InstantFormSetupPreview/,
   "public funnel route must remain untouched by instant-form operator setup UI",
+);
+
+assert.match(
+  canonicalCampaign,
+  /narrowLeadCaptureMode\(params\.savedDocument\)/,
+  "canonical campaign normalization must read lead-capture mode from the saved document",
+);
+assert.match(
+  canonicalCampaign,
+  /lead_capture_mode: leadCaptureMode/,
+  "canonical campaign normalization must promote lead-capture mode into the plan",
+);
+assert.match(
+  canonicalCampaign,
+  /campaign_payload\?: Record<string, unknown> \| null/,
+  "canonical saved document type must include campaign_payload so destination mode survives roundtrips",
+);
+assert.match(
+  campaignPersistence,
+  /const leadCaptureMode =[\s\S]*getLeadCaptureModeFromRecord\(mergedSavedDocument\)/,
+  "campaign persistence must recover lead-capture mode before rebuilding the stored plan",
+);
+assert.match(
+  campaignPersistence,
+  /form_type: "instant_form"/,
+  "campaign persistence must mirror instant-form mode into campaign_payload.form_type",
+);
+assert.match(
+  campaignPlanDocument,
+  /getLeadCaptureModeFromRecord/,
+  "campaign plan document migration must normalize historical lead-capture mode markers",
+);
+assert.match(
+  campaignPlanDocument,
+  /form_type: "instant_form"/,
+  "campaign plan document migration must repair missing instant form_type markers at read time",
+);
+assert.match(
+  buildCampaignRoute,
+  /getLeadCaptureModeFromRecord\(storedPlan\)/,
+  "build campaign route must preserve lead-capture mode when writing campaign payload",
+);
+assert.match(
+  buildCampaignRoute,
+  /form_type: "instant_form"/,
+  "build campaign route must preserve instant-form payload markers",
 );
 
 console.log("instant form flow split tests passed");

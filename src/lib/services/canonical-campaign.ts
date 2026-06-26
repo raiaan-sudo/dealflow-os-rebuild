@@ -1,5 +1,6 @@
 import { buildCreativeBrief } from "@/lib/ai/creative-brief";
 import { inferCampaignIntent, type CampaignIntent } from "@/lib/campaign-intent";
+import { getLeadCaptureModeFromRecord, isInstantFormCampaign } from "@/lib/campaign-destination";
 import { readCampaignPlanDocumentWithDriftGuard } from "@/lib/services/campaign-plan-persistence-service";
 import { readPersistedAssetGenerationState } from "@/lib/services/asset-generation-lifecycle";
 import { normalizeCreativeStrategy } from "@/lib/services/campaign-creative-strategy";
@@ -14,6 +15,7 @@ import type {
 import { buildCampaign, type BuiltCampaign, type CampaignStrategyInput } from "@/lib/services/campaign-orchestrator";
 import type { CanonicalCreativeItem, StaticCreativeAsset, VideoCreativeAsset } from "@/lib/services/creative-engine";
 import type { FunnelBlueprint, FunnelSection, FunnelType } from "@/lib/services/funnel-engine";
+import type { WinningFunnelLeadCaptureMode } from "@/lib/funnels/winning-template/schema";
 import type {
   Campaign,
   CampaignCopy,
@@ -26,6 +28,7 @@ import type {
 import type { Database } from "@/lib/supabase/types";
 
 type CampaignPlanRow = Database["public"]["Tables"]["campaign_plans"]["Row"];
+type CanonicalLeadCaptureMode = WinningFunnelLeadCaptureMode;
 
 export type SavedCampaignDocument = {
   [key: string]: unknown;
@@ -40,6 +43,10 @@ export type SavedCampaignDocument = {
   copy?: unknown;
   ads?: unknown;
   funnel?: Record<string, unknown> | null;
+  campaign_payload?: Record<string, unknown> | null;
+  campaignPayload?: Record<string, unknown> | null;
+  leadCaptureMode?: unknown;
+  lead_capture_mode?: unknown;
   launch?: {
     runtime?: Partial<CampaignRuntime> | null;
   } | null;
@@ -149,6 +156,14 @@ function safeText(value: unknown) {
   return (value ?? "").toString().trim();
 }
 
+function narrowLeadCaptureMode(value: unknown): CanonicalLeadCaptureMode | null {
+  const mode = typeof value === "string" ? value : getLeadCaptureModeFromRecord(value);
+
+  return mode === "volume_lead_form" || mode === "quality_funnel" || mode === "deep_qualification"
+    ? mode
+    : null;
+}
+
 function safeArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
@@ -249,7 +264,8 @@ function adaptModernPersistedPlanDocument(value: Record<string, unknown>): Saved
     selected_ad_ids: value.selected_ad_ids,
     selected_ugc_video_id: value.selected_ugc_video_id,
     selected_ugc_video_ids: value.selected_ugc_video_ids,
-    campaign_payload: value.campaign_payload,
+    campaign_payload: safeRecord(value.campaign_payload),
+    campaignPayload: safeRecord(value.campaignPayload),
     assetGeneration: value.assetGeneration,
     items: value.items,
     copy: value.copy,
@@ -615,10 +631,12 @@ function normalizeFunnel(
   built: BuiltCampaign,
   campaignId: string,
   createdAt: string,
+  fallbackLeadCaptureMode?: CanonicalLeadCaptureMode | null,
 ): CampaignFunnel {
   const source = value ?? {};
   const formFields = source.form_fields ?? source.formFields;
   const optimizationNotes = source.optimization_notes ?? source.optimizationNotes;
+  const leadCaptureMode = narrowLeadCaptureMode(source) ?? fallbackLeadCaptureMode ?? null;
 
   return {
     funnel_type: normalizeFunnelType(source.funnel_type ?? source.funnelType, built.funnel.funnel_type),
@@ -632,6 +650,12 @@ function normalizeFunnel(
     optimization_notes: Array.isArray(optimizationNotes)
       ? optimizationNotes.map(String)
       : built.funnel.optimization_notes,
+    ...(leadCaptureMode
+      ? {
+          leadCaptureMode,
+          lead_capture_mode: leadCaptureMode,
+        }
+      : {}),
   };
 }
 
@@ -714,6 +738,18 @@ export function normalizeCanonicalCampaign(params: {
   const offerSummary = safeText(planSource.offer_summary ?? planRecord?.offerSummary);
   const summary = safeText(planSource.summary ?? planRecord?.summary);
   const funnelType = safeText(planSource.funnel_type ?? planRecord?.funnelType ?? built.funnel.funnel_type);
+  const leadCaptureMode =
+    narrowLeadCaptureMode(params.savedDocument) ??
+    narrowLeadCaptureMode(planSource) ??
+    narrowLeadCaptureMode(planRecord) ??
+    (isInstantFormCampaign({
+      campaign_payload: params.savedDocument?.campaign_payload ?? params.savedDocument?.campaignPayload,
+      funnel: params.savedDocument?.funnel,
+      plan: planSource,
+      strategy,
+    })
+      ? "volume_lead_form"
+      : null);
   const funnelSteps = Array.isArray(planSource.funnel_steps)
     ? planSource.funnel_steps.map(String)
     : planRecord?.funnelSteps ?? [];
@@ -842,8 +878,9 @@ export function normalizeCanonicalCampaign(params: {
       offer_summary: offerSummary,
       funnel_type: funnelType,
       funnel_steps: funnelSteps,
+      lead_capture_mode: leadCaptureMode,
     },
-    funnel: normalizeFunnel(params.savedDocument?.funnel, built, params.campaign.id, createdAt),
+    funnel: normalizeFunnel(params.savedDocument?.funnel, built, params.campaign.id, createdAt, leadCaptureMode),
     creatives: {
       items,
       ideas: normalizeCreativeIdeas(params.savedDocument?.creatives, built, params.campaign.id, createdAt, items),
@@ -874,6 +911,7 @@ export function normalizeCanonicalCampaign(params: {
 
 export function canonicalCampaignToPlan(record: FullCampaignRecord): CampaignPlan {
   const runtime = normalizeRuntime(record.launch.runtime);
+  const leadCaptureMode = narrowLeadCaptureMode(record.plan.lead_capture_mode) ?? narrowLeadCaptureMode(record);
   const normalizedAds = record.creatives.items
     .filter((item) => item.kind === "static")
     .slice(0, 3)
@@ -927,6 +965,8 @@ export function canonicalCampaignToPlan(record: FullCampaignRecord): CampaignPla
       painPoints: record.plan.pain_points,
     }),
     funnelType: record.plan.funnel_type,
+    leadCaptureMode,
+    lead_capture_mode: leadCaptureMode,
     targetingSummary: record.plan.targeting_summary,
     offerSummary: record.plan.offer_summary,
     summary: record.plan.summary,
@@ -956,6 +996,12 @@ export function canonicalCampaignToPlan(record: FullCampaignRecord): CampaignPla
       formFields: record.funnel.form_fields,
       followUpAction: record.funnel.follow_up_action,
       optimizationNotes: record.funnel.optimization_notes,
+      ...(leadCaptureMode
+        ? {
+            leadCaptureMode,
+            lead_capture_mode: leadCaptureMode,
+          }
+        : {}),
     },
     runtime,
     createdAt: record.campaign.created_at,

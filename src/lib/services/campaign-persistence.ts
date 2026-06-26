@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/api/route";
+import { getLeadCaptureModeFromRecord, isInstantFormCampaign } from "@/lib/campaign-destination";
 import { getSupabaseEnv } from "@/lib/env";
 import { slugify } from "@/lib/utils";
 import { analyzeCampaign, type CampaignAnalysisInput, type CampaignAnalysisResult } from "@/lib/services/ai-optimizer";
@@ -840,9 +841,21 @@ function mapPublishRecord(row: CampaignPlanRow) {
 }
 
 function buildPersistedSavedDocument(record: FullCampaignRecord): CampaignPublishSnapshot {
+  const leadCaptureMode = getLeadCaptureModeFromRecord(record);
+  const instantFormCampaign = isInstantFormCampaign(record);
+
   return {
     name: record.campaign.name,
-    plan: record.plan as unknown as Record<string, unknown>,
+    ...(leadCaptureMode
+      ? {
+          leadCaptureMode,
+          lead_capture_mode: leadCaptureMode,
+        }
+      : {}),
+    plan: {
+      ...(record.plan as unknown as Record<string, unknown>),
+      ...(leadCaptureMode ? { leadCaptureMode, lead_capture_mode: leadCaptureMode } : {}),
+    },
     strategy: record.strategy,
     items: record.creatives.items,
     creatives: record.creatives.ideas,
@@ -850,7 +863,14 @@ function buildPersistedSavedDocument(record: FullCampaignRecord): CampaignPublis
     videoAds: record.creatives.videoAds,
     copy: record.creatives.copy,
     ads: record.creatives.ads,
-    funnel: record.funnel as unknown as Record<string, unknown>,
+    funnel: {
+      ...(record.funnel as unknown as Record<string, unknown>),
+      ...(leadCaptureMode ? { leadCaptureMode, lead_capture_mode: leadCaptureMode } : {}),
+    },
+    campaign_payload: {
+      ...(leadCaptureMode ? { leadCaptureMode, lead_capture_mode: leadCaptureMode } : {}),
+      ...(instantFormCampaign ? { form_type: "instant_form", formType: "instant_form" } : {}),
+    },
     launch: record.launch,
     results: record.results,
   };
@@ -1047,17 +1067,32 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
   const selectedUgcVideoIds = getSelectedUgcVideoIdsFromPlan(mergedSavedDocument);
   const selectedAdId = getSelectedAdIdFromPlan(mergedSavedDocument) ?? selectedAdIds[0] ?? null;
   const selectedUgcVideoId = getSelectedUgcVideoIdFromPlan(mergedSavedDocument) ?? selectedUgcVideoIds[0] ?? null;
+  const leadCaptureMode =
+    getLeadCaptureModeFromRecord(mergedSavedDocument) ??
+    getLeadCaptureModeFromRecord(canonical) ??
+    getLeadCaptureModeFromRecord(payload);
+  const instantFormCampaign = isInstantFormCampaign({ leadCaptureMode });
   const plan = {
     name: canonical.campaign.name,
-    plan: canonical.plan,
-    strategy: canonical.strategy,
+    ...(leadCaptureMode ? { leadCaptureMode, lead_capture_mode: leadCaptureMode } : {}),
+    plan: {
+      ...(canonical.plan as Record<string, unknown>),
+      ...(leadCaptureMode ? { leadCaptureMode, lead_capture_mode: leadCaptureMode } : {}),
+    },
+    strategy: {
+      ...(canonical.strategy as Record<string, unknown>),
+      ...(leadCaptureMode ? { leadCaptureMode, lead_capture_mode: leadCaptureMode } : {}),
+    },
     items: canonical.creatives.items,
     creatives: canonical.creatives.ideas,
     staticAds: canonical.creatives.staticAds,
     videoAds: canonical.creatives.videoAds,
     copy: canonical.creatives.copy,
     ads: canonical.creatives.ads,
-    funnel: canonical.funnel,
+    funnel: {
+      ...(canonical.funnel as unknown as Record<string, unknown>),
+      ...(leadCaptureMode ? { leadCaptureMode, lead_capture_mode: leadCaptureMode } : {}),
+    },
     launch: canonical.launch,
     results: canonical.results,
     selected_ad_id: selectedAdId,
@@ -1066,6 +1101,8 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
     selected_ugc_video_ids: selectedUgcVideoIds,
     campaign_payload: {
       ...((mergedSavedDocument.campaign_payload as Record<string, unknown> | null) ?? {}),
+      ...(leadCaptureMode ? { leadCaptureMode, lead_capture_mode: leadCaptureMode } : {}),
+      ...(instantFormCampaign ? { formType: "instant_form", form_type: "instant_form" } : {}),
       ...(selectedAdId ? { selected_ad_id: selectedAdId } : {}),
       ...(selectedAdIds.length > 0 ? { selected_ad_ids: selectedAdIds } : {}),
       ...(selectedUgcVideoId ? { selected_ugc_video_id: selectedUgcVideoId } : {}),

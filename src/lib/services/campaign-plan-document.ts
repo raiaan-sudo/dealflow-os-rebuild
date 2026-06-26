@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getLeadCaptureModeFromRecord, isInstantFormCampaign } from "@/lib/campaign-destination";
 import type { Json } from "@/lib/supabase/types";
 
 export const CURRENT_CAMPAIGN_PLAN_VERSION = 3;
@@ -10,6 +11,10 @@ const campaignPayloadSchema = z
     selected_ugc_video_id: z.string().trim().min(1).nullable().optional(),
     selected_ugc_video_ids: z.array(z.string().trim().min(1)).max(3).optional(),
     destination_url: z.string().trim().min(1).nullable().optional(),
+    form_type: z.string().trim().min(1).nullable().optional(),
+    formType: z.string().trim().min(1).nullable().optional(),
+    lead_capture_mode: z.string().trim().min(1).nullable().optional(),
+    leadCaptureMode: z.string().trim().min(1).nullable().optional(),
   })
   .passthrough();
 
@@ -50,6 +55,8 @@ const campaignPlanDocumentSchema = z
     selected_ad_ids: z.array(z.string().trim().min(1)).max(6).optional(),
     selected_ugc_video_id: z.string().trim().min(1).nullable().optional(),
     selected_ugc_video_ids: z.array(z.string().trim().min(1)).max(3).optional(),
+    lead_capture_mode: z.string().trim().min(1).nullable().optional(),
+    leadCaptureMode: z.string().trim().min(1).nullable().optional(),
     lead_loop_verified: z.boolean().optional().default(false),
     launch_status: z.string().trim().min(1).nullable().optional(),
     public_slug: z.string().trim().min(1).nullable().optional(),
@@ -226,6 +233,11 @@ function migrateCampaignPlanDocument(value: Record<string, unknown>) {
     ...(selectedUgcVideoIds.length > 0 ? selectedUgcVideoIds : payloadSelectedUgcVideoIds),
     ...(selectedUgcVideoId ? [selectedUgcVideoId] : []),
   ].filter((item, index, list) => list.indexOf(item) === index).slice(0, 3);
+  const leadCaptureMode = getLeadCaptureModeFromRecord({
+    ...value,
+    campaign_payload: currentPayload ?? camelPayload ?? nestedPayload,
+  });
+  const instantFormCampaign = isInstantFormCampaign({ leadCaptureMode });
 
   return {
     ...value,
@@ -237,6 +249,7 @@ function migrateCampaignPlanDocument(value: Record<string, unknown>) {
     selected_ad_ids: mergedSelectedAdIds,
     selected_ugc_video_id: selectedUgcVideoId,
     selected_ugc_video_ids: mergedSelectedUgcVideoIds,
+    ...(leadCaptureMode ? { leadCaptureMode, lead_capture_mode: leadCaptureMode } : {}),
     launch_status: deriveLaunchStatusFromPlanValue(value),
     public_slug: derivePublicSlugFromPlanValue(value),
     runtime: currentRuntime ?? undefined,
@@ -249,8 +262,16 @@ function migrateCampaignPlanDocument(value: Record<string, unknown>) {
           ...(mergedSelectedAdIds.length > 0 ? { selected_ad_ids: mergedSelectedAdIds } : {}),
           ...(selectedUgcVideoId ? { selected_ugc_video_id: selectedUgcVideoId } : {}),
           ...(mergedSelectedUgcVideoIds.length > 0 ? { selected_ugc_video_ids: mergedSelectedUgcVideoIds } : {}),
+          ...(leadCaptureMode ? { leadCaptureMode, lead_capture_mode: leadCaptureMode } : {}),
+          ...(instantFormCampaign ? { formType: "instant_form", form_type: "instant_form" } : {}),
         }
-      : undefined,
+      : leadCaptureMode
+        ? {
+            leadCaptureMode,
+            lead_capture_mode: leadCaptureMode,
+            ...(instantFormCampaign ? { formType: "instant_form", form_type: "instant_form" } : {}),
+          }
+        : undefined,
     lead_loop_verified: hasLeadLoopVerified ? value.lead_loop_verified : false,
   };
 }

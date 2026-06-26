@@ -189,6 +189,8 @@ export type CampaignPlan = {
   mechanism: string;
   creativeStrategy: CampaignCreativeStrategy;
   funnelType: string;
+  leadCaptureMode?: string | null;
+  lead_capture_mode?: string | null;
   targetingSummary: string;
   offerSummary: string;
   summary: string;
@@ -240,6 +242,8 @@ export type CampaignPlan = {
     formFields: string[];
     followUpAction: string;
     optimizationNotes: string[];
+    leadCaptureMode?: string | null;
+    lead_capture_mode?: string | null;
   } & Partial<WinningFunnelMetadata>;
   runtime: CampaignRuntime;
   createdAt: string;
