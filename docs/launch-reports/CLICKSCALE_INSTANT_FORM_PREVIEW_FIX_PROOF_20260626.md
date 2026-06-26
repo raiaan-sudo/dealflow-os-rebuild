@@ -6,8 +6,8 @@ Verified the affected ClickToScale preview campaign no longer renders the wrong 
 
 ## Production Deploy
 
-- Deploy: `dpl_2EHjCZdhzmKWSPxrmXQrxUWSfJYz`
-- Commit: `de12cc2964f93c46f7709897b445c302907dfae6`
+- Deploy: `dpl_EZAM74Xus4vvqoaAdXt6k5YV8PNi`
+- Commit: `36c763f7baea732ca13dce9710b94037806f3c71`
 - Campaign: `73c4c225-b999-468d-93d5-21fb6a78a28c`
 - Host verified: `https://clicktoscale.io`
 
@@ -29,6 +29,10 @@ Verified visible UI:
 Screenshot:
 
 `docs/launch-reports/clicktoscale-instant-form-preview-proof-20260626/clicktoscale-instant-form-preview-fixed.png`
+
+Final deploy screenshot:
+
+`docs/launch-reports/clicktoscale-instant-form-preview-proof-20260626/clicktoscale-instant-form-preview-final-deploy.png`
 
 ## DB Repair Verification
 
@@ -52,4 +56,3 @@ Safety flags:
 ## Final Result
 
 The reported instant-form campaign no longer falls back to the public funnel preview UI. The preview now renders the native Meta Instant Form destination state.
-
