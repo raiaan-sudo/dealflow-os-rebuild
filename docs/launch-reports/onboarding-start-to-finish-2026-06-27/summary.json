@@ -1,0 +1,1070 @@
+{
+  "generatedAt": "2026-06-27T14:55:15.524Z",
+  "appUrl": "https://app.agentdealflow.io",
+  "userEmail": "qa***@test.com",
+  "finalClicked": true,
+  "finalUrl": "https://app.agentdealflow.io/onboarding",
+  "steps": [
+    {
+      "label": "start-type",
+      "screenshot": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27/01-start-type.png",
+      "url": "https://app.agentdealflow.io/onboarding",
+      "headings": [
+        "Step-by-step campaign builder",
+        "Choose campaign type",
+        "Private Listings and a Fast Buyer Strategy Call for move-ready buyers actively comparing homes",
+        "Find out what your home could sell for in Toronto, ON."
+      ],
+      "buttons": [
+        "Sign out",
+        "New campaign",
+        "1TypeChoose campaign type",
+        "2MarketPick the city or market",
+        "3PropertyChoose inventory focus",
+        "4AudienceDefine audience and price",
+        "5BudgetSet budget and capture style",
+        "6SetupConfigure capture path",
+        "7OfferChoose offer or lead magnet",
+        "8AgentIdentify the agent",
+        "9ReviewConfirm and build",
+        "Buyer leadsAttract active buyers with sharper search intent, a focused funnel, and a fast path to a consultation.Selected",
+        "Seller leadsTurn homeowner curiosity into listing conversations with stronger positioning and clearer proof.Choose seller leads",
+        "Investor leadsHelp real estate agents attract investors who want clearer deal flow, yield context, and stronger filtering.Choose investor leads",
+        "Commercial leadsCapture business owners, tenants, and owner-users who need a practical commercial shortlist.Choose commercial leads",
+        "Start over",
+        "Back",
+        "Continue to market",
+        "Support"
+      ],
+      "inputs": [],
+      "overflow": false,
+      "errorText": []
+    },
+    {
+      "label": "after-type",
+      "screenshot": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27/02-after-type.png",
+      "url": "https://app.agentdealflow.io/onboarding",
+      "headings": [
+        "Step-by-step campaign builder",
+        "Pick the city or market",
+        "Private Listings and a Fast Buyer Strategy Call for move-ready buyers actively comparing homes",
+        "Find out what your home could sell for in Toronto, ON."
+      ],
+      "buttons": [
+        "Sign out",
+        "New campaign",
+        "TypeChoose campaign type",
+        "2MarketPick the city or market",
+        "3PropertyChoose inventory focus",
+        "4AudienceDefine audience and price",
+        "5BudgetSet budget and capture style",
+        "6SetupConfigure capture path",
+        "7OfferChoose offer or lead magnet",
+        "8AgentIdentify the agent",
+        "9ReviewConfirm and build",
+        "Start over",
+        "Back",
+        "Continue to property",
+        "Support"
+      ],
+      "inputs": [
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Toronto, ON",
+          "value": "Toronto, ON",
+          "aria": null
+        }
+      ],
+      "overflow": false,
+      "errorText": []
+    },
+    {
+      "label": "after-market",
+      "screenshot": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27/03-after-market.png",
+      "url": "https://app.agentdealflow.io/onboarding",
+      "headings": [
+        "Step-by-step campaign builder",
+        "Choose inventory focus",
+        "Private Listings and a Fast Buyer Strategy Call for move-ready buyers actively comparing homes",
+        "Find out what your home could sell for in Toronto, ON."
+      ],
+      "buttons": [
+        "Sign out",
+        "New campaign",
+        "TypeChoose campaign type",
+        "MarketPick the city or market",
+        "3PropertyChoose inventory focus",
+        "4AudienceDefine audience and price",
+        "5BudgetSet budget and capture style",
+        "6SetupConfigure capture path",
+        "7OfferChoose offer or lead magnet",
+        "8AgentIdentify the agent",
+        "9ReviewConfirm and build",
+        "Single Family HomesDetached homes, townhomes, freestanding homes, and homes on larger lots.",
+        "First Time Buyer HomesEntry-point options for buyers who need a clearer first step.",
+        "New ConstructionBuilder inventory, pre-construction, and newly built homes.",
+        "Luxury HomesHigher-intent buyers seeking premium private access.",
+        "CondosCondo buyers looking for sharper building and neighborhood fit.",
+        "Multi Unit HomesDuplexes, triplexes, and other multi-unit homes for buyers comparing income or flexible living options.",
+        "Start over",
+        "Back",
+        "Continue to audience",
+        "Support"
+      ],
+      "inputs": [],
+      "overflow": false,
+      "errorText": []
+    },
+    {
+      "label": "selected-inventory",
+      "screenshot": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27/04-selected-inventory.png",
+      "url": "https://app.agentdealflow.io/onboarding",
+      "headings": [
+        "Step-by-step campaign builder",
+        "Choose inventory focus",
+        "Private Listings and a Fast Buyer Strategy Call for move-ready buyers actively comparing homes",
+        "Find out what your home could sell for in Toronto, ON."
+      ],
+      "buttons": [
+        "Sign out",
+        "New campaign",
+        "TypeChoose campaign type",
+        "MarketPick the city or market",
+        "3PropertyChoose inventory focus",
+        "4AudienceDefine audience and price",
+        "5BudgetSet budget and capture style",
+        "6SetupConfigure capture path",
+        "7OfferChoose offer or lead magnet",
+        "8AgentIdentify the agent",
+        "9ReviewConfirm and build",
+        "Single Family HomesDetached homes, townhomes, freestanding homes, and homes on larger lots.",
+        "First Time Buyer HomesEntry-point options for buyers who need a clearer first step.",
+        "New ConstructionBuilder inventory, pre-construction, and newly built homes.",
+        "Luxury HomesHigher-intent buyers seeking premium private access.",
+        "CondosCondo buyers looking for sharper building and neighborhood fit.",
+        "Multi Unit HomesDuplexes, triplexes, and other multi-unit homes for buyers comparing income or flexible living options.",
+        "Start over",
+        "Back",
+        "Continue to audience",
+        "Support"
+      ],
+      "inputs": [],
+      "overflow": false,
+      "errorText": []
+    },
+    {
+      "label": "after-inventory",
+      "screenshot": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27/05-after-inventory.png",
+      "url": "https://app.agentdealflow.io/onboarding",
+      "headings": [
+        "Step-by-step campaign builder",
+        "Define audience and price",
+        "Private Listings and a Fast Buyer Strategy Call for move-ready buyers actively comparing homes",
+        "Find out what your home could sell for in Toronto, ON."
+      ],
+      "buttons": [
+        "Sign out",
+        "New campaign",
+        "TypeChoose campaign type",
+        "MarketPick the city or market",
+        "PropertyChoose inventory focus",
+        "4AudienceDefine audience and price",
+        "5BudgetSet budget and capture style",
+        "6SetupConfigure capture path",
+        "7OfferChoose offer or lead magnet",
+        "8AgentIdentify the agent",
+        "9ReviewConfirm and build",
+        "$400k-$600k",
+        "$600k-$900k",
+        "$900k-$1.5M",
+        "$1.5M+",
+        "Start over",
+        "Back",
+        "Continue to budget",
+        "Support"
+      ],
+      "inputs": [
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Move-ready buyers actively comparing homes",
+          "value": "Move-ready buyers actively comparing homes",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "$600k-$900k, lease-ready, or custom deal size",
+          "value": "$600k-$900k",
+          "aria": null
+        }
+      ],
+      "overflow": false,
+      "errorText": []
+    },
+    {
+      "label": "selected-price",
+      "screenshot": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27/06-selected-price.png",
+      "url": "https://app.agentdealflow.io/onboarding",
+      "headings": [
+        "Step-by-step campaign builder",
+        "Define audience and price",
+        "Private Listings and a Fast Buyer Strategy Call for move-ready buyers actively comparing homes",
+        "Find out what your home could sell for in Toronto, ON."
+      ],
+      "buttons": [
+        "Sign out",
+        "New campaign",
+        "TypeChoose campaign type",
+        "MarketPick the city or market",
+        "PropertyChoose inventory focus",
+        "4AudienceDefine audience and price",
+        "5BudgetSet budget and capture style",
+        "6SetupConfigure capture path",
+        "7OfferChoose offer or lead magnet",
+        "8AgentIdentify the agent",
+        "9ReviewConfirm and build",
+        "$400k-$600k",
+        "$600k-$900k",
+        "$900k-$1.5M",
+        "$1.5M+",
+        "Start over",
+        "Back",
+        "Continue to budget",
+        "Support"
+      ],
+      "inputs": [
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Move-ready buyers actively comparing homes",
+          "value": "Move-ready buyers actively comparing homes",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "$600k-$900k, lease-ready, or custom deal size",
+          "value": "$900k-$1.5M",
+          "aria": null
+        }
+      ],
+      "overflow": false,
+      "errorText": []
+    },
+    {
+      "label": "after-audience",
+      "screenshot": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27/07-after-audience.png",
+      "url": "https://app.agentdealflow.io/onboarding",
+      "headings": [
+        "Step-by-step campaign builder",
+        "Set budget and capture style",
+        "Private Listings and a Fast Buyer Strategy Call for move-ready buyers actively comparing homes",
+        "Find out what your home could sell for in Toronto, ON."
+      ],
+      "buttons": [
+        "Sign out",
+        "New campaign",
+        "TypeChoose campaign type",
+        "MarketPick the city or market",
+        "PropertyChoose inventory focus",
+        "AudienceDefine audience and price",
+        "5BudgetSet budget and capture style",
+        "6SetupConfigure capture path",
+        "7OfferChoose offer or lead magnet",
+        "8AgentIdentify the agent",
+        "9ReviewConfirm and build",
+        "$10/day",
+        "$20/day",
+        "$30/day",
+        "$50/day",
+        "$75/day",
+        "$100/day",
+        "Volume leadsInstant lead formUse the lowest-friction Meta form when budget is tight and consistent lead flow matters most.",
+        "Quality leadsFunnelUse the winning funnel when the budget can support a stronger qualification path and warmer handoff.Recommended",
+        "Highest qualityDeeper qualificationUse more qualification before the contact step when budget gives the campaign room to filter harder.",
+        "Start over",
+        "Back",
+        "Continue to setup",
+        "Support"
+      ],
+      "inputs": [
+        {
+          "tag": "INPUT",
+          "type": "number",
+          "name": null,
+          "placeholder": "30",
+          "value": "30",
+          "aria": "Custom daily ad spend amount"
+        }
+      ],
+      "overflow": false,
+      "errorText": []
+    },
+    {
+      "label": "selected-budget",
+      "screenshot": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27/08-selected-budget.png",
+      "url": "https://app.agentdealflow.io/onboarding",
+      "headings": [
+        "Step-by-step campaign builder",
+        "Set budget and capture style",
+        "Private Listings and a Fast Buyer Strategy Call for move-ready buyers actively comparing homes",
+        "Find out what your home could sell for in Toronto, ON."
+      ],
+      "buttons": [
+        "Sign out",
+        "New campaign",
+        "TypeChoose campaign type",
+        "MarketPick the city or market",
+        "PropertyChoose inventory focus",
+        "AudienceDefine audience and price",
+        "5BudgetSet budget and capture style",
+        "6SetupConfigure capture path",
+        "7OfferChoose offer or lead magnet",
+        "8AgentIdentify the agent",
+        "9ReviewConfirm and build",
+        "$10/day",
+        "$20/day",
+        "$30/day",
+        "$50/day",
+        "$75/day",
+        "$100/day",
+        "Volume leadsInstant lead formUse the lowest-friction Meta form when budget is tight and consistent lead flow matters most.",
+        "Quality leadsFunnelUse the winning funnel when the budget can support a stronger qualification path and warmer handoff.Recommended",
+        "Highest qualityDeeper qualificationUse more qualification before the contact step when budget gives the campaign room to filter harder.",
+        "Start over",
+        "Back",
+        "Continue to setup",
+        "Support"
+      ],
+      "inputs": [
+        {
+          "tag": "INPUT",
+          "type": "number",
+          "name": null,
+          "placeholder": "30",
+          "value": "50",
+          "aria": "Custom daily ad spend amount"
+        }
+      ],
+      "overflow": false,
+      "errorText": []
+    },
+    {
+      "label": "selected-capture",
+      "screenshot": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27/09-selected-capture.png",
+      "url": "https://app.agentdealflow.io/onboarding",
+      "headings": [
+        "Step-by-step campaign builder",
+        "Set budget and capture style",
+        "Private Listings and a Fast Buyer Strategy Call for move-ready buyers actively comparing homes",
+        "Find out what your home could sell for in Toronto, ON."
+      ],
+      "buttons": [
+        "Sign out",
+        "New campaign",
+        "TypeChoose campaign type",
+        "MarketPick the city or market",
+        "PropertyChoose inventory focus",
+        "AudienceDefine audience and price",
+        "5BudgetSet budget and capture style",
+        "6SetupConfigure capture path",
+        "7OfferChoose offer or lead magnet",
+        "8AgentIdentify the agent",
+        "9ReviewConfirm and build",
+        "$10/day",
+        "$20/day",
+        "$30/day",
+        "$50/day",
+        "$75/day",
+        "$100/day",
+        "Volume leadsInstant lead formUse the lowest-friction Meta form when budget is tight and consistent lead flow matters most.",
+        "Quality leadsFunnelUse the winning funnel when the budget can support a stronger qualification path and warmer handoff.Recommended",
+        "Highest qualityDeeper qualificationUse more qualification before the contact step when budget gives the campaign room to filter harder.",
+        "Start over",
+        "Back",
+        "Continue to setup",
+        "Support"
+      ],
+      "inputs": [
+        {
+          "tag": "INPUT",
+          "type": "number",
+          "name": null,
+          "placeholder": "30",
+          "value": "50",
+          "aria": "Custom daily ad spend amount"
+        }
+      ],
+      "overflow": false,
+      "errorText": []
+    },
+    {
+      "label": "after-budget",
+      "screenshot": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27/10-after-budget.png",
+      "url": "https://app.agentdealflow.io/onboarding",
+      "headings": [
+        "Step-by-step campaign builder",
+        "Configure capture path",
+        "Private Listings and a Fast Buyer Strategy Call for move-ready buyers actively comparing homes",
+        "Find out what your home could sell for in Toronto, ON."
+      ],
+      "buttons": [
+        "Sign out",
+        "New campaign",
+        "TypeChoose campaign type",
+        "MarketPick the city or market",
+        "PropertyChoose inventory focus",
+        "AudienceDefine audience and price",
+        "BudgetSet budget and capture style",
+        "6SetupConfigure capture path",
+        "7OfferChoose offer or lead magnet",
+        "8AgentIdentify the agent",
+        "9ReviewConfirm and build",
+        "EnglishGenerate funnel and ad copy in English.",
+        "FrenchGenerate funnel and ad copy in French.",
+        "SpanishGenerate funnel and ad copy in Spanish.",
+        "Start over",
+        "Back",
+        "Continue to offer",
+        "Support"
+      ],
+      "inputs": [
+        {
+          "tag": "INPUT",
+          "type": "color",
+          "name": null,
+          "placeholder": null,
+          "value": "#17212c",
+          "aria": "Primary funnel color"
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": null,
+          "value": "#17212c",
+          "aria": "Primary funnel hex color"
+        },
+        {
+          "tag": "INPUT",
+          "type": "color",
+          "name": null,
+          "placeholder": null,
+          "value": "#f3eee5",
+          "aria": "Background funnel color"
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": null,
+          "value": "#f3eee5",
+          "aria": "Background funnel hex color"
+        },
+        {
+          "tag": "INPUT",
+          "type": "color",
+          "name": null,
+          "placeholder": null,
+          "value": "#f59e42",
+          "aria": "Accent funnel color"
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": null,
+          "value": "#f59e42",
+          "aria": "Accent funnel hex color"
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "https://example.com/logo.png",
+          "value": "",
+          "aria": null
+        }
+      ],
+      "overflow": false,
+      "errorText": []
+    },
+    {
+      "label": "selected-language",
+      "screenshot": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27/11-selected-language.png",
+      "url": "https://app.agentdealflow.io/onboarding",
+      "headings": [
+        "Step-by-step campaign builder",
+        "Configure capture path",
+        "Private Listings and a Fast Buyer Strategy Call for move-ready buyers actively comparing homes",
+        "Find out what your home could sell for in Toronto, ON."
+      ],
+      "buttons": [
+        "Sign out",
+        "New campaign",
+        "TypeChoose campaign type",
+        "MarketPick the city or market",
+        "PropertyChoose inventory focus",
+        "AudienceDefine audience and price",
+        "BudgetSet budget and capture style",
+        "6SetupConfigure capture path",
+        "7OfferChoose offer or lead magnet",
+        "8AgentIdentify the agent",
+        "9ReviewConfirm and build",
+        "EnglishGenerate funnel and ad copy in English.",
+        "FrenchGenerate funnel and ad copy in French.",
+        "SpanishGenerate funnel and ad copy in Spanish.",
+        "Start over",
+        "Back",
+        "Continue to offer",
+        "Support"
+      ],
+      "inputs": [
+        {
+          "tag": "INPUT",
+          "type": "color",
+          "name": null,
+          "placeholder": null,
+          "value": "#17212c",
+          "aria": "Primary funnel color"
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": null,
+          "value": "#17212c",
+          "aria": "Primary funnel hex color"
+        },
+        {
+          "tag": "INPUT",
+          "type": "color",
+          "name": null,
+          "placeholder": null,
+          "value": "#f3eee5",
+          "aria": "Background funnel color"
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": null,
+          "value": "#f3eee5",
+          "aria": "Background funnel hex color"
+        },
+        {
+          "tag": "INPUT",
+          "type": "color",
+          "name": null,
+          "placeholder": null,
+          "value": "#f59e42",
+          "aria": "Accent funnel color"
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": null,
+          "value": "#f59e42",
+          "aria": "Accent funnel hex color"
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "https://example.com/logo.png",
+          "value": "",
+          "aria": null
+        }
+      ],
+      "overflow": false,
+      "errorText": []
+    },
+    {
+      "label": "after-setup",
+      "screenshot": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27/12-after-setup.png",
+      "url": "https://app.agentdealflow.io/onboarding",
+      "headings": [
+        "Step-by-step campaign builder",
+        "Choose offer or lead magnet",
+        "Private Listings and a Fast Buyer Strategy Call for move-ready buyers actively comparing homes",
+        "Find out what your home could sell for in Toronto, ON."
+      ],
+      "buttons": [
+        "Sign out",
+        "New campaign",
+        "TypeChoose campaign type",
+        "MarketPick the city or market",
+        "PropertyChoose inventory focus",
+        "AudienceDefine audience and price",
+        "BudgetSet budget and capture style",
+        "SetupConfigure capture path",
+        "7OfferChoose offer or lead magnet",
+        "8AgentIdentify the agent",
+        "9ReviewConfirm and build",
+        "Curated Home List",
+        "Affordability Breakdown",
+        "Early Access Listings",
+        "First-Time Buyer Plan",
+        "Relocation Shortlist",
+        "Move-Up Strategy Plan",
+        "Under-Market Deals",
+        "Neighborhood Match Report",
+        "Private Inventory Preview",
+        "Monthly Payment Estimator",
+        "Start over",
+        "Back",
+        "Continue to agent",
+        "Support"
+      ],
+      "inputs": [
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Private listings and a fast buyer strategy call",
+          "value": "Private listings and a fast buyer strategy call",
+          "aria": "Offer or lead magnet"
+        }
+      ],
+      "overflow": false,
+      "errorText": []
+    },
+    {
+      "label": "selected-offer",
+      "screenshot": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27/13-selected-offer.png",
+      "url": "https://app.agentdealflow.io/onboarding",
+      "headings": [
+        "Step-by-step campaign builder",
+        "Choose offer or lead magnet",
+        "Under-market Deals for move-ready buyers actively comparing homes",
+        "Get a clearer view of investor opportunities in Toronto, ON."
+      ],
+      "buttons": [
+        "Sign out",
+        "New campaign",
+        "TypeChoose campaign type",
+        "MarketPick the city or market",
+        "PropertyChoose inventory focus",
+        "AudienceDefine audience and price",
+        "BudgetSet budget and capture style",
+        "SetupConfigure capture path",
+        "7OfferChoose offer or lead magnet",
+        "8AgentIdentify the agent",
+        "9ReviewConfirm and build",
+        "Curated Home List",
+        "Affordability Breakdown",
+        "Early Access Listings",
+        "First-Time Buyer Plan",
+        "Relocation Shortlist",
+        "Move-Up Strategy Plan",
+        "Under-Market Deals",
+        "Neighborhood Match Report",
+        "Private Inventory Preview",
+        "Monthly Payment Estimator",
+        "Start over",
+        "Back",
+        "Continue to agent",
+        "Support"
+      ],
+      "inputs": [
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Private listings and a fast buyer strategy call",
+          "value": "Under-market Deals",
+          "aria": "Offer or lead magnet"
+        }
+      ],
+      "overflow": false,
+      "errorText": []
+    },
+    {
+      "label": "after-offer",
+      "screenshot": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27/14-after-offer.png",
+      "url": "https://app.agentdealflow.io/onboarding",
+      "headings": [
+        "Step-by-step campaign builder",
+        "Identify the agent",
+        "Under-market Deals for move-ready buyers actively comparing homes",
+        "Get a clearer view of investor opportunities in Toronto, ON."
+      ],
+      "buttons": [
+        "Sign out",
+        "New campaign",
+        "TypeChoose campaign type",
+        "MarketPick the city or market",
+        "PropertyChoose inventory focus",
+        "AudienceDefine audience and price",
+        "BudgetSet budget and capture style",
+        "SetupConfigure capture path",
+        "OfferChoose offer or lead magnet",
+        "8AgentIdentify the agent",
+        "9ReviewConfirm and build",
+        "Start over",
+        "Back",
+        "Continue to review",
+        "Support"
+      ],
+      "inputs": [
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Jane",
+          "value": "",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Smith",
+          "value": "",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Smith Realty Group",
+          "value": "",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "(555) 555-5555",
+          "value": "",
+          "aria": null
+        }
+      ],
+      "overflow": false,
+      "errorText": []
+    },
+    {
+      "label": "after-agent",
+      "screenshot": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27/15-after-agent.png",
+      "url": "https://app.agentdealflow.io/onboarding",
+      "headings": [
+        "Step-by-step campaign builder",
+        "Identify the agent",
+        "Under-market Deals for move-ready buyers actively comparing homes",
+        "Get a clearer view of investor opportunities in Toronto, ON."
+      ],
+      "buttons": [
+        "Sign out",
+        "New campaign",
+        "TypeChoose campaign type",
+        "MarketPick the city or market",
+        "PropertyChoose inventory focus",
+        "AudienceDefine audience and price",
+        "BudgetSet budget and capture style",
+        "SetupConfigure capture path",
+        "OfferChoose offer or lead magnet",
+        "8AgentIdentify the agent",
+        "9ReviewConfirm and build",
+        "Start over",
+        "Back",
+        "Continue to review",
+        "Support"
+      ],
+      "inputs": [
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Jane",
+          "value": "QA",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Smith",
+          "value": "QA",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Smith Realty Group",
+          "value": "QA",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "(555) 555-5555",
+          "value": "QA",
+          "aria": null
+        }
+      ],
+      "overflow": false,
+      "errorText": []
+    },
+    {
+      "label": "review-before-final",
+      "screenshot": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27/16-review-before-final.png",
+      "url": "https://app.agentdealflow.io/onboarding",
+      "headings": [
+        "Step-by-step campaign builder",
+        "Identify the agent",
+        "Under-market Deals for move-ready buyers actively comparing homes",
+        "Get a clearer view of investor opportunities in Toronto, ON."
+      ],
+      "buttons": [
+        "Sign out",
+        "New campaign",
+        "TypeChoose campaign type",
+        "MarketPick the city or market",
+        "PropertyChoose inventory focus",
+        "AudienceDefine audience and price",
+        "BudgetSet budget and capture style",
+        "SetupConfigure capture path",
+        "OfferChoose offer or lead magnet",
+        "8AgentIdentify the agent",
+        "9ReviewConfirm and build",
+        "Start over",
+        "Back",
+        "Continue to review",
+        "Support"
+      ],
+      "inputs": [
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Jane",
+          "value": "QA",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Smith",
+          "value": "QA",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Smith Realty Group",
+          "value": "QA",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "(555) 555-5555",
+          "value": "QA",
+          "aria": null
+        }
+      ],
+      "overflow": false,
+      "errorText": []
+    },
+    {
+      "label": "after-final-submit",
+      "screenshot": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27/17-after-final-submit.png",
+      "url": "https://app.agentdealflow.io/onboarding",
+      "headings": [
+        "Step-by-step campaign builder",
+        "Identify the agent",
+        "Under-market Deals for move-ready buyers actively comparing homes",
+        "Get a clearer view of investor opportunities in Toronto, ON."
+      ],
+      "buttons": [
+        "Sign out",
+        "New campaign",
+        "TypeChoose campaign type",
+        "MarketPick the city or market",
+        "PropertyChoose inventory focus",
+        "AudienceDefine audience and price",
+        "BudgetSet budget and capture style",
+        "SetupConfigure capture path",
+        "OfferChoose offer or lead magnet",
+        "8AgentIdentify the agent",
+        "9ReviewConfirm and build",
+        "Start over",
+        "Back",
+        "Continue to review",
+        "Support"
+      ],
+      "inputs": [
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Jane",
+          "value": "QA",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Smith",
+          "value": "QA",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Smith Realty Group",
+          "value": "QA",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "(555) 555-5555",
+          "value": "QA",
+          "aria": null
+        }
+      ],
+      "overflow": false,
+      "errorText": []
+    },
+    {
+      "label": "final-state",
+      "screenshot": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27/18-final-state.png",
+      "url": "https://app.agentdealflow.io/onboarding",
+      "headings": [
+        "Step-by-step campaign builder",
+        "Identify the agent",
+        "Under-market Deals for move-ready buyers actively comparing homes",
+        "Get a clearer view of investor opportunities in Toronto, ON."
+      ],
+      "buttons": [
+        "Sign out",
+        "New campaign",
+        "TypeChoose campaign type",
+        "MarketPick the city or market",
+        "PropertyChoose inventory focus",
+        "AudienceDefine audience and price",
+        "BudgetSet budget and capture style",
+        "SetupConfigure capture path",
+        "OfferChoose offer or lead magnet",
+        "8AgentIdentify the agent",
+        "9ReviewConfirm and build",
+        "Start over",
+        "Back",
+        "Continue to review",
+        "Support"
+      ],
+      "inputs": [
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Jane",
+          "value": "QA",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Smith",
+          "value": "QA",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "Smith Realty Group",
+          "value": "QA",
+          "aria": null
+        },
+        {
+          "tag": "INPUT",
+          "type": null,
+          "name": null,
+          "placeholder": "(555) 555-5555",
+          "value": "QA",
+          "aria": null
+        }
+      ],
+      "overflow": false,
+      "errorText": []
+    }
+  ],
+  "consoleEvents": [
+    {
+      "type": "info",
+      "text": "Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-uChxR0hekChrdP7BhfsEOGGx1SLNa/3JeN9pfeGNtlI='), or a nonce ('nonce-...') is required to enable inline execution. Note that hashes do not apply to event handlers, style attributes and javascript: navigations unless the 'unsafe-hashes' keyword is present. The policy is report-only, so the violation has been logged but no further action has been take"
+    },
+    {
+      "type": "info",
+      "text": "Executing inline script violates the following Content Security Policy directive 'script-src 'self' https://js.stripe.com https://connect.facebook.net https://challenges.cloudflare.com'. Either the 'unsafe-inline' keyword, a hash ('sha256-7mu4H06fwDCjmnxxr/xNHyuQC6pLTHr4M2E4jXw5WZs='), or a nonce ('nonce-...') is required to enable inline execution. The policy is report-only, so the violation has been logged but no further action has been taken."
+    },
+    {
+      "type": "info",
+      "text": "Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-AnyKVUschr5y1fNz8U9b/dm4l+VWPv4P8nk/Cx/L/nc='), or a nonce ('nonce-...') is required to enable inline execution. Note that hashes do not apply to event handlers, style attributes and javascript: navigations unless the 'unsafe-hashes' keyword is present. The policy is report-only, so the violation has been logged but no further action has been take"
+    },
+    {
+      "type": "info",
+      "text": "Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-sZQg4dXzaNd2uhyKx7mwUq1hiq55ZESOmwD5xxjH4EM='), or a nonce ('nonce-...') is required to enable inline execution. Note that hashes do not apply to event handlers, style attributes and javascript: navigations unless the 'unsafe-hashes' keyword is present. The policy is report-only, so the violation has been logged but no further action has been take"
+    },
+    {
+      "type": "info",
+      "text": "Executing inline script violates the following Content Security Policy directive 'script-src 'self' https://js.stripe.com https://connect.facebook.net https://challenges.cloudflare.com'. Either the 'unsafe-inline' keyword, a hash ('sha256-QAlSewaQLi/NPCznjAZSyvQ72heD0VdxmNDDkZeCxgc='), or a nonce ('nonce-...') is required to enable inline execution. The policy is report-only, so the violation has been logged but no further action has been taken."
+    },
+    {
+      "type": "info",
+      "text": "Executing inline script violates the following Content Security Policy directive 'script-src 'self' https://js.stripe.com https://connect.facebook.net https://challenges.cloudflare.com'. Either the 'unsafe-inline' keyword, a hash ('sha256-OBTN3RiyCV4Bq7dFqZ5a2pAXjnCcCYeTJMO2I/LYKeo='), or a nonce ('nonce-...') is required to enable inline execution. The policy is report-only, so the violation has been logged but no further action has been taken."
+    },
+    {
+      "type": "info",
+      "text": "Executing inline script violates the following Content Security Policy directive 'script-src 'self' https://js.stripe.com https://connect.facebook.net https://challenges.cloudflare.com'. Either the 'unsafe-inline' keyword, a hash ('sha256-vQugzoOSUbRGiz/ud0mkWX3f7ftaJh7zetRt3aYUHmo='), or a nonce ('nonce-...') is required to enable inline execution. The policy is report-only, so the violation has been logged but no further action has been taken."
+    },
+    {
+      "type": "info",
+      "text": "Executing inline script violates the following Content Security Policy directive 'script-src 'self' https://js.stripe.com https://connect.facebook.net https://challenges.cloudflare.com'. Either the 'unsafe-inline' keyword, a hash ('sha256-tGI9kXKoVdLDveX9nzShyvaVEa5HVnB0tEvGqt9bSHo='), or a nonce ('nonce-...') is required to enable inline execution. The policy is report-only, so the violation has been logged but no further action has been taken."
+    },
+    {
+      "type": "info",
+      "text": "Executing inline script violates the following Content Security Policy directive 'script-src 'self' https://js.stripe.com https://connect.facebook.net https://challenges.cloudflare.com'. Either the 'unsafe-inline' keyword, a hash ('sha256-5Cw98WZ/5LrBSV0XSc+F033kpZ820lZCAZdsxLbI4dg='), or a nonce ('nonce-...') is required to enable inline execution. The policy is report-only, so the violation has been logged but no further action has been taken."
+    },
+    {
+      "type": "info",
+      "text": "Executing inline script violates the following Content Security Policy directive 'script-src 'self' https://js.stripe.com https://connect.facebook.net https://challenges.cloudflare.com'. Either the 'unsafe-inline' keyword, a hash ('sha256-DrTo0GNwzuZ50BHTj2TBZ8e6GRSU/+C4UbXIMaHbsxM='), or a nonce ('nonce-...') is required to enable inline execution. The policy is report-only, so the violation has been logged but no further action has been taken."
+    },
+    {
+      "type": "info",
+      "text": "Executing inline script violates the following Content Security Policy directive 'script-src 'self' https://js.stripe.com https://connect.facebook.net https://challenges.cloudflare.com'. Either the 'unsafe-inline' keyword, a hash ('sha256-fssbXimpQHtld15S4HVnmZMshhD7oEGp0gKwcqRgDr0='), or a nonce ('nonce-...') is required to enable inline execution. The policy is report-only, so the violation has been logged but no further action has been taken."
+    },
+    {
+      "type": "info",
+      "text": "Executing inline script violates the following Content Security Policy directive 'script-src 'self' https://js.stripe.com https://connect.facebook.net https://challenges.cloudflare.com'. Either the 'unsafe-inline' keyword, a hash ('sha256-O2V1IY9frWboJSgVeOzsVsA7PHRRXd3lboebqPQG+5M='), or a nonce ('nonce-...') is required to enable inline execution. The policy is report-only, so the violation has been logged but no further action has been taken."
+    },
+    {
+      "type": "info",
+      "text": "Executing inline script violates the following Content Security Policy directive 'script-src 'self' https://js.stripe.com https://connect.facebook.net https://challenges.cloudflare.com'. Either the 'unsafe-inline' keyword, a hash ('sha256-KoZ+b1xo7GpnBOsv/1oIHPBFfHdyc/cFNEPYbC7vdac='), or a nonce ('nonce-...') is required to enable inline execution. The policy is report-only, so the violation has been logged but no further action has been taken."
+    }
+  ],
+  "failedRequests": [],
+  "httpErrors": [],
+  "unclassifiedConsole": [],
+  "unclassifiedHttpErrors": [],
+  "outDir": "/Users/raiaanreza/Documents/New project/dealflow-operator-shell-reconcile-20260621-healthy/docs/launch-reports/onboarding-start-to-finish-2026-06-27"
+}

@@ -89,7 +89,12 @@ async function maybeApproveCreativeBriefGate(page: Page) {
   await page.getByRole("button", { name: /Generate Creative Set/i }).click();
   const response = await creativeIntakeResponse;
   expect(response.ok(), `creative intake approval should return 2xx, got ${response.status()}`).toBeTruthy();
-  await expect(page.getByText(/Creative brief approved|Paid rendering can continue/i).first()).toBeVisible({ timeout: 15_000 });
+  await expect
+    .poll(async () => {
+      const bodyText = await page.locator("body").innerText();
+      return /Render assets|Save launch package|launch-ready static ads|Final static ads/i.test(bodyText);
+    }, { timeout: 15_000 })
+    .toBe(true);
 }
 
 async function expectNoHorizontalOverflow(page: Page) {
@@ -244,10 +249,9 @@ test.describe("safe authenticated self-serve journey", () => {
     if (await isVisible(continueToPlan)) {
       await continueToPlan.click();
       await expectNoHorizontalOverflow(page);
-      const proPlan = page.getByRole("button", { name: /Get started now|Pro.*\$297|Operator launch/i });
-      if (await isVisible(proPlan)) {
-        await proPlan.click();
-      }
+      await expect(page.getByText("One plan only.")).toBeVisible();
+      await expect(page.getByText(/Operator Launch\s+\$297\/mo/i)).toBeVisible();
+      await expect(page.getByRole("button", { name: /Get started now|Pro.*\$297|Operator launch/i })).toHaveCount(1);
     }
     const continueToReview = page.getByRole("button", { name: /Continue to review/i });
     if (await isVisible(continueToReview)) {
