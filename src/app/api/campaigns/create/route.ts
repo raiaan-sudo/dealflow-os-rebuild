@@ -37,6 +37,7 @@ import {
   isLaunchReadyStaticCreative,
   isLaunchReadyVideoCreative,
 } from "@/lib/services/creative-media-readiness";
+import { getInstantFormSetupReadiness } from "@/lib/services/instant-form-readiness";
 import {
   getApprovedCreativeIntakeGenerationContext,
   isCreativeChatIntakeEnabled,
@@ -68,6 +69,8 @@ type PersistedLaunchState = {
   adset_id: string | null;
   creative_id: string | null;
   ad_id: string | null;
+  lead_form_id?: string | null;
+  lead_form_name?: string | null;
   creative_ids?: string[] | null;
   ad_ids?: string[] | null;
   current_stage: LaunchStage;
@@ -424,11 +427,15 @@ async function persistLaunchState(
     stateMetaCreativeIds.length > 0 ? stateMetaCreativeIds : state.creative_id ? [state.creative_id] : [];
   const nextMetaAdIds =
     stateMetaAdIds.length > 0 ? stateMetaAdIds : state.ad_id ? [state.ad_id] : [];
+  const stateLeadFormId = typeof state.lead_form_id === "string" ? state.lead_form_id.trim() : "";
+  const stateLeadFormName = typeof state.lead_form_name === "string" ? state.lead_form_name.trim() : "";
   const nextRuntime = {
     ...currentRuntime,
     campaignId: state.campaign_id ?? currentRuntime.campaignId ?? null,
     adSetId: state.adset_id ?? currentRuntime.adSetId ?? null,
     adId: state.ad_id ?? currentRuntime.adId ?? null,
+    metaLeadFormId: stateLeadFormId || (currentRuntime.metaLeadFormId ?? null),
+    metaLeadFormName: stateLeadFormName || (currentRuntime.metaLeadFormName ?? null),
     metaAdSetIds: nextMetaAdSetIds.length > 0 ? nextMetaAdSetIds : currentRuntime.metaAdSetIds ?? [],
     metaCreativeIds: nextMetaCreativeIds.length > 0 ? nextMetaCreativeIds : currentRuntime.metaCreativeIds ?? [],
     metaAdIds: nextMetaAdIds.length > 0 ? nextMetaAdIds : currentRuntime.metaAdIds ?? [],
@@ -718,6 +725,181 @@ async function ensureDirectMetaObjectPaused(params: {
   }
 }
 
+function normalizeLeadFormQuestionText(value: unknown) {
+  return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+}
+
+function getSavedLeadFormQuestions(plan: Record<string, unknown>) {
+  const theme = asRecord(plan.funnel_theme) ?? asRecord(plan.theme);
+  const candidates = Array.isArray(theme?.leadFormQuestions)
+    ? theme?.leadFormQuestions
+    : Array.isArray(plan.lead_form_questions)
+      ? plan.lead_form_questions
+      : [];
+
+  return candidates
+    .map((question) => normalizeLeadFormQuestionText(question))
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+function buildMetaLeadFormQuestions(plan: Record<string, unknown>) {
+  const defaultQuestions = [
+    { type: "FULL_NAME" },
+    { type: "EMAIL" },
+    { type: "PHONE" },
+  ];
+  const customQuestions = getSavedLeadFormQuestions(plan).map((label) => ({
+    type: "CUSTOM",
+    label,
+  }));
+
+  return [...defaultQuestions, ...customQuestions];
+}
+
+function normalizeUrlPathOrAbsolute(value: unknown, fallbackPath: string) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+
+  if (/^https?:\/\//i.test(normalized)) {
+    return normalized;
+  }
+
+  const path = normalized.startsWith("/") ? normalized : fallbackPath;
+  return `${getPublicAppUrl()}${path}`;
+}
+
+function getInstantFormPrivacyUrl(record: Awaited<ReturnType<typeof getCampaignById>>) {
+  return normalizeUrlPathOrAbsolute(record?.leadCapture?.privacyPolicyUrl, "/privacy");
+}
+
+function getInstantFormFollowUpUrl(record: Awaited<ReturnType<typeof getCampaignById>>) {
+  const slug = record?.publish.slug?.trim();
+
+  if (slug) {
+    return `${getPublicAppUrl()}/f/${slug}`;
+  }
+
+  return getPublicAppUrl();
+}
+
+async function fetchMetaLeadFormByName(params: {
+  accessToken: string;
+  pageId: string;
+  name: string;
+  requestId?: string;
+}) {
+  const url = new URL(`https://graph.facebook.com/v18.0/${params.pageId}/leadgen_forms`);
+  url.searchParams.set("fields", "id,name,status");
+  url.searchParams.set("limit", "200");
+  url.searchParams.set("access_token", params.accessToken);
+
+  const { response, data } = await fetchMetaJson<
+    { data?: Array<Record<string, unknown>>; error?: { message?: string } } | null
+  >(url.toString(), {
+    purpose: "launch_lookup",
+    requestId: params.requestId,
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new ApiError(
+      502,
+      data?.error?.message ?? "Meta lead form lookup failed.",
+      "meta_lead_form_lookup_failed",
+    );
+  }
+
+  const match =
+    data?.data?.find(
+      (item) => typeof item.name === "string" && item.name.trim() === params.name,
+    ) ?? null;
+
+  return match && typeof match.id === "string" ? match.id : null;
+}
+
+async function createOrRecoverMetaLeadForm(params: {
+  accessToken: string;
+  pageId: string;
+  formName: string;
+  currentPlan: Record<string, unknown>;
+  privacyUrl: string;
+  followUpUrl: string;
+  existingLeadFormId?: string | null;
+  requestId: string;
+}) {
+  let leadFormId = params.existingLeadFormId?.trim() || null;
+
+  if (leadFormId) {
+    const existing = await fetchMetaObjectById({
+      accessToken: params.accessToken,
+      objectId: leadFormId,
+      fields: "id,name,status",
+      requestId: params.requestId,
+    });
+
+    if (
+      !existing ||
+      typeof existing.name !== "string" ||
+      existing.name.trim() !== params.formName.trim()
+    ) {
+      leadFormId = null;
+    }
+  }
+
+  if (!leadFormId) {
+    leadFormId = await fetchMetaLeadFormByName({
+      accessToken: params.accessToken,
+      pageId: params.pageId,
+      name: params.formName,
+      requestId: params.requestId,
+    });
+  }
+
+  if (leadFormId) {
+    return leadFormId;
+  }
+
+  const body = new URLSearchParams({
+    name: params.formName,
+    questions: JSON.stringify(buildMetaLeadFormQuestions(params.currentPlan)),
+    privacy_policy: JSON.stringify({
+      url: params.privacyUrl,
+      link_text: "Privacy Policy",
+    }),
+    follow_up_action_url: params.followUpUrl,
+    locale: "EN_US",
+    access_token: params.accessToken,
+  });
+
+  const { response, data } = await fetchMetaJson<Record<string, unknown> | null>(
+    `https://graph.facebook.com/v18.0/${params.pageId}/leadgen_forms`,
+    {
+      purpose: "launch_create",
+      requestId: params.requestId,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    },
+  );
+
+  leadFormId = data && typeof data.id === "string" ? data.id : null;
+
+  if (!response.ok || !leadFormId) {
+    throw new ApiError(
+      response.ok ? 500 : response.status,
+      buildStageFailureMessage(getMetaErrorMessage(data, "Lead form creation failed."), "creative"),
+      "meta_lead_form_create_failed",
+    );
+  }
+
+  return leadFormId;
+}
+
 async function createOrRecoverMetaAdForStaticCreative(params: {
   accessToken: string;
   externalAccountId: string;
@@ -727,7 +909,9 @@ async function createOrRecoverMetaAdForStaticCreative(params: {
   campaignId: string;
   attemptId: string;
   campaignName: string;
-  destinationUrl: string;
+  destinationUrl?: string | null;
+  leadFormId?: string | null;
+  linkFallbackUrl?: string | null;
   staticAd: LaunchStaticAd;
   index: number;
   existingCreativeId?: string | null;
@@ -800,15 +984,28 @@ async function createOrRecoverMetaAdForStaticCreative(params: {
   }
 
   if (!creativeId) {
+    const leadFormId = params.leadFormId?.trim() || null;
+    const destinationUrl = params.destinationUrl?.trim() || "";
+    const linkFallbackUrl = params.linkFallbackUrl?.trim() || getPublicAppUrl();
+
+    if (!leadFormId && !destinationUrl) {
+      throw new ApiError(
+        400,
+        "Missing destination URL or Meta lead form for creative creation.",
+        "missing_creative_destination",
+      );
+    }
+
+    const callToActionValue = leadFormId
+      ? { lead_gen_form_id: leadFormId }
+      : { link: destinationUrl };
     const linkData: Record<string, unknown> = {
       message: primaryText,
-      link: params.destinationUrl,
+      link: leadFormId ? linkFallbackUrl : destinationUrl,
       name: headline,
       call_to_action: {
         type: "LEARN_MORE",
-        value: {
-          link: params.destinationUrl,
-        },
+        value: callToActionValue,
       },
     };
 
@@ -1194,8 +1391,34 @@ async function launchCampaignToMeta(
     const pixelId = credentials.pixelId?.trim() || null;
     const pageId = credentials.pageId?.trim() || null;
 
-    if (!externalAccountId || !pageId || !pixelId) {
+    const instantFormCampaign = isInstantFormCampaign(currentPlan) || isInstantFormCampaign(record.funnel);
+
+    if (!externalAccountId || !pageId || (!instantFormCampaign && !pixelId)) {
       throw new ApiError(400, "Missing selected Meta assets", "missing_selected_meta_assets");
+    }
+
+    const instantFormReadiness = instantFormCampaign
+      ? getInstantFormSetupReadiness({
+          leadCaptureStatus: record.leadCapture?.status,
+          leadCaptureReadyAt: record.leadCapture?.readyAt,
+          leadDeliveryDestination: record.leadCapture?.deliveryDestination,
+          leadFormTemplateId: record.leadCapture?.formTemplateId,
+          metaLeadFormId: record.leadCapture?.metaLeadFormId,
+          privacyPolicyUrl: record.leadCapture?.privacyPolicyUrl,
+          smsConsentEnabled: record.leadCapture?.smsConsentEnabled,
+          termsUrl: record.leadCapture?.termsUrl,
+          leadLoopVerified: record.leadCapture?.leadLoopVerified,
+          leadCaptureLastError: record.leadCapture?.lastError,
+          metaSelectionReady: Boolean(externalAccountId && pageId && pixelId),
+        })
+      : null;
+
+    if (instantFormCampaign && !instantFormReadiness?.ready) {
+      throw new ApiError(
+        400,
+        instantFormReadiness?.blockingReason ?? "Verify the Meta Instant Form setup before launch.",
+        "instant_form_setup_not_ready",
+      );
     }
 
     const selectedAdIds = Array.from(
@@ -1300,21 +1523,13 @@ async function launchCampaignToMeta(
       selectedStaticAd.visualConcept ??
       storedPayload?.creatives?.creative_concepts?.[0] ??
       record.plan.summary;
-    if (isInstantFormCampaign(currentPlan) || isInstantFormCampaign(record.funnel)) {
-      throw new ApiError(
-        400,
-        "Meta Instant Form launch is blocked until the native form setup and delivery path are verified.",
-        "instant_form_operator_assisted",
-      );
-    }
-
     const publicSlug = publicFunnelState.publicSlug || record.publish.slug?.trim() || currentPlan.public_slug?.trim() || "";
     const expectedDestinationUrl = publicSlug
       ? `${getPublicAppUrl()}/f/${publicSlug}`
       : "";
-    const destinationUrl = publicSlug ? expectedDestinationUrl : "";
+    const destinationUrl = instantFormCampaign ? "" : publicSlug ? expectedDestinationUrl : "";
 
-    if (!publicSlug || !destinationUrl || !isPublicFunnelUrl(destinationUrl)) {
+    if (!instantFormCampaign && (!publicSlug || !destinationUrl || !isPublicFunnelUrl(destinationUrl))) {
       throw new ApiError(
         400,
         "Missing public destination URL",
@@ -1322,7 +1537,7 @@ async function launchCampaignToMeta(
       );
     }
 
-    if (publicFunnelState.publishState !== "published" || !publicFunnelState.publishedSnapshot) {
+    if (!instantFormCampaign && (publicFunnelState.publishState !== "published" || !publicFunnelState.publishedSnapshot)) {
       throw new ApiError(
         400,
         "Publish the public funnel before sending campaign traffic to Meta.",
@@ -1330,19 +1545,23 @@ async function launchCampaignToMeta(
       );
     }
 
-    assertPublishedFunnelSnapshotMatchesCurrentPlan({
-      currentPlan,
-      publishedSnapshot: publicFunnelState.publishedSnapshot,
-    });
+    if (!instantFormCampaign) {
+      assertPublishedFunnelSnapshotMatchesCurrentPlan({
+        currentPlan,
+        publishedSnapshot: publicFunnelState.publishedSnapshot,
+      });
+    }
 
     if (!record.publish.slug?.trim() && currentPlan.public_slug?.trim()) {
       await persistRecoveredPublicSlug(campaignId, currentPlan, publicSlug);
     }
 
-    const preflight = await validateMetaLaunchSelections({
-      destinationUrl,
-      organizationId: credentials.workspaceId,
-    });
+    const preflight = instantFormCampaign
+      ? { ready: true, errors: [] as string[] }
+      : await validateMetaLaunchSelections({
+          destinationUrl,
+          organizationId: credentials.workspaceId,
+        });
 
     if (!preflight.ready) {
       throw new ApiError(
@@ -1373,6 +1592,13 @@ async function launchCampaignToMeta(
       attemptId: activeAttemptId,
       stage: "creative",
       baseName: creativeConcept || headline,
+    });
+    const leadFormMetaName = buildDeterministicMetaName({
+      organizationId: workspaceId,
+      campaignId,
+      attemptId: activeAttemptId,
+      stage: "creative",
+      baseName: `${campaignName} | Native lead form`,
     });
     const adMetaName = buildDeterministicMetaName({
       organizationId: workspaceId,
@@ -1405,6 +1631,12 @@ async function launchCampaignToMeta(
       attemptId: activeAttemptId,
       stage: "ad",
     });
+    let leadFormId =
+      instantFormCampaign
+        ? record.leadCapture?.metaLeadFormId?.trim() ||
+          persistedLaunchState?.lead_form_id?.trim() ||
+          null
+        : null;
 
     let campaignData: Record<string, unknown> | null = null;
     currentStage = "campaign";
@@ -1731,7 +1963,11 @@ async function launchCampaignToMeta(
         name: adSetMetaName,
         campaign_id: lastKnownIds.campaign_id!,
         billing_event: "IMPRESSIONS",
-        optimization_goal: objective === "OUTCOME_TRAFFIC" ? "LINK_CLICKS" : "OFFSITE_CONVERSIONS",
+        optimization_goal: instantFormCampaign
+          ? "LEAD_GENERATION"
+          : objective === "OUTCOME_TRAFFIC"
+            ? "LINK_CLICKS"
+            : "OFFSITE_CONVERSIONS",
         daily_budget: dailyBudget,
         bid_strategy: "LOWEST_COST_WITHOUT_CAP",
         targeting: JSON.stringify({
@@ -1740,22 +1976,27 @@ async function launchCampaignToMeta(
         status: "PAUSED",
         access_token: credentials.accessToken,
       });
-      adSetBody.set(
-        "promoted_object",
-        JSON.stringify({
-          pixel_id: pixelId,
-          custom_event_type: "LEAD",
-        }),
-      );
-      adSetBody.set(
-        "tracking_specs",
-        JSON.stringify([
-          {
-            action_type: ["offsite_conversion"],
-            fb_pixel: [pixelId],
-          },
-        ]),
-      );
+      if (instantFormCampaign) {
+        adSetBody.set("promoted_object", JSON.stringify({ page_id: pageId }));
+        adSetBody.set("destination_type", "ON_AD");
+      } else {
+        adSetBody.set(
+          "promoted_object",
+          JSON.stringify({
+            pixel_id: pixelId,
+            custom_event_type: "LEAD",
+          }),
+        );
+        adSetBody.set(
+          "tracking_specs",
+          JSON.stringify([
+            {
+              action_type: ["offsite_conversion"],
+              fb_pixel: [pixelId],
+            },
+          ]),
+        );
+      }
       const { response: adSetResponse, data: adSetResponseData } = await fetchMetaJson<Record<string, unknown> | null>(
         `https://graph.facebook.com/v18.0/act_${externalAccountId}/adsets`,
         {
@@ -1823,6 +2064,8 @@ async function launchCampaignToMeta(
       campaignId,
       {
         ...lastKnownIds,
+        lead_form_id: leadFormId,
+        lead_form_name: leadFormId ? leadFormMetaName : null,
         current_stage: "adset",
         status: "in_progress",
         step_status: "created",
@@ -1841,14 +2084,51 @@ async function launchCampaignToMeta(
       currentStage: "adset",
     });
 
+    if (instantFormCampaign && !leadFormId) {
+      leadFormId = await createOrRecoverMetaLeadForm({
+        accessToken: credentials.accessToken,
+        pageId,
+        formName: leadFormMetaName,
+        currentPlan,
+        privacyUrl: getInstantFormPrivacyUrl(record),
+        followUpUrl: getInstantFormFollowUpUrl(record),
+        existingLeadFormId: persistedLaunchState?.lead_form_id ?? record.leadCapture?.metaLeadFormId ?? null,
+        requestId,
+      });
+
+      await persistLaunchState(
+        campaignId,
+        {
+          ...lastKnownIds,
+          lead_form_id: leadFormId,
+          lead_form_name: leadFormMetaName,
+          current_stage: "creative",
+          status: "in_progress",
+          step_status: "created",
+          attempt_id: activeAttemptId,
+          requested_object_type: "creative",
+          requested_object_name: leadFormMetaName,
+          requested_object_key: creativeObjectKey,
+          workspace_id: workspaceId,
+          error: null,
+          updated_at: new Date().toISOString(),
+        },
+        "Meta lead form created. Saving progress before creative creation.",
+      );
+    }
+
+    if (instantFormCampaign && !leadFormId) {
+      throw new ApiError(500, "Meta lead form could not be prepared for launch.", "meta_lead_form_missing");
+    }
+
     const linkData: Record<string, unknown> = {
       message: primaryText,
-      link: destinationUrl,
+      link: instantFormCampaign ? getInstantFormFollowUpUrl(record) : destinationUrl,
       name: headline,
       call_to_action: {
         type: "LEARN_MORE",
         value: {
-          link: destinationUrl,
+          ...(instantFormCampaign ? { lead_gen_form_id: leadFormId } : { link: destinationUrl }),
         },
       },
     };
@@ -2038,6 +2318,8 @@ async function launchCampaignToMeta(
       campaignId,
       {
         ...lastKnownIds,
+        lead_form_id: leadFormId,
+        lead_form_name: leadFormId ? leadFormMetaName : null,
         current_stage: "creative",
         status: "in_progress",
         step_status: "created",
@@ -2225,6 +2507,8 @@ async function launchCampaignToMeta(
           attemptId: activeAttemptId,
           campaignName,
           destinationUrl,
+          leadFormId,
+          linkFallbackUrl: getInstantFormFollowUpUrl(record),
           staticAd,
           index,
           existingCreativeId: launchedCreativeIds[index] ?? null,
@@ -2265,6 +2549,8 @@ async function launchCampaignToMeta(
         campaignId,
         {
           ...lastKnownIds,
+          lead_form_id: leadFormId,
+          lead_form_name: leadFormId ? leadFormMetaName : null,
           creative_ids: launchedCreativeIds,
           ad_ids: launchedAdIds,
           current_stage: "ad",
@@ -2294,6 +2580,8 @@ async function launchCampaignToMeta(
         {
           ...lastKnownIds,
           ad_id: null,
+          lead_form_id: leadFormId,
+          lead_form_name: leadFormId ? leadFormMetaName : null,
           creative_ids: launchedCreativeIds,
           ad_ids: launchedAdIds,
           current_stage: "ad",
@@ -2317,6 +2605,7 @@ async function launchCampaignToMeta(
         adset_id: lastKnownIds.adset_id,
         creative_id: lastKnownIds.creative_id,
         ad_id: lastKnownIds.ad_id,
+        lead_form_id: leadFormId,
         creative_ids: launchedCreativeIds,
         ad_ids: launchedAdIds,
         stage: "ad",

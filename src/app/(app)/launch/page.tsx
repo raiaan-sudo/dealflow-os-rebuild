@@ -35,6 +35,7 @@ import {
   isLaunchReadyVideoCreative,
   isPlayableVideoCreative,
 } from "@/lib/services/creative-media-readiness";
+import { getInstantFormSetupReadiness } from "@/lib/services/instant-form-readiness";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -503,11 +504,24 @@ export default async function LaunchAliasPage({
     Boolean(savedRecord.publish.slug) &&
     savedRecord.publish.hasPublishedSnapshot &&
     publicFunnelSnapshotCurrent;
-  const instantFormSetupReady = !instantFormCampaign;
+  const instantFormReadiness = getInstantFormSetupReadiness({
+    leadCaptureStatus: savedRecord.leadCapture?.status,
+    leadCaptureReadyAt: savedRecord.leadCapture?.readyAt,
+    leadDeliveryDestination: savedRecord.leadCapture?.deliveryDestination,
+    leadFormTemplateId: savedRecord.leadCapture?.formTemplateId,
+    metaLeadFormId: savedRecord.leadCapture?.metaLeadFormId,
+    privacyPolicyUrl: savedRecord.leadCapture?.privacyPolicyUrl,
+    smsConsentEnabled: savedRecord.leadCapture?.smsConsentEnabled,
+    termsUrl: savedRecord.leadCapture?.termsUrl,
+    leadLoopVerified: savedRecord.leadCapture?.leadLoopVerified,
+    leadCaptureLastError: savedRecord.leadCapture?.lastError,
+    metaSelectionReady,
+  });
+  const instantFormSetupReady = !instantFormCampaign || instantFormReadiness.ready;
   const campaignDestinationReady = instantFormCampaign ? instantFormSetupReady : publicFunnelPublished;
 
   if (instantFormCampaign && !instantFormSetupReady) {
-    blockingReasons.push("Meta Instant Form setup must be verified before launch.");
+    blockingReasons.push(instantFormReadiness.blockingReason ?? "Meta Instant Form setup must be verified before launch.");
   }
   if (!instantFormCampaign && !publicFunnelPublished) {
     blockingReasons.push(
@@ -525,7 +539,7 @@ export default async function LaunchAliasPage({
       : Math.round(plan.monthlyBudget / 30);
   const dailyBudgetCents = Math.max(0, Math.round(dailyBudgetInput * 100));
   const liveActivationBlocked = metaPreflight?.liveActivationBlocked ?? false;
-  const pausedSetupTrackingReady = instantFormCampaign ? false : metaPreflightReady;
+  const pausedSetupTrackingReady = instantFormCampaign ? instantFormSetupReady && metaLaunchReady : metaPreflightReady;
   const launchRoomReady =
     billingLaunchAllowed &&
     metaLaunchReady &&
@@ -596,9 +610,8 @@ export default async function LaunchAliasPage({
       ? {
           label: "Instant form setup",
           ready: instantFormSetupReady,
-          statusLabel: "Review required",
-          detail:
-            "This campaign uses a native Meta Instant Form. Public funnel publish checks are not required, but the form fields, privacy policy, and delivery path must be verified before launch.",
+          statusLabel: instantFormReadiness.statusLabel,
+          detail: instantFormReadiness.detail,
         }
       : {
           label: "Funnel published",
@@ -618,9 +631,17 @@ export default async function LaunchAliasPage({
     {
       label: instantFormCampaign ? "Instant Form activation" : "Tracking / live activation",
       ready: pausedSetupTrackingReady,
-      statusLabel: instantFormCampaign ? "Review required" : liveActivationBlocked ? "Paused setup ready" : undefined,
+      statusLabel: instantFormCampaign
+        ? instantFormReadiness.ready
+          ? "Ready"
+          : instantFormReadiness.statusLabel
+        : liveActivationBlocked
+          ? "Paused setup ready"
+          : undefined,
       detail: instantFormCampaign
-        ? "Native Meta lead form activation requires final form and delivery verification. No public funnel URL or pixel-domain blocker is required for this destination."
+        ? instantFormReadiness.ready
+          ? "Native Meta lead-form setup is verified. Public funnel URL and pixel-domain blockers do not apply to this destination."
+          : "Native Meta lead form activation requires final form and delivery verification. No public funnel URL or pixel-domain blocker is required for this destination."
         : liveActivationBlocked
           ? `Paused Meta object creation may proceed with the verified destination preflight, but live activation stays blocked until ${metaPreflight?.effectiveLaunchDomain ?? "the launch domain"} tracking and Meta Business verification are fully approved.`
           : "Launch domain and tracking are ready for live activation review.",
@@ -661,13 +682,15 @@ export default async function LaunchAliasPage({
             ? metaSelectionInvalid
               ? "Meta selections were saved, but Meta can no longer verify the selected ad account, Page, or pixel. Re-save the selections or reconnect Meta if the check stays blocked."
               : instantFormCampaign
-                ? "Meta selections were saved, but Instant Form launch remains blocked until the native form setup is verified."
+                ? instantFormReadiness.ready
+                  ? "Meta selections and native lead-form setup are ready for paused launch review."
+                  : instantFormReadiness.detail
                 : "Meta selections were saved, but launch preflight has not passed yet. Configure the verified platform launch domain and publish the public funnel before attempting launch."
             : "Save the ad account, Facebook Page, and pixel in the Meta setup section.",
         ]
       : []),
     ...(instantFormCampaign && !instantFormSetupReady
-      ? ["Verify the Meta Instant Form fields, privacy policy, and GHL delivery path before launch."]
+      ? [instantFormReadiness.blockingReason ?? "Verify the Meta Instant Form fields, privacy policy, and lead delivery path before launch."]
       : []),
     ...(!instantFormCampaign && !publicFunnelPublished ? ["Publish the public funnel snapshot so Meta has a live destination URL."] : []),
     ...(!selectedCreativeMediaReady

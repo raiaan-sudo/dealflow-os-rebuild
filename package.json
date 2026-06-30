@@ -35,6 +35,7 @@
     "repair:campaign-345-creative-brief": "node ./scripts/repair-campaign-345-creative-brief-integrity.mjs",
     "repair:campaign-launch-readiness": "node ./scripts/repair-campaign-launch-readiness-closure.mjs",
     "repair:lead-capture-mode-markers": "node ./scripts/repair-lead-capture-mode-markers.mjs",
+    "verify:instant-form-launch-readiness": "node ./scripts/verify-instant-form-launch-readiness.mjs",
     "test:media-buyer": "node ./scripts/test-media-buyer-framework.mjs",
     "test:media-buying-upgrades": "node ./scripts/test-media-buying-upgrades.mjs",
     "test:media-buyer-regression": "node ./scripts/regress-media-buyer-integration.mjs",

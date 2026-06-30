@@ -79,6 +79,33 @@ function isUgcStaticCreative(asset: Pick<StaticCreativeAsset, "id"> & { formatLa
   return /\bugc\b/i.test(`${asset.id} ${asset.formatLabel ?? ""}`);
 }
 
+function asOptionalText(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function asOptionalBoolean(value: unknown) {
+  return typeof value === "boolean" ? value : null;
+}
+
+function mapLeadCaptureRecord(row: CampaignPlanRow): FullCampaignRecord["leadCapture"] {
+  const source = row as unknown as Record<string, unknown>;
+
+  return {
+    captureMethod: asOptionalText(source.capture_method),
+    goal: asOptionalText(source.lead_capture_goal),
+    status: asOptionalText(source.lead_capture_status),
+    readyAt: asOptionalText(source.lead_capture_ready_at),
+    deliveryDestination: asOptionalText(source.lead_delivery_destination),
+    formTemplateId: asOptionalText(source.lead_form_template_id),
+    metaLeadFormId: asOptionalText(source.meta_lead_form_id),
+    privacyPolicyUrl: asOptionalText(source.privacy_policy_url),
+    smsConsentEnabled: asOptionalBoolean(source.sms_consent_enabled),
+    termsUrl: asOptionalText(source.terms_url),
+    leadLoopVerified: asOptionalBoolean(source.lead_loop_verified),
+    lastError: asOptionalText(source.lead_capture_last_error),
+  };
+}
+
 function getDefaultLaunchStaticAssetIds(staticAds: StaticCreativeAsset[]) {
   const rankedCreatives = [...staticAds].sort((left, right) => {
     const readinessDelta =
@@ -1193,6 +1220,7 @@ export async function listCampaignsForUser() {
     return normalizeCanonicalCampaign({
       campaign,
       savedDocument,
+      leadCapture: mapLeadCaptureRecord(typedRow),
       publish: mapPublishRecord(typedRow),
     });
   });
@@ -1217,6 +1245,7 @@ export async function getCampaignById(campaignId: string): Promise<FullCampaignR
     runtime: getRuntimeFromPlanRow(row),
     staticAds,
     videoAds: videoAds.length > 0 ? videoAds : undefined,
+    leadCapture: mapLeadCaptureRecord(row),
     publish: mapPublishRecord(row),
   });
 }
@@ -1262,6 +1291,7 @@ export async function getLatestCampaignRecord(): Promise<FullCampaignRecord | nu
     savedDocument: getSavedCampaignDocumentFromRow(row),
     staticAds,
     videoAds: videoAds.length > 0 ? videoAds : undefined,
+    leadCapture: mapLeadCaptureRecord(row),
     publish: mapPublishRecord(row),
   });
 }

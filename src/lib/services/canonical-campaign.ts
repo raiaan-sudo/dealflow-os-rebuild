@@ -684,6 +684,7 @@ export function normalizeCanonicalCampaign(params: {
   optimizations?: CampaignOptimization[] | null;
   planRecord?: Partial<CampaignPlan> | null;
   publish?: CampaignPublishRecord | null;
+  leadCapture?: FullCampaignRecord["leadCapture"] | null;
 }): FullCampaignRecord {
   const strategy = normalizeStrategyInput(params.savedDocument?.strategy, params.campaign);
   const built = params.builtCampaign ?? buildCampaign(strategy);
@@ -906,6 +907,7 @@ export function normalizeCanonicalCampaign(params: {
       hasStagedSnapshot: Boolean(params.publish?.stagedSnapshot),
       hasPublishedSnapshot: Boolean(params.publish?.publishedSnapshot),
     },
+    leadCapture: params.leadCapture ?? undefined,
   };
 }
 

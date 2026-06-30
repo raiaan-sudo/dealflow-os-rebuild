@@ -5,6 +5,7 @@ import { FileText, Image as ImageIcon, Lock, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { CanonicalFunnelRenderer } from "@/components/funnels/canonical-funnel-renderer";
+import { isInstantFormCampaign } from "@/lib/campaign-destination";
 import type { WinningFunnelBlueprint } from "@/lib/funnels/winning-template/schema";
 import { cn } from "@/lib/utils";
 
@@ -116,9 +117,9 @@ export function PrepaywallCampaignPreviewFromStorage({
 function getCaptureCopy(mode: LeadCaptureMode | undefined) {
   if (mode === "volume_lead_form") {
     return {
-      title: "Meta Instant Form setup",
+      title: "Meta Instant Form Setup",
       body: "Leads stay inside Facebook and Instagram with full name, email, and phone collected by the native form.",
-      footer: "No public landing page is created for this preview.",
+      footer: "No Meta instant form, campaign, ad, lead, SMS, or email is created from this preview.",
     };
   }
 
@@ -204,7 +205,7 @@ export function PrepaywallCampaignPreview({
   const captureCopy = getCaptureCopy(draft.leadCaptureMode);
   const packageMode = variant === "package";
   const compact = !packageMode;
-  const instantForm = draft.leadCaptureMode === "volume_lead_form";
+  const instantForm = isInstantFormCampaign(draft);
   const previewFunnel = buildPreviewFunnel(draft);
 
   return (
@@ -235,7 +236,7 @@ export function PrepaywallCampaignPreview({
         </div>
       </div>
 
-      <div className="mt-5 grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-2">
+      <div className="mt-5 grid min-w-0 items-stretch gap-3 lg:grid-cols-2 xl:grid-cols-2">
         <div
           className={cn(
             "rounded-[24px] border border-cyan-200/14 bg-gradient-to-br from-cyan-300/[0.09] via-white/[0.025] to-violet-300/[0.04]",
@@ -279,7 +280,10 @@ export function PrepaywallCampaignPreview({
 
         <div className="rounded-[24px] border border-white/10 bg-white/[0.035] p-4">
           {instantForm ? (
-            <div className="flex min-h-[360px] flex-col justify-between gap-4">
+            <div
+              data-testid="instant-form-setup-preview"
+              className="flex h-full min-h-[356px] flex-col justify-between gap-4"
+            >
               <div>
                 <div className="flex items-start gap-3">
                   <span className="rounded-2xl border border-cyan-200/16 bg-cyan-300/[0.07] p-2 text-cyan-100">

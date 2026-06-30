@@ -111,6 +111,20 @@ export type FullCampaignRecord = {
     hasStagedSnapshot: boolean;
     hasPublishedSnapshot: boolean;
   };
+  leadCapture?: {
+    captureMethod: string | null;
+    goal: string | null;
+    status: string | null;
+    readyAt: string | null;
+    deliveryDestination: string | null;
+    formTemplateId: string | null;
+    metaLeadFormId: string | null;
+    privacyPolicyUrl: string | null;
+    smsConsentEnabled: boolean | null;
+    termsUrl: string | null;
+    leadLoopVerified: boolean | null;
+    lastError: string | null;
+  };
 };
 
 export type SaveCampaignPayload = {

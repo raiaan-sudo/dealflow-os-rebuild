@@ -35,6 +35,7 @@ Module._extensions[".ts"] = function loadTs(module, filename) {
 
 const require = createRequire(import.meta.url);
 const { isInstantFormCampaign } = require("../src/lib/campaign-destination.ts");
+const { getInstantFormSetupReadiness } = require("../src/lib/services/instant-form-readiness.ts");
 
 const onboardingPreview = fs.readFileSync("src/components/onboarding/prepaywall-campaign-preview.tsx", "utf8");
 const previewPage = fs.readFileSync("src/app/(app)/preview/page.tsx", "utf8");
@@ -67,9 +68,33 @@ assert.equal(
   false,
   "quality funnel and landing page campaigns must not be treated as instant forms",
 );
+assert.equal(
+  getInstantFormSetupReadiness({
+    metaSelectionReady: true,
+    leadCaptureStatus: "operator_verified",
+    leadCaptureReadyAt: "2026-06-30T00:00:00.000Z",
+  }).ready,
+  true,
+  "operator-verified instant form setup must be launch-readiness eligible",
+);
+assert.equal(
+  getInstantFormSetupReadiness({
+    metaSelectionReady: true,
+    leadCaptureStatus: "draft",
+  }).ready,
+  false,
+  "draft instant form setup must stay blocked until operator verification",
+);
+assert.equal(
+  getInstantFormSetupReadiness({
+    metaSelectionReady: false,
+    leadCaptureStatus: "operator_verified",
+  }).ready,
+  false,
+  "instant form setup must still require Meta ad account, Page, and pixel selections",
+);
 
 assert.match(onboardingPreview, /isInstantFormCampaign/, "onboarding preview must use the shared instant-form classifier");
-assert.match(onboardingPreview, /function InstantFormSetupPreview/, "onboarding preview must have an instant form setup panel");
 assert.match(onboardingPreview, /data-testid="instant-form-setup-preview"/, "instant form setup panel must be test-addressable");
 assert.match(onboardingPreview, /compact \? "mt-7 h-\[320px\] max-h-\[42vh\]"/, "compact ad preview must use fixed viewport height instead of stretching beside instant-form setup");
 assert.match(onboardingPreview, /grid min-w-0 items-stretch gap-3/, "preview package grid must keep ad and instant-form cards visually level");
@@ -81,7 +106,7 @@ assert.match(onboardingPreview, /Phone number/, "instant form panel must show ph
 assert.match(onboardingPreview, /No Meta instant form/, "preview safety copy must say no Meta form is created");
 assert.match(
   onboardingPreview,
-  /instantFormCampaign \? \(\s*<InstantFormSetupPreview[\s\S]*:\s*\(\s*<FunnelPreviewMock/,
+  /instantForm \? \(\s*<div[\s\S]*data-testid="instant-form-setup-preview"[\s\S]*:\s*\(\s*<CanonicalFunnelRenderer/,
   "instant form campaigns must render setup preview instead of funnel preview",
 );
 
@@ -96,7 +121,13 @@ assert.match(
 
 assert.match(launchPage, /instantFormCampaign\s*\?\s*null\s*:\s*await withTimeout/, "launch page must skip public-funnel Meta preflight for instant forms");
 assert.match(launchPage, /Instant form setup/, "launch readiness must include an instant form setup gate");
-assert.match(launchPage, /Public funnel publish checks are not required/, "launch copy must not require funnel publishing for instant forms");
+assert.match(launchPage, /No public funnel publish gate is required/, "launch copy must not require funnel publishing for instant forms");
+assert.match(launchPage, /getInstantFormSetupReadiness/, "launch page must derive instant form readiness from durable campaign state");
+assert.doesNotMatch(
+  launchPage,
+  /const instantFormSetupReady = !instantFormCampaign;/,
+  "launch page must not permanently block every instant-form campaign",
+);
 assert.match(
   launchPage,
   /!instantFormCampaign && !publicFunnelPublished/,
@@ -104,15 +135,50 @@ assert.match(
 );
 assert.match(
   launchPage,
-  /Meta Instant Form setup must be verified/,
-  "launch page must block instant-form campaigns behind a customer-safe setup gate",
+  /instantFormReadiness\.blockingReason/,
+  "launch page must block instant-form campaigns using the explicit setup readiness reason",
 );
 
 assert.match(launchRoute, /isInstantFormCampaign/, "launch API must classify instant-form campaigns before public-funnel checks");
 assert.match(
   launchRoute,
+  /getInstantFormSetupReadiness/,
+  "launch API must gate instant-form launches with durable native-form readiness",
+);
+assert.match(
+  launchRoute,
+  /instant_form_setup_not_ready/,
+  "launch API must return a specific setup-not-ready code when native form verification is missing",
+);
+assert.doesNotMatch(
+  launchRoute,
   /instant_form_operator_assisted/,
-  "launch API must fail instant-form launches with the existing machine-readable setup code",
+  "launch API must not keep the old permanent instant-form launch block",
+);
+assert.match(
+  launchRoute,
+  /leadgen_forms/,
+  "launch API must create or recover native Meta lead forms for instant-form campaigns",
+);
+assert.match(
+  launchRoute,
+  /lead_gen_form_id/,
+  "launch API must attach native Meta lead forms to lead-ad creatives",
+);
+assert.match(
+  launchRoute,
+  /optimization_goal: instantFormCampaign[\s\S]*LEAD_GENERATION/,
+  "instant-form ad sets must optimize for native lead generation",
+);
+assert.match(
+  launchRoute,
+  /destination_type", "ON_AD"/,
+  "instant-form ad sets must use on-ad destination delivery",
+);
+assert.match(
+  launchRoute,
+  /instantFormCampaign\s*\?\s*\{ ready: true/,
+  "launch API must skip public-funnel/domain preflight for native instant forms",
 );
 assert.doesNotMatch(
   publicFunnelPage,
