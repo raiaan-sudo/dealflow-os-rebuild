@@ -757,7 +757,7 @@ function runOfflineChecks() {
   assertIncludes(launchRoute, "validateExistingMetaObject", "Meta object validation before reuse", "existing Meta IDs are validated before reuse");
   assertIncludes(launchRoute, "fetchMetaObjectByName", "Deterministic Meta lookup", "Meta objects are recovered by deterministic name");
   assertIncludes(launchRoute, "step_status", "Step-level launch state", "launch_runtime stores step_status");
-  assertIncludes(launchRoute, "const destinationUrl = publicSlug ? expectedDestinationUrl : \"\";", "Launch destination slug fallback", "published public slug is the launch destination source of truth when saved payloads are stale");
+  assertIncludes(launchRoute, "const destinationUrl = instantFormCampaign ? \"\" : publicSlug ? expectedDestinationUrl : \"\";", "Launch destination slug fallback", "published public slug is the launch destination source of truth for funnel campaigns while native instant forms omit a public destination");
   assertIncludes(launchRoute, "getRecoverablePublicSlug", "Launch slug recovery", "launch runtime updates recover and preserve the published slug instead of erasing it");
   assertIncludes(launchRoute, ".select(\"plan,public_slug,publish_state,published_snapshot,staged_snapshot\")", "Launch slug row fields", "launch recovery loads row publish fields instead of only the stale plan JSON");
   assertIncludes(launchRoute, "getNestedText(snapshot, [\"name\"])", "Launch snapshot name fallback", "published snapshots without publish.slug can recover the public slug from snapshot name");
@@ -967,7 +967,7 @@ function runOfflineChecks() {
   assertIncludes(safeE2eSpec, "/api/internal/qa-auth-session", "Safe E2E internal auth harness", "browser proof uses the env-gated internal QA auth harness");
   assertIncludes("src/app/api/internal/qa-auth-session/route.ts", "QA_AUTH_HARNESS_PRODUCTION_ENABLED", "Production QA harness gate", "QA session minting requires a second explicit production gate");
   assertIncludes("src/app/api/internal/qa-auth-session/route.ts", "type: \"email\"", "QA auth token verification", "generated Supabase email tokens are verified server-side without relying on CAPTCHA-protected password sign-in");
-  assertIncludes(safeE2eSpec, "No live ad, payment, message, or media action runs here.", "Safe E2E live-action boundary assertion", "browser proof asserts onboarding warns that no live ad, payment, message, or media action runs");
+  assertIncludes(safeE2eSpec, "No live ad, (payment, )?message, or media action runs here", "Safe E2E live-action boundary assertion", "browser proof asserts onboarding warns that no live ad, optional payment, message, or media action runs");
   assertIncludes("scripts/smoke-test-system.md", "npm run test:e2e:safe", "Safe browser E2E docs", "smoke documentation includes the safe browser proof command");
   assertExcludes("src/lib/services/lead-handler-service.ts", /QA_EMAIL|QA_PASSWORD/, "QA credential fallback removed", "no QA credential fallback remains in lead handler");
   assertIncludes(campaignPlanPersistence, "organization_id: params.ownerId", "Campaign persistence organization ownership", "fresh campaign rows persist organization_id for downstream jobs and billing");
@@ -1043,7 +1043,8 @@ function runOfflineChecks() {
   assertIncludes(launchRoute, "published_funnel_snapshot_stale", "Launch stale snapshot fail-closed code", "direct launch route rejects stale public funnel snapshots before paid traffic");
   assertOrderedIncludes(launchRoute, [
     "assertPublishedFunnelSnapshotMatchesCurrentPlan({",
-    "const preflight = await validateMetaLaunchSelections({",
+    "const preflight = instantFormCampaign",
+    "await validateMetaLaunchSelections({",
   ], "Launch stale snapshot preflight order", "public funnel snapshot consistency is checked before Meta preflight or object creation");
   assertIncludes(launchRoute, "const campaignOrganizationId = record.campaign.organization_id?.trim() || null;", "Launch campaign org scope", "direct Meta launch derives the owning campaign organization before credential lookup");
   assertIncludes(launchRoute, "organizationId: campaignOrganizationId", "Launch campaign-scoped credentials", "direct Meta launch reads the Meta connection from the campaign organization instead of the active admin workspace");

@@ -7,6 +7,10 @@ const callbackRoute = fs.readFileSync("src/app/api/integrations/meta/callback/ro
 const connectRoute = fs.readFileSync("src/app/api/integrations/meta/connect/route.ts", "utf8");
 const oauthState = fs.readFileSync("src/lib/integrations/meta/oauth-state.ts", "utf8");
 const campaignRoutes = fs.readFileSync("src/lib/routing/campaign-routes.ts", "utf8");
+const appContext = fs.readFileSync("src/lib/services/app-context.ts", "utf8");
+const appLayout = fs.readFileSync("src/app/(app)/layout.tsx", "utf8");
+const workspaceAccess = fs.readFileSync("src/lib/services/workspace-access.ts", "utf8");
+const proxy = fs.readFileSync("src/proxy.ts", "utf8");
 const migration = fs.readFileSync(
   "supabase/migrations/20260625190000_create_integration_oauth_states.sql",
   "utf8",
@@ -87,6 +91,46 @@ assert.doesNotMatch(
   callbackRoute,
   /message: "Meta OAuth callback state cookie was missing or did not match\.",/,
   "Cookie mismatch alone must not use the old cookie-only failure path",
+);
+
+assert.match(proxy, /requestHeaders\.set\("x-search", request\.nextUrl\.search\)/, "proxy must forward query string to server components");
+assert.match(appContext, /headers\(\)/, "app context must inspect request headers for campaign-scoped routes");
+assert.match(appContext, /getCampaignIdFromRequestHeaders/, "app context must parse campaignId from current request");
+assert.match(
+  appContext,
+  /resolveCampaignWorkspaceForUser\([\s\S]*requestedCampaignId/,
+  "app context must resolve workspace from the URL campaign before using the active workspace cookie",
+);
+assert.match(
+  appContext,
+  /const requestedWorkspace = campaignWorkspace \?\? await resolveRequestedWorkspaceForUser/,
+  "campaign-bound workspace must take precedence over stale active workspace cookies",
+);
+assert.match(
+  workspaceAccess,
+  /export async function resolveCampaignWorkspaceForUser/,
+  "workspace access must expose a campaign-bound workspace resolver",
+);
+assert.match(
+  workspaceAccess,
+  /\.from\("campaign_plans"\)[\s\S]*\.select\("id,organization_id"\)[\s\S]*\.eq\("id", requestedCampaignId\)/,
+  "campaign workspace resolver must load the campaign organization from campaign_plans",
+);
+assert.match(
+  workspaceAccess,
+  /return resolveWorkspaceAccessForUser\(supabase, profile, String\(campaignRaw\.organization_id\)\)/,
+  "campaign workspace resolver must still enforce normal owner/member/admin/partner access",
+);
+assert.match(appLayout, /getCampaignIdFromSearch/, "app shell must read campaignId from current URL search");
+assert.match(
+  appLayout,
+  /requestedCampaignId \?\? cookieStore\.get\(ACTIVE_CAMPAIGN_COOKIE\)/,
+  "app shell campaign links must prefer the URL campaign over the stale active campaign cookie",
+);
+assert.match(
+  appLayout,
+  /record\?\.campaign\.organization_id !== organizationId/,
+  "app shell must not use a campaign ID from another workspace for navigation context",
 );
 
 console.log("Meta OAuth white-label state binding regression passed.");

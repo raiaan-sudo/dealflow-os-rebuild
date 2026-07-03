@@ -164,6 +164,29 @@ export async function resolveRequestedWorkspaceForUser(
   return resolveWorkspaceAccessForUser(supabase, profile, requestedWorkspaceId);
 }
 
+export async function resolveCampaignWorkspaceForUser(
+  supabase: SupabaseLike,
+  profile: { id: string; email?: string | null },
+  campaignId: string | null,
+): Promise<{ organization: WorkspaceRow; access: NonNullable<AppContext["activeWorkspaceAccess"]>; membership?: AppContext["membership"] | null } | null> {
+  const requestedCampaignId = text(campaignId);
+  if (!requestedCampaignId) {
+    return null;
+  }
+
+  const { data: campaignRaw, error: campaignError } = await supabase
+    .from("campaign_plans")
+    .select("id,organization_id")
+    .eq("id", requestedCampaignId)
+    .maybeSingle();
+
+  if (campaignError || !campaignRaw?.organization_id) {
+    return null;
+  }
+
+  return resolveWorkspaceAccessForUser(supabase, profile, String(campaignRaw.organization_id));
+}
+
 export type ManagedWorkspaceOption = {
   id: string;
   name: string;

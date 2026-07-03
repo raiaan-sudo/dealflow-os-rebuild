@@ -1,0 +1,23 @@
+{
+  "method": "curl-source-scan",
+  "generatedAt": "2026-07-03T03:55:53.123Z",
+  "url": "https://clicktoscale.io/f/homelife-hearts-realty-inc",
+  "status": 200,
+  "finalUrl": "https://clicktoscale.io/f/homelife-hearts-realty-inc",
+  "timeTotal": 0.380407,
+  "htmlLength": 18683,
+  "htmlHasExpectedRoute": true,
+  "sourceSearchScope": [
+    "src",
+    "public",
+    "package.json",
+    "next.config.mjs"
+  ],
+  "sourceSearchStatus": 1,
+  "sourceSearchMatches": 0,
+  "htmlSearchMatches": 0,
+  "playwrightAvailable": false,
+  "playwrightUnavailableReason": "Local Playwright chromium launch hung in this shell during current triage; route proof is limited to runtime source scan and live HTML fetch.",
+  "curlStatus": 0,
+  "curlStderr": ""
+}

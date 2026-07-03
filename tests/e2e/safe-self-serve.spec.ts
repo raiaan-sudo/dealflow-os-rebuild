@@ -59,6 +59,27 @@ async function disableClientErrorTelemetryWrites(page: Page) {
   });
 }
 
+async function disableBillingCheckoutWrites(page: Page) {
+  await page.route("**/api/billing/checkout", async (route) => {
+    let campaignId = "";
+    try {
+      const body = JSON.parse(route.request().postData() ?? "{}") as { campaignId?: string };
+      campaignId = typeof body.campaignId === "string" ? body.campaignId : "";
+    } catch {
+      campaignId = "";
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        url: `/paywall?campaignId=${encodeURIComponent(campaignId)}&plan=pro&safeE2e=1`,
+        safeE2e: true,
+      }),
+    });
+  });
+}
+
 async function continueTo(page: Page, label: RegExp) {
   await page.getByRole("button", { name: label }).click();
 }
@@ -171,6 +192,7 @@ test.describe("safe authenticated self-serve journey", () => {
     await establishQaSession(page);
     await disableActivationTelemetryWrites(page);
     await disableClientErrorTelemetryWrites(page);
+    await disableBillingCheckoutWrites(page);
 
     await page.goto("/onboarding?new=1", { waitUntil: "domcontentloaded", timeout: 45_000 });
     await expect(page.getByRole("heading", { name: /Step-by-step campaign builder/i })).toBeVisible();
@@ -250,8 +272,9 @@ test.describe("safe authenticated self-serve journey", () => {
       await continueToPlan.click();
       await expectNoHorizontalOverflow(page);
       await expect(page.getByText("One plan only.")).toBeVisible();
-      await expect(page.getByText(/Operator Launch\s+\$297\/mo/i)).toBeVisible();
-      await expect(page.getByRole("button", { name: /Get started now|Pro.*\$297|Operator launch/i })).toHaveCount(1);
+      await expect(page.getByText(/new campaigns activate through Operator Launch at \$297\/month/i)).toBeVisible();
+      await expect(page.getByText("Only launch plan")).toBeVisible();
+      await expect(page.getByRole("button", { name: /Get started now/i })).toHaveCount(1);
     }
     const continueToReview = page.getByRole("button", { name: /Continue to review/i });
     if (await isVisible(continueToReview)) {
@@ -262,14 +285,14 @@ test.describe("safe authenticated self-serve journey", () => {
     await expect(page.getByText("Ready to build campaign preview")).toBeVisible();
     await expect(page.getByText("Launch readiness summary")).toBeVisible();
     await expect(page.getByText("Full-resolution files locked")).toBeVisible();
-    await expect(page.getByText("No live ad, payment, message, or media action runs here.")).toBeVisible();
+    await expect(page.getByText(/No live ad, (payment, )?message, or media action runs here\./)).toBeVisible();
     let campaignId = new URL(page.url()).searchParams.get("campaignId") ?? "";
     if (!page.url().includes("/build/creatives")) {
       const onboardingPlanResponse = page.waitForResponse(
         (response) => response.url().includes("/api/onboarding/plan") && response.request().method() === "POST",
         { timeout: 90_000 },
       );
-      await continueTo(page, /Continue to checkout|Continue to creatives|Continue/i);
+      await continueTo(page, /Activate Pro|Continue to checkout|Continue to creatives|Continue/i);
       const response = await onboardingPlanResponse;
       const responseBody = await response.text();
       let onboardingPlanPayload: { success?: boolean; campaignId?: string; data?: { campaignId?: string }; error?: string } = {};

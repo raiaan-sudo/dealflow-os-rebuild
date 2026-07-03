@@ -152,6 +152,11 @@ export async function POST(request: Request) {
 
         const storedPlan = await loadStoredPlan(campaignId);
         const existingPayload = getCampaignPayloadFromPlan(storedPlan) as CampaignPayloadRecord | null;
+        const leadCaptureMode =
+          getLeadCaptureModeFromRecord(storedPlan) ??
+          getLeadCaptureModeFromRecord(record) ??
+          getLeadCaptureModeFromRecord(existingPayload);
+        const instantFormCampaign = isInstantFormCampaign({ leadCaptureMode });
 
         const missingArtifacts: string[] = [];
 
@@ -164,7 +169,7 @@ export async function POST(request: Request) {
         if (!hasCampaignPlan) {
           missingArtifacts.push("campaign plan");
         }
-        if (!hasFunnel) {
+        if (!instantFormCampaign && !hasFunnel) {
           missingArtifacts.push("funnel");
         }
         if (!hasCreatives) {
@@ -185,31 +190,30 @@ export async function POST(request: Request) {
           );
         }
 
-        await assertCampaignCanPublishFunnel(campaignId);
+        const destinationUrl = instantFormCampaign
+          ? null
+          : await (async () => {
+              await assertCampaignCanPublishFunnel(campaignId);
 
-        const publishRecord = (
-          await updateCampaignPublishState({
-            campaignId,
-            state: "published",
-          })
-        ).publish;
+              const publishRecord = (
+                await updateCampaignPublishState({
+                  campaignId,
+                  state: "published",
+                })
+              ).publish;
 
-        const destinationUrl = publishRecord.slug
-          ? `${getPublicAppUrl()}/f/${publishRecord.slug}`
-          : null;
+              return publishRecord.slug
+                ? `${getPublicAppUrl()}/f/${publishRecord.slug}`
+                : null;
+            })();
 
-        if (!destinationUrl) {
+        if (!instantFormCampaign && !destinationUrl) {
           throw new ApiError(
             500,
             "Public funnel URL could not be created for this campaign.",
             "publish_destination_missing",
           );
         }
-        const leadCaptureMode =
-          getLeadCaptureModeFromRecord(storedPlan) ??
-          getLeadCaptureModeFromRecord(record) ??
-          getLeadCaptureModeFromRecord(existingPayload);
-        const instantFormCampaign = isInstantFormCampaign({ leadCaptureMode });
 
         const campaignPayload: CampaignPayloadRecord = {
           campaign_id: campaignId,
@@ -227,7 +231,7 @@ export async function POST(request: Request) {
             : existingPayload?.selected_ugc_video_id
               ? [existingPayload.selected_ugc_video_id]
               : undefined,
-          destination_url: destinationUrl,
+          ...(destinationUrl ? { destination_url: destinationUrl } : {}),
           business_profile: {
             business_name: record.plan.business_name,
             client_name: record.plan.client_name,
@@ -308,6 +312,7 @@ export async function POST(request: Request) {
         ({
           campaignId,
           hasDestinationUrl: Boolean(campaignPayload.destination_url),
+          instantFormCampaign: Boolean(campaignPayload.form_type === "instant_form"),
           hasSelectedAd: Boolean(campaignPayload.selected_ad_id),
           selectedAdCount: campaignPayload.selected_ad_ids?.length ?? 0,
         }) as never,

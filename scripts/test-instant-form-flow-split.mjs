@@ -162,6 +162,20 @@ assert.match(
 );
 assert.match(
   launchRoute,
+  /assertMetaLeadFormPermissions/,
+  "launch API must preflight native Meta lead-form permissions before creating campaign objects",
+);
+assert.ok(
+  launchRoute.indexOf("assertMetaLeadFormPermissions") < launchRoute.indexOf("act_${externalAccountId}/campaigns"),
+  "native Meta lead-form permission preflight must happen before campaign creation",
+);
+assert.match(
+  launchRoute,
+  /meta_lead_form_permission_missing/,
+  "launch API must return a specific permission error when Page lead-form access is unavailable",
+);
+assert.match(
+  launchRoute,
   /lead_gen_form_id/,
   "launch API must attach native Meta lead forms to lead-ad creatives",
 );
@@ -225,6 +239,31 @@ assert.match(
   buildCampaignRoute,
   /getLeadCaptureModeFromRecord\(storedPlan\)/,
   "build campaign route must preserve lead-capture mode when writing campaign payload",
+);
+assert.ok(
+  buildCampaignRoute.indexOf("const instantFormCampaign = isInstantFormCampaign") <
+    buildCampaignRoute.indexOf("if (!instantFormCampaign && !hasFunnel)"),
+  "build campaign route must classify native instant forms before artifact validation",
+);
+assert.match(
+  buildCampaignRoute,
+  /if \(!instantFormCampaign && !hasFunnel\)/,
+  "build campaign route must not require public funnel artifacts for native instant forms",
+);
+assert.match(
+  buildCampaignRoute,
+  /const destinationUrl = instantFormCampaign\s*\?\s*null\s*:\s*await/,
+  "build campaign route must not publish public funnels for native instant forms",
+);
+assert.ok(
+  buildCampaignRoute.indexOf("await assertCampaignCanPublishFunnel(campaignId)") >
+    buildCampaignRoute.indexOf("const destinationUrl = instantFormCampaign"),
+  "build campaign route must place public-funnel publishing behind the instant-form destination guard",
+);
+assert.match(
+  buildCampaignRoute,
+  /\.\.\.\(destinationUrl \? \{ destination_url: destinationUrl \} : \{\}\)/,
+  "instant-form campaign payloads must omit public destination_url instead of manufacturing a funnel URL",
 );
 assert.match(
   buildCampaignRoute,

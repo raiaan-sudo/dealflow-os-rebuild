@@ -1,10 +1,14 @@
 import { subDays } from "date-fns/subDays";
+import { headers } from "next/headers";
 import { slugify } from "@/lib/utils";
 import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ensurePartnerAttributionForWorkspace } from "@/lib/white-label/attribution";
-import { resolveRequestedWorkspaceForUser } from "@/lib/services/workspace-access";
+import {
+  resolveCampaignWorkspaceForUser,
+  resolveRequestedWorkspaceForUser,
+} from "@/lib/services/workspace-access";
 import type { Database } from "@/lib/supabase/types";
 import type { AppContext } from "@/types/app";
 import {
@@ -73,6 +77,33 @@ function isDemoWorkspaceSeedingEnabled() {
   }
 
   return process.env.NODE_ENV !== "production" && process.env.ENABLE_DEMO_WORKSPACE_SEEDING !== "false";
+}
+
+async function getCampaignIdFromRequestHeaders() {
+  try {
+    const headerStore = await headers();
+    const pathname = headerStore.get("x-pathname") ?? "";
+    if (
+      !pathname.startsWith("/build") &&
+      !pathname.startsWith("/campaign-built") &&
+      !pathname.startsWith("/dashboard") &&
+      !pathname.startsWith("/launch") &&
+      !pathname.startsWith("/launch-success") &&
+      !pathname.startsWith("/paywall") &&
+      !pathname.startsWith("/preview") &&
+      !pathname.startsWith("/results") &&
+      !pathname.startsWith("/settings")
+    ) {
+      return null;
+    }
+
+    const search = headerStore.get("x-search") ?? "";
+    const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+    const campaignId = params.get("campaignId")?.trim() ?? "";
+    return campaignId.length > 0 ? campaignId : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function ensureUserProfile(supabase: SupabaseClient, user: AppContext["user"]) {
@@ -457,7 +488,13 @@ export async function ensureAppContext() {
   try {
     const bootstrapSupabase = (createAdminClient() as SupabaseClient | null) ?? supabase;
     const profile = await ensureUserProfile(bootstrapSupabase, user);
-    const requestedWorkspace = await resolveRequestedWorkspaceForUser(bootstrapSupabase, profile);
+    const requestedCampaignId = await getCampaignIdFromRequestHeaders();
+    const campaignWorkspace = await resolveCampaignWorkspaceForUser(
+      bootstrapSupabase,
+      profile,
+      requestedCampaignId,
+    );
+    const requestedWorkspace = campaignWorkspace ?? await resolveRequestedWorkspaceForUser(bootstrapSupabase, profile);
     const organization = requestedWorkspace?.organization ?? await ensureWorkspace(bootstrapSupabase, profile);
     const membership = requestedWorkspace?.membership ?? await ensureMembership(bootstrapSupabase, profile, organization);
     const businessProfile =

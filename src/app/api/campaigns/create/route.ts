@@ -805,10 +805,17 @@ async function fetchMetaLeadFormByName(params: {
   });
 
   if (!response.ok) {
+    const message = data?.error?.message ?? "Meta lead form lookup failed.";
+    const missingLeadFormPermission =
+      response.status === 403 &&
+      /pages_manage_ads|leadgen_forms|lead form|permission/i.test(message);
+
     throw new ApiError(
-      502,
-      data?.error?.message ?? "Meta lead form lookup failed.",
-      "meta_lead_form_lookup_failed",
+      missingLeadFormPermission ? 403 : 502,
+      missingLeadFormPermission
+        ? "Meta lead form permissions are missing for this app or Page. Confirm the Meta app can request Page lead form permissions before launching an instant-form campaign."
+        : message,
+      missingLeadFormPermission ? "meta_lead_form_permission_missing" : "meta_lead_form_lookup_failed",
     );
   }
 
@@ -898,6 +905,20 @@ async function createOrRecoverMetaLeadForm(params: {
   }
 
   return leadFormId;
+}
+
+async function assertMetaLeadFormPermissions(params: {
+  accessToken: string;
+  pageId: string;
+  formName: string;
+  requestId: string;
+}) {
+  await fetchMetaLeadFormByName({
+    accessToken: params.accessToken,
+    pageId: params.pageId,
+    name: params.formName,
+    requestId: params.requestId,
+  });
 }
 
 async function createOrRecoverMetaAdForStaticCreative(params: {
@@ -1637,6 +1658,15 @@ async function launchCampaignToMeta(
           persistedLaunchState?.lead_form_id?.trim() ||
           null
         : null;
+
+    if (instantFormCampaign) {
+      await assertMetaLeadFormPermissions({
+        accessToken: credentials.accessToken,
+        pageId,
+        formName: leadFormMetaName,
+        requestId,
+      });
+    }
 
     let campaignData: Record<string, unknown> | null = null;
     currentStage = "campaign";

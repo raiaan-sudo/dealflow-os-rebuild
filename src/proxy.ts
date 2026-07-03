@@ -308,6 +308,7 @@ export async function proxy(request: NextRequest) {
   const finalize = (nextResponse: NextResponse) => applySecurityHeaders(request, nextResponse, startedAt);
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", request.nextUrl.pathname);
+  requestHeaders.set("x-search", request.nextUrl.search);
   let response = NextResponse.next({ request: { headers: requestHeaders } });
   const pathname = request.nextUrl.pathname;
 

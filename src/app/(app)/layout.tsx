@@ -45,12 +45,29 @@ function getBrandInitials(brandName: string) {
     .join("") || "DF";
 }
 
-async function resolveOwnedActiveCampaignId(candidateCampaignId: string | null) {
+function getCampaignIdFromSearch(search: string | null) {
+  if (!search) {
+    return null;
+  }
+
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const campaignId = params.get("campaignId")?.trim() ?? "";
+  return campaignId.length > 0 ? campaignId : null;
+}
+
+async function resolveOwnedActiveCampaignId(
+  candidateCampaignId: string | null,
+  organizationId?: string | null,
+) {
   if (!candidateCampaignId) {
     return null;
   }
 
   const record = await getCampaignById(candidateCampaignId).catch(() => null);
+  if (organizationId && record?.campaign.organization_id !== organizationId) {
+    return null;
+  }
+
   return record?.campaign.id ?? null;
 }
 
@@ -63,9 +80,7 @@ export default async function AppLayout({
   const cookieStore = await cookies();
   const authState = headerStore.get("x-dealflow-auth-state");
   const pathname = headerStore.get("x-pathname") ?? "";
-  const activeCampaignId = await resolveOwnedActiveCampaignId(
-    cookieStore.get(ACTIVE_CAMPAIGN_COOKIE)?.value ?? null,
-  );
+  const requestedCampaignId = getCampaignIdFromSearch(headerStore.get("x-search"));
   const isFirstRunFocusRoute =
     pathname.startsWith("/campaign-built") ||
     pathname.startsWith("/welcome") ||
@@ -75,6 +90,10 @@ export default async function AppLayout({
     pathname.startsWith("/preview") ||
     pathname.startsWith("/paywall");
   const appContext = await getAppContext().catch(() => null);
+  const activeCampaignId = await resolveOwnedActiveCampaignId(
+    requestedCampaignId ?? cookieStore.get(ACTIVE_CAMPAIGN_COOKIE)?.value ?? null,
+    appContext?.organization.id ?? null,
+  );
   const brandContext = await resolveAuthenticatedBrandContext(appContext).catch(() => null);
   const managedWorkspaces = await listManagedWorkspacesForContext(createAdminClient(), appContext).catch(() => []);
   const isAdmin = isInternalAdminEmail(appContext?.user.email ?? appContext?.profile?.email ?? null);

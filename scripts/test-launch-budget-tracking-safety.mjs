@@ -84,12 +84,12 @@ assertIncludes(
 assertOrder(
   launchCreateRoute,
   "assertPublishedFunnelSnapshotMatchesCurrentPlan({",
-  "const preflight = await validateMetaLaunchSelections({",
+  "const preflight = instantFormCampaign",
   "public funnel snapshot consistency is checked before Meta preflight and object creation",
 );
 assertOrder(
   launchCreateRoute,
-  "const preflight = await validateMetaLaunchSelections({",
+  "await validateMetaLaunchSelections({",
   "https://graph.facebook.com/v18.0/act_${externalAccountId}/campaigns",
   "preflight runs before Meta campaign creation",
 );
