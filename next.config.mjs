@@ -8,10 +8,6 @@ const baseSecurityHeaders = [
     value: "nosniff",
   },
   {
-    key: "X-Frame-Options",
-    value: "DENY",
-  },
-  {
     key: "Cross-Origin-Opener-Policy",
     value: "same-origin",
   },

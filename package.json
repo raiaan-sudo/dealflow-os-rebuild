@@ -94,6 +94,7 @@
     "test:performance:all": "node ./scripts/performance-audit.mjs performance:all",
     "test:internal-sms": "node ./scripts/test-internal-sms-notifications.mjs",
     "test:click-to-scale-ghl": "node ./scripts/test-click-to-scale-ghl-adapted-schema.mjs",
+    "test:ghl-iframe-embed-security": "node ./scripts/test-ghl-iframe-embed-security.mjs",
     "proof:lead-side-effects-crm-dry": "node ./scripts/proof-lead-side-effects-crm-dry.mjs",
     "proof:partner-crm-sync-db": "node ./scripts/proof-partner-crm-sync-db.mjs",
     "proof:live-auth-browser-qa": "node ./scripts/proof-live-authenticated-browser-qa.mjs",
