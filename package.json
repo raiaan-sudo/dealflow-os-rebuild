@@ -54,6 +54,7 @@
     "test:launch-budget-tracking-safety": "node ./scripts/test-launch-budget-tracking-safety.mjs",
     "test:support-freshdesk": "node ./scripts/test-support-freshdesk.mjs",
     "test:public-funnel-thank-you": "node ./scripts/test-public-funnel-thank-you.mjs",
+    "test:lead-tracking-health": "node ./scripts/test-lead-tracking-health.mjs",
     "test:lead-notification-status": "node ./scripts/test-lead-notification-status-normalization.mjs",
     "test:meta-app-state-drift": "node ./scripts/test-meta-app-state-drift.mjs",
     "test:stripe-price-guard": "node ./scripts/test-stripe-price-guard.mjs",

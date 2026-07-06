@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ApiError, assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
+import { isInstantFormCampaign } from "@/lib/campaign-destination";
 import { getPublicAppUrl } from "@/lib/env";
 import {
   buildCampaignPlanCriticalFieldPatch,
@@ -20,6 +21,11 @@ import {
 } from "@/lib/integrations/meta/budget-cap";
 import { fetchMetaJson } from "@/lib/integrations/meta/request";
 import {
+  getMetaCreativeOptOutPayload,
+  buildMetaMarketGeoLocations,
+  getMetaSpecialAdCategoryCountries,
+} from "@/lib/integrations/meta/launch-payload-guardrails";
+import {
   getMetaWorkspaceCredentials,
   validateMetaLaunchSelections,
   type MetaWorkspaceCredentials,
@@ -31,6 +37,15 @@ import {
   isLaunchReadyStaticCreative,
   isLaunchReadyVideoCreative,
 } from "@/lib/services/creative-media-readiness";
+import { getInstantFormSetupReadiness } from "@/lib/services/instant-form-readiness";
+import {
+  getApprovedCreativeIntakeGenerationContext,
+  isCreativeChatIntakeEnabled,
+} from "@/lib/services/creative-chat-intake-service";
+import {
+  buildTrackingReadiness,
+  upsertCampaignTrackingContract,
+} from "@/lib/services/lead-tracking-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { slugify } from "@/lib/utils";
@@ -58,6 +73,10 @@ type PersistedLaunchState = {
   adset_id: string | null;
   creative_id: string | null;
   ad_id: string | null;
+  lead_form_id?: string | null;
+  lead_form_name?: string | null;
+  creative_ids?: string[] | null;
+  ad_ids?: string[] | null;
   current_stage: LaunchStage;
   status: "pending" | "in_progress" | "failed" | "completed";
   step_status?: LaunchStepStatus | null;
@@ -68,6 +87,14 @@ type PersistedLaunchState = {
   workspace_id?: string | null;
   error?: string | null;
   updated_at: string;
+};
+
+type LaunchStaticAd = {
+  id: string;
+  primaryText?: string | null;
+  headline?: string | null;
+  visualConcept?: string | null;
+  imageUrl?: string | null;
 };
 
 type CampaignPayloadRecord = {
@@ -126,15 +153,7 @@ function assertMetaLiveLaunchEnabled() {
     );
   }
 
-  try {
-    assertMetaDailyBudgetCapConfiguredForLiveLaunch();
-  } catch {
-    throw new ApiError(
-      503,
-      "Production Meta launch approval requires META_DAILY_BUDGET_CAP_CENTS before paused objects can be created.",
-      "meta_budget_cap_missing",
-    );
-  }
+  assertMetaDailyBudgetCapConfiguredForLiveLaunch();
 }
 
 function buildStageFailureMessage(rawMessage: string, stage: LaunchStage) {
@@ -171,20 +190,6 @@ function getMetaErrorMessage(data: Record<string, unknown> | null, fallback: str
   return [userTitle, userMessage || message].filter(Boolean).join(": ") || fallback;
 }
 
-function inferCountryCode(location: string) {
-  const normalized = location.toLowerCase();
-
-  if (
-    /\btoronto\b|\bontario\b|\bvancouver\b|\bcalgary\b|\bedmonton\b|\bmontreal\b|\bcanada\b/.test(
-      normalized,
-    )
-  ) {
-    return "CA";
-  }
-
-  return "US";
-}
-
 function inferAgeRange(audience: string, targetingSummary: string) {
   const normalized = `${audience} ${targetingSummary}`.toLowerCase();
 
@@ -204,8 +209,7 @@ function inferAgeRange(audience: string, targetingSummary: string) {
 }
 
 function buildGeoTargeting(location: string) {
-  void location;
-  return {};
+  return buildMetaMarketGeoLocations(location);
 }
 
 async function loadSavedCampaignPayload(campaignId: string): Promise<CampaignPayloadRecord | null> {
@@ -259,6 +263,10 @@ function asRecord(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+function normalizeStringArray(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : [];
 }
 
 function getNestedText(value: unknown, path: string[]) {
@@ -416,14 +424,24 @@ async function persistLaunchState(
       ? (currentPlan.runtime as Record<string, unknown>)
       : {};
 
+  const stateMetaCreativeIds = normalizeStringArray(state.creative_ids);
+  const stateMetaAdIds = normalizeStringArray(state.ad_ids);
   const nextMetaAdSetIds = state.adset_id ? [state.adset_id] : [];
-  const nextMetaAdIds = state.ad_id ? [state.ad_id] : [];
+  const nextMetaCreativeIds =
+    stateMetaCreativeIds.length > 0 ? stateMetaCreativeIds : state.creative_id ? [state.creative_id] : [];
+  const nextMetaAdIds =
+    stateMetaAdIds.length > 0 ? stateMetaAdIds : state.ad_id ? [state.ad_id] : [];
+  const stateLeadFormId = typeof state.lead_form_id === "string" ? state.lead_form_id.trim() : "";
+  const stateLeadFormName = typeof state.lead_form_name === "string" ? state.lead_form_name.trim() : "";
   const nextRuntime = {
     ...currentRuntime,
     campaignId: state.campaign_id ?? currentRuntime.campaignId ?? null,
     adSetId: state.adset_id ?? currentRuntime.adSetId ?? null,
     adId: state.ad_id ?? currentRuntime.adId ?? null,
+    metaLeadFormId: stateLeadFormId || (currentRuntime.metaLeadFormId ?? null),
+    metaLeadFormName: stateLeadFormName || (currentRuntime.metaLeadFormName ?? null),
     metaAdSetIds: nextMetaAdSetIds.length > 0 ? nextMetaAdSetIds : currentRuntime.metaAdSetIds ?? [],
+    metaCreativeIds: nextMetaCreativeIds.length > 0 ? nextMetaCreativeIds : currentRuntime.metaCreativeIds ?? [],
     metaAdIds: nextMetaAdIds.length > 0 ? nextMetaAdIds : currentRuntime.metaAdIds ?? [],
     metaPushStatus:
       state.status === "completed"
@@ -502,6 +520,18 @@ function isPublicFunnelUrl(value: string) {
   }
 }
 
+function getUrlHostname(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 function buildLaunchAttemptId(params: {
   existingAttemptId?: string | null;
   workspaceId: string;
@@ -537,6 +567,16 @@ function buildLaunchObjectKey(params: {
   stage: LaunchStage;
 }) {
   return `${params.organizationId}:${params.campaignId}:${params.attemptId}:${params.stage}`;
+}
+
+function buildIndexedLaunchObjectKey(params: {
+  organizationId: string;
+  campaignId: string;
+  attemptId: string;
+  stage: LaunchStage;
+  selectedAdId: string;
+}) {
+  return `${buildLaunchObjectKey(params)}:${params.selectedAdId}`;
 }
 
 function shouldAllowForcedInterruption() {
@@ -697,6 +737,458 @@ async function ensureDirectMetaObjectPaused(params: {
       502,
       `Meta object ${params.objectId} could not be verified PAUSED after creation/recovery.`,
       "meta_paused_verification_failed",
+    );
+  }
+}
+
+function normalizeLeadFormQuestionText(value: unknown) {
+  return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+}
+
+function getSavedLeadFormQuestions(plan: Record<string, unknown>) {
+  const theme = asRecord(plan.funnel_theme) ?? asRecord(plan.theme);
+  const candidates = Array.isArray(theme?.leadFormQuestions)
+    ? theme?.leadFormQuestions
+    : Array.isArray(plan.lead_form_questions)
+      ? plan.lead_form_questions
+      : [];
+
+  return candidates
+    .map((question) => normalizeLeadFormQuestionText(question))
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+function buildMetaLeadFormQuestions(plan: Record<string, unknown>) {
+  const defaultQuestions = [
+    { type: "FULL_NAME" },
+    { type: "EMAIL" },
+    { type: "PHONE" },
+  ];
+  const customQuestions = getSavedLeadFormQuestions(plan).map((label) => ({
+    type: "CUSTOM",
+    label,
+  }));
+
+  return [...defaultQuestions, ...customQuestions];
+}
+
+function normalizeUrlPathOrAbsolute(value: unknown, fallbackPath: string) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+
+  if (/^https?:\/\//i.test(normalized)) {
+    return normalized;
+  }
+
+  const path = normalized.startsWith("/") ? normalized : fallbackPath;
+  return `${getPublicAppUrl()}${path}`;
+}
+
+function getInstantFormPrivacyUrl(record: Awaited<ReturnType<typeof getCampaignById>>) {
+  return normalizeUrlPathOrAbsolute(record?.leadCapture?.privacyPolicyUrl, "/privacy");
+}
+
+function getInstantFormFollowUpUrl(record: Awaited<ReturnType<typeof getCampaignById>>) {
+  const slug = record?.publish.slug?.trim();
+
+  if (slug) {
+    return `${getPublicAppUrl()}/f/${slug}`;
+  }
+
+  return getPublicAppUrl();
+}
+
+async function fetchMetaLeadFormByName(params: {
+  accessToken: string;
+  pageId: string;
+  name: string;
+  requestId?: string;
+}) {
+  const url = new URL(`https://graph.facebook.com/v18.0/${params.pageId}/leadgen_forms`);
+  url.searchParams.set("fields", "id,name,status");
+  url.searchParams.set("limit", "200");
+  url.searchParams.set("access_token", params.accessToken);
+
+  const { response, data } = await fetchMetaJson<
+    { data?: Array<Record<string, unknown>>; error?: { message?: string } } | null
+  >(url.toString(), {
+    purpose: "launch_lookup",
+    requestId: params.requestId,
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const message = data?.error?.message ?? "Meta lead form lookup failed.";
+    const missingLeadFormPermission =
+      response.status === 403 &&
+      /pages_manage_ads|leadgen_forms|lead form|permission/i.test(message);
+
+    throw new ApiError(
+      missingLeadFormPermission ? 403 : 502,
+      missingLeadFormPermission
+        ? "Meta lead form permissions are missing for this app or Page. Confirm the Meta app can request Page lead form permissions before launching an instant-form campaign."
+        : message,
+      missingLeadFormPermission ? "meta_lead_form_permission_missing" : "meta_lead_form_lookup_failed",
+    );
+  }
+
+  const match =
+    data?.data?.find(
+      (item) => typeof item.name === "string" && item.name.trim() === params.name,
+    ) ?? null;
+
+  return match && typeof match.id === "string" ? match.id : null;
+}
+
+async function createOrRecoverMetaLeadForm(params: {
+  accessToken: string;
+  pageId: string;
+  formName: string;
+  currentPlan: Record<string, unknown>;
+  privacyUrl: string;
+  followUpUrl: string;
+  existingLeadFormId?: string | null;
+  requestId: string;
+}) {
+  let leadFormId = params.existingLeadFormId?.trim() || null;
+
+  if (leadFormId) {
+    const existing = await fetchMetaObjectById({
+      accessToken: params.accessToken,
+      objectId: leadFormId,
+      fields: "id,name,status",
+      requestId: params.requestId,
+    });
+
+    if (
+      !existing ||
+      typeof existing.name !== "string" ||
+      existing.name.trim() !== params.formName.trim()
+    ) {
+      leadFormId = null;
+    }
+  }
+
+  if (!leadFormId) {
+    leadFormId = await fetchMetaLeadFormByName({
+      accessToken: params.accessToken,
+      pageId: params.pageId,
+      name: params.formName,
+      requestId: params.requestId,
+    });
+  }
+
+  if (leadFormId) {
+    return leadFormId;
+  }
+
+  const body = new URLSearchParams({
+    name: params.formName,
+    questions: JSON.stringify(buildMetaLeadFormQuestions(params.currentPlan)),
+    privacy_policy: JSON.stringify({
+      url: params.privacyUrl,
+      link_text: "Privacy Policy",
+    }),
+    follow_up_action_url: params.followUpUrl,
+    locale: "EN_US",
+    access_token: params.accessToken,
+  });
+
+  const { response, data } = await fetchMetaJson<Record<string, unknown> | null>(
+    `https://graph.facebook.com/v18.0/${params.pageId}/leadgen_forms`,
+    {
+      purpose: "launch_create",
+      requestId: params.requestId,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    },
+  );
+
+  leadFormId = data && typeof data.id === "string" ? data.id : null;
+
+  if (!response.ok || !leadFormId) {
+    throw new ApiError(
+      response.ok ? 500 : response.status,
+      buildStageFailureMessage(getMetaErrorMessage(data, "Lead form creation failed."), "creative"),
+      "meta_lead_form_create_failed",
+    );
+  }
+
+  return leadFormId;
+}
+
+async function assertMetaLeadFormPermissions(params: {
+  accessToken: string;
+  pageId: string;
+  formName: string;
+  requestId: string;
+}) {
+  await fetchMetaLeadFormByName({
+    accessToken: params.accessToken,
+    pageId: params.pageId,
+    name: params.formName,
+    requestId: params.requestId,
+  });
+}
+
+async function createOrRecoverMetaAdForStaticCreative(params: {
+  accessToken: string;
+  externalAccountId: string;
+  pageId: string;
+  adSetId: string;
+  organizationId: string;
+  campaignId: string;
+  attemptId: string;
+  campaignName: string;
+  destinationUrl?: string | null;
+  leadFormId?: string | null;
+  linkFallbackUrl?: string | null;
+  staticAd: LaunchStaticAd;
+  index: number;
+  existingCreativeId?: string | null;
+  existingAdId?: string | null;
+  fallbackPrimaryText: string;
+  fallbackHeadline: string;
+  fallbackCreativeConcept: string;
+  requestId: string;
+}) {
+  const primaryText = params.staticAd.primaryText?.trim() || params.fallbackPrimaryText;
+  const headline = params.staticAd.headline?.trim() || params.fallbackHeadline;
+  const creativeConcept = params.staticAd.visualConcept?.trim() || params.fallbackCreativeConcept;
+  const nameSuffix = `Creative ${params.index + 1}`;
+  const creativeMetaName = buildDeterministicMetaName({
+    organizationId: params.organizationId,
+    campaignId: params.campaignId,
+    attemptId: params.attemptId,
+    stage: "creative",
+    baseName: `${creativeConcept || headline} | ${nameSuffix}`.trim(),
+  });
+  const adMetaName = buildDeterministicMetaName({
+    organizationId: params.organizationId,
+    campaignId: params.campaignId,
+    attemptId: params.attemptId,
+    stage: "ad",
+    baseName: `${params.campaignName} | ${headline} | ${nameSuffix}`.trim(),
+  });
+  const creativeObjectKey = buildIndexedLaunchObjectKey({
+    organizationId: params.organizationId,
+    campaignId: params.campaignId,
+    attemptId: params.attemptId,
+    stage: "creative",
+    selectedAdId: params.staticAd.id,
+  });
+  const adObjectKey = buildIndexedLaunchObjectKey({
+    organizationId: params.organizationId,
+    campaignId: params.campaignId,
+    attemptId: params.attemptId,
+    stage: "ad",
+    selectedAdId: params.staticAd.id,
+  });
+  let creativeId = params.existingCreativeId?.trim() || null;
+  let adId = params.existingAdId?.trim() || null;
+
+  if (creativeId) {
+    const validation = await validateExistingMetaObject({
+      accessToken: params.accessToken,
+      objectId: creativeId,
+      fields: "id,name,account_id",
+      expectedName: creativeMetaName,
+      expectedParentField: "account_id",
+      expectedParentId: params.externalAccountId,
+      requestId: params.requestId,
+    });
+
+    if (!validation.valid) {
+      creativeId = null;
+    }
+  }
+
+  if (!creativeId) {
+    creativeId = await fetchMetaObjectByName({
+      accessToken: params.accessToken,
+      externalAccountId: params.externalAccountId,
+      edge: "adcreatives",
+      fields: "id,name",
+      name: creativeMetaName,
+      requestId: params.requestId,
+    });
+  }
+
+  if (!creativeId) {
+    const leadFormId = params.leadFormId?.trim() || null;
+    const destinationUrl = params.destinationUrl?.trim() || "";
+    const linkFallbackUrl = params.linkFallbackUrl?.trim() || getPublicAppUrl();
+
+    if (!leadFormId && !destinationUrl) {
+      throw new ApiError(
+        400,
+        "Missing destination URL or Meta lead form for creative creation.",
+        "missing_creative_destination",
+      );
+    }
+
+    const callToActionValue = leadFormId
+      ? { lead_gen_form_id: leadFormId }
+      : { link: destinationUrl };
+    const linkData: Record<string, unknown> = {
+      message: primaryText,
+      link: leadFormId ? linkFallbackUrl : destinationUrl,
+      name: headline,
+      call_to_action: {
+        type: "LEARN_MORE",
+        value: callToActionValue,
+      },
+    };
+
+    if (params.staticAd.imageUrl) {
+      linkData.picture = params.staticAd.imageUrl;
+    }
+
+    const creativeBody = new URLSearchParams({
+      name: creativeMetaName,
+      object_story_spec: JSON.stringify({
+        page_id: params.pageId,
+        link_data: linkData,
+      }),
+      contextual_multi_ads: JSON.stringify(getMetaCreativeOptOutPayload().contextual_multi_ads),
+      access_token: params.accessToken,
+    });
+    const { response, data } = await fetchMetaJson<Record<string, unknown> | null>(
+      `https://graph.facebook.com/v18.0/act_${params.externalAccountId}/adcreatives`,
+      {
+        purpose: "launch_create",
+        requestId: params.requestId,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: creativeBody.toString(),
+      },
+    );
+
+    creativeId = data && typeof data.id === "string" ? data.id : null;
+
+    if (!response.ok || !creativeId) {
+      throw new ApiError(
+        response.ok ? 500 : response.status,
+        buildStageFailureMessage(getMetaErrorMessage(data, "Creative creation failed."), "creative"),
+        "meta_creative_create_failed",
+      );
+    }
+  }
+
+  if (adId) {
+    const validation = await validateExistingMetaObject({
+      accessToken: params.accessToken,
+      objectId: adId,
+      fields: "id,name,adset_id",
+      expectedName: adMetaName,
+      expectedParentField: "adset_id",
+      expectedParentId: params.adSetId,
+      requestId: params.requestId,
+    });
+
+    if (!validation.valid) {
+      adId = null;
+    }
+  }
+
+  if (!adId) {
+    adId = await fetchMetaObjectByName({
+      accessToken: params.accessToken,
+      externalAccountId: params.externalAccountId,
+      edge: "ads",
+      fields: "id,name,adset_id",
+      name: adMetaName,
+      requestId: params.requestId,
+    });
+  }
+
+  if (!adId) {
+    const adBody = new URLSearchParams({
+      name: adMetaName,
+      adset_id: params.adSetId,
+      creative: JSON.stringify({ creative_id: creativeId }),
+      status: "PAUSED",
+      access_token: params.accessToken,
+    });
+    const { response, data } = await fetchMetaJson<Record<string, unknown> | null>(
+      `https://graph.facebook.com/v18.0/act_${params.externalAccountId}/ads`,
+      {
+        purpose: "launch_create",
+        requestId: params.requestId,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: adBody.toString(),
+      },
+    );
+
+    adId = data && typeof data.id === "string" ? data.id : null;
+
+    if (!response.ok || !adId) {
+      throw new ApiError(
+        response.ok ? 500 : response.status,
+        buildStageFailureMessage(getMetaErrorMessage(data, "Ad creation failed."), "ad"),
+        "meta_ad_create_failed",
+      );
+    }
+  }
+
+  await ensureDirectMetaObjectPaused({
+    accessToken: params.accessToken,
+    objectId: adId,
+    requestId: params.requestId,
+  });
+
+  return {
+    creativeId,
+    adId,
+    creativeMetaName,
+    adMetaName,
+    creativeObjectKey,
+    adObjectKey,
+  };
+}
+
+async function ensureMetaCampaignHousingSettings(params: {
+  accessToken: string;
+  campaignId: string;
+  location: string;
+  requestId?: string;
+}) {
+  const body = new URLSearchParams({
+    special_ad_categories: JSON.stringify(["HOUSING"]),
+    special_ad_category_country: JSON.stringify(getMetaSpecialAdCategoryCountries(params.location)),
+    status: "PAUSED",
+    access_token: params.accessToken,
+  });
+
+  const { response, data } = await fetchMetaJson<{ success?: boolean; error?: { message?: string } } | null>(
+    `https://graph.facebook.com/v18.0/${params.campaignId}`,
+    {
+      purpose: "launch_create",
+      requestId: params.requestId,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    },
+  );
+
+  if (!response.ok || data?.success !== true) {
+    throw new ApiError(
+      502,
+      data?.error?.message ?? "Meta campaign housing settings could not be verified before ad set creation.",
+      "meta_campaign_housing_settings_failed",
     );
   }
 }
@@ -877,7 +1369,10 @@ async function launchCampaignToMeta(
     ownershipVerified = true;
     await assertCampaignCanLaunch(campaignId);
     assertMetaLiveLaunchEnabled();
-    const credentials: MetaWorkspaceCredentials = await getMetaWorkspaceCredentials();
+    const campaignOrganizationId = record.campaign.organization_id?.trim() || null;
+    const credentials: MetaWorkspaceCredentials = await getMetaWorkspaceCredentials({
+      organizationId: campaignOrganizationId,
+    });
     const storedPayload = await loadSavedCampaignPayload(campaignId);
     const currentPlan = await loadCampaignPlanDocument(campaignId);
     const publicFunnelState = await loadPublicFunnelPublishState(campaignId);
@@ -920,12 +1415,12 @@ async function launchCampaignToMeta(
       storedPayload?.business_profile?.location ??
       record.strategy.location ??
       record.plan.market;
-    const countryCode = inferCountryCode(location);
     const audience = storedPayload?.targeting_plan?.audience ?? record.strategy.audience ?? record.plan.audience;
     const targetingSummary =
       storedPayload?.targeting_plan?.summary ?? record.plan.targeting_summary ?? "";
     void audience;
     void targetingSummary;
+    const specialAdCategoryCountries = getMetaSpecialAdCategoryCountries(location);
     const dailyBudget = toMinorDailyBudget(
       storedPayload?.budget_plan?.estimated_daily_budget ??
       Math.round((record.plan.monthly_budget ?? 0) / 30),
@@ -933,8 +1428,34 @@ async function launchCampaignToMeta(
     const pixelId = credentials.pixelId?.trim() || null;
     const pageId = credentials.pageId?.trim() || null;
 
-    if (!externalAccountId || !pageId || !pixelId) {
+    const instantFormCampaign = isInstantFormCampaign(currentPlan) || isInstantFormCampaign(record.funnel);
+
+    if (!externalAccountId || !pageId || (!instantFormCampaign && !pixelId)) {
       throw new ApiError(400, "Missing selected Meta assets", "missing_selected_meta_assets");
+    }
+
+    const instantFormReadiness = instantFormCampaign
+      ? getInstantFormSetupReadiness({
+          leadCaptureStatus: record.leadCapture?.status,
+          leadCaptureReadyAt: record.leadCapture?.readyAt,
+          leadDeliveryDestination: record.leadCapture?.deliveryDestination,
+          leadFormTemplateId: record.leadCapture?.formTemplateId,
+          metaLeadFormId: record.leadCapture?.metaLeadFormId,
+          privacyPolicyUrl: record.leadCapture?.privacyPolicyUrl,
+          smsConsentEnabled: record.leadCapture?.smsConsentEnabled,
+          termsUrl: record.leadCapture?.termsUrl,
+          leadLoopVerified: record.leadCapture?.leadLoopVerified,
+          leadCaptureLastError: record.leadCapture?.lastError,
+          metaSelectionReady: Boolean(externalAccountId && pageId && pixelId),
+        })
+      : null;
+
+    if (instantFormCampaign && !instantFormReadiness?.ready) {
+      throw new ApiError(
+        400,
+        instantFormReadiness?.blockingReason ?? "Verify the Meta Instant Form setup before launch.",
+        "instant_form_setup_not_ready",
+      );
     }
 
     const selectedAdIds = Array.from(
@@ -943,7 +1464,18 @@ async function launchCampaignToMeta(
         ...(storedPayload?.selected_ad_id ? [storedPayload.selected_ad_id] : []),
       ].map((value) => String(value).trim()).filter(Boolean)),
     );
-    const selectedAdId = selectedAdIds[0] ?? null;
+	    const selectedAdId = selectedAdIds[0] ?? null;
+	    const creativeIntakeContext = isCreativeChatIntakeEnabled()
+	      ? getApprovedCreativeIntakeGenerationContext(currentPlan)
+	      : null;
+	    const staticBriefReadinessContext = creativeIntakeContext
+	      ? {
+	          staticBriefHash: creativeIntakeContext.staticBriefHash,
+	          offerHash: creativeIntakeContext.offerHash,
+	          ctaHash: creativeIntakeContext.ctaHash,
+	          brandHash: creativeIntakeContext.brandHash,
+	        }
+	      : null;
 
     if (!selectedAdId) {
       throw new ApiError(
@@ -967,10 +1499,10 @@ async function launchCampaignToMeta(
       );
     }
 
-    const staticReadiness = getStaticCreativeReadiness(record.creatives.staticAds, selectedAdIds);
+	    const staticReadiness = getStaticCreativeReadiness(record.creatives.staticAds, selectedAdIds, staticBriefReadinessContext);
 
-    if (!staticReadiness.allSelectedReady || selectedStaticAds.some((ad) => !isLaunchReadyStaticCreative(ad))) {
-      throw new ApiError(
+	    if (!staticReadiness.allSelectedReady || selectedStaticAds.some((ad) => !isLaunchReadyStaticCreative(ad, staticBriefReadinessContext))) {
+	      throw new ApiError(
         400,
         "One or more selected creative images are still rendering or need regeneration before launch.",
         "selected_ad_image_not_launch_ready",
@@ -983,16 +1515,27 @@ async function launchCampaignToMeta(
       .filter((video): video is NonNullable<typeof video> => Boolean(video));
 
     if (
-      selectedUgcVideoIds.length === 0 ||
-      selectedUgcVideos.length !== selectedUgcVideoIds.length ||
-      selectedUgcVideos.some((video) => video.conceptType !== "customer_ugc" || !isLaunchReadyVideoCreative(video))
+      selectedUgcVideoIds.length > 0 &&
+      (
+        selectedUgcVideos.length !== selectedUgcVideoIds.length ||
+        selectedUgcVideos.some((video) =>
+          video.conceptType !== "customer_ugc" ||
+          !isLaunchReadyVideoCreative(video) ||
+          (
+            creativeIntakeContext?.ugcScriptHash
+              ? video.ugcScriptHash !== creativeIntakeContext.ugcScriptHash &&
+                video.scriptHash !== creativeIntakeContext.ugcScriptHash
+              : false
+          ),
+        )
+      )
     ) {
-      throw new ApiError(
-        400,
-        "Select one campaign-specific app-owned UGC video before launch.",
-        "ugc_video_not_launch_ready",
-      );
-    }
+	      throw new ApiError(
+	        400,
+	        "Selected UGC video is optional, but selected videos must be campaign-specific and app-owned before launch.",
+	        "ugc_video_not_launch_ready",
+	      );
+	    }
 
     const selectedCopy =
       record.creatives.copy.find(
@@ -1021,9 +1564,9 @@ async function launchCampaignToMeta(
     const expectedDestinationUrl = publicSlug
       ? `${getPublicAppUrl()}/f/${publicSlug}`
       : "";
-    const destinationUrl = publicSlug ? expectedDestinationUrl : "";
+    const destinationUrl = instantFormCampaign ? "" : publicSlug ? expectedDestinationUrl : "";
 
-    if (!publicSlug || !destinationUrl || !isPublicFunnelUrl(destinationUrl)) {
+    if (!instantFormCampaign && (!publicSlug || !destinationUrl || !isPublicFunnelUrl(destinationUrl))) {
       throw new ApiError(
         400,
         "Missing public destination URL",
@@ -1031,7 +1574,7 @@ async function launchCampaignToMeta(
       );
     }
 
-    if (publicFunnelState.publishState !== "published" || !publicFunnelState.publishedSnapshot) {
+    if (!instantFormCampaign && (publicFunnelState.publishState !== "published" || !publicFunnelState.publishedSnapshot)) {
       throw new ApiError(
         400,
         "Publish the public funnel before sending campaign traffic to Meta.",
@@ -1039,16 +1582,23 @@ async function launchCampaignToMeta(
       );
     }
 
-    assertPublishedFunnelSnapshotMatchesCurrentPlan({
-      currentPlan,
-      publishedSnapshot: publicFunnelState.publishedSnapshot,
-    });
+    if (!instantFormCampaign) {
+      assertPublishedFunnelSnapshotMatchesCurrentPlan({
+        currentPlan,
+        publishedSnapshot: publicFunnelState.publishedSnapshot,
+      });
+    }
 
     if (!record.publish.slug?.trim() && currentPlan.public_slug?.trim()) {
       await persistRecoveredPublicSlug(campaignId, currentPlan, publicSlug);
     }
 
-    const preflight = await validateMetaLaunchSelections({ destinationUrl });
+    const preflight = instantFormCampaign
+      ? { ready: true, errors: [] as string[] }
+      : await validateMetaLaunchSelections({
+          destinationUrl,
+          organizationId: credentials.workspaceId,
+        });
 
     if (!preflight.ready) {
       throw new ApiError(
@@ -1079,6 +1629,13 @@ async function launchCampaignToMeta(
       attemptId: activeAttemptId,
       stage: "creative",
       baseName: creativeConcept || headline,
+    });
+    const leadFormMetaName = buildDeterministicMetaName({
+      organizationId: workspaceId,
+      campaignId,
+      attemptId: activeAttemptId,
+      stage: "creative",
+      baseName: `${campaignName} | Native lead form`,
     });
     const adMetaName = buildDeterministicMetaName({
       organizationId: workspaceId,
@@ -1111,6 +1668,21 @@ async function launchCampaignToMeta(
       attemptId: activeAttemptId,
       stage: "ad",
     });
+    let leadFormId =
+      instantFormCampaign
+        ? record.leadCapture?.metaLeadFormId?.trim() ||
+          persistedLaunchState?.lead_form_id?.trim() ||
+          null
+        : null;
+
+    if (instantFormCampaign) {
+      await assertMetaLeadFormPermissions({
+        accessToken: credentials.accessToken,
+        pageId,
+        formName: leadFormMetaName,
+        requestId,
+      });
+    }
 
     let campaignData: Record<string, unknown> | null = null;
     currentStage = "campaign";
@@ -1229,7 +1801,7 @@ async function launchCampaignToMeta(
         objective,
         status: "PAUSED",
         special_ad_categories: JSON.stringify(["HOUSING"]),
-        special_ad_category_country: JSON.stringify([countryCode]),
+        special_ad_category_country: JSON.stringify(specialAdCategoryCountries),
         is_adset_budget_sharing_enabled: "false",
         access_token: credentials.accessToken,
       });
@@ -1289,6 +1861,12 @@ async function launchCampaignToMeta(
       await ensureDirectMetaObjectPaused({
         accessToken: credentials.accessToken,
         objectId: lastKnownIds.campaign_id,
+        requestId,
+      });
+      await ensureMetaCampaignHousingSettings({
+        accessToken: credentials.accessToken,
+        campaignId: lastKnownIds.campaign_id,
+        location,
         requestId,
       });
     }
@@ -1431,34 +2009,40 @@ async function launchCampaignToMeta(
         name: adSetMetaName,
         campaign_id: lastKnownIds.campaign_id!,
         billing_event: "IMPRESSIONS",
-        optimization_goal: objective === "OUTCOME_TRAFFIC" ? "LINK_CLICKS" : "OFFSITE_CONVERSIONS",
+        optimization_goal: instantFormCampaign
+          ? "LEAD_GENERATION"
+          : objective === "OUTCOME_TRAFFIC"
+            ? "LINK_CLICKS"
+            : "OFFSITE_CONVERSIONS",
         daily_budget: dailyBudget,
         bid_strategy: "LOWEST_COST_WITHOUT_CAP",
         targeting: JSON.stringify({
-          geo_locations: {
-            countries: [countryCode],
-            ...buildGeoTargeting(location),
-          },
+          geo_locations: buildGeoTargeting(location),
         }),
         status: "PAUSED",
         access_token: credentials.accessToken,
       });
-      adSetBody.set(
-        "promoted_object",
-        JSON.stringify({
-          pixel_id: pixelId,
-          custom_event_type: "LEAD",
-        }),
-      );
-      adSetBody.set(
-        "tracking_specs",
-        JSON.stringify([
-          {
-            action_type: ["offsite_conversion"],
-            fb_pixel: [pixelId],
-          },
-        ]),
-      );
+      if (instantFormCampaign) {
+        adSetBody.set("promoted_object", JSON.stringify({ page_id: pageId }));
+        adSetBody.set("destination_type", "ON_AD");
+      } else {
+        adSetBody.set(
+          "promoted_object",
+          JSON.stringify({
+            pixel_id: pixelId,
+            custom_event_type: "LEAD",
+          }),
+        );
+        adSetBody.set(
+          "tracking_specs",
+          JSON.stringify([
+            {
+              action_type: ["offsite_conversion"],
+              fb_pixel: [pixelId],
+            },
+          ]),
+        );
+      }
       const { response: adSetResponse, data: adSetResponseData } = await fetchMetaJson<Record<string, unknown> | null>(
         `https://graph.facebook.com/v18.0/act_${externalAccountId}/adsets`,
         {
@@ -1526,6 +2110,8 @@ async function launchCampaignToMeta(
       campaignId,
       {
         ...lastKnownIds,
+        lead_form_id: leadFormId,
+        lead_form_name: leadFormId ? leadFormMetaName : null,
         current_stage: "adset",
         status: "in_progress",
         step_status: "created",
@@ -1544,14 +2130,51 @@ async function launchCampaignToMeta(
       currentStage: "adset",
     });
 
+    if (instantFormCampaign && !leadFormId) {
+      leadFormId = await createOrRecoverMetaLeadForm({
+        accessToken: credentials.accessToken,
+        pageId,
+        formName: leadFormMetaName,
+        currentPlan,
+        privacyUrl: getInstantFormPrivacyUrl(record),
+        followUpUrl: getInstantFormFollowUpUrl(record),
+        existingLeadFormId: persistedLaunchState?.lead_form_id ?? record.leadCapture?.metaLeadFormId ?? null,
+        requestId,
+      });
+
+      await persistLaunchState(
+        campaignId,
+        {
+          ...lastKnownIds,
+          lead_form_id: leadFormId,
+          lead_form_name: leadFormMetaName,
+          current_stage: "creative",
+          status: "in_progress",
+          step_status: "created",
+          attempt_id: activeAttemptId,
+          requested_object_type: "creative",
+          requested_object_name: leadFormMetaName,
+          requested_object_key: creativeObjectKey,
+          workspace_id: workspaceId,
+          error: null,
+          updated_at: new Date().toISOString(),
+        },
+        "Meta lead form created. Saving progress before creative creation.",
+      );
+    }
+
+    if (instantFormCampaign && !leadFormId) {
+      throw new ApiError(500, "Meta lead form could not be prepared for launch.", "meta_lead_form_missing");
+    }
+
     const linkData: Record<string, unknown> = {
       message: primaryText,
-      link: destinationUrl,
+      link: instantFormCampaign ? getInstantFormFollowUpUrl(record) : destinationUrl,
       name: headline,
       call_to_action: {
         type: "LEARN_MORE",
         value: {
-          link: destinationUrl,
+          ...(instantFormCampaign ? { lead_gen_form_id: leadFormId } : { link: destinationUrl }),
         },
       },
     };
@@ -1678,6 +2301,7 @@ async function launchCampaignToMeta(
           page_id: pageId,
           link_data: linkData,
         }),
+        contextual_multi_ads: JSON.stringify(getMetaCreativeOptOutPayload().contextual_multi_ads),
         access_token: credentials.accessToken,
       });
       const { response: creativeResponse, data: creativeResponseData } = await fetchMetaJson<Record<string, unknown> | null>(
@@ -1740,6 +2364,8 @@ async function launchCampaignToMeta(
       campaignId,
       {
         ...lastKnownIds,
+        lead_form_id: leadFormId,
+        lead_form_name: leadFormId ? leadFormMetaName : null,
         current_stage: "creative",
         status: "in_progress",
         step_status: "created",
@@ -1897,17 +2523,124 @@ async function launchCampaignToMeta(
       adStatusCode = adResponse.status;
     }
 
+    let launchedCreativeIds = normalizeStringArray(persistedLaunchState?.creative_ids);
+    let launchedAdIds = normalizeStringArray(persistedLaunchState?.ad_ids);
+
+    if (lastKnownIds.creative_id && launchedCreativeIds.length === 0) {
+      launchedCreativeIds = [lastKnownIds.creative_id];
+    }
+
+    if (lastKnownIds.ad_id && launchedAdIds.length === 0) {
+      launchedAdIds = [lastKnownIds.ad_id];
+    }
+
     if (lastKnownIds.ad_id) {
+      for (let index = 1; index < selectedStaticAds.length; index += 1) {
+        const staticAd = selectedStaticAds[index]!;
+        const matchingCopy =
+          record.creatives.copy.find(
+            (item) =>
+              item.headline === staticAd.headline ||
+              item.primary_text === staticAd.primaryText,
+          ) ?? null;
+        const additional = await createOrRecoverMetaAdForStaticCreative({
+          accessToken: credentials.accessToken,
+          externalAccountId,
+          pageId,
+          adSetId: lastKnownIds.adset_id!,
+          organizationId: workspaceId,
+          campaignId,
+          attemptId: activeAttemptId,
+          campaignName,
+          destinationUrl,
+          leadFormId,
+          linkFallbackUrl: getInstantFormFollowUpUrl(record),
+          staticAd,
+          index,
+          existingCreativeId: launchedCreativeIds[index] ?? null,
+          existingAdId: launchedAdIds[index] ?? null,
+          fallbackPrimaryText:
+            staticAd.primaryText ??
+            matchingCopy?.primary_text ??
+            storedPayload?.creatives?.primary_text_variations?.[index] ??
+            storedPayload?.creatives?.primary_text_variations?.[0] ??
+            primaryText,
+          fallbackHeadline:
+            staticAd.headline ??
+            matchingCopy?.headline ??
+            storedPayload?.creatives?.headlines?.[index] ??
+            storedPayload?.creatives?.headlines?.[0] ??
+            headline,
+          fallbackCreativeConcept:
+            staticAd.visualConcept ??
+            storedPayload?.creatives?.creative_concepts?.[index] ??
+            storedPayload?.creatives?.creative_concepts?.[0] ??
+            creativeConcept,
+          requestId,
+        });
+        launchedCreativeIds[index] = additional.creativeId;
+        launchedAdIds[index] = additional.adId;
+      }
+
+      launchedCreativeIds = Array.from(new Set(launchedCreativeIds.filter(Boolean)));
+      launchedAdIds = Array.from(new Set(launchedAdIds.filter(Boolean)));
+
       await ensureDirectMetaObjectPaused({
         accessToken: credentials.accessToken,
         objectId: lastKnownIds.ad_id,
         requestId,
       });
 
+      const trackingMode = instantFormCampaign ? "instant_form" : "website_funnel";
+      const trackingReadiness = buildTrackingReadiness({
+        trackingMode,
+        metaCampaignId: lastKnownIds.campaign_id,
+        metaAdsetId: lastKnownIds.adset_id,
+        metaAdIds: launchedAdIds,
+        pixelId,
+        launchDomain: getUrlHostname(destinationUrl),
+        launchUrl: destinationUrl || null,
+        metaPageId: pageId,
+        accessTokenAvailable: Boolean(credentials.accessToken),
+      });
+
+      await upsertCampaignTrackingContract({
+        organizationId: workspaceId,
+        campaignId,
+        userId: record.campaign.user_id ?? null,
+        trackingMode,
+        expectedLeadDestination: instantFormCampaign ? "facebook_lead_center" : "dealflow_dashboard",
+        metaCampaignId: lastKnownIds.campaign_id,
+        metaAdsetId: lastKnownIds.adset_id,
+        metaAdIds: launchedAdIds,
+        pixelId,
+        launchDomain: getUrlHostname(destinationUrl),
+        launchUrl: destinationUrl || null,
+        metaPageId: pageId,
+        accessTokenAvailable: Boolean(credentials.accessToken),
+        metadata: {
+          requestId,
+          attemptId: activeAttemptId,
+          instantFormCampaign,
+        },
+      });
+
+      if (!trackingReadiness.ready) {
+        throw new ApiError(
+          500,
+          "Meta launch tracking contract is incomplete.",
+          "tracking_contract_incomplete",
+        );
+      }
+
       await persistLaunchState(
         campaignId,
         {
           ...lastKnownIds,
+          lead_form_id: leadFormId,
+          lead_form_name: leadFormId ? leadFormMetaName : null,
+          creative_ids: launchedCreativeIds,
+          ad_ids: launchedAdIds,
           current_stage: "ad",
           status: "completed",
           step_status: "created",
@@ -1935,6 +2668,10 @@ async function launchCampaignToMeta(
         {
           ...lastKnownIds,
           ad_id: null,
+          lead_form_id: leadFormId,
+          lead_form_name: leadFormId ? leadFormMetaName : null,
+          creative_ids: launchedCreativeIds,
+          ad_ids: launchedAdIds,
           current_stage: "ad",
           status: "failed",
           step_status: "failed",
@@ -1956,6 +2693,9 @@ async function launchCampaignToMeta(
         adset_id: lastKnownIds.adset_id,
         creative_id: lastKnownIds.creative_id,
         ad_id: lastKnownIds.ad_id,
+        lead_form_id: leadFormId,
+        creative_ids: launchedCreativeIds,
+        ad_ids: launchedAdIds,
         stage: "ad",
         error:
           !lastKnownIds.ad_id

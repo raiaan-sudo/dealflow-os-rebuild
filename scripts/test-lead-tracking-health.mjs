@@ -1,0 +1,91 @@
+#!/usr/bin/env node
+
+import assert from "node:assert/strict";
+import fs from "node:fs";
+
+const migration = fs.readFileSync("supabase/migrations/20260706170000_create_lead_tracking_health.sql", "utf8");
+const trackingService = fs.readFileSync("src/lib/services/lead-tracking-service.ts", "utf8");
+const leadRoute = fs.readFileSync("src/app/api/lead-capture/route.ts", "utf8");
+const leadForm = fs.readFileSync("src/app/f/[slug]/lead-capture-form.tsx", "utf8");
+const browserPixelRoute = fs.readFileSync("src/app/api/lead-tracking/browser-pixel/route.ts", "utf8");
+const conversions = fs.readFileSync("src/lib/integrations/meta/conversions.ts", "utf8");
+const launchRoute = fs.readFileSync("src/app/api/campaigns/create/route.ts", "utf8");
+const metaService = fs.readFileSync("src/lib/integrations/meta/service.ts", "utf8");
+const metaStatusSync = fs.readFileSync("src/lib/integrations/meta/status-sync.ts", "utf8");
+const metaCampaignSync = fs.readFileSync("src/lib/services/meta-campaign-sync-service.ts", "utf8");
+const fulfillmentMonitor = fs.readFileSync("src/lib/services/fulfillment-monitor-service.ts", "utf8");
+
+function assertOrdered(source, patterns, message) {
+  let cursor = -1;
+  for (const pattern of patterns) {
+    const index = source.indexOf(pattern, cursor + 1);
+    assert.ok(index > cursor, message);
+    cursor = index;
+  }
+}
+
+assert.match(migration, /create table if not exists public\.campaign_tracking_contracts/, "tracking contract table must exist");
+assert.match(migration, /create table if not exists public\.lead_tracking_events/, "lead tracking event table must exist");
+assert.match(migration, /tracking_mode in \('website_funnel', 'instant_form'\)/, "tracking modes must distinguish website funnel and instant form");
+assert.match(migration, /expected_lead_destination in \('dealflow_dashboard', 'facebook_lead_center'\)/, "lead destination contract must be explicit");
+assert.match(migration, /public\.is_current_user_org_member\(organization_id\)/, "tracking tables must be member-readable through org RLS");
+assert.match(migration, /revoke all on table public\.lead_tracking_events from anon, authenticated/, "tracking event writes must not be public");
+
+assert.match(trackingService, /buildTrackingReadiness/, "tracking service must expose launch readiness checks");
+assert.match(trackingService, /missing\.push\("pixel_id"\)/, "website funnel tracking readiness must require a pixel");
+assert.match(trackingService, /missing\.push\("launch_domain"\)/, "website funnel tracking readiness must require a launch domain");
+assert.match(trackingService, /missing\.push\("meta_access_token"\)/, "website funnel tracking readiness must require Meta token availability");
+assert.match(trackingService, /upsertCampaignTrackingContract/, "tracking service must upsert campaign contracts");
+assert.match(trackingService, /recordLeadTrackingEvent/, "tracking service must record per-lead tracking events");
+assert.match(trackingService, /getCampaignTrackingHealth/, "tracking service must expose campaign health summary");
+
+assert.match(leadRoute, /eventType: "lead_captured"/, "lead capture must write lead_captured tracking event");
+assert.match(leadRoute, /eventType: "capi_queued"/, "lead capture must write capi_queued tracking event");
+assert.match(leadRoute, /parseLandingPageAttribution/, "lead capture must backfill attribution from landing URL");
+assert.match(leadRoute, /utm_content/, "lead capture must preserve Meta ad id attribution from utm_content");
+
+assert.match(leadForm, /recordBrowserPixelAttempt/, "public funnel must report browser pixel attempts");
+assert.match(leadForm, /navigator\.sendBeacon/, "browser pixel telemetry should survive thank-you navigation");
+assert.match(leadForm, /eventID: leadId/, "browser pixel event ID must match the DealFlow lead id");
+assert.match(browserPixelRoute, /assertSameOriginRequest/, "browser pixel telemetry must be same-origin guarded");
+assert.match(browserPixelRoute, /consumeRateLimit/, "browser pixel telemetry must be rate limited");
+assert.match(browserPixelRoute, /\.eq\("id", payload\.lead_id\)/, "browser pixel telemetry must validate lead id before writing");
+assert.match(browserPixelRoute, /eventType: "browser_pixel_attempted"/, "browser pixel route must write browser_pixel_attempted event");
+
+assert.match(conversions, /eventType: "capi_sent"/, "CAPI success must be tracked");
+assert.match(conversions, /eventType: "capi_failed"/, "CAPI failures and skips must be tracked");
+assert.match(conversions, /meta_connection_missing/, "CAPI missing connection skip must be visible");
+assert.match(conversions, /meta_pixel_missing/, "CAPI missing pixel skip must be visible");
+assert.match(conversions, /meta_access_token_missing/, "CAPI missing token skip must be visible");
+assert.match(conversions, /meta_env_missing/, "CAPI missing env skip must be visible");
+
+assert.match(launchRoute, /upsertCampaignTrackingContract/, "launch must write a tracking contract");
+assert.match(launchRoute, /buildTrackingReadiness/, "launch must check tracking contract readiness");
+assert.match(launchRoute, /tracking_contract_incomplete/, "launch must fail closed on incomplete tracking contract");
+assertOrdered(
+  launchRoute,
+  [
+    "const trackingReadiness = buildTrackingReadiness",
+    "await upsertCampaignTrackingContract",
+    "if (!trackingReadiness.ready)",
+    "await persistLaunchState",
+  ],
+  "tracking contract must be created and validated before completed launch state is persisted",
+);
+
+assert.match(metaService, /selected_pixel_id: nextPixelId/, "Meta selections must persist selected_pixel_id");
+assert.match(metaService, /selected_ad_account_id: nextAccount\.externalAccountId/, "Meta selections must persist selected ad account alias");
+assert.match(metaService, /selected_pixel_id: pixelId/, "derived launch domain persistence must preserve selected pixel metadata");
+
+assert.match(metaStatusSync, /actions,conversions/, "Meta delivery sync must request raw actions and conversions");
+assert.match(metaStatusSync, /raw_actions/, "Meta delivery metrics must preserve raw action rows");
+assert.match(metaStatusSync, /raw_conversions/, "Meta delivery metrics must preserve raw conversion rows");
+assert.match(metaCampaignSync, /eventType: "meta_reporting_checked"/, "Meta sync must write reporting reconciliation events");
+assert.match(metaCampaignSync, /status: deliveryMetrics\.leads > 0 \? "seen" : "missing"/, "Meta sync must distinguish seen vs missing reported leads");
+
+assert.match(fulfillmentMonitor, /RelatedTrackingSummary/, "fulfillment monitor must expose tracking summary");
+assert.match(fulfillmentMonitor, /lead_tracking_events/, "fulfillment monitor must read lead tracking events");
+assert.match(fulfillmentMonitor, /browserPixelAttempted/, "fulfillment monitor must show browser pixel attempts");
+assert.match(fulfillmentMonitor, /metaReportingStatus/, "fulfillment monitor must show Meta reporting status");
+
+console.log("lead tracking health regression checks passed");
