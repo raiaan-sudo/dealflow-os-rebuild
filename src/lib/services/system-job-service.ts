@@ -291,6 +291,41 @@ export async function runLeadSideEffects(params: {
     crmSyncResult,
   });
 
+  const { recordLeadTrackingEvent } = await import("@/lib/services/lead-tracking-service");
+  await Promise.all([
+    recordLeadTrackingEvent({
+      organizationId: payload.lead.organization_id,
+      campaignId: payload.lead.campaign_id,
+      leadId: payload.lead.id,
+      eventType: "notification_status",
+      status: "recorded",
+      source: "lead_side_effects",
+      metadata: {
+        requestId: payload.requestId,
+        jobId,
+        result: notificationResult,
+      },
+    }),
+    recordLeadTrackingEvent({
+      organizationId: payload.lead.organization_id,
+      campaignId: payload.lead.campaign_id,
+      leadId: payload.lead.id,
+      eventType: "crm_sync_status",
+      status:
+        crmSyncResult && typeof crmSyncResult === "object" && "synced" in crmSyncResult && crmSyncResult.synced === true
+          ? "sent"
+          : crmSyncResult && typeof crmSyncResult === "object" && "skipped" in crmSyncResult && crmSyncResult.skipped === true
+            ? "skipped"
+            : "failed",
+      source: "lead_side_effects",
+      metadata: {
+        requestId: payload.requestId,
+        jobId,
+        result: crmSyncResult,
+      },
+    }),
+  ]).catch(() => null);
+
   return {
     requestId: payload.requestId,
     leadId: payload.lead.id,

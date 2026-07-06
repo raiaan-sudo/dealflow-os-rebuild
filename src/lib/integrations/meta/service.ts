@@ -30,7 +30,7 @@ export type MetaWorkspaceCredentials = {
   connectionId: string;
   adAccountId: string;
   pageId: string;
-  pixelId: string;
+  pixelId: string | null;
   accessToken: string;
 };
 
@@ -427,6 +427,7 @@ async function persistDerivedLaunchDomainFromDestination(params: {
       connection_metadata: {
         ...params.metadata,
         launch_domain: derivedLaunchDomain,
+        selected_pixel_id: pixelId,
         tracking_status: trackingStatus,
         tracking_last_checked_at: checkedAt,
       },
@@ -448,6 +449,7 @@ async function persistDerivedLaunchDomainFromDestination(params: {
       connection_metadata: {
         ...params.metadata,
         launch_domain: derivedLaunchDomain,
+        selected_pixel_id: pixelId,
         tracking_status: trackingStatus,
         tracking_last_checked_at: checkedAt,
       },
@@ -890,13 +892,6 @@ export async function getMetaWorkspaceCredentials(options?: {
   }
 
   const pixelId = row.pixel_id ?? readMetadataString(metadata, "pixel_id");
-  if (!pixelId) {
-    throw new ApiError(
-      400,
-      "This workspace is missing a selected Meta pixel.",
-      "meta_pixel_missing",
-    );
-  }
 
   if (!row.access_token_encrypted) {
     throw new ApiError(
@@ -1232,7 +1227,9 @@ export async function selectMetaAdAccount(
       connection_metadata: {
         ...metadata,
         selected_external_account_id: nextAccount.externalAccountId,
+        selected_ad_account_id: nextAccount.externalAccountId,
         pixel_id: nextPixelId,
+        selected_pixel_id: nextPixelId,
         tracking_status: nextTrackingStatus,
         available_pixels: availablePixels,
       },
@@ -1253,6 +1250,7 @@ export async function updateMetaLaunchSelections(input: {
   externalAccountId?: string | null;
   pageId?: string | null;
   pixelId?: string | null;
+  allowMissingPixel?: boolean;
   organizationId?: string | null;
 }) {
   const { context, supabase } = await getMetaSupabaseContext();
@@ -1316,11 +1314,18 @@ export async function updateMetaLaunchSelections(input: {
         ).catch(() => [])
       : [];
 
-  if (!nextPixelId || !availablePixels.some((pixel) => pixel.id === nextPixelId)) {
+  const pixelSelectionValid =
+    Boolean(nextPixelId) && availablePixels.some((pixel) => pixel.id === nextPixelId);
+
+  if (!pixelSelectionValid && !input.allowMissingPixel) {
     throw createMetaApiError("selection", 400, {
       code: "meta_pixel_invalid",
       message: "Select a valid Meta pixel.",
     });
+  }
+
+  if (!pixelSelectionValid) {
+    nextPixelId = null;
   }
 
   const nextTrackingStatus = deriveTrackingStatus({
@@ -1346,10 +1351,12 @@ export async function updateMetaLaunchSelections(input: {
       connection_metadata: {
         ...metadata,
         selected_external_account_id: nextAccount.externalAccountId,
+        selected_ad_account_id: nextAccount.externalAccountId,
         selected_account_name: nextAccount.name,
         selected_page_id: nextPage.id ?? null,
         selected_page_name: nextPage.name ?? null,
         pixel_id: nextPixelId,
+        selected_pixel_id: nextPixelId,
         tracking_status: nextTrackingStatus,
         available_pixels: availablePixels,
       },
@@ -1417,6 +1424,7 @@ export async function updateMetaTrackingConfig(input: MetaWorkspaceTrackingUpdat
       connection_metadata: {
         ...metadata,
         pixel_id: nextPixelId ?? null,
+        selected_pixel_id: nextPixelId ?? null,
         launch_domain: nextLaunchDomain ?? null,
         verification_token: nextVerificationToken ?? null,
         domain_verified: nextDomainVerified,

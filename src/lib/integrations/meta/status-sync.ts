@@ -38,6 +38,10 @@ type MetaInsightsResponse = {
       action_type?: string;
       value?: string;
     }>;
+    conversions?: Array<{
+      action_type?: string;
+      value?: string;
+    }>;
   }>;
   error?: { message?: string; code?: number; error_subcode?: number };
 };
@@ -282,7 +286,7 @@ export async function fetchDeliveryMetrics(params: {
   campaignStatus: string | null;
 }) {
   const url = new URL(`https://graph.facebook.com/v19.0/${params.campaignId}/insights`);
-  url.searchParams.set("fields", "spend,impressions,clicks,actions");
+  url.searchParams.set("fields", "spend,impressions,clicks,actions,conversions");
   url.searchParams.set("date_preset", "maximum");
   url.searchParams.set("limit", "1");
   url.searchParams.set("access_token", params.accessToken ?? "");
@@ -311,6 +315,8 @@ export async function fetchDeliveryMetrics(params: {
     cpc: 0,
     frequency: 0,
     reach: 0,
+    raw_actions: insight?.actions ?? [],
+    raw_conversions: insight?.conversions ?? [],
   } satisfies MetaDeliveryMetrics;
 }
 

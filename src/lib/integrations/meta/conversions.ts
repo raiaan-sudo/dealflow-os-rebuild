@@ -6,6 +6,7 @@ import { decryptSecret } from "@/lib/integrations/meta-crypto";
 import { logError, logOperationalEvent } from "@/lib/logging";
 import { normalizePhone } from "@/lib/phone";
 import { createAdminClient } from "@/lib/server/supabase-admin";
+import { recordLeadTrackingEvent } from "@/lib/services/lead-tracking-service";
 import type { Json } from "@/lib/supabase/types";
 
 type MetaConnectionRow = {
@@ -122,9 +123,29 @@ export function getMetaCookiesFromHeader(cookieHeader: string | null | undefined
 
 export async function safeSendMetaLeadConversion(params: MetaLeadConversionParams) {
   try {
+    const recordSkippedConversion = (reason: string, pixelId?: string | null) =>
+      recordLeadTrackingEvent({
+        organizationId: params.organizationId,
+        campaignId: params.campaignId ?? null,
+        leadId: params.leadId,
+        eventType: "capi_failed",
+        status: "skipped",
+        source: "meta_conversions_api",
+        eventId: params.leadId,
+        pixelId: pixelId ?? null,
+        attribution: {
+          event_source_url: params.eventSourceUrl ?? null,
+          has_fbp: Boolean(params.fbp),
+          has_fbc: Boolean(params.fbc),
+        },
+        metadata: {
+          reason,
+        },
+      }).catch(() => null);
     const row = await getMetaConnectionRow(params.organizationId);
 
     if (!row) {
+      await recordSkippedConversion("meta_connection_missing");
       return { sent: false, reason: "meta_connection_missing" } as const;
     }
 
@@ -132,16 +153,19 @@ export async function safeSendMetaLeadConversion(params: MetaLeadConversionParam
       row.pixel_id?.trim() || getMetadataString(row.connection_metadata, "pixel_id");
 
     if (!pixelId) {
+      await recordSkippedConversion("meta_pixel_missing");
       return { sent: false, reason: "meta_pixel_missing" } as const;
     }
 
     if (!row.access_token_encrypted) {
+      await recordSkippedConversion("meta_access_token_missing", pixelId);
       return { sent: false, reason: "meta_access_token_missing" } as const;
     }
 
     const env = getMetaEnv();
 
     if (!env?.encryptionKey) {
+      await recordSkippedConversion("meta_env_missing", pixelId);
       return { sent: false, reason: "meta_env_missing" } as const;
     }
 
@@ -241,6 +265,28 @@ export async function safeSendMetaLeadConversion(params: MetaLeadConversionParam
       fbTraceId: responseBody?.fbtrace_id ?? null,
     });
 
+    await recordLeadTrackingEvent({
+      organizationId: params.organizationId,
+      campaignId: params.campaignId ?? null,
+      leadId: params.leadId,
+      eventType: "capi_sent",
+      status: "sent",
+      source: "meta_conversions_api",
+      eventId: params.leadId,
+      pixelId,
+      fbtraceId: responseBody?.fbtrace_id ?? null,
+      metaEventsReceived: responseBody?.events_received ?? null,
+      attribution: {
+        event_source_url: params.eventSourceUrl ?? null,
+        has_fbp: Boolean(params.fbp),
+        has_fbc: Boolean(params.fbc),
+      },
+      metadata: {
+        action_source: "website",
+        event_name: "Lead",
+      },
+    }).catch(() => null);
+
     return {
       sent: true,
       pixelId,
@@ -254,6 +300,25 @@ export async function safeSendMetaLeadConversion(params: MetaLeadConversionParam
       campaignId: params.campaignId ?? null,
       message: error instanceof Error ? error.message : "Unknown Meta lead conversion failure",
     });
+
+    await recordLeadTrackingEvent({
+      organizationId: params.organizationId,
+      campaignId: params.campaignId ?? null,
+      leadId: params.leadId,
+      eventType: "capi_failed",
+      status: "failed",
+      source: "meta_conversions_api",
+      eventId: params.leadId,
+      attribution: {
+        event_source_url: params.eventSourceUrl ?? null,
+        has_fbp: Boolean(params.fbp),
+        has_fbc: Boolean(params.fbc),
+      },
+      metadata: {
+        reason: "meta_conversion_failed",
+        message: error instanceof Error ? error.message : "Unknown Meta lead conversion failure",
+      },
+    }).catch(() => null);
 
     return { sent: false, reason: "meta_conversion_failed" } as const;
   }

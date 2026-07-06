@@ -46,6 +46,7 @@ export type FulfillmentMonitorLeadRow = {
   performanceBillingJob: RelatedJob | null;
   billingEvent: RelatedBillingEvent | null;
   crmEvent: RelatedCrmEvent | null;
+  tracking: RelatedTrackingSummary;
   retryEligibility: {
     eligible: boolean;
     requiresDeadLetterConfirmation: boolean;
@@ -122,6 +123,15 @@ type RelatedCrmEvent = {
   updatedAt: string | null;
   proofMarker: string;
   metadataSummary: string;
+};
+
+type RelatedTrackingSummary = {
+  leadCaptured: boolean;
+  browserPixelAttempted: boolean;
+  capiSent: boolean;
+  capiFailed: boolean;
+  metaReportingStatus: "seen" | "missing" | "not_checked";
+  latestFbTraceId: string | null;
 };
 
 function getAdminClientOrThrow() {
@@ -231,6 +241,28 @@ function deriveProofMarker(...values: unknown[]) {
   }
 
   return "none";
+}
+
+function summarizeTrackingEvents(events: JsonRecord[]): RelatedTrackingSummary {
+  const has = (eventType: string, status?: string) =>
+    events.some((event) => asString(event.event_type) === eventType && (!status || asString(event.status) === status));
+  const latestFbTraceId =
+    events
+      .map((event) => asString(event.fbtrace_id))
+      .find(Boolean) ?? null;
+
+  return {
+    leadCaptured: has("lead_captured"),
+    browserPixelAttempted: has("browser_pixel_attempted"),
+    capiSent: has("capi_sent", "sent"),
+    capiFailed: has("capi_failed", "failed"),
+    metaReportingStatus: has("meta_reporting_checked", "seen")
+      ? "seen"
+      : has("meta_reporting_checked", "missing")
+        ? "missing"
+        : "not_checked",
+    latestFbTraceId,
+  };
 }
 
 function summarizeResult(value: unknown) {
@@ -564,6 +596,7 @@ export async function loadFulfillmentMonitorData(filters: FulfillmentMonitorFilt
     { data: crmEventsRaw, error: crmEventsError },
     { data: jobsRaw, error: jobsError },
     { data: billingEventsRaw, error: billingEventsError },
+    { data: trackingEventsRaw, error: trackingEventsError },
     health,
   ] = await Promise.all([
     loadByIds(admin, "campaign_plans", campaignIds, "id, organization_id, public_slug, launch_status, plan"),
@@ -588,10 +621,17 @@ export async function loadFulfillmentMonitorData(filters: FulfillmentMonitorFilt
         .in("lead_id", leadIds)
         .order("updated_at", { ascending: false })
       : { data: [], error: null },
+    leadIds.length > 0
+      ? db(admin)
+        .from("lead_tracking_events")
+        .select("id, lead_id, event_type, status, fbtrace_id, meta_events_received, created_at")
+        .in("lead_id", leadIds)
+        .order("created_at", { ascending: false })
+      : { data: [], error: null },
     loadHealth(admin),
   ]);
 
-  const firstError = crmEventsError ?? jobsError ?? billingEventsError;
+  const firstError = crmEventsError ?? jobsError ?? billingEventsError ?? trackingEventsError;
   if (firstError) {
     throw new ApiError(500, firstError.message, "fulfillment_related_lookup_failed");
   }
@@ -601,6 +641,7 @@ export async function loadFulfillmentMonitorData(filters: FulfillmentMonitorFilt
   const crmEvents = Array.isArray(crmEventsRaw) ? (crmEventsRaw as JsonRecord[]) : [];
   const jobs = Array.isArray(jobsRaw) ? (jobsRaw as JsonRecord[]) : [];
   const billingEvents = Array.isArray(billingEventsRaw) ? (billingEventsRaw as JsonRecord[]) : [];
+  const trackingEvents = Array.isArray(trackingEventsRaw) ? (trackingEventsRaw as JsonRecord[]) : [];
 
   const rows = leads.map((lead) => {
     const campaign = asString(lead.campaign_id) ? campaignById.get(String(lead.campaign_id)) : null;
@@ -609,6 +650,7 @@ export async function loadFulfillmentMonitorData(filters: FulfillmentMonitorFilt
     const leadSideEffectsJob = mapJob(jobs.find((job) => jobMatchesLead(job, lead, "lead_side_effects")) ?? null);
     const performanceBillingJob = mapJob(jobs.find((job) => jobMatchesLead(job, lead, "performance_lead_billing")) ?? null);
     const billingEvent = mapBillingEvent(latestByLeadId(billingEvents, String(lead.id)));
+    const tracking = summarizeTrackingEvents(trackingEvents.filter((event) => asString(event.lead_id) === String(lead.id)));
     const proofMarker = deriveProofMarker(lead.email, lead.source, lead.metadata, crmEvent?.proofMarker);
 
     return {
@@ -626,6 +668,7 @@ export async function loadFulfillmentMonitorData(filters: FulfillmentMonitorFilt
       performanceBillingJob,
       billingEvent,
       crmEvent,
+      tracking,
       retryEligibility: retryEligibility(crmEvent),
     } satisfies FulfillmentMonitorLeadRow;
   }).filter((row) => matchesStatus(row, filters.status));

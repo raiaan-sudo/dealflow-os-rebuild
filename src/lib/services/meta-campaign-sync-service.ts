@@ -22,6 +22,7 @@ import { getAppContext } from "@/lib/services/app-context";
 import { refreshCampaignActionSuggestions } from "@/lib/services/campaign-action-service";
 import { refreshCampaignDraftActions } from "@/lib/services/campaign-draft-action-service";
 import { recordCreativePerformanceSnapshot } from "@/lib/services/creative-performance-service";
+import { recordLeadTrackingEvent } from "@/lib/services/lead-tracking-service";
 import {
   getCampaignLaunchRecordForCampaign,
   getLatestCampaignLaunchRecord,
@@ -553,6 +554,23 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
   }
 
   if (deliveryMetricsRead) {
+    await recordLeadTrackingEvent({
+      organizationId: effectiveOrganizationId,
+      campaignId: scopedRecord?.campaign.id ?? requestedCampaignId,
+      eventType: "meta_reporting_checked",
+      status: deliveryMetrics.leads > 0 ? "seen" : "missing",
+      source: "meta_campaign_sync",
+      metadata: {
+        metaCampaignId: ids.campaignId,
+        leads: deliveryMetrics.leads,
+        spend: deliveryMetrics.spend,
+        clicks: deliveryMetrics.clicks,
+        impressions: deliveryMetrics.impressions,
+        rawActions: deliveryMetrics.raw_actions ?? [],
+        rawConversions: deliveryMetrics.raw_conversions ?? [],
+      },
+    }).catch(() => null);
+
     const { error: performanceTrackingError } = await effectiveSupabase.from("performance_tracking").insert({
       organization_id: effectiveOrganizationId,
       user_id: effectiveUserId,

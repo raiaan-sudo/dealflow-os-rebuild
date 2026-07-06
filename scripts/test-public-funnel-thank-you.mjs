@@ -7,6 +7,7 @@ const formSource = fs.readFileSync("src/app/f/[slug]/lead-capture-form.tsx", "ut
 const thankYouPageSource = fs.readFileSync("src/app/f/[slug]/thank-you/page.tsx", "utf8");
 const trackerSource = fs.readFileSync("src/app/f/[slug]/thank-you/thank-you-conversion-tracker.tsx", "utf8");
 const thankYouModelSource = fs.readFileSync("src/lib/public-funnel-thank-you.ts", "utf8");
+const leadRouteSource = fs.readFileSync("src/app/api/lead-capture/route.ts", "utf8");
 const leadHandlerSource = fs.readFileSync("src/lib/services/lead-handler-service.ts", "utf8");
 
 function assertOrdered(source, patterns, message) {
@@ -47,6 +48,11 @@ assert.match(formSource, /submitInFlightRef/, "lead form must synchronously bloc
 assert.match(formSource, /disabled=\{status === "submitting"\}/, "lead form button must show disabled loading state");
 assert.match(formSource, /data\?\.success !== true \|\| data\?\.ok !== true/, "lead form must redirect only on confirmed success");
 assert.match(formSource, /window\.location\.assign\(thankYouUrl\.toString\(\)\)/, "lead form must redirect to thank-you after confirmed success");
+assert.match(formSource, /getCurrentPageAttribution/, "lead form must explicitly capture current page attribution");
+assert.match(formSource, /utm_source: attribution\.utmSource/, "lead form must submit UTM source attribution");
+assert.match(formSource, /ad_id: attribution\.adId/, "lead form must submit Meta ad id attribution");
+assert.match(formSource, /landing_page_url: attribution\.landingPageUrl/, "lead form must submit the current landing page URL");
+assert.match(formSource, /await waitForMetaPixelDispatch\(\)/, "lead form must give the browser Lead pixel a short dispatch window before redirect");
 assertOrdered(
   formSource,
   [
@@ -72,7 +78,12 @@ const successRedirectBlock = formSource.slice(
 );
 assert.doesNotMatch(successRedirectBlock, /resetTurnstile\(|setName\(|setEmail\(|setPhone\(|setSmsConsent\(/, "success path must not reset form state before thank-you navigation");
 assert.match(formSource, /sms_consent: Boolean\(showPhone && normalizedPhone && smsConsent\)/, "SMS consent payload must stay intact");
-assert.match(formSource, /turnstile_token: turnstileToken \|\| undefined/, "Turnstile token payload must stay intact");
+assert.doesNotMatch(formSource, /turnstile_token|turnstileToken|useTurnstileWidget/, "public customer funnels must not require Turnstile before thank-you redirect");
+assert.match(leadRouteSource, /parseLandingPageAttribution/, "lead capture route must backfill attribution from the landing URL");
+assert.match(leadRouteSource, /url\.searchParams\.get\("utm_content"\)/, "lead capture route must treat Meta utm_content as ad id attribution");
+assert.match(leadRouteSource, /utm_source: utmSource \?\? undefined/, "lead capture route must persist normalized UTM source");
+assert.match(leadRouteSource, /eventSourceUrl: landingPageUrl/, "Meta CAPI event source URL must use the resolved landing page URL");
+assert.match(leadHandlerSource, /utm_source|utm_medium|utm_campaign|ad_id|landing_page_url/, "lead handler must support attribution fields");
 
 assert.match(trackerSource, /CompleteRegistration/, "thank-you route should prepare a conversion event");
 assert.match(trackerSource, /sessionStorage\.getItem\(storageKey\)/, "thank-you conversion should avoid duplicate refresh tracking");

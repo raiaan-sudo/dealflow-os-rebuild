@@ -54,6 +54,7 @@ const requiredMigrationFiles = [
   "20260519043000_harden_autonomy_anon_access.sql",
   "20260531160000_create_white_label_partner_infrastructure.sql",
   "20260617170000_create_partner_ghl_integration.sql",
+  "20260706170000_create_lead_tracking_health.sql",
 ];
 
 const { loadEnvConfig } = nextEnv;
@@ -398,6 +399,20 @@ async function main() {
           "created_at",
         ].join(", "),
       )
+      .limit(1),
+  );
+
+  await probeQuery("campaign_tracking_contracts table check", () =>
+    supabase
+      .from("campaign_tracking_contracts")
+      .select("id, organization_id, campaign_id, tracking_mode, expected_lead_destination, status, readiness, updated_at")
+      .limit(1),
+  );
+
+  await probeQuery("lead_tracking_events table check", () =>
+    supabase
+      .from("lead_tracking_events")
+      .select("id, organization_id, campaign_id, lead_id, event_type, status, fbtrace_id, meta_events_received, created_at")
       .limit(1),
   );
 

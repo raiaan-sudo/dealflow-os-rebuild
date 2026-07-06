@@ -26,7 +26,6 @@ const FORM_COPY = {
     validationEmail: "Please provide your email",
     validationPhone: "Please provide your phone number",
     validationConsent: "Please check the SMS consent box so we can text you about this request.",
-    validationTurnstile: "Please complete the verification challenge.",
     delayed: "Lead capture is temporarily delayed. Please try again shortly.",
     failed: "Lead capture failed.",
     disclaimerPrefix:
@@ -48,7 +47,6 @@ const FORM_COPY = {
     validationEmail: "Veuillez inscrire votre courriel",
     validationPhone: "Veuillez inscrire votre numéro de téléphone",
     validationConsent: "Veuillez cocher la case de consentement SMS afin que nous puissions vous texter au sujet de cette demande.",
-    validationTurnstile: "Veuillez compléter la vérification.",
     delayed: "La demande est temporairement retardée. Veuillez réessayer sous peu.",
     failed: "La demande n'a pas pu être envoyée.",
     disclaimerPrefix:
@@ -70,7 +68,6 @@ const FORM_COPY = {
     validationEmail: "Indica tu correo electronico",
     validationPhone: "Indica tu numero de telefono",
     validationConsent: "Marca la casilla de consentimiento SMS para que podamos escribirte sobre esta solicitud.",
-    validationTurnstile: "Completa la verificacion.",
     delayed: "La captura del lead esta temporalmente demorada. Intentalo nuevamente en breve.",
     failed: "No se pudo enviar la solicitud.",
     disclaimerPrefix:
@@ -89,30 +86,59 @@ function getFormCopy(language?: string | null) {
   return FORM_COPY.en;
 }
 
-const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
-const TURNSTILE_SCRIPT_ID = "cloudflare-turnstile-script";
-
 declare global {
   interface Window {
     fbq?: (...args: unknown[]) => void;
     _fbq?: (...args: unknown[]) => void;
-    turnstile?: {
-      render: (
-        element: HTMLElement,
-        options: {
-          sitekey: string;
-          callback: (token: string) => void;
-          "expired-callback": () => void;
-          "error-callback": () => void;
-        },
-      ) => string;
-      reset: (widgetId?: string) => void;
-    };
   }
 }
 
 function includesField(fields: string[], needle: string) {
   return fields.some((field) => field.toLowerCase().includes(needle));
+}
+
+function getCurrentPageAttribution() {
+  const url = new URL(window.location.href);
+
+  return {
+    landingPageUrl: url.toString(),
+    utmSource: url.searchParams.get("utm_source") || undefined,
+    utmMedium: url.searchParams.get("utm_medium") || undefined,
+    utmCampaign: url.searchParams.get("utm_campaign") || url.searchParams.get("utm_id") || undefined,
+    adId: url.searchParams.get("ad_id") || url.searchParams.get("utm_content") || undefined,
+  };
+}
+
+function waitForMetaPixelDispatch() {
+  return new Promise((resolve) => window.setTimeout(resolve, 350));
+}
+
+function recordBrowserPixelAttempt(params: {
+  leadId: string;
+  campaignId: string;
+  pixelId: string;
+}) {
+  const payload = JSON.stringify({
+    lead_id: params.leadId,
+    campaign_id: params.campaignId,
+    pixel_id: params.pixelId,
+    event_id: params.leadId,
+  });
+
+  if (navigator.sendBeacon) {
+    const blob = new Blob([payload], { type: "application/json" });
+    navigator.sendBeacon("/api/lead-tracking/browser-pixel", blob);
+    return;
+  }
+
+  void fetch("/api/lead-tracking/browser-pixel", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: payload,
+    keepalive: true,
+  }).catch(() => null);
 }
 
 export function LeadCaptureForm({
@@ -130,12 +156,8 @@ export function LeadCaptureForm({
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [formStartedAt] = useState(() => Date.now());
-  const [turnstileToken, setTurnstileToken] = useState("");
-  const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
-  const turnstileWidgetIdRef = useRef<string | null>(null);
   const pageViewTrackedRef = useRef(false);
   const submitInFlightRef = useRef(false);
-  const turnstileEnabled = Boolean(TURNSTILE_SITE_KEY);
   const copy = getFormCopy(language);
 
   const normalizedFields = useMemo(
@@ -163,55 +185,6 @@ export function LeadCaptureForm({
 
     return () => window.clearInterval(intervalId);
   }, [metaPixelId]);
-
-  useEffect(() => {
-    const siteKey = TURNSTILE_SITE_KEY;
-
-    if (!siteKey || !turnstileContainerRef.current || turnstileWidgetIdRef.current) {
-      return;
-    }
-
-    function renderTurnstile(siteKey: string) {
-      if (!window.turnstile || !turnstileContainerRef.current || turnstileWidgetIdRef.current) {
-        return;
-      }
-
-      turnstileWidgetIdRef.current = window.turnstile.render(turnstileContainerRef.current, {
-        sitekey: siteKey,
-        callback: setTurnstileToken,
-        "expired-callback": () => setTurnstileToken(""),
-        "error-callback": () => setTurnstileToken(""),
-      });
-    }
-
-    const existingScript = document.getElementById(TURNSTILE_SCRIPT_ID);
-    if (existingScript) {
-      const renderExistingTurnstile = () => renderTurnstile(siteKey);
-      renderExistingTurnstile();
-      existingScript.addEventListener("load", renderExistingTurnstile, { once: true });
-      return () => existingScript.removeEventListener("load", renderExistingTurnstile);
-    }
-
-    const script = document.createElement("script");
-    script.id = TURNSTILE_SCRIPT_ID;
-    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-    script.async = true;
-    script.defer = true;
-    const renderNewTurnstile = () => renderTurnstile(siteKey);
-    script.addEventListener("load", renderNewTurnstile, { once: true });
-    document.head.appendChild(script);
-
-    return () => script.removeEventListener("load", renderNewTurnstile);
-  }, []);
-
-  function resetTurnstile() {
-    if (!turnstileWidgetIdRef.current) {
-      return;
-    }
-
-    setTurnstileToken("");
-    window.turnstile?.reset(turnstileWidgetIdRef.current);
-  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -247,17 +220,12 @@ export function LeadCaptureForm({
       return;
     }
 
-    if (turnstileEnabled && !turnstileToken) {
-      setStatus("error");
-      setMessage(copy.validationTurnstile);
-      return;
-    }
-
     setStatus("submitting");
     setMessage(null);
     submitInFlightRef.current = true;
 
     try {
+      const attribution = getCurrentPageAttribution();
       const response = await fetch("/api/lead-capture", {
         method: "POST",
         headers: {
@@ -274,7 +242,11 @@ export function LeadCaptureForm({
           stage: "launched",
           company_website: "",
           formStartedAt,
-          turnstile_token: turnstileToken || undefined,
+          utm_source: attribution.utmSource,
+          utm_medium: attribution.utmMedium,
+          utm_campaign: attribution.utmCampaign,
+          ad_id: attribution.adId,
+          landing_page_url: attribution.landingPageUrl,
         }),
       });
 
@@ -294,6 +266,8 @@ export function LeadCaptureForm({
 
       if (metaPixelId && leadId && typeof window.fbq === "function") {
         window.fbq("track", "Lead", { campaign_id: campaignId }, { eventID: leadId });
+        recordBrowserPixelAttempt({ leadId, campaignId, pixelId: metaPixelId });
+        await waitForMetaPixelDispatch();
       }
 
       const thankYouUrl = new URL(`/f/${encodeURIComponent(funnelSlug)}/thank-you`, window.location.origin);
@@ -303,7 +277,6 @@ export function LeadCaptureForm({
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : copy.failed);
-      resetTurnstile();
       submitInFlightRef.current = false;
     }
   }
@@ -426,13 +399,6 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
         >
           {message}
         </div>
-      ) : null}
-
-      {turnstileEnabled ? (
-        <div
-          ref={turnstileContainerRef}
-          className="min-h-[65px] overflow-hidden rounded-2xl border border-[#e2d6c7] bg-[#fbf7ef] p-2"
-        />
       ) : null}
 
       <button

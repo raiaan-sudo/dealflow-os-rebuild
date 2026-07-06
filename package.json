@@ -117,6 +117,7 @@
     "test:instant-form-flow-split": "node ./scripts/test-instant-form-flow-split.mjs",
     "test:support-freshdesk": "node ./scripts/test-support-freshdesk.mjs",
     "test:public-funnel-thank-you": "node ./scripts/test-public-funnel-thank-you.mjs",
+    "test:lead-tracking-health": "node ./scripts/test-lead-tracking-health.mjs",
     "test:lead-notification-status": "node ./scripts/test-lead-notification-status-normalization.mjs",
     "autonomy:evaluate": "node ./scripts/run-autonomy-evaluator.mjs",
     "autonomy:report": "node ./scripts/print-autonomy-report.mjs",

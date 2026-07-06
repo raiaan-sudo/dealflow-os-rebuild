@@ -42,6 +42,10 @@ import {
   getApprovedCreativeIntakeGenerationContext,
   isCreativeChatIntakeEnabled,
 } from "@/lib/services/creative-chat-intake-service";
+import {
+  buildTrackingReadiness,
+  upsertCampaignTrackingContract,
+} from "@/lib/services/lead-tracking-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { slugify } from "@/lib/utils";
@@ -513,6 +517,18 @@ function isPublicFunnelUrl(value: string) {
     return /^\/f\/[^/]+$/i.test(url.pathname);
   } catch {
     return false;
+  }
+}
+
+function getUrlHostname(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return null;
   }
 }
 
@@ -2574,6 +2590,48 @@ async function launchCampaignToMeta(
         objectId: lastKnownIds.ad_id,
         requestId,
       });
+
+      const trackingMode = instantFormCampaign ? "instant_form" : "website_funnel";
+      const trackingReadiness = buildTrackingReadiness({
+        trackingMode,
+        metaCampaignId: lastKnownIds.campaign_id,
+        metaAdsetId: lastKnownIds.adset_id,
+        metaAdIds: launchedAdIds,
+        pixelId,
+        launchDomain: getUrlHostname(destinationUrl),
+        launchUrl: destinationUrl || null,
+        metaPageId: pageId,
+        accessTokenAvailable: Boolean(credentials.accessToken),
+      });
+
+      await upsertCampaignTrackingContract({
+        organizationId: workspaceId,
+        campaignId,
+        userId: record.campaign.user_id ?? null,
+        trackingMode,
+        expectedLeadDestination: instantFormCampaign ? "facebook_lead_center" : "dealflow_dashboard",
+        metaCampaignId: lastKnownIds.campaign_id,
+        metaAdsetId: lastKnownIds.adset_id,
+        metaAdIds: launchedAdIds,
+        pixelId,
+        launchDomain: getUrlHostname(destinationUrl),
+        launchUrl: destinationUrl || null,
+        metaPageId: pageId,
+        accessTokenAvailable: Boolean(credentials.accessToken),
+        metadata: {
+          requestId,
+          attemptId: activeAttemptId,
+          instantFormCampaign,
+        },
+      });
+
+      if (!trackingReadiness.ready) {
+        throw new ApiError(
+          500,
+          "Meta launch tracking contract is incomplete.",
+          "tracking_contract_incomplete",
+        );
+      }
 
       await persistLaunchState(
         campaignId,
