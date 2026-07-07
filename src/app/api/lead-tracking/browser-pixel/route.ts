@@ -18,8 +18,6 @@ const browserPixelSchema = z.object({
 });
 
 async function handleBrowserPixelAttempt(request: Request) {
-  assertSameOriginRequest(request);
-
   const requestIp = getRequestIp(request);
   const rateLimit = await consumeRateLimit({
     key: getRateLimitKey(request, "lead-tracking:browser-pixel", getHashedRateLimitIdentifier(requestIp)),
@@ -75,6 +73,7 @@ async function handleBrowserPixelAttempt(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    assertSameOriginRequest(request);
     return await handleBrowserPixelAttempt(request);
   } catch (error) {
     return handleApiError(error, "Browser pixel tracking");
