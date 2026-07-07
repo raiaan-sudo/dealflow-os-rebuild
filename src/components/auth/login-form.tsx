@@ -108,6 +108,37 @@ export function LoginForm({
     return redirectTo.toString();
   }
 
+  function isEmbeddedAuthSurface() {
+    try {
+      return window.self !== window.top;
+    } catch {
+      return true;
+    }
+  }
+
+  async function requestEmbeddedAuthStorageAccess() {
+    if (!isEmbeddedAuthSurface()) {
+      return;
+    }
+
+    if (
+      typeof document.hasStorageAccess !== "function" ||
+      typeof document.requestStorageAccess !== "function"
+    ) {
+      return;
+    }
+
+    try {
+      if (await document.hasStorageAccess()) {
+        return;
+      }
+
+      await document.requestStorageAccess();
+    } catch {
+      // Browsers can deny iframe storage access; auth still falls back to SameSite=None cookies where allowed.
+    }
+  }
+
   async function handleProviderLogin(provider: "google") {
     setError(null);
     setMessage(null);
@@ -159,6 +190,8 @@ export function LoginForm({
       if (requiresTurnstile && !turnstileToken) {
         throw new Error("Please complete the verification challenge.");
       }
+
+      await requestEmbeddedAuthStorageAccess();
 
       if (mode === "reset-password") {
         const redirectTo = new URL("/login", window.location.origin);

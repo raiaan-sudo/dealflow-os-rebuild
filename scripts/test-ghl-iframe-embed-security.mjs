@@ -4,6 +4,7 @@ import fs from "node:fs";
 
 const proxySource = fs.readFileSync("src/proxy.ts", "utf8");
 const nextConfigSource = fs.readFileSync("next.config.mjs", "utf8");
+const loginFormSource = fs.readFileSync("src/components/auth/login-form.tsx", "utf8");
 
 const requiredProxyMarkers = [
   "CLICK_TO_SCALE_IFRAME_HOSTS",
@@ -34,6 +35,18 @@ if (nextConfigSource.includes("X-Frame-Options")) {
 
 if (!proxySource.includes("if (!CLICK_TO_SCALE_IFRAME_HOSTS.has(host))")) {
   failures.push("src/proxy.ts must keep non-ClickToScale hosts on frame-ancestors 'none'.");
+}
+
+if (!loginFormSource.includes("requestEmbeddedAuthStorageAccess")) {
+  failures.push("src/components/auth/login-form.tsx must request storage access before iframe auth submission.");
+}
+
+if (!loginFormSource.includes("document.requestStorageAccess")) {
+  failures.push("src/components/auth/login-form.tsx must support strict browser third-party storage handling.");
+}
+
+if (!loginFormSource.includes("window.self !== window.top")) {
+  failures.push("src/components/auth/login-form.tsx must detect embedded auth surfaces.");
 }
 
 if (failures.length > 0) {
