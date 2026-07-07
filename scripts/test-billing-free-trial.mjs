@@ -87,7 +87,7 @@ assert.match(planPresentation, /priceLabel: BILLING_PLANS\.starter\.priceLabel/,
 assert.match(planPresentation, /priceLabel: BILLING_PLANS\.pro\.priceLabel/, "Pro paywall copy must show direct monthly pricing");
 assert.doesNotMatch(planPresentation, /free trial|7-day/i, "Paywall presentation must not sell a free trial");
 assert.match(planPresentation, /checkoutCtaLabel: "Start Starter"/, "Starter CTA must be direct-payment copy");
-assert.match(planPresentation, /checkoutCtaLabel: "Start Pro"/, "Pro CTA must be direct-payment copy");
+assert.match(planPresentation, /checkoutCtaLabel: "Get started now"/, "Pro CTA must be direct-payment copy");
 assert.match(paywallSelector, /label=\{selectedPlan\.checkoutCtaLabel\}/, "Paywall checkout CTA must use selected direct-payment copy");
 assert.match(
   checkoutRoute,
