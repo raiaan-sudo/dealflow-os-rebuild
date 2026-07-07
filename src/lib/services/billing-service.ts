@@ -306,7 +306,7 @@ async function readStripeWebhookEvent(eventId: string) {
   return (data as StripeWebhookEventRow | null) ?? null;
 }
 
-async function markStripeWebhookEvent(params: {
+export async function markStripeWebhookEvent(params: {
   eventId: string;
   status: "processed" | "ignored" | "failed";
   errorCode?: string | null;
@@ -336,7 +336,7 @@ async function markStripeWebhookEvent(params: {
   }
 }
 
-async function claimStripeWebhookEvent(event: Stripe.Event): Promise<StripeWebhookClaimResult> {
+export async function claimStripeWebhookEvent(event: Stripe.Event): Promise<StripeWebhookClaimResult> {
   const admin = createAdminClient();
 
   if (!admin) {
@@ -1475,6 +1475,19 @@ export async function syncBillingSubscriptionFromStripe(
       : null;
 
   if (!organizationId) {
+    if (subscription.metadata.checkout_flow === "access_key") {
+      logOperationalEvent("stripe_access_key_subscription_waiting_for_claim", {
+        stripeSubscriptionId: subscription.id,
+        accessKeyId: subscription.metadata.access_key_id ?? null,
+        sourceEventId: source.eventId,
+        sourceEventType: source.eventType,
+      });
+      return {
+        applied: false,
+        ignoredReason: "access_key_pending_claim",
+      };
+    }
+
     throw new ApiError(400, "Stripe subscription is missing organization metadata.", "stripe_metadata_missing");
   }
 
@@ -2022,7 +2035,9 @@ export async function handleStripeBillingEvent(event: Stripe.Event) {
           errorMessage:
             syncResult.ignoredReason === "subscription_missing"
               ? "No subscription was attached to this Stripe event."
-              : "A newer Stripe subscription event has already been applied.",
+              : syncResult.ignoredReason === "access_key_pending_claim"
+                ? "Access-key subscription is waiting for account claim."
+                : "A newer Stripe subscription event has already been applied.",
         });
 
         return {

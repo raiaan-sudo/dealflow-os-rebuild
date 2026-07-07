@@ -19,6 +19,8 @@ const expectedPublicApiRoutes = new Map([
   ["/api/webhooks/twilio/status", new Set(["POST"])],
   ["/api/client-errors", new Set(["POST"])],
   ["/api/client-errors/csp", new Set(["POST"])],
+  ["/api/access-keys/checkout", new Set(["POST"])],
+  ["/api/access-keys/preclaim", new Set(["POST"])],
 ]);
 
 const expectedInternalApiRoutes = new Map([
