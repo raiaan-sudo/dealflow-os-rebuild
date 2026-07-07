@@ -11,6 +11,7 @@ import {
   getSupabaseEnvOrThrow,
   isInternalAdminEmail,
 } from "@/lib/env";
+import { getSupabaseAuthCookieOptions } from "@/lib/supabase/cookie-options";
 import type { Database } from "@/lib/supabase/types";
 
 export const dynamic = "force-dynamic";
@@ -257,7 +258,9 @@ export async function POST(request: Request) {
     }
 
     const cookieMap = new Map<string, string>();
+    const authCookieOptions = getSupabaseAuthCookieOptions();
     const ssr = createServerClient<Database>(supabaseEnv.url, supabaseEnv.anonKey, {
+      cookieOptions: authCookieOptions,
       cookies: {
         get(name) {
           return cookieMap.get(name);
@@ -296,9 +299,11 @@ export async function POST(request: Request) {
     );
 
     for (const [name, value] of cookieMap) {
+      const sameSite = authCookieOptions.sameSite === "none" ? "None" : "Lax";
+      const secure = authCookieOptions.secure ? "; Secure" : "";
       response.headers.append(
         "Set-Cookie",
-        `${name}=${value}; Path=/; Max-Age=${2 * 60 * 60}; SameSite=Lax; Secure`,
+        `${name}=${value}; Path=/; Max-Age=${2 * 60 * 60}; SameSite=${sameSite}${secure}`,
       );
     }
 

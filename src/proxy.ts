@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getInternalSystemJobSecrets, getSupabaseEnv } from "@/lib/env";
+import { getSupabaseAuthCookieOptions } from "@/lib/supabase/cookie-options";
 
 const PUBLIC_PATHS = new Set([
   "/",
@@ -398,6 +399,7 @@ export async function proxy(request: NextRequest) {
   }
 
   const supabase = createServerClient(supabaseEnv.url, supabaseEnv.anonKey, {
+    cookieOptions: getSupabaseAuthCookieOptions(),
     cookies: {
       get(name) {
         return request.cookies.get(name)?.value;
