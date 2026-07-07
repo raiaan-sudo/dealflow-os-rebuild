@@ -262,6 +262,18 @@ export function isBillingCheckoutSafeModeEnabled() {
   return process.env.BILLING_CHECKOUT_SAFE_MODE === "true";
 }
 
+export function isAccessKeyCheckoutEnabled() {
+  return process.env.ENABLE_ACCESS_KEY_CHECKOUT === "true";
+}
+
+export function getAccessKeyHashPepper() {
+  return process.env.ACCESS_KEY_HASH_PEPPER?.trim() || null;
+}
+
+export function getAccessKeyRevealEncryptionKey() {
+  return process.env.ACCESS_KEY_REVEAL_ENCRYPTION_KEY?.trim() || getAccessKeyHashPepper();
+}
+
 export function getQaBillingAcceptanceOverrideEmails() {
   return (process.env.QA_BILLING_ACCEPTANCE_OVERRIDE_EMAILS ?? "")
     .split(",")

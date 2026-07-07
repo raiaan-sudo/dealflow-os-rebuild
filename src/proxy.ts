@@ -11,6 +11,9 @@ const PUBLIC_PATHS = new Set([
   "/privacy",
   "/terms",
   "/data-deletion",
+  "/access/checkout",
+  "/access-key/success",
+  "/access-key/cancel",
   "/start",
   "/robots.txt",
   "/sitemap.xml",
@@ -26,9 +29,13 @@ const PUBLIC_API_PATHS = new Set([
   "/api/stripe/webhook",
   "/api/client-errors",
   "/api/client-errors/csp",
+  "/api/access-keys/checkout",
+  "/api/access-keys/preclaim",
 ]);
 const RESERVED_ROOT_PATHS = new Set([
   "admin",
+  "access",
+  "access-key",
   "api",
   "build",
   "builder",

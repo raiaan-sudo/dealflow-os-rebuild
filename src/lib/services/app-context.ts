@@ -534,6 +534,17 @@ export async function ensureAppContext() {
     };
 
     try {
+      const { claimPendingAccessKeyForCurrentUser } = await import("@/lib/services/access-key-service");
+      await claimPendingAccessKeyForCurrentUser(context);
+    } catch (claimError) {
+      logWarn("Access-key claim bootstrap skipped", {
+        userId: user.id,
+        organizationId: organization.id,
+        message: claimError instanceof Error ? claimError.message : "Unknown access-key claim error",
+      });
+    }
+
+    try {
       await ensureOrganizationSeedData(bootstrapSupabase, context);
     } catch (seedError) {
       logWarn("Organization seed data bootstrap skipped", {
