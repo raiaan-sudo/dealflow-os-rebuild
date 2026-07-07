@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  apiFailure,
   apiSuccess,
   handleApiError,
   parseJsonBody,
@@ -97,6 +98,22 @@ function timingSafeTextEquals(candidate: string | null, expected: string) {
   }
 
   return mismatch === 0;
+}
+
+function buildExpectedClientFailureResponse(error: unknown, requestId: string) {
+  if (error instanceof z.ZodError) {
+    const message = error.issues[0]?.message ?? "Request validation failed.";
+    return apiFailure(message, "validation_error", 400, {
+      requestId,
+      details: process.env.NODE_ENV === "production" ? undefined : error.issues,
+    });
+  }
+
+  if (error instanceof ApiError && error.status < 500) {
+    return apiFailure(error.message, error.code, error.status, { requestId });
+  }
+
+  return null;
 }
 
 function parseLandingPageAttribution(landingPageUrl: string | null) {
@@ -542,6 +559,11 @@ async function handleLeadCaptureRequest(req: Request) {
   } catch (error) {
     const isServerFailure =
       error instanceof ApiError ? error.status >= 500 : true;
+    const expectedClientFailureResponse = buildExpectedClientFailureResponse(error, requestId);
+
+    if (expectedClientFailureResponse) {
+      return expectedClientFailureResponse;
+    }
 
     if (capturedPayload && isServerFailure) {
       const queuedJob = await queueFailedPublicLeadCapture({
