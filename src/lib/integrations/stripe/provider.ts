@@ -17,6 +17,12 @@ export type StripeBillingExecuteRequest =
       idempotencyKey?: string;
     }
   | {
+      action: "update_customer";
+      customerId: string;
+      params: Stripe.CustomerUpdateParams;
+      idempotencyKey?: string;
+    }
+  | {
       action: "create_checkout_session";
       params: Stripe.Checkout.SessionCreateParams;
       idempotencyKey?: string;
@@ -33,6 +39,12 @@ export type StripeBillingExecuteRequest =
   | {
       action: "retrieve_subscription";
       subscriptionId: string;
+    }
+  | {
+      action: "update_subscription";
+      subscriptionId: string;
+      params: Stripe.SubscriptionUpdateParams;
+      idempotencyKey?: string;
     }
   | {
       action: "construct_webhook_event";
@@ -157,6 +169,14 @@ class ConfiguredStripeBillingProvider implements StripeBillingProvider
       );
     }
 
+    if (request.action === "update_customer") {
+      return client.customers.update(
+        request.customerId,
+        request.params,
+        request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : undefined,
+      );
+    }
+
     if (request.action === "create_checkout_session") {
       return client.checkout.sessions.create(
         request.params,
@@ -181,6 +201,14 @@ class ConfiguredStripeBillingProvider implements StripeBillingProvider
       return client.subscriptions.retrieve(request.subscriptionId, {
         expand: ["items.data.price"],
       });
+    }
+
+    if (request.action === "update_subscription") {
+      return client.subscriptions.update(
+        request.subscriptionId,
+        request.params,
+        request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : undefined,
+      );
     }
 
     return client.webhooks.constructEvent(request.payload, request.signature, env.webhookSecret);

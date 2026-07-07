@@ -10,6 +10,10 @@ import {
 import { getStripeBillingProvider } from "@/lib/integrations/stripe/provider";
 import { handleStripeBillingEvent } from "@/lib/services/billing-service";
 import {
+  handleAccessKeyStripeEvent,
+  isAccessKeyCheckoutSessionObject,
+} from "@/lib/services/access-key-service";
+import {
   buildRateLimitResponse,
   consumeRateLimit,
   getHashedRateLimitIdentifier,
@@ -75,7 +79,10 @@ export async function POST(request: Request) {
       throw new ApiError(400, "Invalid Stripe webhook signature.", "stripe_invalid_signature");
     }
 
-    const result = await handleStripeBillingEvent(event);
+    const result =
+      event.type === "checkout.session.completed" && isAccessKeyCheckoutSessionObject(event.data.object)
+        ? await handleAccessKeyStripeEvent(event)
+        : await handleStripeBillingEvent(event);
 
     return apiSuccess({
       received: true,
