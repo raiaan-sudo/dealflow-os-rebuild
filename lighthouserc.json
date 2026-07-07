@@ -8,7 +8,7 @@
         "http://localhost:3000/privacy",
         "http://localhost:3000/terms"
       ],
-      "startServerCommand": "npm run start",
+      "startServerCommand": "SCHEMA_VALIDATION_MODE=warn npm run start",
       "startServerReadyPattern": "Ready",
       "startServerReadyTimeout": 30000,
       "numberOfRuns": 1,
