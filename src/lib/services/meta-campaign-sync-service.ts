@@ -28,6 +28,7 @@ import {
 import { getLatestCampaignPlan } from "@/lib/services/campaign-plan-service";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
+import { recordLeadTrackingEvent } from "@/lib/services/lead-tracking-service";
 import { logError, logWarn } from "@/lib/logging";
 import type { Json } from "@/lib/supabase/types";
 
@@ -435,6 +436,21 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
   if (!snapshot) {
     throw new ApiError(500, "Synced snapshot could not be loaded.", "campaign_sync_snapshot_missing");
   }
+
+  await recordLeadTrackingEvent({
+    organizationId: context.organization.id,
+    campaignId: scopedRecord?.campaign.id ?? params?.campaignId ?? null,
+    eventType: "meta_reporting_checked",
+    status: deliveryMetrics.leads > 0 ? "seen" : "missing",
+    source: "meta_campaign_sync",
+    metadata: {
+      metaCampaignId: ids.campaignId,
+      leads: deliveryMetrics.leads,
+      spend: deliveryMetrics.spend,
+      clicks: deliveryMetrics.clicks,
+      impressions: deliveryMetrics.impressions,
+    },
+  }).catch(() => null);
 
   const { error: performanceTrackingError } = await supabase.from("performance_tracking").insert({
     organization_id: context.organization.id,

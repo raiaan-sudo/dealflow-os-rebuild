@@ -8,9 +8,11 @@ import {
   parseRouteParams,
 } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
-import { launchCampaignToMeta } from "@/app/api/campaigns/create/route";
-import { assertMetaLaunchBillingAccess } from "@/lib/services/billing-service";
+import { POST as launchCampaignCreatePost } from "@/app/api/campaigns/create/route";
+import { getMetaWorkspaceCredentials } from "@/lib/integrations/meta/service";
+import { assertCampaignCanLaunch } from "@/lib/services/campaign-entitlements";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
+import { upsertCampaignTrackingContract } from "@/lib/services/lead-tracking-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 
@@ -175,12 +177,12 @@ async function releaseMetaLaunchLock(campaignId: string, token: string) {
 
 export async function POST(
   request: Request,
-  context: { params: Promise<Record<string, string>> | Record<string, string> },
+  context: { params: Promise<Record<string, string>> },
 ) {
   try {
     assertSameOriginRequest(request);
-    await assertMetaLaunchBillingAccess();
     const { id } = await parseRouteParams(context.params, paramsSchema);
+    await assertCampaignCanLaunch(id);
     const record = await getCampaignById(id);
 
     if (!record) {
@@ -255,12 +257,26 @@ export async function POST(
     };
 
     const launchPromise = (async () => {
-      const response = await launchCampaignToMeta(id, resumeState, {
-        testModeInterruptAfter:
-          retryBody.test_mode_interrupt_after === "ad_set"
-            ? "adset"
-            : retryBody.test_mode_interrupt_after ?? null,
-      });
+      const origin = new URL(request.url).origin;
+      const launchUrl = record.publish.slug
+        ? new URL(`/f/${record.publish.slug}`, origin).toString()
+        : null;
+      const launchDomain = launchUrl ? new URL(launchUrl).hostname : null;
+      const metaCredentials = await getMetaWorkspaceCredentials();
+      const response = await launchCampaignCreatePost(new Request(`${origin}/api/campaigns/create`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin,
+        },
+        body: JSON.stringify({
+          campaignId: id,
+          metaCampaignId: resumeState.metaCampaignId ?? undefined,
+          metaAdSetId: resumeState.metaAdSetId ?? undefined,
+          metaCreativeId: resumeState.metaCreativeId ?? undefined,
+          testModeInterruptAfter: retryBody.test_mode_interrupt_after ?? undefined,
+        }),
+      }));
       const data = (await response.json().catch(() => null)) as
         | (Partial<LaunchResponsePayload> & {
             campaign?: unknown;
@@ -310,6 +326,31 @@ export async function POST(
         };
         throw launchError;
       }
+
+      if (!record.campaign.organization_id) {
+        throw new ApiError(
+          500,
+          "Campaign is missing workspace context.",
+          "campaign_workspace_missing",
+        );
+      }
+
+      await upsertCampaignTrackingContract({
+        organizationId: record.campaign.organization_id,
+        campaignId: id,
+        userId: record.campaign.user_id,
+        trackingMode: "website_funnel",
+        metaCampaignId: String(data.campaign_id),
+        metaAdsetId: String(data.adset_id),
+        metaAdIds: [String(data.ad_id)],
+        pixelId: metaCredentials.pixelId,
+        launchDomain,
+        launchUrl,
+        accessTokenAvailable: Boolean(metaCredentials.accessToken),
+        metadata: {
+          source: "campaign_launch_route",
+        },
+      });
 
       return {
         campaign_id: String(data.campaign_id),

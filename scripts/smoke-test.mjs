@@ -147,7 +147,7 @@ function runOfflineChecks() {
   assertIncludes(launchRoute, "step_status", "Step-level launch state", "launch_runtime stores step_status");
   assertIncludes(launchRoute, "testModeInterruptAfter", "Forced interruption support", "forced interruption mode exists");
   assertIncludes(launchApiRoute, "test_mode_interrupt_after", "Forced interruption launch API", "launch route forwards interruption mode");
-  assertIncludes(launchApiRoute, "assertMetaLaunchBillingAccess", "Launch billing gate", "launch route enforces subscription/admin override gate");
+  assertIncludes(launchApiRoute, "assertCampaignCanLaunch", "Launch billing gate", "launch route enforces subscription/admin override gate");
   assertIncludes(launchApiRoute, "acquireMetaLaunchLock", "Durable Meta launch lock", "launch route uses DB-backed launch locking");
   assertIncludes(launchApiRoute, "ALLOW_META_LAUNCH_INTERRUPTION_TESTS", "Interruption guard", "forced interruption is env-gated");
   assertIncludes(metaExecution, "return \"PAUSED\"", "Meta objects remain paused", "shared Meta execution mapper never emits ACTIVE during beta");
@@ -161,15 +161,16 @@ function runOfflineChecks() {
   assertExcludes(launchRoute, /accounts\[0\]|pages\[0\]|pixels\[0\]/, "No first-asset fallback in launch execution", "launch route has no accounts[0]/pages[0]/pixels[0]");
   assertIncludes(metaCallback, "asset_discovery", "Meta discovery state tracking", "callback stores partial discovery status");
 
-  assertIncludes(leadForm, "Please provide email or phone", "Lead form client validation", "lead form blocks submit without email or phone");
+  assertIncludes(leadForm, "validationEmail", "Lead form email validation", "lead form requires configured email fields before submit");
+  assertIncludes(leadForm, "validationPhone", "Lead form phone validation", "lead form requires configured phone fields before submit");
+  assertIncludes(leadRoute, "Either an email or phone number is required.", "Lead capture contact validation", "lead capture rejects payloads without an email or phone");
   assertIncludes(leadRoute, "consumeRateLimit", "Lead capture rate limiting", "lead capture rate limiting enabled");
   assertIncludes(leadRoute, "lead-capture:campaign-ip", "Lead capture campaign+IP limit", "public lead capture rate limit is caller-aware");
   assertIncludes(leadRoute, "lead-capture:contact", "Lead capture contact limit", "public lead capture has contact-hash abuse control");
   assertIncludes(leadRoute, "lead_spam_rejected", "Lead capture honeypot/timing guard", "public lead capture rejects obvious bot submissions");
-  assertIncludes(leadRoute, "TURNSTILE_SECRET_KEY", "Lead capture Turnstile server gate", "Cloudflare Turnstile verification is enforced when the secret env var is configured");
-  assertIncludes(leadRoute, "ALLOW_PUBLIC_LEAD_NO_TURNSTILE", "Lead capture Turnstile production guard", "production lead capture fails closed if Turnstile is not configured unless break-glass is set");
-  assertIncludes(leadRoute, "https://challenges.cloudflare.com/turnstile/v0/siteverify", "Lead capture Turnstile siteverify", "public lead capture verifies Turnstile tokens server-side");
-  assertIncludes(leadForm, "NEXT_PUBLIC_TURNSTILE_SITE_KEY", "Lead form Turnstile client gate", "public lead form renders Turnstile only when the public site key is configured");
+  assertExcludes(leadRoute, "TURNSTILE_SECRET_KEY", "Lead capture Turnstile removed", "public customer funnels do not require Cloudflare Turnstile server verification");
+  assertExcludes(leadRoute, "https://challenges.cloudflare.com/turnstile/v0/siteverify", "Lead capture Turnstile siteverify removed", "public customer funnels do not call Cloudflare Turnstile siteverify");
+  assertExcludes(leadForm, "NEXT_PUBLIC_TURNSTILE_SITE_KEY", "Lead form Turnstile client removed", "public customer funnels do not render Turnstile");
   assertIncludes(loginForm, "supabase.auth.signInWithPassword({\n          email,\n          password,\n          options:", "Signin Turnstile token support", "Supabase Auth password sign-in can receive a Turnstile token");
   assertIncludes(loginForm, "captchaToken", "Signup Turnstile token support", "Supabase Auth CAPTCHA can receive a Turnstile token during account creation");
   assertIncludes(loginForm, "resetPasswordForEmail", "Forgot password support", "login page can request a Supabase password reset link");
