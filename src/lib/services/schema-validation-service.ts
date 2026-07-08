@@ -2,9 +2,10 @@ import "server-only";
 
 import { createAdminClient } from "@/lib/server/supabase-admin";
 import { ApiError } from "@/lib/api/route";
+import { isAccessKeyCheckoutEnabled } from "@/lib/env";
 import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
 
-const EXPECTED_APP_SCHEMA_VERSION = "20260502010000";
+const MINIMUM_APP_SCHEMA_VERSION = "20260706170000";
 const REQUIRED_CAMPAIGN_PLAN_COLUMNS = ["organization_id", "launch_status", "lead_loop_verified"] as const;
 const REQUIRED_MARKETING_ACCOUNT_COLUMNS = [
   "account_name",
@@ -29,6 +30,24 @@ const REQUIRED_TABLES = [
   "billing_subscriptions",
   "system_jobs",
   "system_job_logs",
+  "campaign_tracking_contracts",
+  "lead_tracking_events",
+] as const;
+const REQUIRED_ACCESS_KEY_TABLES = [
+  "billing_access_keys",
+  "billing_access_key_events",
+] as const;
+const REQUIRED_ACCESS_KEY_COLUMNS = [
+  "key_hash",
+  "key_prefix",
+  "status",
+  "stripe_checkout_session_id",
+  "stripe_customer_id",
+  "stripe_subscription_id",
+  "claim_token_hash",
+  "claimed_by_user_id",
+  "claimed_organization_id",
+  "metadata",
 ] as const;
 
 type SchemaValidationMode = "block" | "warn";
@@ -61,6 +80,18 @@ function isMissingColumnError(error: unknown, column: string) {
       : "";
 
   return message.includes(column);
+}
+
+function isSchemaVersionAtLeast(actualVersion: string | null, minimumVersion: string) {
+  if (!actualVersion || !/^\d+$/.test(actualVersion) || !/^\d+$/.test(minimumVersion)) {
+    return false;
+  }
+
+  if (actualVersion.length !== minimumVersion.length) {
+    return actualVersion.length > minimumVersion.length;
+  }
+
+  return actualVersion >= minimumVersion;
 }
 
 async function checkRequiredColumns(table: string, columns: readonly string[]) {
@@ -119,7 +150,7 @@ async function readSchemaVersion() {
     : null;
 }
 
-async function checkRequiredTables() {
+async function checkRequiredTables(tables: readonly string[]) {
   const admin = createAdminClient();
 
   if (!admin) {
@@ -128,7 +159,7 @@ async function checkRequiredTables() {
 
   const missingTables: string[] = [];
 
-  for (const table of REQUIRED_TABLES) {
+  for (const table of tables) {
     const { error } = await admin.from(table).select("*").limit(1);
 
     if (!error) {
@@ -150,13 +181,14 @@ async function checkRequiredTables() {
 
 async function runSchemaValidation(): Promise<SchemaValidationResult> {
   const mode = getSchemaValidationMode();
+  const accessKeyCheckoutEnabled = isAccessKeyCheckoutEnabled();
 
   if (!createAdminClient()) {
     if (mode === "warn") {
       return {
         ok: false,
         mode,
-        expectedVersion: EXPECTED_APP_SCHEMA_VERSION,
+        expectedVersion: MINIMUM_APP_SCHEMA_VERSION,
         actualVersion: null,
         missingColumns: [],
         issues: ["Supabase service role is not configured; remote schema validation was skipped."],
@@ -166,23 +198,32 @@ async function runSchemaValidation(): Promise<SchemaValidationResult> {
     throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
   }
 
+  const requiredTables = accessKeyCheckoutEnabled
+    ? [...REQUIRED_TABLES, ...REQUIRED_ACCESS_KEY_TABLES]
+    : REQUIRED_TABLES;
+
   const [
     missingCampaignPlanColumns,
     missingMarketingAccountColumns,
     missingStripeWebhookEventColumns,
+    missingAccessKeyColumns,
     missingTables,
     actualVersion,
   ] = await Promise.all([
     checkRequiredColumns("campaign_plans", REQUIRED_CAMPAIGN_PLAN_COLUMNS),
     checkRequiredColumns("marketing_accounts", REQUIRED_MARKETING_ACCOUNT_COLUMNS),
     checkRequiredColumns("stripe_webhook_events", REQUIRED_STRIPE_WEBHOOK_EVENT_COLUMNS),
-    checkRequiredTables(),
+    accessKeyCheckoutEnabled
+      ? checkRequiredColumns("billing_access_keys", REQUIRED_ACCESS_KEY_COLUMNS)
+      : Promise.resolve([]),
+    checkRequiredTables(requiredTables),
     readSchemaVersion(),
   ]);
   const missingColumns = [
     ...missingCampaignPlanColumns.map((column) => `campaign_plans.${column}`),
     ...missingMarketingAccountColumns.map((column) => `marketing_accounts.${column}`),
     ...missingStripeWebhookEventColumns.map((column) => `stripe_webhook_events.${column}`),
+    ...missingAccessKeyColumns.map((column) => `billing_access_keys.${column}`),
   ];
 
   const issues: string[] = [];
@@ -195,18 +236,18 @@ async function runSchemaValidation(): Promise<SchemaValidationResult> {
     issues.push(`Missing required tables: ${missingTables.join(", ")}`);
   }
 
-  if (actualVersion !== EXPECTED_APP_SCHEMA_VERSION) {
+  if (!isSchemaVersionAtLeast(actualVersion, MINIMUM_APP_SCHEMA_VERSION)) {
     issues.push(
       actualVersion
-        ? `Schema version mismatch. Expected ${EXPECTED_APP_SCHEMA_VERSION}, got ${actualVersion}.`
-        : `Schema version metadata is missing. Expected ${EXPECTED_APP_SCHEMA_VERSION}.`,
+        ? `Schema version is behind. Expected at least ${MINIMUM_APP_SCHEMA_VERSION}, got ${actualVersion}.`
+        : `Schema version metadata is missing. Expected at least ${MINIMUM_APP_SCHEMA_VERSION}.`,
     );
   }
 
   return {
     ok: issues.length === 0,
     mode,
-    expectedVersion: EXPECTED_APP_SCHEMA_VERSION,
+    expectedVersion: MINIMUM_APP_SCHEMA_VERSION,
     actualVersion,
     missingColumns,
     issues,
@@ -266,5 +307,5 @@ export function queueSchemaValidationOnce(options?: { context?: string }) {
 }
 
 export function getExpectedAppSchemaVersion() {
-  return EXPECTED_APP_SCHEMA_VERSION;
+  return MINIMUM_APP_SCHEMA_VERSION;
 }

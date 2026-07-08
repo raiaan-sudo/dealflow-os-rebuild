@@ -4,8 +4,9 @@ import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 
 const repoRoot = process.cwd();
-const expectedSchemaVersion = "20260502192332";
+const minimumSchemaVersion = "20260706170000";
 const schemaCheckMode = process.env.SUPABASE_SCHEMA_CHECK_MODE?.trim().toLowerCase() ?? "remote";
+const accessKeyCheckoutEnabled = process.env.ENABLE_ACCESS_KEY_CHECKOUT === "true";
 const requiredMigrationFiles = [
   "20260426110000_add_campaign_plan_critical_fields.sql",
   "20260426110100_create_stripe_webhook_events.sql",
@@ -37,6 +38,8 @@ const requiredMigrationFiles = [
   "20260430190000_create_user_credits.sql",
   "20260502010000_harden_schema_metadata_access.sql",
   "20260502192332_move_rls_membership_helper_private.sql",
+  "20260705090000_create_billing_access_keys.sql",
+  "20260706170000_create_lead_tracking_health.sql",
 ];
 
 const { loadEnvConfig } = nextEnv;
@@ -142,6 +145,18 @@ async function probeQuery(context, action) {
   } catch (error) {
     fail(classifyNetworkError(error, context, process.env.NEXT_PUBLIC_SUPABASE_URL));
   }
+}
+
+function isSchemaVersionAtLeast(actualVersion, minimumVersion) {
+  if (!actualVersion || !/^\d+$/.test(actualVersion) || !/^\d+$/.test(minimumVersion)) {
+    return false;
+  }
+
+  if (actualVersion.length !== minimumVersion.length) {
+    return actualVersion.length > minimumVersion.length;
+  }
+
+  return actualVersion >= minimumVersion;
 }
 
 async function main() {
@@ -323,6 +338,38 @@ async function main() {
       .limit(1),
   );
 
+  await probeQuery("campaign_tracking_contracts table check", () =>
+    supabase
+      .from("campaign_tracking_contracts")
+      .select("id, organization_id, campaign_id, tracking_mode, expected_lead_destination, meta_campaign_id, meta_adset_id, meta_ad_ids, pixel_id, launch_url, status, readiness, metadata, last_verified_at")
+      .limit(1),
+  );
+
+  await probeQuery("lead_tracking_events table check", () =>
+    supabase
+      .from("lead_tracking_events")
+      .select("id, organization_id, campaign_id, lead_id, event_type, status, source, event_id, pixel_id, meta_events_received, attribution, metadata, created_at")
+      .limit(1),
+  );
+
+  if (accessKeyCheckoutEnabled) {
+    await probeQuery("billing_access_keys table check", () =>
+      supabase
+        .from("billing_access_keys")
+        .select("id, key_hash, key_prefix, status, stripe_checkout_session_id, stripe_customer_id, stripe_subscription_id, stripe_price_id, plan_tier, claim_token_hash, claimed_by_user_id, claimed_organization_id, metadata, created_at, updated_at")
+        .limit(1),
+    );
+
+    await probeQuery("billing_access_key_events table check", () =>
+      supabase
+        .from("billing_access_key_events")
+        .select("id, access_key_id, event_type, actor_user_id, actor_organization_id, stripe_checkout_session_id, stripe_customer_id, stripe_subscription_id, metadata, created_at")
+        .limit(1),
+    );
+  } else {
+    console.log("access-key remote table check skipped (ENABLE_ACCESS_KEY_CHECKOUT is not true)");
+  }
+
   await probeQuery("leads reliability columns check", () =>
     supabase
       .from("leads")
@@ -339,9 +386,9 @@ async function main() {
       ? schemaRow.value
       : null;
 
-  if (actualVersion !== expectedSchemaVersion) {
+  if (!isSchemaVersionAtLeast(actualVersion, minimumSchemaVersion)) {
     fail(
-      `Schema version mismatch. Expected ${expectedSchemaVersion}, got ${actualVersion ?? "missing"}.`,
+      `Schema version is behind. Expected at least ${minimumSchemaVersion}, got ${actualVersion ?? "missing"}.`,
     );
   }
 
