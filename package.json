@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": "20.x"
+    "node": ">=20 <25"
   },
   "scripts": {
     "dev": "next dev",
@@ -28,7 +28,11 @@
     "smoke:staging": "node ./scripts/smoke-test.mjs staging",
     "load:routes": "node ./scripts/load-test.mjs routes",
     "load:lead-capture": "node ./scripts/load-test.mjs lead-capture",
-    "test:internal-sms": "node ./scripts/test-internal-sms-notifications.mjs"
+    "test:internal-sms": "node ./scripts/test-internal-sms-notifications.mjs",
+    "audit:lighthouse": "npx --yes @lhci/cli autorun --config=./lighthouserc.json",
+    "test:public-funnel-thank-you": "node ./scripts/test-public-funnel-thank-you.mjs",
+    "test:lead-tracking-health": "node ./scripts/test-lead-tracking-health.mjs",
+    "test:ghl-iframe-embed-security": "node ./scripts/test-ghl-iframe-embed-security.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",
@@ -39,7 +43,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "lucide-react": "^1.11.0",
-    "next": "16.2.4",
+    "next": "16.2.10",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "server-only": "^0.0.1",
@@ -52,7 +56,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.4",
+    "eslint-config-next": "16.2.10",
     "postcss": "8.5.10",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"

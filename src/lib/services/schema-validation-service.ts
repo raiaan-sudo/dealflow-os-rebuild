@@ -150,6 +150,22 @@ async function checkRequiredTables() {
 
 async function runSchemaValidation(): Promise<SchemaValidationResult> {
   const mode = getSchemaValidationMode();
+
+  if (!createAdminClient()) {
+    if (mode === "warn") {
+      return {
+        ok: false,
+        mode,
+        expectedVersion: EXPECTED_APP_SCHEMA_VERSION,
+        actualVersion: null,
+        missingColumns: [],
+        issues: ["Supabase service role is not configured; remote schema validation was skipped."],
+      };
+    }
+
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+  }
+
   const [
     missingCampaignPlanColumns,
     missingMarketingAccountColumns,

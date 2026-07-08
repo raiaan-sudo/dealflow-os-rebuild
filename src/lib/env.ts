@@ -132,8 +132,29 @@ export function getInternalSystemJobsSecret() {
   ).trim();
 }
 
+export function getInternalSystemJobSecrets() {
+  return Array.from(
+    new Set(
+      [
+        process.env.INTERNAL_SYSTEM_JOBS_SECRET,
+        process.env.CRON_SECRET,
+        process.env.VERCEL_CRON_SECRET,
+      ]
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+}
+
 export function getInternalAdminEmails() {
   return (process.env.INTERNAL_ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function getBillingAdminOverrideEmails() {
+  return (process.env.BILLING_ADMIN_OVERRIDE_EMAILS ?? "")
     .split(",")
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
@@ -147,8 +168,87 @@ export function isInternalAdminEmail(email?: string | null) {
   return getInternalAdminEmails().includes(email.toLowerCase());
 }
 
+export function isBillingAdminOverrideEmail(email?: string | null) {
+  if (!email) {
+    return false;
+  }
+
+  return getBillingAdminOverrideEmails().includes(email.toLowerCase());
+}
+
 export function isBillingAdminOverrideEnabled() {
   return process.env.ALLOW_BILLING_ADMIN_OVERRIDE === "true";
+}
+
+export function getQaBillingAcceptanceOverrideEmails() {
+  return (process.env.QA_BILLING_ACCEPTANCE_OVERRIDE_EMAILS ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function getQaBillingAcceptanceOverrideUserIds() {
+  return (process.env.QA_BILLING_ACCEPTANCE_OVERRIDE_USER_IDS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+export function getQaBillingAcceptanceOverrideOrgIds() {
+  return (process.env.QA_BILLING_ACCEPTANCE_OVERRIDE_ORG_IDS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+export function getQaBillingAcceptanceOverrideCampaignIds() {
+  return (process.env.QA_BILLING_ACCEPTANCE_OVERRIDE_CAMPAIGN_IDS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+export function getQaBillingAcceptanceOverridePlanTiers() {
+  return (process.env.QA_BILLING_ACCEPTANCE_OVERRIDE_PLAN_TIERS ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function isQaBillingAcceptanceOverrideEmail(email?: string | null) {
+  if (!email) {
+    return false;
+  }
+
+  return getQaBillingAcceptanceOverrideEmails().includes(email.toLowerCase());
+}
+
+export function isQaBillingAcceptanceOverrideUser(userId?: string | null) {
+  if (!userId) {
+    return false;
+  }
+
+  return getQaBillingAcceptanceOverrideUserIds().includes(userId);
+}
+
+export function isQaBillingAcceptanceOverrideOrg(organizationId?: string | null) {
+  if (!organizationId) {
+    return false;
+  }
+
+  return getQaBillingAcceptanceOverrideOrgIds().includes(organizationId);
+}
+
+export function isQaBillingAcceptanceOverrideCampaign(campaignId?: string | null) {
+  if (!campaignId) {
+    return false;
+  }
+
+  return getQaBillingAcceptanceOverrideCampaignIds().includes(campaignId);
+}
+
+export function isQaBillingAcceptanceOverrideEnabled() {
+  return process.env.ALLOW_QA_BILLING_ACCEPTANCE_OVERRIDE === "true";
 }
 
 export function getMetaEnv() {
