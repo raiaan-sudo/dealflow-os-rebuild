@@ -686,17 +686,15 @@ function runOfflineChecks() {
   assertExcludes(launchRoute, /accounts\[0\]|pages\[0\]|pixels\[0\]/, "No first-asset fallback in launch execution", "launch route has no accounts[0]/pages[0]/pixels[0]");
   assertIncludes(metaCallback, "asset_discovery", "Meta discovery state tracking", "callback stores partial discovery status");
 
-  assertIncludes(leadForm, "Please provide email or phone", "Lead form client validation", "lead form blocks submit without email or phone");
+  assertIncludes(leadForm, "Please provide your email", "Lead form client validation", "lead form blocks submit without required contact fields");
   assertIncludes(leadRoute, "consumeRateLimit", "Lead capture rate limiting", "lead capture rate limiting enabled");
   assertIncludes(leadRoute, "lead-capture:campaign-ip", "Lead capture campaign+IP limit", "public lead capture rate limit is caller-aware");
   assertIncludes(leadRoute, "lead-capture:contact", "Lead capture contact limit", "public lead capture has contact-hash abuse control");
   assertIncludes(rateLimitHelpers, "getHashedRateLimitIdentifier(getRequestIp(request))", "Rate limit fallback privacy", "default rate-limit keys hash fallback IP addresses before logging or storage");
   assertIncludes(leadRoute, "lead_spam_rejected", "Lead capture honeypot/timing guard", "public lead capture rejects obvious bot submissions");
-  assertIncludes(leadRoute, "TURNSTILE_SECRET_KEY", "Lead capture Turnstile server gate", "Cloudflare Turnstile verification is enforced when the secret env var is configured");
-  assertIncludes(leadRoute, "return process.env.NODE_ENV !== \"production\";", "Lead capture Turnstile production guard", "production lead capture fails closed if Turnstile is not configured");
-  assertExcludes(leadRoute, "ALLOW_PUBLIC_LEAD_NO_TURNSTILE", "Lead capture public bypass removed", "production public lead capture cannot bypass Turnstile through an env flag");
-  assertIncludes(leadRoute, "https://challenges.cloudflare.com/turnstile/v0/siteverify", "Lead capture Turnstile siteverify", "public lead capture verifies Turnstile tokens server-side");
-  assertIncludes(leadForm, "NEXT_PUBLIC_TURNSTILE_SITE_KEY", "Lead form Turnstile client gate", "public lead form renders Turnstile only when the public site key is configured");
+  assertExcludes(leadRoute, "TURNSTILE_SECRET_KEY", "Lead capture Turnstile server gate removed", "customer funnel lead capture does not require Cloudflare Turnstile");
+  assertExcludes(leadRoute, "https://challenges.cloudflare.com/turnstile/v0/siteverify", "Lead capture Turnstile siteverify removed", "customer funnel lead capture does not verify Turnstile tokens server-side");
+  assertExcludes(leadForm, "NEXT_PUBLIC_TURNSTILE_SITE_KEY", "Lead form Turnstile client gate removed", "customer funnel forms do not render Turnstile");
   assertIncludes(leadForm, "submitInFlightRef", "Lead form duplicate submit guard", "public lead form synchronously blocks rapid duplicate submits");
   assertIncludes(leadForm, "data?.success !== true || data?.ok !== true", "Lead form confirmed-success redirect guard", "public lead form redirects only after confirmed lead-capture success");
   assertIncludes(leadForm, "window.location.assign(thankYouUrl.toString())", "Lead form thank-you redirect", "successful public lead submissions route to a dedicated next-step page");

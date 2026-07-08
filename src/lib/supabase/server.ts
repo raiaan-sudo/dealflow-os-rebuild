@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import type { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseEnv } from "@/lib/env";
+import { getSupabaseAuthCookieOptions } from "@/lib/supabase/cookie-options";
 import type { Database } from "@/lib/supabase/types";
 
 type CookieWriteResponse = Pick<NextResponse, "cookies" | "headers">;
@@ -19,6 +20,7 @@ export async function createServerSupabase(
   const cookieStore = await cookies();
 
   return createServerClient<Database>(env.url, env.anonKey, {
+    cookieOptions: getSupabaseAuthCookieOptions(),
     cookies: {
       getAll() {
         return cookieStore.getAll();

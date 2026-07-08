@@ -9,8 +9,10 @@ import {
 } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { POST as launchCampaignCreatePost } from "@/app/api/campaigns/create/route";
+import { getMetaWorkspaceCredentials } from "@/lib/integrations/meta/service";
 import { assertCampaignCanLaunch } from "@/lib/services/campaign-entitlements";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
+import { upsertCampaignTrackingContract } from "@/lib/services/lead-tracking-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 
@@ -256,6 +258,11 @@ export async function POST(
 
     const launchPromise = (async () => {
       const origin = new URL(request.url).origin;
+      const launchUrl = record.publish.slug
+        ? new URL(`/f/${record.publish.slug}`, origin).toString()
+        : null;
+      const launchDomain = launchUrl ? new URL(launchUrl).hostname : null;
+      const metaCredentials = await getMetaWorkspaceCredentials();
       const response = await launchCampaignCreatePost(new Request(`${origin}/api/campaigns/create`, {
         method: "POST",
         headers: {
@@ -319,6 +326,31 @@ export async function POST(
         };
         throw launchError;
       }
+
+      if (!record.campaign.organization_id) {
+        throw new ApiError(
+          500,
+          "Campaign is missing workspace context.",
+          "campaign_workspace_missing",
+        );
+      }
+
+      await upsertCampaignTrackingContract({
+        organizationId: record.campaign.organization_id,
+        campaignId: id,
+        userId: record.campaign.user_id,
+        trackingMode: "website_funnel",
+        metaCampaignId: String(data.campaign_id),
+        metaAdsetId: String(data.adset_id),
+        metaAdIds: [String(data.ad_id)],
+        pixelId: metaCredentials.pixelId,
+        launchDomain,
+        launchUrl,
+        accessTokenAvailable: Boolean(metaCredentials.accessToken),
+        metadata: {
+          source: "campaign_launch_route",
+        },
+      });
 
       return {
         campaign_id: String(data.campaign_id),

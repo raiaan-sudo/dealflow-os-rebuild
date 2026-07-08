@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  apiFailure,
   apiSuccess,
   handleApiError,
   parseJsonBody,
@@ -22,6 +23,7 @@ import {
   queueFailedPublicLeadCapture,
 } from "@/lib/services/lead-handler-service";
 import { getPublicFunnelEntitlements } from "@/lib/services/campaign-entitlements";
+import { recordLeadTrackingEvent } from "@/lib/services/lead-tracking-service";
 import { queueLeadSideEffectsJob } from "@/lib/services/system-job-service";
 
 const leadCaptureSchema = z
@@ -46,9 +48,6 @@ const leadCaptureSchema = z
     landing_page_url: z.string().trim().url().max(2000).optional(),
     form_started_at: z.union([z.number(), z.string()]).optional(),
     formStartedAt: z.union([z.number(), z.string()]).optional(),
-    turnstile_token: z.string().trim().min(1).max(4096).optional(),
-    turnstileToken: z.string().trim().min(1).max(4096).optional(),
-    "cf-turnstile-response": z.string().trim().min(1).max(4096).optional(),
     load_test: z.boolean().optional(),
     loadTest: z.boolean().optional(),
   })
@@ -86,14 +85,6 @@ const leadCaptureSchema = z
     }
   });
 
-function getTurnstileSecret() {
-  return process.env.TURNSTILE_SECRET_KEY?.trim() || null;
-}
-
-function canBypassTurnstileSecret() {
-  return process.env.NODE_ENV !== "production";
-}
-
 function timingSafeTextEquals(candidate: string | null, expected: string) {
   if (!candidate || !expected) {
     return false;
@@ -107,6 +98,62 @@ function timingSafeTextEquals(candidate: string | null, expected: string) {
   }
 
   return mismatch === 0;
+}
+
+function buildExpectedClientFailureResponse(error: unknown, requestId: string) {
+  if (error instanceof z.ZodError) {
+    const message = error.issues[0]?.message ?? "Request validation failed.";
+    return apiFailure(message, "validation_error", 400, {
+      requestId,
+      details: process.env.NODE_ENV === "production" ? undefined : error.issues,
+    });
+  }
+
+  if (error instanceof ApiError && error.status < 500) {
+    return apiFailure(error.message, error.code, error.status, { requestId });
+  }
+
+  return null;
+}
+
+function parseLandingPageAttribution(landingPageUrl: string | null) {
+  if (!landingPageUrl) {
+    return {
+      utmSource: null,
+      utmMedium: null,
+      utmCampaign: null,
+      adId: null,
+    };
+  }
+
+  try {
+    const url = new URL(landingPageUrl);
+
+    return {
+      utmSource: url.searchParams.get("utm_source"),
+      utmMedium: url.searchParams.get("utm_medium"),
+      utmCampaign: url.searchParams.get("utm_campaign") || url.searchParams.get("utm_id"),
+      adId: url.searchParams.get("ad_id") || url.searchParams.get("utm_content"),
+    };
+  } catch {
+    return {
+      utmSource: null,
+      utmMedium: null,
+      utmCampaign: null,
+      adId: null,
+    };
+  }
+}
+
+function coalesceAttributionValue(...values: Array<string | null | undefined>) {
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+
+  return null;
 }
 
 function getLoadTestBypass(params: {
@@ -156,71 +203,6 @@ function getLoadTestBypass(params: {
   return true;
 }
 
-async function verifyTurnstileToken(params: {
-  token?: string | null;
-  ip?: string | null;
-  requestId: string;
-}) {
-  const secret = getTurnstileSecret();
-
-  if (!secret) {
-    if (!canBypassTurnstileSecret()) {
-      logOperationalEvent("lead_capture.turnstile_rejected", {
-        requestId: params.requestId,
-        reason: "turnstile_secret_missing",
-      });
-      throw new ApiError(503, "Lead verification is temporarily unavailable.", "turnstile_unconfigured");
-    }
-
-    return;
-  }
-
-  const token = params.token?.trim();
-
-  if (!token) {
-    logOperationalEvent("lead_capture.turnstile_rejected", {
-      requestId: params.requestId,
-      reason: "missing_token",
-    });
-    throw new ApiError(400, "Lead submission was rejected.", "turnstile_required");
-  }
-
-  const formData = new FormData();
-  formData.set("secret", secret);
-  formData.set("response", token);
-
-  if (params.ip) {
-    formData.set("remoteip", params.ip);
-  }
-
-  const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!response.ok) {
-    logOperationalEvent("lead_capture.turnstile_rejected", {
-      requestId: params.requestId,
-      reason: "siteverify_unavailable",
-      status: response.status,
-    });
-    throw new ApiError(503, "Lead verification is temporarily unavailable.", "turnstile_unavailable");
-  }
-
-  const result = (await response.json().catch(() => null)) as
-    | { success?: boolean; "error-codes"?: string[] }
-    | null;
-
-  if (!result?.success) {
-    logOperationalEvent("lead_capture.turnstile_rejected", {
-      requestId: params.requestId,
-      reason: "invalid_token",
-      errors: result?.["error-codes"] ?? [],
-    });
-    throw new ApiError(400, "Lead submission was rejected.", "turnstile_failed");
-  }
-}
-
 async function handleLeadCaptureRequest(req: Request) {
   const requestId = crypto.randomUUID();
   let capturedPayload:
@@ -266,17 +248,6 @@ async function handleLeadCaptureRequest(req: Request) {
       phone: payload.phone,
       requested: payload.load_test === true || payload.loadTest === true,
     });
-    if (!isLoadTestBypass) {
-      await verifyTurnstileToken({
-        token:
-          payload.turnstile_token ??
-          payload.turnstileToken ??
-          payload["cf-turnstile-response"] ??
-          null,
-        ip: requestIp,
-        requestId,
-      });
-    }
     const contactHash = getHashedRateLimitIdentifier(payload.email?.trim() || payload.phone?.trim() || payload.name);
     const startedAtRaw = payload.form_started_at ?? payload.formStartedAt;
     const startedAt =
@@ -375,6 +346,12 @@ async function handleLeadCaptureRequest(req: Request) {
     const notes = isLoadTestBypass
       ? `Captured from internal lead-write load proof at stage: ${normalizedStage}.`
       : `Captured from lead capture flow at stage: ${normalizedStage}.`;
+    const landingPageUrl = payload.landing_page_url || req.headers.get("referer");
+    const landingAttribution = parseLandingPageAttribution(landingPageUrl);
+    const utmSource = coalesceAttributionValue(payload.utm_source, landingAttribution.utmSource);
+    const utmMedium = coalesceAttributionValue(payload.utm_medium, landingAttribution.utmMedium);
+    const utmCampaign = coalesceAttributionValue(payload.utm_campaign, landingAttribution.utmCampaign);
+    const adId = coalesceAttributionValue(payload.ad_id, landingAttribution.adId);
 
     capturedPayload = {
       campaignId,
@@ -387,11 +364,11 @@ async function handleLeadCaptureRequest(req: Request) {
       stage: normalizedStage,
       smsConsent,
       smsConsentCopy,
-      utmSource: payload.utm_source?.trim() || null,
-      utmMedium: payload.utm_medium?.trim() || null,
-      utmCampaign: payload.utm_campaign?.trim() || null,
-      adId: payload.ad_id?.trim() || null,
-      landingPageUrl: payload.landing_page_url || req.headers.get("referer"),
+      utmSource,
+      utmMedium,
+      utmCampaign,
+      adId,
+      landingPageUrl,
     };
 
     const lead = await createPublicLeadAndStartConversation({
@@ -405,12 +382,12 @@ async function handleLeadCaptureRequest(req: Request) {
       sms_consent: smsConsent,
       sms_consent_copy: smsConsentCopy,
       consent_source: "public_lead_capture_form",
-      consent_url: req.headers.get("referer"),
-      utm_source: payload.utm_source,
-      utm_medium: payload.utm_medium,
-      utm_campaign: payload.utm_campaign,
-      ad_id: payload.ad_id,
-      landing_page_url: payload.landing_page_url || req.headers.get("referer"),
+      consent_url: landingPageUrl,
+      utm_source: utmSource ?? undefined,
+      utm_medium: utmMedium ?? undefined,
+      utm_campaign: utmCampaign ?? undefined,
+      ad_id: adId ?? undefined,
+      landing_page_url: landingPageUrl,
       skip_recent_duplicate_fallback: isLoadTestBypass,
       skip_lead_loop_verification: isLoadTestBypass,
     });
@@ -433,17 +410,38 @@ async function handleLeadCaptureRequest(req: Request) {
       );
     }
 
-    const landingPageUrl = payload.landing_page_url || req.headers.get("referer");
+    await recordLeadTrackingEvent({
+      organizationId: lead.organization_id,
+      campaignId: lead.campaign_id,
+      leadId: lead.id,
+      eventType: "lead_captured",
+      status: "recorded",
+      source: "public_funnel",
+      attribution: {
+        utm_source: utmSource,
+        utm_medium: utmMedium,
+        utm_campaign: utmCampaign,
+        ad_id: adId,
+        landing_page_url: landingPageUrl,
+      },
+      metadata: {
+        requestId,
+        stage: normalizedStage,
+        hasEmail: Boolean(email),
+        hasPhone: Boolean(phone),
+      },
+    }).catch(() => null);
+
     const metaCookies = getMetaCookiesFromHeader(cookieHeader);
     const notificationLead = {
       ...lead,
       phone_raw: phone,
       phone_e164: null,
       lead_type: null,
-      utm_source: payload.utm_source,
-      utm_medium: payload.utm_medium,
-      utm_campaign: payload.utm_campaign,
-      ad_id: payload.ad_id,
+      utm_source: utmSource,
+      utm_medium: utmMedium,
+      utm_campaign: utmCampaign,
+      ad_id: adId,
       landing_page_url: landingPageUrl,
     };
 
@@ -478,6 +476,20 @@ async function handleLeadCaptureRequest(req: Request) {
       jobId: sideEffectJob.id,
       loadTest: isLoadTestBypass,
     });
+
+    await recordLeadTrackingEvent({
+      organizationId: lead.organization_id,
+      campaignId: lead.campaign_id,
+      leadId: lead.id,
+      eventType: "capi_queued",
+      status: "recorded",
+      source: "lead_side_effects",
+      eventId: lead.id,
+      metadata: {
+        requestId,
+        jobId: sideEffectJob.id,
+      },
+    }).catch(() => null);
 
     if (isDevelopment) {
       debugLog("lead-capture", {
@@ -515,6 +527,11 @@ async function handleLeadCaptureRequest(req: Request) {
   } catch (error) {
     const isServerFailure =
       error instanceof ApiError ? error.status >= 500 : true;
+    const expectedClientFailureResponse = buildExpectedClientFailureResponse(error, requestId);
+
+    if (expectedClientFailureResponse) {
+      return expectedClientFailureResponse;
+    }
 
     if (capturedPayload && isServerFailure) {
       const queuedJob = await queueFailedPublicLeadCapture({
