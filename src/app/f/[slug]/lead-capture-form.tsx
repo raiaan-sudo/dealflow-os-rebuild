@@ -12,6 +12,9 @@ type LeadCaptureFormProps = {
   metaPixelId?: string | null;
 };
 
+const SMS_CONSENT_COPY =
+  "By checking this box, I agree to receive SMS messages from DealFlow OS and/or the business operating this campaign about my inquiry, follow-ups, and appointment coordination. Message and data rates may apply. Message frequency may vary. Reply STOP to opt out or HELP for help. Consent is not a condition of purchase.";
+
 const FORM_COPY = {
   en: {
     eyebrow: "Get Started",
@@ -19,8 +22,7 @@ const FORM_COPY = {
     name: "Name",
     email: "Email",
     phone: "Phone Number",
-    consent:
-      "By checking this box, I agree to receive SMS messages from DealFlow OS and/or the business operating this campaign about my inquiry, follow-ups, and appointment coordination. Message and data rates may apply. Message frequency may vary. Reply STOP to opt out or HELP for help. Consent is not a condition of purchase.",
+    consent: SMS_CONSENT_COPY,
     submitting: "Submitting...",
     validationName: "Please provide your name",
     validationEmail: "Please provide your email",

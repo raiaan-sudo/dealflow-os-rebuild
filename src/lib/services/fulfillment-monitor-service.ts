@@ -1,17 +1,5 @@
-import {
-  isGhlAutoProvisioningEnabled,
-  isGhlContactWritesEnabled,
-  isGhlOpportunityWritesEnabled,
-  isGhlProvisioningWritesEnabled,
-} from "@/lib/env";
 import { ApiError } from "@/lib/api/route";
 import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  buildPartnerCrmSyncIdempotencyKey,
-  readWorkspaceGhlConfig,
-  safeSyncLeadToPartnerCrm,
-  type CrmSyncLeadRecord,
-} from "@/lib/services/partner-crm-sync-service";
 
 type AdminClient = NonNullable<ReturnType<typeof createAdminClient>>;
 type UntypedAdminClient = {
@@ -523,10 +511,10 @@ async function loadHealth(admin: AdminClient): Promise<FulfillmentMonitorHealth>
   return {
     checkedAt: new Date().toISOString(),
     writeGates: {
-      contactWritesEnabled: isGhlContactWritesEnabled(),
-      opportunityWritesEnabled: isGhlOpportunityWritesEnabled(),
-      autoProvisioningEnabled: isGhlAutoProvisioningEnabled(),
-      provisioningWritesEnabled: isGhlProvisioningWritesEnabled(),
+      contactWritesEnabled: false,
+      opportunityWritesEnabled: false,
+      autoProvisioningEnabled: false,
+      provisioningWritesEnabled: false,
       workflowEnrollmentEnabled: false,
       workflowEnrollmentRetired: true,
     },
@@ -690,94 +678,10 @@ export async function retryFulfillmentCrmSync(params: {
   allowDeadLetter?: boolean;
   confirmation: string;
 }) {
-  if (params.confirmation !== "RETRY_CRM_SYNC") {
-    throw new ApiError(400, "Retry confirmation is required.", "retry_confirmation_required");
-  }
-
-  const admin = getAdminClientOrThrow();
-  const { data: lead, error: leadError } = await db(admin)
-    .from("leads")
-    .select("id, organization_id, tenant_id, campaign_id, source, email, first_name, last_name, name, phone, phone_raw, phone_e164, lead_type, utm_source, utm_medium, utm_campaign, ad_id, landing_page_url, created_at")
-    .eq("id", params.leadId)
-    .maybeSingle();
-
-  if (leadError) {
-    throw new ApiError(500, leadError.message, "fulfillment_retry_lead_lookup_failed");
-  }
-
-  if (!lead?.id) {
-    throw new ApiError(404, "Lead was not found.", "lead_not_found");
-  }
-
-  const leadRecord = lead as CrmSyncLeadRecord;
-  const workspaceId = leadRecord.organization_id ?? leadRecord.tenant_id ?? null;
-  if (!workspaceId) {
-    throw new ApiError(409, "Lead is missing workspace context.", "lead_workspace_missing");
-  }
-
-  const config = await readWorkspaceGhlConfig({ supabase: admin, workspaceId });
-  if (!config) {
-    return {
-      synced: false,
-      skipped: true,
-      reason: "crm_not_configured",
-      leadId: params.leadId,
-      noSmsEmail: true,
-      noMetaMutation: true,
-      noStripeBillingProviderAction: true,
-      provisioning: false,
-      workflowEnrollment: false,
-    };
-  }
-
-  const idempotencyKey = buildPartnerCrmSyncIdempotencyKey({
-    partnerId: config.partnerId,
-    workspaceId,
-    leadId: params.leadId,
-    destination: "gohighlevel",
-  });
-  const { data: existingEvent, error: existingEventError } = await db(admin)
-    .from("lead_crm_sync_events")
-    .select("id, status")
-    .eq("idempotency_key", idempotencyKey)
-    .maybeSingle();
-
-  if (existingEventError) {
-    throw new ApiError(500, existingEventError.message, "fulfillment_retry_event_lookup_failed");
-  }
-
-  if (existingEvent?.status === "dead_letter" && !params.allowDeadLetter) {
-    throw new ApiError(409, "Dead-lettered CRM sync requires explicit dead-letter confirmation.", "dead_letter_confirmation_required");
-  }
-
-  const crmSyncResult = await safeSyncLeadToPartnerCrm(leadRecord, {
-    partnerId: config.partnerId,
-    dryRun: false,
-    writeEventLedger: true,
-    metadata: {
-      source: "fulfillment_monitor_retry",
-      recovery_action: "crm_sync_only",
-      no_sms_email: true,
-      no_meta_mutation: true,
-      no_stripe_billing_provider_action: true,
-      provisioning: false,
-      workflow_enrollment: false,
-    },
-  });
-
-  return {
-    leadId: params.leadId,
-    workspaceId,
-    partnerId: config.partnerId,
-    mappingResolved: true,
-    contactWritesEnabled: isGhlContactWritesEnabled(),
-    opportunityWritesEnabled: isGhlOpportunityWritesEnabled(),
-    provisioning: false,
-    workflowEnrollment: false,
-    noSmsEmail: true,
-    noMetaMutation: true,
-    noStripeBillingProviderAction: true,
-    noProviderGeneration: true,
-    crmSyncResult,
-  };
+  void params;
+  throw new ApiError(
+    501,
+    "CRM retry is not available in this release branch.",
+    "crm_retry_not_available",
+  );
 }

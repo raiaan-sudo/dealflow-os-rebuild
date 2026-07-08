@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": "20.x"
+    "node": ">=20 <25"
   },
   "scripts": {
     "dev": "next dev",
@@ -19,6 +19,7 @@
     "rls:cross-tenant": "node ./scripts/check-rls-cross-tenant.mjs",
     "rls:fixture-smoke": "node ./scripts/run-rls-fixture-smoke.mjs",
     "operator:debt": "node ./scripts/check-operator-debt.mjs",
+    "audit:lighthouse": "npx --yes @lhci/cli autorun --config=./lighthouserc.json",
     "audit:static-creative-storage": "node ./scripts/audit-static-creative-storage-backfill.mjs",
     "backup:supabase": "node ./scripts/create-supabase-logical-backup.mjs",
     "operator:debt:resolve-known": "node ./scripts/resolve-known-operator-debt.mjs",
@@ -55,6 +56,7 @@
     "test:support-freshdesk": "node ./scripts/test-support-freshdesk.mjs",
     "test:public-funnel-thank-you": "node ./scripts/test-public-funnel-thank-you.mjs",
     "test:lead-tracking-health": "node ./scripts/test-lead-tracking-health.mjs",
+    "test:ghl-iframe-embed-security": "node ./scripts/test-ghl-iframe-embed-security.mjs",
     "test:lead-notification-status": "node ./scripts/test-lead-notification-status-normalization.mjs",
     "test:meta-app-state-drift": "node ./scripts/test-meta-app-state-drift.mjs",
     "test:stripe-price-guard": "node ./scripts/test-stripe-price-guard.mjs",

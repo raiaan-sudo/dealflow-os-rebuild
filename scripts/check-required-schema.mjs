@@ -4,8 +4,7 @@ import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 
 const repoRoot = process.cwd();
-const expectedSchemaVersion = "20260519043000";
-const expectedWhiteLabelSchemaVersion = "20260531160000";
+const expectedSchemaVersion = "20260512010000";
 const schemaCheckMode = process.env.SUPABASE_SCHEMA_CHECK_MODE?.trim().toLowerCase() ?? "remote";
 const requiredMigrationFiles = [
   "20260426110000_add_campaign_plan_critical_fields.sql",
@@ -49,12 +48,6 @@ const requiredMigrationFiles = [
   "20260510014500_enable_generation_credit_overdrafts.sql",
   "20260510183000_cap_generation_credit_overdrafts.sql",
   "20260512010000_scope_provider_usage_idempotency.sql",
-  "20260519023000_create_scale_monitor_incidents.sql",
-  "20260519033000_create_autonomy_execution_tables.sql",
-  "20260519043000_harden_autonomy_anon_access.sql",
-  "20260531160000_create_white_label_partner_infrastructure.sql",
-  "20260617170000_create_partner_ghl_integration.sql",
-  "20260706170000_create_lead_tracking_health.sql",
 ];
 
 const { loadEnvConfig } = nextEnv;
@@ -83,140 +76,6 @@ function validateRequiredMigrationFiles() {
   console.log(
     `local migration file check passed (${requiredMigrationFiles.length} required files present)`,
   );
-}
-
-function requireFileIncludes(relativePath, marker, context) {
-  const text = fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
-
-  if (!text.includes(marker)) {
-    fail(`${context}: ${relativePath} missing ${marker}`);
-  }
-}
-
-function schemaVersionMeetsMinimum(actualVersion, requiredMinimum) {
-  return Boolean(actualVersion && actualVersion.localeCompare(requiredMinimum) >= 0);
-}
-
-function validateAutopilotLocalSchemaContract() {
-  const metaOptimizationMigration =
-    "supabase/migrations/20260509020000_create_meta_sync_and_optimization_tables.sql";
-  const autonomyExecutionMigration =
-    "supabase/migrations/20260519033000_create_autonomy_execution_tables.sql";
-  const autonomyAccessHardeningMigration =
-    "supabase/migrations/20260519043000_harden_autonomy_anon_access.sql";
-
-  const requiredMarkers = [
-    ["create table if not exists public.campaign_action_suggestions", "campaign_action_suggestions table"],
-    ["create table if not exists public.campaign_draft_actions", "campaign_draft_actions table"],
-    ["alter table public.campaign_action_suggestions enable row level security", "campaign_action_suggestions RLS"],
-    ["alter table public.campaign_action_suggestions force row level security", "campaign_action_suggestions forced RLS"],
-    ["alter table public.campaign_draft_actions enable row level security", "campaign_draft_actions RLS"],
-    ["alter table public.campaign_draft_actions force row level security", "campaign_draft_actions forced RLS"],
-    ["campaign_action_suggestions_member_select", "campaign_action_suggestions member select policy"],
-    ["campaign_action_suggestions_member_insert", "campaign_action_suggestions member insert policy"],
-    ["campaign_action_suggestions_member_update", "campaign_action_suggestions member update policy"],
-    ["campaign_action_suggestions_service_role_all", "campaign_action_suggestions service role policy"],
-    ["campaign_draft_actions_member_select", "campaign_draft_actions member select policy"],
-    ["campaign_draft_actions_member_insert", "campaign_draft_actions member insert policy"],
-    ["campaign_draft_actions_member_update", "campaign_draft_actions member update policy"],
-    ["campaign_draft_actions_service_role_all", "campaign_draft_actions service role policy"],
-    ["auth.uid() = user_id", "autopilot user scoping"],
-    ["private.is_current_user_org_member(organization_id)", "autopilot organization scoping"],
-    ["suggestions do not execute provider mutations", "campaign_action_suggestions safety comment"],
-    ["Prepared in-app draft optimizations", "campaign_draft_actions safety comment"],
-  ];
-
-  for (const [marker, context] of requiredMarkers) {
-    requireFileIncludes(metaOptimizationMigration, marker, context);
-  }
-
-  const requiredAutonomyMarkers = [
-    ["create table if not exists public.autonomy_runs", "autonomy_runs table"],
-    ["create table if not exists public.autonomy_actions", "autonomy_actions table"],
-    ["create table if not exists public.autonomy_action_audit_logs", "autonomy_action_audit_logs table"],
-    ["create table if not exists public.autonomy_rollbacks", "autonomy_rollbacks table"],
-    ["create table if not exists public.autonomy_experiments", "autonomy_experiments table"],
-    ["create table if not exists public.campaign_performance_snapshots", "campaign_performance_snapshots table"],
-    ["create table if not exists public.autonomy_learning_memory", "autonomy_learning_memory table"],
-    ["create table if not exists public.autonomy_alerts", "autonomy_alerts table"],
-    ["create table if not exists public.campaign_autonomy_settings", "campaign_autonomy_settings table"],
-    ["create table if not exists public.autonomy_execution_locks", "autonomy_execution_locks table"],
-    ["create table if not exists public.autonomy_idempotency_records", "autonomy_idempotency_records table"],
-    ["alter table public.autonomy_actions force row level security", "autonomy_actions forced RLS"],
-    ["autonomy_actions_member_select", "autonomy_actions member select policy"],
-    ["autonomy_actions_service_role_all", "autonomy_actions service role policy"],
-    ["private.is_current_user_org_member(organization_id)", "autonomy org scoping"],
-    ["payloads must be written before any external mutation", "rollback safety comment"],
-    ["autonomy_execution_schema_version", "autonomy schema version marker"],
-  ];
-
-  for (const [marker, context] of requiredAutonomyMarkers) {
-    requireFileIncludes(autonomyExecutionMigration, marker, context);
-  }
-
-  const requiredAccessMarkers = [
-    ["revoke all on public.autonomy_actions from anon", "autonomy_actions anon revoke"],
-    ["revoke all on public.autonomy_execution_locks from authenticated", "autonomy locks authenticated revoke"],
-    ["grant select on public.autonomy_actions to authenticated", "autonomy_actions authenticated owner-scoped grant"],
-    ["autonomy_access_hardening_schema_version", "autonomy access hardening schema version marker"],
-  ];
-
-  for (const [marker, context] of requiredAccessMarkers) {
-    requireFileIncludes(autonomyAccessHardeningMigration, marker, context);
-  }
-
-  console.log("local Pro Autopilot schema contract check passed");
-}
-
-function validateOperatorShellLocalSchemaContract() {
-  const whiteLabelMigration =
-    "supabase/migrations/20260531160000_create_white_label_partner_infrastructure.sql";
-
-  const requiredMarkers = [
-    ["create table if not exists public.partners", "partners table"],
-    ["create table if not exists public.partner_accounts", "partner_accounts table"],
-    ["create table if not exists public.partner_memberships", "partner_memberships table"],
-    ["create table if not exists public.partner_branding", "partner_branding table"],
-    ["create table if not exists public.partner_domains", "partner_domains table"],
-    ["alter table if exists public.organizations add column if not exists partner_id", "organizations partner_id column"],
-    ["alter table if exists public.system_jobs add column if not exists partner_id", "system_jobs partner_id column"],
-    ["white_label_schema_version", "white-label schema version marker"],
-  ];
-
-  for (const [marker, context] of requiredMarkers) {
-    requireFileIncludes(whiteLabelMigration, marker, context);
-  }
-
-  console.log("local operator shell schema contract check passed");
-}
-
-function validatePartnerGhlLocalSchemaContract() {
-  const ghlMigration =
-    "supabase/migrations/20260617170000_create_partner_ghl_integration.sql";
-
-  const requiredMarkers = [
-    ["create table if not exists public.partner_ghl_config", "partner_ghl_config table"],
-    ["create table if not exists public.workspace_ghl_mapping", "workspace_ghl_mapping table"],
-    ["create table if not exists public.lead_crm_sync_events", "lead_crm_sync_events table"],
-    ["create table if not exists public.ghl_provisioning_jobs", "ghl_provisioning_jobs table"],
-    ["create table if not exists public.ghl_provisioning_events", "ghl_provisioning_events table"],
-    ["create table if not exists public.workspace_ghl_users", "workspace_ghl_users table"],
-    ["create table if not exists public.partner_ghl_template_config", "partner_ghl_template_config table"],
-    ["create table if not exists public.partner_ghl_workflow_config", "partner_ghl_workflow_config table"],
-    ["partner_id uuid not null references public.partners (id)", "GHL partner foreign keys use current partners table"],
-    ["workspace_id uuid not null references public.organizations (id)", "workspace mappings reference organizations"],
-    ["alter table public.partner_ghl_config force row level security", "partner_ghl_config forced RLS"],
-    ["alter table public.workspace_ghl_mapping force row level security", "workspace_ghl_mapping forced RLS"],
-    ["alter table public.lead_crm_sync_events force row level security", "lead_crm_sync_events forced RLS"],
-    ["auth.role() = 'service_role'", "service-role-only GHL table policies"],
-    ["ghl_integration_schema_version", "GHL integration schema version marker"],
-  ];
-
-  for (const [marker, context] of requiredMarkers) {
-    requireFileIncludes(ghlMigration, marker, context);
-  }
-
-  console.log("local partner GHL schema contract check passed");
 }
 
 function requireEnv(name) {
@@ -298,9 +157,6 @@ async function probeQuery(context, action) {
 
 async function main() {
   validateRequiredMigrationFiles();
-  validateAutopilotLocalSchemaContract();
-  validateOperatorShellLocalSchemaContract();
-  validatePartnerGhlLocalSchemaContract();
 
   if (schemaCheckMode === "local") {
     console.log("remote schema check skipped (SUPABASE_SCHEMA_CHECK_MODE=local)");
@@ -390,71 +246,14 @@ async function main() {
           "locked_until",
           "next_run_at",
           "last_error_code",
-          "dead_lettered_at",
-          "dead_letter_reason",
-          "reviewed_at",
-          "reviewed_by",
-          "resolution_note",
-          "partner_id",
-          "created_at",
-        ].join(", "),
+        "dead_lettered_at",
+        "dead_letter_reason",
+        "reviewed_at",
+        "reviewed_by",
+        "resolution_note",
+        "created_at",
+      ].join(", "),
       )
-      .limit(1),
-  );
-
-  await probeQuery("campaign_tracking_contracts table check", () =>
-    supabase
-      .from("campaign_tracking_contracts")
-      .select("id, organization_id, campaign_id, tracking_mode, expected_lead_destination, status, readiness, updated_at")
-      .limit(1),
-  );
-
-  await probeQuery("lead_tracking_events table check", () =>
-    supabase
-      .from("lead_tracking_events")
-      .select("id, organization_id, campaign_id, lead_id, event_type, status, fbtrace_id, meta_events_received, created_at")
-      .limit(1),
-  );
-
-  await probeQuery("operator shell partners table check", () =>
-    supabase
-      .from("partners")
-      .select("id, slug, brand_name, logo_url, favicon_url, primary_color, status, powered_by_dealflow")
-      .limit(1),
-  );
-
-  await probeQuery("operator shell partner_accounts table check", () =>
-    supabase
-      .from("partner_accounts")
-      .select("id, partner_id, account_id, user_id, attribution_source, locked")
-      .limit(1),
-  );
-
-  await probeQuery("operator shell partner_memberships table check", () =>
-    supabase
-      .from("partner_memberships")
-      .select("id, partner_id, user_id, role, status")
-      .limit(1),
-  );
-
-  await probeQuery("operator shell partner_branding table check", () =>
-    supabase
-      .from("partner_branding")
-      .select("id, partner_id, theme_json, copy_json, pricing_json, feature_flags_json")
-      .limit(1),
-  );
-
-  await probeQuery("operator shell partner_domains table check", () =>
-    supabase
-      .from("partner_domains")
-      .select("id, partner_id, domain, type, verification_status, ssl_status")
-      .limit(1),
-  );
-
-  await probeQuery("operator shell organizations.partner_id check", () =>
-    supabase
-      .from("organizations")
-      .select("id, partner_id")
       .limit(1),
   );
 
@@ -605,20 +404,6 @@ async function main() {
       .limit(1),
   );
 
-  await probeQuery("scale_monitor_incidents table check", () =>
-    supabase
-      .from("scale_monitor_incidents")
-      .select("id, incident_key, subsystem, severity, status, title, evidence, first_seen_at, last_seen_at, resolved_at, recurrence_count, clean_check_count, recommended_action, alert_channels, synthetic")
-      .limit(1),
-  );
-
-  await probeQuery("scale_monitor_runs table check", () =>
-    supabase
-      .from("scale_monitor_runs")
-      .select("id, started_at, completed_at, status, verdict, summary, smoke_summary, incidents_opened, incidents_resolved, error_code")
-      .limit(1),
-  );
-
   await probeQuery("leads reliability columns check", () =>
     supabase
       .from("leads")
@@ -635,9 +420,9 @@ async function main() {
       ? schemaRow.value
       : null;
 
-  if (!schemaVersionMeetsMinimum(actualVersion, expectedSchemaVersion)) {
+  if (actualVersion !== expectedSchemaVersion) {
     fail(
-      `Schema version mismatch. Expected at least ${expectedSchemaVersion}, got ${actualVersion ?? "missing"}.`,
+      `Schema version mismatch. Expected ${expectedSchemaVersion}, got ${actualVersion ?? "missing"}.`,
     );
   }
 
@@ -650,8 +435,6 @@ async function main() {
     ["rls_and_fk_advisor_hardening_schema_version", "20260504220000"],
     ["client_error_events_schema_version", "20260504223000"],
     ["meta_sync_optimization_tables_schema_version", "20260509020000"],
-    ["scale_monitor_incidents_schema_version", "20260519023000"],
-    ["white_label_schema_version", expectedWhiteLabelSchemaVersion],
   ]);
 
   for (const [key, expectedVersion] of expectedMetadataVersions) {
@@ -666,9 +449,9 @@ async function main() {
         ? metadataRow.value
         : null;
 
-    if (!schemaVersionMeetsMinimum(actualMetadataVersion, expectedVersion)) {
+    if (actualMetadataVersion !== expectedVersion) {
       fail(
-        `Schema metadata mismatch for ${key}. Expected at least ${expectedVersion}, got ${actualMetadataVersion ?? "missing"}.`,
+        `Schema metadata mismatch for ${key}. Expected ${expectedVersion}, got ${actualMetadataVersion ?? "missing"}.`,
       );
     }
   }

@@ -1,15 +1,8 @@
 import { ApiError } from "@/lib/api/route";
 import { getDealFlowPlatformLaunchDomainEnv, getMetaEnv } from "@/lib/env";
 import { createMetaApiError, mapMetaError } from "@/lib/integrations/meta/error-mapper";
-import {
-  META_OPERATOR_ASSISTED_ADMIN_CHECKLIST,
-  META_OPERATOR_ASSISTED_MODE_LABEL,
-  META_OPERATOR_ASSISTED_NOTICE,
-  META_OPERATOR_ASSISTED_PUBLIC_SELF_SERVE_BLOCKER,
-} from "@/lib/integrations/meta/operator-assisted";
 import { decryptSecret } from "@/lib/integrations/meta-crypto";
 import { fetchMetaJson } from "@/lib/integrations/meta/request";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getAppContext } from "@/lib/services/app-context";
 import type {
@@ -30,7 +23,7 @@ export type MetaWorkspaceCredentials = {
   connectionId: string;
   adAccountId: string;
   pageId: string;
-  pixelId: string | null;
+  pixelId: string;
   accessToken: string;
 };
 
@@ -42,15 +35,6 @@ export type MetaLaunchPreflightState = {
   pixelValid: boolean;
   domainValid: boolean;
   trackingValid: boolean;
-  launchDomainStatus:
-    | "launch_domain_missing"
-    | "launch_domain_hosts_missing"
-    | "launch_domain_not_verified"
-    | "launch_domain_verified";
-  businessVerificationStatus:
-    | "business_verification_pending"
-    | "business_verification_required"
-    | "business_verification_verified";
   effectiveLaunchDomain: string | null;
   derivedLaunchDomain: string | null;
   trackingStatus: MetaWorkspaceTrackingStatus;
@@ -111,13 +95,6 @@ export function getDefaultMetaConnectionState(): MetaConnectionState {
   return {
     id: null,
     platform: "meta_ads",
-    operatorAssisted: {
-      mode: "operator_assisted_beta",
-      label: META_OPERATOR_ASSISTED_MODE_LABEL,
-      notice: META_OPERATOR_ASSISTED_NOTICE,
-      adminChecklist: META_OPERATOR_ASSISTED_ADMIN_CHECKLIST,
-      publicSelfServeBlocker: META_OPERATOR_ASSISTED_PUBLIC_SELF_SERVE_BLOCKER,
-    },
     hasAccessToken: false,
     accountId: null,
     accountName: null,
@@ -326,60 +303,10 @@ function getDealFlowPlatformTrackingFallback(destinationUrl: string | null | und
   return platformDomain;
 }
 
-function getBusinessVerificationStatus(metadata: MetaConnectionMetadata): MetaLaunchPreflightState["businessVerificationStatus"] {
-  const raw =
-    readMetadataString(metadata, "business_verification_status") ??
-    process.env.META_BUSINESS_VERIFICATION_STATUS ??
-    null;
-  const normalized = raw?.trim().toLowerCase().replace(/[\s-]+/g, "_") ?? null;
-
-  if (normalized === "verified" || normalized === "business_verification_verified") {
-    return "business_verification_verified";
-  }
-
-  if (
-    normalized === "pending" ||
-    normalized === "pending_submission" ||
-    normalized === "business_verification_pending"
-  ) {
-    return "business_verification_pending";
-  }
-
-  return "business_verification_required";
-}
-
-function getLaunchDomainStatus(params: {
-  launchDomain: string | null;
-  domainVerified: boolean;
-  destinationUrl?: string | null;
-  funnelHosts: string[];
-}): MetaLaunchPreflightState["launchDomainStatus"] {
-  if (!params.launchDomain) {
-    return "launch_domain_missing";
-  }
-
-  const destinationHost = getDestinationHostname(params.destinationUrl);
-  const hostAllowed =
-    !destinationHost ||
-    params.funnelHosts.some((host) => hostnameMatchesDomain(destinationHost, host)) ||
-    hostnameMatchesDomain(destinationHost, params.launchDomain);
-
-  if (!hostAllowed) {
-    return "launch_domain_hosts_missing";
-  }
-
-  if (!params.domainVerified) {
-    return "launch_domain_not_verified";
-  }
-
-  return "launch_domain_verified";
-}
-
 async function persistDerivedLaunchDomainFromDestination(params: {
   row: MetaConnectionRecord | null;
   metadata: MetaConnectionMetadata;
   destinationUrl?: string | null;
-  useAdminClient?: boolean;
 }) {
   const derivedLaunchDomain = deriveLaunchDomainFromDestinationUrl(params.destinationUrl);
   const existingLaunchDomain = readWorkspaceTrackingValue(
@@ -395,14 +322,7 @@ async function persistDerivedLaunchDomainFromDestination(params: {
     };
   }
 
-  const writeClient = params.useAdminClient
-    ? createAdminClient()
-    : (await getMetaSupabaseContext()).supabase;
-
-  if (!writeClient) {
-    throw new ApiError(503, "Supabase admin client is unavailable.", "supabase_unavailable");
-  }
-
+  const { supabase } = await getMetaSupabaseContext();
   const pixelId = readWorkspaceTrackingValue(params.row.pixel_id, params.metadata, "pixel_id");
   const verificationToken = readWorkspaceTrackingValue(
     params.row.verification_token,
@@ -418,7 +338,7 @@ async function persistDerivedLaunchDomainFromDestination(params: {
   });
   const checkedAt = new Date().toISOString();
 
-  const { data, error } = await writeClient
+  const { data, error } = await supabase
     .from("marketing_accounts")
     .update({
       launch_domain: derivedLaunchDomain,
@@ -427,7 +347,6 @@ async function persistDerivedLaunchDomainFromDestination(params: {
       connection_metadata: {
         ...params.metadata,
         launch_domain: derivedLaunchDomain,
-        selected_pixel_id: pixelId,
         tracking_status: trackingStatus,
         tracking_last_checked_at: checkedAt,
       },
@@ -449,7 +368,6 @@ async function persistDerivedLaunchDomainFromDestination(params: {
       connection_metadata: {
         ...params.metadata,
         launch_domain: derivedLaunchDomain,
-        selected_pixel_id: pixelId,
         tracking_status: trackingStatus,
         tracking_last_checked_at: checkedAt,
       },
@@ -696,27 +614,13 @@ function toConnectionState(
   const availablePages = getAvailablePages(row?.connection_metadata ?? null);
   const availablePixels = getAvailablePixels(row?.connection_metadata ?? null);
   const metadata = normalizeMetaConnectionMetadata(row?.connection_metadata ?? null);
-  const selectedExternalAccountId = readMetadataString(metadata, "selected_external_account_id");
-  const selectedAccount =
-    selectedExternalAccountId
-      ? availableAccounts.find((account) => account.externalAccountId === selectedExternalAccountId) ?? null
-      : null;
-  const resolvedAccountId = row?.external_account_id ?? selectedExternalAccountId ?? selectedAccount?.externalAccountId ?? null;
-  const resolvedAccountName = row?.account_name ?? selectedAccount?.name ?? null;
 
   return {
     id: row?.id ?? null,
     platform: "meta_ads",
-    operatorAssisted: {
-      mode: "operator_assisted_beta",
-      label: META_OPERATOR_ASSISTED_MODE_LABEL,
-      notice: META_OPERATOR_ASSISTED_NOTICE,
-      adminChecklist: META_OPERATOR_ASSISTED_ADMIN_CHECKLIST,
-      publicSelfServeBlocker: META_OPERATOR_ASSISTED_PUBLIC_SELF_SERVE_BLOCKER,
-    },
     hasAccessToken: Boolean(row?.access_token_encrypted),
-    accountId: resolvedAccountId,
-    accountName: resolvedAccountName,
+    accountId: row?.external_account_id ?? null,
+    accountName: row?.account_name ?? null,
     availableAccounts,
     pageId: readMetadataString(metadata, "selected_page_id"),
     pageName: readMetadataString(metadata, "selected_page_name"),
@@ -725,7 +629,7 @@ function toConnectionState(
     connectionStatus: status,
     connectedAt: row?.connected_at ?? null,
     lastSyncAt: row?.last_sync_at ?? row?.token_last_synced_at ?? null,
-    readinessMessage: getReadinessMessage(status, resolvedAccountName),
+    readinessMessage: getReadinessMessage(status, row?.account_name),
     tracking: getWorkspaceTrackingConfig(
       row,
       metadata,
@@ -747,19 +651,9 @@ async function getMetaSupabaseContext() {
   };
 }
 
-async function getExistingMetaRecord(
-  organizationId: string,
-  options?: { useAdminClient?: boolean },
-) {
-  const readClient = options?.useAdminClient
-    ? createAdminClient()
-    : (await getMetaSupabaseContext()).supabase;
-
-  if (!readClient) {
-    throw new ApiError(503, "Supabase admin client is unavailable.", "supabase_unavailable");
-  }
-
-  const { data } = await readClient
+async function getExistingMetaRecord(organizationId: string) {
+  const { supabase } = await getMetaSupabaseContext();
+  const { data } = await supabase
     .from("marketing_accounts")
     .select("*")
     .eq("organization_id", organizationId)
@@ -812,45 +706,9 @@ export async function getMetaConnectionState() {
   return toConnectionState(row);
 }
 
-export async function getMetaConnectionStateForOrganization(organizationId: string) {
-  const supabase = createAdminClient();
-
-  if (!supabase) {
-    throw new ApiError(503, "Supabase admin client is unavailable.", "supabase_unavailable");
-  }
-
-  const { data, error } = await supabase
-    .from("marketing_accounts")
-    .select("*")
-    .eq("organization_id", organizationId)
-    .eq("platform", "meta_ads")
-    .maybeSingle();
-
-  if (error) {
-    throw new ApiError(
-      500,
-      error.message,
-      "meta_connection_lookup_failed",
-    );
-  }
-
-  return toConnectionState(data as MetaConnectionRecord | null);
-}
-
-export async function getMetaWorkspaceCredentials(options?: {
-  organizationId?: string | null;
-}): Promise<MetaWorkspaceCredentials> {
-  const explicitOrganizationId = options?.organizationId?.trim() || null;
-  const context = explicitOrganizationId ? null : (await getMetaSupabaseContext()).context;
-  const organizationId = explicitOrganizationId || context?.organization.id;
-
-  if (!organizationId) {
-    throw new ApiError(401, "Authentication is required for this route.", "unauthorized");
-  }
-
-  const row = await getExistingMetaRecord(organizationId, {
-    useAdminClient: Boolean(explicitOrganizationId),
-  });
+export async function getMetaWorkspaceCredentials(): Promise<MetaWorkspaceCredentials> {
+  const { context } = await getMetaSupabaseContext();
+  const row = await getExistingMetaRecord(context.organization.id);
 
   if (!row) {
     throw new ApiError(
@@ -892,6 +750,13 @@ export async function getMetaWorkspaceCredentials(options?: {
   }
 
   const pixelId = row.pixel_id ?? readMetadataString(metadata, "pixel_id");
+  if (!pixelId) {
+    throw new ApiError(
+      400,
+      "This workspace is missing a selected Meta pixel.",
+      "meta_pixel_missing",
+    );
+  }
 
   if (!row.access_token_encrypted) {
     throw new ApiError(
@@ -920,7 +785,7 @@ export async function getMetaWorkspaceCredentials(options?: {
   }
 
   return {
-    workspaceId: organizationId,
+    workspaceId: context.organization.id,
     connectionId: row.id,
     adAccountId: selectedAccount.externalAccountId,
     pageId,
@@ -931,36 +796,17 @@ export async function getMetaWorkspaceCredentials(options?: {
 
 export async function validateMetaLaunchSelections(options?: {
   destinationUrl?: string | null;
-  organizationId?: string | null;
 }): Promise<MetaLaunchPreflightState> {
   const checkedAt = new Date().toISOString();
-  const defaultDomainStatus: MetaLaunchPreflightState["launchDomainStatus"] = getLaunchDomainStatus({
-    launchDomain: null,
-    domainVerified: false,
-    destinationUrl: options?.destinationUrl,
-    funnelHosts: [],
-  });
-  const defaultBusinessStatus: MetaLaunchPreflightState["businessVerificationStatus"] =
-    process.env.META_BUSINESS_VERIFICATION_STATUS === "verified"
-      ? "business_verification_verified"
-      : process.env.META_BUSINESS_VERIFICATION_STATUS === "pending_submission" ||
-          process.env.META_BUSINESS_VERIFICATION_STATUS === "pending"
-        ? "business_verification_pending"
-        : "business_verification_required";
 
   try {
-    const credentials = await getMetaWorkspaceCredentials({
-      organizationId: options?.organizationId,
-    });
-    const existingRow = await getExistingMetaRecord(credentials.workspaceId, {
-      useAdminClient: Boolean(options?.organizationId),
-    });
+    const credentials = await getMetaWorkspaceCredentials();
+    const existingRow = await getExistingMetaRecord(credentials.workspaceId);
     const existingMetadata = normalizeMetaConnectionMetadata(existingRow?.connection_metadata ?? null);
     const derivedTracking = await persistDerivedLaunchDomainFromDestination({
       row: existingRow,
       metadata: existingMetadata,
       destinationUrl: options?.destinationUrl,
-      useAdminClient: Boolean(options?.organizationId),
     });
     const row = derivedTracking.row as MetaConnectionRecord | null;
     const metadata = normalizeMetaConnectionMetadata(row?.connection_metadata ?? null);
@@ -970,19 +816,10 @@ export async function validateMetaLaunchSelections(options?: {
       row?.last_sync_at ?? row?.token_last_synced_at ?? row?.connected_at ?? null,
     );
     const platformTrackingFallback = getDealFlowPlatformTrackingFallback(options?.destinationUrl);
-    const platformDomainConfig = getDealFlowPlatformLaunchDomainEnv();
     const effectiveLaunchDomain =
       tracking.launchDomain ?? platformTrackingFallback?.launchDomain ?? null;
     const effectiveDomainVerified =
       tracking.domainVerified || Boolean(platformTrackingFallback?.domainVerified);
-    const launchDomainStatus = getLaunchDomainStatus({
-      launchDomain: effectiveLaunchDomain,
-      domainVerified: effectiveDomainVerified,
-      destinationUrl: options?.destinationUrl,
-      funnelHosts: platformDomainConfig.funnelHosts,
-    });
-    const businessVerificationStatus = getBusinessVerificationStatus(metadata);
-    const businessVerified = businessVerificationStatus === "business_verification_verified";
     const workspaceTrackingValid =
       Boolean(tracking.pixelId) &&
       Boolean(tracking.launchDomain) &&
@@ -1001,8 +838,6 @@ export async function validateMetaLaunchSelections(options?: {
         pixelValid: false,
         domainValid: false,
         trackingValid: false,
-        launchDomainStatus,
-        businessVerificationStatus,
         effectiveLaunchDomain,
         derivedLaunchDomain: derivedTracking.derivedLaunchDomain,
         trackingStatus: tracking.trackingStatus,
@@ -1098,18 +933,12 @@ export async function validateMetaLaunchSelections(options?: {
     }
 
     const warnings: string[] = [];
-    const liveActivationBlocked = !workspaceTrackingValid || !businessVerified;
+    const liveActivationBlocked = !workspaceTrackingValid;
 
-    if (!workspaceTrackingValid) {
+    if (liveActivationBlocked) {
       warnings.push(
         "Paused Meta object creation can proceed after launch gates pass, but live activation remains blocked until the launch domain is verified and tracking is configured.",
       );
-    }
-
-    if (businessVerificationStatus === "business_verification_pending") {
-      warnings.push("Meta Business verification is pending. Keep the campaign paused until live activation is approved.");
-    } else if (businessVerificationStatus === "business_verification_required") {
-      warnings.push("Meta Business verification is required before live activation. Paused setup can still proceed.");
     }
 
     const ready = accountValid && pageValid && pixelValid && domainValid;
@@ -1121,8 +950,6 @@ export async function validateMetaLaunchSelections(options?: {
       pixelValid,
       domainValid,
       trackingValid: workspaceTrackingValid,
-      launchDomainStatus,
-      businessVerificationStatus,
       effectiveLaunchDomain,
       derivedLaunchDomain: derivedTracking.derivedLaunchDomain,
       trackingStatus: tracking.trackingStatus,
@@ -1140,8 +967,6 @@ export async function validateMetaLaunchSelections(options?: {
       pixelValid: false,
       domainValid: false,
       trackingValid: false,
-      launchDomainStatus: defaultDomainStatus,
-      businessVerificationStatus: defaultBusinessStatus,
       effectiveLaunchDomain: null,
       derivedLaunchDomain: deriveLaunchDomainFromDestinationUrl(options?.destinationUrl),
       trackingStatus: "not_configured",
@@ -1157,18 +982,9 @@ export async function validateMetaLaunchSelections(options?: {
   }
 }
 
-export async function selectMetaAdAccount(
-  externalAccountId: string,
-  options?: { organizationId?: string | null },
-) {
+export async function selectMetaAdAccount(externalAccountId: string) {
   const { context, supabase } = await getMetaSupabaseContext();
-  const organizationId = options?.organizationId?.trim() || context.organization.id;
-  const writeClient = organizationId !== context.organization.id
-    ? createAdminClient() ?? supabase
-    : supabase;
-  const existing = await getExistingMetaRecord(organizationId, {
-    useAdminClient: organizationId !== context.organization.id,
-  });
+  const existing = await getExistingMetaRecord(context.organization.id);
 
   if (!existing) {
     throw new ApiError(404, "No Meta connection exists for this workspace.", "meta_connection_missing");
@@ -1215,7 +1031,7 @@ export async function selectMetaAdAccount(
     domainVerified: existing.domain_verified ?? readMetadataBoolean(metadata, "domain_verified"),
   });
 
-  const { error } = await writeClient
+  const { error } = await supabase
     .from("marketing_accounts")
     .update({
       external_account_id: nextAccount.externalAccountId,
@@ -1227,9 +1043,7 @@ export async function selectMetaAdAccount(
       connection_metadata: {
         ...metadata,
         selected_external_account_id: nextAccount.externalAccountId,
-        selected_ad_account_id: nextAccount.externalAccountId,
         pixel_id: nextPixelId,
-        selected_pixel_id: nextPixelId,
         tracking_status: nextTrackingStatus,
         available_pixels: availablePixels,
       },
@@ -1240,9 +1054,7 @@ export async function selectMetaAdAccount(
     throw new ApiError(500, error.message, "meta_account_selection_failed");
   }
 
-  const refreshed = await getExistingMetaRecord(organizationId, {
-    useAdminClient: organizationId !== context.organization.id,
-  });
+  const refreshed = await getExistingMetaRecord(context.organization.id);
   return toConnectionState(refreshed);
 }
 
@@ -1250,17 +1062,9 @@ export async function updateMetaLaunchSelections(input: {
   externalAccountId?: string | null;
   pageId?: string | null;
   pixelId?: string | null;
-  allowMissingPixel?: boolean;
-  organizationId?: string | null;
 }) {
   const { context, supabase } = await getMetaSupabaseContext();
-  const organizationId = input.organizationId?.trim() || context.organization.id;
-  const writeClient = organizationId !== context.organization.id
-    ? createAdminClient() ?? supabase
-    : supabase;
-  const existing = await getExistingMetaRecord(organizationId, {
-    useAdminClient: organizationId !== context.organization.id,
-  });
+  const existing = await getExistingMetaRecord(context.organization.id);
 
   if (!existing) {
     throw new ApiError(404, "No Meta connection exists for this workspace.", "meta_connection_missing");
@@ -1314,18 +1118,11 @@ export async function updateMetaLaunchSelections(input: {
         ).catch(() => [])
       : [];
 
-  const pixelSelectionValid =
-    Boolean(nextPixelId) && availablePixels.some((pixel) => pixel.id === nextPixelId);
-
-  if (!pixelSelectionValid && !input.allowMissingPixel) {
+  if (!nextPixelId || !availablePixels.some((pixel) => pixel.id === nextPixelId)) {
     throw createMetaApiError("selection", 400, {
       code: "meta_pixel_invalid",
       message: "Select a valid Meta pixel.",
     });
-  }
-
-  if (!pixelSelectionValid) {
-    nextPixelId = null;
   }
 
   const nextTrackingStatus = deriveTrackingStatus({
@@ -1339,7 +1136,7 @@ export async function updateMetaLaunchSelections(input: {
     domainVerified: existing.domain_verified ?? readMetadataBoolean(metadata, "domain_verified"),
   });
 
-  const { error } = await writeClient
+  const { error } = await supabase
     .from("marketing_accounts")
     .update({
       external_account_id: nextAccount.externalAccountId,
@@ -1351,12 +1148,10 @@ export async function updateMetaLaunchSelections(input: {
       connection_metadata: {
         ...metadata,
         selected_external_account_id: nextAccount.externalAccountId,
-        selected_ad_account_id: nextAccount.externalAccountId,
         selected_account_name: nextAccount.name,
         selected_page_id: nextPage.id ?? null,
         selected_page_name: nextPage.name ?? null,
         pixel_id: nextPixelId,
-        selected_pixel_id: nextPixelId,
         tracking_status: nextTrackingStatus,
         available_pixels: availablePixels,
       },
@@ -1367,9 +1162,7 @@ export async function updateMetaLaunchSelections(input: {
     throw new ApiError(500, error.message, "meta_selection_update_failed");
   }
 
-  const refreshed = await getExistingMetaRecord(organizationId, {
-    useAdminClient: organizationId !== context.organization.id,
-  });
+  const refreshed = await getExistingMetaRecord(context.organization.id);
   return toConnectionState(refreshed);
 }
 
@@ -1424,7 +1217,6 @@ export async function updateMetaTrackingConfig(input: MetaWorkspaceTrackingUpdat
       connection_metadata: {
         ...metadata,
         pixel_id: nextPixelId ?? null,
-        selected_pixel_id: nextPixelId ?? null,
         launch_domain: nextLaunchDomain ?? null,
         verification_token: nextVerificationToken ?? null,
         domain_verified: nextDomainVerified,

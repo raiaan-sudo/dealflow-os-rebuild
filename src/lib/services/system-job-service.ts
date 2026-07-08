@@ -4,10 +4,7 @@ import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
 import { createAdminClient } from "@/lib/server/supabase-admin";
 import type { Database, Json } from "@/lib/supabase/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import {
-  regenerateHiggsfieldFinishedStaticAdsForUser,
-  regenerateStaticCreativeAssetsForUser,
-} from "@/lib/services/campaign-persistence";
+import { regenerateStaticCreativeAssetsForUser } from "@/lib/services/campaign-persistence";
 import {
   pollVideoGenerationStatusJob,
   type VideoGenerationJobPayload,
@@ -17,16 +14,12 @@ import {
 import {
   isMarketingStudioWorkerOwnedJob,
   isMarketingStudioStaticGenerationJob,
-  isMarketingStudioWorkerRuntimeEnabled,
   MARKETING_STUDIO_WORKER_DEFERRED_UNTIL,
   MARKETING_STUDIO_WORKER_RUNTIME,
   shouldDeferMarketingStudioStaticGenerationToWorker,
 } from "@/lib/services/marketing-studio-worker-contract";
 import type { CreativeIntakeGenerationContext } from "@/lib/services/creative-chat-intake-service";
 import type { SubscriptionSuspensionJobPayload } from "@/lib/services/subscription-suspension-service";
-import type { CampaignOffboardingCleanupPayload } from "@/lib/services/campaign-offboarding-cleanup-service";
-import type { PerformanceLeadBillingJobPayload } from "@/lib/services/performance-lead-billing-service";
-import { isTransientStaticCreativePersistenceError } from "@/lib/services/static-creative-render-resilience";
 
 type SystemJobRow = Database["public"]["Tables"]["system_jobs"]["Row"];
 type SystemJobLogRow = Database["public"]["Tables"]["system_job_logs"]["Row"];
@@ -43,9 +36,7 @@ export type SystemJobKind =
   | "recommendation_generation"
   | "lead_capture_retry"
   | "lead_side_effects"
-  | "performance_lead_billing"
-  | "subscription_suspension"
-  | "campaign_offboarding_cleanup";
+  | "subscription_suspension";
 export type SystemJobStatus = "pending" | "processing" | "completed" | "failed";
 export type SystemJobLifecycleStatus =
   | "queued"
@@ -66,7 +57,6 @@ export type SystemJobWorkerBatchResult = {
 };
 
 const MAX_SYSTEM_JOB_RETRIES = 1;
-const STATIC_CREATIVE_TRANSIENT_MAX_RETRIES = 2;
 const SYSTEM_JOB_LEASE_MS = 5 * 60_000;
 const SYSTEM_JOB_STALE_BUFFER_MS = 60_000;
 const MIN_STALE_PROCESSING_RESET_MS = SYSTEM_JOB_LEASE_MS + SYSTEM_JOB_STALE_BUFFER_MS;
@@ -83,12 +73,6 @@ type SystemJobPayloadMap = {
     force?: boolean;
     missingOnly?: boolean;
     maxGenerations?: number;
-    targetVariantCount?: number;
-    promoteThreshold?: number;
-    outputMode?: "finished_ad" | "background_only" | string;
-    provider?: "higgsfield_marketing_studio" | string;
-    queueReason?: string;
-    providerUsageRunId?: string | null;
     creativeIntake?: CreativeIntakeGenerationContext | null;
   };
   video_generation: VideoGenerationJobPayload;
@@ -170,9 +154,7 @@ type SystemJobPayloadMap = {
       fbc?: string | null;
     };
   };
-  performance_lead_billing: PerformanceLeadBillingJobPayload;
   subscription_suspension: SubscriptionSuspensionJobPayload;
-  campaign_offboarding_cleanup: CampaignOffboardingCleanupPayload;
 };
 
 export type SystemJobTrackingPayload = {
@@ -189,27 +171,6 @@ export type SystemJobTrackingPayload = {
   completedAt: string | null;
 };
 
-type LeadSideEffectsPayload = SystemJobPayloadMap["lead_side_effects"];
-type LeadSideEffectsEntitlements = {
-  canCaptureLeads: boolean;
-  canSendLeadAlerts: boolean;
-  billingState?: unknown;
-};
-type LeadSideEffectsDeps = {
-  getCampaignEntitlementsForOrganization?: (params: { organizationId: string }) => Promise<LeadSideEffectsEntitlements>;
-  safeNotifyAssignedAgentOfNewLead?: (lead: LeadSideEffectsPayload["lead"]) => Promise<Json>;
-  safeSendMetaLeadConversion?: (params: LeadSideEffectsPayload["metaConversion"]) => Promise<Json>;
-  safeSyncLeadToPartnerCrm?: (
-    lead: LeadSideEffectsPayload["lead"],
-    options?: {
-      dryRun?: boolean;
-      writeEventLedger?: boolean;
-      metadata?: Record<string, Json>;
-    },
-  ) => Promise<Json>;
-  logOperationalEvent?: typeof logOperationalEvent;
-};
-
 export type SystemJobRecord<K extends SystemJobKind = SystemJobKind> = Omit<SystemJobRow, "kind" | "status" | "payload" | "result"> & {
   kind: K;
   status: SystemJobStatus;
@@ -223,117 +184,6 @@ export type SystemJobRecord<K extends SystemJobKind = SystemJobKind> = Omit<Syst
   attempt_count?: number;
   max_attempts?: number;
 };
-
-export async function runLeadSideEffects(params: {
-  payload: LeadSideEffectsPayload;
-  jobId: string;
-  deps?: LeadSideEffectsDeps;
-}) {
-  const { payload, jobId, deps = {} } = params;
-  const getEntitlements = deps.getCampaignEntitlementsForOrganization
-    ?? (await import("@/lib/services/campaign-entitlements")).getCampaignEntitlementsForOrganization;
-  const entitlements = await getEntitlements({
-    organizationId: payload.lead.organization_id,
-  });
-
-  if (!entitlements.canCaptureLeads || !entitlements.canSendLeadAlerts) {
-    return {
-      skipped: true,
-      reason: "subscription_inactive",
-      requestId: payload.requestId,
-      leadId: payload.lead.id,
-      organizationId: payload.lead.organization_id,
-      billingState: entitlements.billingState,
-    } as Json;
-  }
-
-  const { safeNotifyAssignedAgentOfNewLead } = deps.safeNotifyAssignedAgentOfNewLead
-    ? { safeNotifyAssignedAgentOfNewLead: deps.safeNotifyAssignedAgentOfNewLead }
-    : await import("@/lib/services/internal-lead-notification-service");
-  const { safeSendMetaLeadConversion } = deps.safeSendMetaLeadConversion
-    ? { safeSendMetaLeadConversion: deps.safeSendMetaLeadConversion }
-    : await import("@/lib/integrations/meta/conversions");
-  const { safeSyncLeadToPartnerCrm } = deps.safeSyncLeadToPartnerCrm
-    ? { safeSyncLeadToPartnerCrm: deps.safeSyncLeadToPartnerCrm }
-    : await import("@/lib/services/partner-crm-sync-service");
-  const [notificationResult, metaConversionResult, crmSyncResult] = await Promise.all([
-    safeNotifyAssignedAgentOfNewLead(payload.lead),
-    safeSendMetaLeadConversion(payload.metaConversion),
-    safeSyncLeadToPartnerCrm(payload.lead, {
-      dryRun: false,
-      metadata: {
-        source: "lead_side_effects",
-        requestId: payload.requestId,
-        systemJobId: jobId,
-      },
-    }).catch((error) => {
-      logError("lead_side_effects.crm_sync_unhandled_failure", {
-        requestId: payload.requestId,
-        leadId: payload.lead.id,
-        organizationId: payload.lead.organization_id,
-        message: error instanceof Error ? error.message : "Unknown CRM sync failure",
-      });
-      return {
-        synced: false,
-        skipped: false,
-        reason: "crm_sync_unhandled_exception",
-      } as Json;
-    }),
-  ]);
-
-  (deps.logOperationalEvent ?? logOperationalEvent)("lead_capture.side_effects_processed", {
-    requestId: payload.requestId,
-    leadId: payload.lead.id,
-    organizationId: payload.lead.organization_id,
-    jobId,
-    notificationResult,
-    metaConversionResult,
-    crmSyncResult,
-  });
-
-  const { recordLeadTrackingEvent } = await import("@/lib/services/lead-tracking-service");
-  await Promise.all([
-    recordLeadTrackingEvent({
-      organizationId: payload.lead.organization_id,
-      campaignId: payload.lead.campaign_id,
-      leadId: payload.lead.id,
-      eventType: "notification_status",
-      status: "recorded",
-      source: "lead_side_effects",
-      metadata: {
-        requestId: payload.requestId,
-        jobId,
-        result: notificationResult,
-      },
-    }),
-    recordLeadTrackingEvent({
-      organizationId: payload.lead.organization_id,
-      campaignId: payload.lead.campaign_id,
-      leadId: payload.lead.id,
-      eventType: "crm_sync_status",
-      status:
-        crmSyncResult && typeof crmSyncResult === "object" && "synced" in crmSyncResult && crmSyncResult.synced === true
-          ? "sent"
-          : crmSyncResult && typeof crmSyncResult === "object" && "skipped" in crmSyncResult && crmSyncResult.skipped === true
-            ? "skipped"
-            : "failed",
-      source: "lead_side_effects",
-      metadata: {
-        requestId: payload.requestId,
-        jobId,
-        result: crmSyncResult,
-      },
-    }),
-  ]).catch(() => null);
-
-  return {
-    requestId: payload.requestId,
-    leadId: payload.lead.id,
-    notificationResult,
-    metaConversionResult,
-    crmSyncResult,
-  } as Json;
-}
 
 function getJobClient() {
   const client = createAdminClient();
@@ -378,16 +228,12 @@ function hasActiveProcessingLease(job: SystemJobRecord) {
 }
 
 function isTransientJobError(error: unknown) {
-  if (isTransientStaticCreativePersistenceError(error)) {
-    return true;
-  }
-
   if (error instanceof ApiError) {
     return error.status === 408 || error.status === 429 || error.status >= 500;
   }
 
   if (error instanceof Error) {
-    return error.name === "AbortError" || /fetch failed|und_err_socket|econnreset|etimedout|socket|connection closed|timeout|timed out|rate limit|temporary|network/i.test(error.message);
+    return error.name === "AbortError" || /timeout|timed out|rate limit|temporary|network/i.test(error.message);
   }
 
   return false;
@@ -434,23 +280,6 @@ function getJobTracking<K extends SystemJobKind>(job: SystemJobRecord<K>) {
       : null;
 
   return payload?.tracking ?? null;
-}
-
-function defaultMaxAttemptsForJob(kind: SystemJobKind) {
-  return kind === "static_creative_generation"
-    ? STATIC_CREATIVE_TRANSIENT_MAX_RETRIES + 1
-    : MAX_SYSTEM_JOB_RETRIES + 1;
-}
-
-function maxRetriesForJob(job: Pick<SystemJobRecord, "kind" | "max_attempts">) {
-  const maxAttempts = Number(job.max_attempts ?? 0);
-  if (Number.isFinite(maxAttempts) && maxAttempts > 0) {
-    return Math.max(0, maxAttempts - 1);
-  }
-
-  return job.kind === "static_creative_generation"
-    ? STATIC_CREATIVE_TRANSIENT_MAX_RETRIES
-    : MAX_SYSTEM_JOB_RETRIES;
 }
 
 export async function appendSystemJobLog(params: {
@@ -517,7 +346,7 @@ export async function createSystemJob<K extends SystemJobKind>(params: {
       status: "pending",
       payload: (params.payload ?? {}) as Json,
       idempotency_key: params.idempotencyKey?.trim() || null,
-      max_attempts: params.maxAttempts ?? defaultMaxAttemptsForJob(params.kind),
+      max_attempts: params.maxAttempts ?? MAX_SYSTEM_JOB_RETRIES + 1,
       next_run_at: deferToMarketingStudioWorker ? MARKETING_STUDIO_WORKER_DEFERRED_UNTIL : null,
     } as never)
     .select("*")
@@ -552,9 +381,7 @@ export async function createSystemJob<K extends SystemJobKind>(params: {
     supabase,
     jobId: insertedJob.id,
     message: deferToMarketingStudioWorker
-      ? params.kind === "video_generation"
-        ? "Marketing Studio UGC video render queued for the dedicated CLI worker."
-        : "Marketing Studio finished-ad render queued for the dedicated CLI worker."
+      ? "Marketing Studio finished-ad render queued for the dedicated CLI worker."
       : `${params.kind.replace(/_/g, " ")} job queued.`,
     details: deferToMarketingStudioWorker
       ? {
@@ -626,23 +453,6 @@ export async function queueLeadSideEffectsJob(params: {
   });
 
   return row;
-}
-
-export async function queuePerformanceLeadBillingJob(params: {
-  organizationId: string;
-  userId: string;
-  campaignId: string;
-  payload: SystemJobPayloadMap["performance_lead_billing"];
-}) {
-  return createSystemJob({
-    organizationId: params.organizationId,
-    userId: params.userId,
-    campaignId: params.campaignId,
-    kind: "performance_lead_billing",
-    payload: params.payload,
-    idempotencyKey: `performance_lead_billing:${params.payload.organizationId}:${params.payload.campaignId}:${params.payload.leadId}`,
-    maxAttempts: 3,
-  });
 }
 
 async function updateSystemJobTracking<K extends SystemJobKind>(params: {
@@ -937,9 +747,8 @@ export async function retrySystemJob(jobId: string, userId: string) {
     throw new ApiError(404, "Job not found.", "system_job_not_found");
   }
 
-  const maxRetries = maxRetriesForJob(currentJob);
-  if (currentJob.retry_count >= maxRetries) {
-    throw new ApiError(409, "This job has already used its retry budget.", "system_job_retry_limit");
+  if (currentJob.retry_count >= MAX_SYSTEM_JOB_RETRIES) {
+    throw new ApiError(409, "This job has already used its only retry.", "system_job_retry_limit");
   }
 
   const nextJob = await updateSystemJob(supabase, jobId, {
@@ -962,7 +771,7 @@ export async function retrySystemJob(jobId: string, userId: string) {
     job: nextJob,
     lifecycleStatus: "retrying",
     attemptCount: nextJob.retry_count,
-    maxRetries,
+    maxRetries: MAX_SYSTEM_JOB_RETRIES,
     retryEligible: true,
   });
 
@@ -976,18 +785,11 @@ export async function retrySystemJob(jobId: string, userId: string) {
 }
 
 function shouldAutoRetrySystemJob(job: SystemJobRecord, error: unknown) {
-  if (job.kind === "static_creative_generation") {
-    return (
-      job.retry_count < Math.min(STATIC_CREATIVE_TRANSIENT_MAX_RETRIES, maxRetriesForJob(job)) &&
-      isTransientStaticCreativePersistenceError(error)
-    );
-  }
-
   if (job.kind === "video_generation") {
     return false;
   }
 
-  if (job.retry_count >= maxRetriesForJob(job) || !(error instanceof ApiError)) {
+  if (job.retry_count >= MAX_SYSTEM_JOB_RETRIES || !(error instanceof ApiError)) {
     return false;
   }
 
@@ -1036,9 +838,7 @@ export async function processSystemJob(jobId: string) {
     await appendSystemJobLog({
       supabase,
       jobId,
-      message: job.kind === "video_generation"
-        ? "Marketing Studio UGC video render deferred to the dedicated CLI worker."
-        : "Marketing Studio finished-ad render deferred to the dedicated CLI worker.",
+      message: "Marketing Studio finished-ad render deferred to the dedicated CLI worker.",
       details: {
         runtime: MARKETING_STUDIO_WORKER_RUNTIME,
         deferredUntil: MARKETING_STUDIO_WORKER_DEFERRED_UNTIL,
@@ -1079,35 +879,19 @@ export async function processSystemJob(jobId: string) {
     }
 
     if (result === undefined && processingJob.kind === "static_creative_generation") {
-      const staticPayload = processingJob.payload as SystemJobPayloadMap["static_creative_generation"];
-      const isMarketingStudioFinishedStaticJob = isMarketingStudioStaticGenerationJob({
-        kind: processingJob.kind,
-        payload: staticPayload,
-      });
-
-      if (isMarketingStudioFinishedStaticJob && !isMarketingStudioWorkerRuntimeEnabled()) {
-        throw new ApiError(
-          409,
-          "Marketing Studio finished-ad jobs must run in the dedicated CLI worker runtime.",
-          "marketing_studio_worker_runtime_required",
-        );
-      }
-
-      const regenerateStatic = isMarketingStudioFinishedStaticJob
-        ? regenerateHiggsfieldFinishedStaticAdsForUser
-        : regenerateStaticCreativeAssetsForUser;
-      const output = await regenerateStatic(
+      const output = await regenerateStaticCreativeAssetsForUser(
         processingJob.campaign_id ?? "",
         processingJob.user_id,
         {
-          force: Boolean(staticPayload?.force),
-          missingOnly: Boolean(staticPayload?.missingOnly),
+          force: Boolean((processingJob.payload as SystemJobPayloadMap["static_creative_generation"])?.force),
+          missingOnly: Boolean((processingJob.payload as SystemJobPayloadMap["static_creative_generation"])?.missingOnly),
           maxGenerations:
-            typeof staticPayload?.maxGenerations === "number"
-              ? staticPayload.maxGenerations
+            typeof (processingJob.payload as SystemJobPayloadMap["static_creative_generation"])?.maxGenerations === "number"
+              ? (processingJob.payload as SystemJobPayloadMap["static_creative_generation"]).maxGenerations
               : undefined,
-          creativeIntake: staticPayload?.creativeIntake ?? null,
-          providerUsageRunId: staticPayload?.providerUsageRunId?.trim() || processingJob.id,
+          creativeIntake:
+            (processingJob.payload as SystemJobPayloadMap["static_creative_generation"])?.creativeIntake ?? null,
+          providerUsageRunId: `${processingJob.id}:${processingJob.attempt_count ?? 0}`,
           supabase,
         },
       );
@@ -1197,7 +981,6 @@ export async function processSystemJob(jobId: string) {
         });
 
         let sideEffectJobId: string | null = null;
-        let performanceLeadBillingJobId: string | null = null;
         if (replayResult.leadId && replayResult.campaignId && replayResult.organizationId) {
           const sideEffectJob = await queueLeadSideEffectsJob({
             organizationId: replayResult.organizationId,
@@ -1232,27 +1015,6 @@ export async function processSystemJob(jobId: string) {
             },
           });
           sideEffectJobId = sideEffectJob.id;
-          const performanceBillingJob = await queuePerformanceLeadBillingJob({
-            organizationId: replayResult.organizationId,
-            userId: processingJob.user_id,
-            campaignId: replayResult.campaignId,
-            payload: {
-              source: "lead_capture_retry",
-              requestId: payload.requestId,
-              leadId: replayResult.leadId,
-              organizationId: replayResult.organizationId,
-              campaignId: replayResult.campaignId,
-            },
-          }).catch((error) => {
-            logWarn("performance_lead_billing_retry_queue_failed", {
-              requestId: payload.requestId,
-              leadId: replayResult.leadId,
-              organizationId: replayResult.organizationId,
-              message: error instanceof Error ? error.message : "Unknown performance lead billing queue failure",
-            });
-            return null;
-          });
-          performanceLeadBillingJobId = performanceBillingJob?.id ?? null;
         }
 
         result = {
@@ -1260,29 +1022,52 @@ export async function processSystemJob(jobId: string) {
           requestId: payload.requestId,
           retryReason: payload.reason,
           sideEffectJobId,
-          performanceLeadBillingJobId,
         } as Json;
       }
     } else if (result === undefined && processingJob.kind === "lead_side_effects") {
       const payload = processingJob.payload as SystemJobPayloadMap["lead_side_effects"];
-      result = await runLeadSideEffects({
-        payload,
-        jobId: processingJob.id,
+      const { getCampaignEntitlementsForOrganization } = await import("@/lib/services/campaign-entitlements");
+      const entitlements = await getCampaignEntitlementsForOrganization({
+        organizationId: payload.lead.organization_id,
       });
-    } else if (result === undefined && processingJob.kind === "performance_lead_billing") {
-      const { runPerformanceLeadBillingJob } = await import("@/lib/services/performance-lead-billing-service");
-      result = await runPerformanceLeadBillingJob(
-        processingJob.payload as SystemJobPayloadMap["performance_lead_billing"],
-      ) as unknown as Json;
+
+      if (!entitlements.canCaptureLeads || !entitlements.canSendLeadAlerts) {
+        result = {
+          skipped: true,
+          reason: "subscription_inactive",
+          requestId: payload.requestId,
+          leadId: payload.lead.id,
+          organizationId: payload.lead.organization_id,
+          billingState: entitlements.billingState,
+        } as Json;
+      } else {
+      const { safeNotifyAssignedAgentOfNewLead } = await import("@/lib/services/internal-lead-notification-service");
+      const { safeSendMetaLeadConversion } = await import("@/lib/integrations/meta/conversions");
+      const [notificationResult, metaConversionResult] = await Promise.all([
+        safeNotifyAssignedAgentOfNewLead(payload.lead),
+        safeSendMetaLeadConversion(payload.metaConversion),
+      ]);
+
+      logOperationalEvent("lead_capture.side_effects_processed", {
+        requestId: payload.requestId,
+        leadId: payload.lead.id,
+        organizationId: payload.lead.organization_id,
+        jobId: processingJob.id,
+        notificationResult,
+        metaConversionResult,
+      });
+
+      result = {
+        requestId: payload.requestId,
+        leadId: payload.lead.id,
+        notificationResult,
+        metaConversionResult,
+      } as Json;
+      }
     } else if (result === undefined && processingJob.kind === "subscription_suspension") {
       const { runSubscriptionSuspensionJob } = await import("@/lib/services/subscription-suspension-service");
       result = await runSubscriptionSuspensionJob({
         job: processingJob as SystemJobRecord<"subscription_suspension">,
-      });
-    } else if (result === undefined && processingJob.kind === "campaign_offboarding_cleanup") {
-      const { runCampaignOffboardingCleanupJob } = await import("@/lib/services/campaign-offboarding-cleanup-service");
-      result = await runCampaignOffboardingCleanupJob({
-        job: processingJob as SystemJobRecord<"campaign_offboarding_cleanup">,
       });
     } else if (result === undefined && (
       processingJob.kind === "campaign_build" ||

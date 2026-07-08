@@ -3,10 +3,10 @@ import { createClient } from "@supabase/supabase-js";
 import { randomBytes } from "node:crypto";
 import {
   ApiError,
+  assertInternalSystemRequest,
   handleApiError,
 } from "@/lib/api/route";
 import {
-  getInternalSystemJobSecrets,
   getServiceRoleEnv,
   getSupabaseEnvOrThrow,
   isInternalAdminEmail,
@@ -27,54 +27,6 @@ function assertQaHarnessEnabled() {
     process.env.QA_AUTH_HARNESS_PRODUCTION_ENABLED !== "true"
   ) {
     throw new ApiError(404, "QA auth harness is not enabled in production.", "qa_auth_harness_production_disabled");
-  }
-}
-
-function getBearerToken(request: Request) {
-  const authorization = request.headers.get("authorization");
-  const match = authorization?.match(/^Bearer\s+(.+)$/i);
-  return match?.[1]?.trim() ?? null;
-}
-
-function timingSafeTokenEquals(candidate: string | null, expected: string) {
-  if (!candidate || !expected) {
-    return false;
-  }
-
-  let mismatch = candidate.length ^ expected.length;
-  const length = Math.max(candidate.length, expected.length);
-
-  for (let index = 0; index < length; index += 1) {
-    mismatch |= candidate.charCodeAt(index % candidate.length) ^ expected.charCodeAt(index % expected.length);
-  }
-
-  return mismatch === 0;
-}
-
-function getQaAuthHarnessSecrets() {
-  return Array.from(
-    new Set(
-      [
-        process.env.QA_AUTH_PROOF_SECRET,
-        ...getInternalSystemJobSecrets(),
-      ]
-        .map((value) => value?.trim() ?? "")
-        .filter(Boolean),
-    ),
-  );
-}
-
-function assertQaAuthHarnessRequest(request: Request) {
-  const secrets = getQaAuthHarnessSecrets();
-
-  if (secrets.length === 0) {
-    throw new ApiError(503, "QA auth harness secret is not configured.", "qa_auth_secret_missing");
-  }
-
-  const token = getBearerToken(request) ?? request.headers.get("x-internal-system-key")?.trim() ?? null;
-
-  if (!secrets.some((secret) => timingSafeTokenEquals(token, secret))) {
-    throw new ApiError(401, "QA auth harness authorization is required.", "qa_auth_unauthorized");
   }
 }
 
@@ -174,7 +126,7 @@ async function assertQaUserIsNonAdmin(
 
 export async function POST(request: Request) {
   try {
-    assertQaAuthHarnessRequest(request);
+    assertInternalSystemRequest(request);
     assertQaHarnessEnabled();
 
     const qaEmail = getQaEmail();

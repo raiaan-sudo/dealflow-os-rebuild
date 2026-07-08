@@ -83,8 +83,45 @@ function isAuthorizedInternalRequest(request: NextRequest) {
   };
 }
 
-function applySecurityHeaders(response: NextResponse, startedAt?: number) {
+const CLICK_TO_SCALE_IFRAME_HOSTS = new Set([
+  "clicktoscale.io",
+  "www.clicktoscale.io",
+  "clip2scale.io",
+  "www.clip2scale.io",
+]);
+const DEFAULT_GHL_FRAME_ANCESTORS = [
+  "https://app.gohighlevel.com",
+  "https://*.gohighlevel.com",
+  "https://app.leadconnectorhq.com",
+  "https://*.leadconnectorhq.com",
+];
+
+function getConfiguredFrameAncestors() {
+  return (process.env.GHL_IFRAME_ALLOWED_FRAME_ANCESTORS ?? "")
+    .split(/[\s,]+/)
+    .map((source) => source.trim())
+    .filter((source) => /^https:\/\/(\*\.)?[a-z0-9.-]+(?::\d+)?$/i.test(source));
+}
+
+function getFrameAncestors(request: NextRequest) {
+  const host = request.nextUrl.hostname.toLowerCase();
+
+  if (!CLICK_TO_SCALE_IFRAME_HOSTS.has(host)) {
+    return "'none'";
+  }
+
+  return Array.from(
+    new Set([
+      ...DEFAULT_GHL_FRAME_ANCESTORS,
+      ...getConfiguredFrameAncestors(),
+    ]),
+  ).join(" ");
+}
+
+function applySecurityHeaders(request: NextRequest, response: NextResponse, startedAt?: number) {
   const isProduction = process.env.NODE_ENV === "production";
+  const frameAncestors = getFrameAncestors(request);
+  const allowsExternalFrameAncestors = frameAncestors !== "'none'";
   const scriptSrc = [
     "'self'",
     "'unsafe-inline'",
@@ -96,7 +133,11 @@ function applySecurityHeaders(response: NextResponse, startedAt?: number) {
 
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("X-Content-Type-Options", "nosniff");
-  response.headers.set("X-Frame-Options", "DENY");
+  if (allowsExternalFrameAncestors) {
+    response.headers.delete("X-Frame-Options");
+  } else {
+    response.headers.set("X-Frame-Options", "DENY");
+  }
   response.headers.set("Cross-Origin-Opener-Policy", "same-origin");
   response.headers.set("Origin-Agent-Cluster", "?1");
   response.headers.set("X-DNS-Prefetch-Control", "off");
@@ -119,7 +160,7 @@ function applySecurityHeaders(response: NextResponse, startedAt?: number) {
       "form-action 'self'",
       "object-src 'none'",
       "base-uri 'self'",
-      "frame-ancestors 'none'",
+      `frame-ancestors ${frameAncestors}`,
       ...(isProduction ? ["upgrade-insecure-requests"] : []),
     ].join("; "),
   );
@@ -139,7 +180,7 @@ function applySecurityHeaders(response: NextResponse, startedAt?: number) {
 
 export async function proxy(request: NextRequest) {
   const startedAt = Date.now();
-  const finalize = (nextResponse: NextResponse) => applySecurityHeaders(nextResponse, startedAt);
+  const finalize = (nextResponse: NextResponse) => applySecurityHeaders(request, nextResponse, startedAt);
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", request.nextUrl.pathname);
   let response = NextResponse.next({ request: { headers: requestHeaders } });

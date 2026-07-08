@@ -9,7 +9,7 @@ const leadRoute = fs.readFileSync("src/app/api/lead-capture/route.ts", "utf8");
 const leadForm = fs.readFileSync("src/app/f/[slug]/lead-capture-form.tsx", "utf8");
 const browserPixelRoute = fs.readFileSync("src/app/api/lead-tracking/browser-pixel/route.ts", "utf8");
 const conversions = fs.readFileSync("src/lib/integrations/meta/conversions.ts", "utf8");
-const launchRoute = fs.readFileSync("src/app/api/campaigns/create/route.ts", "utf8");
+const launchRoute = fs.readFileSync("src/app/api/campaigns/[id]/launch/route.ts", "utf8");
 const metaService = fs.readFileSync("src/lib/integrations/meta/service.ts", "utf8");
 const metaStatusSync = fs.readFileSync("src/lib/integrations/meta/status-sync.ts", "utf8");
 const metaCampaignSync = fs.readFileSync("src/lib/services/meta-campaign-sync-service.ts", "utf8");
@@ -65,22 +65,21 @@ assert.match(conversions, /meta_access_token_missing/, "CAPI missing token skip 
 assert.match(conversions, /meta_env_missing/, "CAPI missing env skip must be visible");
 
 assert.match(launchRoute, /upsertCampaignTrackingContract/, "launch must write a tracking contract");
-assert.match(launchRoute, /buildTrackingReadiness/, "launch must check tracking contract readiness");
-assert.match(launchRoute, /tracking_contract_incomplete/, "launch must fail closed on incomplete tracking contract");
+assert.match(launchRoute, /getMetaWorkspaceCredentials/, "launch must fail closed when Meta pixel or token credentials are missing");
 assertOrdered(
   launchRoute,
   [
-    "const trackingReadiness = buildTrackingReadiness",
+    "const metaCredentials = await getMetaWorkspaceCredentials",
+    "const response = await launchCampaignCreatePost",
     "await upsertCampaignTrackingContract",
-    "if (!trackingReadiness.ready)",
-    "await persistLaunchState",
+    "return {",
   ],
-  "tracking contract must be created and validated before completed launch state is persisted",
+  "Meta credentials must be validated before launch and the tracking contract must be written before the response returns",
 );
 
-assert.match(metaService, /selected_pixel_id: nextPixelId/, "Meta selections must persist selected_pixel_id");
-assert.match(metaService, /selected_ad_account_id: nextAccount\.externalAccountId/, "Meta selections must persist selected ad account alias");
-assert.match(metaService, /selected_pixel_id: pixelId/, "derived launch domain persistence must preserve selected pixel metadata");
+assert.match(metaService, /pixel_id: nextPixelId/, "Meta selections must persist the selected pixel id");
+assert.match(metaService, /selected_external_account_id: nextAccount\.externalAccountId/, "Meta selections must persist selected ad account alias");
+assert.match(metaService, /pixel_id: nextPixelId \?\? null/, "derived tracking config persistence must preserve selected pixel metadata");
 
 assert.match(metaStatusSync, /actions,conversions/, "Meta delivery sync must request raw actions and conversions");
 assert.match(metaStatusSync, /raw_actions/, "Meta delivery metrics must preserve raw action rows");
