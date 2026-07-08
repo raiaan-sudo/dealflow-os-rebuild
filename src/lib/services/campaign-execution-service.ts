@@ -518,6 +518,34 @@ function normalizeExecutionCta(cta?: string | null) {
   return "LEARN_MORE";
 }
 
+export function normalizeLeadFormDestinationMode(
+  formType?: CampaignLaunchInput["form_type"] | ValidatedLaunchConfig["formType"] | null,
+): "website_funnel" | "meta_instant_form" {
+  const normalized = String(formType ?? "website_funnel").trim().toLowerCase();
+
+  if (normalized === "instant_form" || normalized === "meta_instant_form") {
+    return "meta_instant_form";
+  }
+
+  return "website_funnel";
+}
+
+export function assertMetaInstantFormEnabled() {
+  if (process.env.META_INSTANT_FORM_ENABLED === "true") {
+    throw new ApiError(
+      501,
+      "Meta instant forms are not implemented in this release. Use website funnel mode until leadgen form creation and retrieval are test-proven.",
+      "meta_instant_form_not_implemented",
+    );
+  }
+
+  throw new ApiError(
+    422,
+    "Meta instant forms are not available yet. Use website funnel mode; DealFlow will not silently launch a website ad while claiming native Meta lead form behavior.",
+    "meta_instant_form_disabled",
+  );
+}
+
 function normalizeObjective(objective: CampaignLaunchObjective) {
   if (objective === "TRAFFIC") {
     return "OUTCOME_TRAFFIC";
@@ -841,6 +869,14 @@ export async function validateCampaignForLaunch(
     }
   });
 
+  const formType = normalizeLeadFormDestinationMode(launchInput.form_type);
+
+  if (formType === "meta_instant_form") {
+    errors.push(
+      "Meta instant forms are not available yet. Use website funnel mode until native Meta leadgen form creation is test-proven.",
+    );
+  }
+
   const config: ValidatedLaunchConfig = {
     campaignId,
     metaAdAccountId: launchInput.meta_ad_account_id,
@@ -852,7 +888,7 @@ export async function validateCampaignForLaunch(
     startImmediately: false,
     ctaType: normalizeExecutionCta(launchInput.cta_type ?? campaign.funnel?.cta ?? assets[0]?.cta),
     pixelId: selectedPixelId,
-    formType: launchInput.form_type === "instant_form" ? "instant_form" : "landing_page",
+    formType,
   };
 
   if (errors.length > 0 || !metaAccount) {
@@ -948,6 +984,10 @@ export function buildMetaAdPayloads(
   config: ValidatedLaunchConfig,
   mediaAssets: LaunchReadyCreativeMedia[] = [],
 ): BuiltMetaAdPayload[] {
+  if (normalizeLeadFormDestinationMode(config.formType) === "meta_instant_form") {
+    assertMetaInstantFormEnabled();
+  }
+
   return buildLaunchAssets(campaignRecord).map((asset) => ({
     ...(() => {
       const matchedMedia = mediaAssets.find(
