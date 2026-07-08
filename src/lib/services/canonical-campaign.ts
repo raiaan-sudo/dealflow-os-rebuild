@@ -37,6 +37,8 @@ export type SavedCampaignDocument = {
   copy?: unknown;
   ads?: unknown;
   funnel?: Record<string, unknown> | null;
+  publicFunnelPresetVersion?: unknown;
+  publicFunnel?: unknown;
   launch?: {
     runtime?: Partial<CampaignRuntime> | null;
   } | null;
@@ -807,6 +809,8 @@ export function normalizeCanonicalCampaign(params: {
       hasStagedSnapshot: Boolean(params.publish?.stagedSnapshot),
       hasPublishedSnapshot: Boolean(params.publish?.publishedSnapshot),
     },
+    publicFunnelPresetVersion: safeText(params.savedDocument?.publicFunnelPresetVersion) || null,
+    publicFunnel: params.savedDocument?.publicFunnel ?? null,
   };
 }
 
@@ -894,6 +898,8 @@ export function canonicalCampaignToPlan(record: FullCampaignRecord): CampaignPla
       followUpAction: record.funnel.follow_up_action,
       optimizationNotes: record.funnel.optimization_notes,
     },
+    publicFunnelPresetVersion: record.publicFunnelPresetVersion ?? null,
+    publicFunnel: record.publicFunnel ?? null,
     runtime,
     createdAt: record.campaign.created_at,
   };

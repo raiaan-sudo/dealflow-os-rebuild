@@ -10,7 +10,17 @@ type LeadCaptureFormProps = {
   cta: string;
   language?: string | null;
   metaPixelId?: string | null;
+  organizationId?: string | null;
+  presetVersion?: string | null;
 };
+
+type LeadFormTelemetryEvent =
+  | "lead_form_viewed"
+  | "lead_form_started"
+  | "lead_form_submit_attempted"
+  | "lead_form_validation_failed"
+  | "lead_capture_client_success"
+  | "lead_capture_client_failed";
 
 const SMS_CONSENT_COPY =
   "By checking this box, I agree to receive SMS messages from DealFlow OS and/or the business operating this campaign about my inquiry, follow-ups, and appointment coordination. Message and data rates may apply. Message frequency may vary. Reply STOP to opt out or HELP for help. Consent is not a condition of purchase.";
@@ -104,10 +114,13 @@ function getCurrentPageAttribution() {
 
   return {
     landingPageUrl: url.toString(),
+    referer: document.referrer || undefined,
     utmSource: url.searchParams.get("utm_source") || undefined,
     utmMedium: url.searchParams.get("utm_medium") || undefined,
     utmCampaign: url.searchParams.get("utm_campaign") || url.searchParams.get("utm_id") || undefined,
     adId: url.searchParams.get("ad_id") || url.searchParams.get("utm_content") || undefined,
+    fbclid: url.searchParams.get("fbclid") || undefined,
+    gclid: url.searchParams.get("gclid") || undefined,
   };
 }
 
@@ -143,6 +156,34 @@ function recordBrowserPixelAttempt(params: {
   }).catch(() => null);
 }
 
+function createTelemetrySessionId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `lead-form-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function getViewport() {
+  return `${window.innerWidth}x${window.innerHeight}`;
+}
+
+function getLeadFormDeviceType() {
+  if (window.innerWidth < 640) {
+    return "mobile";
+  }
+
+  if (window.innerWidth < 1024) {
+    return "tablet";
+  }
+
+  return "desktop";
+}
+
+function getSafeRoutePath() {
+  return `${window.location.pathname}${window.location.search ? "?[redacted]" : ""}`;
+}
+
 export function LeadCaptureForm({
   campaignId,
   funnelSlug,
@@ -150,6 +191,8 @@ export function LeadCaptureForm({
   cta,
   language,
   metaPixelId,
+  organizationId,
+  presetVersion,
 }: LeadCaptureFormProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -158,7 +201,11 @@ export function LeadCaptureForm({
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [formStartedAt] = useState(() => Date.now());
+  const [telemetrySessionId] = useState(createTelemetrySessionId);
   const pageViewTrackedRef = useRef(false);
+  const formElementRef = useRef<HTMLFormElement | null>(null);
+  const formViewedTrackedRef = useRef(false);
+  const formStartedTrackedRef = useRef(false);
   const submitInFlightRef = useRef(false);
   const copy = getFormCopy(language);
 
@@ -169,6 +216,72 @@ export function LeadCaptureForm({
   const hasConfiguredEmailField = includesField(normalizedFields, "email");
   const showPhone = includesField(normalizedFields, "phone");
   const showEmail = hasConfiguredEmailField || !showPhone;
+
+  function trackLeadFormEvent(
+    eventType: LeadFormTelemetryEvent,
+    metadata?: Record<string, string | number | boolean | null>,
+  ) {
+    const attribution = getCurrentPageAttribution();
+    const payload = JSON.stringify({
+      source: "public_lead_capture",
+      routePath: getSafeRoutePath(),
+      errorName: eventType,
+      message: eventType,
+      severity: eventType.includes("failed") ? "medium" : "low",
+      viewport: getViewport(),
+      metadata: {
+        eventType,
+        campaignId,
+        organizationId: organizationId ?? null,
+        publicSlug: funnelSlug,
+        presetVersion: presetVersion ?? null,
+        eventId: createTelemetrySessionId(),
+        timestamp: new Date().toISOString(),
+        deviceType: getLeadFormDeviceType(),
+        sessionId: telemetrySessionId,
+        hasMetaPixel: Boolean(metaPixelId),
+        referer: attribution.referer ?? null,
+        utmSource: attribution.utmSource ?? null,
+        utmMedium: attribution.utmMedium ?? null,
+        utmCampaign: attribution.utmCampaign ?? null,
+        adId: attribution.adId ?? null,
+        fbclid: attribution.fbclid ?? null,
+        gclid: attribution.gclid ?? null,
+        ...metadata,
+      },
+    });
+
+    if (navigator.sendBeacon) {
+      const blob = new Blob([payload], { type: "application/json" });
+      navigator.sendBeacon("/api/client-errors", blob);
+      return;
+    }
+
+    void fetch("/api/client-errors", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: payload,
+      keepalive: true,
+    }).catch(() => null);
+  }
+
+  function trackFormStartedOnce() {
+    if (formStartedTrackedRef.current) {
+      return;
+    }
+
+    formStartedTrackedRef.current = true;
+    trackLeadFormEvent("lead_form_started");
+  }
+
+  function clearMessage() {
+    if (message) {
+      setMessage(null);
+      setStatus("idle");
+    }
+  }
 
   useEffect(() => {
     if (!metaPixelId || pageViewTrackedRef.current) {
@@ -188,6 +301,38 @@ export function LeadCaptureForm({
     return () => window.clearInterval(intervalId);
   }, [metaPixelId]);
 
+  useEffect(() => {
+    if (formViewedTrackedRef.current) {
+      return;
+    }
+
+    const markViewed = () => {
+      if (formViewedTrackedRef.current) {
+        return;
+      }
+
+      formViewedTrackedRef.current = true;
+      trackLeadFormEvent("lead_form_viewed");
+    };
+
+    const formElement = formElementRef.current;
+    if (!formElement || typeof IntersectionObserver !== "function") {
+      const timeoutId = window.setTimeout(markViewed, 750);
+      return () => window.clearTimeout(timeoutId);
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        markViewed();
+        observer.disconnect();
+      }
+    }, { threshold: 0.35 });
+
+    observer.observe(formElement);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitInFlightRef.current) {
@@ -197,28 +342,37 @@ export function LeadCaptureForm({
     const normalizedName = name.trim();
     const normalizedEmail = email.trim();
     const normalizedPhone = phone.trim();
+    trackLeadFormEvent("lead_form_submit_attempted", {
+      hasEmail: Boolean(normalizedEmail),
+      hasPhone: Boolean(normalizedPhone),
+      smsConsent,
+    });
 
     if (!normalizedName) {
       setStatus("error");
       setMessage(copy.validationName);
+      trackLeadFormEvent("lead_form_validation_failed", { reason: "missing_name" });
       return;
     }
 
     if (showEmail && !normalizedEmail) {
       setStatus("error");
       setMessage(copy.validationEmail);
+      trackLeadFormEvent("lead_form_validation_failed", { reason: "missing_email" });
       return;
     }
 
     if (showPhone && !normalizedPhone) {
       setStatus("error");
       setMessage(copy.validationPhone);
+      trackLeadFormEvent("lead_form_validation_failed", { reason: "missing_phone" });
       return;
     }
 
     if (normalizedPhone && !smsConsent) {
       setStatus("error");
       setMessage(copy.validationConsent);
+      trackLeadFormEvent("lead_form_validation_failed", { reason: "missing_sms_consent" });
       return;
     }
 
@@ -248,6 +402,8 @@ export function LeadCaptureForm({
           utm_medium: attribution.utmMedium,
           utm_campaign: attribution.utmCampaign,
           ad_id: attribution.adId,
+          fbclid: attribution.fbclid,
+          gclid: attribution.gclid,
           landing_page_url: attribution.landingPageUrl,
         }),
       });
@@ -265,6 +421,9 @@ export function LeadCaptureForm({
       }
 
       const leadId = data?.lead_id ?? data?.id ?? null;
+      trackLeadFormEvent("lead_capture_client_success", {
+        hasLeadId: Boolean(leadId),
+      });
 
       if (metaPixelId && leadId && typeof window.fbq === "function") {
         window.fbq("track", "Lead", { campaign_id: campaignId }, { eventID: leadId });
@@ -279,6 +438,9 @@ export function LeadCaptureForm({
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : copy.failed);
+      trackLeadFormEvent("lead_capture_client_failed", {
+        reason: error instanceof Error ? error.message.slice(0, 120) : "unknown",
+      });
       submitInFlightRef.current = false;
     }
   }
@@ -309,7 +471,11 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
           </noscript>
         </>
       ) : null}
-      <form className="space-y-4 rounded-[26px] border border-[#dfd5c8] bg-[#fffdf9] p-5 text-left shadow-[0_24px_80px_-54px_rgba(28,43,58,0.48)] sm:p-6" onSubmit={handleSubmit}>
+      <form
+        className="space-y-4 rounded-[26px] border border-[#dfd5c8] bg-[#fffdf9] p-5 text-left shadow-[0_24px_80px_-54px_rgba(28,43,58,0.48)] sm:p-6"
+        onSubmit={handleSubmit}
+        ref={formElementRef}
+      >
       <div>
         <p className="text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--funnel-accent)]">
           {copy.eyebrow}
@@ -323,12 +489,11 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
         <span className="text-sm font-medium text-[#40372f]">{copy.name}</span>
         <input
           className="h-12 w-full rounded-2xl border border-[#d8ccbd] bg-[#f8f2ea] px-4 text-[#17283c] outline-none transition focus:border-[var(--funnel-accent)] focus:bg-white"
+          onFocus={trackFormStartedOnce}
           onChange={(event) => {
             setName(event.target.value);
-            if (message) {
-              setMessage(null);
-              setStatus("idle");
-            }
+            trackFormStartedOnce();
+            clearMessage();
           }}
           required
           value={name}
@@ -340,12 +505,11 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
           <span className="text-sm font-medium text-[#40372f]">{copy.email}</span>
           <input
             className="h-12 w-full rounded-2xl border border-[#d8ccbd] bg-[#f8f2ea] px-4 text-[#17283c] outline-none transition focus:border-[var(--funnel-accent)] focus:bg-white"
+            onFocus={trackFormStartedOnce}
             onChange={(event) => {
               setEmail(event.target.value);
-              if (message) {
-                setMessage(null);
-                setStatus("idle");
-              }
+              trackFormStartedOnce();
+              clearMessage();
             }}
             required
             type="email"
@@ -360,12 +524,11 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
             <span className="text-sm font-medium text-[#40372f]">{copy.phone}</span>
             <input
               className="h-12 w-full rounded-2xl border border-[#d8ccbd] bg-[#f8f2ea] px-4 text-[#17283c] outline-none transition focus:border-[var(--funnel-accent)] focus:bg-white"
+              onFocus={trackFormStartedOnce}
               onChange={(event) => {
                 setPhone(event.target.value);
-                if (message) {
-                  setMessage(null);
-                  setStatus("idle");
-                }
+                trackFormStartedOnce();
+                clearMessage();
               }}
               required
               type="tel"
@@ -378,10 +541,8 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
               className="mt-1 size-4 shrink-0 accent-[var(--funnel-accent)]"
               onChange={(event) => {
                 setSmsConsent(event.target.checked);
-                if (message) {
-                  setMessage(null);
-                  setStatus("idle");
-                }
+                trackFormStartedOnce();
+                clearMessage();
               }}
               required={Boolean(phone.trim())}
               type="checkbox"

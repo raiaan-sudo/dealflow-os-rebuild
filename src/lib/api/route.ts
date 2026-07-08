@@ -125,6 +125,31 @@ function addHostOrigin(
   }
 }
 
+function addDelimitedExpectedOrigins(expectedOrigins: Set<string>, value: string | null | undefined) {
+  if (!value) {
+    return;
+  }
+
+  for (const item of value.split(",")) {
+    addExpectedOrigin(expectedOrigins, item.trim());
+  }
+}
+
+function addDelimitedHostOrigins(expectedOrigins: Set<string>, value: string | null | undefined) {
+  if (!value) {
+    return;
+  }
+
+  for (const item of value.split(",")) {
+    const host = item.trim();
+    if (!host) {
+      continue;
+    }
+
+    addHostOrigin(expectedOrigins, host.replace(/^https?:\/\//, ""), "https");
+  }
+}
+
 function normalizeRequestOrigin(value: string | null, errorCode = "csrf_rejected") {
   if (!value) {
     return null;
@@ -175,6 +200,11 @@ export function assertSameOriginRequest(request: Request) {
   if (process.env.NEXT_PUBLIC_APP_URL) {
     addExpectedOrigin(expectedOrigins, process.env.NEXT_PUBLIC_APP_URL);
   }
+
+  addDelimitedExpectedOrigins(expectedOrigins, process.env.TRUSTED_APP_ORIGINS);
+  addDelimitedExpectedOrigins(expectedOrigins, process.env.DEALFLOW_PLATFORM_LAUNCH_DOMAIN);
+  addDelimitedHostOrigins(expectedOrigins, process.env.DEALFLOW_PLATFORM_LAUNCH_DOMAIN);
+  addDelimitedHostOrigins(expectedOrigins, process.env.DEALFLOW_PLATFORM_FUNNEL_HOSTS);
 
   if (!isProduction) {
     addExpectedOrigin(expectedOrigins, request.url);

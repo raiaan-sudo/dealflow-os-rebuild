@@ -45,6 +45,8 @@ const leadCaptureSchema = z
     utm_medium: z.string().trim().max(200).optional(),
     utm_campaign: z.string().trim().max(200).optional(),
     ad_id: z.string().trim().max(200).optional(),
+    fbclid: z.string().trim().max(500).optional(),
+    gclid: z.string().trim().max(500).optional(),
     landing_page_url: z.string().trim().url().max(2000).optional(),
     form_started_at: z.union([z.number(), z.string()]).optional(),
     formStartedAt: z.union([z.number(), z.string()]).optional(),
@@ -123,6 +125,8 @@ function parseLandingPageAttribution(landingPageUrl: string | null) {
       utmMedium: null,
       utmCampaign: null,
       adId: null,
+      fbclid: null,
+      gclid: null,
     };
   }
 
@@ -134,6 +138,8 @@ function parseLandingPageAttribution(landingPageUrl: string | null) {
       utmMedium: url.searchParams.get("utm_medium"),
       utmCampaign: url.searchParams.get("utm_campaign") || url.searchParams.get("utm_id"),
       adId: url.searchParams.get("ad_id") || url.searchParams.get("utm_content"),
+      fbclid: url.searchParams.get("fbclid"),
+      gclid: url.searchParams.get("gclid"),
     };
   } catch {
     return {
@@ -141,6 +147,8 @@ function parseLandingPageAttribution(landingPageUrl: string | null) {
       utmMedium: null,
       utmCampaign: null,
       adId: null,
+      fbclid: null,
+      gclid: null,
     };
   }
 }
@@ -218,11 +226,13 @@ async function handleLeadCaptureRequest(req: Request) {
         smsConsent: boolean;
         smsConsentCopy: string;
         utmSource: string | null;
-        utmMedium: string | null;
-        utmCampaign: string | null;
-        adId: string | null;
-        landingPageUrl: string | null;
-      }
+	        utmMedium: string | null;
+	        utmCampaign: string | null;
+	        adId: string | null;
+	        fbclid: string | null;
+	        gclid: string | null;
+	        landingPageUrl: string | null;
+	      }
     | null = null;
 
   try {
@@ -238,6 +248,12 @@ async function handleLeadCaptureRequest(req: Request) {
 
     const campaignId = payload.campaign_id?.trim() || payload.campaignId?.trim() || "";
     const funnelId = payload.funnel_id?.trim() || "";
+    logOperationalEvent("lead_capture.received", {
+      requestId,
+      campaignScope: getHashedRateLimitIdentifier(campaignId || funnelId || "unknown"),
+      hasCampaignId: Boolean(campaignId),
+      hasFunnelId: Boolean(funnelId),
+    });
     const campaignScope = campaignId || funnelId || "unknown";
     const isLoadTestBypass = getLoadTestBypass({
       req,
@@ -352,6 +368,8 @@ async function handleLeadCaptureRequest(req: Request) {
     const utmMedium = coalesceAttributionValue(payload.utm_medium, landingAttribution.utmMedium);
     const utmCampaign = coalesceAttributionValue(payload.utm_campaign, landingAttribution.utmCampaign);
     const adId = coalesceAttributionValue(payload.ad_id, landingAttribution.adId);
+    const fbclid = coalesceAttributionValue(payload.fbclid, landingAttribution.fbclid);
+    const gclid = coalesceAttributionValue(payload.gclid, landingAttribution.gclid);
 
     capturedPayload = {
       campaignId,
@@ -368,6 +386,8 @@ async function handleLeadCaptureRequest(req: Request) {
       utmMedium,
       utmCampaign,
       adId,
+      fbclid,
+      gclid,
       landingPageUrl,
     };
 
@@ -422,6 +442,8 @@ async function handleLeadCaptureRequest(req: Request) {
         utm_medium: utmMedium,
         utm_campaign: utmCampaign,
         ad_id: adId,
+        fbclid,
+        gclid,
         landing_page_url: landingPageUrl,
       },
       metadata: {
@@ -530,6 +552,23 @@ async function handleLeadCaptureRequest(req: Request) {
     const expectedClientFailureResponse = buildExpectedClientFailureResponse(error, requestId);
 
     if (expectedClientFailureResponse) {
+      logOperationalEvent("lead_capture.rejected", {
+        requestId,
+        code: error instanceof ApiError
+          ? error.code
+          : error instanceof z.ZodError
+            ? "validation_error"
+            : "client_error",
+        status: error instanceof ApiError
+          ? error.status
+          : error instanceof z.ZodError
+            ? 400
+            : null,
+        campaignScope: capturedPayload?.campaignId
+          ? getHashedRateLimitIdentifier(capturedPayload.campaignId)
+          : null,
+        hasCapturedPayload: Boolean(capturedPayload),
+      });
       return expectedClientFailureResponse;
     }
 
