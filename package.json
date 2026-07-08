@@ -38,7 +38,8 @@
     "test:public-funnel-mobile": "node ./scripts/test-public-funnel-mobile.mjs",
     "guard:public-funnel": "node ./scripts/assert-no-legacy-public-funnel-rendering.mjs",
     "backfill:public-funnels": "node ./scripts/backfill-canonical-public-funnels.mjs",
-    "lead-capture:health": "node ./scripts/lead-capture-health.mjs"
+    "lead-capture:health": "node ./scripts/lead-capture-health.mjs",
+    "ops:canonical-funnel-health": "node ./scripts/ops-canonical-funnel-health.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",

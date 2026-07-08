@@ -42,7 +42,22 @@ jobs:
         run: npm run lint
 
       - name: Typecheck
-        run: npm run typecheck
+        run: npm run typecheck -- --incremental false
+
+      - name: Public funnel guard
+        run: npm run guard:public-funnel
+
+      - name: Canonical public funnel regression
+        run: npm run test:canonical-public-funnel
+
+      - name: Campaign public funnel paths
+        run: npm run test:campaign-public-funnel-paths
+
+      - name: Public funnel mobile conversion checks
+        run: npm run test:public-funnel-mobile
+
+      - name: Lead tracking health regression
+        run: npm run test:lead-tracking-health
 
       - name: Build
         run: npm run build
@@ -52,3 +67,14 @@ jobs:
 
       - name: Route security
         run: npm run routes:security
+
+      - name: Schema check
+        run: npm run schema:check
+        env:
+          SUPABASE_SCHEMA_CHECK_MODE: local
+
+      - name: Dependency audit
+        run: npm audit --audit-level=low
+
+      - name: Whitespace diff guard
+        run: git diff --check
