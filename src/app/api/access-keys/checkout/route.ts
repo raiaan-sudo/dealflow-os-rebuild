@@ -37,7 +37,13 @@ export async function POST(request: Request) {
     }
 
     if (!isAccessKeyPublicCheckoutEnabled()) {
-      throw new ApiError(404, "Access-key public checkout is not enabled.", "access_key_public_checkout_disabled");
+      return Response.json(
+        {
+          error: "Access-key public checkout is not enabled.",
+          code: "access_key_public_checkout_disabled",
+        },
+        { status: 404 },
+      );
     }
 
     const body = await parseJsonBody(request, checkoutSchema);
