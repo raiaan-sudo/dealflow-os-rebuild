@@ -59,6 +59,51 @@ jobs:
       - name: Lead tracking health regression
         run: npm run test:lead-tracking-health
 
+      - name: Client telemetry origin regression
+        run: npm run test:client-telemetry-origin
+
+      - name: Meta instant form contract
+        run: npm run test:meta-instant-form-contract
+
+      - name: Meta question mapping contract
+        run: npm run test:meta-question-mapping
+
+      - name: Meta no-spend guards
+        run: npm run test:meta-no-spend-guards
+
+      - name: Homepage copy regression
+        run: npm run test:homepage
+
+      - name: Product correctness contract
+        run: npm run test:product-correctness
+
+      - name: CRM readiness contract
+        run: npm run test:crm-readiness
+
+      - name: API security contract
+        run: npm run test:api-security
+
+      - name: AuthZ and BOLA contract
+        run: npm run test:authz-bola
+
+      - name: RLS fixture/static contract
+        run: npm run test:rls-fixtures
+
+      - name: Webhook security contract
+        run: npm run test:webhook-security
+
+      - name: Security header contract
+        run: npm run test:security-headers
+
+      - name: Load safety contract
+        run: npm run test:load-safety
+
+      - name: Browser audit harness contract
+        run: npm run test:browser-audit-harness
+
+      - name: Performance budget contract
+        run: npm run perf:budgets
+
       - name: Build
         run: npm run build
 

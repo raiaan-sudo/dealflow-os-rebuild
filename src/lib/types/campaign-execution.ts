@@ -93,7 +93,7 @@ export type CampaignLaunchInput = {
   lifetime_budget?: number;
   start_immediately?: boolean;
   cta_type?: string;
-  form_type?: "landing_page" | "instant_form" | string;
+  form_type?: "landing_page" | "website_funnel" | "instant_form" | "meta_instant_form" | string;
   pixel_id?: string | null;
   metadata?: Record<string, Json | undefined>;
 };
@@ -171,7 +171,7 @@ export type ValidatedLaunchConfig = {
   lifetimeBudget?: number | null;
   startImmediately?: boolean;
   ctaType?: string;
-  formType?: "landing_page" | "instant_form";
+  formType?: "website_funnel" | "meta_instant_form";
   metadata?: Record<string, Json | undefined>;
 };
 

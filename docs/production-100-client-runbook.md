@@ -299,10 +299,10 @@ Recommended pre-beta profile:
 
 ```bash
 LOAD_BASE_URL=https://dealflow-os-rebuild.vercel.app LOAD_TEST_FUNNEL_SLUG=<published-slug> npm run load:routes
-LOAD_BASE_URL=https://dealflow-os-rebuild.vercel.app LOAD_TEST_ALLOW_WRITES=true LOAD_TEST_CAMPAIGN_ID=<campaign-id> npm run load:lead-capture
+LOAD_BASE_URL=https://staging.example.com LOAD_TEST_ALLOW_WRITES=true LOAD_TEST_EXTERNAL_SIDE_EFFECTS=disabled LOAD_TEST_CAMPAIGN_ID=<qa-campaign-id> npm run load:lead-capture
 ```
 
-The lead-capture profile writes test leads. Use a published QA campaign only, keep request volume modest, and never point load tests at Stripe payment completion, paid generation, or live Meta launch routes. The script enforces the thresholds below by default and refuses more than `50` lead writes unless `LOAD_MAX_WRITE_REQUESTS` is explicitly raised for a QA campaign.
+The lead-capture profile writes test leads. Use staging/local by default with a published QA campaign only, keep request volume modest, and never point load tests at Stripe payment completion, paid generation, live Meta launch routes, or customer SMS/CRM destinations. The script refuses production-looking lead-write targets unless all of these are set intentionally: `TARGET_ENV=production`, `DRY_RUN=false`, `ALLOW_PRODUCTION_WRITE_LOAD_TEST=true`, and `PRODUCTION_WRITE_LOAD_TEST_CONFIRMATION=I_UNDERSTAND_THIS_WRITES_QA_LEADS_TO_PRODUCTION`. It also requires mocked/disabled external side effects through `SMS_MOCK_MODE=true`, `TEST_SMS_MODE=mock`, or `LOAD_TEST_EXTERNAL_SIDE_EFFECTS=disabled`. The script refuses more than `50` lead writes unless `LOAD_MAX_WRITE_REQUESTS` is explicitly raised for an isolated QA campaign.
 
 Controlled-beta thresholds:
 

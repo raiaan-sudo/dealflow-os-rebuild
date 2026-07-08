@@ -77,8 +77,8 @@ if (!loginPage.includes("initialMode")) {
   throw new Error("Login page must support homepage sign-up CTA mode.");
 }
 
-if (!loginForm.includes("? \"Sign In\"")) {
-  throw new Error("Login form sign-in action must be clearly labeled Sign In.");
+if (!/mode === "sign-in"[\s\S]{0,80}\?\s*"Sign in"/i.test(loginForm)) {
+  throw new Error("Login form sign-in action must be clearly labeled Sign in.");
 }
 
 if (loginForm.includes("Launch My Campaign")) {

@@ -15,7 +15,9 @@ import {
   createMetaConnectionUrl,
 } from "@/lib/services/meta-ads-service";
 import {
+  assertMetaInstantFormEnabled,
   executeFullAutopilotLaunch,
+  normalizeLeadFormDestinationMode,
 } from "@/lib/services/campaign-execution-service";
 import {
   prepareCampaignDeployment,
@@ -40,7 +42,7 @@ export type MetaMarketingDeployPayload = {
   start_immediately?: boolean;
   cta_type?: string;
   pixel_id?: string;
-  form_type?: "landing_page" | "instant_form";
+  form_type?: "landing_page" | "website_funnel" | "instant_form" | "meta_instant_form";
 };
 
 export type MetaMarketingExecuteRequest = {
@@ -182,6 +184,10 @@ class MetaMarketingProvider
         "Meta Marketing API credentials are not configured yet.",
         "meta_not_configured",
       );
+    }
+
+    if (normalizeLeadFormDestinationMode(payload?.form_type) === "meta_instant_form") {
+      assertMetaInstantFormEnabled();
     }
 
     await markMetaPublishing();

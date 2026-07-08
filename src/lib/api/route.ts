@@ -92,6 +92,10 @@ function addExpectedOrigin(expectedOrigins: Set<string>, value: string | null | 
     return;
   }
 
+  if (value.trim() === "*") {
+    return;
+  }
+
   try {
     const parsed = new URL(value);
     if (parsed.protocol === "https:" || parsed.protocol === "http:") {
@@ -130,7 +134,7 @@ function addDelimitedExpectedOrigins(expectedOrigins: Set<string>, value: string
     return;
   }
 
-  for (const item of value.split(",")) {
+  for (const item of value.split(/[\s,]+/)) {
     addExpectedOrigin(expectedOrigins, item.trim());
   }
 }
@@ -140,7 +144,7 @@ function addDelimitedHostOrigins(expectedOrigins: Set<string>, value: string | n
     return;
   }
 
-  for (const item of value.split(",")) {
+  for (const item of value.split(/[\s,]+/)) {
     const host = item.trim();
     if (!host) {
       continue;
@@ -148,6 +152,75 @@ function addDelimitedHostOrigins(expectedOrigins: Set<string>, value: string | n
 
     addHostOrigin(expectedOrigins, host.replace(/^https?:\/\//, ""), "https");
   }
+}
+
+const DEFAULT_TRUSTED_PUBLIC_ORIGINS = [
+  "https://clicktoscale.io",
+  "https://www.clicktoscale.io",
+  "https://agentdealflow.io",
+  "https://app.agentdealflow.io",
+  "https://www.agentdealflow.io",
+  "https://dealflow-os-rebuild.vercel.app",
+];
+
+const TRUSTED_ORIGIN_ENV_KEYS = [
+  "NEXT_PUBLIC_APP_URL",
+  "APP_URL",
+  "SITE_URL",
+  "TRUSTED_APP_ORIGINS",
+  "PUBLIC_FUNNEL_BASE_URLS",
+  "DEALFLOW_PLATFORM_LAUNCH_DOMAIN",
+];
+
+const TRUSTED_HOST_ENV_KEYS = [
+  "DEALFLOW_PLATFORM_FUNNEL_HOSTS",
+  "VERCEL_URL",
+  "VERCEL_BRANCH_URL",
+  "VERCEL_PROJECT_PRODUCTION_URL",
+];
+
+export function getTrustedRequestOrigins(request?: Request) {
+  const expectedOrigins = new Set<string>();
+  const isProduction = process.env.NODE_ENV === "production";
+
+  for (const origin of DEFAULT_TRUSTED_PUBLIC_ORIGINS) {
+    addExpectedOrigin(expectedOrigins, origin);
+  }
+
+  for (const key of TRUSTED_ORIGIN_ENV_KEYS) {
+    const value = process.env[key];
+    addDelimitedExpectedOrigins(expectedOrigins, value);
+    if (key === "DEALFLOW_PLATFORM_LAUNCH_DOMAIN") {
+      addDelimitedHostOrigins(expectedOrigins, value);
+    }
+  }
+
+  for (const key of TRUSTED_HOST_ENV_KEYS) {
+    addDelimitedHostOrigins(expectedOrigins, process.env[key]);
+  }
+
+  if (request) {
+    const host = request.headers.get("host");
+    const forwardedHost = request.headers.get("x-forwarded-host");
+    const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ?? null;
+    const localHost =
+      host &&
+      (() => {
+        try {
+          return isLocalHostname(new URL(`http://${host}`).hostname);
+        } catch {
+          return false;
+        }
+      })();
+
+    if (!isProduction || localHost) {
+      addExpectedOrigin(expectedOrigins, request.url);
+      addHostOrigin(expectedOrigins, forwardedHost, forwardedProto);
+      addHostOrigin(expectedOrigins, host, forwardedProto);
+    }
+  }
+
+  return expectedOrigins;
 }
 
 function normalizeRequestOrigin(value: string | null, errorCode = "csrf_rejected") {
@@ -191,26 +264,7 @@ function getBearerToken(request: Request) {
 export function assertSameOriginRequest(request: Request) {
   const origin = normalizeRequestOrigin(request.headers.get("origin"));
   const referer = request.headers.get("referer");
-  const host = request.headers.get("host");
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ?? null;
-  const expectedOrigins = new Set<string>();
-  const isProduction = process.env.NODE_ENV === "production";
-
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    addExpectedOrigin(expectedOrigins, process.env.NEXT_PUBLIC_APP_URL);
-  }
-
-  addDelimitedExpectedOrigins(expectedOrigins, process.env.TRUSTED_APP_ORIGINS);
-  addDelimitedExpectedOrigins(expectedOrigins, process.env.DEALFLOW_PLATFORM_LAUNCH_DOMAIN);
-  addDelimitedHostOrigins(expectedOrigins, process.env.DEALFLOW_PLATFORM_LAUNCH_DOMAIN);
-  addDelimitedHostOrigins(expectedOrigins, process.env.DEALFLOW_PLATFORM_FUNNEL_HOSTS);
-
-  if (!isProduction) {
-    addExpectedOrigin(expectedOrigins, request.url);
-    addHostOrigin(expectedOrigins, forwardedHost, forwardedProto);
-    addHostOrigin(expectedOrigins, host, forwardedProto);
-  }
+  const expectedOrigins = getTrustedRequestOrigins(request);
 
   if (expectedOrigins.size === 0) {
     throw new ApiError(503, "Application origin is not configured.", "app_origin_missing");
