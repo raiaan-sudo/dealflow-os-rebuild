@@ -14,7 +14,7 @@ for (const origin of [
   "https://www.agentdealflow.io",
   "https://dealflow-os-rebuild.vercel.app",
 ]) {
-  assert.match(routeSource, new RegExp(origin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `${origin} must be trusted explicitly`);
+  assert.ok(routeSource.includes(origin), `${origin} must be trusted explicitly`);
 }
 
 for (const envKey of [
