@@ -28,8 +28,8 @@
     "smoke:staging": "node ./scripts/smoke-test.mjs staging",
     "load:routes": "node ./scripts/load-test.mjs routes",
     "load:lead-capture": "node ./scripts/load-test.mjs lead-capture",
-    "test:internal-sms": "node ./scripts/test-internal-sms-notifications.mjs",
     "audit:lighthouse": "npx --yes @lhci/cli autorun --config=./lighthouserc.json",
+    "test:access-key-checkout-signup": "node ./scripts/test-access-key-checkout-signup.mjs",
     "test:public-funnel-thank-you": "node ./scripts/test-public-funnel-thank-you.mjs",
     "test:lead-tracking-health": "node ./scripts/test-lead-tracking-health.mjs",
     "test:ghl-iframe-embed-security": "node ./scripts/test-ghl-iframe-embed-security.mjs"

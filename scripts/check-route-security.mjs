@@ -18,6 +18,8 @@ const expectedPublicApiRoutes = new Map([
   ["/api/stripe/webhook", new Set(["POST"])],
   ["/api/webhooks/twilio/status", new Set(["POST"])],
   ["/api/client-errors", new Set(["POST"])],
+  ["/api/access-keys/checkout", new Set(["POST"])],
+  ["/api/access-keys/preclaim", new Set(["POST"])],
 ]);
 
 const expectedInternalApiRoutes = new Map([
@@ -44,6 +46,7 @@ const ownershipMarkers = [
   "listCampaignCreativeAssets",
   "uploadManualCreativeAsset",
   "assertMetaLaunchBillingAccess",
+  "assertInternalOperatorAccess",
   "auth.userId",
   "auth.organizationId",
   "organization_id",

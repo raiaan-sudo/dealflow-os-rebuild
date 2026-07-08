@@ -11,6 +11,9 @@ const PUBLIC_PATHS = new Set([
   "/privacy",
   "/terms",
   "/data-deletion",
+  "/access/checkout",
+  "/access-key/success",
+  "/access-key/cancel",
   "/robots.txt",
   "/sitemap.xml",
   "/opengraph-image",
@@ -24,6 +27,8 @@ const PUBLIC_API_PATHS = new Set([
   "/api/webhooks/twilio/status",
   "/api/stripe/webhook",
   "/api/client-errors",
+  "/api/access-keys/checkout",
+  "/api/access-keys/preclaim",
 ]);
 
 function isPublicRequest(pathname: string) {

@@ -74,6 +74,7 @@ export function LoginForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [accessKey, setAccessKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
@@ -247,6 +248,36 @@ export function LoginForm({
         return;
       }
 
+      let accessKeyClaimToken: string | null = null;
+      let accessKeyPartnerSlug: string | null = null;
+      const normalizedAccessKey = accessKey.trim();
+
+      if (normalizedAccessKey) {
+        const preclaimResponse = await fetch("/api/access-keys/preclaim", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            accessKey: normalizedAccessKey,
+            email,
+            partnerSlug: partnerAttribution?.partnerSlug ?? undefined,
+          }),
+        });
+        const preclaimPayload = await preclaimResponse.json().catch(() => null) as {
+          claimToken?: string;
+          partnerSlug?: string | null;
+          error?: string;
+        } | null;
+
+        if (!preclaimResponse.ok || !preclaimPayload?.claimToken) {
+          throw new Error(preclaimPayload?.error || "Access key could not be verified.");
+        }
+
+        accessKeyClaimToken = preclaimPayload.claimToken;
+        accessKeyPartnerSlug = preclaimPayload.partnerSlug ?? null;
+      }
+
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
@@ -260,6 +291,8 @@ export function LoginForm({
             ...(partnerAttribution?.source && partnerAttribution.source !== "native"
               ? { partner_attribution_source: partnerAttribution.source }
               : {}),
+            ...(accessKeyClaimToken ? { access_key_claim_token: accessKeyClaimToken } : {}),
+            ...(accessKeyPartnerSlug ? { access_key_partner_slug: accessKeyPartnerSlug } : {}),
           },
         },
       });
@@ -472,16 +505,29 @@ export function LoginForm({
 
       <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
         {mode === "sign-up" ? (
-          <label className="block space-y-2">
-            <span className="text-sm text-white/70">Full name</span>
-            <input
-              id="full-name"
-              value={fullName}
-              onChange={(event) => setFullName(event.target.value)}
-              placeholder="Alex Morgan"
-              className={inputClassName}
-            />
-          </label>
+          <>
+            <label className="block space-y-2">
+              <span className="text-sm text-white/70">Full name</span>
+              <input
+                id="full-name"
+                value={fullName}
+                onChange={(event) => setFullName(event.target.value)}
+                placeholder="Alex Morgan"
+                className={inputClassName}
+              />
+            </label>
+            <label className="block space-y-2">
+              <span className="text-sm text-white/70">Access key optional</span>
+              <input
+                id="access-key"
+                autoComplete="off"
+                value={accessKey}
+                onChange={(event) => setAccessKey(event.target.value)}
+                placeholder="df_live_..."
+                className={inputClassName}
+              />
+            </label>
+          </>
         ) : null}
 
         {mode !== "update-password" ? (
