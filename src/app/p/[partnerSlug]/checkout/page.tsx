@@ -1,5 +1,7 @@
 import { AccessKeyCheckoutForm } from "@/components/access-keys/access-key-checkout-form";
+import { isAccessKeyPublicCheckoutEnabled } from "@/lib/env";
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +30,10 @@ export default async function PartnerCheckoutPage({
 }: {
   params: Promise<{ partnerSlug: string }>;
 }) {
+  if (!isAccessKeyPublicCheckoutEnabled()) {
+    notFound();
+  }
+
   const { partnerSlug } = await params;
   const brandName = formatPartnerName(partnerSlug);
 

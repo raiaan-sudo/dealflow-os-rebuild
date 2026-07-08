@@ -188,6 +188,10 @@ export function isAccessKeyCheckoutEnabled() {
   return process.env.ENABLE_ACCESS_KEY_CHECKOUT === "true";
 }
 
+export function isAccessKeyPublicCheckoutEnabled() {
+  return process.env.ACCESS_KEY_PUBLIC_CHECKOUT_ENABLED === "true";
+}
+
 export function getAccessKeyHashPepper() {
   return process.env.ACCESS_KEY_HASH_PEPPER?.trim() || null;
 }

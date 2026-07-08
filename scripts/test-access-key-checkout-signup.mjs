@@ -9,6 +9,7 @@ function read(path) {
 
 const packageJson = JSON.parse(read("package.json"));
 const migration = read("supabase/migrations/20260705090000_create_billing_access_keys.sql");
+const env = read("src/lib/env.ts");
 const accessKeyService = read("src/lib/services/access-key-service.ts");
 const loginForm = read("src/components/auth/login-form.tsx");
 const appContext = read("src/lib/services/app-context.ts");
@@ -52,6 +53,7 @@ assert.match(accessKeyService, /revokeAccessKey/, "service must support operator
 assert.match(accessKeyService, /listAccessKeyEventsForAdmin/, "service must expose admin event timeline lookup");
 assert.match(accessKeyService, /access_key_schema_missing/, "service must fail safely when the access-key migration is missing");
 assert.doesNotMatch(accessKeyService, /console\.log\(.*rawKey|logOperationalEvent\([^)]*rawKey/s, "service must not log raw keys");
+assert.match(env, /isAccessKeyPublicCheckoutEnabled/, "public checkout must have a separate rollout flag");
 
 assert.match(loginForm, /id="access-key"/, "signup form must expose optional access-key field");
 assert.match(loginForm, /\/api\/access-keys\/preclaim/, "signup must preclaim access key before Supabase signup");
@@ -65,6 +67,8 @@ assert.match(billingService, /access_key_pending_claim/, "billing sync must igno
 
 assert.match(checkoutRoute, /assertSameOriginRequest/, "checkout API must be same-origin protected");
 assert.match(checkoutRoute, /access-key-checkout/, "checkout API must be rate limited");
+assert.match(checkoutRoute, /isAccessKeyPublicCheckoutEnabled/, "checkout API must fail closed unless public rollout flag is enabled");
+assert.match(checkoutRoute, /access_key_public_checkout_disabled/, "checkout API must return a safe disabled error before creating Stripe sessions");
 assert.match(preclaimRoute, /assertSameOriginRequest/, "preclaim API must be same-origin protected");
 assert.match(preclaimRoute, /access-key-preclaim/, "preclaim API must be rate limited");
 assert.match(proxy, /"\/api\/access-keys\/checkout"/, "checkout API must be intentionally public");
@@ -76,7 +80,11 @@ assert.match(paywallAccess, /getBillingSummary/, "paywall must continue to use b
 assert.doesNotMatch(paywallAccess, /access[_-]?key/i, "paywall must not add a separate access-key bypass");
 
 assert.match(checkoutPage, /AccessKeyCheckoutForm/, "native checkout page must render checkout form");
+assert.match(checkoutPage, /isAccessKeyPublicCheckoutEnabled/, "native checkout page must be hidden until public rollout flag is enabled");
+assert.match(checkoutPage, /notFound\(\)/, "native checkout page must fail closed while disabled");
 assert.match(partnerCheckoutPage, /partnerSlug=\{partnerSlug\}/, "partner checkout must carry partner slug into checkout");
+assert.match(partnerCheckoutPage, /isAccessKeyPublicCheckoutEnabled/, "partner checkout page must be hidden until public rollout flag is enabled");
+assert.match(partnerCheckoutPage, /notFound\(\)/, "partner checkout page must fail closed while disabled");
 assert.match(accessKeyService, /\.from\("partners"\)/, "partner checkout must validate partner slug server-side");
 assert.match(accessKeyService, /partner_slug: partnerBilling\.partnerSlug/, "partner checkout must persist partner attribution");
 assert.match(adminRevokeRoute, /assertSameOriginRequest/, "admin revoke must be same-origin protected");

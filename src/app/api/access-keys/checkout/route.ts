@@ -3,7 +3,7 @@ import { ApiError, assertSameOriginRequest, handleApiError, parseJsonBody } from
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { normalizeBillingPlanTier } from "@/lib/billing/plans";
 import { createAccessKeyCheckoutSession } from "@/lib/services/access-key-service";
-import { isBillingCheckoutSafeModeEnabled } from "@/lib/env";
+import { isAccessKeyPublicCheckoutEnabled, isBillingCheckoutSafeModeEnabled } from "@/lib/env";
 
 const checkoutSchema = z.object({
   planTier: z.enum(["performance", "starter", "pro", "growth"]).default("pro"),
@@ -34,6 +34,10 @@ export async function POST(request: Request) {
         "Billing checkout is temporarily unavailable while billing monitoring is degraded.",
         "billing_checkout_safe_mode",
       );
+    }
+
+    if (!isAccessKeyPublicCheckoutEnabled()) {
+      throw new ApiError(404, "Access-key public checkout is not enabled.", "access_key_public_checkout_disabled");
     }
 
     const body = await parseJsonBody(request, checkoutSchema);
