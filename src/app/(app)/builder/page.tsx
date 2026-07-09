@@ -137,7 +137,11 @@ export default async function BuilderPage({
         : "setup";
 
   return (
-    <div className="mx-auto w-full max-w-[1200px] space-y-6">
+    <div
+      className="mx-auto w-full max-w-[1200px] space-y-6"
+      data-builder-version="current"
+      data-testid="dealflow-current-builder-shell"
+    >
       <PageHeader
         eyebrow="Campaign Setup"
         title="Campaign Setup"
