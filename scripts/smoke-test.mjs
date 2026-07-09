@@ -127,10 +127,10 @@ function runOfflineChecks() {
   assertIncludes(loginForm, "redirectTo.searchParams.set(\"next\", nextPath)", "Auth redirect preservation", "OAuth sign-in keeps next path");
   assertIncludes(middleware, "pathname.startsWith(\"/f/\")", "Public funnel route", "/f/[slug] remains public");
   assertIncludes(onboardingRoute, "onboarding_idempotency_key", "Onboarding idempotency persistence", "campaign plans store onboarding idempotency key");
-  assertIncludes(onboardingPage, "Resume campaign build", "Onboarding resume UI", "resume banner exists after refresh");
-  assertIncludes(onboardingPage, "Generating funnel", "Onboarding progress step 1", "funnel progress visible");
-  assertIncludes(onboardingPage, "Generating ads and creative angles", "Onboarding progress step 2", "creative progress visible");
-  assertIncludes(onboardingPage, "Building launch-ready campaign", "Onboarding progress step 3", "campaign build progress visible");
+  assertIncludes(onboardingPage, "Confirm and build", "Onboarding review step", "screenshot-era review step remains the customer-facing builder");
+  assertIncludes(onboardingPage, "Ready to build campaign preview", "Onboarding review CTA", "review step keeps the safe campaign-preview handoff");
+  assertIncludes(onboardingPage, "Continue to creatives", "Onboarding creative handoff", "Pro users continue from onboarding into creative selection");
+  assertIncludes(onboardingPage, "PrepaywallCampaignPreview", "Onboarding package preview", "right-side campaign package preview remains wired");
   assertIncludes(appContextService, "isDemoWorkspaceSeedingEnabled", "Production demo seeding guard", "workspace demo data seeding is environment-gated");
   assertIncludes(appContextService, "fallbackOrganizationSlug", "Workspace slug collision guard", "bootstrap creates a user-owned fallback slug instead of recovering another owner workspace");
   assertIncludes(appContextService, "non-owned organization", "Workspace ownership bootstrap guard", "membership bootstrap refuses non-owned organizations");
