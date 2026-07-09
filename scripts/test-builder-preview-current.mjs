@@ -18,6 +18,12 @@ assert.doesNotMatch(
 );
 
 assert.doesNotMatch(
+  panels,
+  />\s*Lead form\s*</i,
+  "customer builder preview must not expose the old internal Lead Form block label",
+);
+
+assert.doesNotMatch(
   types,
   /PreviewPaneTab/,
   "legacy preview pane tab type must not be reintroduced",
