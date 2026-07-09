@@ -24,6 +24,12 @@ assert.match(
 
 assert.match(
   layout,
+  /pathname\.startsWith\("\/onboarding"\)/,
+  "/onboarding must use the focused package-preview shell instead of the legacy app sidebar",
+);
+
+assert.match(
+  layout,
   /if \(isFocusedProductRoute\)/,
   "focused product routes must bypass the legacy authenticated app shell",
 );
