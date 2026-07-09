@@ -27,7 +27,6 @@ import type {
   BuilderThemePreset,
   GeneratedVideoState,
   GuidedStep,
-  PreviewPaneTab,
 } from "@/components/campaign/builder/types";
 import { useBuilderPreviewModel } from "@/components/campaign/builder/use-builder-preview-model";
 import { fetchWithRetry } from "@/lib/http/fetch-with-retry";
@@ -749,9 +748,6 @@ export function CampaignBuilderWorkspace({
 }: Props) {
   const [activeTab, setActiveTab] = useState<BuilderTab>(initialTab);
   const [editingMode, setEditingMode] = useState<BuilderEditingMode>("guided");
-  const [previewTab, setPreviewTab] = useState<PreviewPaneTab>(
-    initialTab === "creatives" ? "ads" : "funnel",
-  );
   const [campaign, setCampaignState] = useState<BuiltCampaign>(() =>
     initialCampaign ? cloneCampaignSnapshot(initialCampaign) : createInitialCampaign(initialStrategy),
   );
@@ -1463,10 +1459,6 @@ export function CampaignBuilderWorkspace({
   });
 
   useEffect(() => {
-    setPreviewTab(activeTab === "creatives" ? "ads" : "funnel");
-  }, [activeTab]);
-
-  useEffect(() => {
     if (!typingFields.location) {
       return;
     }
@@ -1830,8 +1822,6 @@ export function CampaignBuilderWorkspace({
             <div className="min-w-0 overflow-hidden px-4 py-5 xl:px-5 xl:py-6">
               <div className="h-full overflow-y-auto pr-2 xl:pr-4">
                 <BuilderPreviewPanel
-                  previewTab={previewTab}
-                  setPreviewTab={setPreviewTab}
                   campaign={deferredPreviewCampaign}
                   creativeStrategy={creativeStrategy}
                   showCreativeQa={editingMode === "advanced"}
@@ -1911,8 +1901,7 @@ export function CampaignBuilderWorkspace({
                   </div>
                   <div className="mt-5">
                     <BuilderPreviewPanel
-                      previewTab={previewTab}
-                      setPreviewTab={setPreviewTab}
+                      mode="creatives"
                       campaign={deferredPreviewCampaign}
                       creativeStrategy={creativeStrategy}
                       showCreativeQa={editingMode === "advanced"}
@@ -1951,8 +1940,6 @@ export function CampaignBuilderWorkspace({
 
             <div className="min-w-0 overflow-hidden border-t border-white/10 px-4 py-5 2xl:border-t-0 2xl:border-l 2xl:border-white/10 xl:px-5 xl:py-6">
               <BuilderPreviewPanel
-                previewTab={previewTab}
-                setPreviewTab={setPreviewTab}
                 campaign={deferredPreviewCampaign}
                 creativeStrategy={creativeStrategy}
                 showCreativeQa={editingMode === "advanced"}
