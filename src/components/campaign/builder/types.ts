@@ -25,6 +25,7 @@ export type BuilderTab =
   | "creative"
   | "preview"
   | (string & {});
+export type PreviewPaneTab = "creative" | "video" | "funnel" | "launch" | (string & {});
 export type BuilderThemePreset =
   | "luxury"
   | "investor"

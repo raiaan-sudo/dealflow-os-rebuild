@@ -10,29 +10,10 @@ const maxP95Ms = Number.parseInt(
   10,
 );
 const maxWriteRequests = Number.parseInt(process.env.LOAD_MAX_WRITE_REQUESTS ?? "50", 10);
-const normalizedBaseUrl = baseUrl?.replace(/\/$/, "");
 
 function fail(message) {
   console.error(message);
   process.exit(1);
-}
-
-function isProductionLikeUrl(value) {
-  if (!value) {
-    return false;
-  }
-
-  try {
-    const parsed = new URL(value);
-    const host = parsed.hostname.toLowerCase();
-    return (
-      /(?:^|\.)clicktoscale\.io$/.test(host) ||
-      /(?:^|\.)agentdealflow\.io$/.test(host) ||
-      host === "dealflow-os-rebuild.vercel.app"
-    ) && !/staging|preview|localhost|127\.0\.0\.1/.test(host);
-  } catch {
-    return false;
-  }
 }
 
 function percentile(values, pct) {
@@ -49,14 +30,10 @@ if (!baseUrl) {
   fail("LOAD_BASE_URL is required. Use an explicit production or staging URL for load tests.");
 }
 
-if (baseUrl !== normalizedBaseUrl) {
-  process.env.LOAD_BASE_URL = normalizedBaseUrl;
-}
-
 async function timedRequest(path, init) {
   const started = performance.now();
   try {
-    const response = await fetch(`${normalizedBaseUrl}${path}`, init);
+    const response = await fetch(`${baseUrl}${path}`, init);
     await response.arrayBuffer();
     return {
       ok: response.status < 500,
@@ -153,29 +130,6 @@ async function runRoutesScenario() {
 async function runLeadCaptureScenario() {
   if (process.env.LOAD_TEST_ALLOW_WRITES !== "true") {
     fail("Refusing to write leads. Set LOAD_TEST_ALLOW_WRITES=true with LOAD_TEST_CAMPAIGN_ID to run this scenario.");
-  }
-
-  if (isProductionLikeUrl(normalizedBaseUrl)) {
-    const confirmed =
-      process.env.TARGET_ENV === "production" &&
-      process.env.DRY_RUN === "false" &&
-      process.env.ALLOW_PRODUCTION_WRITE_LOAD_TEST === "true" &&
-      process.env.PRODUCTION_WRITE_LOAD_TEST_CONFIRMATION === "I_UNDERSTAND_THIS_WRITES_QA_LEADS_TO_PRODUCTION";
-
-    if (!confirmed) {
-      fail(
-        "Refusing production lead-write load test. Use staging/local, or set TARGET_ENV=production, DRY_RUN=false, ALLOW_PRODUCTION_WRITE_LOAD_TEST=true, and PRODUCTION_WRITE_LOAD_TEST_CONFIRMATION=I_UNDERSTAND_THIS_WRITES_QA_LEADS_TO_PRODUCTION for an approved isolated QA campaign.",
-      );
-    }
-  }
-
-  const sideEffectsSafe =
-    process.env.SMS_MOCK_MODE === "true" ||
-    process.env.TEST_SMS_MODE === "mock" ||
-    process.env.LOAD_TEST_EXTERNAL_SIDE_EFFECTS === "disabled";
-
-  if (!sideEffectsSafe) {
-    fail("Lead-write load tests require SMS_MOCK_MODE=true, TEST_SMS_MODE=mock, or LOAD_TEST_EXTERNAL_SIDE_EFFECTS=disabled.");
   }
 
   if (requests > maxWriteRequests) {

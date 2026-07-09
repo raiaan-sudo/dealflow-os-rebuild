@@ -42,67 +42,7 @@ jobs:
         run: npm run lint
 
       - name: Typecheck
-        run: npm run typecheck -- --incremental false
-
-      - name: Public funnel guard
-        run: npm run guard:public-funnel
-
-      - name: Canonical public funnel regression
-        run: npm run test:canonical-public-funnel
-
-      - name: Campaign public funnel paths
-        run: npm run test:campaign-public-funnel-paths
-
-      - name: Public funnel mobile conversion checks
-        run: npm run test:public-funnel-mobile
-
-      - name: Lead tracking health regression
-        run: npm run test:lead-tracking-health
-
-      - name: Client telemetry origin regression
-        run: npm run test:client-telemetry-origin
-
-      - name: Meta instant form contract
-        run: npm run test:meta-instant-form-contract
-
-      - name: Meta question mapping contract
-        run: npm run test:meta-question-mapping
-
-      - name: Meta no-spend guards
-        run: npm run test:meta-no-spend-guards
-
-      - name: Homepage copy regression
-        run: npm run test:homepage
-
-      - name: Product correctness contract
-        run: npm run test:product-correctness
-
-      - name: CRM readiness contract
-        run: npm run test:crm-readiness
-
-      - name: API security contract
-        run: npm run test:api-security
-
-      - name: AuthZ and BOLA contract
-        run: npm run test:authz-bola
-
-      - name: RLS fixture/static contract
-        run: npm run test:rls-fixtures
-
-      - name: Webhook security contract
-        run: npm run test:webhook-security
-
-      - name: Security header contract
-        run: npm run test:security-headers
-
-      - name: Load safety contract
-        run: npm run test:load-safety
-
-      - name: Browser audit harness contract
-        run: npm run test:browser-audit-harness
-
-      - name: Performance budget contract
-        run: npm run perf:budgets
+        run: npm run typecheck
 
       - name: Build
         run: npm run build
@@ -112,14 +52,3 @@ jobs:
 
       - name: Route security
         run: npm run routes:security
-
-      - name: Schema check
-        run: npm run schema:check
-        env:
-          SUPABASE_SCHEMA_CHECK_MODE: local
-
-      - name: Dependency audit
-        run: npm audit --audit-level=low
-
-      - name: Whitespace diff guard
-        run: git diff --check

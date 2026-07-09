@@ -59,8 +59,6 @@ export type PersistedCampaignPlanPayload = {
   creatives: CampaignPlan["creatives"];
   ads: CampaignPlan["ads"];
   funnel?: CampaignPlan["funnel"];
-  public_funnel_preset_version?: string | null;
-  public_funnel?: unknown;
   runtime: CampaignPlan["runtime"];
 };
 
@@ -537,8 +535,6 @@ function mapPlanRow(
             followUpAction: "Send the next-step response and qualify interest.",
             optimizationNotes: [],
           },
-    publicFunnelPresetVersion: payload.public_funnel_preset_version ?? null,
-    publicFunnel: payload.public_funnel ?? null,
     runtime: payload.runtime,
     createdAt: row.created_at,
   };
@@ -753,8 +749,6 @@ export function buildPersistedCampaignPlanPayload(params: {
     creatives: CampaignPlan["creatives"];
     ads: CampaignPlan["ads"];
     funnel?: CampaignPlan["funnel"] | GeneratedPreviewFunnel;
-    publicFunnelPresetVersion?: string | null;
-    publicFunnel?: unknown;
     runtime?: CampaignPlan["runtime"];
     assetGeneration?: PersistedAssetGenerationState;
   };
@@ -802,8 +796,6 @@ export function buildPersistedCampaignPlanPayload(params: {
       keyOffer: generatedPlan.keyOffer,
       summary: generatedPlan.summary,
     }),
-    public_funnel_preset_version: generatedPlan.publicFunnelPresetVersion ?? null,
-    public_funnel: generatedPlan.publicFunnel ?? null,
     runtime,
   };
 }
