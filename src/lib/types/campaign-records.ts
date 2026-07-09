@@ -110,8 +110,6 @@ export type FullCampaignRecord = {
     hasStagedSnapshot: boolean;
     hasPublishedSnapshot: boolean;
   };
-  publicFunnelPresetVersion?: string | null;
-  publicFunnel?: unknown;
 };
 
 export type SaveCampaignPayload = {
@@ -125,8 +123,6 @@ export type SaveCampaignPayload = {
   ads?: CampaignAd[] | null;
   launch?: FullCampaignRecord["launch"] | null;
   results?: FullCampaignRecord["results"] | null;
-  publicFunnelPresetVersion?: string | null;
-  publicFunnel?: unknown;
 };
 
 export type SaveCampaignResult = {

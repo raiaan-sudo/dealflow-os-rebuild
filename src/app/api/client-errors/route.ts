@@ -6,19 +6,10 @@ import { recordClientErrorEvent } from "@/lib/services/client-error-telemetry-se
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const publicLeadCaptureEvents = [
-  "lead_form_viewed",
-  "lead_form_started",
-  "lead_form_submit_attempted",
-  "lead_form_validation_failed",
-  "lead_capture_client_success",
-  "lead_capture_client_failed",
-] as const;
-
 const clientErrorSchema = z.object({
-  source: z.enum(["public_lead_capture"]).optional(),
+  source: z.string().min(1).max(80).optional(),
   routePath: z.string().min(1).max(500).optional(),
-  errorName: z.enum(publicLeadCaptureEvents).optional(),
+  errorName: z.string().max(160).optional(),
   message: z.string().min(1).max(1800),
   stack: z.string().max(6000).optional(),
   componentStack: z.string().max(6000).optional(),

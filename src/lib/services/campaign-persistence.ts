@@ -7,11 +7,6 @@ import {
   normalizeCanonicalCampaign,
   type SavedCampaignDocument,
 } from "@/lib/services/canonical-campaign";
-import {
-  attachCanonicalPublicFunnel,
-  buildCanonicalPublicFunnel,
-} from "@/lib/public-funnel/canonical-public-funnel";
-import { CURRENT_PUBLIC_FUNNEL_PRESET_VERSION } from "@/lib/public-funnel/constants";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import { getAppContext } from "@/lib/services/app-context";
 import {
@@ -344,8 +339,6 @@ function mapPublishRecord(row: CampaignPlanRow) {
 }
 
 function buildPersistedSavedDocument(record: FullCampaignRecord): CampaignPublishSnapshot {
-  const publicRecord = attachCanonicalPublicFunnel(record as unknown as Record<string, unknown>);
-
   return {
     name: record.campaign.name,
     plan: record.plan as unknown as Record<string, unknown>,
@@ -357,8 +350,6 @@ function buildPersistedSavedDocument(record: FullCampaignRecord): CampaignPublis
     copy: record.creatives.copy,
     ads: record.creatives.ads,
     funnel: record.funnel as unknown as Record<string, unknown>,
-    publicFunnelPresetVersion: publicRecord.publicFunnelPresetVersion,
-    publicFunnel: publicRecord.publicFunnel,
     launch: record.launch,
     results: record.results,
   };
@@ -458,8 +449,6 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
     copy: payload.copy ?? payload.campaign?.copy ?? null,
     ads: payload.ads ?? null,
     funnel: payload.funnel ?? payload.campaign?.funnel ?? null,
-    publicFunnelPresetVersion: payload.publicFunnelPresetVersion ?? null,
-    publicFunnel: payload.publicFunnel ?? null,
     launch: payload.launch ?? null,
     results: payload.results ?? null,
   };
@@ -517,8 +506,6 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
     copy: canonical.creatives.copy,
     ads: canonical.creatives.ads,
     funnel: canonical.funnel,
-    publicFunnelPresetVersion: CURRENT_PUBLIC_FUNNEL_PRESET_VERSION,
-    publicFunnel: buildCanonicalPublicFunnel(canonical),
     launch: canonical.launch,
     results: canonical.results,
   };

@@ -94,10 +94,6 @@ const CLICK_TO_SCALE_IFRAME_HOSTS = new Set([
   "clip2scale.io",
   "www.clip2scale.io",
 ]);
-const CLICK_TO_SCALE_ROOT_APP_HOSTS = new Set([
-  "clicktoscale.io",
-  "www.clicktoscale.io",
-]);
 const DEFAULT_GHL_FRAME_ANCESTORS = [
   "https://app.gohighlevel.com",
   "https://*.gohighlevel.com",
@@ -125,19 +121,6 @@ function getFrameAncestors(request: NextRequest) {
       ...getConfiguredFrameAncestors(),
     ]),
   ).join(" ");
-}
-
-function shouldRedirectClickToScaleRoot(request: NextRequest) {
-  return (
-    request.nextUrl.pathname === "/" &&
-    CLICK_TO_SCALE_ROOT_APP_HOSTS.has(request.nextUrl.hostname.toLowerCase())
-  );
-}
-
-function buildClickToScaleRootRedirect(request: NextRequest) {
-  const redirectUrl = new URL("/onboarding", request.url);
-  redirectUrl.search = request.nextUrl.search;
-  return redirectUrl;
 }
 
 function applySecurityHeaders(request: NextRequest, response: NextResponse, startedAt?: number) {
@@ -186,24 +169,6 @@ function applySecurityHeaders(request: NextRequest, response: NextResponse, star
       ...(isProduction ? ["upgrade-insecure-requests"] : []),
     ].join("; "),
   );
-  response.headers.set(
-    "Content-Security-Policy-Report-Only",
-    [
-      "default-src 'self'",
-      "script-src 'self' https://js.stripe.com https://connect.facebook.net https://challenges.cloudflare.com",
-      "script-src-attr 'none'",
-      "style-src 'self'",
-      "img-src 'self' data: blob: https:",
-      "font-src 'self' data:",
-      "media-src 'self' blob: https:",
-      "connect-src 'self' https://*.supabase.co https://api.stripe.com https://graph.facebook.com https://www.facebook.com https://api.openai.com https://api.heygen.com https://challenges.cloudflare.com",
-      "frame-src https://js.stripe.com https://hooks.stripe.com https://www.facebook.com https://challenges.cloudflare.com",
-      "form-action 'self'",
-      "object-src 'none'",
-      "base-uri 'self'",
-      `frame-ancestors ${frameAncestors}`,
-    ].join("; "),
-  );
 
   if (isProduction) {
     response.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
@@ -225,10 +190,6 @@ export async function proxy(request: NextRequest) {
   requestHeaders.set("x-pathname", request.nextUrl.pathname);
   let response = NextResponse.next({ request: { headers: requestHeaders } });
   const pathname = request.nextUrl.pathname;
-
-  if (shouldRedirectClickToScaleRoot(request)) {
-    return finalize(NextResponse.redirect(buildClickToScaleRootRedirect(request)));
-  }
 
   if (isPublicRequest(pathname)) {
     return finalize(response);

@@ -221,8 +221,6 @@ export type CampaignPlan = {
     followUpAction: string;
     optimizationNotes: string[];
   };
-  publicFunnelPresetVersion?: string | null;
-  publicFunnel?: unknown;
   runtime: CampaignRuntime;
   createdAt: string;
 };
@@ -503,8 +501,6 @@ function buildPlanPayloadFromPlan(plan: CampaignPlan): PersistedPlanPayload {
       creatives: plan.creatives,
       ads: withAdImageFallback(plan.ads),
       funnel: plan.funnel,
-      publicFunnelPresetVersion: plan.publicFunnelPresetVersion ?? null,
-      publicFunnel: plan.publicFunnel ?? null,
     },
     runtime: plan.runtime,
   });
@@ -692,8 +688,6 @@ function mapPayloadToPlan(
       market: payload.market,
       summary: payload.summary,
     }),
-    publicFunnelPresetVersion: payload.public_funnel_preset_version ?? null,
-    publicFunnel: payload.public_funnel ?? null,
     runtime: normalizeCampaignRuntime(payload.runtime),
     createdAt: row.created_at,
   };
@@ -1313,8 +1307,6 @@ export async function persistCampaignPlan(plan: CampaignPlan) {
       market: plan.market,
       summary: plan.summary,
     }),
-    publicFunnelPresetVersion: plan.publicFunnelPresetVersion ?? null,
-    publicFunnel: plan.publicFunnel ?? null,
     runtime: normalizeCampaignRuntime(plan.runtime),
   };
 

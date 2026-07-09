@@ -15,7 +15,7 @@ import type { BuiltCampaign, CampaignStrategyInput } from "@/lib/services/campai
 import type { CampaignCreativeStrategy } from "@/lib/services/campaign-creative-strategy";
 import { assessCreativeOpsQuality } from "@/lib/services/creative-ops-qa-service";
 import type { CreativeScoreBreakdown } from "@/lib/services/creative-scoring-service";
-import type { GeneratedVideoState, BuilderEditingMode, BuilderPreviewDirection, BuilderThemePreset } from "@/components/campaign/builder/types";
+import type { PreviewPaneTab, GeneratedVideoState, BuilderEditingMode, BuilderPreviewDirection, BuilderThemePreset } from "@/components/campaign/builder/types";
 import { GuidedStepFooter } from "@/components/campaign/builder/builder-navigation";
 import type { FunnelSection, FunnelSectionStyle, FunnelSectionType } from "@/lib/services/funnel-engine";
 import {
@@ -32,6 +32,31 @@ import {
   trimWords,
 } from "@/components/campaign/builder/funnel-editor-shared";
 import { useAdvancedFunnelEditor } from "@/components/campaign/builder/use-advanced-funnel-editor";
+
+function TabButton({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "rounded-full px-4 py-2 text-sm font-semibold transition",
+        active
+          ? "bg-primary text-primary-foreground"
+          : "border border-white/10 bg-white/[0.03] text-muted-foreground hover:text-foreground",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
 
 function EditorDisclosure({
   title,
@@ -387,7 +412,7 @@ const FunnelLivePreview = memo(function FunnelLivePreview({
         <div className="px-6 py-8 text-[#111111] sm:px-8 sm:py-10" style={{ backgroundColor: theme.palette.panel }}>
           <div className="rounded-[24px] bg-white p-5 shadow-[0_20px_60px_-40px_rgba(0,0,0,0.25)] sm:p-6">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#8a8276]">
-              Request details
+              Lead form
             </p>
             <div className="mt-5 space-y-3">
               {formFields.map((field) => (
@@ -2205,7 +2230,8 @@ export function BuilderCreativesPanel(props: {
 }
 
 export const BuilderPreviewPanel = memo(function BuilderPreviewPanel({
-  mode = "funnel",
+  previewTab,
+  setPreviewTab,
   campaign,
   creativeStrategy,
   showCreativeQa = false,
@@ -2217,7 +2243,8 @@ export const BuilderPreviewPanel = memo(function BuilderPreviewPanel({
   previewAssets,
   previewDirection,
 }: {
-  mode?: "funnel" | "creatives";
+  previewTab: PreviewPaneTab;
+  setPreviewTab: React.Dispatch<React.SetStateAction<PreviewPaneTab>>;
   campaign: BuiltCampaign;
   creativeStrategy?: CampaignCreativeStrategy | null;
   showCreativeQa?: boolean;
@@ -2260,14 +2287,22 @@ export const BuilderPreviewPanel = memo(function BuilderPreviewPanel({
               Review what the user will actually see
             </h3>
           </div>
-          <Badge className="border-primary/15 bg-primary/10 text-primary">
-            {mode === "creatives" ? "Creative package" : "Customer funnel"}
-          </Badge>
+          <div className="flex flex-wrap gap-2">
+            <TabButton active={previewTab === "funnel"} onClick={() => setPreviewTab("funnel")}>
+              Funnel
+            </TabButton>
+            <TabButton active={previewTab === "ads"} onClick={() => setPreviewTab("ads")}>
+              Ads
+            </TabButton>
+            <TabButton active={previewTab === "assets"} onClick={() => setPreviewTab("assets")}>
+              Assets
+            </TabButton>
+          </div>
         </div>
 
         <div className="mt-5 h-full overflow-y-auto overflow-x-hidden">
           <div className="w-full min-w-0">
-            {mode === "funnel" ? (
+            {previewTab === "funnel" ? (
               <FunnelLivePreview
                 headline={previewHeadline}
                 subheadline={previewSubheadline}
@@ -2279,7 +2314,7 @@ export const BuilderPreviewPanel = memo(function BuilderPreviewPanel({
               />
             ) : null}
 
-            {mode === "creatives" ? (
+            {previewTab === "ads" ? (
               <div className="space-y-6">
                 <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-4">
@@ -2394,23 +2429,20 @@ export const BuilderPreviewPanel = memo(function BuilderPreviewPanel({
                     </p>
                   </div>
                 ) : null}
-
-                {previewAssets.length > 0 ? (
-                  <div className="space-y-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                      Saved launch assets
-                    </p>
-                    <AssetPreviewGrid items={previewAssets} />
-                  </div>
-                ) : (
-                  <div className="rounded-[20px] border border-dashed border-white/10 bg-white/[0.02] px-4 py-6">
-                    <p className="text-sm font-semibold">No canonical assets yet</p>
-                    <p className="mt-2 text-sm leading-6 text-white/58">
-                      Upload or generate real assets to preview the saved launch package here.
-                    </p>
-                  </div>
-                )}
               </div>
+            ) : null}
+
+            {previewTab === "assets" ? (
+              previewAssets.length > 0 ? (
+                <AssetPreviewGrid items={previewAssets} />
+              ) : (
+                <div className="rounded-[20px] border border-dashed border-white/10 bg-white/[0.02] px-4 py-6">
+                  <p className="text-sm font-semibold">No canonical assets yet</p>
+                  <p className="mt-2 text-sm leading-6 text-white/58">
+                    Upload or generate real assets to preview the saved launch package here.
+                  </p>
+                </div>
+              )
             ) : null}
           </div>
         </div>

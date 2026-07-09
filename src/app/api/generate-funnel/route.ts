@@ -10,8 +10,6 @@ import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { persistCampaignPlan } from "@/lib/services/campaign-plan-service";
 import { generateFunnel } from "@/lib/services/funnel-engine";
-import { buildCanonicalPublicFunnel } from "@/lib/public-funnel/canonical-public-funnel";
-import { CURRENT_PUBLIC_FUNNEL_PRESET_VERSION } from "@/lib/public-funnel/constants";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { runTrackedSystemJob } from "@/lib/services/system-job-service";
 import {
@@ -82,7 +80,7 @@ export async function POST(request: Request) {
           funnel_goal: deriveFunnelGoal(plan.funnelType),
         });
 
-        const nextPlan = {
+        const savedPlan = await persistCampaignPlan({
           ...plan,
           funnelType: funnel.funnel_type,
           funnel: {
@@ -95,29 +93,6 @@ export async function POST(request: Request) {
             followUpAction: funnel.follow_up_action,
             optimizationNotes: funnel.optimization_notes,
           },
-        };
-        const savedPlan = await persistCampaignPlan({
-          ...nextPlan,
-          publicFunnelPresetVersion: CURRENT_PUBLIC_FUNNEL_PRESET_VERSION,
-          publicFunnel: buildCanonicalPublicFunnel({
-            ...record,
-            plan: {
-              ...record.plan,
-              public_slug: plan.publicFunnel && typeof plan.publicFunnel === "object"
-                ? (plan.publicFunnel as Record<string, unknown>).slug
-                : undefined,
-            },
-            funnel: {
-              funnel_type: funnel.funnel_type,
-              headline: funnel.headline,
-              subheadline: funnel.subheadline,
-              cta: funnel.cta,
-              sections: funnel.sections,
-              form_fields: funnel.form_fields,
-              follow_up_action: funnel.follow_up_action,
-              optimization_notes: funnel.optimization_notes,
-            },
-          }),
         });
 
         return {
