@@ -1138,26 +1138,6 @@ export default function OnboardingPage() {
 
   return (
     <PageShell className="w-full max-w-[1240px] gap-3 py-4 sm:py-5">
-      <Card className="p-3.5 sm:p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge>Campaign setup</Badge>
-              <Badge className="border-emerald-300/20 bg-emerald-300/[0.06] text-emerald-100">Safe build</Badge>
-            </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-[-0.055em] sm:text-[2rem]">
-              Step-by-step campaign builder
-            </h1>
-            <p className="mt-2 max-w-3xl text-xs leading-5 text-white/62 sm:text-sm">
-              One decision at a time. DealFlow recommends the strategy, updates the preview, and keeps the next click obvious.
-            </p>
-          </div>
-          <Button type="button" variant="secondary" onClick={resetDraft}>
-            New campaign
-          </Button>
-        </div>
-      </Card>
-
       <StepProgress currentStep={currentStep} furthestStepIndex={furthestStepIndex} steps={visibleSteps} onSelect={goToStep} />
 
       <div className="grid min-w-0 items-stretch gap-3 xl:grid-cols-[minmax(0,0.95fr)_minmax(390px,0.72fr)]">

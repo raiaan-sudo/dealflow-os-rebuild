@@ -3,6 +3,7 @@ import fs from "node:fs";
 
 const layout = fs.readFileSync("src/app/(app)/layout.tsx", "utf8");
 const builderPage = fs.readFileSync("src/app/(app)/builder/page.tsx", "utf8");
+const onboardingPage = fs.readFileSync("src/app/(app)/onboarding/page.tsx", "utf8");
 
 assert.match(
   builderPage,
@@ -32,6 +33,12 @@ assert.match(
   layout,
   /if \(isFocusedProductRoute\)/,
   "focused product routes must bypass the legacy authenticated app shell",
+);
+
+assert.doesNotMatch(
+  onboardingPage,
+  /Step-by-step campaign builder/,
+  "/onboarding must not reintroduce the newer intro header above the screenshot-era step rail",
 );
 
 assert.doesNotMatch(
