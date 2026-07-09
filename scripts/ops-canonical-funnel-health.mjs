@@ -128,7 +128,7 @@ async function collectDbHealth(supabase, rangeStart) {
     capiFailures,
     dbInsertFailures,
     notificationFailures,
-    jobFailures,
+    jobFailureRows,
     submitAttempts,
     capturedLeads,
   ] = await Promise.all([
@@ -136,7 +136,6 @@ async function collectDbHealth(supabase, rangeStart) {
       .from("campaign_plans")
       .select("id, public_slug, publish_state, plan, staged_snapshot, published_snapshot")
       .eq("publish_state", "published")
-      .not("public_slug", "is", null)
       .limit(1000),
     countRows(supabase, "client_error_events", (query) =>
       query
@@ -153,9 +152,12 @@ async function collectDbHealth(supabase, rangeStart) {
     countRows(supabase, "lead_notifications", (query) =>
       query.eq("status", "failed").gte("created_at", rangeStart),
     ),
-    countRows(supabase, "system_jobs", (query) =>
-      query.eq("status", "failed").gte("created_at", rangeStart),
-    ),
+    supabase
+      .from("system_jobs")
+      .select("id, kind, status, created_at, result")
+      .eq("status", "failed")
+      .gte("created_at", rangeStart)
+      .limit(1000),
     countRows(supabase, "client_error_events", (query) =>
       query
         .eq("source", "public_lead_capture")
@@ -168,7 +170,9 @@ async function collectDbHealth(supabase, rangeStart) {
   ]);
 
   const rows = publishedRows.error ? [] : publishedRows.data ?? [];
-  const missingPublicFunnel = rows.filter((row) => {
+  const nullSlugPublished = rows.filter((row) => !row.public_slug);
+  const publicRows = rows.filter((row) => Boolean(row.public_slug));
+  const missingPublicFunnel = publicRows.filter((row) => {
     const plan = row.plan && typeof row.plan === "object" && !Array.isArray(row.plan) ? row.plan : {};
     const snapshot = row.published_snapshot && typeof row.published_snapshot === "object" && !Array.isArray(row.published_snapshot)
       ? row.published_snapshot
@@ -178,7 +182,7 @@ async function collectDbHealth(supabase, rangeStart) {
       : {};
     return !plan.publicFunnel && !stagedSnapshot.publicFunnel && !snapshot.publicFunnel;
   });
-  const wrongVersion = rows.filter((row) => {
+  const wrongVersion = publicRows.filter((row) => {
     const plan = row.plan && typeof row.plan === "object" && !Array.isArray(row.plan) ? row.plan : {};
     const snapshot = row.published_snapshot && typeof row.published_snapshot === "object" && !Array.isArray(row.published_snapshot)
       ? row.published_snapshot
@@ -188,6 +192,11 @@ async function collectDbHealth(supabase, rangeStart) {
       : {};
     const version = snapshot.publicFunnelPresetVersion ?? stagedSnapshot.publicFunnelPresetVersion ?? plan.publicFunnelPresetVersion;
     return version !== CANONICAL_VERSION;
+  });
+  const failedJobRows = jobFailureRows.error ? [] : jobFailureRows.data ?? [];
+  const unresolvedFailedJobs = failedJobRows.filter((row) => {
+    const result = row.result && typeof row.result === "object" && !Array.isArray(row.result) ? row.result : {};
+    return !result.opsResolution;
   });
 
   const alerts = [];
@@ -201,7 +210,7 @@ async function collectDbHealth(supabase, rangeStart) {
   addAlert("lead_capture_db_insert_failed", dbInsertFailures, 0, typeof dbInsertFailures === "number" && dbInsertFailures > 0);
   addAlert("capi_failed", capiFailures, 0, typeof capiFailures === "number" && capiFailures > 0);
   addAlert("notification_failed", notificationFailures, 0, typeof notificationFailures === "number" && notificationFailures > 0);
-  addAlert("side_effect_job_failed", jobFailures, 0, typeof jobFailures === "number" && jobFailures > 0);
+  addAlert("side_effect_job_failed", unresolvedFailedJobs.length, 0, unresolvedFailedJobs.length > 0);
   addAlert("published_missing_public_funnel", missingPublicFunnel.length, 0);
   addAlert("published_wrong_version", wrongVersion.length, 0);
   addAlert(
@@ -213,10 +222,18 @@ async function collectDbHealth(supabase, rangeStart) {
 
   return {
     published: {
-      total: rows.length,
+      total: publicRows.length,
+      totalIncludingNullSlug: rows.length,
+      nullSlugPublished: nullSlugPublished.length,
       missingPublicFunnel: missingPublicFunnel.length,
       wrongVersion: wrongVersion.length,
       readError: publishedRows.error?.message ?? null,
+    },
+    dataHygiene: {
+      nullSlugPublished: nullSlugPublished.length,
+      resolvedRecentFailedJobs: failedJobRows.length - unresolvedFailedJobs.length,
+      unresolvedRecentFailedJobs: unresolvedFailedJobs.length,
+      jobReadError: jobFailureRows.error?.message ?? null,
     },
     recent: {
       rangeStart,
@@ -224,7 +241,7 @@ async function collectDbHealth(supabase, rangeStart) {
       leadCaptureDbInsertFailures: dbInsertFailures,
       capiFailures,
       notificationFailures,
-      sideEffectJobFailures: jobFailures,
+      sideEffectJobFailures: unresolvedFailedJobs.length,
       submitAttempts,
       capturedLeads,
     },
