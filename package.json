@@ -53,6 +53,7 @@
     "test:meta-no-spend-guards": "node ./scripts/test-meta-no-spend-guards.mjs",
     "test:product-correctness": "node ./scripts/test-product-correctness.mjs",
     "test:crm-readiness": "node ./scripts/test-crm-readiness-contract.mjs",
+    "test:twilio-notification-contract": "node ./scripts/test-internal-sms-notifications.mjs",
     "test:api-security": "node ./scripts/test-api-security.mjs",
     "test:authz-bola": "node ./scripts/test-authz-bola.mjs",
     "test:rls-fixtures": "node ./scripts/test-rls-fixtures.mjs",
