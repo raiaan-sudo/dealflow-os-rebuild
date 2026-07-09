@@ -94,6 +94,14 @@ const CLICK_TO_SCALE_IFRAME_HOSTS = new Set([
   "clip2scale.io",
   "www.clip2scale.io",
 ]);
+const ROOT_APP_REDIRECT_HOSTS = new Set([
+  "clicktoscale.io",
+  "www.clicktoscale.io",
+  "clip2scale.io",
+  "www.clip2scale.io",
+  "agentdealflow.io",
+  "app.agentdealflow.io",
+]);
 const DEFAULT_GHL_FRAME_ANCESTORS = [
   "https://app.gohighlevel.com",
   "https://*.gohighlevel.com",
@@ -121,6 +129,19 @@ function getFrameAncestors(request: NextRequest) {
       ...getConfiguredFrameAncestors(),
     ]),
   ).join(" ");
+}
+
+function shouldRedirectRootToApp(request: NextRequest) {
+  return (
+    request.nextUrl.pathname === "/" &&
+    ROOT_APP_REDIRECT_HOSTS.has(request.nextUrl.hostname.toLowerCase())
+  );
+}
+
+function buildRootAppRedirect(request: NextRequest) {
+  const redirectUrl = new URL("/onboarding", request.url);
+  redirectUrl.search = request.nextUrl.search;
+  return redirectUrl;
 }
 
 function applySecurityHeaders(request: NextRequest, response: NextResponse, startedAt?: number) {
@@ -190,6 +211,10 @@ export async function proxy(request: NextRequest) {
   requestHeaders.set("x-pathname", request.nextUrl.pathname);
   let response = NextResponse.next({ request: { headers: requestHeaders } });
   const pathname = request.nextUrl.pathname;
+
+  if (shouldRedirectRootToApp(request)) {
+    return finalize(NextResponse.redirect(buildRootAppRedirect(request)));
+  }
 
   if (isPublicRequest(pathname)) {
     return finalize(response);

@@ -126,6 +126,18 @@ function runOfflineChecks() {
 
   assertIncludes(loginForm, "redirectTo.searchParams.set(\"next\", nextPath)", "Auth redirect preservation", "OAuth sign-in keeps next path");
   assertIncludes(middleware, "pathname.startsWith(\"/f/\")", "Public funnel route", "/f/[slug] remains public");
+  assertIncludes(
+    middleware,
+    "ROOT_APP_REDIRECT_HOSTS",
+    "Root app domain routing",
+    "ClickToScale and AgentDealFlow app roots route into onboarding instead of the marketing homepage",
+  );
+  assertIncludes(
+    middleware,
+    "buildRootAppRedirect",
+    "Root app redirect destination",
+    "root app domains redirect to the onboarding entry point while preserving query params",
+  );
   assertIncludes(onboardingRoute, "onboarding_idempotency_key", "Onboarding idempotency persistence", "campaign plans store onboarding idempotency key");
   assertIncludes(onboardingPage, "Resume campaign build", "Onboarding resume UI", "resume banner exists after refresh");
   assertIncludes(onboardingPage, "Generating funnel", "Onboarding progress step 1", "funnel progress visible");
