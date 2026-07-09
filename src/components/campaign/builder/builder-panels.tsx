@@ -387,7 +387,7 @@ const FunnelLivePreview = memo(function FunnelLivePreview({
         <div className="px-6 py-8 text-[#111111] sm:px-8 sm:py-10" style={{ backgroundColor: theme.palette.panel }}>
           <div className="rounded-[24px] bg-white p-5 shadow-[0_20px_60px_-40px_rgba(0,0,0,0.25)] sm:p-6">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#8a8276]">
-              Lead form
+              Request details
             </p>
             <div className="mt-5 space-y-3">
               {formFields.map((field) => (
