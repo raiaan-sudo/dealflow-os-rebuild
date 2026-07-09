@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 const publicRoutes = [
   "/",
@@ -9,6 +9,18 @@ const publicRoutes = [
 const publicFunnelRoutes = ["/f/hamza-juma", "/f/homelife-hearts-realty-inc"];
 const publicFunnelBaseURL = process.env.PUBLIC_FUNNEL_E2E_BASE_URL?.replace(/\/$/, "");
 const canRenderLocalFunnels = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
+
+async function gotoPublicRoute(page: Page, route: string) {
+  await page.goto(route, { waitUntil: "domcontentloaded" });
+  await expect(page.locator("body")).toBeVisible();
+
+  try {
+    await page.waitForLoadState("load", { timeout: 15_000 });
+  } catch {
+    // Some public pages intentionally keep third-party verification or telemetry
+    // connections open. The route is considered loaded once DOM and body render.
+  }
+}
 
 test.describe("public read-only routes", () => {
   for (const route of publicRoutes) {
@@ -29,8 +41,7 @@ test.describe("public read-only routes", () => {
         }
       });
 
-      await page.goto(route, { waitUntil: "networkidle" });
-      await expect(page.locator("body")).toBeVisible();
+      await gotoPublicRoute(page, route);
 
       if (route.startsWith("/f/")) {
         await expect(page.locator("form").first()).toBeVisible();
@@ -65,8 +76,7 @@ test.describe("public funnel read-only routes", () => {
       });
 
       const target = publicFunnelBaseURL ? `${publicFunnelBaseURL}${route}` : route;
-      await page.goto(target, { waitUntil: "networkidle" });
-      await expect(page.locator("body")).toBeVisible();
+      await gotoPublicRoute(page, target);
       await expect(page.locator("form").first()).toBeVisible();
       await expect(page.locator("text=/turnstile|verification challenge/i")).toHaveCount(0);
 
