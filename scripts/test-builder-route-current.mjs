@@ -6,14 +6,14 @@ const builderPage = fs.readFileSync("src/app/(app)/builder/page.tsx", "utf8");
 
 assert.match(
   builderPage,
-  /data-testid="dealflow-current-builder-shell"/,
-  "/builder must expose a stable current-builder regression marker",
+  /redirect\(`\/onboarding/,
+  "/builder must redirect into the canonical onboarding package-preview flow",
 );
 
-assert.match(
+assert.doesNotMatch(
   builderPage,
-  /data-builder-version="current"/,
-  "/builder must declare the current builder version marker",
+  /CampaignBuilderWorkspace/,
+  "/builder must not render the separate editor shell that regressed the onboarding experience",
 );
 
 assert.match(
@@ -34,4 +34,4 @@ assert.doesNotMatch(
   "/builder focus route must not render AppSidebar inside its focused branch",
 );
 
-console.log("Builder route current-shell regression guard passed.");
+console.log("Builder route canonical-onboarding redirect guard passed.");
