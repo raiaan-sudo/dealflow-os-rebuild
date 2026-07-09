@@ -126,6 +126,18 @@ function runOfflineChecks() {
 
   assertIncludes(loginForm, "redirectTo.searchParams.set(\"next\", nextPath)", "Auth redirect preservation", "OAuth sign-in keeps next path");
   assertIncludes(middleware, "pathname.startsWith(\"/f/\")", "Public funnel route", "/f/[slug] remains public");
+  assertIncludes(
+    middleware,
+    "CLICK_TO_SCALE_ROOT_APP_HOSTS",
+    "ClickToScale root routing",
+    "clicktoscale.io root is host-routed into the app instead of the DealFlow marketing homepage",
+  );
+  assertIncludes(
+    middleware,
+    "buildClickToScaleRootRedirect",
+    "ClickToScale root destination",
+    "ClickToScale root redirects to the onboarding entry point while preserving query params",
+  );
   assertIncludes(onboardingRoute, "onboarding_idempotency_key", "Onboarding idempotency persistence", "campaign plans store onboarding idempotency key");
   assertIncludes(onboardingPage, "Confirm and build", "Onboarding review step", "screenshot-era review step remains the customer-facing builder");
   assertIncludes(onboardingPage, "Ready to build campaign preview", "Onboarding review CTA", "review step keeps the safe campaign-preview handoff");
