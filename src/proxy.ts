@@ -94,6 +94,10 @@ const CLICK_TO_SCALE_IFRAME_HOSTS = new Set([
   "clip2scale.io",
   "www.clip2scale.io",
 ]);
+const CLICK_TO_SCALE_ROOT_APP_HOSTS = new Set([
+  "clicktoscale.io",
+  "www.clicktoscale.io",
+]);
 const DEFAULT_GHL_FRAME_ANCESTORS = [
   "https://app.gohighlevel.com",
   "https://*.gohighlevel.com",
@@ -121,6 +125,19 @@ function getFrameAncestors(request: NextRequest) {
       ...getConfiguredFrameAncestors(),
     ]),
   ).join(" ");
+}
+
+function shouldRedirectClickToScaleRoot(request: NextRequest) {
+  return (
+    request.nextUrl.pathname === "/" &&
+    CLICK_TO_SCALE_ROOT_APP_HOSTS.has(request.nextUrl.hostname.toLowerCase())
+  );
+}
+
+function buildClickToScaleRootRedirect(request: NextRequest) {
+  const redirectUrl = new URL("/onboarding", request.url);
+  redirectUrl.search = request.nextUrl.search;
+  return redirectUrl;
 }
 
 function applySecurityHeaders(request: NextRequest, response: NextResponse, startedAt?: number) {
@@ -208,6 +225,10 @@ export async function proxy(request: NextRequest) {
   requestHeaders.set("x-pathname", request.nextUrl.pathname);
   let response = NextResponse.next({ request: { headers: requestHeaders } });
   const pathname = request.nextUrl.pathname;
+
+  if (shouldRedirectClickToScaleRoot(request)) {
+    return finalize(NextResponse.redirect(buildClickToScaleRootRedirect(request)));
+  }
 
   if (isPublicRequest(pathname)) {
     return finalize(response);
