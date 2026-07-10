@@ -50,5 +50,8 @@ jobs:
       - name: Offline smoke
         run: npm run smoke:offline
 
+      - name: Production route contract
+        run: npm run test:production-route-contract
+
       - name: Route security
         run: npm run routes:security
