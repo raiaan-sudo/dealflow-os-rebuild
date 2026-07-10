@@ -113,7 +113,6 @@ export function buildWinningHeadline(input: WinningFunnelInput) {
 
 export function buildWinningSubheadline(input: WinningFunnelInput) {
   const audience = input.audience || "qualified local prospects";
-  const offer = input.offer.replace(/[.!?]+$/g, "");
 
   if (input.language === "fr") {
     return `Nous préparons une prochaine étape personnalisée pour ${audience} afin que vous puissiez avancer avec clarté, confiance et sans pression.`;
