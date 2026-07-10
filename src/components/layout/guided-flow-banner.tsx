@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 export function GuidedFlowBanner() {
   const pathname = usePathname();
   const hiddenForPrimaryFlows =
-    pathname.startsWith("/builder") ||
+    pathname.startsWith("/onboarding") ||
     pathname.startsWith("/build") ||
     pathname.startsWith("/paywall") ||
     pathname.startsWith("/preview") ||

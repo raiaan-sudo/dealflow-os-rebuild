@@ -79,7 +79,7 @@ export default async function PreviewPage({
             <Link href="/onboarding">Start onboarding</Link>
           </Button>
           <Button asChild variant="secondary">
-            <Link href="/builder">Open builder</Link>
+            <Link href="/onboarding">Continue onboarding</Link>
           </Button>
         </div>
       </PageShell>
@@ -103,8 +103,14 @@ export default async function PreviewPage({
         />
         <div className="flex flex-col gap-3 sm:flex-row">
           <Button asChild>
-            <Link href={resolvedCampaignId ? `/builder?campaignId=${encodeURIComponent(resolvedCampaignId)}` : "/builder"}>
-              Open builder
+            <Link
+              href={
+                resolvedCampaignId
+                  ? `/onboarding?campaignId=${encodeURIComponent(resolvedCampaignId)}`
+                  : "/onboarding"
+              }
+            >
+              Continue onboarding
             </Link>
           </Button>
           <Button asChild variant="secondary">

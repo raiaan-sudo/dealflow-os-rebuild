@@ -1,8 +1,5 @@
 import Link from "next/link";
-import {
-  buildCampaignScopedPath,
-  resolveActiveCampaignRecord,
-} from "@/lib/paywall-access";
+import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { PageHeader } from "@/components/app/page-header";
 import { CampaignDashboardView } from "@/components/dashboard/campaign-dashboard-view";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -457,7 +454,7 @@ export default async function DashboardPage({
             <Link href="/onboarding">Start onboarding</Link>
           </Button>
           <Button asChild variant="secondary">
-            <Link href={buildCampaignScopedPath("/builder", state.campaignId)}>Open builder</Link>
+            <Link href="/onboarding">Continue onboarding</Link>
           </Button>
         </div>
       </PageShell>
