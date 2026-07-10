@@ -53,6 +53,14 @@ function assertExcludes(relativePath, pattern, name, detail) {
   }
 }
 
+function assertPathMissing(relativePath, name, detail) {
+  if (fileExists(relativePath)) {
+    fail(name, detail ?? `${relativePath} must not exist`);
+  } else {
+    pass(name, detail ?? `${relativePath} is absent`);
+  }
+}
+
 function getEnv(name) {
   const value = process.env[name];
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
@@ -147,6 +155,10 @@ function runOfflineChecks() {
   assertIncludes(builderPage, "redirectUrl = new URL(\"/onboarding\"", "Legacy builder route redirect", "/builder redirects signed-in users to onboarding");
   assertExcludes(builderPage, "CampaignBuilderWorkspace", "Legacy builder workspace removed", "/builder no longer renders the old authenticated builder UI");
   assertExcludes(builderPage, "Campaign Setup", "Legacy builder page copy removed", "/builder no longer exposes the old Campaign Setup surface");
+  assertPathMissing("src/components/campaign/campaign-builder-workspace.tsx", "Legacy builder workspace source removed", "old builder workspace cannot be imported by future routes");
+  assertPathMissing("src/app/api/builder/command/route.ts", "Legacy builder command API removed", "old builder assistant endpoint cannot be called");
+  assertPathMissing("src/app/api/builder/copy-assistant/route.ts", "Legacy builder copy API removed", "old builder copy endpoint cannot be called");
+  assertPathMissing("src/app/api/builder/section-assistant/route.ts", "Legacy builder section API removed", "old builder section endpoint cannot be called");
   assertExcludes(topBar, "href: \"/builder\"", "Mobile nav builder link removed", "primary mobile navigation sends Build users to onboarding");
   assertExcludes(sidebar, "href: \"/builder\"", "Sidebar builder link removed", "primary sidebar navigation sends Build users to onboarding");
   assertExcludes(dashboardPage, "buildCampaignScopedPath(\"/builder\"", "Dashboard builder link removed", "dashboard empty state cannot send users to the old builder");
