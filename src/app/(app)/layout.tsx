@@ -15,7 +15,10 @@ export default async function AppLayout({
   const headerStore = await headers();
   const authState = headerStore.get("x-dealflow-auth-state");
   const pathname = headerStore.get("x-pathname") ?? "";
-  const isFirstRunFocusRoute = pathname.startsWith("/campaign-built");
+  const isFocusedProductRoute =
+    pathname.startsWith("/builder") ||
+    pathname.startsWith("/onboarding") ||
+    pathname.startsWith("/campaign-built");
   const appContext = await getAppContext().catch(() => null);
   const isAdmin = isInternalAdminEmail(appContext?.user.email ?? appContext?.profile?.email ?? null);
   const organizationName =
@@ -31,7 +34,7 @@ export default async function AppLayout({
     appContext?.user.email?.trim() ||
     "workspace@dealflow.local";
 
-  if (isFirstRunFocusRoute) {
+  if (isFocusedProductRoute) {
     if (authState === "missing_context") {
       return (
         <div className="flex h-screen w-screen overflow-hidden bg-transparent">

@@ -216,7 +216,7 @@ Recommended Vercel account-level rules for public launch:
    - Disable it after the incident to avoid unnecessary user friction.
 2. Add WAF Custom Rules in monitor/log mode first, then enforce:
    - Rule: Challenge non-browser traffic for `/login`, `/f/*`, and `/api/lead-capture`.
-   - Rule: Rate-limit or challenge repeated POSTs to `/api/billing/checkout`, `/api/onboarding/plan`, `/api/build-campaign`, `/api/generate-funnel`, `/api/generate-creatives`, and `/api/builder/*`.
+   - Rule: Rate-limit or challenge repeated POSTs to `/api/billing/checkout`, `/api/onboarding/plan`, `/api/build-campaign`, `/api/generate-funnel`, and `/api/generate-creatives`.
    - Rule: Bypass provider webhook endpoints listed below so Stripe/Twilio/Meta are never served a browser challenge.
 3. Exempt signed provider webhooks from challenge pages, but keep app-level signature validation:
    - `/api/stripe/webhook`
