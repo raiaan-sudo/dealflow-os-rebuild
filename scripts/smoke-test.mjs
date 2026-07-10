@@ -79,11 +79,17 @@ function runOfflineChecks() {
   const launchApiRoute = "src/app/api/campaigns/[id]/launch/route.ts";
   const launchPage = "src/app/(app)/launch/page.tsx";
   const previewPage = "src/app/(app)/preview/page.tsx";
+  const builderPage = "src/app/(app)/builder/page.tsx";
   const onboardingPage = "src/app/(app)/onboarding/page.tsx";
   const onboardingRoute = "src/app/api/onboarding/plan/route.ts";
   const leadRoute = "src/app/api/lead-capture/route.ts";
   const leadForm = "src/app/f/[slug]/lead-capture-form.tsx";
   const dashboardPage = "src/app/(app)/dashboard/page.tsx";
+  const topBar = "src/components/layout/top-bar.tsx";
+  const sidebar = "src/components/layout/sidebar.tsx";
+  const systemStatus = "src/components/layout/system-status.tsx";
+  const guidedFlowBanner = "src/components/layout/guided-flow-banner.tsx";
+  const navigationConfig = "src/lib/navigation.ts";
   const appContextService = "src/lib/services/app-context.ts";
   const metaConnect = "src/app/api/integrations/meta/connect/route.ts";
   const metaCallback = "src/app/api/integrations/meta/callback/route.ts";
@@ -138,6 +144,17 @@ function runOfflineChecks() {
     "Root app redirect destination",
     "root app domains redirect to the onboarding entry point while preserving query params",
   );
+  assertIncludes(builderPage, "redirectUrl = new URL(\"/onboarding\"", "Legacy builder route redirect", "/builder redirects signed-in users to onboarding");
+  assertExcludes(builderPage, "CampaignBuilderWorkspace", "Legacy builder workspace removed", "/builder no longer renders the old authenticated builder UI");
+  assertExcludes(builderPage, "Campaign Setup", "Legacy builder page copy removed", "/builder no longer exposes the old Campaign Setup surface");
+  assertExcludes(topBar, "href: \"/builder\"", "Mobile nav builder link removed", "primary mobile navigation sends Build users to onboarding");
+  assertExcludes(sidebar, "href: \"/builder\"", "Sidebar builder link removed", "primary sidebar navigation sends Build users to onboarding");
+  assertExcludes(dashboardPage, "buildCampaignScopedPath(\"/builder\"", "Dashboard builder link removed", "dashboard empty state cannot send users to the old builder");
+  assertExcludes(previewPage, "href=\"/builder\"", "Preview builder link removed", "preview fallback cannot send users to the old builder");
+  assertExcludes(previewPage, "`/builder?campaignId=", "Preview campaign builder link removed", "preview invalid state sends users back to onboarding");
+  assertExcludes(systemStatus, "pathname.startsWith(\"/builder\")", "System status builder route removed", "workspace status no longer treats /builder as a primary route");
+  assertExcludes(guidedFlowBanner, "pathname.startsWith(\"/builder\")", "Guided banner builder route removed", "guided banner no longer treats /builder as a primary route");
+  assertExcludes(navigationConfig, "href: \"/builder\"", "Global navigation builder link removed", "shared app navigation points to onboarding");
   assertIncludes(onboardingRoute, "onboarding_idempotency_key", "Onboarding idempotency persistence", "campaign plans store onboarding idempotency key");
   assertIncludes(onboardingPage, "Resume campaign build", "Onboarding resume UI", "resume banner exists after refresh");
   assertIncludes(onboardingPage, "Generating funnel", "Onboarding progress step 1", "funnel progress visible");

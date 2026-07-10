@@ -26,7 +26,7 @@ export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps
           ? "Go Live"
           : "Results";
   const productNavigation = [
-    { href: "/builder", label: "Build", icon: Wand2 },
+    { href: "/onboarding", label: "Build", icon: Wand2 },
     { href: "/preview", label: "Review", icon: Eye },
     { href: "/launch", label: "Go Live", icon: Rocket },
     { href: "/dashboard", label: "Results", icon: BarChart3 },
@@ -63,8 +63,8 @@ export function AppSidebar({ organizationName, isAdmin, stage }: AppSidebarProps
           <nav className="mt-3 space-y-1.5">
             {productNavigation.map((item) => {
               const isActive =
-                item.href === "/builder"
-                  ? pathname.startsWith("/builder") || pathname.startsWith("/build")
+                item.href === "/onboarding"
+                  ? pathname.startsWith("/onboarding") || pathname.startsWith("/build")
                   : item.href === "/launch"
                   ? pathname.startsWith("/launch") || pathname.startsWith("/integrations") || pathname.startsWith("/campaign")
                   : item.href === "/dashboard"

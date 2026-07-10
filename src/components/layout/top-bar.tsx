@@ -65,14 +65,14 @@ export function TopBar({ userName, userEmail, organizationName }: TopBarProps) {
         className="flex gap-2 overflow-x-auto border-t border-white/6 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground lg:hidden"
       >
         {[
-          { href: "/builder", label: "Build" },
+          { href: "/onboarding", label: "Build" },
           { href: "/preview", label: "Review" },
           { href: "/launch", label: "Go Live" },
           { href: "/dashboard", label: "Results" },
         ].map((item) => {
           const active =
-            item.href === "/builder"
-              ? pathname.startsWith("/builder") || pathname.startsWith("/build")
+            item.href === "/onboarding"
+              ? pathname.startsWith("/onboarding") || pathname.startsWith("/build")
               : pathname.startsWith(item.href);
 
           return (
