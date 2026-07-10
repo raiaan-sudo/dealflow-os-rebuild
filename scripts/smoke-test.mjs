@@ -53,6 +53,14 @@ function assertExcludes(relativePath, pattern, name, detail) {
   }
 }
 
+function assertPathMissing(relativePath, name, detail) {
+  if (fileExists(relativePath)) {
+    fail(name, detail ?? `${relativePath} must not exist`);
+  } else {
+    pass(name, detail ?? `${relativePath} is absent`);
+  }
+}
+
 function getEnv(name) {
   const value = process.env[name];
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
@@ -81,7 +89,9 @@ function runOfflineChecks() {
   const previewPage = "src/app/(app)/preview/page.tsx";
   const builderPage = "src/app/(app)/builder/page.tsx";
   const onboardingPage = "src/app/(app)/onboarding/page.tsx";
+  const onboardingPreview = "src/components/onboarding/prepaywall-campaign-preview.tsx";
   const onboardingRoute = "src/app/api/onboarding/plan/route.ts";
+  const planPresentation = "src/lib/billing/plan-presentation.ts";
   const leadRoute = "src/app/api/lead-capture/route.ts";
   const leadForm = "src/app/f/[slug]/lead-capture-form.tsx";
   const dashboardPage = "src/app/(app)/dashboard/page.tsx";
@@ -147,6 +157,10 @@ function runOfflineChecks() {
   assertIncludes(builderPage, "redirectUrl = new URL(\"/onboarding\"", "Legacy builder route redirect", "/builder redirects signed-in users to onboarding");
   assertExcludes(builderPage, "CampaignBuilderWorkspace", "Legacy builder workspace removed", "/builder no longer renders the old authenticated builder UI");
   assertExcludes(builderPage, "Campaign Setup", "Legacy builder page copy removed", "/builder no longer exposes the old Campaign Setup surface");
+  assertPathMissing("src/components/campaign/campaign-builder-workspace.tsx", "Legacy builder workspace source removed", "old builder workspace cannot be imported by future routes");
+  assertPathMissing("src/app/api/builder/command/route.ts", "Legacy builder command API removed", "old builder assistant endpoint cannot be called");
+  assertPathMissing("src/app/api/builder/copy-assistant/route.ts", "Legacy builder copy API removed", "old builder copy endpoint cannot be called");
+  assertPathMissing("src/app/api/builder/section-assistant/route.ts", "Legacy builder section API removed", "old builder section endpoint cannot be called");
   assertExcludes(topBar, "href: \"/builder\"", "Mobile nav builder link removed", "primary mobile navigation sends Build users to onboarding");
   assertExcludes(sidebar, "href: \"/builder\"", "Sidebar builder link removed", "primary sidebar navigation sends Build users to onboarding");
   assertExcludes(dashboardPage, "buildCampaignScopedPath(\"/builder\"", "Dashboard builder link removed", "dashboard empty state cannot send users to the old builder");
@@ -156,10 +170,12 @@ function runOfflineChecks() {
   assertExcludes(guidedFlowBanner, "pathname.startsWith(\"/builder\")", "Guided banner builder route removed", "guided banner no longer treats /builder as a primary route");
   assertExcludes(navigationConfig, "href: \"/builder\"", "Global navigation builder link removed", "shared app navigation points to onboarding");
   assertIncludes(onboardingRoute, "onboarding_idempotency_key", "Onboarding idempotency persistence", "campaign plans store onboarding idempotency key");
-  assertIncludes(onboardingPage, "Resume campaign build", "Onboarding resume UI", "resume banner exists after refresh");
-  assertIncludes(onboardingPage, "Generating funnel", "Onboarding progress step 1", "funnel progress visible");
-  assertIncludes(onboardingPage, "Generating ads and creative angles", "Onboarding progress step 2", "creative progress visible");
-  assertIncludes(onboardingPage, "Building launch-ready campaign", "Onboarding progress step 3", "campaign build progress visible");
+  assertIncludes(onboardingPage, "Confirm and build", "Verified onboarding review step", "10-step onboarding review remains the canonical build screen");
+  assertIncludes(onboardingPage, "Ready to build campaign preview", "Verified onboarding build preview", "prepaywall build confirmation remains visible");
+  assertIncludes(onboardingPage, "Activate Pro", "Verified onboarding paywall CTA", "launch-plan CTA remains visible before activation");
+  assertIncludes(onboardingPreview, "Campaign package preview", "Verified onboarding package preview", "right-side campaign package preview remains mounted");
+  assertIncludes(planPresentation, "Only launch plan", "Verified onboarding launch plan label", "plan presentation matches the verified UI");
+  assertExcludes(onboardingPage, "STEP 1 OF 7: WORKSPACE", "Old linear onboarding shell removed", "later linear shell cannot replace the verified screen");
   assertIncludes(appContextService, "isDemoWorkspaceSeedingEnabled", "Production demo seeding guard", "workspace demo data seeding is environment-gated");
   assertIncludes(appContextService, "fallbackOrganizationSlug", "Workspace slug collision guard", "bootstrap creates a user-owned fallback slug instead of recovering another owner workspace");
   assertIncludes(appContextService, "non-owned organization", "Workspace ownership bootstrap guard", "membership bootstrap refuses non-owned organizations");

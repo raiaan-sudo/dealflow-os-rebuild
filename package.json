@@ -32,7 +32,8 @@
     "test:access-key-checkout-signup": "node ./scripts/test-access-key-checkout-signup.mjs",
     "test:public-funnel-thank-you": "node ./scripts/test-public-funnel-thank-you.mjs",
     "test:lead-tracking-health": "node ./scripts/test-lead-tracking-health.mjs",
-    "test:ghl-iframe-embed-security": "node ./scripts/test-ghl-iframe-embed-security.mjs"
+    "test:ghl-iframe-embed-security": "node ./scripts/test-ghl-iframe-embed-security.mjs",
+    "test:production-route-contract": "node ./scripts/test-production-route-contract.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",
