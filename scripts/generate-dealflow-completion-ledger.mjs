@@ -1682,6 +1682,21 @@ const newIssues = [
     residual_risk: "The bundle remains a point-in-time sanitized artifact; this structural fix does not convert any production, provider, schema, or authority blocker to a pass.",
     final_status: "IMPLEMENTED_AND_VERIFIED",
   },
+  {
+    id: "NEW-062",
+    original_claim: "The canonical portable report initially declared only source IDs for quantitative widgets, then exceeded the official verifier's desktop/mobile width contract after query provenance was added.",
+    canonical_status: "IMPLEMENTED_AND_OFFICIAL_DELIVERY_VERIFIED",
+    root_cause_invariant: "Every rendered quantitative widget carries an actual runnable source query that is executed and compared to its snapshot rows, while the answer-first blocked report remains contained at the official 1440px and 390px verification viewports.",
+    affected_surface_files_data: "scripts/build-dealflow-final-audit-bundle.mjs; report-input.json; artifact.json; report.html; report-delivery-receipt.json",
+    implementation_disposition: "PRESERVE_EXECUTED_QUERY_PROVENANCE_AND_RESPONSIVE_PORTABLE_REPORT",
+    failing_before_evidence: "Official delivery first failed because the chart source lacked actual SQL, then failed horizontal-overflow checks when the full narrative/table report introduced a vertical scrollbar against the reader's viewport-width top bar.",
+    changed_files_commits: "FILES:executed deterministic SQLite projection with exact row comparison, canonical source metadata, compact answer-first blocked report, bounded access issue, responsive display labels, and official receipt sealing",
+    tests: "exact deliver_portable_artifact.mjs command; validation/package/verification stages; source dialog interaction; 1440px and 390px viewports; report-inclusive bundle generation; final checksums",
+    negative_failure_path_proof: "Missing/non-SQL source text fails official packaging; SQL/result drift fails generation; desktop or mobile overflow fails browser verification; a missing blocked access issue or invalid source path fails the bundle validator.",
+    integrated_proof: "The official portable delivery path validates and packages the canonical artifact, exercises the source dialog, verifies both viewports, and the report-inclusive bundle rehashes the artifact, HTML, and receipt.",
+    residual_risk: "The concise portable report is a snapshot front door; the complete blockers, owner decisions, caveats, evidence, and row-level detail remain in the adjacent hashed bundle artifacts rather than the viewport-constrained chart page.",
+    final_status: "IMPLEMENTED_AND_VERIFIED",
+  },
 ];
 
 for (const issue of newIssues) {

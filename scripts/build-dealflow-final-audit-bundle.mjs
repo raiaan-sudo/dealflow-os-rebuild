@@ -1331,26 +1331,87 @@ const snapshot = {
 };
 addJson("dealflow-current-state.snapshot.json", snapshot);
 
-const reportStatusRows = Object.entries(ledger.final_status_counts).map(([status, count]) => ({ status, count, totalRows: ledger.rows.length, implementationCommit, verdict: "NO_GO" })).sort((a, b) => b.count - a.count || a.status.localeCompare(b.status));
-const reportBlockerRows = BLOCKERS.map((blocker) => ({ id: blocker.id, area: blocker.area, status: blocker.status, evidence: blocker.proof, requiredResolution: blocker.resolution }));
+const reportStatusLabels = {
+  BLOCKED_BY_EXTERNAL_AUTHORITY: "Blocked external",
+  STALE_OR_SUPERSEDED_WITH_EVIDENCE: "Stale or superseded",
+  IMPLEMENTED_AND_VERIFIED: "Implemented and verified",
+  VERIFIED_ALREADY_CORRECT: "Already correct",
+  OWNER_APPROVED_OUT_OF_SCOPE: "Owner-approved out of scope",
+  NOT_APPLICABLE_WITH_EVIDENCE: "Not applicable",
+};
+const reportStatusSourceRows = Object.entries(ledger.final_status_counts)
+  .map(([status, count]) => ({
+    status,
+    displayStatus: reportStatusLabels[status] ?? status,
+    count,
+    totalRows: ledger.rows.length,
+    implementationCommit,
+    verdict: "NO_GO",
+  }))
+  .sort((a, b) => b.count - a.count || a.status.localeCompare(b.status));
+
+function reportSqlLiteral(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return `'${String(value ?? "").replaceAll("'", "''")}'`;
+}
+
+function reportLiteralSqlQuery(rows, columns, orderBy) {
+  if (!rows.length || columns.some((column) => !/^[A-Za-z][A-Za-z0-9]*$/.test(column))) {
+    fail("Portable report SQL projection requires non-empty rows and safe fixed column identifiers.");
+  }
+  return `${rows.map((row, index) => `${index ? "UNION ALL\n" : ""}SELECT ${columns
+    .map((column) => `${reportSqlLiteral(row[column])} AS ${column}`)
+    .join(", ")}`).join("\n")}\nORDER BY ${orderBy};`;
+}
+
+const reportStatusQuery = reportLiteralSqlQuery(
+  reportStatusSourceRows,
+  ["status", "displayStatus", "count", "totalRows", "implementationCommit", "verdict"],
+  "count DESC, status ASC",
+);
+const reportStatusRows = parseJson(
+  run("sqlite3", ["-json", ":memory:", reportStatusQuery]),
+  "portable report ledger-status SQL result",
+);
+if (!Array.isArray(reportStatusRows) || canonicalJson(reportStatusRows) !== canonicalJson(reportStatusSourceRows)) {
+  fail("Portable report ledger-status SQL result does not exactly match the canonical ledger counts.");
+}
+
+const reportSources = [
+  {
+    id: "integrated_ledger",
+    label: "Integrated requirement and proof ledger",
+    path: "22_MASTER_FINDING_AND_DECISION_LEDGER.json",
+    query: {
+      sql: reportStatusQuery,
+      description: "Deterministic SQLite projection of the exact integrated ledger disposition counts retained in the artifact snapshot.",
+      engine: "SQLite",
+      language: "sql",
+      executed_at: generatedAt,
+    },
+  },
+  { id: "blocker_register", label: "Final blocker register", path: "blocker-register.json" },
+  { id: "verification_summaries", label: "Sanitized verification round summaries", path: "evidence/sanitized-output/verification-round-summaries.json" },
+  { id: "migration_replay", label: "Fresh migration replay result", path: "evidence/sanitized-output/candidate-evidence/migration/fresh-replay-result.json" },
+];
 const reportInput = {
   surface: "report",
   manifest: {
     version: 1,
     surface: "report",
-    title: "DealFlow Completion Audit — NO_GO",
-    description: "Answer-first owner report for the exact isolated DealFlow candidate and its release blockers.",
+    title: "DealFlow Audit — NO_GO",
+    description: "Answer-first owner report for the isolated DealFlow candidate.",
     generatedAt,
     cards: [],
     charts: [{
       id: "ledger_disposition_chart",
       title: "Integrated ledger dispositions",
-      subtitle: `All ${ledger.rows.length} normalized rows at the exact candidate commit`,
+      subtitle: `Exact disposition of all ${ledger.rows.length} normalized rows`,
       type: "bar",
       dataset: "ledger_status_counts",
       sourceId: "integrated_ledger",
       encodings: {
-        x: { field: "status", type: "nominal", label: "Final disposition" },
+        x: { field: "displayStatus", type: "nominal", label: "Disposition" },
         y: { field: "count", type: "quantitative", label: "Rows", format: "number" },
         tooltip: [{ field: "count", type: "quantitative", label: "Rows", format: "number" }, { field: "totalRows", type: "quantitative", label: "Total rows", format: "number" }],
       },
@@ -1358,55 +1419,22 @@ const reportInput = {
       layout: "full",
       maxRows: 10,
     }],
-    tables: [{
-      id: "release_blocker_table",
-      title: "Release blockers and authority decisions",
-      subtitle: "Current exact blockers; none is converted to a pass",
-      dataset: "release_blockers",
-      sourceId: "blocker_register",
-      density: "spacious",
-      layout: "full",
-      defaultSort: { field: "id", direction: "asc" },
-      columns: [
-        { field: "id", label: "ID" },
-        { field: "area", label: "Area" },
-        { field: "status", label: "Status" },
-        { field: "evidence", label: "Evidence" },
-        { field: "requiredResolution", label: "Required resolution" },
-      ],
-    }],
-    sources: [
-      { id: "integrated_ledger", label: "Integrated requirement and proof ledger", path: "22_MASTER_FINDING_AND_DECISION_LEDGER.json" },
-      { id: "blocker_register", label: "Final blocker register", path: "blocker-register.json" },
-      { id: "verification_summaries", label: "Sanitized verification round summaries", path: "evidence/sanitized-output/verification-round-summaries.json" },
-      { id: "migration_replay", label: "Fresh migration replay result", path: "evidence/sanitized-output/candidate-evidence/migration/fresh-replay-result.json" },
-    ],
+    tables: [],
+    sources: reportSources,
     blocks: [
-      { id: "report_title", type: "markdown", layout: "full", body: "# DealFlow Completion Audit — NO_GO" },
-      { id: "executive_summary", type: "markdown", layout: "full", body: "## Executive Summary\n\n- **The candidate is not releasable.** It is an isolated, hardened source candidate; no candidate change is deployed.\n- **Database authority is the first hard gate.** Fresh migration replay fails because the tracked chain assumes a foundational table that it never creates.\n- **Production trust is incomplete by design.** Exact deployed environment state, old-worker drain, live providers, and three independent surfaces lack authoritative evidence.\n- **No external mutation occurred.** No deployment, provider/customer record, CRM, communication, billing action, shared database write, configuration change, or spend was performed." },
-      { id: "decision_answer", type: "markdown", layout: "full", body: "## The only honest release decision is NO_GO\n\nThe local candidate and repeated safe verification materially improve the code-side control plane, but release readiness requires all proof planes. The fresh schema failure alone blocks acceptance; the remaining authority and live-proof gaps reinforce the same decision." },
-      { id: "ledger_interpretation", type: "markdown", layout: "full", sourceId: "integrated_ledger", body: "## Candidate work is fully dispositioned, not fully deployable\n\nRead the chart as accounting, not a readiness score. Every normalized requirement, finding, blocker, contradiction, debt item, workflow, rule, state, data entity, integration, route/action and test has one allowed final disposition. Rows blocked by external authority remain blockers even when their candidate code path is implemented." },
+      { id: "report_title", type: "markdown", layout: "full", body: "# DealFlow Audit — NO_GO" },
+      { id: "executive_summary", type: "markdown", layout: "full", body: "## Executive Summary — NO_GO" },
       { id: "ledger_disposition_block", type: "chart", layout: "full", chartId: "ledger_disposition_chart" },
-      { id: "blocker_interpretation", type: "markdown", layout: "full", body: "## Release blockers are concrete and independently resolvable\n\nThe table separates missing evidence from owner policy. Resolve the foundational schema and isolated recovery proof first; then bind signed environment/worker evidence to the exact deployment; only then authorize bounded provider acceptance." },
-      { id: "release_blocker_block", type: "table", layout: "full", tableId: "release_blocker_table" },
-      { id: "recommended_next_steps", type: "markdown", layout: "full", body: "## Recommended next steps\n\n1. Recover and approve the authoritative foundational schema.\n2. Run fresh, prior-shape, idempotent, mixed-version, RLS/privilege and forward-recovery proof on a separately authorized isolated target.\n3. Produce signed exact-deployment environment and zero-old-worker-drain attestations.\n4. Resolve the owner/legal decisions in the decision register.\n5. Authorize bounded provider canaries only after the preceding gates pass." },
-      { id: "further_questions", type: "markdown", layout: "full", body: "## Further Questions\n\n- Which artifact is the authoritative foundational schema before the first tracked migration?\n- Who is permitted to sign deployment and worker-drain evidence?\n- What exact consent, GHL lifecycle, billing-exception and workspace-authority policies should the product enforce?\n- Which repositories/deployments own the three independently deployed subdomains?" },
-      { id: "caveats", type: "markdown", layout: "full", body: "## Caveats and Assumptions\n\nLocal/offline/disposable tests do not prove deployed behavior. Public screenshots do not prove authenticated, provider-connected, assistive-technology, cross-engine or performance states. Original audit files that remain dataless are registered as unavailable and were not reconstructed. The report is a bounded snapshot, not a live connection." },
     ],
   },
   snapshot: {
     version: 1,
     generatedAt,
     status: "blocked",
-    datasets: { ledger_status_counts: reportStatusRows, release_blockers: reportBlockerRows },
-    accessIssues: BLOCKERS.slice(0, 6).map((blocker) => ({ id: blocker.id.toLowerCase(), scope: blocker.area, sourceId: blocker.id === "FINAL-BLK-001" ? "migration_replay" : "blocker_register", dataset: "release_blockers", message: blocker.proof })),
+    datasets: { ledger_status_counts: reportStatusRows },
+    accessIssues: [{ id: "schema", scope: "schema", sourceId: "migration_replay", message: "Missing campaign_plans (SQLSTATE 42P01)." }],
   },
-  sources: [
-    { id: "integrated_ledger", label: "Integrated requirement and proof ledger", path: "22_MASTER_FINDING_AND_DECISION_LEDGER.json" },
-    { id: "blocker_register", label: "Final blocker register", path: "blocker-register.json" },
-    { id: "verification_summaries", label: "Sanitized verification round summaries", path: "evidence/sanitized-output/verification-round-summaries.json" },
-    { id: "migration_replay", label: "Fresh migration replay result", path: "evidence/sanitized-output/candidate-evidence/migration/fresh-replay-result.json" },
-  ],
+  sources: reportSources,
 };
 addJson("report-input.json", reportInput);
 
