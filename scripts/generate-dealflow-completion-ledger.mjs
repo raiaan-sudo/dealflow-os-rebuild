@@ -1652,6 +1652,21 @@ const newIssues = [
     residual_risk: "No live Meta provider recovery or operator reconciliation was performed; the production operating owner/SLA remains blocked.",
     final_status: "IMPLEMENTED_AND_VERIFIED",
   },
+  {
+    id: "NEW-060",
+    original_claim: "The first exact-seal verification round exposed two legacy lexical regressions that contradicted the hardened Turnstile submit gate and immutable Meta launch credential boundary.",
+    canonical_status: "STALE_ASSERTIONS_UPDATED_AND_EXACT_COMMANDS_PASSED",
+    root_cause_invariant: "Regression tests must assert the current safety contract: configured Turnstile blocks submission until an exact token/action/site-key path exists, and manual Meta launch delegates exact workspace credential validation to the immutable snapshot-bound service rather than reloading mutable credentials in the outer route.",
+    affected_surface_files_data: "scripts/test-public-funnel-thank-you.mjs; scripts/test-lead-tracking-health.mjs; docs/dealflow-completion/evidence/verification/superseded-exact-seal-round.json",
+    implementation_disposition: "PRESERVE_STRONGER_CURRENT_CONTRACT_ASSERTIONS_AND_RESTART_EXACT_SEAL_PROOF",
+    failing_before_evidence: "Seal 3057235213a78551dcf98037b1dbbe31ddaf6762 completed 30/32 commands; only these two source-string assertions failed while the associated hardened product contracts and dedicated tests passed.",
+    changed_files_commits: "FILES:Turnstile disabled/token/action/site-key assertions, immutable Meta service-bound credential/order assertions, and sanitized superseded-round evidence",
+    tests: "npm run test:public-funnel-thank-you; node scripts/test-lead-tracking-health.mjs; npm run typecheck; npm run lint",
+    negative_failure_path_proof: "The updated tests fail if configured Turnstile no longer blocks an unverified submit, if the token/action/site-key contract disappears, if the outer manual route reloads mutable Meta credentials, or if atomic completion precedes immutable launch execution.",
+    integrated_proof: "Both formerly failing exact commands passed directly; the superseded 30/32 round is retained and the complete final portfolio is restarted on a later exact seal.",
+    residual_risk: "Lexical contracts complement but do not replace live browser/provider acceptance; final exact-seal repeat evidence remains required in the external bundle.",
+    final_status: "IMPLEMENTED_AND_VERIFIED",
+  },
 ];
 
 for (const issue of newIssues) {
