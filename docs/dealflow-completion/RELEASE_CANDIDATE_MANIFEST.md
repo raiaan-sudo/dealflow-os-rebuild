@@ -2,7 +2,7 @@
 
 Current verdict: `NO_GO`
 Deployment: `NOT EXECUTED`
-Implementation commit/tree: `24ada6f142e1f2f9010d9362c4edd16da7742af1` / `7a0792e59d8dd1a151cd9cb975c863e4273fc8e2`
+Implementation commit/tree: `b8e012b8dbd0bf20ffdcfd51646e0ca54b8edc0c` / `c21a16049a97cd98c460183675ee43b064932e63`
 Documentation/bundle seal: the exact descendant commit/tree is recorded and hashed by the external audit-package manifest; no product file may change after the implementation commit.
 Protected external production trust root: `NOT SUPPLIED`
 

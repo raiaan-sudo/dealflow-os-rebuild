@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "dealflow.superseded-verification.v1",
+  "status": "SUPERSEDED_WITH_EVIDENCE",
+  "sealCommit": "3057235213a78551dcf98037b1dbbe31ddaf6762",
+  "commandCount": 32,
+  "passedCount": 30,
+  "failedCount": 2,
+  "failures": [
+    {
+      "command": "npm run test:public-funnel-thank-you",
+      "classification": "STALE_LEXICAL_ASSERTION",
+      "disposition": "UPDATED_TO_REQUIRE_CONFIGURED_TURNSTILE_AND_PASSED"
+    },
+    {
+      "command": "node scripts/test-lead-tracking-health.mjs",
+      "classification": "STALE_LEXICAL_ASSERTION",
+      "disposition": "UPDATED_TO_REQUIRE_IMMUTABLE_META_LAUNCH_BINDING_AND_PASSED"
+    }
+  ],
+  "countsAsFinalCandidateProof": false,
+  "externalMutation": false,
+  "rawLogsIncluded": false
+}

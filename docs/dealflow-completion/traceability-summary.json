@@ -1,8 +1,8 @@
 {
   "overall_verdict": "NO_GO",
-  "generated_at": "2026-07-11T11:26:50.000Z",
-  "candidate_implementation_commit": "24ada6f142e1f2f9010d9362c4edd16da7742af1",
-  "row_count": 861,
+  "generated_at": "2026-07-11T11:32:54.000Z",
+  "candidate_implementation_commit": "b8e012b8dbd0bf20ffdcfd51646e0ca54b8edc0c",
+  "row_count": 862,
   "object_type_counts": {
     "BLOCKER": 22,
     "CONTRADICTION": 18,
@@ -12,7 +12,7 @@
     "FEATURE": 40,
     "FINDING": 56,
     "INTEGRATION": 12,
-    "NEW_ISSUE": 59,
+    "NEW_ISSUE": 60,
     "PROTECTED": 4,
     "REPORTED": 4,
     "REPOSITORY_CANDIDATE": 18,
@@ -29,7 +29,7 @@
     "VERIFIED_ALREADY_CORRECT": 37,
     "BLOCKED_BY_EXTERNAL_AUTHORITY": 481,
     "OWNER_APPROVED_OUT_OF_SCOPE": 19,
-    "IMPLEMENTED_AND_VERIFIED": 104,
+    "IMPLEMENTED_AND_VERIFIED": 105,
     "NOT_APPLICABLE_WITH_EVIDENCE": 2
   }
 }
