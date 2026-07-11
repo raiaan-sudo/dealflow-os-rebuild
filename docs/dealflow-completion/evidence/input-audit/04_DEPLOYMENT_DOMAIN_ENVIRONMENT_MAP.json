@@ -1,0 +1,98 @@
+{
+  "generated_at": "2026-07-11T00:15:56.993Z",
+  "counts": {
+    "domains": 6,
+    "vercel_served": 4,
+    "cloudflare_served": 2,
+    "local_vercel_projects": 3,
+    "unique_public_markers": 1
+  },
+  "public_marker": "dpl_J4Ksu4n7sjwdRv8tHBTa5ARDKg9E",
+  "source_to_deployment_status": "NOT_PROVEN",
+  "records": [
+    {
+      "id": "DEP-001",
+      "domain": "app.agentdealflow.io",
+      "dns": "A 76.76.21.21",
+      "edge_or_hosting": "Vercel response;Spaceship authoritative zone",
+      "root_http_chain": "307 /onboarding -> 307 /login?[redacted-query] -> 200",
+      "final_status": "200",
+      "public_marker": "dpl_J4Ksu4n7sjwdRv8tHBTa5ARDKg9E on final login only",
+      "tls": "Lets Encrypt YR1;2026-07-08T06:38:42Z..2026-10-06T06:38:41Z;verify=0",
+      "role": "product app/auth entry",
+      "source_candidate": "REPO-001 family / Vercel dealflow-os-rebuild",
+      "canonicality": "current role CONFIRMED;source commit NOT_PROVEN",
+      "blocker": "Vercel deployment API 403;CLI/auth unavailable"
+    },
+    {
+      "id": "DEP-002",
+      "domain": "agentdealflow.io",
+      "dns": "A 216.150.1.1",
+      "edge_or_hosting": "Vercel response;Spaceship authoritative zone",
+      "root_http_chain": "307 /onboarding -> 307 /login?[redacted-query] -> 200",
+      "final_status": "200",
+      "public_marker": "dpl_J4Ksu4n7sjwdRv8tHBTa5ARDKg9E on final login only",
+      "tls": "Lets Encrypt YR1;2026-06-29T20:57:16Z..2026-09-27T20:57:15Z;verify=0",
+      "role": "apex currently app-gated",
+      "source_candidate": "REPO-001 family",
+      "canonicality": "current behavior CONFIRMED;intended role CONTRADICTED",
+      "blocker": "historical docs/search describe different apex behavior"
+    },
+    {
+      "id": "DEP-003",
+      "domain": "www.agentdealflow.io",
+      "dns": "CNAME 953855c9a0ab60a5.vercel-dns-017.com;rotating 216.150.1.x and 216.150.16.x A",
+      "edge_or_hosting": "Vercel",
+      "root_http_chain": "200 no redirect",
+      "final_status": "200",
+      "public_marker": "dpl_J4Ksu4n7sjwdRv8tHBTa5ARDKg9E",
+      "tls": "Lets Encrypt YR2;2026-06-29T07:12:19Z..2026-09-27T07:12:18Z;verify=0",
+      "role": "public marketing homepage",
+      "source_candidate": "REPO-010 / Vercel dealflow-os-rebuild-clean",
+      "canonicality": "role CONFIRMED;source commit NOT_PROVEN",
+      "blocker": "local HEAD differs remote;Vercel mapping unavailable"
+    },
+    {
+      "id": "DEP-004",
+      "domain": "clicktoscale.agentdealflow.io",
+      "dns": "A 185.158.133.1",
+      "edge_or_hosting": "Cloudflare response",
+      "root_http_chain": "200 no redirect",
+      "final_status": "200",
+      "public_marker": "NONE",
+      "tls": "Google Trust Services WE1;2026-06-16T20:51:50Z..2026-09-14T21:51:47Z;verify=0",
+      "role": "ClickToScale partner/lead-generation page",
+      "source_candidate": "NONE FOUND",
+      "canonicality": "role CONFIRMED by title;source/deployment NOT_PROVEN",
+      "blocker": "Cloudflare project/config/source metadata unavailable"
+    },
+    {
+      "id": "DEP-005",
+      "domain": "internal.agentdealflow.io",
+      "dns": "A 76.76.21.21",
+      "edge_or_hosting": "Vercel protected response",
+      "root_http_chain": "401 no redirect",
+      "final_status": "401",
+      "public_marker": "NONE",
+      "tls": "Lets Encrypt R12;2026-05-14T23:27:09Z..2026-08-12T23:27:08Z;verify=0",
+      "role": "protected internal surface",
+      "source_candidate": "REPO-011 / Vercel dealflow-internal-os plausible",
+      "canonicality": "reachable/protected CONFIRMED;link NOT_PROVEN",
+      "blocker": "401 and no authenticated Vercel metadata"
+    },
+    {
+      "id": "DEP-006",
+      "domain": "onboarding.agentdealflow.io",
+      "dns": "A 185.158.133.1",
+      "edge_or_hosting": "Cloudflare response",
+      "root_http_chain": "200 no redirect",
+      "final_status": "200",
+      "public_marker": "NONE",
+      "tls": "Google Trust Services WE1;2026-06-04T17:43:23Z..2026-09-02T18:43:16Z;verify=0",
+      "role": "public realtor onboarding landing page",
+      "source_candidate": "NONE FOUND",
+      "canonicality": "role CONFIRMED by title;source/deployment NOT_PROVEN",
+      "blocker": "Cloudflare project/config/source metadata unavailable"
+    }
+  ]
+}

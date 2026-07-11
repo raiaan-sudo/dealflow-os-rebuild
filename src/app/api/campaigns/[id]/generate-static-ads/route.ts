@@ -42,13 +42,14 @@ export async function POST(
 
     const activeJobs = await listSystemJobs({
       userId: auth.userId,
+      organizationId: auth.organizationId,
       campaignId,
       kind: "static_creative_generation",
       statuses: ["pending", "processing"],
     });
     const existingActiveJob = activeJobs[0] ?? null;
 
-    if (existingActiveJob && body.force !== true) {
+    if (existingActiveJob) {
       return apiSuccess({
         success: true,
         campaignId,
@@ -57,7 +58,12 @@ export async function POST(
       });
     }
 
-    const idempotencyKey = `static_creative_generation:${auth.organizationId}:${auth.userId}:${campaignId}`;
+    const baseIdempotencyKey =
+      `static_creative_generation:${auth.organizationId}:${auth.userId}:${campaignId}`;
+    const idempotencyKey =
+      body.force === true
+        ? `${baseIdempotencyKey}:retry:${crypto.randomUUID()}`
+        : baseIdempotencyKey;
 
     const job = await createSystemJob({
       organizationId: auth.organizationId,

@@ -1,12 +1,20 @@
 import { ApiError } from "@/lib/api/route";
+import {
+  assertMetaUrlHasNoCredentials,
+  isMetaCapiWriteAllowed,
+  isMetaLiveWriteAllowed,
+} from "@/lib/integrations/meta/contract";
 import { logWarn } from "@/lib/logging";
 
 export type MetaRequestPurpose =
-  | "oauth"
+  | "oauth_code_exchange"
+  | "oauth_token_extension"
   | "discovery"
   | "preflight"
+  | "lead_lookup"
   | "launch_lookup"
   | "launch_create"
+  | "conversion"
   | "sync";
 
 type MetaRequestOptions = RequestInit & {
@@ -18,20 +26,26 @@ type MetaRequestOptions = RequestInit & {
 };
 
 const META_TIMEOUTS_MS: Record<MetaRequestPurpose, number> = {
-  oauth: 10_000,
+  oauth_code_exchange: 10_000,
+  oauth_token_extension: 10_000,
   discovery: 12_000,
   preflight: 10_000,
+  lead_lookup: 12_000,
   launch_lookup: 10_000,
   launch_create: 15_000,
+  conversion: 15_000,
   sync: 12_000,
 };
 
 const META_RETRIES: Record<MetaRequestPurpose, number> = {
-  oauth: 1,
+  oauth_code_exchange: 0,
+  oauth_token_extension: 1,
   discovery: 2,
   preflight: 2,
+  lead_lookup: 2,
   launch_lookup: 2,
   launch_create: 0,
+  conversion: 0,
   sync: 2,
 };
 
@@ -92,6 +106,10 @@ export async function fetchMetaResponse(
   input: RequestInfo | URL,
   options: MetaRequestOptions,
 ) {
+  assertMetaUrlHasNoCredentials(
+    typeof input === "string" || input instanceof URL ? input : input.url,
+  );
+
   const {
     purpose,
     requestId,
@@ -102,6 +120,23 @@ export async function fetchMetaResponse(
     ...init
   } = options;
   const method = typeof init.method === "string" ? init.method.toUpperCase() : "GET";
+  const isProviderWrite = method !== "GET" && method !== "HEAD";
+  if (isProviderWrite && purpose === "launch_create" && !isMetaLiveWriteAllowed()) {
+    throw new ApiError(
+      403,
+      "Live Meta writes are disabled. Explicitly enable the guarded launch flow before sending provider mutations.",
+      "meta_live_launch_disabled",
+    );
+  }
+
+  if (isProviderWrite && purpose === "conversion" && !isMetaCapiWriteAllowed()) {
+    throw new ApiError(
+      403,
+      "Meta Conversions API events are disabled. Enable the separate CAPI policy only after consent and tracking acceptance.",
+      "meta_capi_events_disabled",
+    );
+  }
+
   const isNonIdempotentLaunchCreate =
     purpose === "launch_create" && method !== "GET" && method !== "HEAD";
   const retries = isNonIdempotentLaunchCreate
@@ -148,6 +183,13 @@ export async function fetchMetaResponse(
       }
 
       if (isRetryableMetaStatus(response.status) && attempt >= retries) {
+        if (purpose === "oauth_code_exchange") {
+          throw new ApiError(
+            503,
+            "Meta authorization-code exchange did not return a definitive result. The one-time code was not retried; reconnect Meta to continue.",
+            "meta_oauth_code_exchange_ambiguous",
+          );
+        }
         throw new ApiError(
           response.status === 429 ? 429 : 503,
           getMetaTemporaryFailureMessage(purpose, response),
@@ -162,6 +204,16 @@ export async function fetchMetaResponse(
       lastError = controller.signal.aborted && controller.signal.reason ? controller.signal.reason : error;
 
       if (attempt >= retries || !isRetryableMetaError(lastError)) {
+        if (
+          purpose === "oauth_code_exchange" &&
+          !(lastError instanceof ApiError && lastError.code === "meta_oauth_code_exchange_ambiguous")
+        ) {
+          throw new ApiError(
+            503,
+            "Meta authorization-code exchange did not return a definitive result. The one-time code was not retried; reconnect Meta to continue.",
+            "meta_oauth_code_exchange_ambiguous",
+          );
+        }
         throw lastError instanceof ApiError
           ? lastError
           : new ApiError(

@@ -10,6 +10,10 @@ const leadForm = fs.readFileSync("src/app/f/[slug]/lead-capture-form.tsx", "utf8
 const browserPixelRoute = fs.readFileSync("src/app/api/lead-tracking/browser-pixel/route.ts", "utf8");
 const conversions = fs.readFileSync("src/lib/integrations/meta/conversions.ts", "utf8");
 const launchRoute = fs.readFileSync("src/app/api/campaigns/[id]/launch/route.ts", "utf8");
+const launchFencingMigration = fs.readFileSync(
+  "supabase/migrations/20260710235500_schedule_launch_claim_fencing.sql",
+  "utf8",
+);
 const metaService = fs.readFileSync("src/lib/integrations/meta/service.ts", "utf8");
 const metaStatusSync = fs.readFileSync("src/lib/integrations/meta/status-sync.ts", "utf8");
 const metaCampaignSync = fs.readFileSync("src/lib/services/meta-campaign-sync-service.ts", "utf8");
@@ -45,7 +49,17 @@ assert.match(trackingService, /recordLeadTrackingEvent/, "tracking service must 
 assert.match(trackingService, /getCampaignTrackingHealth/, "tracking service must expose campaign health summary");
 
 assert.match(leadRoute, /eventType: "lead_captured"/, "lead capture must write lead_captured tracking event");
-assert.match(leadRoute, /eventType: "capi_queued"/, "lead capture must write capi_queued tracking event");
+assert.match(
+  leadRoute,
+  /const metaConversionQueued = sideEffectJob\.enabledEffects\.includes\("meta_conversion"\)/,
+  "lead capture must derive CAPI queue truth from the persisted job policy",
+);
+assert.match(
+  leadRoute,
+  /eventType: metaConversionQueued \? "capi_queued" : "capi_failed"/,
+  "lead capture must not claim CAPI was queued when consent removed the effect",
+);
+assert.match(leadRoute, /meta_capi_consent_missing/, "missing CAPI consent must retain a safe reason");
 assert.match(leadRoute, /parseLandingPageAttribution/, "lead capture must backfill attribution from landing URL");
 assert.match(leadRoute, /utm_content/, "lead capture must preserve Meta ad id attribution from utm_content");
 
@@ -64,17 +78,36 @@ assert.match(conversions, /meta_pixel_missing/, "CAPI missing pixel skip must be
 assert.match(conversions, /meta_access_token_missing/, "CAPI missing token skip must be visible");
 assert.match(conversions, /meta_env_missing/, "CAPI missing env skip must be visible");
 
-assert.match(launchRoute, /upsertCampaignTrackingContract/, "launch must write a tracking contract");
+assert.match(launchRoute, /completeManualCampaignLaunchClaim/, "launch must settle through the atomic completion RPC");
 assert.match(launchRoute, /getMetaWorkspaceCredentials/, "launch must fail closed when Meta pixel or token credentials are missing");
 assertOrdered(
   launchRoute,
   [
     "const metaCredentials = await getMetaWorkspaceCredentials",
-    "const response = await launchCampaignCreatePost",
-    "await upsertCampaignTrackingContract",
+    "const response = await launchCampaignToMeta",
+    "await completeManualCampaignLaunchClaim",
     "return {",
   ],
-  "Meta credentials must be validated before launch and the tracking contract must be written before the response returns",
+  "Meta credentials must be validated before launch and the atomic completion RPC must settle before the response returns",
+);
+const manualCompletionSource = launchFencingMigration.slice(
+  launchFencingMigration.indexOf("create or replace function public.complete_manual_campaign_launch_claim"),
+  launchFencingMigration.indexOf("create or replace function public.fail_manual_campaign_launch_claim"),
+);
+assertOrdered(
+  manualCompletionSource,
+  [
+    "update public.campaign_launch_records candidate",
+    "update public.campaign_plans campaign",
+    "perform private.persist_launch_tracking_contract",
+    "return true",
+  ],
+  "Manual completion must atomically persist receipt truth, campaign runtime, and tracking before success",
+);
+assert.match(
+  launchFencingMigration,
+  /insert into public\.lead_tracking_events/,
+  "Atomic launch tracking settlement must append a tracking event",
 );
 
 assert.match(metaService, /pixel_id: nextPixelId/, "Meta selections must persist the selected pixel id");

@@ -208,7 +208,12 @@ export function CreativeWizard({ campaignId, creatives, ugcConcepts }: CreativeW
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-medium text-muted-foreground">Recommended test set</p>
-            <h2 className="mt-1 text-2xl font-semibold text-foreground">
+            <h2
+              id="creative-selection-status"
+              aria-atomic="true"
+              aria-live="polite"
+              className="mt-1 text-2xl font-semibold text-foreground"
+            >
               {selectedCreatives.length} creatives selected
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -260,7 +265,11 @@ export function CreativeWizard({ campaignId, creatives, ugcConcepts }: CreativeW
             {saving ? "Saving..." : "Save Test Set → Next"}
           </Button>
         </div>
-        {error ? <p className="text-sm text-rose-400">{error}</p> : null}
+        {error ? (
+          <p aria-live="assertive" className="text-sm text-rose-400" role="alert">
+            {error}
+          </p>
+        ) : null}
 
         <details className="rounded-2xl border border-border p-4">
           <summary className="cursor-pointer text-sm font-medium text-foreground">
@@ -285,11 +294,16 @@ export function CreativeWizard({ campaignId, creatives, ugcConcepts }: CreativeW
             {selectedCreatives.length}/{maxSelected} selected
           </p>
         </div>
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <div
+          aria-label="Creative test set"
+          className="mt-5 grid gap-4 lg:grid-cols-2"
+          role="group"
+        >
           {rankedCreatives.map((creative, index) => {
             const selected = selectedIds.includes(creative.id);
             return (
               <button
+                aria-describedby="creative-selection-status"
                 aria-pressed={selected}
                 className={`rounded-2xl border p-3 text-left transition ${
                   selected

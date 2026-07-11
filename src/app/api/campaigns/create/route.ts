@@ -1,42 +1,59 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { z } from "zod";
-import { ApiError, assertSameOriginRequest, parseJsonBody } from "@/lib/api/route";
-import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
+import { ApiError, assertSameOriginRequest } from "@/lib/api/route";
 import { getPublicAppUrl } from "@/lib/env";
 import {
-  buildCampaignPlanCriticalFieldPatch,
   getCampaignPayloadFromPlan,
   getLaunchRuntimeFromPlan,
   readCampaignPlanDocument,
-  withLaunchRuntime,
 } from "@/lib/services/campaign-plan-document";
 import { logMetaError, mapMetaError } from "@/lib/integrations/meta/error-mapper";
 import { fetchMetaJson } from "@/lib/integrations/meta/request";
 import {
+  buildMetaGraphUrl,
+  withMetaBearerToken,
+} from "@/lib/integrations/meta/contract";
+import {
   getMetaWorkspaceCredentials,
-  validateMetaLaunchSelections,
+  getMetaWorkspaceCredentialsForOrganization,
+  validateMetaLaunchSelectionsForOrganization,
   type MetaWorkspaceCredentials,
 } from "@/lib/integrations/meta/service";
 import { assertMetaLaunchBillingAccessForOrganization } from "@/lib/services/billing-service";
-import { getCampaignById } from "@/lib/services/campaign-persistence";
+import {
+  getCampaignById,
+  getCampaignByIdForInternalActor,
+} from "@/lib/services/campaign-persistence";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
-
-const requestSchema = z.object({
-  campaignId: z.string().min(1),
-  testModeInterruptAfter: z.enum(["campaign", "ad_set", "creative"]).optional(),
-});
+import {
+  buildMetaLaunchInputBinding,
+  type MetaLaunchInputBinding,
+} from "@/lib/meta-launch-input-snapshot";
 
 type LaunchResumePayload = {
   metaCampaignId?: string | null;
   metaAdSetId?: string | null;
   metaCreativeId?: string | null;
+  metaAdId?: string | null;
 };
 
 type LaunchStage = "campaign" | "adset" | "creative" | "ad";
 type LaunchStepStatus = "pending" | "creating" | "created" | "validating" | "retrying" | "failed";
 type ForcedInterruptStage = "campaign" | "adset" | "creative" | null;
+type ProviderMutationSettlement = {
+  stage: LaunchStage;
+  objectKey: string;
+  outcome: "receipted" | "explicit_provider_rejection";
+  objectId: string | null;
+  responseStatus: number;
+  providerErrorCode?: string | null;
+};
+
+export type InternalMetaLaunchActor = {
+  organizationId: string;
+  userId: string;
+};
 
 type PersistedLaunchState = {
   campaign_id: string | null;
@@ -54,6 +71,11 @@ type PersistedLaunchState = {
   error?: string | null;
   updated_at: string;
 };
+
+type PersistLaunchStateWriter = (
+  state: PersistedLaunchState,
+  message: string,
+) => Promise<void>;
 
 type CampaignPayloadRecord = {
   selected_ad_id?: string;
@@ -143,6 +165,37 @@ function getMetaErrorMessage(data: Record<string, unknown> | null, fallback: str
   const message = typeof error.message === "string" ? error.message.trim() : "";
 
   return [userTitle, userMessage || message].filter(Boolean).join(": ") || fallback;
+}
+
+function getExplicitMetaProviderRejectionCode(
+  data: Record<string, unknown> | null,
+  responseStatus: number,
+) {
+  if (![400, 401, 403, 404, 405, 410, 422].includes(responseStatus)) {
+    return null;
+  }
+
+  const error =
+    data && typeof data.error === "object" && data.error && !Array.isArray(data.error)
+      ? (data.error as Record<string, unknown>)
+      : null;
+  if (!error) {
+    return null;
+  }
+
+  const rawCode = error.code ?? error.error_subcode ?? error.type;
+  const hasExplicitProviderError =
+    (rawCode !== null && rawCode !== undefined) ||
+    (typeof error.message === "string" && error.message.trim().length > 0);
+  if (!hasExplicitProviderError) {
+    return null;
+  }
+
+  const normalized = String(rawCode ?? "meta_provider_rejected")
+    .trim()
+    .replace(/[^A-Za-z0-9_.:-]+/g, "_")
+    .slice(0, 100);
+  return normalized || "meta_provider_rejected";
 }
 
 function inferCountryCode(location: string) {
@@ -256,66 +309,6 @@ function getPersistedLaunchState(plan: Record<string, unknown>): PersistedLaunch
   return (getLaunchRuntimeFromPlan(plan) as PersistedLaunchState | null) ?? null;
 }
 
-async function persistLaunchState(
-  campaignId: string,
-  state: PersistedLaunchState,
-  message: string,
-) {
-  const supabase = createAdminClient() ?? (await createRouteHandlerClient());
-
-  if (!supabase) {
-    throw new Error("Supabase is not configured.");
-  }
-
-  const currentPlan = await loadCampaignPlanDocument(campaignId);
-  const currentRuntime =
-    currentPlan.runtime && typeof currentPlan.runtime === "object" && !Array.isArray(currentPlan.runtime)
-      ? (currentPlan.runtime as Record<string, unknown>)
-      : {};
-
-  const nextMetaAdSetIds = state.adset_id ? [state.adset_id] : [];
-  const nextMetaAdIds = state.ad_id ? [state.ad_id] : [];
-  const nextRuntime = {
-    ...currentRuntime,
-    campaignId: state.campaign_id ?? currentRuntime.campaignId ?? null,
-    adSetId: state.adset_id ?? currentRuntime.adSetId ?? null,
-    adId: state.ad_id ?? currentRuntime.adId ?? null,
-    metaAdSetIds: nextMetaAdSetIds.length > 0 ? nextMetaAdSetIds : currentRuntime.metaAdSetIds ?? [],
-    metaAdIds: nextMetaAdIds.length > 0 ? nextMetaAdIds : currentRuntime.metaAdIds ?? [],
-    metaPushStatus:
-      state.status === "completed"
-        ? "published"
-        : state.status === "failed"
-          ? "failed"
-          : "publishing",
-    status:
-      state.status === "completed"
-        ? "live"
-        : state.status === "failed"
-          ? "launch_ready"
-          : "launching",
-    metaLastMessage: message,
-    lastAction: message,
-    launchedAt: state.status === "completed" ? new Date().toISOString() : currentRuntime.launchedAt ?? null,
-    statusUpdatedAt: state.updated_at,
-  };
-
-  const nextPlan = withLaunchRuntime(
-    currentPlan,
-    state as unknown as Record<string, unknown>,
-    nextRuntime,
-  );
-
-  const { error } = await supabase
-    .from("campaign_plans")
-    .update(buildCampaignPlanCriticalFieldPatch(nextPlan) as never)
-    .eq("id", campaignId);
-
-  if (error) {
-    throw error;
-  }
-}
-
 function normalizeObjective(value?: string | null) {
   const normalized = (value ?? "").toUpperCase();
 
@@ -381,10 +374,15 @@ function buildDeterministicMetaName(params: {
   campaignId: string;
   attemptId: string;
   stage: LaunchStage;
-  baseName: string;
 }) {
   const suffix = `DF-${params.organizationId.slice(0, 8)}-${params.campaignId.slice(0, 8)}-${params.attemptId.slice(0, 8)}-${params.stage}`;
-  return `${params.baseName} | ${suffix}`.trim();
+  const stageLabel = {
+    campaign: "DealFlow Campaign",
+    adset: "DealFlow Ad Set",
+    creative: "DealFlow Creative",
+    ad: "DealFlow Ad",
+  }[params.stage];
+  return `${stageLabel} | ${suffix}`;
 }
 
 function buildLaunchObjectKey(params: {
@@ -406,40 +404,96 @@ async function fetchMetaObjectByName(params: {
   edge: "campaigns" | "adsets" | "adcreatives" | "ads";
   fields: string;
   name: string;
+  expectedParentField?: "account_id" | "campaign_id" | "adset_id";
+  expectedParentId?: string | null;
   requestId?: string;
 }) {
-  const url = new URL(
-    `https://graph.facebook.com/v18.0/act_${params.externalAccountId.replace(/^act_/, "")}/${params.edge}`,
-  );
-  url.searchParams.set("fields", params.fields);
-  url.searchParams.set("limit", "200");
-  url.searchParams.set("access_token", params.accessToken);
+  let after: string | null = null;
+  const seenCursors = new Set<string>();
+  const matchingIds = new Set<string>();
 
-  const { response, data } = await fetchMetaJson<
-    { data?: Array<Record<string, unknown>>; error?: { message?: string } } | null
-  >(url.toString(), {
-    purpose: "launch_lookup",
-    requestId: params.requestId,
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    throw new ApiError(
-      502,
-      data?.error?.message ?? `Meta ${params.edge} lookup failed.`,
-      "meta_lookup_failed",
+  for (let page = 0; page < 20; page += 1) {
+    const url = buildMetaGraphUrl(
+      `act_${params.externalAccountId.replace(/^act_/, "")}/${params.edge}`,
+      {
+        fields: params.fields,
+        limit: 100,
+        ...(after ? { after } : {}),
+      },
     );
+    const { response, data } = await fetchMetaJson<
+      {
+        data?: Array<Record<string, unknown>>;
+        paging?: { cursors?: { after?: unknown } };
+        error?: { message?: string };
+      } | null
+    >(url, {
+      purpose: "launch_lookup",
+      requestId: params.requestId,
+      ...withMetaBearerToken(params.accessToken, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new ApiError(
+        502,
+        data?.error?.message ?? `Meta ${params.edge} lookup failed.`,
+        "meta_lookup_failed",
+      );
+    }
+
+    for (const item of data?.data ?? []) {
+      if (typeof item.name !== "string" || item.name.trim() !== params.name) {
+        continue;
+      }
+
+      if (params.expectedParentField && params.expectedParentId) {
+        const actualParent = String(item[params.expectedParentField] ?? "")
+          .trim()
+          .replace(/^act_/, "");
+        const expectedParent = params.expectedParentId.trim().replace(/^act_/, "");
+        if (actualParent !== expectedParent) {
+          continue;
+        }
+      }
+
+      if (typeof item.id === "string" && item.id.trim()) {
+        matchingIds.add(item.id.trim());
+      }
+    }
+
+    if (matchingIds.size > 1) {
+      throw new ApiError(
+        422,
+        `Meta returned multiple ${params.edge} with the same deterministic recovery identity.`,
+        "meta_lookup_ambiguous",
+      );
+    }
+
+    const nextAfter = data?.paging?.cursors?.after;
+    if (typeof nextAfter !== "string" || !/^[\x21-\x7E]{1,500}$/.test(nextAfter)) {
+      return Array.from(matchingIds)[0] ?? null;
+    }
+    if (seenCursors.has(nextAfter)) {
+      throw new ApiError(
+        502,
+        `Meta ${params.edge} lookup returned a repeated pagination cursor.`,
+        "meta_lookup_pagination_invalid",
+      );
+    }
+    seenCursors.add(nextAfter);
+    after = nextAfter;
   }
 
-  const match =
-    data?.data?.find(
-      (item) => typeof item.name === "string" && item.name.trim() === params.name,
-    ) ?? null;
-
-  return match && typeof match.id === "string" ? match.id : null;
+  throw new ApiError(
+    502,
+    `Meta ${params.edge} lookup exceeded the bounded pagination window.`,
+    "meta_lookup_pagination_limit",
+  );
 }
 
 async function fetchMetaObjectById(params: {
@@ -448,22 +502,24 @@ async function fetchMetaObjectById(params: {
   fields: string;
   requestId?: string;
 }) {
-  const url = new URL(`https://graph.facebook.com/v18.0/${params.objectId}`);
-  url.searchParams.set("fields", params.fields);
-  url.searchParams.set("access_token", params.accessToken);
+  const url = buildMetaGraphUrl(params.objectId, {
+    fields: params.fields,
+  });
 
   const { response, data } = await fetchMetaJson<
     | (Record<string, unknown> & {
         error?: { message?: string; code?: number; error_subcode?: number };
       })
     | null
-  >(url.toString(), {
+  >(url, {
     purpose: "launch_lookup",
     requestId: params.requestId,
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    ...withMetaBearerToken(params.accessToken, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }),
   });
 
   if (!response.ok) {
@@ -486,30 +542,32 @@ async function fetchMetaObjectById(params: {
 }
 
 function isPausedMetaStatus(value: unknown) {
-  return typeof value === "string" && value.toUpperCase().includes("PAUSED");
+  return typeof value === "string" && value.trim().toUpperCase() === "PAUSED";
 }
 
 async function updateMetaObjectPaused(params: {
   accessToken: string;
   objectId: string;
   requestId?: string;
+  assertProviderMutationAllowed?: () => void | Promise<void>;
 }) {
-  const body = new URLSearchParams({
-    status: "PAUSED",
-    access_token: params.accessToken,
-  });
+  await params.assertProviderMutationAllowed?.();
+  const body = new URLSearchParams({ status: "PAUSED" });
   const { response, data } = await fetchMetaJson<{ success?: boolean; error?: { message?: string } } | null>(
-    `https://graph.facebook.com/v18.0/${params.objectId}`,
+    buildMetaGraphUrl(params.objectId),
     {
       purpose: "launch_create",
       requestId: params.requestId,
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: body.toString(),
+      ...withMetaBearerToken(params.accessToken, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: body.toString(),
+      }),
     },
   );
+  await params.assertProviderMutationAllowed?.();
 
   if (!response.ok || data?.success !== true) {
     throw new ApiError(
@@ -524,6 +582,7 @@ async function ensureDirectMetaObjectPaused(params: {
   accessToken: string;
   objectId: string;
   requestId?: string;
+  assertProviderMutationAllowed?: () => void | Promise<void>;
 }) {
   const current = await fetchMetaObjectById({
     accessToken: params.accessToken,
@@ -536,7 +595,7 @@ async function ensureDirectMetaObjectPaused(params: {
     throw new ApiError(502, "Meta object could not be verified after creation/recovery.", "meta_lookup_failed");
   }
 
-  if (isPausedMetaStatus(current.status) || isPausedMetaStatus(current.effective_status)) {
+  if (isPausedMetaStatus(current.status)) {
     return;
   }
 
@@ -549,7 +608,7 @@ async function ensureDirectMetaObjectPaused(params: {
     requestId: params.requestId,
   });
 
-  if (!isPausedMetaStatus(updated?.status) && !isPausedMetaStatus(updated?.effective_status)) {
+  if (!isPausedMetaStatus(updated?.status)) {
     throw new ApiError(
       502,
       `Meta object ${params.objectId} could not be verified PAUSED after creation/recovery.`,
@@ -604,7 +663,7 @@ async function validateExistingMetaObject(params: {
   };
 }
 
-async function persistPendingLaunchRequest(params: {
+async function persistPendingLaunchRequestWithWriter(params: {
   campaignId: string;
   attemptId: string;
   stage: LaunchStage;
@@ -617,9 +676,9 @@ async function persistPendingLaunchRequest(params: {
     creative_id: string | null;
     ad_id: string | null;
   };
+  writer: PersistLaunchStateWriter;
 }) {
-  await persistLaunchState(
-    params.campaignId,
+  await params.writer(
     {
       ...params.currentIds,
       current_stage: params.stage,
@@ -637,7 +696,7 @@ async function persistPendingLaunchRequest(params: {
   );
 }
 
-async function persistStageState(params: {
+async function persistStageStateWithWriter(params: {
   campaignId: string;
   ids: {
     campaign_id: string | null;
@@ -655,9 +714,9 @@ async function persistStageState(params: {
   workspaceId: string | null;
   error?: string | null;
   message: string;
+  writer: PersistLaunchStateWriter;
 }) {
-  await persistLaunchState(
-    params.campaignId,
+  await params.writer(
     {
       ...params.ids,
       current_stage: params.stage,
@@ -673,20 +732,6 @@ async function persistStageState(params: {
     },
     params.message,
   );
-}
-
-function normalizeForcedInterruptStage(
-  value: string | null | undefined,
-): ForcedInterruptStage {
-  if (value === "campaign" || value === "adset" || value === "creative") {
-    return value;
-  }
-
-  if (value === "ad_set") {
-    return "adset";
-  }
-
-  return null;
 }
 
 function maybeThrowForcedInterrupt(params: {
@@ -705,8 +750,22 @@ function maybeThrowForcedInterrupt(params: {
 export async function launchCampaignToMeta(
   campaignId: string,
   resume: LaunchResumePayload = {},
-  options?: {
+  options: {
     testModeInterruptAfter?: ForcedInterruptStage;
+    internalActor?: InternalMetaLaunchActor;
+    assertProviderMutationAllowed?: () => void | Promise<void>;
+    bindLaunchInputSnapshot: (binding: MetaLaunchInputBinding) => Promise<void>;
+    recordProviderReceipt?: (receipt: {
+      stage: LaunchStage;
+      objectId: string;
+      responseStatus: number;
+    }) => Promise<void>;
+    armProviderMutation: (mutation: {
+      stage: LaunchStage;
+      objectKey: string;
+    }) => Promise<void>;
+    settleProviderMutation: (settlement: ProviderMutationSettlement) => Promise<void>;
+    persistLaunchState: PersistLaunchStateWriter;
   },
 ) {
   const requestId = crypto.randomUUID();
@@ -717,15 +776,74 @@ export async function launchCampaignToMeta(
     campaign_id: resume.metaCampaignId?.trim() || null,
     adset_id: resume.metaAdSetId?.trim() || null,
     creative_id: resume.metaCreativeId?.trim() || null,
-    ad_id: null as string | null,
+    ad_id: resume.metaAdId?.trim() || null,
   };
   let persistedLaunchStateForFailure: PersistedLaunchState | null = null;
   let requestedObjectType: PersistedLaunchState["requested_object_type"] = null;
   let requestedObjectName: string | null = null;
   let ownershipVerified = false;
+  let pendingProviderMutation: { stage: LaunchStage; objectKey: string } | null = null;
+
+  const armProviderMutation = async (stage: LaunchStage, objectKey: string) => {
+    await options.armProviderMutation({ stage, objectKey });
+    pendingProviderMutation = { stage, objectKey };
+  };
+  const settleProviderMutation = async (settlement: ProviderMutationSettlement) => {
+    await options.settleProviderMutation(settlement);
+    pendingProviderMutation = null;
+  };
+  const getProviderFailureContract = () =>
+    pendingProviderMutation
+      ? {
+          code: "meta_provider_create_outcome_ambiguous",
+          operatorActionRequired: true,
+          status: 409,
+        }
+      : {
+          code: "meta_provider_request_rejected",
+          operatorActionRequired: false,
+          status: null,
+        };
+
+  const writeFencedLaunchState: PersistLaunchStateWriter = async (state, message) => {
+    // Terminal success is committed atomically by the manual/scheduled
+    // completion RPC after all four immutable 2xx provider receipts match.
+    // Writing it here would make mutable plan truth precede durable settlement.
+    if (state.status === "completed") {
+      return;
+    }
+    await options.persistLaunchState(state, message);
+  };
+
+  const persistLaunchState = async (
+    targetCampaignId: string,
+    state: PersistedLaunchState,
+    message: string,
+  ) => {
+    if (targetCampaignId !== campaignId) {
+      throw new ApiError(
+        500,
+        "Launch state writer was invoked for the wrong campaign.",
+        "campaign_launch_runtime_target_mismatch",
+      );
+    }
+    await writeFencedLaunchState(state, message);
+  };
+  const persistPendingLaunchRequest = (
+    params: Omit<Parameters<typeof persistPendingLaunchRequestWithWriter>[0], "writer">,
+  ) => persistPendingLaunchRequestWithWriter({ ...params, writer: writeFencedLaunchState });
+  const persistStageState = (
+    params: Omit<Parameters<typeof persistStageStateWithWriter>[0], "writer">,
+  ) => persistStageStateWithWriter({ ...params, writer: writeFencedLaunchState });
 
   try {
-    const record = await getCampaignById(campaignId);
+    const record = options?.internalActor
+      ? await getCampaignByIdForInternalActor({
+          campaignId,
+          organizationId: options.internalActor.organizationId,
+          userId: options.internalActor.userId,
+        })
+      : await getCampaignById(campaignId);
 
     if (!record) {
       throw new ApiError(404, "Campaign plan was not found.", "campaign_plan_not_found");
@@ -733,9 +851,21 @@ export async function launchCampaignToMeta(
 
     ownershipVerified = true;
     const campaignOwnerId = await loadCampaignOwnerId(campaignId);
-    await assertMetaLaunchBillingAccessForOrganization(campaignOwnerId);
+    if (options?.internalActor && campaignOwnerId !== options.internalActor.organizationId) {
+      throw new ApiError(
+        403,
+        "The scheduled launch actor does not own this campaign.",
+        "scheduled_launch_actor_mismatch",
+      );
+    }
+    await assertMetaLaunchBillingAccessForOrganization(
+      options?.internalActor?.organizationId ?? campaignOwnerId,
+      { allowSessionOverride: !options?.internalActor },
+    );
     assertMetaLiveLaunchEnabled();
-    const credentials: MetaWorkspaceCredentials = await getMetaWorkspaceCredentials();
+    const credentials: MetaWorkspaceCredentials = options?.internalActor
+      ? await getMetaWorkspaceCredentialsForOrganization(options.internalActor.organizationId)
+      : await getMetaWorkspaceCredentials();
     const storedPayload = await loadSavedCampaignPayload(campaignId);
     const currentPlan = await loadCampaignPlanDocument(campaignId);
     const persistedLaunchState = getPersistedLaunchState(currentPlan);
@@ -762,7 +892,10 @@ export async function launchCampaignToMeta(
         lastKnownIds.creative_id ??
         persistedLaunchState?.creative_id?.trim() ??
         null,
-      ad_id: persistedLaunchState?.ad_id?.trim() ?? null,
+      ad_id:
+        lastKnownIds.ad_id ??
+        persistedLaunchState?.ad_id?.trim() ??
+        null,
     };
 
     const externalAccountId = credentials.adAccountId.replace(/^act_/, "");
@@ -834,10 +967,6 @@ export async function launchCampaignToMeta(
       storedPayload?.offer?.key_offer ??
       record.plan.offer ??
       record.campaign.name;
-    const creativeConcept =
-      selectedStaticAd.visualConcept ??
-      storedPayload?.creatives?.creative_concepts?.[0] ??
-      record.plan.summary;
     const publicSlug = record.publish.slug?.trim() ?? "";
     const expectedDestinationUrl = publicSlug
       ? `${getPublicAppUrl()}/f/${publicSlug}`
@@ -852,7 +981,34 @@ export async function launchCampaignToMeta(
       );
     }
 
-    const preflight = await validateMetaLaunchSelections({ destinationUrl });
+    await options.bindLaunchInputSnapshot(
+      buildMetaLaunchInputBinding({
+        organizationId: workspaceId,
+        campaignId,
+        attemptId: activeAttemptId,
+        adAccountId: externalAccountId,
+        pageId,
+        pixelId,
+        selectedAdId,
+        imageUrl: selectedStaticAd.imageUrl || null,
+        primaryText,
+        headline,
+        destinationUrl,
+        objective,
+        countryCode,
+        location,
+        dailyBudgetMinor: dailyBudget,
+      }),
+    );
+
+    // Preflight the exact credential snapshot that was just committed to the
+    // immutable launch binding. Reloading selected provider assets here could
+    // validate selection B and then mutate the already-frozen selection A.
+    const preflight = await validateMetaLaunchSelectionsForOrganization({
+      organizationId: options?.internalActor?.organizationId ?? workspaceId,
+      credentials,
+      destinationUrl,
+    });
 
     if (!preflight.ready) {
       throw new ApiError(
@@ -868,28 +1024,24 @@ export async function launchCampaignToMeta(
       campaignId,
       attemptId: activeAttemptId,
       stage: "campaign",
-      baseName: campaignName,
     });
     const adSetMetaName = buildDeterministicMetaName({
       organizationId: workspaceId,
       campaignId,
       attemptId: activeAttemptId,
       stage: "adset",
-      baseName: `${campaignName} | ${audience || "Core audience"}`.trim(),
     });
     const creativeMetaName = buildDeterministicMetaName({
       organizationId: workspaceId,
       campaignId,
       attemptId: activeAttemptId,
       stage: "creative",
-      baseName: creativeConcept || headline,
     });
     const adMetaName = buildDeterministicMetaName({
       organizationId: workspaceId,
       campaignId,
       attemptId: activeAttemptId,
       stage: "ad",
-      baseName: `${campaignName} | ${headline}`.trim(),
     });
     const campaignObjectKey = buildLaunchObjectKey({
       organizationId: workspaceId,
@@ -961,6 +1113,11 @@ export async function launchCampaignToMeta(
           message: `Stored Meta campaign could not be reused. ${validation.reason} Retrying safely.`,
         });
       } else {
+        await options.recordProviderReceipt?.({
+          stage: "campaign",
+          objectId: lastKnownIds.campaign_id,
+          responseStatus: 200,
+        });
         await persistStageState({
           campaignId,
           ids: lastKnownIds,
@@ -991,11 +1148,20 @@ export async function launchCampaignToMeta(
         accessToken: credentials.accessToken,
         externalAccountId,
         edge: "campaigns",
-        fields: "id,name",
+        fields: "id,name,account_id",
         name: campaignMetaName,
+        expectedParentField: "account_id",
+        expectedParentId: externalAccountId,
         requestId,
       });
       campaignData = lastKnownIds.campaign_id ? { id: lastKnownIds.campaign_id, recovered: true } : null;
+      if (lastKnownIds.campaign_id) {
+        await options?.recordProviderReceipt?.({
+          stage: "campaign",
+          objectId: lastKnownIds.campaign_id,
+          responseStatus: 200,
+        });
+      }
     }
 
     if (lastKnownIds.campaign_id && campaignData?.recovered === true) {
@@ -1035,23 +1201,74 @@ export async function launchCampaignToMeta(
         special_ad_categories: JSON.stringify(["HOUSING"]),
         special_ad_category_country: JSON.stringify([countryCode]),
         is_adset_budget_sharing_enabled: "false",
-        access_token: credentials.accessToken,
       });
+      await options?.assertProviderMutationAllowed?.();
+      await armProviderMutation("campaign", campaignObjectKey);
       const { response: campaignResponse, data: campaignResponseData } = await fetchMetaJson<Record<string, unknown> | null>(
-        `https://graph.facebook.com/v18.0/act_${externalAccountId}/campaigns`,
+        buildMetaGraphUrl(`act_${externalAccountId}/campaigns`),
         {
           purpose: "launch_create",
           requestId,
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: campaignBody.toString(),
+          ...withMetaBearerToken(credentials.accessToken, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: campaignBody.toString(),
+          }),
         },
       );
       campaignData = campaignResponseData;
       lastKnownIds.campaign_id =
         campaignData && typeof campaignData.id === "string" ? campaignData.id : null;
+      if (lastKnownIds.campaign_id) {
+        await options?.recordProviderReceipt?.({
+          stage: "campaign",
+          objectId: lastKnownIds.campaign_id,
+          responseStatus: campaignResponse.status,
+        });
+        if (campaignResponse.ok) {
+          await settleProviderMutation({
+            stage: "campaign",
+            objectKey: campaignObjectKey,
+            outcome: "receipted",
+            objectId: lastKnownIds.campaign_id,
+            responseStatus: campaignResponse.status,
+          });
+        }
+        if (!options?.recordProviderReceipt) {
+          await persistStageState({
+            campaignId,
+            ids: lastKnownIds,
+            stage: "campaign",
+            overallStatus: "in_progress",
+            stepStatus: "created",
+            attemptId: activeAttemptId,
+            requestedObjectType,
+            requestedObjectName,
+            requestedObjectKey: campaignObjectKey,
+            workspaceId,
+            message: "Captured the Meta campaign receipt before post-response authorization checks.",
+          });
+        }
+      }
+      if (!lastKnownIds.campaign_id) {
+        const providerErrorCode = getExplicitMetaProviderRejectionCode(
+          campaignData,
+          campaignResponse.status,
+        );
+        if (providerErrorCode) {
+          await settleProviderMutation({
+            stage: "campaign",
+            objectKey: campaignObjectKey,
+            outcome: "explicit_provider_rejection",
+            objectId: null,
+            responseStatus: campaignResponse.status,
+            providerErrorCode,
+          });
+        }
+      }
+      await options?.assertProviderMutationAllowed?.();
 
       if (!campaignResponse.ok || !lastKnownIds.campaign_id) {
         const rawErrorMessage = getMetaErrorMessage(campaignData, "Campaign creation failed.");
@@ -1063,6 +1280,7 @@ export async function launchCampaignToMeta(
           extra: { stage: "campaign", campaignId },
         });
         const clientError = buildStageFailureMessage(rawErrorMessage, "campaign");
+        const failureContract = getProviderFailureContract();
         await persistStageState({
           campaignId,
           ids: { ...lastKnownIds, campaign_id: null },
@@ -1082,9 +1300,15 @@ export async function launchCampaignToMeta(
             ...campaignData,
             stage: "campaign",
             error: clientError,
+            code: failureContract.code,
+            operatorActionRequired: failureContract.operatorActionRequired,
             requestId,
           },
-          { status: campaignResponse.ok ? 500 : campaignResponse.status },
+          {
+            status:
+              failureContract.status ??
+              (campaignResponse.ok ? 500 : campaignResponse.status),
+          },
         );
       }
     }
@@ -1094,6 +1318,7 @@ export async function launchCampaignToMeta(
         accessToken: credentials.accessToken,
         objectId: lastKnownIds.campaign_id,
         requestId,
+        assertProviderMutationAllowed: options?.assertProviderMutationAllowed,
       });
     }
 
@@ -1164,6 +1389,11 @@ export async function launchCampaignToMeta(
           message: `Stored Meta ad set could not be reused. ${validation.reason} Retrying safely.`,
         });
       } else {
+        await options.recordProviderReceipt?.({
+          stage: "adset",
+          objectId: lastKnownIds.adset_id,
+          responseStatus: 200,
+        });
         await persistStageState({
           campaignId,
           ids: lastKnownIds,
@@ -1196,9 +1426,18 @@ export async function launchCampaignToMeta(
         edge: "adsets",
         fields: "id,name,campaign_id",
         name: adSetMetaName,
+        expectedParentField: "campaign_id",
+        expectedParentId: lastKnownIds.campaign_id,
         requestId,
       });
       adSetData = lastKnownIds.adset_id ? { id: lastKnownIds.adset_id, recovered: true } : null;
+      if (lastKnownIds.adset_id) {
+        await options?.recordProviderReceipt?.({
+          stage: "adset",
+          objectId: lastKnownIds.adset_id,
+          responseStatus: 200,
+        });
+      }
     }
 
     if (lastKnownIds.adset_id && adSetData?.recovered === true) {
@@ -1245,7 +1484,6 @@ export async function launchCampaignToMeta(
           },
         }),
         status: "PAUSED",
-        access_token: credentials.accessToken,
       });
       adSetBody.set(
         "promoted_object",
@@ -1263,21 +1501,73 @@ export async function launchCampaignToMeta(
           },
         ]),
       );
+      await options?.assertProviderMutationAllowed?.();
+      await armProviderMutation("adset", adSetObjectKey);
       const { response: adSetResponse, data: adSetResponseData } = await fetchMetaJson<Record<string, unknown> | null>(
-        `https://graph.facebook.com/v18.0/act_${externalAccountId}/adsets`,
+        buildMetaGraphUrl(`act_${externalAccountId}/adsets`),
         {
           purpose: "launch_create",
           requestId,
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: adSetBody.toString(),
+          ...withMetaBearerToken(credentials.accessToken, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: adSetBody.toString(),
+          }),
         },
       );
       adSetData = adSetResponseData;
       lastKnownIds.adset_id =
         adSetData && typeof adSetData.id === "string" ? adSetData.id : null;
+      if (lastKnownIds.adset_id) {
+        await options?.recordProviderReceipt?.({
+          stage: "adset",
+          objectId: lastKnownIds.adset_id,
+          responseStatus: adSetResponse.status,
+        });
+        if (adSetResponse.ok) {
+          await settleProviderMutation({
+            stage: "adset",
+            objectKey: adSetObjectKey,
+            outcome: "receipted",
+            objectId: lastKnownIds.adset_id,
+            responseStatus: adSetResponse.status,
+          });
+        }
+        if (!options?.recordProviderReceipt) {
+          await persistStageState({
+            campaignId,
+            ids: lastKnownIds,
+            stage: "adset",
+            overallStatus: "in_progress",
+            stepStatus: "created",
+            attemptId: activeAttemptId,
+            requestedObjectType,
+            requestedObjectName,
+            requestedObjectKey: adSetObjectKey,
+            workspaceId,
+            message: "Captured the Meta ad set receipt before post-response authorization checks.",
+          });
+        }
+      }
+      if (!lastKnownIds.adset_id) {
+        const providerErrorCode = getExplicitMetaProviderRejectionCode(
+          adSetData,
+          adSetResponse.status,
+        );
+        if (providerErrorCode) {
+          await settleProviderMutation({
+            stage: "adset",
+            objectKey: adSetObjectKey,
+            outcome: "explicit_provider_rejection",
+            objectId: null,
+            responseStatus: adSetResponse.status,
+            providerErrorCode,
+          });
+        }
+      }
+      await options?.assertProviderMutationAllowed?.();
 
       if (!adSetResponse.ok || !lastKnownIds.adset_id) {
         const rawErrorMessage = getMetaErrorMessage(adSetData, "Ad set creation failed.");
@@ -1289,6 +1579,7 @@ export async function launchCampaignToMeta(
           extra: { stage: "adset", campaignId },
         });
         const clientError = buildStageFailureMessage(rawErrorMessage, "adset");
+        const failureContract = getProviderFailureContract();
         await persistStageState({
           campaignId,
           ids: { ...lastKnownIds, adset_id: null },
@@ -1310,10 +1601,16 @@ export async function launchCampaignToMeta(
             ad_id: null,
             stage: "ad_set",
             error: clientError,
+            code: failureContract.code,
+            operatorActionRequired: failureContract.operatorActionRequired,
             requestId,
             adset: adSetData,
           },
-          { status: adSetResponse.ok ? 500 : adSetResponse.status },
+          {
+            status:
+              failureContract.status ??
+              (adSetResponse.ok ? 500 : adSetResponse.status),
+          },
         );
       }
     }
@@ -1323,6 +1620,7 @@ export async function launchCampaignToMeta(
         accessToken: credentials.accessToken,
         objectId: lastKnownIds.adset_id,
         requestId,
+        assertProviderMutationAllowed: options?.assertProviderMutationAllowed,
       });
     }
 
@@ -1409,6 +1707,11 @@ export async function launchCampaignToMeta(
           message: `Stored Meta creative could not be reused. ${validation.reason} Retrying safely.`,
         });
       } else {
+        await options.recordProviderReceipt?.({
+          stage: "creative",
+          objectId: lastKnownIds.creative_id,
+          responseStatus: 200,
+        });
         await persistStageState({
           campaignId,
           ids: lastKnownIds,
@@ -1444,6 +1747,13 @@ export async function launchCampaignToMeta(
         requestId,
       });
       creativeData = lastKnownIds.creative_id ? { id: lastKnownIds.creative_id, recovered: true } : null;
+      if (lastKnownIds.creative_id) {
+        await options?.recordProviderReceipt?.({
+          stage: "creative",
+          objectId: lastKnownIds.creative_id,
+          responseStatus: 200,
+        });
+      }
     }
 
     if (lastKnownIds.creative_id && creativeData?.recovered === true) {
@@ -1482,23 +1792,74 @@ export async function launchCampaignToMeta(
           page_id: pageId,
           link_data: linkData,
         }),
-        access_token: credentials.accessToken,
       });
+      await options?.assertProviderMutationAllowed?.();
+      await armProviderMutation("creative", creativeObjectKey);
       const { response: creativeResponse, data: creativeResponseData } = await fetchMetaJson<Record<string, unknown> | null>(
-        `https://graph.facebook.com/v18.0/act_${externalAccountId}/adcreatives`,
+        buildMetaGraphUrl(`act_${externalAccountId}/adcreatives`),
         {
           purpose: "launch_create",
           requestId,
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: creativeBody.toString(),
+          ...withMetaBearerToken(credentials.accessToken, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: creativeBody.toString(),
+          }),
         },
       );
       creativeData = creativeResponseData;
       lastKnownIds.creative_id =
         creativeData && typeof creativeData.id === "string" ? creativeData.id : null;
+      if (lastKnownIds.creative_id) {
+        await options?.recordProviderReceipt?.({
+          stage: "creative",
+          objectId: lastKnownIds.creative_id,
+          responseStatus: creativeResponse.status,
+        });
+        if (creativeResponse.ok) {
+          await settleProviderMutation({
+            stage: "creative",
+            objectKey: creativeObjectKey,
+            outcome: "receipted",
+            objectId: lastKnownIds.creative_id,
+            responseStatus: creativeResponse.status,
+          });
+        }
+        if (!options?.recordProviderReceipt) {
+          await persistStageState({
+            campaignId,
+            ids: lastKnownIds,
+            stage: "creative",
+            overallStatus: "in_progress",
+            stepStatus: "created",
+            attemptId: activeAttemptId,
+            requestedObjectType,
+            requestedObjectName,
+            requestedObjectKey: creativeObjectKey,
+            workspaceId,
+            message: "Captured the Meta creative receipt before post-response authorization checks.",
+          });
+        }
+      }
+      if (!lastKnownIds.creative_id) {
+        const providerErrorCode = getExplicitMetaProviderRejectionCode(
+          creativeData,
+          creativeResponse.status,
+        );
+        if (providerErrorCode) {
+          await settleProviderMutation({
+            stage: "creative",
+            objectKey: creativeObjectKey,
+            outcome: "explicit_provider_rejection",
+            objectId: null,
+            responseStatus: creativeResponse.status,
+            providerErrorCode,
+          });
+        }
+      }
+      await options?.assertProviderMutationAllowed?.();
 
       if (!creativeResponse.ok || !lastKnownIds.creative_id) {
         const rawErrorMessage = getMetaErrorMessage(creativeData, "Creative creation failed.");
@@ -1510,6 +1871,7 @@ export async function launchCampaignToMeta(
           extra: { stage: "creative", campaignId },
         });
         const clientError = buildStageFailureMessage(rawErrorMessage, "creative");
+        const failureContract = getProviderFailureContract();
         await persistStageState({
           campaignId,
           ids: { ...lastKnownIds, creative_id: null },
@@ -1532,10 +1894,16 @@ export async function launchCampaignToMeta(
             ad_id: null,
             stage: "creative",
             error: clientError,
+            code: failureContract.code,
+            operatorActionRequired: failureContract.operatorActionRequired,
             requestId,
             creative: creativeData,
           },
-          { status: creativeResponse.ok ? 500 : creativeResponse.status },
+          {
+            status:
+              failureContract.status ??
+              (creativeResponse.ok ? 500 : creativeResponse.status),
+          },
         );
       }
     }
@@ -1563,6 +1931,7 @@ export async function launchCampaignToMeta(
     });
 
     let adData: Record<string, unknown> | null = null;
+    let adStatusCode = 200;
     currentStage = "ad";
     requestedObjectType = "ad";
     requestedObjectName = adMetaName;
@@ -1607,6 +1976,11 @@ export async function launchCampaignToMeta(
           message: `Stored Meta ad could not be reused. ${validation.reason} Retrying safely.`,
         });
       } else {
+        await options.recordProviderReceipt?.({
+          stage: "ad",
+          objectId: lastKnownIds.ad_id,
+          responseStatus: 200,
+        });
         await persistStageState({
           campaignId,
           ids: lastKnownIds,
@@ -1639,9 +2013,18 @@ export async function launchCampaignToMeta(
         edge: "ads",
         fields: "id,name,adset_id",
         name: adMetaName,
+        expectedParentField: "adset_id",
+        expectedParentId: lastKnownIds.adset_id,
         requestId,
       });
       adData = lastKnownIds.ad_id ? { id: lastKnownIds.ad_id, recovered: true } : null;
+      if (lastKnownIds.ad_id) {
+        await options?.recordProviderReceipt?.({
+          stage: "ad",
+          objectId: lastKnownIds.ad_id,
+          responseStatus: 200,
+        });
+      }
     }
 
     if (lastKnownIds.ad_id && adData?.recovered === true) {
@@ -1659,8 +2042,6 @@ export async function launchCampaignToMeta(
         message: "Recovered existing Meta ad by deterministic idempotency name.",
       });
     }
-
-    let adStatusCode = 200;
 
     if (!lastKnownIds.ad_id) {
       await persistStageState({
@@ -1681,31 +2062,86 @@ export async function launchCampaignToMeta(
         adset_id: lastKnownIds.adset_id!,
         creative: JSON.stringify({ creative_id: lastKnownIds.creative_id }),
         status: "PAUSED",
-        access_token: credentials.accessToken,
       });
+      await options?.assertProviderMutationAllowed?.();
+      await armProviderMutation("ad", adObjectKey);
       const { response: adResponse, data: adResponseData } = await fetchMetaJson<Record<string, unknown> | null>(
-        `https://graph.facebook.com/v18.0/act_${externalAccountId}/ads`,
+        buildMetaGraphUrl(`act_${externalAccountId}/ads`),
         {
           purpose: "launch_create",
           requestId,
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: adBody.toString(),
+          ...withMetaBearerToken(credentials.accessToken, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: adBody.toString(),
+          }),
         },
       );
       adData = adResponseData;
       lastKnownIds.ad_id =
         adData && typeof adData.id === "string" ? adData.id : null;
       adStatusCode = adResponse.status;
+      if (lastKnownIds.ad_id) {
+        await options?.recordProviderReceipt?.({
+          stage: "ad",
+          objectId: lastKnownIds.ad_id,
+          responseStatus: adResponse.status,
+        });
+        if (adResponse.ok) {
+          await settleProviderMutation({
+            stage: "ad",
+            objectKey: adObjectKey,
+            outcome: "receipted",
+            objectId: lastKnownIds.ad_id,
+            responseStatus: adResponse.status,
+          });
+        }
+        if (!options?.recordProviderReceipt) {
+          await persistStageState({
+            campaignId,
+            ids: lastKnownIds,
+            stage: "ad",
+            overallStatus: "in_progress",
+            stepStatus: "created",
+            attemptId: activeAttemptId,
+            requestedObjectType,
+            requestedObjectName,
+            requestedObjectKey: adObjectKey,
+            workspaceId,
+            message: "Captured the Meta ad receipt before post-response authorization checks.",
+          });
+        }
+      }
+      if (!lastKnownIds.ad_id) {
+        const providerErrorCode = getExplicitMetaProviderRejectionCode(
+          adData,
+          adResponse.status,
+        );
+        if (providerErrorCode) {
+          await settleProviderMutation({
+            stage: "ad",
+            objectKey: adObjectKey,
+            outcome: "explicit_provider_rejection",
+            objectId: null,
+            responseStatus: adResponse.status,
+            providerErrorCode,
+          });
+        }
+      }
+      await options?.assertProviderMutationAllowed?.();
     }
 
-    if (lastKnownIds.ad_id) {
+    const adResponseAccepted =
+      Boolean(lastKnownIds.ad_id) && adStatusCode >= 200 && adStatusCode < 300;
+
+    if (adResponseAccepted && lastKnownIds.ad_id) {
       await ensureDirectMetaObjectPaused({
         accessToken: credentials.accessToken,
         objectId: lastKnownIds.ad_id,
         requestId,
+        assertProviderMutationAllowed: options?.assertProviderMutationAllowed,
       });
 
       await persistLaunchState(
@@ -1738,7 +2174,6 @@ export async function launchCampaignToMeta(
         campaignId,
         {
           ...lastKnownIds,
-          ad_id: null,
           current_stage: "ad",
           status: "failed",
           step_status: "failed",
@@ -1754,6 +2189,7 @@ export async function launchCampaignToMeta(
       );
     }
 
+    const adFailureContract = adResponseAccepted ? null : getProviderFailureContract();
     return NextResponse.json(
       {
         campaign_id: lastKnownIds.campaign_id,
@@ -1762,27 +2198,71 @@ export async function launchCampaignToMeta(
         ad_id: lastKnownIds.ad_id,
         stage: "ad",
         error:
-          !lastKnownIds.ad_id
+          !adResponseAccepted
             ? buildStageFailureMessage(getMetaErrorMessage(adData, "Ad creation failed."), "ad")
             : undefined,
+        code: adFailureContract?.code,
+        operatorActionRequired: adFailureContract?.operatorActionRequired ?? false,
         requestId,
         campaign: campaignData,
         adset: adSetData,
         creative: creativeData,
         ad: adData,
       },
-      { status: lastKnownIds.ad_id ? 200 : adStatusCode },
+      {
+        status: adResponseAccepted
+          ? 200
+          : adFailureContract?.status ?? adStatusCode,
+      },
     );
   } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error.code === "scheduled_launch_lease_lost" ||
+        error.code === "campaign_launch_lease_lost")
+    ) {
+      throw error;
+    }
+
+    const providerOutcomeAmbiguous = pendingProviderMutation !== null;
+    const originalErrorCode =
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      typeof error.code === "string" &&
+      /^[a-z0-9_]{3,80}$/.test(error.code)
+        ? error.code
+        : null;
+    const evidencePersistenceError = originalErrorCode && [
+      "campaign_launch_provider_receipt_persist_failed",
+      "scheduled_launch_provider_receipt_persist_failed",
+      "campaign_launch_provider_mutation_settlement_failed",
+      "scheduled_launch_provider_mutation_settlement_failed",
+    ].includes(originalErrorCode);
+    const safeErrorCode = providerOutcomeAmbiguous
+      ? evidencePersistenceError
+        ? originalErrorCode
+        : "meta_provider_create_outcome_ambiguous"
+      : error instanceof ApiError
+        ? error.code
+        : "provider_launch_failed";
+    const safeErrorMessage = providerOutcomeAmbiguous
+      ? `The Meta ${currentStage} create outcome is ambiguous. Automatic recreation is stopped until operator reconciliation.`
+      : error instanceof Error
+        ? error.message
+        : "Campaign create failed.";
+
     logMetaError({
       context: "launch",
       requestId,
       error,
-      message: error instanceof Error ? error.message : "Campaign create failed.",
+      message: safeErrorMessage,
       extra: { stage: currentStage, campaignId },
     });
     const clientError = buildStageFailureMessage(
-      error instanceof Error ? error.message : "Campaign create failed.",
+      safeErrorMessage,
       currentStage,
     );
     const failureAttemptId = activeAttemptId ?? persistedLaunchStateForFailure?.attempt_id ?? null;
@@ -1818,41 +2298,42 @@ export async function launchCampaignToMeta(
           requested_object_name: failureRequestedObjectName,
           requested_object_key: failureRequestedObjectKey,
           workspace_id: failureWorkspaceId,
-          error: error instanceof Error ? error.message : "Campaign create failed.",
+          error: safeErrorMessage,
           updated_at: new Date().toISOString(),
         },
-        error instanceof Error ? error.message : "Campaign create failed.",
+        safeErrorMessage,
       ).catch(() => null);
     }
 
     return NextResponse.json(
       {
         error: clientError,
+        code: safeErrorCode,
         requestId,
+        operatorActionRequired: providerOutcomeAmbiguous || safeErrorCode === "meta_lookup_ambiguous",
         retryEligible:
-          error instanceof ApiError
+          !providerOutcomeAmbiguous && error instanceof ApiError
             ? error.status === 408 || error.status === 429 || error.status >= 500
             : false,
       },
-      { status: error instanceof ApiError ? error.status : 500 },
+      {
+        status: providerOutcomeAmbiguous
+          ? 409
+          : error instanceof ApiError
+            ? error.status
+            : 500,
+      },
     );
   }
 }
 
 export async function POST(request: Request) {
   assertSameOriginRequest(request);
-  const { campaignId, testModeInterruptAfter } = await parseJsonBody(request, requestSchema);
-  const rateLimit = await consumeRateLimit({
-    key: getRateLimitKey(request, "campaign-create-launch", campaignId),
-    limit: 6,
-    windowMs: 60_000,
-  });
-
-  if (rateLimit && !rateLimit.allowed) {
-    return buildRateLimitResponse(rateLimit.resetAt);
-  }
-
-  return launchCampaignToMeta(campaignId, {}, {
-    testModeInterruptAfter: normalizeForcedInterruptStage(testModeInterruptAfter),
-  });
+  return NextResponse.json(
+    {
+      error: "This legacy launch route is disabled. Use the campaign launch endpoint so schedule, tenancy, locking, tracking, and durable receipt gates cannot be bypassed.",
+      code: "legacy_campaign_create_launch_disabled",
+    },
+    { status: 404 },
+  );
 }

@@ -3,14 +3,29 @@ import { NextRequest, NextResponse } from "next/server";
 import { getMetaEnvOrThrow, getPublicAppUrl } from "@/lib/env";
 import { debugLog } from "@/lib/debug";
 import { encryptSecret } from "@/lib/integrations/meta-crypto";
+import {
+  buildMetaGraphUrl,
+  buildMetaTokenExchangeRequest,
+  resolveMetaReturnUrl,
+  withMetaBearerToken,
+} from "@/lib/integrations/meta/contract";
+import {
+  deriveMetaCallbackConnectionTruth,
+  preserveMetaAssetList,
+  preserveMetaSelection,
+  type MetaCallbackDiscoveryStatus,
+} from "@/lib/integrations/meta/callback-truth";
+import {
+  consumeMetaOAuthStateBinding,
+  metaOAuthStateMatches,
+} from "@/lib/integrations/meta/oauth-state";
 import { fetchMetaJson } from "@/lib/integrations/meta/request";
 import {
   logMetaError,
   logMetaWarning,
 } from "@/lib/integrations/meta/error-mapper";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
-import { getAppContext } from "@/lib/services/app-context";
+import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 
 type MetaAdAccount = {
   id?: string;
@@ -31,7 +46,11 @@ type MetaPage = {
   name?: string;
 };
 
-type MetaDiscoveryStatus = "success" | "failed" | "skipped";
+type MetaTokenResponse = {
+  access_token?: string;
+  expires_in?: number;
+  token_type?: string;
+};
 
 const META_STATE_COOKIE = "dealflow_meta_oauth_state";
 const META_RETURN_TO_COOKIE = "dealflow_meta_oauth_return_to";
@@ -39,21 +58,7 @@ const META_RETURN_TO_COOKIE = "dealflow_meta_oauth_return_to";
 export const dynamic = "force-dynamic";
 
 function getSafeRedirectBase(value: string | null, appUrl: string) {
-  const fallback = new URL("/launch", appUrl);
-
-  if (!value || !value.startsWith("/") || value.startsWith("//")) {
-    return fallback;
-  }
-
-  const resolved = new URL(value, appUrl);
-  const appOrigin = new URL(appUrl).origin;
-
-  return resolved.origin === appOrigin ? resolved : fallback;
-}
-
-async function resolveOrganizationIdForMetaCallback(): Promise<string | null> {
-  const context = await getAppContext();
-  return context?.organization?.id ?? null;
+  return resolveMetaReturnUrl(value, appUrl);
 }
 
 function getMetaErrorMessage(value: unknown, fallback: string) {
@@ -73,6 +78,18 @@ function getMetaErrorMessage(value: unknown, fallback: string) {
   return fallback;
 }
 
+function getTokenExpiresAt(expiresIn: unknown, nowMs = Date.now()) {
+  if (
+    typeof expiresIn !== "number" ||
+    !Number.isFinite(expiresIn) ||
+    expiresIn <= 0
+  ) {
+    return null;
+  }
+
+  return new Date(nowMs + Math.floor(expiresIn) * 1_000).toISOString();
+}
+
 export async function GET(req: NextRequest) {
   const requestId = crypto.randomUUID();
 
@@ -84,14 +101,49 @@ export async function GET(req: NextRequest) {
     const returnedState = url.searchParams.get("state");
     const cookieStore = await cookies();
     const storedState = cookieStore.get(META_STATE_COOKIE)?.value ?? null;
-    const returnTo = cookieStore.get(META_RETURN_TO_COOKIE)?.value ?? "/launch";
-    const redirectBase = getSafeRedirectBase(returnTo, appUrl);
+    let redirectBase = getSafeRedirectBase("/launch", appUrl);
     const redirectWithMetaError = (metaErrorCode: string) => {
       const nextUrl = new URL(redirectBase.toString());
       nextUrl.searchParams.set("meta_error", metaErrorCode);
       nextUrl.searchParams.set("meta_request_id", requestId);
       return NextResponse.redirect(nextUrl);
     };
+
+    cookieStore.delete(META_STATE_COOKIE);
+    cookieStore.delete(META_RETURN_TO_COOKIE);
+
+    if (
+      !returnedState ||
+      !storedState ||
+      !metaOAuthStateMatches(returnedState, storedState)
+    ) {
+      return redirectWithMetaError("invalid_state");
+    }
+
+    let organizationId: string;
+    try {
+      const auth = await getAuthenticatedContext();
+      const binding = await consumeMetaOAuthStateBinding({
+        state: returnedState,
+        userId: auth.userId,
+        organizationId: auth.organizationId,
+      });
+      organizationId = auth.organizationId;
+      redirectBase = getSafeRedirectBase(binding.returnTo, appUrl);
+    } catch (stateError) {
+      logMetaWarning({
+        context: "oauth_callback",
+        requestId,
+        message: "Meta OAuth state binding was rejected before token exchange.",
+        extra: {
+          reason:
+            stateError && typeof stateError === "object" && "code" in stateError
+              ? String(stateError.code)
+              : "state_binding_rejected",
+        },
+      });
+      return redirectWithMetaError("invalid_state");
+    }
 
     if (error) {
       debugLog("meta_callback_error", { error });
@@ -103,23 +155,20 @@ export async function GET(req: NextRequest) {
       return redirectWithMetaError("no_code");
     }
 
-    if (!returnedState || !storedState || returnedState !== storedState) {
-      return redirectWithMetaError("invalid_state");
-    }
-
-    cookieStore.delete(META_STATE_COOKIE);
-    cookieStore.delete(META_RETURN_TO_COOKIE);
-
     const env = getMetaEnvOrThrow();
+    const tokenRequest = buildMetaTokenExchangeRequest({
+      kind: "authorization_code",
+      clientId: env.appId,
+      clientSecret: env.appSecret,
+      redirectUri: env.redirectUri,
+      code,
+    });
 
-    const { response: tokenRes, data: tokenData } = await fetchMetaJson<{ access_token?: string }>(
-      `https://graph.facebook.com/v18.0/oauth/access_token?` +
-        `client_id=${env.appId}` +
-        `&client_secret=${env.appSecret}` +
-        `&redirect_uri=${encodeURIComponent(env.redirectUri)}` +
-        `&code=${code}`,
+    const { response: tokenRes, data: tokenData } = await fetchMetaJson<MetaTokenResponse>(
+      tokenRequest.url,
       {
-        purpose: "oauth",
+        ...tokenRequest.init,
+        purpose: "oauth_code_exchange",
         requestId,
       },
     );
@@ -128,15 +177,21 @@ export async function GET(req: NextRequest) {
       return redirectWithMetaError("no_token");
     }
 
-    const routeSupabase = await createRouteHandlerClient();
-    const organizationId = await resolveOrganizationIdForMetaCallback();
+    const longLivedTokenRequest = buildMetaTokenExchangeRequest({
+      kind: "long_lived_token",
+      clientId: env.appId,
+      clientSecret: env.appSecret,
+      accessToken: tokenData.access_token,
+    });
+    const { response: longLivedTokenRes, data: longLivedTokenData } =
+      await fetchMetaJson<MetaTokenResponse>(longLivedTokenRequest.url, {
+        ...longLivedTokenRequest.init,
+        purpose: "oauth_token_extension",
+        requestId,
+      });
 
-    if (!routeSupabase) {
-      return redirectWithMetaError("supabase_unavailable");
-    }
-
-    if (!organizationId) {
-      throw new Error("Missing workspace context");
+    if (!longLivedTokenRes.ok || !longLivedTokenData?.access_token) {
+      return redirectWithMetaError("token_extension_failed");
     }
 
     const supabase = createAdminClient();
@@ -145,9 +200,16 @@ export async function GET(req: NextRequest) {
       return redirectWithMetaError("supabase_unavailable");
     }
 
-    const access_token = tokenData.access_token;
+    const access_token = longLivedTokenData.access_token;
     const encryptedAccessToken = encryptSecret(access_token, env.encryptionKey);
     const now = new Date().toISOString();
+    const tokenExpiresAt = getTokenExpiresAt(
+      longLivedTokenData.expires_in ?? tokenData.expires_in,
+    );
+
+    if (!tokenExpiresAt) {
+      return redirectWithMetaError("token_expiry_missing");
+    }
 
     const { data: existing, error: existingError } = await supabase
       .from("marketing_accounts")
@@ -175,20 +237,30 @@ export async function GET(req: NextRequest) {
       external_account_id?: string | null;
       connection_metadata?: unknown;
     } | null) ?? null;
+    const existingMetadata =
+      existingRow?.connection_metadata &&
+      typeof existingRow.connection_metadata === "object" &&
+      !Array.isArray(existingRow.connection_metadata)
+        ? (existingRow.connection_metadata as Record<string, unknown>)
+        : {};
 
     const tokenPayload = {
       organization_id: organizationId,
       platform: "meta_ads",
       access_token_encrypted: encryptedAccessToken,
-      status: "connected",
+      status: "connecting",
       name: existingRow?.name ?? "Meta Ads",
       account_name: existingRow?.account_name ?? "Meta Ads",
       connected_at: now,
       last_sync_at: now,
       token_last_synced_at: now,
+      token_expires_at: tokenExpiresAt,
       connection_metadata: {
+        ...existingMetadata,
         provider: "meta",
         auth_flow: "oauth",
+        token_type: longLivedTokenData.token_type ?? tokenData.token_type ?? "user_access_token",
+        token_lifecycle: "long_lived",
       },
     };
 
@@ -240,10 +312,6 @@ export async function GET(req: NextRequest) {
         typeof storedMarketingRow?.id === "string" ? storedMarketingRow.id : null;
     }
 
-    const existingMetadata =
-      storedMarketingRow?.connection_metadata && typeof storedMarketingRow.connection_metadata === "object"
-        ? (storedMarketingRow.connection_metadata as Record<string, unknown>)
-        : {};
     const selectedExternalAccountId =
       typeof existingMetadata.selected_external_account_id === "string"
         ? existingMetadata.selected_external_account_id
@@ -263,9 +331,9 @@ export async function GET(req: NextRequest) {
     let accountsError: string | null = null;
     let pagesError: string | null = null;
     let pixelsError: string | null = null;
-    let accountsStatus: MetaDiscoveryStatus = "success";
-    let pagesStatus: MetaDiscoveryStatus = "success";
-    let pixelsStatus: MetaDiscoveryStatus = "skipped";
+    let accountsStatus: MetaCallbackDiscoveryStatus = "success";
+    let pagesStatus: MetaCallbackDiscoveryStatus = "success";
+    let pixelsStatus: MetaCallbackDiscoveryStatus = "skipped";
     let availableAccounts: Array<{
       id: string | null;
       external_account_id: string | null;
@@ -281,10 +349,11 @@ export async function GET(req: NextRequest) {
       const { response: accountsRes, data: accounts } = await fetchMetaJson<
         { data?: MetaAdAccount[]; error?: unknown } | null
       >(
-        `https://graph.facebook.com/v18.0/me/adaccounts` +
-          `?fields=id,name,account_status,currency,timezone_name` +
-          `&access_token=${encodeURIComponent(access_token)}`,
+        buildMetaGraphUrl("me/adaccounts", {
+          fields: "id,name,account_status,currency,timezone_name",
+        }),
         {
+          ...withMetaBearerToken(access_token),
           purpose: "discovery",
           requestId,
         },
@@ -323,10 +392,9 @@ export async function GET(req: NextRequest) {
       const { response: pagesRes, data: pages } = await fetchMetaJson<
         { data?: MetaPage[]; error?: unknown } | null
       >(
-        `https://graph.facebook.com/v18.0/me/accounts` +
-          `?fields=id,name` +
-          `&access_token=${encodeURIComponent(access_token)}`,
+        buildMetaGraphUrl("me/accounts", { fields: "id,name" }),
         {
+          ...withMetaBearerToken(access_token),
           purpose: "discovery",
           requestId,
         },
@@ -362,7 +430,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const selectedAccount =
+    const discoveredSelectedAccount =
       selectedExternalAccountId
         ? availableAccounts.find(
             (account) => account.id === selectedExternalAccountId,
@@ -370,15 +438,17 @@ export async function GET(req: NextRequest) {
         : null;
 
     if (selectedExternalAccountId) {
-      if (selectedAccount?.id) {
+      if (discoveredSelectedAccount?.id) {
         try {
           const { response: pixelsRes, data: pixelsData } = await fetchMetaJson<
             { data?: MetaPixel[]; error?: unknown } | null
           >(
-            `https://graph.facebook.com/v18.0/act_${selectedAccount.id.replace(/^act_/, "")}/adspixels` +
-              `?fields=id,name` +
-              `&access_token=${encodeURIComponent(access_token)}`,
+            buildMetaGraphUrl(
+              `act_${discoveredSelectedAccount.id.replace(/^act_/, "")}/adspixels`,
+              { fields: "id,name" },
+            ),
             {
+              ...withMetaBearerToken(access_token),
               purpose: "discovery",
               requestId,
             },
@@ -423,53 +493,76 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const selectedPixelId =
-      existingSelectedPixelId && availablePixels.some((pixel) => pixel.id === existingSelectedPixelId)
-        ? existingSelectedPixelId
-        : null;
-    const selectedPage =
+    const finalSelectedAccountId = preserveMetaSelection({
+      discoveryStatus: accountsStatus,
+      previousId: selectedExternalAccountId,
+      discoveredIds: availableAccounts
+        .map((account) => account.id)
+        .filter((id): id is string => Boolean(id)),
+    });
+    const discoveredSelectedPage =
       selectedPageId
         ? availablePages.find((page) => page.id === selectedPageId) ?? null
         : null;
+    const finalSelectedPageId = preserveMetaSelection({
+      discoveryStatus: pagesStatus,
+      previousId: selectedPageId,
+      discoveredIds: availablePages.map((page) => page.id),
+    });
+    const selectedPixelId = finalSelectedAccountId
+      ? preserveMetaSelection({
+          discoveryStatus: pixelsStatus,
+          previousId: existingSelectedPixelId,
+          discoveredIds: availablePixels.map((pixel) => pixel.id),
+        })
+      : null;
     const discoveryErrors = [accountsError, pagesError, pixelsError].filter(
       (value): value is string => Boolean(value),
     );
-    const discoveryReady =
-      accountsStatus === "success" &&
-      pagesStatus === "success" &&
-      (pixelsStatus === "success" || pixelsStatus === "skipped");
-
-    const storedColumns = [
-      "organization_id",
-      "platform",
-      "access_token_encrypted",
-      "status",
-      "connected_at",
-      "last_sync_at",
-      "token_last_synced_at",
-      "name",
-      "account_name",
-      "external_account_id",
-      "pixel_id",
-      "connection_metadata",
-    ];
+    const { discoveryComplete, connectionReady, status: connectionStatus } =
+      deriveMetaCallbackConnectionTruth({
+        accountsStatus,
+        pagesStatus,
+        pixelsStatus,
+        selectedAccountId: finalSelectedAccountId,
+        selectedPageId: finalSelectedPageId,
+        selectedPixelId,
+      });
+    const storedAvailableAccounts = preserveMetaAssetList({
+      discoveryStatus: accountsStatus,
+      discovered: availableAccounts,
+      previous: existingMetadata.available_accounts,
+    });
+    const storedAvailablePages = preserveMetaAssetList({
+      discoveryStatus: pagesStatus,
+      discovered: availablePages,
+      previous: existingMetadata.available_pages,
+    });
+    const storedAvailablePixels = preserveMetaAssetList({
+      discoveryStatus: pixelsStatus,
+      discovered: availablePixels,
+      previous: existingMetadata.available_pixels,
+    });
 
     const accountPayload = {
       organization_id: organizationId,
       platform: "meta_ads",
       access_token_encrypted: encryptedAccessToken,
-      status: "connected",
+      status: connectionStatus,
       connected_at: now,
       last_sync_at: now,
       token_last_synced_at: now,
-      name: selectedAccount?.name ?? storedMarketingRow?.name ?? "Meta Ads",
-      account_name: selectedAccount?.name ?? storedMarketingRow?.account_name ?? "Meta Ads",
-      external_account_id: selectedAccount?.id ?? selectedExternalAccountId,
+      token_expires_at: tokenExpiresAt,
+      name: discoveredSelectedAccount?.name ?? storedMarketingRow?.name ?? "Meta Ads",
+      account_name: discoveredSelectedAccount?.name ?? storedMarketingRow?.account_name ?? "Meta Ads",
+      external_account_id: finalSelectedAccountId,
       pixel_id: selectedPixelId,
       connection_metadata: {
         ...existingMetadata,
         provider: "meta",
         auth_flow: "oauth",
+        token_type: longLivedTokenData.token_type ?? tokenData.token_type ?? "user_access_token",
+        token_lifecycle: "long_lived",
         asset_discovery: {
           ad_accounts: {
             status: accountsStatus,
@@ -483,26 +576,30 @@ export async function GET(req: NextRequest) {
             status: pixelsStatus,
             error: pixelsError,
           },
-          ready: discoveryReady,
+          discovery_complete: discoveryComplete,
+          ready: connectionReady,
           errors: discoveryErrors,
           last_checked_at: now,
         },
-        selected_external_account_id: selectedAccount?.id ?? selectedExternalAccountId,
+        selected_external_account_id: finalSelectedAccountId,
         selected_account_name:
-          selectedAccount?.name ??
-          (typeof existingMetadata.selected_account_name === "string"
-            ? existingMetadata.selected_account_name
-            : null),
-        selected_page_id: selectedPage?.id ?? selectedPageId,
+          accountsStatus === "success"
+            ? discoveredSelectedAccount?.name ?? null
+            : typeof existingMetadata.selected_account_name === "string"
+              ? existingMetadata.selected_account_name
+              : null,
+        selected_page_id: finalSelectedPageId,
         selected_page_name:
-          selectedPage?.name ??
-          (typeof existingMetadata.selected_page_name === "string"
-            ? existingMetadata.selected_page_name
-            : null),
-        available_accounts: availableAccounts,
-        available_pages: availablePages,
-        available_pixels: availablePixels,
+          pagesStatus === "success"
+            ? discoveredSelectedPage?.name ?? null
+            : typeof existingMetadata.selected_page_name === "string"
+              ? existingMetadata.selected_page_name
+              : null,
+        available_accounts: storedAvailableAccounts,
+        available_pages: storedAvailablePages,
+        available_pixels: storedAvailablePixels,
         pixel_id: selectedPixelId,
+        connection_readiness: connectionReady ? "connected" : "partial",
       },
     };
 
@@ -541,10 +638,13 @@ export async function GET(req: NextRequest) {
 
     const redirectUrl = new URL(redirectBase.toString());
 
-    if (discoveryReady) {
+    if (connectionReady) {
       redirectUrl.searchParams.set("meta_connected", "1");
     } else {
-      redirectUrl.searchParams.set("meta_warning", "asset_discovery_incomplete");
+      redirectUrl.searchParams.set(
+        "meta_warning",
+        discoveryComplete ? "asset_selection_required" : "asset_discovery_incomplete",
+      );
       redirectUrl.searchParams.set("meta_request_id", requestId);
       if (accountsStatus !== "success") {
         redirectUrl.searchParams.set("meta_accounts_status", accountsStatus);

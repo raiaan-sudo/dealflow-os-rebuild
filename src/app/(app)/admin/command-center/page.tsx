@@ -4,6 +4,8 @@ import {
   assertInternalOperatorAccess,
   loadIssueLogRows,
   loadLaunchMonitorRows,
+  type LaunchMonitorRow,
+  type OperatorIssueRow,
 } from "@/lib/services/internal-launch-monitor";
 import { getSmsOutboundPolicyStatus } from "@/lib/services/sms-service";
 import { createAdminClient } from "@/lib/server/supabase-admin";
@@ -17,22 +19,28 @@ import type {
 } from "./command-center-console";
 
 type OpsSummary = {
-  failedJobs: number;
-  processingJobs: number;
-  deadLetterJobs: number;
-  recentStripeFailures: number;
-  recentStripeProcessed: number;
+  available: boolean;
+  failedJobs: number | null;
+  processingJobs: number | null;
+  deadLetterJobs: number | null;
+  recentStripeFailures: number | null;
+  recentStripeProcessed: number | null;
 };
+
+function countOrNull(result: { count: number | null; error: unknown }) {
+  return result.error ? null : result.count ?? 0;
+}
 
 async function loadOpsSummary(): Promise<OpsSummary> {
   const admin = createAdminClient();
   if (!admin) {
     return {
-      failedJobs: 0,
-      processingJobs: 0,
-      deadLetterJobs: 0,
-      recentStripeFailures: 0,
-      recentStripeProcessed: 0,
+      available: false,
+      failedJobs: null,
+      processingJobs: null,
+      deadLetterJobs: null,
+      recentStripeFailures: null,
+      recentStripeProcessed: null,
     };
   }
 
@@ -54,13 +62,30 @@ async function loadOpsSummary(): Promise<OpsSummary> {
         .gte("created_at", since),
     ]);
 
-  return {
-    failedJobs: failedJobs.count ?? 0,
-    processingJobs: processingJobs.count ?? 0,
-    deadLetterJobs: deadLetterJobs.count ?? 0,
-    recentStripeFailures: stripeFailures.count ?? 0,
-    recentStripeProcessed: stripeProcessed.count ?? 0,
+  const counts = {
+    failedJobs: countOrNull(failedJobs),
+    processingJobs: countOrNull(processingJobs),
+    deadLetterJobs: countOrNull(deadLetterJobs),
+    recentStripeFailures: countOrNull(stripeFailures),
+    recentStripeProcessed: countOrNull(stripeProcessed),
   };
+
+  return {
+    available: Object.values(counts).every((count) => count !== null),
+    ...counts,
+  };
+}
+
+function percentage(numerator: number, denominator: number, available: boolean) {
+  if (!available || denominator === 0) {
+    return null;
+  }
+
+  return Math.round((numerator / denominator) * 100);
+}
+
+function countLabel(value: number | null, suffix: string) {
+  return value === null ? "Unavailable" : `${value} ${suffix}`;
 }
 
 export default async function CommandCenterPage() {
@@ -74,13 +99,28 @@ export default async function CommandCenterPage() {
     throw error;
   }
 
-  const [rows, ops, issues] = await Promise.all([
-    loadLaunchMonitorRows(24),
-    loadOpsSummary(),
-    loadIssueLogRows(36),
+  const rowsResult = await loadLaunchMonitorRows(24)
+    .then((rows) => ({ available: true as const, rows }))
+    .catch(() => ({ available: false as const, rows: [] as LaunchMonitorRow[] }));
+  const [ops, issuesResult] = await Promise.all([
+    loadOpsSummary().catch(() => ({
+      available: false,
+      failedJobs: null,
+      processingJobs: null,
+      deadLetterJobs: null,
+      recentStripeFailures: null,
+      recentStripeProcessed: null,
+    } satisfies OpsSummary)),
+    loadIssueLogRows(36, rowsResult.rows)
+      .then((issues) => ({ available: true as const, issues }))
+      .catch(() => ({ available: false as const, issues: [] as OperatorIssueRow[] })),
   ]);
 
-  const liveCampaigns = rows.filter((row) => row.launchStatus.includes("completed") || row.launchStatus.includes("live"));
+  const rows = rowsResult.rows;
+  const issues = issuesResult.issues;
+  const liveCampaigns = rows.filter(
+    (row) => row.launchStatus.includes("completed") || row.launchStatus.includes("live"),
+  );
   const cleanCampaigns = rows.filter(
     (row) => !row.consistencyMismatch && row.consistencyMissingFields.length === 0,
   );
@@ -92,182 +132,189 @@ export default async function CommandCenterPage() {
       row.preflightStatus.includes("selection"),
   );
   const planMismatchCount = rows.filter((row) => row.consistencyMismatch).length;
-  const validationAlertCount =
-    planMismatchCount + rows.filter((row) => row.consistencyMissingFields.length > 0).length;
-  const operatorAlertCount =
-    ops.failedJobs + ops.deadLetterJobs + ops.recentStripeFailures + planMismatchCount;
-  const unresolvedIssues = issues.filter((issue) => issue.status !== "resolved").length;
+  const validationAlertCount = rowsResult.available
+    ? planMismatchCount + rows.filter((row) => row.consistencyMissingFields.length > 0).length
+    : null;
+  const unresolvedIssues = issuesResult.available
+    ? issues.filter((issue) => issue.status !== "resolved").length
+    : null;
   const smsPolicy = getSmsOutboundPolicyStatus();
 
   const metrics: ReadinessMetric[] = [
     {
-      label: "Controlled beta",
-      value: 100,
-      detail: "Operator readiness score from latest proof run; verify smoke checks before each launch window.",
-      sourceLabel: "manual proof score",
+      label: "Live/complete coverage",
+      value: percentage(liveCampaigns.length, rows.length, rowsResult.available),
+      detail:
+        rows.length > 0
+          ? `${liveCampaigns.length}/${rows.length} monitored campaign rows report live or complete.`
+          : rowsResult.available
+            ? "No monitored campaign rows are available; no percentage is asserted."
+            : "Campaign monitoring data is unavailable.",
+      sourceLabel: "observed database coverage",
       tone: "cyan",
     },
     {
-      label: "100-client live",
-      value: 100,
-      detail: "Operator readiness score from persisted proof notes, route checks, and smoke validation.",
-      sourceLabel: "manual proof score",
+      label: "Plan consistency coverage",
+      value: percentage(cleanCampaigns.length, rows.length, rowsResult.available),
+      detail:
+        rows.length > 0
+          ? `${cleanCampaigns.length}/${rows.length} monitored plans have no detected consistency gap.`
+          : "No denominator is available; no readiness claim is made.",
+      sourceLabel: "observed database coverage",
       tone: "green",
     },
     {
-      label: "Self-serve launch",
-      value: smsPolicy.automationEnabled ? 90 : 86,
-      detail: smsPolicy.automationEnabled
-        ? "SMS automation guard is enabled with compliance acknowledgement."
-        : "SMS automation remains default-off until Twilio and compliance gates are explicitly enabled.",
-      sourceLabel: "guarded readiness score",
+      label: "Lead-loop proof coverage",
+      value: percentage(verifiedLeads.length, rows.length, rowsResult.available),
+      detail:
+        rows.length > 0
+          ? `${verifiedLeads.length}/${rows.length} monitored plans carry a persisted lead-loop verification marker.`
+          : "No denominator is available; no proof percentage is asserted.",
+      sourceLabel: "persisted marker coverage",
       tone: "amber",
     },
     {
-      label: "1,000-client scale",
-      value: 62,
-      detail: "Estimated scale score; needs load-test proof, external alerting, and deeper isolation tests.",
-      sourceLabel: "estimated, not live telemetry",
+      label: "Meta-ready signal coverage",
+      value: percentage(metaReady.length, rows.length, rowsResult.available),
+      detail:
+        rows.length > 0
+          ? `${metaReady.length}/${rows.length} monitored rows expose a connected or preflight-ready signal.`
+          : "No monitored rows are available; provider readiness is not proven.",
+      sourceLabel: "observed app state, not provider proof",
       tone: "blue",
     },
   ];
-
-  const metaSignal =
-    rows.length > 0 && metaReady.length === rows.length
-      ? "All monitored campaigns show connected/preflight-ready Meta signals."
-      : `${metaReady.length}/${rows.length} monitored campaigns show ready Meta signals.`;
-  const issueSignal =
-    unresolvedIssues > 0
-      ? `${unresolvedIssues} unresolved operator issues on radar.`
-      : "No unresolved operator issues in current radar window.";
 
   const agents: AgentConsole[] = [
     {
       id: "jarvis",
       name: "JARVIS",
-      role: "Meta Launch Sentinel",
-      status: "Paused retry proof complete",
-      readiness: rows.length > 0 && metaReady.length === rows.length ? 100 : 92,
-      readinessLabel: "manual proof score",
-      signal: metaSignal,
+      role: "Meta signal monitor",
+      status: rowsResult.available ? "Observed app-state signals" : "Data unavailable",
+      readiness: percentage(metaReady.length, rows.length, rowsResult.available),
+      readinessLabel: "observed signal coverage",
+      signal:
+        rowsResult.available
+          ? `${metaReady.length}/${rows.length} monitored campaigns expose a connected/preflight-ready app signal. This is not live Graph API proof.`
+          : "Campaign monitor query was unavailable; no Meta readiness claim is made.",
       tone: "cyan",
       logs: [
-        "Operator-recorded Meta proof covered known production DB objects.",
-        "Prior proof returned PAUSED/effective PAUSED for monitored activatable objects.",
-        "Prior retry proof returned alreadyLaunched=true with persisted campaign/ad IDs.",
-        "No Meta create, update, activation, or spend path was triggered.",
+        "Source: tenant campaign rows and persisted preflight state.",
+        "Provider-side delivery, PAUSED state, and idempotent replay are not queried by this page.",
       ],
     },
     {
       id: "friday",
       name: "FRIDAY",
-      role: "Security Cortex",
-      status: "Route lockdown active",
-      readiness: operatorAlertCount > 0 ? 88 : 98,
-      readinessLabel: "CI-backed operator score",
-      signal: "Public API allowlist, same-origin guards, and dynamic ownership markers are checked in CI.",
+      role: "Security evidence monitor",
+      status: "Live security score not implemented",
+      readiness: null,
+      readinessLabel: "unavailable",
+      signal: "This page has no current CI, route-scan, or vulnerability feed, so it does not infer a security percentage.",
       tone: "green",
       logs: [
-        "Added route-security diagnostic and CI gate.",
-        "Confirmed public API surface is limited to lead capture, Stripe webhook, Meta callback, and Twilio webhook.",
-        "Confirmed private mutating routes include same-origin protection markers.",
-        "Confirmed diagnostic routes return protected responses in production.",
+        "Internal access is allowlist-gated before this page loads.",
+        "Run artifacts and CI evidence must be reviewed outside this page.",
       ],
     },
     {
       id: "edith",
       name: "EDITH",
-      role: "Reliability Reactor",
-      status: "Queues, leads, and billing guarded",
-      readiness: ops.deadLetterJobs > 0 || ops.recentStripeFailures > 0 ? 88 : 98,
-      readinessLabel: "live DB + proof score",
-      signal: `${ops.processingJobs} processing jobs, ${ops.deadLetterJobs} dead-letter jobs, ${ops.recentStripeProcessed} Stripe events / 24h.`,
+      role: "Queue and billing monitor",
+      status: ops.available ? "24-hour operational counts loaded" : "Operational counts unavailable",
+      readiness: null,
+      readinessLabel: "counts only; no score",
+      signal: `${countLabel(ops.processingJobs, "processing jobs")}, ${countLabel(ops.deadLetterJobs, "dead-letter jobs")}, ${countLabel(ops.recentStripeProcessed, "processed Stripe events / 24h")}.`,
       tone: "amber",
       logs: [
-        "Added deterministic lead_capture_retry idempotency key derivation.",
-        "Improved max_attempts and last_error_code persistence across job lifecycle.",
-        "Verified valid lead save, invalid rejection, duplicate dedupe, and staging smoke.",
-        "Verified Stripe signed event replay stayed single-row and single-billing-state.",
+        `Failed jobs: ${ops.failedJobs ?? "unavailable"}.`,
+        `Failed Stripe events in 24h: ${ops.recentStripeFailures ?? "unavailable"}.`,
+        "A zero count means the query returned zero; unavailable means the query was not proven.",
       ],
     },
     {
       id: "veronica",
       name: "VERONICA",
-      role: "Operator Armor",
-      status: "Command console deployed",
-      readiness: validationAlertCount > 0 ? 84 : 96,
-      readinessLabel: "live DB + manual proof score",
-      signal: `${validationAlertCount} validation alerts, ${rows.length} campaigns watched, ${issues.length} issue rows indexed.`,
+      role: "Issue and consistency monitor",
+      status:
+        rowsResult.available && issuesResult.available
+          ? "Current query window loaded"
+          : "One or more data sources unavailable",
+      readiness: percentage(cleanCampaigns.length, rows.length, rowsResult.available),
+      readinessLabel: "plan consistency coverage",
+      signal: `${validationAlertCount ?? "Unavailable"} validation alerts, ${rowsResult.available ? rows.length : "unavailable"} campaigns observed, ${issuesResult.available ? issues.length : "unavailable"} issue rows indexed.`,
       tone: "violet",
       logs: [
-        "Built cockpit HUD with agent drill-down and browser SpeechSynthesis briefing.",
-        "Added live issue radar from failed jobs, failed webhooks, and campaign consistency drift.",
-        "SMS automation is surfaced as guarded/default-off unless compliance env gates and consent records are present.",
-        "Kept dashboard admin-only, provider-free, and secret-safe.",
-        "Readiness values are labeled as operator scores or estimates when not live telemetry.",
+        "Issue radar sources: failed/stuck jobs, failed Stripe webhooks, provider reservations/failures, plan consistency, and support tickets.",
+        "Absence of returned issues is not a substitute for end-to-end production proof.",
       ],
     },
   ];
 
   const proofs: ProofEvent[] = [
     {
-      label: "Stripe replay",
-      value: "operator proof",
-      detail: "Operator-recorded proof: evt_1TRGD8EF3q1nrT5Us3OKTXmK delivered and resent 200 OK; one DB row, one active billing row.",
-      tone: ops.recentStripeFailures > 0 ? "amber" : "green",
+      label: "Stripe webhook window",
+      value: ops.available ? `${ops.recentStripeProcessed} processed` : "unavailable",
+      detail: ops.available
+        ? `${ops.recentStripeFailures} failed and ${ops.recentStripeProcessed} processed events were returned for the last 24 hours. Replay idempotency is not re-tested here.`
+        : "Stripe event counts could not be loaded; no health claim is made.",
+      tone: ops.recentStripeFailures && ops.recentStripeFailures > 0 ? "amber" : "blue",
     },
     {
-      label: "Meta PAUSED proof",
-      value: "operator proof",
-      detail: "Operator-recorded proof: persisted retry reused existing Meta IDs; activatable objects verified PAUSED.",
-      tone: "green",
+      label: "Meta provider proof",
+      value: "not queried",
+      detail: "This page reads persisted application state only. It does not call Meta or prove provider-side status.",
+      tone: "blue",
     },
     {
-      label: "Browser smoke",
-      value: "operator proof",
-      detail: "Operator-recorded proof: authenticated admin/product screens loaded with no critical console errors; public lead flow passed.",
-      tone: "green",
+      label: "Browser journey proof",
+      value: "not connected",
+      detail: "No browser-run evidence feed is connected to this page; inspect the release evidence bundle for current test artifacts.",
+      tone: "blue",
     },
     {
       label: "Issue radar",
-      value: unresolvedIssues > 0 ? `${unresolvedIssues} open` : "clear",
-      detail: issueSignal,
-      tone: unresolvedIssues > 0 ? "amber" : "green",
+      value: unresolvedIssues === null ? "unavailable" : `${unresolvedIssues} unresolved`,
+      detail:
+        unresolvedIssues === null
+          ? "The issue query was unavailable; a clear state is not asserted."
+          : `${unresolvedIssues} unresolved rows were returned in the current radar window.`,
+      tone: unresolvedIssues && unresolvedIssues > 0 ? "amber" : "blue",
     },
     {
       label: "SMS guard",
-      value: smsPolicy.automationEnabled ? "enabled" : "blocked",
+      value: smsPolicy.automationEnabled ? "enabled by configuration" : "blocked by default",
       detail: smsPolicy.automationEnabled
-        ? "Twilio outbound automation has env gates enabled; per-lead consent and opt-out checks still apply."
-        : "Outbound automation is blocked by default; inbound STOP, START, HELP, and MessageSid idempotency remain active.",
-      tone: smsPolicy.automationEnabled ? "green" : "amber",
+        ? "Configuration permits outbound automation; per-lead consent and opt-out enforcement remain separate runtime checks."
+        : "Outbound automation is configuration-blocked. This does not test inbound provider delivery.",
+      tone: smsPolicy.automationEnabled ? "amber" : "green",
     },
   ];
 
   const workLog: WorkLogEntry[] = [
     {
       agent: "JARVIS",
-      title: "Meta retry/idempotency proof",
-      status: "operator proof",
-      detail: "Operator-recorded read-only Graph verification and persisted retry proof completed without creating or activating objects.",
+      title: "Meta evidence boundary",
+      status: "observed",
+      detail: "Shows persisted app signals and labels provider-side status as unproven.",
     },
     {
       agent: "FRIDAY",
-      title: "Route security CI gate",
-      status: "complete",
-      detail: "Public API allowlist, same-origin mutation guards, and dynamic route ownership markers now checked by CI.",
+      title: "Security evidence feed",
+      status: "unavailable",
+      detail: "No live CI or scanner feed is connected; no percentage is manufactured.",
     },
     {
       agent: "EDITH",
-      title: "Lead retry and job observability",
-      status: "complete",
-      detail: "Lead retry jobs now derive durable idempotency keys and preserve job attempt/error metadata.",
+      title: "Operational query window",
+      status: ops.available ? "observed" : "unavailable",
+      detail: "Displays query-backed job and Stripe counts without converting them into readiness scores.",
     },
     {
       agent: "VERONICA",
-      title: "JARVIS command center",
-      status: "complete",
-      detail: "Cockpit HUD, clickable agents, voice briefing, proof panels, labeled readiness scores, and issue radar deployed.",
+      title: "Issue radar query",
+      status: issuesResult.available ? "observed" : "unavailable",
+      detail: "Surfaces returned issue rows and preserves an explicit unavailable state on query failure.",
     },
   ];
 
@@ -285,14 +332,19 @@ export default async function CommandCenterPage() {
   return (
     <CommandCenterConsole
       agents={agents}
+      dataStatus={{
+        campaignsAvailable: rowsResult.available,
+        issuesAvailable: issuesResult.available,
+        operationsAvailable: ops.available,
+      }}
       issues={commandIssues}
       metrics={metrics}
       proofs={proofs}
       stats={{
-        campaigns: rows.length,
-        liveCampaigns: liveCampaigns.length,
-        cleanCampaigns: cleanCampaigns.length,
-        leadVerified: verifiedLeads.length,
+        campaigns: rowsResult.available ? rows.length : null,
+        liveCampaigns: rowsResult.available ? liveCampaigns.length : null,
+        cleanCampaigns: rowsResult.available ? cleanCampaigns.length : null,
+        leadVerified: rowsResult.available ? verifiedLeads.length : null,
         failedJobs: ops.failedJobs,
         stripeFailures: ops.recentStripeFailures,
         validationAlerts: validationAlertCount,

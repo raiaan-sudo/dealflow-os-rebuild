@@ -82,6 +82,7 @@ export type FunnelBlueprint = {
   form_fields: string[];
   follow_up_action: string;
   optimization_notes: string[];
+  customLeadFormQuestions?: string[];
 };
 
 type NormalizedInput = {
@@ -729,9 +730,9 @@ function buildMarketSnapshot(input: NormalizedInput, parsed: ParsedOffer) {
             : "missing the best-fit option before it goes public");
 
   return [
-    `Problem: ${tension}`,
-    `Mechanism: ${input.mechanism || "filtered access process"}`,
-    parsed.riskReversal ? `Risk reversal: ${parsed.riskReversal}` : `Low-friction next step: ${selectMediaBuyerCta(input.campaignCategory)}`,
+    `The usual friction comes from ${tension.replace(/[.!?]+$/, "")}.`,
+    `The next step stays focused through ${input.mechanism || "a filtered access process"}.`,
+    parsed.riskReversal || `Start with ${selectMediaBuyerCta(input.campaignCategory)} when you are ready.`,
   ];
 }
 
@@ -783,7 +784,7 @@ function buildSections(input: NormalizedInput, parsed: ParsedOffer, headline: st
           : "See homes that match";
 
   return [
-    createSection("hero", headline, [subheadline, `Primary CTA: ${cta}`], {
+    createSection("hero", headline, [subheadline], {
       variant: "offer-led",
       style: { spacing: "spacious", width: "content", align: "left", theme: "dark" },
     }),
@@ -791,7 +792,7 @@ function buildSections(input: NormalizedInput, parsed: ParsedOffer, headline: st
       variant: "signal-strip",
       style: { spacing: "compact", width: "full", align: "left", theme: "accent" },
     }),
-    createSection("proof_metrics", "Proof before commitment", proofMetrics, {
+    createSection("proof_metrics", "What you can expect", proofMetrics, {
       variant: "metrics-strip",
       style: { spacing: "compact", width: "full", align: "left", theme: "accent" },
     }),
@@ -808,7 +809,7 @@ function buildSections(input: NormalizedInput, parsed: ParsedOffer, headline: st
         style: { spacing: "comfortable", width: "full", align: "left", theme: "light" },
       },
     ),
-    createSection("process", "How the mechanism works", process, {
+    createSection("process", "How it works", process, {
       variant: "mechanism-steps",
       style: { spacing: "comfortable", width: "content", align: "left", theme: "light" },
     }),
@@ -825,7 +826,7 @@ function buildSections(input: NormalizedInput, parsed: ParsedOffer, headline: st
         style: { spacing: "comfortable", width: "full", align: "left", theme: "light" },
       },
     ),
-    createSection("objections", "Offer and risk reversal", objections, {
+    createSection("objections", "What to expect before you start", objections, {
       variant: "risk-reversal",
       style: { spacing: "comfortable", width: "content", align: "left", theme: "light" },
     }),
@@ -885,14 +886,13 @@ function buildSections(input: NormalizedInput, parsed: ParsedOffer, headline: st
         input.funnelGoal === "book_call"
           ? "After you submit, you can choose a time if the offer is a fit."
           : "After you submit, expect a call or text in 5-15 minutes when the team is available.",
-        `Primary CTA: ${cta}`,
       ],
       {
         variant: "capture-card",
         style: { spacing: "comfortable", width: "content", align: "left", theme: "dark" },
       },
     ),
-    createSection("closing_cta", "Ready for the next step?", [subheadline, `Primary CTA: ${cta}`], {
+    createSection("closing_cta", "Ready for the next step?", [subheadline], {
       variant: "final-push",
       style: { spacing: "spacious", width: "content", align: "left", theme: "accent" },
     }),

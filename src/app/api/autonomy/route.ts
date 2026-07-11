@@ -26,7 +26,9 @@ export async function PATCH(request: Request) {
   try {
     assertSameOriginRequest(request);
     const body = await parseJsonBody(request, patchBodySchema);
-    const result = await evaluateAutonomy(body.campaignId ?? null);
+    const result = await evaluateAutonomy(body.campaignId ?? null, {
+      persistDecision: true,
+    });
 
     return NextResponse.json({
       ...result,

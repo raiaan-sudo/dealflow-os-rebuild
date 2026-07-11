@@ -64,7 +64,10 @@ function isRealEstateCampaign(params: {
   );
 }
 
-async function loadStoredPlan(campaignId: string): Promise<Record<string, unknown>> {
+async function loadStoredPlan(
+  campaignId: string,
+  organizationId: string,
+): Promise<Record<string, unknown>> {
   const supabase = await createRouteHandlerClient();
 
   if (!supabase) {
@@ -75,6 +78,7 @@ async function loadStoredPlan(campaignId: string): Promise<Record<string, unknow
     .from("campaign_plans")
     .select("plan")
     .eq("id", campaignId)
+    .eq("organization_id", organizationId)
     .maybeSingle();
 
   if (error) {
@@ -88,6 +92,7 @@ async function loadStoredPlan(campaignId: string): Promise<Record<string, unknow
 
 async function persistCampaignPayload(params: {
   campaignId: string;
+  organizationId: string;
   userId: string;
   payload: CampaignPayloadRecord;
 }) {
@@ -97,12 +102,13 @@ async function persistCampaignPayload(params: {
     throw new ApiError(503, "Supabase is not configured.", "config_missing");
   }
 
-  const currentPlan = await loadStoredPlan(params.campaignId);
+  const currentPlan = await loadStoredPlan(params.campaignId, params.organizationId);
   const nextPlan = withCampaignPayload(currentPlan, params.payload as unknown as Record<string, unknown>);
 
   await persistCampaignPlanDocumentUpdate({
     supabase,
     campaignId: params.campaignId,
+    organizationId: params.organizationId,
     userId: params.userId,
     plan: nextPlan,
     source: "build_campaign_payload",
@@ -142,7 +148,7 @@ export async function POST(request: Request) {
           throw new ApiError(404, "Campaign plan was not found.", "campaign_plan_not_found");
         }
 
-        const storedPlan = await loadStoredPlan(campaignId);
+        const storedPlan = await loadStoredPlan(campaignId, auth.organizationId);
         const existingPayload = getCampaignPayloadFromPlan(storedPlan) as CampaignPayloadRecord | null;
 
         const missingArtifacts: string[] = [];
@@ -275,6 +281,7 @@ export async function POST(request: Request) {
 
         await persistCampaignPayload({
           campaignId,
+          organizationId: auth.organizationId,
           userId: auth.userId,
           payload: campaignPayload,
         });

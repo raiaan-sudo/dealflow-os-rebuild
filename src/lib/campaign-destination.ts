@@ -12,7 +12,6 @@ const INSTANT_FORM_VALUES = new Set([
   "meta_lead_form",
   "native_lead_form",
   "on_facebook",
-  "volume_lead_form",
 ]);
 
 const DESTINATION_KEYS = new Set([

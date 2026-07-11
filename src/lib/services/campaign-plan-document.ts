@@ -342,6 +342,8 @@ export function withLaunchRuntime(
   const launchStatus =
     metaPushStatus === "published"
       ? "live"
+      : metaPushStatus === "provider_paused"
+        ? "provider_paused"
       : metaPushStatus === "failed"
         ? "failed"
         : runtimeStatus === "launching"

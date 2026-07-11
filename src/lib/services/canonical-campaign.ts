@@ -581,6 +581,16 @@ function normalizeFunnel(
     optimization_notes: Array.isArray(source.optimization_notes)
       ? source.optimization_notes.map(String)
       : built.funnel.optimization_notes,
+    customLeadFormQuestions: Array.isArray(source.customLeadFormQuestions)
+      ? Array.from(
+          new Set(
+            source.customLeadFormQuestions
+              .filter((question): question is string => typeof question === "string")
+              .map((question) => question.trim())
+              .filter(Boolean),
+          ),
+        ).slice(0, 3)
+      : [],
   };
 }
 

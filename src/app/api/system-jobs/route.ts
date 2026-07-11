@@ -25,6 +25,7 @@ export async function GET(request: Request) {
     const statuses = parseStatuses(url.searchParams.get("status"));
     const jobs = await listSystemJobs({
       userId: auth.userId,
+      organizationId: auth.organizationId,
       campaignId,
       statuses,
     });

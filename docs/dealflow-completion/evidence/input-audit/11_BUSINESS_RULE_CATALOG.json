@@ -1,0 +1,298 @@
+{
+  "generated_at": "2026-07-11T00:15:56.993Z",
+  "count": 32,
+  "status_counts": {
+    "CONFIRMED": 14,
+    "CONTRADICTED": 18
+  },
+  "records": [
+    {
+      "id": "RULE-001",
+      "rule": "Protected app pages require an authenticated session.",
+      "source_of_truth": "proxy and app layout",
+      "domain": "Identity",
+      "truth_status": "CONFIRMED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Anonymous dashboard redirected to login."
+    },
+    {
+      "id": "RULE-002",
+      "rule": "Mutating authenticated routes should pass same-origin validation.",
+      "source_of_truth": "route helpers and route code",
+      "domain": "Security",
+      "truth_status": "CONFIRMED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Coverage checker is lexical and can false-pass."
+    },
+    {
+      "id": "RULE-003",
+      "rule": "Active organization membership should scope tenant data.",
+      "source_of_truth": "authenticated context and service queries",
+      "domain": "Tenancy",
+      "truth_status": "CONTRADICTED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Jobs/assets use user ownership in material paths."
+    },
+    {
+      "id": "RULE-004",
+      "rule": "Campaign access may be same organization or resource owner.",
+      "source_of_truth": "campaign route checks",
+      "domain": "Tenancy",
+      "truth_status": "CONFIRMED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Mixed with user-only asset/job rules."
+    },
+    {
+      "id": "RULE-005",
+      "rule": "Lead capture requires schema validation and bounded body.",
+      "source_of_truth": "lead-capture route",
+      "domain": "Abuse/Data",
+      "truth_status": "CONFIRMED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Bypass flags can skip other controls."
+    },
+    {
+      "id": "RULE-006",
+      "rule": "Public lead traffic should pass Turnstile unless a safe exception applies.",
+      "source_of_truth": "lead-capture route/env",
+      "domain": "Abuse",
+      "truth_status": "CONTRADICTED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Exception can retain production side effects."
+    },
+    {
+      "id": "RULE-007",
+      "rule": "Lead side effects require active capture and alert entitlements.",
+      "source_of_truth": "system job handler",
+      "domain": "Billing",
+      "truth_status": "CONFIRMED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Downstream delivery truth remains weak."
+    },
+    {
+      "id": "RULE-008",
+      "rule": "Every provider side effect should be independently idempotent and retryable.",
+      "source_of_truth": "job/integration services",
+      "domain": "Reliability/Spend",
+      "truth_status": "CONTRADICTED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Per-effect durable state absent or incomplete."
+    },
+    {
+      "id": "RULE-009",
+      "rule": "System jobs are leased for five minutes.",
+      "source_of_truth": "system-job-service",
+      "domain": "Reliability",
+      "truth_status": "CONFIRMED",
+      "proof_tier": "C",
+      "evidence_or_gap": "No heartbeat; long work can be reclaimed."
+    },
+    {
+      "id": "RULE-010",
+      "rule": "Only internal-secret callers may run the system worker.",
+      "source_of_truth": "proxy and internal route",
+      "domain": "Security",
+      "truth_status": "CONFIRMED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Unauthenticated live GET returned 401."
+    },
+    {
+      "id": "RULE-011",
+      "rule": "Marketing Studio jobs are excluded from serverless cron.",
+      "source_of_truth": "job service/docs",
+      "domain": "Operations",
+      "truth_status": "CONFIRMED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Dedicated supervised worker deployment not proven."
+    },
+    {
+      "id": "RULE-012",
+      "rule": "Media fetches must be HTTPS, approved-host, public-IP, bounded, and type-valid.",
+      "source_of_truth": "media validation services",
+      "domain": "Security",
+      "truth_status": "CONFIRMED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Positive source controls; live adversarial tests not run."
+    },
+    {
+      "id": "RULE-013",
+      "rule": "Creative generation is gated by plan/credits and provider flags.",
+      "source_of_truth": "entitlements/env/provider services",
+      "domain": "Billing/Spend",
+      "truth_status": "CONFIRMED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Current configured values intentionally not read."
+    },
+    {
+      "id": "RULE-014",
+      "rule": "Launch requires campaign ownership/membership, entitlement, Meta configuration, and selected creative.",
+      "source_of_truth": "launch service/routes",
+      "domain": "Launch",
+      "truth_status": "CONFIRMED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Success page does not enforce persisted result."
+    },
+    {
+      "id": "RULE-015",
+      "rule": "Launch success must reflect a persisted provider-backed successful launch.",
+      "source_of_truth": "launch-success UI",
+      "domain": "Launch truth",
+      "truth_status": "CONTRADICTED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Query parameters can fabricate success."
+    },
+    {
+      "id": "RULE-016",
+      "rule": "Creative selection and launch must share the same UGC invariant.",
+      "source_of_truth": "select-ad route and launch service",
+      "domain": "State integrity",
+      "truth_status": "CONTRADICTED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Selection permits zero; launch requires one."
+    },
+    {
+      "id": "RULE-017",
+      "rule": "Meta OAuth state must be signed and return paths same-origin.",
+      "source_of_truth": "oauth-state/connect/callback",
+      "domain": "Security",
+      "truth_status": "CONTRADICTED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Signing present; backslash network-path accepted."
+    },
+    {
+      "id": "RULE-018",
+      "rule": "Meta tokens should be encrypted at rest and excluded from URLs/logs.",
+      "source_of_truth": "Meta token/service code",
+      "domain": "Secrets",
+      "truth_status": "CONTRADICTED",
+      "proof_tier": "C",
+      "evidence_or_gap": "AES-GCM storage present; Graph query-string token usage remains."
+    },
+    {
+      "id": "RULE-019",
+      "rule": "Webhook requests must be cryptographically verified before effects.",
+      "source_of_truth": "Stripe/Twilio/Meta routes",
+      "domain": "Security",
+      "truth_status": "CONFIRMED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Signature logic source-proven; no live provider call."
+    },
+    {
+      "id": "RULE-020",
+      "rule": "Billing webhook application must be idempotent and ordered.",
+      "source_of_truth": "migrations/webhook service",
+      "domain": "Billing",
+      "truth_status": "CONFIRMED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Hardening migrations exist; deployed state NOT_PROVEN."
+    },
+    {
+      "id": "RULE-021",
+      "rule": "Credits cannot exceed controlled overdraft bounds.",
+      "source_of_truth": "credit migrations/services",
+      "domain": "Financial",
+      "truth_status": "CONFIRMED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Concurrency/live state NOT_PROVEN."
+    },
+    {
+      "id": "RULE-022",
+      "rule": "Operator dashboards must distinguish no data from unavailable data.",
+      "source_of_truth": "command-center/admin services",
+      "domain": "Operational truth",
+      "truth_status": "CONTRADICTED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Errors collapse to zeros/empty arrays."
+    },
+    {
+      "id": "RULE-023",
+      "rule": "Public telemetry is untrusted and must not become executable prompt instructions.",
+      "source_of_truth": "client-errors/issues page",
+      "domain": "AI security",
+      "truth_status": "CONTRADICTED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Scrubbing does not neutralize semantic instructions."
+    },
+    {
+      "id": "RULE-024",
+      "rule": "Browser-stored drafts must be minimal, user/workspace-scoped, and expiring.",
+      "source_of_truth": "onboarding page",
+      "domain": "Privacy",
+      "truth_status": "CONTRADICTED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Global PII-bearing key, no TTL."
+    },
+    {
+      "id": "RULE-025",
+      "rule": "Data-deletion requests require freshness/replay checks and durable completion.",
+      "source_of_truth": "Meta data-deletion route",
+      "domain": "Privacy",
+      "truth_status": "CONTRADICTED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Only signature verification and acknowledgment."
+    },
+    {
+      "id": "RULE-026",
+      "rule": "GHL location mapping must be exclusive to the intended workspace/partner.",
+      "source_of_truth": "partner migration/service",
+      "domain": "Tenancy",
+      "truth_status": "CONTRADICTED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Database invariant absent."
+    },
+    {
+      "id": "RULE-027",
+      "rule": "Provider requests need timeouts and cancellation or durable idempotency.",
+      "source_of_truth": "API helper and provider clients",
+      "domain": "Reliability",
+      "truth_status": "CONTRADICTED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Promise timeout does not abort; GHL has no observed timeout."
+    },
+    {
+      "id": "RULE-028",
+      "rule": "Environment contracts must document production-sensitive flags.",
+      "source_of_truth": ".env.example and source refs",
+      "domain": "Configuration",
+      "truth_status": "CONTRADICTED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Material bypass/test flags are undocumented."
+    },
+    {
+      "id": "RULE-029",
+      "rule": "QA/test harnesses must be production-prohibited or equivalently isolated.",
+      "source_of_truth": "internal QA/Stripe routes",
+      "domain": "Security/Operations",
+      "truth_status": "CONTRADICTED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Multiple flags permit production-capable operation."
+    },
+    {
+      "id": "RULE-030",
+      "rule": "Customer-facing pages require meaningful document titles.",
+      "source_of_truth": "live browser/HTTP",
+      "domain": "Accessibility/SEO",
+      "truth_status": "CONTRADICTED",
+      "proof_tier": "A",
+      "evidence_or_gap": "Login and public funnel had no title."
+    },
+    {
+      "id": "RULE-031",
+      "rule": "Published funnel copy must not expose internal template labels.",
+      "source_of_truth": "live funnel",
+      "domain": "UX/Trust",
+      "truth_status": "CONTRADICTED",
+      "proof_tier": "A",
+      "evidence_or_gap": "Primary CTA, Problem, Mechanism and proof scaffolding visible."
+    },
+    {
+      "id": "RULE-032",
+      "rule": "Readiness must cover every material provider and distinguish config from live health.",
+      "source_of_truth": "provider registry",
+      "domain": "Operations",
+      "truth_status": "CONTRADICTED",
+      "proof_tier": "C",
+      "evidence_or_gap": "Selected providers omitted; Stripe can be env-presence ready."
+    }
+  ]
+}

@@ -11,7 +11,9 @@ export async function POST(request: Request) {
   try {
     assertSameOriginRequest(request);
     const body = await parseOptionalJsonBody(request, bodySchema, {});
-    const result = await evaluateAutonomy(body.campaignId ?? null);
+    const result = await evaluateAutonomy(body.campaignId ?? null, {
+      persistDecision: true,
+    });
 
     return NextResponse.json({
       ...result,

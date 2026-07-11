@@ -14,6 +14,27 @@ type EnvValidation = {
   missing: string[];
 };
 
+const UNSAFE_SECRET_PATTERNS = [
+  /change[-_ ]?me/i,
+  /placeholder/i,
+  /replace[-_ ]?with/i,
+  /your[-_ ]?(?:secret|key|token|password)/i,
+  /example/i,
+  /test[-_ ]?secret/i,
+  /secret[-_ ]?here/i,
+];
+
+export function isStrongSecretValue(value: string | undefined | null, minimumBytes = 32) {
+  const normalized = value?.trim() ?? "";
+
+  return !(
+    new TextEncoder().encode(normalized).length < minimumBytes ||
+    UNSAFE_SECRET_PATTERNS.some((pattern) => pattern.test(normalized)) ||
+    new Set(normalized).size < 10 ||
+    /^(.)\1+$/.test(normalized)
+  );
+}
+
 function requireEnvValue(key: string, value: string | undefined | null) {
   const normalized = value?.trim();
 
@@ -125,11 +146,7 @@ export function getServiceRoleEnv() {
 }
 
 export function getInternalSystemJobsSecret() {
-  return (
-    process.env.INTERNAL_SYSTEM_JOBS_SECRET ??
-    process.env.CRON_SECRET ??
-    ""
-  ).trim();
+  return getInternalSystemJobSecrets()[0] ?? "";
 }
 
 export function getInternalSystemJobSecrets() {
@@ -141,7 +158,7 @@ export function getInternalSystemJobSecrets() {
         process.env.VERCEL_CRON_SECRET,
       ]
         .map((value) => value?.trim())
-        .filter((value): value is string => Boolean(value)),
+        .filter((value): value is string => isStrongSecretValue(value)),
     ),
   );
 }
@@ -193,11 +210,13 @@ export function isAccessKeyPublicCheckoutEnabled() {
 }
 
 export function getAccessKeyHashPepper() {
-  return process.env.ACCESS_KEY_HASH_PEPPER?.trim() || null;
+  const value = process.env.ACCESS_KEY_HASH_PEPPER?.trim();
+  return isStrongSecretValue(value) ? value! : null;
 }
 
 export function getAccessKeyRevealEncryptionKey() {
-  return process.env.ACCESS_KEY_REVEAL_ENCRYPTION_KEY?.trim() || getAccessKeyHashPepper();
+  const value = process.env.ACCESS_KEY_REVEAL_ENCRYPTION_KEY?.trim();
+  return isStrongSecretValue(value) ? value! : getAccessKeyHashPepper();
 }
 
 export function getQaBillingAcceptanceOverrideEmails() {
@@ -275,11 +294,19 @@ export function getMetaEnv() {
   const appId = process.env.META_APP_ID;
   const appSecret = process.env.META_APP_SECRET;
   const redirectUri = process.env.META_REDIRECT_URI;
-  const encryptionKey = process.env.META_TOKEN_ENCRYPTION_KEY;
-  const scopes = process.env.META_SCOPES ?? "ads_management,ads_read,business_management";
+  const encryptionKey = process.env.META_TOKEN_ENCRYPTION_KEY?.trim();
+  const scopes =
+    process.env.META_SCOPES ??
+    "ads_management,ads_read,business_management,pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval";
   const executionMode = process.env.META_EXECUTION_MODE ?? "sandbox";
 
-  if (!appId || !appSecret || !redirectUri || !encryptionKey) {
+  if (
+    !appId ||
+    !appSecret ||
+    !redirectUri ||
+    !encryptionKey ||
+    !isStrongSecretValue(encryptionKey)
+  ) {
     return null;
   }
 
@@ -332,12 +359,39 @@ export function getPublicAppUrl() {
   ).replace(/\/$/, "");
 }
 
-function shouldUseStripeTestEnv() {
-  return process.env.STRIPE_FORCE_TEST_MODE === "true" && process.env.VERCEL_ENV !== "production";
+export type StripeRuntimeMode = "live" | "test";
+
+function isProductionRuntime() {
+  return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+}
+
+export function getStripeSecretKeyMode(value: string | undefined | null): StripeRuntimeMode | null {
+  const normalized = value?.trim() ?? "";
+
+  if (normalized.startsWith("sk_live_") || normalized.startsWith("rk_live_")) {
+    return "live";
+  }
+
+  if (normalized.startsWith("sk_test_") || normalized.startsWith("rk_test_")) {
+    return "test";
+  }
+
+  return null;
+}
+
+export function getStripeRuntimeMode(): StripeRuntimeMode | null {
+  const forceTestMode = process.env.STRIPE_FORCE_TEST_MODE === "true";
+
+  if (forceTestMode && isProductionRuntime()) {
+    return null;
+  }
+
+  return forceTestMode ? "test" : "live";
 }
 
 export function getStripeEnv() {
-  const useTestEnv = shouldUseStripeTestEnv();
+  const mode = getStripeRuntimeMode();
+  const useTestEnv = mode === "test";
   const secretKey = useTestEnv ? process.env.STRIPE_TEST_SECRET_KEY : process.env.STRIPE_SECRET_KEY;
   const webhookSecret = useTestEnv
     ? process.env.STRIPE_TEST_WEBHOOK_SECRET
@@ -350,11 +404,21 @@ export function getStripeEnv() {
     ? process.env.STRIPE_TEST_GROWTH_PRICE_ID
     : process.env.STRIPE_GROWTH_PRICE_ID;
 
-  if (!secretKey || !webhookSecret || !starterPriceId || !proPriceId || !growthPriceId) {
+  if (
+    !mode ||
+    !secretKey ||
+    getStripeSecretKeyMode(secretKey) !== mode ||
+    !webhookSecret ||
+    !starterPriceId ||
+    !proPriceId ||
+    !growthPriceId
+  ) {
     return null;
   }
 
   return {
+    mode,
+    livemode: mode === "live",
     secretKey,
     webhookSecret,
     starterPriceId,
@@ -363,13 +427,18 @@ export function getStripeEnv() {
   };
 }
 
+export function getStripeAccessKeyPrefix() {
+  const env = getStripeEnv();
+  return env ? (env.mode === "test" ? "df_test" : "df_live") : null;
+}
+
 export function hasStripeEnv() {
   return Boolean(getStripeEnv());
 }
 
 export function validateStripeEnv() {
   const env = getStripeEnv();
-  const useTestEnv = shouldUseStripeTestEnv();
+  const useTestEnv = getStripeRuntimeMode() === "test";
 
   return validateEnv([
     [useTestEnv ? "STRIPE_TEST_SECRET_KEY" : "STRIPE_SECRET_KEY", env?.secretKey],

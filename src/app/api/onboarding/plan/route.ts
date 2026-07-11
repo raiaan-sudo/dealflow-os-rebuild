@@ -1,61 +1,37 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { assertSameOriginRequest, parseOptionalJsonBody } from "@/lib/api/route";
+import {
+  ApiError,
+  assertSameOriginRequest,
+  handleApiError,
+  parseJsonBody,
+} from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
+import {
+  ONBOARDING_CONTRACT_VERSION,
+  getDraftFromOnboardingSubmission,
+  onboardingDraftEnvelopeSchema,
+  onboardingDraftSchema,
+  onboardingStepKeySchema,
+  onboardingSubmissionSchema,
+  type OnboardingDraftEnvelope,
+  type OnboardingSubmission,
+} from "@/lib/onboarding-contract";
 import { normalizePhone } from "@/lib/phone";
+import { buildWinningFunnel } from "@/lib/funnels/winning-template/build-winning-funnel";
+import { getAppContext } from "@/lib/services/app-context";
+import {
+  mergeCampaignPlanDocument,
+  readCampaignPlanDocument,
+} from "@/lib/services/campaign-plan-document";
+import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
+import { saveCampaignPlan, type OnboardingInput } from "@/lib/services/campaign-plan-service";
 import { upsertAgentProfile } from "@/lib/services/internal-lead-notification-service";
+import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
+import type { Json } from "@/lib/supabase/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-type OnboardingPayload = {
-  business_type?: string;
-  business_name?: string;
-  agent_first_name?: string;
-  agent_last_name?: string;
-  agent_phone?: string;
-  agent_company_name?: string;
-  location?: string;
-  market?: string;
-  service?: string;
-  focus?: string;
-  targeting?: unknown;
-  price_range?: string;
-  budget?: number | string;
-  goal?: string;
-  idempotencySeed?: string;
-};
-
-type SafeOnboardingPayloadLog = {
-  businessType: string;
-  businessNamePresent: boolean;
-  agentFirstNamePresent: boolean;
-  agentLastNamePresent: boolean;
-  agentPhonePresent: boolean;
-  market: string;
-  location: string;
-  focus: string;
-  targetingCount: number;
-  priceRange: string;
-  budget: number | string | null;
-  goalPresent: boolean;
-  servicePresent: boolean;
-  idempotencySeedPresent: boolean;
-};
-
-type OnboardingPlanSuccessResponse = {
-  success: true;
-  campaignId: string;
-  data: {
-    campaignId: string;
-  };
-};
-
-type OnboardingPlanFailureResponse = {
-  success: false;
-  error: string;
-  details?: Record<string, unknown> | null;
-  stack?: string | null;
-};
 
 const REAL_ESTATE_INTERESTS = [
   "real estate",
@@ -64,476 +40,291 @@ const REAL_ESTATE_INTERESTS = [
   "mortgage loans",
 ] as const;
 
-const TARGETING_LABELS = {
-  first_time_home_buyers: "first-time home buyers",
-  investors: "investors",
-  condos: "condos",
-  single_family_homes: "single-family homes",
-} as const;
-
-type TargetingKey = keyof typeof TARGETING_LABELS;
-
-function safeText(value: unknown) {
-  return (value ?? "").toString().trim();
+function getCampaignIntent(mode: OnboardingSubmission["campaignMode"]): OnboardingInput["intent"] {
+  if (mode === "seller") return "seller";
+  if (mode === "investor") return "investor";
+  if (mode === "commercial") return "other";
+  return "buyer";
 }
 
-function normalizeTargetingSegments(value: unknown): TargetingKey[] {
-  const rawItems = Array.isArray(value)
-    ? value
-    : typeof value === "string"
-      ? value.split(",")
-      : [];
-  const normalized = rawItems
-    .map((item) => safeText(item).toLowerCase().replace(/[\s-]+/g, "_"))
-    .map((item) => {
-      if (item === "first_time_buyers" || item === "first_time_homebuyer" || item === "first_time_homebuyers") {
-        return "first_time_home_buyers";
-      }
-      if (item === "single_family" || item === "single_family_home") {
-        return "single_family_homes";
-      }
-      return item;
-    })
-    .filter((item): item is TargetingKey => item in TARGETING_LABELS);
-
-  return Array.from(new Set(normalized));
-}
-
-function formatTargetingSegments(values: TargetingKey[]) {
-  return values.map((value) => TARGETING_LABELS[value]);
-}
-
-function normalizeOfferForCampaign(value: string) {
-  const offer = safeText(value);
-
-  if (/guaranteed approval/i.test(offer) && /600\+?|six hundred/i.test(offer) && /credit/i.test(offer)) {
-    return "See if you qualify for guaranteed approval options with 600+ credit";
-  }
-
-  return offer;
-}
-
-function buildSafePayloadLog(payload: OnboardingPayload | null): SafeOnboardingPayloadLog {
-  return {
-    businessType: safeText(payload?.business_type),
-    businessNamePresent: safeText(payload?.business_name).length > 0,
-    agentFirstNamePresent: safeText(payload?.agent_first_name).length > 0,
-    agentLastNamePresent: safeText(payload?.agent_last_name).length > 0,
-    agentPhonePresent: safeText(payload?.agent_phone).length > 0,
-    market: safeText(payload?.market),
-    location: safeText(payload?.location),
-    focus: safeText(payload?.focus),
-    targetingCount: normalizeTargetingSegments(payload?.targeting).length,
-    priceRange: safeText(payload?.price_range),
-    budget:
-      typeof payload?.budget === "number" || typeof payload?.budget === "string"
-        ? payload.budget
-        : null,
-    goalPresent: safeText(payload?.goal).length > 0,
-    servicePresent: safeText(payload?.service).length > 0,
-    idempotencySeedPresent: safeText(payload?.idempotencySeed).length > 0,
-  };
-}
-
-function buildEnvPresenceLog() {
-  return {
-    hasSupabaseEnv: Boolean(
-      process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim(),
-    ),
-    hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
-    hasAiEnv: Boolean(process.env.OPENAI_API_KEY?.trim() || process.env.AI_API_KEY?.trim()),
-    hasOpenAiApiKey: Boolean(process.env.OPENAI_API_KEY),
-    hasAiApiKey: Boolean(process.env.AI_API_KEY),
-    hasAppUrl: Boolean(process.env.NEXT_PUBLIC_APP_URL),
-    hasMetaAppId: Boolean(process.env.META_APP_ID),
-    hasMetaAppSecret: Boolean(process.env.META_APP_SECRET),
-    hasMetaRedirectUri: Boolean(process.env.META_REDIRECT_URI),
-  };
-}
-
-function validateOnboardingRouteEnv() {
-  const missing: string[] = [];
-
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()) {
-    missing.push("NEXT_PUBLIC_SUPABASE_URL");
-  }
-
-  if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()) {
-    missing.push("NEXT_PUBLIC_SUPABASE_ANON_KEY");
-  }
-
-  return missing;
-}
-
-function buildSuccessResponse(campaignId: string): OnboardingPlanSuccessResponse {
-  return {
-    success: true,
-    campaignId,
-    data: {
-      campaignId,
-    },
-  };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function extractSerializableError(error: unknown) {
-  if (error instanceof Error) {
-    return {
-      message: error.message,
-      stack: error.stack ?? null,
-      details: null as Record<string, unknown> | null,
-    };
-  }
-
-  if (isRecord(error)) {
-    const message =
-      typeof error.message === "string" && error.message.trim().length > 0
-        ? error.message
-        : typeof error.error === "string" && error.error.trim().length > 0
-          ? error.error
-          : typeof error.details === "string" && error.details.trim().length > 0
-            ? error.details
-            : JSON.stringify(error);
-
-    const details: Record<string, unknown> = {};
-
-    for (const key of ["code", "details", "hint", "error", "status", "statusCode", "name"]) {
-      if (key in error && error[key] !== undefined) {
-        details[key] = error[key];
-      }
-    }
-
-    return {
-      message,
-      stack: typeof error.stack === "string" ? error.stack : null,
-      details: Object.keys(details).length > 0 ? details : error,
-    };
-  }
+function buildCampaignInput(submission: OnboardingSubmission): OnboardingInput {
+  const modeLabel =
+    submission.campaignMode === "seller"
+      ? "seller and listing"
+      : submission.campaignMode === "investor"
+        ? "real estate investor"
+        : submission.campaignMode === "commercial"
+          ? "commercial real estate"
+          : "buyer";
 
   return {
-    message: String(error),
-    stack: null,
-    details: null as Record<string, unknown> | null,
+    clientName: submission.agentCompanyName,
+    businessName: submission.agentCompanyName,
+    intent: getCampaignIntent(submission.campaignMode),
+    market: submission.market,
+    monthlyBudget: submission.monthlyBudget,
+    primaryGoal: `Generate more ${modeLabel} leads`,
+    timeline: "30 days",
+    audience: submission.audience,
+    propertyType: `${submission.priceRange} ${submission.propertyType}`,
+    keyOffer: submission.offer,
+    painPoints: [
+      `${submission.audience} need a clearer next step in ${submission.market}`,
+      `Generic campaigns do not explain the value of ${submission.offer}`,
+      "Slow or fragmented follow-up causes qualified real-estate opportunities to go cold",
+    ],
+    mechanism: `${submission.offer} through a ${modeLabel} consultation and qualification path`,
   };
-}
-
-function buildFailureResponse(error: unknown): OnboardingPlanFailureResponse {
-  const serialized = extractSerializableError(error);
-  const isProduction = process.env.NODE_ENV === "production";
-
-  return {
-    success: false,
-    error: isProduction
-      ? "Campaign generation failed. Your answers are saved, so retry without starting over."
-      : serialized.message,
-    details: isProduction ? undefined : serialized.details,
-    stack: isProduction ? undefined : serialized.stack,
-  };
-}
-
-function normalizeIdempotencyPart(value: unknown) {
-  return safeText(value).toLowerCase().replace(/\s+/g, " ");
-}
-
-function toMonthlyBudget(value: unknown) {
-  const numeric =
-    typeof value === "number"
-      ? value
-      : Number.parseFloat((value ?? "").toString().replace(/[^0-9.]/g, ""));
-
-  if (!Number.isFinite(numeric) || numeric <= 0) {
-    return 3000;
-  }
-
-  return Math.round(numeric);
-}
-
-function isRealEstateBusinessType(value: string) {
-  return /real estate|realtor|broker|brokerage|realty|property/.test(value.toLowerCase());
 }
 
 function buildOnboardingIdempotencyKey(
-  createHash: (algorithm: string) => { update(value: string): { digest(encoding: "hex"): string } },
-  params: {
-    userId: string;
-    businessType: string;
-    location: string;
-    service: string;
-    budget: number;
-    idempotencySeed?: string;
-  },
+  organizationId: string,
+  userId: string,
+  submission: OnboardingSubmission,
 ) {
-  const normalizedSeed =
-    normalizeIdempotencyPart(params.idempotencySeed) ||
-    [
-      normalizeIdempotencyPart(params.businessType),
-      normalizeIdempotencyPart(params.location),
-      normalizeIdempotencyPart(params.service),
-      String(params.budget),
-    ].join("|");
-
   return createHash("sha256")
-    .update(`${params.userId}|${normalizedSeed}`)
+    .update(`${organizationId}|${userId}|${submission.idempotencySeed.trim().toLowerCase()}`)
     .digest("hex");
 }
 
-async function findExistingCampaignByIdempotencyKey(
-  supabase: {
-    from(table: "campaign_plans"): {
-      select(value: string): {
-        eq(column: string, value: string): {
-          contains(column: string, value: object): {
-            order(column: string, options: { ascending: boolean }): {
-              limit(value: number): { maybeSingle(): Promise<{ data: unknown; error: Error | null }> };
-            };
-          };
-        };
-      };
-    };
-  },
-  userId: string,
-  idempotencyKey: string,
-) {
-  const { data, error } = await supabase
-    .from("campaign_plans")
-    .select("id, plan")
-    .eq("user_id", userId)
-    .contains("plan", { onboarding_idempotency_key: idempotencyKey } as never)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+function campaignIdFromOnboardingIdempotencyKey(idempotencyKey: string) {
+  const hex = idempotencyKey.slice(0, 32).split("");
+  hex[12] = "4";
+  hex[16] = ((Number.parseInt(hex[16] ?? "0", 16) & 0x3) | 0x8).toString(16);
+  const value = hex.join("");
+  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20, 32)}`;
+}
+
+async function getAuthenticatedRequestContext() {
+  const [supabase, context] = await Promise.all([createRouteHandlerClient(), getAppContext()]);
+
+  if (!supabase || !context) {
+    throw new ApiError(401, "Authentication is required.", "unauthorized");
+  }
+
+  return { supabase, context };
+}
+
+async function persistOnboardingDraft(params: {
+  supabase: NonNullable<Awaited<ReturnType<typeof createRouteHandlerClient>>>;
+  organizationId: string;
+  userId: string;
+  envelope: OnboardingDraftEnvelope;
+  campaignId?: string | null;
+  submissionStatus?: "draft" | "submitted";
+}) {
+  const { error } = await (params.supabase as any).from("onboarding_drafts").upsert(
+    {
+      organization_id: params.organizationId,
+      user_id: params.userId,
+      contract_version: ONBOARDING_CONTRACT_VERSION,
+      payload: params.envelope.draft as Json,
+      current_step: params.envelope.currentStep,
+      furthest_step_index: params.envelope.furthestStepIndex,
+      ...(params.campaignId !== undefined ? { campaign_id: params.campaignId } : {}),
+      ...(params.submissionStatus ? { submission_status: params.submissionStatus } : {}),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "organization_id,user_id" },
+  );
 
   if (error) {
-    throw error;
+    throw new ApiError(500, "Onboarding draft could not be saved.", "onboarding_draft_persist_failed");
   }
-
-  const row = (data as { id?: unknown; plan?: unknown } | null) ?? null;
-
-  if (typeof row?.id !== "string") {
-    return null;
-  }
-
-  const document = isRecord(row.plan) ? row.plan : null;
-  const plan = isRecord(document?.plan) ? document.plan : null;
-  const strategy = isRecord(document?.strategy) ? document.strategy : null;
-  const market = safeText(plan?.market ?? strategy?.location);
-  const audience = safeText(plan?.audience ?? strategy?.audience);
-  const monthlyBudget = Number(plan?.monthly_budget ?? 0);
-
-  if (!market || !audience || !Number.isFinite(monthlyBudget) || monthlyBudget <= 0) {
-    console.warn("ONBOARDING_IDEMPOTENCY_SKIPPED_INCOMPLETE_CAMPAIGN:", {
-      campaignId: row.id,
-      hasMarket: Boolean(market),
-      hasAudience: Boolean(audience),
-      hasMonthlyBudget: Number.isFinite(monthlyBudget) && monthlyBudget > 0,
-    });
-    return null;
-  }
-
-  return row.id;
 }
 
-function getRealEstateIntent(service: string) {
-  if (/seller|sell|listing|valuation|home value/.test(service.toLowerCase())) {
-    return "seller" as const;
-  }
-
-  return "buyer" as const;
-}
-
-function getRealEstateFocus(params: {
-  focus?: string;
-  service?: string;
-  goal?: string;
-}) {
-  const normalizedFocus = safeText(params.focus).toLowerCase();
-
-  if (normalizedFocus === "seller" || normalizedFocus === "buyer") {
-    return normalizedFocus;
-  }
-
-  return getRealEstateIntent(`${safeText(params.service)} ${safeText(params.goal)}`);
-}
-
-function getRealEstateOnboardingDefaults(params: {
-  businessType: string;
-  businessName: string;
-  location: string;
-  service: string;
-  priceRange: string;
-  goal: string;
-  budget: number;
-  targetingSegments: TargetingKey[];
-}) {
-  const normalizedService = params.service.toLowerCase();
-  const intent = getRealEstateFocus({
-    focus: params.service,
-    goal: params.goal,
-  });
-  const businessName = params.businessName.trim().length > 0 ? params.businessName : params.businessType;
-  const priceRange = params.priceRange.trim().length > 0 ? params.priceRange : "mid-market homes";
-  const targetingLabels = formatTargetingSegments(params.targetingSegments);
-  const targetingSummary =
-    targetingLabels.length > 0
-      ? targetingLabels.join(", ")
-      : intent === "seller"
-        ? "single-family homes"
-        : "first-time home buyers";
-  const propertyFocus = targetingLabels.some((label) => /condo|single-family/.test(label))
-    ? targetingLabels.filter((label) => /condo|single-family/.test(label)).join(" and ")
-    : "homes";
-  const serviceLabel =
-    normalizeOfferForCampaign(params.goal).trim().length > 0
-      ? normalizeOfferForCampaign(params.goal)
-      : params.service.trim().length > 0
-        ? params.service
-        : intent === "seller"
-          ? "Free home value strategy call"
-          : "Private listings and buyer consult";
-
-  if (/seller|sell|listing|valuation|home value/.test(normalizedService)) {
-    return {
-      clientName: businessName,
-      businessName,
-      intent,
-      market: params.location,
-      monthlyBudget: params.budget,
-      primaryGoal: "Generate more seller and listing leads",
-      timeline: "30 days",
-      audience: `Homeowners in ${params.location} focused on ${targetingSummary}`,
-      propertyType: `${priceRange} ${propertyFocus}`,
-      keyOffer: serviceLabel,
-      painPoints: [
-        "Homeowners are unsure what their property is worth",
-        "Listing timing feels risky",
-        "Most sellers do not know how to maximize demand before going live",
-      ],
-      mechanism: `${serviceLabel} through a seller consultation and listing launch system`,
-      serviceLabel,
-      priceRange,
-      targetingSummary,
-    };
-  }
-
-  return {
-    clientName: businessName,
-    businessName,
-    intent,
-    market: params.location,
-    monthlyBudget: params.budget,
-    primaryGoal: "Generate more buyer leads",
-    timeline: "30 days",
-    audience: `Home buyers in ${params.location} focused on ${targetingSummary}`,
-    propertyType: `${priceRange} ${propertyFocus}`,
-    keyOffer: serviceLabel,
-    painPoints: [
-      "Buyers do not know which homes fit their budget",
-      "They miss listings because they react too late",
-      "Mortgage uncertainty slows down decision-making",
-    ],
-    mechanism: `${serviceLabel} through a buyer consultation and qualification system`,
-    serviceLabel,
-    priceRange,
-    targetingSummary,
-  };
-}
-
-async function enrichRealEstateCampaignPlan(params: {
-  supabase: {
-    from(table: "campaign_plans"): {
-      select(value: string): {
-        eq(column: string, value: string): { maybeSingle(): Promise<{ data: unknown; error: Error | null }> };
-      };
-    };
-  };
+async function findExistingCampaign(params: {
+  supabase: NonNullable<Awaited<ReturnType<typeof createRouteHandlerClient>>>;
+  organizationId: string;
+  userId: string;
   campaignId: string;
-  location: string;
-  readCampaignPlanDocument: (plan: unknown) => Record<string, unknown>;
-  mergeCampaignPlanDocument: (plan: Record<string, unknown>, patch: Record<string, unknown>) => Record<string, unknown>;
-  persistCampaignPlanDocumentUpdate: any;
 }) {
-  const { data, error } = await params.supabase
+  const { data, error } = await (params.supabase as any)
     .from("campaign_plans")
-    .select("plan")
+    .select("id,plan,organization_id")
     .eq("id", params.campaignId)
+    .eq("organization_id", params.organizationId)
+    .eq("user_id", params.userId)
     .maybeSingle();
 
   if (error) {
-    throw error;
+    throw new ApiError(500, "Existing onboarding submission could not be checked.", "onboarding_idempotency_lookup_failed");
   }
 
-  const row = (data as { plan?: unknown } | null) ?? null;
+  return data && typeof data.id === "string" ? (data as { id: string; plan: unknown }) : null;
+}
 
-  const currentPlan = params.readCampaignPlanDocument(row?.plan);
+async function persistCompleteOnboardingContract(params: {
+  supabase: NonNullable<Awaited<ReturnType<typeof createRouteHandlerClient>>>;
+  campaignId: string;
+  organizationId: string;
+  userId: string;
+  currentPlan: unknown;
+  submission: OnboardingSubmission;
+  idempotencyKey: string;
+}) {
+  const submission = params.submission;
+  const agentName = `${submission.agentFirstName} ${submission.agentLastName}`.trim();
+  const funnel = {
+    ...buildWinningFunnel({
+      market: submission.market,
+      location: submission.market,
+      audience: submission.audience,
+      offer: submission.offer,
+      key_offer: submission.offer,
+      market_type: submission.campaignMode,
+      funnel_goal:
+        submission.leadCaptureMode === "volume_lead_form" ? "lead_form" : "survey",
+      language: submission.funnelLanguage,
+      lead_capture_mode: submission.leadCaptureMode,
+      agent_name: agentName,
+      brokerage_name: submission.agentCompanyName,
+      phone: submission.agentPhone,
+      theme: {
+        primaryColor: submission.themePrimaryColor,
+        secondaryColor: submission.themeSecondaryColor,
+        accentColor: submission.themeAccentColor,
+        logoUrl: submission.logoUrl || null,
+      },
+    }),
+    customLeadFormQuestions: submission.leadFormQuestions,
+  };
 
-  const campaignModes =
-    Array.isArray(currentPlan.campaign_modes) && currentPlan.campaign_modes.length > 0
-      ? currentPlan.campaign_modes
-      : ["buyer campaign", "seller campaign", "listing campaign"];
-
-  await params.persistCampaignPlanDocumentUpdate({
+  await persistCampaignPlanDocumentUpdate({
     supabase: params.supabase,
     campaignId: params.campaignId,
-    plan: params.mergeCampaignPlanDocument(currentPlan, {
+    organizationId: params.organizationId,
+    userId: params.userId,
+    plan: mergeCampaignPlanDocument(readCampaignPlanDocument(params.currentPlan), {
       industry_mode: "real_estate",
-      campaign_modes: campaignModes,
+      onboarding_contract_version: ONBOARDING_CONTRACT_VERSION,
+      onboarding_contract: submission as unknown as Record<string, unknown>,
+      onboarding_idempotency_key: params.idempotencyKey,
+      onboarding_focus: submission.campaignMode,
+      onboarding_targeting: submission.audience,
+      onboarding_price_range: submission.priceRange,
+      onboarding_goal: submission.offer,
+      campaign_modes: [submission.campaignMode],
       targeting_defaults: {
         interests: [...REAL_ESTATE_INTERESTS],
         geo_radius_miles: 15,
-        location: params.location,
+        location: submission.market,
+        audience: submission.audience,
+      },
+      targeting_summary: submission.audience,
+      offer_summary: submission.offer,
+      key_offer: submission.offer,
+      property_type: submission.propertyType,
+      daily_budget: submission.dailyBudget,
+      daily_budget_cents: submission.dailyBudgetCents,
+      monthly_budget: submission.monthlyBudget,
+      language: submission.funnelLanguage,
+      lead_capture_mode: submission.leadCaptureMode,
+      lead_form_questions: submission.leadFormQuestions,
+      funnel,
+      funnel_type: funnel.funnel_type,
+      theme: {
+        primaryColor: submission.themePrimaryColor,
+        secondaryColor: submission.themeSecondaryColor,
+        accentColor: submission.themeAccentColor,
+        logoUrl: submission.logoUrl || null,
+      },
+      agent_name: agentName,
+      brokerage_name: submission.agentCompanyName,
+      phone: submission.agentPhone,
+      plan_tier: submission.planTier,
+      campaign_payload: {
+        market: submission.market,
+        audience: submission.audience,
+        key_offer: submission.offer,
+        property_type: submission.propertyType,
+        price_range: submission.priceRange,
+        daily_budget_cents: submission.dailyBudgetCents,
+        language: submission.funnelLanguage,
+        lead_capture_mode: submission.leadCaptureMode,
+        lead_form_questions: submission.leadFormQuestions,
+        theme: funnel.theme,
+        funnel,
       },
     }),
-    source: "onboarding_real_estate_defaults",
+    source: "onboarding_contract_v1",
   });
 }
 
-export async function POST(req: Request) {
-  let safePayload: SafeOnboardingPayloadLog | null = null;
-
+export async function GET() {
   try {
-    assertSameOriginRequest(req);
-    const missingEnv = validateOnboardingRouteEnv();
+    const { supabase, context } = await getAuthenticatedRequestContext();
+    const { data, error } = await (supabase as any)
+      .from("onboarding_drafts")
+      .select("contract_version,payload,current_step,furthest_step_index,campaign_id,submission_status,updated_at")
+      .eq("organization_id", context.organization.id)
+      .eq("user_id", context.user.id)
+      .maybeSingle();
 
-    if (missingEnv.length > 0) {
-      throw new Error(`Missing required environment variables: ${missingEnv.join(", ")}`);
+    if (error) {
+      throw new ApiError(500, "Onboarding draft could not be loaded.", "onboarding_draft_fetch_failed");
     }
 
-    const [{ createHash }, { createRouteHandlerClient }, campaignIntentModule, campaignPlanDocumentModule, persistenceModule, campaignPlanServiceModule] =
-      await Promise.all([
-        import("node:crypto"),
-        import("@/lib/supabase/route-handler"),
-        import("@/lib/campaign-intent"),
-        import("@/lib/services/campaign-plan-document"),
-        import("@/lib/services/campaign-plan-persistence-service"),
-        import("@/lib/services/campaign-plan-service"),
-      ]);
-
-    const supabase = await createRouteHandlerClient();
-
-    if (!supabase) {
-      throw new Error("Supabase is not configured.");
+    if (!data) {
+      return NextResponse.json({ found: false, contractVersion: ONBOARDING_CONTRACT_VERSION });
     }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const draft = onboardingDraftSchema.parse(data.payload);
+    const currentStep = onboardingStepKeySchema.parse(data.current_step);
 
-    if (!user) {
-      const responseBody: OnboardingPlanFailureResponse = {
-        success: false,
-        error: "Authentication is required.",
-      };
-      return NextResponse.json(
-        responseBody,
-        { status: 401 },
-      );
-    }
+    return NextResponse.json({
+      found: true,
+      contractVersion: ONBOARDING_CONTRACT_VERSION,
+      draft,
+      currentStep,
+      furthestStepIndex: Number(data.furthest_step_index) || 0,
+      campaignId: typeof data.campaign_id === "string" ? data.campaign_id : null,
+      submissionStatus: data.submission_status === "submitted" ? "submitted" : "draft",
+      updatedAt: typeof data.updated_at === "string" ? data.updated_at : null,
+    });
+  } catch (error) {
+    return handleApiError(error, "Onboarding draft read");
+  }
+}
 
+export async function PUT(request: Request) {
+  try {
+    assertSameOriginRequest(request);
+    const { supabase, context } = await getAuthenticatedRequestContext();
     const rateLimit = await consumeRateLimit({
-      key: getRateLimitKey(req, "onboarding-plan", user.id),
+      key: getRateLimitKey(request, "onboarding-draft", context.user.id),
+      limit: 60,
+      windowMs: 60_000,
+    });
+
+    if (rateLimit && !rateLimit.allowed) {
+      return buildRateLimitResponse(rateLimit.resetAt);
+    }
+
+    const envelope = await parseJsonBody(request, onboardingDraftEnvelopeSchema, {
+      maxBytes: 64 * 1024,
+      code: "onboarding_draft_body_too_large",
+    });
+
+    await persistOnboardingDraft({
+      supabase,
+      organizationId: context.organization.id,
+      userId: context.user.id,
+      envelope,
+    });
+
+    return NextResponse.json({ saved: true, contractVersion: ONBOARDING_CONTRACT_VERSION });
+  } catch (error) {
+    return handleApiError(error, "Onboarding draft write");
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    assertSameOriginRequest(request);
+    const { supabase, context } = await getAuthenticatedRequestContext();
+    const rateLimit = await consumeRateLimit({
+      key: getRateLimitKey(request, "onboarding-plan", context.user.id),
       limit: 4,
       windowMs: 60_000,
     });
@@ -542,186 +333,107 @@ export async function POST(req: Request) {
       return buildRateLimitResponse(rateLimit.resetAt);
     }
 
-    const payload = (await parseOptionalJsonBody(req, { parse: (input) => input }, null, {
+    const submission = await parseJsonBody(request, onboardingSubmissionSchema, {
       maxBytes: 64 * 1024,
       code: "onboarding_body_too_large",
-    })) as OnboardingPayload | null;
-    safePayload = buildSafePayloadLog(payload);
-    const businessType = safeText(payload?.business_type) || "Real Estate";
-    const businessName = safeText(payload?.business_name) || businessType;
-    const agentFirstName = safeText(payload?.agent_first_name);
-    const agentLastName = safeText(payload?.agent_last_name);
-    const agentPhone = safeText(payload?.agent_phone);
-    const agentCompanyName = safeText(payload?.agent_company_name) || businessName;
-    const location = safeText(payload?.market) || safeText(payload?.location) || "United States";
-    const focus = getRealEstateFocus({
-      focus: payload?.focus,
-      service: payload?.service,
-      goal: payload?.goal,
     });
-    const targetingSegments = normalizeTargetingSegments(payload?.targeting);
-    const priceRange = safeText(payload?.price_range) || "mid-market homes";
-    const service = normalizeOfferForCampaign(safeText(payload?.goal)) || safeText(payload?.service) || (focus === "seller" ? "Free home value strategy call" : "Private listings and buyer consult");
-    const budget = toMonthlyBudget(payload?.budget);
-    const realEstateMode = isRealEstateBusinessType(businessType) || safeText(payload?.focus).length > 0;
-    const normalizedAgentPhone = normalizePhone(agentPhone);
-
-    if (!agentFirstName || !agentLastName || !agentPhone || !agentCompanyName) {
-      throw new Error("Agent first name, last name, phone, and company are required.");
-    }
+    const normalizedAgentPhone = normalizePhone(submission.agentPhone);
 
     if (!normalizedAgentPhone) {
-      throw new Error("Enter a valid US or Canada phone number for internal lead alerts.");
+      throw new ApiError(
+        400,
+        "Enter a valid US or Canada phone number for internal lead alerts.",
+        "agent_phone_invalid",
+      );
     }
 
-    const idempotencyKey = buildOnboardingIdempotencyKey(createHash, {
-      userId: user.id,
-      businessType: businessName,
-      location,
-      service: `${focus}|${priceRange}|${service}`,
-      budget,
-      idempotencySeed: payload?.idempotencySeed,
+    const idempotencyKey = buildOnboardingIdempotencyKey(
+      context.organization.id,
+      context.user.id,
+      submission,
+    );
+    const deterministicCampaignId = campaignIdFromOnboardingIdempotencyKey(idempotencyKey);
+    const existing = await findExistingCampaign({
+      supabase,
+      organizationId: context.organization.id,
+      userId: context.user.id,
+      campaignId: deterministicCampaignId,
     });
 
-    const existingCampaignId = await findExistingCampaignByIdempotencyKey(supabase as never, user.id, idempotencyKey);
+    let campaignId = existing?.id ?? null;
+    let currentPlan = existing?.plan ?? null;
 
-    if (existingCampaignId) {
-      const { data: existingRowData, error: existingRowError } = await supabase
+    if (!campaignId) {
+      const savedPlan = await saveCampaignPlan(buildCampaignInput(submission), {
+        campaignId: deterministicCampaignId,
+        createOnly: true,
+        initialPlanPatch: {
+          onboarding_contract_version: ONBOARDING_CONTRACT_VERSION,
+          onboarding_idempotency_key: idempotencyKey,
+        },
+      });
+      campaignId = savedPlan.id;
+
+      const { data: savedRow, error: savedRowError } = await (supabase as any)
         .from("campaign_plans")
-        .select("organization_id")
-        .eq("id", existingCampaignId)
-        .eq("user_id", user.id)
+        .select("plan,organization_id")
+        .eq("id", campaignId)
+        .eq("organization_id", context.organization.id)
+        .eq("user_id", context.user.id)
         .maybeSingle();
 
-      if (existingRowError) {
-        throw existingRowError;
+      if (savedRowError || !savedRow) {
+        throw new ApiError(
+          500,
+          "Saved campaign could not be reloaded.",
+          "onboarding_campaign_reload_failed",
+        );
       }
-
-      const existingRow = existingRowData as { organization_id?: string | null } | null;
-      await upsertAgentProfile({
-        tenantId: existingRow?.organization_id || user.id,
-        userId: user.id,
-        firstName: agentFirstName,
-        lastName: agentLastName,
-        email: user.email || "",
-        phoneRaw: agentPhone,
-        companyName: agentCompanyName,
-      });
-
-      const responseBody = buildSuccessResponse(existingCampaignId);
-      return NextResponse.json(responseBody);
+      currentPlan = savedRow.plan;
     }
 
-    const savedPlan = await campaignPlanServiceModule.saveCampaignPlan(
-      realEstateMode
-        ? getRealEstateOnboardingDefaults({
-            businessType,
-            businessName,
-            location,
-            service: focus,
-            priceRange,
-            goal: service,
-            budget,
-            targetingSegments,
-          })
-        : {
-            clientName: businessName,
-            businessName,
-            intent: campaignIntentModule.inferCampaignIntent({
-              marketType: businessType,
-              offer: service,
-              audience: `${businessName} prospects in ${location}`,
-              primaryGoal: `Generate more ${service} leads`,
-              mechanism: service,
-            }),
-            market: location,
-            monthlyBudget: budget,
-            primaryGoal: `Generate more ${service} leads`,
-            timeline: "30 days",
-            audience: `${businessName} prospects in ${location}`,
-            propertyType: service,
-            keyOffer: `${service} system`,
-            painPoints: [
-              "Lead volume is inconsistent",
-              "Follow-up is fragmented",
-              "Acquisition costs are too high",
-            ],
-            mechanism: `${service} campaign system`,
-          },
-    );
-
-    const { data: savedRowData, error: savedRowError } = await supabase
-      .from("campaign_plans")
-      .select("plan, organization_id, user_id")
-      .eq("id", savedPlan.id)
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (savedRowError) {
-      throw savedRowError;
-    }
-
-    const savedRow = (savedRowData as { plan?: unknown; organization_id?: string | null; user_id?: string | null } | null) ?? null;
-    await upsertAgentProfile({
-      tenantId: savedRow?.organization_id || user.id,
-      userId: user.id,
-      firstName: agentFirstName,
-      lastName: agentLastName,
-      email: user.email || "",
-      phoneRaw: agentPhone,
-      companyName: agentCompanyName,
-    });
-    const currentPlan = campaignPlanDocumentModule.readCampaignPlanDocument(savedRow?.plan);
-
-    await persistenceModule.persistCampaignPlanDocumentUpdate({
+    await persistCompleteOnboardingContract({
       supabase,
-      campaignId: savedPlan.id,
-      userId: user.id,
-      plan: campaignPlanDocumentModule.mergeCampaignPlanDocument(currentPlan, {
-        onboarding_idempotency_key: idempotencyKey,
-        onboarding_focus: focus,
-        onboarding_targeting: targetingSegments,
-        onboarding_price_range: priceRange,
-        onboarding_goal: service,
-        targeting_summary: formatTargetingSegments(targetingSegments).join(", "),
-        offer_summary: service,
-        key_offer: service,
-      }),
-      source: "onboarding_idempotency_metadata",
+      campaignId,
+      organizationId: context.organization.id,
+      userId: context.user.id,
+      currentPlan,
+      submission,
+      idempotencyKey,
     });
 
-    if (realEstateMode) {
-      await enrichRealEstateCampaignPlan({
-        supabase: supabase as never,
-        campaignId: savedPlan.id,
-        location,
-        readCampaignPlanDocument: campaignPlanDocumentModule.readCampaignPlanDocument,
-        mergeCampaignPlanDocument: campaignPlanDocumentModule.mergeCampaignPlanDocument,
-        persistCampaignPlanDocumentUpdate: persistenceModule.persistCampaignPlanDocumentUpdate,
-      });
-    }
+    await upsertAgentProfile({
+      tenantId: context.organization.id,
+      userId: context.user.id,
+      firstName: submission.agentFirstName,
+      lastName: submission.agentLastName,
+      email: context.user.email || "",
+      phoneRaw: normalizedAgentPhone,
+      companyName: submission.agentCompanyName,
+    });
 
-    const responseBody = buildSuccessResponse(savedPlan.id);
-    return NextResponse.json(responseBody);
-  } catch (error) {
-    const serializedError = extractSerializableError(error);
-
-    const { logError } = await import("@/lib/logging");
-    const isProduction = process.env.NODE_ENV === "production";
-
-    logError("onboarding_plan_failed", {
-      errorMessage: serializedError.message,
-      stack: isProduction ? null : serializedError.stack,
-      errorDetails: isProduction ? null : serializedError.details,
-      safePayload,
-      envPresence: buildEnvPresenceLog(),
-      runtime: {
-        nodeEnv: process.env.NODE_ENV ?? null,
-        vercel: Boolean(process.env.VERCEL),
+    await persistOnboardingDraft({
+      supabase,
+      organizationId: context.organization.id,
+      userId: context.user.id,
+      envelope: {
+        contractVersion: ONBOARDING_CONTRACT_VERSION,
+        draft: getDraftFromOnboardingSubmission(submission),
+        currentStep: "review",
+        furthestStepIndex: 9,
       },
+      campaignId,
+      submissionStatus: "submitted",
     });
 
-    const responseBody = buildFailureResponse(error);
-    return NextResponse.json(responseBody, { status: 500 });
+    return NextResponse.json({
+      success: true,
+      campaignId,
+      data: { campaignId },
+      contractVersion: ONBOARDING_CONTRACT_VERSION,
+      reusedExisting: Boolean(existing),
+    });
+  } catch (error) {
+    return handleApiError(error, "Onboarding plan");
   }
 }

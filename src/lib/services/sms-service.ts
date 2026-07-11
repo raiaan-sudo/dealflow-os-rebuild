@@ -1,4 +1,4 @@
-import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logOperationalEvent } from "@/lib/logging";
@@ -13,8 +13,33 @@ type SendSmsParams = {
   tenantId: string;
 };
 
-type SmsStatus = "queued" | "sent" | "delivered" | "undelivered" | "failed";
+type SmsStatus =
+  | "queued"
+  | "sending"
+  | "sent"
+  | "delivered"
+  | "undelivered"
+  | "failed"
+  | "operator_action_required";
 type AdminClient = SupabaseClient<any>;
+
+type SmsDeliveryClaim = {
+  id: string;
+  status: SmsStatus;
+  provider_message_id?: string | null;
+  request_digest?: string | null;
+  delivery_locked_by?: string | null;
+  delivery_lease_token?: string | null;
+  delivery_lease_generation?: number | null;
+};
+
+class SmsProviderRejectedError extends Error {
+  readonly code = "sms_provider_rejected";
+}
+
+class SmsProviderAmbiguousError extends Error {
+  readonly code = "sms_provider_outcome_ambiguous";
+}
 
 export function normalizePhone(input: unknown, defaultCountry = "US") {
   return normalizePhoneNumber(input, defaultCountry);
@@ -87,67 +112,110 @@ async function findExistingNotification(params: {
     throw error;
   }
 
-  return data as { id: string; status: SmsStatus; provider_message_id?: string | null } | null;
+  return data as {
+    id: string;
+    status: SmsStatus;
+    provider_message_id?: string | null;
+    request_digest?: string | null;
+  } | null;
 }
 
-async function createNotification(params: SendSmsParams) {
+function buildSmsRequestDigest(params: SendSmsParams) {
+  return createHash("sha256")
+    .update([
+      params.tenantId,
+      params.leadId,
+      params.agentId ?? "unassigned",
+      params.purpose,
+      params.to?.trim() ?? "",
+      params.body,
+    ].join("\n"))
+    .digest("hex");
+}
+
+async function createNotification(params: SendSmsParams, requestDigest: string) {
   const supabase = getAdminClientOrThrow();
-  const { data, error } = await supabase
-    .from("lead_notifications")
-    .insert({
-      tenant_id: params.tenantId,
-      lead_id: params.leadId,
-      agent_id: params.agentId,
-      channel: "sms",
-      provider: "twilio",
-      purpose: params.purpose,
-      status: "queued",
-      updated_at: new Date().toISOString(),
-    })
-    .select("*")
-    .single();
+  const { data, error } = await (supabase as any).rpc(
+    "create_lead_notification_delivery_v2",
+    {
+      p_tenant_id: params.tenantId,
+      p_lead_id: params.leadId,
+      p_agent_id: params.agentId,
+      p_purpose: params.purpose,
+      p_request_digest: requestDigest,
+    },
+  );
 
   if (error) {
     throw error;
   }
 
-  return data as { id: string };
+  const row = (Array.isArray(data) ? data[0] : data) as {
+    id: string;
+    status: SmsStatus;
+    provider_message_id?: string | null;
+    request_digest?: string | null;
+  } | null;
+
+  if (!row?.id) {
+    throw new Error("SMS delivery creation receipt was not returned.");
+  }
+
+  return row;
 }
 
-async function updateNotification(params: {
-  id: string;
-  status: SmsStatus;
+async function claimNotificationDelivery(params: {
+  notificationId: string;
+  requestDigest: string;
+  workerId: string;
+}) {
+  const { data, error } = await (getAdminClientOrThrow() as any).rpc(
+    "claim_lead_notification_delivery",
+    {
+      p_notification_id: params.notificationId,
+      p_worker_id: params.workerId,
+      p_request_digest: params.requestDigest,
+      p_lease_ms: 120_000,
+    },
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  const row = (Array.isArray(data) ? data[0] : data) as SmsDeliveryClaim | null;
+  if (!row?.id) {
+    throw new Error("SMS delivery claim was not returned.");
+  }
+
+  return row;
+}
+
+async function settleNotificationDelivery(params: {
+  claim: SmsDeliveryClaim;
+  workerId: string;
+  status: "sent" | "failed" | "operator_action_required";
   providerMessageId?: string | null;
   errorMessage?: string | null;
 }) {
-  const now = new Date().toISOString();
-  const patch: Record<string, unknown> = {
-    status: params.status,
-    provider_message_id: params.providerMessageId ?? null,
-    error_message: params.errorMessage ?? null,
-    updated_at: now,
-  };
-
-  if (params.status === "sent") {
-    patch.sent_at = now;
+  if (!params.claim.delivery_lease_token || !params.claim.delivery_lease_generation) {
+    return false;
   }
 
-  if (params.status === "failed") {
-    patch.failed_at = now;
-  }
+  const { data, error } = await (getAdminClientOrThrow() as any).rpc(
+    "settle_lead_notification_delivery",
+    {
+      p_notification_id: params.claim.id,
+      p_worker_id: params.workerId,
+      p_lease_token: params.claim.delivery_lease_token,
+      p_lease_generation: params.claim.delivery_lease_generation,
+      p_status: params.status,
+      p_provider_message_id: params.providerMessageId ?? null,
+      p_error_message: params.errorMessage ?? null,
+    },
+  );
 
-  if (params.status === "delivered") {
-    patch.delivered_at = now;
-  }
-
-  const { error } = await getAdminClientOrThrow()
-    .from("lead_notifications")
-    .update(patch)
-    .eq("id", params.id);
-
-  if (error) {
-    throw error;
-  }
+  return !error && data === true;
 }
 
 async function postTwilioMessage(params: {
@@ -162,27 +230,41 @@ async function postTwilioMessage(params: {
     Body: params.body,
     MessagingServiceSid: params.messagingServiceSid,
   });
-  const response = await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(params.accountSid)}/Messages.json`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${params.accountSid}:${params.authToken}`).toString("base64")}`,
-        "Content-Type": "application/x-www-form-urlencoded",
+  let response: Response;
+  try {
+    response = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(params.accountSid)}/Messages.json`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${params.accountSid}:${params.authToken}`).toString("base64")}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body,
       },
-      body,
-    },
-  );
+    );
+  } catch {
+    throw new SmsProviderAmbiguousError(
+      "Twilio transport ended without a provider receipt; operator reconciliation is required.",
+    );
+  }
   const data = (await response.json().catch(() => null)) as { sid?: string; message?: string } | null;
 
   if (!response.ok) {
-    throw new Error(data?.message || `Twilio returned ${response.status}`);
+    throw new SmsProviderRejectedError(data?.message || `Twilio returned ${response.status}`);
   }
 
-  return data?.sid ?? null;
+  if (!data?.sid) {
+    throw new SmsProviderAmbiguousError(
+      "Twilio accepted the request without a message receipt; operator reconciliation is required.",
+    );
+  }
+
+  return data.sid;
 }
 
 export async function sendSms(params: SendSmsParams) {
+  const requestDigest = buildSmsRequestDigest(params);
   const existing = await findExistingNotification({
     tenantId: params.tenantId,
     leadId: params.leadId,
@@ -190,44 +272,73 @@ export async function sendSms(params: SendSmsParams) {
     purpose: params.purpose,
   });
 
-  if (existing && existing.status !== "failed") {
+  const notification = existing ?? (await createNotification(params, requestDigest));
+  const workerId = `sms-delivery:${randomUUID()}`;
+  const claim = await claimNotificationDelivery({
+    notificationId: notification.id,
+    requestDigest,
+    workerId,
+  });
+
+  if (
+    claim.status !== "sending" ||
+    claim.delivery_locked_by !== workerId ||
+    claim.request_digest !== requestDigest
+  ) {
     return {
-      notificationId: existing.id,
-      status: existing.status,
-      providerMessageId: existing.provider_message_id ?? null,
+      notificationId: claim.id,
+      status: claim.status,
+      providerMessageId: claim.provider_message_id ?? null,
       duplicate: true,
     };
   }
 
-  const notification = existing ?? (await createNotification(params));
   const to = params.to?.trim();
   const config = getTwilioConfig();
 
   if (!to || !to.startsWith("+")) {
-    await updateNotification({
-      id: notification.id,
+    const settled = await settleNotificationDelivery({
+      claim,
+      workerId,
       status: "failed",
       errorMessage: "Assigned agent does not have a valid E.164 phone number.",
     });
-    return { notificationId: notification.id, status: "failed" as const, providerMessageId: null };
+    return {
+      notificationId: notification.id,
+      status: settled ? "failed" as const : "operator_action_required" as const,
+      providerMessageId: null,
+    };
   }
 
   if (!isInternalLeadSmsEnabled()) {
-    await updateNotification({
-      id: notification.id,
+    const settled = await settleNotificationDelivery({
+      claim,
+      workerId,
       status: "failed",
       errorMessage: "Internal lead SMS notifications are disabled.",
     });
-    return { notificationId: notification.id, status: "failed" as const, providerMessageId: null };
+    return {
+      notificationId: notification.id,
+      status: settled ? "failed" as const : "operator_action_required" as const,
+      providerMessageId: null,
+    };
   }
 
   if (isSmsMockMode()) {
     const providerMessageId = `mock_sms_${Date.now()}_${randomUUID()}`;
-    await updateNotification({
-      id: notification.id,
+    const settled = await settleNotificationDelivery({
+      claim,
+      workerId,
       status: "sent",
       providerMessageId,
     });
+    if (!settled) {
+      return {
+        notificationId: notification.id,
+        status: "operator_action_required" as const,
+        providerMessageId: null,
+      };
+    }
     logOperationalEvent("sms.internal_lead_notification_mocked", {
       tenantId: params.tenantId,
       leadId: params.leadId,
@@ -238,8 +349,9 @@ export async function sendSms(params: SendSmsParams) {
   }
 
   if (!config.accountSid || !config.authToken || !config.messagingServiceSid) {
-    await updateNotification({
-      id: notification.id,
+    const settled = await settleNotificationDelivery({
+      claim,
+      workerId,
       status: "failed",
       errorMessage: "Twilio environment variables are not configured.",
     });
@@ -249,7 +361,11 @@ export async function sendSms(params: SendSmsParams) {
       purpose: params.purpose,
       reason: "missing_twilio_env",
     });
-    return { notificationId: notification.id, status: "failed" as const, providerMessageId: null };
+    return {
+      notificationId: notification.id,
+      status: settled ? "failed" as const : "operator_action_required" as const,
+      providerMessageId: null,
+    };
   }
 
   try {
@@ -260,20 +376,38 @@ export async function sendSms(params: SendSmsParams) {
       to,
       body: params.body,
     });
-    await updateNotification({
-      id: notification.id,
+    const settled = await settleNotificationDelivery({
+      claim,
+      workerId,
       status: "sent",
       providerMessageId,
     });
 
+    if (!settled) {
+      return {
+        notificationId: notification.id,
+        status: "operator_action_required" as const,
+        providerMessageId: null,
+      };
+    }
+
     return { notificationId: notification.id, status: "sent" as const, providerMessageId };
   } catch (error) {
-    await updateNotification({
-      id: notification.id,
-      status: "failed",
-      errorMessage: error instanceof Error ? error.message : "Twilio send failed.",
+    const status = error instanceof SmsProviderRejectedError
+      ? "failed"
+      : "operator_action_required";
+    const settled = await settleNotificationDelivery({
+      claim,
+      workerId,
+      status,
+      errorMessage:
+        error instanceof Error ? error.message : "Twilio outcome requires reconciliation.",
     });
-    return { notificationId: notification.id, status: "failed" as const, providerMessageId: null };
+    return {
+      notificationId: notification.id,
+      status: settled ? status : "operator_action_required" as const,
+      providerMessageId: null,
+    };
   }
 }
 
@@ -370,29 +504,18 @@ export async function updateSmsDeliveryStatus(params: {
     return { updated: false };
   }
 
-  const now = new Date().toISOString();
-  const patch: Record<string, unknown> = {
-    status: mapped,
-    error_message: params.errorMessage ?? null,
-    updated_at: now,
-  };
-
-  if (mapped === "delivered") {
-    patch.delivered_at = now;
-  }
-
-  if (mapped === "failed" || mapped === "undelivered") {
-    patch.failed_at = now;
-  }
-
-  const { error } = await getAdminClientOrThrow()
-    .from("lead_notifications")
-    .update(patch)
-    .eq("provider_message_id", params.providerMessageId);
+  const { data, error } = await (getAdminClientOrThrow() as any).rpc(
+    "apply_lead_notification_delivery_status",
+    {
+      p_provider_message_id: params.providerMessageId,
+      p_status: mapped,
+      p_error_message: params.errorMessage ?? null,
+    },
+  );
 
   if (error) {
     throw error;
   }
 
-  return { updated: true };
+  return { updated: data === true };
 }

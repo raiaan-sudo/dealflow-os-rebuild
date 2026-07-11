@@ -1,4 +1,9 @@
 import { ApiError } from "@/lib/api/route";
+import {
+  buildMetaGraphUrl,
+  isMetaLiveWriteAllowed,
+  withMetaBearerToken,
+} from "@/lib/integrations/meta/contract";
 import { getMetaAccessToken } from "@/lib/integrations/meta/execution";
 import { fetchMetaJson } from "@/lib/integrations/meta/request";
 import type { MetaConnectionRecord } from "@/lib/integrations/meta/types";
@@ -47,18 +52,31 @@ type MetaCreateResult<T> = {
   payload: T;
 };
 
+function assertMetaLiveWriteEnabled() {
+  if (!isMetaLiveWriteAllowed()) {
+    throw new ApiError(
+      403,
+      "Live Meta writes are disabled. Explicitly enable the guarded launch flow before creating or updating provider objects.",
+      "meta_live_launch_disabled",
+    );
+  }
+}
+
 async function postToMeta<T>(path: string, accessToken: string, payload: Record<string, unknown>) {
-  const url = new URL(`https://graph.facebook.com/v19.0/${path}`);
-  url.searchParams.set("access_token", accessToken);
+  assertMetaLiveWriteEnabled();
+
+  const url = buildMetaGraphUrl(path);
 
   const { response, data } = await fetchMetaJson<
     ({ id?: string; success?: boolean; error?: { message?: string } } & T) | null
-  >(url.toString(), {
+  >(url, {
     purpose: "launch_create",
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    ...withMetaBearerToken(accessToken, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }),
     body: JSON.stringify(payload),
   });
 
@@ -82,21 +100,24 @@ async function lookupMetaObjectByName(params: {
   parentField?: "account_id" | "campaign_id" | "adset_id";
   parentId?: string | null;
 }) {
-  const url = new URL(
-    `https://graph.facebook.com/v19.0/act_${params.accountId.replace(/^act_/, "")}/${params.edge}`,
+  const url = buildMetaGraphUrl(
+    `act_${params.accountId.replace(/^act_/, "")}/${params.edge}`,
+    {
+      fields: params.fields,
+      limit: 200,
+    },
   );
-  url.searchParams.set("fields", params.fields);
-  url.searchParams.set("limit", "200");
-  url.searchParams.set("access_token", params.accessToken);
 
   const { response, data } = await fetchMetaJson<
     { data?: Array<Record<string, unknown>>; error?: { message?: string } } | null
-  >(url.toString(), {
+  >(url, {
     purpose: "launch_lookup",
     method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    ...withMetaBearerToken(params.accessToken, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }),
   });
 
   if (!response.ok) {
@@ -130,18 +151,18 @@ async function lookupMetaObjectById(params: {
   accessToken: string;
   fields: string;
 }) {
-  const url = new URL(`https://graph.facebook.com/v19.0/${params.objectId}`);
-  url.searchParams.set("fields", params.fields);
-  url.searchParams.set("access_token", params.accessToken);
+  const url = buildMetaGraphUrl(params.objectId, { fields: params.fields });
 
   const { response, data } = await fetchMetaJson<
     (Record<string, unknown> & { error?: { message?: string } }) | null
-  >(url.toString(), {
+  >(url, {
     purpose: "launch_lookup",
     method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    ...withMetaBearerToken(params.accessToken, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }),
   });
 
   if (!response.ok) {
@@ -156,7 +177,7 @@ async function lookupMetaObjectById(params: {
 }
 
 function isPausedMetaStatus(value: unknown) {
-  return typeof value === "string" && value.toUpperCase().includes("PAUSED");
+  return typeof value === "string" && value.trim().toUpperCase() === "PAUSED";
 }
 
 async function ensureMetaObjectPaused(params: {
@@ -186,7 +207,7 @@ async function ensureMetaObjectPaused(params: {
     fields: "id,status,effective_status",
   });
 
-  if (!isPausedMetaStatus(updated?.status) && !isPausedMetaStatus(updated?.effective_status)) {
+  if (!isPausedMetaStatus(updated?.status)) {
     throw new ApiError(
       502,
       `Meta object ${params.objectId} could not be verified PAUSED after creation/recovery.`,
@@ -301,6 +322,7 @@ export async function createMetaCampaign(params: {
   connection: MetaConnectionRecord;
   payload: BuiltMetaCampaignPayload;
 }) {
+  assertMetaLiveWriteEnabled();
   const accessToken = getMetaAccessToken(params.connection);
   const accountId = getSelectedAdAccountId(params.connection);
 
@@ -336,6 +358,7 @@ export async function createMetaAdSet(params: {
   campaignId: string;
   payload: BuiltMetaAdSetPayload;
 }) {
+  assertMetaLiveWriteEnabled();
   const accessToken = getMetaAccessToken(params.connection);
   const accountId = getSelectedAdAccountId(params.connection);
 
@@ -380,6 +403,7 @@ export async function createMetaCreative(params: {
   connection: MetaConnectionRecord;
   payload: BuiltMetaAdPayload["creativePayload"];
 }) {
+  assertMetaLiveWriteEnabled();
   const accountId = getSelectedAdAccountId(params.connection);
 
   if (!accountId) {
@@ -438,6 +462,7 @@ export async function createMetaAd(params: {
   creativeId: string;
   payload: BuiltMetaAdPayload["adPayload"];
 }) {
+  assertMetaLiveWriteEnabled();
   const accessToken = getMetaAccessToken(params.connection);
   const accountId = getSelectedAdAccountId(params.connection);
 

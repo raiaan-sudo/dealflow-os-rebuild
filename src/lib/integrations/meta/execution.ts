@@ -1,8 +1,12 @@
 import { ApiError } from "@/lib/api/route";
 import { getMetaEnv, getPublicAppUrl } from "@/lib/env";
 import { decryptSecret } from "@/lib/integrations/meta-crypto";
+import {
+  buildMetaGraphUrl,
+  isMetaLiveWriteAllowed,
+  withMetaBearerToken,
+} from "@/lib/integrations/meta/contract";
 import type { MetaConnectionRecord } from "@/lib/integrations/meta/types";
-import { fetchWithRetryServer } from "@/lib/http/fetch-with-retry-server";
 import { fetchMetaResponse } from "@/lib/integrations/meta/request";
 import type {
   ExecutableAd,
@@ -151,8 +155,11 @@ function toAbsoluteDestinationUrl(url: string) {
   return `${getPublicAppUrl()}${url.startsWith("/") ? url : `/${url}`}`;
 }
 
-async function fetchMetaJson<T>(url: string, init?: RequestInit) {
-  const response = await fetchWithRetryServer(url, init);
+async function fetchMetaJson<T>(url: RequestInfo | URL, init?: RequestInit) {
+  const response = await fetchMetaResponse(url, {
+    purpose: "discovery",
+    ...(init ?? {}),
+  });
   const data = (await response.json().catch(() => null)) as
     | T
     | { error?: { message?: string } }
@@ -187,14 +194,15 @@ async function resolveMetaInterests(params: {
   const resolved = [];
 
   for (const keyword of params.keywords.slice(0, 3)) {
-    const url = new URL("https://graph.facebook.com/v19.0/search");
-    url.searchParams.set("type", "adinterest");
-    url.searchParams.set("q", keyword);
-    url.searchParams.set("limit", "1");
-    url.searchParams.set("access_token", params.accessToken);
+    const url = buildMetaGraphUrl("search", {
+      type: "adinterest",
+      q: keyword,
+      limit: 1,
+    });
 
     const result = await fetchMetaJson<{ data?: Array<{ id: string; name: string }> }>(
-      url.toString(),
+      url,
+      withMetaBearerToken(params.accessToken),
     );
     const firstMatch = result.data?.[0];
 
@@ -219,13 +227,15 @@ async function createAdCreative(params: {
     };
   }
 
-  const url = new URL(`https://graph.facebook.com/v19.0/act_${params.accountId}/adcreatives`);
-  url.searchParams.set("access_token", params.accessToken);
+  assertMetaLiveWriteEnabled();
+  const url = buildMetaGraphUrl(`act_${params.accountId}/adcreatives`);
 
-  const response = await fetchMetaResponse(url.toString(), {
+  const response = await fetchMetaResponse(url, {
     purpose: "launch_create",
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    ...withMetaBearerToken(params.accessToken, {
+      headers: { "Content-Type": "application/json" },
+    }),
     body: JSON.stringify(params.payload),
   });
 
@@ -389,7 +399,7 @@ export function getMetaExecutionMode() {
 
   const executionMode: "sandbox" | "live" = env.executionMode === "live" ? "live" : "sandbox";
 
-  if (executionMode === "live" && process.env.ALLOW_META_LIVE_LAUNCH !== "true") {
+  if (executionMode === "live" && !isMetaLiveWriteAllowed()) {
     throw new ApiError(
       403,
       "Live Meta launch requires ALLOW_META_LIVE_LAUNCH=true. Use sandbox mode for non-mutating validation.",
@@ -398,6 +408,16 @@ export function getMetaExecutionMode() {
   }
 
   return executionMode;
+}
+
+function assertMetaLiveWriteEnabled() {
+  if (!isMetaLiveWriteAllowed()) {
+    throw new ApiError(
+      403,
+      "Live Meta launch requires ALLOW_META_LIVE_LAUNCH=true. Use sandbox mode for non-mutating validation.",
+      "meta_live_launch_disabled",
+    );
+  }
 }
 
 export function getMetaAccessToken(connection: MetaConnectionRecord) {
@@ -427,13 +447,15 @@ export async function createCampaign(params: {
     };
   }
 
-  const url = new URL(`https://graph.facebook.com/v19.0/act_${params.accountId}/campaigns`);
-  url.searchParams.set("access_token", params.accessToken);
+  assertMetaLiveWriteEnabled();
+  const url = buildMetaGraphUrl(`act_${params.accountId}/campaigns`);
 
-  const response = await fetchMetaResponse(url.toString(), {
+  const response = await fetchMetaResponse(url, {
     purpose: "launch_create",
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    ...withMetaBearerToken(params.accessToken, {
+      headers: { "Content-Type": "application/json" },
+    }),
     body: JSON.stringify(params.payload),
   });
 
@@ -470,13 +492,15 @@ export async function createAdSet(params: {
     };
   }
 
-  const url = new URL(`https://graph.facebook.com/v19.0/act_${params.accountId}/adsets`);
-  url.searchParams.set("access_token", params.accessToken);
+  assertMetaLiveWriteEnabled();
+  const url = buildMetaGraphUrl(`act_${params.accountId}/adsets`);
 
-  const response = await fetchMetaResponse(url.toString(), {
+  const response = await fetchMetaResponse(url, {
     purpose: "launch_create",
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    ...withMetaBearerToken(params.accessToken, {
+      headers: { "Content-Type": "application/json" },
+    }),
     body: JSON.stringify({
       ...params.payload,
       campaign_id: params.campaignId,
@@ -517,13 +541,15 @@ export async function createAd(params: {
     };
   }
 
-  const url = new URL(`https://graph.facebook.com/v19.0/act_${params.accountId}/ads`);
-  url.searchParams.set("access_token", params.accessToken);
+  assertMetaLiveWriteEnabled();
+  const url = buildMetaGraphUrl(`act_${params.accountId}/ads`);
 
-  const response = await fetchMetaResponse(url.toString(), {
+  const response = await fetchMetaResponse(url, {
     purpose: "launch_create",
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    ...withMetaBearerToken(params.accessToken, {
+      headers: { "Content-Type": "application/json" },
+    }),
     body: JSON.stringify({
       ...params.payload,
       adset_id: params.adSetId,

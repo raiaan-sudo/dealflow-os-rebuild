@@ -2,15 +2,19 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
+import ts from "typescript";
 
 const root = process.cwd();
 const middlewarePath = "src/proxy.ts";
 const apiRoot = "src/app/api";
 const routeMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+const routeMethodSet = new Set(routeMethods);
 const mutatingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 const expectedPublicApiRoutes = new Map([
   ["/api/meta/data-deletion", new Set(["GET", "POST"])],
+  ["/api/meta/leadgen/webhook", new Set(["GET", "POST"])],
   ["/api/integrations/meta/callback", new Set(["GET"])],
   ["/api/lead-capture", new Set(["POST"])],
   ["/api/lead-tracking/browser-pixel", new Set(["POST"])],
@@ -20,24 +24,28 @@ const expectedPublicApiRoutes = new Map([
   ["/api/client-errors", new Set(["POST"])],
   ["/api/access-keys/checkout", new Set(["POST"])],
   ["/api/access-keys/preclaim", new Set(["POST"])],
+  ["/api/access-keys/reveal-ack", new Set(["POST"])],
 ]);
 
 const expectedInternalApiRoutes = new Map([
   ["/api/internal/qa-auth-session", {
     methods: new Set(["POST"]),
-    markers: ["assertInternalSystemRequest", "QA_AUTH_HARNESS_ENABLED"],
+    requiredCalls: ["assertInternalSystemRequest"],
+    requiredEnv: ["QA_AUTH_HARNESS_ENABLED"],
   }],
   ["/api/internal/stripe-test-proof", {
     methods: new Set(["POST"]),
-    markers: ["assertInternalSystemRequest", "STRIPE_TEST_HARNESS_ENABLED"],
+    requiredCalls: ["assertInternalSystemRequest"],
+    requiredEnv: ["STRIPE_TEST_HARNESS_ENABLED"],
   }],
   ["/api/internal/system-jobs", {
     methods: new Set(["GET", "POST"]),
-    markers: ["assertInternalSystemRequest", "runSystemJobWorkerBatch"],
+    requiredCalls: ["assertInternalSystemRequest", "runSystemJobWorkerBatch"],
+    requiredEnv: [],
   }],
 ]);
 
-const ownershipMarkers = [
+const ownershipCalls = new Set([
   "getAuthenticatedContext",
   "getCampaignById",
   "updateCampaignPublishState",
@@ -47,11 +55,11 @@ const ownershipMarkers = [
   "uploadManualCreativeAsset",
   "assertMetaLaunchBillingAccess",
   "assertInternalOperatorAccess",
-  "auth.userId",
-  "auth.organizationId",
-  "organization_id",
-  "user_id",
-];
+  "getSystemJob",
+  "getSystemJobLogs",
+]);
+const ownershipPropertyPaths = new Set(["auth.userId", "auth.organizationId"]);
+const ownershipFilterFields = new Set(["organization_id", "user_id"]);
 
 let failures = 0;
 
@@ -84,29 +92,221 @@ function routePathFromFile(filePath) {
   return `/api/${withoutRoute.replace(/\/index$/, "").replaceAll(path.sep, "/")}`;
 }
 
-function exportedMethods(text) {
-  const found = new Set();
-  for (const method of routeMethods) {
-    if (new RegExp(`export\\s+async\\s+function\\s+${method}\\b`).test(text)) {
-      found.add(method);
+function hasModifier(node, kind) {
+  return Boolean(node.modifiers?.some((modifier) => modifier.kind === kind));
+}
+
+function propertyPath(expression) {
+  if (ts.isIdentifier(expression)) {
+    return expression.text;
+  }
+  if (ts.isPropertyAccessExpression(expression)) {
+    const parent = propertyPath(expression.expression);
+    return parent ? `${parent}.${expression.name.text}` : expression.name.text;
+  }
+  if (
+    ts.isElementAccessExpression(expression) &&
+    expression.argumentExpression &&
+    ts.isStringLiteralLike(expression.argumentExpression)
+  ) {
+    const parent = propertyPath(expression.expression);
+    return parent ? `${parent}.${expression.argumentExpression.text}` : expression.argumentExpression.text;
+  }
+  return null;
+}
+
+function callName(expression) {
+  if (ts.isIdentifier(expression)) {
+    return expression.text;
+  }
+  if (ts.isPropertyAccessExpression(expression)) {
+    return expression.name.text;
+  }
+  if (
+    ts.isElementAccessExpression(expression) &&
+    expression.argumentExpression &&
+    ts.isStringLiteralLike(expression.argumentExpression)
+  ) {
+    return expression.argumentExpression.text;
+  }
+  return null;
+}
+
+function emptyFacts() {
+  return {
+    calls: new Set(),
+    env: new Set(),
+    propertyPaths: new Set(),
+    filterFields: new Set(),
+  };
+}
+
+export function analyzeRouteSource(text, fileName = "route.ts") {
+  const sourceFile = ts.createSourceFile(
+    fileName,
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const localDeclarations = new Map();
+  const exportedHandlers = new Map();
+
+  for (const statement of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name) {
+      localDeclarations.set(statement.name.text, statement);
+      if (hasModifier(statement, ts.SyntaxKind.ExportKeyword) && routeMethodSet.has(statement.name.text)) {
+        exportedHandlers.set(statement.name.text, statement);
+      }
+      continue;
+    }
+
+    if (ts.isVariableStatement(statement)) {
+      const isExported = hasModifier(statement, ts.SyntaxKind.ExportKeyword);
+      for (const declaration of statement.declarationList.declarations) {
+        if (!ts.isIdentifier(declaration.name) || !declaration.initializer) {
+          continue;
+        }
+        localDeclarations.set(declaration.name.text, declaration.initializer);
+        if (isExported && routeMethodSet.has(declaration.name.text)) {
+          exportedHandlers.set(declaration.name.text, declaration.initializer);
+        }
+      }
+      continue;
+    }
+
+    if (ts.isExportDeclaration(statement) && statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+      for (const element of statement.exportClause.elements) {
+        const exportedName = element.name.text;
+        if (!routeMethodSet.has(exportedName)) {
+          continue;
+        }
+        const localName = element.propertyName?.text ?? exportedName;
+        exportedHandlers.set(exportedName, localDeclarations.get(localName) ?? null);
+      }
     }
   }
-  return found;
+
+  function factsForNode(startNode) {
+    const facts = emptyFacts();
+    const visitedLocalFunctions = new Set();
+
+    function visit(node) {
+      if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+        const fullPath = propertyPath(node);
+        if (fullPath) {
+          facts.propertyPaths.add(fullPath);
+          const envMatch = fullPath.match(/^process\.env\.([A-Z0-9_]+)$/);
+          if (envMatch) {
+            facts.env.add(envMatch[1]);
+          }
+        }
+      }
+
+      if (ts.isCallExpression(node)) {
+        const name = callName(node.expression);
+        if (name) {
+          facts.calls.add(name);
+          if (
+            ["eq", "match", "filter"].includes(name) &&
+            node.arguments[0] &&
+            ts.isStringLiteralLike(node.arguments[0])
+          ) {
+            facts.filterFields.add(node.arguments[0].text);
+          }
+
+          const localFunction = localDeclarations.get(name);
+          if (localFunction && !visitedLocalFunctions.has(name)) {
+            visitedLocalFunctions.add(name);
+            visit(localFunction);
+          }
+        }
+      }
+
+      ts.forEachChild(node, visit);
+    }
+
+    if (startNode) {
+      visit(startNode);
+    }
+    return facts;
+  }
+
+  const handlerFacts = new Map();
+  for (const [method, node] of exportedHandlers) {
+    handlerFacts.set(method, factsForNode(node));
+  }
+
+  return {
+    methods: new Set(exportedHandlers.keys()),
+    handlerFacts,
+    factsForFunction(name) {
+      return factsForNode(localDeclarations.get(name));
+    },
+    sourceFacts: factsForNode(sourceFile),
+  };
+}
+
+export function parsePublicApiAllowlistSource(text) {
+  const sourceFile = ts.createSourceFile(
+    middlewarePath,
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) {
+      continue;
+    }
+    for (const declaration of statement.declarationList.declarations) {
+      if (
+        !ts.isIdentifier(declaration.name) ||
+        declaration.name.text !== "PUBLIC_API_PATHS" ||
+        !declaration.initializer ||
+        !ts.isNewExpression(declaration.initializer)
+      ) {
+        continue;
+      }
+      const setName = propertyPath(declaration.initializer.expression);
+      const values = declaration.initializer.arguments?.[0];
+      if (setName !== "Set" || !values || !ts.isArrayLiteralExpression(values)) {
+        return null;
+      }
+      const routes = values.elements
+        .filter((element) => ts.isStringLiteralLike(element))
+        .map((element) => element.text);
+      return new Set(routes);
+    }
+  }
+
+  return null;
 }
 
 function parsePublicApiAllowlist() {
-  const middleware = read(middlewarePath);
-  const match = middleware.match(/const\s+PUBLIC_API_PATHS\s*=\s*new\s+Set\s*\(\s*\[([\s\S]*?)\]\s*\)/);
-
-  if (!match) {
-    fail("Middleware public API allowlist", "PUBLIC_API_PATHS set was not found");
+  const routes = parsePublicApiAllowlistSource(read(middlewarePath));
+  if (!routes) {
+    fail("Middleware public API allowlist", "PUBLIC_API_PATHS Set literal was not found");
     return new Set();
   }
-
-  return new Set([...match[1].matchAll(/["']([^"']+)["']/g)].map((item) => item[1]));
+  return routes;
 }
 
-function checkPublicAllowlist(publicApiRoutes, routeFilesByPath) {
+function compareMethodSurface(label, route, actual, expected) {
+  const missingMethods = [...expected].filter((method) => !actual.has(method));
+  const unexpectedMethods = [...actual].filter((method) => !expected.has(method));
+  if (missingMethods.length > 0 || unexpectedMethods.length > 0) {
+    fail(
+      label,
+      `${route} expected ${[...expected].join(", ") || "none"}, found ${[...actual].join(", ") || "none"}`,
+    );
+    return;
+  }
+  pass(label, `${route} exports ${[...actual].join(", ")}`);
+}
+
+function checkPublicAllowlist(publicApiRoutes, routeAnalyses) {
   for (const route of expectedPublicApiRoutes.keys()) {
     if (!publicApiRoutes.has(route)) {
       fail("Expected public API route", `${route} is missing from middleware allowlist`);
@@ -119,56 +319,54 @@ function checkPublicAllowlist(publicApiRoutes, routeFilesByPath) {
       continue;
     }
 
-    const file = routeFilesByPath.get(route);
-    if (!file) {
+    const analysis = routeAnalyses.get(route);
+    if (!analysis) {
       fail("Public API route file", `${route} is allowlisted but no route.ts exists`);
       continue;
     }
 
-    const actual = exportedMethods(read(path.relative(root, file)));
-    const expected = expectedPublicApiRoutes.get(route);
-    const unexpectedMethods = [...actual].filter((method) => !expected.has(method));
-    if (unexpectedMethods.length > 0) {
-      fail("Public API method surface", `${route} also exports ${unexpectedMethods.join(", ")}`);
-    } else {
-      pass("Public API method surface", `${route} exports ${[...actual].join(", ")}`);
-    }
+    compareMethodSurface("Public API method surface", route, analysis.methods, expectedPublicApiRoutes.get(route));
   }
 
-  if (failures === 0) {
+  const unexpectedAllowlistedRoutes = [...publicApiRoutes].filter((route) => !expectedPublicApiRoutes.has(route));
+  const missingExpectedRoutes = [...expectedPublicApiRoutes.keys()].filter((route) => !publicApiRoutes.has(route));
+  if (unexpectedAllowlistedRoutes.length === 0 && missingExpectedRoutes.length === 0) {
     pass("Middleware public API allowlist", "only documented public API routes are exposed");
   }
 }
 
-function checkPrivateMutationGuards(routeFilesByPath, publicApiRoutes) {
-  for (const [route, file] of routeFilesByPath) {
+function hasSameOriginGuard(facts) {
+  return facts.calls.has("assertSameOriginRequest") || facts.calls.has("assertInternalSystemRequest");
+}
+
+function checkPrivateMutationGuards(routeAnalyses, publicApiRoutes) {
+  for (const [route, analysis] of routeAnalyses) {
     if (publicApiRoutes.has(route)) {
       continue;
     }
 
-    const text = read(path.relative(root, file));
-    const methods = exportedMethods(text);
-    const privateMutations = [...methods].filter((method) => mutatingMethods.has(method));
-
-    if (privateMutations.length === 0) {
-      continue;
-    }
-
-    if (text.includes("assertSameOriginRequest") || text.includes("assertInternalSystemRequest")) {
-      pass("Private mutation same-origin guard", `${route} ${privateMutations.join(", ")}`);
-    } else {
-      fail("Private mutation same-origin guard", `${route} exports ${privateMutations.join(", ")} without assertSameOriginRequest`);
+    for (const method of analysis.methods) {
+      if (!mutatingMethods.has(method)) {
+        continue;
+      }
+      const facts = analysis.handlerFacts.get(method) ?? emptyFacts();
+      if (hasSameOriginGuard(facts)) {
+        pass("Private mutation same-origin guard", `${route} ${method}`);
+      } else {
+        fail("Private mutation same-origin guard", `${route} ${method} has no reachable same-origin/internal guard call`);
+      }
     }
   }
 }
 
-function checkInternalApiGuards(publicApiRoutes, routeFilesByPath) {
-  const middleware = read(middlewarePath);
+function checkInternalApiGuards(publicApiRoutes, routeAnalyses) {
+  const middlewareAnalysis = analyzeRouteSource(read(middlewarePath), middlewarePath);
+  const proxyFacts = middlewareAnalysis.factsForFunction("proxy");
 
-  if (middleware.includes("isInternalApiRequest") && middleware.includes("getInternalSystemJobSecrets")) {
-    pass("Internal API middleware guard", "/api/internal/* bypasses user auth only after bearer secret validation");
+  if (proxyFacts.calls.has("isInternalApiRequest") && proxyFacts.calls.has("isAuthorizedInternalRequest")) {
+    pass("Internal API middleware guard", "/api/internal/* reaches the bearer-secret authorization branch");
   } else {
-    fail("Internal API middleware guard", "middleware does not contain the internal bearer-secret guard");
+    fail("Internal API middleware guard", "exported proxy does not reach the internal authorization branch");
   }
 
   for (const [route, expected] of expectedInternalApiRoutes) {
@@ -176,60 +374,88 @@ function checkInternalApiGuards(publicApiRoutes, routeFilesByPath) {
       fail("Internal API public exposure", `${route} must not be in PUBLIC_API_PATHS`);
     }
 
-    const file = routeFilesByPath.get(route);
-    if (!file) {
+    const analysis = routeAnalyses.get(route);
+    if (!analysis) {
       fail("Internal API route file", `${route} route.ts was not found`);
       continue;
     }
 
-    const relativePath = path.relative(root, file);
-    const text = read(relativePath);
-    const actualMethods = exportedMethods(text);
-    const expectedMethods = expected.methods;
-    const missingMethods = [...expectedMethods].filter((method) => !actualMethods.has(method));
-    const unexpectedMethods = [...actualMethods].filter((method) => !expectedMethods.has(method));
+    compareMethodSurface("Internal API method surface", route, analysis.methods, expected.methods);
 
-    if (missingMethods.length > 0 || unexpectedMethods.length > 0) {
-      fail("Internal API method surface", `${route} expected ${[...expectedMethods].join(", ")}, found ${[...actualMethods].join(", ")}`);
-    } else {
-      pass("Internal API method surface", `${route} exports ${[...actualMethods].join(", ")}`);
-    }
-
-    const missingMarkers = expected.markers.filter((marker) => !text.includes(marker));
-    if (missingMarkers.length === 0) {
-      pass("Internal API route guard", `${route} requires internal authorization and expected env gates`);
-    } else {
-      fail("Internal API route guard", `${route} is missing ${missingMarkers.join(", ")}`);
+    for (const method of expected.methods) {
+      const facts = analysis.handlerFacts.get(method) ?? emptyFacts();
+      const missingCalls = expected.requiredCalls.filter((name) => !facts.calls.has(name));
+      const missingEnv = expected.requiredEnv.filter((name) => !facts.env.has(name));
+      if (missingCalls.length === 0 && missingEnv.length === 0) {
+        pass("Internal API route guard", `${route} ${method} reaches required guard and env-gate logic`);
+      } else {
+        fail(
+          "Internal API route guard",
+          `${route} ${method} missing ${[...missingCalls, ...missingEnv].join(", ")}`,
+        );
+      }
     }
   }
 }
 
-function checkDynamicOwnershipMarkers(routeFilesByPath, publicApiRoutes) {
-  for (const [route, file] of routeFilesByPath) {
+function ownershipEvidence(facts) {
+  for (const call of ownershipCalls) {
+    if (facts.calls.has(call)) {
+      return `reachable call ${call}`;
+    }
+  }
+  for (const property of ownershipPropertyPaths) {
+    if (facts.propertyPaths.has(property)) {
+      return `property access ${property}`;
+    }
+  }
+  for (const field of ownershipFilterFields) {
+    if (facts.filterFields.has(field)) {
+      return `query filter ${field}`;
+    }
+  }
+  return null;
+}
+
+function checkDynamicOwnershipMarkers(routeAnalyses, publicApiRoutes) {
+  for (const [route, analysis] of routeAnalyses) {
     if (publicApiRoutes.has(route) || !route.includes("[")) {
       continue;
     }
 
-    const text = read(path.relative(root, file));
-    const marker = ownershipMarkers.find((candidate) => text.includes(candidate));
-
-    if (marker) {
-      pass("Dynamic route ownership marker", `${route} uses ${marker}`);
-    } else {
-      fail("Dynamic route ownership marker", `${route} has no recognized tenant/auth ownership marker`);
+    for (const method of analysis.methods) {
+      const evidence = ownershipEvidence(analysis.handlerFacts.get(method) ?? emptyFacts());
+      if (evidence) {
+        pass("Dynamic route ownership evidence", `${route} ${method} uses ${evidence}`);
+      } else {
+        fail("Dynamic route ownership evidence", `${route} ${method} has no reachable tenant/auth ownership evidence`);
+      }
     }
   }
 }
 
-const publicApiRoutes = parsePublicApiAllowlist();
-const routeFiles = walk(path.join(root, apiRoot));
-const routeFilesByPath = new Map(routeFiles.map((file) => [routePathFromFile(file), file]));
+function main() {
+  failures = 0;
+  const publicApiRoutes = parsePublicApiAllowlist();
+  const routeFiles = walk(path.join(root, apiRoot));
+  const routeAnalyses = new Map(
+    routeFiles.map((file) => {
+      const route = routePathFromFile(file);
+      return [route, analyzeRouteSource(fs.readFileSync(file, "utf8"), path.relative(root, file))];
+    }),
+  );
 
-checkPublicAllowlist(publicApiRoutes, routeFilesByPath);
-checkInternalApiGuards(publicApiRoutes, routeFilesByPath);
-checkPrivateMutationGuards(routeFilesByPath, publicApiRoutes);
-checkDynamicOwnershipMarkers(routeFilesByPath, publicApiRoutes);
+  checkPublicAllowlist(publicApiRoutes, routeAnalyses);
+  checkInternalApiGuards(publicApiRoutes, routeAnalyses);
+  checkPrivateMutationGuards(routeAnalyses, publicApiRoutes);
+  checkDynamicOwnershipMarkers(routeAnalyses, publicApiRoutes);
 
-if (failures > 0) {
-  process.exitCode = 1;
+  if (failures > 0) {
+    process.exitCode = 1;
+  }
+}
+
+const invokedPath = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : null;
+if (invokedPath === import.meta.url) {
+  main();
 }

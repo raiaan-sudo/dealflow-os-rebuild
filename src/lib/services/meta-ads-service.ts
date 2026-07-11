@@ -2,10 +2,21 @@ import { cookies } from "next/headers";
 import { ApiError } from "@/lib/api/route";
 import { getMetaEnv } from "@/lib/env";
 import { encryptSecret } from "@/lib/integrations/meta-crypto";
+import {
+  buildMetaGraphUrl,
+  buildMetaOAuthDialogUrl,
+  buildMetaTokenExchangeRequest,
+  withMetaBearerToken,
+} from "@/lib/integrations/meta/contract";
+import {
+  consumeMetaOAuthStateBinding,
+  createMetaOAuthStateBinding,
+  metaOAuthStateMatches,
+} from "@/lib/integrations/meta/oauth-state";
 import { fetchMetaJson as fetchMetaRequestJson } from "@/lib/integrations/meta/request";
 import { normalizeMetaConnectionMetadata } from "@/lib/integrations/meta/service";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
-import { getAppContext } from "@/lib/services/app-context";
+import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import type { Database, Json } from "@/lib/supabase/types";
 
 const META_STATE_COOKIE = "dealflow_meta_oauth_state";
@@ -27,7 +38,7 @@ type MetaTokenResponse = {
   expires_in?: number;
 };
 
-async function fetchMetaJson<T>(url: string, init?: RequestInit) {
+async function fetchMetaJson<T>(url: string | URL, init?: RequestInit) {
   const { response, data } = await fetchMetaRequestJson<T | { error?: { message?: string } } | null>(
     url,
     {
@@ -72,7 +83,15 @@ export async function createMetaConnectionUrl() {
     throw new ApiError(401, "Authentication is required for this route.", "unauthorized");
   }
 
-  const state = crypto.randomUUID();
+  const auth = await getAuthenticatedContext();
+  if (auth.userId !== user.id) {
+    throw new ApiError(403, "Authenticated Meta connection context changed.", "meta_actor_mismatch");
+  }
+  const { state } = await createMetaOAuthStateBinding({
+    userId: auth.userId,
+    organizationId: auth.organizationId,
+    returnTo: "/launch",
+  });
   const cookieStore = await cookies();
   cookieStore.set(META_STATE_COOKIE, state, {
     httpOnly: true,
@@ -82,12 +101,12 @@ export async function createMetaConnectionUrl() {
     maxAge: 60 * 10,
   });
 
-  const url = new URL("https://www.facebook.com/v19.0/dialog/oauth");
-  url.searchParams.set("client_id", env.appId);
-  url.searchParams.set("redirect_uri", env.redirectUri);
-  url.searchParams.set("state", state);
-  url.searchParams.set("scope", "ads_read,business_management");
-  url.searchParams.set("response_type", "code");
+  const url = buildMetaOAuthDialogUrl({
+    clientId: env.appId,
+    redirectUri: env.redirectUri,
+    state,
+    scopes: "ads_read,business_management",
+  });
 
   return url.toString();
 }
@@ -99,13 +118,15 @@ async function exchangeCodeForAccessToken(code: string) {
     throw new ApiError(503, "Meta Ads is not configured.", "meta_config_missing");
   }
 
-  const url = new URL("https://graph.facebook.com/v19.0/oauth/access_token");
-  url.searchParams.set("client_id", env.appId);
-  url.searchParams.set("client_secret", env.appSecret);
-  url.searchParams.set("redirect_uri", env.redirectUri);
-  url.searchParams.set("code", code);
+  const request = buildMetaTokenExchangeRequest({
+    kind: "authorization_code",
+    clientId: env.appId,
+    clientSecret: env.appSecret,
+    redirectUri: env.redirectUri,
+    code,
+  });
 
-  return fetchMetaJson<MetaTokenResponse>(url.toString());
+  return fetchMetaJson<MetaTokenResponse>(request.url, request.init);
 }
 
 async function exchangeForLongLivedAccessToken(accessToken: string) {
@@ -115,31 +136,38 @@ async function exchangeForLongLivedAccessToken(accessToken: string) {
     throw new ApiError(503, "Meta Ads is not configured.", "meta_config_missing");
   }
 
-  const url = new URL("https://graph.facebook.com/v19.0/oauth/access_token");
-  url.searchParams.set("grant_type", "fb_exchange_token");
-  url.searchParams.set("client_id", env.appId);
-  url.searchParams.set("client_secret", env.appSecret);
-  url.searchParams.set("fb_exchange_token", accessToken);
+  const request = buildMetaTokenExchangeRequest({
+    kind: "long_lived_token",
+    clientId: env.appId,
+    clientSecret: env.appSecret,
+    accessToken,
+  });
 
-  return fetchMetaJson<MetaTokenResponse>(url.toString());
+  return fetchMetaJson<MetaTokenResponse>(request.url, request.init);
 }
 
 async function getMetaAdAccounts(accessToken: string) {
-  const url = new URL("https://graph.facebook.com/v19.0/me/adaccounts");
-  url.searchParams.set("fields", "id,account_id,name");
-  url.searchParams.set("access_token", accessToken);
+  const url = buildMetaGraphUrl("me/adaccounts", {
+    fields: "id,account_id,name",
+  });
 
-  const response = await fetchMetaJson<{ data: MetaAdAccount[] }>(url.toString());
+  const response = await fetchMetaJson<{ data: MetaAdAccount[] }>(
+    url,
+    withMetaBearerToken(accessToken),
+  );
   return response.data ?? [];
 }
 
 async function getMetaPixels(accessToken: string, externalAccountId: string) {
   const normalizedAccountId = externalAccountId.replace(/^act_/, "");
-  const url = new URL(`https://graph.facebook.com/v19.0/act_${normalizedAccountId}/adspixels`);
-  url.searchParams.set("fields", "id,name");
-  url.searchParams.set("access_token", accessToken);
+  const url = buildMetaGraphUrl(`act_${normalizedAccountId}/adspixels`, {
+    fields: "id,name",
+  });
 
-  const response = await fetchMetaJson<{ data: MetaPixel[] }>(url.toString());
+  const response = await fetchMetaJson<{ data: MetaPixel[] }>(
+    url,
+    withMetaBearerToken(accessToken),
+  );
   return response.data ?? [];
 }
 
@@ -306,15 +334,17 @@ export async function handleMetaCallback(code: string, state: string) {
   const expectedState = cookieStore.get(META_STATE_COOKIE)?.value;
   cookieStore.delete(META_STATE_COOKIE);
 
-  if (!expectedState || state !== expectedState) {
+  if (!expectedState || !metaOAuthStateMatches(state, expectedState)) {
     throw new ApiError(400, "Meta connection state is invalid or expired.", "meta_state_invalid");
   }
 
-  const context = await getAppContext();
-
-  if (!context) {
-    throw new ApiError(401, "Authentication is required for this route.", "unauthorized");
-  }
+  const auth = await getAuthenticatedContext();
+  await consumeMetaOAuthStateBinding({
+    state,
+    userId: auth.userId,
+    organizationId: auth.organizationId,
+  });
+  const context = auth.context;
 
   const shortLived = await exchangeCodeForAccessToken(code);
   const longLived = await exchangeForLongLivedAccessToken(shortLived.access_token);

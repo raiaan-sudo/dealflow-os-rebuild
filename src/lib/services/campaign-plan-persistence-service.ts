@@ -8,6 +8,7 @@ import type { CampaignPlan } from "@/lib/services/campaign-plan-service";
 import { debugLog } from "@/lib/debug";
 import type { PersistedAssetGenerationState } from "@/lib/services/asset-generation-lifecycle";
 import { persistStaticCreativeAssets } from "@/lib/services/static-creative-asset-service";
+import { createCampaignPlanWithEntitlement } from "@/lib/services/campaign-creation-entitlement-service";
 import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
 import {
   buildCampaignPlanCriticalFieldPatch,
@@ -73,6 +74,7 @@ export type NormalizedDbError = {
 
 type PersistPlanParams = {
   campaignId?: string;
+  createOnly?: boolean;
   userId: string;
   ownerId: string;
   payload: PersistedCampaignPlanPayload;
@@ -254,12 +256,14 @@ function logCriticalFieldChanges(params: {
 async function loadCampaignPlanRecordForPersistence(params: {
   supabase: CampaignPlanClient;
   campaignId: string;
+  organizationId: string;
   userId?: string | null;
 }) {
   let query = params.supabase
     .from("campaign_plans")
     .select("*")
-    .eq("id", params.campaignId);
+    .eq("id", params.campaignId)
+    .eq("organization_id", params.organizationId);
 
   if (params.userId) {
     query = query.eq("user_id", params.userId);
@@ -322,6 +326,7 @@ export function getCampaignPlanConsistencyStatus(
 export async function persistCampaignPlanDocumentUpdate(params: {
   supabase: CampaignPlanClient;
   campaignId: string;
+  organizationId?: string | null;
   userId?: string | null;
   plan: unknown;
   source: string;
@@ -358,13 +363,35 @@ export async function persistCampaignPlanDocumentUpdate(params: {
     });
     throw error;
   }
-  const writeClient = createAdminClient() ?? params.supabase;
+  const writeClient = createAdminClient();
+
+  if (!writeClient) {
+    throw new Error("Supabase service-role client is required for campaign plan persistence.");
+  }
+
+  const organizationId = params.organizationId ?? params.existingRow?.organization_id ?? null;
+  const requireCreatorMatch = !params.organizationId && Boolean(params.userId);
+
+  if (!organizationId) {
+    throw new Error("Campaign workspace identity is required for persistence.");
+  }
+
+  if (
+    params.existingRow &&
+    (params.existingRow.id !== params.campaignId ||
+      params.existingRow.organization_id !== organizationId ||
+      (requireCreatorMatch && params.existingRow.user_id !== params.userId))
+  ) {
+    throw new Error("Campaign persistence identity does not match the tenant-fenced row.");
+  }
+
   const existingRow =
     params.existingRow ??
     (await loadCampaignPlanRecordForPersistence({
       supabase: writeClient,
       campaignId: params.campaignId,
-      userId: params.userId ?? null,
+      organizationId,
+      userId: requireCreatorMatch ? params.userId ?? null : null,
     }));
 
   if (!existingRow) {
@@ -402,9 +429,10 @@ export async function persistCampaignPlanDocumentUpdate(params: {
   let query = writeClient
     .from("campaign_plans")
     .update(patch as never)
-    .eq("id", params.campaignId);
+    .eq("id", params.campaignId)
+    .eq("organization_id", organizationId);
 
-  if (params.userId) {
+  if (requireCreatorMatch && params.userId) {
     query = query.eq("user_id", params.userId);
   }
 
@@ -424,7 +452,8 @@ export async function persistCampaignPlanDocumentUpdate(params: {
   const recoveredRow = await loadCampaignPlanRecordForPersistence({
     supabase: writeClient,
     campaignId: params.campaignId,
-    userId: params.userId ?? null,
+    organizationId,
+    userId: requireCreatorMatch ? params.userId ?? null : null,
   });
 
   if (!recoveredRow) {
@@ -432,22 +461,6 @@ export async function persistCampaignPlanDocumentUpdate(params: {
   }
 
   return recoveredRow as CampaignPlanRow;
-}
-
-function isLegacySingleCampaignConstraintError(error: unknown) {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-
-  const code = "code" in error ? String(error.code ?? "") : "";
-  const message = "message" in error ? String(error.message ?? "") : "";
-
-  return (
-    code === "23505" &&
-    /campaign_plans_user_id_unique|campaign_plans.*user_id.*unique|duplicate key value/i.test(
-      message,
-    )
-  );
 }
 
 function getErrorMessage(error: unknown) {
@@ -606,29 +619,7 @@ async function persistCampaignPlanRow(params: PersistPlanParams) {
   }
   const client = supabase;
 
-  const record = buildModernCampaignPlanRecord(params) as never;
-  async function findLatestCampaignPlanRow() {
-    const existingResult = (await client
-      .from("campaign_plans")
-      .select("*")
-      .eq("user_id", params.userId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()) as {
-        data: CampaignPlanRow | null;
-        error: Error | null;
-      };
-
-    if (existingResult.error) {
-      throw existingResult.error;
-    }
-
-    if (!existingResult.data) {
-      throw new Error("Campaign plan write succeeded but no row could be recovered.");
-    }
-
-    return existingResult.data as CampaignPlanRow;
-  }
+  const record = buildModernCampaignPlanRecord(params) as Record<string, unknown>;
 
   async function findCampaignPlanRowById(campaignId: string) {
     const existingResult = (await client
@@ -654,9 +645,15 @@ async function persistCampaignPlanRow(params: PersistPlanParams) {
   }
 
   async function updateExistingCampaignPlan(existingCampaignId: string) {
+    const {
+      owner_id: _ownerId,
+      organization_id: _organizationId,
+      user_id: _userId,
+      ...mutableRecord
+    } = record;
     const updateResult = (await client
       .from("campaign_plans")
-      .update(record)
+      .update(mutableRecord as never)
       .eq("id", existingCampaignId)
       .eq("user_id", params.userId)
       .eq("organization_id", params.ownerId)
@@ -678,51 +675,30 @@ async function persistCampaignPlanRow(params: PersistPlanParams) {
   }
 
   if (params.campaignId) {
+    if (params.createOnly) {
+      return createCampaignPlanWithEntitlement({
+        campaignId: params.campaignId,
+        organizationId: params.ownerId,
+        userId: params.userId,
+        plan: record.plan as Json,
+        launchStatus: typeof record.launch_status === "string" ? record.launch_status : null,
+        leadLoopVerified: record.lead_loop_verified === true,
+        publicSlug: typeof record.public_slug === "string" ? record.public_slug : null,
+      });
+    }
+
     return updateExistingCampaignPlan(params.campaignId);
   }
 
-  const insertResult = (await client
-    .from("campaign_plans")
-    .insert(record)
-    .select("*")
-    .maybeSingle()) as {
-    data: CampaignPlanRow | null;
-    error: Error | null;
-  };
-
-  if (!insertResult.error && insertResult.data) {
-    return insertResult.data as CampaignPlanRow;
-  }
-
-  if (!insertResult.error && !insertResult.data) {
-    const latestRow = await findLatestCampaignPlanRow();
-    return updateExistingCampaignPlan(latestRow.id);
-  }
-
-  if (!isLegacySingleCampaignConstraintError(insertResult.error)) {
-    throw insertResult.error ?? new Error("DB write returned null");
-  }
-
-  const existingResult = (await client
-    .from("campaign_plans")
-    .select("id")
-    .eq("user_id", params.userId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle()) as {
-      data: Pick<CampaignPlanRow, "id"> | null;
-      error: Error | null;
-    };
-
-  if (existingResult.error) {
-    throw existingResult.error;
-  }
-
-  if (!existingResult.data?.id) {
-    throw insertResult.error ?? new Error("Campaign plan could not be recovered.");
-  }
-
-  return updateExistingCampaignPlan(existingResult.data.id);
+  return createCampaignPlanWithEntitlement({
+    campaignId: crypto.randomUUID(),
+    organizationId: params.ownerId,
+    userId: params.userId,
+    plan: record.plan as Json,
+    launchStatus: typeof record.launch_status === "string" ? record.launch_status : null,
+    leadLoopVerified: record.lead_loop_verified === true,
+    publicSlug: typeof record.public_slug === "string" ? record.public_slug : null,
+  });
 }
 
 export function buildPersistedCampaignPlanPayload(params: {
@@ -823,52 +799,21 @@ export function normalizeDbError(error: unknown): NormalizedDbError {
 }
 
 export async function insertMinimalCampaignPlan(params: MinimalPersistParams) {
-  const supabase = await createClient();
-
-  if (!supabase) {
-    throw new Error("Supabase client could not be created.");
-  }
-
   const minimalPlan = readCampaignPlanDocument({ test: true });
-
-  const result = (await supabase
-    .from("campaign_plans")
-    .insert(
-      {
-        ...buildCampaignPlanRecordBase(params),
-        ...buildCampaignPlanCriticalFieldPatch(minimalPlan),
-      } as never,
-    )
-    .select("*")
-    .maybeSingle()) as {
-    data: CampaignPlanRow | null;
-    error: Error | null;
+  const record = {
+    ...buildCampaignPlanRecordBase(params),
+    ...buildCampaignPlanCriticalFieldPatch(minimalPlan),
   };
 
-  if (result.error) {
-    throw result.error;
-  }
-
-  if (result.data) {
-    return result.data as CampaignPlanRow | null;
-  }
-
-  const fallbackResult = (await supabase
-    .from("campaign_plans")
-    .select("*")
-    .eq("user_id", params.userId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle()) as {
-    data: CampaignPlanRow | null;
-    error: Error | null;
-  };
-
-  if (fallbackResult.error) {
-    throw fallbackResult.error;
-  }
-
-  return fallbackResult.data as CampaignPlanRow | null;
+  return createCampaignPlanWithEntitlement({
+    campaignId: crypto.randomUUID(),
+    organizationId: params.ownerId ?? params.userId,
+    userId: params.userId,
+    plan: record.plan,
+    launchStatus: record.launch_status,
+    leadLoopVerified: record.lead_loop_verified,
+    publicSlug: record.public_slug,
+  });
 }
 
 export async function insertCampaignPlan(params: PersistPlanParams) {

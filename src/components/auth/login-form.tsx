@@ -31,6 +31,33 @@ const DEFAULT_AUTH_REDIRECT_PATH = "/welcome?fresh=1";
 const AUTH_TEMPORARILY_UNAVAILABLE_COPY =
   "Sign-in is temporarily unavailable. Please try again shortly or contact support if it continues.";
 
+function getSafeRedirectPath(value: string | undefined, origin: string) {
+  if (
+    !value ||
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.includes("\\")
+  ) {
+    return DEFAULT_AUTH_REDIRECT_PATH;
+  }
+
+  try {
+    const resolved = new URL(value, origin);
+
+    if (
+      resolved.origin !== new URL(origin).origin ||
+      resolved.pathname === "/" ||
+      resolved.pathname.startsWith("/login")
+    ) {
+      return DEFAULT_AUTH_REDIRECT_PATH;
+    }
+
+    return `${resolved.pathname}${resolved.search}${resolved.hash}`;
+  } catch {
+    return DEFAULT_AUTH_REDIRECT_PATH;
+  }
+}
+
 function customerSafeAuthErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "";
 
@@ -85,24 +112,8 @@ export function LoginForm({
   const turnstileEnabled = Boolean(TURNSTILE_SITE_KEY);
   const requiresTurnstile = turnstileEnabled && mode !== "update-password";
 
-  function getSafeRedirectPath(value?: string) {
-    if (!value) {
-      return DEFAULT_AUTH_REDIRECT_PATH;
-    }
-
-    if (!value.startsWith("/") || value.startsWith("//")) {
-      return DEFAULT_AUTH_REDIRECT_PATH;
-    }
-
-    if (value === "/" || value.startsWith("/login")) {
-      return DEFAULT_AUTH_REDIRECT_PATH;
-    }
-
-    return value;
-  }
-
   function getEmailConfirmationRedirectUrl(value?: string) {
-    const nextPath = getSafeRedirectPath(value);
+    const nextPath = getSafeRedirectPath(value, window.location.origin);
     const redirectTo = new URL("/login", window.location.origin);
     redirectTo.searchParams.set("confirmed", "1");
     redirectTo.searchParams.set("redirectedFrom", nextPath);
@@ -154,7 +165,7 @@ export function LoginForm({
     setIsPending(true);
 
     try {
-      const nextPath = getSafeRedirectPath(redirectedFrom);
+      const nextPath = getSafeRedirectPath(redirectedFrom, window.location.origin);
       const redirectTo = new URL(nextPath, window.location.origin);
       redirectTo.searchParams.set("next", nextPath);
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
@@ -243,7 +254,7 @@ export function LoginForm({
           throw new Error("Sign-in completed but no session was established.");
         }
 
-        const nextPath = getSafeRedirectPath(redirectedFrom);
+        const nextPath = getSafeRedirectPath(redirectedFrom, window.location.origin);
         window.location.assign(nextPath);
         return;
       }
@@ -302,7 +313,7 @@ export function LoginForm({
       }
 
       if (signUpData.session) {
-        window.location.assign(getSafeRedirectPath(redirectedFrom));
+        window.location.assign(getSafeRedirectPath(redirectedFrom, window.location.origin));
         return;
       }
 
@@ -322,31 +333,53 @@ export function LoginForm({
   }
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const hashParams = new URLSearchParams(window.location.hash.slice(1));
+    const recoveryType = hashParams.get("type");
+    const accessToken = hashParams.get("access_token");
+    const refreshToken = hashParams.get("refresh_token");
+    const hasRecoveryTokenFragment =
+      recoveryType === "recovery" && Boolean(accessToken || refreshToken);
+    const recoveryTokens =
+      recoveryType === "recovery" && accessToken && refreshToken
+        ? { accessToken, refreshToken }
+        : null;
+
+    if (hasRecoveryTokenFragment) {
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${window.location.search}`,
+      );
+    }
+
     const supabase = createClient();
 
     if (!supabase) {
+      if (hasRecoveryTokenFragment) {
+        setError(AUTH_TEMPORARILY_UNAVAILABLE_COPY);
+      }
       return;
     }
 
     const client = supabase;
 
     async function recoverSessionFromHash() {
-      if (typeof window === "undefined" || !window.location.hash) {
+      if (!hasRecoveryTokenFragment) {
         return;
       }
 
-      const hashParams = new URLSearchParams(window.location.hash.slice(1));
-      const recoveryType = hashParams.get("type");
-      const accessToken = hashParams.get("access_token");
-      const refreshToken = hashParams.get("refresh_token");
-
-      if (recoveryType !== "recovery" || !accessToken || !refreshToken) {
+      if (!recoveryTokens) {
+        setError("This password recovery link is incomplete or expired. Request a new link.");
         return;
       }
 
       const { error: sessionError } = await client.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
+        access_token: recoveryTokens.accessToken,
+        refresh_token: recoveryTokens.refreshToken,
       });
 
       if (sessionError) {
@@ -354,7 +387,6 @@ export function LoginForm({
         return;
       }
 
-      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
       setError(null);
       setMessage("Enter a new password to finish account recovery.");
       setPassword("");
@@ -480,6 +512,7 @@ export function LoginForm({
 
       <div className="flex rounded-full border border-white/10 bg-white/[0.04] p-1 shadow-inner shadow-black/30">
         <button
+          aria-pressed={mode === "sign-in"}
           className={`flex-1 rounded-full px-4 py-2 text-sm transition ${
             mode === "sign-in"
               ? "bg-df-primary text-slate-950 shadow-df-button"
@@ -491,6 +524,7 @@ export function LoginForm({
           Sign in
         </button>
         <button
+          aria-pressed={mode === "sign-up"}
           className={`flex-1 rounded-full px-4 py-2 text-sm transition ${
             mode === "sign-up"
               ? "bg-df-primary text-slate-950 shadow-df-button"
@@ -503,7 +537,7 @@ export function LoginForm({
         </button>
       </div>
 
-      <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+      <form aria-busy={isPending} className="mt-6 space-y-4" onSubmit={handleSubmit}>
         {mode === "sign-up" ? (
           <>
             <label className="block space-y-2">
@@ -566,7 +600,9 @@ export function LoginForm({
           <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
             <div ref={turnstileContainerRef} />
             {!turnstileToken ? (
-              <p className="mt-2 text-xs text-white/60">Complete the verification challenge before continuing.</p>
+              <p aria-live="polite" className="mt-2 text-xs text-white/60" role="status">
+                Complete the verification challenge before continuing.
+              </p>
             ) : null}
           </div>
         ) : null}
@@ -596,13 +632,23 @@ export function LoginForm({
         ) : null}
 
         {error ? (
-          <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
+          <div
+            id="login-form-error"
+            aria-live="assertive"
+            className="rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200"
+            role="alert"
+          >
             {error}
           </div>
         ) : null}
 
         {message ? (
-          <div className="rounded-2xl border border-primary/20 bg-primary/10 p-3 text-sm text-primary">
+          <div
+            id="login-form-message"
+            aria-live="polite"
+            className="rounded-2xl border border-primary/20 bg-primary/10 p-3 text-sm text-primary"
+            role="status"
+          >
             {message}
           </div>
         ) : null}

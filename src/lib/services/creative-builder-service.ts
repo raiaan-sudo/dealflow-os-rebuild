@@ -12,6 +12,7 @@ import {
   createRenderBlueprintsForPlan,
 } from "@/lib/services/creative-render-blueprint-service";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database, Json } from "@/lib/supabase/types";
 import type {
   CampaignCopy,
@@ -34,6 +35,11 @@ import type {
 import { getImageGenerationProvider } from "@/lib/integrations/creative/image-provider";
 import { getVoiceProvider } from "@/lib/integrations/creative/voice-provider";
 import { getAvatarVideoProvider } from "@/lib/integrations/creative/avatar-provider";
+import {
+  buildManualCreativeStoragePath,
+  isCanonicalManualCreativeStorageIdentity,
+  MANUAL_CREATIVE_STORAGE_BUCKET,
+} from "@/lib/services/creative-asset-storage-identity";
 
 type SupabaseClient = NonNullable<Awaited<ReturnType<typeof createClient>>>;
 
@@ -55,7 +61,6 @@ type AssetBuildArtifacts = {
   jobs: CreativeRenderJob[];
 };
 
-const MANUAL_MEDIA_BUCKET = "creative-assets";
 type ManualCreativeAssetKind = "video" | "image" | "thumbnail";
 
 function mapFormatDefault(formats?: CreativeAssetFormat[] | null): CreativeAssetFormat[] {
@@ -66,15 +71,31 @@ function normalizeAspectRatio(format: CreativeAssetFormat): ImagePromptConfig["a
   return format === "1:1" || format === "4:5" || format === "16:9" ? format : "9:16";
 }
 
-async function requireCreativeBuilderContext(expectedUserId?: string) {
+type CreativeActorScope = {
+  userId: string;
+  organizationId: string;
+};
+
+async function requireCreativeBuilderContext(
+  expectedActor?: string | CreativeActorScope,
+) {
   const [context, supabase] = await Promise.all([getAppContext(), createClient()]);
 
   if (!context || !supabase) {
     throw new ApiError(401, "Authentication is required for creative building.", "unauthorized");
   }
 
+  const expectedUserId =
+    typeof expectedActor === "string" ? expectedActor : expectedActor?.userId;
+  const expectedOrganizationId =
+    typeof expectedActor === "object" ? expectedActor.organizationId : null;
+
   if (expectedUserId && context.user.id !== expectedUserId) {
     throw new ApiError(403, "Creative builder user mismatch.", "forbidden");
+  }
+
+  if (expectedOrganizationId && context.organization.id !== expectedOrganizationId) {
+    throw new ApiError(403, "Creative builder workspace mismatch.", "forbidden");
   }
 
   return {
@@ -954,8 +975,12 @@ export async function buildCreativeAssetsForCampaign(
   };
 }
 
-export async function listCampaignCreativeAssets(campaignId: string, userId: string) {
-  const { supabase } = await requireCreativeBuilderContext(userId);
+export async function listCampaignCreativeAssets(
+  campaignId: string,
+  actor: string | CreativeActorScope,
+) {
+  const { supabase } = await requireCreativeBuilderContext(actor);
+  await getCampaignById(campaignId);
   let results: CreativeAsset[] = [];
 
   try {
@@ -963,7 +988,6 @@ export async function listCampaignCreativeAssets(campaignId: string, userId: str
       .from("creative_assets")
       .select("*")
       .eq("campaign_id", campaignId)
-      .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
     results = Array.isArray(data)
@@ -978,17 +1002,13 @@ export async function listCampaignCreativeAssets(campaignId: string, userId: str
 
 export async function getCreativeAssetById(
   assetId: string,
-  userId?: string,
+  actor?: string | CreativeActorScope,
 ): Promise<CampaignCreativeAssetRecord | null> {
-  const { supabase } = await requireCreativeBuilderContext(userId);
-  let query = supabase
+  const { supabase } = await requireCreativeBuilderContext(actor);
+  const query = supabase
     .from("creative_assets")
     .select("*")
     .eq("id", assetId);
-
-  if (userId) {
-    query = query.eq("user_id", userId);
-  }
 
   const { data: assetRaw, error } = await query.maybeSingle();
 
@@ -1001,8 +1021,16 @@ export async function getCreativeAssetById(
   }
 
   const asset = assetRaw as CreativeAsset;
-  const [campaignRecord, jobsRes, logsRes] = await Promise.all([
-    asset.campaign_id ? getCampaignById(asset.campaign_id).catch(() => null) : Promise.resolve(null),
+  if (!asset.campaign_id) {
+    return null;
+  }
+
+  const authorizedCampaignRecord = await getCampaignById(asset.campaign_id).catch(() => null);
+  if (!authorizedCampaignRecord) {
+    return null;
+  }
+
+  const [jobsRes, logsRes] = await Promise.all([
     supabase
       .from("creative_render_jobs")
       .select("*")
@@ -1014,6 +1042,7 @@ export async function getCreativeAssetById(
       .eq("creative_asset_id", asset.id)
       .order("created_at", { ascending: true }),
   ]);
+  const campaignRecord = authorizedCampaignRecord;
   const creativeFromIdeas =
     campaignRecord?.creatives.ideas.find((item) => item.id === asset.creative_id) ?? null;
   const creativeFromItems =
@@ -1111,6 +1140,16 @@ export async function uploadManualCreativeAsset(params: {
     throw new ApiError(404, "Campaign not found.", "not_found");
   }
 
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new ApiError(
+      503,
+      "Manual creative uploads are unavailable.",
+      "creative_asset_admin_unavailable",
+    );
+  }
+
   const extension = params.file.name.includes(".")
     ? params.file.name.split(".").pop()?.toLowerCase() || "bin"
     : params.file.type.includes("png")
@@ -1122,10 +1161,15 @@ export async function uploadManualCreativeAsset(params: {
           : params.file.type.includes("mp4")
             ? "mp4"
             : "bin";
-  const storagePath = `${userId}/${params.campaignId}/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
+  const safeExtension = /^[a-z0-9]{1,8}$/.test(extension) ? extension : "bin";
+  const storagePath = buildManualCreativeStoragePath({
+    userId,
+    campaignId: params.campaignId,
+    fileName: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${safeExtension}`,
+  });
 
   const { error: uploadError } = await supabase.storage
-    .from(MANUAL_MEDIA_BUCKET)
+    .from(MANUAL_CREATIVE_STORAGE_BUCKET)
     .upload(storagePath, params.file, {
       cacheControl: "3600",
       contentType: params.file.type || undefined,
@@ -1137,12 +1181,15 @@ export async function uploadManualCreativeAsset(params: {
   }
 
   const { data: publicUrlData } = supabase.storage
-    .from(MANUAL_MEDIA_BUCKET)
+    .from(MANUAL_CREATIVE_STORAGE_BUCKET)
     .getPublicUrl(storagePath);
 
   const publicUrl = publicUrlData.publicUrl;
 
-  const { data, error } = await supabase
+  // The authenticated client may create generated rows only with a null protected
+  // storage identity. Canonical manual-upload identity is inserted server-side
+  // after the campaign authorization check above.
+  const { data, error } = await admin
     .from("creative_assets")
     .insert({
       user_id: userId,
@@ -1157,12 +1204,12 @@ export async function uploadManualCreativeAsset(params: {
       provider_asset_id: null,
       file_url: publicUrl,
       thumbnail_url: params.kind === "thumbnail" ? publicUrl : null,
+      storage_bucket: MANUAL_CREATIVE_STORAGE_BUCKET,
+      storage_path: storagePath,
       metadata: {
         role: params.kind,
         label: params.label ?? null,
         caption: params.caption ?? null,
-        storageBucket: MANUAL_MEDIA_BUCKET,
-        storagePath,
         originalFileName: params.file.name,
         mimeType: params.file.type || null,
       } as Json,
@@ -1171,22 +1218,39 @@ export async function uploadManualCreativeAsset(params: {
     .single();
 
   if (error || !data) {
+    const { error: cleanupError } = await admin.storage
+      .from(MANUAL_CREATIVE_STORAGE_BUCKET)
+      .remove([storagePath]);
+
+    if (cleanupError) {
+      logError("Manual creative upload cleanup failed after row insert failure", {
+        campaignId: params.campaignId,
+        userId,
+        code: cleanupError.name ?? null,
+      });
+    }
+
     throw new ApiError(500, error?.message ?? "Creative asset could not be created.", "creative_asset_create_failed");
   }
 
   return data as CreativeAsset;
 }
 
-export async function deleteCreativeAssetById(assetId: string, userId?: string) {
-  const { supabase } = await requireCreativeBuilderContext(userId);
-  let query = supabase
-    .from("creative_assets")
-    .select("*")
-    .eq("id", assetId);
+export async function deleteCreativeAssetById(
+  assetId: string,
+  actor?: string | CreativeActorScope,
+) {
+  await requireCreativeBuilderContext(actor);
+  const admin = createAdminClient();
 
-  if (userId) {
-    query = query.eq("user_id", userId);
+  if (!admin) {
+    throw new ApiError(503, "Creative asset deletion is unavailable.", "creative_asset_admin_unavailable");
   }
+
+  const query = admin
+    .from("creative_assets")
+    .select("id, user_id, campaign_id, provider_name, storage_bucket, storage_path")
+    .eq("id", assetId);
 
   const { data, error } = await query.maybeSingle();
 
@@ -1198,25 +1262,56 @@ export async function deleteCreativeAssetById(assetId: string, userId?: string) 
     throw new ApiError(404, "Creative asset not found.", "not_found");
   }
 
-  const asset = data as CreativeAsset;
-  const metadata = asset.metadata && typeof asset.metadata === "object"
-    ? (asset.metadata as Record<string, unknown>)
-    : null;
-  const storageBucket = typeof metadata?.storageBucket === "string" ? metadata.storageBucket : null;
-  const storagePath = typeof metadata?.storagePath === "string" ? metadata.storagePath : null;
-
-  if (storageBucket && storagePath) {
-    await supabase.storage.from(storageBucket).remove([storagePath]).catch(() => undefined);
+  const asset = data as Pick<
+    CreativeAsset,
+    "id" | "user_id" | "campaign_id" | "provider_name" | "storage_bucket" | "storage_path"
+  >;
+  if (
+    !asset.user_id ||
+    !asset.campaign_id ||
+    !(await getCampaignById(asset.campaign_id).catch(() => null))
+  ) {
+    throw new ApiError(404, "Creative asset not found.", "not_found");
   }
 
-  let deleteQuery = supabase
+  const hasProtectedStorageIdentity = Boolean(asset.storage_bucket || asset.storage_path);
+  const isManualUpload = asset.provider_name === "manual_upload";
+  const hasCanonicalManualIdentity = isCanonicalManualCreativeStorageIdentity({
+    userId: asset.user_id,
+    campaignId: asset.campaign_id,
+    providerName: asset.provider_name,
+    storageBucket: asset.storage_bucket,
+    storagePath: asset.storage_path,
+  });
+
+  if ((isManualUpload || hasProtectedStorageIdentity) && !hasCanonicalManualIdentity) {
+    throw new ApiError(
+      409,
+      "This manual creative has no trusted canonical storage identity and requires operator reconciliation before deletion.",
+      "creative_asset_storage_identity_untrusted",
+    );
+  }
+
+  if (hasCanonicalManualIdentity && asset.storage_path) {
+    const { error: storageDeleteError } = await admin.storage
+      .from(MANUAL_CREATIVE_STORAGE_BUCKET)
+      .remove([asset.storage_path]);
+
+    if (storageDeleteError) {
+      throw new ApiError(
+        503,
+        "The creative file could not be removed, so its database record was preserved for reconciliation.",
+        "creative_asset_storage_delete_failed",
+      );
+    }
+  }
+
+  const deleteQuery = admin
     .from("creative_assets")
     .delete()
-    .eq("id", assetId);
-
-  if (userId) {
-    deleteQuery = deleteQuery.eq("user_id", userId);
-  }
+    .eq("id", assetId)
+    .eq("campaign_id", asset.campaign_id)
+    .eq("user_id", asset.user_id);
 
   const { error: deleteError } = await deleteQuery;
 

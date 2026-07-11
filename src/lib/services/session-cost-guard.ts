@@ -3,8 +3,9 @@ import { cookies } from "next/headers";
 import { logWarn } from "@/lib/logging";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  consumeCreditsForGeneration,
-  refundCreditsForProviderUsageEvent,
+  CREDIT_TOP_UP_MINIMUM_CENTS,
+  formatCreditCurrency,
+  getGenerationCreditCostCents,
 } from "@/lib/services/credit-service";
 
 type SessionCostBucket = "openai_image_generation" | "heygen_video_generation";
@@ -42,9 +43,10 @@ function parseCount(value: string | undefined) {
 export async function consumeSessionCostBudget(params: {
   bucket: SessionCostBucket;
   userId: string;
-  organizationId?: string | null;
+  organizationId: string;
   campaignId?: string | null;
-  idempotencyKey?: string | null;
+  idempotencyKey: string;
+  attemptKey: string;
   estimatedCost?: number | null;
 }) {
   const config = SESSION_COST_LIMITS[params.bucket];
@@ -54,17 +56,26 @@ export async function consumeSessionCostBudget(params: {
   if (admin) {
     const provider = params.bucket === "openai_image_generation" ? "openai" : "heygen";
     const operation = params.bucket;
+    const settlementToken = crypto.randomUUID();
+    const creditAmount = getGenerationCreditCostCents(params.bucket);
     const { data: reservationRaw, error: reservationError } = await (admin as any).rpc(
-      "reserve_provider_usage",
+      "reserve_provider_usage_attempt_v2",
       {
-        p_organization_id: params.organizationId ?? null,
+        p_organization_id: params.organizationId,
         p_user_id: params.userId,
         p_campaign_id: params.campaignId ?? null,
         p_provider: provider,
         p_operation: operation,
         p_limit_count: limit,
-        p_idempotency_key: params.idempotencyKey ?? null,
+        p_idempotency_key: params.idempotencyKey,
+        p_attempt_key: params.attemptKey,
+        p_settlement_token: settlementToken,
         p_estimated_cost: params.estimatedCost ?? null,
+        p_credit_amount: creditAmount,
+        p_credit_reason:
+          params.bucket === "openai_image_generation"
+            ? "image_generation"
+            : "video_generation",
       },
     );
 
@@ -86,15 +97,63 @@ export async function consumeSessionCostBudget(params: {
       );
     }
 
+    const blockReason =
+      typeof reservation.block_reason === "string" ? reservation.block_reason : null;
+    const eventStatus =
+      typeof reservation.event_status === "string" ? reservation.event_status : null;
+
     if (reservation.allowed !== true) {
       logWarn("Provider usage guard blocked generation request", {
         bucket: params.bucket,
         userId: params.userId,
-        organizationId: params.organizationId ?? null,
+        organizationId: params.organizationId,
         campaignId: params.campaignId ?? null,
         limit,
         currentCount: Number(reservation.current_count ?? 0),
+        blockReason,
+        eventStatus,
       });
+
+      if (blockReason === "credit_insufficient") {
+        throw new ApiError(
+          402,
+          `Insufficient credits. Add at least ${formatCreditCurrency(CREDIT_TOP_UP_MINIMUM_CENTS)} before running paid generation.`,
+          "credits_insufficient",
+        );
+      }
+
+      if (blockReason === "attempt_consumed") {
+        throw new ApiError(
+          409,
+          "This paid generation attempt was already consumed and cannot be replayed.",
+          "provider_usage_idempotency_consumed",
+        );
+      }
+
+      if (blockReason === "attempt_in_progress") {
+        throw new ApiError(
+          409,
+          "This paid generation attempt is already reserved or in progress.",
+          "provider_usage_idempotency_in_progress",
+        );
+      }
+
+      if (blockReason === "operator_action_required") {
+        throw new ApiError(
+          409,
+          "The provider outcome for this attempt is ambiguous and requires operator reconciliation before any retry.",
+          "provider_usage_operator_action_required",
+        );
+      }
+
+      if (blockReason === "attempt_terminal") {
+        throw new ApiError(
+          409,
+          "This provider attempt is terminal. A safe retry must use a fresh job-attempt identity.",
+          "provider_usage_terminal_attempt",
+        );
+      }
+
       throw new ApiError(
         429,
         params.bucket === "openai_image_generation"
@@ -104,79 +163,31 @@ export async function consumeSessionCostBudget(params: {
       );
     }
 
-    const reusedExisting = reservation.reused_existing === true;
-    const eventStatus =
-      typeof reservation.event_status === "string" ? reservation.event_status : null;
-
-    if (reusedExisting && eventStatus === "consumed") {
-      logWarn("Provider usage guard blocked duplicate consumed request", {
-        bucket: params.bucket,
-        userId: params.userId,
-        organizationId: params.organizationId ?? null,
-        campaignId: params.campaignId ?? null,
-        idempotencyKey: params.idempotencyKey ?? null,
-      });
-      throw new ApiError(
-        409,
-        "This paid generation request was already completed for the same idempotency key.",
-        "provider_usage_idempotency_consumed",
-      );
-    }
-
-    if (reusedExisting && eventStatus === "reserved") {
-      logWarn("Provider usage guard blocked duplicate in-progress request", {
-        bucket: params.bucket,
-        userId: params.userId,
-        organizationId: params.organizationId ?? null,
-        campaignId: params.campaignId ?? null,
-        idempotencyKey: params.idempotencyKey ?? null,
-      });
-      throw new ApiError(
-        409,
-        "This paid generation request is already reserved or in progress.",
-        "provider_usage_idempotency_in_progress",
-      );
-    }
-
     const eventId =
       typeof reservation.event_id === "string" && reservation.event_id.trim().length > 0
         ? reservation.event_id
         : null;
 
-    try {
-      await consumeCreditsForGeneration({
-        bucket: params.bucket,
-        userId: params.userId,
-        organizationId: params.organizationId ?? null,
-        campaignId: params.campaignId ?? null,
-        referenceId: eventId ?? params.idempotencyKey ?? crypto.randomUUID(),
-        idempotencyKey: eventId
-          ? `generation_credit:${params.bucket}:${eventId}`
-          : params.idempotencyKey
-            ? `generation_credit:${params.bucket}:${params.idempotencyKey}`
-            : null,
-        metadata: {
-          provider,
-          operation,
-          estimatedCost: params.estimatedCost ?? null,
-        },
-      });
-    } catch (error) {
-      if (eventId) {
-        await admin
-          .from("provider_usage_events")
-          .update({
-            status: "released",
-            metadata: {
-              creditReservation: "failed",
-              reason: error instanceof Error ? error.message : "Credit reservation failed.",
-            },
-            updated_at: new Date().toISOString(),
-          } as never)
-          .eq("id", eventId);
-      }
+    const returnedSettlementToken =
+      typeof reservation.settlement_token === "string"
+        ? reservation.settlement_token
+        : null;
+    const settlementGeneration =
+      typeof reservation.settlement_generation === "number"
+        ? reservation.settlement_generation
+        : null;
 
-      throw error;
+    if (
+      !eventId ||
+      returnedSettlementToken !== settlementToken ||
+      !settlementGeneration ||
+      settlementGeneration < 1
+    ) {
+      throw new ApiError(
+        500,
+        "Provider usage reservation returned an incomplete settlement fence.",
+        "provider_usage_reserve_failed",
+      );
     }
 
     return {
@@ -184,6 +195,10 @@ export async function consumeSessionCostBudget(params: {
       nextCount: Number(reservation.next_count ?? 1),
       limit,
       eventId,
+      organizationId: params.organizationId,
+      userId: params.userId,
+      settlementToken,
+      settlementGeneration,
     };
   }
 
@@ -228,12 +243,20 @@ export async function consumeSessionCostBudget(params: {
     nextCount,
     limit,
     eventId: null,
+    organizationId: params.organizationId,
+    userId: params.userId,
+    settlementToken: null,
+    settlementGeneration: null,
   };
 }
 
 export async function markSessionCostBudgetEvent(params: {
   eventId: string | null | undefined;
-  status: "consumed" | "released" | "failed";
+  organizationId: string;
+  userId: string;
+  settlementToken: string | null | undefined;
+  settlementGeneration: number | null | undefined;
+  status: "consumed" | "released" | "rejected" | "operator_action_required";
   metadata?: Record<string, unknown>;
 }) {
   if (!params.eventId) {
@@ -252,23 +275,44 @@ export async function markSessionCostBudgetEvent(params: {
     return;
   }
 
-  const { error } = await admin
-    .from("provider_usage_events")
-    .update({
-      status: params.status,
-      metadata: params.metadata ?? null,
-      updated_at: new Date().toISOString(),
-    } as never)
-    .eq("id", params.eventId);
+  if (!params.settlementToken || !params.settlementGeneration) {
+    throw new ApiError(
+      409,
+      "Provider usage settlement ownership is missing.",
+      "provider_usage_settlement_fence_missing",
+    );
+  }
+
+  const { data: rows, error } = await (admin as any).rpc(
+    "settle_provider_usage_attempt_v2",
+    {
+      p_event_id: params.eventId,
+      p_organization_id: params.organizationId,
+      p_user_id: params.userId,
+      p_settlement_token: params.settlementToken,
+      p_settlement_generation: params.settlementGeneration,
+      p_outcome: params.status,
+      p_metadata: params.metadata ?? {},
+    },
+  );
 
   if (error) {
     throw new ApiError(500, error.message, "provider_usage_event_update_failed");
   }
 
-  if (params.status === "released" || params.status === "failed") {
-    await refundCreditsForProviderUsageEvent({
-      providerUsageEventId: params.eventId,
-      status: params.status,
-    });
+  const result = Array.isArray(rows) ? rows[0] : rows;
+
+  if (result?.settled === true) {
+    return result;
   }
+
+  if (result?.reused_terminal === true && result?.event_status === params.status) {
+    return result;
+  }
+
+  throw new ApiError(
+    409,
+    "Provider usage settlement ownership was lost or the attempt is already terminal.",
+    "provider_usage_settlement_fence_lost",
+  );
 }

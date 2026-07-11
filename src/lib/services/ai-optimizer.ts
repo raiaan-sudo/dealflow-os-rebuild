@@ -40,6 +40,18 @@ export type CampaignAnalysisResult = {
   enginePlan?: ReturnType<typeof buildMarketingOptimizationBlueprint>;
 };
 
+export function buildHeldCampaignAnalysis(reason: string): CampaignAnalysisResult {
+  return {
+    status: "stable",
+    reasons: [reason],
+    actions: ["Wait for confirmed, policy-eligible delivery evidence before changing the campaign."],
+    strategySummary: [],
+    testingRecommendations: [],
+    regenerationSuggestions: [],
+    recommendationFocus: "monitor",
+  };
+}
+
 const KILL_ACTIONS = [
   "Pause this creative immediately",
   "Replace with new creative concepts",
@@ -270,6 +282,14 @@ export function analyzeCampaign(
   data: CampaignAnalysisInput,
   context?: CampaignAnalysisContext,
 ): CampaignAnalysisResult {
+  if (
+    !Object.values(data).every((value) => Number.isFinite(value) && value >= 0)
+  ) {
+    return buildHeldCampaignAnalysis(
+      "Optimization is on hold because one or more required metrics are missing or invalid.",
+    );
+  }
+
   const normalized = normalizeInput(data);
   const engineDecision = evaluatePerformance(normalized);
   const enginePlan = buildMarketingOptimizationBlueprint(

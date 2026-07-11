@@ -309,53 +309,15 @@ async function createFailedNotificationLog(params: {
   purpose: "new_lead_alert" | "lead_reply_template";
   errorMessage: string;
 }) {
-  const now = new Date().toISOString();
-  const { data: existing, error: existingError } = await params.supabase
-    .from("lead_notifications")
-    .select("id")
-    .eq("tenant_id", params.tenantId)
-    .eq("lead_id", params.leadId)
-    .eq("purpose", params.purpose)
-    .is("agent_id", null)
-    .limit(1)
-    .maybeSingle();
-
-  if (existingError) {
-    throw existingError;
-  }
-
-  if (existing?.id) {
-    const { error } = await params.supabase
-      .from("lead_notifications")
-      .update({
-        status: "failed",
-        error_message: params.errorMessage,
-        failed_at: now,
-        updated_at: now,
-      })
-      .eq("id", existing.id);
-
-    if (error) {
-      throw error;
-    }
-
-    return;
-  }
-
-  const { error } = await params.supabase
-    .from("lead_notifications")
-    .insert({
-      tenant_id: params.tenantId,
-      lead_id: params.leadId,
-      agent_id: null,
-      channel: "sms",
-      provider: "twilio",
-      purpose: params.purpose,
-      status: "failed",
-      error_message: params.errorMessage,
-      failed_at: now,
-      updated_at: now,
-    });
+  const { error } = await (params.supabase as any).rpc(
+    "record_failed_lead_notification_v2",
+    {
+      p_tenant_id: params.tenantId,
+      p_lead_id: params.leadId,
+      p_purpose: params.purpose,
+      p_error_message: params.errorMessage,
+    },
+  );
 
   if (error) {
     throw error;
@@ -470,12 +432,20 @@ export async function notifyAssignedAgentOfNewLead(lead: LeadRecord) {
     purpose: "lead_reply_template",
     body: buildLeadReplyTemplateSms(enrichedLead, agent),
   });
+  const successfulStatuses = new Set(["sent", "delivered"]);
+  const alertSucceeded = successfulStatuses.has(alert.status);
+  const replySucceeded = successfulStatuses.has(reply.status);
 
   return {
-    notified: alert.status === "sent" || reply.status === "sent",
+    notified: alertSucceeded && replySucceeded,
+    reason: alertSucceeded && replySucceeded ? undefined : "sms_provider_failed",
     agentId: agent.id,
     alertStatus: alert.status,
     replyStatus: reply.status,
+    failedPurposes: [
+      ...(!alertSucceeded ? ["new_lead_alert"] : []),
+      ...(!replySucceeded ? ["lead_reply_template"] : []),
+    ],
   };
 }
 

@@ -2,6 +2,9 @@ import { ApiError } from "@/lib/api/route";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAppContext } from "@/lib/services/app-context";
 import type { Json } from "@/lib/supabase/types";
+import { INITIAL_COMMERCIAL_ACTIVATION_CREDIT_CENTS } from "@/lib/commercial-activation-policy";
+
+export { INITIAL_COMMERCIAL_ACTIVATION_CREDIT_CENTS } from "@/lib/commercial-activation-policy";
 
 type GenerationCreditBucket = "openai_image_generation" | "heygen_video_generation";
 
@@ -48,8 +51,9 @@ export async function getCreditSummaryForCurrentUser() {
   }
 
   const { data: creditRowRaw, error } = await admin
-    .from("user_credits")
+    .from("organization_user_credits")
     .select("balance, updated_at")
+    .eq("organization_id", context.organization.id)
     .eq("user_id", context.user.id)
     .maybeSingle();
 
@@ -76,7 +80,7 @@ export async function getCreditSummaryForCurrentUser() {
 export async function consumeCreditsForGeneration(params: {
   bucket: GenerationCreditBucket;
   userId: string;
-  organizationId?: string | null;
+  organizationId: string;
   campaignId?: string | null;
   referenceId: string;
   idempotencyKey?: string | null;
@@ -101,7 +105,7 @@ export async function consumeCreditsForGeneration(params: {
 
   const { data: rows, error } = await (admin as any).rpc("consume_user_credits", {
     p_user_id: params.userId,
-    p_organization_id: params.organizationId ?? null,
+    p_organization_id: params.organizationId,
     p_amount: amount,
     p_reason: getCreditReason(params.bucket),
     p_reference_type: "provider_usage_event",
@@ -144,7 +148,7 @@ export async function consumeCreditsForGeneration(params: {
 
 export async function grantUserCredits(params: {
   userId: string;
-  organizationId?: string | null;
+  organizationId: string;
   amount: number;
   reason: string;
   referenceType?: string | null;
@@ -164,7 +168,7 @@ export async function grantUserCredits(params: {
 
   const { data: rows, error } = await (admin as any).rpc("grant_user_credits", {
     p_user_id: params.userId,
-    p_organization_id: params.organizationId ?? null,
+    p_organization_id: params.organizationId,
     p_amount: Math.floor(params.amount),
     p_reason: params.reason,
     p_reference_type: params.referenceType ?? null,
@@ -190,56 +194,114 @@ export async function grantUserCredits(params: {
   };
 }
 
-export async function refundCreditsForProviderUsageEvent(params: {
-  providerUsageEventId: string;
-  status: "released" | "failed";
+export async function recordCommercialActivationWithInitialCredit(params: {
+  organizationId: string;
+  userId: string;
+  sourceEventId: string;
+  sourceEventType: "checkout.session.completed" | "invoice.payment_succeeded";
+  sourceEventCreated: number;
+  sourcePaymentId?: string | null;
+  sourceSubscriptionId?: string | null;
+  amountPaidCents: number;
+  currency?: string | null;
+  metadata?: Record<string, unknown>;
 }) {
+  if (!Number.isInteger(params.amountPaidCents) || params.amountPaidCents <= 0) {
+    throw new ApiError(400, "A positive applied payment is required for activation.", "activation_payment_invalid");
+  }
+
   const admin = createAdminClient();
 
   if (!admin) {
-    if (process.env.NODE_ENV === "production") {
-      throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
-    }
-    return null;
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
   }
 
-  const { data, error } = await admin
-    .from("user_credit_ledger")
-    .select("id, user_id, organization_id, delta, reason")
-    .eq("reference_type", "provider_usage_event")
-    .eq("reference_id", params.providerUsageEventId)
-    .lt("delta", 0)
-    .maybeSingle();
+  const { data: rows, error } = await (admin as any).rpc(
+    "record_commercial_activation_with_initial_credit",
+    {
+      p_organization_id: params.organizationId,
+      p_user_id: params.userId,
+      p_source_event_id: params.sourceEventId,
+      p_source_event_type: params.sourceEventType,
+      p_source_event_created: params.sourceEventCreated,
+      p_source_payment_id: params.sourcePaymentId ?? null,
+      p_source_subscription_id: params.sourceSubscriptionId ?? null,
+      p_amount_paid_cents: params.amountPaidCents,
+      p_currency: params.currency ?? null,
+      p_metadata: (params.metadata ?? {}) as Json,
+    },
+  );
 
   if (error) {
-    throw new ApiError(500, error.message, "credit_refund_lookup_failed");
+    throw new ApiError(500, "Commercial activation could not be recorded.", "commercial_activation_failed");
   }
 
-  const ledger = data as
+  const row = (Array.isArray(rows) ? rows[0] : rows) as
     | {
-        id: string;
-        user_id: string;
-        organization_id: string | null;
-        delta: number;
-        reason: string;
+        activation_id?: unknown;
+        activation_created?: unknown;
+        initial_credit_granted?: unknown;
+        balance?: unknown;
+        ledger_id?: unknown;
+        reused_existing?: unknown;
       }
     | null;
 
-  if (!ledger) {
-    return null;
+  if (!row || typeof row.activation_id !== "string" || typeof row.ledger_id !== "string") {
+    throw new ApiError(500, "Commercial activation returned no durable result.", "commercial_activation_failed");
   }
 
-  return grantUserCredits({
-    userId: ledger.user_id,
-    organizationId: ledger.organization_id,
-    amount: Math.abs(ledger.delta),
-    reason: `${ledger.reason}_refund`,
-    referenceType: "provider_usage_event",
-    referenceId: params.providerUsageEventId,
-    idempotencyKey: `generation_credit_refund:${params.providerUsageEventId}:${params.status}`,
-    metadata: {
-      refundStatus: params.status,
-      originalLedgerId: ledger.id,
-    },
-  });
+  if (row.activation_created === true && row.initial_credit_granted !== true) {
+    throw new ApiError(
+      500,
+      "Commercial activation did not atomically create its initial credit.",
+      "commercial_activation_credit_missing",
+    );
+  }
+
+  return {
+    activationId: row.activation_id,
+    activationCreated: row.activation_created === true,
+    initialCreditGranted: row.initial_credit_granted === true,
+    initialCreditAmountCents:
+      row.initial_credit_granted === true ? INITIAL_COMMERCIAL_ACTIVATION_CREDIT_CENTS : 0,
+    balance: typeof row.balance === "number" ? row.balance : null,
+    ledgerId: row.ledger_id,
+    reusedExisting: row.reused_existing === true,
+  };
+}
+
+export async function getCommercialActivationSummaryForCurrentUser() {
+  const context = await getAppContext();
+
+  if (!context) {
+    throw new ApiError(401, "Authentication is required for activation status.", "unauthorized");
+  }
+
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+  }
+
+  const { data, error } = await (admin as any)
+    .from("commercial_activations")
+    .select("id,activated_at,source_event_type")
+    .eq("organization_id", context.organization.id)
+    .maybeSingle();
+
+  if (error) {
+    throw new ApiError(500, "Commercial activation status could not be loaded.", "commercial_activation_fetch_failed");
+  }
+
+  const row = data as
+    | { id?: unknown; activated_at?: unknown; source_event_type?: unknown }
+    | null;
+
+  return {
+    activated: typeof row?.id === "string",
+    activationId: typeof row?.id === "string" ? row.id : null,
+    activatedAt: typeof row?.activated_at === "string" ? row.activated_at : null,
+    sourceEventType: typeof row?.source_event_type === "string" ? row.source_event_type : null,
+  };
 }

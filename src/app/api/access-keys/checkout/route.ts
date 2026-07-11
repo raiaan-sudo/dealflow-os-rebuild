@@ -3,6 +3,17 @@ import { ApiError, assertSameOriginRequest, handleApiError, parseJsonBody } from
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { normalizeBillingPlanTier } from "@/lib/billing/plans";
 import { createAccessKeyCheckoutSession } from "@/lib/services/access-key-service";
+import {
+  ACCESS_KEY_REVEAL_COOKIE_MAX_AGE_SECONDS,
+  ACCESS_KEY_REVEAL_INDEX_COOKIE_NAME,
+  ACCESS_KEY_REVEAL_MAX_IN_FLIGHT,
+  appendAccessKeyRevealCookieIndex,
+  getAccessKeyRevealCookieName,
+  parseAccessKeyRevealCookieIndex,
+  readRequestCookie,
+  serializeAccessKeyRevealCookie,
+  serializeAccessKeyRevealCookieIndex,
+} from "@/lib/access-key-reveal-cookie";
 import { isAccessKeyPublicCheckoutEnabled, isBillingCheckoutSafeModeEnabled } from "@/lib/env";
 
 const checkoutSchema = z.object({
@@ -47,14 +58,68 @@ export async function POST(request: Request) {
     }
 
     const body = await parseJsonBody(request, checkoutSchema);
+    const secure =
+      process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const currentRevealIndex = parseAccessKeyRevealCookieIndex(
+      readRequestCookie(
+        request.headers.get("cookie"),
+        ACCESS_KEY_REVEAL_INDEX_COOKIE_NAME,
+      ),
+      nowSeconds,
+    );
+    if (currentRevealIndex.length >= ACCESS_KEY_REVEAL_MAX_IN_FLIGHT) {
+      throw new ApiError(
+        409,
+        "Finish one of the existing checkout handoffs before starting another.",
+        "access_key_checkout_handoff_capacity",
+      );
+    }
+
     const session = await createAccessKeyCheckoutSession({
       planTier: normalizeBillingPlanTier(body.planTier),
       partnerSlug: body.partnerSlug,
       buyerEmail: body.buyerEmail,
       buyerName: body.buyerName,
     });
+    const { revealVerifier, ...publicSession } = session;
+    const nextRevealIndex = appendAccessKeyRevealCookieIndex(
+      currentRevealIndex,
+      session.sessionId,
+      nowSeconds,
+    );
+    if (!nextRevealIndex) {
+      throw new ApiError(
+        409,
+        "The browser checkout handoff limit was reached.",
+        "access_key_checkout_handoff_capacity",
+      );
+    }
+    const headers = new Headers({ "Cache-Control": "no-store" });
+    headers.append(
+      "Set-Cookie",
+      serializeAccessKeyRevealCookie({
+        name: getAccessKeyRevealCookieName(session.sessionId),
+        value: revealVerifier,
+        path: "/access-key/success",
+        maxAgeSeconds: ACCESS_KEY_REVEAL_COOKIE_MAX_AGE_SECONDS,
+        secure,
+      }),
+    );
+    headers.append(
+      "Set-Cookie",
+      serializeAccessKeyRevealCookie({
+        name: ACCESS_KEY_REVEAL_INDEX_COOKIE_NAME,
+        value: serializeAccessKeyRevealCookieIndex(nextRevealIndex),
+        path: "/api/access-keys",
+        maxAgeSeconds: ACCESS_KEY_REVEAL_COOKIE_MAX_AGE_SECONDS,
+        secure,
+      }),
+    );
 
-    return Response.json(session);
+    return Response.json(publicSession, {
+      headers,
+    });
   } catch (error) {
     return handleApiError(error, "Access-key checkout");
   }

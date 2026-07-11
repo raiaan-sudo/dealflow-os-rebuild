@@ -1,6 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import { randomBytes } from "node:crypto";
 import {
   ApiError,
   assertInternalSystemRequest,
@@ -12,21 +11,23 @@ import {
   isInternalAdminEmail,
 } from "@/lib/env";
 import { getSupabaseAuthCookieOptions } from "@/lib/supabase/cookie-options";
+import { isExactIsolatedSupabaseProject } from "@/lib/security/supabase-isolation";
 import type { Database } from "@/lib/supabase/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 function assertQaHarnessEnabled() {
-  if (process.env.QA_AUTH_HARNESS_ENABLED !== "true") {
-    throw new ApiError(404, "QA auth harness is not enabled.", "qa_auth_harness_disabled");
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
+    throw new ApiError(
+      404,
+      "QA auth harness is not available in production artifacts.",
+      "qa_auth_harness_production_disabled",
+    );
   }
 
-  if (
-    process.env.VERCEL_ENV === "production" &&
-    process.env.QA_AUTH_HARNESS_PRODUCTION_ENABLED !== "true"
-  ) {
-    throw new ApiError(404, "QA auth harness is not enabled in production.", "qa_auth_harness_production_disabled");
+  if (process.env.QA_AUTH_HARNESS_ENABLED !== "true") {
+    throw new ApiError(404, "QA auth harness is not enabled.", "qa_auth_harness_disabled");
   }
 }
 
@@ -50,17 +51,29 @@ function redactEmail(email: string) {
   return `${name.slice(0, 2)}***@${domain}`;
 }
 
-function createTemporaryQaPassword() {
-  return `Df-${randomBytes(36).toString("base64url")}!1`;
-}
-
 const ELEVATED_ORGANIZATION_ROLES = new Set([
   "admin",
+  "owner",
   "owner_admin",
   "operator",
   "platform_admin",
   "internal_admin",
 ]);
+
+function assertQaIsolatedSupabaseProject(supabaseUrl: string) {
+  if (
+    !isExactIsolatedSupabaseProject({
+      supabaseUrl,
+      expectedProjectRef: process.env.QA_ISOLATED_SUPABASE_PROJECT_REF,
+    })
+  ) {
+    throw new ApiError(
+      404,
+      "QA auth harness is not authorized for this Supabase project.",
+      "qa_auth_harness_project_not_isolated",
+    );
+  }
+}
 
 async function assertQaUserIsNonAdmin(
   admin: ReturnType<typeof createClient<Database>>,
@@ -87,6 +100,21 @@ async function assertQaUserIsNonAdmin(
   }
 
   const userId = String(qaProfile.id);
+  const { data: authUserData, error: authUserError } = await admin.auth.admin.getUserById(userId);
+  const authUser = authUserData?.user;
+
+  if (
+    authUserError ||
+    !authUser ||
+    authUser.id !== userId ||
+    authUser.email?.trim().toLowerCase() !== qaEmail
+  ) {
+    throw new ApiError(
+      403,
+      "QA auth harness requires an existing matching auth user.",
+      "qa_auth_user_missing",
+    );
+  }
 
   const { data: partnerMemberships, error: partnerMembershipError } = await admin
     .from("partner_memberships")
@@ -133,6 +161,8 @@ export async function POST(request: Request) {
     const serviceRoleEnv = getServiceRoleEnv();
     const supabaseEnv = getSupabaseEnvOrThrow();
 
+    assertQaIsolatedSupabaseProject(supabaseEnv.url);
+
     if (!serviceRoleEnv) {
       throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
     }
@@ -167,45 +197,28 @@ export async function POST(request: Request) {
       throw new ApiError(500, "Supabase did not return a token hash.", "qa_session_token_missing");
     }
 
-    let { data: sessionData, error: verifyError } = await anon.auth.verifyOtp({
+    const { data: sessionData, error: verifyError } = await anon.auth.verifyOtp({
       type: "email",
       token_hash: tokenHash,
     });
 
     if (verifyError) {
-      const userId = linkData.user?.id;
-
-      if (!userId) {
-        throw new ApiError(500, "QA session could not identify the test user.", "qa_session_user_missing");
-      }
-
-      const temporaryPassword = createTemporaryQaPassword();
-      const { error: updateError } = await admin.auth.admin.updateUserById(userId, {
-        password: temporaryPassword,
-        email_confirm: true,
-      });
-
-      if (updateError) {
-        throw new ApiError(500, updateError.message, "qa_session_password_prepare_failed");
-      }
-
-      const passwordSession = await anon.auth.signInWithPassword({
-        email: qaEmail,
-        password: temporaryPassword,
-      });
-
-      if (passwordSession.error) {
-        throw new ApiError(500, passwordSession.error.message, "qa_session_password_verify_failed");
-      }
-
-      sessionData = passwordSession.data;
-      verifyError = null;
+      throw new ApiError(
+        500,
+        "QA session token verification failed without mutating the QA user's credentials.",
+        "qa_session_token_verify_failed",
+      );
     }
 
     const session = sessionData.session;
     const user = sessionData.user;
 
-    if (!session?.access_token || !session.refresh_token || user?.email?.toLowerCase() !== qaEmail) {
+    if (
+      !session?.access_token ||
+      !session.refresh_token ||
+      user?.email?.toLowerCase() !== qaEmail ||
+      user.id !== qaUser.userId
+    ) {
       throw new ApiError(500, "QA session could not be established.", "qa_session_missing");
     }
 
@@ -255,7 +268,7 @@ export async function POST(request: Request) {
       const secure = authCookieOptions.secure ? "; Secure" : "";
       response.headers.append(
         "Set-Cookie",
-        `${name}=${value}; Path=/; Max-Age=${2 * 60 * 60}; SameSite=${sameSite}${secure}`,
+        `${name}=${value}; Path=/; Max-Age=${2 * 60 * 60}; HttpOnly; SameSite=${sameSite}${secure}`,
       );
     }
 

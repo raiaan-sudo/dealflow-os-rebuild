@@ -8,7 +8,6 @@ import type {
 import type { CampaignActionSuggestion } from "@/lib/services/campaign-action-service";
 import type { CampaignDraftAction } from "@/lib/services/campaign-draft-action-service";
 import type { CreativePerformanceSummary } from "@/lib/services/creative-performance-service";
-import type { ExecutableCampaign } from "@/lib/services/campaign-execution-service";
 import type { CampaignRuntime } from "@/lib/services/campaign-plan-service";
 
 export type DeployResult = {
@@ -18,17 +17,15 @@ export type DeployResult = {
 };
 
 export async function postRuntimeUpdate(body: {
+  campaignId: string;
   action:
-    | "launch"
-    | "complete_launch"
     | "refresh"
     | "set_experience_status"
     | "set_guardrails"
     | "pause_campaign"
     | "resume_campaign"
     | "archive_campaign";
-  campaign?: ExecutableCampaign;
-  experienceStatus?: "connected" | "launch_ready" | "launching" | "live";
+  experienceStatus?: "connected" | "launch_ready";
   budgetDailyInput?: number;
   launchMode?: "test" | "live";
   safetyState?: "ready" | "blocked";
@@ -51,8 +48,9 @@ export async function postRuntimeUpdate(body: {
   return (await response.json()) as { runtime: CampaignRuntime | null };
 }
 
-export async function fetchRuntime() {
-  const response = await fetchWithRetry("/api/campaign/runtime", {
+export async function fetchRuntime(campaignId: string) {
+  const query = new URLSearchParams({ campaignId });
+  const response = await fetchWithRetry(`/api/campaign/runtime?${query.toString()}`, {
     cache: "no-store",
     timeoutMs: 8000,
     retries: 1,

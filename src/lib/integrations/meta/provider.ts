@@ -148,6 +148,8 @@ class MetaMarketingProvider
           ? "connected"
           : connection.connectionStatus === "connecting"
             ? "connecting"
+            : connection.connectionStatus === "partial"
+              ? "degraded"
             : connection.connectionStatus === "connection_failed"
               ? "failed"
               : "configured",

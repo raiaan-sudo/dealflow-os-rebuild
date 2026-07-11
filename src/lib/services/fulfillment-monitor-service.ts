@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/api/route";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requestGhlLeadEffectReplay } from "@/lib/services/ghl-lead-effect-service";
 
 type AdminClient = NonNullable<ReturnType<typeof createAdminClient>>;
 type UntypedAdminClient = {
@@ -51,6 +52,7 @@ export type FulfillmentMonitorHealth = {
     provisioningWritesEnabled: boolean;
     workflowEnrollmentEnabled: boolean;
     workflowEnrollmentRetired: boolean;
+    adapterMode: "fake_only";
   };
   recentCrmFailures: number;
   recentDeadLetters: number;
@@ -59,12 +61,17 @@ export type FulfillmentMonitorHealth = {
   mappings: Array<{
     workspaceId: string | null;
     partnerId: string | null;
+    environment: string;
+    mappingStatus: string;
     locationConfigured: boolean;
     pipelineConfigured: boolean;
     stageConfigured: boolean;
     syncEnabled: boolean;
     credentialConfigured: boolean;
     partnerConfigEnabled: boolean;
+    snapshotVerified: boolean;
+    requiredObjectsVerified: boolean;
+    provisioningState: string | null;
   }>;
 };
 
@@ -98,6 +105,7 @@ type RelatedBillingEvent = {
 
 type RelatedCrmEvent = {
   id: string;
+  effectKind: string;
   status: string;
   attemptCount: number;
   destination: string;
@@ -296,19 +304,20 @@ function mapJob(row: JsonRecord | null): RelatedJob | null {
   };
 }
 
-function mapCrmEvent(row: JsonRecord | null): RelatedCrmEvent | null {
+function mapCrmEvent(row: JsonRecord | null, location: JsonRecord | null): RelatedCrmEvent | null {
   if (!row) {
     return null;
   }
 
   return {
     id: String(row.id),
+    effectKind: asString(row.effect_kind) ?? "unknown",
     status: asString(row.status) ?? "unknown",
     attemptCount: Number(row.attempt_count ?? 0),
-    destination: asString(row.destination) ?? "gohighlevel",
-    contactIdMasked: maskExternalId(row.ghl_contact_id),
-    opportunityIdMasked: maskExternalId(row.ghl_opportunity_id),
-    locationIdMasked: maskExternalId(row.ghl_location_id),
+    destination: "gohighlevel",
+    contactIdMasked: maskExternalId(row.provider_contact_id),
+    opportunityIdMasked: maskExternalId(row.provider_opportunity_id),
+    locationIdMasked: maskExternalId(location?.provider_location_id),
     lastErrorCode: asString(row.last_error_code),
     lastErrorMessage: asString(row.last_error_message),
     nextRetryAt: asString(row.next_retry_at),
@@ -352,33 +361,41 @@ function mapBillingEvent(row: JsonRecord | null): RelatedBillingEvent | null {
 function retryEligibility(crmEvent: RelatedCrmEvent | null) {
   if (!crmEvent) {
     return {
-      eligible: true,
+      eligible: false,
       requiresDeadLetterConfirmation: false,
-      reason: "No CRM event exists yet.",
+      reason: "No GHL lead effect exists; the lead worker is not wired to this foundation yet.",
     };
   }
 
-  if (crmEvent.status === "synced") {
+  if (crmEvent.status === "succeeded") {
     return {
-      eligible: true,
+      eligible: false,
       requiresDeadLetterConfirmation: false,
-      reason: "Already synced; retry should return already_synced without duplicate writes.",
+      reason: "GHL effect already succeeded; no replay is needed.",
     };
   }
 
-  if (crmEvent.status === "dead_letter") {
+  if (crmEvent.status === "operator_action_required") {
     return {
       eligible: true,
       requiresDeadLetterConfirmation: true,
-      reason: "Dead-lettered event requires explicit confirmation before retry.",
+      reason: "Provider replay is blocked; explicit operator review may be requested.",
     };
   }
 
-  if (crmEvent.status === "failed" || crmEvent.status === "skipped" || crmEvent.status === "queued") {
+  if (crmEvent.status === "retryable_failure") {
     return {
       eligible: true,
       requiresDeadLetterConfirmation: false,
-      reason: `CRM event is ${crmEvent.status}.`,
+      reason: "Effect is retryable; replay records a durable request and performs no provider call.",
+    };
+  }
+
+  if (crmEvent.status === "uncertain") {
+    return {
+      eligible: false,
+      requiresDeadLetterConfirmation: true,
+      reason: "Uncertain provider results require reconciliation or operator review before replay.",
     };
   }
 
@@ -471,13 +488,13 @@ async function loadHealth(admin: AdminClient): Promise<FulfillmentMonitorHealth>
     { count: failedLeadSideEffectJobs, error: failedJobError },
     { data: mappings, error: mappingsError },
   ] = await Promise.all([
-    db(admin).from("lead_crm_sync_events").select("id", { count: "exact", head: true }).eq("status", "failed"),
-    db(admin).from("lead_crm_sync_events").select("id", { count: "exact", head: true }).eq("status", "dead_letter"),
+    db(admin).from("ghl_lead_effect_events").select("id", { count: "exact", head: true }).eq("status", "retryable_failure"),
+    db(admin).from("ghl_lead_effect_events").select("id", { count: "exact", head: true }).eq("status", "operator_action_required"),
     db(admin).from("system_jobs").select("id", { count: "exact", head: true }).eq("kind", "lead_side_effects").eq("status", "pending"),
     db(admin).from("system_jobs").select("id", { count: "exact", head: true }).eq("kind", "lead_side_effects").eq("status", "failed"),
     db(admin)
-      .from("workspace_ghl_mapping")
-      .select("workspace_id, partner_id, ghl_location_id, ghl_pipeline_id, ghl_stage_id, sync_enabled")
+      .from("ghl_location_mappings")
+      .select("id, organization_id, partner_id, installation_id, environment, provider_location_id, snapshot_manifest_id, status, snapshot_verified_at, required_objects_verified_at")
       .limit(25),
   ]);
 
@@ -486,27 +503,57 @@ async function loadHealth(admin: AdminClient): Promise<FulfillmentMonitorHealth>
     throw new ApiError(500, firstError.message, "fulfillment_health_lookup_failed");
   }
 
-  const partnerIds = Array.from(
+  const installationIds = Array.from(
     new Set(
       (Array.isArray(mappings) ? mappings : [])
-        .map((mapping: JsonRecord) => asString(mapping.partner_id))
+        .map((mapping: JsonRecord) => asString(mapping.installation_id))
         .filter((value): value is string => Boolean(value)),
     ),
   );
-  const { data: configs, error: configsError } = partnerIds.length > 0
+  const workspaceIds = Array.from(
+    new Set(
+      (Array.isArray(mappings) ? mappings : [])
+        .map((mapping: JsonRecord) => asString(mapping.organization_id))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+  const [
+    { data: installations, error: installationsError },
+    { data: provisioningRuns, error: provisioningRunsError },
+  ] = await Promise.all([
+    installationIds.length > 0
     ? await db(admin)
-      .from("partner_ghl_config")
-      .select("partner_id, enabled, encrypted_credential_ref")
-      .in("partner_id", partnerIds)
-    : { data: [], error: null };
+      .from("ghl_installations")
+      .select("id, status, encrypted_credential_ref")
+      .in("id", installationIds)
+    : { data: [], error: null },
+    workspaceIds.length > 0
+      ? await db(admin)
+        .from("ghl_provisioning_runs")
+        .select("organization_id, environment, state, updated_at")
+        .in("organization_id", workspaceIds)
+        .order("updated_at", { ascending: false })
+      : { data: [], error: null },
+  ]);
 
-  if (configsError) {
-    throw new ApiError(500, configsError.message, "fulfillment_health_config_lookup_failed");
+  if (installationsError ?? provisioningRunsError) {
+    throw new ApiError(
+      500,
+      (installationsError ?? provisioningRunsError).message,
+      "fulfillment_health_config_lookup_failed",
+    );
   }
 
-  const configsByPartner = new Map(
-    (Array.isArray(configs) ? configs : []).map((config: JsonRecord) => [asString(config.partner_id), config]),
+  const installationsById = new Map(
+    (Array.isArray(installations) ? installations : []).map((installation: JsonRecord) => [asString(installation.id), installation]),
   );
+  const latestRunByWorkspaceEnvironment = new Map<string, JsonRecord>();
+  for (const run of Array.isArray(provisioningRuns) ? provisioningRuns as JsonRecord[] : []) {
+    const key = `${asString(run.organization_id)}:${asString(run.environment)}`;
+    if (!latestRunByWorkspaceEnvironment.has(key)) {
+      latestRunByWorkspaceEnvironment.set(key, run);
+    }
+  }
 
   return {
     checkedAt: new Date().toISOString(),
@@ -517,6 +564,7 @@ async function loadHealth(admin: AdminClient): Promise<FulfillmentMonitorHealth>
       provisioningWritesEnabled: false,
       workflowEnrollmentEnabled: false,
       workflowEnrollmentRetired: true,
+      adapterMode: "fake_only",
     },
     recentCrmFailures: recentCrmFailures ?? 0,
     recentDeadLetters: recentDeadLetters ?? 0,
@@ -524,17 +572,26 @@ async function loadHealth(admin: AdminClient): Promise<FulfillmentMonitorHealth>
     failedLeadSideEffectJobs: failedLeadSideEffectJobs ?? 0,
     mappings: (Array.isArray(mappings) ? mappings : []).map((mapping: JsonRecord) => {
       const partnerId = asString(mapping.partner_id);
-      const config = configsByPartner.get(partnerId) ?? null;
+      const workspaceId = asString(mapping.organization_id);
+      const environment = asString(mapping.environment) ?? "unknown";
+      const installation = installationsById.get(asString(mapping.installation_id)) ?? null;
+      const requiredObjectsVerified = Boolean(asString(mapping.required_objects_verified_at));
+      const latestRun = latestRunByWorkspaceEnvironment.get(`${workspaceId}:${environment}`) ?? null;
 
       return {
-        workspaceId: asString(mapping.workspace_id),
+        workspaceId,
         partnerId,
-        locationConfigured: Boolean(asString(mapping.ghl_location_id)),
-        pipelineConfigured: Boolean(asString(mapping.ghl_pipeline_id)),
-        stageConfigured: Boolean(asString(mapping.ghl_stage_id)),
-        syncEnabled: mapping.sync_enabled === true,
-        credentialConfigured: Boolean(asString(config?.encrypted_credential_ref)),
-        partnerConfigEnabled: config?.enabled === true,
+        environment,
+        mappingStatus: asString(mapping.status) ?? "unknown",
+        locationConfigured: Boolean(asString(mapping.provider_location_id)),
+        pipelineConfigured: requiredObjectsVerified,
+        stageConfigured: requiredObjectsVerified,
+        syncEnabled: mapping.status === "active" && requiredObjectsVerified,
+        credentialConfigured: Boolean(asString(installation?.encrypted_credential_ref)),
+        partnerConfigEnabled: installation?.status === "active",
+        snapshotVerified: Boolean(asString(mapping.snapshot_verified_at)),
+        requiredObjectsVerified,
+        provisioningState: asString(latestRun?.state),
       };
     }),
   };
@@ -591,8 +648,8 @@ export async function loadFulfillmentMonitorData(filters: FulfillmentMonitorFilt
     loadByIds(admin, "organizations", workspaceIds, "id, name"),
     leadIds.length > 0
       ? db(admin)
-        .from("lead_crm_sync_events")
-        .select("id, lead_id, workspace_id, partner_id, destination, ghl_location_id, ghl_contact_id, ghl_opportunity_id, status, attempt_count, last_error_code, last_error_message, next_retry_at, metadata, created_at, updated_at")
+        .from("ghl_lead_effect_events")
+        .select("id, organization_id, lead_id, location_mapping_id, effect_kind, status, provider_contact_id, provider_opportunity_id, provider_object_id, attempt_count, max_attempts, last_error_code, last_error_message, next_retry_at, metadata, created_at, updated_at")
         .in("lead_id", leadIds)
         .order("updated_at", { ascending: false })
       : { data: [], error: null },
@@ -631,10 +688,45 @@ export async function loadFulfillmentMonitorData(filters: FulfillmentMonitorFilt
   const billingEvents = Array.isArray(billingEventsRaw) ? (billingEventsRaw as JsonRecord[]) : [];
   const trackingEvents = Array.isArray(trackingEventsRaw) ? (trackingEventsRaw as JsonRecord[]) : [];
 
+  const locationMappingIds = Array.from(new Set(
+    crmEvents.map((event) => asString(event.location_mapping_id)).filter((value): value is string => Boolean(value)),
+  ));
+  const { data: crmLocationsRaw, error: crmLocationsError } = locationMappingIds.length > 0
+    ? await db(admin)
+      .from("ghl_location_mappings")
+      .select("id, organization_id, provider_location_id")
+      .in("id", locationMappingIds)
+    : { data: [], error: null };
+  if (crmLocationsError) {
+    throw new ApiError(500, crmLocationsError.message, "fulfillment_ghl_location_lookup_failed");
+  }
+  const crmLocationsById = new Map(
+    (Array.isArray(crmLocationsRaw) ? crmLocationsRaw : []).map((location: JsonRecord) => [asString(location.id), location]),
+  );
+  const statusPriority: Record<string, number> = {
+    operator_action_required: 7,
+    uncertain: 6,
+    retryable_failure: 5,
+    dispatching: 4,
+    replay_requested: 3,
+    pending: 2,
+    succeeded: 1,
+    canceled: 0,
+  };
+
   const rows = leads.map((lead) => {
     const campaign = asString(lead.campaign_id) ? campaignById.get(String(lead.campaign_id)) : null;
     const organization = asString(lead.organization_id) ? organizationById.get(String(lead.organization_id)) : null;
-    const crmEvent = mapCrmEvent(latestByLeadId(crmEvents, String(lead.id)));
+    const actionableCrmRow = crmEvents
+      .filter((event) => event.lead_id === String(lead.id))
+      .sort((a, b) => {
+        const priority = (statusPriority[asString(b.status) ?? ""] ?? 0) - (statusPriority[asString(a.status) ?? ""] ?? 0);
+        return priority || Date.parse(asString(b.updated_at) ?? "") - Date.parse(asString(a.updated_at) ?? "");
+      })[0] ?? null;
+    const crmEvent = mapCrmEvent(
+      actionableCrmRow,
+      actionableCrmRow ? crmLocationsById.get(asString(actionableCrmRow.location_mapping_id)) ?? null : null,
+    );
     const leadSideEffectsJob = mapJob(jobs.find((job) => jobMatchesLead(job, lead, "lead_side_effects")) ?? null);
     const performanceBillingJob = mapJob(jobs.find((job) => jobMatchesLead(job, lead, "performance_lead_billing")) ?? null);
     const billingEvent = mapBillingEvent(latestByLeadId(billingEvents, String(lead.id)));
@@ -667,7 +759,7 @@ export async function loadFulfillmentMonitorData(filters: FulfillmentMonitorFilt
       limit,
     },
     rows: filters.failedOnly
-      ? rows.filter((row) => row.crmEvent?.status === "failed" || row.crmEvent?.status === "dead_letter" || row.leadSideEffectsJob?.status === "failed")
+      ? rows.filter((row) => ["retryable_failure", "operator_action_required", "uncertain"].includes(row.crmEvent?.status ?? "") || row.leadSideEffectsJob?.status === "failed")
       : rows,
     health,
   };
@@ -678,10 +770,9 @@ export async function retryFulfillmentCrmSync(params: {
   allowDeadLetter?: boolean;
   confirmation: string;
 }) {
-  void params;
-  throw new ApiError(
-    501,
-    "CRM retry is not available in this release branch.",
-    "crm_retry_not_available",
-  );
+  return requestGhlLeadEffectReplay({
+    leadId: params.leadId,
+    allowOperatorReview: params.allowDeadLetter === true,
+    confirmation: params.confirmation,
+  });
 }

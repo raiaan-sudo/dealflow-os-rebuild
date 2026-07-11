@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { ApiError } from "@/lib/api/route";
 import { logWarn } from "@/lib/logging";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getTrustedRequestIp } from "@/lib/api/client-ip";
 type Bucket = {
   count: number;
   resetAt: number;
@@ -234,9 +235,7 @@ export async function consumeRateLimitBuckets(
 }
 
 export function getRequestIp(request: Request | { headers: Headers }) {
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  const realIp = request.headers.get("x-real-ip");
-  return forwardedFor?.split(",")[0]?.trim() || realIp || "anonymous";
+  return getTrustedRequestIp(request);
 }
 
 export function getHashedRateLimitIdentifier(value: string | null | undefined) {

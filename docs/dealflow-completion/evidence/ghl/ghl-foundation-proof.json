@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0",
+  "captured_at": "2026-07-10",
+  "disposition": "LOCAL_RELEASE_CANDIDATE_FAKE_ONLY",
+  "external_mutations": 0,
+  "database_migrations_applied": 0,
+  "real_provider_calls": 0,
+  "fake_provider_calls_exercised": true,
+  "provider_adapter": {
+    "kind": "fake",
+    "network_access": "none",
+    "default_write_gate": "disabled",
+    "real_adapter_present": false
+  },
+  "implemented": [
+    "hidden_direct_realtor_partner_child_hierarchy",
+    "workspace_environment_active_location_uniqueness",
+    "provider_location_active_workspace_uniqueness",
+    "approved_snapshot_version_manifest",
+    "durable_provisioning_state_machine",
+    "provider_outbox",
+    "append_only_sanitized_receipts",
+    "uncertain_result_reconciliation_before_retry",
+    "ready_state_verification",
+    "same_tenant_lead_effect_schema",
+    "safe_replay_request",
+    "explicit_operator_request"
+  ],
+  "tests": [
+    {
+      "command": "node scripts/test-ghl-tenant-provisioning.mjs",
+      "result": "PASS",
+      "network": false
+    },
+    {
+      "command": "npx tsc --noEmit -p tsconfig.typecheck.json --pretty false",
+      "result": "PASS"
+    },
+    {
+      "command": "npx eslint src/lib/integrations/gohighlevel src/lib/services/ghl-provisioning-service.ts src/lib/services/ghl-provisioning-repository.ts src/lib/services/ghl-lead-effect-service.ts src/lib/services/fulfillment-monitor-service.ts scripts/test-ghl-tenant-provisioning.mjs",
+      "result": "PASS"
+    },
+    {
+      "command": "node scripts/test-lead-tracking-health.mjs",
+      "result": "PASS"
+    },
+    {
+      "command": "SUPABASE_SCHEMA_CHECK_MODE=local npm run schema:check",
+      "result": "PASS_LOCAL_FILE_CHECK_ONLY"
+    },
+    {
+      "command": "./node_modules/.bin/next build",
+      "result": "PASS",
+      "exit_code": 0,
+      "static_pages": "47/47"
+    }
+  ],
+  "blocked_external": [
+    "funnel_publication_provider_capability",
+    "live_location_creation",
+    "live_snapshot_installation_and_verification",
+    "production_snapshot_identity_and_required_object_manifest",
+    "provider_permissions_rate_limits_and_webhooks",
+    "legal_data_ownership_export_deletion_and_offboarding"
+  ],
+  "not_integrated": [
+    "lead_worker_to_ghl_effect_creation",
+    "ghl_provider_outbox_worker"
+  ],
+  "local_database_execution": {
+    "result": "BLOCKED",
+    "check": "supabase status --output json",
+    "blocker": "docker_daemon_unavailable_at_colima_socket",
+    "database_mutation_attempted": false
+  }
+}

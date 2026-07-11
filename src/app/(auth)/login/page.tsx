@@ -1,5 +1,10 @@
+import type { Metadata } from "next";
 import { hasSupabaseEnv } from "@/lib/env";
 import { LoginForm } from "@/components/auth/login-form";
+
+export const metadata: Metadata = {
+  title: "Sign in",
+};
 
 export default async function LoginPage({
   searchParams,
@@ -28,13 +33,22 @@ export default async function LoginPage({
       : "sign-in";
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-[560px] items-center px-5 py-10 sm:px-6">
-      <LoginForm
-        redirectedFrom={redirectedFrom ?? planRedirect}
-        reason={reason}
-        isConfigured={hasSupabaseEnv()}
-        initialMode={initialMode}
-      />
-    </div>
+    <>
+      <a className="df-skip-link" href="#auth-content">
+        Skip to sign in
+      </a>
+      <main
+        id="auth-content"
+        tabIndex={-1}
+        className="mx-auto flex min-h-screen w-full max-w-[560px] items-center px-5 py-10 sm:px-6"
+      >
+        <LoginForm
+          redirectedFrom={redirectedFrom ?? planRedirect}
+          reason={reason}
+          isConfigured={hasSupabaseEnv()}
+          initialMode={initialMode}
+        />
+      </main>
+    </>
   );
 }

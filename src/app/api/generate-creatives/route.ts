@@ -59,6 +59,8 @@ function mapStaticAdToCampaignAd(ad: {
 
 async function persistSupplementalCreativeFields(params: {
   campaignId: string;
+  organizationId: string;
+  userId: string;
   strategy: Record<string, unknown>;
   items: unknown[];
   copy: unknown[];
@@ -73,6 +75,7 @@ async function persistSupplementalCreativeFields(params: {
     .from("campaign_plans")
     .select("plan")
     .eq("id", params.campaignId)
+    .eq("organization_id", params.organizationId)
     .maybeSingle();
 
   if (error) {
@@ -86,6 +89,8 @@ async function persistSupplementalCreativeFields(params: {
   await persistCampaignPlanDocumentUpdate({
     supabase,
     campaignId: params.campaignId,
+    organizationId: params.organizationId,
+    userId: params.userId,
     plan: mergeCampaignPlanDocument(currentPlan, {
       strategy: params.strategy,
       items: params.items,
@@ -177,6 +182,8 @@ export async function POST(request: Request) {
 
         await persistSupplementalCreativeFields({
           campaignId: savedPlan.id,
+          organizationId: auth.organizationId,
+          userId: auth.userId,
           strategy,
           items: creativePackage.items,
           copy,

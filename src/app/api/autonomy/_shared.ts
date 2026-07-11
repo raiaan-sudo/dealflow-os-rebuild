@@ -1,9 +1,14 @@
 import { ApiError } from "@/lib/api/route";
 import {
   analyzeCampaign,
+  buildHeldCampaignAnalysis,
   type CampaignAnalysisInput,
   type CampaignAnalysisResult,
 } from "@/lib/services/ai-optimizer";
+import {
+  evaluateOptimizationEvidence,
+  type OptimizationEvidenceMetrics,
+} from "@/lib/optimization-engine/safety-policy";
 import {
   type AutonomyActionCandidate,
   type AutonomySnapshot,
@@ -15,6 +20,7 @@ import {
   getLatestMetaCampaignSyncSnapshot,
   getMetaCampaignSyncSnapshotForCampaign,
 } from "@/lib/services/meta-campaign-sync-service";
+import { recordOptimizationDecision } from "@/lib/services/optimization-decision-service";
 
 function mapActionType(focus: CampaignAnalysisResult["recommendationFocus"], action: string) {
   if (focus === "pause") {
@@ -36,28 +42,12 @@ function mapActionType(focus: CampaignAnalysisResult["recommendationFocus"], act
   return "monitor";
 }
 
-function mapBudgetChangePercent(
-  focus: CampaignAnalysisResult["recommendationFocus"],
-  action: string,
-) {
-  if (focus === "promote" || /increase budget|scale/i.test(action)) {
-    return 20;
-  }
-
-  if (focus === "pause") {
-    return -100;
-  }
-
-  return 0;
-}
-
 function buildMetrics(params: {
   syncSnapshot: Awaited<ReturnType<typeof getLatestMetaCampaignSyncSnapshot>> | null;
-  monthlyBudget: number;
-}) {
+}): OptimizationEvidenceMetrics | null {
   const metrics = params.syncSnapshot?.deliveryMetrics;
 
-  if (metrics) {
+  if (metrics && params.syncSnapshot?.syncResult === "success") {
     const impressions = Number(metrics.impressions ?? 0);
     const clicks = Number(metrics.clicks ?? 0);
     const spend = Number(metrics.spend ?? 0);
@@ -76,24 +66,18 @@ function buildMetrics(params: {
       spend,
       leads,
       lp_cvr: clicks > 0 ? Number(((leads / clicks) * 100).toFixed(2)) : 0,
-    } satisfies CampaignAnalysisInput;
+      impressions,
+      clicks,
+    } satisfies OptimizationEvidenceMetrics;
   }
 
-  return {
-    ctr: 0,
-    cpc: 0,
-    cpl: 0,
-    frequency: 0,
-    spend: 0,
-    leads: 0,
-    lp_cvr: 0,
-  } satisfies CampaignAnalysisInput;
+  return null;
 }
 
 function buildPendingActions(
   result: CampaignAnalysisResult,
-  audience: string,
   market: string,
+  blockedReason: string,
 ): AutonomyActionCandidate[] {
   return result.actions.map((action, index) => ({
     actionKey: `${result.status}-${index + 1}`,
@@ -109,15 +93,15 @@ function buildPendingActions(
           : result.status === "iterate"
             ? 0.74
             : 0.62,
-    budgetChangePercent: mapBudgetChangePercent(result.recommendationFocus, action),
-    blockedReason:
-      /pause|duplicate|increase budget|scale/i.test(action)
-        ? "Autonomy routes are recommendations-only right now."
-        : null,
+    budgetChangePercent: 0,
+    blockedReason,
   }));
 }
 
-export async function evaluateAutonomy(campaignId?: string | null) {
+export async function evaluateAutonomy(
+  campaignId?: string | null,
+  options?: { persistDecision?: boolean },
+) {
   const record = campaignId
     ? await getCampaignById(campaignId)
     : null;
@@ -136,36 +120,85 @@ export async function evaluateAutonomy(campaignId?: string | null) {
 
   const metrics = buildMetrics({
     syncSnapshot,
-    monthlyBudget: plan.monthlyBudget,
   });
-  const result = analyzeCampaign(metrics, {
-    creativeStrategy: plan.creativeStrategy,
-    audience: plan.audience,
-    market: plan.market,
-    propertyType: plan.propertyType,
-    keyOffer: plan.keyOffer,
-    currentAngles: plan.ads.map((ad) => ad.variant),
-    winningAngle: null,
-    budget: Number((plan.monthlyBudget / 30).toFixed(2)),
+  const sourceStatus = !syncSnapshot
+    ? "missing"
+    : syncSnapshot.syncResult === "success"
+      ? "confirmed"
+      : syncSnapshot.syncResult === "partial_success"
+        ? "partial"
+        : "failed";
+  const evidenceDecision = evaluateOptimizationEvidence({
+    sourceStatus,
+    syncedAt: syncSnapshot?.syncedAt ?? null,
+    metrics,
+    // No owner-approved minimums, freshness window, cooldown, or budget caps
+    // exist yet. This stays null so the optimizer fails closed.
+    approvedPolicy: null,
   });
+  const analysisInput: CampaignAnalysisInput | null = metrics
+    ? {
+        ctr: metrics.ctr,
+        cpc: metrics.cpc,
+        cpl: metrics.cpl,
+        frequency: metrics.frequency,
+        spend: metrics.spend,
+        leads: metrics.leads,
+        lp_cvr: metrics.lp_cvr,
+      }
+    : null;
+  const result = analysisInput && evidenceDecision.canGenerateShadowProposal
+    ? analyzeCampaign(analysisInput, {
+        creativeStrategy: plan.creativeStrategy,
+        audience: plan.audience,
+        market: plan.market,
+        propertyType: plan.propertyType,
+        keyOffer: plan.keyOffer,
+        currentAngles: plan.ads.map((ad) => ad.variant),
+        winningAngle: null,
+        budget: Number((plan.monthlyBudget / 30).toFixed(2)),
+      })
+    : buildHeldCampaignAnalysis(
+        "Optimization is on hold until a confirmed delivery snapshot is available.",
+      );
 
-  const pendingActions = buildPendingActions(result, plan.audience, plan.market);
+  const blockedReason =
+    evidenceDecision.decisionState === "HOLD_NO_ACTION"
+      ? `HOLD_NO_ACTION: ${evidenceDecision.blockers.join(", ")}.`
+      : "Shadow proposal only; provider execution requires a separate explicit authorization.";
+  const pendingActions = buildPendingActions(
+    result,
+    plan.market,
+    blockedReason,
+  );
   const recommendations = result.actions.map((action, index) => ({
     id: `${plan.id}-recommendation-${index + 1}`,
     title: action,
     reason: result.reasons[0] ?? "Performance analysis generated a recommendation.",
     focus: result.recommendationFocus ?? "monitor",
     blocked: true,
+    blockedReason,
   }));
   const snapshot: AutonomySnapshot = {
     mode: "assisted",
     systemStatus:
-      metrics.spend > 0 || metrics.leads > 0 || Boolean(plan.runtime.campaignId)
+      metrics && (metrics.spend > 0 || metrics.leads > 0 || Boolean(plan.runtime.campaignId))
         ? "healthy"
-        : "idle",
+        : "degraded",
     pendingActions,
     recentActions: [],
   };
+  const decisionRecord = options?.persistDecision
+    ? await recordOptimizationDecision({
+        campaignId: plan.id,
+        sourceStatus,
+        sourceTimestamp: syncSnapshot?.syncedAt ?? null,
+        metrics,
+        evidence: evidenceDecision,
+        approvedPolicy: null,
+        proposedActions: evidenceDecision.canGenerateShadowProposal ? result.actions : [],
+      })
+    : null;
 
   return {
     campaignId: plan.id,
@@ -173,6 +206,8 @@ export async function evaluateAutonomy(campaignId?: string | null) {
     recommendations,
     actions: result.actions,
     optimizerResult: result,
+    optimizationEvidence: evidenceDecision,
+    decisionRecord,
     snapshot,
   };
 }

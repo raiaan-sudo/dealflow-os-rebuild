@@ -178,9 +178,15 @@ export function LaunchActionPanel({
         <div className="flex flex-wrap items-center gap-3">
           <EnvironmentBadge demoMode={demoMode} launchMode={launchMode} />
           <Badge className="border-white/10 bg-white/[0.06] text-white/85">{launchStatusLabel}</Badge>
-          <Button size="lg" onClick={canLaunch ? handleLaunch : handleConnectAccount}>
+          <Button
+            size="lg"
+            onClick={canLaunch ? handleLaunch : handleConnectAccount}
+            disabled={canLaunch && !canPushToMeta}
+          >
             {canLaunch
-              ? runtime.metaPushStatus === "published"
+              ? runtime.metaPushStatus === "provider_paused"
+                ? "Created in Meta (Paused)"
+                : runtime.metaPushStatus === "published"
                 ? "Publish Confirmed"
                 : "Launch Campaign"
               : blockingRequirements[0] === "Connect a real Meta ad account"
@@ -193,7 +199,13 @@ export function LaunchActionPanel({
             onClick={canLaunch ? handleLaunch : handleConnectAccount}
             disabled={canLaunch ? !canPushToMeta : blockingRequirements[0] !== "Connect a real Meta ad account"}
           >
-            {canLaunch ? "Launch" : blockingRequirements[0] === "Connect a real Meta ad account" ? "Connect Meta" : "Finish setup"}
+            {canLaunch
+              ? runtime.metaPushStatus === "provider_paused"
+                ? "Created paused"
+                : "Launch"
+              : blockingRequirements[0] === "Connect a real Meta ad account"
+                ? "Connect Meta"
+                : "Finish setup"}
           </Button>
         </div>
       </div>
@@ -219,6 +231,7 @@ export function LaunchActionPanel({
 export function LaunchGuidedFlowPanel({
   focusMode,
   isLive,
+  isProviderPaused,
   isLaunching,
   canLaunch,
   blockingRequirements,
@@ -232,6 +245,7 @@ export function LaunchGuidedFlowPanel({
 }: {
   focusMode: boolean;
   isLive: boolean;
+  isProviderPaused: boolean;
   isLaunching: boolean;
   canLaunch: boolean;
   blockingRequirements: string[];
@@ -253,7 +267,9 @@ export function LaunchGuidedFlowPanel({
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary/80">Guided launch</p>
           <p className="mt-2 text-xl font-semibold">
-            {isLive
+            {isProviderPaused
+              ? "Created in Meta as paused"
+              : isLive
               ? "Publish confirmed"
               : isLaunching
                 ? "Submitting launch now"
@@ -287,7 +303,7 @@ export function LaunchGuidedFlowPanel({
         ))}
       </div>
       <div className="mt-6 flex flex-wrap justify-center gap-3">
-        {!isLive ? (
+        {!isLive && !isProviderPaused ? (
           <>
             <Button
               size="lg"
@@ -307,7 +323,7 @@ export function LaunchGuidedFlowPanel({
             ) : null}
           </>
         ) : null}
-        {isLive ? (
+        {isLive || isProviderPaused ? (
           <>
             <Button size="lg" onClick={onViewResults}>
               Dashboard
@@ -335,23 +351,31 @@ export function PostLaunchStatePanel({
   launchMode: "test" | "live";
   onViewResults?: () => void;
 }) {
-  if (runtime.metaPushStatus !== "published") {
+  const isProviderPaused = runtime.metaPushStatus === "provider_paused";
+
+  if (runtime.metaPushStatus !== "published" && !isProviderPaused) {
     return null;
   }
 
   return (
-    <div className={`mt-4 rounded-[24px] border border-emerald-400/15 bg-emerald-400/10 p-5 ${focusMode ? "overflow-hidden" : ""}`}>
+    <div className={`mt-4 rounded-[24px] border p-5 ${isProviderPaused ? "border-amber-400/20 bg-amber-400/10" : "border-emerald-400/15 bg-emerald-400/10"} ${focusMode ? "overflow-hidden" : ""}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-200">
-          Publish confirmed
+        <p className={`text-[11px] font-semibold uppercase tracking-[0.24em] ${isProviderPaused ? "text-amber-100" : "text-emerald-200"}`}>
+          {isProviderPaused ? "Provider objects created" : "Publish confirmed"}
         </p>
         <EnvironmentBadge demoMode={demoMode} launchMode={launchMode} />
       </div>
       <h3 className="mt-3 text-2xl font-semibold text-white">
-        {focusMode ? "Campaign published" : "Publish confirmed"}
+        {isProviderPaused
+          ? "Created in Meta (paused)"
+          : focusMode
+            ? "Campaign published"
+            : "Publish confirmed"}
       </h3>
-      <p className="mt-3 text-sm leading-7 text-emerald-50/85">
-        Publish is confirmed. Delivery metrics and results should be treated as trustworthy only after a live sync reports real campaign data.
+      <p className={`mt-3 text-sm leading-7 ${isProviderPaused ? "text-amber-50/85" : "text-emerald-50/85"}`}>
+        {isProviderPaused
+          ? "Meta confirmed the campaign, ad set, and ad are configured PAUSED, with the creative durably receipted. This flow did not activate them, and no delivery or spend is inferred."
+          : "Publish is confirmed. Delivery metrics and results should be treated as trustworthy only after a live sync reports real campaign data."}
       </p>
       {onViewResults ? (
         <div className="mt-5">

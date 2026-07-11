@@ -1,8 +1,15 @@
 import { notFound } from "next/navigation";
 import { unstable_cache } from "next/cache";
+import { cookies } from "next/headers";
 import { getPublishedCampaignBySlug } from "@/lib/services/campaign-persistence";
 import { LeadCaptureForm } from "@/app/f/[slug]/lead-capture-form";
+import { MetaPixelConsentControl } from "@/components/privacy/meta-pixel-consent-control";
 import { getMetaPixelIdForOrganization } from "@/lib/integrations/meta/conversions";
+import {
+  isMetaPixelTrackingAllowed,
+  getMetaPixelConsentPolicyVersion,
+  META_PIXEL_CONSENT_COOKIE,
+} from "@/lib/meta-pixel-consent";
 import {
   buildOfferFirstBody,
   buildOfferFirstHeadline,
@@ -14,11 +21,7 @@ export const revalidate = 60;
 const getCachedPublicFunnel = unstable_cache(
   async (slug: string) => {
     const record = await getPublishedCampaignBySlug(slug).catch(() => null);
-    const metaPixelId = record?.campaign.organization_id
-      ? await getMetaPixelIdForOrganization(record.campaign.organization_id)
-      : null;
-
-    return { record, metaPixelId };
+    return { record };
   },
   ["public-funnel-page"],
   { revalidate: 60 },
@@ -30,11 +33,25 @@ export default async function PublicFunnelPage({
   params: Promise<{ slug: string }> | { slug: string };
 }) {
   const resolvedParams = params instanceof Promise ? await params : params;
-  const { record, metaPixelId } = await getCachedPublicFunnel(resolvedParams.slug);
+  const { record } = await getCachedPublicFunnel(resolvedParams.slug);
 
   if (!record) {
     notFound();
   }
+
+  const cookieStore = await cookies();
+  const metaPixelConsentCookie = cookieStore.get(META_PIXEL_CONSENT_COOKIE)?.value ?? null;
+  const metaPixelConsentPolicyVersion =
+    process.env.ALLOW_META_PIXEL_EVENTS === "true"
+      ? getMetaPixelConsentPolicyVersion() ?? ""
+      : "";
+  const metaPixelAllowed = isMetaPixelTrackingAllowed({
+    cookieValue: metaPixelConsentCookie,
+  });
+  const metaPixelId =
+    metaPixelAllowed && record.campaign.organization_id
+      ? await getMetaPixelIdForOrganization(record.campaign.organization_id)
+      : null;
 
   const visibleSections = record.funnel.sections.filter((section) => section.visible !== false);
   const offer = textPreservesOfferConcept(record.plan.offer_summary, record.plan.offer)
@@ -54,6 +71,12 @@ export default async function PublicFunnelPage({
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-[1100px] flex-col gap-8 px-6 py-10 lg:flex-row lg:items-start">
+      {metaPixelConsentPolicyVersion ? (
+        <MetaPixelConsentControl
+          currentCookieValue={metaPixelConsentCookie}
+          policyVersion={metaPixelConsentPolicyVersion}
+        />
+      ) : null}
       <div className="flex-1 space-y-6">
         <div className="space-y-4">
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary/80">
@@ -91,6 +114,7 @@ export default async function PublicFunnelPage({
           campaignId={record.campaign.id}
           funnelSlug={record.publish.slug ?? resolvedParams.slug}
           formFields={record.funnel.form_fields ?? []}
+          customQuestions={record.funnel.customLeadFormQuestions ?? []}
           cta={record.funnel.cta || "Submit"}
           metaPixelId={metaPixelId}
         />

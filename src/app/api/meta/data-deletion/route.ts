@@ -1,8 +1,16 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getMetaEnv, getPublicAppUrl } from "@/lib/env";
 import { ApiError, apiFailure, parseTextBody } from "@/lib/api/route";
+import { encryptSecret } from "@/lib/integrations/meta-crypto";
 import { logOperationalEvent, logWarn } from "@/lib/logging";
+import {
+  acceptMetaDeletionResponsibility,
+  getMetaDeletionConfirmationCode,
+  getMetaDeletionRequestHash,
+  getMetaDeletionUserHash,
+  validateMetaDeletionIssuedAt,
+} from "@/lib/services/meta-deletion-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,14 +51,7 @@ function parseSignedRequest(signedRequest: string, appSecret: string) {
     throw new ApiError(400, "Signed request signature is invalid.", "invalid_signed_request_signature");
   }
 
-  return payload;
-}
-
-function getConfirmationCode(payload: MetaSignedRequestPayload, appId: string) {
-  return createHash("sha256")
-    .update(`${appId}:${payload.user_id ?? "unknown"}:${payload.issued_at ?? "unknown"}`)
-    .digest("hex")
-    .slice(0, 16);
+  return { payload, encodedPayload };
 }
 
 export async function GET() {
@@ -81,23 +82,46 @@ export async function POST(request: Request) {
       throw new ApiError(400, "Missing Meta signed_request.", "missing_signed_request");
     }
 
-    const payload = parseSignedRequest(signedRequest, env.appSecret);
+    const { payload, encodedPayload } = parseSignedRequest(signedRequest, env.appSecret);
+    if (typeof payload.user_id !== "string" || !payload.user_id.trim()) {
+      throw new ApiError(
+        400,
+        "Signed request does not identify a Meta user.",
+        "missing_signed_request_user",
+      );
+    }
+
+    const freshnessStatus = validateMetaDeletionIssuedAt(payload.issued_at);
+    const requestHash = getMetaDeletionRequestHash({
+      appId: env.appId,
+      encodedPayload,
+    });
+    const confirmationCode = getMetaDeletionConfirmationCode(requestHash);
+    const userHash = getMetaDeletionUserHash(env.appId, payload.user_id);
+    const responsibility = await acceptMetaDeletionResponsibility({
+      requestHash,
+      confirmationCode,
+      userHash,
+      userIdEncrypted: encryptSecret(payload.user_id, env.encryptionKey),
+      issuedAt: payload.issued_at,
+      freshnessStatus,
+    });
     const appUrl = getPublicAppUrl();
-    const confirmationCode = getConfirmationCode(payload, env.appId);
     const deletionUrl = new URL("/data-deletion", appUrl);
-    deletionUrl.searchParams.set("code", confirmationCode);
+    deletionUrl.searchParams.set("code", responsibility.confirmationCode);
 
     logOperationalEvent("meta_data_deletion_callback_received", {
-      userHash: payload.user_id
-        ? createHash("sha256").update(payload.user_id).digest("hex").slice(0, 12)
-        : null,
+      userHash: userHash.slice(0, 12),
+      requestHash: requestHash.slice(0, 12),
       issuedAt: payload.issued_at ?? null,
-      confirmationCode,
+      freshnessStatus,
+      responsibilityStatus: responsibility.responsibilityStatus,
+      replayed: responsibility.replayed,
     });
 
     return NextResponse.json({
       url: deletionUrl.toString(),
-      confirmation_code: confirmationCode,
+      confirmation_code: responsibility.confirmationCode,
     });
   } catch (error) {
     if (error instanceof ApiError) {
@@ -105,7 +129,13 @@ export async function POST(request: Request) {
         code: error.code,
         status: error.status,
       });
-      return apiFailure(error.message, error.code, error.status);
+      return apiFailure(
+        error.status >= 500
+          ? "Deletion request responsibility is temporarily unavailable."
+          : error.message,
+        error.code,
+        error.status,
+      );
     }
 
     logWarn("meta_data_deletion_callback_rejected", {

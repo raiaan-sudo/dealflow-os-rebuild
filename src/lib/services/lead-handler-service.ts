@@ -15,19 +15,22 @@ import {
   generateSuggestedSlots,
   parseTimeFromMessage,
 } from "@/lib/services/booking-service";
-import { createSystemJob } from "@/lib/services/system-job-service";
+import {
+  createSystemJob,
+  queueLeadSideEffectsJob,
+} from "@/lib/services/system-job-service";
+import { getAppContext } from "@/lib/services/app-context";
 import { normalizePhone, sendSMS } from "@/lib/services/sms-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import type { Database, Json } from "@/lib/supabase/types";
+import { assertLeadRetryParentScope } from "@/lib/leads/retry-scope";
 
 type SupabaseClient = NonNullable<Awaited<ReturnType<typeof createRouteHandlerClient>>>;
 type AdminClient = NonNullable<ReturnType<typeof createAdminClient>>;
 type LeadRow = Database["public"]["Tables"]["leads"]["Row"];
 type LeadMessageRow = Database["public"]["Tables"]["lead_messages"]["Row"];
 type AppointmentRow = Database["public"]["Tables"]["appointments"]["Row"];
-type OrganizationMembershipRow =
-  Database["public"]["Tables"]["organization_memberships"]["Row"];
 type CampaignPlanRow = Database["public"]["Tables"]["campaign_plans"]["Row"];
 
 type LeadConversationMessage = Pick<LeadMessageRow, "id" | "direction" | "message" | "created_at">;
@@ -66,6 +69,8 @@ type CreateLeadInput = {
   consent_url?: string | null;
   skip_recent_duplicate_fallback?: boolean;
   skip_lead_loop_verification?: boolean;
+  custom_answers?: Record<string, string>;
+  metadata?: Record<string, Json>;
 };
 
 type QueueFailedLeadCaptureInput = {
@@ -87,10 +92,14 @@ type QueueFailedLeadCaptureInput = {
   utmCampaign?: string | null;
   adId?: string | null;
   landingPageUrl?: string | null;
+  customAnswers?: Record<string, string>;
 };
 
 export type PublicLeadCaptureRetryInput = {
   campaignId: string;
+  expectedOrganizationId: string;
+  expectedUserId: string;
+  expectedCampaignId: string;
   funnelId: string | null;
   name: string;
   email: string | null;
@@ -108,6 +117,7 @@ export type PublicLeadCaptureRetryInput = {
   utmCampaign?: string | null;
   adId?: string | null;
   landingPageUrl?: string | null;
+  customAnswers?: Record<string, string>;
 };
 
 type LeadInsertContext = {
@@ -327,38 +337,19 @@ async function markLeadSmsOptedIn(
 }
 
 async function requireLeadContext() {
-  const supabase = await createRouteHandlerClient();
+  const [supabase, context] = await Promise.all([
+    createRouteHandlerClient(),
+    getAppContext(),
+  ]);
 
-  if (!supabase) {
+  if (!supabase || !context) {
     throw new ApiError(503, "Supabase is not configured.", "config_missing");
-  }
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    throw new ApiError(401, "Authentication is required.", "unauthorized");
-  }
-
-  const { data: membershipRaw, error: membershipError } = await supabase
-    .from("organization_memberships")
-    .select("organization_id")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  const membership = membershipRaw as Pick<OrganizationMembershipRow, "organization_id"> | null;
-
-  if (membershipError || !membership?.organization_id) {
-    throw new ApiError(400, "Organization membership is required.", "organization_missing");
   }
 
   return {
     supabase,
-    userId: user.id,
-    organizationId: membership.organization_id,
+    userId: context.user.id,
+    organizationId: context.organization.id,
   };
 }
 
@@ -368,7 +359,7 @@ async function resolvePublicLeadInsertContext(input: Pick<CreateLeadInput, "camp
   if (input.campaign_id?.trim()) {
     const { data, error } = await admin
       .from("campaign_plans")
-      .select("id, owner_id, user_id")
+      .select("id, owner_id, user_id, organization_id")
       .eq("id", input.campaign_id.trim())
       .eq("publish_state", "published")
       .maybeSingle();
@@ -383,7 +374,7 @@ async function resolvePublicLeadInsertContext(input: Pick<CreateLeadInput, "camp
 
     return resolveOrganizationIdForCampaignRow(admin, data as Pick<
       CampaignPlanRow,
-      "id" | "owner_id" | "user_id"
+      "id" | "owner_id" | "user_id" | "organization_id"
     > | null);
   }
 
@@ -399,7 +390,7 @@ async function resolvePublicLeadInsertContext(input: Pick<CreateLeadInput, "camp
 
   const { data, error } = await admin
     .from("campaign_plans")
-    .select("id, owner_id, user_id")
+    .select("id, owner_id, user_id, organization_id")
     .eq("public_slug", funnelSlug)
     .eq("publish_state", "published")
     .maybeSingle();
@@ -414,7 +405,7 @@ async function resolvePublicLeadInsertContext(input: Pick<CreateLeadInput, "camp
 
   return resolveOrganizationIdForCampaignRow(admin, data as Pick<
     CampaignPlanRow,
-    "id" | "owner_id" | "user_id"
+    "id" | "owner_id" | "user_id" | "organization_id"
   > | null);
 }
 
@@ -437,40 +428,23 @@ async function createPublicLeadLookupClient() {
 }
 
 async function resolveOrganizationIdForCampaignRow(
-  admin: AdminClient | SupabaseClient,
-  row: Pick<CampaignPlanRow, "id" | "owner_id" | "user_id"> | null,
+  _admin: AdminClient | SupabaseClient,
+  row: Pick<CampaignPlanRow, "id" | "owner_id" | "user_id" | "organization_id"> | null,
 ) {
-  if (!row?.user_id && !row?.owner_id) {
+  if (!row?.user_id) {
     throw new ApiError(404, "Campaign not found.", "campaign_not_found");
   }
 
-  if (row.owner_id) {
-    return {
-      organizationId: row.owner_id,
-      userId: row.user_id ?? row.owner_id,
-      campaignId: row.id,
-    } satisfies LeadInsertContext;
-  }
-
-  const { data: membership, error: membershipError } = await admin
-    .from("organization_memberships")
-    .select("organization_id")
-    .eq("user_id", row.user_id)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  const organizationId =
-    membership && typeof membership === "object" && "organization_id" in membership
-      ? (membership as Record<string, unknown>).organization_id
-      : null;
-
-  if (membershipError || typeof organizationId !== "string" || !row.user_id) {
-    throw new ApiError(404, "Campaign organization could not be resolved.", "campaign_context_missing");
+  if (!row.organization_id) {
+    throw new ApiError(
+      409,
+      "This legacy campaign does not have an unambiguous workspace owner and cannot accept leads until reconciled.",
+      "campaign_workspace_ambiguous",
+    );
   }
 
   return {
-    organizationId,
+    organizationId: row.organization_id,
     userId: row.user_id,
     campaignId: row.id,
   } satisfies LeadInsertContext;
@@ -501,18 +475,27 @@ export async function queueFailedPublicLeadCapture(input: QueueFailedLeadCapture
       campaign_id: campaignId || undefined,
       funnel_id: funnelId || null,
     });
+    const canonicalCampaignId = context.campaignId?.trim() ?? "";
+
+    if (!canonicalCampaignId) {
+      throw new ApiError(
+        409,
+        "The failed lead capture did not resolve to a canonical campaign.",
+        "failed_lead_capture_campaign_scope_missing",
+      );
+    }
 
     const job = await createSystemJob({
       organizationId: context.organizationId,
       userId: context.userId,
-      campaignId: context.campaignId,
+      campaignId: canonicalCampaignId,
       kind: "lead_capture_retry",
       payload: {
         source: input.source?.trim() || "lead_capture_public",
         requestId: input.requestId,
         reason: input.failureReason,
         leadCapture: {
-          campaignId,
+          campaignId: canonicalCampaignId,
           funnelId: funnelId || null,
           name: input.name?.trim() || "Unknown lead",
           email: input.email?.trim() || null,
@@ -527,11 +510,12 @@ export async function queueFailedPublicLeadCapture(input: QueueFailedLeadCapture
           utmCampaign: input.utmCampaign?.trim() || null,
           adId: input.adId?.trim() || null,
           landingPageUrl: input.landingPageUrl?.trim() || null,
+          customAnswers: input.customAnswers ?? {},
         },
       },
       idempotencyKey: buildLeadRetryJobIdempotencyKey({
         requestId: input.requestId,
-        campaignId,
+        campaignId: canonicalCampaignId,
         funnelId,
         email: input.email,
         phone: input.phone,
@@ -540,7 +524,7 @@ export async function queueFailedPublicLeadCapture(input: QueueFailedLeadCapture
 
     logWarn("Lead capture queued for retry", {
       requestId: input.requestId,
-      campaignId,
+      campaignId: canonicalCampaignId,
       organizationId: context.organizationId,
       jobId: job.id,
       reason: input.failureReason,
@@ -707,31 +691,6 @@ async function listLeadMessages(supabase: SupabaseClient | AdminClient, leadId: 
   return (data as LeadMessageRow[] | null) ?? [];
 }
 
-async function findLeadMessageByProviderMessageId(
-  supabase: SupabaseClient | AdminClient,
-  providerMessageId: string | null | undefined,
-) {
-  const normalized = providerMessageId?.trim();
-
-  if (!normalized) {
-    return null;
-  }
-
-  const { data, error } = await supabase
-    .from("lead_messages")
-    .select("*")
-    .eq("provider_message_id", normalized)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return (data as LeadMessageRow | null) ?? null;
-}
-
 async function saveLeadMessage(
   supabase: SupabaseClient | AdminClient,
   leadId: string,
@@ -743,7 +702,7 @@ async function saveLeadMessage(
     errorMessage?: string | null;
   } = {},
 ) {
-  const { error } = await supabase.from("lead_messages").insert({
+  const row = {
     lead_id: leadId,
     direction,
     message,
@@ -752,7 +711,14 @@ async function saveLeadMessage(
       options.deliveryStatus ?? (direction === "inbound" ? "received" : "recorded"),
     error_message: options.errorMessage ?? null,
     created_at: new Date().toISOString(),
-  } as never);
+  } as never;
+  const query = options.providerMessageId?.trim()
+    ? supabase.from("lead_messages").upsert(row, {
+        onConflict: "provider_message_id",
+        ignoreDuplicates: true,
+      })
+    : supabase.from("lead_messages").insert(row);
+  const { error } = await query;
 
   if (error) {
     throw error;
@@ -1240,6 +1206,224 @@ function suggestedSlotsFromMetadata(metadata: Json | undefined) {
     : [];
 }
 
+type InboundSmsReceiptClaim = {
+  provider_message_id: string;
+  status: "processing" | "retrying" | "completed" | "operator_action_required";
+  locked_by: string | null;
+  lease_token: string | null;
+  lease_generation: number;
+  result: unknown;
+};
+
+type InboundSmsReceiptIdentity = {
+  provider_message_id: string;
+  organization_id: string;
+  lead_id: string;
+};
+
+type IncomingSmsProcessingResult = {
+  leadId: string;
+  response: string;
+  status: LeadRow["status"];
+  slots?: string[];
+  blocked?: boolean;
+  idempotentReplay?: boolean;
+};
+
+async function claimInboundSmsReceipt(params: {
+  admin: AdminClient;
+  messageSid: string;
+  organizationId: string;
+  leadId: string;
+  phone: string;
+  message: string;
+  workerId: string;
+}) {
+  const messageDigest = createHash("sha256")
+    .update([
+      params.organizationId,
+      params.leadId,
+      normalizePhone(params.phone) ?? params.phone.trim(),
+      params.message,
+    ].join("\n"))
+    .digest("hex");
+  const { data, error } = await (params.admin as any).rpc("claim_inbound_sms_receipt", {
+    p_provider_message_id: params.messageSid,
+    p_organization_id: params.organizationId,
+    p_lead_id: params.leadId,
+    p_message_digest: messageDigest,
+    p_worker_id: params.workerId,
+    p_lease_ms: 120_000,
+  });
+
+  if (error) {
+    throw new ApiError(503, error.message, "inbound_sms_receipt_claim_failed");
+  }
+
+  const claim = (Array.isArray(data) ? data[0] : data) as InboundSmsReceiptClaim | null;
+  if (!claim?.provider_message_id) {
+    throw new ApiError(503, "Inbound SMS receipt was not returned.", "inbound_sms_receipt_missing");
+  }
+
+  return claim;
+}
+
+async function resolveInboundSmsLead(params: {
+  admin: AdminClient;
+  messageSid: string;
+  organizationId: string;
+  phone: string;
+}) {
+  const { data: existingReceiptData, error: receiptError } = await params.admin
+    .from("inbound_sms_receipts")
+    .select("provider_message_id, organization_id, lead_id")
+    .eq("provider_message_id", params.messageSid)
+    .maybeSingle();
+
+  if (receiptError) {
+    throw new ApiError(503, receiptError.message, "inbound_sms_receipt_lookup_failed");
+  }
+
+  const existingReceipt = existingReceiptData as InboundSmsReceiptIdentity | null;
+  if (existingReceipt) {
+    if (existingReceipt.organization_id !== params.organizationId) {
+      throw new ApiError(
+        409,
+        "Inbound SMS receipt tenant identity does not match this destination.",
+        "inbound_sms_receipt_operator_action_required",
+      );
+    }
+
+    const { data: immutableLeadData, error: leadError } = await params.admin
+      .from("leads")
+      .select("*")
+      .eq("id", existingReceipt.lead_id)
+      .eq("organization_id", params.organizationId)
+      .maybeSingle();
+
+    if (leadError) {
+      throw new ApiError(503, leadError.message, "inbound_sms_lead_lookup_failed");
+    }
+
+    if (!immutableLeadData) {
+      throw new ApiError(
+        409,
+        "Inbound SMS receipt lead identity no longer resolves inside its tenant.",
+        "inbound_sms_receipt_operator_action_required",
+      );
+    }
+
+    return immutableLeadData as LeadRow;
+  }
+
+  return getLeadByPhone(params.admin, params.organizationId, params.phone);
+}
+
+function readCompletedInboundSmsResult(
+  claim: InboundSmsReceiptClaim,
+  expectedLeadId: string,
+): IncomingSmsProcessingResult | null {
+  if (!claim.result || typeof claim.result !== "object" || Array.isArray(claim.result)) {
+    return null;
+  }
+
+  const result = claim.result as Record<string, unknown>;
+  if (
+    result.leadId !== expectedLeadId ||
+    typeof result.response !== "string" ||
+    typeof result.status !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    leadId: expectedLeadId,
+    response: result.response,
+    status: normalizeLeadStatus(result.status),
+    slots: Array.isArray(result.slots)
+      ? result.slots.filter((slot): slot is string => typeof slot === "string").slice(0, 3)
+      : [],
+    blocked: result.blocked === true,
+    idempotentReplay: true,
+  };
+}
+
+async function settleInboundSmsReceipt(params: {
+  admin: AdminClient;
+  claim: InboundSmsReceiptClaim;
+  workerId: string;
+  status: "completed" | "retrying" | "operator_action_required";
+  result?: IncomingSmsProcessingResult | null;
+  errorCode?: string | null;
+}) {
+  if (!params.claim.lease_token || !params.claim.lease_generation) {
+    return false;
+  }
+
+  const { data, error } = await (params.admin as any).rpc("settle_inbound_sms_receipt", {
+    p_provider_message_id: params.claim.provider_message_id,
+    p_worker_id: params.workerId,
+    p_lease_token: params.claim.lease_token,
+    p_lease_generation: params.claim.lease_generation,
+    p_status: params.status,
+    p_result: params.result ?? null,
+    p_error_code: params.errorCode ?? null,
+  });
+
+  return !error && data === true;
+}
+
+async function completeInboundSmsComplianceReceipt(params: {
+  admin: AdminClient;
+  claim: InboundSmsReceiptClaim;
+  workerId: string;
+  leadId: string;
+  action: "opt_out" | "opt_in" | "help";
+}) {
+  if (!params.claim.lease_token || !params.claim.lease_generation) {
+    throw new ApiError(
+      503,
+      "Inbound SMS compliance lease is incomplete.",
+      "inbound_sms_compliance_fence_missing",
+    );
+  }
+
+  const { data, error } = await (params.admin as any).rpc(
+    "complete_inbound_sms_compliance_receipt",
+    {
+      p_provider_message_id: params.claim.provider_message_id,
+      p_worker_id: params.workerId,
+      p_lease_token: params.claim.lease_token,
+      p_lease_generation: params.claim.lease_generation,
+      p_action: params.action,
+    },
+  );
+
+  if (error) {
+    throw new ApiError(503, error.message, "inbound_sms_compliance_apply_failed");
+  }
+
+  const completedClaim = (Array.isArray(data) ? data[0] : data) as InboundSmsReceiptClaim | null;
+  if (!completedClaim || completedClaim.status !== "completed") {
+    throw new ApiError(
+      503,
+      "Inbound SMS compliance completion lease was lost.",
+      "inbound_sms_compliance_fence_lost",
+    );
+  }
+
+  const completed = readCompletedInboundSmsResult(completedClaim, params.leadId);
+  if (!completed) {
+    throw new ApiError(
+      503,
+      "Inbound SMS compliance result is incomplete.",
+      "inbound_sms_compliance_result_invalid",
+    );
+  }
+
+  return completed;
+}
+
 export async function handleIncomingMessageByPhone(
   phone: string,
   message: string,
@@ -1258,223 +1442,106 @@ export async function handleIncomingMessageByPhone(
     );
   }
 
-  const lead = await getLeadByPhone(adminClient, options.organizationId, phone);
+  const messageSid = options.messageSid?.trim() ?? "";
+  if (!messageSid || messageSid.length > 128) {
+    throw new ApiError(400, "MessageSid is required.", "inbound_sms_message_sid_missing");
+  }
+
+  const lead = await resolveInboundSmsLead({
+    admin: adminClient,
+    messageSid,
+    organizationId: options.organizationId,
+    phone,
+  });
 
   if (!lead) {
     throw new ApiError(404, "Lead not found for incoming SMS.", "lead_not_found");
   }
 
-  const existingMessage = await findLeadMessageByProviderMessageId(
-    adminClient,
-    options.messageSid,
-  );
-
-  if (existingMessage) {
-    return {
-      leadId: lead.id,
-      response: "",
-      status: normalizeLeadStatus(lead.status),
-      slots: [] as string[],
-      idempotentReplay: true,
-    };
-  }
-
-  await saveLeadMessage(adminClient, lead.id, "inbound", message, {
-    providerMessageId: options.messageSid ?? null,
-    deliveryStatus: "received",
+  const workerId = `inbound-sms:${crypto.randomUUID()}`;
+  const claim = await claimInboundSmsReceipt({
+    admin: adminClient,
+    messageSid,
+    organizationId: options.organizationId,
+    leadId: lead.id,
+    phone,
+    message,
+    workerId,
   });
 
-  if (isSmsOptOutMessage(message)) {
-    await markLeadSmsOptedOut(adminClient, lead);
-    await saveLeadMessage(
-      adminClient,
-      lead.id,
-      "outbound",
-      "You have been unsubscribed and will not receive more messages.",
-      { deliveryStatus: "recorded" },
-    );
-    return {
-      leadId: lead.id,
-      response: "You have been unsubscribed and will not receive more messages.",
-      status: "lost" as const,
-      slots: [] as string[],
-    };
-  }
-
-  if (isSmsOptInMessage(message)) {
-    await markLeadSmsOptedIn(adminClient, lead);
-    const reply =
-      "You are subscribed again. Reply STOP to opt out or HELP for help. Message and data rates may apply.";
-    await saveLeadMessage(adminClient, lead.id, "outbound", reply, { deliveryStatus: "recorded" });
-    return {
-      leadId: lead.id,
-      response: reply,
-      status: normalizeLeadStatus(lead.status),
-      slots: [] as string[],
-    };
-  }
-
-  if (isSmsHelpMessage(message)) {
-    const reply =
-      "DealFlow OS lead updates: reply STOP to opt out, START to resume, or contact the business directly for help. Message and data rates may apply.";
-    await saveLeadMessage(adminClient, lead.id, "outbound", reply, { deliveryStatus: "recorded" });
-    return {
-      leadId: lead.id,
-      response: reply,
-      status: normalizeLeadStatus(lead.status),
-      slots: [] as string[],
-    };
-  }
-
-  if (lead.sms_opted_out_at) {
-    return {
-      leadId: lead.id,
-      response: "You are unsubscribed. Reply START to resume messages.",
-      status: normalizeLeadStatus(lead.status),
-      slots: [] as string[],
-    };
-  }
-
-  const conversation = (await listLeadMessages(adminClient, lead.id)) ?? [];
-  const metadata = getLeadMetadata(lead);
-  const offeredSlots = metadata.booking?.status === "suggested"
-    ? metadata.booking.offered_slots ?? []
-    : [];
-
-  if ((offeredSlots || []).length > 0) {
-    const matchedSlot = parseTimeFromMessage(message, offeredSlots);
-
-    if (matchedSlot) {
-      const appointment = await bookAppointment(
-        lead.id,
-        lead.user_id,
-        lead.campaign_id,
-        matchedSlot,
-        {
-          supabase: adminClient,
-          organizationId: lead.organization_id,
-          notes: "Booked via Twilio SMS auto-booking engine.",
-        },
+  if (claim.status === "completed") {
+    const completed = readCompletedInboundSmsResult(claim, lead.id);
+    if (!completed) {
+      throw new ApiError(
+        503,
+        "Completed inbound SMS receipt is incomplete.",
+        "inbound_sms_receipt_result_invalid",
       );
-
-      if (!appointment) {
-        return {
-          leadId: lead.id,
-          response: "We couldn't confirm that booking yet.",
-          status: lead?.status ?? "new",
-        };
-      }
-
-      const reply = formatAppointmentConfirmationMessage(appointment.scheduled_at);
-
-      let providerMessageId: string | null = null;
-      let deliveryStatus: "sent" | "failed" = "sent";
-      let deliveryError: string | null = null;
-
-      try {
-        const smsResult = await sendLeadSMS(lead, reply, "booking_confirmation");
-        providerMessageId = smsResult.sid;
-      } catch (error) {
-        deliveryStatus = "failed";
-        deliveryError = error instanceof Error ? error.message : "Unknown error";
-        logError("Lead booking confirmation SMS failed", {
-          leadId: lead.id,
-          message: deliveryError,
-        });
-      }
-      await saveLeadMessage(adminClient, lead.id, "outbound", reply, {
-        providerMessageId,
-        deliveryStatus,
-        errorMessage: deliveryError,
-      });
-
-      return {
-        leadId: lead.id,
-        response: reply,
-        status: "booked" as const,
-        slots: [] as string[],
-      };
     }
+    return completed;
   }
 
-  const response = await generateResponse(lead, conversation);
-
-  if (!lead.phone) {
-    throw new ApiError(400, "Lead is missing a phone number.", "lead_phone_missing");
+  if (claim.status === "operator_action_required") {
+    throw new ApiError(
+      409,
+      "Inbound SMS receipt requires operator reconciliation.",
+      "inbound_sms_receipt_operator_action_required",
+    );
   }
 
-  const shouldPromptBooking =
-    (lead?.status ?? "new") !== "booked" &&
-    (showsStrongBookingIntent(message) || response.status === "booked" || response.status === "qualified");
-
-  let outboundReply = response.reply;
-  let nextMetadata: Json | undefined = undefined;
-
-  if (shouldPromptBooking) {
-    const suggestedSlots = await generateSuggestedSlots(lead.user_id, adminClient);
-
-    if ((suggestedSlots || []).length > 0) {
-      outboundReply = formatSuggestedSlotMessage(suggestedSlots);
-      nextMetadata = withBookingMetadata(lead, {
-        status: "suggested",
-        offered_slots: suggestedSlots.map((slot) => slot.iso),
-      });
-    } else {
-      outboundReply = getUnavailableBookingReply();
-    }
+  if (claim.status !== "processing" || claim.locked_by !== workerId || !claim.lease_token) {
+    throw new ApiError(
+      503,
+      "Inbound SMS is already being processed and should be retried.",
+      "inbound_sms_receipt_busy",
+    );
   }
 
-  let providerMessageId: string | null = null;
-  let deliveryStatus: "sent" | "failed" = "sent";
-  let deliveryError: string | null = null;
+  const complianceAction = isSmsOptOutMessage(message)
+    ? "opt_out"
+    : isSmsOptInMessage(message)
+      ? "opt_in"
+      : isSmsHelpMessage(message)
+        ? "help"
+        : null;
 
-  try {
-    const smsResult = await sendLeadSMS(lead, outboundReply, "lead_auto_reply");
-    providerMessageId = smsResult.sid;
-  } catch (error) {
-    deliveryStatus = "failed";
-    deliveryError = error instanceof Error ? error.message : "Unknown error";
-    logError("Lead outbound SMS failed", {
+  if (complianceAction) {
+    return completeInboundSmsComplianceReceipt({
+      admin: adminClient,
+      claim,
+      workerId,
       leadId: lead.id,
-      message: deliveryError,
+      action: complianceAction,
     });
   }
-  await saveLeadMessage(adminClient, lead.id, "outbound", outboundReply, {
-    providerMessageId,
-    deliveryStatus,
-    errorMessage: deliveryError,
+
+  // Automated lead conversations are intentionally unavailable. Persist only
+  // the fenced receipt result: no AI, booking, lead mutation, provider call,
+  // or synthetic outbound message row is allowed from this webhook path.
+  const blockedResult: IncomingSmsProcessingResult = {
+    leadId: lead.id,
+    response: "",
+    status: normalizeLeadStatus(lead.status),
+    slots: [],
+    blocked: true,
+  };
+  const settled = await settleInboundSmsReceipt({
+    admin: adminClient,
+    claim,
+    workerId,
+    status: "completed",
+    result: blockedResult,
   });
 
-  const nextStatus =
-    response.status ??
-    ((lead?.status ?? "new") === "new" ? "engaged" : normalizeLeadStatus(lead?.status ?? "new"));
-
-  const { error } = await adminClient
-    .from("leads")
-    .update({
-      status: nextStatus,
-      budget: response.budget ?? lead?.budget ?? null,
-      timeline: response.timeline ?? lead.timeline,
-      intent: response.intent ?? lead.intent,
-      metadata: nextMetadata ?? lead.metadata,
-      notes: response.notes
-        ? [lead.notes, response.notes].filter(Boolean).join("\n")
-        : lead.notes,
-    } as never)
-    .eq("id", lead.id);
-
-  if (error) {
-    throw error;
+  if (!settled) {
+    throw new ApiError(
+      503,
+      "Inbound SMS blocked receipt completion lease was lost.",
+      "inbound_sms_receipt_completion_fence_lost",
+    );
   }
 
-  return {
-    leadId: lead.id,
-    response: outboundReply,
-    status: nextStatus,
-    slots: nextMetadata && typeof nextMetadata === "object" && "booking" in nextMetadata
-      ? ((suggestedSlotsFromMetadata(nextMetadata) || []).slice(0, 3))
-      : [],
-  };
+  return blockedResult;
 }
 
 export async function createLeadAndStartConversation(input: CreateLeadInput) {
@@ -1495,6 +1562,9 @@ async function createLeadAndStartConversationForContext(
     organizationId: string;
     campaignId: string | null;
   },
+  options?: {
+    allowUnconsentedPhoneStorage?: boolean;
+  },
 ) {
   const { supabase, userId, organizationId, campaignId } = context;
 
@@ -1514,7 +1584,7 @@ async function createLeadAndStartConversationForContext(
     throw new ApiError(400, "An email or phone number is required.", "validation_error");
   }
 
-  if (phone && !smsConsent) {
+  if (phone && !smsConsent && options?.allowUnconsentedPhoneStorage !== true) {
     throw new ApiError(
       400,
       "Explicit SMS consent is required when a phone number is submitted.",
@@ -1566,6 +1636,16 @@ async function createLeadAndStartConversationForContext(
         copy: input.sms_consent_copy,
         url: input.consent_url,
       }),
+      metadata: {
+        ...(input.metadata ?? {}),
+        ...(input.custom_answers && Object.keys(input.custom_answers).length > 0
+          ? {
+              custom_lead_answers: Object.entries(input.custom_answers).map(
+                ([question, answer]) => ({ question, answer }),
+              ),
+            }
+          : {}),
+      } as Json,
       created_at: new Date().toISOString(),
     } as never)
     .select("*")
@@ -1679,7 +1759,74 @@ export async function createPublicLeadAndStartConversation(input: CreateLeadInpu
   });
 }
 
+export async function createVerifiedProviderLeadAndStartConversation(
+  input: Omit<CreateLeadInput, "campaign_id" | "funnel_id">,
+  context: {
+    provider: "meta_leadgen";
+    organizationId: string;
+    userId: string;
+    campaignId: string;
+  },
+) {
+  const admin = await createPublicLeadLookupClient();
+  const { data: campaign, error } = await admin
+    .from("campaign_plans")
+    .select("id,organization_id,user_id")
+    .eq("id", context.campaignId)
+    .eq("organization_id", context.organizationId)
+    .eq("user_id", context.userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new ApiError(503, error.message, "provider_lead_campaign_lookup_failed");
+  }
+  if (!campaign) {
+    throw new ApiError(
+      403,
+      "Verified provider lead scope does not match the campaign tenant.",
+      "provider_lead_campaign_scope_mismatch",
+    );
+  }
+
+  return createLeadAndStartConversationForContext(
+    {
+      ...input,
+      campaign_id: context.campaignId,
+      consent_source: input.consent_source?.trim() || `${context.provider}_no_sms_consent`,
+    },
+    {
+      supabase: admin,
+      userId: context.userId,
+      organizationId: context.organizationId,
+      campaignId: context.campaignId,
+    },
+    {
+      allowUnconsentedPhoneStorage: true,
+    },
+  );
+}
+
 export async function replayFailedPublicLeadCapture(input: PublicLeadCaptureRetryInput) {
+  const payloadCampaignId = input.campaignId?.trim() ?? "";
+  const resolvedContext = await resolvePublicLeadInsertContext({
+    // A retry is fenced to the immutable campaign id captured at queue time.
+    // Never resolve the mutable public funnel slug during replay.
+    campaign_id: payloadCampaignId || undefined,
+    funnel_id: null,
+  });
+  const replayScope = assertLeadRetryParentScope({
+    expected: {
+      organizationId: input.expectedOrganizationId,
+      userId: input.expectedUserId,
+      campaignId: input.expectedCampaignId,
+    },
+    resolved: {
+      organizationId: resolvedContext.organizationId,
+      userId: resolvedContext.userId,
+      campaignId: resolvedContext.campaignId,
+    },
+  });
+  const supabase = await createPublicLeadInsertClient(replayScope.userId);
   const retryNotes = [
     input.notes?.trim() || null,
     input.reason?.trim() ? `Recovered queued lead capture: ${input.reason.trim()}` : null,
@@ -1688,9 +1835,9 @@ export async function replayFailedPublicLeadCapture(input: PublicLeadCaptureRetr
     .filter(Boolean)
     .join("\n");
 
-  const lead = await createPublicLeadAndStartConversation({
-    campaign_id: input.campaignId?.trim() || undefined,
-    funnel_id: input.funnelId?.trim() || null,
+  const lead = await createLeadAndStartConversationForContext({
+    campaign_id: replayScope.campaignId,
+    funnel_id: null,
     name: input.name?.trim() || "Unknown lead",
     email: input.email?.trim() || null,
     phone: input.phone?.trim() || null,
@@ -1705,6 +1852,67 @@ export async function replayFailedPublicLeadCapture(input: PublicLeadCaptureRetr
     utm_campaign: input.utmCampaign ?? null,
     ad_id: input.adId ?? null,
     landing_page_url: input.landingPageUrl ?? input.consentUrl ?? null,
+    custom_answers: input.customAnswers ?? {},
+  }, {
+    supabase,
+    userId: replayScope.userId,
+    organizationId: replayScope.organizationId,
+    campaignId: replayScope.campaignId,
+  });
+
+  // A dedupe replay can return an existing row. Fence that row again before
+  // queuing any durable effects so an inconsistent historical row cannot move
+  // work across the parent job's tenant boundary.
+  assertLeadRetryParentScope({
+    expected: replayScope,
+    resolved: {
+      organizationId: lead.organization_id,
+      userId: lead.user_id,
+      campaignId: lead.campaign_id,
+    },
+  });
+
+  if (!lead.organization_id || !lead.user_id || !lead.campaign_id) {
+    throw new ApiError(
+      409,
+      "Recovered lead is missing the tenant or campaign scope required for durable effects.",
+      "lead_recovery_scope_missing",
+    );
+  }
+
+  const recoveryRequestId = input.requestId?.trim() || `lead-recovery:${lead.id}`;
+  const sideEffectJob = await queueLeadSideEffectsJob({
+    organizationId: lead.organization_id,
+    userId: lead.user_id,
+    campaignId: lead.campaign_id,
+    payload: {
+      requestId: recoveryRequestId,
+      lead: {
+        ...lead,
+        phone_raw: input.phone?.trim() || lead.phone || null,
+        phone_e164: lead.phone || null,
+        lead_type: null,
+        utm_source: input.utmSource ?? null,
+        utm_medium: input.utmMedium ?? null,
+        utm_campaign: input.utmCampaign ?? null,
+        ad_id: input.adId ?? null,
+        landing_page_url: input.landingPageUrl ?? input.consentUrl ?? null,
+      },
+      metaConversion: {
+        organizationId: lead.organization_id,
+        leadId: lead.id,
+        campaignId: lead.campaign_id,
+        eventSourceUrl: input.landingPageUrl ?? input.consentUrl ?? null,
+        eventTime: lead.created_at,
+        name: lead.name,
+        email: input.email,
+        phone: input.phone,
+        clientIp: null,
+        clientUserAgent: null,
+        fbp: null,
+        fbc: null,
+      },
+    },
   });
 
   return {
@@ -1714,6 +1922,7 @@ export async function replayFailedPublicLeadCapture(input: PublicLeadCaptureRetr
     dedupeHash: lead.dedupe_hash,
     status: lead.status,
     source: lead.source,
+    sideEffectJobId: sideEffectJob.id,
   };
 }
 

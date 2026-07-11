@@ -7,6 +7,7 @@ type LeadCaptureFormProps = {
   campaignId: string;
   funnelSlug: string;
   formFields: string[];
+  customQuestions?: string[];
   cta: string;
   language?: string | null;
   metaPixelId?: string | null;
@@ -14,6 +15,7 @@ type LeadCaptureFormProps = {
 
 const SMS_CONSENT_COPY =
   "By checking this box, I agree to receive SMS messages from DealFlow OS and/or the business operating this campaign about my inquiry, follow-ups, and appointment coordination. Message and data rates may apply. Message frequency may vary. Reply STOP to opt out or HELP for help. Consent is not a condition of purchase.";
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim() ?? "";
 
 const FORM_COPY = {
   en: {
@@ -92,6 +94,8 @@ declare global {
   interface Window {
     fbq?: (...args: unknown[]) => void;
     _fbq?: (...args: unknown[]) => void;
+    dealflowLeadTurnstileVerified?: (token: string) => void;
+    dealflowLeadTurnstileExpired?: () => void;
   }
 }
 
@@ -147,6 +151,7 @@ export function LeadCaptureForm({
   campaignId,
   funnelSlug,
   formFields,
+  customQuestions = [],
   cta,
   language,
   metaPixelId,
@@ -155,6 +160,8 @@ export function LeadCaptureForm({
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [smsConsent, setSmsConsent] = useState(false);
+  const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [formStartedAt] = useState(() => Date.now());
@@ -166,9 +173,25 @@ export function LeadCaptureForm({
     () => formFields.map((field) => field.trim()).filter(Boolean),
     [formFields],
   );
+  const normalizedCustomQuestions = useMemo(
+    () =>
+      Array.from(
+        new Set(customQuestions.map((question) => question.trim()).filter(Boolean)),
+      ).slice(0, 3),
+    [customQuestions],
+  );
   const hasConfiguredEmailField = includesField(normalizedFields, "email");
   const showPhone = includesField(normalizedFields, "phone");
   const showEmail = hasConfiguredEmailField || !showPhone;
+
+  useEffect(() => {
+    window.dealflowLeadTurnstileVerified = (token) => setTurnstileToken(token);
+    window.dealflowLeadTurnstileExpired = () => setTurnstileToken("");
+    return () => {
+      delete window.dealflowLeadTurnstileVerified;
+      delete window.dealflowLeadTurnstileExpired;
+    };
+  }, []);
 
   useEffect(() => {
     if (!metaPixelId || pageViewTrackedRef.current) {
@@ -222,6 +245,16 @@ export function LeadCaptureForm({
       return;
     }
 
+    if (
+      normalizedCustomQuestions.some(
+        (question) => !(customAnswers[question] ?? "").trim(),
+      )
+    ) {
+      setStatus("error");
+      setMessage("Please answer every qualification question.");
+      return;
+    }
+
     setStatus("submitting");
     setMessage(null);
     submitInFlightRef.current = true;
@@ -249,6 +282,13 @@ export function LeadCaptureForm({
           utm_campaign: attribution.utmCampaign,
           ad_id: attribution.adId,
           landing_page_url: attribution.landingPageUrl,
+          custom_answers: Object.fromEntries(
+            normalizedCustomQuestions.map((question) => [
+              question,
+              (customAnswers[question] ?? "").trim(),
+            ]),
+          ),
+          turnstile_token: turnstileToken || undefined,
         }),
       });
 
@@ -279,6 +319,8 @@ export function LeadCaptureForm({
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : copy.failed);
+      setTurnstileToken("");
+      window.turnstile?.reset();
       submitInFlightRef.current = false;
     }
   }
@@ -309,7 +351,19 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
           </noscript>
         </>
       ) : null}
-      <form className="space-y-4 rounded-[26px] border border-[#dfd5c8] bg-[#fffdf9] p-5 text-left shadow-[0_24px_80px_-54px_rgba(28,43,58,0.48)] sm:p-6" onSubmit={handleSubmit}>
+      {TURNSTILE_SITE_KEY ? (
+        <Script
+          id="lead-capture-turnstile-script"
+          src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+          strategy="afterInteractive"
+        />
+      ) : null}
+      <form
+        aria-busy={status === "submitting"}
+        aria-describedby={message ? "lead-capture-status" : undefined}
+        className="space-y-4 rounded-[26px] border border-[#dfd5c8] bg-[#fffdf9] p-5 text-left shadow-[0_24px_80px_-54px_rgba(28,43,58,0.48)] sm:p-6"
+        onSubmit={handleSubmit}
+      >
       <div>
         <p className="text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--funnel-accent)]">
           {copy.eyebrow}
@@ -322,7 +376,8 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
       <label className="block space-y-2">
         <span className="text-sm font-medium text-[#40372f]">{copy.name}</span>
         <input
-          className="h-12 w-full rounded-2xl border border-[#d8ccbd] bg-[#f8f2ea] px-4 text-[#17283c] outline-none transition focus:border-[var(--funnel-accent)] focus:bg-white"
+          autoComplete="name"
+          className="h-12 w-full rounded-2xl border border-[#d8ccbd] bg-[#f8f2ea] px-4 text-[#17283c] transition focus:border-[var(--funnel-accent)] focus:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--funnel-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffdf9]"
           onChange={(event) => {
             setName(event.target.value);
             if (message) {
@@ -339,7 +394,8 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
         <label className="block space-y-2">
           <span className="text-sm font-medium text-[#40372f]">{copy.email}</span>
           <input
-            className="h-12 w-full rounded-2xl border border-[#d8ccbd] bg-[#f8f2ea] px-4 text-[#17283c] outline-none transition focus:border-[var(--funnel-accent)] focus:bg-white"
+            autoComplete="email"
+            className="h-12 w-full rounded-2xl border border-[#d8ccbd] bg-[#f8f2ea] px-4 text-[#17283c] transition focus:border-[var(--funnel-accent)] focus:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--funnel-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffdf9]"
             onChange={(event) => {
               setEmail(event.target.value);
               if (message) {
@@ -359,7 +415,8 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
           <label className="block space-y-2">
             <span className="text-sm font-medium text-[#40372f]">{copy.phone}</span>
             <input
-              className="h-12 w-full rounded-2xl border border-[#d8ccbd] bg-[#f8f2ea] px-4 text-[#17283c] outline-none transition focus:border-[var(--funnel-accent)] focus:bg-white"
+              autoComplete="tel"
+              className="h-12 w-full rounded-2xl border border-[#d8ccbd] bg-[#f8f2ea] px-4 text-[#17283c] transition focus:border-[var(--funnel-accent)] focus:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--funnel-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffdf9]"
               onChange={(event) => {
                 setPhone(event.target.value);
                 if (message) {
@@ -375,7 +432,7 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
           <label className="flex gap-3 rounded-2xl border border-[#e2d6c7] bg-[#fbf7ef] p-3 text-xs leading-relaxed text-[#6b5f53]">
             <input
               checked={smsConsent}
-              className="mt-1 size-4 shrink-0 accent-[var(--funnel-accent)]"
+              className="mt-1 size-4 shrink-0 accent-[var(--funnel-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--funnel-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffdf9]"
               onChange={(event) => {
                 setSmsConsent(event.target.checked);
                 if (message) {
@@ -391,32 +448,77 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
         </div>
       ) : null}
 
+      {normalizedCustomQuestions.map((question, index) => (
+        <label className="block space-y-2" key={question}>
+          <span className="text-sm font-medium text-[#40372f]">{question}</span>
+          <textarea
+            aria-label={question}
+            className="min-h-24 w-full resize-y rounded-2xl border border-[#d8ccbd] bg-[#f8f2ea] px-4 py-3 text-[#17283c] transition focus:border-[var(--funnel-accent)] focus:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--funnel-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffdf9]"
+            maxLength={500}
+            name={`qualification_${index + 1}`}
+            onChange={(event) => {
+              setCustomAnswers((current) => ({
+                ...current,
+                [question]: event.target.value,
+              }));
+              if (message) {
+                setMessage(null);
+                setStatus("idle");
+              }
+            }}
+            required
+            value={customAnswers[question] ?? ""}
+          />
+        </label>
+      ))}
+
       {message ? (
         <div
+          id="lead-capture-status"
+          aria-atomic="true"
+          aria-live={status === "error" ? "assertive" : "polite"}
           className={`rounded-2xl border p-3 text-sm ${
             status === "success"
               ? "border-[var(--funnel-accent)]/20 bg-[#f6efe5] text-[#4d443b]"
               : "border-red-500/20 bg-red-50 text-red-700"
           }`}
+          role={status === "error" ? "alert" : "status"}
         >
           {message}
         </div>
       ) : null}
 
+      {TURNSTILE_SITE_KEY ? (
+        <div aria-label="Human verification" className="flex min-h-[65px] justify-center">
+          <div
+            className="cf-turnstile"
+            data-action="lead_capture"
+            data-callback="dealflowLeadTurnstileVerified"
+            data-error-callback="dealflowLeadTurnstileExpired"
+            data-expired-callback="dealflowLeadTurnstileExpired"
+            data-sitekey={TURNSTILE_SITE_KEY}
+          />
+        </div>
+      ) : null}
+
+      <p aria-live="polite" className="sr-only" role="status">
+        {status === "submitting" ? copy.submitting : ""}
+      </p>
+
       <button
-        className="h-12 w-full rounded-2xl bg-[var(--funnel-accent)] px-4 text-base font-semibold text-white shadow-[0_14px_32px_-24px_rgba(28,43,58,0.8)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
-        disabled={status === "submitting"}
+        className="h-12 w-full rounded-2xl bg-[var(--funnel-accent)] px-4 text-base font-semibold text-white shadow-[0_14px_32px_-24px_rgba(28,43,58,0.8)] transition hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--funnel-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#fffdf9] disabled:cursor-not-allowed disabled:opacity-60"
+        disabled={status === "submitting" || Boolean(TURNSTILE_SITE_KEY && !turnstileToken)}
         type="submit"
       >
         {status === "submitting" ? copy.submitting : cta}
       </button>
       <p className="text-xs leading-relaxed text-[#74685b]">
         {copy.disclaimerPrefix}{" "}
-        <a className="font-medium text-[var(--funnel-accent)] underline-offset-4 hover:underline" href="/privacy">
+        <a className="rounded-sm font-medium text-[var(--funnel-accent)] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--funnel-accent)]" href="/privacy">
           {copy.privacy}
         </a>{" "}
         {copy.and}{" "}
-        <a className="font-medium text-[var(--funnel-accent)] underline-offset-4 hover:underline" href="/terms">
+        <a className="rounded-sm font-medium text-[var(--funnel-accent)] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--funnel-accent)]" href="/terms">
           {copy.terms}
         </a>
         .

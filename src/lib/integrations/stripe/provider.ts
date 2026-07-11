@@ -122,14 +122,7 @@ class ConfiguredStripeBillingProvider implements StripeBillingProvider
 
   async checkStatus(): Promise<ProviderConnectionStatus> {
     const validation = this.validateConfig();
-
-    return {
-      status: validation.configured ? "connected" : "disconnected",
-      state: validation.configured ? "configured" : "not_configured",
-      message: validation.configured
-        ? "Stripe billing credentials are configured and ready."
-        : "Stripe billing credentials are incomplete.",
-    };
+    return buildStripeConfigurationStatus(validation);
   }
 
   private getClientOrThrow() {
@@ -229,6 +222,43 @@ class ConfiguredStripeBillingProvider implements StripeBillingProvider
   parseFailure(error: unknown): ProviderFailure {
     return parseStripeFailure(error);
   }
+}
+
+export function buildStripeConfigurationStatus(
+  validation: ProviderConfigValidation,
+): ProviderConnectionStatus {
+  const observedAt = new Date().toISOString();
+
+  if (!validation.configured) {
+    return {
+      status: "disconnected",
+      state: "not_configured",
+      message: "Stripe billing configuration is incomplete.",
+      updatedAt: observedAt,
+      metadata: {
+        evidenceScope: "configuration_only",
+        configured: false,
+        reachable: null,
+        authenticated: null,
+        functional: null,
+      },
+    };
+  }
+
+  return {
+    status: "pending",
+    state: "configured",
+    message:
+      "Stripe configuration is present. Reachability, authentication, webhook delivery, and functional billing are not proven by this status.",
+    updatedAt: observedAt,
+    metadata: {
+      evidenceScope: "configuration_only",
+      configured: true,
+      reachable: null,
+      authenticated: null,
+      functional: null,
+    },
+  };
 }
 
 const stripeBillingProvider = new ConfiguredStripeBillingProvider();

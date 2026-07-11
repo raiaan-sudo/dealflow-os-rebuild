@@ -7,6 +7,7 @@ import {
   loadIssueLogRows,
 } from "@/lib/services/internal-launch-monitor";
 import type { OperatorIssueRow } from "@/lib/services/internal-launch-monitor";
+import { buildIssueFixPrompt } from "@/lib/security/untrusted-evidence";
 
 function severityClass(severity: OperatorIssueRow["severity"]) {
   if (severity === "critical") {
@@ -39,19 +40,6 @@ function formatDateTime(value: string | null) {
   return `${month} ${day}, ${year}, ${hour}:${minute} UTC`;
 }
 
-function asFixPrompt(issues: OperatorIssueRow[]) {
-  return [
-    "You are Codex working on DealFlow OS. Investigate and fix the following production issue log.",
-    "Rules: do not expose secrets, do not create real charges, do not create active Meta ads, keep paid providers guarded.",
-    "Issues:",
-    ...issues.map(
-      (issue, index) =>
-        `${index + 1}. [${issue.severity.toUpperCase()}] ${issue.source} ${issue.rawReference}: ${issue.title}. Detail: ${issue.detail}. Route: ${issue.route ?? "none"}.`,
-    ),
-    "Return root cause, patch, validation results, and remaining risk.",
-  ].join("\n");
-}
-
 export default async function IssuesPage() {
   try {
     await assertInternalOperatorAccess();
@@ -67,7 +55,7 @@ export default async function IssuesPage() {
   const critical = issues.filter((issue) => issue.severity === "critical").length;
   const high = issues.filter((issue) => issue.severity === "high").length;
   const open = issues.filter((issue) => issue.status === "open").length;
-  const fixPrompt = asFixPrompt(issues.slice(0, 12));
+  const fixPrompt = buildIssueFixPrompt(issues.slice(0, 12));
 
   return (
     <div className="relative min-h-full overflow-hidden rounded-[32px] border border-cyan-300/16 bg-[#030811] p-5 text-cyan-50 shadow-[0_0_130px_-58px_rgba(34,211,238,0.55)] sm:p-7">

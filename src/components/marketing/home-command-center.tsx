@@ -678,9 +678,15 @@ function CommandCenterVisual() {
           <div className="hidden h-2 w-12 shrink-0 rounded-full bg-white/10 sm:block" />
         </div>
 
-        <div className="grid gap-2 border-b border-white/10 bg-white/[0.025] p-3 sm:grid-cols-3">
+        <div
+          aria-label="Command center views"
+          className="grid gap-2 border-b border-white/10 bg-white/[0.025] p-3 sm:grid-cols-3"
+          role="group"
+        >
           {cockpitModes.map((mode, index) => (
             <button
+              aria-controls="command-center-mode-panel"
+              aria-pressed={activeMode === index}
               key={mode.id}
               className={cn(
                 "group relative overflow-hidden rounded-lg border px-3 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-cyan-200/35",
@@ -706,7 +712,7 @@ function CommandCenterVisual() {
           ))}
         </div>
 
-        <div className="grid min-w-0 gap-4 p-4 sm:p-5 lg:grid-cols-[0.95fr_1.3fr]">
+        <div id="command-center-mode-panel" className="grid min-w-0 gap-4 p-4 sm:p-5 lg:grid-cols-[0.95fr_1.3fr]">
           <div className="min-w-0 space-y-4">
             <div className="relative overflow-hidden rounded-lg border border-white/10 bg-white/[0.045] p-4">
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-300/70 to-transparent" />
@@ -1072,13 +1078,19 @@ function ProductEngineSection() {
             inputs become assets, assets become routes, routes become signal, and the operator always sees the next
             move.
           </p>
-          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+          <div
+            aria-label="DealFlow engine views"
+            className="mt-8 grid gap-3 sm:grid-cols-2"
+            role="group"
+          >
             {engineModes.map((mode, index) => {
               const Icon = mode.icon;
               const isActive = activeEngine === index;
 
               return (
                 <button
+                  aria-controls="engine-mode-details"
+                  aria-pressed={isActive}
                   key={mode.id}
                   className={cn(
                     "group relative overflow-hidden rounded-lg border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-cyan-200/35",
@@ -1115,7 +1127,7 @@ function ProductEngineSection() {
         <Reveal delay={120}>
           <div className="df-ambient-panel df-holo-card relative min-h-[620px] overflow-hidden rounded-lg border border-indigo-200/15 bg-[#07101c] p-5 sm:p-7">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(129,140,248,0.22),transparent_34%),radial-gradient(circle_at_18%_78%,rgba(34,211,238,0.14),transparent_28%),radial-gradient(circle_at_82%_18%,rgba(168,85,247,0.18),transparent_30%)]" />
-            <div className="relative z-10 flex items-start justify-between gap-5">
+            <div id="engine-mode-details" className="relative z-10 flex items-start justify-between gap-5">
               <div>
                 <p className="text-xs font-semibold uppercase text-indigo-200/80">DealFlow engine</p>
                 <h3 className="mt-3 max-w-xl text-2xl font-semibold text-white sm:text-3xl">{current.title}</h3>
@@ -1127,7 +1139,11 @@ function ProductEngineSection() {
               </div>
             </div>
 
-            <div className="relative z-10 mt-10 min-h-[390px] overflow-hidden rounded-lg border border-white/10 bg-[#030712]/72">
+            <div
+              aria-label="Engine diagram views"
+              className="relative z-10 mt-10 min-h-[390px] overflow-hidden rounded-lg border border-white/10 bg-[#030712]/72"
+              role="group"
+            >
               <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:42px_42px] opacity-70" />
               <div className="absolute left-1/2 top-1/2 size-56 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-200/15 bg-cyan-200/[0.025] motion-safe:animate-[engineOrbit_12s_linear_infinite]" />
               <div className="absolute left-1/2 top-1/2 size-56 -translate-x-1/2 -translate-y-1/2 rounded-full border border-indigo-200/12 bg-indigo-300/[0.018] motion-safe:animate-[engineOrbit_18s_linear_infinite_reverse] sm:size-80" />
@@ -1176,6 +1192,8 @@ function ProductEngineSection() {
 
                 return (
                   <button
+                    aria-controls="engine-mode-details"
+                    aria-pressed={activeEngine === index}
                     key={mode.id}
                     className={cn(
                       "absolute w-[112px] rounded-lg border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-cyan-200/35 min-[360px]:w-[124px] sm:w-[150px]",
@@ -1561,11 +1579,15 @@ export function HomeCommandCenter() {
   }
 
   return (
-    <main
-      ref={mainRef}
-      className="df-interactive-shell overflow-x-clip bg-[#030712] text-white"
-      onPointerMove={handlePointerMove}
-    >
+    <>
+      <a className="df-skip-link" href="#homepage-content">
+        Skip to main content
+      </a>
+      <main
+        ref={mainRef}
+        className="df-interactive-shell overflow-x-clip bg-[#030712] text-white"
+        onPointerMove={handlePointerMove}
+      >
       <div aria-hidden="true" className="fixed inset-x-0 top-0 z-50 h-1 bg-white/5">
         <div
           className="h-full origin-left bg-gradient-to-r from-cyan-300 via-indigo-300 to-purple-300 shadow-[0_0_24px_rgba(129,140,248,0.75)]"
@@ -1613,7 +1635,11 @@ export function HomeCommandCenter() {
           </div>
         </header>
 
-        <section className="df-figma-hero relative z-10 mx-auto flex w-full max-w-[1312px] flex-col items-center px-5 pb-16 pt-8 text-center sm:px-8 sm:pt-20 lg:pb-24">
+        <section
+          id="homepage-content"
+          tabIndex={-1}
+          className="df-figma-hero relative z-10 mx-auto flex w-full max-w-[1312px] flex-col items-center px-5 pb-16 pt-8 text-center sm:px-8 sm:pt-20 lg:pb-24"
+        >
           <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/12 bg-white/[0.035] px-3 py-1.5 text-xs font-semibold text-white/68 shadow-[0_18px_70px_-46px_rgba(129,140,248,0.95)] backdrop-blur-xl sm:px-4">
             <span className="size-1.5 shrink-0 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.9)]" />
             <span className="truncate">Ex-agency built command center for inbound dealflow</span>
@@ -1979,6 +2005,7 @@ export function HomeCommandCenter() {
           </nav>
         </div>
       </footer>
-    </main>
+      </main>
+    </>
   );
 }

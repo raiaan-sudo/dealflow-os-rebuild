@@ -8,6 +8,7 @@ const leadCaptureSource = readFileSync("src/app/api/lead-capture/route.ts", "utf
 const systemJobSource = readFileSync("src/lib/services/system-job-service.ts", "utf8");
 const migrationSource = readFileSync("supabase/migrations/20260429230000_internal_sms_lead_notifications.sql", "utf8");
 const hardeningMigrationSource = readFileSync("supabase/migrations/20260430010000_public_launch_final_hardening.sql", "utf8");
+const receiptMigrationSource = readFileSync("supabase/migrations/20260710235600_harden_sms_delivery_receipts.sql", "utf8");
 
 function normalizePhone(input, defaultCountry = "US") {
   const raw = typeof input === "string" ? input.trim() : "";
@@ -52,17 +53,27 @@ assert.match(smsSource, /INTERNAL_LEAD_SMS_ENABLED/);
 assert.match(smsSource, /SMS_MOCK_MODE/);
 assert.match(smsSource, /TEST_SMS_MODE/);
 assert.match(smsSource, /mock_sms_/);
-assert.match(smsSource, /queued: "queued"/);
+assert.match(smsSource, /claim_lead_notification_delivery/);
+assert.match(smsSource, /settle_lead_notification_delivery/);
+assert.match(smsSource, /SmsProviderAmbiguousError/);
+assert.match(receiptMigrationSource, /Legacy queued delivery has no provider receipt/);
+assert.match(receiptMigrationSource, /status = 'operator_action_required'/);
+assert.match(receiptMigrationSource, /delivery_lease_generation/);
 assert.match(notificationSource, /purpose: "new_lead_alert"/);
 assert.match(notificationSource, /purpose: "lead_reply_template"/);
 assert.match(notificationSource, /no_eligible_agent/);
 assert.match(notificationSource, /Copy\/paste reply for/);
 assert.match(notificationSource, /params\.agent\.phone_e164/);
+assert.match(notificationSource, /new Set\(\["sent", "delivered"\]\)/);
+assert.doesNotMatch(notificationSource, /new Set\(\["queued"/);
 assert.doesNotMatch(notificationSource, /lead\.phone_e164\)\s*;/);
 assert.match(leadCaptureSource, /queueLeadSideEffectsJob/);
 assert.match(systemJobSource, /kind:\s*"lead_side_effects"/);
 assert.match(systemJobSource, /safeNotifyAssignedAgentOfNewLead/);
 assert.match(systemJobSource, /safeSendMetaLeadConversion/);
-assert.match(leadCaptureSource, /ALLOW_PUBLIC_LEAD_NO_TURNSTILE/);
+assert.doesNotMatch(leadCaptureSource, /ALLOW_PUBLIC_LEAD_NO_TURNSTILE/);
+assert.match(leadCaptureSource, /verifyLeadCaptureTurnstile/);
+assert.match(leadCaptureSource, /consumeRateLimitBuckets/);
+assert.match(leadCaptureSource, /lead_spam_rejected/);
 
 console.log("Internal SMS notification static tests passed.");

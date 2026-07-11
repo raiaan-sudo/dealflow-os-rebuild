@@ -55,7 +55,12 @@ export function normalizeIntegrationStatus(value?: string | null): IntegrationSt
     return "connected";
   }
 
-  if (safeStatus === "connecting" || safeStatus === "pending" || safeStatus === "degraded") {
+  if (
+    safeStatus === "connecting" ||
+    safeStatus === "pending" ||
+    safeStatus === "partial" ||
+    safeStatus === "degraded"
+  ) {
     return "pending";
   }
 

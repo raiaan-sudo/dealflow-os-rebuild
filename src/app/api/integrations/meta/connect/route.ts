@@ -1,34 +1,55 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getPublicAppUrl, getMetaEnvOrThrow } from "@/lib/env";
+import {
+  buildMetaOAuthDialogUrl,
+  resolveMetaReturnUrl,
+} from "@/lib/integrations/meta/contract";
+import { createMetaOAuthStateBinding } from "@/lib/integrations/meta/oauth-state";
 import { logMetaError } from "@/lib/integrations/meta/error-mapper";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 
 const META_STATE_COOKIE = "dealflow_meta_oauth_state";
-const META_RETURN_TO_COOKIE = "dealflow_meta_oauth_return_to";
+const REQUIRED_META_OAUTH_SCOPES = [
+  "ads_management",
+  "ads_read",
+  "business_management",
+  "pages_show_list",
+  "pages_read_engagement",
+  "pages_manage_metadata",
+  "leads_retrieval",
+] as const;
+
+function resolveMetaOAuthScopes(configured: string) {
+  const scopes = [...new Set(configured.split(",").map((scope) => scope.trim()).filter(Boolean))];
+  const missing = REQUIRED_META_OAUTH_SCOPES.filter((scope) => !scopes.includes(scope));
+  if (missing.length > 0) {
+    throw new Error("Configured Meta OAuth scopes do not satisfy the DealFlow launch and lead-ingestion contract.");
+  }
+  return scopes;
+}
 
 export const dynamic = "force-dynamic";
-
-function getSafeReturnTo(value: string | null) {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) {
-    return "/launch";
-  }
-
-  return value;
-}
 
 export async function GET(request: Request) {
   const requestId = crypto.randomUUID();
 
   try {
-    await getAuthenticatedContext();
+    const auth = await getAuthenticatedContext();
 
     const requestUrl = new URL(request.url);
-    const returnTo = getSafeReturnTo(requestUrl.searchParams.get("returnTo"));
-    const url = new URL("https://www.facebook.com/v18.0/dialog/oauth");
+    const returnUrl = resolveMetaReturnUrl(
+      requestUrl.searchParams.get("returnTo"),
+      getPublicAppUrl(),
+    );
+    const returnTo = `${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`;
     const env = getMetaEnvOrThrow();
     const redirectUri = env.redirectUri;
-    const state = crypto.randomUUID();
+    const { state } = await createMetaOAuthStateBinding({
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      returnTo,
+    });
     const cookieStore = await cookies();
 
     cookieStore.set(META_STATE_COOKIE, state, {
@@ -38,22 +59,12 @@ export async function GET(request: Request) {
       path: "/",
       maxAge: 60 * 10,
     });
-    cookieStore.set(META_RETURN_TO_COOKIE, returnTo, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 60 * 10,
+    const url = buildMetaOAuthDialogUrl({
+      clientId: env.appId,
+      redirectUri,
+      state,
+      scopes: resolveMetaOAuthScopes(env.scopes),
     });
-
-    url.searchParams.set("client_id", env.appId);
-    url.searchParams.set("redirect_uri", redirectUri);
-    url.searchParams.set(
-      "scope",
-      "ads_management,ads_read,business_management,pages_show_list,pages_read_engagement",
-    );
-    url.searchParams.set("response_type", "code");
-    url.searchParams.set("state", state);
 
     return NextResponse.redirect(url.toString());
   } catch (error) {

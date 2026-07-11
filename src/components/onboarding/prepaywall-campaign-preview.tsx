@@ -464,7 +464,7 @@ function InstantFormSetupPreview({
       <div className="flex items-start gap-3">
         <MiniIconTile icon={FileText} className="text-cyan-100" />
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100/70">Meta Instant Form Setup</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100/70">Fast Website Form Setup</p>
           <h4 className={cn("mt-2 font-semibold tracking-[-0.04em] text-white", compact ? "text-base" : "text-xl")}>
             Leads stay inside Facebook and Instagram
           </h4>

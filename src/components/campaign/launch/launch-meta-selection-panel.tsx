@@ -57,7 +57,11 @@ export function LaunchMetaSelectionPanel({
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  const isConnected = liveConnection.connectionStatus === "connected";
+  const hasAuthorizedMetaSession =
+    liveConnection.hasAccessToken &&
+    (liveConnection.connectionStatus === "connected" ||
+      liveConnection.connectionStatus === "partial" ||
+      liveConnection.connectionStatus === "connecting");
   const availableAccounts = liveConnection.availableAccounts;
   const availablePages = liveConnection.availablePages;
   const availablePixels = liveConnection.availablePixels;
@@ -151,7 +155,7 @@ export function LaunchMetaSelectionPanel({
       });
   }
 
-  if (!isConnected) {
+  if (!hasAuthorizedMetaSession) {
     return (
       <Card className="p-5 sm:p-7">
         <div className="space-y-4">
@@ -180,7 +184,7 @@ export function LaunchMetaSelectionPanel({
   }
 
   return (
-    <Card className="p-5 sm:p-7">
+    <Card aria-busy={isSaving} className="p-5 sm:p-7">
       <div className="space-y-5">
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
@@ -193,10 +197,11 @@ export function LaunchMetaSelectionPanel({
           </p>
         </div>
         <div className="grid gap-4 lg:grid-cols-3">
-          <label className="space-y-2">
+          <label className="space-y-2" htmlFor="meta-ad-account">
             <span className="text-sm font-medium">Ad account</span>
             <select
-              className="flex h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-foreground outline-none"
+              id="meta-ad-account"
+              className="flex h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-foreground transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               value={selectedAccountId}
               onChange={(event) => handleAccountRefresh(event.target.value)}
               disabled={isSaving}
@@ -212,10 +217,11 @@ export function LaunchMetaSelectionPanel({
               ))}
             </select>
           </label>
-          <label className="space-y-2">
+          <label className="space-y-2" htmlFor="meta-facebook-page">
             <span className="text-sm font-medium">Facebook Page</span>
             <select
-              className="flex h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-foreground outline-none"
+              id="meta-facebook-page"
+              className="flex h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-foreground transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               value={selectedPageId}
               onChange={(event) => {
                 setSelectedPageId(event.target.value);
@@ -232,10 +238,11 @@ export function LaunchMetaSelectionPanel({
               ))}
             </select>
           </label>
-          <label className="space-y-2">
+          <label className="space-y-2" htmlFor="meta-pixel">
             <span className="text-sm font-medium">Pixel</span>
             <select
-              className="flex h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-foreground outline-none"
+              id="meta-pixel"
+              className="flex h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-foreground transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               value={selectedPixelId}
               onChange={(event) => {
                 setSelectedPixelId(event.target.value);
@@ -256,17 +263,29 @@ export function LaunchMetaSelectionPanel({
           </label>
         </div>
         {error ? (
-          <div className="rounded-[18px] border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+          <div
+            aria-live="assertive"
+            className="rounded-[18px] border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100"
+            role="alert"
+          >
             {error}
           </div>
         ) : null}
         {saveMessage ? (
-          <div className="rounded-[18px] border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-100">
+          <div
+            aria-live="polite"
+            className="rounded-[18px] border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-100"
+            role="status"
+          >
             {saveMessage}
           </div>
         ) : null}
         {!allSelectionsReady ? (
-          <div className="rounded-[18px] border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+          <div
+            aria-live="polite"
+            className="rounded-[18px] border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100"
+            role="status"
+          >
             Missing required selections: {missingSelections.join(", ")}.
           </div>
         ) : null}

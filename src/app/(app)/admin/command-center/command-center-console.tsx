@@ -26,7 +26,7 @@ export type HudTone = "cyan" | "green" | "amber" | "blue" | "violet" | "red";
 
 export type ReadinessMetric = {
   label: string;
-  value: number;
+  value: number | null;
   detail: string;
   sourceLabel: string;
   tone: HudTone;
@@ -37,7 +37,7 @@ export type AgentConsole = {
   name: string;
   role: string;
   status: string;
-  readiness: number;
+  readiness: number | null;
   readinessLabel: string;
   signal: string;
   tone: HudTone;
@@ -71,17 +71,22 @@ export type CommandCenterIssue = {
 
 type CommandCenterConsoleProps = {
   agents: AgentConsole[];
+  dataStatus: {
+    campaignsAvailable: boolean;
+    issuesAvailable: boolean;
+    operationsAvailable: boolean;
+  };
   issues: CommandCenterIssue[];
   metrics: ReadinessMetric[];
   proofs: ProofEvent[];
   stats: {
-    campaigns: number;
-    liveCampaigns: number;
-    cleanCampaigns: number;
-    leadVerified: number;
-    failedJobs: number;
-    stripeFailures: number;
-    validationAlerts: number;
+    campaigns: number | null;
+    liveCampaigns: number | null;
+    cleanCampaigns: number | null;
+    leadVerified: number | null;
+    failedJobs: number | null;
+    stripeFailures: number | null;
+    validationAlerts: number | null;
     smsAutomationEnabled: boolean;
   };
   workLog: WorkLogEntry[];
@@ -94,8 +99,16 @@ const agentIcons = {
   veronica: Bot,
 } as const;
 
-function pct(value: number) {
+function pct(value: number | null) {
+  if (value === null || !Number.isFinite(value)) {
+    return "Unavailable";
+  }
+
   return `${Math.max(0, Math.min(100, value))}%`;
+}
+
+function pctWidth(value: number | null) {
+  return value === null ? "0%" : pct(value);
 }
 
 function formatDateTime(value: string | null) {
@@ -182,6 +195,7 @@ function severityTone(severity: CommandCenterIssue["severity"]): HudTone {
 
 export function CommandCenterConsole({
   agents,
+  dataStatus,
   issues,
   metrics,
   proofs,
@@ -198,12 +212,14 @@ export function CommandCenterConsole({
       : "No active agent selected.";
     return [
       "DealFlow command center briefing.",
-      `Controlled beta and 100 client readiness are operator scores at ${metrics[0]?.value ?? 0} and ${metrics[1]?.value ?? 0} percent.`,
+      `Campaign monitoring data is ${dataStatus.campaignsAvailable ? "available" : "unavailable"}.`,
+      `Issue data is ${dataStatus.issuesAvailable ? "available" : "unavailable"}.`,
+      ...metrics.map((metric) => `${metric.label}: ${pct(metric.value)}.`),
       agentStatus,
       `${criticalIssues.length} high priority issues are on radar.`,
-      "Stripe replay and Meta paused retry proof are complete.",
+      "This briefing reports current query evidence only and does not infer provider-side proof.",
     ].join(" ");
-  }, [activeAgent, criticalIssues.length, metrics]);
+  }, [activeAgent, criticalIssues.length, dataStatus, metrics]);
 
   function speakBriefing() {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
@@ -258,8 +274,8 @@ export function CommandCenterConsole({
               DealFlow control room
             </h1>
             <p className="mt-4 max-w-3xl text-sm leading-7 text-cyan-100/72">
-              Operational HUD for readiness, launch proof, autonomous agent work, and error intake.
-              Confirmed telemetry is separated from estimated signals so support can act fast.
+              Operational HUD for query-backed campaign state, system counts, and error intake.
+              Unavailable sources stay unavailable instead of being converted into zeroes or scores.
             </p>
             <div className="mt-5 flex flex-wrap gap-3">
               <button
@@ -368,9 +384,13 @@ export function CommandCenterConsole({
             <div className="mt-4 space-y-3">
               {issues.length > 0 ? (
                 issues.slice(0, 5).map((issue) => <IssueLine issue={issue} key={issue.id} />)
+              ) : !dataStatus.issuesAvailable ? (
+                <div className="rounded-2xl border border-amber-300/20 bg-amber-300/10 p-4 text-sm text-amber-100">
+                  Issue data is unavailable. A clear state is not asserted.
+                </div>
               ) : (
-                <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-4 text-sm text-emerald-100">
-                  No issues found in the current operator radar window.
+                <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4 text-sm text-cyan-100">
+                  The current query returned no issues in its configured window.
                 </div>
               )}
             </div>
@@ -382,7 +402,7 @@ export function CommandCenterConsole({
 }
 
 function HudCore({ metrics }: { metrics: ReadinessMetric[] }) {
-  const primary = metrics[1]?.value ?? 0;
+  const primary = metrics[0]?.value ?? null;
 
   return (
     <div className="relative min-h-[330px] overflow-hidden rounded-[28px] border border-cyan-200/20 bg-black/44 p-5">
@@ -397,14 +417,14 @@ function HudCore({ metrics }: { metrics: ReadinessMetric[] }) {
       <div className="relative z-10 flex h-full min-h-[290px] flex-col justify-between">
         <div className="flex items-center justify-between">
           <span className="rounded-full border border-cyan-200/25 bg-cyan-200/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.24em] text-cyan-100">
-            operator score core
+            observed coverage core
           </span>
-          <span className="font-mono text-xs text-cyan-100/70">{pct(primary)} labeled score</span>
+          <span className="font-mono text-xs text-cyan-100/70">{pct(primary)}</span>
         </div>
         <div className="mx-auto w-full max-w-[240px] rounded-3xl border border-cyan-200/20 bg-black/62 p-4 text-center backdrop-blur">
           <Sparkles className="mx-auto size-6 text-cyan-100" />
           <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.26em] text-cyan-100/60">
-            readiness score
+            current coverage
           </p>
           <p className="mt-1 text-5xl font-black tracking-[-0.08em] text-white">{pct(primary)}</p>
         </div>
@@ -421,7 +441,7 @@ function HudCore({ metrics }: { metrics: ReadinessMetric[] }) {
                   {metric.sourceLabel}
                 </p>
                 <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
-                  <div className={`h-full rounded-full bg-gradient-to-r ${tone.line}`} style={{ width: pct(metric.value) }} />
+                  <div className={`h-full rounded-full bg-gradient-to-r ${tone.line}`} style={{ width: pctWidth(metric.value) }} />
                 </div>
               </div>
             );
@@ -439,13 +459,13 @@ function StatPanel({
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
-  value: number | string;
+  value: number | string | null;
 }) {
   return (
     <div className="rounded-[22px] border border-cyan-200/16 bg-black/42 p-4">
       <div className="flex items-center justify-between gap-3">
         <Icon className="size-4 text-cyan-100/70" />
-        <span className="font-mono text-2xl font-black text-white">{value}</span>
+        <span className="font-mono text-2xl font-black text-white">{value ?? "Unavailable"}</span>
       </div>
       <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.24em] text-cyan-100/50">{label}</p>
     </div>
@@ -466,6 +486,7 @@ function AgentButton({
 
   return (
     <button
+      aria-pressed={active}
       className={cn(
         "group rounded-[24px] border p-4 text-left transition",
         active
@@ -489,7 +510,7 @@ function AgentButton({
         {agent.readinessLabel}
       </p>
       <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
-        <div className={`h-full rounded-full bg-gradient-to-r ${tone.line}`} style={{ width: pct(agent.readiness) }} />
+        <div className={`h-full rounded-full bg-gradient-to-r ${tone.line}`} style={{ width: pctWidth(agent.readiness) }} />
       </div>
     </button>
   );
@@ -523,7 +544,7 @@ function AgentDetail({
       </p>
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         <div>
-          <p className="font-mono text-xs uppercase tracking-[0.24em] text-cyan-100/50">Executed logs</p>
+          <p className="font-mono text-xs uppercase tracking-[0.24em] text-cyan-100/50">Observed signals</p>
           <div className="mt-3 space-y-2">
             {agent.logs.map((log) => (
               <div className="rounded-2xl border border-cyan-200/10 bg-black/32 px-4 py-3 text-sm text-cyan-50/74" key={log}>
@@ -533,7 +554,7 @@ function AgentDetail({
           </div>
         </div>
         <div>
-          <p className="font-mono text-xs uppercase tracking-[0.24em] text-cyan-100/50">Workstream record</p>
+          <p className="font-mono text-xs uppercase tracking-[0.24em] text-cyan-100/50">Evidence notes</p>
           <div className="mt-3 space-y-2">
             {workLog.length > 0 ? (
               workLog.map((entry) => (

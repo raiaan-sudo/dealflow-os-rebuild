@@ -9,6 +9,7 @@ function read(path) {
 
 const packageJson = JSON.parse(read("package.json"));
 const migration = read("supabase/migrations/20260705090000_create_billing_access_keys.sql");
+const recoveryMigration = read("supabase/migrations/20260710235993_harden_access_key_claim_delivery.sql");
 const env = read("src/lib/env.ts");
 const accessKeyService = read("src/lib/services/access-key-service.ts");
 const loginForm = read("src/components/auth/login-form.tsx");
@@ -18,6 +19,7 @@ const billingService = read("src/lib/services/billing-service.ts");
 const proxy = read("src/proxy.ts");
 const routeSecurity = read("scripts/check-route-security.mjs");
 const checkoutRoute = read("src/app/api/access-keys/checkout/route.ts");
+const revealCookie = read("src/lib/access-key-reveal-cookie.ts");
 const preclaimRoute = read("src/app/api/access-keys/preclaim/route.ts");
 const paywallAccess = read("src/lib/paywall-access.ts");
 const adminRevokeRoute = read("src/app/api/admin/access-keys/[id]/revoke/route.ts");
@@ -40,12 +42,15 @@ assert.doesNotMatch(migration, /\b(raw_key|plaintext_key|key_plaintext)\s+text\b
 assert.match(accessKeyService, /generateAccessKey/, "service must generate access keys");
 assert.match(accessKeyService, /hashAccessKey/, "service must hash access keys");
 assert.match(accessKeyService, /encryptRevealSecret/, "service must encrypt reveal payload");
-assert.match(accessKeyService, /revealed_at/, "service must enforce one-time access-key reveal");
-assert.match(accessKeyService, /reveal_ciphertext: null/, "service must clear reveal ciphertext after first reveal");
+assert.match(accessKeyService, /begin_billing_access_key_reveal_delivery/, "service must lease one reveal delivery");
+assert.match(accessKeyService, /ack_billing_access_key_reveal_delivery/, "service must acknowledge delivery before reveal consumption");
+assert.match(recoveryMigration, /reveal_consumed_at is null/, "database must CAS the unrevealed state");
+assert.match(recoveryMigration, /metadata - 'reveal_ciphertext'/, "database must clear reveal ciphertext only on acknowledgement");
 assert.match(accessKeyService, /createAccessKeyCheckoutSession/, "service must create checkout sessions");
 assert.match(accessKeyService, /activateAccessKeyFromCheckoutSession/, "service must activate keys from Stripe checkout");
 assert.match(accessKeyService, /preclaimAccessKey/, "service must preclaim keys");
 assert.match(accessKeyService, /claimPendingAccessKeyForCurrentUser/, "service must claim keys after auth bootstrap");
+assert.match(accessKeyService, /claim_billing_access_key_reconciliation/, "claim must use a recoverable exact-workspace lease");
 assert.match(accessKeyService, /syncBillingSubscriptionFromStripe/, "claim must reuse real billing subscription sync");
 assert.match(accessKeyService, /update_customer/, "claim must attach user workspace metadata to Stripe customer");
 assert.match(accessKeyService, /update_subscription/, "claim must attach user workspace metadata to Stripe subscription");
@@ -54,6 +59,8 @@ assert.match(accessKeyService, /listAccessKeyEventsForAdmin/, "service must expo
 assert.match(accessKeyService, /access_key_schema_missing/, "service must fail safely when the access-key migration is missing");
 assert.doesNotMatch(accessKeyService, /console\.log\(.*rawKey|logOperationalEvent\([^)]*rawKey/s, "service must not log raw keys");
 assert.match(env, /isAccessKeyPublicCheckoutEnabled/, "public checkout must have a separate rollout flag");
+assert.match(accessKeyService, /getStripeAccessKeyPrefix/, "access-key prefix must derive from validated Stripe mode");
+assert.doesNotMatch(accessKeyService, /STRIPE_FORCE_TEST_MODE/, "access-key prefix must not infer mode from a raw flag");
 
 assert.match(loginForm, /id="access-key"/, "signup form must expose optional access-key field");
 assert.match(loginForm, /\/api\/access-keys\/preclaim/, "signup must preclaim access key before Supabase signup");
@@ -69,12 +76,18 @@ assert.match(checkoutRoute, /assertSameOriginRequest/, "checkout API must be sam
 assert.match(checkoutRoute, /access-key-checkout/, "checkout API must be rate limited");
 assert.match(checkoutRoute, /isAccessKeyPublicCheckoutEnabled/, "checkout API must fail closed unless public rollout flag is enabled");
 assert.match(checkoutRoute, /access_key_public_checkout_disabled/, "checkout API must return a safe disabled error before creating Stripe sessions");
+assert.match(checkoutRoute, /getAccessKeyRevealCookieName/, "checkout API must issue a session-bound reveal verifier");
+assert.match(checkoutRoute, /ACCESS_KEY_REVEAL_MAX_IN_FLIGHT/, "checkout API must cap concurrent browser handoffs");
+assert.match(revealCookie, /"HttpOnly"/, "reveal verifier must be HttpOnly");
 assert.match(preclaimRoute, /assertSameOriginRequest/, "preclaim API must be same-origin protected");
 assert.match(preclaimRoute, /access-key-preclaim/, "preclaim API must be rate limited");
 assert.match(proxy, /"\/api\/access-keys\/checkout"/, "checkout API must be intentionally public");
 assert.match(proxy, /"\/api\/access-keys\/preclaim"/, "preclaim API must be intentionally public");
+assert.match(proxy, /"\/api\/access-keys\/reveal-ack"/, "reveal acknowledgement API must be intentionally public");
+assert.match(proxy, /\^\\\/p\\\/\[\^\/\]\+\\\/checkout\$/, "only the exact dynamic partner checkout path must be public");
 assert.match(routeSecurity, /\["\/api\/access-keys\/checkout", new Set\(\["POST"\]\)\]/, "route security must document checkout API");
 assert.match(routeSecurity, /\["\/api\/access-keys\/preclaim", new Set\(\["POST"\]\)\]/, "route security must document preclaim API");
+assert.match(routeSecurity, /\["\/api\/access-keys\/reveal-ack", new Set\(\["POST"\]\)\]/, "route security must document reveal acknowledgement API");
 
 assert.match(paywallAccess, /getBillingSummary/, "paywall must continue to use billing summary");
 assert.doesNotMatch(paywallAccess, /access[_-]?key/i, "paywall must not add a separate access-key bypass");
@@ -82,7 +95,9 @@ assert.doesNotMatch(paywallAccess, /access[_-]?key/i, "paywall must not add a se
 assert.match(checkoutPage, /AccessKeyCheckoutForm/, "native checkout page must render checkout form");
 assert.match(checkoutPage, /isAccessKeyPublicCheckoutEnabled/, "native checkout page must be hidden until public rollout flag is enabled");
 assert.match(checkoutPage, /notFound\(\)/, "native checkout page must fail closed while disabled");
-assert.match(partnerCheckoutPage, /partnerSlug=\{partnerSlug\}/, "partner checkout must carry partner slug into checkout");
+assert.match(partnerCheckoutPage, /partnerSlug=\{partner\.slug\}/, "partner checkout must carry only the resolved active partner slug into checkout");
+assert.match(partnerCheckoutPage, /loadPublicPartnerCheckout/, "partner checkout page must resolve its partner server-side");
+assert.doesNotMatch(partnerCheckoutPage, /formatPartnerName/, "partner checkout must not brand an unvalidated URL slug");
 assert.match(partnerCheckoutPage, /isAccessKeyPublicCheckoutEnabled/, "partner checkout page must be hidden until public rollout flag is enabled");
 assert.match(partnerCheckoutPage, /notFound\(\)/, "partner checkout page must fail closed while disabled");
 assert.match(accessKeyService, /\.from\("partners"\)/, "partner checkout must validate partner slug server-side");

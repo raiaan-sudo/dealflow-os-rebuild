@@ -1,5 +1,6 @@
 import { formatCurrency } from "@/lib/formatters";
 import {
+  getCampaignPlanById,
   getLatestCampaignPlan,
   persistCampaignPlan,
   type CampaignPlan,
@@ -23,9 +24,16 @@ type CampaignExperienceStatus =
   | "paywall"
   | "preview"
   | "connected"
-  | "launch_ready"
-  | "launching"
-  | "live";
+  | "launch_ready";
+
+function hasDurableProviderTerminalTruth(runtime: CampaignRuntime) {
+  return (
+    runtime.status === "provider_paused" ||
+    runtime.status === "live" ||
+    runtime.metaPushStatus === "provider_paused" ||
+    runtime.metaPushStatus === "published"
+  );
+}
 
 function withRuntime(plan: CampaignPlan, runtime: CampaignRuntime): CampaignPlan {
   return {
@@ -103,8 +111,10 @@ export function deriveCampaignRuntime(plan: CampaignPlan) {
   return runtime;
 }
 
-export async function getCampaignRuntimeSnapshot() {
-  const plan = await getLatestCampaignPlan();
+export async function getCampaignRuntimeSnapshot(campaignId?: string | null) {
+  const plan = campaignId?.trim()
+    ? await getCampaignPlanById(campaignId.trim())
+    : await getLatestCampaignPlan();
 
   if (!plan) {
     return null;
@@ -146,25 +156,25 @@ export async function startCampaignLaunch() {
 export async function setCampaignExperienceStatus(
   status: CampaignExperienceStatus,
   options?: {
+    campaignId?: string | null;
     lastAction?: string;
   },
 ) {
-  const snapshot = await getCampaignRuntimeSnapshot();
+  const snapshot = await getCampaignRuntimeSnapshot(options?.campaignId);
 
   if (!snapshot) {
     return null;
   }
 
+  if (hasDurableProviderTerminalTruth(snapshot.runtime)) {
+    return snapshot;
+  }
+
   const nextRuntime = transitionRuntime(snapshot.runtime, {
     status,
-    safetyState: status === "live" ? "live" : "ready",
-    metaPushStatus:
-      status === "live"
-        ? "published"
-        : status === "launching"
-          ? "publishing"
-          : "not_pushed",
-    launchedAt: status === "live" ? snapshot.runtime.launchedAt ?? new Date().toISOString() : null,
+    safetyState: "ready",
+    metaPushStatus: "not_pushed",
+    launchedAt: null,
     lastAction:
       options?.lastAction ??
       (status === "built"
@@ -177,11 +187,7 @@ export async function setCampaignExperienceStatus(
               ? "Ad account connected. Finish domain and tracking setup next."
               : status === "launch_ready"
                 ? "Connection checks are complete. Launch setup is ready next."
-                : status === "launching"
-                  ? "Launch sequence started."
-                  : status === "live"
-                  ? "Campaign is live."
-                  : "Campaign draft updated."),
+                : "Campaign draft updated."),
   });
 
   const plan = await persistCampaignPlan(withRuntime(snapshot.plan, nextRuntime));
@@ -295,12 +301,13 @@ export async function updateMetaPublishResult(params: {
 }
 
 export async function updateCampaignExecutionGuardrails(params: {
+  campaignId?: string | null;
   budgetDailyInput: number;
   launchMode: "test" | "live";
   safetyState: "ready" | "blocked";
   message: string;
 }) {
-  const snapshot = await getCampaignRuntimeSnapshot();
+  const snapshot = await getCampaignRuntimeSnapshot(params.campaignId);
 
   if (!snapshot) {
     return null;
@@ -310,7 +317,10 @@ export async function updateCampaignExecutionGuardrails(params: {
     budgetDailyInput: params.budgetDailyInput,
     budgetDaily: `${formatCurrency(params.budgetDailyInput)}/day`,
     launchMode: params.launchMode,
-    safetyState: params.safetyState,
+    safetyState:
+      snapshot.runtime.metaPushStatus === "provider_paused"
+        ? "paused"
+        : params.safetyState,
     lastAction: params.message,
   });
 
@@ -318,15 +328,20 @@ export async function updateCampaignExecutionGuardrails(params: {
   return { plan, runtime: plan.runtime };
 }
 
-export async function pauseCampaignExecution() {
-  const snapshot = await getCampaignRuntimeSnapshot();
+export async function pauseCampaignExecution(campaignId?: string | null) {
+  const snapshot = await getCampaignRuntimeSnapshot(campaignId);
 
   if (!snapshot) {
     return null;
   }
 
   const runtime = transitionRuntime(snapshot.runtime, {
-    status: snapshot.runtime.metaPushStatus === "published" ? "live" : "launch_ready",
+    status:
+      snapshot.runtime.metaPushStatus === "provider_paused"
+        ? "provider_paused"
+        : snapshot.runtime.metaPushStatus === "published"
+          ? "live"
+          : "launch_ready",
     safetyState: "paused",
     lastAction: "Campaign paused locally. No new launch or publish actions will run until resumed.",
   });
@@ -335,31 +350,43 @@ export async function pauseCampaignExecution() {
   return { plan, runtime: plan.runtime };
 }
 
-export async function resumeCampaignExecution() {
-  const snapshot = await getCampaignRuntimeSnapshot();
+export async function resumeCampaignExecution(campaignId?: string | null) {
+  const snapshot = await getCampaignRuntimeSnapshot(campaignId);
 
   if (!snapshot) {
     return null;
   }
 
+  if (
+    snapshot.runtime.metaPushStatus === "provider_paused" ||
+    snapshot.runtime.metaPushStatus === "published"
+  ) {
+    const runtime = transitionRuntime(snapshot.runtime, {
+      status:
+        snapshot.runtime.metaPushStatus === "provider_paused"
+          ? "provider_paused"
+          : "live",
+      safetyState: "paused",
+      lastAction:
+        "Provider delivery state was not changed. A separately authorized provider action and fresh sync are required before delivery can be described as active.",
+    });
+
+    const plan = await persistCampaignPlan(withRuntime(snapshot.plan, runtime));
+    return { plan, runtime: plan.runtime };
+  }
+
   const runtime = transitionRuntime(snapshot.runtime, {
-    status:
-      snapshot.runtime.metaPushStatus === "published"
-        ? "live"
-        : "launch_ready",
-    safetyState: snapshot.runtime.metaPushStatus === "failed" ? "ready" : "live",
-    lastAction:
-      snapshot.runtime.metaPushStatus === "published"
-        ? "Campaign resumed and live delivery is active again."
-        : "Campaign resumed locally and is ready for launch actions again.",
+    status: "launch_ready",
+    safetyState: "ready",
+    lastAction: "Campaign resumed locally and is ready for launch actions again.",
   });
 
   const plan = await persistCampaignPlan(withRuntime(snapshot.plan, runtime));
   return { plan, runtime: plan.runtime };
 }
 
-export async function archiveCampaignExecution() {
-  const snapshot = await getCampaignRuntimeSnapshot();
+export async function archiveCampaignExecution(campaignId?: string | null) {
+  const snapshot = await getCampaignRuntimeSnapshot(campaignId);
 
   if (!snapshot) {
     return null;

@@ -35,10 +35,20 @@ export type ImageAdResult = {
 };
 
 export type ImageProviderUsageContext = {
-  reserve: () => Promise<{ eventId: string | null | undefined }>;
+  reserve: () => Promise<{
+    eventId: string | null | undefined;
+    organizationId: string;
+    userId: string;
+    settlementToken: string | null | undefined;
+    settlementGeneration: number | null | undefined;
+  }>;
   mark: (params: {
     eventId: string | null | undefined;
-    status: "consumed" | "released" | "failed";
+    organizationId: string;
+    userId: string;
+    settlementToken: string | null | undefined;
+    settlementGeneration: number | null | undefined;
+    status: "consumed" | "released" | "rejected" | "operator_action_required";
     metadata?: Record<string, unknown>;
   }) => Promise<void>;
 };
@@ -251,7 +261,7 @@ export async function createImageAd(
   const imageProvider = getImageGenerationProvider();
 
   if (imageProvider.isConfigured()) {
-    let budgetReservation: { eventId: string | null | undefined } | null = null;
+    let budgetReservation: Awaited<ReturnType<ImageProviderUsageContext["reserve"]>> | null = null;
     try {
       if (process.env.ALLOW_OPENAI_IMAGE_GENERATION === "true" && providerUsage) {
         budgetReservation = await providerUsage.reserve();
@@ -273,40 +283,55 @@ export async function createImageAd(
         generationState = "generated";
         generationModel =
           typeof parsed.metadata?.model === "string" ? parsed.metadata.model : null;
-        await providerUsage?.mark({
-          eventId: budgetReservation?.eventId,
-          status: "consumed",
-          metadata: {
-            operation: "openai_image_generation",
-            assetId: staticAsset?.hook ?? null,
-            model: generationModel,
-          },
-        });
+        if (providerUsage && budgetReservation) {
+          await providerUsage.mark({
+            ...budgetReservation,
+            status: "consumed",
+            metadata: {
+              operation: "openai_image_generation",
+              assetId: staticAsset?.hook ?? null,
+              model: generationModel,
+            },
+          });
+        }
       } else {
         generationState = parsed.status === "unsupported" ? "unavailable" : "failed";
         generationMessage = parsed.error ?? "Image generation did not return a usable asset.";
-        await providerUsage?.mark({
-          eventId: budgetReservation?.eventId,
-          status: parsed.status === "unsupported" ? "released" : "failed",
-          metadata: {
-            operation: "openai_image_generation",
-            assetId: staticAsset?.hook ?? null,
-            reason: generationMessage,
-          },
-        });
+        if (providerUsage && budgetReservation) {
+          const providerOutcome = parsed.metadata?.providerOutcome;
+          await providerUsage.mark({
+            ...budgetReservation,
+            status:
+              parsed.status === "unsupported"
+                ? "released"
+                : providerOutcome === "rejected"
+                  ? "rejected"
+                  : "operator_action_required",
+            metadata: {
+              operation: "openai_image_generation",
+              assetId: staticAsset?.hook ?? null,
+              reason: generationMessage,
+              providerOutcome:
+                typeof providerOutcome === "string" ? providerOutcome : "ambiguous",
+            },
+          });
+        }
       }
     } catch (error) {
       generationState = "failed";
       generationMessage = error instanceof Error ? error.message : "Unknown image generation error.";
-      await providerUsage?.mark({
-        eventId: budgetReservation?.eventId,
-        status: "failed",
-        metadata: {
-          operation: "openai_image_generation",
-          assetId: staticAsset?.hook ?? null,
-          reason: generationMessage,
-        },
-      }).catch(() => null);
+      if (providerUsage && budgetReservation) {
+        await providerUsage.mark({
+          ...budgetReservation,
+          status: "operator_action_required",
+          metadata: {
+            operation: "openai_image_generation",
+            assetId: staticAsset?.hook ?? null,
+            reason: generationMessage,
+            providerOutcome: "ambiguous",
+          },
+        }).catch(() => null);
+      }
       logWarn("OpenAI image generation failed", {
         message: error instanceof Error ? error.message : "Unknown error",
         location: market,

@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
+import { ApiError, assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import {
   archiveCampaignExecution,
-  completeCampaignLaunch,
   getCampaignRuntimeSnapshot,
   pauseCampaignExecution,
   resumeCampaignExecution,
   setCampaignExperienceStatus,
-  startCampaignLaunch,
   updateCampaignExecutionGuardrails,
 } from "@/lib/services/campaign-runtime-service";
 
@@ -18,8 +16,6 @@ export const dynamic = "force-dynamic";
 
 const bodySchema = z.object({
   action: z.enum([
-    "launch",
-    "complete_launch",
     "refresh",
     "set_experience_status",
     "set_guardrails",
@@ -27,9 +23,9 @@ const bodySchema = z.object({
     "resume_campaign",
     "archive_campaign",
   ]),
-  campaign: z.unknown().optional(),
+  campaignId: z.string().uuid().optional(),
   experienceStatus: z
-    .enum(["draft", "built", "paywall", "preview", "connected", "launch_ready", "launching", "live"])
+    .enum(["draft", "built", "paywall", "preview", "connected", "launch_ready"])
     .optional(),
   budgetDailyInput: z.number().optional(),
   launchMode: z.enum(["test", "live"]).optional(),
@@ -74,12 +70,17 @@ export async function POST(request: Request) {
     const body = await parseJsonBody(request, bodySchema);
     let result: Awaited<ReturnType<typeof getCampaignRuntimeSnapshot>> | null = null;
 
-    if (body.action === "launch") {
-      result = await startCampaignLaunch();
-    } else if (body.action === "complete_launch" && body.campaign) {
-      result = await completeCampaignLaunch(body.campaign as Parameters<typeof completeCampaignLaunch>[0]);
-    } else if (body.action === "set_experience_status" && body.experienceStatus) {
+    if (body.action !== "refresh" && !body.campaignId) {
+      throw new ApiError(
+        400,
+        "A campaign ID is required for runtime mutations.",
+        "campaign_runtime_campaign_required",
+      );
+    }
+
+    if (body.action === "set_experience_status" && body.experienceStatus) {
       result = await setCampaignExperienceStatus(body.experienceStatus, {
+        campaignId: body.campaignId,
         lastAction: body.message,
       });
     } else if (
@@ -89,19 +90,20 @@ export async function POST(request: Request) {
       body.safetyState
     ) {
       result = await updateCampaignExecutionGuardrails({
+        campaignId: body.campaignId,
         budgetDailyInput: body.budgetDailyInput,
         launchMode: body.launchMode,
         safetyState: body.safetyState,
         message: body.message ?? "Launch guardrails updated.",
       });
     } else if (body.action === "pause_campaign") {
-      result = await pauseCampaignExecution();
+      result = await pauseCampaignExecution(body.campaignId);
     } else if (body.action === "resume_campaign") {
-      result = await resumeCampaignExecution();
+      result = await resumeCampaignExecution(body.campaignId);
     } else if (body.action === "archive_campaign") {
-      result = await archiveCampaignExecution();
+      result = await archiveCampaignExecution(body.campaignId);
     } else {
-      result = await getCampaignRuntimeSnapshot();
+      result = await getCampaignRuntimeSnapshot(body.campaignId);
     }
 
     return NextResponse.json({

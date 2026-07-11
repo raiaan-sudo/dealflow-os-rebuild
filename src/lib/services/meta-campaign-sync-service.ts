@@ -44,6 +44,10 @@ function mapEntityStatuses(value: unknown): MetaEntityStatus[] {
       id: String(row.id ?? `entity-${index}`),
       name: String(row.name ?? `Entity ${index + 1}`),
       status: String(row.status ?? "UNKNOWN"),
+      configuredStatus:
+        typeof row.configuredStatus === "string" ? row.configuredStatus : null,
+      effectiveStatus:
+        typeof row.effectiveStatus === "string" ? row.effectiveStatus : null,
     };
   });
 }
@@ -112,6 +116,10 @@ function mapSyncSnapshot(row: Record<string, unknown> | null): MetaCampaignSyncS
   }
 
   const deliveryMetrics = mapDeliveryMetrics(row.delivery_metrics);
+  const syncMetadata =
+    row.sync_metadata && typeof row.sync_metadata === "object"
+      ? (row.sync_metadata as { [key: string]: Json | undefined })
+      : ({} as { [key: string]: Json | undefined });
 
   return {
     id: String(row.id),
@@ -126,14 +134,23 @@ function mapSyncSnapshot(row: Record<string, unknown> | null): MetaCampaignSyncS
     metaAdSetIds: Array.isArray(row.meta_ad_set_ids) ? row.meta_ad_set_ids.map(String) : [],
     metaAdIds: Array.isArray(row.meta_ad_ids) ? row.meta_ad_ids.map(String) : [],
     campaignStatus: typeof row.campaign_status === "string" ? row.campaign_status : null,
+    campaignEntityId:
+      typeof syncMetadata.campaign_entity_id === "string"
+        ? syncMetadata.campaign_entity_id
+        : null,
+    campaignConfiguredStatus:
+      typeof syncMetadata.campaign_configured_status === "string"
+        ? syncMetadata.campaign_configured_status
+        : null,
+    campaignEffectiveStatus:
+      typeof syncMetadata.campaign_effective_status === "string"
+        ? syncMetadata.campaign_effective_status
+        : null,
     adSetStatuses: mapEntityStatuses(row.ad_set_statuses),
     adStatuses: mapEntityStatuses(row.ad_statuses),
     metrics: deliveryMetrics,
     deliveryMetrics,
-    syncMetadata:
-      row.sync_metadata && typeof row.sync_metadata === "object"
-        ? (row.sync_metadata as { [key: string]: Json | undefined })
-        : ({} as { [key: string]: Json | undefined }),
+    syncMetadata,
     syncErrors: mapSyncErrors(row.sync_errors),
     syncedAt: String(row.synced_at ?? row.created_at ?? new Date().toISOString()),
   };
@@ -168,13 +185,32 @@ function resolveLaunchIds(params: {
   runtimeAdIds: string[];
   launchCampaignId: string | null;
   launchAdSetIds: string[];
+  launchCreativeId: string | null;
   launchAdIds: string[];
+  launchResultStatus: string | null;
 }) {
+  const hasAuthoritativeSuccessReceipt =
+    params.launchResultStatus === "success" &&
+    Boolean(params.launchCampaignId) &&
+    params.launchAdSetIds.length === 1 &&
+    Boolean(params.launchCreativeId) &&
+    params.launchAdIds.length === 1;
+
+  if (hasAuthoritativeSuccessReceipt) {
+    return {
+      campaignId: params.launchCampaignId,
+      adSetIds: params.launchAdSetIds,
+      adIds: params.launchAdIds,
+      source: "durable_success_receipt" as const,
+    };
+  }
+
   return {
     campaignId: params.runtimeCampaignId ?? params.launchCampaignId,
     adSetIds:
       params.runtimeAdSetIds.length > 0 ? params.runtimeAdSetIds : params.launchAdSetIds,
     adIds: params.runtimeAdIds.length > 0 ? params.runtimeAdIds : params.launchAdIds,
+    source: "mutable_runtime" as const,
   };
 }
 
@@ -227,6 +263,7 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
   const plan = scopedRecord ? canonicalCampaignToPlan(scopedRecord) : latestPlan;
   const launchRecord = scopedRecord
     ? await getCampaignLaunchRecordForCampaign({
+        campaignId: requestedCampaignId,
         campaignName: plan?.businessName ?? scopedRecord.campaign.name,
         metaCampaignId: plan?.runtime.campaignId ?? null,
       })
@@ -254,7 +291,9 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
     runtimeAdIds: plan.runtime.metaAdIds ?? [],
     launchCampaignId: launchRecord?.metaCampaignId ?? null,
     launchAdSetIds: launchRecord?.metaAdSetIds ?? [],
+    launchCreativeId: launchRecord?.metaCreativeId ?? null,
     launchAdIds: launchRecord?.metaAdIds ?? [],
+    launchResultStatus: launchRecord?.resultStatus ?? null,
   });
 
   if (!ids.campaignId) {
@@ -397,6 +436,10 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
     delivery_metrics: deliveryMetrics as unknown as Json,
     sync_metadata: {
       mode,
+      launch_id_source: ids.source,
+      campaign_entity_id: campaignStatus?.id ?? null,
+      campaign_configured_status: campaignStatus?.configuredStatus ?? null,
+      campaign_effective_status: campaignStatus?.effectiveStatus ?? null,
       ad_insights: adInsights,
       synced_from_runtime: {
         campaignId: plan.runtime.campaignId,

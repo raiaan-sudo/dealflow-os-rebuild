@@ -7,6 +7,13 @@ import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { getMetaConnectionState, getDefaultMetaConnectionState } from "@/lib/integrations/meta/service";
 import { getMetaCampaignSyncSnapshotForCampaign } from "@/lib/services/meta-campaign-sync-service";
+import { getCampaignLaunchRecordForCampaign } from "@/lib/services/campaign-launch-audit-service";
+import {
+  getLaunchTruthPresentation,
+  isFreshPausedLaunchConfirmation,
+  resolveLaunchProviderObjectIds,
+  resolveLaunchTruth,
+} from "@/lib/launch-truth";
 
 function buildMetaCampaignLink(metaCampaignId: string | null, adAccountId: string | null) {
   if (!metaCampaignId) {
@@ -112,10 +119,37 @@ export default async function LaunchSuccessPage({
   const persistedAdSetId = plan?.runtime.adSetId ?? plan?.runtime.metaAdSetIds?.[0] ?? null;
   const persistedAdId = plan?.runtime.adId ?? plan?.runtime.metaAdIds?.[0] ?? null;
   const resolvedSavedCampaignId = activeCampaign?.campaignId ?? campaignId ?? null;
-  const resolvedMetaCampaignId = persistedCampaignId;
-  const resolvedMetaAdSetId = persistedAdSetId;
-  const resolvedMetaAdId = persistedAdId;
   const resolvedCampaignName = plan?.businessName ?? plan?.clientName ?? "Campaign";
+  const launchReceipt =
+    plan && resolvedSavedCampaignId
+      ? await getCampaignLaunchRecordForCampaign({
+          campaignId: resolvedSavedCampaignId,
+          campaignName: resolvedCampaignName,
+          metaCampaignId: persistedCampaignId,
+        }).catch(() => null)
+      : null;
+  const authoritativeProviderIds = resolveLaunchProviderObjectIds({
+    resolvedCampaignId: resolvedSavedCampaignId,
+    runtime: {
+      metaCampaignId: persistedCampaignId,
+      metaAdSetId: persistedAdSetId,
+      metaAdId: persistedAdId,
+    },
+    receipt: launchReceipt
+      ? {
+          resultStatus: launchReceipt.resultStatus,
+          scheduledFor: launchReceipt.scheduledFor,
+          campaignId: launchReceipt.campaignId,
+          metaCampaignId: launchReceipt.metaCampaignId,
+          metaAdSetIds: launchReceipt.metaAdSetIds,
+          metaCreativeId: launchReceipt.metaCreativeId,
+          metaAdIds: launchReceipt.metaAdIds,
+        }
+      : null,
+  });
+  const resolvedMetaCampaignId = authoritativeProviderIds.metaCampaignId;
+  const resolvedMetaAdSetId = authoritativeProviderIds.metaAdSetId;
+  const resolvedMetaAdId = authoritativeProviderIds.metaAdId;
   const syncSnapshot =
     plan && resolvedMetaCampaignId
       ? await getMetaCampaignSyncSnapshotForCampaign({
@@ -144,29 +178,39 @@ export default async function LaunchSuccessPage({
       : plan?.monthlyBudget && plan.monthlyBudget > 0
         ? `${currency(plan.monthlyBudget)}/month`
         : "Budget not recorded";
-  const resolvedStatus =
-    plan?.runtime.metaPushStatus === "published" || plan?.runtime.status === "live"
-      ? "Live"
-      : plan?.runtime.status === "launching"
-        ? "Launching"
-        : resolvedMetaCampaignId
-          ? "Sent to Meta"
-          : "Pending";
   const createdLocally =
-    Boolean(resolvedSavedCampaignId) &&
-    Boolean(resolvedMetaCampaignId) &&
-    Boolean(resolvedMetaAdSetId) &&
-    Boolean(resolvedMetaAdId);
+    launchReceipt?.resultStatus === "success" &&
+    launchReceipt.campaignId === resolvedSavedCampaignId &&
+    Boolean(launchReceipt.metaCampaignId) &&
+    launchReceipt.metaAdSetIds.length === 1 &&
+    Boolean(launchReceipt.metaCreativeId) &&
+    launchReceipt.metaAdIds.length === 1;
   const lastConfirmedAt = getLastConfirmedAt(syncSnapshot);
   const hasFreshMetaConfirmation = isFreshMetaConfirmation(lastConfirmedAt);
   const lastMetaSyncText = formatRelativeSyncAge(lastConfirmedAt);
-  const confirmedInMeta =
-    Boolean(resolvedMetaCampaignId) &&
-    syncSnapshot?.syncResult === "success" &&
-    Boolean(syncSnapshot.campaignStatus) &&
-    syncedAdSetStatuses.length > 0 &&
-    syncedAdStatuses.length > 0 &&
-    hasFreshMetaConfirmation;
+  const receiptTruth = launchReceipt
+    ? {
+        resultStatus: launchReceipt.resultStatus,
+        scheduledFor: launchReceipt.scheduledFor,
+        campaignId: launchReceipt.campaignId,
+        metaCampaignId: launchReceipt.metaCampaignId,
+        metaAdSetIds: launchReceipt.metaAdSetIds,
+        metaCreativeId: launchReceipt.metaCreativeId,
+        metaAdIds: launchReceipt.metaAdIds,
+      }
+    : null;
+  const confirmedInMeta = isFreshPausedLaunchConfirmation({
+    receipt: receiptTruth,
+    snapshot: syncSnapshot,
+    hasFreshMetaConfirmation,
+  });
+  const launchTruthState = resolveLaunchTruth({
+    requestedCampaignId: campaignId,
+    resolvedCampaignId: activeCampaign?.campaignId ?? null,
+    receipt: receiptTruth,
+    confirmedInMeta,
+  });
+  const launchPresentation = getLaunchTruthPresentation(launchTruthState);
   const partiallyConfirmed =
     Boolean(resolvedMetaCampaignId) &&
     !confirmedInMeta &&
@@ -176,6 +220,19 @@ export default async function LaunchSuccessPage({
       resolvedMetaAdSetId === null ||
       resolvedMetaAdId === null);
   const confirmationItems = [
+    ...(launchReceipt?.scheduledFor
+      ? [
+          {
+            label: "Scheduled for",
+            value: new Date(launchReceipt.scheduledFor).toLocaleString("en-CA", {
+              dateStyle: "medium" as const,
+              timeStyle: "short" as const,
+              timeZone: "America/New_York",
+            }) + " Eastern",
+            tone: "text-cyan-200",
+          },
+        ]
+      : []),
     {
       label: "Created locally",
       value: createdLocally ? "Yes" : "Pending",
@@ -206,7 +263,7 @@ export default async function LaunchSuccessPage({
     { label: "Campaign name", value: resolvedCampaignName },
     { label: "Ad account", value: metaConnection.accountId ?? "No ad account selected" },
     { label: "Budget", value: resolvedBudget },
-    { label: "Status", value: resolvedStatus },
+    { label: "Status", value: launchPresentation.badge },
   ];
   const idItems: SummaryItem[] = [
     { label: "Saved campaign ID", value: resolvedSavedCampaignId ?? "Pending" },
@@ -232,31 +289,55 @@ export default async function LaunchSuccessPage({
   return (
     <div className="mx-auto w-full max-w-[900px] space-y-8">
       <PageHeader
-        eyebrow="Launch"
-        title="Campaign launched"
-        description="The campaign has been sent to Meta. Review the launch summary below, then jump into Ads Manager or the dashboard."
+        eyebrow={launchPresentation.eyebrow}
+        title={launchPresentation.title}
+        description={launchPresentation.description}
       />
 
       <Card className="rounded-[24px] p-6 sm:p-8">
         <div className="space-y-6">
           <div className="rounded-[20px] border border-primary/20 bg-primary/10 p-5">
-            <div className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-200">
-              Launch complete
+            <div
+              className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${
+                launchPresentation.tone === "success"
+                  ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+                  : launchPresentation.tone === "danger"
+                    ? "border-red-400/20 bg-red-400/10 text-red-200"
+                    : launchPresentation.tone === "warning"
+                      ? "border-amber-400/20 bg-amber-400/10 text-amber-100"
+                      : "border-white/10 bg-white/5 text-white/70"
+              }`}
+            >
+              {launchPresentation.badge}
             </div>
             <h2 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{resolvedCampaignName}</h2>
             <p className="mt-3 text-sm leading-7 text-muted-foreground">
-              This page now reflects the saved launch record from the database. Review the confirmation state below before treating the campaign as fully live in Meta.
+              {launchTruthState === "missing"
+                ? "A campaign identifier in the URL is not a receipt. No successful launch is shown without an authorized, tenant-scoped durable record."
+                : launchTruthState === "scheduled"
+                  ? "This page reflects a tenant-scoped schedule receipt. Scheduled does not mean created, accepted, active, or delivering in Meta."
+                  : "This page reflects the tenant-scoped durable launch receipt. Review the confirmation state below before treating the campaign as live in Meta."}
             </p>
             <div className="mt-4 inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-white/80">
               {metaConfirmationLabel}
             </div>
-            {!confirmedInMeta ? (
+            {launchTruthState !== "provider_confirmed" ? (
               <div className="mt-4 space-y-3">
                 <p className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-                  Meta confirmation is stale or incomplete. Local launch records exist, but live Meta state should be treated as estimated until a fresh sync completes.
+                  {launchTruthState === "missing"
+                    ? "No verified launch receipt was found for this campaign."
+                    : launchTruthState === "scheduled"
+                      ? `The provider launch is scheduled for ${launchReceipt?.scheduledFor ?? "the next eligible window"}. No Meta mutation has occurred.`
+                    : launchTruthState === "failed"
+                      ? "The saved launch attempt failed. Resolve the recorded error before retrying."
+                      : launchTruthState === "partial"
+                        ? "The provider accepted only part of the object set. Reconcile the failed objects before retrying."
+                        : "Meta confirmation is stale or incomplete. A provider receipt exists, but live state remains unconfirmed until a fresh sync completes."}
                 </p>
                 <p className="text-sm text-muted-foreground">{lastMetaSyncText}</p>
-                <p className="text-sm text-amber-100">Use the refresh action below to request a fresh Meta confirmation.</p>
+                {launchTruthState === "provider_accepted" ? (
+                  <p className="text-sm text-amber-100">Use the refresh action below to request a fresh Meta confirmation.</p>
+                ) : null}
               </div>
             ) : (
               <p className="mt-4 text-sm text-muted-foreground">{lastMetaSyncText}</p>
@@ -324,8 +405,10 @@ export default async function LaunchSuccessPage({
           </div>
 
           <div className="flex flex-wrap gap-3 pt-2">
-            <LaunchSuccessRecheckButton campaignId={resolvedSavedCampaignId} />
-            {metaLink ? (
+            {launchTruthState === "provider_accepted" || launchTruthState === "provider_confirmed" ? (
+              <LaunchSuccessRecheckButton campaignId={resolvedSavedCampaignId} />
+            ) : null}
+            {metaLink && launchTruthState !== "missing" && launchTruthState !== "failed" ? (
               <Button asChild>
                 <Link href={metaLink} target="_blank" rel="noreferrer">
                   View in Meta

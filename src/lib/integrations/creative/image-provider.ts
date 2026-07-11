@@ -171,6 +171,7 @@ class OpenAiImageProvider implements ImageGenerationProvider {
     let revisedPrompt: string | null = null;
     let resolvedModel: string | null = null;
     let retryCount = 0;
+    let providerOutcome: "accepted" | "rejected" | "ambiguous" = "ambiguous";
 
     for (const model of models) {
       for (let attempt = 0; attempt < IMAGE_GENERATION_ATTEMPTS_PER_MODEL; attempt += 1) {
@@ -200,15 +201,20 @@ class OpenAiImageProvider implements ImageGenerationProvider {
             fileUrl = resolvedUrl;
             revisedPrompt = payload?.revised_prompt ?? null;
             resolvedModel = model;
+            providerOutcome = "accepted";
             break;
           }
 
-          lastFailure = data?.error?.message ?? `Image generation failed with status ${response.status}.`;
+          lastFailure = response.ok
+            ? "Image generation returned success without a usable image payload."
+            : data?.error?.message ?? `Image generation failed with status ${response.status}.`;
+          providerOutcome = response.ok ? "ambiguous" : "rejected";
         } catch (error) {
           const timeoutError = isTimeoutError(error);
           lastFailure = timeoutError
             ? `OpenAI image generation timed out after ${IMAGE_GENERATION_TIMEOUT_MS}ms on ${model}.`
             : getErrorMessage(error);
+          providerOutcome = "ambiguous";
 
           if (!timeoutError) {
             break;
@@ -244,6 +250,7 @@ class OpenAiImageProvider implements ImageGenerationProvider {
         revisedPrompt,
         model: resolvedModel,
         retryCount,
+        providerOutcome,
       },
       error: fileUrl ? null : lastFailure ?? "Image provider did not return a URL.",
     };

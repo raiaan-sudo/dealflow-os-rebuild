@@ -112,7 +112,7 @@ export function buildWinningFunnel(input?: WinningFunnelSourceInput | null): Win
     subheadline,
     cta,
     sections: [
-      createWinningFunnelSection("hero", "reference-opt-in-hero", headline, [microLabel, subheadline, `Primary CTA: ${cta}`], {
+      createWinningFunnelSection("hero", "reference-opt-in-hero", headline, [microLabel, subheadline], {
         variant: "reference-centered-hero",
         theme: "light",
         spacing: "spacious",
@@ -124,7 +124,6 @@ export function buildWinningFunnel(input?: WinningFunnelSourceInput | null): Win
       }),
       createWinningFunnelSection("form", "reference-opt-in-form", "Tell us where to send your options", [
         "Name, email, and phone only.",
-        `Primary CTA: ${cta}`,
       ], {
         variant: "reference-opt-in-card",
         theme: "light",

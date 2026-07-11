@@ -2,13 +2,22 @@ import { z } from "zod";
 import { apiSuccess, assertSameOriginRequest, handleApiError, parseJsonBody } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
+import { createSupportTicket } from "@/lib/services/support-ticket-service";
 import { logOperationalEvent } from "@/lib/logging";
 
 const feedbackSchema = z.object({
+  requestId: z.string().uuid(),
   confusedText: z.string().max(4000).optional().default(""),
   blockerText: z.string().max(4000).optional().default(""),
   email: z.string().email().optional().or(z.literal("")).default(""),
   page: z.string().max(500).optional().default(""),
+}).superRefine((value, context) => {
+  if (!value.confusedText.trim() && !value.blockerText.trim()) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Tell us what was confusing or what blocked you.",
+    });
+  }
 });
 
 export async function POST(request: Request) {
@@ -26,6 +35,18 @@ export async function POST(request: Request) {
     }
 
     const body = await parseJsonBody(request, feedbackSchema);
+    const ticket = await createSupportTicket({
+      supabase: auth.supabase,
+      organizationId: auth.organizationId,
+      userId: auth.userId,
+      input: {
+        requestId: body.requestId,
+        confusedText: body.confusedText,
+        blockerText: body.blockerText,
+        page: body.page,
+        emailPresent: Boolean(body.email),
+      },
+    });
 
     logOperationalEvent("product_feedback_received", {
       userId: auth.userId,
@@ -34,9 +55,12 @@ export async function POST(request: Request) {
       emailPresent: Boolean(body.email),
       confusedTextPresent: Boolean(body.confusedText.trim()),
       blockerTextPresent: Boolean(body.blockerText.trim()),
+      ticketId: ticket.ticketId,
+      correlationId: ticket.correlationId,
+      operatorNotificationStatus: ticket.operatorNotificationStatus,
     });
 
-    return apiSuccess({ success: true });
+    return apiSuccess({ success: true, ...ticket });
   } catch (error) {
     return handleApiError(error, "Feedback");
   }

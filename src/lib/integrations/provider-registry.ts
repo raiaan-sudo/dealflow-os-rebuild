@@ -21,6 +21,24 @@ export type IntegrationProviderId =
 export type IntegrationProviderCategory = "ads" | "tracking" | "billing" | "ai";
 export type IntegrationProviderState = "configured" | "partial" | "not_configured";
 
+export const INTEGRATION_PROVIDER_REGISTRY_SCOPE = {
+  purpose: "execution_adapter_inventory",
+  aggregateReadinessAuthority: false,
+  omittedOperationalSystems: [
+    "gohighlevel_tenant_provisioning",
+    "twilio_messaging",
+    "supabase_database_auth",
+    "support_notification_delivery",
+  ],
+  readinessDimensions: [
+    "configured",
+    "reachable",
+    "authenticated",
+    "functional",
+    "observed_at",
+  ],
+} as const;
+
 type RegisteredProvider = {
   id: IntegrationProviderId;
   label: string;

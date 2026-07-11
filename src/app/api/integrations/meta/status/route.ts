@@ -31,7 +31,18 @@ export async function GET() {
 
     const validation = validateMetaEnv();
     const connection = await withRouteTimeout(
-      retryRouteStep(() => getMetaConnectionState(), { retries: 1, delayMs: 300 }),
+      (signal) =>
+        retryRouteStep(() => getMetaConnectionState({ signal }), {
+          retries: 1,
+          delayMs: 300,
+          shouldRetry: (error) => signal.aborted === false && (
+            error instanceof ApiError
+              ? error.status === 408 || error.status === 429 || error.status >= 500
+              : error instanceof Error
+                ? error.name === "TypeError"
+                : false
+          ),
+        }),
       {
         timeoutMs: 8_000,
         message: "Meta status check timed out.",
@@ -49,6 +60,15 @@ export async function GET() {
         : `Meta connection is not configured yet. Missing: ${validation.missing.join(", ")}.`,
     });
   } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      return createMetaFailureResponse({
+        context: "status",
+        status: error.status,
+        requestId,
+        error,
+      });
+    }
+
     if (!validateMetaEnv().configured) {
       return apiSuccess(buildMetaStatusPayload());
     }

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "evidence_time_utc": "2026-07-11T04:25:00Z",
+  "execution_scope": "disposable_local_supabase_only",
+  "workdir": "/private/tmp/dealflow-completion-supabase.IfJtCw",
+  "command": "supabase start --workdir /private/tmp/dealflow-completion-supabase.IfJtCw --yes",
+  "exit_code": 1,
+  "first_failing_migration": "20260426110000_add_campaign_plan_critical_fields.sql",
+  "statement_index": 0,
+  "sqlstate": "42P01",
+  "safe_error": "relation public.campaign_plans does not exist",
+  "first_statement": "alter table public.campaign_plans add column if not exists launch_status text null",
+  "linked_project_used": false,
+  "shared_database_used": false,
+  "production_database_used": false,
+  "raw_startup_log_included": false,
+  "secrets_or_local_development_keys_included": false,
+  "rollback_executed": false,
+  "release_effect": "NO_GO"
+}

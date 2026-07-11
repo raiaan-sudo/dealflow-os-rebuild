@@ -46,6 +46,7 @@ export async function POST(
       .from("campaign_plans")
       .select("plan, user_id, organization_id")
       .eq("id", id)
+      .eq("organization_id", auth.organizationId)
       .maybeSingle();
 
     if (error) {
@@ -62,10 +63,7 @@ export async function POST(
       throw new ApiError(404, "Campaign not found.", "campaign_not_found");
     }
 
-    if (
-      row.organization_id !== auth.organizationId &&
-      row.user_id !== auth.userId
-    ) {
+    if (row.organization_id !== auth.organizationId) {
       throw new ApiError(404, "Campaign not found.", "campaign_not_found");
     }
 
@@ -93,6 +91,7 @@ export async function POST(
     await persistCampaignPlanDocumentUpdate({
       supabase,
       campaignId: id,
+      organizationId: auth.organizationId,
       plan: nextPlan,
       userId: auth.userId,
       source: "select_ad",

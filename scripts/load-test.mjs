@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const scenario = process.argv[2] ?? "routes";
-const baseUrl = process.env.LOAD_BASE_URL;
+const rawBaseUrl = process.env.LOAD_BASE_URL;
 const concurrency = Number.parseInt(process.env.LOAD_CONCURRENCY ?? "20", 10);
 const requests = Number.parseInt(process.env.LOAD_REQUESTS ?? "100", 10);
 const maxErrorRate = Number.parseFloat(process.env.LOAD_MAX_ERROR_RATE ?? "0.01");
@@ -26,19 +26,45 @@ function percentile(values, pct) {
   return sorted[index];
 }
 
-if (!baseUrl) {
-  fail("LOAD_BASE_URL is required. Use an explicit production or staging URL for load tests.");
+if (!rawBaseUrl) {
+  fail("LOAD_BASE_URL is required. Load tests are restricted to an explicit loopback URL.");
 }
 
-async function timedRequest(path, init) {
+let parsedBaseUrl;
+try {
+  parsedBaseUrl = new URL(rawBaseUrl);
+} catch {
+  fail("LOAD_BASE_URL must be a valid loopback URL.");
+}
+
+const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+if (
+  !["http:", "https:"].includes(parsedBaseUrl.protocol) ||
+  !loopbackHosts.has(parsedBaseUrl.hostname.toLowerCase()) ||
+  parsedBaseUrl.username ||
+  parsedBaseUrl.password ||
+  (parsedBaseUrl.pathname !== "/" && parsedBaseUrl.pathname !== "") ||
+  parsedBaseUrl.search ||
+  parsedBaseUrl.hash
+) {
+  fail("Refusing non-loopback load target. Use http://localhost, http://127.0.0.1, or http://[::1].");
+}
+
+const baseUrl = parsedBaseUrl.origin;
+
+async function timedRequest(path, init, expectations = {}) {
   const started = performance.now();
   try {
     const response = await fetch(`${baseUrl}${path}`, init);
     await response.arrayBuffer();
+    const attestationMatches = Object.entries(expectations).every(
+      ([header, expected]) => response.headers.get(header) === expected,
+    );
     return {
-      ok: response.status < 500,
+      ok: response.status < 500 && attestationMatches,
       status: response.status,
       ms: performance.now() - started,
+      attestationMatches,
     };
   } catch (error) {
     return {
@@ -128,12 +154,12 @@ async function runRoutesScenario() {
 }
 
 async function runLeadCaptureScenario() {
-  if (process.env.LOAD_TEST_ALLOW_WRITES !== "true") {
-    fail("Refusing to write leads. Set LOAD_TEST_ALLOW_WRITES=true with LOAD_TEST_CAMPAIGN_ID to run this scenario.");
+  if (process.env.LOAD_TEST_ALLOW_SYNTHETIC_LEAD_CAPTURE !== "true") {
+    fail("Refusing lead-capture load proof. Set LOAD_TEST_ALLOW_SYNTHETIC_LEAD_CAPTURE=true to use the no-write synthetic endpoint path.");
   }
 
   if (requests > maxWriteRequests) {
-    fail(`Refusing ${requests} lead writes. Set LOAD_MAX_WRITE_REQUESTS to an explicit higher cap for this QA campaign.`);
+    fail(`Refusing ${requests} synthetic requests. Set LOAD_MAX_WRITE_REQUESTS to an explicit higher cap.`);
   }
 
   const campaignId = process.env.LOAD_TEST_CAMPAIGN_ID;
@@ -141,18 +167,39 @@ async function runLeadCaptureScenario() {
     fail("LOAD_TEST_CAMPAIGN_ID is required for lead-capture load tests.");
   }
 
+  const loadTestSecret = process.env.LEAD_CAPTURE_LOAD_TEST_SECRET?.trim() ?? "";
+  if (loadTestSecret.length < 32) {
+    fail("LEAD_CAPTURE_LOAD_TEST_SECRET must be configured with at least 32 characters.");
+  }
+
+  const isolatedProjectRef = process.env.LOAD_TEST_ISOLATED_SUPABASE_PROJECT_REF?.trim() ?? "";
+  if (isolatedProjectRef.length < 4) {
+    fail("LOAD_TEST_ISOLATED_SUPABASE_PROJECT_REF is required for server-side database isolation attestation.");
+  }
+
   const items = Array.from({ length: requests }, (_, idx) => idx);
   const results = await runPool(items, (idx) =>
-    timedRequest("/api/lead-capture", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: `Load Test ${idx}`,
-        campaignId,
-        email: `load+${Date.now()}-${idx}@example.com`,
-        notes: "Automated load-test lead.",
-      }),
-    }),
+    timedRequest(
+      "/api/lead-capture",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-DealFlow-Load-Test-Secret": loadTestSecret,
+        },
+        body: JSON.stringify({
+          name: `Load Test ${idx}`,
+          campaignId,
+          email: `load+${Date.now()}-${idx}@example.com`,
+          phone: "",
+          load_test: true,
+        }),
+      },
+      {
+        "x-dealflow-load-test": "synthetic-no-write",
+        "x-dealflow-load-test-backend": "isolated-provider-off",
+      },
+    ),
   );
   printSummary(results);
 }

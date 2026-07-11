@@ -3,10 +3,20 @@ import "server-only";
 import { createHash } from "crypto";
 import { getMetaEnv } from "@/lib/env";
 import { decryptSecret } from "@/lib/integrations/meta-crypto";
+import {
+  buildMetaGraphUrl,
+  isMetaCapiWriteAllowed,
+  withMetaBearerToken,
+} from "@/lib/integrations/meta/contract";
+import { fetchMetaResponse } from "@/lib/integrations/meta/request";
 import { logError, logOperationalEvent } from "@/lib/logging";
 import { normalizePhone } from "@/lib/phone";
 import { createAdminClient } from "@/lib/server/supabase-admin";
 import { recordLeadTrackingEvent } from "@/lib/services/lead-tracking-service";
+import {
+  hasValidMetaCapiConsent,
+  type MetaCapiConsentEvidence,
+} from "@/lib/services/lead-effect-aggregation-service";
 import type { Json } from "@/lib/supabase/types";
 
 type MetaConnectionRow = {
@@ -30,6 +40,7 @@ type MetaLeadConversionParams = {
   clientUserAgent?: string | null;
   fbp?: string | null;
   fbc?: string | null;
+  advertisingConsent?: MetaCapiConsentEvidence | null;
 };
 
 function getMetadataString(
@@ -142,6 +153,11 @@ export async function safeSendMetaLeadConversion(params: MetaLeadConversionParam
           reason,
         },
       }).catch(() => null);
+    if (!hasValidMetaCapiConsent(params.advertisingConsent)) {
+      await recordSkippedConversion("meta_capi_consent_missing");
+      return { sent: false, reason: "meta_capi_consent_missing" } as const;
+    }
+
     const row = await getMetaConnectionRow(params.organizationId);
 
     if (!row) {
@@ -155,6 +171,11 @@ export async function safeSendMetaLeadConversion(params: MetaLeadConversionParam
     if (!pixelId) {
       await recordSkippedConversion("meta_pixel_missing");
       return { sent: false, reason: "meta_pixel_missing" } as const;
+    }
+
+    if (!isMetaCapiWriteAllowed()) {
+      await recordSkippedConversion("meta_capi_events_disabled", pixelId);
+      return { sent: false, reason: "meta_capi_events_disabled" } as const;
     }
 
     if (!row.access_token_encrypted) {
@@ -228,20 +249,22 @@ export async function safeSendMetaLeadConversion(params: MetaLeadConversionParam
           },
         },
       ],
-      access_token: accessToken,
     };
 
     if (process.env.META_TEST_EVENT_CODE?.trim()) {
       payload.test_event_code = process.env.META_TEST_EVENT_CODE.trim();
     }
 
-    const response = await fetch(
-      `https://graph.facebook.com/v23.0/${encodeURIComponent(pixelId)}/events`,
+    const response = await fetchMetaResponse(
+      buildMetaGraphUrl(`${encodeURIComponent(pixelId)}/events`),
       {
+        purpose: "conversion",
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        ...withMetaBearerToken(accessToken, {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }),
         body: JSON.stringify(payload),
       },
     );

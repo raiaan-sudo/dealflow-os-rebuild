@@ -5,7 +5,7 @@ import { ApiError } from "@/lib/api/route";
 import { isAccessKeyCheckoutEnabled } from "@/lib/env";
 import { logError, logOperationalEvent, logWarn } from "@/lib/logging";
 
-const MINIMUM_APP_SCHEMA_VERSION = "20260706170000";
+const MINIMUM_APP_SCHEMA_VERSION = "20260710235991";
 const REQUIRED_CAMPAIGN_PLAN_COLUMNS = ["organization_id", "launch_status", "lead_loop_verified"] as const;
 const REQUIRED_MARKETING_ACCOUNT_COLUMNS = [
   "account_name",
@@ -32,6 +32,9 @@ const REQUIRED_TABLES = [
   "system_job_logs",
   "campaign_tracking_contracts",
   "lead_tracking_events",
+  "meta_leadgen_routes",
+  "meta_leadgen_events",
+  "meta_leadgen_effect_receipts",
 ] as const;
 const REQUIRED_ACCESS_KEY_TABLES = [
   "billing_access_keys",

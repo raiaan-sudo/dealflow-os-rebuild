@@ -1,0 +1,526 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-07-11T00:15:56.993Z",
+  "audit_status": "AUDIT INCOMPLETE",
+  "output_root": "/Users/raiaanreza/Documents/Codex/2026-07-10/okay-so-essentially-what-i-need/outputs/dealflow-full-audit-20260710-223338Z",
+  "required_artifact_count": 41,
+  "required_artifacts_present": 41,
+  "required_artifacts_missing": 0,
+  "hash_algorithm": "SHA-256",
+  "hash_scope": "Exact UTF-8 bytes written by generator; manifest self-hash omitted.",
+  "counts": {
+    "repository_package_module_records": 18,
+    "git_candidates": 11,
+    "package_manifests": 12,
+    "primary_retained_modules": 934,
+    "primary_authoritative_non_generated": 672,
+    "primary_entrypoints": 173,
+    "primary_pages": 55,
+    "primary_api_routes": 55,
+    "ui_surface_instances": 147,
+    "unique_ui_route_patterns": 71,
+    "ui_action_families": 39,
+    "features": 40,
+    "workflows": 18,
+    "business_rules": 32,
+    "state_machines": 16,
+    "data_entities": 41,
+    "integrations": 12,
+    "configuration_key_names": 128,
+    "roles": 9,
+    "test_entrypoints": 93,
+    "tests_passed": 0,
+    "tests_failed": 0,
+    "tests_skipped_safety": 93,
+    "domains": 6,
+    "local_vercel_projects": 3,
+    "live_get_route_records": 28,
+    "browser_journeys": 4,
+    "screenshots": 9,
+    "findings": 56,
+    "finding_severity": {
+      "P0": 0,
+      "P1": 14,
+      "P2": 34,
+      "P3": 8
+    },
+    "blockers": 22,
+    "contradictions": 18,
+    "debt_candidates": 20,
+    "evidence_items": 68
+  },
+  "sanitization": {
+    "raw_secret_values_retained": false,
+    "cookies_retained": false,
+    "customer_private_rows_retained": false,
+    "raw_query_strings_retained": false,
+    "vulnerability_exploitation": false,
+    "public_screenshots": 9
+  },
+  "non_mutation": {
+    "source_content_written": false,
+    "git_state_intentionally_changed": false,
+    "external_system_mutated": false,
+    "caveat": "macOS/iCloud automatically hydrated/evicted placeholder bytes during reads; no source content or Git state was intentionally changed."
+  },
+  "required_files": [
+    {
+      "path": "00_READ_ME_AND_AUDIT_CONTRACT.md",
+      "required": true,
+      "byte_size": 4141,
+      "sha256": "256db81b7992c913db95ad36d3783c9ca467a6a7cb6f4a0214de3efa2d994124",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "01_OWNER_TRUTH_REPORT.md",
+      "required": true,
+      "byte_size": 18130,
+      "sha256": "226e3b2d08c90cc602f98a7d00d31f968fb8642e110f99340be1c232e11c23dc",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "02_SCOPE_COVERAGE_AND_COMPLETENESS.md",
+      "required": true,
+      "byte_size": 5844,
+      "sha256": "2db49e7a6ac7bbd4e73d3c8c9c3e9f205fd970395e562cc93c0da3d918c84a5f",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "03_REPOSITORY_WORKTREE_PACKAGE_INVENTORY.csv",
+      "required": true,
+      "byte_size": 6878,
+      "sha256": "c75ddd8193efea9a336d3c2da01709a4e5cae68d7994e7d8318b3ced38e1e085",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "03_REPOSITORY_WORKTREE_PACKAGE_INVENTORY.json",
+      "required": true,
+      "byte_size": 12287,
+      "sha256": "b306097701a50bdfa85f54d17dab5e4eda639ff1b86cfa3a01d3fcca0208e3bf",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "04_DEPLOYMENT_DOMAIN_ENVIRONMENT_MAP.md",
+      "required": true,
+      "byte_size": 3044,
+      "sha256": "8adfed274b6d495aed3f2a598bc53390f4139531fde9e39d9f5ba3c6d1edf41d",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "04_DEPLOYMENT_DOMAIN_ENVIRONMENT_MAP.json",
+      "required": true,
+      "byte_size": 4227,
+      "sha256": "59754afe3ff4fb2d09f1ffde0af9c3bbfc2a5e4171d35138c65e3d34b5a1a5a3",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "05_IMPLEMENTED_ARCHITECTURE_AND_SYSTEM_MAP.md",
+      "required": true,
+      "byte_size": 3991,
+      "sha256": "236875e12c2d7fd931f3cd26c521f22fdb8d98e786771f9a98e96fad0c01c87a",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "06_FIRST_PARTY_MODULE_INVENTORY.csv",
+      "required": true,
+      "byte_size": 200286,
+      "sha256": "32cf478b91f436c7e2625dc218ef1605699c825b8d421cdb96d57585b00a7382",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "06_FIRST_PARTY_MODULE_INVENTORY.json",
+      "required": true,
+      "byte_size": 423607,
+      "sha256": "37144f2926c3c4e1ceb21d59c808827c4f69f6406c4029142914e11f18936dce",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "07_ENTRYPOINT_ROUTE_ACTION_WORKER_INVENTORY.csv",
+      "required": true,
+      "byte_size": 46240,
+      "sha256": "5ef6a65aeb1fc15e3d71c06cb0b65ed9f778c1da7f8db3d9cff176e0f41da945",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "07_ENTRYPOINT_ROUTE_ACTION_WORKER_INVENTORY.json",
+      "required": true,
+      "byte_size": 92291,
+      "sha256": "b8f53eae6e13463034aa36edfa1204a68d81c31f12c51902170d5fa21195fdf6",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "08_PRODUCT_FEATURE_ATLAS.csv",
+      "required": true,
+      "byte_size": 13209,
+      "sha256": "e4c851c0a1978463c169895864f74c09052538fd3c6294c0bcddb05086369d27",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "08_PRODUCT_FEATURE_ATLAS.json",
+      "required": true,
+      "byte_size": 24950,
+      "sha256": "661003cd3ccaf93c69065c8037f0e447a4f92de45fc53c553b9a421e3ff5a5c1",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "09_UI_ACTION_TRACE_MATRIX.csv",
+      "required": true,
+      "byte_size": 19403,
+      "sha256": "673dbe6403995a9a2dec23bf801305b27860ee6d8412ba66465fd1bae0356364",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "10_END_TO_END_WORKFLOW_DOSSIERS.md",
+      "required": true,
+      "byte_size": 8310,
+      "sha256": "e0017f0af7f86651ad943a56570dda3c51c5b0302a1f789e75c130cf2d462dd0",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "11_BUSINESS_RULE_CATALOG.csv",
+      "required": true,
+      "byte_size": 5607,
+      "sha256": "2d172f031c6bde22c8678e5114125acb552edd38e2744dc9f7d401c4f5fc052f",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "11_BUSINESS_RULE_CATALOG.json",
+      "required": true,
+      "byte_size": 11023,
+      "sha256": "063faa786215dfe39bd71f07f77aa2b3ebe80b504234c6f0470a3dfd2c690350",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "12_STATE_MACHINE_CATALOG.md",
+      "required": true,
+      "byte_size": 3366,
+      "sha256": "9dc3e4b9e47172a58193fc07215c40697b40eedc192cbc23ce5ac1e01b7b0e12",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "13_DATA_MODEL_TENANCY_PRIVACY.md",
+      "required": true,
+      "byte_size": 7845,
+      "sha256": "7bf3b1be643242ee52be9572c2321c78a3bc8c1b82eaa1f04a7ba3b44cf601a3",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "13_DATA_MODEL_TENANCY_MATRIX.csv",
+      "required": true,
+      "byte_size": 5442,
+      "sha256": "99773e8fb895447e748cc89f303c52b567574f54000d7ad8d3d3690ae9253817",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "14_INTEGRATION_CONTRACTS_AND_CONFIGURATION.md",
+      "required": true,
+      "byte_size": 3534,
+      "sha256": "bdc30d8f34f24fb69bc2512710e2404801b5fcbf5c0c6dc57d5a70d149290580",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "14_ENVIRONMENT_FLAG_CONFIG_MATRIX.csv",
+      "required": true,
+      "byte_size": 21523,
+      "sha256": "69e610b6f11e53da3f8c8c2d4d85ae74acb78ecadb7add3046e2d21c2ff9836e",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "15_SECURITY_THREAT_MODEL_AND_ATTACK_SURFACE.md",
+      "required": true,
+      "byte_size": 8255,
+      "sha256": "8f947bec2f7048bb11613ff2da9c4165d7a6708290504615020067e2b7e25ab5",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "15_SECURITY_CONTROL_MATRIX.csv",
+      "required": true,
+      "byte_size": 4089,
+      "sha256": "32fb45609a21577a336c3a650224da2e8126e822ebca410c9ad24a9883106810",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "16_UI_UX_ACCESSIBILITY_VISUAL_AUDIT.md",
+      "required": true,
+      "byte_size": 6198,
+      "sha256": "f424452e32d3ad798fcd9488c58661c5e93eb51ebce2a8a3b8dc5b51b0921206",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "16_UI_ROUTE_ROLE_STATE_MATRIX.csv",
+      "required": true,
+      "byte_size": 19292,
+      "sha256": "9315e788a18680ba05bb2ce06b84da675a3d9c791ccd2d193a13585152cce37b",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "17_SCREENSHOT_INDEX.csv",
+      "required": true,
+      "byte_size": 3757,
+      "sha256": "8b4f6d17c4d5ee48e026ac75cf7986dea1c5a28fe2c3d888b1c35f2f03fe4fe8",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "18_TEST_COVERAGE_AND_CI_TRUTH.md",
+      "required": true,
+      "byte_size": 2500,
+      "sha256": "18cd384f2309c1b8b1690fe872c9caa968470c46eac7f4fc640360e247f113a3",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "18_TEST_TO_FEATURE_RULE_STATE_MATRIX.csv",
+      "required": true,
+      "byte_size": 48396,
+      "sha256": "08e4310970a137208fa6763b7eb38677f9432ceedb3cdb8f955620d75049fc16",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "19_PERFORMANCE_RELIABILITY_OBSERVABILITY_RECOVERY.md",
+      "required": true,
+      "byte_size": 4486,
+      "sha256": "0e257701be30570288a2703b818f810bcdfe3496f08ea73844f7eade1a4130e2",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "20_DEAD_DUPLICATE_LEGACY_EXCESSIVE_LOGIC.md",
+      "required": true,
+      "byte_size": 5547,
+      "sha256": "566c58b4f799973329ea97979f09783fe66ad08b829825f616f5db2af1923a68",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "21_CONTRADICTIONS_AND_DRIFT.md",
+      "required": true,
+      "byte_size": 3208,
+      "sha256": "07943857249ed8587259bb8d99865a221f1b7afce36a5fefdde425102a733c25",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "22_MASTER_FINDING_AND_DECISION_LEDGER.csv",
+      "required": true,
+      "byte_size": 59015,
+      "sha256": "380fc014c14d65931bc5c369fbe97f1541a1f76446d14b6e6b5aeb21a2ab6012",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "22_MASTER_FINDING_AND_DECISION_LEDGER.json",
+      "required": true,
+      "byte_size": 92825,
+      "sha256": "84acaae6f327d0d3695ef060167d3a5f0a97a4edae478a398f31ecbfb278d208",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "23_BLOCKERS_SKIPPED_SAFETY_AND_NOT_PROVEN.md",
+      "required": true,
+      "byte_size": 7178,
+      "sha256": "4ef34f43dc2d0ea65f4bd440626e65e01b2b85bc08f9cd016b26e673c88dca71",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "24_EVIDENCE_LEDGER.jsonl",
+      "required": true,
+      "byte_size": 25944,
+      "sha256": "1598546d44b427c1acc699005bc0b12d02f04c3fb51b6aef90f2fe6ac3cc9949",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "25_SANITIZED_AUDIT_TRAIL.md",
+      "required": true,
+      "byte_size": 4570,
+      "sha256": "eec263b215bd09f9f2ad954e75f64168b075c50ee4244ac1f109c56e77bc7882",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "26_GPT_HANDOFF_FOR_PRODUCT_RECONCILIATION.md",
+      "required": true,
+      "byte_size": 29812,
+      "sha256": "376f839d1e479e6a01660dc2ab1e7dcebf14f8c255d057b4a002e24839c88b04",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "dealflow-current-state.snapshot.json",
+      "required": true,
+      "byte_size": 317470,
+      "sha256": "03b54d10141f0cbc0b0c391322575b62348aebc47f88f5b05c82de339ad22021",
+      "status": "GENERATED_AND_HASHED_IN_MEMORY"
+    },
+    {
+      "path": "audit-package-manifest.json",
+      "required": true,
+      "byte_size": null,
+      "sha256": "SELF_NOT_HASHED",
+      "status": "PRESENT_AFTER_WRITE",
+      "note": "Self-referential hash intentionally omitted."
+    }
+  ],
+  "supporting_files": [
+    {
+      "path": "scratch/agent-source-deploy.md",
+      "required": false,
+      "present": true,
+      "byte_size": 29222,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "scratch/agent-repository-inventory.csv",
+      "required": false,
+      "present": true,
+      "byte_size": 7334,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "scratch/agent-deployment-inventory.csv",
+      "required": false,
+      "present": true,
+      "byte_size": 2537,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "scratch/agent-architecture-security-data.md",
+      "required": false,
+      "present": true,
+      "byte_size": 50576,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "scratch/agent-primary-file-inventory.csv",
+      "required": false,
+      "present": true,
+      "byte_size": 170918,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "scratch/finding-accuracy-review.md",
+      "required": false,
+      "present": true,
+      "byte_size": 15681,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "scratch/agent-env-key-inventory.csv",
+      "required": false,
+      "present": true,
+      "byte_size": 5507,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "scratch/agent-ui-tests-runtime.md",
+      "required": false,
+      "present": true,
+      "byte_size": 27921,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "scratch/agent-ui-action-families.csv",
+      "required": false,
+      "present": true,
+      "byte_size": 13392,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "scratch/agent-test-entrypoints.csv",
+      "required": false,
+      "present": true,
+      "byte_size": 42842,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "scratch/generate-bundle.mjs",
+      "required": false,
+      "present": true,
+      "byte_size": 190609,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "evidence/sanitized-output/live-safe-get-probe.json",
+      "required": false,
+      "present": true,
+      "byte_size": 70932,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "evidence/sanitized-output/repository-baseline-start.json",
+      "required": false,
+      "present": true,
+      "byte_size": 8025,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "evidence/browser/browser-observations.json",
+      "required": false,
+      "present": true,
+      "byte_size": 2343,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "evidence/security/security-review-scope.json",
+      "required": false,
+      "present": true,
+      "byte_size": 380,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "evidence/screenshots/www-agentdealflow-root__anonymous__default__iab__1440x900__system__live-20260710.png",
+      "required": false,
+      "present": true,
+      "byte_size": 1734212,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "evidence/screenshots/www-agentdealflow-root__anonymous__default__iab__1440x900__system__viewport-20260710.png",
+      "required": false,
+      "present": true,
+      "byte_size": 111066,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "evidence/screenshots/www-agentdealflow-root__anonymous__default__iab__390x844__system__live-20260710.png",
+      "required": false,
+      "present": true,
+      "byte_size": 1116612,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "evidence/screenshots/www-agentdealflow-root__anonymous__default__iab__390x844__system__viewport-20260710.png",
+      "required": false,
+      "present": true,
+      "byte_size": 46252,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "evidence/screenshots/app-agentdealflow-login__anonymous__default__iab__1440x900__system__live-20260710.png",
+      "required": false,
+      "present": true,
+      "byte_size": 64346,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "evidence/screenshots/app-agentdealflow-login__anonymous__default__iab__390x844__system__live-20260710.png",
+      "required": false,
+      "present": true,
+      "byte_size": 10337,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "evidence/screenshots/app-agentdealflow-funnel-accepted__anonymous__default__iab__1440x900__system__live-20260710.png",
+      "required": false,
+      "present": true,
+      "byte_size": 510309,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "evidence/screenshots/app-agentdealflow-funnel-accepted__anonymous__default__iab__390x844__system__live-20260710.png",
+      "required": false,
+      "present": true,
+      "byte_size": 318404,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    },
+    {
+      "path": "evidence/screenshots/app-agentdealflow-funnel-accepted__anonymous__default__iab__390x844__system__viewport-20260710.png",
+      "required": false,
+      "present": true,
+      "byte_size": 68505,
+      "hash_status": "NOT_REQUIRED_SUPPORTING_EVIDENCE"
+    }
+  ]
+}

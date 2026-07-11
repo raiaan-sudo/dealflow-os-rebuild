@@ -5,6 +5,10 @@ import { ThemeProvider } from "@/components/theme-provider";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.agentdealflow.io"),
+  title: {
+    default: "DealFlow OS — Build, launch, and optimize campaigns",
+    template: "%s | DealFlow OS",
+  },
 };
 
 const shouldRenderVercelAnalytics = process.env.VERCEL === "1";

@@ -7,6 +7,13 @@ import {
 } from "@/lib/api/route";
 import { logOperationalEvent } from "@/lib/logging";
 import { runSystemJobWorkerBatch } from "@/lib/services/system-job-service";
+import { processSupportNotificationOutbox } from "@/lib/services/support-ticket-service";
+import { processScheduledCampaignLaunchBatch } from "@/lib/services/scheduled-campaign-launch-service";
+import {
+  buildRateLimitResponse,
+  consumeRateLimit,
+  getRateLimitKey,
+} from "@/lib/api/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -36,14 +43,38 @@ function inputFromQuery(request: Request): RunnerInput {
 }
 
 async function runInternalSystemJobs(request: Request, input: RunnerInput) {
-  assertInternalSystemRequest(request);
-
   const requestId = crypto.randomUUID();
-  const startedAt = Date.now();
-  const result = await runSystemJobWorkerBatch({
-    maxCycles: input.maxCycles ?? 5,
-    staleAfterMs: input.staleAfterMs,
+  const authRateLimit = await consumeRateLimit({
+    key: getRateLimitKey(request, "internal-system-jobs-auth"),
+    limit: 20,
+    windowMs: 5 * 60_000,
   });
+  if (authRateLimit && !authRateLimit.allowed) {
+    logOperationalEvent("internal.system_jobs_runner.rate_limited", { requestId });
+    return buildRateLimitResponse(authRateLimit.resetAt);
+  }
+  try {
+    assertInternalSystemRequest(request);
+  } catch (error) {
+    logOperationalEvent("internal.system_jobs_runner.authorization_rejected", {
+      requestId,
+      errorCode:
+        error && typeof error === "object" && "code" in error
+          ? String(error.code)
+          : "internal_unauthorized",
+    });
+    throw error;
+  }
+
+  const startedAt = Date.now();
+  const [result, supportOutbox, scheduledLaunches] = await Promise.all([
+    runSystemJobWorkerBatch({
+      maxCycles: input.maxCycles ?? 5,
+      staleAfterMs: input.staleAfterMs,
+    }),
+    processSupportNotificationOutbox(25),
+    processScheduledCampaignLaunchBatch({ maxClaims: 5 }),
+  ]);
   const durationMs = Date.now() - startedAt;
 
   logOperationalEvent("internal.system_jobs_runner.completed", {
@@ -52,6 +83,12 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
     resetCount: result.resetCount,
     cycles: result.cycles,
     exhausted: result.exhausted,
+    supportOutboxClaimed: supportOutbox.claimedCount,
+    supportOutboxDelivered: supportOutbox.deliveredIds.length,
+    scheduledLaunchesEnabled: scheduledLaunches.enabled,
+    scheduledLaunchesBlockedReason: scheduledLaunches.blockedReason,
+    scheduledLaunchesClaimed: scheduledLaunches.claimedCount,
+    scheduledLaunchesCompleted: scheduledLaunches.completedIds.length,
     durationMs,
   });
 
@@ -61,6 +98,8 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
       requestId,
       durationMs,
       ...result,
+      supportOutbox,
+      scheduledLaunches,
     },
     {
       headers: {

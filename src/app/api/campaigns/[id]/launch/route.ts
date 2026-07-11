@@ -8,11 +8,27 @@ import {
   parseRouteParams,
 } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
-import { POST as launchCampaignCreatePost } from "@/app/api/campaigns/create/route";
-import { getMetaWorkspaceCredentials } from "@/lib/integrations/meta/service";
+import { launchCampaignToMeta } from "@/app/api/campaigns/create/route";
 import { assertCampaignCanLaunch } from "@/lib/services/campaign-entitlements";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
-import { upsertCampaignTrackingContract } from "@/lib/services/lead-tracking-service";
+import {
+  assertCampaignLaunchScheduleDue,
+  armManualCampaignLaunchProviderMutation,
+  bindManualCampaignLaunchInputSnapshot,
+  CampaignLaunchLeaseLostError,
+  CampaignLaunchOperatorActionRequiredError,
+  claimManualCampaignLaunch,
+  completeManualCampaignLaunchClaim,
+  failManualCampaignLaunchClaim,
+  getCampaignLaunchRecordForCampaign,
+  loadManualCampaignLaunchProviderResume,
+  persistManualCampaignLaunchRuntime,
+  recordManualCampaignLaunchProviderReceipt,
+  renewManualCampaignLaunchClaim,
+  settleManualCampaignLaunchProviderMutation,
+  type CampaignLaunchRecord,
+  type ManualCampaignLaunchClaim,
+} from "@/lib/services/campaign-launch-audit-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 
@@ -44,10 +60,13 @@ type LaunchResponsePayload = {
   already_launched?: boolean;
   stage?: "campaign" | "ad_set" | "creative" | "ad";
   error?: string;
+  code?: string;
+  operator_action_id?: string;
 };
 
 const inFlightLaunches = new Map<string, Promise<LaunchResponsePayload>>();
-const META_LAUNCH_LOCK_MS = 15 * 60_000;
+const MANUAL_LAUNCH_LEASE_MS = 30 * 60_000;
+const MANUAL_LAUNCH_HEARTBEAT_MS = 60_000;
 
 function normalizeStage(
   stage: PersistedLaunchState["current_stage"] | LaunchResponsePayload["stage"] | undefined | null,
@@ -59,11 +78,15 @@ function normalizeStage(
   return stage ?? "campaign";
 }
 
-async function loadPersistedLaunchState(campaignId: string): Promise<PersistedLaunchState | null> {
+async function loadPersistedLaunchContract(campaignId: string) {
   const supabase = createAdminClient() ?? (await createRouteHandlerClient());
 
   if (!supabase) {
-    return null;
+    return {
+      launchState: null as PersistedLaunchState | null,
+      leadCaptureMode: null as string | null,
+      customQuestionCount: 0,
+    };
   }
 
   const { data, error } = await supabase
@@ -88,10 +111,25 @@ async function loadPersistedLaunchState(campaignId: string): Promise<PersistedLa
       ? (plan.launch_runtime as PersistedLaunchState)
       : null;
 
-  return launchRuntime;
+  const funnel =
+    plan?.funnel && typeof plan.funnel === "object" && !Array.isArray(plan.funnel)
+      ? (plan.funnel as Record<string, unknown>)
+      : {};
+  const configuredQuestions = Array.isArray(plan?.lead_form_questions)
+    ? plan.lead_form_questions
+    : Array.isArray(funnel.customLeadFormQuestions)
+      ? funnel.customLeadFormQuestions
+      : [];
+
+  return {
+    launchState: launchRuntime,
+    leadCaptureMode:
+      typeof plan?.lead_capture_mode === "string" ? plan.lead_capture_mode : null,
+    customQuestionCount: configuredQuestions.length,
+  };
 }
 
-async function acquireMetaLaunchLock(campaignId: string) {
+async function acquireMetaLaunchLock(claim: ManualCampaignLaunchClaim) {
   const supabase = createAdminClient();
 
   if (!supabase) {
@@ -99,14 +137,14 @@ async function acquireMetaLaunchLock(campaignId: string) {
   }
 
   const token = crypto.randomUUID();
-  const lockedUntil = new Date(Date.now() + META_LAUNCH_LOCK_MS).toISOString();
+  const lockedUntil = new Date(Date.now() + MANUAL_LAUNCH_LEASE_MS).toISOString();
 
   const inserted = await supabase
     .from("meta_launch_locks")
     .insert({
-      campaign_id: campaignId,
+      campaign_id: claim.campaignId,
       lock_token: token,
-      locked_by: "campaign_launch_route",
+      locked_by: `${claim.workerId}:generation:${claim.leaseGeneration}`,
       locked_until: lockedUntil,
     } as never)
     .select("*")
@@ -119,7 +157,7 @@ async function acquireMetaLaunchLock(campaignId: string) {
   const { data: existingRaw, error: existingError } = await supabase
     .from("meta_launch_locks")
     .select("*")
-    .eq("campaign_id", campaignId)
+    .eq("campaign_id", claim.campaignId)
     .maybeSingle();
 
   if (existingError) {
@@ -141,11 +179,11 @@ async function acquireMetaLaunchLock(campaignId: string) {
     .from("meta_launch_locks")
     .update({
       lock_token: token,
-      locked_by: "campaign_launch_route",
+      locked_by: `${claim.workerId}:generation:${claim.leaseGeneration}`,
       locked_until: lockedUntil,
       updated_at: new Date().toISOString(),
     } as never)
-    .eq("campaign_id", campaignId)
+    .eq("campaign_id", claim.campaignId)
     .lte("locked_until", new Date().toISOString())
     .select("*")
     .maybeSingle();
@@ -161,7 +199,34 @@ async function acquireMetaLaunchLock(campaignId: string) {
   return token;
 }
 
-async function releaseMetaLaunchLock(campaignId: string, token: string) {
+async function renewMetaLaunchLock(claim: ManualCampaignLaunchClaim, token: string) {
+  const supabase = createAdminClient();
+
+  if (!supabase) {
+    throw new CampaignLaunchLeaseLostError(
+      "The service-role client is unavailable for the campaign-level lease.",
+    );
+  }
+
+  const { data, error } = await supabase
+    .from("meta_launch_locks")
+    .update({
+      locked_until: new Date(Date.now() + MANUAL_LAUNCH_LEASE_MS).toISOString(),
+      updated_at: new Date().toISOString(),
+    } as never)
+    .eq("campaign_id", claim.campaignId)
+    .eq("lock_token", token)
+    .eq("locked_by", `${claim.workerId}:generation:${claim.leaseGeneration}`)
+    .gt("locked_until", new Date().toISOString())
+    .select("campaign_id")
+    .maybeSingle();
+
+  if (error || !data) {
+    throw new CampaignLaunchLeaseLostError("The campaign-level Meta launch lease was lost.");
+  }
+}
+
+async function releaseMetaLaunchLock(claim: ManualCampaignLaunchClaim, token: string) {
   const supabase = createAdminClient();
 
   if (!supabase) {
@@ -171,23 +236,49 @@ async function releaseMetaLaunchLock(campaignId: string, token: string) {
   await supabase
     .from("meta_launch_locks")
     .delete()
-    .eq("campaign_id", campaignId)
-    .eq("lock_token", token);
+    .eq("campaign_id", claim.campaignId)
+    .eq("lock_token", token)
+    .eq("locked_by", `${claim.workerId}:generation:${claim.leaseGeneration}`);
+}
+
+function resolveResumeObjectId(params: {
+  stage: string;
+  receipted: string | null;
+  persisted: string | null;
+  requested?: string | null;
+}) {
+  const candidates = [params.receipted, params.persisted, params.requested]
+    .map((value) => value?.trim() || null)
+    .filter((value): value is string => Boolean(value));
+  const distinct = new Set(candidates);
+
+  if (distinct.size > 1) {
+    throw new ApiError(
+      409,
+      `The ${params.stage} recovery identity conflicts with its durable provider receipt.`,
+      "campaign_launch_resume_identity_conflict",
+    );
+  }
+
+  return candidates[0] ?? null;
 }
 
 export async function POST(
   request: Request,
   context: { params: Promise<Record<string, string>> },
 ) {
+  let launchClaim: ManualCampaignLaunchClaim | null = null;
+  let auditContext: { campaignId: string; campaignName: string } | null = null;
+
   try {
     assertSameOriginRequest(request);
     const { id } = await parseRouteParams(context.params, paramsSchema);
-    await assertCampaignCanLaunch(id);
     const record = await getCampaignById(id);
 
     if (!record) {
       throw new ApiError(404, "Campaign not found.", "campaign_not_found");
     }
+    await assertCampaignCanLaunch(id);
 
     const rateLimit = await consumeRateLimit({
       key: getRateLimitKey(request, "meta-launch", id),
@@ -217,7 +308,8 @@ export async function POST(
       return NextResponse.json(await existingLaunch);
     }
 
-    const persistedLaunchState = await loadPersistedLaunchState(id);
+    const persistedContract = await loadPersistedLaunchContract(id);
+    const persistedLaunchState = persistedContract.launchState;
 
     const existingCampaignId =
       persistedLaunchState?.campaign_id ?? record?.launch.runtime.campaignId ?? null;
@@ -230,53 +322,154 @@ export async function POST(
     const existingAdId =
       persistedLaunchState?.ad_id ?? record?.launch.runtime.adId ?? record?.launch.runtime.metaAdIds?.[0] ?? null;
 
+    const completedReceipt = await getCampaignLaunchRecordForCampaign({
+      campaignId: id,
+      campaignName: record.campaign.name,
+      metaCampaignId: existingCampaignId,
+    });
+    const completedAdSetId = completedReceipt?.metaAdSetIds[0] ?? null;
+    const completedCreativeId = completedReceipt?.metaCreativeId ?? null;
+    const completedAdId = completedReceipt?.metaAdIds[0] ?? null;
+
     if (
-      persistedLaunchState?.status === "completed" &&
-      existingCampaignId &&
-      existingAdSetId &&
-      existingAdId
+      completedReceipt?.resultStatus === "success" &&
+      completedReceipt.campaignId === id &&
+      completedReceipt.metaCampaignId &&
+      completedReceipt.metaAdSetIds.length === 1 &&
+      completedReceipt.metaCreativeId &&
+      completedReceipt.metaAdIds.length === 1
     ) {
       return NextResponse.json({
-        campaign_id: existingCampaignId,
-        adset_id: existingAdSetId,
-        creative_id: existingCreativeId ?? undefined,
-        ad_id: existingAdId,
+        campaign_id: resolveResumeObjectId({
+          stage: "campaign",
+          receipted: completedReceipt.metaCampaignId,
+          persisted: existingCampaignId,
+          requested: retryBody.meta_campaign_id,
+        }),
+        adset_id: resolveResumeObjectId({
+          stage: "ad set",
+          receipted: completedAdSetId,
+          persisted: existingAdSetId,
+          requested: retryBody.meta_adset_id,
+        }),
+        creative_id: resolveResumeObjectId({
+          stage: "creative",
+          receipted: completedCreativeId,
+          persisted: existingCreativeId,
+          requested: retryBody.meta_creative_id,
+        }),
+        ad_id: resolveResumeObjectId({
+          stage: "ad",
+          receipted: completedAdId,
+          persisted: existingAdId,
+        }),
         already_launched: true,
+        stage: "ad",
       });
     }
 
-    const launchLockToken = await acquireMetaLaunchLock(id);
-
+    const scheduledReceipt: CampaignLaunchRecord = await assertCampaignLaunchScheduleDue({
+      campaignId: id,
+    });
+    auditContext = { campaignId: id, campaignName: record.campaign.name };
+    launchClaim = await claimManualCampaignLaunch({
+      launchId: scheduledReceipt.id,
+      campaignId: id,
+      leaseMs: MANUAL_LAUNCH_LEASE_MS,
+    });
+    const receiptedResume = await loadManualCampaignLaunchProviderResume(launchClaim);
     const resumeState = {
-      metaCampaignId:
-        persistedLaunchState?.campaign_id ?? retryBody.meta_campaign_id ?? null,
-      metaAdSetId:
-        persistedLaunchState?.adset_id ?? retryBody.meta_adset_id ?? null,
-      metaCreativeId:
-        persistedLaunchState?.creative_id ?? retryBody.meta_creative_id ?? null,
+      metaCampaignId: resolveResumeObjectId({
+        stage: "campaign",
+        receipted: receiptedResume.metaCampaignId,
+        persisted: existingCampaignId,
+        requested: retryBody.meta_campaign_id,
+      }),
+      metaAdSetId: resolveResumeObjectId({
+        stage: "ad set",
+        receipted: receiptedResume.metaAdSetId,
+        persisted: existingAdSetId,
+        requested: retryBody.meta_adset_id,
+      }),
+      metaCreativeId: resolveResumeObjectId({
+        stage: "creative",
+        receipted: receiptedResume.metaCreativeId,
+        persisted: existingCreativeId,
+        requested: retryBody.meta_creative_id,
+      }),
+      metaAdId: resolveResumeObjectId({
+        stage: "ad",
+        receipted: receiptedResume.metaAdId,
+        persisted: existingAdId,
+      }),
     };
+    const launchLockToken = await acquireMetaLaunchLock(launchClaim);
 
     const launchPromise = (async () => {
-      const origin = new URL(request.url).origin;
-      const launchUrl = record.publish.slug
-        ? new URL(`/f/${record.publish.slug}`, origin).toString()
-        : null;
-      const launchDomain = launchUrl ? new URL(launchUrl).hostname : null;
-      const metaCredentials = await getMetaWorkspaceCredentials();
-      const response = await launchCampaignCreatePost(new Request(`${origin}/api/campaigns/create`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          origin,
-        },
-        body: JSON.stringify({
-          campaignId: id,
+      let heartbeatFailure: unknown = null;
+      const assertClaimAndLocks = async () => {
+        if (heartbeatFailure) {
+          throw heartbeatFailure;
+        }
+        await renewManualCampaignLaunchClaim({
+          claim: launchClaim!,
+          leaseMs: MANUAL_LAUNCH_LEASE_MS,
+        });
+        await renewMetaLaunchLock(launchClaim!, launchLockToken);
+      };
+      const heartbeat = setInterval(() => {
+        void assertClaimAndLocks().catch((error) => {
+          heartbeatFailure = error;
+        });
+      }, MANUAL_LAUNCH_HEARTBEAT_MS);
+
+      try {
+      let launchInputDigest: string | null = null;
+      await assertClaimAndLocks();
+      const response = await launchCampaignToMeta(
+        id,
+        {
           metaCampaignId: resumeState.metaCampaignId ?? undefined,
           metaAdSetId: resumeState.metaAdSetId ?? undefined,
           metaCreativeId: resumeState.metaCreativeId ?? undefined,
-          testModeInterruptAfter: retryBody.test_mode_interrupt_after ?? undefined,
-        }),
-      }));
+          metaAdId: resumeState.metaAdId ?? undefined,
+        },
+        {
+          testModeInterruptAfter:
+            retryBody.test_mode_interrupt_after === "ad_set"
+              ? "adset"
+              : retryBody.test_mode_interrupt_after,
+          assertProviderMutationAllowed: assertClaimAndLocks,
+          bindLaunchInputSnapshot: async (binding) => {
+            await bindManualCampaignLaunchInputSnapshot({
+              claim: launchClaim!,
+              binding,
+            });
+            launchInputDigest = binding.digest;
+          },
+          recordProviderReceipt: (receipt) =>
+            recordManualCampaignLaunchProviderReceipt({
+              claim: launchClaim!,
+              ...receipt,
+            }),
+          armProviderMutation: (mutation) =>
+            armManualCampaignLaunchProviderMutation({
+              claim: launchClaim!,
+              ...mutation,
+            }),
+          settleProviderMutation: (settlement) =>
+            settleManualCampaignLaunchProviderMutation({
+              claim: launchClaim!,
+              settlement,
+            }),
+          persistLaunchState: (state, message) =>
+            persistManualCampaignLaunchRuntime({
+              claim: launchClaim!,
+              state,
+              message,
+            }),
+        },
+      );
       const data = (await response.json().catch(() => null)) as
         | (Partial<LaunchResponsePayload> & {
             campaign?: unknown;
@@ -299,9 +492,16 @@ export async function POST(
                 : "campaign"),
         );
         const launchError = new Error(data?.error || "Launch failed.") as Error & {
+          code?: string;
+          httpStatus?: number;
           stage?: LaunchResponsePayload["stage"];
           payload?: Partial<LaunchResponsePayload>;
         };
+        launchError.code =
+          typeof data?.code === "string" && /^[a-z0-9_]{3,80}$/.test(data.code)
+            ? data.code
+            : "provider_launch_failed";
+        launchError.httpStatus = response.status;
         launchError.stage = inferredStage;
         launchError.payload = {
           campaign_id: typeof data?.campaign_id === "string" ? data.campaign_id : undefined,
@@ -309,12 +509,22 @@ export async function POST(
           creative_id: typeof data?.creative_id === "string" ? data.creative_id : undefined,
           ad_id: typeof data?.ad_id === "string" ? data.ad_id : undefined,
           error: typeof data?.error === "string" ? data.error : "Launch failed.",
+          code: launchError.code,
           stage: inferredStage,
         };
         throw launchError;
       }
 
-      if (!("campaign_id" in data) || !("adset_id" in data) || !("ad_id" in data)) {
+      if (
+        !("campaign_id" in data) ||
+        !("adset_id" in data) ||
+        !("creative_id" in data) ||
+        !("ad_id" in data) ||
+        typeof data.campaign_id !== "string" ||
+        typeof data.adset_id !== "string" ||
+        typeof data.creative_id !== "string" ||
+        typeof data.ad_id !== "string"
+      ) {
         const launchError = new Error("Launch failed.") as Error & {
           stage?: LaunchResponsePayload["stage"];
           payload?: Partial<LaunchResponsePayload>;
@@ -335,30 +545,51 @@ export async function POST(
         );
       }
 
-      await upsertCampaignTrackingContract({
-        organizationId: record.campaign.organization_id,
-        campaignId: id,
-        userId: record.campaign.user_id,
-        trackingMode: "website_funnel",
-        metaCampaignId: String(data.campaign_id),
-        metaAdsetId: String(data.adset_id),
-        metaAdIds: [String(data.ad_id)],
-        pixelId: metaCredentials.pixelId,
-        launchDomain,
-        launchUrl,
-        accessTokenAvailable: Boolean(metaCredentials.accessToken),
-        metadata: {
+      if (!launchInputDigest) {
+        throw new ApiError(
+          409,
+          "The immutable launch input receipt is missing.",
+          "launch_input_snapshot_missing",
+        );
+      }
+
+      await assertClaimAndLocks();
+      const receiptTimestamp = new Date().toISOString();
+      await completeManualCampaignLaunchClaim({
+        claim: launchClaim!,
+        metaCampaignId: data.campaign_id,
+        metaAdSetId: data.adset_id,
+        metaCreativeId: data.creative_id,
+        metaAdId: data.ad_id,
+        executionMetadata: {
           source: "campaign_launch_route",
+          providerObjectsCreatedPaused: true,
+          launchAttemptCount: launchClaim!.attemptCount,
+          launchLeaseGeneration: launchClaim!.leaseGeneration,
+          recoveredFromPersistedRuntime: persistedLaunchState?.status === "completed",
+          launchInputDigest,
+        },
+        event: {
+          id: `campaign-created:${data.campaign_id}:generation:${launchClaim!.leaseGeneration}`,
+          label: "Provider campaign object set reconciled",
+          status: "success",
+          target: record.campaign.name,
+          detail: "The PAUSED provider object set and all immutable provider receipts were accepted by the current fenced launch owner.",
+          timestamp: receiptTimestamp,
         },
       });
 
       return {
-        campaign_id: String(data.campaign_id),
-        adset_id: String(data.adset_id),
-        ad_id: String(data.ad_id),
-        creative_id: typeof data.creative_id === "string" ? data.creative_id : undefined,
+        campaign_id: data.campaign_id,
+        adset_id: data.adset_id,
+        ad_id: data.ad_id,
+        creative_id: data.creative_id,
+        already_launched: persistedLaunchState?.status === "completed" || undefined,
         stage: "ad" as const,
       };
+      } finally {
+        clearInterval(heartbeat);
+      }
     })();
 
     inFlightLaunches.set(id, launchPromise);
@@ -367,9 +598,58 @@ export async function POST(
       return NextResponse.json(await launchPromise);
     } finally {
       inFlightLaunches.delete(id);
-      await releaseMetaLaunchLock(id, launchLockToken).catch(() => undefined);
+      await releaseMetaLaunchLock(launchClaim, launchLockToken).catch(() => undefined);
     }
   } catch (error) {
+    if (error instanceof CampaignLaunchOperatorActionRequiredError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          code: error.code,
+          operator_action_id: error.operatorActionId,
+        },
+        { status: 409 },
+      );
+    }
+
+    if (launchClaim && auditContext) {
+      const rawErrorCode =
+        error && typeof error === "object" && "code" in error && typeof error.code === "string"
+          ? error.code
+          : "provider_launch_failed";
+      const errorCode = /^[a-z0-9_]{3,80}$/.test(rawErrorCode)
+        ? rawErrorCode
+        : "provider_launch_failed";
+      const payload =
+        error && typeof error === "object" && "payload" in error && error.payload && typeof error.payload === "object"
+          ? (error.payload as Partial<LaunchResponsePayload>)
+          : null;
+
+      await failManualCampaignLaunchClaim({
+        claim: launchClaim,
+        errorCode,
+        metaCampaignId:
+          typeof payload?.campaign_id === "string" ? payload.campaign_id : null,
+        metaAdSetIds:
+          typeof payload?.adset_id === "string" ? [payload.adset_id] : [],
+        metaAdIds: typeof payload?.ad_id === "string" ? [payload.ad_id] : [],
+        executionMetadata: {
+          source: "campaign_launch_route",
+          errorCode,
+          providerMutationOutcome: "failed_or_partial",
+          launchLeaseGeneration: launchClaim.leaseGeneration,
+        },
+        event: {
+          id: `launch-failed:${launchClaim.leaseGeneration}`,
+          label: "Manual provider launch failed",
+          status: "failed",
+          target: auditContext.campaignName,
+          detail: `The due launch attempt did not complete. Safe error code: ${errorCode}.`,
+          timestamp: new Date().toISOString(),
+        },
+      }).catch(() => undefined);
+    }
+
     if (
       error &&
       typeof error === "object" &&
@@ -377,7 +657,37 @@ export async function POST(
       error.payload &&
       typeof error.payload === "object"
     ) {
-      return NextResponse.json(error.payload, { status: 500 });
+      const status =
+        "httpStatus" in error &&
+        typeof error.httpStatus === "number" &&
+        Number.isInteger(error.httpStatus) &&
+        error.httpStatus >= 400 &&
+        error.httpStatus <= 599
+          ? error.httpStatus
+          : 500;
+      const payload = error.payload as Partial<LaunchResponsePayload>;
+      const code =
+        typeof payload.code === "string" && /^[a-z0-9_]{3,80}$/.test(payload.code)
+          ? payload.code
+          : "provider_launch_failed";
+      const operatorActionRequired = [
+        "meta_provider_create_outcome_ambiguous",
+        "campaign_launch_provider_receipt_persist_failed",
+        "scheduled_launch_provider_receipt_persist_failed",
+        "campaign_launch_provider_mutation_settlement_failed",
+        "scheduled_launch_provider_mutation_settlement_failed",
+        "meta_lookup_ambiguous",
+      ].includes(code);
+      return NextResponse.json(
+        {
+          ...payload,
+          code,
+          ...(operatorActionRequired && launchClaim
+            ? { operator_action_id: launchClaim.id }
+            : {}),
+        },
+        { status: operatorActionRequired ? 409 : status },
+      );
     }
 
     return handleApiError(error, "Launch campaign");

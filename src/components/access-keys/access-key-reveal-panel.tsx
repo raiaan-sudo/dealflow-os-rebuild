@@ -1,15 +1,58 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, Copy, KeyRound } from "lucide-react";
 
 export function AccessKeyRevealPanel({
   accessKey,
+  deliveryToken,
+  sessionId,
 }: {
   accessKey: string;
+  deliveryToken: string;
+  sessionId: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const [handoffAcknowledged, setHandoffAcknowledged] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let retryTimer: number | null = null;
+
+    const acknowledge = async (attempt: number) => {
+      try {
+        const response = await fetch("/api/access-keys/reveal-ack", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, deliveryToken }),
+          keepalive: true,
+        });
+        if (!response.ok) {
+          throw new Error("Access-key reveal acknowledgement failed.");
+        }
+        if (!cancelled) {
+          setHandoffAcknowledged(true);
+        }
+      } catch {
+        if (!cancelled && attempt < 3) {
+          retryTimer = window.setTimeout(
+            () => void acknowledge(attempt + 1),
+            500 * 2 ** attempt,
+          );
+        }
+      }
+    };
+
+    void acknowledge(0);
+    return () => {
+      cancelled = true;
+      if (retryTimer) {
+        window.clearTimeout(retryTimer);
+      }
+    };
+  }, [deliveryToken, sessionId]);
 
   async function copyKey() {
     await navigator.clipboard.writeText(accessKey);
@@ -36,6 +79,11 @@ export function AccessKeyRevealPanel({
             {copied ? "Copied" : "Copy"}
           </button>
         </div>
+        <p className="mt-3 text-xs leading-5 text-cyan-50/70" aria-live="polite">
+          {handoffAcknowledged
+            ? "One-time handoff secured. Copy this key before leaving the page."
+            : "Securing this one-time handoff. Copy the key now; an interrupted acknowledgement remains recoverable for a bounded retry."}
+        </p>
       </div>
 
       <Link

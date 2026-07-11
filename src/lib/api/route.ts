@@ -374,7 +374,7 @@ export async function parseRouteParams<T>(
 }
 
 export async function withRouteTimeout<T>(
-  task: Promise<T>,
+  task: (signal: AbortSignal) => Promise<T>,
   options: {
     timeoutMs: number;
     message: string;
@@ -383,9 +383,12 @@ export async function withRouteTimeout<T>(
   },
 ) {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const controller = new AbortController();
+  const taskPromise = task(controller.signal);
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
+      controller.abort();
       reject(
         new ApiError(
           options.status ?? 504,
@@ -397,7 +400,7 @@ export async function withRouteTimeout<T>(
   });
 
   try {
-    return await Promise.race([task, timeoutPromise]);
+    return await Promise.race([taskPromise, timeoutPromise]);
   } finally {
     if (timeoutId) {
       clearTimeout(timeoutId);
@@ -474,7 +477,12 @@ export function handleApiError(error: unknown, context: string) {
       });
     }
 
-    return apiFailure(error.message, error.code, error.status, { requestId });
+    return apiFailure(
+      isProduction && error.status >= 500 ? "Unexpected server error." : error.message,
+      error.code,
+      error.status,
+      { requestId },
+    );
   }
 
   const message = error instanceof Error ? error.message : "Unexpected server error.";

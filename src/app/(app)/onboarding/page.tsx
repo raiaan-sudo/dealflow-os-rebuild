@@ -27,48 +27,21 @@ import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/page-shell";
 import type { BillingPlanTier } from "@/lib/billing/plans";
 import { getPlanPresentation, SELECTABLE_PLAN_TIERS, type SelectablePlanTier } from "@/lib/billing/plan-presentation";
+import {
+  buildOnboardingDraftEnvelope,
+  buildOnboardingSubmission,
+  onboardingDraftSchema,
+  type CampaignMode,
+  type FunnelLanguage,
+  type LeadCaptureMode,
+  type OnboardingDraft,
+  type OnboardingStepKey,
+} from "@/lib/onboarding-contract";
 import { normalizePhone } from "@/lib/phone";
 import { normalizeOfferForCampaign, type NormalizedOfferResult } from "@/lib/services/offer-normalization-service";
 import { cn } from "@/lib/utils";
 
-type CampaignMode = "buyer" | "seller" | "investor" | "commercial";
-type FunnelLanguage = "en" | "fr" | "es";
-type LeadCaptureMode = "quality_funnel" | "volume_lead_form" | "deep_qualification";
-type OnboardingStepKey =
-  | "intent"
-  | "market"
-  | "property"
-  | "audience"
-  | "budget"
-  | "setup"
-  | "offer"
-  | "agent"
-  | "plan"
-  | "review";
-
-type DraftState = {
-  agentFirstName: string;
-  agentLastName: string;
-  agentCompanyName: string;
-  agentPhone: string;
-  campaignMode: CampaignMode;
-  market: string;
-  audience: string;
-  propertyType: string;
-  priceRange: string;
-  dailyBudget: string;
-  offer: string;
-  funnelLanguage: FunnelLanguage;
-  leadCaptureMode: LeadCaptureMode;
-  leadFormQuestions: string[];
-  leadFormQuestionDraft: string;
-  themePrimaryColor: string;
-  themeSecondaryColor: string;
-  themeAccentColor: string;
-  logoUrl: string;
-  planTier: Extract<BillingPlanTier, "starter" | "pro">;
-  idempotencySeed: string;
-};
+type DraftState = OnboardingDraft;
 
 type FieldErrors = Partial<Record<keyof DraftState | "submit", string>>;
 
@@ -85,7 +58,7 @@ type BillingStatus = {
   campaignLimitLabel: string;
 };
 
-const STORAGE_KEY = "dealflow-guided-onboarding-v3";
+const LEGACY_PII_STORAGE_KEYS = ["dealflow-guided-onboarding-v3"] as const;
 
 const STEPS: { key: OnboardingStepKey; label: string; title: string }[] = [
   { key: "intent", label: "Type", title: "Choose campaign type" },
@@ -240,8 +213,8 @@ const LEAD_CAPTURE_MODE_ORDER: LeadCaptureMode[] = ["volume_lead_form", "quality
 const LEAD_CAPTURE_MODES: Record<LeadCaptureMode, { title: string; label: string; body: string }> = {
   volume_lead_form: {
     title: "Volume leads",
-    label: "Instant lead form",
-    body: "Use the lowest-friction Meta form when budget is tight and consistent lead flow matters most.",
+    label: "Fast website form",
+    body: "Use the shortest DealFlow-hosted form when budget is tight and consistent lead flow matters most.",
   },
   quality_funnel: {
     title: "Quality leads",
@@ -269,14 +242,6 @@ const FUNNEL_LANGUAGES: Record<FunnelLanguage, { label: string; body: string }> 
   fr: { label: "French", body: "Generate funnel and ad copy in French." },
   es: { label: "Spanish", body: "Generate funnel and ad copy in Spanish." },
 };
-
-function isFunnelLanguage(value: unknown): value is FunnelLanguage {
-  return value === "en" || value === "fr" || value === "es";
-}
-
-function isLeadCaptureMode(value: unknown): value is LeadCaptureMode {
-  return value === "quality_funnel" || value === "volume_lead_form" || value === "deep_qualification";
-}
 
 function normalizeHexColor(value: string, fallback: string) {
   const normalized = value.trim();
@@ -344,10 +309,6 @@ function createIdempotencySeed() {
   }
 
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function isCampaignMode(value: unknown): value is CampaignMode {
-  return value === "buyer" || value === "seller" || value === "investor" || value === "commercial";
 }
 
 function parseCurrencyCents(value: string) {
@@ -421,7 +382,7 @@ function getLeadCaptureRecommendation(dailyBudgetCents: number | null) {
       mode,
       title: "Recommended: Volume leads",
       label: option.label,
-      body: "Because this budget is under $30/day, keep friction low with Meta instant forms. Name, email, and phone are enough to keep leads coming in consistently.",
+      body: "Because this budget is under $30/day, keep friction low with the short DealFlow website form. Name, email, and phone are enough to start learning without depending on an unimplemented provider form.",
     };
   }
 
@@ -442,16 +403,6 @@ function getLeadCaptureRecommendation(dailyBudgetCents: number | null) {
   };
 }
 
-function migrateLegacyMonthlyBudgetToDaily(value: unknown) {
-  const cents = parseCurrencyCents(String(value ?? ""));
-
-  if (!cents || cents <= 0) {
-    return DEFAULT_DRAFT.dailyBudget;
-  }
-
-  return String(Math.max(1, Math.round(cents / 30 / 100)));
-}
-
 async function recordActivationEvent(params: {
   eventName: string;
   idempotencyKey: string;
@@ -468,6 +419,20 @@ async function recordActivationEvent(params: {
   } catch {
     // Activation telemetry is useful for operators but must never block onboarding.
   }
+}
+
+function getSubmissionErrorMessage(error: unknown) {
+  if (
+    error &&
+    typeof error === "object" &&
+    "issues" in error &&
+    Array.isArray(error.issues) &&
+    typeof error.issues[0]?.message === "string"
+  ) {
+    return error.issues[0].message;
+  }
+
+  return error instanceof Error ? error.message : "Campaign could not be created.";
 }
 
 function IconTile({
@@ -569,6 +534,7 @@ function StepProgress({
             <button
               key={step.key}
               type="button"
+              aria-current={active ? "step" : undefined}
               onClick={() => available && onSelect(step.key)}
               disabled={!available}
               className={cn(
@@ -622,6 +588,7 @@ function ChoiceCard({
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={cn(
         "group min-h-[132px] rounded-[22px] border p-4 text-left transition hover:-translate-y-0.5",
@@ -656,6 +623,7 @@ function PlanChoiceCard({
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={cn(
         "group flex min-h-[300px] flex-col rounded-[22px] border p-4 text-left transition hover:-translate-y-0.5",
@@ -745,6 +713,7 @@ export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState<OnboardingStepKey>("intent");
   const [furthestStepIndex, setFurthestStepIndex] = useState(0);
   const [draft, setDraft] = useState<DraftState>(DEFAULT_DRAFT);
+  const [persistenceRevision, setPersistenceRevision] = useState(0);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [isNewCampaignFlow, setIsNewCampaignFlow] = useState(false);
@@ -784,12 +753,15 @@ export default function OnboardingPage() {
   );
 
   useEffect(() => {
+    let cancelled = false;
+    for (const legacyStorageKey of LEGACY_PII_STORAGE_KEYS) {
+      window.localStorage.removeItem(legacyStorageKey);
+    }
     const searchParams = new URLSearchParams(window.location.search);
     const shouldStartFresh = searchParams.get("new") === "1" || (!searchParams.get("resume") && !searchParams.get("campaignId"));
-    const shouldRecoverDraft = !shouldStartFresh && (searchParams.get("resume") === "1" || Boolean(searchParams.get("campaignId")));
     setIsNewCampaignFlow(shouldStartFresh);
+
     if (shouldStartFresh) {
-      window.localStorage.removeItem(STORAGE_KEY);
       setDraft({ ...DEFAULT_DRAFT, idempotencySeed: createIdempotencySeed() });
       setCurrentStep("intent");
       setFurthestStepIndex(0);
@@ -797,61 +769,57 @@ export default function OnboardingPage() {
       return;
     }
 
-    const raw = shouldRecoverDraft ? window.localStorage.getItem(STORAGE_KEY) : null;
-    let nextDraft = { ...DEFAULT_DRAFT, idempotencySeed: createIdempotencySeed() };
+    async function loadServerDraft() {
+      let nextDraft = { ...DEFAULT_DRAFT, idempotencySeed: createIdempotencySeed() };
+      let nextStep: OnboardingStepKey = "intent";
+      let nextFurthestStepIndex = 0;
 
-    if (raw) {
       try {
-        const saved = JSON.parse(raw) as Partial<DraftState> & {
-          monthlyBudget?: string;
-          currentStep?: OnboardingStepKey;
-          furthestStepIndex?: number;
-        };
-        const campaignMode = isCampaignMode(saved.campaignMode) ? saved.campaignMode : "buyer";
-        const dailyBudget =
-          typeof saved.dailyBudget === "string" && saved.dailyBudget.trim()
-            ? saved.dailyBudget
-            : migrateLegacyMonthlyBudgetToDaily(saved.monthlyBudget);
-        const funnelLanguage = isFunnelLanguage(saved.funnelLanguage) ? saved.funnelLanguage : DEFAULT_DRAFT.funnelLanguage;
-        const leadCaptureMode = isLeadCaptureMode(saved.leadCaptureMode) ? saved.leadCaptureMode : DEFAULT_DRAFT.leadCaptureMode;
-        const leadFormQuestions = Array.isArray(saved.leadFormQuestions)
-          ? saved.leadFormQuestions
-              .map((question) => (typeof question === "string" ? question.trim() : ""))
-              .filter(Boolean)
-              .slice(0, 3)
-          : DEFAULT_DRAFT.leadFormQuestions;
-        nextDraft = {
-          ...nextDraft,
-          ...saved,
-          campaignMode,
-          funnelLanguage,
-          leadCaptureMode,
-          leadFormQuestions,
-          leadFormQuestionDraft: typeof saved.leadFormQuestionDraft === "string" ? saved.leadFormQuestionDraft : "",
-          dailyBudget,
-          planTier: "pro",
-          themePrimaryColor: normalizeHexColor(saved.themePrimaryColor ?? "", DEFAULT_DRAFT.themePrimaryColor),
-          themeSecondaryColor: normalizeHexColor(saved.themeSecondaryColor ?? "", DEFAULT_DRAFT.themeSecondaryColor),
-          themeAccentColor: normalizeHexColor(saved.themeAccentColor ?? "", DEFAULT_DRAFT.themeAccentColor),
-          logoUrl: typeof saved.logoUrl === "string" ? saved.logoUrl : "",
-          idempotencySeed: saved.idempotencySeed || nextDraft.idempotencySeed,
-        };
-        setDraft(nextDraft);
-        if (saved.currentStep && STEPS.some((step) => step.key === saved.currentStep)) {
-          setCurrentStep(saved.currentStep);
-        }
-        if (typeof saved.furthestStepIndex === "number") {
-          setFurthestStepIndex(Math.min(Math.max(saved.furthestStepIndex, 0), STEPS.length - 1));
+        const response = await fetch("/api/onboarding/plan", {
+          headers: { Accept: "application/json" },
+        });
+        const data = (await response.json().catch(() => null)) as
+          | {
+              found?: boolean;
+              draft?: unknown;
+              currentStep?: unknown;
+              furthestStepIndex?: unknown;
+            }
+          | null;
+        const parsedDraft = onboardingDraftSchema.safeParse(data?.draft);
+
+        if (response.ok && data?.found && parsedDraft.success) {
+          nextDraft = parsedDraft.data;
+          if (
+            typeof data.currentStep === "string" &&
+            STEPS.some((step) => step.key === data.currentStep)
+          ) {
+            nextStep = data.currentStep as OnboardingStepKey;
+          }
+          if (typeof data.furthestStepIndex === "number") {
+            nextFurthestStepIndex = Math.min(
+              Math.max(Math.floor(data.furthestStepIndex), 0),
+              STEPS.length - 1,
+            );
+          }
         }
       } catch {
-        window.localStorage.removeItem(STORAGE_KEY);
-        setDraft(nextDraft);
+        // A fresh in-memory draft remains available when server draft recovery is unavailable.
       }
-    } else {
-      setDraft(nextDraft);
+
+      if (!cancelled) {
+        setDraft(nextDraft);
+        setCurrentStep(nextStep);
+        setFurthestStepIndex(nextFurthestStepIndex);
+        setHydrated(true);
+      }
     }
 
-    setHydrated(true);
+    void loadServerDraft();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -892,35 +860,37 @@ export default function OnboardingPage() {
   }, [canUseExistingLaunchAccess, currentStep, visibleSteps]);
 
   useEffect(() => {
-    if (!hydrated || !draft.idempotencySeed) return;
+    // Hydration, billing reads, and automatic routing are observational. A
+    // durable draft write begins only after an explicit user interaction has
+    // incremented the revision.
+    if (!hydrated || persistenceRevision === 0) return;
 
-    void recordActivationEvent({
-      eventName: "onboarding_started",
-      idempotencyKey: `onboarding_started:${draft.idempotencySeed}`,
-      metadata: {
-        route: "onboarding",
-        mode: draft.campaignMode,
-        planTier: draft.planTier,
-      },
-    });
-  }, [draft.campaignMode, draft.idempotencySeed, draft.planTier, hydrated]);
+    const saveTimer = window.setTimeout(() => {
+      let envelope: ReturnType<typeof buildOnboardingDraftEnvelope>;
 
-  useEffect(() => {
-    if (!hydrated) return;
+      try {
+        envelope = buildOnboardingDraftEnvelope({
+          draft,
+          currentStep,
+          furthestStepIndex,
+        });
+      } catch {
+        return;
+      }
 
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        ...draft,
-        currentStep,
-        furthestStepIndex,
-        updatedAt: new Date().toISOString(),
-      }),
-    );
-  }, [currentStep, draft, furthestStepIndex, hydrated]);
+      void fetch("/api/onboarding/plan", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(envelope),
+      });
+    }, 800);
+
+    return () => window.clearTimeout(saveTimer);
+  }, [currentStep, draft, furthestStepIndex, hydrated, persistenceRevision]);
 
   function updateDraft(nextDraft: Partial<DraftState>) {
     setDraft((current) => ({ ...current, ...nextDraft }));
+    setPersistenceRevision((current) => current + 1);
     setErrors((current) => {
       const next = { ...current };
       for (const key of Object.keys(nextDraft) as (keyof DraftState)[]) {
@@ -982,6 +952,7 @@ export default function OnboardingPage() {
 
   function goToStep(step: OnboardingStepKey) {
     setCurrentStep(step);
+    setPersistenceRevision((current) => current + 1);
     setErrors({});
   }
 
@@ -1001,47 +972,13 @@ export default function OnboardingPage() {
     setSubmitting(true);
 
     try {
-      const dailyBudgetCents = dailyBudgetCentsFromDraft(preparedDraft);
-
-      if (!dailyBudgetCents) {
-        throw new Error("Choose or enter a valid daily ad spend.");
-      }
-
-      const dailyBudget = dailyBudgetDollarsFromCents(dailyBudgetCents);
-      const internalMonthlyBudget = monthlyCapDollarsFromDailyCents(dailyBudgetCents);
+      const submission = buildOnboardingSubmission(preparedDraft);
       const response = await fetch("/api/onboarding/plan", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          business_type: "Real Estate",
-          business_name: draft.agentCompanyName,
-          agent_first_name: draft.agentFirstName,
-          agent_last_name: draft.agentLastName,
-          agent_phone: draft.agentPhone,
-          agent_company_name: draft.agentCompanyName,
-          market: preparedDraft.market,
-          location: preparedDraft.market,
-          focus: preparedDraft.campaignMode,
-          service: preparedDraft.offer,
-          property_type: preparedDraft.propertyType,
-          price_range: preparedDraft.priceRange,
-          daily_budget: dailyBudget,
-          daily_budget_cents: dailyBudgetCents,
-          budget: internalMonthlyBudget,
-          goal: preparedDraft.offer,
-          language: preparedDraft.funnelLanguage,
-          lead_capture_mode: preparedDraft.leadCaptureMode,
-          theme: {
-            primaryColor: normalizeHexColor(preparedDraft.themePrimaryColor, DEFAULT_DRAFT.themePrimaryColor),
-            secondaryColor: normalizeHexColor(preparedDraft.themeSecondaryColor, DEFAULT_DRAFT.themeSecondaryColor),
-            accentColor: normalizeHexColor(preparedDraft.themeAccentColor, DEFAULT_DRAFT.themeAccentColor),
-            logoUrl: preparedDraft.logoUrl.trim() || null,
-            leadFormQuestions: preparedDraft.leadFormQuestions.slice(0, 3),
-          },
-          idempotencySeed: preparedDraft.idempotencySeed,
-        }),
+        body: JSON.stringify(submission),
       });
       const data = (await response.json().catch(() => null)) as
         | { success?: boolean; campaignId?: string; data?: { campaignId?: string }; error?: string }
@@ -1052,17 +989,6 @@ export default function OnboardingPage() {
         throw new Error(data?.error ?? "Campaign could not be created.");
       }
 
-      window.localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({
-          ...preparedDraft,
-          currentStep: "review",
-          furthestStepIndex: visibleSteps.length - 1,
-          campaignId,
-          lastSubmittedCampaignId: campaignId,
-          completedAt: new Date().toISOString(),
-        }),
-      );
       if (canUseExistingLaunchAccess) {
         router.push(`/build/creatives?campaignId=${encodeURIComponent(campaignId)}`);
         return;
@@ -1088,7 +1014,7 @@ export default function OnboardingPage() {
       setSubmitting(false);
       setErrors((current) => ({
         ...current,
-        submit: error instanceof Error ? error.message : "Campaign could not be created.",
+        submit: getSubmissionErrorMessage(error),
       }));
     }
   }
@@ -1128,13 +1054,17 @@ export default function OnboardingPage() {
 
   function resetDraft() {
     const freshDraft = { ...DEFAULT_DRAFT, idempotencySeed: createIdempotencySeed() };
-    window.localStorage.removeItem(STORAGE_KEY);
     setIsNewCampaignFlow(true);
     setDraft(freshDraft);
     setCurrentStep("intent");
     setFurthestStepIndex(0);
+    setPersistenceRevision((current) => current + 1);
     setErrors({});
   }
+
+  const activeErrorMessages = Object.values(errors).filter(
+    (message): message is string => typeof message === "string" && message.length > 0,
+  );
 
   return (
     <PageShell className="w-full max-w-[1240px] gap-3 py-4 sm:py-5">
@@ -1152,6 +1082,22 @@ export default function OnboardingPage() {
               </p>
             </div>
           </div>
+
+          {activeErrorMessages.length > 0 ? (
+            <div
+              className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-300/[0.06] p-4 text-sm text-rose-100"
+              role="alert"
+              aria-live="assertive"
+              aria-atomic="true"
+            >
+              <p className="font-semibold">Fix the highlighted field before continuing.</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                {activeErrorMessages.map((message) => (
+                  <li key={message}>{message}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
           {currentStep === "intent" ? (
             <>
@@ -1179,8 +1125,14 @@ export default function OnboardingPage() {
             <div className="mt-6 grid gap-5">
               <label className="space-y-2 text-sm">
                 <span className="text-muted-foreground">City or market</span>
-                <Input value={draft.market} onChange={(event) => updateDraft({ market: event.target.value })} placeholder="Toronto, ON" />
-                {errors.market ? <p className="text-sm text-rose-400">{errors.market}</p> : null}
+                <Input
+                  value={draft.market}
+                  onChange={(event) => updateDraft({ market: event.target.value })}
+                  placeholder="Toronto, ON"
+                  aria-invalid={Boolean(errors.market)}
+                  aria-describedby={errors.market ? "onboarding-market-error" : undefined}
+                />
+                {errors.market ? <p id="onboarding-market-error" className="text-sm text-rose-400">{errors.market}</p> : null}
               </label>
               <div className="rounded-[20px] border border-white/10 bg-white/[0.025] p-5">
                 <p className="text-sm font-semibold text-white">Current campaign type</p>
@@ -1199,6 +1151,7 @@ export default function OnboardingPage() {
                   <button
                     key={option.label}
                     type="button"
+                    aria-pressed={draft.propertyType === option.label}
                     onClick={() => updateDraft({ propertyType: option.label })}
                     className={cn(
                       "group rounded-[20px] border p-4 text-left transition hover:-translate-y-0.5",
@@ -1225,9 +1178,15 @@ export default function OnboardingPage() {
             <div className="mt-6 grid gap-6">
               <label className="space-y-2 text-sm">
                 <span className="text-muted-foreground">Recommended audience</span>
-                <Input value={draft.audience} onChange={(event) => updateDraft({ audience: event.target.value })} placeholder={modeCopy.audience} />
+                <Input
+                  value={draft.audience}
+                  onChange={(event) => updateDraft({ audience: event.target.value })}
+                  placeholder={modeCopy.audience}
+                  aria-invalid={Boolean(errors.audience)}
+                  aria-describedby={errors.audience ? "onboarding-audience-error" : undefined}
+                />
                 <p className="text-xs leading-5 text-cyan-100/72">{AUDIENCE_REASONS[draft.campaignMode]}</p>
-                {errors.audience ? <p className="text-sm text-rose-400">{errors.audience}</p> : null}
+                {errors.audience ? <p id="onboarding-audience-error" className="text-sm text-rose-400">{errors.audience}</p> : null}
               </label>
 
               <div>
@@ -1237,6 +1196,7 @@ export default function OnboardingPage() {
                     <button
                       key={range}
                       type="button"
+                      aria-pressed={draft.priceRange === range}
                       onClick={() => updateDraft({ priceRange: range })}
                       className={cn(
                         "rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition",
@@ -1249,7 +1209,7 @@ export default function OnboardingPage() {
                     </button>
                   ))}
                 </div>
-                {errors.priceRange ? <p className="mt-2 text-sm text-rose-400">{errors.priceRange}</p> : null}
+                {errors.priceRange ? <p id="onboarding-price-range-error" className="mt-2 text-sm text-rose-400">{errors.priceRange}</p> : null}
               </div>
 
               <label className="space-y-2 text-sm">
@@ -1258,6 +1218,8 @@ export default function OnboardingPage() {
                   value={draft.priceRange}
                   onChange={(event) => updateDraft({ priceRange: event.target.value })}
                   placeholder="$600k-$900k, lease-ready, or custom deal size"
+                  aria-invalid={Boolean(errors.priceRange)}
+                  aria-describedby={errors.priceRange ? "onboarding-price-range-error" : undefined}
                 />
               </label>
             </div>
@@ -1282,6 +1244,7 @@ export default function OnboardingPage() {
                     <button
                       key={budget.value}
                       type="button"
+                      aria-pressed={draft.dailyBudget === budget.value}
                       onClick={() => updateDailyBudget(budget.value)}
                       className={cn(
                         "rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition",
@@ -1296,7 +1259,18 @@ export default function OnboardingPage() {
                 </div>
                 <label className="mt-3 block space-y-2">
                   <span className="text-xs font-semibold uppercase tracking-[0.16em] text-white/48">Custom daily amount</span>
-                  <Input type="number" min={5} step="1" inputMode="decimal" value={draft.dailyBudget} onChange={(event) => updateDailyBudget(event.target.value)} placeholder="30" aria-label="Custom daily ad spend amount" />
+                  <Input
+                    type="number"
+                    min={5}
+                    step="1"
+                    inputMode="decimal"
+                    value={draft.dailyBudget}
+                    onChange={(event) => updateDailyBudget(event.target.value)}
+                    placeholder="30"
+                    aria-label="Custom daily ad spend amount"
+                    aria-invalid={Boolean(errors.dailyBudget)}
+                    aria-describedby={errors.dailyBudget ? "onboarding-daily-budget-error" : undefined}
+                  />
                 </label>
                 <p className="mt-2 text-xs leading-5 text-white/52">
                   Starter keeps you in control. This is a daily media budget input, not a monthly commitment.
@@ -1304,7 +1278,7 @@ export default function OnboardingPage() {
                 {formatMonthlyEstimateFromDraft(draft) ? (
                   <p className="mt-1 text-xs leading-5 text-white/42">{formatMonthlyEstimateFromDraft(draft)}</p>
                 ) : null}
-                {errors.dailyBudget ? <p className="mt-2 text-sm text-rose-400">{errors.dailyBudget}</p> : null}
+                {errors.dailyBudget ? <p id="onboarding-daily-budget-error" className="mt-2 text-sm text-rose-400">{errors.dailyBudget}</p> : null}
               </div>
 
               <div className="rounded-[22px] border border-white/10 bg-white/[0.025] p-4">
@@ -1333,6 +1307,7 @@ export default function OnboardingPage() {
                       <button
                         key={mode}
                         type="button"
+                        aria-pressed={selected}
                         onClick={() => updateDraft({ leadCaptureMode: mode })}
                         className={cn(
                           "rounded-[18px] border p-4 text-left transition hover:-translate-y-0.5",
@@ -1376,6 +1351,7 @@ export default function OnboardingPage() {
                         <button
                           key={language}
                           type="button"
+                          aria-pressed={selected}
                           onClick={() => updateDraft({ funnelLanguage: language })}
                           className={cn(
                             "rounded-2xl border px-4 py-3 text-left transition",
@@ -1394,10 +1370,10 @@ export default function OnboardingPage() {
 
                 {instantLeadFormSelected ? (
                   <div>
-                    <p className="text-sm font-medium text-foreground">Instant lead form questions</p>
+                    <p className="text-sm font-medium text-foreground">Fast website form questions</p>
                     <p className="mt-1 text-xs leading-5 text-white/52">
-                      Meta already collects full name, email, and phone number. Add up to 3 questions only when the
-                      budget can support more friction.
+                      The DealFlow form already collects full name, email, and phone number. Add up to 3 questions
+                      only when the budget can support more friction.
                     </p>
                     <div
                       className={cn(
@@ -1427,6 +1403,7 @@ export default function OnboardingPage() {
                           <button
                             key={question}
                             type="button"
+                            aria-pressed={selected}
                             disabled={disabled}
                             onClick={() => toggleLeadFormQuestion(question)}
                             className={cn(
@@ -1447,6 +1424,8 @@ export default function OnboardingPage() {
                         onChange={(event) => updateDraft({ leadFormQuestionDraft: event.target.value })}
                         placeholder="Add a custom qualification question"
                         aria-label="Custom lead form question"
+                        aria-invalid={Boolean(errors.leadFormQuestionDraft)}
+                        aria-describedby={errors.leadFormQuestionDraft ? "onboarding-lead-question-error" : undefined}
                       />
                       <Button
                         type="button"
@@ -1460,7 +1439,7 @@ export default function OnboardingPage() {
                     <p className="mt-2 text-xs leading-5 text-white/48">
                       Selected {draft.leadFormQuestions.length}/3. Standard fields are always included.
                     </p>
-                    {errors.leadFormQuestionDraft ? <p className="mt-2 text-sm text-rose-400">{errors.leadFormQuestionDraft}</p> : null}
+                    {errors.leadFormQuestionDraft ? <p id="onboarding-lead-question-error" className="mt-2 text-sm text-rose-400">{errors.leadFormQuestionDraft}</p> : null}
                   </div>
                 ) : (
                   <div>
@@ -1545,6 +1524,10 @@ export default function OnboardingPage() {
                     <button
                       type="button"
                       key={offer}
+                      aria-pressed={
+                        offerInsight.normalizedOffer ===
+                        normalizeOfferForCampaign(offer, draft.campaignMode).normalizedOffer
+                      }
                       onClick={() => applyOffer(offer)}
                       className={cn(
                         "rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition",
@@ -1563,8 +1546,10 @@ export default function OnboardingPage() {
                   onChange={(event) => updateDraft({ offer: event.target.value })}
                   onBlur={() => applyOffer(draft.offer)}
                   placeholder={modeCopy.offer}
+                  aria-invalid={Boolean(errors.offer)}
+                  aria-describedby={errors.offer ? "onboarding-offer-error" : undefined}
                 />
-                {errors.offer ? <p className="text-sm text-rose-400">{errors.offer}</p> : null}
+                {errors.offer ? <p id="onboarding-offer-error" className="text-sm text-rose-400">{errors.offer}</p> : null}
               </div>
             </div>
           ) : null}
@@ -1573,26 +1558,26 @@ export default function OnboardingPage() {
             <div className="mt-6 grid gap-5 sm:grid-cols-2">
               <label className="space-y-2 text-sm">
                 <span className="text-muted-foreground">Agent first name</span>
-                <Input value={draft.agentFirstName} onChange={(event) => updateDraft({ agentFirstName: event.target.value })} placeholder="Jane" />
-                {errors.agentFirstName ? <p className="text-sm text-rose-400">{errors.agentFirstName}</p> : null}
+                <Input value={draft.agentFirstName} onChange={(event) => updateDraft({ agentFirstName: event.target.value })} placeholder="Jane" aria-invalid={Boolean(errors.agentFirstName)} aria-describedby={errors.agentFirstName ? "onboarding-agent-first-name-error" : undefined} />
+                {errors.agentFirstName ? <p id="onboarding-agent-first-name-error" className="text-sm text-rose-400">{errors.agentFirstName}</p> : null}
               </label>
               <label className="space-y-2 text-sm">
                 <span className="text-muted-foreground">Agent last name</span>
-                <Input value={draft.agentLastName} onChange={(event) => updateDraft({ agentLastName: event.target.value })} placeholder="Smith" />
-                {errors.agentLastName ? <p className="text-sm text-rose-400">{errors.agentLastName}</p> : null}
+                <Input value={draft.agentLastName} onChange={(event) => updateDraft({ agentLastName: event.target.value })} placeholder="Smith" aria-invalid={Boolean(errors.agentLastName)} aria-describedby={errors.agentLastName ? "onboarding-agent-last-name-error" : undefined} />
+                {errors.agentLastName ? <p id="onboarding-agent-last-name-error" className="text-sm text-rose-400">{errors.agentLastName}</p> : null}
               </label>
               <label className="space-y-2 text-sm">
                 <span className="text-muted-foreground">Company or brokerage</span>
-                <Input value={draft.agentCompanyName} onChange={(event) => updateDraft({ agentCompanyName: event.target.value })} placeholder="Smith Realty Group" />
-                {errors.agentCompanyName ? <p className="text-sm text-rose-400">{errors.agentCompanyName}</p> : null}
+                <Input value={draft.agentCompanyName} onChange={(event) => updateDraft({ agentCompanyName: event.target.value })} placeholder="Smith Realty Group" aria-invalid={Boolean(errors.agentCompanyName)} aria-describedby={errors.agentCompanyName ? "onboarding-agent-company-error" : undefined} />
+                {errors.agentCompanyName ? <p id="onboarding-agent-company-error" className="text-sm text-rose-400">{errors.agentCompanyName}</p> : null}
               </label>
               <label className="space-y-2 text-sm">
                 <span className="text-muted-foreground">SMS alert phone</span>
-                <Input value={draft.agentPhone} onChange={(event) => updateDraft({ agentPhone: event.target.value })} placeholder="(555) 555-5555" inputMode="tel" />
-                <p className="text-xs leading-5 text-muted-foreground">
+                <Input value={draft.agentPhone} onChange={(event) => updateDraft({ agentPhone: event.target.value })} placeholder="(555) 555-5555" inputMode="tel" aria-invalid={Boolean(errors.agentPhone)} aria-describedby={errors.agentPhone ? "onboarding-agent-phone-help onboarding-agent-phone-error" : "onboarding-agent-phone-help"} />
+                <p id="onboarding-agent-phone-help" className="text-xs leading-5 text-muted-foreground">
                   Use a US or Canada number so lead alerts can be routed correctly.
                 </p>
-                {errors.agentPhone ? <p className="text-sm text-rose-400">{errors.agentPhone}</p> : null}
+                {errors.agentPhone ? <p id="onboarding-agent-phone-error" className="text-sm text-rose-400">{errors.agentPhone}</p> : null}
               </label>
             </div>
           ) : null}

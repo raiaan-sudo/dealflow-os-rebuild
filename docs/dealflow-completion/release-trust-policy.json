@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "dealflow.release-trust-policy.v1",
+  "policyId": "dealflow-production-release",
+  "status": "unconfigured",
+  "authorityScope": "informational_only_target_keys_are_never_trusted",
+  "externalTrustRootRequired": true,
+  "maxEvidenceAgeSeconds": 3600,
+  "allowedFutureSkewSeconds": 300,
+  "expectedProject": null,
+  "requiredEnvironment": {
+    "stripeLiveMode": true
+  },
+  "authorities": []
+}

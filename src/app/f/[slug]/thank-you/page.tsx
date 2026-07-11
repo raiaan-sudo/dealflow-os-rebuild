@@ -1,9 +1,16 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { getMetaPixelIdForOrganization } from "@/lib/integrations/meta/conversions";
 import { getPublishedCampaignBySlug } from "@/lib/services/campaign-persistence";
 import { buildPublicFunnelThankYouViewModel } from "@/lib/public-funnel-thank-you";
 import { ThankYouConversionTracker } from "@/app/f/[slug]/thank-you/thank-you-conversion-tracker";
+import { MetaPixelConsentControl } from "@/components/privacy/meta-pixel-consent-control";
+import {
+  isMetaPixelTrackingAllowed,
+  getMetaPixelConsentPolicyVersion,
+  META_PIXEL_CONSENT_COOKIE,
+} from "@/lib/meta-pixel-consent";
 
 export const dynamic = "force-dynamic";
 
@@ -32,9 +39,19 @@ export default async function PublicFunnelThankYouPage({
     notFound();
   }
 
-  const metaPixelId = record.campaign.organization_id
-    ? await getMetaPixelIdForOrganization(record.campaign.organization_id)
-    : null;
+  const cookieStore = await cookies();
+  const metaPixelConsentCookie = cookieStore.get(META_PIXEL_CONSENT_COOKIE)?.value ?? null;
+  const metaPixelConsentPolicyVersion =
+    process.env.ALLOW_META_PIXEL_EVENTS === "true"
+      ? getMetaPixelConsentPolicyVersion() ?? ""
+      : "";
+  const metaPixelAllowed = isMetaPixelTrackingAllowed({
+    cookieValue: metaPixelConsentCookie,
+  });
+  const metaPixelId =
+    metaPixelAllowed && record.campaign.organization_id
+      ? await getMetaPixelIdForOrganization(record.campaign.organization_id)
+      : null;
   const view = buildPublicFunnelThankYouViewModel({
     record,
     slug: resolvedParams.slug,
@@ -43,6 +60,12 @@ export default async function PublicFunnelThankYouPage({
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-[920px] flex-col justify-center px-5 py-10 sm:px-6">
+      {metaPixelConsentPolicyVersion ? (
+        <MetaPixelConsentControl
+          currentCookieValue={metaPixelConsentCookie}
+          policyVersion={metaPixelConsentPolicyVersion}
+        />
+      ) : null}
       <ThankYouConversionTracker
         campaignId={record.campaign.id}
         metaPixelId={metaPixelId}

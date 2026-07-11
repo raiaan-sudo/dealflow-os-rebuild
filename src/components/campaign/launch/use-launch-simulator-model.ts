@@ -12,7 +12,7 @@ export const LAUNCH_STEPS = [
   "Campaign ID generated",
   "Ad set created",
   "Creatives uploaded",
-  "Launching ads...",
+  "Creating ads in paused state...",
 ] as const;
 
 export const MAX_SAFE_DAILY_BUDGET = 100;
@@ -95,6 +95,8 @@ export function useLaunchSimulatorModel({
     launchRequirements.pixelReady &&
     launchRequirements.domainReady;
   const isLive = runtime.metaPushStatus === "published" || runtime.status === "live";
+  const isProviderPaused =
+    runtime.metaPushStatus === "provider_paused" || runtime.status === "provider_paused";
   const isLaunching = runtime.status === "launching";
   const launchSteps = [
     {
@@ -119,9 +121,11 @@ export function useLaunchSimulatorModel({
     },
     {
       label: "Launch",
-      detail: "Push the campaign live and let the system take over optimization.",
-      complete: isLive,
-      current: isLaunching || (canLaunch && !isLive),
+      detail: isProviderPaused
+        ? "Meta confirmed the object set is configured PAUSED. This flow did not activate it, and no delivery or spend is inferred."
+        : "Create the campaign, ad set, creative, and ad in Meta in PAUSED state.",
+      complete: isLive || isProviderPaused,
+      current: isLaunching || (canLaunch && !isLive && !isProviderPaused),
     },
   ] as const;
 
@@ -135,6 +139,8 @@ export function useLaunchSimulatorModel({
           ? "Finish pixel and domain setup before launch."
       : !canUseMetaLaunch
         ? "Upgrade to Pro to push campaigns into Meta Ads from this workspace."
+        : isProviderPaused
+          ? "Meta confirmed the campaign, ad set, and ad are configured PAUSED, with the creative durably receipted. This flow did not activate them, and no delivery or spend is inferred."
         : runtime.safetyState === "paused"
           ? "Campaign is paused. Resume when you are ready to continue delivery or push updated assets."
           : runtime.status === "optimizing"
@@ -152,6 +158,8 @@ export function useLaunchSimulatorModel({
   const launchStatusLabel =
     runtime.safetyState === "failed"
       ? "Failed"
+      : isProviderPaused
+        ? "Created paused"
       : runtime.safetyState === "paused"
         ? "Paused"
         : runtime.metaPushStatus === "published"
@@ -172,6 +180,8 @@ export function useLaunchSimulatorModel({
   const launchState =
     runtime.safetyState === "paused"
       ? "paused"
+      : isProviderPaused
+        ? "paused"
       : runtime.metaPushStatus === "published" || runtime.status === "live"
         ? "live"
         : runtime.status === "launch_ready" || runtime.status === "connected"
@@ -303,6 +313,7 @@ export function useLaunchSimulatorModel({
     budgetInput > 0 &&
     runtime.safetyState !== "blocked" &&
     runtime.safetyState !== "paused" &&
+    !isProviderPaused &&
     runtime.metaPushStatus !== "published";
   const canSyncMeta =
     metaConnected &&
@@ -315,6 +326,7 @@ export function useLaunchSimulatorModel({
     metaConnected,
     canLaunch,
     isLive,
+    isProviderPaused,
     isLaunching,
     launchSteps,
     canUseMetaLaunch,

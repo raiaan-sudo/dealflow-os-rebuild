@@ -12,6 +12,14 @@ export const runtime = "nodejs";
 const STRIPE_API_VERSION = "2026-04-22.dahlia";
 
 function assertStripeHarnessEnabled() {
+  if (process.env.NODE_ENV === "production") {
+    throw new ApiError(
+      404,
+      "Stripe test harness is unavailable in production.",
+      "stripe_test_harness_production_blocked",
+    );
+  }
+
   if (process.env.STRIPE_TEST_HARNESS_ENABLED !== "true") {
     throw new ApiError(404, "Stripe test harness is not enabled.", "stripe_test_harness_disabled");
   }

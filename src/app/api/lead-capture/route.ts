@@ -19,12 +19,18 @@ import {
 } from "@/lib/integrations/meta/conversions";
 import { logError, logOperationalEvent } from "@/lib/logging";
 import {
+  CustomLeadAnswerValidationError,
+  validateCustomLeadAnswers,
+} from "@/lib/leads/custom-question-contract";
+import {
   createPublicLeadAndStartConversation,
   queueFailedPublicLeadCapture,
 } from "@/lib/services/lead-handler-service";
 import { getPublicFunnelEntitlements } from "@/lib/services/campaign-entitlements";
 import { recordLeadTrackingEvent } from "@/lib/services/lead-tracking-service";
 import { queueLeadSideEffectsJob } from "@/lib/services/system-job-service";
+import { isExactIsolatedSupabaseProject } from "@/lib/security/supabase-isolation";
+import { verifyLeadCaptureTurnstile } from "@/lib/security/turnstile";
 
 const leadCaptureSchema = z
   .object({
@@ -50,8 +56,23 @@ const leadCaptureSchema = z
     formStartedAt: z.union([z.number(), z.string()]).optional(),
     load_test: z.boolean().optional(),
     loadTest: z.boolean().optional(),
+    custom_answers: z
+      .record(
+        z.string().trim().min(1).max(240),
+        z.string().trim().min(1).max(500),
+      )
+      .optional(),
+    turnstile_token: z.string().trim().min(1).max(2048).optional(),
   })
   .superRefine((value, ctx) => {
+    if (Object.keys(value.custom_answers ?? {}).length > 3) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["custom_answers"],
+        message: "Use at most three qualification answers.",
+      });
+    }
+
     if (!value.email?.trim() && !value.phone?.trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -170,6 +191,7 @@ function getLoadTestBypass(params: {
   }
 
   const enabled = process.env.LEAD_CAPTURE_LOAD_TEST_BYPASS_ENABLED === "true";
+  const syntheticEnabled = process.env.LOAD_TEST_ALLOW_SYNTHETIC_LEAD_CAPTURE === "true";
   const expectedSecret = process.env.LEAD_CAPTURE_LOAD_TEST_SECRET?.trim() ?? "";
   const providedSecret = params.req.headers.get("x-dealflow-load-test-secret")?.trim() ?? null;
   const email = params.email?.trim().toLowerCase() ?? "";
@@ -178,9 +200,30 @@ function getLoadTestBypass(params: {
     params.name.trim().startsWith("Load Test") &&
     email.endsWith("@example.com") &&
     phone.length === 0;
+  const nonProduction =
+    process.env.NODE_ENV !== "production" && process.env.VERCEL_ENV !== "production";
+  const isolatedDatabase = isExactIsolatedSupabaseProject({
+    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    expectedProjectRef: process.env.LOAD_TEST_ISOLATED_SUPABASE_PROJECT_REF,
+  });
+  const providerWriteFlags = [
+    "ALLOW_META_LIVE_LAUNCH",
+    "ALLOW_META_CAPI_EVENTS",
+    "INTERNAL_LEAD_SMS_ENABLED",
+    "ALLOW_AI_TEXT_GENERATION",
+    "ALLOW_OPENAI_IMAGE_GENERATION",
+    "ALLOW_HEYGEN_VIDEO_GENERATION",
+  ] as const;
+  const providersDisabled = providerWriteFlags.every(
+    (name) => process.env[name]?.trim().toLowerCase() !== "true",
+  );
 
   if (
     !enabled ||
+    !syntheticEnabled ||
+    !nonProduction ||
+    !isolatedDatabase ||
+    !providersDisabled ||
     expectedSecret.length < 32 ||
     !timingSafeTextEquals(providedSecret, expectedSecret) ||
     !validFakeLead
@@ -189,6 +232,10 @@ function getLoadTestBypass(params: {
       requestId: params.requestId,
       campaignScope: getHashedRateLimitIdentifier(params.campaignScope),
       enabled,
+      syntheticEnabled,
+      nonProduction,
+      isolatedDatabase,
+      providersDisabled,
       hasSecret: Boolean(providedSecret),
       validFakeLead,
     });
@@ -222,6 +269,7 @@ async function handleLeadCaptureRequest(req: Request) {
         utmCampaign: string | null;
         adId: string | null;
         landingPageUrl: string | null;
+        customAnswers: Record<string, string>;
       }
     | null = null;
 
@@ -314,6 +362,13 @@ async function handleLeadCaptureRequest(req: Request) {
       throw new ApiError(400, "campaignId or funnel_id is required.", "validation_error");
     }
 
+    if (!isLoadTestBypass) {
+      await verifyLeadCaptureTurnstile({
+        token: payload.turnstile_token,
+        remoteIp: requestIp,
+      });
+    }
+
     const entitlementContext = await getPublicFunnelEntitlements({
       campaignId: campaignId || null,
       funnelSlug: funnelId || null,
@@ -331,6 +386,48 @@ async function handleLeadCaptureRequest(req: Request) {
         402,
         "This campaign is inactive. Ask the agent to reactivate DealFlow before submitting this form.",
         "campaign_subscription_inactive",
+      );
+    }
+
+    let customAnswers: Record<string, string>;
+
+    try {
+      customAnswers = validateCustomLeadAnswers({
+        configuredQuestions: entitlementContext.customLeadFormQuestions,
+        submittedAnswers: payload.custom_answers,
+      });
+    } catch (error) {
+      if (error instanceof CustomLeadAnswerValidationError) {
+        throw new ApiError(400, error.message, "lead_custom_answers_invalid");
+      }
+
+      throw error;
+    }
+
+    if (isLoadTestBypass) {
+      logOperationalEvent("lead_capture.load_test_synthetic_completed", {
+        requestId,
+        campaignScope: getHashedRateLimitIdentifier(campaignScope),
+        organizationId: entitlementContext.organizationId,
+        durableWritePerformed: false,
+        providerEffectQueued: false,
+      });
+
+      return apiSuccess(
+        {
+          ok: true,
+          success: true,
+          synthetic: true,
+          lead_id: null,
+          requestId,
+        },
+        {
+          headers: {
+            "Cache-Control": "no-store",
+            "X-DealFlow-Load-Test": "synthetic-no-write",
+            "X-DealFlow-Load-Test-Backend": "isolated-provider-off",
+          },
+        },
       );
     }
 
@@ -369,6 +466,7 @@ async function handleLeadCaptureRequest(req: Request) {
       utmCampaign,
       adId,
       landingPageUrl,
+      customAnswers,
     };
 
     const lead = await createPublicLeadAndStartConversation({
@@ -388,6 +486,7 @@ async function handleLeadCaptureRequest(req: Request) {
       utm_campaign: utmCampaign ?? undefined,
       ad_id: adId ?? undefined,
       landing_page_url: landingPageUrl,
+      custom_answers: customAnswers,
       skip_recent_duplicate_fallback: isLoadTestBypass,
       skip_lead_loop_verification: isLoadTestBypass,
     });
@@ -400,6 +499,7 @@ async function handleLeadCaptureRequest(req: Request) {
       source: lead.source ?? source,
       hasEmail: Boolean(email),
       hasPhone: Boolean(phone),
+      customAnswerCount: Object.keys(customAnswers).length,
     });
 
     if (!lead.campaign_id || !lead.organization_id) {
@@ -429,6 +529,7 @@ async function handleLeadCaptureRequest(req: Request) {
         stage: normalizedStage,
         hasEmail: Boolean(email),
         hasPhone: Boolean(phone),
+        customAnswerCount: Object.keys(customAnswers).length,
       },
     }).catch(() => null);
 
@@ -468,6 +569,7 @@ async function handleLeadCaptureRequest(req: Request) {
         },
       },
     });
+    const metaConversionQueued = sideEffectJob.enabledEffects.includes("meta_conversion");
 
     logOperationalEvent("lead_capture.side_effects_queued", {
       requestId,
@@ -481,13 +583,14 @@ async function handleLeadCaptureRequest(req: Request) {
       organizationId: lead.organization_id,
       campaignId: lead.campaign_id,
       leadId: lead.id,
-      eventType: "capi_queued",
-      status: "recorded",
+      eventType: metaConversionQueued ? "capi_queued" : "capi_failed",
+      status: metaConversionQueued ? "recorded" : "skipped",
       source: "lead_side_effects",
       eventId: lead.id,
       metadata: {
         requestId,
         jobId: sideEffectJob.id,
+        reason: metaConversionQueued ? null : "meta_capi_consent_missing",
       },
     }).catch(() => null);
 
@@ -553,6 +656,7 @@ async function handleLeadCaptureRequest(req: Request) {
         utmCampaign: capturedPayload.utmCampaign,
         adId: capturedPayload.adId,
         landingPageUrl: capturedPayload.landingPageUrl,
+        customAnswers: capturedPayload.customAnswers,
       });
 
       if (queuedJob) {

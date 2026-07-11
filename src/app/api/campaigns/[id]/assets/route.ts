@@ -25,7 +25,10 @@ export async function GET(
       throw new ApiError(400, "Campaign id is required.", "campaign_id_required");
     }
 
-    const assets = await listCampaignCreativeAssets(campaignId, auth.userId);
+    const assets = await listCampaignCreativeAssets(campaignId, {
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+    });
     return apiSuccess(assets);
   } catch (error) {
     return handleApiError(error, "Campaign assets list");

@@ -144,6 +144,7 @@ export type CreativeAssetFormat =
 
 export type CreativeAsset = {
   id: string;
+  user_id?: string | null;
   campaign_id?: string | null;
   creative_id?: string | null;
   copy_id?: string | null;
@@ -153,6 +154,8 @@ export type CreativeAsset = {
   status?: string | null;
   provider_name?: string | null;
   provider_asset_id?: string | null;
+  storage_bucket?: string | null;
+  storage_path?: string | null;
   file_url?: string | null;
   thumbnail_url?: string | null;
   metadata?: Record<string, unknown> | null;

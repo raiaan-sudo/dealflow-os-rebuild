@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "status": "CANONICAL_CORE_PROVEN",
+  "evidence_cut_utc": "2026-07-11T02:28:37Z",
+  "implementation_root": "/Users/raiaanreza/.codex/worktrees/dealflow-completion-20260710",
+  "canonical": {
+    "repository": "raiaan-sudo/dealflow-os-rebuild",
+    "remote": "https://github.com/raiaan-sudo/dealflow-os-rebuild.git",
+    "remote_branch": "main",
+    "implementation_branch": "codex/dealflow-completion-20260710",
+    "baseline_commit": "d37c50945ff7004d700301fc89c15eb9273dac5b",
+    "baseline_tree": "1b641a447509dbcae6ca1c23b63520ebdb63c931",
+    "clean": true,
+    "stash_count": 0,
+    "local_vercel_link_present": false,
+    "ancestry_check_exit_code": 0
+  },
+  "surfaces": [
+    {"domain":"agentdealflow.io","host":"vercel","project":"dealflow-os-rebuild","deployment":"dpl_J4Ksu4n7sjwdRv8tHBTa5ARDKg9E","source_commit":"d37c50945ff7004d700301fc89c15eb9273dac5b","gate":"CANONICAL_CORE_PROVEN"},
+    {"domain":"app.agentdealflow.io","host":"vercel","project":"dealflow-os-rebuild","deployment":"dpl_J4Ksu4n7sjwdRv8tHBTa5ARDKg9E","source_commit":"d37c50945ff7004d700301fc89c15eb9273dac5b","gate":"CANONICAL_CORE_PROVEN"},
+    {"domain":"www.agentdealflow.io","host":"vercel","project":"dealflow-os-rebuild","deployment":"dpl_J4Ksu4n7sjwdRv8tHBTa5ARDKg9E","source_commit":"d37c50945ff7004d700301fc89c15eb9273dac5b","gate":"CANONICAL_CORE_PROVEN"},
+    {"domain":"clicktoscale.io","host":"vercel","project":"dealflow-os-rebuild","deployment":"dpl_J4Ksu4n7sjwdRv8tHBTa5ARDKg9E","source_commit":"d37c50945ff7004d700301fc89c15eb9273dac5b","gate":"CANONICAL_CORE_PROVEN"},
+    {"domain":"www.clicktoscale.io","host":"vercel","project":"dealflow-os-rebuild","deployment":"dpl_J4Ksu4n7sjwdRv8tHBTa5ARDKg9E","source_commit":"d37c50945ff7004d700301fc89c15eb9273dac5b","gate":"CANONICAL_CORE_PROVEN"},
+    {"domain":"internal.agentdealflow.io","host":"vercel","project":"dealflow-internal-os_unproven","deployment":null,"source_commit":null,"gate":"BLOCKED_EXTERNAL"},
+    {"domain":"clicktoscale.agentdealflow.io","host":"cloudflare_lovable_style","project":null,"deployment":"2e7a875c2e284d9689c8abbfe384e43ba72e2583ec70d77fe2991160980b7cab","source_commit":null,"gate":"BLOCKED_EXTERNAL"},
+    {"domain":"onboarding.agentdealflow.io","host":"cloudflare_lovable_style","project":null,"deployment":"e251d289f1748ebdc61f32a91df9140e03f7b0ae774d88135fe3a8426907ee4b","source_commit":null,"gate":"BLOCKED_EXTERNAL"}
+  ],
+  "digests": {
+    "package_sha256": "5ad5b0f60b9347768afa8f45ebfe6e4bd28724dceb4569ecf200e9def3c3c813",
+    "lockfile_sha256": "9608ce486191fe804a9d22dfddcd8e5c26976526557effb71403d92c6e28d544",
+    "vercel_config_sha256": "cefc6323673adae48da69d2de3b6292153a0bcd5123c34b032a6407f3a3282ba",
+    "ci_workflow_sha256": "d7fcd1596d7172f7e71378f9c8b4316092955c211cfb19f38083a9c94cf8c41c",
+    "migration_set_sha256": "2c2793067eec0e8972f9e1cc31e3635976b74c907114f17cc72b5780b0e50ebc",
+    "route_source_sha256": "fe67b91ad9a6836eb3295b8b72068d2629e44a11e8897a8f38a29e56f36eaa46"
+  },
+  "runtime": {"node":"24.14.1","node_engine":">=20 <25","next":"16.2.10","react":"19.2.4"},
+  "inventory": {"tracked_files":467,"page_files":30,"api_route_files":49,"metadata_route_files":2,"migration_files":33,"migration_head":"20260706170000_create_lead_tracking_health.sql","cron":[{"path":"/api/internal/system-jobs","schedule":"*/1 * * * *"}]},
+  "visual_baselines": [
+    {"path":"evidence/visual-baseline/live/agentdealflow-login-390x844.png","sha256":"82c21c36ad911bec0c31f81ed1249bd34a263129c016ab1d239ef4cbc3514656"},
+    {"path":"evidence/visual-baseline/live/agentdealflow-root-1440x900.png","sha256":"55f9c2a099a2c112b736cabd58e7a922c2cb374d28cfff9bff1df1fc0ed307c9"},
+    {"path":"evidence/visual-baseline/live/clicktoscale-subdomain-1440x900-full.png","sha256":"d85e94556839238144a53d5c27a84ed19fb564aea5f94eded9bcc409825f1be5"},
+    {"path":"evidence/visual-baseline/live/onboarding-subdomain-1440x900-full.png","sha256":"5f7f973e047ab77505624ebf4d63153ffaa8e901216379d4d3fdc331ae469002"}
+  ],
+  "environment_key_names": [
+    "ACCESS_KEY_HASH_PEPPER","ACCESS_KEY_PUBLIC_CHECKOUT_ENABLED","ACCESS_KEY_REVEAL_ENCRYPTION_KEY","AI_API_KEY","AI_BASE_URL","AI_MODEL","AI_PROVIDER","ALLOW_AI_TEXT_GENERATION","ALLOW_BILLING_ADMIN_OVERRIDE","ALLOW_HEYGEN_VIDEO_GENERATION","ALLOW_META_LAUNCH_INTERRUPTION_TESTS","ALLOW_META_LIVE_LAUNCH","ALLOW_OPENAI_IMAGE_GENERATION","ALLOW_QA_BILLING_ACCEPTANCE_OVERRIDE","APP_URL","ARCADS_AVATAR_ID","ARCADS_VOICE_ID","BILLING_ADMIN_OVERRIDE_EMAILS","BILLING_CHECKOUT_SAFE_MODE","CRON_SECRET","ELEVENLABS_API_KEY","ELEVENLABS_MODEL_ID","ELEVENLABS_VOICE_ID","ENABLE_ACCESS_KEY_CHECKOUT","ENABLE_DEMO_WORKSPACE_SEEDING","ENABLE_META_LAUNCH_TEST_MODE","ENABLE_STRUCTURED_INFO_LOGS","GHL_IFRAME_ALLOWED_FRAME_ANCESTORS","HEYGEN_API_KEY","HEYGEN_AVATAR_ID","HEYGEN_BASE_URL","HEYGEN_VOICE_ID","INTERNAL_ADMIN_EMAILS","INTERNAL_LEAD_SMS_ENABLED","INTERNAL_SYSTEM_JOBS_SECRET","LEAD_CAPTURE_LOAD_TEST_BYPASS_ENABLED","LEAD_CAPTURE_LOAD_TEST_SECRET","LOAD_BASE_URL","LOAD_CONCURRENCY","LOAD_MAX_ERROR_RATE","LOAD_MAX_P95_MS","LOAD_MAX_WRITE_REQUESTS","LOAD_REQUESTS","LOAD_TEST_ALLOW_WRITES","LOAD_TEST_CAMPAIGN_ID","LOAD_TEST_FUNNEL_SLUG","META_APP_ID","META_APP_SECRET","META_DAILY_BUDGET_CAP_CENTS","META_EXECUTION_MODE","META_REDIRECT_URI","META_SCOPES","META_TEST_EVENT_CODE","META_TOKEN_ENCRYPTION_KEY","NEXT_BUILD_CPUS","NEXT_PUBLIC_APP_URL","NEXT_PUBLIC_ENABLE_GOOGLE_AUTH","NEXT_PUBLIC_SUPABASE_ANON_KEY","NEXT_PUBLIC_SUPABASE_URL","NEXT_PUBLIC_TURNSTILE_SITE_KEY","OPENAI_API_KEY","OPENAI_BASE_URL","OPENAI_IMAGE_MODEL","OPENAI_MODEL","QA_AUTH_HARNESS_ENABLED","QA_AUTH_HARNESS_PRODUCTION_ENABLED","QA_BILLING_ACCEPTANCE_OVERRIDE_CAMPAIGN_IDS","QA_BILLING_ACCEPTANCE_OVERRIDE_EMAILS","QA_BILLING_ACCEPTANCE_OVERRIDE_ORG_IDS","QA_BILLING_ACCEPTANCE_OVERRIDE_PLAN_TIERS","QA_BILLING_ACCEPTANCE_OVERRIDE_USER_IDS","QA_EMAIL","SCHEMA_VALIDATION_MODE","SMS_COMPLIANCE_ACK","SMS_MOCK_MODE","STRIPE_FORCE_TEST_MODE","STRIPE_GROWTH_PRICE_ID","STRIPE_PRO_PRICE_ID","STRIPE_SECRET_KEY","STRIPE_STARTER_PRICE_ID","STRIPE_TEST_GROWTH_PRICE_ID","STRIPE_TEST_HARNESS_ENABLED","STRIPE_TEST_PRO_PRICE_ID","STRIPE_TEST_SECRET_KEY","STRIPE_TEST_STARTER_PRICE_ID","STRIPE_TEST_WEBHOOK_SECRET","STRIPE_WEBHOOK_SECRET","SUPABASE_SCHEMA_CHECK_MODE","SUPABASE_SERVICE_ROLE_KEY","TEST_SMS_MODE","TWILIO_ACCOUNT_SID","TWILIO_AUTH_TOKEN","TWILIO_INBOUND_ORGANIZATION_ID","TWILIO_MESSAGING_SERVICE_SID","UI_DIRECTION_PREVIEW","VERCEL_CRON_SECRET"
+  ],
+  "safety": {"production_mutation":false,"provider_mutation":false,"customer_data_access":false,"communications_sent":false,"money_spent":false,"deployment_performed":false}
+}

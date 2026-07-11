@@ -1,0 +1,129 @@
+id,env_key,source_referenced,env_example,contract_status,sensitivity,risk_class,configured_value_status,note
+CFG-001,AI_API_KEY,true,true,both,secret_name_only,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-002,AI_BASE_URL,true,true,both,server_or_runtime_config,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-003,AI_MODEL,true,true,both,server_or_runtime_config,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-004,AI_PROVIDER,true,true,both,server_or_runtime_config,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-005,AI_VISION_MODEL,false,true,example_only,server_or_runtime_config,application_or_runtime,NOT_READ,Documented in .env.example but not found in captured source-reference scan.
+CFG-006,ALLOW_BILLING_ADMIN_OVERRIDE,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-007,ALLOW_HEYGEN_VIDEO_GENERATION,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-008,ALLOW_HIGGSFIELD_IMAGE_GENERATION,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-009,ALLOW_HIGGSFIELD_VIDEO_GENERATION,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-010,ALLOW_META_LAUNCH_INTERRUPTION_TESTS,true,false,source_only,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Referenced in source but absent from .env.example.
+CFG-011,ALLOW_META_LIVE_LAUNCH,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-012,ALLOW_OPENAI_IMAGE_GENERATION,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-013,ALLOW_PUBLIC_LEAD_NO_TURNSTILE,true,false,source_only,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Referenced in source but absent from .env.example.
+CFG-014,ALLOW_QA_BILLING_ACCEPTANCE_OVERRIDE,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-015,ALLOW_QA_GENERATION_CREDIT_OVERRIDE,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-016,APP_URL,true,false,source_only,server_or_runtime_config,application_or_runtime,NOT_READ,Referenced in source but absent from .env.example.
+CFG-017,ARCADS_AVATAR_ID,true,false,source_only,server_or_runtime_config,application_or_runtime,NOT_READ,Referenced in source but absent from .env.example.
+CFG-018,ARCADS_VOICE_ID,true,false,source_only,server_or_runtime_config,application_or_runtime,NOT_READ,Referenced in source but absent from .env.example.
+CFG-019,BILLING_ADMIN_OVERRIDE_EMAILS,true,true,both,server_or_runtime_config,financial_or_limit,NOT_READ,Present in both captured source-reference and example sets.
+CFG-020,CLICKTOSCALE_GHL_PRIVATE_INTEGRATION,true,false,source_only,secret_name_only,provider_or_platform,NOT_READ,Referenced in source but absent from .env.example.
+CFG-021,CRON_SECRET,true,true,both,secret_name_only,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-022,DEALFLOW_PLATFORM_FUNNEL_HOSTS,true,true,both,server_or_runtime_config,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-023,DEALFLOW_PLATFORM_LAUNCH_DOMAIN,true,true,both,server_or_runtime_config,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-024,DEALFLOW_PLATFORM_LAUNCH_DOMAIN_VERIFIED,true,true,both,server_or_runtime_config,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-025,ELEVENLABS_API_KEY,true,true,both,secret_name_only,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-026,ELEVENLABS_MODEL_ID,true,false,source_only,server_or_runtime_config,provider_or_platform,NOT_READ,Referenced in source but absent from .env.example.
+CFG-027,ELEVENLABS_VOICE_ID,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-028,ENABLE_STRUCTURED_INFO_LOGS,true,false,source_only,server_or_runtime_config,application_or_runtime,NOT_READ,Referenced in source but absent from .env.example.
+CFG-029,FINISHED_AD_VISION_QA_ENABLED,false,true,example_only,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Documented in .env.example but not found in captured source-reference scan.
+CFG-030,FINISHED_AD_VISION_QA_MODEL,false,true,example_only,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Documented in .env.example but not found in captured source-reference scan.
+CFG-031,FRESHDESK_API_KEY,false,true,example_only,secret_name_only,provider_or_platform,NOT_READ,Documented in .env.example but not found in captured source-reference scan.
+CFG-032,FRESHDESK_DOMAIN,false,true,example_only,server_or_runtime_config,provider_or_platform,NOT_READ,Documented in .env.example but not found in captured source-reference scan.
+CFG-033,FRESHDESK_GROUP_ID,false,true,example_only,server_or_runtime_config,provider_or_platform,NOT_READ,Documented in .env.example but not found in captured source-reference scan.
+CFG-034,FRESHDESK_PRODUCT_ID,false,true,example_only,server_or_runtime_config,provider_or_platform,NOT_READ,Documented in .env.example but not found in captured source-reference scan.
+CFG-035,GENERATION_CREDIT_OVERDRAFT_LIMIT_CENTS,false,true,example_only,server_or_runtime_config,financial_or_limit,NOT_READ,Documented in .env.example but not found in captured source-reference scan.
+CFG-036,HEYGEN_API_KEY,true,true,both,secret_name_only,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-037,HEYGEN_AVATAR_ID,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-038,HEYGEN_BASE_URL,true,false,source_only,server_or_runtime_config,provider_or_platform,NOT_READ,Referenced in source but absent from .env.example.
+CFG-039,HEYGEN_VOICE_ID,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-040,HF_API_KEY,true,true,both,secret_name_only,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-041,HF_API_SECRET,true,true,both,secret_name_only,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-042,HF_CREDENTIALS,true,true,both,secret_name_only,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-043,HIGGSFIELD_BASE_URL,true,false,source_only,server_or_runtime_config,provider_or_platform,NOT_READ,Referenced in source but absent from .env.example.
+CFG-044,HIGGSFIELD_CACHE_DIR,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-045,HIGGSFIELD_CLI_ENABLED,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-046,HIGGSFIELD_CLI_PATH,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-047,HIGGSFIELD_CONFIG_HOME,false,true,example_only,server_or_runtime_config,provider_or_platform,NOT_READ,Documented in .env.example but not found in captured source-reference scan.
+CFG-048,HIGGSFIELD_IMAGE_DAILY_LIMIT,false,true,example_only,server_or_runtime_config,financial_or_limit,NOT_READ,Documented in .env.example but not found in captured source-reference scan.
+CFG-049,HIGGSFIELD_IMAGE_MODEL,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-050,HIGGSFIELD_MARKETING_STUDIO_ENABLED,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-051,HIGGSFIELD_MARKETING_STUDIO_MODE,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-052,HIGGSFIELD_OUTPUT_DIR,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-053,HIGGSFIELD_UGC_VIDEO_MODEL,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-054,HIGGSFIELD_VIDEO_DAILY_LIMIT,false,true,example_only,server_or_runtime_config,financial_or_limit,NOT_READ,Documented in .env.example but not found in captured source-reference scan.
+CFG-055,HIGGSFIELD_VIDEO_FALLBACK_MODEL,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-056,HIGGSFIELD_VIDEO_MODEL,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-057,INTERNAL_ADMIN_EMAILS,true,true,both,server_or_runtime_config,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-058,INTERNAL_LEAD_SMS_ENABLED,true,true,both,server_or_runtime_config,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-059,INTERNAL_SYSTEM_JOBS_SECRET,true,true,both,secret_name_only,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-060,LEAD_CAPTURE_LOAD_TEST_BYPASS_ENABLED,true,false,source_only,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Referenced in source but absent from .env.example.
+CFG-061,LEAD_CAPTURE_LOAD_TEST_SECRET,true,false,source_only,secret_name_only,production_safety_or_test_flag,NOT_READ,Referenced in source but absent from .env.example.
+CFG-062,MARKETING_STUDIO_WORKER_ENABLED,false,true,example_only,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Documented in .env.example but not found in captured source-reference scan.
+CFG-063,MARKETING_STUDIO_WORKER_OUTPUT_DIR,true,true,both,server_or_runtime_config,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-064,MEDIA_GENERATION_FALLBACK_PROVIDER,true,true,both,server_or_runtime_config,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-065,MEDIA_GENERATION_PROVIDER,true,true,both,server_or_runtime_config,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-066,META_AD_ACCOUNT_ID,false,true,example_only,server_or_runtime_config,provider_or_platform,NOT_READ,Documented in .env.example but not found in captured source-reference scan.
+CFG-067,META_APP_ID,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-068,META_APP_SECRET,true,true,both,secret_name_only,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-069,META_DAILY_BUDGET_CAP_CENTS,false,true,example_only,server_or_runtime_config,financial_or_limit,NOT_READ,Documented in .env.example but not found in captured source-reference scan.
+CFG-070,META_EXECUTION_MODE,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-071,META_REDIRECT_URI,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-072,META_SCOPES,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-073,META_TOKEN_ENCRYPTION_KEY,true,true,both,secret_name_only,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-074,NEXT_PUBLIC_APP_URL,true,true,both,public_client_config,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-075,NEXT_PUBLIC_ENABLE_GOOGLE_AUTH,true,true,both,public_client_config,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-076,NEXT_PUBLIC_SUPABASE_ANON_KEY,true,true,both,public_client_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-077,NEXT_PUBLIC_SUPABASE_URL,true,true,both,public_client_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-078,NEXT_PUBLIC_TURNSTILE_SITE_KEY,true,true,both,public_client_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-079,NEXT_PUBLIC_VERCEL_DEPLOYMENT_ID,true,false,source_only,public_client_config,application_or_runtime,NOT_READ,Referenced in source but absent from .env.example.
+CFG-080,NODE_ENV,true,false,source_only,server_or_runtime_config,application_or_runtime,NOT_READ,Referenced in source but absent from .env.example.
+CFG-081,OPENAI_API_KEY,true,true,both,secret_name_only,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-082,OPENAI_BASE_URL,true,false,source_only,server_or_runtime_config,provider_or_platform,NOT_READ,Referenced in source but absent from .env.example.
+CFG-083,OPENAI_IMAGE_MODEL,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-084,OPENAI_MODEL,true,false,source_only,server_or_runtime_config,provider_or_platform,NOT_READ,Referenced in source but absent from .env.example.
+CFG-085,QA_AUTH_HARNESS_ENABLED,true,false,source_only,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Referenced in source but absent from .env.example.
+CFG-086,QA_AUTH_HARNESS_PRODUCTION_ENABLED,true,false,source_only,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Referenced in source but absent from .env.example.
+CFG-087,QA_BILLING_ACCEPTANCE_OVERRIDE_CAMPAIGN_IDS,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-088,QA_BILLING_ACCEPTANCE_OVERRIDE_EMAILS,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-089,QA_BILLING_ACCEPTANCE_OVERRIDE_ORG_IDS,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-090,QA_BILLING_ACCEPTANCE_OVERRIDE_PLAN_TIERS,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-091,QA_BILLING_ACCEPTANCE_OVERRIDE_USER_IDS,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-092,QA_EMAIL,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-093,QA_GENERATION_CREDIT_OVERRIDE_CAMPAIGN_IDS,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-094,QA_GENERATION_CREDIT_OVERRIDE_EMAILS,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-095,QA_GENERATION_CREDIT_OVERRIDE_MAX_CENTS,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-096,QA_GENERATION_CREDIT_OVERRIDE_ORG_IDS,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-097,QA_GENERATION_CREDIT_OVERRIDE_USER_IDS,true,true,both,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Present in both captured source-reference and example sets.
+CFG-098,QA_PASSWORD,false,true,example_only,secret_name_only,production_safety_or_test_flag,NOT_READ,Documented in .env.example but not found in captured source-reference scan.
+CFG-099,SMS_MOCK_MODE,false,true,example_only,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Documented in .env.example but not found in captured source-reference scan.
+CFG-100,STATIC_CREATIVE_PROVIDER_IMAGE_HOSTS,true,true,both,server_or_runtime_config,application_or_runtime,NOT_READ,Present in both captured source-reference and example sets.
+CFG-101,STRIPE_FORCE_TEST_MODE,true,false,source_only,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Referenced in source but absent from .env.example.
+CFG-102,STRIPE_GROWTH_PRICE_ID,true,true,both,server_or_runtime_config,financial_or_limit,NOT_READ,Present in both captured source-reference and example sets.
+CFG-103,STRIPE_PRO_PRICE_ID,true,true,both,server_or_runtime_config,financial_or_limit,NOT_READ,Present in both captured source-reference and example sets.
+CFG-104,STRIPE_SECRET_KEY,true,true,both,secret_name_only,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-105,STRIPE_STARTER_PRICE_ID,true,true,both,server_or_runtime_config,financial_or_limit,NOT_READ,Present in both captured source-reference and example sets.
+CFG-106,STRIPE_TEST_GROWTH_PRICE_ID,true,false,source_only,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Referenced in source but absent from .env.example.
+CFG-107,STRIPE_TEST_HARNESS_ENABLED,true,false,source_only,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Referenced in source but absent from .env.example.
+CFG-108,STRIPE_TEST_PRO_PRICE_ID,true,false,source_only,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Referenced in source but absent from .env.example.
+CFG-109,STRIPE_TEST_SECRET_KEY,true,false,source_only,secret_name_only,production_safety_or_test_flag,NOT_READ,Referenced in source but absent from .env.example.
+CFG-110,STRIPE_TEST_STARTER_PRICE_ID,true,false,source_only,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Referenced in source but absent from .env.example.
+CFG-111,STRIPE_TEST_WEBHOOK_SECRET,true,false,source_only,secret_name_only,production_safety_or_test_flag,NOT_READ,Referenced in source but absent from .env.example.
+CFG-112,STRIPE_WEBHOOK_SECRET,true,true,both,secret_name_only,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-113,SUPABASE_SERVICE_ROLE_KEY,true,true,both,secret_name_only,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-114,TEST_SMS_MODE,false,true,example_only,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Documented in .env.example but not found in captured source-reference scan.
+CFG-115,TMPDIR,true,false,source_only,server_or_runtime_config,application_or_runtime,NOT_READ,Referenced in source but absent from .env.example.
+CFG-116,TRUSTED_APP_ORIGINS,true,false,source_only,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Referenced in source but absent from .env.example.
+CFG-117,TURNSTILE_SECRET_KEY,true,true,both,secret_name_only,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-118,TWILIO_ACCOUNT_SID,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-119,TWILIO_AUTH_TOKEN,true,true,both,secret_name_only,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-120,TWILIO_INBOUND_ORGANIZATION_ID,true,false,source_only,server_or_runtime_config,provider_or_platform,NOT_READ,Referenced in source but absent from .env.example.
+CFG-121,TWILIO_MESSAGING_SERVICE_SID,true,true,both,server_or_runtime_config,provider_or_platform,NOT_READ,Present in both captured source-reference and example sets.
+CFG-122,UI_DIRECTION_PREVIEW,true,false,source_only,server_or_runtime_config,production_safety_or_test_flag,NOT_READ,Referenced in source but absent from .env.example.
+CFG-123,VERCEL,true,false,source_only,server_or_runtime_config,application_or_runtime,NOT_READ,Referenced in source but absent from .env.example.
+CFG-124,VERCEL_DEPLOYMENT_ID,true,false,source_only,server_or_runtime_config,application_or_runtime,NOT_READ,Referenced in source but absent from .env.example.
+CFG-125,VERCEL_ENV,true,false,source_only,server_or_runtime_config,application_or_runtime,NOT_READ,Referenced in source but absent from .env.example.
+CFG-126,VERCEL_GIT_COMMIT_SHA,true,false,source_only,server_or_runtime_config,application_or_runtime,NOT_READ,Referenced in source but absent from .env.example.
+CFG-127,VERCEL_REGION,true,false,source_only,server_or_runtime_config,application_or_runtime,NOT_READ,Referenced in source but absent from .env.example.
+CFG-128,VERCEL_URL,true,false,source_only,server_or_runtime_config,application_or_runtime,NOT_READ,Referenced in source but absent from .env.example.

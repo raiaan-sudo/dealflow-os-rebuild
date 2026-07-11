@@ -47,8 +47,6 @@ export const autonomyModeSchema = z.object({
 
 export const campaignRuntimeSchema = z.object({
   action: z.enum([
-    "launch",
-    "complete_launch",
     "set_experience_status",
     "refresh",
     "apply_optimization",

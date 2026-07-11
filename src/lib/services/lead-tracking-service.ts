@@ -127,7 +127,8 @@ export function buildTrackingReadiness(input: TrackingReadinessInput): TrackingR
 }
 
 export function getExpectedLeadDestination(trackingMode: TrackingMode): TrackingDestination {
-  return trackingMode === "instant_form" ? "facebook_lead_center" : "dealflow_dashboard";
+  void trackingMode;
+  return "dealflow_dashboard";
 }
 
 export async function upsertCampaignTrackingContract(input: UpsertCampaignTrackingContractInput) {

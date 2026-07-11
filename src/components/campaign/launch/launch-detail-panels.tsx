@@ -954,7 +954,10 @@ export function DeploymentStatusPanel({
 }: {
   runtime: CampaignRuntime;
 }) {
-  if (runtime.status !== "launching" && runtime.status !== "live") {
+  const isProviderPaused =
+    runtime.status === "provider_paused" || runtime.metaPushStatus === "provider_paused";
+
+  if (runtime.status !== "launching" && runtime.status !== "live" && !isProviderPaused) {
     return null;
   }
 
@@ -966,7 +969,9 @@ export function DeploymentStatusPanel({
             Deployment status
           </p>
           <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-emerald-50">
-            {runtime.metaPushStatus === "published"
+            {isProviderPaused
+              ? "Created in Meta (paused)"
+              : runtime.metaPushStatus === "published"
               ? "Live on Meta Ads"
               : runtime.status === "launching"
                 ? "Campaign is deploying"
@@ -974,7 +979,9 @@ export function DeploymentStatusPanel({
           </p>
         </div>
         <Badge className="border-emerald-400/15 bg-emerald-400/10 text-emerald-200">
-          {runtime.metaPushStatus === "published"
+          {isProviderPaused
+            ? "Provider paused"
+            : runtime.metaPushStatus === "published"
             ? "Published"
             : runtime.status === "launching"
               ? "Deploying"
@@ -1002,6 +1009,11 @@ export function DeploymentStatusPanel({
       </div>
       {runtime.metaLastMessage ? (
         <p className="mt-4 text-sm leading-7 text-emerald-50/90">{runtime.metaLastMessage}</p>
+      ) : null}
+      {isProviderPaused ? (
+        <p className="mt-2 text-sm leading-7 text-amber-100/90">
+          No delivery or spend is inferred from object creation. A separate authorized provider activation is required before ads can run.
+        </p>
       ) : null}
     </div>
   );

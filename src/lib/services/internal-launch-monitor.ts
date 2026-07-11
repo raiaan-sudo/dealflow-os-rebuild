@@ -92,6 +92,23 @@ type RawProviderUsageEventRow = {
   updated_at: string | null;
 };
 
+type RawSupportTicketRow = {
+  id: string;
+  correlation_id: string | null;
+  category: string | null;
+  subject: string | null;
+  message: string | null;
+  route_path: string | null;
+  status: string | null;
+  created_at: string | null;
+};
+
+type RawSupportInboxRow = {
+  id: string;
+  created_at: string | null;
+  ticket: RawSupportTicketRow | RawSupportTicketRow[] | null;
+};
+
 export type LaunchMonitorRow = {
   campaignId: string;
   userLabel: string;
@@ -127,7 +144,12 @@ export type LaunchMonitorRow = {
 
 export type OperatorIssueRow = {
   id: string;
-  source: "system_job" | "stripe_webhook" | "provider_usage" | "campaign_plan";
+  source:
+    | "system_job"
+    | "stripe_webhook"
+    | "provider_usage"
+    | "campaign_plan"
+    | "support_ticket";
   severity: "critical" | "high" | "medium" | "low";
   title: string;
   detail: string;
@@ -469,7 +491,7 @@ export async function loadIssueLogRows(
   }
 
   const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-  const [jobsResult, stripeResult, providerResult, campaigns] = await Promise.all([
+  const [jobsResult, stripeResult, providerResult, supportResult, campaigns] = await Promise.all([
     admin
       .from("system_jobs")
       .select("id,organization_id,campaign_id,kind,status,error_message,last_error_code,dead_letter_reason,created_at,locked_until,dead_lettered_at,reviewed_at,reviewed_by,resolution_note")
@@ -492,6 +514,13 @@ export async function loadIssueLogRows(
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(limit),
+    (admin as any)
+      .from("support_operator_inbox")
+      .select("id,created_at,ticket:support_tickets!inner(id,correlation_id,category,subject,message,route_path,status,created_at)")
+      .in("status", ["unread", "acknowledged"])
+      .in("ticket.status", ["open", "in_progress"])
+      .order("created_at", { ascending: false })
+      .limit(limit),
     preloadedCampaigns
       ? Promise.resolve(preloadedCampaigns)
       : loadLaunchMonitorRows(Math.min(limit, 50)).catch(() => []),
@@ -507,6 +536,10 @@ export async function loadIssueLogRows(
 
   if (providerResult.error) {
     throw new ApiError(500, providerResult.error.message, "issue_log_provider_failed");
+  }
+
+  if (supportResult.error) {
+    throw new ApiError(500, supportResult.error.message, "issue_log_support_failed");
   }
 
   const jobIssues = ((jobsResult.data ?? []) as RawSystemJobRow[])
@@ -596,7 +629,29 @@ export async function loadIssueLogRows(
       rawReference: row.campaignId,
     }));
 
-  return [...jobIssues, ...stripeIssues, ...providerIssues, ...campaignIssues]
+  const supportIssues = ((supportResult.data ?? []) as RawSupportInboxRow[]).flatMap((inbox) => {
+    const row = Array.isArray(inbox.ticket) ? inbox.ticket[0] : inbox.ticket;
+    if (!row || !["open", "in_progress"].includes(row.status ?? "")) {
+      return [];
+    }
+
+    return [{
+    id: `support:${row.id}`,
+    source: "support_ticket" as const,
+    severity: row.category === "product_blocker" ? ("high" as const) : ("medium" as const),
+    title: row.subject || "Product support ticket",
+    detail: row.message || "Support ticket was recorded without message text.",
+    status: row.status === "in_progress" ? ("monitoring" as const) : ("open" as const),
+    createdAt: inbox.created_at || row.created_at,
+    route:
+      row.route_path && row.route_path.startsWith("/") && !row.route_path.startsWith("//")
+        ? row.route_path
+        : "/admin/issues",
+    rawReference: row.correlation_id || row.id,
+    }];
+  });
+
+  return [...jobIssues, ...stripeIssues, ...providerIssues, ...campaignIssues, ...supportIssues]
     .sort((first, second) => {
       const firstTime = first.createdAt ? new Date(first.createdAt).getTime() : 0;
       const secondTime = second.createdAt ? new Date(second.createdAt).getTime() : 0;

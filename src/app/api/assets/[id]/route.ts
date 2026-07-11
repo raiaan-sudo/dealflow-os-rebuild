@@ -18,7 +18,10 @@ export async function GET(
       throw new ApiError(400, "Asset id is required.", "asset_id_required");
     }
 
-    const asset = await getCreativeAssetById(assetId, auth.userId);
+    const asset = await getCreativeAssetById(assetId, {
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+    });
 
     if (!asset) {
       throw new ApiError(404, "Creative asset not found.", "asset_not_found");
@@ -44,7 +47,10 @@ export async function DELETE(
       throw new ApiError(400, "Asset id is required.", "asset_id_required");
     }
 
-    const result = await deleteCreativeAssetById(assetId, auth.userId);
+    const result = await deleteCreativeAssetById(assetId, {
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+    });
     return apiSuccess(result);
   } catch (error) {
     return handleApiError(error, "Creative asset delete");

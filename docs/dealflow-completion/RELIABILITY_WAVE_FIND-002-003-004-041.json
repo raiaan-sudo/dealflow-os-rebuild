@@ -1,0 +1,65 @@
+{
+  "artifact": "dealflow_reliability_wave",
+  "findings": ["FIND-002", "FIND-003", "FIND-004", "FIND-041"],
+  "status": "historical_tranche_locally_verified_not_deployed",
+  "overall_release_verdict": "NO_GO",
+  "production_mutation": false,
+  "invariants": {
+    "lost_lease_can_complete": false,
+    "lease_heartbeat_ms": 60000,
+    "lease_duration_ms": 300000,
+    "terminal_writes_are_compare_and_set": true,
+    "required_child_failure_can_complete_parent": false,
+    "successful_child_replayed_on_retry": false,
+    "meta_deletion_ack_before_durable_acceptance": false,
+    "meta_deletion_execution_default_enabled": false,
+    "meta_deletion_initial_state": "operator_required",
+    "live_ghl_calls_added": false,
+    "ghl_lead_worker_acceptance": "blocked_external_not_wired"
+  },
+  "schema_migration": "supabase/migrations/20260710234500_harden_jobs_lead_effects_meta_deletion.sql",
+  "tests": [
+    {
+      "command": "node scripts/test-reliability-wave.mjs",
+      "result": "pass",
+      "network": false
+    },
+    {
+      "command": "targeted eslint reliability files",
+      "result": "pass",
+      "network": false
+    },
+    {
+      "command": "npm run typecheck",
+      "result": "pass; historical concurrent integration drift later resolved",
+      "network": false
+    },
+    {
+      "command": "npm run build",
+      "result": "pass",
+      "network": false
+    },
+    {
+      "command": "node scripts/check-route-security.mjs",
+      "result": "pass",
+      "network": false
+    }
+  ],
+  "current_blockers": [
+    {
+      "surface": "repository_wide_fresh_migration_replay",
+      "reason": "First tracked migration fails with SQLSTATE 42P01 because public.campaign_plans does not exist.",
+      "production_fallback_attempted": false
+    },
+    {
+      "surface": "release_authority_and_external_acceptance",
+      "reason": "Signed old-worker drain, deployed-environment attestation, provider acceptance, staging, and owner policy are absent.",
+      "production_fallback_attempted": false
+    }
+  ],
+  "operator_required": [
+    "Apply additive schema before application code only after separate release authorization.",
+    "Provide an authenticated review and completion workflow for durable Meta deletion responsibility rows.",
+    "Monitor per-effect failures and dead-lettered parent jobs after release."
+  ]
+}

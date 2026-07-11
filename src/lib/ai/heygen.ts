@@ -26,6 +26,43 @@ export type HeyGenVideoStatusResult = {
   raw: Record<string, unknown> | null;
 };
 
+export type HeyGenProviderUsageOutcome =
+  | "released"
+  | "rejected"
+  | "operator_action_required";
+
+class HeyGenProviderUsageError extends Error {
+  readonly providerUsageOutcome: HeyGenProviderUsageOutcome;
+
+  constructor(message: string, providerUsageOutcome: HeyGenProviderUsageOutcome) {
+    super(message);
+    this.name = "HeyGenProviderUsageError";
+    this.providerUsageOutcome = providerUsageOutcome;
+  }
+}
+
+function toProviderUsageError(
+  error: unknown,
+  providerUsageOutcome: HeyGenProviderUsageOutcome,
+) {
+  if (error instanceof HeyGenProviderUsageError) {
+    return error;
+  }
+
+  return new HeyGenProviderUsageError(
+    error instanceof Error ? error.message : safeText(error) || "HeyGen request failed.",
+    providerUsageOutcome,
+  );
+}
+
+export function getHeyGenProviderUsageOutcome(
+  error: unknown,
+): HeyGenProviderUsageOutcome {
+  return error instanceof HeyGenProviderUsageError
+    ? error.providerUsageOutcome
+    : "operator_action_required";
+}
+
 function safeText(value: unknown) {
   return (value ?? "").toString().trim();
 }
@@ -224,13 +261,21 @@ export async function createHeyGenVideo(request: HeyGenCreateRequest) {
   const script = safeText(request.script);
 
   if (script.length < 10) {
-    throw new Error("Script too short");
+    throw new HeyGenProviderUsageError("Script too short", "released");
   }
 
-  const [avatarId, voiceId] = await Promise.all([
-    resolveAvatarId(request.avatarId),
-    resolveVoiceId(request.voiceId),
-  ]);
+  let avatarId: string;
+  let voiceId: string;
+
+  try {
+    [avatarId, voiceId] = await Promise.all([
+      resolveAvatarId(request.avatarId),
+      resolveVoiceId(request.voiceId),
+    ]);
+  } catch (error) {
+    // Avatar/voice/config discovery happens before the paid generation POST.
+    throw toProviderUsageError(error, "released");
+  }
 
   const dimension =
     request.aspectRatio === "16:9"
@@ -241,35 +286,49 @@ export async function createHeyGenVideo(request: HeyGenCreateRequest) {
         ? { width: 1080, height: 1920 }
         : { width: 720, height: 1280 };
 
-  const { response, data } = await heyGenRequest("/v2/video/generate", {
-    method: "POST",
-    body: JSON.stringify({
-      title: safeText(request.title) || "Campaign video ad",
-      caption: false,
-      dimension,
-      video_inputs: [
-        {
-          character: {
-            type: "avatar",
-            avatar_id: avatarId,
-            avatar_style: "normal",
+  let response: Response;
+  let data: Record<string, unknown> | null;
+
+  try {
+    const result = await heyGenRequest("/v2/video/generate", {
+      method: "POST",
+      body: JSON.stringify({
+        title: safeText(request.title) || "Campaign video ad",
+        caption: false,
+        dimension,
+        video_inputs: [
+          {
+            character: {
+              type: "avatar",
+              avatar_id: avatarId,
+              avatar_style: "normal",
+            },
+            voice: {
+              type: "text",
+              input_text: script,
+              voice_id: voiceId,
+            },
+            background: {
+              type: "color",
+              value: "#0f172a",
+            },
           },
-          voice: {
-            type: "text",
-            input_text: script,
-            voice_id: voiceId,
-          },
-          background: {
-            type: "color",
-            value: "#0f172a",
-          },
-        },
-      ],
-    }),
-  });
+        ],
+      }),
+    });
+    response = result.response;
+    data = result.data;
+  } catch (error) {
+    // A transport failure after dispatch cannot prove whether HeyGen accepted
+    // the paid operation. Never refund or automatically retry it.
+    throw toProviderUsageError(error, "operator_action_required");
+  }
 
   if (!response.ok) {
-    throw new Error(extractHeyGenErrorMessage(data) || "HeyGen request failed");
+    throw new HeyGenProviderUsageError(
+      extractHeyGenErrorMessage(data) || "HeyGen request failed",
+      "rejected",
+    );
   }
 
   const videoId =
@@ -277,7 +336,10 @@ export async function createHeyGenVideo(request: HeyGenCreateRequest) {
     safeText(data?.video_id);
 
   if (!videoId) {
-    throw new Error("HeyGen did not return a video_id.");
+    throw new HeyGenProviderUsageError(
+      "HeyGen accepted the request but did not return a video_id.",
+      "operator_action_required",
+    );
   }
 
   return {

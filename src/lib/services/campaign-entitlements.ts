@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/api/route";
+import { normalizeCustomLeadQuestions } from "@/lib/leads/custom-question-contract";
 import {
   hasFeatureAccess,
   normalizeBillingPlanTier,
@@ -358,7 +359,7 @@ export async function getPublicFunnelEntitlements(params: {
 
   let query = admin
     .from("campaign_plans")
-    .select("id,organization_id")
+    .select("id,organization_id,plan")
     .eq("publish_state", "published");
 
   if (params.campaignId?.trim()) {
@@ -375,7 +376,11 @@ export async function getPublicFunnelEntitlements(params: {
     throw new ApiError(500, error.message, "public_funnel_entitlement_lookup_failed");
   }
 
-  const row = data as { id?: string | null; organization_id?: string | null } | null;
+  const row = data as {
+    id?: string | null;
+    organization_id?: string | null;
+    plan?: unknown;
+  } | null;
 
   if (!row?.id || !row.organization_id) {
     throw new ApiError(404, "Published funnel not found.", "funnel_not_found");
@@ -385,11 +390,23 @@ export async function getPublicFunnelEntitlements(params: {
     organizationId: row.organization_id,
     campaignId: row.id,
   });
+  const plan =
+    row.plan && typeof row.plan === "object" && !Array.isArray(row.plan)
+      ? (row.plan as Record<string, unknown>)
+      : {};
+  const funnel =
+    plan.funnel && typeof plan.funnel === "object" && !Array.isArray(plan.funnel)
+      ? (plan.funnel as Record<string, unknown>)
+      : {};
+  const customLeadFormQuestions = normalizeCustomLeadQuestions(
+    plan.lead_form_questions ?? funnel.customLeadFormQuestions,
+  );
 
   return {
     campaignId: row.id,
     organizationId: row.organization_id,
     entitlements,
+    customLeadFormQuestions,
   };
 }
 

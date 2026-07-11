@@ -177,7 +177,7 @@ export function CampaignLaunchSimulator({
     return () => {
       active = false;
     };
-  }, []);
+  }, [campaign.id]);
 
   useEffect(() => {
     setLaunchAudit(initialLaunchRecord);
@@ -202,7 +202,7 @@ export function CampaignLaunchSimulator({
   useEffect(() => {
     const interval = window.setInterval(async () => {
       try {
-        const result = await fetchRuntime();
+        const result = await fetchRuntime(campaign.id);
 
         if (result.runtime) {
           setRuntime(result.runtime);
@@ -215,7 +215,7 @@ export function CampaignLaunchSimulator({
     return () => {
       window.clearInterval(interval);
     };
-  }, []);
+  }, [campaign.id]);
 
   useEffect(() => {
     if (!activeOperation) {
@@ -251,7 +251,11 @@ export function CampaignLaunchSimulator({
       connectionPromotedRef.current ||
       runtime.status === "launch_ready" ||
       runtime.status === "launching" ||
-      runtime.status === "live"
+      runtime.status === "provider_paused" ||
+      runtime.status === "live" ||
+      runtime.metaPushStatus === "provider_paused" ||
+      runtime.metaPushStatus === "published" ||
+      runtime.safetyState === "paused"
     ) {
       return;
     }
@@ -259,6 +263,7 @@ export function CampaignLaunchSimulator({
     connectionPromotedRef.current = true;
 
     void postRuntimeUpdate({
+      campaignId: campaign.id,
       action: "set_experience_status",
       experienceStatus: "launch_ready",
     })
@@ -271,11 +276,14 @@ export function CampaignLaunchSimulator({
         connectionPromotedRef.current = false;
       });
   }, [
+    campaign.id,
     connectionState,
     demoMode,
     launchRequirements.campaignSaved,
     launchRequirements.domainReady,
     launchRequirements.pixelReady,
+    runtime.metaPushStatus,
+    runtime.safetyState,
     runtime.status,
   ]);
 
@@ -312,6 +320,7 @@ export function CampaignLaunchSimulator({
     metaConnected,
     canLaunch,
     isLive,
+    isProviderPaused,
     isLaunching,
     launchSteps,
     canUseMetaLaunch,
@@ -357,6 +366,7 @@ export function CampaignLaunchSimulator({
       : `Launch guardrails updated for ${nextMode} mode at ${nextBudget}/day.`;
 
     const result = await postRuntimeUpdate({
+      campaignId: campaign.id,
       action: "set_guardrails",
       budgetDailyInput: nextBudget,
       launchMode: nextMode,
@@ -393,21 +403,21 @@ export function CampaignLaunchSimulator({
   }
 
   async function handlePause() {
-    const result = await postRuntimeUpdate({ action: "pause_campaign" });
+    const result = await postRuntimeUpdate({ campaignId: campaign.id, action: "pause_campaign" });
     if (result.runtime) {
       setRuntime(result.runtime);
     }
   }
 
   async function handleResume() {
-    const result = await postRuntimeUpdate({ action: "resume_campaign" });
+    const result = await postRuntimeUpdate({ campaignId: campaign.id, action: "resume_campaign" });
     if (result.runtime) {
       setRuntime(result.runtime);
     }
   }
 
   async function handleArchive() {
-    const result = await postRuntimeUpdate({ action: "archive_campaign" });
+    const result = await postRuntimeUpdate({ campaignId: campaign.id, action: "archive_campaign" });
     if (result.runtime) {
       setRuntime(result.runtime);
     }
@@ -423,7 +433,7 @@ export function CampaignLaunchSimulator({
     setError(null);
 
     try {
-      const snapshot = await syncCampaignStatus();
+      const snapshot = await syncCampaignStatus(campaign.id);
       setSyncSnapshot(snapshot);
 
       try {
@@ -477,7 +487,7 @@ export function CampaignLaunchSimulator({
       setActionSuggestions(
         actions.map((item) => (item.id === updated.id ? updated : item)),
       );
-      const runtimeResult = await fetchRuntime();
+      const runtimeResult = await fetchRuntime(campaign.id);
       if (runtimeResult.runtime) {
         setRuntime(runtimeResult.runtime);
       }
@@ -570,6 +580,7 @@ export function CampaignLaunchSimulator({
       <LaunchGuidedFlowPanel
         focusMode={focusMode}
         isLive={isLive}
+        isProviderPaused={isProviderPaused}
         isLaunching={isLaunching}
         canLaunch={canLaunch}
         blockingRequirements={blockingRequirements}

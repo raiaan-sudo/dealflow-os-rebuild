@@ -1,5 +1,9 @@
 import { ApiError, retryRouteStep } from "@/lib/api/route";
-import { createHeyGenVideo, getHeyGenVideoStatus } from "@/lib/ai/heygen";
+import {
+  createHeyGenVideo,
+  getHeyGenProviderUsageOutcome,
+  getHeyGenVideoStatus,
+} from "@/lib/ai/heygen";
 import {
   getCreativeAssetsSchemaCompatibilityMessage,
   toVideoProviderApiError,
@@ -42,6 +46,8 @@ export type VideoGenerationStatusJobPayload = {
   assetId: string;
   providerAssetId: string;
   providerUsageEventId: string | null;
+  providerUsageSettlementToken: string | null;
+  providerUsageSettlementGeneration: number | null;
   pollAttempt?: number;
 };
 
@@ -98,6 +104,7 @@ function mergeVideoAdState(
 
 async function loadCampaignPlanRow(
   supabase: VideoPersistenceClient,
+  organizationId: string,
   userId: string,
   campaignId: string,
 ) {
@@ -105,6 +112,7 @@ async function loadCampaignPlanRow(
     .from("campaign_plans")
     .select("*")
     .eq("id", campaignId)
+    .eq("organization_id", organizationId)
     .eq("user_id", userId)
     .single();
 
@@ -117,11 +125,17 @@ async function loadCampaignPlanRow(
 
 async function persistVideoAdsToCampaignPlan(params: {
   supabase: VideoPersistenceClient;
+  organizationId: string;
   userId: string;
   campaignId: string;
   videoAds: VideoCreativeAsset[];
 }) {
-  const row = await loadCampaignPlanRow(params.supabase, params.userId, params.campaignId);
+  const row = await loadCampaignPlanRow(
+    params.supabase,
+    params.organizationId,
+    params.userId,
+    params.campaignId,
+  );
   const savedDocument = getSavedCampaignDocumentFromRow(row) ?? {};
   const nextPlan = {
     ...(savedDocument as Record<string, unknown>),
@@ -132,6 +146,7 @@ async function persistVideoAdsToCampaignPlan(params: {
     await persistCampaignPlanDocumentUpdate({
       supabase: params.supabase,
       campaignId: params.campaignId,
+      organizationId: params.organizationId,
       userId: params.userId,
       plan: nextPlan,
       source: "campaign_video_ads_save",
@@ -144,6 +159,7 @@ async function persistVideoAdsToCampaignPlan(params: {
 
 async function persistVideoStateToCampaignPlan(params: {
   supabase: VideoPersistenceClient;
+  organizationId: string;
   userId: string;
   campaignId: string;
   providerAssetId: string;
@@ -151,7 +167,12 @@ async function persistVideoStateToCampaignPlan(params: {
   videoUrl: string | null;
   message: string | null;
 }) {
-  const row = await loadCampaignPlanRow(params.supabase, params.userId, params.campaignId);
+  const row = await loadCampaignPlanRow(
+    params.supabase,
+    params.organizationId,
+    params.userId,
+    params.campaignId,
+  );
   const savedDocument = getSavedCampaignDocumentFromRow(row) ?? {};
   const existingVideoAds = Array.isArray(savedDocument.videoAds)
     ? (savedDocument.videoAds as VideoCreativeAsset[])
@@ -171,6 +192,7 @@ async function persistVideoStateToCampaignPlan(params: {
     await persistCampaignPlanDocumentUpdate({
       supabase: params.supabase,
       campaignId: params.campaignId,
+      organizationId: params.organizationId,
       userId: params.userId,
       plan: {
         ...(savedDocument as Record<string, unknown>),
@@ -190,6 +212,7 @@ async function persistVideoStateToCampaignPlan(params: {
 
 async function persistVideoFailure(params: {
   supabase: VideoPersistenceClient;
+  organizationId: string;
   userId: string;
   campaignId: string;
   assetId: string;
@@ -217,10 +240,12 @@ async function persistVideoFailure(params: {
       error_message: params.message,
     } as never)
     .eq("id", params.assetId)
+    .eq("campaign_id", params.campaignId)
     .eq("user_id", params.userId);
 
   await persistVideoStateToCampaignPlan({
     supabase: params.supabase,
+    organizationId: params.organizationId,
     userId: params.userId,
     campaignId: params.campaignId,
     providerAssetId: params.providerAssetId,
@@ -238,6 +263,8 @@ async function queueVideoStatusPollJob(params: {
   assetId: string;
   providerAssetId: string;
   providerUsageEventId: string | null | undefined;
+  providerUsageSettlementToken: string | null | undefined;
+  providerUsageSettlementGeneration: number | null | undefined;
 }) {
   const idempotencyKey = `video_generation_status:${params.providerAssetId}`;
   const { error } = await params.supabase.from("system_jobs").insert({
@@ -250,6 +277,9 @@ async function queueVideoStatusPollJob(params: {
       assetId: params.assetId,
       providerAssetId: params.providerAssetId,
       providerUsageEventId: params.providerUsageEventId ?? null,
+      providerUsageSettlementToken: params.providerUsageSettlementToken ?? null,
+      providerUsageSettlementGeneration:
+        params.providerUsageSettlementGeneration ?? null,
       pollAttempt: 0,
     } satisfies VideoGenerationStatusJobPayload,
     idempotency_key: idempotencyKey,
@@ -272,12 +302,14 @@ async function queueVideoStatusPollJob(params: {
 async function loadCreativeAssetForVideoStatus(params: {
   supabase: VideoPersistenceClient;
   userId: string;
+  campaignId: string;
   assetId: string;
 }) {
   const { data, error } = await params.supabase
     .from("creative_assets")
     .select("*")
     .eq("id", params.assetId)
+    .eq("campaign_id", params.campaignId)
     .eq("user_id", params.userId)
     .maybeSingle();
 
@@ -294,11 +326,18 @@ async function loadCreativeAssetForVideoStatus(params: {
 
 export async function runVideoGenerationJob(params: {
   supabase: VideoPersistenceClient;
+  organizationId: string;
   userId: string;
   campaignId: string;
   payload: VideoGenerationJobPayload;
+  providerUsageAttemptKey: string;
 }) {
-  const row = await loadCampaignPlanRow(params.supabase, params.userId, params.campaignId);
+  const row = await loadCampaignPlanRow(
+    params.supabase,
+    params.organizationId,
+    params.userId,
+    params.campaignId,
+  );
   const savedDocument = getSavedCampaignDocumentFromRow(row) ?? {};
   const existingVideoAds = Array.isArray(savedDocument.videoAds)
     ? (savedDocument.videoAds as VideoCreativeAsset[])
@@ -343,6 +382,7 @@ export async function runVideoGenerationJob(params: {
 
     await persistVideoAdsToCampaignPlan({
       supabase: params.supabase,
+      organizationId: params.organizationId,
       userId: params.userId,
       campaignId: params.campaignId,
       videoAds: mergeVideoAdState(
@@ -419,7 +459,8 @@ export async function runVideoGenerationJob(params: {
     userId: params.userId,
     organizationId: row.organization_id,
     campaignId: params.campaignId,
-    idempotencyKey: `heygen_video_generation:${row.organization_id ?? "org"}:${params.userId}:${params.campaignId}:${params.payload.creativeIndex}`,
+    idempotencyKey: `heygen_video_generation:${row.organization_id}:${params.userId}:${params.campaignId}:${params.payload.creativeIndex}:${params.providerUsageAttemptKey}`,
+    attemptKey: `provider_usage_attempt:${params.providerUsageAttemptKey}:${params.payload.creativeIndex}`,
   });
 
   let heyGenVideo;
@@ -435,8 +476,8 @@ export async function runVideoGenerationJob(params: {
     });
   } catch (error) {
     await markSessionCostBudgetEvent({
-      eventId: budgetReservation.eventId,
-      status: "failed",
+      ...budgetReservation,
+      status: getHeyGenProviderUsageOutcome(error),
       metadata: {
         operation: "heygen_video_generation",
         reason: error instanceof Error ? error.message : "Video generation failed to start.",
@@ -483,24 +524,28 @@ export async function runVideoGenerationJob(params: {
 
     if (schemaMessage) {
       await markSessionCostBudgetEvent({
-        eventId: budgetReservation.eventId,
-        status: "failed",
+        ...budgetReservation,
+        status: "consumed",
         metadata: {
           operation: "heygen_video_generation",
           providerAssetId: heyGenVideo.videoId,
           reason: schemaMessage,
+          providerAccepted: true,
+          localPersistenceFailed: true,
         },
       }).catch(() => null);
       throw new ApiError(500, schemaMessage, "creative_assets_schema_incompatible");
     }
 
     await markSessionCostBudgetEvent({
-      eventId: budgetReservation.eventId,
-      status: "failed",
+      ...budgetReservation,
+      status: "consumed",
       metadata: {
         operation: "heygen_video_generation",
         providerAssetId: heyGenVideo.videoId,
         reason: error?.message ?? "Video asset could not be created.",
+        providerAccepted: true,
+        localPersistenceFailed: true,
       },
     }).catch(() => null);
     throw new ApiError(
@@ -524,6 +569,7 @@ export async function runVideoGenerationJob(params: {
 
   await persistVideoAdsToCampaignPlan({
     supabase: params.supabase,
+    organizationId: params.organizationId,
     userId: params.userId,
     campaignId: params.campaignId,
     videoAds: mergeVideoAdState(existingVideoAds, queuedVideoState, params.payload.creativeIndex),
@@ -537,6 +583,8 @@ export async function runVideoGenerationJob(params: {
     assetId: insertedAsset.id,
     providerAssetId: heyGenVideo.videoId,
     providerUsageEventId: budgetReservation.eventId,
+    providerUsageSettlementToken: budgetReservation.settlementToken,
+    providerUsageSettlementGeneration: budgetReservation.settlementGeneration,
   });
 
   return {
@@ -555,13 +603,22 @@ export async function runVideoGenerationJob(params: {
 
 export async function pollVideoGenerationStatusJob(params: {
   supabase: VideoPersistenceClient;
+  organizationId: string;
   userId: string;
   campaignId: string;
   payload: VideoGenerationStatusJobPayload;
 }) {
+  await loadCampaignPlanRow(
+    params.supabase,
+    params.organizationId,
+    params.userId,
+    params.campaignId,
+  );
+
   const asset = await loadCreativeAssetForVideoStatus({
     supabase: params.supabase,
     userId: params.userId,
+    campaignId: params.campaignId,
     assetId: params.payload.assetId,
   });
 
@@ -599,6 +656,7 @@ export async function pollVideoGenerationStatusJob(params: {
 
     await persistVideoFailure({
       supabase: params.supabase,
+      organizationId: params.organizationId,
       userId: params.userId,
       campaignId: params.campaignId,
       assetId: asset.id,
@@ -611,11 +669,17 @@ export async function pollVideoGenerationStatusJob(params: {
 
     await markSessionCostBudgetEvent({
       eventId: params.payload.providerUsageEventId,
-      status: "failed",
+      organizationId: params.organizationId,
+      userId: params.userId,
+      settlementToken: params.payload.providerUsageSettlementToken,
+      settlementGeneration: params.payload.providerUsageSettlementGeneration,
+      status: "consumed",
       metadata: {
         operation: "heygen_video_generation",
         providerAssetId: params.payload.providerAssetId,
         reason: failureMessage,
+        providerAccepted: true,
+        providerRenderFailed: true,
       },
     }).catch(() => null);
 
@@ -661,6 +725,7 @@ export async function pollVideoGenerationStatusJob(params: {
 
   await persistVideoStateToCampaignPlan({
     supabase: params.supabase,
+    organizationId: params.organizationId,
     userId: params.userId,
     campaignId: params.campaignId,
     providerAssetId: params.payload.providerAssetId,
@@ -671,6 +736,10 @@ export async function pollVideoGenerationStatusJob(params: {
 
   await markSessionCostBudgetEvent({
     eventId: params.payload.providerUsageEventId,
+    organizationId: params.organizationId,
+    userId: params.userId,
+    settlementToken: params.payload.providerUsageSettlementToken,
+    settlementGeneration: params.payload.providerUsageSettlementGeneration,
     status: "consumed",
     metadata: {
       operation: "heygen_video_generation",

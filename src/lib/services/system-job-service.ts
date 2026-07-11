@@ -11,6 +11,23 @@ import {
   type VideoGenerationStatusJobPayload,
   runVideoGenerationJob,
 } from "@/lib/services/video-generation-job";
+import {
+  LeadEffectsIncompleteError,
+  resolveLeadEffectPolicy,
+  runDurableLeadEffects,
+  type LeadEffectKey,
+  type MetaCapiConsentEvidence,
+} from "@/lib/services/lead-effect-aggregation-service";
+import {
+  createSystemJobLeaseHeartbeat,
+  getSystemJobLease,
+  renewSystemJobLease,
+  runSystemJobLogBestEffort,
+  SYSTEM_JOB_LEASE_MS,
+  SystemJobLeaseLostError,
+  type SystemJobLease,
+  updateSystemJobIfLeaseOwned,
+} from "@/lib/services/system-job-lease-service";
 
 type SystemJobRow = Database["public"]["Tables"]["system_jobs"]["Row"];
 type SystemJobLogRow = Database["public"]["Tables"]["system_job_logs"]["Row"];
@@ -26,6 +43,7 @@ export type SystemJobKind =
   | "meta_sync"
   | "recommendation_generation"
   | "lead_capture_retry"
+  | "meta_leadgen_reconciliation"
   | "lead_side_effects";
 export type SystemJobStatus = "pending" | "processing" | "completed" | "failed";
 export type SystemJobLifecycleStatus =
@@ -90,10 +108,19 @@ type SystemJobPayloadMap = {
       utmCampaign?: string | null;
       adId?: string | null;
       landingPageUrl?: string | null;
+      customAnswers?: Record<string, string>;
     };
+  };
+  meta_leadgen_reconciliation: {
+    source: "meta_leadgen_webhook";
+    requestId: string;
+    eventId: string;
   };
   lead_side_effects: {
     requestId: string;
+    enabledEffects?: LeadEffectKey[];
+    requiredEffects?: LeadEffectKey[];
+    advertisingConsent?: MetaCapiConsentEvidence | null;
     lead: {
       id: string;
       organization_id: string;
@@ -116,7 +143,7 @@ type SystemJobPayloadMap = {
       landing_page_url?: string | null;
       created_at?: string | null;
     };
-    metaConversion: {
+    metaConversion?: {
       organizationId: string;
       leadId: string;
       campaignId: string;
@@ -159,6 +186,9 @@ export type SystemJobRecord<K extends SystemJobKind = SystemJobKind> = Omit<Syst
   lastErrorCategory?: string | null;
   attempt_count?: number;
   max_attempts?: number;
+  lease_token?: string | null;
+  lease_generation?: number;
+  lease_heartbeat_at?: string | null;
 };
 
 function getJobClient() {
@@ -249,13 +279,15 @@ function getJobTracking<K extends SystemJobKind>(job: SystemJobRecord<K>) {
   return payload?.tracking ?? null;
 }
 
-export async function appendSystemJobLog(params: {
+type SystemJobLogWriteParams = {
   supabase?: SystemJobClient;
   jobId: string;
   level?: SystemJobLogLevel;
   message: string;
   details?: Json | null;
-}) {
+};
+
+export async function appendSystemJobLog(params: SystemJobLogWriteParams) {
   const supabase = params.supabase ?? getJobClient();
   const { error } = await supabase.from("system_job_logs").insert({
     job_id: params.jobId,
@@ -267,6 +299,20 @@ export async function appendSystemJobLog(params: {
   if (error) {
     throw new ApiError(500, error.message, "system_job_log_create_failed");
   }
+}
+
+async function appendSystemJobLogBestEffort(params: SystemJobLogWriteParams) {
+  return runSystemJobLogBestEffort({
+    write: () => appendSystemJobLog(params),
+    onFailure: (error) => {
+      logWarn("system_job.log_write_failed", {
+        jobId: params.jobId,
+        level: params.level ?? "info",
+        errorCode:
+          error instanceof ApiError ? error.code : "system_job_log_write_unexpected",
+      });
+    },
+  });
 }
 
 export async function createSystemJob<K extends SystemJobKind>(params: {
@@ -339,7 +385,7 @@ export async function createSystemJob<K extends SystemJobKind>(params: {
 
   const insertedJob = data as unknown as SystemJobRow;
 
-  await appendSystemJobLog({
+  await appendSystemJobLogBestEffort({
     supabase,
     jobId: insertedJob.id,
     message: `${params.kind.replace(/_/g, " ")} job queued.`,
@@ -355,6 +401,18 @@ export async function queueLeadSideEffectsJob(params: {
   payload: SystemJobPayloadMap["lead_side_effects"];
 }) {
   const supabase = getJobClient();
+  const effectPolicy = resolveLeadEffectPolicy(
+    process.env,
+    params.payload.advertisingConsent,
+  );
+  const { metaConversion, ...basePayload } = params.payload;
+  const metaConversionEnabled = effectPolicy.enabledEffects.includes("meta_conversion");
+  const payload = {
+    ...basePayload,
+    ...(metaConversionEnabled && metaConversion ? { metaConversion } : {}),
+    enabledEffects: params.payload.enabledEffects ?? effectPolicy.enabledEffects,
+    requiredEffects: params.payload.requiredEffects ?? effectPolicy.requiredEffects,
+  };
   const idempotencyKey = `lead_side_effects:${params.payload.lead.id}`;
   const insertPayload = {
     organization_id: params.organizationId,
@@ -362,7 +420,7 @@ export async function queueLeadSideEffectsJob(params: {
     campaign_id: params.campaignId,
     kind: "lead_side_effects",
     status: "pending",
-    payload: params.payload as unknown as Json,
+    payload: payload as unknown as Json,
     idempotency_key: idempotencyKey,
     max_attempts: 3,
   };
@@ -387,7 +445,7 @@ export async function queueLeadSideEffectsJob(params: {
       const existingRow = existing as { id?: unknown } | null;
 
       if (!existingError && typeof existingRow?.id === "string") {
-        return { id: existingRow.id };
+        return { id: existingRow.id, enabledEffects: payload.enabledEffects };
       }
     }
 
@@ -406,7 +464,7 @@ export async function queueLeadSideEffectsJob(params: {
     requestId: params.payload.requestId,
   });
 
-  return row;
+  return { ...row, enabledEffects: payload.enabledEffects };
 }
 
 async function updateSystemJobTracking<K extends SystemJobKind>(params: {
@@ -442,11 +500,23 @@ async function updateSystemJobTracking<K extends SystemJobKind>(params: {
   });
 }
 
-export async function getSystemJob(jobId: string, userId?: string) {
+type SystemJobActorScope = {
+  userId: string;
+  organizationId: string;
+};
+
+export async function getSystemJob(
+  jobId: string,
+  actor?: string | SystemJobActorScope,
+) {
   const supabase = getJobClient();
-  const query = userId
-    ? supabase.from("system_jobs").select("*").eq("id", jobId).eq("user_id", userId)
-    : supabase.from("system_jobs").select("*").eq("id", jobId);
+  let query = supabase.from("system_jobs").select("*").eq("id", jobId);
+
+  if (typeof actor === "string") {
+    query = query.eq("user_id", actor);
+  } else if (actor) {
+    query = query.eq("organization_id", actor.organizationId);
+  }
 
   const { data, error } = await query.maybeSingle();
 
@@ -459,6 +529,7 @@ export async function getSystemJob(jobId: string, userId?: string) {
 
 export async function listSystemJobs(params: {
   userId: string;
+  organizationId?: string;
   campaignId?: string | null;
   statuses?: SystemJobStatus[];
   kind?: SystemJobKind;
@@ -467,8 +538,11 @@ export async function listSystemJobs(params: {
   let query = supabase
     .from("system_jobs")
     .select("*")
-    .eq("user_id", params.userId)
     .order("created_at", { ascending: false });
+
+  query = params.organizationId
+    ? query.eq("organization_id", params.organizationId)
+    : query.eq("user_id", params.userId);
 
   if (params.campaignId) {
     query = query.eq("campaign_id", params.campaignId);
@@ -491,17 +565,22 @@ export async function listSystemJobs(params: {
   return Array.isArray(data) ? data.map((row) => parseSystemJob(row as SystemJobRow)) : [];
 }
 
-export async function getSystemJobLogs(jobId: string, userId?: string) {
+export async function getSystemJobLogs(
+  jobId: string,
+  actor?: string | SystemJobActorScope,
+) {
   const supabase = getJobClient();
-  const selection = userId ? "*, system_jobs!inner(user_id)" : "*";
+  const selection = actor ? "*, system_jobs!inner(user_id,organization_id)" : "*";
   let query = supabase
     .from("system_job_logs")
     .select(selection)
     .eq("job_id", jobId)
     .order("created_at", { ascending: true });
 
-  if (userId) {
-    query = query.eq("system_jobs.user_id", userId);
+  if (typeof actor === "string") {
+    query = query.eq("system_jobs.user_id", actor);
+  } else if (actor) {
+    query = query.eq("system_jobs.organization_id", actor.organizationId);
   }
 
   const { data, error } = await query;
@@ -539,9 +618,10 @@ async function updateSystemJob(
 export async function claimNextPendingSystemJob() {
   const supabase = getJobClient();
   const workerId = `vercel:${process.env.VERCEL_REGION ?? "local"}:${crypto.randomUUID()}`;
-  const { data, error } = await (supabase as any).rpc("claim_next_system_job", {
+  const { data, error } = await (supabase as any).rpc("claim_next_system_job_v2", {
     p_worker_id: workerId,
-    p_lease_ms: 5 * 60_000,
+    p_lease_ms: SYSTEM_JOB_LEASE_MS,
+    p_protocol_version: 2,
   });
 
   if (error) {
@@ -556,7 +636,7 @@ export async function claimNextPendingSystemJob() {
 
   const claimedJob = parseSystemJob(row as SystemJobRow);
 
-  await appendSystemJobLog({
+  await appendSystemJobLogBestEffort({
     supabase,
     jobId: claimedJob.id,
     message: `${claimedJob.kind.replace(/_/g, " ")} job started.`,
@@ -571,7 +651,8 @@ export async function claimNextPendingSystemJob() {
 
 export async function resetStaleProcessingSystemJobs(staleAfterMs = 10 * 60_000) {
   const supabase = getJobClient();
-  const staleBefore = new Date(Date.now() - staleAfterMs).toISOString();
+  void staleAfterMs;
+  const expiredAt = new Date().toISOString();
   const { data, error } = await supabase
     .from("system_jobs")
     .update({
@@ -581,10 +662,13 @@ export async function resetStaleProcessingSystemJobs(staleAfterMs = 10 * 60_000)
       started_at: null,
       locked_by: null,
       locked_until: null,
+      lease_token: null,
+      lease_heartbeat_at: null,
       next_run_at: new Date().toISOString(),
     } as never)
     .eq("status", "processing")
-    .or(`locked_until.lte.${new Date().toISOString()},started_at.lt.${staleBefore}`)
+    .not("locked_until", "is", null)
+    .lte("locked_until", expiredAt)
     .select("id");
 
   if (error) {
@@ -595,21 +679,24 @@ export async function resetStaleProcessingSystemJobs(staleAfterMs = 10 * 60_000)
 
   await Promise.all(
     resetRows.map((row) =>
-      appendSystemJobLog({
+      appendSystemJobLogBestEffort({
         supabase,
         jobId: row.id,
         level: "warning",
         message: "Stale processing job was reset to pending.",
-      }).catch(() => null),
+      }),
     ),
   );
 
   return resetRows.length;
 }
 
-export async function retrySystemJob(jobId: string, userId: string) {
+export async function retrySystemJob(
+  jobId: string,
+  actor: string | SystemJobActorScope,
+) {
   const supabase = getJobClient();
-  const currentJob = await getSystemJob(jobId, userId);
+  const currentJob = await getSystemJob(jobId, actor);
 
   if (!currentJob) {
     throw new ApiError(404, "Job not found.", "system_job_not_found");
@@ -627,6 +714,8 @@ export async function retrySystemJob(jobId: string, userId: string) {
     started_at: null,
     locked_by: null,
     locked_until: null,
+    lease_token: null,
+    lease_heartbeat_at: null,
     next_run_at: new Date().toISOString(),
     dead_lettered_at: null,
     dead_letter_reason: null,
@@ -643,7 +732,7 @@ export async function retrySystemJob(jobId: string, userId: string) {
     retryEligible: true,
   });
 
-  await appendSystemJobLog({
+  await appendSystemJobLogBestEffort({
     supabase,
     jobId,
     message: "Job retried.",
@@ -668,7 +757,7 @@ function shouldAutoRetrySystemJob(job: SystemJobRecord, error: unknown) {
   ].includes(error.code);
 }
 
-export async function processSystemJob(jobId: string) {
+export async function processSystemJob(jobId: string, lease: SystemJobLease) {
   const supabase = getJobClient();
   const job = await getSystemJob(jobId);
 
@@ -680,15 +769,54 @@ export async function processSystemJob(jobId: string) {
     return job;
   }
 
-  const processingJob =
-    job.status === "processing"
-      ? job
-      : await updateSystemJob(supabase, jobId, {
-          status: "processing",
-          started_at: new Date().toISOString(),
-          error_message: null,
-          last_error_code: null,
-        });
+  const persistedLease = getSystemJobLease(job);
+  if (
+    job.status !== "processing" ||
+    !persistedLease ||
+    persistedLease.jobId !== lease.jobId ||
+    persistedLease.workerId !== lease.workerId ||
+    persistedLease.token !== lease.token ||
+    persistedLease.generation !== lease.generation
+  ) {
+    throw new ApiError(
+      409,
+      "System job is not owned by this worker lease.",
+      "system_job_lease_lost",
+    );
+  }
+
+  const processingJob = job;
+  await renewSystemJobLease({
+    supabase: supabase as any,
+    lease,
+    leaseMs: SYSTEM_JOB_LEASE_MS,
+  }).catch((error) => {
+    throw new ApiError(
+      409,
+      error instanceof Error ? error.message : "System job lease could not be renewed.",
+      "system_job_lease_lost",
+    );
+  });
+  const heartbeat = createSystemJobLeaseHeartbeat({
+    renew: () =>
+      renewSystemJobLease({
+        supabase: supabase as any,
+        lease,
+        leaseMs: SYSTEM_JOB_LEASE_MS,
+      }),
+  });
+  heartbeat.start();
+
+  const fencedUpdate = async (input: Record<string, unknown>) => {
+    await heartbeat.stop();
+    heartbeat.assertOwned();
+    const updated = await updateSystemJobIfLeaseOwned({
+      supabase: supabase as any,
+      lease,
+      input,
+    });
+    return parseSystemJob(updated as SystemJobRow);
+  };
 
   try {
     let result: Json;
@@ -699,7 +827,11 @@ export async function processSystemJob(jobId: string) {
         processingJob.user_id,
         {
           force: Boolean((processingJob.payload as SystemJobPayloadMap["static_creative_generation"])?.force),
-          providerUsageRunId: `${processingJob.id}:${processingJob.attempt_count ?? 0}`,
+          organizationId: processingJob.organization_id,
+          // Provider debit and provider-request idempotency belong to the
+          // logical job, not to a renewable worker lease. A reclaimed job must
+          // encounter the same reservation after an ambiguous dispatch.
+          providerUsageRunId: `${processingJob.id}:static_creative_generation`,
           supabase,
         },
       );
@@ -711,9 +843,11 @@ export async function processSystemJob(jobId: string) {
     } else if (processingJob.kind === "video_generation") {
       const output = await runVideoGenerationJob({
         supabase,
+        organizationId: processingJob.organization_id,
         userId: processingJob.user_id,
         campaignId: processingJob.campaign_id ?? "",
         payload: processingJob.payload as SystemJobPayloadMap["video_generation"],
+        providerUsageAttemptKey: `${processingJob.id}:video_generation`,
       });
 
       result = output as unknown as Json;
@@ -722,6 +856,7 @@ export async function processSystemJob(jobId: string) {
         processingJob.payload as SystemJobPayloadMap["video_generation_status"];
       const output = await pollVideoGenerationStatusJob({
         supabase,
+        organizationId: processingJob.organization_id,
         userId: processingJob.user_id,
         campaignId: processingJob.campaign_id ?? "",
         payload,
@@ -732,7 +867,7 @@ export async function processSystemJob(jobId: string) {
         const nextRunAt = new Date(
           Date.now() + Math.min(5 * 60_000, 30_000 + pollAttempt * 15_000),
         ).toISOString();
-        const pendingJob = await updateSystemJob(supabase, processingJob.id, {
+        const pendingJob = await fencedUpdate({
           status: "pending",
           result: output as unknown as Json,
           payload: {
@@ -743,10 +878,12 @@ export async function processSystemJob(jobId: string) {
           last_error_code: null,
           locked_by: null,
           locked_until: null,
+          lease_token: null,
+          lease_heartbeat_at: null,
           next_run_at: nextRunAt,
         });
 
-        await appendSystemJobLog({
+        await appendSystemJobLogBestEffort({
           supabase,
           jobId: processingJob.id,
           message: "Video render is still processing at the provider; status poll rescheduled.",
@@ -767,6 +904,9 @@ export async function processSystemJob(jobId: string) {
       const { replayFailedPublicLeadCapture } = await import("@/lib/services/lead-handler-service");
       const replayResult = await replayFailedPublicLeadCapture({
         ...payload.leadCapture,
+        expectedOrganizationId: processingJob.organization_id,
+        expectedUserId: processingJob.user_id,
+        expectedCampaignId: processingJob.campaign_id ?? "",
         source: payload.source,
         requestId: payload.requestId,
         reason: payload.reason,
@@ -777,30 +917,91 @@ export async function processSystemJob(jobId: string) {
         requestId: payload.requestId,
         retryReason: payload.reason,
       } as Json;
+    } else if (processingJob.kind === "meta_leadgen_reconciliation") {
+      const payload =
+        processingJob.payload as SystemJobPayloadMap["meta_leadgen_reconciliation"];
+      if (!payload.eventId?.trim() || !payload.requestId?.trim()) {
+        throw new ApiError(
+          400,
+          "Meta leadgen reconciliation payload is incomplete.",
+          "meta_leadgen_reconciliation_payload_invalid",
+        );
+      }
+      const { reconcileMetaLeadgenEvent } = await import(
+        "@/lib/services/meta-leadgen-ingestion-service"
+      );
+      const output = await reconcileMetaLeadgenEvent({
+        eventId: payload.eventId,
+        requestId: payload.requestId,
+        workerId: lease.workerId,
+        terminalOnFailure:
+          Math.max(1, processingJob.attempt_count ?? 1) >=
+          Math.max(1, processingJob.max_attempts ?? 1),
+      });
+      result = output as unknown as Json;
     } else if (processingJob.kind === "lead_side_effects") {
       const payload = processingJob.payload as SystemJobPayloadMap["lead_side_effects"];
+      if (
+        processingJob.organization_id !== payload.lead.organization_id ||
+        (payload.metaConversion &&
+          payload.metaConversion.organizationId !== payload.lead.organization_id) ||
+        processingJob.campaign_id !== payload.lead.campaign_id
+      ) {
+        throw new ApiError(
+          409,
+          "Lead side-effect tenant or campaign scope does not match the claimed parent job.",
+          "lead_side_effect_scope_mismatch",
+        );
+      }
+      const currentPolicy = resolveLeadEffectPolicy(
+        process.env,
+        payload.advertisingConsent,
+      );
+      const enabledEffects = (payload.enabledEffects ?? currentPolicy.enabledEffects).filter(
+        (effect) => currentPolicy.enabledEffects.includes(effect),
+      );
+      const requiredEffects = (payload.requiredEffects ?? currentPolicy.requiredEffects).filter(
+        (effect) => currentPolicy.requiredEffects.includes(effect),
+      );
       const { safeNotifyAssignedAgentOfNewLead } = await import("@/lib/services/internal-lead-notification-service");
       const { safeSendMetaLeadConversion } = await import("@/lib/integrations/meta/conversions");
-      const [notificationResult, metaConversionResult] = await Promise.all([
-        safeNotifyAssignedAgentOfNewLead(payload.lead),
-        safeSendMetaLeadConversion(payload.metaConversion),
-      ]);
+      const effectSummary = await runDurableLeadEffects({
+        client: supabase as any,
+        jobId: processingJob.id,
+        organizationId: payload.lead.organization_id,
+        leadId: payload.lead.id,
+        requestId: payload.requestId,
+        workerId: lease.workerId,
+        leaseToken: lease.token,
+        leaseGeneration: lease.generation,
+        enabledEffects,
+        requiredEffects,
+        notifyAgent: () => safeNotifyAssignedAgentOfNewLead(payload.lead),
+        sendMetaConversion: () =>
+          payload.metaConversion
+            ? safeSendMetaLeadConversion({
+                ...payload.metaConversion,
+                advertisingConsent: payload.advertisingConsent ?? null,
+              })
+            : Promise.resolve({ sent: false, reason: "meta_capi_consent_missing" } as const),
+      });
 
       logOperationalEvent("lead_capture.side_effects_processed", {
         requestId: payload.requestId,
         leadId: payload.lead.id,
         organizationId: payload.lead.organization_id,
         jobId: processingJob.id,
-        notificationResult,
-        metaConversionResult,
+        allRequiredSucceeded: effectSummary.allRequiredSucceeded,
+        effects: effectSummary.effects.map((effect) => ({
+          key: effect.key,
+          status: effect.status,
+          required: effect.required,
+          attemptCount: effect.attemptCount,
+          reused: effect.reused,
+        })),
       });
 
-      result = {
-        requestId: payload.requestId,
-        leadId: payload.lead.id,
-        notificationResult,
-        metaConversionResult,
-      } as Json;
+      result = effectSummary as unknown as Json;
     } else if (
       processingJob.kind === "campaign_build" ||
       processingJob.kind === "funnel_generation" ||
@@ -821,7 +1022,7 @@ export async function processSystemJob(jobId: string) {
       );
     }
 
-    const completedJob = await updateSystemJob(supabase, jobId, {
+    const completedJob = await fencedUpdate({
       status: "completed",
       completed_at: new Date().toISOString(),
       result,
@@ -829,10 +1030,12 @@ export async function processSystemJob(jobId: string) {
       last_error_code: null,
       locked_by: null,
       locked_until: null,
+      lease_token: null,
+      lease_heartbeat_at: null,
       next_run_at: null,
     });
 
-    await appendSystemJobLog({
+    await appendSystemJobLogBestEffort({
       supabase,
       jobId,
       message: `${processingJob.kind.replace(/_/g, " ")} job completed.`,
@@ -841,52 +1044,106 @@ export async function processSystemJob(jobId: string) {
 
     return completedJob;
   } catch (error) {
+    if (error instanceof SystemJobLeaseLostError || heartbeat.hasLostLease()) {
+      await heartbeat.stop();
+      logWarn("system_job.lease_lost", {
+        jobId,
+        kind: processingJob.kind,
+        workerId: lease.workerId,
+        leaseGeneration: lease.generation,
+      });
+      throw new ApiError(
+        409,
+        error instanceof Error ? error.message : "System job lease was lost.",
+        "system_job_lease_lost",
+      );
+    }
+
     const message =
       error instanceof Error ? error.message : "Job processing failed.";
+    const leadEffectFailure =
+      error instanceof LeadEffectsIncompleteError ? error : null;
+    const currentAttempt = Math.max(1, processingJob.attempt_count ?? 1);
+    const maxAttempts = Math.max(1, processingJob.max_attempts ?? 1);
+    const legacyAutoRetry = shouldAutoRetrySystemJob(processingJob, error);
+    const leadEffectRetry = Boolean(
+      leadEffectFailure?.retryable && currentAttempt < maxAttempts,
+    );
+    const metaLeadgenRetry = Boolean(
+      processingJob.kind === "meta_leadgen_reconciliation" &&
+      error instanceof ApiError &&
+      error.status >= 500 &&
+      currentAttempt < maxAttempts
+    );
+    const retryEligible = legacyAutoRetry || leadEffectRetry || metaLeadgenRetry;
 
-    if (shouldAutoRetrySystemJob(processingJob, error)) {
-      const retriedJob = await updateSystemJob(supabase, jobId, {
+    if (retryEligible) {
+      const retriedJob = await fencedUpdate({
         status: "pending",
         completed_at: null,
         started_at: null,
         error_message: message,
-        last_error_code: error instanceof ApiError ? error.code : "system_job_transient_failure",
-        retry_count: processingJob.retry_count + 1,
+        last_error_code:
+          leadEffectFailure?.code ??
+          (error instanceof ApiError ? error.code : "system_job_transient_failure"),
+        retry_count:
+          processingJob.retry_count + (legacyAutoRetry || metaLeadgenRetry ? 1 : 0),
         locked_by: null,
         locked_until: null,
-        next_run_at: new Date(Date.now() + 60_000).toISOString(),
-        result: null,
+        lease_token: null,
+        lease_heartbeat_at: null,
+        next_run_at: new Date(
+          Date.now() + Math.min(5 * 60_000, 30_000 * 2 ** Math.max(0, currentAttempt - 1)),
+        ).toISOString(),
+        result: leadEffectFailure?.summary
+          ? (leadEffectFailure.summary as unknown as Json)
+          : null,
       });
 
-      await appendSystemJobLog({
+      await appendSystemJobLogBestEffort({
         supabase,
         jobId,
         level: "warning",
         message: `Job retry scheduled after transient failure: ${message}`,
+        details: leadEffectFailure?.summary
+          ? (leadEffectFailure.summary as unknown as Json)
+          : null,
       });
 
       return retriedJob;
     }
 
-    const failedJob = await updateSystemJob(supabase, jobId, {
+    const failedJob = await fencedUpdate({
       status: "failed",
       completed_at: new Date().toISOString(),
       error_message: message,
-      last_error_code: error instanceof ApiError ? error.code : "system_job_processing_failed",
+      last_error_code:
+        leadEffectFailure?.code ??
+        (error instanceof ApiError ? error.code : "system_job_processing_failed"),
       locked_by: null,
       locked_until: null,
+      lease_token: null,
+      lease_heartbeat_at: null,
       dead_lettered_at: new Date().toISOString(),
       dead_letter_reason: message,
+      result: leadEffectFailure?.summary
+        ? (leadEffectFailure.summary as unknown as Json)
+        : null,
     });
 
-    await appendSystemJobLog({
+    await appendSystemJobLogBestEffort({
       supabase,
       jobId,
       level: "error",
       message,
+      details: leadEffectFailure?.summary
+        ? (leadEffectFailure.summary as unknown as Json)
+        : null,
     });
 
     return failedJob;
+  } finally {
+    await heartbeat.stop();
   }
 }
 
@@ -971,7 +1228,7 @@ export async function runTrackedSystemJob<K extends SystemJobKind, T>(params: {
         startedAt,
       });
 
-      await appendSystemJobLog({
+      await appendSystemJobLogBestEffort({
         supabase,
         jobId: job.id,
         message: attempt > 1 ? `Retry attempt ${attempt} started.` : "Tracked route execution started.",
@@ -1025,7 +1282,7 @@ export async function runTrackedSystemJob<K extends SystemJobKind, T>(params: {
           completedAt,
         });
 
-        await appendSystemJobLog({
+        await appendSystemJobLogBestEffort({
           supabase,
           jobId: job.id,
           message: "Tracked route execution completed.",
@@ -1076,7 +1333,7 @@ export async function runTrackedSystemJob<K extends SystemJobKind, T>(params: {
           completedAt: retryEligible ? null : new Date().toISOString(),
         });
 
-        await appendSystemJobLog({
+        await appendSystemJobLogBestEffort({
           supabase,
           jobId: job.id,
           level: retryEligible ? "warning" : "error",
@@ -1160,7 +1417,16 @@ export async function runSystemJobWorkerBatch(options?: {
       };
     }
 
-    await processSystemJob(job.id);
+    const lease = getSystemJobLease(job);
+    if (!lease) {
+      throw new ApiError(
+        500,
+        "Claimed system job did not include a durable lease token and generation.",
+        "system_job_claim_lease_missing",
+      );
+    }
+
+    await processSystemJob(job.id, lease);
     processedJobIds.push(job.id);
   }
 

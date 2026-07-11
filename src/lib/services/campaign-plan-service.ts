@@ -44,7 +44,10 @@ import {
   type PersistedCampaignPlanPayload,
 } from "@/lib/services/campaign-plan-persistence-service";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
-import { getLatestCampaignRecord } from "@/lib/services/campaign-persistence";
+import {
+  getCampaignById,
+  getLatestCampaignRecord,
+} from "@/lib/services/campaign-persistence";
 import { debugLog } from "@/lib/debug";
 import {
   normalizeCreativeStrategy,
@@ -105,6 +108,7 @@ export type CampaignLifecycleStatus =
   | "connected"
   | "launch_ready"
   | "launching"
+  | "provider_paused"
   | "live"
   | "active"
   | "learning"
@@ -144,7 +148,13 @@ export type CampaignRuntime = {
   budgetDailyInput: number | null;
   lastOptimizationAction: string | null;
   lastOptimizationAt: string | null;
-  metaPushStatus: "not_pushed" | "publishing" | "published" | "partial" | "failed";
+  metaPushStatus:
+    | "not_pushed"
+    | "publishing"
+    | "provider_paused"
+    | "published"
+    | "partial"
+    | "failed";
   metaAdSetIds: string[];
   metaAdIds: string[];
   pausedAdIds: string[];
@@ -357,6 +367,13 @@ export function getCampaignExperienceStage(params: {
   }
 
   if (
+    params.plan.runtime.status === "provider_paused" ||
+    params.plan.runtime.metaPushStatus === "provider_paused"
+  ) {
+    return "launch_ready";
+  }
+
+  if (
     params.plan.runtime.status === "live" ||
     params.plan.runtime.metaPushStatus === "published"
   ) {
@@ -387,6 +404,7 @@ function normalizeCampaignRuntime(value: unknown): CampaignRuntime {
       runtime.status === "connected" ||
       runtime.status === "launch_ready" ||
       runtime.status === "launching" ||
+      runtime.status === "provider_paused" ||
       runtime.status === "live" ||
       runtime.status === "active" ||
       runtime.status === "learning" ||
@@ -430,6 +448,7 @@ function normalizeCampaignRuntime(value: unknown): CampaignRuntime {
         : null,
     metaPushStatus:
       runtime.metaPushStatus === "publishing" ||
+      runtime.metaPushStatus === "provider_paused" ||
       runtime.metaPushStatus === "published" ||
       runtime.metaPushStatus === "partial" ||
       runtime.metaPushStatus === "failed"
@@ -1206,15 +1225,24 @@ export async function createFallbackCampaignPlan(
 export async function saveGeneratedCampaignPlan(params: {
   userId: string;
   ownerId: string;
+  campaignId?: string;
+  createOnly?: boolean;
+  initialPlanPatch?: Record<string, unknown>;
   generatedPlan: Awaited<ReturnType<typeof generateCampaignPlan>>;
 }) {
+  const generatedPayload = buildPersistedCampaignPlanPayload({
+    generatedPlan: params.generatedPlan,
+    runtime: getDefaultCampaignRuntime(),
+  });
   return insertCampaignPlan({
+    campaignId: params.campaignId,
+    createOnly: params.createOnly,
     userId: params.userId,
     ownerId: params.ownerId,
-    payload: buildPersistedCampaignPlanPayload({
-      generatedPlan: params.generatedPlan,
-      runtime: getDefaultCampaignRuntime(),
-    }),
+    payload: {
+      ...generatedPayload,
+      ...(params.initialPlanPatch ?? {}),
+    } as PersistedCampaignPlanPayload,
   });
 }
 
@@ -1248,7 +1276,19 @@ export async function getLatestCampaignPlan() {
   return record ? canonicalCampaignToPlan(record) : null;
 }
 
-export async function saveCampaignPlan(input: OnboardingInput) {
+export async function getCampaignPlanById(campaignId: string) {
+  const record = await getCampaignById(campaignId).catch(() => null);
+  return record ? canonicalCampaignToPlan(record) : null;
+}
+
+export async function saveCampaignPlan(
+  input: OnboardingInput,
+  options?: {
+    campaignId?: string;
+    createOnly?: boolean;
+    initialPlanPatch?: Record<string, unknown>;
+  },
+) {
   const { supabase, organizationId, userId } = await resolvePlanOwner();
 
   if (!organizationId || !userId || !supabase) {
@@ -1276,6 +1316,9 @@ export async function saveCampaignPlan(input: OnboardingInput) {
     },
   );
   return saveGeneratedCampaignPlan({
+    campaignId: options?.campaignId,
+    createOnly: options?.createOnly,
+    initialPlanPatch: options?.initialPlanPatch,
     userId,
     ownerId: organizationId,
     generatedPlan: generated,

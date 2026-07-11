@@ -9,6 +9,7 @@ import {
 } from "@/lib/services/canonical-campaign";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import { getAppContext } from "@/lib/services/app-context";
+import { createCampaignPlanWithEntitlement } from "@/lib/services/campaign-creation-entitlement-service";
 import {
   completeAssetGenerationLifecycle,
   deriveStaticGenerationStatus,
@@ -98,26 +99,21 @@ async function requireUserSession() {
     throw new ApiError(503, "Supabase is not configured.", "config_missing");
   }
 
-  const context = await getAppContext().catch(() => null);
+  const context = await getAppContext();
 
-  if (context) {
-    return {
-      supabase,
-      userId: context.user.id,
-      ownerId: context.organization.id ?? context.user.id,
-    };
+  if (!context?.organization?.id) {
+    throw new ApiError(
+      403,
+      "An active workspace membership is required for campaign access.",
+      "workspace_membership_required",
+    );
   }
 
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    throw new ApiError(401, "Authentication is required for this route.", "unauthorized");
-  }
-
-  return { supabase, userId: user.id, ownerId: user.id };
+  return {
+    supabase,
+    userId: context.user.id,
+    ownerId: context.organization.id,
+  };
 }
 
 function asStringArray(value: Json): string[] {
@@ -227,7 +223,7 @@ function mapStaticCreativeAssets(rows: CreativeAssetRow[]): StaticCreativeAsset[
 }
 
 async function loadStaticCreativeAssets(
-  supabase: NonNullable<Awaited<ReturnType<typeof createRouteHandlerClient>>>,
+  supabase: PersistenceClient,
   userId: string,
   campaignId: string,
 ) {
@@ -276,6 +272,7 @@ async function persistGeneratedStaticAdsToCampaignPlan(params: {
     await persistCampaignPlanDocumentUpdate({
       supabase: params.supabase,
       campaignId: params.campaignId,
+      organizationId: params.row.organization_id,
       userId: params.userId,
       plan: nextPlan,
       source: "campaign_static_ads_save",
@@ -377,23 +374,20 @@ async function assertCampaignOwnership(
   campaign: Campaign;
 }> {
   const { supabase, userId, ownerId } = await requireUserSession();
-  const row = await loadCampaignPlanRowForUser(supabase, userId, ownerId, campaignId);
+  const row = await loadCampaignPlanRowForUser(supabase, ownerId, campaignId);
   return { supabase, userId, row, campaign: mapCampaignRow(row) };
 }
 
 async function loadCampaignPlanRowForUser(
   supabase: PersistenceClient,
-  userId: string,
-  ownerIdOrCampaignId: string,
-  maybeCampaignId?: string,
+  organizationId: string,
+  campaignId: string,
 ) {
-  const campaignId = maybeCampaignId ?? ownerIdOrCampaignId;
-  const ownerId = maybeCampaignId ? ownerIdOrCampaignId : userId;
   const { data, error } = await supabase
     .from("campaign_plans")
     .select("*")
     .eq("id", campaignId)
-    .or(`user_id.eq.${userId},owner_id.eq.${ownerId}`)
+    .eq("organization_id", organizationId)
     .maybeSingle();
 
   if (error) {
@@ -417,19 +411,26 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
 
   const requestedCampaignId = safeText(payload.campaignId);
   const campaignId = requestedCampaignId || crypto.randomUUID();
+  let existingCampaignRow: CampaignPlanRow | null = null;
   let existingSavedDocument: SavedCampaignDocument | null = null;
   let existingAssetGeneration: Record<string, unknown> | null = null;
 
   if (requestedCampaignId) {
-    const { data: existingRow } = await supabase
+    const { data: existingRow, error: existingRowError } = await supabase
       .from("campaign_plans")
-      .select("plan")
+      .select("*")
       .eq("id", campaignId)
-      .eq("user_id", userId)
+      .eq("organization_id", ownerId)
       .maybeSingle();
 
-    existingSavedDocument = existingRow
-      ? getSavedCampaignDocumentFromRow(existingRow as CampaignPlanRow)
+    if (existingRowError) {
+      throw existingRowError;
+    }
+
+    existingCampaignRow = (existingRow as CampaignPlanRow | null) ?? null;
+
+    existingSavedDocument = existingCampaignRow
+      ? getSavedCampaignDocumentFromRow(existingCampaignRow)
       : null;
 
     existingAssetGeneration =
@@ -521,105 +522,37 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
     } as unknown as Json,
   };
 
-  const query = requestedCampaignId
-    ? supabase
-        .from("campaign_plans")
-        .update(persistencePayload as never)
-        .eq("id", campaignId)
-        .eq("user_id", userId)
-        .select("*")
-        .single()
-    : supabase
-        .from("campaign_plans")
-        .insert(persistencePayload as never)
-        .select("*")
-        .single();
+  let data: CampaignPlanRow | null = null;
 
-  const { data, error } = await query;
-
-  if (error) {
-    if (
-      !requestedCampaignId &&
-      error.code === "23505" &&
-      /campaign_plans_user_id_unique|campaign_plans.*user_id.*unique|duplicate key value/i.test(
-        error.message,
-      )
-    ) {
-      const { data: existingRow, error: existingRowError } = await supabase
-        .from("campaign_plans")
-        .select("id, plan")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (existingRowError) {
-        throw new ApiError(500, existingRowError.message, "campaign_save_failed");
-      }
-
-      const existingCampaignId =
-        existingRow && typeof (existingRow as Pick<CampaignPlanRow, "id">).id === "string"
-          ? (existingRow as Pick<CampaignPlanRow, "id">).id
-          : "";
-
-      if (existingCampaignId) {
-        const recoveredExistingDocument = getSavedCampaignDocumentFromRow(existingRow as CampaignPlanRow);
-        const currentPersistencePlan = persistencePayload.plan as Record<string, unknown>;
-        const recoveredPlan = recoveredExistingDocument
-          ? {
-              ...currentPersistencePlan,
-              plan: {
-                ...((recoveredExistingDocument.plan as Record<string, unknown> | null) ?? {}),
-                ...((currentPersistencePlan.plan as Record<string, unknown> | null) ?? {}),
-              },
-              strategy: {
-                ...((recoveredExistingDocument.strategy as Record<string, unknown> | null) ?? {}),
-                ...((currentPersistencePlan.strategy as Record<string, unknown> | null) ?? {}),
-              },
-              funnel: {
-                ...((recoveredExistingDocument.funnel as Record<string, unknown> | null) ?? {}),
-                ...((currentPersistencePlan.funnel as Record<string, unknown> | null) ?? {}),
-              },
-              ...(recoveredExistingDocument.assetGeneration
-                ? { assetGeneration: recoveredExistingDocument.assetGeneration }
-                : {}),
-            }
-          : currentPersistencePlan;
-        const recoveredUpdatePayload = {
-          ...(persistencePayload as Record<string, unknown>),
-          id: existingCampaignId,
-          plan: recoveredPlan,
-        };
-        const { data: recoveredData, error: recoveredError } = await supabase
-          .from("campaign_plans")
-          .update(recoveredUpdatePayload as never)
-          .eq("id", existingCampaignId)
-          .eq("user_id", userId)
-          .select("*")
-          .single();
-
-        if (recoveredError) {
-          throw new ApiError(500, recoveredError.message, "campaign_save_failed");
-        }
-
-        if (recoveredData) {
-          return {
-            success: true,
-            campaignId: (recoveredData as CampaignPlanRow).id,
-          };
-        }
-      }
-    }
-
-    debugLog("campaign-save-failed", {
-      message: error.message,
-      code: "campaign_save_failed",
-    });
-    if (requestedCampaignId && error.code === "PGRST116") {
+  if (requestedCampaignId) {
+    if (!existingCampaignRow) {
       throw new ApiError(404, "Campaign not found.", "campaign_not_found");
     }
 
-    throw new ApiError(500, error.message, "campaign_save_failed");
+    try {
+      data = await persistCampaignPlanDocumentUpdate({
+        supabase,
+        campaignId,
+        organizationId: ownerId,
+        userId,
+        plan: persistencePayload.plan,
+        source: "campaign_save",
+        existingRow: existingCampaignRow,
+      });
+    } catch (error) {
+      debugLog("campaign-save-failed", {
+        message: getErrorMessage(error),
+        code: "campaign_save_failed",
+      });
+      throw new ApiError(500, getErrorMessage(error), "campaign_save_failed");
+    }
+  } else {
+    data = await createCampaignPlanWithEntitlement({
+      campaignId,
+      organizationId: ownerId,
+      userId,
+      plan: persistencePayload.plan,
+    });
   }
 
   if (!data) {
@@ -633,11 +566,11 @@ export async function saveCampaign(payload: SaveCampaignPayload) {
 }
 
 export async function listCampaignsForUser() {
-  const { supabase, userId } = await requireUserSession();
+  const { supabase, ownerId } = await requireUserSession();
   const { data, error } = await supabase
     .from("campaign_plans")
     .select("*")
-    .eq("user_id", userId)
+    .eq("organization_id", ownerId)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -675,13 +608,59 @@ export async function getCampaignById(campaignId: string): Promise<FullCampaignR
   });
 }
 
+/**
+ * Service-role campaign read for an already authenticated internal actor.
+ *
+ * This deliberately requires all three identifiers and applies them to the
+ * database query. Internal workers must never turn a campaign id from a queue
+ * into an implicit user session or a cross-workspace read.
+ */
+export async function getCampaignByIdForInternalActor(params: {
+  campaignId: string;
+  organizationId: string;
+  userId: string;
+}): Promise<FullCampaignRecord | null> {
+  const supabase = createAdminClient();
+
+  if (!supabase) {
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+  }
+
+  const { data, error } = await supabase
+    .from("campaign_plans")
+    .select("*")
+    .eq("id", params.campaignId)
+    .eq("organization_id", params.organizationId)
+    .eq("user_id", params.userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new ApiError(500, error.message, "campaign_internal_actor_lookup_failed");
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const row = data as CampaignPlanRow;
+  const campaign = mapCampaignRow(row);
+  const staticAds = await loadStaticCreativeAssets(supabase, params.userId, params.campaignId);
+
+  return normalizeCanonicalCampaign({
+    campaign,
+    savedDocument: getSavedCampaignDocumentFromRow(row),
+    staticAds,
+    publish: mapPublishRecord(row),
+  });
+}
+
 export async function getLatestCampaignRecord(): Promise<FullCampaignRecord | null> {
-  const { supabase, userId } = await requireUserSession();
+  const { supabase, ownerId } = await requireUserSession();
   const latestQuery = () =>
     supabase
       .from("campaign_plans")
       .select("*")
-      .eq("user_id", userId)
+      .eq("organization_id", ownerId)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -692,7 +671,7 @@ export async function getLatestCampaignRecord(): Promise<FullCampaignRecord | nu
     ({ data, error } = await supabase
       .from("campaign_plans")
       .select("*")
-      .eq("user_id", userId)
+      .eq("organization_id", ownerId)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle());
@@ -707,7 +686,7 @@ export async function getLatestCampaignRecord(): Promise<FullCampaignRecord | nu
   }
 
   const row = data as CampaignPlanRow;
-  const staticAds = await loadStaticCreativeAssets(supabase, userId, row.id);
+  const staticAds = await loadStaticCreativeAssets(supabase, row.user_id, row.id);
   return normalizeCanonicalCampaign({
     campaign: mapCampaignRow(row),
     savedDocument: getSavedCampaignDocumentFromRow(row),
@@ -720,17 +699,23 @@ export async function regenerateStaticCreativeAssets(
   campaignId: string,
   options?: { force?: boolean },
 ): Promise<FullCampaignRecord> {
-  const { supabase, userId } = await requireUserSession();
+  const { supabase, userId, ownerId } = await requireUserSession();
   return regenerateStaticCreativeAssetsForUser(campaignId, userId, {
     force: options?.force,
     supabase,
+    organizationId: ownerId,
   });
 }
 
 export async function regenerateStaticCreativeAssetsForUser(
   campaignId: string,
   userId: string,
-  options?: { force?: boolean; supabase?: PersistenceClient; providerUsageRunId?: string | null },
+  options?: {
+    force?: boolean;
+    supabase?: PersistenceClient;
+    providerUsageRunId?: string | null;
+    organizationId: string;
+  },
 ): Promise<FullCampaignRecord> {
   const supabase =
     options?.supabase ??
@@ -741,7 +726,15 @@ export async function regenerateStaticCreativeAssetsForUser(
     throw new ApiError(503, "Supabase is not configured.", "config_missing");
   }
 
-  const row = await loadCampaignPlanRowForUser(supabase, userId, campaignId);
+  if (!options?.organizationId) {
+    throw new ApiError(
+      400,
+      "Campaign workspace identity is required for static creative generation.",
+      "campaign_organization_required",
+    );
+  }
+
+  const row = await loadCampaignPlanRowForUser(supabase, options.organizationId, campaignId);
   const campaign = mapCampaignRow(row);
   const savedDocument = getSavedCampaignDocumentFromRow(row);
   const currentRecord = normalizeCanonicalCampaign({
@@ -773,6 +766,7 @@ export async function regenerateStaticCreativeAssetsForUser(
     await persistCampaignPlanDocumentUpdate({
       supabase,
       campaignId,
+      organizationId: row.organization_id,
       userId,
       plan: nextPlan,
       source: "campaign_static_generation_state_save",
@@ -783,6 +777,8 @@ export async function regenerateStaticCreativeAssetsForUser(
   }
 
   try {
+    const providerUsageRunId =
+      options?.providerUsageRunId?.trim() || `direct:${crypto.randomUUID()}`;
     const staticAds = await generateStaticCreativeAds({
       location: currentRecord.strategy.location,
       audience: currentRecord.strategy.audience,
@@ -792,8 +788,7 @@ export async function regenerateStaticCreativeAssetsForUser(
       creative_strategy: currentRecord.plan.creative_strategy,
       provider_usage_context: {
         createForAsset: (asset) => {
-          const runScope = options?.providerUsageRunId?.trim() || "default";
-          const idempotencyKey = `openai_image_generation:${row.organization_id ?? "org"}:${userId}:${campaignId}:${asset.id}:${asset.preferredImageModel}:${runScope}`;
+          const idempotencyKey = `openai_image_generation:${row.organization_id}:${userId}:${campaignId}:${asset.id}:${asset.preferredImageModel}:${providerUsageRunId}`;
 
           return {
             reserve: () =>
@@ -803,6 +798,7 @@ export async function regenerateStaticCreativeAssetsForUser(
                 organizationId: row.organization_id,
                 campaignId,
                 idempotencyKey,
+                attemptKey: `provider_usage_attempt:${idempotencyKey}`,
               }),
             mark: markSessionCostBudgetEvent,
           };
@@ -850,6 +846,7 @@ export async function regenerateStaticCreativeAssetsForUser(
     await persistCampaignPlanDocumentUpdate({
       supabase,
       campaignId,
+      organizationId: row.organization_id,
       userId,
       plan: failurePlan,
       source: "campaign_static_generation_failure",
@@ -865,7 +862,7 @@ export async function updateCampaignPublishState(params: {
   state: CampaignPublishState;
   slug?: string | null;
 }) {
-  const { supabase, row, campaign } = await assertCampaignOwnership(params.campaignId);
+  const { row, campaign } = await assertCampaignOwnership(params.campaignId);
   const currentRecord = normalizeCanonicalCampaign({
     campaign,
     savedDocument: getSavedCampaignDocumentFromRow(row),
@@ -897,12 +894,17 @@ export async function updateCampaignPublishState(params: {
     update.staged_at = null;
   }
 
-  const writeClient = createAdminClient() ?? supabase;
+  const writeClient = createAdminClient();
+
+  if (!writeClient) {
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+  }
+
   const { data, error } = await writeClient
     .from("campaign_plans")
     .update(update as never)
     .eq("id", params.campaignId)
-    .eq("user_id", campaign.user_id)
+    .eq("organization_id", row.organization_id)
     .select("*")
     .maybeSingle();
 
@@ -1022,6 +1024,7 @@ export async function saveOptimizationResult(
     await persistCampaignPlanDocumentUpdate({
       supabase,
       campaignId,
+      organizationId: row.organization_id,
       userId,
       plan: nextPlan,
       source: "campaign_optimization_save",

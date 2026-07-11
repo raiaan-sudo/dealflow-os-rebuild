@@ -2,8 +2,13 @@ import { ApiError } from "@/lib/api/route";
 import { getMetaEnv } from "@/lib/env";
 import { createMetaApiError, mapMetaError } from "@/lib/integrations/meta/error-mapper";
 import { decryptSecret } from "@/lib/integrations/meta-crypto";
+import {
+  buildMetaGraphUrl,
+  withMetaBearerToken,
+} from "@/lib/integrations/meta/contract";
 import { fetchMetaJson } from "@/lib/integrations/meta/request";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getAppContext } from "@/lib/services/app-context";
 import type {
   MetaAvailableAdAccount,
@@ -59,6 +64,10 @@ function mapStatus(value: string | null | undefined): MetaConnectionStatus {
     return "connecting";
   }
 
+  if (value === "partial") {
+    return "partial";
+  }
+
   if (value === "connected") {
     return "connected";
   }
@@ -77,6 +86,10 @@ function getReadinessMessage(status: MetaConnectionStatus, accountName?: string 
 
   if (status === "connecting") {
     return "Connection is being prepared so launch can move into a real ad account structure.";
+  }
+
+  if (status === "partial") {
+    return "Meta authorization succeeded, but the workspace still needs a valid ad account, Facebook Page, and pixel selection before launch.";
   }
 
   if (status === "connection_failed") {
@@ -149,18 +162,20 @@ function readMetadataRecord(
 
 async function fetchMetaPixelsForAccount(accessToken: string, externalAccountId: string) {
   const normalizedAccountId = externalAccountId.replace(/^act_/, "");
-  const url = new URL(`https://graph.facebook.com/v19.0/act_${normalizedAccountId}/adspixels`);
-  url.searchParams.set("fields", "id,name");
-  url.searchParams.set("access_token", accessToken);
+  const url = buildMetaGraphUrl(`act_${normalizedAccountId}/adspixels`, {
+    fields: "id,name",
+  });
 
   const { response, data } = await fetchMetaJson<
     | { data?: Array<{ id?: string; name?: string }> ; error?: { message?: string } }
     | null
-  >(url.toString(), {
+  >(url, {
     purpose: "preflight",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    ...withMetaBearerToken(accessToken, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }),
   });
 
   if (!response.ok) {
@@ -188,20 +203,17 @@ async function fetchMetaPixelsForAccount(accessToken: string, externalAccountId:
 }
 
 async function fetchMetaGraphJson<T>(accessToken: string, path: string, params?: Record<string, string>) {
-  const url = new URL(`https://graph.facebook.com/v19.0/${path.replace(/^\//, "")}`);
-  url.searchParams.set("access_token", accessToken);
-
-  for (const [key, value] of Object.entries(params ?? {})) {
-    url.searchParams.set(key, value);
-  }
+  const url = buildMetaGraphUrl(path, params);
 
   const { response, data } = await fetchMetaJson<(T & { error?: { message?: string } }) | null>(
-    url.toString(),
+    url,
     {
       purpose: "preflight",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      ...withMetaBearerToken(accessToken, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }),
     },
   );
 
@@ -522,14 +534,15 @@ async function getMetaSupabaseContext() {
   };
 }
 
-async function getExistingMetaRecord(organizationId: string) {
+async function getExistingMetaRecord(organizationId: string, signal?: AbortSignal) {
   const { supabase } = await getMetaSupabaseContext();
-  const { data } = await supabase
+  const query = supabase
     .from("marketing_accounts")
     .select("*")
     .eq("organization_id", organizationId)
-    .eq("platform", "meta_ads")
-    .maybeSingle();
+    .eq("platform", "meta_ads");
+  const request = signal ? query.abortSignal(signal) : query;
+  const { data } = await request.maybeSingle();
 
   return (data as MetaConnectionRecord | null) ?? null;
 }
@@ -571,15 +584,23 @@ async function ensureMetaWorkspaceRecord(organizationId: string) {
   return data as MetaConnectionRecord;
 }
 
-export async function getMetaConnectionState() {
+export async function getMetaConnectionState(options?: { signal?: AbortSignal }) {
   const { context } = await getMetaSupabaseContext();
-  const row = await getExistingMetaRecord(context.organization.id);
+  const row = await getExistingMetaRecord(context.organization.id, options?.signal);
   return toConnectionState(row);
 }
 
 export async function getMetaWorkspaceCredentials(): Promise<MetaWorkspaceCredentials> {
   const { context } = await getMetaSupabaseContext();
   const row = await getExistingMetaRecord(context.organization.id);
+
+  return resolveMetaWorkspaceCredentials(context.organization.id, row);
+}
+
+function resolveMetaWorkspaceCredentials(
+  organizationId: string,
+  row: MetaConnectionRecord | null,
+): MetaWorkspaceCredentials {
 
   if (!row) {
     throw new ApiError(
@@ -656,7 +677,7 @@ export async function getMetaWorkspaceCredentials(): Promise<MetaWorkspaceCreden
   }
 
   return {
-    workspaceId: context.organization.id,
+    workspaceId: organizationId,
     connectionId: row.id,
     adAccountId: selectedAccount.externalAccountId,
     pageId,
@@ -665,14 +686,54 @@ export async function getMetaWorkspaceCredentials(): Promise<MetaWorkspaceCreden
   };
 }
 
+/**
+ * Loads credentials for a queue actor whose tenant identity has already been
+ * claimed and fenced by the database. The organization id is applied directly
+ * to the service-role query; no cookie session is created or impersonated.
+ */
+export async function getMetaWorkspaceCredentialsForOrganization(
+  organizationId: string,
+): Promise<MetaWorkspaceCredentials> {
+  const admin = createAdminClient();
+
+  if (!admin) {
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+  }
+
+  const { data, error } = await admin
+    .from("marketing_accounts")
+    .select("*")
+    .eq("organization_id", organizationId)
+    .eq("platform", "meta_ads")
+    .maybeSingle();
+
+  if (error) {
+    throw new ApiError(500, error.message, "meta_workspace_credentials_lookup_failed");
+  }
+
+  return resolveMetaWorkspaceCredentials(
+    organizationId,
+    (data as MetaConnectionRecord | null) ?? null,
+  );
+}
+
+type InternalMetaLaunchPreflightSource = {
+  credentials: MetaWorkspaceCredentials;
+  row: MetaConnectionRecord | null;
+};
+
 export async function validateMetaLaunchSelections(options?: {
   destinationUrl?: string | null;
+  internalSource?: InternalMetaLaunchPreflightSource;
 }): Promise<MetaLaunchPreflightState> {
   const checkedAt = new Date().toISOString();
 
   try {
-    const credentials = await getMetaWorkspaceCredentials();
-    const row = await getExistingMetaRecord(credentials.workspaceId);
+    const credentials =
+      options?.internalSource?.credentials ?? (await getMetaWorkspaceCredentials());
+    const row = options?.internalSource
+      ? options.internalSource.row
+      : await getExistingMetaRecord(credentials.workspaceId);
     const metadata = normalizeMetaConnectionMetadata(row?.connection_metadata ?? null);
     const tracking = getWorkspaceTrackingConfig(
       row,
@@ -811,6 +872,68 @@ export async function validateMetaLaunchSelections(options?: {
   }
 }
 
+/**
+ * Runs the same provider preflight for a database-fenced queue actor without
+ * reading any browser session. Both the credentials and the persisted
+ * tracking row must resolve to the exact claimed organization.
+ */
+export async function validateMetaLaunchSelectionsForOrganization(params: {
+  organizationId: string;
+  credentials: MetaWorkspaceCredentials;
+  destinationUrl?: string | null;
+}) {
+  if (
+    !params.organizationId ||
+    params.credentials.workspaceId !== params.organizationId
+  ) {
+    throw new ApiError(
+      403,
+      "The Meta preflight credentials do not belong to the claimed organization.",
+      "meta_preflight_actor_mismatch",
+    );
+  }
+
+  const admin = createAdminClient();
+  if (!admin) {
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+  }
+
+  const { data, error } = await admin
+    .from("marketing_accounts")
+    .select("*")
+    .eq("organization_id", params.organizationId)
+    .eq("platform", "meta_ads")
+    .maybeSingle();
+
+  if (error) {
+    throw new ApiError(500, error.message, "meta_preflight_workspace_lookup_failed");
+  }
+
+  const row = (data as MetaConnectionRecord | null) ?? null;
+  const currentCredentials = resolveMetaWorkspaceCredentials(params.organizationId, row);
+  if (
+    currentCredentials.connectionId !== params.credentials.connectionId ||
+    currentCredentials.adAccountId !== params.credentials.adAccountId ||
+    currentCredentials.pageId !== params.credentials.pageId ||
+    currentCredentials.pixelId !== params.credentials.pixelId ||
+    currentCredentials.accessToken !== params.credentials.accessToken
+  ) {
+    throw new ApiError(
+      409,
+      "The selected Meta assets changed while launch was being prepared. No provider request was sent.",
+      "meta_launch_selection_snapshot_changed",
+    );
+  }
+
+  return validateMetaLaunchSelections({
+    destinationUrl: params.destinationUrl,
+    internalSource: {
+      credentials: params.credentials,
+      row,
+    },
+  });
+}
+
 export async function selectMetaAdAccount(externalAccountId: string) {
   const { context, supabase } = await getMetaSupabaseContext();
   const existing = await getExistingMetaRecord(context.organization.id);
@@ -868,6 +991,7 @@ export async function selectMetaAdAccount(externalAccountId: string) {
       name: nextAccount.name,
       pixel_id: nextPixelId,
       tracking_status: nextTrackingStatus,
+      status: "partial",
       last_sync_at: new Date().toISOString(),
       connection_metadata: {
         ...metadata,
@@ -973,6 +1097,7 @@ export async function updateMetaLaunchSelections(input: {
       name: nextAccount.name,
       pixel_id: nextPixelId,
       tracking_status: nextTrackingStatus,
+      status: "connected",
       last_sync_at: new Date().toISOString(),
       connection_metadata: {
         ...metadata,

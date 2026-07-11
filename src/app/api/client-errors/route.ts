@@ -21,6 +21,10 @@ const clientErrorSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    if (process.env.PUBLIC_CLIENT_ERROR_TELEMETRY_ENABLED !== "true") {
+      return Response.json({ error: "Not found." }, { status: 404 });
+    }
+
     assertSameOriginRequest(request);
     const rateLimit = await consumeRateLimit({
       key: getRateLimitKey(request, "client-errors"),

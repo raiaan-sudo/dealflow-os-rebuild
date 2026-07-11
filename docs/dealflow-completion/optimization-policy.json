@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "overall_release_verdict": "NO_GO",
+  "policy_id": "dealflow-realtor-shadow-v1",
+  "mode": "SHADOW_ONLY",
+  "live_actions_default": false,
+  "currency": "CAD",
+  "provenance": "thresholds recovered from canonical baseline d37c50945ff7004d700301fc89c15eb9273dac5b; safety correction implemented in isolated candidate",
+  "recovered_thresholds": {
+    "ctr_good_percent": 2,
+    "ctr_kill_percent": 0.5,
+    "cpc_target": 1,
+    "cpl_max": 50,
+    "landing_page_cvr_target_percent": 5,
+    "frequency_max": 4,
+    "no_leads_timeout_hours": 24,
+    "spend_multiplier_without_leads": 2,
+    "hook_refresh_days": 30,
+    "concept_refresh_underperformance_weeks": 2,
+    "high_budget_structure_daily": 100
+  },
+  "required_authority_gates": {
+    "provider_confirmed_metrics": true,
+    "freshness_timestamp": true,
+    "complete_attribution_window": true,
+    "currency_and_units": true,
+    "customer_budget_envelope": true,
+    "minimum_sample_policy": null,
+    "cooldown_policy": null,
+    "scale_caps_policy": null,
+    "learning_phase_policy": null,
+    "kill_switches_clear": true,
+    "tenant_lock_and_idempotency": true,
+    "provider_state_compare": true
+  },
+  "missing_gate_result": "HOLD_NO_ACTION",
+  "conflicting_rule_result": "HOLD_NO_ACTION",
+  "stale_or_missing_data_result": "HOLD_NO_ACTION",
+  "reallocation_may_increase_total_budget": false,
+  "blocked_owner_approval": ["minimum_sample_policy","attribution_window","cooldown_policy","scale_caps_policy","learning_phase_policy"]
+}

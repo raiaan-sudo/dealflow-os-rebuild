@@ -1,5 +1,9 @@
 import { ApiError } from "@/lib/api/route";
-import { fetchWithRetryServer } from "@/lib/http/fetch-with-retry-server";
+import {
+  buildMetaGraphUrl,
+  withMetaBearerToken,
+} from "@/lib/integrations/meta/contract";
+import { fetchMetaResponse } from "@/lib/integrations/meta/request";
 import type {
   MetaCampaignSyncStatus,
   MetaConnectionRecord,
@@ -85,15 +89,32 @@ function parseMetaError(data: { error?: { message?: string; code?: number } } | 
   throw new ApiError(502, message, "meta_sync_failed");
 }
 
+function requireMetaAccessToken(accessToken: string | null) {
+  if (!accessToken?.trim()) {
+    throw new ApiError(
+      401,
+      "Meta connection expired. Reconnect the ad account, then sync campaign status again.",
+      "meta_connection_expired",
+    );
+  }
+
+  return accessToken;
+}
+
 async function fetchMetaObject(params: {
   objectId: string;
   accessToken: string;
 }): Promise<MetaObjectResponse> {
-  const url = new URL(`https://graph.facebook.com/v19.0/${params.objectId}`);
-  url.searchParams.set("fields", "id,name,status,effective_status");
-  url.searchParams.set("access_token", params.accessToken);
+  const accessToken = requireMetaAccessToken(params.accessToken);
+  const url = buildMetaGraphUrl(params.objectId, {
+    fields: "id,name,status,effective_status",
+  });
 
-  const response = await fetchWithRetryServer(url.toString(), { cache: "no-store" });
+  const response = await fetchMetaResponse(url, {
+    purpose: "sync",
+    cache: "no-store",
+    ...withMetaBearerToken(accessToken),
+  });
   const data = (await response.json().catch(() => null)) as MetaObjectResponse | null;
 
   if (!response.ok || !data?.id) {
@@ -104,15 +125,19 @@ async function fetchMetaObject(params: {
 }
 
 function toEntityStatus(data: MetaObjectResponse, fallbackName: string): MetaEntityStatus {
+  const configuredStatus =
+    typeof data.status === "string" && data.status.length > 0 ? data.status : null;
+  const effectiveStatus =
+    typeof data.effective_status === "string" && data.effective_status.length > 0
+      ? data.effective_status
+      : null;
+
   return {
     id: String(data.id ?? ""),
     name: typeof data.name === "string" && data.name.length > 0 ? data.name : fallbackName,
-    status:
-      typeof data.effective_status === "string" && data.effective_status.length > 0
-        ? data.effective_status
-        : typeof data.status === "string" && data.status.length > 0
-          ? data.status
-          : "UNKNOWN",
+    status: effectiveStatus ?? configuredStatus ?? "UNKNOWN",
+    configuredStatus,
+    effectiveStatus,
   };
 }
 
@@ -178,13 +203,18 @@ export async function fetchDeliveryMetrics(params: {
   mode: MetaSyncMode;
   campaignStatus: string | null;
 }) {
-  const url = new URL(`https://graph.facebook.com/v19.0/${params.campaignId}/insights`);
-  url.searchParams.set("fields", "spend,impressions,clicks,actions,conversions");
-  url.searchParams.set("date_preset", "maximum");
-  url.searchParams.set("limit", "1");
-  url.searchParams.set("access_token", params.accessToken ?? "");
+  const accessToken = requireMetaAccessToken(params.accessToken);
+  const url = buildMetaGraphUrl(`${params.campaignId}/insights`, {
+    fields: "spend,impressions,clicks,actions,conversions",
+    date_preset: "maximum",
+    limit: 1,
+  });
 
-  const response = await fetchWithRetryServer(url.toString(), { cache: "no-store" });
+  const response = await fetchMetaResponse(url, {
+    purpose: "sync",
+    cache: "no-store",
+    ...withMetaBearerToken(accessToken),
+  });
   const data = (await response.json().catch(() => null)) as MetaInsightsResponse | null;
 
   if (!response.ok) {
@@ -219,14 +249,19 @@ export async function fetchAdInsights(params: {
   mode: MetaSyncMode;
   adIds: string[];
 }) {
-  const url = new URL(`https://graph.facebook.com/v19.0/${params.campaignId}/insights`);
-  url.searchParams.set("fields", "ad_id,ad_name,spend,impressions,clicks,ctr,actions");
-  url.searchParams.set("level", "ad");
-  url.searchParams.set("date_preset", "maximum");
-  url.searchParams.set("limit", String(Math.max(params.adIds.length, 25)));
-  url.searchParams.set("access_token", params.accessToken ?? "");
+  const accessToken = requireMetaAccessToken(params.accessToken);
+  const url = buildMetaGraphUrl(`${params.campaignId}/insights`, {
+    fields: "ad_id,ad_name,spend,impressions,clicks,ctr,actions",
+    level: "ad",
+    date_preset: "maximum",
+    limit: Math.max(params.adIds.length, 25),
+  });
 
-  const response = await fetchWithRetryServer(url.toString(), { cache: "no-store" });
+  const response = await fetchMetaResponse(url, {
+    purpose: "sync",
+    cache: "no-store",
+    ...withMetaBearerToken(accessToken),
+  });
   const data = (await response.json().catch(() => null)) as MetaInsightsResponse | null;
 
   if (!response.ok) {

@@ -65,28 +65,45 @@ function assertNoUnscopedAdminWrite(relativePath, table, name) {
 
 includes(
   "src/lib/services/campaign-persistence.ts",
-  ".or(`user_id.eq.${userId},owner_id.eq.${ownerId}`)",
+  '.eq("organization_id", organizationId)',
   "Campaign read ownership",
-  "campaign lookup is scoped to current user or owning organization",
+  "campaign lookup is scoped to the active workspace organization",
 );
 includes(
   "src/lib/services/campaign-persistence.ts",
-  '.eq("user_id", campaign.user_id)',
+  '.eq("organization_id", row.organization_id)',
   "Campaign mutation ownership",
-  "publish updates keep user_id predicate with service-role fallback",
+  "publish updates keep the immutable workspace predicate on service-role writes",
+);
+orderedIncludes(
+  "src/lib/services/video-generation-job.ts",
+  [
+    "async function loadCampaignPlanRow(",
+    '.eq("id", campaignId)',
+    '.eq("organization_id", organizationId)',
+    '.eq("user_id", userId)',
+  ],
+  "Video campaign worker ownership",
+  "video generation workers require campaign id, exact organization, and actor user",
+);
+orderedIncludes(
+  "src/lib/services/video-generation-job.ts",
+  ['.eq("id", params.assetId)', '.eq("campaign_id", params.campaignId)', '.eq("user_id", params.userId)'],
+  "Video status asset ownership",
+  "video status jobs bind an asset to the exact campaign and actor before mutation",
 );
 
-includes(
+orderedIncludes(
   "src/lib/services/creative-builder-service.ts",
-  '.eq("campaign_id", campaignId)\n      .eq("user_id", userId)',
+  ["await getCampaignById(campaignId)", '.eq("campaign_id", campaignId)'],
   "Asset list ownership",
-  "campaign asset listing requires campaign_id and current user_id",
+  "campaign asset listing verifies active-workspace campaign access before listing by campaign",
 );
 includes(
   "src/lib/services/creative-builder-service.ts",
-  'query = query.eq("user_id", userId)',
+  "const authorizedCampaignRecord = await getCampaignById(asset.campaign_id)",
   "Asset detail ownership",
-  "asset detail/delete helpers add current user_id when called from routes",
+  "asset detail verifies the parent campaign in the active workspace",
 );
 includes(
   "src/lib/services/creative-builder-service.ts",
@@ -151,21 +168,21 @@ orderedIncludes(
 );
 includes(
   "src/lib/services/system-job-service.ts",
-  '.eq("user_id", params.userId)',
+  'query.eq("organization_id", params.organizationId)',
   "System job list ownership",
-  "job lists are scoped to current user_id",
+  "job lists are scoped to the active organization",
 );
 includes(
   "src/app/api/system-jobs/[id]/stream/route.ts",
-  "getSystemJob(jobId, auth.userId)",
+  "getSystemJob(jobId, actor)",
   "System job stream ownership",
-  "stream route loads job by id plus current user_id",
+  "stream route loads job by id plus the active organization actor",
 );
 includes(
   "src/app/api/system-jobs/[id]/stream/route.ts",
-  "getSystemJobLogs(job.id, auth.userId)",
+  "getSystemJobLogs(job.id, actor)",
   "System job log stream ownership",
-  "stream route passes current user into log retrieval",
+  "stream route passes active organization scope into log retrieval",
 );
 
 includes(
@@ -189,8 +206,8 @@ assertNoUnscopedAdminWrite(
 orderedIncludes(
   "src/lib/services/system-job-service.ts",
   [
-    "export async function retrySystemJob(jobId: string, userId: string)",
-    "const currentJob = await getSystemJob(jobId, userId)",
+    "export async function retrySystemJob(",
+    "const currentJob = await getSystemJob(jobId, actor)",
     "if (!currentJob)",
     "const nextJob = await updateSystemJob(supabase, jobId",
   ],

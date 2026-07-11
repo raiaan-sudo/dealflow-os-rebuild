@@ -3,6 +3,7 @@ import type { Json } from "@/lib/supabase/types";
 export type MetaConnectionStatus =
   | "not_connected"
   | "connecting"
+  | "partial"
   | "connected"
   | "connection_failed"
   | (string & {});
@@ -35,6 +36,8 @@ export type MetaEntityStatus = {
   id: string;
   name: string;
   status: MetaEntityLifecycleStatus;
+  configuredStatus?: string | null;
+  effectiveStatus?: string | null;
 };
 export type MetaLaunchMode = "draft" | "publish" | "simulate" | (string & {});
 export type MetaCampaignSyncStatus =
@@ -169,11 +172,23 @@ export type MetaCampaignSyncSnapshot = {
   adIds?: string[];
   status?: MetaCampaignSyncStatus | null;
   syncStatus?: MetaCampaignSyncStatus | null;
+  syncResult?: "success" | "partial_success" | "failed";
   entityStatus?: MetaEntityStatus | null;
   deployStatus?: MetaDeployStatus | null;
+  metaCampaignId?: string | null;
+  metaAdSetIds?: string[];
+  metaAdIds?: string[];
+  campaignStatus?: string | null;
+  campaignEntityId?: string | null;
+  campaignConfiguredStatus?: string | null;
+  campaignEffectiveStatus?: string | null;
+  adSetStatuses?: MetaEntityStatus[];
+  adStatuses?: MetaEntityStatus[];
+  syncErrors?: string[];
   metrics: MetaDeliveryMetrics;
   deliveryMetrics: MetaDeliveryMetrics;
   lastSyncedAt?: string | null;
+  syncedAt?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
   [key: string]: Json | undefined;

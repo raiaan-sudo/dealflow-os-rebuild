@@ -4,7 +4,7 @@ import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
 
 const repoRoot = process.cwd();
-const minimumSchemaVersion = "20260706170000";
+const minimumSchemaVersion = "20260710235993";
 const schemaCheckMode = process.env.SUPABASE_SCHEMA_CHECK_MODE?.trim().toLowerCase() ?? "remote";
 const accessKeyCheckoutEnabled = process.env.ENABLE_ACCESS_KEY_CHECKOUT === "true";
 const requiredMigrationFiles = [
@@ -36,6 +36,10 @@ const requiredMigrationFiles = [
   "20260430060000_harden_membership_insert_policy.sql",
   "20260430061000_rate_limit_bucket_cleanup_support.sql",
   "20260430190000_create_user_credits.sql",
+  "20260710235990_create_meta_leadgen_ingestion.sql",
+  "20260710235991_harden_financial_integrity.sql",
+  "20260710235992_harden_access_key_reveal_claim.sql",
+  "20260710235993_harden_access_key_claim_delivery.sql",
   "20260502010000_harden_schema_metadata_access.sql",
   "20260502192332_move_rls_membership_helper_private.sql",
   "20260705090000_create_billing_access_keys.sql",
@@ -219,6 +223,27 @@ async function main() {
       .limit(1),
   );
 
+  await probeQuery("meta_leadgen_routes table check", () =>
+    supabase
+      .from("meta_leadgen_routes")
+      .select("id, organization_id, campaign_id, marketing_account_id, provider_ad_account_id, provider_page_id, provider_form_id, status")
+      .limit(1),
+  );
+
+  await probeQuery("meta_leadgen_events table check", () =>
+    supabase
+      .from("meta_leadgen_events")
+      .select("id, provider_leadgen_id, route_id, organization_id, campaign_id, status, reconciliation_job_id, lead_id")
+      .limit(1),
+  );
+
+  await probeQuery("meta_leadgen_effect_receipts table check", () =>
+    supabase
+      .from("meta_leadgen_effect_receipts")
+      .select("id, event_id, organization_id, effect_key, status, reason")
+      .limit(1),
+  );
+
   await probeQuery("stripe_webhook_events table check", () =>
     supabase
       .from("stripe_webhook_events")
@@ -278,7 +303,14 @@ async function main() {
   await probeQuery("provider_usage_events table check", () =>
     supabase
       .from("provider_usage_events")
-      .select("id, organization_id, user_id, campaign_id, provider, operation, idempotency_key, status, created_at")
+      .select("id, organization_id, user_id, campaign_id, provider, operation, idempotency_key, attempt_key, settlement_generation, credit_ledger_id, compensation_ledger_id, status, settled_at, created_at")
+      .limit(1),
+  );
+
+  await probeQuery("organization_user_credits table check", () =>
+    supabase
+      .from("organization_user_credits")
+      .select("organization_id, user_id, balance, updated_at")
       .limit(1),
   );
 
@@ -292,7 +324,7 @@ async function main() {
   await probeQuery("user_credit_ledger table check", () =>
     supabase
       .from("user_credit_ledger")
-      .select("id, user_id, organization_id, delta, balance_after, reason, reference_type, reference_id, idempotency_key, created_at")
+      .select("id, user_id, organization_id, delta, balance_after, reason, reference_type, reference_id, idempotency_key, source_ledger_id, created_at")
       .limit(1),
   );
 
@@ -356,7 +388,7 @@ async function main() {
     await probeQuery("billing_access_keys table check", () =>
       supabase
         .from("billing_access_keys")
-        .select("id, key_hash, key_prefix, status, stripe_checkout_session_id, stripe_customer_id, stripe_subscription_id, stripe_price_id, plan_tier, claim_token_hash, claimed_by_user_id, claimed_organization_id, metadata, created_at, updated_at")
+        .select("id, key_hash, key_prefix, status, stripe_checkout_session_id, stripe_customer_id, stripe_subscription_id, stripe_price_id, plan_tier, claim_token_hash, claim_reconciliation_status, claim_reconciliation_generation, reveal_delivery_generation, reveal_consumed_at, claimed_by_user_id, claimed_organization_id, metadata, created_at, updated_at")
         .limit(1),
     );
 

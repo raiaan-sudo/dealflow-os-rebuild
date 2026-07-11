@@ -10,8 +10,12 @@ export async function GET(
     const auth = await getAuthenticatedContext();
     const { id } = await context.params;
     const jobId = id?.trim();
-    const job = jobId ? await getSystemJob(jobId, auth.userId) : null;
-    const logs = job ? await getSystemJobLogs(job.id, auth.userId) : [];
+    const actor = {
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+    };
+    const job = jobId ? await getSystemJob(jobId, actor) : null;
+    const logs = job ? await getSystemJobLogs(job.id, actor) : [];
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream({
