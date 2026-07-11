@@ -1667,6 +1667,21 @@ const newIssues = [
     residual_risk: "Lexical contracts complement but do not replace live browser/provider acceptance; final exact-seal repeat evidence remains required in the external bundle.",
     final_status: "IMPLEMENTED_AND_VERIFIED",
   },
+  {
+    id: "NEW-061",
+    original_claim: "The final bundle generator sanitized a valid quoted CSV as raw text, allowing an inline environment-value redaction to consume one structural closing quote and invalidate the staged ledger copy.",
+    canonical_status: "IMPLEMENTED_AND_GENERATOR_EXECUTION_VERIFIED",
+    root_cause_invariant: "Structured CSV artifacts are parsed before sanitization, every decoded cell is sanitized independently, the result is re-encoded with CSV quoting, and the encoded output is parsed again before staging.",
+    affected_surface_files_data: "scripts/build-dealflow-final-audit-bundle.mjs; scripts/generate-dealflow-completion-ledger.mjs; docs/dealflow-completion/requirement-proof-ledger.csv",
+    implementation_disposition: "PRESERVE_PARSE_SANITIZE_REENCODE_REPARSE_CSV_BOUNDARY",
+    failing_before_evidence: "The first final bundle pass failed closed with candidate/implementation-docs/requirement-proof-ledger.csv has an unterminated quoted field; the source CSV independently parsed as 863 rows with 16 consistent columns.",
+    changed_files_commits: "FILES:cell-aware CSV sanitization, mandatory post-sanitization CSV parse, and permanent ledger disposition",
+    tests: "node --check scripts/build-dealflow-final-audit-bundle.mjs; exact first-pass and report-inclusive bundle generation; final bundle CSV parse and SHA256SUMS verification",
+    negative_failure_path_proof: "A cell containing SCHEMA_VALIDATION_MODE=warn. no longer lets the redactor consume the CSV closing quote; malformed source or post-sanitization CSV still fails closed before publication.",
+    integrated_proof: "The exact generator processes the complete 863-row source ledger, validates every staged CSV, publishes only after validation, and the final checksum review reparses every bundled CSV.",
+    residual_risk: "The bundle remains a point-in-time sanitized artifact; this structural fix does not convert any production, provider, schema, or authority blocker to a pass.",
+    final_status: "IMPLEMENTED_AND_VERIFIED",
+  },
 ];
 
 for (const issue of newIssues) {

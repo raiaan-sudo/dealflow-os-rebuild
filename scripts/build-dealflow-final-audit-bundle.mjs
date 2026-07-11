@@ -440,6 +440,15 @@ function parseCsv(text, label) {
   return rows;
 }
 
+function sanitizeCsvText(input, repoRoot, label) {
+  const rows = parseCsv(input, label);
+  const output = `${rows
+    .map((row) => row.map((value) => csvEscape(sanitizeText(value, repoRoot))).join(","))
+    .join("\n")}\n`;
+  parseCsv(output, `${label} after sanitization`);
+  return output;
+}
+
 function sanitizeRemote(remote) {
   return String(remote ?? "")
     .replace(/^git@github\.com:/, "https://github.com/")
@@ -1097,6 +1106,7 @@ for (const entry of candidateDocEntries) {
   const content = gitShowText(repoRoot, head, entry.path);
   const relative = entry.path.replace(/^docs\/dealflow-completion\//, "");
   if (entry.path.endsWith(".json")) addJson(`candidate/implementation-docs/${relative}`, sanitizeStructured(parseJson(content, entry.path), repoRoot));
+  else if (entry.path.endsWith(".csv")) addFile(`candidate/implementation-docs/${relative}`, sanitizeCsvText(content, repoRoot, entry.path));
   else addFile(`candidate/implementation-docs/${relative}`, sanitizeText(content, repoRoot));
 }
 const candidateEvidenceEntries = sealEntries.filter((entry) => entry.type === "blob" && /^docs\/dealflow-completion\/evidence\//.test(entry.path) && !/\/input-audit\//.test(entry.path) && !/\/visual-(?:baseline|local)\//.test(entry.path) && /\.(?:md|json|sql)$/.test(entry.path));
