@@ -386,6 +386,41 @@ function addRow(input) {
     final_status: input.final_status ?? "BLOCKED_BY_EXTERNAL_AUTHORITY",
     ...override,
   };
+  const requiredFallbacks = {
+    original_claim: `${input.id} is a tracked DealFlow requirement or audit disposition.`,
+    canonical_status: "EVIDENCE_BLOCKED_WITHOUT_STRONGER_CLAIM",
+    root_cause_invariant:
+      "The cited requirement must remain evidence-bound; source presence alone cannot establish runtime, tenant, provider, customer, or release truth.",
+    implementation_disposition: "RECONCILE_WITH_CITED_EVIDENCE_AND_FINAL_DISPOSITION",
+    failing_before_evidence:
+      "The canonical input did not contain stronger executable evidence for this row.",
+    changed_files_commits:
+      "No candidate change is mapped to this accounting row.",
+    tests:
+      "No dedicated executable proof is mapped; see the final disposition and residual risk.",
+    negative_failure_path_proof:
+      "No stronger negative-path claim is made beyond the cited canonical evidence or blocker.",
+    integrated_proof:
+      "Reconciled in the integrated ledger without promoting source presence to runtime proof.",
+    residual_risk:
+      row.final_status === "IMPLEMENTED_AND_VERIFIED"
+        ? "Proof is limited to the cited candidate profile; deployment, provider, customer, and uncited variants are not inferred."
+        : row.final_status === "VERIFIED_ALREADY_CORRECT"
+          ? "The cited behavior is preserved, but uncited runtime, provider, customer, and regression variants remain outside this proof."
+          : row.final_status === "STALE_OR_SUPERSEDED_WITH_EVIDENCE"
+            ? "The superseded behavior could recur through an unproven source or deployment until complete ancestry and release evidence are established."
+            : row.final_status === "OWNER_APPROVED_OUT_OF_SCOPE"
+              ? "A future scope or owner-decision change requires this disposition and its safety boundary to be revalidated."
+              : row.final_status === "NOT_APPLICABLE_WITH_EVIDENCE"
+                ? "Applicability must be rechecked if product scope, provider contracts, data flows, or deployment ownership change."
+                : "The cited runtime, external, provider, deployment, or owner evidence remains unavailable and prevents a stronger conclusion.",
+    final_status: "BLOCKED_BY_EXTERNAL_AUTHORITY",
+  };
+  for (const [field, fallback] of Object.entries(requiredFallbacks)) {
+    if (typeof row[field] !== "string" || !row[field].trim()) {
+      row[field] = fallback;
+    }
+  }
   rows.push(row);
 }
 
