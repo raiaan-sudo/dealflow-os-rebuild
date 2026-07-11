@@ -2,8 +2,8 @@
 
 Overall verdict: `NO_GO`
 Canonical baseline: `d37c50945ff7004d700301fc89c15eb9273dac5b`
-Candidate implementation commit: `eca85bf2d9f7038a06ca71773f5dd6e7c2ef84df`
-Rows: 863
+Candidate implementation commit: `017f15f2bd1f4a22c1e3276f3ca01ff3a0de5128`
+Rows: 864
 
 The JSON and CSV companions contain the complete permanent-fix fields, proof columns, changed-file/test overrides and residual-risk text. No tracked ID family is omitted. Source presence is not treated as behavioral proof; every unexecuted surface carries a precise blocker.
 
@@ -19,7 +19,7 @@ The JSON and CSV companions contain the complete permanent-fix fields, proof col
 | FEATURE | 40 |
 | FINDING | 56 |
 | INTEGRATION | 12 |
-| NEW_ISSUE | 61 |
+| NEW_ISSUE | 62 |
 | PROTECTED | 4 |
 | REPORTED | 4 |
 | REPOSITORY_CANDIDATE | 18 |
@@ -36,7 +36,7 @@ The JSON and CSV companions contain the complete permanent-fix fields, proof col
 | Final disposition | Count |
 |---|---:|
 | BLOCKED_BY_EXTERNAL_AUTHORITY | 481 |
-| IMPLEMENTED_AND_VERIFIED | 106 |
+| IMPLEMENTED_AND_VERIFIED | 107 |
 | NOT_APPLICABLE_WITH_EVIDENCE | 2 |
 | OWNER_APPROVED_OUT_OF_SCOPE | 19 |
 | STALE_OR_SUPERSEDED_WITH_EVIDENCE | 218 |
@@ -522,6 +522,7 @@ The JSON and CSV companions contain the complete permanent-fix fields, proof col
 | NEW_ISSUE:NEW-059 | IMPLEMENTED_AND_VERIFIED_WITH_ROUTE_SERVICE_AND_DISPOSABLE_DATABASE_CONTRACT | IMPLEMENTED_AND_VERIFIED | A crashed manual Meta worker with an expired armed mutation could not reach the SQL ambiguity terminalizer because the route precheck excluded processing records. | src/lib/services/campaign-launch-audit-service.ts; src/app/api/campaigns/[id]/launch/route.ts; scripts/test-manual-launch-reachability.mjs; scripts/test-manual-launch-fencing.mjs;  |
 | NEW_ISSUE:NEW-060 | STALE_ASSERTIONS_UPDATED_AND_EXACT_COMMANDS_PASSED | IMPLEMENTED_AND_VERIFIED | The first exact-seal verification round exposed two legacy lexical regressions that contradicted the hardened Turnstile submit gate and immutable Meta launch credential boundary. | scripts/test-public-funnel-thank-you.mjs; scripts/test-lead-tracking-health.mjs; docs/dealflow-completion/evidence/verification/superseded-exact-seal-round.json |
 | NEW_ISSUE:NEW-061 | IMPLEMENTED_AND_GENERATOR_EXECUTION_VERIFIED | IMPLEMENTED_AND_VERIFIED | The final bundle generator sanitized a valid quoted CSV as raw text, allowing an inline environment-value redaction to consume one structural closing quote and invalidate the staged ledger copy. | scripts/build-dealflow-final-audit-bundle.mjs; scripts/generate-dealflow-completion-ledger.mjs; docs/dealflow-completion/requirement-proof-ledger.csv |
+| NEW_ISSUE:NEW-062 | IMPLEMENTED_AND_OFFICIAL_DELIVERY_VERIFIED | IMPLEMENTED_AND_VERIFIED | The canonical portable report initially declared only source IDs for quantitative widgets, then exceeded the official verifier's desktop/mobile width contract after query provenance was added. | scripts/build-dealflow-final-audit-bundle.mjs; report-input.json; artifact.json; report.html; report-delivery-receipt.json |
 | PROTECTED:PROTECTED-001 | PROVEN_PRESENT | VERIFIED_ALREADY_CORRECT | Existing visual product direction. Preserve the current UI/layout unless a change is justified by an audit finding or an explicit later owner decision. | src/app/globals.css; src/app/(app)/layout.tsx |
 | PROTECTED:PROTECTED-002 | PROVEN_PRESENT | VERIFIED_ALREADY_CORRECT | Existing onboarding strengths. Preserve the effective onboarding flow while proving that its data drives every downstream output correctly. | src/app/(app)/onboarding/page.tsx |
 | PROTECTED:PROTECTED-003 | PROVEN_PRESENT | VERIFIED_ALREADY_CORRECT | Existing paywall and pricing journey. Preserve the current intended paywall journey while validating payment, entitlement, discount, credit, failure, and recovery behavior. | src/app/(app)/paywall/page.tsx; src/lib/services/billing-service.ts |

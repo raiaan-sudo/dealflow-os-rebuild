@@ -17,8 +17,8 @@ candidate change.
   `dpl_J4Ksu4n7sjwdRv8tHBTa5ARDKg9E`.
 - The isolated candidate descends from that baseline and preserves the original
   worktrees. Its implementation commit is
-  `eca85bf2d9f7038a06ca71773f5dd6e7c2ef84df`, tree
-  `f480773f9839b739b89b907c26155a2546dd0ba1`; the exact docs-only
+  `017f15f2bd1f4a22c1e3276f3ca01ff3a0de5128`, tree
+  `477aa90a5407c52222a736e6e975e68e19ab3d5f`; the exact docs-only
   descendant seal is recorded and hashed in the external audit package.
 - Candidate controls cover tenant authority, commercial activation, billing,
   credits/provider usage, recoverable two-phase access-key reveal delivery, GHL fake-only state,
