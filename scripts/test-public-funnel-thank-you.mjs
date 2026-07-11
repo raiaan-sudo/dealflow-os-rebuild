@@ -45,7 +45,11 @@ assert.match(thankYouModelSource, /primaryLink: bookingUrl \?/, "booking CTA mus
 assert.match(thankYouModelSource, /secondaryLink:/, "return fallback must always exist");
 
 assert.match(formSource, /submitInFlightRef/, "lead form must synchronously block duplicate submits");
-assert.match(formSource, /disabled=\{status === "submitting"\}/, "lead form button must show disabled loading state");
+assert.match(
+  formSource,
+  /disabled=\{status === "submitting" \|\| Boolean\(TURNSTILE_SITE_KEY && !turnstileToken\)\}/,
+  "lead form button must disable during submission and until configured human verification succeeds",
+);
 assert.match(formSource, /data\?\.success !== true \|\| data\?\.ok !== true/, "lead form must redirect only on confirmed success");
 assert.match(formSource, /window\.location\.assign\(thankYouUrl\.toString\(\)\)/, "lead form must redirect to thank-you after confirmed success");
 assert.match(formSource, /getCurrentPageAttribution/, "lead form must explicitly capture current page attribution");
@@ -78,7 +82,9 @@ const successRedirectBlock = formSource.slice(
 );
 assert.doesNotMatch(successRedirectBlock, /resetTurnstile\(|setName\(|setEmail\(|setPhone\(|setSmsConsent\(/, "success path must not reset form state before thank-you navigation");
 assert.match(formSource, /sms_consent: Boolean\(showPhone && normalizedPhone && smsConsent\)/, "SMS consent payload must stay intact");
-assert.doesNotMatch(formSource, /turnstile_token|turnstileToken|useTurnstileWidget/, "public customer funnels must not require Turnstile before thank-you redirect");
+assert.match(formSource, /turnstile_token: turnstileToken \|\| undefined/, "lead form must submit the verified Turnstile token");
+assert.match(formSource, /data-action="lead_capture"/, "lead form Turnstile action must match the server contract");
+assert.match(formSource, /data-sitekey=\{TURNSTILE_SITE_KEY\}/, "lead form must use the configured public Turnstile site key");
 assert.match(leadRouteSource, /parseLandingPageAttribution/, "lead capture route must backfill attribution from the landing URL");
 assert.match(leadRouteSource, /url\.searchParams\.get\("utm_content"\)/, "lead capture route must treat Meta utm_content as ad id attribution");
 assert.match(leadRouteSource, /utm_source: utmSource \?\? undefined/, "lead capture route must persist normalized UTM source");

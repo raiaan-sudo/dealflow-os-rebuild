@@ -10,6 +10,7 @@ const leadForm = fs.readFileSync("src/app/f/[slug]/lead-capture-form.tsx", "utf8
 const browserPixelRoute = fs.readFileSync("src/app/api/lead-tracking/browser-pixel/route.ts", "utf8");
 const conversions = fs.readFileSync("src/lib/integrations/meta/conversions.ts", "utf8");
 const launchRoute = fs.readFileSync("src/app/api/campaigns/[id]/launch/route.ts", "utf8");
+const launchCreateRoute = fs.readFileSync("src/app/api/campaigns/create/route.ts", "utf8");
 const launchFencingMigration = fs.readFileSync(
   "supabase/migrations/20260710235500_schedule_launch_claim_fencing.sql",
   "utf8",
@@ -79,16 +80,18 @@ assert.match(conversions, /meta_access_token_missing/, "CAPI missing token skip 
 assert.match(conversions, /meta_env_missing/, "CAPI missing env skip must be visible");
 
 assert.match(launchRoute, /completeManualCampaignLaunchClaim/, "launch must settle through the atomic completion RPC");
-assert.match(launchRoute, /getMetaWorkspaceCredentials/, "launch must fail closed when Meta pixel or token credentials are missing");
+assert.match(launchRoute, /bindManualCampaignLaunchInputSnapshot/, "manual launch must bind one immutable provider input snapshot");
+assert.doesNotMatch(launchRoute, /getMetaWorkspaceCredentials\(/, "manual launch route must not reload mutable credentials outside the bound launch service");
+assert.match(launchCreateRoute, /getMetaWorkspaceCredentialsForOrganization/, "internal launch service must load credentials for the exact claimed workspace");
+assert.match(launchCreateRoute, /validateMetaLaunchSelectionsForOrganization/, "launch service must fail closed when the exact bound Meta selection is invalid");
 assertOrdered(
   launchRoute,
   [
-    "const metaCredentials = await getMetaWorkspaceCredentials",
     "const response = await launchCampaignToMeta",
     "await completeManualCampaignLaunchClaim",
     "return {",
   ],
-  "Meta credentials must be validated before launch and the atomic completion RPC must settle before the response returns",
+  "The immutable launch service must run before the atomic completion RPC settles and before the response returns",
 );
 const manualCompletionSource = launchFencingMigration.slice(
   launchFencingMigration.indexOf("create or replace function public.complete_manual_campaign_launch_claim"),
