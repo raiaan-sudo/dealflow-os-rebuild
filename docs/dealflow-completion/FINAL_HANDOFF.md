@@ -16,7 +16,10 @@ candidate change.
   `dealflow-os-rebuild`, deployment
   `dpl_J4Ksu4n7sjwdRv8tHBTa5ARDKg9E`.
 - The isolated candidate descends from that baseline and preserves the original
-  worktrees. The final candidate commit is sealed only after integration.
+  worktrees. Its implementation commit is
+  `24ada6f142e1f2f9010d9362c4edd16da7742af1`, tree
+  `7a0792e59d8dd1a151cd9cb975c863e4273fc8e2`; the exact docs/bundle-only
+  descendant seal is recorded and hashed in the external audit package.
 - Candidate controls cover tenant authority, commercial activation, billing,
   credits/provider usage, recoverable two-phase access-key reveal delivery, GHL fake-only state,
   Meta OAuth/launch/leadgen/consent, Turnstile, jobs/effects, SMS, support,
@@ -27,8 +30,9 @@ candidate change.
   effect suppression, and direct-write denial; live Meta acceptance remains
   blocked.
 - Targeted offline and disposable-database tests have passed for landed
-  tranches. The exact-final-commit full portfolio and independent review remain
-  part of final bundle sealing.
+  tranches, and independent opposite-author reviews cleared the final Meta and
+  access-key fixes. The two exact-seal portfolio results are retained outside
+  the repository in the final audit bundle rather than self-attested here.
 - No deployment, alias, DNS, environment, provider, customer, shared database,
   communication, spend, CRM, Stripe, Meta, GHL, Twilio, or creative-provider
   mutation occurred.

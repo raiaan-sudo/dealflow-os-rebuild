@@ -1,7 +1,7 @@
 # DealFlow test and proof matrix
 
 Overall verdict: `NO_GO`
-Status: `TARGETED CANDIDATE PROOF PASSING / FINAL EXACT-COMMIT PORTFOLIO PENDING / EXTERNAL PROOF BLOCKED`
+Status: `TARGETED IMPLEMENTATION-COMMIT PROOF PASSING / EXACT-SEAL PORTFOLIO RETAINED EXTERNALLY / EXTERNAL PROOF BLOCKED`
 
 ## Proof profiles
 
@@ -30,13 +30,14 @@ Status: `TARGETED CANDIDATE PROOF PASSING / FINAL EXACT-COMMIT PORTFOLIO PENDING
 
 ## Candidate targeted proof already observed
 
-These results are local candidate evidence, not production acceptance. They must
-be rerun after the final integration commit before bundle sealing.
+These results are local implementation-commit evidence, not production
+acceptance. The external bundle runner repeats the complete portfolio twice on
+the clean docs/bundle-only descendant seal and retains the exact command logs.
 
 | Portfolio | Representative commands | Current local result | Limit |
 |---|---|---|---|
-| Type/lint | `npm run typecheck`; `npm run lint`; targeted ESLint | pass on landed tranches | final integrated rerun pending |
-| Completion contracts | `npm run test:dealflow-completion`; reliability/security/accessibility/onboarding suites | pass before latest integration; affected suites rerun per tranche | full exact-commit run pending |
+| Type/lint | `npm run typecheck`; `npm run lint`; targeted ESLint | pass on the implementation commit | exact-seal repeat is external bundle evidence |
+| Completion contracts | `npm run test:dealflow-completion`; reliability/security/accessibility/onboarding suites | 25/25 pass on the implementation commit | exact-seal repeat is external bundle evidence |
 | Meta OAuth/contract/tenant | `node scripts/test-meta-contract-hardening.mjs`; `npm run test:meta-tenant-fencing` | pass, including the exact native-lead permission set and zero-retry code exchange; no network | no real OAuth/provider acceptance |
 | Manual/scheduled launch | `npm run test:manual-launch-fencing`; `npm run test:manual-launch-reachability`; `npm run test:scheduler-disposable-db`; launch truth suite | pass including immutable input lineage, four-stage pre-POST mutation arming, expired-manual-crash route-to-SQL terminalizer reachability with zero provider dispatch, receipt/settlement failure terminalization, explicit-rejection-only retry, and stale-generation negatives | no Meta object created |
 | GHL | tenant contract and `npm run test:ghl-disposable-db` | fake-only/disposable proof pass | no real adapter/provider action |
