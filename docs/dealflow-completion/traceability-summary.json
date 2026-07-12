@@ -1,7 +1,7 @@
 {
   "overall_verdict": "NO_GO",
-  "generated_at": "2026-07-12T22:24:46.000Z",
-  "candidate_implementation_commit": "8194caffd2817792be99692952e0cad030f2241a",
+  "generated_at": "2026-07-12T22:29:53.000Z",
+  "candidate_implementation_commit": "da419823c466093ed4d6c3351767a52ea76f713e",
   "row_count": 864,
   "object_type_counts": {
     "BLOCKER": 22,

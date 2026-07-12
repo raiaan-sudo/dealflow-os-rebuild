@@ -2,7 +2,7 @@
 
 Overall verdict: `NO_GO`
 Canonical baseline: `d37c50945ff7004d700301fc89c15eb9273dac5b`
-Candidate implementation commit: `8194caffd2817792be99692952e0cad030f2241a`
+Candidate implementation commit: `da419823c466093ed4d6c3351767a52ea76f713e`
 Rows: 864
 
 The JSON and CSV companions contain the complete permanent-fix fields, proof columns, changed-file/test overrides and residual-risk text. No tracked ID family is omitted. Source presence is not treated as behavioral proof; every unexecuted surface carries a precise blocker.
