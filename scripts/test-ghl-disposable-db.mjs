@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { randomBytes } from "node:crypto";
-import { spawn, spawnSync } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
+import { createDisposablePostgresHarness } from "./lib/disposable-postgres-harness.mjs";
 
 const repoRoot = process.cwd();
 const migrationPath = path.join(
@@ -11,7 +11,11 @@ const migrationPath = path.join(
 );
 const image = "public.ecr.aws/supabase/postgres:17.6.1.106";
 const containerName = `dealflow-ghl-disposable-${process.pid}-${randomBytes(4).toString("hex")}`;
+const disposablePostgres = createDisposablePostgresHarness({ containerName, image });
 const disposablePassword = randomBytes(24).toString("hex");
+const nativeAdapterRolePrefix = `dfh_${createHash("sha256").update(containerName).digest("hex").slice(0, 10)}`;
+const authenticatedProbeRole = `${nativeAdapterRolePrefix}_ghl_authenticated_probe`;
+const serviceProbeRole = `${nativeAdapterRolePrefix}_ghl_service_probe`;
 function buildPsqlArgs(username = "supabase_admin", useTcp = false) {
   const args = [
     "exec",
@@ -52,8 +56,7 @@ function cleanupContainer() {
     return;
   }
   cleanupComplete = true;
-  spawnSync("docker", ["rm", "--force", containerName], {
-    encoding: "utf8",
+  disposablePostgres.run(["rm", "--force", containerName], {
     stdio: "ignore",
     timeout: 30_000,
   });
@@ -70,12 +73,7 @@ failOnSignal("SIGINT", 130);
 failOnSignal("SIGTERM", 143);
 
 function dockerSync(args, options = {}) {
-  return spawnSync("docker", args, {
-    encoding: "utf8",
-    input: options.input,
-    timeout: options.timeout ?? 60_000,
-    maxBuffer: 8 * 1024 * 1024,
-  });
+  return disposablePostgres.run(args, options);
 }
 
 function assertCommandSucceeded(result, label) {
@@ -118,25 +116,7 @@ function psqlAsMustFail(username, sql, pattern, label) {
 }
 
 function psqlAsync(sql) {
-  return new Promise((resolve, reject) => {
-    const child = spawn("docker", psqlArgs, { stdio: ["pipe", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk;
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk;
-    });
-    child.once("error", reject);
-    child.once("close", (status) => {
-      resolve({ status, stdout, stderr });
-    });
-    child.stdin.end(sql);
-  });
+  return disposablePostgres.psqlAsync(psqlArgs, sql);
 }
 
 function parseClaim(output, label) {
@@ -212,6 +192,7 @@ try {
       "--detach",
       "--rm",
       "--pull=never",
+      "--network=none",
       "--name",
       containerName,
       "--env",
@@ -239,12 +220,12 @@ try {
     end;
     $$;
 
-    create role ghl_authenticated_probe
+    create role ${authenticatedProbeRole}
       login
       password '${disposablePassword}'
       in role authenticated;
 
-    create role ghl_service_probe
+    create role ${serviceProbeRole}
       login
       password '${disposablePassword}'
       in role service_role;
@@ -569,13 +550,13 @@ try {
     "Service role retained a direct receipt or terminal-state mutation privilege",
   );
 
-  psqlAsMustFail("ghl_service_probe", `
+  psqlAsMustFail(serviceProbeRole, `
     update public.ghl_provider_outbox
     set status = 'operator_action_required'
     where id = '${replacementClaim.outboxId}';
   `, /permission denied/i, "Service role bypassed the outbox settlement RPC");
 
-  psqlAsMustFail("ghl_service_probe", `
+  psqlAsMustFail(serviceProbeRole, `
     insert into public.ghl_provider_receipts (
       outbox_id,
       attempt_number,
@@ -589,13 +570,13 @@ try {
     );
   `, /permission denied/i, "Service role bypassed the receipt append RPC");
 
-  psqlAsMustFail("ghl_service_probe", `
+  psqlAsMustFail(serviceProbeRole, `
     update public.ghl_lead_effect_events
     set status = 'operator_action_required'
     where outbox_id = '${replacementClaim.outboxId}';
   `, /permission denied/i, "Service role bypassed the lead-effect settlement RPC");
 
-  psqlAsMustFail("ghl_service_probe", `
+  psqlAsMustFail(serviceProbeRole, `
     insert into public.ghl_provider_outbox (
       organization_id,
       operation,
@@ -833,7 +814,7 @@ try {
     "f",
     "Authenticated role retained execute privilege on the internal fake RPC",
   );
-  psqlAsMustFail("ghl_authenticated_probe", `
+  psqlAsMustFail(authenticatedProbeRole, `
     select count(*)
     from public.enqueue_ghl_fake_lead_effects(
       '${organizationId}',

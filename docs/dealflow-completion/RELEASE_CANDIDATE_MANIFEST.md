@@ -2,7 +2,7 @@
 
 Current verdict: `NO_GO`
 Deployment: `NOT EXECUTED`
-Implementation commit/tree: `017f15f2bd1f4a22c1e3276f3ca01ff3a0de5128` / `477aa90a5407c52222a736e6e975e68e19ab3d5f`
+Implementation commit/tree: `PENDING_FINAL_LOCAL_COMMIT` / `PENDING_FINAL_LOCAL_TREE`
 Documentation/bundle seal: the exact descendant commit/tree is recorded and hashed by the external audit-package manifest; no product file may change after the implementation commit.
 Protected external production trust root: `NOT SUPPLIED`
 
@@ -51,10 +51,17 @@ No external production policy/digest/key was available or invented. The
 repository informational policy remains unconfigured, and `audit-preview` is
 always non-gating.
 
-## Mandatory `NO_GO` gates
+## Local gate cleared
 
-- Full fresh migration replay fails at the first tracked migration with
-  SQLSTATE `42P01`; prior/idempotent/RLS/mixed-version/recovery proof is absent.
+Local schema completion is no longer a blocker: the 80-migration fresh,
+  authority-adoption, May-2 upgrade, idempotency, collision, RLS/private/ACL,
+  mixed-worker, recovery, deterministic-two-database, and cleanup gates pass on
+  PostgreSQL 17.6 against the pinned digest
+  `18279dd809f138d4d299e522bde850783d1d75dd0699b5bb87f28067164eb21a`
+  and its frozen 11,407-row object-level oracle.
+
+## Remaining mandatory `NO_GO` gates
+
 - No signed zero-old-worker drain exists.
 - No signed exact-deployment environment attestation exists.
 - No Meta/GHL/Stripe/Twilio/creative live acceptance or provider canary exists.

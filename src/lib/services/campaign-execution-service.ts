@@ -1015,6 +1015,7 @@ export async function createCampaignExecutionRecord(
   }
 
   const payload: Database["public"]["Tables"]["campaign_executions"]["Insert"] = {
+    organization_id: organizationId,
     user_id: userId,
     campaign_id: campaignId,
     meta_connection_id: metaAccount.id,

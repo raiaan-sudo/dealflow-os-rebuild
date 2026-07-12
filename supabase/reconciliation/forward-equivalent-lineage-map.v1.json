@@ -1,0 +1,189 @@
+{
+  "authoritativeCurrentCatalogDigestSha256": "145fb511c7028854f0c541f3a6933dd16667ec687d6afd4c144710a8addccb7d",
+  "classification": "NEW_FORWARD_RECONSTRUCTION_NOT_RECOVERED_HISTORY",
+  "exactHistoricalBodyMissingCount": 26,
+  "generatedCount": 29,
+  "migrationCount": 80,
+  "privateCatalogAuthority": "AUTHORITATIVE_TWO_PASS_COMPLETE_PRIVATE_CAPTURE",
+  "privateHelperAuthority": "R2_CAPTURE_MATCHES_SEALED_20260502192332_BODY_AND_ATTRIBUTES",
+  "publicCatalogAuthority": "AUTHORITATIVE_TWO_PASS_CAPTURE",
+  "records": [
+    {
+      "classification": "FRESH_ONLY_FORWARD_FOUNDATION",
+      "name": "forward_foundation_bootstrap",
+      "sha256": "229de085be0720bd620790991527a0a638157b9debc5faefe0cda3b4f35837bc",
+      "version": "20260426000000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "create_activation_events",
+      "sha256": "3ed595929f13a8127d9ef0092a7de5a8841ff12c418faba449707ed10e319527",
+      "version": "20260504183000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "create_campaign_value_reports",
+      "sha256": "f3659a3e09cb7dd16f3fe96fe3d4ce93b1b8ef3c854439742a9a0909672b49ac",
+      "version": "20260504190000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "create_billing_cancellation_intents",
+      "sha256": "eb3e07d9f737e7128a763eef8853c824c0077b1dc751e43ef06d7a3f21f1914f",
+      "version": "20260504203000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "create_customer_success_checklists",
+      "sha256": "309a088c271f6f4b1763ab15f20043ca46febd133f01dd7b7a0df1b5b86c90e5",
+      "version": "20260504210000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "harden_launch_ops_tables_advisors",
+      "sha256": "dce673105512be10eab8f46a6ad1ff0e1b4e8ea0d53e212d0b85d598f18bbf25",
+      "version": "20260504213000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "harden_rls_and_fk_advisors",
+      "sha256": "e30398abb3a7a617defe82ec10ed73437b2d4cca1322f634d89ee82df09c9564",
+      "version": "20260504220000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "create_client_error_events",
+      "sha256": "d51dbd53e32a7303db486873148c69dc706a5c245e6defa1b456238939a6f504",
+      "version": "20260504223000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "create_meta_sync_and_optimization_tables",
+      "sha256": "ce6a3f8ff8dcf33c9ee2d13b3ac8d2298c834de87d81b1cc481bb8f83bcaba7d",
+      "version": "20260509020000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "enable_generation_credit_overdrafts",
+      "sha256": "f43a65347523d6e16a04241312eb8e02f4d6d7bfbf1d17e8fd0f371fd90d3d2f",
+      "version": "20260510014500"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "cap_generation_credit_overdrafts",
+      "sha256": "87862d8990109b0dff7db50c0952234af81054ff16c8f7f42ee0b3b2007f19ce",
+      "version": "20260510183000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "scope_provider_usage_idempotency",
+      "sha256": "37d85803f7aad26c64c22360c8d99379fcc8f18055b4cc9b78c1af5c0912cd3b",
+      "version": "20260512010000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "create_scale_monitor_incidents",
+      "sha256": "0c4f601ffae6072257316719a4f572d9bedb4d2dd07da46961e5054516c94525",
+      "version": "20260519023000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "create_autonomy_execution_tables",
+      "sha256": "a34f65fae232d859464c5560d566893f940a0db52750941f38306643f2f9b27a",
+      "version": "20260519033000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "harden_autonomy_anon_access",
+      "sha256": "dd445f75be7c173414cd16781460b3cca34f86dbddaf1ef1b3568695de62d788",
+      "version": "20260519043000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "remove_legacy_single_campaign_constraint",
+      "sha256": "0a3aff15dbcff550b6adab0dcf8a22bda47a2dd194a32605a02ff6bb2ed9af66",
+      "version": "20260529230000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "create_lead_billing_events",
+      "sha256": "f5b0dec53d06e8b089121f1f5e4c3050b45d3d0e9a287684d61652a0aaee381d",
+      "version": "20260530170000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "create_white_label_partner_infrastructure",
+      "sha256": "c5a1e299f067fe4a2cf0e48a20651dc3d895a78a3c3fe534a32b3d60360949bf",
+      "version": "20260531160000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "add_partner_branded_billing_metadata",
+      "sha256": "5057a49bb7824bff2f008d377649e1375934c098f25d94ed8c7d35082181b521",
+      "version": "20260531193000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "add_immediate_lead_charge_fields",
+      "sha256": "802b1663d481362b5542b4c0357aac4a13c13edf75c81588b5c846a7ecef048a",
+      "version": "20260604120000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "add_lead_capture_strategy",
+      "sha256": "f78e77901986f49bfe7af2aee0d7b23b7cd2f0f4015d82d78ee00dfb2b1d1fc2",
+      "version": "20260605210000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "click_to_scale_partner_ghl_sync",
+      "sha256": "21804ee6f38ef3f34ea92fb51545cc1252132c1d5c164fa46f652aff217346a9",
+      "version": "20260614193000"
+    },
+    {
+      "classification": "TENANT_NEUTRAL_DATA_NOOP",
+      "name": "seed_click_to_scale_white_label_partner",
+      "sha256": "a5899bab3c7ef429cd1e7a3014c4e5ec9ae870baabb2897df6c3304da1079c1b",
+      "version": "20260614203000"
+    },
+    {
+      "classification": "FORWARD_EQUIVALENT_RECONSTRUCTION",
+      "name": "create_ghl_provisioning_pipeline",
+      "sha256": "1bc06767178c3b766c2de21d45270b5433857df6c8b5b52c5589640b5a8501f5",
+      "version": "20260615100000"
+    },
+    {
+      "classification": "TENANT_NEUTRAL_DATA_NOOP",
+      "name": "seed_click_to_scale_ghl_provisioning_config",
+      "sha256": "81cb06b2c5b61bac4f5cca1fa9e422fb27816baa87f032281ac409738912d0a8",
+      "version": "20260615103000"
+    },
+    {
+      "classification": "TENANT_NEUTRAL_DATA_NOOP",
+      "name": "update_click_to_scale_ghl_credential_ref",
+      "sha256": "9046ed47aaa582c29544c5a585ee67f0a869501f257dfc30fe63e4f5a533f249",
+      "version": "20260615104000"
+    },
+    {
+      "classification": "TENANT_NEUTRAL_DATA_NOOP",
+      "name": "update_click_to_scale_branding",
+      "sha256": "3473a3357997ede8728c1c480e088604d248cc009d6577d03d2752e3bbe4f0c7",
+      "version": "20260615220500"
+    },
+    {
+      "classification": "AUTHORITATIVE_SHAPE_GATE_AND_GUARDED_NORMALIZATION",
+      "name": "validate_and_normalize_pre_candidate_shape",
+      "sha256": "47f0b9dad88d03e9038e7991288aafe69b91883ad0f73ba3228940f428dcfc8e",
+      "version": "20260710160000"
+    },
+    {
+      "classification": "FORWARD_APP_CONTRACT_NO_HISTORICAL_BODY_CLAIMED",
+      "name": "create_execution_and_creative_app_contracts",
+      "sha256": "f088c6403890b233349df1c68a1e39979ba620af10560667fffda2c7e5f4e0a6",
+      "version": "20260710235994"
+    }
+  ],
+  "schemaVersion": "dealflow.forward-equivalent-lineage.v1",
+  "sealedSourceCommit": "577c348ce853f0edb3ed0e99b21cc9625b948e2b",
+  "tenantNeutralDataNoopCount": 4
+}

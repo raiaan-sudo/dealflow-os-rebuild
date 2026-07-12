@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "dealflow.final-local-catalog-and-acl-golden.v1",
+  "postgresVersion": "17.6",
+  "migrationCount": 80,
+  "authorityCatalogDigestSha256": "145fb511c7028854f0c541f3a6933dd16667ec687d6afd4c144710a8addccb7d",
+  "finalCatalogAndAclDigestSha256": "18279dd809f138d4d299e522bde850783d1d75dd0699b5bb87f28067164eb21a",
+  "normalizedRowsetPath": "supabase/reconciliation/final-local-catalog-and-acl-rowset.v1.json",
+  "normalizedRowsetFileSha256": "adb6a5e0dcb8213f005f9d7df5ae73ce696fa94cc3909478544cc26994d3ff57",
+  "normalizedRowsetSha256": "a97dd7e1cfcfb8d4be7f7f0601483265b905db13a08ebe427467b4a0fb23097b",
+  "normalizedRowCount": 11407,
+  "normalizedSurfaceCounts": {
+    "column": 2657,
+    "column_acl_grant": 6,
+    "column_acl_state": 2657,
+    "constraint": 728,
+    "default_acl": 96,
+    "index": 465,
+    "policy": 172,
+    "relation": 134,
+    "relation_acl": 3366,
+    "routine": 87,
+    "routine_acl": 179,
+    "schema_acl": 11,
+    "trigger": 45,
+    "type_acl_grant": 536,
+    "type_acl_state": 268
+  },
+  "authorityIdentitySupersessions": [
+    {
+      "kind": "routine",
+      "schema": "public",
+      "authorityObject": "claim_next_system_job(p_worker_id text, p_lease_ms integer)",
+      "replacementObjects": [
+        "claim_next_system_job_v2(p_worker_id text, p_lease_ms integer, p_protocol_version integer)"
+      ],
+      "reason": "Intentional v1-to-v2 worker protocol cutover with explicit old-worker rejection."
+    },
+    {
+      "kind": "policy",
+      "schema": "public",
+      "authorityObject": "campaign_plans.campaign_plans_member_access",
+      "replacementObjects": [
+        "campaign_plans.campaign_plans_current_workspace_select"
+      ],
+      "reason": "Intentional active-workspace tenant authority replacement."
+    },
+    {
+      "kind": "policy",
+      "schema": "public",
+      "authorityObject": "creative_assets.creative_assets_member_access",
+      "replacementObjects": [
+        "creative_assets.creative_assets_member_delete",
+        "creative_assets.creative_assets_member_insert",
+        "creative_assets.creative_assets_member_select",
+        "creative_assets.creative_assets_member_update"
+      ],
+      "reason": "Intentional operation-specific tenant and storage identity policies replace the broad policy."
+    }
+  ],
+  "columnOrderContract": "DENSE_LIVE_COLUMN_RANK",
+  "aclSurfaces": [
+    "schema",
+    "relation",
+    "sequence",
+    "routine",
+    "type",
+    "column",
+    "default_privilege"
+  ],
+  "includes": [
+    "relations",
+    "relation_metadata_and_partitioning",
+    "columns",
+    "constraints",
+    "indexes",
+    "routines",
+    "policies",
+    "triggers",
+    "private_schema",
+    "row_level_security",
+    "acl_and_default_privileges",
+    "forward_app_contract_20260710235994"
+  ],
+  "reviewRequirement": "Update only after an independently reviewed intentional catalog or authorization change, object-level review of the pinned normalized rowset, and two matching disposable PostgreSQL 17.6 databases."
+}

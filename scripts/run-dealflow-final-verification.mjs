@@ -5,6 +5,8 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
+import { requireFinalVerificationNativeEnvironment } from "./lib/final-verification-environment.mjs";
+
 const root = process.cwd();
 const outputArg = process.argv[2];
 const round = process.argv[3] ?? "1";
@@ -12,6 +14,8 @@ const round = process.argv[3] ?? "1";
 if (!outputArg) {
   throw new Error("Usage: node scripts/run-dealflow-final-verification.mjs <external-output-directory> [round]");
 }
+
+const nativeEnvironment = requireFinalVerificationNativeEnvironment(process.env);
 
 const outputDirectory = path.resolve(outputArg);
 const relativeToRoot = path.relative(root, outputDirectory);
@@ -43,6 +47,20 @@ const commands = [
   ["node", ["scripts/test-migration-read-only-contract.mjs"]],
   ["npm", ["run", "test:release-guard"]],
   ["npm", ["run", "test:stripe-runtime-mode"]],
+  ["npm", ["run", "test:disposable-postgres-harness"]],
+  ["node", [
+    "scripts/test-native-postgres-test-adapter.mjs",
+    "--pgbin", nativeEnvironment.pgbin,
+    "--host", nativeEnvironment.host,
+    "--port", nativeEnvironment.port,
+    "--user", nativeEnvironment.user,
+  ]],
+  ["node", ["scripts/test-campaign-execution-tenant-contract.mjs"]],
+  ["node", ["scripts/test-ghl-booking-handoff-contract.mjs"]],
+  ["node", ["scripts/generate-forward-migration-portfolio.mjs", "--check"]],
+  ["node", ["scripts/schema/check-forward-reconstruction.mjs"]],
+  ["npm", ["run", "test:schema-oracle-contract"]],
+  ["npm", ["run", "test:schema-reconciliation-db"]],
   ["npm", ["run", "test:access-key-security-disposable-db"]],
   ["npm", ["run", "test:meta-leadgen"]],
   ["npm", ["run", "test:financial-integrity-disposable-db"]],
@@ -81,6 +99,11 @@ function safeEnvironment() {
     "COLORTERM",
     "NVM_DIR",
     "npm_config_cache",
+    "DEALFLOW_DISPOSABLE_DB_MODE",
+    "DEALFLOW_NATIVE_PGBIN",
+    "DEALFLOW_NATIVE_PGHOST",
+    "DEALFLOW_NATIVE_PGPORT",
+    "DEALFLOW_NATIVE_PGUSER",
   ];
   const env = { CI: "true", NO_COLOR: "1", NEXT_TELEMETRY_DISABLED: "1" };
   for (const name of names) {

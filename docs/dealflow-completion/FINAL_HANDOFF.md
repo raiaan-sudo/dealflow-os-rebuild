@@ -33,27 +33,29 @@ candidate change.
   tranches, and independent opposite-author reviews cleared the final Meta and
   access-key fixes. The two exact-seal portfolio results are retained outside
   the repository in the final audit bundle rather than self-attested here.
+- The recovered authority now drives an 80-migration portfolio. All 14 local
+  schema gates pass on PostgreSQL 17.6, including fresh replay,
+  authoritative-current adoption, May-2 upgrade, fail-closed legacy/partial
+  rejection, idempotent replay, sentinel preservation, integrated RLS/private
+  proof, mixed-version safety, deterministic two-database replay, cleanup, and
+  forward recovery. This clears the former local `campaign_plans` foundation
+  blocker; it does not attest production or authorize migration application.
 - No deployment, alias, DNS, environment, provider, customer, shared database,
   communication, spend, CRM, Stripe, Meta, GHL, Twilio, or creative-provider
   mutation occurred.
 
 ## Why the verdict is `NO_GO`
 
-1. Fresh migration replay fails at
-   `20260426110000_add_campaign_plan_critical_fields.sql`, statement 0,
-   SQLSTATE `42P01`, because `public.campaign_plans` does not exist.
-2. Prior-shape/idempotent replay, mixed-version compatibility, RLS/privilege
-   integration, and forward-recovery drill are not proven.
-3. No authoritative signed zero-old-worker drain exists.
-4. No protected external production trust root or signed exact-deployment
+1. No authoritative signed zero-old-worker drain exists.
+2. No protected external production trust root or signed exact-deployment
    environment attestation exists. The repository target policy is
    informational and intentionally unconfigured; it cannot authorize itself.
-5. No live provider acceptance was authorized for Meta, GHL, Stripe, Twilio, or
+3. No live provider acceptance was authorized for Meta, GHL, Stripe, Twilio, or
    creative services.
-6. Three independently deployed subdomains lack proven source ancestry and were
+4. Three independently deployed subdomains lack proven source ancestry and were
    excluded from implementation.
-7. No separately authorized isolated staging target/canary exists.
-8. Workspace selection, consent/retention/deletion, GHL ownership/offboarding,
+5. No separately authorized isolated staging target/canary exists.
+6. Workspace selection, consent/retention/deletion, GHL ownership/offboarding,
    operator SLA, and customer-communication policies require owner/legal
    decisions.
 
@@ -71,9 +73,7 @@ candidate change.
 
 ## Exact next authority step
 
-Do not deploy. First recover and review the authoritative foundational schema,
-then run the complete fresh/prior/idempotent migration and forward-recovery
-portfolio on a separately authorized isolated target. Only afterward may an
-owner-approved production authority be pinned and generate signed evidence for
-the exact candidate/deployment. Provider canary and live enablement require a
-separate explicit authorization.
+Do not deploy. Preserve the passing 14/14 local schema portfolio, then obtain a
+separately authorized isolated staging target, a signed zero-old-worker drain,
+and protected exact-environment/release authority for the exact candidate.
+Provider canary and live enablement require separate explicit authorization.

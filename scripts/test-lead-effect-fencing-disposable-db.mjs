@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { spawn, spawnSync } from "node:child_process";
+import { createDisposablePostgresHarness } from "./lib/disposable-postgres-harness.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -13,6 +13,7 @@ const migrationPath = path.join(
   "supabase/migrations/20260710234500_harden_jobs_lead_effects_meta_deletion.sql",
 );
 const containerName = `dealflow-lead-effect-fence-${process.pid}-${randomBytes(4).toString("hex")}`;
+const disposablePostgres = createDisposablePostgresHarness({ containerName, image });
 const password = randomBytes(24).toString("hex");
 
 const organizationId = "10000000-0000-4000-8000-000000000001";
@@ -25,12 +26,7 @@ const generation3Token = "50000000-0000-4000-8000-000000000003";
 let cleaned = false;
 
 function docker(args, options = {}) {
-  return spawnSync("docker", args, {
-    encoding: "utf8",
-    input: options.input,
-    timeout: options.timeout ?? 60_000,
-    maxBuffer: 8 * 1024 * 1024,
-  });
+  return disposablePostgres.run(args, options);
 }
 
 function sanitize(value) {
@@ -87,18 +83,7 @@ function psqlMustFail(sql, pattern, label) {
 }
 
 function psqlAsync(sql) {
-  return new Promise((resolve, reject) => {
-    const child = spawn("docker", psqlArgs(), { stdio: ["pipe", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => { stdout += chunk; });
-    child.stderr.on("data", (chunk) => { stderr += chunk; });
-    child.once("error", reject);
-    child.once("close", (status) => resolve({ status, stdout, stderr }));
-    child.stdin.end(sql);
-  });
+  return disposablePostgres.psqlAsync(psqlArgs(), sql);
 }
 
 function cleanup() {

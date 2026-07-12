@@ -2,8 +2,8 @@ create table if not exists public.rate_limit_buckets (
   bucket_key text primary key,
   request_count integer not null default 0,
   reset_at timestamptz not null,
-  created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
   constraint rate_limit_buckets_count_nonnegative check (request_count >= 0)
 );
 

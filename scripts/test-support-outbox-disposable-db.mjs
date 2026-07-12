@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { spawnSync } from "node:child_process";
+import { createDisposablePostgresHarness } from "./lib/disposable-postgres-harness.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -17,6 +17,7 @@ const preflightPath = path.join(
 );
 const image = "public.ecr.aws/supabase/postgres:17.6.1.106";
 const containerName = `dealflow-support-disposable-${process.pid}-${randomBytes(4).toString("hex")}`;
+const disposablePostgres = createDisposablePostgresHarness({ containerName, image });
 const password = randomBytes(24).toString("hex");
 const userId = "00000000-0000-4000-8000-000000000001";
 const organizationId = "10000000-0000-4000-8000-000000000001";
@@ -27,12 +28,7 @@ const duePendingOutboxId = "30000000-0000-4000-8000-000000000003";
 let cleaned = false;
 
 function docker(args, options = {}) {
-  return spawnSync("docker", args, {
-    encoding: "utf8",
-    input: options.input,
-    timeout: options.timeout ?? 60_000,
-    maxBuffer: 8 * 1024 * 1024,
-  });
+  return disposablePostgres.run(args, options);
 }
 
 function sanitize(value) {

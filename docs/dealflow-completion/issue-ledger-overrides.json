@@ -1,27 +1,290 @@
 {
-  "FIND-001": { "proof_template": "launch_db_blocked" },
-  "FIND-002": { "proof_template": "job_db_blocked" },
-  "FIND-003": { "proof_template": "job_db_blocked" },
-  "FIND-004": {
-    "proof_template": "meta_contract_verified",
-    "final_status": "BLOCKED_BY_EXTERNAL_AUTHORITY",
-    "integrated_proof": "Signed-request parsing, replay/freshness, and durable-responsibility service tests passed; DB execution is blocked by NEW-001."
+  "DATA_ENTITY:DATA-042": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
   },
-  "FIND-005": { "proof_template": "tenant_db_blocked" },
-  "FIND-007": { "proof_template": "lead_safe_verified" },
-  "FIND-008": { "proof_template": "security_verified" },
-  "FIND-009": { "proof_template": "meta_contract_verified" },
-  "FIND-010": { "proof_template": "ui_local_verified" },
-  "FIND-011": { "proof_template": "security_verified" },
-  "FIND-012": { "proof_template": "tenant_db_blocked" },
-  "FIND-013": { "proof_template": "onboarding_db_blocked" },
-  "FIND-015": { "proof_template": "meta_contract_verified" },
-  "FIND-016": { "proof_template": "security_verified" },
-  "FIND-019": { "proof_template": "partial_csp_blocked" },
-  "FIND-020": { "proof_template": "security_verified" },
-  "FIND-021": { "proof_template": "security_verified" },
-  "FIND-022": { "proof_template": "security_verified" },
-  "FIND-023": { "proof_template": "security_verified" },
+  "DATA_ENTITY:DATA-043": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-044": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-045": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-046": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-047": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-048": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-049": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-050": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-051": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-052": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-053": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-054": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-055": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-056": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-057": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-058": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-059": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-060": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-061": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-062": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-063": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-064": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-065": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-066": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-067": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-068": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-069": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "DATA_ENTITY:DATA-070": {
+    "canonical_status": "CANDIDATE_MIGRATION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "tests": "Existing mapped tests plus scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6.",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-003": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-005": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-006": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-007": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-008": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-009": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-010": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-011": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-012": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-013": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-014": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-015": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-016": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-017": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-018": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-019": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-020": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-021": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-022": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-023": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-024": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-025": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-026": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-027": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-028": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-029": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-030": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-031": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-032": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-033": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-034": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-035": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-038": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-039": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FEATURE:FEAT-040": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "FIND-007": {
+    "proof_template": "lead_safe_verified"
+  },
+  "FIND-008": {
+    "proof_template": "security_verified"
+  },
+  "FIND-009": {
+    "proof_template": "meta_contract_verified"
+  },
+  "FIND-010": {
+    "proof_template": "ui_local_verified"
+  },
+  "FIND-011": {
+    "proof_template": "security_verified"
+  },
+  "FIND-015": {
+    "proof_template": "meta_contract_verified"
+  },
+  "FIND-016": {
+    "proof_template": "security_verified"
+  },
+  "FIND-019": {
+    "proof_template": "partial_csp_blocked"
+  },
+  "FIND-020": {
+    "proof_template": "security_verified"
+  },
+  "FIND-021": {
+    "proof_template": "security_verified"
+  },
+  "FIND-022": {
+    "proof_template": "security_verified"
+  },
+  "FIND-023": {
+    "proof_template": "security_verified"
+  },
   "FIND-024": {
     "canonical_status": "FIXED_AND_OFFLINE_VERIFIED",
     "implementation_disposition": "PRESERVE_ABORTABLE_TIMEOUT_FACTORY_AND_SIGNAL_PROPAGATION",
@@ -32,7 +295,9 @@
     "residual_risk": "Non-abortable provider effects still require their own durable idempotency and reconciliation.",
     "final_status": "IMPLEMENTED_AND_VERIFIED"
   },
-  "FIND-027": { "proof_template": "meta_contract_verified" },
+  "FIND-027": {
+    "proof_template": "meta_contract_verified"
+  },
   "FIND-028": {
     "proof_template": "security_verified",
     "residual_risk": "Live Twilio signature/destination ownership and inbound/outbound acceptance remain external."
@@ -47,7 +312,9 @@
     "residual_risk": "Reachability, authentication, functional, and freshness states still require authorized provider/runtime evidence.",
     "final_status": "IMPLEMENTED_AND_VERIFIED"
   },
-  "FIND-031": { "proof_template": "ui_local_verified" },
+  "FIND-031": {
+    "proof_template": "ui_local_verified"
+  },
   "FIND-032": {
     "canonical_status": "FIXED_AND_OFFLINE_VERIFIED",
     "implementation_disposition": "DEFAULT_OFF_ANONYMOUS_UNTRUSTED_TELEMETRY",
@@ -58,24 +325,18 @@
     "residual_risk": "Any later enablement requires a separate abuse, retention, and untrusted-evidence review.",
     "final_status": "IMPLEMENTED_AND_VERIFIED"
   },
-  "FIND-033": { "proof_template": "ui_local_verified" },
-  "FIND-034": { "proof_template": "ui_local_verified" },
-  "FIND-036": { "proof_template": "ui_local_verified" },
-  "FIND-040": {
-    "canonical_status": "CONFIRMED_BLOCKED_BY_MISSING_AUTHORITATIVE_BASE_SCHEMA",
-    "implementation_disposition": "DO_NOT_GENERATE_TYPES_FROM_AN_UNPROVEN_OR_PARTIAL_SCHEMA",
-    "tests": "Fresh disposable Supabase migration replay failed at the first tracked migration with SQLSTATE 42P01; see evidence/migration/fresh-replay-result.json.",
-    "negative_failure_path_proof": "No linked/shared schema was used and no generic types were falsely replaced from a synthetic fragment.",
-    "integrated_proof": "The missing foundational campaign_plans schema is the exact prerequisite for trustworthy generated database types.",
-    "residual_risk": "Database compile-time safety remains weak and independently contributes to NO_GO until an authoritative schema-only source is recovered.",
-    "final_status": "BLOCKED_BY_EXTERNAL_AUTHORITY"
+  "FIND-033": {
+    "proof_template": "ui_local_verified"
   },
-  "FIND-041": {
-    "proof_template": "meta_contract_verified",
-    "final_status": "BLOCKED_BY_EXTERNAL_AUTHORITY",
-    "integrated_proof": "Freshness/replay and stable acknowledgment tests passed; DB execution is blocked by NEW-001."
+  "FIND-034": {
+    "proof_template": "ui_local_verified"
   },
-  "FIND-042": { "proof_template": "partial_csp_blocked" },
+  "FIND-036": {
+    "proof_template": "ui_local_verified"
+  },
+  "FIND-042": {
+    "proof_template": "partial_csp_blocked"
+  },
   "FIND-047": {
     "canonical_status": "FIXED_AND_OFFLINE_VERIFIED",
     "implementation_disposition": "BIND_DRAFT_AND_TELEMETRY_WRITES_TO_EXPLICIT_USER_ACTION",
@@ -86,58 +347,437 @@
     "residual_risk": "Authenticated browser observation remains blocked without an explicitly isolated test project.",
     "final_status": "IMPLEMENTED_AND_VERIFIED"
   },
-  "FIND-048": { "proof_template": "ui_local_verified" },
-  "FIND-049": { "proof_template": "ui_local_verified" },
-  "FIND-050": { "proof_template": "ui_local_verified" },
-  "FIND-051": { "proof_template": "ui_local_verified" },
-  "FIND-053": { "proof_template": "lead_safe_verified" },
-  "FIND-056": { "proof_template": "ui_local_verified" },
-
-  "VISION-004": { "proof_template": "onboarding_db_blocked" },
-  "VISION-005": { "proof_template": "onboarding_db_blocked" },
-  "VISION-007": { "proof_template": "job_db_blocked" },
-  "VISION-008": { "proof_template": "optimizer_db_blocked" },
-  "VISION-009": { "proof_template": "optimizer_db_blocked" },
-  "VISION-013": { "proof_template": "launch_db_blocked" },
-  "VISION-016": { "proof_template": "ghl_db_blocked" },
-  "VISION-019": { "proof_template": "ghl_db_blocked" },
-  "VISION-023": { "proof_template": "onboarding_db_blocked" },
-  "VISION-027": { "proof_template": "optimizer_db_blocked" },
-  "VISION-030": { "proof_template": "support_db_blocked" },
-  "VISION-031": { "proof_template": "support_db_blocked" },
-  "VISION-034": { "proof_template": "onboarding_db_blocked" },
-  "VISION-044": { "proof_template": "ghl_db_blocked" },
-  "VISION-050": { "proof_template": "release_guard_verified" },
-  "VISION-051": { "proof_template": "ui_local_verified" },
-  "REPORTED-004": { "proof_template": "optimizer_db_blocked" },
-
-  "RULE-002": { "proof_template": "security_verified" },
-  "RULE-003": { "proof_template": "tenant_db_blocked" },
-  "RULE-004": { "proof_template": "tenant_db_blocked" },
-  "RULE-005": { "proof_template": "lead_safe_verified" },
-  "RULE-007": { "proof_template": "job_db_blocked" },
-  "RULE-008": { "proof_template": "job_db_blocked" },
-  "RULE-009": { "proof_template": "job_db_blocked" },
-  "RULE-014": { "proof_template": "launch_db_blocked" },
-  "RULE-015": { "proof_template": "launch_db_blocked" },
-  "RULE-017": { "proof_template": "meta_contract_verified" },
-  "RULE-018": { "proof_template": "meta_contract_verified" },
-  "RULE-022": { "proof_template": "ui_local_verified" },
-  "RULE-023": { "proof_template": "security_verified" },
-  "RULE-024": { "proof_template": "onboarding_db_blocked" },
-  "RULE-025": {
+  "FIND-048": {
+    "proof_template": "ui_local_verified"
+  },
+  "FIND-049": {
+    "proof_template": "ui_local_verified"
+  },
+  "FIND-050": {
+    "proof_template": "ui_local_verified"
+  },
+  "FIND-051": {
+    "proof_template": "ui_local_verified"
+  },
+  "FIND-053": {
+    "proof_template": "lead_safe_verified"
+  },
+  "FIND-056": {
+    "proof_template": "ui_local_verified"
+  },
+  "FINDING:FIND-001": {
+    "proof_template": "launch_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Mapped feature/contract tests are retained. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "FINDING:FIND-002": {
+    "proof_template": "job_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Deterministic worker/effect tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "FINDING:FIND-003": {
+    "proof_template": "job_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Deterministic worker/effect tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "FINDING:FIND-004": {
     "proof_template": "meta_contract_verified",
     "final_status": "BLOCKED_BY_EXTERNAL_AUTHORITY",
-    "integrated_proof": "Deletion freshness/replay contract passed; DB execution is blocked by NEW-001."
+    "integrated_proof": "Mapped contract tests and the 14/14 full-chain local schema portfolio pass; live provider and deployed-runtime acceptance remain external."
   },
-  "RULE-026": { "proof_template": "ghl_db_blocked" },
-  "RULE-028": { "proof_template": "security_verified" },
-  "RULE-029": { "proof_template": "security_verified" },
-  "RULE-030": { "proof_template": "ui_local_verified" },
-  "RULE-031": { "proof_template": "ui_local_verified" },
+  "FINDING:FIND-005": {
+    "proof_template": "tenant_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Mapped feature/contract tests are retained. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "FINDING:FIND-012": {
+    "proof_template": "tenant_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Mapped feature/contract tests are retained. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "FINDING:FIND-013": {
+    "proof_template": "onboarding_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Contract/policy tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "FINDING:FIND-040": {
+    "canonical_status": "AUTHORITATIVE_SCHEMA_RECOVERED_TYPE_REGENERATION_NOT_PROVEN",
+    "implementation_disposition": "REGENERATE_AND_VERIFY_DATABASE_TYPES_FROM_THE_RECOVERED_AUTHORITY_BEFORE_RELEASE",
+    "tests": "The 14/14 local schema portfolio passes; generated application database-type regeneration and compile adoption remain separately unproven.",
+    "negative_failure_path_proof": "No types are claimed regenerated from a partial schema; the recovered authority and deterministic catalog digests are now available.",
+    "integrated_proof": "The former missing-foundation blocker is cleared by the authority-derived 80-migration portfolio.",
+    "residual_risk": "Application database types may remain stale until regenerated and compile-verified from the recovered authority; external release gates also remain.",
+    "final_status": "BLOCKED_BY_EXTERNAL_AUTHORITY"
+  },
+  "FINDING:FIND-041": {
+    "proof_template": "meta_contract_verified",
+    "final_status": "BLOCKED_BY_EXTERNAL_AUTHORITY",
+    "integrated_proof": "Mapped contract tests and the 14/14 full-chain local schema portfolio pass; live provider and deployed-runtime acceptance remain external."
+  },
+  "NEW_ISSUE:NEW-001": {
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_SCHEMA_VERIFIED",
+    "implementation_disposition": "PRESERVE_AUTHORITY_DERIVED_80_MIGRATION_FORWARD_PORTFOLIO",
+    "failing_before_evidence": "SUPERSEDED HISTORICAL EVIDENCE: Disposable local Supabase replay previously failed at statement 0 with SQLSTATE 42P01 because public.campaign_plans did not exist. The raw evidence file remains unchanged.",
+    "changed_files_commits": "FILES:authority-derived forward migration generator, 29 reconstructed migrations, reconciliation fixtures, lineage/provenance artifacts, and 14-gate schema proof",
+    "tests": "scripts/test-schema-reconciliation-disposable-db.mjs: 14/14 local schema gates PASS on PostgreSQL 17.6; 80-migration fresh/current/May-2/idempotent/deterministic/forward-recovery portfolio verified.",
+    "negative_failure_path_proof": "Legacy and partial collisions plus unsafe sentinel conversion fail before mutation; injected failure leaves zero partial mutation and forward recovery succeeds.",
+    "integrated_proof": "docs/dealflow-completion/TEST_AND_PROOF_MATRIX.md and MIGRATION_AND_ROLLBACK.md record the complete local proof; no production, staging, or shared database was changed.",
+    "residual_risk": "Local schema reconstruction is complete. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, and live-provider acceptance remain external.",
+    "final_status": "IMPLEMENTED_AND_VERIFIED"
+  },
+  "NEW_ISSUE:NEW-002": {
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Offline contract and source integration passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "NEW_ISSUE:NEW-003": {
+    "canonical_status": "FAKE_ONLY_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Deterministic fake-only contract passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "NEW_ISSUE:NEW-004": {
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Mapped feature/contract tests are retained. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "NEW_ISSUE:NEW-005": {
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Source and contract tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "NEW_ISSUE:NEW-009": {
+    "canonical_status": "FORWARD_RECOVERY_LOCALLY_VERIFIED_DESTRUCTIVE_ROLLBACK_INTENTIONALLY_NOT_RUN",
+    "implementation_disposition": "PRESERVE_FORWARD_ONLY_RECOVERY_AND_REQUIRE_SIGNED_DRAIN_BEFORE_RELEASE",
+    "failing_before_evidence": "SUPERSEDED HISTORICAL EVIDENCE: The original fresh replay failed before candidate migrations, so no recovery drill was then possible. The raw failure evidence remains unchanged.",
+    "changed_files_commits": "FILES:authority-derived migration portfolio, fail-closed adoption gates, forward-recovery proof harness, and migration recovery documentation",
+    "tests": "Injected-failure forward-recovery gate PASS: zero partial mutation followed by successful forward completion; destructive down rollback intentionally not attempted.",
+    "negative_failure_path_proof": "Failure recovery preserves durable state and uses forward completion; no destructive rollback, shared database, staging, or production mutation occurred.",
+    "integrated_proof": "The 14/14 local schema portfolio proves forward recovery and deterministic final shape on PostgreSQL 17.6.",
+    "residual_risk": "Production recovery remains unproven until an authorized staging rehearsal, signed zero-old-worker drain, and exact deployed-environment authority exist.",
+    "final_status": "IMPLEMENTED_AND_VERIFIED"
+  },
+  "NEW_ISSUE:NEW-011": {
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Isolated PostgreSQL constraint/RLS proof passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "NEW_ISSUE:NEW-012": {
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Mapped feature/contract tests are retained. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "NEW_ISSUE:NEW-013": {
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Mapped feature/contract tests are retained. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "NEW_ISSUE:NEW-014": {
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Mapped feature/contract tests are retained. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "NEW_ISSUE:NEW-017": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "NEW_ISSUE:NEW-018": {
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Mapped feature/contract tests are retained. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "NEW_ISSUE:NEW-019": {
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "NEW_ISSUE:NEW-028": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "NEW_ISSUE:NEW-033": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "REPORTED:REPORTED-004": {
+    "proof_template": "optimizer_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Deterministic policy tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "RULE-002": {
+    "proof_template": "security_verified"
+  },
+  "RULE-005": {
+    "proof_template": "lead_safe_verified"
+  },
+  "RULE-017": {
+    "proof_template": "meta_contract_verified"
+  },
+  "RULE-018": {
+    "proof_template": "meta_contract_verified"
+  },
+  "RULE-022": {
+    "proof_template": "ui_local_verified"
+  },
+  "RULE-023": {
+    "proof_template": "security_verified"
+  },
+  "RULE-028": {
+    "proof_template": "security_verified"
+  },
+  "RULE-029": {
+    "proof_template": "security_verified"
+  },
+  "RULE-030": {
+    "proof_template": "ui_local_verified"
+  },
+  "RULE-031": {
+    "proof_template": "ui_local_verified"
+  },
   "RULE-032": {
     "proof_template": "ghl_db_blocked",
     "final_status": "BLOCKED_BY_EXTERNAL_AUTHORITY",
     "integrated_proof": "Candidate distinguishes configured/fake-only from live health; material provider live health remains unverified."
+  },
+  "RULE:RULE-003": {
+    "proof_template": "tenant_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Mapped feature/contract tests are retained. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "RULE:RULE-004": {
+    "proof_template": "tenant_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Mapped feature/contract tests are retained. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "RULE:RULE-007": {
+    "proof_template": "job_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Deterministic worker/effect tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "RULE:RULE-008": {
+    "proof_template": "job_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Deterministic worker/effect tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "RULE:RULE-009": {
+    "proof_template": "job_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Deterministic worker/effect tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "RULE:RULE-014": {
+    "proof_template": "launch_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Mapped feature/contract tests are retained. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "RULE:RULE-015": {
+    "proof_template": "launch_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Mapped feature/contract tests are retained. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "RULE:RULE-024": {
+    "proof_template": "onboarding_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Contract/policy tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "RULE:RULE-025": {
+    "proof_template": "meta_contract_verified",
+    "final_status": "BLOCKED_BY_EXTERNAL_AUTHORITY",
+    "integrated_proof": "Mapped contract tests and the 14/14 full-chain local schema portfolio pass; live provider and deployed-runtime acceptance remain external."
+  },
+  "RULE:RULE-026": {
+    "proof_template": "ghl_db_blocked",
+    "canonical_status": "FAKE_ONLY_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Deterministic fake-only and isolated fixture-fragment tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "STATE_MACHINE:STATE-017": {
+    "canonical_status": "CANDIDATE_TRANSITION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "STATE_MACHINE:STATE-018": {
+    "canonical_status": "CANDIDATE_TRANSITION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "STATE_MACHINE:STATE-019": {
+    "canonical_status": "CANDIDATE_TRANSITION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "STATE_MACHINE:STATE-020": {
+    "canonical_status": "CANDIDATE_TRANSITION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "STATE_MACHINE:STATE-021": {
+    "canonical_status": "CANDIDATE_TRANSITION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "STATE_MACHINE:STATE-022": {
+    "canonical_status": "CANDIDATE_TRANSITION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "STATE_MACHINE:STATE-023": {
+    "canonical_status": "CANDIDATE_TRANSITION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "STATE_MACHINE:STATE-024": {
+    "canonical_status": "CANDIDATE_TRANSITION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "STATE_MACHINE:STATE-025": {
+    "canonical_status": "CANDIDATE_TRANSITION_AND_FULL_CHAIN_LOCALLY_VERIFIED",
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-094": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-095": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-096": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-097": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-098": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-099": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-100": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-101": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-102": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-103": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-104": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-105": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-106": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-107": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-108": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-109": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-110": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-111": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-112": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-113": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-114": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-115": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-116": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-117": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-118": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-119": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-120": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-121": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-122": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-123": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "TEST:TEST-124": {
+    "residual_risk": "The local schema blocker is cleared. Authorized staging, signed zero-old-worker drain, exact deployed-environment/release authority, authenticated runtime coverage, and live-provider acceptance remain external as applicable."
+  },
+  "VISION-050": {
+    "proof_template": "release_guard_verified"
+  },
+  "VISION-051": {
+    "proof_template": "ui_local_verified"
+  },
+  "VISION:VISION-004": {
+    "proof_template": "onboarding_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Contract/policy tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "VISION:VISION-005": {
+    "proof_template": "onboarding_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Contract/policy tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "VISION:VISION-007": {
+    "proof_template": "job_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Deterministic worker/effect tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "VISION:VISION-008": {
+    "proof_template": "optimizer_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Deterministic policy tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "VISION:VISION-009": {
+    "proof_template": "optimizer_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Deterministic policy tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "VISION:VISION-013": {
+    "proof_template": "launch_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Mapped feature/contract tests are retained. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "VISION:VISION-016": {
+    "proof_template": "ghl_db_blocked",
+    "canonical_status": "FAKE_ONLY_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Deterministic fake-only and isolated fixture-fragment tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "VISION:VISION-019": {
+    "proof_template": "ghl_db_blocked",
+    "canonical_status": "FAKE_ONLY_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Deterministic fake-only and isolated fixture-fragment tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "VISION:VISION-023": {
+    "proof_template": "onboarding_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Contract/policy tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "VISION:VISION-027": {
+    "proof_template": "optimizer_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Deterministic policy tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "VISION:VISION-030": {
+    "proof_template": "support_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Contract tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "VISION:VISION-031": {
+    "proof_template": "support_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Contract tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "VISION:VISION-034": {
+    "proof_template": "onboarding_db_blocked",
+    "canonical_status": "IMPLEMENTED_AND_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Contract/policy tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
+  },
+  "VISION:VISION-044": {
+    "proof_template": "ghl_db_blocked",
+    "canonical_status": "FAKE_ONLY_LOCAL_DATABASE_VERIFIED_EXTERNAL_ACCEPTANCE_BLOCKED",
+    "integrated_proof": "Deterministic fake-only and isolated fixture-fragment tests passed. The 14/14 PostgreSQL 17.6 schema portfolio proves full-chain local database integration, RLS/private shape, deterministic replay, and forward recovery; deployed-runtime and provider acceptance remain external."
   }
 }

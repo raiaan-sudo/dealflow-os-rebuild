@@ -8,12 +8,9 @@ import {
   withLeadLoopVerified,
 } from "@/lib/services/campaign-plan-document";
 import {
-  bookAppointment,
   createBookingAdminClient,
-  formatAppointmentConfirmationMessage,
-  formatSuggestedSlotMessage,
-  generateSuggestedSlots,
-  parseTimeFromMessage,
+  formatGhlBookingHandoffMessage,
+  resolveGhlBookingLink,
 } from "@/lib/services/booking-service";
 import {
   createSystemJob,
@@ -127,10 +124,9 @@ type LeadInsertContext = {
 };
 
 type LeadBookingMetadata = {
-  status?: "suggested" | "booked";
-  offered_slots?: string[];
-  appointment_id?: string;
-  scheduled_at?: string;
+  status: "ghl_link_provided" | "manual_handoff_required";
+  system_of_record: "gohighlevel";
+  booking_url: string | null;
 };
 
 type LeadMetadata = Record<string, Json | undefined> & {
@@ -777,13 +773,38 @@ async function getLeadAppointment(
   return (data as AppointmentRow | null) ?? null;
 }
 
+async function getConfiguredGhlBookingLink(
+  supabase: SupabaseClient | AdminClient,
+  lead: LeadRow,
+) {
+  if (!lead.campaign_id || !lead.organization_id || !lead.user_id) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("campaign_plans")
+    .select("plan")
+    .eq("id", lead.campaign_id)
+    .eq("organization_id", lead.organization_id)
+    .eq("user_id", lead.user_id)
+    .maybeSingle();
+
+  if (error) {
+    logWarn("GHL booking handoff configuration unavailable", {
+      leadId: lead.id,
+      campaignId: lead.campaign_id,
+      reason: error.message,
+    });
+    return null;
+  }
+
+  const campaign = data as Pick<CampaignPlanRow, "plan"> | null;
+  return resolveGhlBookingLink(campaign?.plan);
+}
+
 function getOpeningMessage(location?: string | null) {
   const place = location?.trim() ? location.trim() : "your area";
   return `Hey, saw you were looking at homes in ${place} — are you currently looking to buy or just browsing?`;
-}
-
-function getUnavailableBookingReply() {
-  return "I can help with next steps, but live booking availability is not set up yet. Want me to have someone reach out manually?";
 }
 
 function fallbackLeadResponse(
@@ -856,7 +877,7 @@ export async function generateResponse(
     {
       role: "system",
       content:
-        "You are an SMS-only real estate lead qualification assistant. Respond in valid JSON only with keys: reply, budget, timeline, intent, status, notes. Keep reply to 1-2 short sentences. Sound human and natural. Main goal: qualify budget, timeline, and intent, then move toward booking when interest is strong. Suggest times naturally, never overwhelm with more than 3 options, and confirm before booking. Never write long paragraphs. Allowed status values: engaged, qualified, unqualified, booked, lost, null.",
+        "You are an SMS-only real estate lead qualification assistant. Respond in valid JSON only with keys: reply, budget, timeline, intent, status, notes. Keep reply to 1-2 short sentences. Sound human and natural. Main goal: qualify budget, timeline, and intent, then move toward a booking handoff when interest is strong. Never suggest or confirm local appointment times and never claim an appointment is booked; DealFlow will provide a verified GoHighLevel booking link or a manual handoff. Use qualified for booking intent. Never write long paragraphs. Allowed status values: engaged, qualified, unqualified, lost, null.",
     },
     {
       role: "user",
@@ -1049,66 +1070,6 @@ export async function handleIncomingMessage(leadId: string, message: string) {
   }
 
   const conversation = (await listLeadMessages(supabase, lead.id)) ?? [];
-  const metadata = getLeadMetadata(lead);
-  const offeredSlots = metadata.booking?.status === "suggested"
-    ? metadata.booking.offered_slots ?? []
-    : [];
-
-  if ((offeredSlots || []).length > 0) {
-    const matchedSlot = parseTimeFromMessage(message, offeredSlots);
-
-    if (matchedSlot) {
-      const appointment = await bookAppointment(
-        lead.id,
-        lead.user_id,
-        lead.campaign_id,
-        matchedSlot,
-        {
-          supabase,
-          organizationId: lead.organization_id,
-          notes: "Booked via SMS auto-booking engine.",
-        },
-      );
-
-      if (!appointment) {
-        return {
-          leadId: lead.id,
-          response: "We couldn't confirm that booking yet.",
-          status: lead?.status ?? "new",
-        };
-      }
-
-      const reply = formatAppointmentConfirmationMessage(appointment.scheduled_at);
-
-      let providerMessageId: string | null = null;
-      let deliveryStatus: "sent" | "failed" = "sent";
-      let deliveryError: string | null = null;
-
-      try {
-        const smsResult = await sendLeadSMS(lead, reply, "booking_confirmation");
-        providerMessageId = smsResult.sid;
-      } catch (error) {
-        deliveryStatus = "failed";
-        deliveryError = error instanceof Error ? error.message : "Unknown error";
-        logError("Lead booking confirmation SMS failed", {
-          leadId: lead.id,
-          message: deliveryError,
-        });
-      }
-      await saveLeadMessage(supabase, lead.id, "outbound", reply, {
-        providerMessageId,
-        deliveryStatus,
-        errorMessage: deliveryError,
-      });
-
-      return {
-        leadId: lead.id,
-        response: reply,
-        status: "booked" as const,
-        slots: [] as string[],
-      };
-    }
-  }
 
   const response = await generateResponse(lead, conversation);
 
@@ -1124,17 +1085,13 @@ export async function handleIncomingMessage(leadId: string, message: string) {
   let nextMetadata: Json | undefined = undefined;
 
   if (shouldPromptBooking) {
-    const suggestedSlots = await generateSuggestedSlots(lead.user_id, supabase);
-
-    if ((suggestedSlots || []).length > 0) {
-      outboundReply = formatSuggestedSlotMessage(suggestedSlots);
-      nextMetadata = withBookingMetadata(lead, {
-        status: "suggested",
-        offered_slots: suggestedSlots.map((slot) => slot.iso),
-      });
-    } else {
-      outboundReply = getUnavailableBookingReply();
-    }
+    const bookingUrl = await getConfiguredGhlBookingLink(supabase, lead);
+    outboundReply = formatGhlBookingHandoffMessage(bookingUrl);
+    nextMetadata = withBookingMetadata(lead, {
+      status: bookingUrl ? "ghl_link_provided" : "manual_handoff_required",
+      system_of_record: "gohighlevel",
+      booking_url: bookingUrl,
+    });
   }
 
   let providerMessageId: string | null = null;
@@ -1158,8 +1115,11 @@ export async function handleIncomingMessage(leadId: string, message: string) {
     errorMessage: deliveryError,
   });
 
+  const responseStatus = response.status === "booked"
+    ? (lead.status === "booked" ? "booked" : "qualified")
+    : response.status;
   const nextStatus =
-    response.status ??
+    responseStatus ??
     ((lead?.status ?? "new") === "new" ? "engaged" : normalizeLeadStatus(lead?.status ?? "new"));
 
   const { error } = await supabase
@@ -1184,26 +1144,8 @@ export async function handleIncomingMessage(leadId: string, message: string) {
     leadId: lead.id,
     response: outboundReply,
     status: nextStatus,
-    slots: nextMetadata && typeof nextMetadata === "object" && "booking" in nextMetadata
-      ? ((suggestedSlotsFromMetadata(nextMetadata) || []).slice(0, 3))
-      : [],
+    slots: [] as string[],
   };
-}
-
-function suggestedSlotsFromMetadata(metadata: Json | undefined) {
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
-    return [];
-  }
-
-  const booking = (metadata as Record<string, Json | undefined>).booking;
-  if (!booking || typeof booking !== "object" || Array.isArray(booking)) {
-    return [];
-  }
-
-  const offeredSlots = (booking as Record<string, Json | undefined>).offered_slots;
-  return Array.isArray(offeredSlots)
-    ? offeredSlots.filter((slot): slot is string => typeof slot === "string")
-    : [];
 }
 
 type InboundSmsReceiptClaim = {

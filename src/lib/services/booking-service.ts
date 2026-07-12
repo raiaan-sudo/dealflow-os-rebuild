@@ -7,13 +7,6 @@ import type { Database } from "@/lib/supabase/types";
 
 type BookingClient = SupabaseClient<Database>;
 type AppointmentRow = Database["public"]["Tables"]["appointments"]["Row"];
-type AvailabilitySlotRow = Database["public"]["Tables"]["availability_slots"]["Row"];
-type LeadRow = Database["public"]["Tables"]["leads"]["Row"];
-
-export type AvailabilityDateRange = {
-  start: Date;
-  end: Date;
-};
 
 export type SuggestedSlot = {
   iso: string;
@@ -39,50 +32,29 @@ type BookingOptions = {
   notes?: string | null;
 };
 
-const SLOT_DURATION_MINUTES = 30;
-const SLOT_STEP_MINUTES = 30;
+export const BOOKING_EXTERNAL_DISPOSITION = {
+  systemOfRecord: "gohighlevel",
+  localRelations: {
+    "public.availability_slots": "RETIRED_DO_NOT_CREATE",
+    "public.booked_slots": "RETIRED_DO_NOT_CREATE",
+    "public.appointments.write": "EXTERNAL_GHL_SOURCE_OF_TRUTH",
+  },
+  runtimeFallback: "FAIL_CLOSED_TO_CONFIGURED_GHL_LINK_OR_MANUAL_HANDOFF",
+} as const;
+
+const BOOKING_LINK_KEYS = [
+  "ghl_booking_url",
+  "ghlBookingUrl",
+  "booking_url",
+  "bookingUrl",
+  "calendar_url",
+  "calendarUrl",
+  "appointment_url",
+  "appointmentUrl",
+] as const;
 
 function startOfDay(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
-}
-
-function endOfDay(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
-}
-
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function addMinutes(date: Date, minutes: number) {
-  return new Date(date.getTime() + minutes * 60_000);
-}
-
-function parseTimeOfDay(value: string) {
-  const [hourString, minuteString = "0"] = value.split(":");
-  const hour = Number(hourString);
-  const minute = Number(minuteString);
-
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
-    throw new ApiError(400, "Invalid availability time format.", "invalid_time");
-  }
-
-  return { hour, minute };
-}
-
-function combineDateAndTime(date: Date, time: string) {
-  const { hour, minute } = parseTimeOfDay(time);
-  return new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate(),
-    hour,
-    minute,
-    0,
-    0,
-  );
 }
 
 function toTimeLabel(date: Date) {
@@ -104,6 +76,70 @@ function getSlotLabel(date: Date) {
   return `${toDayLabel(date)} at ${toTimeLabel(date)}`;
 }
 
+function asRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function asSafeBookingUrl(value: unknown) {
+  if (typeof value !== "string" || !value.trim() || value.length > 2_048) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "https:" || url.username || url.password) {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+export function resolveGhlBookingLink(value: unknown) {
+  const root = asRecord(value);
+  if (!root) {
+    return null;
+  }
+
+  const integrations = asRecord(root.integrations);
+  const containers = [
+    root,
+    asRecord(root.plan),
+    asRecord(root.funnel),
+    asRecord(root.strategy),
+    asRecord(root.ghl),
+    asRecord(root.gohighlevel),
+    asRecord(integrations?.ghl),
+    asRecord(integrations?.gohighlevel),
+  ];
+
+  for (const container of containers) {
+    if (!container) {
+      continue;
+    }
+    for (const key of BOOKING_LINK_KEYS) {
+      const candidate = asSafeBookingUrl(container[key]);
+      if (candidate) {
+        return candidate;
+      }
+    }
+  }
+
+  return null;
+}
+
+export function formatGhlBookingHandoffMessage(bookingUrl: string | null) {
+  const safeBookingUrl = asSafeBookingUrl(bookingUrl);
+  if (!safeBookingUrl) {
+    return "I can help with next steps, but a verified booking link is not available yet. Want me to have someone reach out manually?";
+  }
+
+  return `You can choose a time on the team's booking page here: ${safeBookingUrl} If none of those times work, reply here and the team will follow up manually.`;
+}
+
 async function requireBookingContext(): Promise<BookingContext> {
   const [context, supabase] = await Promise.all([getAppContext(), createClient()]);
 
@@ -118,294 +154,55 @@ async function requireBookingContext(): Promise<BookingContext> {
   };
 }
 
-async function ensureAvailabilitySettings(
-  supabase: BookingClient,
-  userId: string,
-) {
-  const { data, error } = await supabase
-    .from("availability_slots")
-    .select("*")
-    .eq("user_id", userId)
-    .order("day_of_week", { ascending: true })
-    .order("start_time", { ascending: true });
-
-  if (error) {
-    throw error;
-  }
-
-  if ((data ?? []).length > 0) {
-    return (data ?? []) as AvailabilitySlotRow[];
-  }
-  return [];
-}
-
-async function listBookedTimes(
-  supabase: BookingClient,
-  userId: string,
-  range: AvailabilityDateRange,
-) {
-  const { data, error } = await supabase
-    .from("appointments")
-    .select("scheduled_at")
-    .eq("user_id", userId)
-    .eq("status", "scheduled")
-    .gte("scheduled_at", range.start.toISOString())
-    .lte("scheduled_at", range.end.toISOString());
-
-  if (error) {
-    throw error;
-  }
-
-  return new Set(
-    ((data ?? []) as Array<Pick<AppointmentRow, "scheduled_at">>).map((item) => item.scheduled_at),
+function localBookingRetiredError() {
+  return new ApiError(
+    410,
+    "Local appointment scheduling is retired. Use the configured GoHighLevel booking link or a manual handoff.",
+    "local_booking_retired",
   );
 }
 
-function buildSlotsForDate(
-  date: Date,
-  availability: AvailabilitySlotRow[],
-  bookedIsoTimestamps: Set<string>,
-) {
-  const slots: Date[] = [];
-  const windows = availability.filter((slot) => slot.day_of_week === date.getDay());
-
-  for (const window of windows) {
-    const start = combineDateAndTime(date, window.start_time);
-    const end = combineDateAndTime(date, window.end_time);
-
-    for (
-      let cursor = new Date(start);
-      cursor.getTime() + SLOT_DURATION_MINUTES * 60_000 <= end.getTime();
-      cursor = addMinutes(cursor, SLOT_STEP_MINUTES)
-    ) {
-      const iso = cursor.toISOString();
-      if (!bookedIsoTimestamps.has(iso) && cursor.getTime() > Date.now() + 5 * 60_000) {
-        slots.push(new Date(cursor));
-      }
-    }
-  }
-
-  return slots;
+export async function getAvailabilitySettings(_userId?: string): Promise<never> {
+  throw localBookingRetiredError();
 }
 
-async function getLeadById(supabase: BookingClient, leadId: string) {
-  const { data, error } = await supabase.from("leads").select("*").eq("id", leadId).maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return (data as LeadRow | null) ?? null;
-}
-
-export async function getAvailabilitySettings(userId?: string) {
-  const context = await requireBookingContext();
-  const targetUserId = userId ?? context.userId;
-  return ensureAvailabilitySettings(context.supabase, targetUserId);
-}
-
-export async function saveAvailabilitySettings(slots: AvailabilitySlotInput[]) {
-  const { supabase, userId } = await requireBookingContext();
-
-  const sanitized = slots
-    .filter((slot) => slot.start_time && slot.end_time)
-    .map((slot) => ({
-      user_id: userId,
-      day_of_week: slot.day_of_week,
-      start_time: slot.start_time.length === 5 ? `${slot.start_time}:00` : slot.start_time,
-      end_time: slot.end_time.length === 5 ? `${slot.end_time}:00` : slot.end_time,
-    }));
-
-  const { error: deleteError } = await supabase
-    .from("availability_slots")
-    .delete()
-    .eq("user_id", userId);
-
-  if (deleteError) {
-    throw deleteError;
-  }
-
-  if (sanitized.length === 0) {
-    return [];
-  }
-
-  const { data, error } = await supabase
-    .from("availability_slots")
-    .insert(sanitized as never)
-    .select("*")
-    .order("day_of_week", { ascending: true })
-    .order("start_time", { ascending: true });
-
-  if (error) {
-    throw error;
-  }
-
-  return (data ?? []) as AvailabilitySlotRow[];
+export async function saveAvailabilitySettings(
+  _slots: AvailabilitySlotInput[],
+): Promise<never> {
+  throw localBookingRetiredError();
 }
 
 export async function getAvailableSlots(
-  userId: string,
-  dateRange?: Partial<{ start: string | Date; end: string | Date }>,
-  client?: BookingClient,
-) {
-  const supabase = client ?? (await createClient());
-
-  if (!supabase) {
-    throw new ApiError(503, "Supabase is not configured.", "config_missing");
-  }
-
-  const start = startOfDay(
-    dateRange?.start ? new Date(dateRange.start) : new Date(),
-  );
-  const end = endOfDay(
-    dateRange?.end ? new Date(dateRange.end) : addDays(start, 6),
-  );
-
-  const availability = await ensureAvailabilitySettings(supabase, userId);
-  const booked = await listBookedTimes(supabase, userId, { start, end });
-
-  const slots: SuggestedSlot[] = [];
-
-  for (let cursor = new Date(start); cursor <= end; cursor = addDays(cursor, 1)) {
-    const daySlots = buildSlotsForDate(cursor, availability, booked);
-    for (const slot of daySlots) {
-      slots.push({
-        iso: slot.toISOString(),
-        label: toTimeLabel(slot),
-        dayLabel: toDayLabel(slot),
-      });
-    }
-  }
-
-  return slots;
+  _userId: string,
+  _dateRange?: Partial<{ start: string | Date; end: string | Date }>,
+  _client?: BookingClient,
+): Promise<never> {
+  throw localBookingRetiredError();
 }
 
 export async function generateSuggestedSlots(
-  userId: string,
-  client?: BookingClient,
-) {
-  const slots = await getAvailableSlots(userId, undefined, client);
-  return slots.slice(0, 3);
+  _userId: string,
+  _client?: BookingClient,
+): Promise<never> {
+  throw localBookingRetiredError();
 }
 
 export async function checkSlotAvailability(
-  userId: string,
-  datetime: string | Date,
-  client?: BookingClient,
-) {
-  const target = new Date(datetime);
-  const windowStart = addMinutes(target, -1);
-  const windowEnd = addMinutes(target, 1);
-  const supabase = client ?? (await createClient());
-
-  if (!supabase) {
-    throw new ApiError(503, "Supabase is not configured.", "config_missing");
-  }
-
-  const availability = await ensureAvailabilitySettings(supabase, userId);
-  const daySlots = buildSlotsForDate(target, availability, new Set());
-  const matchingConfiguredSlot = daySlots.some(
-    (slot) => slot.toISOString() === target.toISOString(),
-  );
-
-  if (!matchingConfiguredSlot) {
-    return false;
-  }
-
-  const { data, error } = await supabase
-    .from("appointments")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("status", "scheduled")
-    .gte("scheduled_at", windowStart.toISOString())
-    .lte("scheduled_at", windowEnd.toISOString())
-    .limit(1);
-
-  if (error) {
-    throw error;
-  }
-
-  return (data ?? []).length === 0;
+  _userId: string,
+  _datetime: string | Date,
+  _client?: BookingClient,
+): Promise<never> {
+  throw localBookingRetiredError();
 }
 
 export async function bookAppointment(
-  leadId: string,
-  userId: string,
-  campaignId: string | null,
-  datetime: string | Date,
-  options: BookingOptions = {},
-): Promise<AppointmentRow | null> {
-  const supabase = options.supabase ?? (await createClient());
-
-  if (!supabase) {
-    throw new ApiError(503, "Supabase is not configured.", "config_missing");
-  }
-
-  const lead = await getLeadById(supabase, leadId);
-
-  if (!lead) {
-    return null;
-  }
-
-  const scheduledAt = new Date(datetime);
-  const isAvailable = await checkSlotAvailability(userId, scheduledAt, supabase);
-
-  if (!isAvailable) {
-    throw new ApiError(409, "That time is no longer available.", "slot_unavailable");
-  }
-
-  const organizationId = options.organizationId ?? lead.organization_id;
-
-  const { data: appointmentRaw, error: appointmentError } = await supabase
-    .from("appointments")
-    .insert({
-      organization_id: organizationId,
-      user_id: userId,
-      campaign_id: campaignId ?? lead.campaign_id,
-      lead_id: leadId,
-      scheduled_at: scheduledAt.toISOString(),
-      status: "scheduled",
-      appointment_type: "sms_consultation",
-      notes: options.notes ?? "Booked by SMS auto-booking engine.",
-    } as never)
-    .select("*")
-    .single();
-
-  if (appointmentError || !appointmentRaw) {
-    throw appointmentError ?? new ApiError(500, "Appointment could not be created.", "appointment_create_failed");
-  }
-
-  const appointment = appointmentRaw as AppointmentRow;
-
-  const { error: slotError } = await supabase.from("booked_slots").insert({
-    appointment_id: appointment.id,
-    scheduled_at: appointment.scheduled_at,
-  } as never);
-
-  if (slotError) {
-    throw slotError;
-  }
-
-  const { error: leadError } = await supabase
-    .from("leads")
-    .update({
-      status: "booked",
-      metadata: {
-        ...((lead.metadata as Record<string, unknown> | null) ?? {}),
-        booking: {
-          status: "booked",
-          appointment_id: appointment.id,
-          scheduled_at: appointment.scheduled_at,
-        },
-      },
-    } as never)
-    .eq("id", leadId);
-
-  if (leadError) {
-    throw leadError;
-  }
-
-  return appointment;
+  _leadId: string,
+  _userId: string,
+  _campaignId: string | null,
+  _datetime: string | Date,
+  _options: BookingOptions = {},
+): Promise<never> {
+  throw localBookingRetiredError();
 }
 
 export async function listAppointmentsForCurrentUser(filters: {

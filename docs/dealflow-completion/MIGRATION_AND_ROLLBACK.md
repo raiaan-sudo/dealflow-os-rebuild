@@ -1,28 +1,41 @@
 # Migration, drain, and forward-recovery contract
 
-Status: `NO_GO / LOCAL CONTRACT AUTHORED / FULL CHAIN AND RECOVERY NOT EXECUTED`
+Status: `NO_GO / 14 OF 14 LOCAL SCHEMA GATES PASS / EXTERNAL RELEASE AUTHORITY ABSENT`
 
 No shared/production database change, deployment, provider action, flag change,
 or rollback is authorized by this document.
 
-## Confirmed blocker
+## Superseded historical blocker and current proof
 
-Fresh disposable Supabase replay stops at the first tracked baseline migration:
+The original disposable replay stopped at the first tracked baseline migration:
 
 - file: `20260426110000_add_campaign_plan_critical_fields.sql`
 - statement: `0`
 - SQLSTATE: `42P01`
 - error: `public.campaign_plans does not exist`
 
-Evidence is retained in
-`docs/dealflow-completion/evidence/migration/fresh-replay-result.json`. A passing
-candidate migration fragment cannot replace a passing repository-wide chain.
-Fresh, prior-shape, idempotent, RLS, privilege, mixed-version, and recovery proof
-therefore remain invalid.
+That raw evidence remains unchanged at
+`docs/dealflow-completion/evidence/migration/fresh-replay-result.json` as
+superseded failing-before evidence. It is not current candidate status.
 
-## Candidate migration inventory
+The recovered authority now drives an 80-migration portfolio and all 14 local
+schema gates pass on PostgreSQL 17.6. The proof covers fresh replay,
+authoritative-current adoption, May-2 upgrade, legacy and partial-collision
+rejection before mutation, idempotent replay, safe and unsafe sentinel paths,
+integrated RLS/private-schema shape, mixed-version safety, two deterministic
+final databases, zero-residue cleanup, and forward recovery. The local schema
+blocker is cleared. Staging, production, provider acceptance, signed drain, and
+exact-environment/release authority remain unproven and unauthorized.
 
-Ordered candidate files currently add or harden:
+## Migration portfolio and candidate inventory
+
+The full local portfolio contains 80 migrations: 51 sealed tracked migrations
+plus 29 explicitly labeled forward-reconstruction files. The generated lineage
+never claims that unavailable historical SQL bodies were recovered. Four
+tenant-specific data-only identities are preserved as tenant-neutral no-ops
+rather than inventing customer, credential, partner, provider, or branding data.
+
+The application-hardening subset below currently adds or hardens:
 
 1. `20260710170000_create_ghl_tenant_provisioning_foundation.sql`
 2. `20260710180000_activation_onboarding_contract.sql`
@@ -55,15 +68,15 @@ exact committed target. This narrative list is not a digest or release proof.
    booleans/aggregate counts; it performs no repair, remap, delete, or first-match
    coercion.
 3. Stop on any missing foundational relation or nonzero blocker count.
-4. Apply the complete chain only to a separately authorized disposable/staging
-   target.
+4. The complete local disposable proof has passed. Apply the complete chain to
+   staging only when that isolated target is separately authorized.
 5. Run
    `docs/dealflow-completion/evidence/migration/read-only-post-migration-verification.sql`
    after the chain completes. It must cover candidate relations, constraints,
    RLS/force-RLS, grants/revocations, v2-only RPCs, direct-DML negatives,
    migration blockers, immutable identity, and terminal/replay invariants.
-6. Repeat against a representative authorized prior schema, then replay
-   idempotently.
+6. Local representative prior-schema and idempotent replay have passed. Repeat
+   them against the authorized exact staging target before release consideration.
 
 No preflight script may reference a relation that only the candidate creates.
 
@@ -120,5 +133,9 @@ lead, support, deletion, and provider evidence. Do not:
 - erase receipts, claims, consent, or audit history; or
 - switch to an older checkout merely because it predates the failure.
 
-No rollback/recovery drill has been executed. That absence independently keeps
-the verdict at `NO_GO`.
+The local injected-failure forward-recovery drill passed with zero partial
+mutation and successful forward completion. Destructive down rollback remains
+intentionally unattempted because the historical baseline is not claimed safe
+after the contract boundary. Release remains `NO_GO` because staging,
+production, signed drain/environment authority, and live-provider acceptance
+are still absent.

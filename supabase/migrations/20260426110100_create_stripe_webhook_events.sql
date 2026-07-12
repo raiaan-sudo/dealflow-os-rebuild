@@ -9,8 +9,8 @@ create table if not exists public.stripe_webhook_events (
   processed_at timestamptz null,
   error_code text null,
   error_message text null,
-  payload jsonb null,
   created_at timestamptz not null default timezone('utc', now()),
+  payload jsonb null,
   updated_at timestamptz not null default timezone('utc', now())
 );
 
