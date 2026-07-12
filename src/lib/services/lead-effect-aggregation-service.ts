@@ -1,6 +1,10 @@
 import type { Json } from "@/lib/supabase/types";
+import {
+  evaluateGhlSandboxGate,
+  ghlSandboxGateFromEnvironment,
+} from "@/lib/integrations/gohighlevel";
 
-export type LeadEffectKey = "agent_notification" | "meta_conversion";
+export type LeadEffectKey = "agent_notification" | "meta_conversion" | "ghl_delivery";
 export type LeadEffectStatus = "succeeded" | "failed";
 
 export type LeadEffectOutcome = {
@@ -62,6 +66,10 @@ export function resolveLeadEffectPolicy(
     hasValidMetaCapiConsent(consent, env)
   ) {
     enabledEffects.push("meta_conversion");
+  }
+
+  if (evaluateGhlSandboxGate(ghlSandboxGateFromEnvironment(env)).allowed) {
+    enabledEffects.push("ghl_delivery");
   }
 
   return {
@@ -181,6 +189,21 @@ export function evaluateMetaConversionResult(result: unknown): EffectEvaluation 
       reason === "meta_provider_timeout" ||
       reason === "meta_rate_limited",
     reason,
+  };
+}
+
+export function evaluateGhlDeliveryResult(result: unknown): EffectEvaluation {
+  const record = asRecord(result);
+  if (record.queued === true) {
+    return { succeeded: true, retryable: false, reason: null };
+  }
+  const reason = asReason(record.reason, "ghl_delivery_enqueue_failed");
+  return {
+    succeeded: false,
+    retryable: reason === "ghl_delivery_enqueue_retryable",
+    reason,
+    operatorRequired: reason === "ghl_sandbox_mapping_not_ready"
+      || reason === "ghl_mapping_authority_conflict",
   };
 }
 
@@ -373,6 +396,7 @@ export async function runDurableLeadEffects(params: {
   requiredEffects?: LeadEffectKey[];
   notifyAgent: () => Promise<unknown>;
   sendMetaConversion: () => Promise<unknown>;
+  enqueueGhlDelivery: () => Promise<unknown>;
 }) {
   const enabledEffects = new Set<LeadEffectKey>(params.enabledEffects ?? []);
   const requiredEffects = new Set<LeadEffectKey>(params.requiredEffects ?? []);
@@ -410,8 +434,24 @@ export async function runDurableLeadEffects(params: {
         : async () => ({ sent: false, skipped: true, reason: "effect_disabled_by_policy" }),
       evaluate: evaluateMetaConversionResult,
     }),
+    executeEffect({
+      client: params.client,
+      jobId: params.jobId,
+      organizationId: params.organizationId,
+      leadId: params.leadId,
+      correlationId: params.requestId,
+      workerId: params.workerId,
+      leaseToken: params.leaseToken,
+      leaseGeneration: params.leaseGeneration,
+      key: "ghl_delivery",
+      required: requiredEffects.has("ghl_delivery"),
+      invoke: enabledEffects.has("ghl_delivery")
+        ? params.enqueueGhlDelivery
+        : async () => ({ queued: false, skipped: true, reason: "effect_disabled_by_policy" }),
+      evaluate: evaluateGhlDeliveryResult,
+    }),
   ]);
-  const keys: LeadEffectKey[] = ["agent_notification", "meta_conversion"];
+  const keys: LeadEffectKey[] = ["agent_notification", "meta_conversion", "ghl_delivery"];
   const outcomes = settledOutcomes.map((settled, index): LeadEffectOutcome => {
     if (settled.status === "fulfilled") {
       return settled.value;

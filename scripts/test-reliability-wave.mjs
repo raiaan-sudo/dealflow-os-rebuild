@@ -200,6 +200,15 @@ await heartbeat.stop();
 
 const leadEffects = loadTypeScriptModule(
   "src/lib/services/lead-effect-aggregation-service.ts",
+  (specifier) => {
+    if (specifier === "@/lib/integrations/gohighlevel") {
+      return {
+        evaluateGhlSandboxGate: () => ({ allowed: false }),
+        ghlSandboxGateFromEnvironment: () => ({}),
+      };
+    }
+    throw new Error(`Unexpected runtime import: ${specifier}`);
+  },
 );
 assert.equal(
   JSON.stringify(leadEffects.resolveLeadEffectPolicy({})),

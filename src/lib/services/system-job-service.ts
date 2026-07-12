@@ -965,6 +965,8 @@ export async function processSystemJob(jobId: string, lease: SystemJobLease) {
       );
       const { safeNotifyAssignedAgentOfNewLead } = await import("@/lib/services/internal-lead-notification-service");
       const { safeSendMetaLeadConversion } = await import("@/lib/integrations/meta/conversions");
+      const { ghlSandboxGateFromEnvironment } = await import("@/lib/integrations/gohighlevel");
+      const { enqueueGhlSandboxLeadDelivery } = await import("@/lib/services/ghl-sandbox-enqueue-service");
       const effectSummary = await runDurableLeadEffects({
         client: supabase as any,
         jobId: processingJob.id,
@@ -984,6 +986,12 @@ export async function processSystemJob(jobId: string, lease: SystemJobLease) {
                 advertisingConsent: payload.advertisingConsent ?? null,
               })
             : Promise.resolve({ sent: false, reason: "meta_capi_consent_missing" } as const),
+        enqueueGhlDelivery: () => enqueueGhlSandboxLeadDelivery({
+          client: supabase as any,
+          gate: ghlSandboxGateFromEnvironment(process.env),
+          organizationId: payload.lead.organization_id,
+          leadId: payload.lead.id,
+        }),
       });
 
       logOperationalEvent("lead_capture.side_effects_processed", {

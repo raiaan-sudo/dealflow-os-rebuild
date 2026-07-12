@@ -81,10 +81,13 @@ function mapManifest(row: JsonRecord): GhlSnapshotManifest {
         : typeof record.minimum_count === "number"
           ? record.minimum_count
           : null;
+      const providerObjectId = asString(record.providerObjectId)
+        || asString(record.provider_object_id);
       return {
         kind: asString(record.kind) as GhlSnapshotManifest["requiredObjects"][number]["kind"],
         key: asString(record.key),
         ...(minimumCount !== null ? { minimumCount } : {}),
+        ...(providerObjectId ? { providerObjectId } : {}),
       };
     })
     : [];
@@ -95,6 +98,9 @@ function mapManifest(row: JsonRecord): GhlSnapshotManifest {
     snapshotKey: asString(row.snapshot_key),
     snapshotVersion: asString(row.snapshot_version),
     providerSnapshotId: asString(row.provider_snapshot_id),
+    installationMode: asString(row.installation_mode) === "preinstalled"
+      ? "preinstalled"
+      : "provider_api",
     requiredObjects,
     status: asString(row.status) as GhlSnapshotManifest["status"],
   };
@@ -193,6 +199,7 @@ function manifestMatchesRequest(
     && stored.snapshotKey === requested.snapshotKey
     && stored.snapshotVersion === requested.snapshotVersion
     && stored.providerSnapshotId === requested.providerSnapshotId
+    && stored.installationMode === (requested.installationMode ?? "provider_api")
     && stored.status === "approved"
     && requested.status === "approved"
     && canonicalJson(stored.requiredObjects) === canonicalJson(requested.requiredObjects);

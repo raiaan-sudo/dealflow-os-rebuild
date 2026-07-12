@@ -1,5 +1,6 @@
 import {
   assertGhlFakeWritesAllowed,
+  assertGhlSandboxAllowed,
   assertGhlReplayDue,
   GHL_CAPABILITY_MATRIX,
   GhlProvisioningInvariantError,
@@ -17,6 +18,7 @@ import type {
   GhlProvisioningRun,
   GhlRetryResumeState,
   GhlWriteGateInput,
+  GhlSandboxGateInput,
 } from "../integrations/gohighlevel";
 
 export type GhlProvisioningDependencies = {
@@ -28,6 +30,7 @@ export type GhlProvisioningDependencies = {
   leaseMs?: number;
   isolatedDatabase?: boolean;
   databaseUrl?: string;
+  sandboxGate?: GhlSandboxGateInput;
 };
 
 function isLoopbackDatabaseUrl(value: string | undefined) {
@@ -952,31 +955,10 @@ async function verifyRequiredObjects(
   }, dependencies);
 }
 
-export async function executeNextGhlProvisioningStep(
-  runId: string,
+async function executeProvisioningState(
+  run: GhlProvisioningRun,
   dependencies: GhlProvisioningDependencies,
 ) {
-  assertGhlFakeWritesAllowed({
-    enabled: dependencies.writeGate?.enabled,
-    adapterKind: dependencies.provider.kind,
-    networkAccess: dependencies.provider.networkAccess,
-  });
-  const run = await dependencies.repository.getRun(runId);
-  if (!run) {
-    throw new GhlProvisioningInvariantError("run_not_found", "GHL provisioning run was not found.");
-  }
-  if (
-    run.environment !== "test"
-    || process.env.NODE_ENV === "production"
-    || dependencies.isolatedDatabase !== true
-    || !isLoopbackDatabaseUrl(dependencies.databaseUrl)
-  ) {
-    throw new GhlProvisioningInvariantError(
-      "fake_provisioning_environment_forbidden",
-      "Fake GHL provisioning requires a test-environment run plus an explicit loopback isolated-database attestation outside production.",
-    );
-  }
-
   switch (run.state) {
     case "requested": {
       await dependencies.repository.ensureOutbox({
@@ -1024,6 +1006,64 @@ export async function executeNextGhlProvisioningStep(
     case "canceled":
       return run;
   }
+}
+
+export async function executeNextGhlProvisioningStep(
+  runId: string,
+  dependencies: GhlProvisioningDependencies,
+) {
+  assertGhlFakeWritesAllowed({
+    enabled: dependencies.writeGate?.enabled,
+    adapterKind: dependencies.provider.kind,
+    networkAccess: dependencies.provider.networkAccess,
+  });
+  const run = await dependencies.repository.getRun(runId);
+  if (!run) {
+    throw new GhlProvisioningInvariantError("run_not_found", "GHL provisioning run was not found.");
+  }
+  if (
+    run.environment !== "test"
+    || process.env.NODE_ENV === "production"
+    || dependencies.isolatedDatabase !== true
+    || !isLoopbackDatabaseUrl(dependencies.databaseUrl)
+  ) {
+    throw new GhlProvisioningInvariantError(
+      "fake_provisioning_environment_forbidden",
+      "Fake GHL provisioning requires a test-environment run plus an explicit loopback isolated-database attestation outside production.",
+    );
+  }
+
+  return executeProvisioningState(run, dependencies);
+}
+
+export async function executeNextGhlSandboxProvisioningStep(
+  runId: string,
+  dependencies: GhlProvisioningDependencies,
+) {
+  if (!dependencies.sandboxGate) {
+    throw new GhlProvisioningInvariantError(
+      "ghl_sandbox_gate_missing",
+      "Real GHL sandbox provisioning requires the complete isolated sandbox gate.",
+    );
+  }
+  assertGhlSandboxAllowed(dependencies.sandboxGate);
+  if (dependencies.provider.kind !== "sandbox" || dependencies.provider.networkAccess !== "https") {
+    throw new GhlProvisioningInvariantError(
+      "ghl_sandbox_adapter_required",
+      "Real GHL sandbox provisioning requires the HTTPS sandbox adapter.",
+    );
+  }
+  const run = await dependencies.repository.getRun(runId);
+  if (!run) {
+    throw new GhlProvisioningInvariantError("run_not_found", "GHL provisioning run was not found.");
+  }
+  if (run.environment !== "sandbox") {
+    throw new GhlProvisioningInvariantError(
+      "ghl_sandbox_run_environment_required",
+      "Real GHL sandbox provisioning accepts only sandbox-environment runs.",
+    );
+  }
+  return executeProvisioningState(run, dependencies);
 }
 
 export async function requestGhlProvisioningReplay(

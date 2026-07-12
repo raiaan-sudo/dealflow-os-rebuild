@@ -1,21 +1,22 @@
 export type GhlCapabilityDisposition =
   | "CONTRACT_MODELED"
   | "FAKE_ONLY"
+  | "SANDBOX_IMPLEMENTED"
   | "BLOCKED_EXTERNAL";
 
 export const GHL_CAPABILITY_MATRIX = {
   locationProvisioning: {
-    disposition: "FAKE_ONLY" as GhlCapabilityDisposition,
+    disposition: "SANDBOX_IMPLEMENTED" as GhlCapabilityDisposition,
     providerPath: "POST /locations/",
-    note: "Official contract identified; no live adapter or provider authorization is included.",
+    note: "Implemented behind an exact isolated-sandbox gate; Agency Pro sandbox capability is still required.",
   },
   snapshotInstallation: {
-    disposition: "FAKE_ONLY" as GhlCapabilityDisposition,
-    providerPath: "Snapshots API",
-    note: "Snapshot push and status contracts are modeled behind a fake adapter only.",
+    disposition: "BLOCKED_EXTERNAL" as GhlCapabilityDisposition,
+    providerPath: "GET /snapshots/snapshot-status/:snapshotId/location/:locationId",
+    note: "Status verification is implemented, but GHL exposes no sanctioned snapshot-push API. The snapshot must be preinstalled.",
   },
   requiredObjectVerification: {
-    disposition: "CONTRACT_MODELED" as GhlCapabilityDisposition,
+    disposition: "SANDBOX_IMPLEMENTED" as GhlCapabilityDisposition,
     providerPath: "Provider object reads",
     note: "READY requires an approved manifest and exact required-object verification.",
   },
@@ -23,6 +24,11 @@ export const GHL_CAPABILITY_MATRIX = {
     disposition: "BLOCKED_EXTERNAL" as GhlCapabilityDisposition,
     providerPath: null,
     note: "No sanctioned direct funnel/page mutation contract was proven. Operator action is mandatory.",
+  },
+  leadDelivery: {
+    disposition: "SANDBOX_IMPLEMENTED" as GhlCapabilityDisposition,
+    providerPath: "Contacts, Opportunities, Tags, Workflows, and Calendar APIs",
+    note: "Implemented only for an isolated GHL sandbox with durable outbox receipts and production fail-closed gates.",
   },
 } as const;
 

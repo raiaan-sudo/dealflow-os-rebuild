@@ -52,6 +52,7 @@ export type GhlRequiredObject = {
   kind: "pipeline" | "stage" | "workflow" | "tag" | "calendar" | "custom_field";
   key: string;
   minimumCount?: number;
+  providerObjectId?: string;
 };
 
 export type GhlSnapshotManifest = {
@@ -60,6 +61,7 @@ export type GhlSnapshotManifest = {
   snapshotKey: string;
   snapshotVersion: string;
   providerSnapshotId: string;
+  installationMode?: "preinstalled" | "provider_api";
   requiredObjects: GhlRequiredObject[];
   status: "draft" | "approved" | "retired";
 };
@@ -263,8 +265,8 @@ export type GhlRequiredObjectsResult =
     };
 
 export interface GhlProviderAdapter {
-  readonly kind: "fake";
-  readonly networkAccess: "none";
+  readonly kind: "fake" | "sandbox";
+  readonly networkAccess: "none" | "https";
   createLocation(input: {
     idempotencyKey: string;
     installationId: string;
@@ -290,6 +292,76 @@ export interface GhlProviderAdapter {
     providerLocationId: string;
     manifest: GhlSnapshotManifest;
   }): Promise<GhlRequiredObjectsResult>;
+}
+
+export type GhlLeadIdentity = {
+  id: string;
+  organizationId: string;
+  firstName: string | null;
+  lastName: string | null;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  source: string | null;
+};
+
+export type GhlLeadProviderResult =
+  | {
+      outcome: "succeeded";
+      providerRequestId: string | null;
+      providerReference: string;
+      httpStatus: number;
+      responseFingerprint: string;
+      providerMutationAttempted?: boolean;
+    }
+  | {
+      outcome: "uncertain" | "retryable_failure" | "operator_action_required";
+      errorCode: string;
+      safeMessage: string;
+      providerRequestId: string | null;
+      httpStatus: number | null;
+      responseFingerprint: string | null;
+      retryAfterMs?: number;
+      providerMutationAttempted?: boolean;
+    };
+
+export interface GhlLeadProviderAdapter {
+  readonly kind: "sandbox";
+  readonly networkAccess: "https";
+  upsertContact(input: {
+    idempotencyKey: string;
+    providerLocationId: string;
+    lead: GhlLeadIdentity;
+  }): Promise<GhlLeadProviderResult>;
+  upsertOpportunity(input: {
+    idempotencyKey: string;
+    providerLocationId: string;
+    providerContactId: string;
+    pipelineId: string;
+    stageId: string;
+    opportunityName: string;
+  }): Promise<GhlLeadProviderResult>;
+  applyTag(input: {
+    idempotencyKey: string;
+    providerLocationId: string;
+    providerContactId: string;
+    tag: string;
+  }): Promise<GhlLeadProviderResult>;
+  enrollWorkflow(input: {
+    idempotencyKey: string;
+    providerLocationId: string;
+    providerContactId: string;
+    workflowId: string;
+  }): Promise<GhlLeadProviderResult>;
+  syncAppointment(input: {
+    idempotencyKey: string;
+    providerLocationId: string;
+    providerContactId: string;
+    calendarId: string;
+    startTime: string;
+    endTime: string;
+    title: string;
+  }): Promise<GhlLeadProviderResult>;
 }
 
 export interface GhlProvisioningRepository {
