@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 
-type BuilderSearchParams =
-  | Promise<Record<string, string | string[] | undefined>>
-  | Record<string, string | string[] | undefined>;
+type BuilderSearchParams = Promise<
+  Record<string, string | string[] | undefined>
+>;
 
 export default async function BuilderPage({
   searchParams,
