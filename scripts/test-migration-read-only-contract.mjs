@@ -61,8 +61,11 @@ assert.match(postMigration, /ghl_receipt_direct_insert_denied/);
 
 assert.match(
   migrationContract,
-  /Status: `NO_GO \/ LOCAL CONTRACT AUTHORED \/ FULL CHAIN AND RECOVERY NOT EXECUTED`/,
+  /Status: `NO_GO \/ 14 OF 14 LOCAL SCHEMA GATES PASS \/ EXTERNAL RELEASE AUTHORITY ABSENT`/,
 );
+assert.match(migrationContract, /Superseded historical blocker and current proof/);
+assert.match(migrationContract, /superseded failing-before evidence\. It is not current candidate status/);
+assert.match(migrationContract, /The local schema\s+blocker is cleared/);
 assert.match(
   migrationContract,
   /Mandatory two-phase old-worker and provider-protocol drain/,
