@@ -1,4 +1,5 @@
 import { getVideoGenerationEnv } from "@/lib/env";
+import { resolveProviderEndpoint } from "@/lib/integrations/provider-endpoint-policy";
 
 type HeyGenCreateRequest = {
   script: string;
@@ -131,7 +132,10 @@ function getHeyGenConfig() {
 
   return {
     apiKey: env.apiKey,
-    baseUrl: env.baseUrl.replace(/\/$/, ""),
+    baseUrl: resolveProviderEndpoint({
+      provider: "heygen",
+      baseUrl: env.baseUrl,
+    }).baseUrl,
     avatarId: env.avatarId,
     voiceId: env.voiceId,
   };

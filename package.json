@@ -58,6 +58,7 @@
     "test:support-outbox-disposable-db": "node ./scripts/test-support-outbox-disposable-db.mjs",
     "test:migration-read-only-contract": "node ./scripts/test-migration-read-only-contract.mjs",
     "test:provider-readiness-truth": "node ./scripts/test-provider-readiness-truth.mjs",
+    "test:provider-safety-boundaries": "node ./scripts/test-provider-safety-boundaries.mjs",
     "test:client-ip-contract": "node ./scripts/test-client-ip-contract.mjs",
     "test:dealflow-completion": "node ./scripts/test-dealflow-completion.mjs",
     "release:guard": "node ./scripts/generate-release-guard.mjs",

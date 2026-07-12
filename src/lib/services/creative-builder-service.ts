@@ -63,6 +63,19 @@ type AssetBuildArtifacts = {
 
 type ManualCreativeAssetKind = "video" | "image" | "thumbnail";
 
+function assertDirectPaidProviderExecutionBlocked(params: {
+  provider: "openai" | "heygen" | "elevenlabs";
+  enabled: boolean;
+}) {
+  if (!params.enabled) return;
+
+  throw new ApiError(
+    409,
+    `${params.provider} paid generation must run through the canonical provider-usage reservation workflow.`,
+    "provider_usage_reservation_required",
+  );
+}
+
 function mapFormatDefault(formats?: CreativeAssetFormat[] | null): CreativeAssetFormat[] {
   return formats && formats.length > 0 ? formats : ["9:16"];
 }
@@ -359,6 +372,13 @@ async function maybeCreateThumbnailAsset(
     return null;
   }
 
+  assertDirectPaidProviderExecutionBlocked({
+    provider: "openai",
+    enabled:
+      getImageGenerationProvider().isConfigured() &&
+      process.env.ALLOW_OPENAI_IMAGE_GENERATION === "true",
+  });
+
   const thumbnailAsset = await createAssetRow(context, {
     user_id: context.userId,
     campaign_id: context.campaignId,
@@ -438,6 +458,11 @@ async function maybeCreateImageFrames(
   if (!imageProvider.isConfigured()) {
     return [] as CreativeAsset[];
   }
+
+  assertDirectPaidProviderExecutionBlocked({
+    provider: "openai",
+    enabled: process.env.ALLOW_OPENAI_IMAGE_GENERATION === "true",
+  });
 
   const frames: CreativeAsset[] = [];
 
@@ -530,6 +555,11 @@ async function maybeCreateVoiceoverAsset(
     return null;
   }
 
+  assertDirectPaidProviderExecutionBlocked({
+    provider: "elevenlabs",
+    enabled: process.env.ALLOW_ELEVENLABS_VOICE_GENERATION === "true",
+  });
+
   const asset = await createAssetRow(context, {
     user_id: context.userId,
     campaign_id: context.campaignId,
@@ -607,6 +637,14 @@ export async function generateTalkingHeadAsset(
   const assets: CreativeAsset[] = [];
   const jobs: CreativeRenderJob[] = [];
   const avatarProvider = getAvatarVideoProvider();
+
+  assertDirectPaidProviderExecutionBlocked({
+    provider: "heygen",
+    enabled:
+      options.auto_render === true &&
+      avatarProvider.isConfigured() &&
+      process.env.ALLOW_HEYGEN_VIDEO_GENERATION === "true",
+  });
 
   for (const blueprint of plan.renderBlueprints) {
     const mainAsset = await createAssetRow(context, {

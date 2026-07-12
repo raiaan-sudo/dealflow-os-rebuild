@@ -8,6 +8,10 @@ import {
   SupportTicketValidationError,
   type SupportTicketInput,
 } from "@/lib/support-ticket-contract";
+import {
+  deliverSupportNotification,
+  SupportDeliveryPolicyError,
+} from "@/lib/integrations/support/delivery-adapter";
 
 export type { SupportTicketInput } from "@/lib/support-ticket-contract";
 
@@ -128,21 +132,42 @@ export async function processSupportNotificationOutbox(maxRows = 25) {
   const deliveredIds: string[] = [];
   const retryingIds: string[] = [];
   const failedIds: string[] = [];
+  const deliveryReceipts: Array<{
+    outboxId: string;
+    receiptId: string;
+    adapter: string;
+    scope: string;
+  }> = [];
 
   for (const row of claimed) {
-    const { data: inboxReceiptId, error: deliveryError } = await (admin as any).rpc(
-      "deliver_support_notification_to_operator_inbox",
-      {
-        p_outbox_id: row.id,
-        p_worker_id: workerId,
-      },
-    );
-    const delivered =
-      !deliveryError &&
-      typeof inboxReceiptId === "string" &&
-      inboxReceiptId.length > 0;
-    if (delivered) {
+    let deliveryReceipt: Awaited<ReturnType<typeof deliverSupportNotification>> | null = null;
+    let deliveryError: { code?: string; message?: string } | null = null;
+    try {
+      deliveryReceipt = await deliverSupportNotification({
+        admin: admin as any,
+        outboxId: row.id,
+        workerId,
+      });
+    } catch (error) {
+      deliveryError = {
+        code:
+          error instanceof SupportDeliveryPolicyError
+            ? error.code
+            : "operator_inbox_delivery_failed",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Support delivery outcome could not be proven.",
+      };
+    }
+    if (deliveryReceipt) {
       deliveredIds.push(row.id);
+      deliveryReceipts.push({
+        outboxId: row.id,
+        receiptId: deliveryReceipt.receiptId,
+        adapter: deliveryReceipt.adapter,
+        scope: deliveryReceipt.scope,
+      });
       continue;
     }
 
@@ -194,5 +219,6 @@ export async function processSupportNotificationOutbox(maxRows = 25) {
     deliveredIds,
     retryingIds,
     failedIds,
+    deliveryReceipts,
   };
 }

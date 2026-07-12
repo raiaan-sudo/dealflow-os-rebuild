@@ -5,6 +5,8 @@ import type {
   ProviderConnectionStatus,
   ProviderFailure,
 } from "@/lib/integrations/contracts";
+import { buildConfigurationOnlyProviderStatus } from "@/lib/integrations/contracts";
+import { resolveProviderEndpoint } from "@/lib/integrations/provider-endpoint-policy";
 import type {
   CreativeAssetFormat,
   ProviderRenderRequest,
@@ -108,14 +110,10 @@ class OpenAiImageProvider implements ImageGenerationProvider {
 
   async checkStatus(): Promise<ProviderConnectionStatus> {
     const validation = this.validateConfig();
-
-    return {
-      status: validation.configured ? "connected" : "disconnected",
-      state: validation.configured ? "configured" : "not_configured",
-      message: validation.configured
-        ? "Image generation provider is configured."
-        : "Image generation provider credentials are incomplete.",
-    };
+    return buildConfigurationOnlyProviderStatus({
+      label: "OpenAI image generation",
+      validation,
+    });
   }
 
   async execute(request: ProviderRenderRequest): Promise<ProviderRenderResult> {
@@ -158,6 +156,29 @@ class OpenAiImageProvider implements ImageGenerationProvider {
     }
 
     const requestModel = request.model?.trim() || env.model;
+    let endpoint: ReturnType<typeof resolveProviderEndpoint>;
+    try {
+      endpoint = resolveProviderEndpoint({
+        provider: "openai",
+        baseUrl: env.baseUrl,
+      });
+    } catch (error) {
+      return {
+        ok: false,
+        providerName: this.name,
+        providerAssetId: null,
+        status: "unsupported",
+        fileUrl: null,
+        thumbnailUrl: null,
+        metadata: {
+          providerOutcome: "not_dispatched",
+        },
+        error:
+          error instanceof Error
+            ? error.message
+            : "OpenAI image endpoint policy rejected the request before dispatch.",
+      };
+    }
     // One explicit guarded request should map to one paid provider call. Do not
     // silently retry across fallback models while debugging or during launch.
     const models = [requestModel];
@@ -176,7 +197,7 @@ class OpenAiImageProvider implements ImageGenerationProvider {
     for (const model of models) {
       for (let attempt = 0; attempt < IMAGE_GENERATION_ATTEMPTS_PER_MODEL; attempt += 1) {
         try {
-          const response = await fetch(`${env.baseUrl.replace(/\/$/, "")}/images/generations`, {
+          const response = await fetch(`${endpoint.baseUrl}/images/generations`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",

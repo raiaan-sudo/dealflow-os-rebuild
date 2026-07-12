@@ -67,6 +67,10 @@ assert.equal(externalRoute.routePath, null);
 assert.equal(externalRoute.category, "product_feedback");
 
 const serviceSource = await readFile("src/lib/services/support-ticket-service.ts", "utf8");
+const deliveryAdapterSource = await readFile(
+  "src/lib/integrations/support/delivery-adapter.ts",
+  "utf8",
+);
 const routeSource = await readFile("src/app/api/feedback/route.ts", "utf8");
 const widgetSource = await readFile("src/components/layout/feedback-widget.tsx", "utf8");
 const migrationSource = await readFile(
@@ -79,9 +83,13 @@ assert.match(serviceSource, /create_support_ticket_with_outbox/);
 assert.match(serviceSource, /p_request_id: params\.input\.requestId/);
 assert.doesNotMatch(serviceSource, /support ticket was recorded but the operator outbox row failed/i);
 assert.match(serviceSource, /claim_support_notification_outbox/);
-assert.match(serviceSource, /deliver_support_notification_to_operator_inbox/);
+assert.match(serviceSource, /deliverSupportNotification/);
+assert.match(deliveryAdapterSource, /deliver_support_notification_to_operator_inbox/);
+assert.match(deliveryAdapterSource, /SUPPORT_STAGING_SINK_ENABLED/);
+assert.match(deliveryAdapterSource, /support_external_destination_owner_blocked/);
+assert.match(deliveryAdapterSource, /noncommunication_test/);
 assert.doesNotMatch(serviceSource, /const delivered = !ticketError/);
-assert.match(serviceSource, /const delivered =[\s\S]{0,120}!deliveryError/);
+assert.match(serviceSource, /if \(deliveryReceipt\)/);
 assert.match(serviceSource, /\.eq\("locked_by", workerId\)/);
 assert.match(migrationSource, /create or replace function public\.create_support_ticket_with_outbox/);
 assert.match(migrationSource, /support_tickets_request_unique unique \(organization_id, user_id, request_id\)/);

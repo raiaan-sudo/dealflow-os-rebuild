@@ -5,6 +5,8 @@ import type {
   ProviderConnectionStatus,
   ProviderFailure,
 } from "@/lib/integrations/contracts";
+import { buildConfigurationOnlyProviderStatus } from "@/lib/integrations/contracts";
+import { resolveProviderEndpoint } from "@/lib/integrations/provider-endpoint-policy";
 import type { ProviderRenderRequest, ProviderRenderResult } from "@/lib/types/creative-assets";
 
 export interface VoiceProvider
@@ -94,14 +96,10 @@ class ElevenLabsVoiceProvider implements VoiceProvider {
 
   async checkStatus(): Promise<ProviderConnectionStatus> {
     const validation = this.validateConfig();
-
-    return {
-      status: validation.configured ? "connected" : "disconnected",
-      state: validation.configured ? "configured" : "not_configured",
-      message: validation.configured
-        ? "Voice generation provider is configured."
-        : "Voice generation credentials are incomplete.",
-    };
+    return buildConfigurationOnlyProviderStatus({
+      label: "ElevenLabs voice generation",
+      validation,
+    });
   }
 
   async execute(request: ProviderRenderRequest): Promise<ProviderRenderResult> {
@@ -110,6 +108,18 @@ class ElevenLabsVoiceProvider implements VoiceProvider {
     const voiceId = request.voiceProfile || env?.voiceId || "21m00Tcm4TlvDq8ikWAM";
     const modelId = env?.modelId || "eleven_multilingual_v2";
     const script = (request.script ?? "").trim();
+
+    if (process.env.ALLOW_ELEVENLABS_VOICE_GENERATION !== "true") {
+      return {
+        ok: false,
+        providerName: this.name,
+        providerAssetId: null,
+        status: "unsupported",
+        fileUrl: null,
+        thumbnailUrl: null,
+        error: "ElevenLabs voice generation is disabled until the provider usage guard is explicitly enabled.",
+      };
+    }
 
     if (!apiKey) {
       return {
@@ -135,8 +145,13 @@ class ElevenLabsVoiceProvider implements VoiceProvider {
       };
     }
 
+    const endpoint = resolveProviderEndpoint({
+      provider: "elevenlabs",
+      baseUrl: env.baseUrl,
+    });
+
     try {
-      const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      const response = await fetch(`${endpoint.baseUrl}/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

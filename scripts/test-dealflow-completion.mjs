@@ -27,6 +27,7 @@ const tests = [
   "test-meta-tenant-fencing.mjs",
   "test-meta-leadgen-contract.mjs",
   "test-provider-readiness-truth.mjs",
+  "test-provider-safety-boundaries.mjs",
   "test-client-ip-contract.mjs",
   "test-stripe-runtime-mode-contract.mjs",
 ];

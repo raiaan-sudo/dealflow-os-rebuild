@@ -5,6 +5,8 @@ import type {
   ProviderConnectionStatus,
   ProviderFailure,
 } from "@/lib/integrations/contracts";
+import { buildConfigurationOnlyProviderStatus } from "@/lib/integrations/contracts";
+import { resolveProviderEndpoint } from "@/lib/integrations/provider-endpoint-policy";
 import type { ProviderRenderRequest, ProviderRenderResult } from "@/lib/types/creative-assets";
 
 export interface AvatarVideoProvider
@@ -95,14 +97,10 @@ class HeyGenAvatarProvider implements AvatarVideoProvider {
 
   async checkStatus(): Promise<ProviderConnectionStatus> {
     const validation = this.validateConfig();
-
-    return {
-      status: validation.configured ? "connected" : "disconnected",
-      state: validation.configured ? "configured" : "not_configured",
-      message: validation.configured
-        ? "Avatar video generation provider is configured."
-        : "Avatar video generation credentials are incomplete.",
-    };
+    return buildConfigurationOnlyProviderStatus({
+      label: "HeyGen avatar video generation",
+      validation,
+    });
   }
 
   async execute(request: ProviderRenderRequest): Promise<ProviderRenderResult> {
@@ -145,8 +143,13 @@ class HeyGenAvatarProvider implements AvatarVideoProvider {
       };
     }
 
+    const endpoint = resolveProviderEndpoint({
+      provider: "heygen",
+      baseUrl: env.baseUrl,
+    });
+
     try {
-      const response = await fetch(`${env.baseUrl.replace(/\/$/, "")}/v2/video/generate`, {
+      const response = await fetch(`${endpoint.baseUrl}/v2/video/generate`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

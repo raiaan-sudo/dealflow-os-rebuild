@@ -1,7 +1,6 @@
 // @ts-nocheck
 import { type CreativeBrief } from "@/lib/ai/creative-brief";
 import { getImageGenerationEnv, getVideoGenerationEnv } from "@/lib/env";
-import { getAvatarVideoProvider } from "@/lib/integrations/creative/avatar-provider";
 import { getImageGenerationProvider } from "@/lib/integrations/creative/image-provider";
 import { logWarn } from "@/lib/logging";
 import type { StaticCreativeAsset } from "@/lib/services/creative-engine";
@@ -263,6 +262,11 @@ export async function createImageAd(
   if (imageProvider.isConfigured()) {
     let budgetReservation: Awaited<ReturnType<ImageProviderUsageContext["reserve"]>> | null = null;
     try {
+      if (process.env.ALLOW_OPENAI_IMAGE_GENERATION === "true" && !providerUsage) {
+        throw new Error(
+          "provider_usage_reservation_required: OpenAI image generation requires a durable provider-usage reservation.",
+        );
+      }
       if (process.env.ALLOW_OPENAI_IMAGE_GENERATION === "true" && providerUsage) {
         budgetReservation = await providerUsage.reserve();
       }
@@ -363,51 +367,27 @@ export async function createHeyGenVideo({
   title,
 }: HeyGenVideoRequest): Promise<HeyGenVideoResult> {
   const safeScript = safeText(script);
-  let url = buildMockVideoUrl(title ?? safeScript.slice(0, 32));
-  let providerAssetId: string | null = null;
-  const avatarProvider = getAvatarVideoProvider();
+  const url = buildMockVideoUrl(title ?? safeScript.slice(0, 32));
 
   if (!safeScript || safeScript.length < 10) {
     return {
       url,
-      providerAssetId,
+      providerAssetId: null,
       providerName: null,
     };
   }
 
-  if (process.env.ALLOW_HEYGEN_VIDEO_GENERATION !== "true") {
-    return {
-      url,
-      providerAssetId,
-      providerName: null,
-    };
-  }
-
-  if (avatarProvider.isConfigured()) {
-    try {
-      const result = await avatarProvider.execute({
-        aspectRatio: "9:16",
-        script: safeScript,
-      });
-      const parsed = avatarProvider.parseResult(result);
-      if (parsed.providerAssetId) {
-        providerAssetId = parsed.providerAssetId;
-      }
-      if (parsed.fileUrl) {
-        url = parsed.fileUrl;
-      }
-    } catch (error) {
-      logWarn("HeyGen video generation threw", {
-        message: error instanceof Error ? error.message : "Unknown error",
-        title,
-      });
-    }
+  if (process.env.ALLOW_HEYGEN_VIDEO_GENERATION === "true") {
+    logWarn("Unreserved legacy HeyGen generation was blocked", {
+      reason: "provider_usage_reservation_required",
+      title,
+    });
   }
 
   return {
     url,
-    providerAssetId,
-    providerName: avatarProvider.isConfigured() ? "heygen" : null,
+    providerAssetId: null,
+    providerName: null,
   };
 }
 

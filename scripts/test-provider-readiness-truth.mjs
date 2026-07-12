@@ -60,6 +60,25 @@ const registrySource = fs.readFileSync(
   "src/lib/integrations/provider-registry.ts",
   "utf8",
 );
+const contractsSource = fs.readFileSync("src/lib/integrations/contracts.ts", "utf8");
+for (const creativeProviderPath of [
+  "src/lib/integrations/creative/image-provider.ts",
+  "src/lib/integrations/creative/avatar-provider.ts",
+  "src/lib/integrations/creative/voice-provider.ts",
+]) {
+  const source = fs.readFileSync(creativeProviderPath, "utf8");
+  assert.match(source, /buildConfigurationOnlyProviderStatus/);
+  assert.doesNotMatch(
+    source,
+    /status:\s*validation\.configured\s*\?\s*"connected"/,
+    `${creativeProviderPath} still promotes configuration-only evidence to connected`,
+  );
+}
+assert.match(contractsSource, /safeStatus === "configured"/);
+assert.doesNotMatch(
+  contractsSource,
+  /safeStatus === "connected" \|\| safeStatus === "configured"/,
+);
 assert.match(registrySource, /aggregateReadinessAuthority:\s*false/);
 for (const system of [
   "gohighlevel_tenant_provisioning",

@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 
 const phoneSource = readFileSync("src/lib/phone.ts", "utf8");
 const smsSource = readFileSync("src/lib/services/sms-service.ts", "utf8");
+const twilioTransportSource = readFileSync(
+  "src/lib/integrations/twilio/transport.ts",
+  "utf8",
+);
 const notificationSource = readFileSync("src/lib/services/internal-lead-notification-service.ts", "utf8");
 const leadCaptureSource = readFileSync("src/app/api/lead-capture/route.ts", "utf8");
 const systemJobSource = readFileSync("src/lib/services/system-job-service.ts", "utf8");
@@ -45,9 +49,13 @@ assert.match(hardeningMigrationSource, /alter table public\.lead_notifications f
 assert.match(hardeningMigrationSource, /revoke all on public\.agent_profiles from anon, authenticated/);
 assert.match(smsSource, /MessagingServiceSid/);
 assert.doesNotMatch(smsSource, /\bFrom:/);
-assert.match(smsSource, /TWILIO_ACCOUNT_SID/);
-assert.match(smsSource, /TWILIO_AUTH_TOKEN/);
-assert.match(smsSource, /TWILIO_MESSAGING_SERVICE_SID/);
+assert.match(twilioTransportSource, /TWILIO_ACCOUNT_SID/);
+assert.match(twilioTransportSource, /TWILIO_AUTH_TOKEN/);
+assert.match(twilioTransportSource, /TWILIO_MESSAGING_SERVICE_SID/);
+assert.match(twilioTransportSource, /TWILIO_TEST_ACCOUNT_SID/);
+assert.match(twilioTransportSource, /TWILIO_TEST_TO_NUMBER/);
+assert.match(twilioTransportSource, /twilio_test_recipient_not_allowed/);
+assert.match(smsSource, /sms_mock_mode_production_blocked/);
 assert.match(smsSource, /missing_twilio_env/);
 assert.match(smsSource, /INTERNAL_LEAD_SMS_ENABLED/);
 assert.match(smsSource, /SMS_MOCK_MODE/);

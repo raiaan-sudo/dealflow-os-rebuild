@@ -44,7 +44,13 @@ function loadTypeScriptModule(source, options = {}) {
   const runtimeProcess = options.process ?? { env: {} };
   const runtimeConsole = options.console ?? console;
   const evaluate = new Function("require", "module", "exports", "process", "console", output);
-  evaluate(() => emptyModule, loadedModule, loadedModule.exports, runtimeProcess, runtimeConsole);
+  evaluate(
+    (specifier) => options.dependencies?.get(specifier) ?? emptyModule,
+    loadedModule,
+    loadedModule.exports,
+    runtimeProcess,
+    runtimeConsole,
+  );
   return loadedModule.exports;
 }
 
@@ -181,7 +187,13 @@ assert.equal(
 );
 
 const envProcess = { env: {} };
-const envModule = loadTypeScriptModule(read("src/lib/env.ts"), { process: envProcess });
+const deploymentTargetModule = loadTypeScriptModule(read("src/lib/deployment-target.ts"), {
+  process: envProcess,
+});
+const envModule = loadTypeScriptModule(read("src/lib/env.ts"), {
+  process: envProcess,
+  dependencies: new Map([["@/lib/deployment-target", deploymentTargetModule]]),
+});
 for (const weakSecret of [
   "short",
   "replace-with-a-long-random-secret",
@@ -221,6 +233,7 @@ const stripeCommonEnv = {
 envProcess.env = {
   ...stripeCommonEnv,
   NODE_ENV: "production",
+  DEALFLOW_DEPLOYMENT_TARGET: "production",
   STRIPE_SECRET_KEY: "sk_test_production_must_reject",
 };
 assert.equal(envModule.getStripeEnv(), null, "production accepted a Stripe test key");
@@ -236,6 +249,29 @@ envProcess.env = {
   STRIPE_TEST_SECRET_KEY: "sk_test_vercel_production_must_reject",
 };
 assert.equal(envModule.getStripeEnv(), null, "Vercel production accepted forced Stripe test mode");
+envProcess.env = {
+  ...stripeCommonEnv,
+  NODE_ENV: "production",
+  DEALFLOW_DEPLOYMENT_TARGET: "staging",
+  STRIPE_FORCE_TEST_MODE: "true",
+  STRIPE_TEST_SECRET_KEY: "rk_test_production_build_staging_fixture",
+};
+assert.equal(
+  envModule.getStripeEnv().mode,
+  "test",
+  "an explicitly attested staging deployment could not use Stripe test mode after a production build",
+);
+envProcess.env = {
+  ...stripeCommonEnv,
+  NODE_ENV: "production",
+  STRIPE_FORCE_TEST_MODE: "true",
+  STRIPE_TEST_SECRET_KEY: "rk_test_unknown_target_must_reject",
+};
+assert.equal(
+  envModule.getStripeEnv(),
+  null,
+  "a production build without explicit deployment authority enabled Stripe test mode",
+);
 envProcess.env = {
   ...stripeCommonEnv,
   NODE_ENV: "development",
@@ -446,6 +482,8 @@ for (const flag of [
   "ALLOW_AI_TEXT_GENERATION",
   "ALLOW_OPENAI_IMAGE_GENERATION",
   "ALLOW_HEYGEN_VIDEO_GENERATION",
+  "ALLOW_ELEVENLABS_VOICE_GENERATION",
+  "ALLOW_PROVIDER_LOOPBACK_TEST_TRANSPORT",
   "ENABLE_DEMO_WORKSPACE_SEEDING",
   "ENABLE_STRUCTURED_INFO_LOGS",
   "ALLOW_META_LIVE_LAUNCH",
@@ -457,6 +495,7 @@ for (const flag of [
   "ACCESS_KEY_PUBLIC_CHECKOUT_ENABLED",
   "STRIPE_FORCE_TEST_MODE",
   "STRIPE_TEST_HARNESS_ENABLED",
+  "SUPPORT_STAGING_SINK_ENABLED",
   "LEAD_CAPTURE_LOAD_TEST_BYPASS_ENABLED",
   "LOAD_TEST_ALLOW_SYNTHETIC_LEAD_CAPTURE",
 ]) {

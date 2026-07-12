@@ -1,4 +1,13 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  isExplicitNonProductionDeployment,
+  isProductionDeployment,
+} from "@/lib/deployment-target";
+import {
+  assertTwilioRecipientAllowed,
+  getTwilioTransportConfig,
+  TwilioTransportPolicyError,
+} from "@/lib/integrations/twilio/transport";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logOperationalEvent } from "@/lib/logging";
@@ -56,11 +65,24 @@ function getAdminClientOrThrow() {
 }
 
 function getTwilioConfig() {
-  return {
-    accountSid: process.env.TWILIO_ACCOUNT_SID?.trim() || null,
-    authToken: process.env.TWILIO_AUTH_TOKEN?.trim() || null,
-    messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID?.trim() || null,
-  };
+  try {
+    return {
+      ...getTwilioTransportConfig(),
+      policyError: null,
+    };
+  } catch (error) {
+    return {
+      mode: "live" as const,
+      accountSid: null,
+      authToken: null,
+      messagingServiceSid: null,
+      baseUrl: "https://api.twilio.com",
+      endpointMode: "official" as const,
+      allowedTestRecipient: null,
+      policyError:
+        error instanceof Error ? error.message : "Twilio transport policy is invalid.",
+    };
+  }
 }
 
 function isInternalLeadSmsEnabled() {
@@ -74,10 +96,19 @@ function isSmsMockMode() {
   return explicitMock === "true" || explicitMock === "mock" || testMock === "mock";
 }
 
+function isSmsMockModeAllowed() {
+  return (
+    isSmsMockMode() &&
+    isExplicitNonProductionDeployment() &&
+    !isProductionDeployment()
+  );
+}
+
 export function getSmsOutboundPolicyStatus() {
   const config = getTwilioConfig();
   const hasTwilioConfig = Boolean(config.accountSid && config.authToken && config.messagingServiceSid);
-  const mockMode = isSmsMockMode();
+  const mockModeRequested = isSmsMockMode();
+  const mockMode = isSmsMockModeAllowed();
 
   return {
     automationEnabled: false,
@@ -85,6 +116,10 @@ export function getSmsOutboundPolicyStatus() {
     complianceAckEnabled: process.env.SMS_COMPLIANCE_ACK === "true",
     hasTwilioConfig,
     mockMode,
+    mockModeRequested,
+    mockModeTargetBlocked: mockModeRequested && !mockMode,
+    mockModeProductionBlocked:
+      mockModeRequested && !mockMode && isProductionDeployment(),
     outboundLeadSmsEnabled: false,
   };
 }
@@ -222,9 +257,17 @@ async function postTwilioMessage(params: {
   accountSid: string;
   authToken: string;
   messagingServiceSid: string;
+  baseUrl: string;
+  mode: "live" | "test" | "loopback";
+  allowedTestRecipient: string | null;
   to: string;
   body: string;
 }) {
+  assertTwilioRecipientAllowed({
+    mode: params.mode,
+    to: params.to,
+    allowedTestRecipient: params.allowedTestRecipient,
+  });
   const body = new URLSearchParams({
     To: params.to,
     Body: params.body,
@@ -233,7 +276,7 @@ async function postTwilioMessage(params: {
   let response: Response;
   try {
     response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(params.accountSid)}/Messages.json`,
+      `${params.baseUrl}/2010-04-01/Accounts/${encodeURIComponent(params.accountSid)}/Messages.json`,
       {
         method: "POST",
         headers: {
@@ -324,7 +367,29 @@ export async function sendSms(params: SendSmsParams) {
     };
   }
 
-  if (isSmsMockMode()) {
+  if (isSmsMockMode() && !isSmsMockModeAllowed()) {
+    const settled = await settleNotificationDelivery({
+      claim,
+      workerId,
+      status: "failed",
+      errorMessage: "SMS mock mode requires an explicitly attested nonproduction deployment target.",
+    });
+    logOperationalEvent("sms.internal_lead_notification_blocked", {
+      tenantId: params.tenantId,
+      leadId: params.leadId,
+      purpose: params.purpose,
+      reason: isProductionDeployment()
+        ? "sms_mock_mode_production_blocked"
+        : "sms_mock_mode_target_unproven",
+    });
+    return {
+      notificationId: notification.id,
+      status: settled ? "failed" as const : "operator_action_required" as const,
+      providerMessageId: null,
+    };
+  }
+
+  if (isSmsMockModeAllowed()) {
     const providerMessageId = `mock_sms_${Date.now()}_${randomUUID()}`;
     const settled = await settleNotificationDelivery({
       claim,
@@ -348,18 +413,18 @@ export async function sendSms(params: SendSmsParams) {
     return { notificationId: notification.id, status: "sent" as const, providerMessageId };
   }
 
-  if (!config.accountSid || !config.authToken || !config.messagingServiceSid) {
+  if (config.policyError || !config.accountSid || !config.authToken || !config.messagingServiceSid) {
     const settled = await settleNotificationDelivery({
       claim,
       workerId,
       status: "failed",
-      errorMessage: "Twilio environment variables are not configured.",
+      errorMessage: config.policyError ?? "Twilio environment variables are not configured.",
     });
     logOperationalEvent("sms.internal_lead_notification_blocked", {
       tenantId: params.tenantId,
       leadId: params.leadId,
       purpose: params.purpose,
-      reason: "missing_twilio_env",
+      reason: config.policyError ? "twilio_transport_policy_invalid" : "missing_twilio_env",
     });
     return {
       notificationId: notification.id,
@@ -373,6 +438,9 @@ export async function sendSms(params: SendSmsParams) {
       accountSid: config.accountSid,
       authToken: config.authToken,
       messagingServiceSid: config.messagingServiceSid,
+      baseUrl: config.baseUrl,
+      mode: config.mode,
+      allowedTestRecipient: config.allowedTestRecipient,
       to,
       body: params.body,
     });
@@ -393,7 +461,7 @@ export async function sendSms(params: SendSmsParams) {
 
     return { notificationId: notification.id, status: "sent" as const, providerMessageId };
   } catch (error) {
-    const status = error instanceof SmsProviderRejectedError
+    const status = error instanceof SmsProviderRejectedError || error instanceof TwilioTransportPolicyError
       ? "failed"
       : "operator_action_required";
     const settled = await settleNotificationDelivery({

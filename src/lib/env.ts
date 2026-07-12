@@ -1,3 +1,8 @@
+import {
+  isExplicitNonProductionDeployment,
+  isProductionDeployment,
+} from "@/lib/deployment-target";
+
 export function getSupabaseEnv() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -361,10 +366,6 @@ export function getPublicAppUrl() {
 
 export type StripeRuntimeMode = "live" | "test";
 
-function isProductionRuntime() {
-  return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
-}
-
 export function getStripeSecretKeyMode(value: string | undefined | null): StripeRuntimeMode | null {
   const normalized = value?.trim() ?? "";
 
@@ -382,11 +383,13 @@ export function getStripeSecretKeyMode(value: string | undefined | null): Stripe
 export function getStripeRuntimeMode(): StripeRuntimeMode | null {
   const forceTestMode = process.env.STRIPE_FORCE_TEST_MODE === "true";
 
-  if (forceTestMode && isProductionRuntime()) {
-    return null;
+  if (forceTestMode) {
+    return isExplicitNonProductionDeployment() ? "test" : null;
   }
 
-  return forceTestMode ? "test" : "live";
+  // Live billing requires affirmative production deployment authority. An
+  // unknown target or a nonproduction target cannot fall through to live keys.
+  return isProductionDeployment() ? "live" : null;
 }
 
 export function getStripeEnv() {
@@ -493,6 +496,7 @@ export function getVoiceGenerationEnv() {
   const apiKey = process.env.ELEVENLABS_API_KEY ?? null;
   const voiceId = process.env.ELEVENLABS_VOICE_ID ?? null;
   const modelId = process.env.ELEVENLABS_MODEL_ID ?? "eleven_multilingual_v2";
+  const baseUrl = process.env.ELEVENLABS_BASE_URL ?? "https://api.elevenlabs.io";
 
   if (!apiKey && !voiceId) {
     return null;
@@ -502,6 +506,7 @@ export function getVoiceGenerationEnv() {
     apiKey,
     voiceId,
     modelId,
+    baseUrl,
   };
 }
 

@@ -51,12 +51,13 @@ export type ProviderConnectResult = {
 export function normalizeIntegrationStatus(value?: string | null): IntegrationStatus {
   const safeStatus = (value ?? "").toString().toLowerCase();
 
-  if (safeStatus === "connected" || safeStatus === "configured") {
+  if (safeStatus === "connected") {
     return "connected";
   }
 
   if (
     safeStatus === "connecting" ||
+    safeStatus === "configured" ||
     safeStatus === "pending" ||
     safeStatus === "partial" ||
     safeStatus === "degraded"
@@ -69,6 +70,43 @@ export function normalizeIntegrationStatus(value?: string | null): IntegrationSt
   }
 
   return "disconnected";
+}
+
+export function buildConfigurationOnlyProviderStatus(params: {
+  label: string;
+  validation: ProviderConfigValidation;
+}): ProviderConnectionStatus {
+  const observedAt = new Date().toISOString();
+
+  if (!params.validation.configured) {
+    return {
+      status: "disconnected",
+      state: "not_configured",
+      message: `${params.label} configuration is incomplete.`,
+      updatedAt: observedAt,
+      metadata: {
+        evidenceScope: "configuration_only",
+        configured: false,
+        reachable: null,
+        authenticated: null,
+        functional: null,
+      },
+    };
+  }
+
+  return {
+    status: "pending",
+    state: "configured",
+    message: `${params.label} configuration is present. Reachability, authentication, and functional execution are not proven by configuration alone.`,
+    updatedAt: observedAt,
+    metadata: {
+      evidenceScope: "configuration_only",
+      configured: true,
+      reachable: null,
+      authenticated: null,
+      functional: null,
+    },
+  };
 }
 
 export interface ExecutionProvider<ExecuteRequest, RawResult, ParsedResult> {
