@@ -44,8 +44,15 @@ export async function recordOptimizationDecision(params: {
   approvedPolicy: ApprovedOptimizationPolicy | null;
   lastProviderMutationAt?: string | null;
   proposedActions: string[];
+  internalActor?: { organizationId: string; userId: string };
 }) {
-  const [context, admin] = await Promise.all([getAppContext(), Promise.resolve(createAdminClient())]);
+  const admin = createAdminClient();
+  const context = params.internalActor
+    ? {
+        organization: { id: params.internalActor.organizationId },
+        user: { id: params.internalActor.userId },
+      }
+    : await getAppContext();
 
   if (!context || !admin) {
     throw new ApiError(

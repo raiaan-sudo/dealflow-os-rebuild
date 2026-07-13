@@ -263,6 +263,30 @@ export async function getCampaignLaunchRecordForCampaign(params: {
   return mapLaunchRecord((data as Record<string, unknown> | null) ?? null);
 }
 
+export async function getCampaignLaunchRecordForInternalActor(params: {
+  campaignId: string;
+  organizationId: string;
+  userId: string;
+}) {
+  const admin = createAdminClient();
+  if (!admin) {
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+  }
+  const { data, error } = await (admin as any)
+    .from("campaign_launch_records")
+    .select("*")
+    .eq("organization_id", params.organizationId)
+    .eq("user_id", params.userId)
+    .eq("campaign_id", params.campaignId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    throw new ApiError(500, error.message, "campaign_launch_record_lookup_failed");
+  }
+  return mapLaunchRecord((data as Record<string, unknown> | null) ?? null);
+}
+
 export async function recordCampaignLaunch(params: {
   campaignId?: string | null;
   idempotencyKey?: string | null;

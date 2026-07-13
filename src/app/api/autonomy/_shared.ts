@@ -10,6 +10,10 @@ import {
   type OptimizationEvidenceMetrics,
 } from "@/lib/optimization-engine/safety-policy";
 import {
+  REALTOR_OPTIMIZATION_POLICY_V1,
+  evaluateRealtorOptimizationPolicy,
+} from "@/lib/optimization-engine/realtor-policy";
+import {
   type AutonomyActionCandidate,
   type AutonomySnapshot,
 } from "@/lib/services/autonomy-engine";
@@ -128,13 +132,32 @@ export async function evaluateAutonomy(
       : syncSnapshot.syncResult === "partial_success"
         ? "partial"
         : "failed";
+  const customerDailyBudgetCeiling = Number((plan.monthlyBudget / 30).toFixed(2));
+  const provisionalShadowPolicy = {
+    ...REALTOR_OPTIMIZATION_POLICY_V1,
+    customerDailyBudgetCeiling,
+    campaignAgeHours: null,
+  };
   const evidenceDecision = evaluateOptimizationEvidence({
     sourceStatus,
     syncedAt: syncSnapshot?.syncedAt ?? null,
     metrics,
-    // No owner-approved minimums, freshness window, cooldown, or budget caps
-    // exist yet. This stays null so the optimizer fails closed.
-    approvedPolicy: null,
+    // The recovered policy may generate a deterministic shadow proposal. Its
+    // provisional authority can never grant a provider mutation.
+    approvedPolicy: provisionalShadowPolicy,
+  });
+  const realtorPolicyEvaluation = evaluateRealtorOptimizationPolicy({
+    sourceStatus,
+    syncedAt: syncSnapshot?.syncedAt ?? null,
+    metrics,
+    dailyBudget: customerDailyBudgetCeiling,
+    customerDailyBudgetCeiling,
+    switches: {
+      global: true,
+      account: false,
+      campaign: false,
+      emergencyStop: false,
+    },
   });
   const analysisInput: CampaignAnalysisInput | null = metrics
     ? {
@@ -195,7 +218,7 @@ export async function evaluateAutonomy(
         sourceTimestamp: syncSnapshot?.syncedAt ?? null,
         metrics,
         evidence: evidenceDecision,
-        approvedPolicy: null,
+        approvedPolicy: provisionalShadowPolicy,
         proposedActions: evidenceDecision.canGenerateShadowProposal ? result.actions : [],
       })
     : null;
@@ -207,6 +230,7 @@ export async function evaluateAutonomy(
     actions: result.actions,
     optimizerResult: result,
     optimizationEvidence: evidenceDecision,
+    realtorPolicyEvaluation,
     decisionRecord,
     snapshot,
   };

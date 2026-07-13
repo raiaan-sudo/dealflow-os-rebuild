@@ -1808,7 +1808,7 @@ async function main() {
   generated.push({ ...APP_CONTRACT, classification: "FORWARD_APP_CONTRACT_NO_HISTORICAL_BODY_CLAIMED", sha256: sha256(appContractBody) });
 
   const migrationFiles = readdirSync(MIGRATIONS_DIR).filter((name) => /^\d{14}_.+\.sql$/.test(name)).sort();
-  if (migrationFiles.length !== 81) throw new Error(`expected 81 migrations after generation, found ${migrationFiles.length}`);
+  if (migrationFiles.length !== 82) throw new Error(`expected 82 migrations after generation, found ${migrationFiles.length}`);
   const lineage = {
     schemaVersion: "dealflow.forward-equivalent-lineage.v1",
     classification: "NEW_FORWARD_RECONSTRUCTION_NOT_RECOVERED_HISTORY",

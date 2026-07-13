@@ -35,15 +35,21 @@ const metrics = {
   clicks: 60,
 };
 const policy = {
+  version: "dealflow-realtor-optimization-v2",
   approvalId: "owner-policy-v1",
   approvedAt: "2026-07-01T00:00:00.000Z",
+  authority: "owner_approved",
   maximumObservationAgeMinutes: 60,
   minimumImpressions: 1_000,
   minimumClicks: 20,
   minimumSpend: 50,
+  minimumLeadsForCplDecision: 1,
+  attributionWindowDays: 7,
   cooldownMinutes: 120,
   maximumBudgetIncreasePercent: 20,
   maximumBudgetDecreasePercent: 25,
+  maximumDailyScalePercent: 20,
+  customerDailyBudgetCeiling: 100,
 };
 
 const missing = evaluateOptimizationEvidence({
@@ -143,7 +149,8 @@ const decisionServiceSource = await readFile(
   `${root}/src/lib/services/optimization-decision-service.ts`,
   "utf8",
 );
-assert.match(autonomySource, /approvedPolicy: null/);
+assert.match(autonomySource, /provisionalShadowPolicy/);
+assert.match(autonomySource, /global: true/);
 assert.match(autonomySource, /budgetChangePercent: 0/);
 assert.match(autonomySource, /recordOptimizationDecision/);
 assert.doesNotMatch(autonomySource, /ctr:\s*0,[\s\S]*cpc:\s*0,[\s\S]*cpl:\s*0/);

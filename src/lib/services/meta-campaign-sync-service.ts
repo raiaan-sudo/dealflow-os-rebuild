@@ -23,10 +23,13 @@ import { refreshCampaignDraftActions } from "@/lib/services/campaign-draft-actio
 import { recordCreativePerformanceSnapshot } from "@/lib/services/creative-performance-service";
 import {
   getCampaignLaunchRecordForCampaign,
+  getCampaignLaunchRecordForInternalActor,
   getLatestCampaignLaunchRecord,
 } from "@/lib/services/campaign-launch-audit-service";
 import { getLatestCampaignPlan } from "@/lib/services/campaign-plan-service";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
+import { getCampaignByIdForInternalActor } from "@/lib/services/campaign-persistence";
+import { createAdminClient } from "@/lib/server/supabase-admin";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { recordLeadTrackingEvent } from "@/lib/services/lead-tracking-service";
 import { logError, logWarn } from "@/lib/logging";
@@ -166,8 +169,8 @@ async function getMetaSyncContext() {
   return { context, supabase };
 }
 
-async function getConnectedMetaAccount(organizationId: string) {
-  const { supabase } = await getMetaSyncContext();
+async function getConnectedMetaAccount(organizationId: string, providedClient?: any) {
+  const supabase = providedClient ?? (await getMetaSyncContext()).supabase;
   const { data } = await supabase
     .from("marketing_accounts")
     .select("*")
@@ -252,17 +255,50 @@ export async function getMetaCampaignSyncSnapshotForCampaign(params: {
   return mapSyncSnapshot((data as Record<string, unknown> | null) ?? null);
 }
 
-export async function syncMetaCampaignStatus(params?: { campaignId?: string | null }) {
+export async function syncMetaCampaignStatus(params?: {
+  campaignId?: string | null;
+  internalActor?: { organizationId: string; userId: string };
+}) {
   const requestedCampaignId = params?.campaignId?.trim() || null;
+  if (params?.internalActor && !requestedCampaignId) {
+    throw new ApiError(400, "Internal Meta sync requires a campaign ID.", "campaign_id_required");
+  }
+  const admin = params?.internalActor ? createAdminClient() : null;
+  if (params?.internalActor && !admin) {
+    throw new ApiError(503, "Supabase service role is not configured.", "service_role_missing");
+  }
+  const scopedContext = params?.internalActor
+    ? {
+        context: {
+          organization: { id: params.internalActor.organizationId },
+          user: { id: params.internalActor.userId },
+        },
+        supabase: admin as any,
+      }
+    : await getMetaSyncContext();
   const [{ context, supabase }, scopedRecord, latestPlan, latestLaunchRecord] = await Promise.all([
-    getMetaSyncContext(),
-    requestedCampaignId ? getCampaignById(requestedCampaignId).catch(() => null) : Promise.resolve(null),
+    Promise.resolve(scopedContext),
+    requestedCampaignId
+      ? params?.internalActor
+        ? getCampaignByIdForInternalActor({
+            campaignId: requestedCampaignId,
+            organizationId: params.internalActor.organizationId,
+            userId: params.internalActor.userId,
+          }).catch(() => null)
+        : getCampaignById(requestedCampaignId).catch(() => null)
+      : Promise.resolve(null),
     requestedCampaignId ? Promise.resolve(null) : getLatestCampaignPlan(),
     requestedCampaignId ? Promise.resolve(null) : getLatestCampaignLaunchRecord(),
   ]);
   const plan = scopedRecord ? canonicalCampaignToPlan(scopedRecord) : latestPlan;
   const launchRecord = scopedRecord
-    ? await getCampaignLaunchRecordForCampaign({
+    ? params?.internalActor
+      ? await getCampaignLaunchRecordForInternalActor({
+          campaignId: requestedCampaignId!,
+          organizationId: params.internalActor.organizationId,
+          userId: params.internalActor.userId,
+        })
+      : await getCampaignLaunchRecordForCampaign({
         campaignId: requestedCampaignId,
         campaignName: plan?.businessName ?? scopedRecord.campaign.name,
         metaCampaignId: plan?.runtime.campaignId ?? null,
@@ -279,7 +315,7 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
     );
   }
 
-  const connection = await getConnectedMetaAccount(context.organization.id);
+  const connection = await getConnectedMetaAccount(context.organization.id, supabase);
 
   if (!connection) {
     throw new ApiError(400, "Connect a Meta ad account before syncing status.", "meta_not_connected");
@@ -471,10 +507,19 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
     throw new ApiError(500, accountUpdateError.message, "meta_account_sync_timestamp_failed");
   }
 
-  const snapshot = await getMetaCampaignSyncSnapshotForCampaign({
-    campaignName: launchRecord?.campaignName ?? plan.businessName,
-    metaCampaignId: ids.campaignId,
-  });
+  const { data: snapshotRow, error: snapshotError } = await (supabase as any)
+    .from("campaign_sync_snapshots")
+    .select("*")
+    .eq("organization_id", context.organization.id)
+    .eq("user_id", context.user.id)
+    .eq("meta_campaign_id", ids.campaignId)
+    .order("synced_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (snapshotError) {
+    throw new ApiError(500, snapshotError.message, "campaign_sync_snapshot_lookup_failed");
+  }
+  const snapshot = mapSyncSnapshot((snapshotRow as Record<string, unknown> | null) ?? null);
 
   if (!snapshot) {
     throw new ApiError(500, "Synced snapshot could not be loaded.", "campaign_sync_snapshot_missing");
@@ -519,10 +564,12 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
     });
   }
 
-  await recordCreativePerformanceSnapshot({
-    plan,
-    snapshot,
-  }).catch(() => null);
+  if (!params?.internalActor) {
+    await recordCreativePerformanceSnapshot({
+      plan,
+      snapshot,
+    }).catch(() => null);
+  }
 
   const targetingPattern = `${plan.audience} in ${plan.market} using ${plan.keyOffer}`;
   const targetingPerformanceTag =
@@ -570,8 +617,10 @@ export async function syncMetaCampaignStatus(params?: { campaignId?: string | nu
     // Targeting intelligence should not block the primary sync snapshot.
   }
 
-  const suggestions = await refreshCampaignActionSuggestions(snapshot);
-  await refreshCampaignDraftActions(suggestions);
+  if (!params?.internalActor) {
+    const suggestions = await refreshCampaignActionSuggestions(snapshot);
+    await refreshCampaignDraftActions(suggestions);
+  }
 
   return snapshot;
 }

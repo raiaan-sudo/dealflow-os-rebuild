@@ -40,7 +40,7 @@ the clean docs/bundle-only descendant seal and retains the exact command logs.
 | Portfolio | Representative commands | Current local result | Limit |
 |---|---|---|---|
 | Type/lint | `npm run typecheck`; `npm run lint`; targeted ESLint | pass on the implementation commit | exact-seal repeat is external bundle evidence |
-| Completion contracts | `npm run test:dealflow-completion`; reliability/security/accessibility/onboarding suites | 25/25 pass on the implementation commit | exact-seal repeat is external bundle evidence |
+| Completion contracts | `npm run test:dealflow-completion`; reliability/security/accessibility/onboarding suites | 28/28 pass on this branch | exact-seal repeat is external bundle evidence |
 | Meta OAuth/contract/tenant | `node scripts/test-meta-contract-hardening.mjs`; `npm run test:meta-tenant-fencing` | pass, including the exact native-lead permission set and zero-retry code exchange; no network | no real OAuth/provider acceptance |
 | Manual/scheduled launch | `npm run test:manual-launch-fencing`; `npm run test:manual-launch-reachability`; `npm run test:scheduler-disposable-db`; launch truth suite | pass including immutable input lineage, four-stage pre-POST mutation arming, expired-manual-crash route-to-SQL terminalizer reachability with zero provider dispatch, receipt/settlement failure terminalization, explicit-rejection-only retry, and stale-generation negatives | no Meta object created |
 | GHL | tenant contract and `npm run test:ghl-disposable-db` | fake-only/disposable proof pass | no real adapter/provider action |
@@ -52,7 +52,8 @@ the clean docs/bundle-only descendant seal and retains the exact command logs.
 | Creative/lead tenant scope | creative storage/retry and creative-lead disposable suites | pass | no paid creative provider execution |
 | SMS | internal SMS plus `npm run test:sms-receipts` | pass | no Twilio callback/SMS |
 | Support | support contract and `npm run test:support-outbox-disposable-db` | pass | no mailbox communication |
-| Optimizer | `node scripts/test-optimization-evidence-safety.mjs` | pass; shadow/HOLD contract | no owner-approved live policy/action |
+| Continuous reporting | `npm run test:continuous-reporting-optimizer`; `npm run test:continuous-reporting-optimizer-db` | pass; due-window replay, active-run suppression, retry/backoff contract, lease exclusion/reclaim, stale-worker denial, freshness and alert settlement | no hosted repeated Meta sync acceptance |
+| Optimizer | `node scripts/test-optimization-evidence-safety.mjs`; `npm run test:continuous-reporting-optimizer` | pass; every recovered rule boundary, provisional shadow policy, production gate, idempotent sandbox action, reconciliation mismatch, CAS rollback and ambiguous rollback simulated | no owner-approved live policy or Meta sandbox action |
 | Release evidence | `npm run test:release-guard` | pass; target self-authorization, unsigned/self-signed evidence, external digest mismatch, and unauthorized rotation rejected; protected external runtime test authority/rotation accepted | production external trust root/env/drain absent |
 | Native Meta leadgen | `npm run test:meta-leadgen` (contract plus disposable DB) | pass, including owner/active campaign-owner/exact-admin allow, ordinary/removed/cross-tenant deny, and actor-less RPC removal | no live page/form subscription/event |
 | Client IP/rate-limit authority | `npm run test:client-ip-contract`; `npm run routes:security` | pass for normalized Vercel-controlled identity and unknown-production fail-closed fallback | a future non-Vercel proxy needs its own explicit trusted-hop contract |
@@ -61,7 +62,7 @@ the clean docs/bundle-only descendant seal and retains the exact command logs.
 
 | Required check | Result | Release effect |
 |---|---|---|
-| Full fresh chain | `PASS`: all 80 migrations on PostgreSQL 17.6; frozen 11,407-row catalog/ACL oracle and digest `18279dd809f138d4d299e522bde850783d1d75dd0699b5bb87f28067164eb21a` match exactly | local migration blocker cleared |
+| Full fresh chain | Frozen authority proof: all 80 foundation migrations pass on PostgreSQL 17.6 and match the 11,407-row oracle; the two additive candidate migrations have focused PostgreSQL 17.6 proofs, while an exact combined 82-chain hosted replay remains required | foundation blocker cleared; combined staging replay still required |
 | Authoritative-current adoption | `PASS`: foundation history adopted exactly once, then candidate migrations converged to the fresh-chain digest | local adoption proof complete |
 | Representative May-2 schema upgrade | `PASS`: recovered project-bound structural fixture upgraded to the same semantic digest | local upgrade proof complete |
 | Legacy and partial-collision rejection | `PASS`: foundation collisions plus malformed later table, table-metadata, column, and index collisions rejected before mutation | fail-closed local proof complete |

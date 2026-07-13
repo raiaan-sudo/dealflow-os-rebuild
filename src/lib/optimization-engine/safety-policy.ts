@@ -1,7 +1,7 @@
 export const OPTIMIZATION_HOLD_STATE = "HOLD_NO_ACTION" as const;
 export const OPTIMIZATION_REVIEW_STATE = "READY_FOR_SHADOW_REVIEW" as const;
 export const OPTIMIZATION_POLICY_CONTRACT_VERSION =
-  "dealflow-optimization-evidence-v1" as const;
+  "dealflow-realtor-optimization-v2" as const;
 
 export type OptimizationSourceStatus =
   | "confirmed"
@@ -23,15 +23,21 @@ export type OptimizationEvidenceMetrics = {
 };
 
 export type ApprovedOptimizationPolicy = {
+  version: typeof OPTIMIZATION_POLICY_CONTRACT_VERSION;
   approvalId: string;
   approvedAt: string;
+  authority: "owner_approved" | "provisional_sandbox_only";
   maximumObservationAgeMinutes: number;
   minimumImpressions: number;
   minimumClicks: number;
   minimumSpend: number;
+  minimumLeadsForCplDecision: number;
+  attributionWindowDays: number;
   cooldownMinutes: number;
   maximumBudgetIncreasePercent: number;
   maximumBudgetDecreasePercent: number;
+  maximumDailyScalePercent: number;
+  customerDailyBudgetCeiling: number;
 };
 
 export type OptimizationEvidenceBlocker =
@@ -44,6 +50,8 @@ export type OptimizationEvidenceBlocker =
   | "below_minimum_impressions"
   | "below_minimum_clicks"
   | "below_minimum_spend"
+  | "below_minimum_leads_for_cpl"
+  | "customer_budget_ceiling_missing"
   | "cooldown_active";
 
 export type OptimizationEvidenceDecision = {
@@ -91,12 +99,21 @@ function isApprovedPolicy(policy: ApprovedOptimizationPolicy | null) {
     policy.minimumClicks >= 0 &&
     Number.isFinite(policy.minimumSpend) &&
     policy.minimumSpend >= 0 &&
+    Number.isFinite(policy.minimumLeadsForCplDecision) &&
+    policy.minimumLeadsForCplDecision >= 0 &&
+    Number.isInteger(policy.attributionWindowDays) &&
+    policy.attributionWindowDays > 0 &&
     Number.isFinite(policy.cooldownMinutes) &&
     policy.cooldownMinutes >= 0 &&
     Number.isFinite(policy.maximumBudgetIncreasePercent) &&
     policy.maximumBudgetIncreasePercent > 0 &&
     Number.isFinite(policy.maximumBudgetDecreasePercent) &&
-    policy.maximumBudgetDecreasePercent > 0
+    policy.maximumBudgetDecreasePercent > 0 &&
+    Number.isFinite(policy.maximumDailyScalePercent) &&
+    policy.maximumDailyScalePercent > 0 &&
+    policy.maximumDailyScalePercent <= 20 &&
+    Number.isFinite(policy.customerDailyBudgetCeiling) &&
+    policy.customerDailyBudgetCeiling > 0
   );
 }
 

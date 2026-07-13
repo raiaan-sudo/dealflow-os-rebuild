@@ -12,6 +12,8 @@ const tests = [
   "test-ghl-tenant-provisioning.mjs",
   "test-launch-truth-and-schedule.mjs",
   "test-optimization-evidence-safety.mjs",
+  "test-continuous-reporting-optimizer.mjs",
+  "test-continuous-reporting-optimizer-disposable-db.mjs",
   "test-support-ticket-contract.mjs",
   "test-untrusted-evidence-boundary.mjs",
   "test-funnel-customer-copy.mjs",

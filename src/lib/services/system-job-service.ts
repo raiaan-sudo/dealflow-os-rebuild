@@ -44,6 +44,7 @@ export type SystemJobKind =
   | "recommendation_generation"
   | "lead_capture_retry"
   | "meta_leadgen_reconciliation"
+  | "meta_reporting_sync"
   | "lead_side_effects";
 export type SystemJobStatus = "pending" | "processing" | "completed" | "failed";
 export type SystemJobLifecycleStatus =
@@ -115,6 +116,11 @@ type SystemJobPayloadMap = {
     source: "meta_leadgen_webhook";
     requestId: string;
     eventId: string;
+  };
+  meta_reporting_sync: {
+    source: "continuous_reporting_scheduler";
+    reportingScheduleId: string;
+    reportingRunKey: string;
   };
   lead_side_effects: {
     requestId: string;
@@ -939,6 +945,14 @@ export async function processSystemJob(jobId: string, lease: SystemJobLease) {
           Math.max(1, processingJob.max_attempts ?? 1),
       });
       result = output as unknown as Json;
+    } else if (processingJob.kind === "meta_reporting_sync") {
+      const { processMetaReportingSyncJob } = await import(
+        "@/lib/services/meta-reporting-worker-service"
+      );
+      result = await processMetaReportingSyncJob({
+        job: processingJob as SystemJobRecord<"meta_reporting_sync">,
+        lease,
+      }) as unknown as Json;
     } else if (processingJob.kind === "lead_side_effects") {
       const payload = processingJob.payload as SystemJobPayloadMap["lead_side_effects"];
       if (
@@ -1083,7 +1097,12 @@ export async function processSystemJob(jobId: string, lease: SystemJobLease) {
       error.status >= 500 &&
       currentAttempt < maxAttempts
     );
-    const retryEligible = legacyAutoRetry || leadEffectRetry || metaLeadgenRetry;
+    const metaReportingRetry = Boolean(
+      processingJob.kind === "meta_reporting_sync" &&
+      (!(error instanceof ApiError) || error.status === 408 || error.status === 429 || error.status >= 500) &&
+      currentAttempt < maxAttempts
+    );
+    const retryEligible = legacyAutoRetry || leadEffectRetry || metaLeadgenRetry || metaReportingRetry;
 
     if (retryEligible) {
       const retriedJob = await fencedUpdate({
@@ -1095,13 +1114,16 @@ export async function processSystemJob(jobId: string, lease: SystemJobLease) {
           leadEffectFailure?.code ??
           (error instanceof ApiError ? error.code : "system_job_transient_failure"),
         retry_count:
-          processingJob.retry_count + (legacyAutoRetry || metaLeadgenRetry ? 1 : 0),
+          processingJob.retry_count + (legacyAutoRetry || metaLeadgenRetry || metaReportingRetry ? 1 : 0),
         locked_by: null,
         locked_until: null,
         lease_token: null,
         lease_heartbeat_at: null,
         next_run_at: new Date(
-          Date.now() + Math.min(5 * 60_000, 30_000 * 2 ** Math.max(0, currentAttempt - 1)),
+          Date.now() + Math.min(
+            metaReportingRetry ? 15 * 60_000 : 5 * 60_000,
+            (metaReportingRetry ? 60_000 : 30_000) * 2 ** Math.max(0, currentAttempt - 1),
+          ),
         ).toISOString(),
         result: leadEffectFailure?.summary
           ? (leadEffectFailure.summary as unknown as Json)

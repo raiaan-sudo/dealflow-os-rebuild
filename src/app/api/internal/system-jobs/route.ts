@@ -10,6 +10,10 @@ import { runSystemJobWorkerBatch } from "@/lib/services/system-job-service";
 import { processSupportNotificationOutbox } from "@/lib/services/support-ticket-service";
 import { processScheduledCampaignLaunchBatch } from "@/lib/services/scheduled-campaign-launch-service";
 import {
+  enqueueDueMetaReportingSyncJobs,
+  refreshMetaReportingFreshnessAlerts,
+} from "@/lib/services/meta-reporting-worker-service";
+import {
   buildRateLimitResponse,
   consumeRateLimit,
   getRateLimitKey,
@@ -67,6 +71,10 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
   }
 
   const startedAt = Date.now();
+  const [reportingEnqueue, reportingFreshnessRows] = await Promise.all([
+    enqueueDueMetaReportingSyncJobs(25),
+    refreshMetaReportingFreshnessAlerts(),
+  ]);
   const [result, supportOutbox, scheduledLaunches] = await Promise.all([
     runSystemJobWorkerBatch({
       maxCycles: input.maxCycles ?? 5,
@@ -89,6 +97,8 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
     scheduledLaunchesBlockedReason: scheduledLaunches.blockedReason,
     scheduledLaunchesClaimed: scheduledLaunches.claimedCount,
     scheduledLaunchesCompleted: scheduledLaunches.completedIds.length,
+    reportingJobsEnqueued: reportingEnqueue.enqueuedCount,
+    reportingFreshnessRows,
     durationMs,
   });
 
@@ -100,6 +110,10 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
       ...result,
       supportOutbox,
       scheduledLaunches,
+      reporting: {
+        ...reportingEnqueue,
+        freshnessRows: reportingFreshnessRows,
+      },
     },
     {
       headers: {

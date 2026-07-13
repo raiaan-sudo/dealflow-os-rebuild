@@ -434,6 +434,8 @@ assert.equal(getNextEligibleLaunchAt(new Date("2026-03-08T12:30:00Z")).toISOStri
 assert.equal(getNextEligibleLaunchAt(new Date("2026-03-08T13:30:00Z")).toISOString(), "2026-03-09T13:00:00.000Z");
 assert.equal(getNextEligibleLaunchAt(new Date("2026-11-01T14:30:00Z")).toISOString(), "2026-11-02T14:00:00.000Z");
 assert.equal(getNextEligibleLaunchAt(new Date("2026-07-04T14:00:00Z")).toISOString(), "2026-07-05T13:00:00.000Z", "No unapproved weekend/holiday restriction is invented");
+assert.equal(getNextEligibleLaunchAt(new Date("2026-07-03T14:30:00Z")).toISOString(), "2026-07-04T13:00:00.000Z", "Friday after 9 Eastern schedules Saturday, not Monday");
+assert.equal(getNextEligibleLaunchAt(new Date("2026-07-05T12:00:00Z")).toISOString(), "2026-07-05T13:00:00.000Z", "Sunday before 9 Eastern remains Sunday");
 
 let lookupResponses = [];
 let lookupCalls = [];
