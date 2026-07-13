@@ -6,13 +6,17 @@ import { INITIAL_COMMERCIAL_ACTIVATION_CREDIT_CENTS } from "@/lib/commercial-act
 
 export { INITIAL_COMMERCIAL_ACTIVATION_CREDIT_CENTS } from "@/lib/commercial-activation-policy";
 
-type GenerationCreditBucket = "openai_image_generation" | "heygen_video_generation";
+type GenerationCreditBucket =
+  | "openai_image_generation"
+  | "heygen_video_generation"
+  | "higgsfield_video_generation";
 
 export const CREDIT_TOP_UP_MINIMUM_CENTS = 2_500;
 
 const DEFAULT_GENERATION_CREDIT_COSTS_CENTS: Record<GenerationCreditBucket, number> = {
   openai_image_generation: 100,
   heygen_video_generation: 500,
+  higgsfield_video_generation: 500,
 };
 
 function parsePositiveInt(value: string | undefined, fallback: number) {
@@ -72,7 +76,7 @@ export async function getCreditSummaryForCurrentUser() {
     minimumTopUpCents: CREDIT_TOP_UP_MINIMUM_CENTS,
     formattedMinimumTopUp: formatCreditCurrency(CREDIT_TOP_UP_MINIMUM_CENTS),
     imageGenerationCostCents: getGenerationCreditCostCents("openai_image_generation"),
-    videoGenerationCostCents: getGenerationCreditCostCents("heygen_video_generation"),
+    videoGenerationCostCents: getGenerationCreditCostCents("higgsfield_video_generation"),
     updatedAt: typeof creditRow?.updated_at === "string" ? creditRow.updated_at : null,
   };
 }

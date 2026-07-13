@@ -8,7 +8,10 @@ import {
   getGenerationCreditCostCents,
 } from "@/lib/services/credit-service";
 
-type SessionCostBucket = "openai_image_generation" | "heygen_video_generation";
+type SessionCostBucket =
+  | "openai_image_generation"
+  | "heygen_video_generation"
+  | "higgsfield_video_generation";
 
 const SESSION_COST_LIMITS: Record<SessionCostBucket, { cookie: string; limit: number }> = {
   openai_image_generation: {
@@ -19,13 +22,19 @@ const SESSION_COST_LIMITS: Record<SessionCostBucket, { cookie: string; limit: nu
     cookie: "dealflow_session_heygen_video_generations",
     limit: 2,
   },
+  higgsfield_video_generation: {
+    cookie: "dealflow_session_higgsfield_video_generations",
+    limit: 2,
+  },
 };
 
 function getProviderUsageLimit(bucket: SessionCostBucket) {
   const envName =
     bucket === "openai_image_generation"
       ? "OPENAI_IMAGE_DAILY_LIMIT"
-      : "HEYGEN_VIDEO_DAILY_LIMIT";
+      : bucket === "higgsfield_video_generation"
+        ? "HIGGSFIELD_VIDEO_DAILY_LIMIT"
+        : "HEYGEN_VIDEO_DAILY_LIMIT";
   const configured = Number.parseInt(process.env[envName] ?? "", 10);
 
   if (Number.isFinite(configured) && configured > 0) {
@@ -54,7 +63,12 @@ export async function consumeSessionCostBudget(params: {
   const admin = createAdminClient();
 
   if (admin) {
-    const provider = params.bucket === "openai_image_generation" ? "openai" : "heygen";
+    const provider =
+      params.bucket === "openai_image_generation"
+        ? "openai"
+        : params.bucket === "higgsfield_video_generation"
+          ? "higgsfield"
+          : "heygen";
     const operation = params.bucket;
     const settlementToken = crypto.randomUUID();
     const creditAmount = getGenerationCreditCostCents(params.bucket);
@@ -158,7 +172,7 @@ export async function consumeSessionCostBudget(params: {
         429,
         params.bucket === "openai_image_generation"
           ? `This workspace already used the maximum ${limit} OpenAI image generation${limit === 1 ? "" : "s"} for this campaign today.`
-          : `This workspace already used the maximum ${limit} HeyGen video generation${limit === 1 ? "" : "s"} for this campaign today.`,
+          : `This workspace already used the maximum ${limit} video generation${limit === 1 ? "" : "s"} for this campaign today.`,
         "provider_usage_limit_reached",
       );
     }
@@ -225,7 +239,7 @@ export async function consumeSessionCostBudget(params: {
       429,
       params.bucket === "openai_image_generation"
         ? `This session already used the maximum ${limit} OpenAI image generation${limit === 1 ? "" : "s"}.`
-        : `This session already used the maximum ${limit} HeyGen video generation${limit === 1 ? "" : "s"}.`,
+        : `This session already used the maximum ${limit} video generation${limit === 1 ? "" : "s"}.`,
       "session_cost_limit_reached",
     );
   }

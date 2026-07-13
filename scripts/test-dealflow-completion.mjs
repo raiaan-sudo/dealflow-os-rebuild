@@ -31,6 +31,9 @@ const tests = [
   "test-meta-leadgen-contract.mjs",
   "test-provider-readiness-truth.mjs",
   "test-provider-safety-boundaries.mjs",
+  "test-higgsfield-provider.mjs",
+  "test-meta-instant-form-provisioning.mjs",
+  "test-meta-instant-form-disposable-db.mjs",
   "test-client-ip-contract.mjs",
   "test-stripe-runtime-mode-contract.mjs",
 ];

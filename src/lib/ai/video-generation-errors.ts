@@ -61,7 +61,7 @@ export function getCreativeAssetsSchemaCompatibilityMessage(
 
 export function toVideoProviderApiError(error: unknown, operation: "start" | "check") {
   const message =
-    error instanceof Error ? error.message : safeText(error) || "HeyGen request failed.";
+    error instanceof Error ? error.message : safeText(error) || "Video provider request failed.";
   const normalized = message.toLowerCase();
 
   if (normalized.includes("missing heygen_api_key")) {
@@ -80,10 +80,21 @@ export function toVideoProviderApiError(error: unknown, operation: "start" | "ch
     );
   }
 
+  if (
+    normalized.includes("higgsfield credentials are missing") ||
+    normalized.includes("higgsfield credentials appear masked")
+  ) {
+    return new ApiError(
+      503,
+      "Higgsfield credentials are missing or incomplete. Configure a full key ID and secret, then restart the app.",
+      "video_provider_config_missing",
+    );
+  }
+
   if (normalized.includes("unauthorized")) {
     return new ApiError(
       502,
-      "HeyGen rejected the request. Confirm the full live API key is in .env.local and restart the app before generating videos.",
+      "The video provider rejected the request. Confirm its credentials and account access before generating videos.",
       operation === "start" ? "video_provider_request_failed" : "video_provider_status_failed",
     );
   }
@@ -107,8 +118,8 @@ export function toVideoProviderApiError(error: unknown, operation: "start" | "ch
   return new ApiError(
     502,
     operation === "start"
-      ? `HeyGen could not start the video job. ${message}`
-      : `HeyGen could not return the video status. ${message}`,
+      ? `The video provider could not start the video job. ${message}`
+      : `The video provider could not return the video status. ${message}`,
     operation === "start" ? "video_provider_request_failed" : "video_provider_status_failed",
   );
 }

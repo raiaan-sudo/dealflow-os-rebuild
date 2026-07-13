@@ -44,6 +44,10 @@ export async function POST(
 
     const selectedVideo = campaign.creatives.videoAds[body.creativeIndex] ?? campaign.creatives.videoAds[0] ?? null;
     const selectedCopy = campaign.creatives.copy[body.creativeIndex] ?? campaign.creatives.copy[0] ?? null;
+    const selectedSourceImage =
+      campaign.creatives.staticAds[body.creativeIndex] ??
+      campaign.creatives.staticAds.find((asset) => asset.imageGenerationState === "generated") ??
+      null;
 
     if (!selectedVideo) {
       return Response.json({ error: "Video creative was not found for this campaign." }, { status: 404 });
@@ -77,6 +81,11 @@ export async function POST(
       voiceProfile: null,
       audience: campaign.strategy.audience ?? campaign.campaign.audience ?? null,
       location: campaign.strategy.location ?? campaign.campaign.location ?? null,
+      inputImageUrl:
+        selectedSourceImage?.imageGenerationState === "generated" &&
+        /^https:\/\//i.test(selectedSourceImage.imageUrl)
+          ? selectedSourceImage.imageUrl
+          : null,
       force: body.force === true,
     };
 

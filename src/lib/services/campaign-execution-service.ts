@@ -27,6 +27,7 @@ import {
 import type { MetaConnectionRecord } from "@/lib/integrations/meta/types";
 import type { FullCampaignRecord } from "@/lib/types/campaign-records";
 import { getLaunchReadyCreativeMedia } from "@/lib/services/creative-builder-service";
+import { ensureMetaInstantForm } from "@/lib/services/meta-instant-form-service";
 import type { LaunchReadyCreativeMedia } from "@/lib/types/creative-assets";
 import type {
   BuiltMetaAdPayload,
@@ -893,6 +894,7 @@ export function buildMetaCampaignPayload(
 export function buildMetaAdSetPayloads(
   campaignRecord: FullCampaignRecord,
   config: ValidatedLaunchConfig,
+  options: { pageId?: string | null } = {},
 ): BuiltMetaAdSetPayload[] {
   const ageRange = getAgeRange(campaignRecord.strategy.market_type);
   const interests = [
@@ -903,6 +905,13 @@ export function buildMetaAdSetPayloads(
     { id: "seed_interest_zillow", name: "Zillow" },
     { id: "seed_interest_realtor", name: "Realtor.com" },
   ];
+  if (config.formType === "instant_form" && !/^\d{5,40}$/.test(options.pageId ?? "")) {
+    throw new ApiError(
+      409,
+      "A verified Meta Page is required before building an Instant Form ad set.",
+      "meta_instant_form_page_missing",
+    );
+  }
 
   return [
     {
@@ -932,7 +941,14 @@ export function buildMetaAdSetPayloads(
         age_max: ageRange.max,
         interests,
       },
-      promoted_object: config.pixelId
+      ...(config.formType === "instant_form"
+        ? {
+            destination_type: "ON_AD",
+          }
+        : {}),
+      promoted_object: config.formType === "instant_form"
+        ? { page_id: options.pageId! }
+        : config.pixelId
         ? {
             pixel_id: config.pixelId,
             custom_event_type: config.objective === "CONVERSIONS" ? "PURCHASE" : "LEAD",
@@ -947,7 +963,15 @@ export function buildMetaAdPayloads(
   campaignRecord: FullCampaignRecord,
   config: ValidatedLaunchConfig,
   mediaAssets: LaunchReadyCreativeMedia[] = [],
+  providerFormId: string | null = null,
 ): BuiltMetaAdPayload[] {
+  if (config.formType === "instant_form" && !/^\d{5,40}$/.test(providerFormId ?? "")) {
+    throw new ApiError(
+      409,
+      "A verified Meta Instant Form is required before building native lead ads.",
+      "meta_instant_form_missing",
+    );
+  }
   return buildLaunchAssets(campaignRecord).map((asset) => ({
     ...(() => {
       const matchedMedia = mediaAssets.find(
@@ -975,12 +999,13 @@ export function buildMetaAdPayloads(
           message: asset.primaryText,
           name: asset.headline,
           ...(mediaUrl ? { picture: mediaUrl } : {}),
-          link: config.destinationUrl,
+          link: config.formType === "instant_form" ? "https://fb.me/" : config.destinationUrl,
           call_to_action: {
             type: config.ctaType,
-            value: {
-              link: config.destinationUrl,
-            },
+            value:
+              config.formType === "instant_form"
+                ? { lead_gen_form_id: providerFormId }
+                : { link: config.destinationUrl },
           },
         },
       },
@@ -1208,41 +1233,10 @@ export async function launchCampaignExecution(executionId: string): Promise<Camp
   const blueprintName = blueprint?.name ?? validatedCampaign.campaign.name;
 
   const campaignPayload = buildMetaCampaignPayload(validatedCampaign, validatedConfig);
-  const adSetPayloads = buildMetaAdSetPayloads(validatedCampaign, validatedConfig);
   const launchReadyMedia = await getLaunchReadyCreativeMedia(
     validatedCampaign.campaign.id,
     userId,
   ).catch(() => []);
-  const adPayloads = buildMetaAdPayloads(
-    validatedCampaign,
-    validatedConfig,
-    launchReadyMedia,
-  );
-  const metaPayload: MetaLaunchPayload = {
-    campaign: campaignPayload as unknown as Record<string, Json | string | number | boolean | null>,
-    adSets: adSetPayloads as unknown as Array<Record<string, Json | string | number | boolean | null>>,
-    ads: adPayloads,
-  };
-
-  await logExecutionInfo(
-    supabase,
-    executionId,
-    "campaign_payload_built",
-    "Meta launch payloads built.",
-    metaPayload as Json,
-  );
-  await logExecutionInfo(
-    supabase,
-    executionId,
-    "creative_asset_state",
-    launchReadyMedia.length > 0
-      ? "Launch-ready creative media assets were attached where available."
-      : "No launch-ready media assets available. Meta launch will continue with link-data creatives only.",
-    {
-      launchReadyMediaCount: launchReadyMedia.length,
-    } as Json,
-  );
-
   await updateExecutionRecord(supabase, executionId, {
     execution_status: "launching",
     objective: validatedConfig.objective,
@@ -1276,6 +1270,53 @@ export async function launchCampaignExecution(executionId: string): Promise<Camp
   const nonBlockingErrors: string[] = [];
 
   try {
+    const rawPageId = metaAccount.connection_metadata?.selected_page_id;
+    const pageId = typeof rawPageId === "string" ? rawPageId.trim() : null;
+    const instantForm =
+      validatedConfig.formType === "instant_form"
+        ? await ensureMetaInstantForm({
+            organizationId,
+            userId,
+            campaign: validatedCampaign,
+            connection: metaAccount,
+          })
+        : null;
+    const adSetPayloads = buildMetaAdSetPayloads(validatedCampaign, validatedConfig, {
+      pageId,
+    });
+    const adPayloads = buildMetaAdPayloads(
+      validatedCampaign,
+      validatedConfig,
+      launchReadyMedia,
+      instantForm?.providerFormId ?? null,
+    );
+    const metaPayload: MetaLaunchPayload = {
+      campaign: campaignPayload as unknown as Record<string, Json | string | number | boolean | null>,
+      adSets: adSetPayloads as unknown as Array<Record<string, Json | string | number | boolean | null>>,
+      ads: adPayloads,
+    };
+
+    await logExecutionInfo(
+      supabase,
+      executionId,
+      "campaign_payload_built",
+      "Meta launch payloads built.",
+      metaPayload as Json,
+    );
+    await logExecutionInfo(
+      supabase,
+      executionId,
+      "creative_asset_state",
+      launchReadyMedia.length > 0
+        ? "Launch-ready creative media assets were attached where available."
+        : "No launch-ready media assets available. Meta launch will continue with link-data creatives only.",
+      {
+        launchReadyMediaCount: launchReadyMedia.length,
+        formType: validatedConfig.formType,
+        instantFormId: instantForm?.providerFormId ?? null,
+      } as Json,
+    );
+
     const createdCampaign = await createMetaCampaign({
       connection: metaAccount,
       payload: campaignPayload,

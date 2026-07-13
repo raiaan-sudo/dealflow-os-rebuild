@@ -83,7 +83,7 @@ assert.match(formSource, /custom_answers: Object\.fromEntries/);
 assert.match(handlerSource, /custom_lead_answers/);
 assert.match(handlerSource, /customAnswers: input\.customAnswers \?\? \{\}/);
 assert.doesNotMatch(metaLaunchSource, /meta_instant_form_contract_unavailable/);
-assert.doesNotMatch(metaLaunchSource, /Meta Instant Form/);
+assert.match(metaLaunchSource, /provisionCompletedMetaInstantFormRoute/);
 
 const onboardingSource = await readFile("src/app/(app)/onboarding/page.tsx", "utf8");
 assert.match(onboardingSource, /Fast website form/);

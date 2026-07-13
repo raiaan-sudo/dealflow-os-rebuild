@@ -260,8 +260,21 @@ const route = loadTsModuleWithMocks(
         throw new Error("provider dispatch must remain unreachable");
       },
     },
+    "@/lib/campaign-destination": {
+      resolveCampaignDestinationContract: () => ({
+        captureExperience: "dealflow_website",
+        adDestination: "website",
+        explicitAdDestination: false,
+      }),
+    },
     "@/lib/services/campaign-entitlements": {
       assertCampaignCanLaunch: async () => undefined,
+    },
+    "@/lib/services/app-context": {
+      getAppContext: async () => ({
+        user: { id: ownerId },
+        organization: { id: organizationId },
+      }),
     },
     "@/lib/services/campaign-persistence": {
       getCampaignById: async () => ({
@@ -278,6 +291,9 @@ const route = loadTsModuleWithMocks(
       }),
     },
     "@/lib/services/campaign-launch-audit-service": routeAuditMocks,
+    "@/lib/services/meta-instant-form-route-service": {
+      provisionCompletedMetaInstantFormRoute: async () => null,
+    },
     "@/lib/supabase/admin": { createAdminClient: () => null },
     "@/lib/supabase/route-handler": { createRouteHandlerClient: async () => null },
   },

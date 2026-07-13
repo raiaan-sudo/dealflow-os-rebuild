@@ -20,6 +20,12 @@ export type MetaLaunchInputSnapshot = {
   };
   destination_url: string;
   destination_host: string;
+  destination: {
+    capture_experience: "dealflow_website" | "meta_instant_form";
+    ad_destination: "website" | "meta_instant_form";
+    provider_form_id: string | null;
+    form_definition_digest: string | null;
+  };
   delivery: {
     objective: string;
     country_code: string;
@@ -70,6 +76,10 @@ export function buildMetaLaunchInputBinding(params: {
   countryCode: string;
   location: string;
   dailyBudgetMinor: string;
+  captureExperience?: "dealflow_website" | "meta_instant_form";
+  adDestination?: "website" | "meta_instant_form";
+  providerFormId?: string | null;
+  formDefinitionDigest?: string | null;
 }): MetaLaunchInputBinding {
   const destination = new URL(params.destinationUrl);
   const snapshot: MetaLaunchInputSnapshot = {
@@ -90,6 +100,12 @@ export function buildMetaLaunchInputBinding(params: {
     },
     destination_url: params.destinationUrl,
     destination_host: destination.hostname.toLowerCase(),
+    destination: {
+      capture_experience: params.captureExperience ?? "dealflow_website",
+      ad_destination: params.adDestination ?? "website",
+      provider_form_id: params.providerFormId ?? null,
+      form_definition_digest: params.formDefinitionDigest ?? null,
+    },
     delivery: {
       objective: params.objective,
       country_code: params.countryCode,

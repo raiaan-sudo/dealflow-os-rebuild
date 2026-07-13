@@ -34,7 +34,7 @@ import type {
 } from "@/lib/types/creative-assets";
 import { getImageGenerationProvider } from "@/lib/integrations/creative/image-provider";
 import { getVoiceProvider } from "@/lib/integrations/creative/voice-provider";
-import { getAvatarVideoProvider } from "@/lib/integrations/creative/avatar-provider";
+import { getDurableVideoProvider } from "@/lib/ai/video-provider";
 import {
   buildManualCreativeStoragePath,
   isCanonicalManualCreativeStorageIdentity,
@@ -636,15 +636,12 @@ export async function generateTalkingHeadAsset(
 ): Promise<AssetBuildArtifacts> {
   const assets: CreativeAsset[] = [];
   const jobs: CreativeRenderJob[] = [];
-  const avatarProvider = getAvatarVideoProvider();
-
-  assertDirectPaidProviderExecutionBlocked({
-    provider: "heygen",
-    enabled:
-      options.auto_render === true &&
-      avatarProvider.isConfigured() &&
-      process.env.ALLOW_HEYGEN_VIDEO_GENERATION === "true",
-  });
+  const videoProvider = getDurableVideoProvider();
+  const dispatchMessage = videoProvider
+    ? `Use the canonical campaign video-generation job to reserve credits and dispatch ${
+        videoProvider === "higgsfield" ? "Higgsfield" : "the HeyGen legacy fallback"
+      } durably.`
+    : "Configure Higgsfield, then use the canonical campaign video-generation job.";
 
   for (const blueprint of plan.renderBlueprints) {
     const mainAsset = await createAssetRow(context, {
@@ -654,13 +651,15 @@ export async function generateTalkingHeadAsset(
       copy_id: plan.copy.id ?? null,
       asset_type: "talking_head_video",
       format: blueprint.aspectRatio,
-      generation_method: avatarProvider.isConfigured() ? "avatar_provider" : "blueprint_only",
-      status: options.auto_render ? "generating" : "requires_review",
-      provider_name: avatarProvider.name,
+      generation_method: videoProvider ? "durable_video_job" : "blueprint_only",
+      status: "requires_review",
+      provider_name: videoProvider ?? "unconfigured",
       metadata: {
         headline: plan.normalizedScript.headline,
         cta: plan.normalizedScript.cta,
         avatar_profile_id: options.avatar_profile_id ?? null,
+        video_provider: videoProvider,
+        canonical_dispatch: "campaign_video_generation_job",
       } as unknown as Json,
     });
     assets.push(mainAsset);
@@ -683,100 +682,35 @@ export async function generateTalkingHeadAsset(
       });
     }
 
-    if (!options.auto_render) {
-      await updateAssetRow(context, mainAsset.id, {
-        status: "requires_review",
-        error_message: "Blueprint created. Avatar rendering not started.",
-      });
-      await logCreativeAssetInfo(
-        context.supabase,
-        mainAsset.id,
-        "talking_head_requires_review",
-        "Blueprint is ready. Render can be triggered later.",
-      );
-      continue;
-    }
-
     const job = await createRenderJobRow(context, {
       user_id: context.userId,
       campaign_id: context.campaignId,
       creative_asset_id: mainAsset.id,
       render_type: "avatar_video",
-      status: avatarProvider.isConfigured() && options.avatar_profile_id ? "processing" : "failed",
+      status: "requires_review",
+      provider_name: videoProvider ?? "unconfigured",
       input_payload: {
         script: plan.normalizedScript.script,
         aspectRatio: blueprint.aspectRatio,
         avatarProfileId: options.avatar_profile_id ?? null,
+        canonicalDispatch: "campaign_video_generation_job",
+        autoRenderRequested: options.auto_render === true,
       } as unknown as Json,
-      started_at: new Date().toISOString(),
-      error_message:
-        avatarProvider.isConfigured() && options.avatar_profile_id
-          ? null
-          : !options.avatar_profile_id
-            ? "Avatar profile is required for talking head rendering."
-            : "Avatar provider is not configured.",
+      started_at: null,
+      error_message: dispatchMessage,
     });
     jobs.push(job);
 
-    if (!avatarProvider.isConfigured() || !options.avatar_profile_id) {
-      await updateAssetRow(context, mainAsset.id, {
-        status: "requires_review",
-        error_message: job.error_message,
-      });
-      await logCreativeAssetFailure(
-        context.supabase,
-        mainAsset.id,
-        "avatar_render_unavailable",
-        job.error_message ?? "Avatar rendering is unavailable.",
-      );
-      continue;
-    }
-
-    const result = await avatarProvider.createAvatarVideo({
-      aspectRatio: blueprint.aspectRatio,
-      script: plan.normalizedScript.script,
-      avatarProfileId: options.avatar_profile_id,
-      voiceProfile: plan.voiceoverConfig.profile,
-    });
-
-    await updateRenderJobRow(context, job.id, {
-      status: result.ok && result.fileUrl ? "completed" : "failed",
-      completed_at: new Date().toISOString(),
-      output_payload: result.metadata as Json | undefined,
-      error_message: result.error ?? null,
-    });
-
-    if (!result.ok || !result.fileUrl) {
-      await updateAssetRow(context, mainAsset.id, {
-        status: "failed",
-        error_message: result.error ?? "Talking head render failed.",
-        provider_name: result.providerName,
-        provider_asset_id: result.providerAssetId,
-      });
-      await logCreativeAssetFailure(
-        context.supabase,
-        mainAsset.id,
-        "avatar_render_failed",
-        result.error ?? "Talking head render failed.",
-        result.metadata as Json | undefined,
-      );
-      continue;
-    }
-
     await updateAssetRow(context, mainAsset.id, {
-      status: "ready",
-      file_url: result.fileUrl,
-      thumbnail_url: result.thumbnailUrl ?? thumbnail?.file_url ?? null,
-      provider_name: result.providerName,
-      provider_asset_id: result.providerAssetId,
-      metadata: result.metadata as Json | undefined,
+      status: "requires_review",
+      thumbnail_url: thumbnail?.file_url ?? null,
+      error_message: dispatchMessage,
     });
-    await logCreativeAssetSuccess(
+    await logCreativeAssetInfo(
       context.supabase,
       mainAsset.id,
-      "avatar_render_completed",
-      "Talking head asset is ready.",
-      result.metadata as Json | undefined,
+      "durable_video_dispatch_required",
+      dispatchMessage,
     );
   }
 

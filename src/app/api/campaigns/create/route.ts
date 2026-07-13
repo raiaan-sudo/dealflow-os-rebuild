@@ -30,6 +30,8 @@ import {
   buildMetaLaunchInputBinding,
   type MetaLaunchInputBinding,
 } from "@/lib/meta-launch-input-snapshot";
+import { resolveCampaignDestinationContract } from "@/lib/campaign-destination";
+import { ensureMetaInstantForm } from "@/lib/services/meta-instant-form-service";
 
 type LaunchResumePayload = {
   metaCampaignId?: string | null;
@@ -81,6 +83,10 @@ type CampaignPayloadRecord = {
   selected_ad_id?: string;
   selected_ad_ids?: string[];
   destination_url?: string;
+  ad_destination?: string;
+  campaign_destination?: string;
+  capture_experience?: string;
+  lead_capture_mode?: string;
   business_profile?: {
     business_name?: string;
     service?: string;
@@ -868,6 +874,10 @@ export async function launchCampaignToMeta(
       : await getMetaWorkspaceCredentials();
     const storedPayload = await loadSavedCampaignPayload(campaignId);
     const currentPlan = await loadCampaignPlanDocument(campaignId);
+    const destinationContract = resolveCampaignDestinationContract({
+      plan: currentPlan,
+      campaign_payload: storedPayload,
+    });
     const persistedLaunchState = getPersistedLaunchState(currentPlan);
     persistedLaunchStateForFailure = persistedLaunchState;
 
@@ -981,6 +991,19 @@ export async function launchCampaignToMeta(
       );
     }
 
+    const instantForm =
+      destinationContract.adDestination === "meta_instant_form"
+        ? await ensureMetaInstantForm({
+            organizationId: workspaceId,
+            userId: record.campaign.user_id,
+            campaign: record,
+            marketingAccountId: credentials.connectionId,
+            pageId,
+            userAccessToken: credentials.accessToken,
+            assertProviderMutationAllowed: options.assertProviderMutationAllowed,
+          })
+        : null;
+
     await options.bindLaunchInputSnapshot(
       buildMetaLaunchInputBinding({
         organizationId: workspaceId,
@@ -998,6 +1021,10 @@ export async function launchCampaignToMeta(
         countryCode,
         location,
         dailyBudgetMinor: dailyBudget,
+        captureExperience: destinationContract.captureExperience,
+        adDestination: destinationContract.adDestination,
+        providerFormId: instantForm?.providerFormId ?? null,
+        formDefinitionDigest: instantForm?.definition.digest ?? null,
       }),
     );
 
@@ -1474,7 +1501,12 @@ export async function launchCampaignToMeta(
         name: adSetMetaName,
         campaign_id: lastKnownIds.campaign_id!,
         billing_event: "IMPRESSIONS",
-        optimization_goal: objective === "OUTCOME_TRAFFIC" ? "LINK_CLICKS" : "OFFSITE_CONVERSIONS",
+        optimization_goal:
+          destinationContract.adDestination === "meta_instant_form"
+            ? "LEAD_GENERATION"
+            : objective === "OUTCOME_TRAFFIC"
+              ? "LINK_CLICKS"
+              : "OFFSITE_CONVERSIONS",
         daily_budget: dailyBudget,
         bid_strategy: "LOWEST_COST_WITHOUT_CAP",
         targeting: JSON.stringify({
@@ -1485,22 +1517,27 @@ export async function launchCampaignToMeta(
         }),
         status: "PAUSED",
       });
-      adSetBody.set(
-        "promoted_object",
-        JSON.stringify({
-          pixel_id: pixelId,
-          custom_event_type: "LEAD",
-        }),
-      );
-      adSetBody.set(
-        "tracking_specs",
-        JSON.stringify([
-          {
-            action_type: ["offsite_conversion"],
-            fb_pixel: [pixelId],
-          },
-        ]),
-      );
+      if (destinationContract.adDestination === "meta_instant_form") {
+        adSetBody.set("destination_type", "ON_AD");
+        adSetBody.set("promoted_object", JSON.stringify({ page_id: pageId }));
+      } else {
+        adSetBody.set(
+          "promoted_object",
+          JSON.stringify({
+            pixel_id: pixelId,
+            custom_event_type: "LEAD",
+          }),
+        );
+        adSetBody.set(
+          "tracking_specs",
+          JSON.stringify([
+            {
+              action_type: ["offsite_conversion"],
+              fb_pixel: [pixelId],
+            },
+          ]),
+        );
+      }
       await options?.assertProviderMutationAllowed?.();
       await armProviderMutation("adset", adSetObjectKey);
       const { response: adSetResponse, data: adSetResponseData } = await fetchMetaJson<Record<string, unknown> | null>(
@@ -1648,13 +1685,17 @@ export async function launchCampaignToMeta(
 
     const linkData: Record<string, unknown> = {
       message: primaryText,
-      link: destinationUrl,
+      link:
+        destinationContract.adDestination === "meta_instant_form"
+          ? "https://fb.me/"
+          : destinationUrl,
       name: headline,
       call_to_action: {
         type: "LEARN_MORE",
-        value: {
-          link: destinationUrl,
-        },
+        value:
+          destinationContract.adDestination === "meta_instant_form"
+            ? { lead_gen_form_id: instantForm!.providerFormId }
+            : { link: destinationUrl },
       },
     };
 
@@ -2196,6 +2237,8 @@ export async function launchCampaignToMeta(
         adset_id: lastKnownIds.adset_id,
         creative_id: lastKnownIds.creative_id,
         ad_id: lastKnownIds.ad_id,
+        ad_destination: destinationContract.adDestination,
+        provider_form_id: instantForm?.providerFormId ?? null,
         stage: "ad",
         error:
           !adResponseAccepted

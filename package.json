@@ -64,6 +64,8 @@
     "test:provider-safety-boundaries": "node ./scripts/test-provider-safety-boundaries.mjs",
     "test:continuous-reporting-optimizer": "node ./scripts/test-continuous-reporting-optimizer.mjs",
     "test:continuous-reporting-optimizer-db": "node ./scripts/test-continuous-reporting-optimizer-disposable-db.mjs",
+    "test:higgsfield-provider": "node ./scripts/test-higgsfield-provider.mjs",
+    "test:meta-instant-form-provisioning": "node ./scripts/test-meta-instant-form-provisioning.mjs && node ./scripts/test-meta-instant-form-disposable-db.mjs",
     "test:client-ip-contract": "node ./scripts/test-client-ip-contract.mjs",
     "test:dealflow-completion": "node ./scripts/test-dealflow-completion.mjs",
     "release:guard": "node ./scripts/generate-release-guard.mjs",
@@ -95,6 +97,7 @@
     "eslint-config-next": "16.2.10",
     "postcss": "8.5.10",
     "tailwindcss": "^3.4.1",
+    "tsx": "^4.23.0",
     "typescript": "^5"
   },
   "overrides": {

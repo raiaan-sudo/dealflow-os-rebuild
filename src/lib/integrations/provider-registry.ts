@@ -1,4 +1,4 @@
-import { getAvatarVideoProvider } from "@/lib/integrations/creative/avatar-provider";
+import { getDurableVideoIntegrationProvider } from "@/lib/integrations/creative/durable-video-provider";
 import { getImageGenerationProvider } from "@/lib/integrations/creative/image-provider";
 import { getVoiceProvider } from "@/lib/integrations/creative/voice-provider";
 import type { ExecutionProvider } from "@/lib/integrations/contracts";
@@ -94,12 +94,12 @@ const registeredProviders: RegisteredProvider[] = [
   {
     id: "ai_video_generation",
     label: "AI Video Generation",
-    vendor: "HeyGen",
+    vendor: "Higgsfield (HeyGen legacy fallback)",
     category: "ai",
-    description: "Talking-head video generation for UGC and avatar-based ad creative.",
-    settingsHint: "Add video provider credentials to turn storyboard output into rendered video ads.",
+    description: "Durable Higgsfield image-to-video generation with a guarded HeyGen legacy fallback.",
+    settingsHint: "Configure Higgsfield credentials and generate a source image before rendering a video ad.",
     capabilities: ["status", "generate_video", "parse_result", "parse_failure"],
-    provider: getAvatarVideoProvider(),
+    provider: getDurableVideoIntegrationProvider(),
   },
   {
     id: "ai_voice_generation",

@@ -492,6 +492,51 @@ export function validateVideoGenerationEnv() {
   ]);
 }
 
+export function getHiggsfieldGenerationEnv() {
+  const credentials =
+    process.env.HIGGSFIELD_CREDENTIALS ??
+    process.env.HF_CREDENTIALS ??
+    process.env.HF_KEY ??
+    null;
+  const apiKey = process.env.HIGGSFIELD_API_KEY ?? process.env.HF_API_KEY ?? null;
+  const apiSecret =
+    process.env.HIGGSFIELD_API_SECRET ?? process.env.HF_API_SECRET ?? null;
+  const baseUrl =
+    process.env.HIGGSFIELD_BASE_URL ?? "https://platform.higgsfield.ai";
+  const model = process.env.HIGGSFIELD_VIDEO_MODEL ?? "dop-turbo";
+
+  if (!credentials && !apiKey && !apiSecret) {
+    return null;
+  }
+
+  const credentialParts = credentials?.split(":") ?? [];
+
+  return {
+    apiKey: credentials ? credentialParts[0] ?? null : apiKey,
+    apiSecret: credentials ? credentialParts[1] ?? null : apiSecret,
+    credentialsValid: credentials ? credentialParts.length === 2 : true,
+    baseUrl,
+    model,
+  };
+}
+
+export function validateHiggsfieldGenerationEnv() {
+  const env = getHiggsfieldGenerationEnv();
+  const validation = validateEnv([
+    ["HIGGSFIELD_API_KEY (or HF_CREDENTIALS)", env?.apiKey],
+    ["HIGGSFIELD_API_SECRET (or HF_CREDENTIALS)", env?.apiSecret],
+  ]);
+
+  if (env && !env.credentialsValid) {
+    return {
+      configured: false,
+      missing: ["HF_CREDENTIALS must use KEY_ID:KEY_SECRET format"],
+    };
+  }
+
+  return validation;
+}
+
 export function getVoiceGenerationEnv() {
   const apiKey = process.env.ELEVENLABS_API_KEY ?? null;
   const voiceId = process.env.ELEVENLABS_VOICE_ID ?? null;

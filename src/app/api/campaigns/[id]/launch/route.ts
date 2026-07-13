@@ -9,8 +9,10 @@ import {
 } from "@/lib/api/route";
 import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib/api/rate-limit";
 import { launchCampaignToMeta } from "@/app/api/campaigns/create/route";
+import { resolveCampaignDestinationContract } from "@/lib/campaign-destination";
 import { assertCampaignCanLaunch } from "@/lib/services/campaign-entitlements";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
+import { getAppContext } from "@/lib/services/app-context";
 import {
   assertCampaignLaunchScheduleDue,
   armManualCampaignLaunchProviderMutation,
@@ -31,6 +33,7 @@ import {
 } from "@/lib/services/campaign-launch-audit-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
+import { provisionCompletedMetaInstantFormRoute } from "@/lib/services/meta-instant-form-route-service";
 
 const paramsSchema = z.object({
   id: z.string().min(1),
@@ -84,6 +87,7 @@ async function loadPersistedLaunchContract(campaignId: string) {
   if (!supabase) {
     return {
       launchState: null as PersistedLaunchState | null,
+      destinationContract: resolveCampaignDestinationContract(null),
       leadCaptureMode: null as string | null,
       customQuestionCount: 0,
     };
@@ -123,6 +127,7 @@ async function loadPersistedLaunchContract(campaignId: string) {
 
   return {
     launchState: launchRuntime,
+    destinationContract: resolveCampaignDestinationContract(plan),
     leadCaptureMode:
       typeof plan?.lead_capture_mode === "string" ? plan.lead_capture_mode : null,
     customQuestionCount: configuredQuestions.length,
@@ -269,6 +274,7 @@ export async function POST(
 ) {
   let launchClaim: ManualCampaignLaunchClaim | null = null;
   let auditContext: { campaignId: string; campaignName: string } | null = null;
+  let launchCompletionCommitted = false;
 
   try {
     assertSameOriginRequest(request);
@@ -277,6 +283,16 @@ export async function POST(
 
     if (!record) {
       throw new ApiError(404, "Campaign not found.", "campaign_not_found");
+    }
+    const appContext = await getAppContext();
+    if (!appContext) {
+      throw new ApiError(401, "Authentication is required.", "unauthorized");
+    }
+    if (
+      record.campaign.organization_id &&
+      record.campaign.organization_id !== appContext.organization.id
+    ) {
+      throw new ApiError(403, "Campaign workspace access was denied.", "forbidden");
     }
     await assertCampaignCanLaunch(id);
 
@@ -339,6 +355,20 @@ export async function POST(
       completedReceipt.metaCreativeId &&
       completedReceipt.metaAdIds.length === 1
     ) {
+      if (persistedContract.destinationContract.adDestination === "meta_instant_form") {
+        if (!record.campaign.organization_id) {
+          throw new ApiError(
+            500,
+            "Campaign is missing workspace context.",
+            "campaign_workspace_missing",
+          );
+        }
+        await provisionCompletedMetaInstantFormRoute({
+          record,
+          organizationId: record.campaign.organization_id,
+          actorUserId: appContext.user.id,
+        });
+      }
       return NextResponse.json({
         campaign_id: resolveResumeObjectId({
           stage: "campaign",
@@ -578,6 +608,15 @@ export async function POST(
           timestamp: receiptTimestamp,
         },
       });
+      launchCompletionCommitted = true;
+
+      if (persistedContract.destinationContract.adDestination === "meta_instant_form") {
+        await provisionCompletedMetaInstantFormRoute({
+          record,
+          organizationId: record.campaign.organization_id,
+          actorUserId: appContext.user.id,
+        });
+      }
 
       return {
         campaign_id: data.campaign_id,
@@ -612,7 +651,7 @@ export async function POST(
       );
     }
 
-    if (launchClaim && auditContext) {
+    if (launchClaim && auditContext && !launchCompletionCommitted) {
       const rawErrorCode =
         error && typeof error === "object" && "code" in error && typeof error.code === "string"
           ? error.code

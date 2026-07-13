@@ -1,14 +1,16 @@
 import { ApiError, retryRouteStep } from "@/lib/api/route";
 import {
-  createHeyGenVideo,
-  getHeyGenProviderUsageOutcome,
-  getHeyGenVideoStatus,
-} from "@/lib/ai/heygen";
+  createDurableVideoRender,
+  getDurableVideoProvider,
+  getDurableVideoProviderUnavailableReason,
+  getDurableVideoProviderUsageOutcome,
+  getDurableVideoRenderStatus,
+  type DurableVideoProviderName,
+} from "@/lib/ai/video-provider";
 import {
   getCreativeAssetsSchemaCompatibilityMessage,
   toVideoProviderApiError,
 } from "@/lib/ai/video-generation-errors";
-import { getAvatarVideoProvider } from "@/lib/integrations/creative/avatar-provider";
 import { getSavedCampaignDocumentFromRow } from "@/lib/services/canonical-campaign";
 import { persistCampaignPlanDocumentUpdate } from "@/lib/services/campaign-plan-persistence-service";
 import type { VideoCreativeAsset } from "@/lib/services/creative-engine";
@@ -39,12 +41,14 @@ export type VideoGenerationJobPayload = {
   voiceProfile: string | null;
   audience: string | null;
   location: string | null;
+  inputImageUrl: string | null;
   force: boolean;
 };
 
 export type VideoGenerationStatusJobPayload = {
   assetId: string;
   providerAssetId: string;
+  providerName?: DurableVideoProviderName;
   providerUsageEventId: string | null;
   providerUsageSettlementToken: string | null;
   providerUsageSettlementGeneration: number | null;
@@ -226,10 +230,10 @@ async function persistVideoFailure(params: {
     ...(typeof params.insertedAssetMetadata === "object" && params.insertedAssetMetadata
       ? (params.insertedAssetMetadata as Record<string, unknown>)
       : {}),
-    heygenStatus: "failed",
-    heygenError: params.message,
-    heygenErrorCode: params.code,
-    heygenRaw: params.raw ?? null,
+    videoProviderStatus: "failed",
+    videoProviderError: params.message,
+    videoProviderErrorCode: params.code,
+    videoProviderRaw: params.raw ?? null,
   } satisfies Record<string, unknown>;
 
   await params.supabase
@@ -262,11 +266,12 @@ async function queueVideoStatusPollJob(params: {
   campaignId: string;
   assetId: string;
   providerAssetId: string;
+  providerName: DurableVideoProviderName;
   providerUsageEventId: string | null | undefined;
   providerUsageSettlementToken: string | null | undefined;
   providerUsageSettlementGeneration: number | null | undefined;
 }) {
-  const idempotencyKey = `video_generation_status:${params.providerAssetId}`;
+  const idempotencyKey = `video_generation_status:${params.providerName}:${params.providerAssetId}`;
   const { error } = await params.supabase.from("system_jobs").insert({
     organization_id: params.organizationId ?? params.userId,
     user_id: params.userId,
@@ -276,6 +281,7 @@ async function queueVideoStatusPollJob(params: {
     payload: {
       assetId: params.assetId,
       providerAssetId: params.providerAssetId,
+      providerName: params.providerName,
       providerUsageEventId: params.providerUsageEventId ?? null,
       providerUsageSettlementToken: params.providerUsageSettlementToken ?? null,
       providerUsageSettlementGeneration:
@@ -364,10 +370,14 @@ export async function runVideoGenerationJob(params: {
     };
   }
 
-  const avatarProvider = getAvatarVideoProvider();
+  const videoProvider = getDurableVideoProvider();
+  const unavailableReason = getDurableVideoProviderUnavailableReason({
+    provider: videoProvider,
+    inputImageUrl: params.payload.inputImageUrl,
+  });
   const defaultState = createDefaultVideoState(params.payload);
 
-  if (!avatarProvider.isConfigured()) {
+  if (!videoProvider || unavailableReason) {
     const unavailableState: VideoCreativeAsset = {
       ...(existingVideo ?? defaultState),
       hook: params.payload.hook,
@@ -375,8 +385,7 @@ export async function runVideoGenerationJob(params: {
       shotList: params.payload.scenes.map((scene) => scene.text),
       videoUrl: undefined,
       videoGenerationState: "unavailable",
-      videoGenerationMessage:
-        "HeyGen is not configured. Add HEYGEN_API_KEY before generating videos.",
+      videoGenerationMessage: unavailableReason,
       providerAssetId: null,
     };
 
@@ -404,7 +413,7 @@ export async function runVideoGenerationJob(params: {
         format: "9:16",
         generation_method: "blueprint_only",
         status: "requires_review",
-        provider_name: avatarProvider.name,
+        provider_name: videoProvider ?? "unconfigured",
         provider_asset_id: null,
         file_url: null,
         thumbnail_url: null,
@@ -416,8 +425,7 @@ export async function runVideoGenerationJob(params: {
           scenes: params.payload.scenes,
           avatarId: params.payload.avatarProfileId,
           voiceId: params.payload.voiceProfile,
-          unavailableReason:
-            "HeyGen is not configured. Add HEYGEN_API_KEY before generating videos.",
+          unavailableReason,
         } as Json,
       } as never)
       .select("*")
@@ -455,31 +463,31 @@ export async function runVideoGenerationJob(params: {
   }
 
   const budgetReservation = await consumeSessionCostBudget({
-    bucket: "heygen_video_generation",
+    bucket: `${videoProvider}_video_generation`,
     userId: params.userId,
     organizationId: row.organization_id,
     campaignId: params.campaignId,
-    idempotencyKey: `heygen_video_generation:${row.organization_id}:${params.userId}:${params.campaignId}:${params.payload.creativeIndex}:${params.providerUsageAttemptKey}`,
+    idempotencyKey: `${videoProvider}_video_generation:${row.organization_id}:${params.userId}:${params.campaignId}:${params.payload.creativeIndex}:${params.providerUsageAttemptKey}`,
     attemptKey: `provider_usage_attempt:${params.providerUsageAttemptKey}:${params.payload.creativeIndex}`,
   });
 
-  let heyGenVideo;
+  let providerVideo;
 
   try {
-    heyGenVideo = await createHeyGenVideo({
+    providerVideo = await createDurableVideoRender({
+      provider: videoProvider,
       script: params.payload.scriptText,
+      inputImageUrl: params.payload.inputImageUrl,
       avatarId: params.payload.avatarProfileId ?? undefined,
       voiceId: params.payload.voiceProfile ?? undefined,
       title: params.payload.title,
-      aspectRatio: "9:16",
-      resolution: "720p",
     });
   } catch (error) {
     await markSessionCostBudgetEvent({
       ...budgetReservation,
-      status: getHeyGenProviderUsageOutcome(error),
+      status: getDurableVideoProviderUsageOutcome(videoProvider, error),
       metadata: {
-        operation: "heygen_video_generation",
+        operation: `${videoProvider}_video_generation`,
         reason: error instanceof Error ? error.message : "Video generation failed to start.",
       },
     }).catch(() => null);
@@ -497,8 +505,8 @@ export async function runVideoGenerationJob(params: {
       format: "9:16",
       generation_method: "avatar_provider",
       status: "generating",
-      provider_name: "heygen",
-      provider_asset_id: heyGenVideo.videoId,
+      provider_name: videoProvider,
+      provider_asset_id: providerVideo.providerAssetId,
       file_url: null,
       thumbnail_url: null,
       metadata: {
@@ -507,9 +515,10 @@ export async function runVideoGenerationJob(params: {
         cta: params.payload.cta,
         scriptText: params.payload.scriptText,
         scenes: params.payload.scenes,
-        avatarId: heyGenVideo.avatarId,
-        voiceId: heyGenVideo.voiceId,
-        heygenStatus: heyGenVideo.status,
+        inputImageUrl: params.payload.inputImageUrl,
+        videoProvider,
+        providerStatus: providerVideo.status,
+        providerMetadata: providerVideo.metadata,
       } as Json,
     } as never)
     .select("*")
@@ -527,8 +536,8 @@ export async function runVideoGenerationJob(params: {
         ...budgetReservation,
         status: "consumed",
         metadata: {
-          operation: "heygen_video_generation",
-          providerAssetId: heyGenVideo.videoId,
+          operation: `${videoProvider}_video_generation`,
+          providerAssetId: providerVideo.providerAssetId,
           reason: schemaMessage,
           providerAccepted: true,
           localPersistenceFailed: true,
@@ -541,8 +550,8 @@ export async function runVideoGenerationJob(params: {
       ...budgetReservation,
       status: "consumed",
       metadata: {
-        operation: "heygen_video_generation",
-        providerAssetId: heyGenVideo.videoId,
+        operation: `${videoProvider}_video_generation`,
+        providerAssetId: providerVideo.providerAssetId,
         reason: error?.message ?? "Video asset could not be created.",
         providerAccepted: true,
         localPersistenceFailed: true,
@@ -563,8 +572,8 @@ export async function runVideoGenerationJob(params: {
     videoUrl: undefined,
     videoGenerationState: "generating",
     videoGenerationMessage:
-      "Generating video with HeyGen. This can take a minute while the render job completes.",
-    providerAssetId: heyGenVideo.videoId,
+      `Generating video with ${videoProvider === "higgsfield" ? "Higgsfield" : "HeyGen"}. The durable status job will reconcile completion.`,
+    providerAssetId: providerVideo.providerAssetId,
   };
 
   await persistVideoAdsToCampaignPlan({
@@ -581,7 +590,8 @@ export async function runVideoGenerationJob(params: {
     userId: params.userId,
     campaignId: params.campaignId,
     assetId: insertedAsset.id,
-    providerAssetId: heyGenVideo.videoId,
+    providerAssetId: providerVideo.providerAssetId,
+    providerName: videoProvider,
     providerUsageEventId: budgetReservation.eventId,
     providerUsageSettlementToken: budgetReservation.settlementToken,
     providerUsageSettlementGeneration: budgetReservation.settlementGeneration,
@@ -589,7 +599,7 @@ export async function runVideoGenerationJob(params: {
 
   return {
     assetId: insertedAsset.id,
-    providerAssetId: heyGenVideo.videoId,
+    providerAssetId: providerVideo.providerAssetId,
     status: "processing",
     asset: insertedAsset,
     video: {
@@ -626,7 +636,11 @@ export async function pollVideoGenerationStatusJob(params: {
 
   try {
     finalStatus = await retryRouteStep(
-      () => getHeyGenVideoStatus(params.payload.providerAssetId),
+      () =>
+        getDurableVideoRenderStatus({
+          provider: params.payload.providerName ?? "heygen",
+          providerAssetId: params.payload.providerAssetId,
+        }),
       {
         retries: 2,
         delayMs: 1_000,
@@ -642,6 +656,41 @@ export async function pollVideoGenerationStatusJob(params: {
     finalStatus.status === "processing" ||
     finalStatus.status === "unknown"
   ) {
+    if ((params.payload.pollAttempt ?? 0) >= 120) {
+      const failureMessage =
+        "Video provider reconciliation exceeded the bounded polling window and requires operator review.";
+      await persistVideoFailure({
+        supabase: params.supabase,
+        organizationId: params.organizationId,
+        userId: params.userId,
+        campaignId: params.campaignId,
+        assetId: asset.id,
+        providerAssetId: params.payload.providerAssetId,
+        insertedAssetMetadata: asset.metadata,
+        code: "video_generation_reconciliation_exhausted",
+        message: failureMessage,
+        raw: finalStatus.raw,
+      });
+      await markSessionCostBudgetEvent({
+        eventId: params.payload.providerUsageEventId,
+        organizationId: params.organizationId,
+        userId: params.userId,
+        settlementToken: params.payload.providerUsageSettlementToken,
+        settlementGeneration: params.payload.providerUsageSettlementGeneration,
+        status: "consumed",
+        metadata: {
+          operation: `${params.payload.providerName ?? "heygen"}_video_generation`,
+          providerAssetId: params.payload.providerAssetId,
+          providerAccepted: true,
+          reconciliationExhausted: true,
+        },
+      }).catch(() => null);
+      throw new ApiError(
+        409,
+        failureMessage,
+        "video_generation_reconciliation_exhausted",
+      );
+    }
     return {
       assetId: asset.id,
       providerAssetId: params.payload.providerAssetId,
@@ -675,7 +724,7 @@ export async function pollVideoGenerationStatusJob(params: {
       settlementGeneration: params.payload.providerUsageSettlementGeneration,
       status: "consumed",
       metadata: {
-        operation: "heygen_video_generation",
+        operation: `${params.payload.providerName ?? "heygen"}_video_generation`,
         providerAssetId: params.payload.providerAssetId,
         reason: failureMessage,
         providerAccepted: true,
@@ -689,7 +738,7 @@ export async function pollVideoGenerationStatusJob(params: {
   if (!finalStatus.videoUrl) {
     throw new ApiError(
       502,
-      "HeyGen reported completion without a video URL.",
+      "The video provider reported completion without a video URL.",
       "video_generation_missing_url",
     );
   }
@@ -698,8 +747,9 @@ export async function pollVideoGenerationStatusJob(params: {
     ...(typeof asset.metadata === "object" && asset.metadata
       ? (asset.metadata as Record<string, unknown>)
       : {}),
-    heygenStatus: finalStatus.status,
-    heygenRaw: finalStatus.raw,
+    videoProvider: params.payload.providerName ?? "heygen",
+    videoProviderStatus: finalStatus.status,
+    videoProviderRaw: finalStatus.raw,
   } satisfies Record<string, unknown>;
 
   const { data: updatedAssetRaw, error: updateError } = await params.supabase
@@ -742,7 +792,7 @@ export async function pollVideoGenerationStatusJob(params: {
     settlementGeneration: params.payload.providerUsageSettlementGeneration,
     status: "consumed",
     metadata: {
-      operation: "heygen_video_generation",
+      operation: `${params.payload.providerName ?? "heygen"}_video_generation`,
       providerAssetId: params.payload.providerAssetId,
     },
   });

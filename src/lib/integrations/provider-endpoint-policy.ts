@@ -3,12 +3,13 @@ import {
   isProductionDeployment,
 } from "@/lib/deployment-target";
 
-export type GuardedProvider = "openai" | "heygen" | "elevenlabs" | "twilio";
+export type GuardedProvider = "openai" | "heygen" | "higgsfield" | "elevenlabs" | "twilio";
 export type ProviderEndpointMode = "official" | "loopback_test";
 
 const OFFICIAL_PROVIDER_ORIGINS: Record<GuardedProvider, string> = {
   openai: "https://api.openai.com",
   heygen: "https://api.heygen.com",
+  higgsfield: "https://platform.higgsfield.ai",
   elevenlabs: "https://api.elevenlabs.io",
   twilio: "https://api.twilio.com",
 };
