@@ -68,6 +68,7 @@
     "test:continuous-reporting-optimizer-db": "node ./scripts/test-continuous-reporting-optimizer-disposable-db.mjs",
     "test:higgsfield-provider": "node ./scripts/test-higgsfield-provider.mjs",
     "test:meta-instant-form-provisioning": "node ./scripts/test-meta-instant-form-provisioning.mjs && node ./scripts/test-meta-instant-form-disposable-db.mjs",
+    "test:meta-campaign-activation": "node ./scripts/test-meta-campaign-activation-contract.mjs && node ./scripts/test-meta-campaign-activation-disposable-db.mjs",
     "test:client-ip-contract": "node ./scripts/test-client-ip-contract.mjs",
     "test:dealflow-completion": "node ./scripts/test-dealflow-completion.mjs",
     "release:guard": "node ./scripts/generate-release-guard.mjs",

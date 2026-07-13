@@ -36,6 +36,8 @@ const tests = [
   "test-higgsfield-provider.mjs",
   "test-meta-instant-form-provisioning.mjs",
   "test-meta-instant-form-disposable-db.mjs",
+  "test-meta-campaign-activation-contract.mjs",
+  "test-meta-campaign-activation-disposable-db.mjs",
   "test-client-ip-contract.mjs",
   "test-stripe-runtime-mode-contract.mjs",
 ];

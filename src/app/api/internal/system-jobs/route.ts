@@ -14,6 +14,7 @@ import {
   enqueueDueMetaReportingSyncJobs,
   refreshMetaReportingFreshnessAlerts,
 } from "@/lib/services/meta-reporting-worker-service";
+import { processMetaCampaignActivationFromEnvironment } from "@/lib/services/meta-campaign-activation-service";
 import {
   buildRateLimitResponse,
   consumeRateLimit,
@@ -76,7 +77,7 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
     enqueueDueMetaReportingSyncJobs(25),
     refreshMetaReportingFreshnessAlerts(),
   ]);
-  const [result, supportOutbox, scheduledLaunches, ghlProvider] = await Promise.all([
+  const [result, supportOutbox, scheduledLaunches, ghlProvider, metaActivations] = await Promise.all([
     runSystemJobWorkerBatch({
       maxCycles: input.maxCycles ?? 5,
       staleAfterMs: input.staleAfterMs,
@@ -87,6 +88,7 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
       maxProvisioningSteps: 5,
       maxLeadItems: 10,
     }),
+    processMetaCampaignActivationFromEnvironment({ maxClaims: 5 }),
   ]);
   const durationMs = Date.now() - startedAt;
 
@@ -117,6 +119,11 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
     ghlDeliveryBlockedReason: "blockedReason" in ghlProvider.delivery
       ? ghlProvider.delivery.blockedReason
       : null,
+    metaActivationsEnabled: metaActivations.enabled,
+    metaActivationsBlockedReason: metaActivations.blockedReason,
+    metaActivationsClaimed: metaActivations.claimedCount,
+    metaActivationsCompleted: metaActivations.completedIds.length,
+    metaActivationsOperatorRequired: metaActivations.operatorRequiredIds.length,
     durationMs,
   });
 
@@ -133,6 +140,7 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
         freshnessRows: reportingFreshnessRows,
       },
       ghlProvider,
+      metaActivations,
     },
     {
       headers: {
