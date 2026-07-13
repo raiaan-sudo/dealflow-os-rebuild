@@ -49,6 +49,8 @@
     "test:meta-tenant-fencing": "node ./scripts/test-meta-tenant-fencing.mjs",
     "test:meta-leadgen": "node ./scripts/test-meta-leadgen-contract.mjs && node ./scripts/test-meta-leadgen-disposable-db.mjs",
     "test:ghl-disposable-db": "node ./scripts/test-ghl-disposable-db.mjs",
+    "test:ghl-sandbox": "node ./scripts/test-ghl-sandbox-integration.mjs",
+    "staging:seed": "node ./scripts/seed-isolated-staging.mjs",
     "test:scheduler-disposable-db": "node ./scripts/test-scheduler-disposable-db.mjs",
     "test:stripe-webhook-disposable-db": "node ./scripts/test-stripe-webhook-disposable-db.mjs",
     "test:stripe-runtime-mode": "node ./scripts/test-stripe-runtime-mode-contract.mjs",

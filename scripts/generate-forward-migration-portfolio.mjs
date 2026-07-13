@@ -1258,6 +1258,14 @@ function withDenseLiveColumnOrdinals(rows) {
 
 function renderCatalogAssertion(assertion, expectedRows, index) {
   let projection = assertion.projection;
+  if (assertion.id === "02_extensions") {
+    // Supabase owns extension installation and may use supabase_admin instead
+    // of postgres on a fresh project. Ownership and optional platform
+    // extensions are not application-schema authority, so compare the exact
+    // required portable extension contract without binding the replay to one
+    // managed-environment bootstrap image.
+    projection = projection.filter((field) => field !== "owner_name");
+  }
   if (assertion.id === "14d_dependency_schema_routines_for_body_closure") {
     projection = projection.filter((field) => ![
       "configuration", "owner_name", "definition_bytes", "routine_definition",
@@ -1290,7 +1298,9 @@ function renderCatalogAssertion(assertion, expectedRows, index) {
   // gate proves every portable extension without inventing a fake control
   // file or vault implementation.
   if (assertion.id === "02_extensions") {
-    conditions.push("source_row.extension_name <> 'supabase_vault'");
+    conditions.push(
+      "source_row.extension_name NOT IN ('supabase_vault','pg_graphql','pg_net')",
+    );
   }
   if (assertion.id === "14d_dependency_schema_routines_for_body_closure") {
     conditions.push(
@@ -1305,7 +1315,7 @@ function renderCatalogAssertion(assertion, expectedRows, index) {
   }
   if (assertion.id === "02_extensions") {
     locallyProvableExpectedRows = locallyProvableExpectedRows.filter((row) =>
-      row.extension_name !== "supabase_vault");
+      !["supabase_vault", "pg_graphql", "pg_net"].includes(row.extension_name));
   }
   if (assertion.id === "14d_dependency_schema_routines_for_body_closure") {
     locallyProvableExpectedRows = locallyProvableExpectedRows.filter((row) =>
@@ -1389,6 +1399,11 @@ function renderGate(current, publicCurrent, privateAuthority, assertionCatalog) 
   return `${reconstructionHeader(record, "AUTHORITATIVE FULL-CATALOG PRE-CANDIDATE SHAPE GATE")}` +
 `-- Every assertion below is a structural pg_catalog query with a frozen expected rowset.\n` +
 `-- It covers public, complete private, extensions, ownership, grants, default privileges, and dependency closure before mutation.\n\n` +
+`-- Catalog deparsers such as pg_get_expr are search_path-sensitive. Pin the\n` +
+`-- migration transaction so the same object produces the same canonical text\n` +
+`-- under native PostgreSQL, Supabase CLI, and hosted Supabase migration runners.\n` +
+`BEGIN;\n` +
+`SET LOCAL search_path = "$user", public;\n\n` +
 `${assertionSql}\n\n` +
 `-- This migration takes ACCESS EXCLUSIVE lock on campaign_plans and may rewrite that table and its indexes.\n` +
 `-- It first proves the exact authoritative table/column/constraint/index shape, then performs the single authorized text-to-uuid normalization.\n` +
@@ -1454,7 +1469,8 @@ function renderGate(current, publicCurrent, privateAuthority, assertionCatalog) 
 `    RAISE EXCEPTION 'pre-candidate postcondition: dependent policies were not restored' USING ERRCODE='55000';\n` +
 `  END IF;\n` +
 `END\n` +
-`$dealflow_pre_candidate_postcondition$;\n`;
+`$dealflow_pre_candidate_postcondition$;\n\n` +
+`COMMIT;\n`;
 }
 
 function renderAppContractMigration() {
@@ -1792,7 +1808,7 @@ async function main() {
   generated.push({ ...APP_CONTRACT, classification: "FORWARD_APP_CONTRACT_NO_HISTORICAL_BODY_CLAIMED", sha256: sha256(appContractBody) });
 
   const migrationFiles = readdirSync(MIGRATIONS_DIR).filter((name) => /^\d{14}_.+\.sql$/.test(name)).sort();
-  if (migrationFiles.length !== 80) throw new Error(`expected 80 migrations after generation, found ${migrationFiles.length}`);
+  if (migrationFiles.length !== 81) throw new Error(`expected 81 migrations after generation, found ${migrationFiles.length}`);
   const lineage = {
     schemaVersion: "dealflow.forward-equivalent-lineage.v1",
     classification: "NEW_FORWARD_RECONSTRUCTION_NOT_RECOVERED_HISTORY",

@@ -145,14 +145,22 @@ const qaTestSource = qaSource.replace(
   "export function assertQaIsolatedSupabaseProject(",
 );
 const qaProcess = { env: {} };
-const qaModule = loadTypeScriptModule(qaTestSource, { process: qaProcess });
+const qaDeploymentModule = loadTypeScriptModule(read("src/lib/deployment-target.ts"), {
+  process: qaProcess,
+});
+const qaModule = loadTypeScriptModule(qaTestSource, {
+  process: qaProcess,
+  dependencies: new Map([["@/lib/deployment-target", qaDeploymentModule]]),
+});
 qaProcess.env = { NODE_ENV: "production", QA_AUTH_HARNESS_ENABLED: "true" };
-assertThrowsCode(qaModule.assertQaHarnessEnabled, "qa_auth_harness_production_disabled");
+assertThrowsCode(qaModule.assertQaHarnessEnabled, "qa_auth_harness_target_unattested");
 qaProcess.env = { NODE_ENV: "development", VERCEL_ENV: "production", QA_AUTH_HARNESS_ENABLED: "true" };
 assertThrowsCode(qaModule.assertQaHarnessEnabled, "qa_auth_harness_production_disabled");
-qaProcess.env = { NODE_ENV: "development", QA_AUTH_HARNESS_ENABLED: "false" };
+qaProcess.env = { NODE_ENV: "production", DEALFLOW_DEPLOYMENT_TARGET: "staging", QA_AUTH_HARNESS_ENABLED: "true" };
+assert.doesNotThrow(qaModule.assertQaHarnessEnabled);
+qaProcess.env = { NODE_ENV: "development", DEALFLOW_DEPLOYMENT_TARGET: "staging", QA_AUTH_HARNESS_ENABLED: "false" };
 assertThrowsCode(qaModule.assertQaHarnessEnabled, "qa_auth_harness_disabled");
-qaProcess.env = { NODE_ENV: "development", QA_AUTH_HARNESS_ENABLED: "true" };
+qaProcess.env = { NODE_ENV: "development", DEALFLOW_DEPLOYMENT_TARGET: "staging", QA_AUTH_HARNESS_ENABLED: "true" };
 assert.doesNotThrow(qaModule.assertQaHarnessEnabled);
 assert.match(qaSource, /"owner"/);
 assert.match(qaSource, /QA_ISOLATED_SUPABASE_PROJECT_REF/);
@@ -336,8 +344,12 @@ assert.match(pixelConsentControlSource, /Privacy choices/);
 assert.match(pixelConsentControlSource, /window\.location\.reload\(\)/);
 
 const turnstileProcess = { env: { NODE_ENV: "production" } };
+const turnstileDeploymentModule = loadTypeScriptModule(read("src/lib/deployment-target.ts"), {
+  process: turnstileProcess,
+});
 const turnstileModule = loadTypeScriptModule(read("src/lib/security/turnstile.ts"), {
   process: turnstileProcess,
+  dependencies: new Map([["@/lib/deployment-target", turnstileDeploymentModule]]),
 });
 assert.equal(
   turnstileModule.evaluateLeadCaptureTurnstileResponse({
@@ -368,6 +380,29 @@ await assert.rejects(
   () => turnstileModule.verifyLeadCaptureTurnstile({ token: "candidate-token" }),
   (error) => error instanceof TestApiError && error.code === "lead_turnstile_configuration_missing",
 );
+turnstileProcess.env = {
+  NODE_ENV: "production",
+  DEALFLOW_DEPLOYMENT_TARGET: "staging",
+  NEXT_PUBLIC_APP_URL: "https://app.example.test",
+  TURNSTILE_SECRET_KEY: "1x0000000000000000000000000000000AA",
+};
+const verifiedStagingTurnstile = await turnstileModule.verifyLeadCaptureTurnstile({
+  token: "XXXX.DUMMY.TOKEN.XXXX",
+  fetchImpl: async () =>
+    new Response(
+      JSON.stringify({
+        success: true,
+        hostname: "example.com",
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ),
+});
+assert.deepEqual(verifiedStagingTurnstile, { required: true, verified: true });
+turnstileProcess.env = {
+  NODE_ENV: "production",
+  DEALFLOW_DEPLOYMENT_TARGET: "production",
+  NEXT_PUBLIC_APP_URL: "https://app.example.test",
+};
 turnstileProcess.env.TURNSTILE_SECRET_KEY = strongSecret;
 const verifiedTurnstile = await turnstileModule.verifyLeadCaptureTurnstile({
   token: "candidate-token",
@@ -457,6 +492,9 @@ assert.doesNotMatch(proxyModule.config.matcher[0], /svg|png|jpg|jpeg|gif|webp/);
 for (const asset of ["/file.svg", "/globe.svg", "/logo-icon.svg", "/logo.svg", "/next.svg", "/vercel.svg", "/window.svg"]) {
   assert.ok(proxySource.includes(`"${asset}"`), `${asset} must remain explicitly public`);
 }
+assert.match(proxySource, /getIsolatedLoopbackSupabaseOrigin/);
+assert.match(proxySource, /\["localhost", "127\.0\.0\.1", "\[::1\]"\]/);
+assert.match(proxySource, /isProductionBuild && !isExplicitNonProductionDeployment\(\)/);
 
 const layoutSource = read("src/app/(app)/layout.tsx");
 assert.doesNotMatch(layoutSource, /x-dealflow-auth-state/);

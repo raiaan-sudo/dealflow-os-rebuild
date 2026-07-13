@@ -10,6 +10,10 @@ import {
   getSupabaseEnvOrThrow,
   isInternalAdminEmail,
 } from "@/lib/env";
+import {
+  getDeploymentTarget,
+  isExplicitNonProductionDeployment,
+} from "@/lib/deployment-target";
 import { getSupabaseAuthCookieOptions } from "@/lib/supabase/cookie-options";
 import { isExactIsolatedSupabaseProject } from "@/lib/security/supabase-isolation";
 import type { Database } from "@/lib/supabase/types";
@@ -18,11 +22,19 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 function assertQaHarnessEnabled() {
-  if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
+  if (getDeploymentTarget() === "production") {
     throw new ApiError(
       404,
       "QA auth harness is not available in production artifacts.",
       "qa_auth_harness_production_disabled",
+    );
+  }
+
+  if (!isExplicitNonProductionDeployment()) {
+    throw new ApiError(
+      404,
+      "QA auth harness requires an explicitly attested nonproduction target.",
+      "qa_auth_harness_target_unattested",
     );
   }
 

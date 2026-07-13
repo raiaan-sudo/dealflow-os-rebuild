@@ -1,6 +1,10 @@
 import "server-only";
 
 import { ApiError } from "@/lib/api/route";
+import {
+  getDeploymentTarget,
+  isExplicitNonProductionDeployment,
+} from "@/lib/deployment-target";
 
 const SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 const LEAD_CAPTURE_ACTION = "lead_capture";
@@ -12,10 +16,6 @@ type TurnstileSiteverifyResponse = {
   action?: unknown;
   "error-codes"?: unknown;
 };
-
-function isProductionRuntime() {
-  return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
-}
 
 function normalizeHostname(value: string) {
   const candidate = value.trim().toLowerCase().replace(/\.$/, "");
@@ -63,15 +63,21 @@ export async function verifyLeadCaptureTurnstile(params: {
   remoteIp?: string | null;
   fetchImpl?: typeof fetch;
 }) {
-  if (!isProductionRuntime()) {
+  const deploymentTarget = getDeploymentTarget();
+  const secret = process.env.TURNSTILE_SECRET_KEY?.trim() ?? "";
+  const testSecret = KNOWN_TEST_SECRET_PREFIXES.includes(secret);
+  if (
+    (deploymentTarget === "development" || deploymentTarget === "test") &&
+    !secret
+  ) {
     return { required: false, verified: false as const };
   }
 
-  const secret = process.env.TURNSTILE_SECRET_KEY?.trim() ?? "";
   const allowedHostnames = getTurnstileAllowedHostnames();
   if (
     !secret ||
-    KNOWN_TEST_SECRET_PREFIXES.includes(secret) ||
+    (deploymentTarget === "production" && testSecret) ||
+    (deploymentTarget !== "production" && !isExplicitNonProductionDeployment()) ||
     allowedHostnames.length === 0
   ) {
     throw new ApiError(
@@ -113,10 +119,18 @@ export async function verifyLeadCaptureTurnstile(params: {
   }
 
   const result = (await response.json().catch(() => null)) as TurnstileSiteverifyResponse | null;
+  const exactStagingTestResponse =
+    result?.success === true &&
+    testSecret &&
+    isExplicitNonProductionDeployment() &&
+    token === "XXXX.DUMMY.TOKEN.XXXX" &&
+    result.hostname === "example.com" &&
+    (result.action == null || result.action === "test");
   if (
     !response.ok ||
     !result ||
-    !evaluateLeadCaptureTurnstileResponse({ response: result, allowedHostnames })
+    (!exactStagingTestResponse &&
+      !evaluateLeadCaptureTurnstileResponse({ response: result, allowedHostnames }))
   ) {
     throw new ApiError(400, "Lead verification failed.", "lead_turnstile_invalid");
   }

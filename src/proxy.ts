@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { isExplicitNonProductionDeployment } from "@/lib/deployment-target";
 import { getInternalSystemJobSecrets, getSupabaseEnv } from "@/lib/env";
 import { getSupabaseAuthCookieOptions } from "@/lib/supabase/cookie-options";
 
@@ -241,15 +242,37 @@ function getSecuritySurface(pathname: string) {
   return "authenticated_app" as const;
 }
 
+function getIsolatedLoopbackSupabaseOrigin() {
+  if (!isExplicitNonProductionDeployment()) {
+    return null;
+  }
+
+  try {
+    const url = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "");
+    if (
+      url.protocol !== "http:" ||
+      !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname.toLowerCase())
+    ) {
+      return null;
+    }
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
 function buildContentSecurityPolicy(request: NextRequest, nonce: string) {
-  const isProduction = process.env.NODE_ENV === "production";
+  const isProductionBuild = process.env.NODE_ENV === "production";
+  const useProductionTransportSecurity =
+    isProductionBuild && !isExplicitNonProductionDeployment();
   const frameAncestors = getFrameAncestors(request);
   const surface = getSecuritySurface(request.nextUrl.pathname);
+  const isolatedLoopbackSupabaseOrigin = getIsolatedLoopbackSupabaseOrigin();
   const scriptSrc = [
     "'self'",
     `'nonce-${nonce}'`,
     "'strict-dynamic'",
-    ...(isProduction ? [] : ["'unsafe-eval'"]),
+    ...(isProductionBuild ? [] : ["'unsafe-eval'"]),
     "https://va.vercel-scripts.com",
     ...(surface === "marketing"
       ? []
@@ -264,6 +287,7 @@ function buildContentSecurityPolicy(request: NextRequest, nonce: string) {
       ? []
       : [
           "https://*.supabase.co",
+          ...(isolatedLoopbackSupabaseOrigin ? [isolatedLoopbackSupabaseOrigin] : []),
           "https://api.stripe.com",
           "https://challenges.cloudflare.com",
         ]),
@@ -301,7 +325,7 @@ function buildContentSecurityPolicy(request: NextRequest, nonce: string) {
     "object-src 'none'",
     "base-uri 'self'",
     `frame-ancestors ${frameAncestors}`,
-    ...(isProduction ? ["upgrade-insecure-requests"] : []),
+    ...(useProductionTransportSecurity ? ["upgrade-insecure-requests"] : []),
   ].join("; ");
 }
 
@@ -311,7 +335,8 @@ function applySecurityHeaders(
   nonce: string,
   startedAt?: number,
 ) {
-  const isProduction = process.env.NODE_ENV === "production";
+  const useProductionTransportSecurity =
+    process.env.NODE_ENV === "production" && !isExplicitNonProductionDeployment();
   const frameAncestors = getFrameAncestors(request);
   const allowsExternalFrameAncestors = frameAncestors !== "'none'";
 
@@ -334,7 +359,7 @@ function applySecurityHeaders(
     buildContentSecurityPolicy(request, nonce),
   );
 
-  if (isProduction) {
+  if (useProductionTransportSecurity) {
     response.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
   }
 

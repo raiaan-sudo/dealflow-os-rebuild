@@ -12151,7 +12151,7 @@
       "id": "20260710160000.catalog_gate_and_uuid_normalization.001",
       "migrationFile": "20260710160000_validate_and_normalize_pre_candidate_shape.sql",
       "migrationVersion": "20260710160000",
-      "sha256": "5c4af8d06f255daaa93fef829c595decffaec948a6f1688edb6a758fc6a7bf50"
+      "sha256": "f234014b4dc1d51ab2a47d2bf38d0358810e537bc5f206dd5a9ff682c83cf1b7"
     },
     {
       "id": "20260710235994.app_contract.001",

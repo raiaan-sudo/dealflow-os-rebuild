@@ -7,6 +7,12 @@
 -- Every assertion below is a structural pg_catalog query with a frozen expected rowset.
 -- It covers public, complete private, extensions, ownership, grants, default privileges, and dependency closure before mutation.
 
+-- Catalog deparsers such as pg_get_expr are search_path-sensitive. Pin the
+-- migration transaction so the same object produces the same canonical text
+-- under native PostgreSQL, Supabase CLI, and hosted Supabase migration runners.
+BEGIN;
+SET LOCAL search_path = "$user", public;
+
 -- dealflow:gate-group public.01_schemas.schemas_and_acls
 DO $dealflow_catalog_gate_1$
 DECLARE
@@ -1004,11 +1010,11 @@ $dealflow_catalog_gate_24$;
 -- dealflow:gate-group private.02_extensions.extensions_and_installed_versions
 DO $dealflow_catalog_gate_25$
 DECLARE
-  expected jsonb := $dealflow_expected_25$[{"configuration_table_count":null,"extension_name":"pg_stat_statements","extension_schema":"extensions","installed_version":"1.11","owner_name":"postgres","relocatable":true},{"configuration_table_count":null,"extension_name":"pgcrypto","extension_schema":"extensions","installed_version":"1.3","owner_name":"postgres","relocatable":true},{"configuration_table_count":null,"extension_name":"plpgsql","extension_schema":"pg_catalog","installed_version":"1.0","owner_name":"supabase_admin","relocatable":false},{"configuration_table_count":null,"extension_name":"uuid-ossp","extension_schema":"extensions","installed_version":"1.1","owner_name":"postgres","relocatable":true}]$dealflow_expected_25$::jsonb;
+  expected jsonb := $dealflow_expected_25$[{"configuration_table_count":null,"extension_name":"pg_stat_statements","extension_schema":"extensions","installed_version":"1.11","relocatable":true},{"configuration_table_count":null,"extension_name":"pgcrypto","extension_schema":"extensions","installed_version":"1.3","relocatable":true},{"configuration_table_count":null,"extension_name":"plpgsql","extension_schema":"pg_catalog","installed_version":"1.0","relocatable":false},{"configuration_table_count":null,"extension_name":"uuid-ossp","extension_schema":"extensions","installed_version":"1.1","relocatable":true}]$dealflow_expected_25$::jsonb;
   actual jsonb;
 BEGIN
   SELECT COALESCE(jsonb_agg(to_jsonb(actual_row) ORDER BY to_jsonb(actual_row)::text), '[]'::jsonb) INTO actual
-  FROM (SELECT "extension_name", "installed_version", "extension_schema", "owner_name", "relocatable", "configuration_table_count" FROM (SELECT
+  FROM (SELECT "extension_name", "installed_version", "extension_schema", "relocatable", "configuration_table_count" FROM (SELECT
   e.extname AS extension_name,
   e.extversion AS installed_version,
   n.nspname AS extension_schema,
@@ -1017,7 +1023,7 @@ BEGIN
   pg_catalog.cardinality(e.extconfig) AS configuration_table_count
 FROM pg_catalog.pg_extension AS e
 JOIN pg_catalog.pg_namespace AS n ON n.oid = e.extnamespace
-ORDER BY e.extname) AS source_row WHERE source_row.extension_name <> 'supabase_vault') AS actual_row;
+ORDER BY e.extname) AS source_row WHERE source_row.extension_name NOT IN ('supabase_vault','pg_graphql','pg_net')) AS actual_row;
   IF EXISTS (
     (SELECT value FROM jsonb_array_elements(expected) EXCEPT ALL SELECT value FROM jsonb_array_elements(actual))
     UNION ALL
@@ -2292,7 +2298,7 @@ $dealflow_catalog_gate_58$;
 
 -- This migration takes ACCESS EXCLUSIVE lock on campaign_plans and may rewrite that table and its indexes.
 -- It first proves the exact authoritative table/column/constraint/index shape, then performs the single authorized text-to-uuid normalization.
--- dealflow:statement id=20260710160000.catalog_gate_and_uuid_normalization.001 sha256=5c4af8d06f255daaa93fef829c595decffaec948a6f1688edb6a758fc6a7bf50
+-- dealflow:statement id=20260710160000.catalog_gate_and_uuid_normalization.001 sha256=f234014b4dc1d51ab2a47d2bf38d0358810e537bc5f206dd5a9ff682c83cf1b7
 LOCK TABLE public.campaign_plans IN ACCESS EXCLUSIVE MODE;
 
 DO $dealflow_pre_candidate_gate$
@@ -2386,3 +2392,5 @@ BEGIN
   END IF;
 END
 $dealflow_pre_candidate_postcondition$;
+
+COMMIT;

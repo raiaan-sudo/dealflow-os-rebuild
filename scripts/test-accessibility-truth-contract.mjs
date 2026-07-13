@@ -16,6 +16,7 @@ const paths = {
   homepage: "src/components/marketing/home-command-center.tsx",
   metaSelections: "src/components/campaign/launch/launch-meta-selection-panel.tsx",
   onboarding: "src/app/(app)/onboarding/page.tsx",
+  results: "src/app/results/page.tsx",
   commandCenter: "src/app/(app)/admin/command-center/command-center-console.tsx",
   globalStyles: "src/app/globals.css",
 };
@@ -60,7 +61,7 @@ function loadRedirectValidator() {
   );
   const functionSource = node.getText(sourceFile);
   const executable = ts.transpileModule(
-    `const DEFAULT_AUTH_REDIRECT_PATH = "/welcome?fresh=1";\n${functionSource}\nglobalThis.__redirectValidator = getSafeRedirectPath;`,
+    `const DEFAULT_AUTH_REDIRECT_PATH = "/onboarding?fresh=1";\n${functionSource}\nglobalThis.__redirectValidator = getSafeRedirectPath;`,
     {
       compilerOptions: {
         module: ts.ModuleKind.None,
@@ -77,7 +78,7 @@ function loadRedirectValidator() {
 
 const validateRedirect = loadRedirectValidator();
 const origin = "https://app.agentdealflow.io";
-const defaultPath = "/welcome?fresh=1";
+const defaultPath = "/onboarding?fresh=1";
 const redirectCases = [
   ["missing value", undefined, defaultPath],
   ["same-origin app path", "/dashboard?plan=pro#review", "/dashboard?plan=pro#review"],
@@ -93,6 +94,17 @@ const redirectCases = [
 for (const [name, value, expected] of redirectCases) {
   assert.equal(validateRedirect(value, origin), expected, `redirect case failed: ${name}`);
 }
+
+assertIncludes(
+  "results",
+  '      : "/dashboard",',
+  "results without an explicit demo plan must open the real campaign dashboard",
+);
+assertIncludes(
+  "results",
+  "campaignId=${encodeURIComponent(campaignId)}",
+  "results must preserve an explicit campaign selection",
+);
 
 const recoveryParse = sources.loginForm.indexOf(
   'const hashParams = new URLSearchParams(window.location.hash.slice(1));',

@@ -382,6 +382,7 @@ async function runStagingChecks() {
   const testCampaignId = getEnv("SMOKE_TEST_CAMPAIGN_ID");
   const testEmail = getEnv("SMOKE_TEST_EMAIL");
   const testPhone = getEnv("SMOKE_TEST_PHONE");
+  const testTurnstileToken = getEnv("SMOKE_TURNSTILE_TOKEN");
 
   if (testCampaignId && (testEmail || testPhone)) {
     const payload = {
@@ -389,6 +390,7 @@ async function runStagingChecks() {
       campaignId: testCampaignId,
       ...(testEmail ? { email: testEmail } : {}),
       ...(testPhone ? { phone: testPhone } : {}),
+      ...(testTurnstileToken ? { turnstile_token: testTurnstileToken } : {}),
     };
 
     const first = await request(`${baseUrl}/api/lead-capture`, {
