@@ -117,7 +117,7 @@ export default function LaunchingPage() {
           attempt,
         })) {
           if (!cancelled) {
-            setError(t("common.pleaseWait"));
+            setError(t("launch.ghlPreparationRunning"));
             retryTimer = setTimeout(() => {
               void loadReview(attempt + 1);
             }, GHL_DESTINATION_POLL_INTERVAL_MS);
@@ -126,13 +126,18 @@ export default function LaunchingPage() {
         }
         throw new Error(
           data?.code === "ghl_destination_pending"
-            ? t("common.pleaseWait")
+            ? t("launch.ghlPreparationRunning")
             : t("launch.unavailable"),
         );
-      } catch {
+      } catch (caughtError) {
         if (!cancelled) {
           setStatus("error");
-          setError(t("launch.unavailable"));
+          setError(
+            caughtError instanceof Error &&
+              caughtError.message === t("launch.ghlPreparationRunning")
+              ? t("launch.ghlPreparationRunning")
+              : t("launch.unavailable"),
+          );
         }
       }
     };

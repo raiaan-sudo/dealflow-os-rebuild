@@ -6,6 +6,7 @@ import {
   GHL_DESTINATION_POLL_INTERVAL_MS,
   shouldRetryPendingGhlDestination,
 } from "../src/lib/ghl-destination-polling";
+import { PRODUCT_MESSAGES } from "../src/lib/i18n/messages";
 
 assert.equal(GHL_DESTINATION_POLL_INTERVAL_MS, 2_000);
 assert.equal(GHL_DESTINATION_MAX_POLL_ATTEMPTS, 90);
@@ -39,11 +40,40 @@ for (const marker of [
   "GHL_DESTINATION_POLL_INTERVAL_MS",
   "void loadReview(attempt + 1)",
   "clearTimeout(retryTimer)",
-  "GHL funnel preparation is still running",
-  "Retry preparation",
 ]) {
   assert.ok(page.includes(marker), `Launching UI is missing bounded GHL readiness behavior: ${marker}`);
 }
+for (const key of ["launch.ghlPreparationRunning", "launch.retryPreparation"] as const) {
+  assert.ok(
+    page.includes(`t("${key}")`),
+    `Launching UI does not use the authoritative localized readiness message: ${key}`,
+  );
+  for (const locale of ["en", "fr", "es"] as const) {
+    assert.ok(
+      PRODUCT_MESSAGES[locale][key].trim(),
+      `Launching readiness message is missing for ${locale}: ${key}`,
+    );
+  }
+  assert.notEqual(
+    PRODUCT_MESSAGES.fr[key],
+    PRODUCT_MESSAGES.en[key],
+    `French launching readiness message was not localized: ${key}`,
+  );
+  assert.notEqual(
+    PRODUCT_MESSAGES.es[key],
+    PRODUCT_MESSAGES.en[key],
+    `Spanish launching readiness message was not localized: ${key}`,
+  );
+}
+assert.ok(
+  page.split('t("launch.ghlPreparationRunning")').length - 1 >= 2,
+  "Both the polling and exhausted GHL-pending paths must use the localized preparation status",
+);
+assert.match(
+  page,
+  /catch \(caughtError\)[\s\S]{0,220}caughtError\.message === t\("launch\.ghlPreparationRunning"\)[\s\S]{0,140}\? t\("launch\.ghlPreparationRunning"\)[\s\S]{0,100}: t\("launch\.unavailable"\)/,
+  "The exhausted GHL-pending path must preserve only its safe localized status",
+);
 assert.doesNotMatch(
   page,
   /ghl_destination_pending[\s\S]{0,300}router\.(?:push|replace)/,

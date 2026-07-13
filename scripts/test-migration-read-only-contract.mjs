@@ -61,24 +61,36 @@ assert.match(postMigration, /ghl_receipt_direct_insert_denied/);
 
 assert.match(
   migrationContract,
-  /Status: `NO_GO \/ 14 OF 14 LOCAL SCHEMA GATES PASS \/ EXTERNAL RELEASE AUTHORITY ABSENT`/,
+  /Overall verdict: `NO_GO`/,
 );
-assert.match(migrationContract, /Superseded historical blocker and current proof/);
-assert.match(migrationContract, /superseded failing-before evidence\. It is not current candidate status/);
-assert.match(migrationContract, /The local schema\s+blocker is cleared/);
+assert.match(migrationContract, /Frozen foundation: `80 MIGRATIONS \/ HISTORICAL_PASS`/);
+assert.match(migrationContract, /Integrated candidate: `102 MIGRATIONS \/ PENDING_FINAL_SEAL`/);
+assert.match(migrationContract, /Exact clean-seal 102-chain proof: `NOT_YET_RUN`/);
 assert.match(
   migrationContract,
-  /Mandatory two-phase old-worker and provider-protocol drain/,
+  /retained PostgreSQL 17\.6 evidence\s+for 14 foundation\/adoption\/collision\/RLS\/recovery gates/,
 );
-assert.match(migrationContract, /campaign_plan_v0_writers/);
-assert.match(migrationContract, /system_job_v1_workers/);
-assert.match(migrationContract, /contain exactly zero for every class/);
 assert.match(
   migrationContract,
-  /production baseline[\s\S]*not a valid application rollback target/,
+  /`HISTORICAL_PASS` for migrations 1-80; it is not proof of the current extensions/,
 );
-assert.match(migrationContract, /Forward recovery, not historical rollback/);
+assert.match(migrationContract, /current source tree contains exactly 102 ordered SQL migrations/);
+assert.match(
+  migrationContract,
+  /Current result for the exact final 102-migration seal: `NOT_YET_RUN`/,
+);
+assert.match(
+  migrationContract,
+  /Mandatory old-worker and provider-protocol drain/,
+);
+assert.match(migrationContract, /signed exact-deployment evidence must prove zero/);
+assert.match(migrationContract, /Signed drain proof is `NOT_YET_RUN`/);
+assert.match(
+  migrationContract,
+  /historical\s+baseline is not a safe automatic application rollback target/,
+);
+assert.match(migrationContract, /Forward recovery, not destructive rollback/);
 
 console.log(
-  "Migration read-only contract passed: pre/post phases are split, count/boolean-only, mutation-free, and bound to two-phase drain plus forward recovery.",
+  "Migration read-only contract passed: read-only SQL is mutation-free, the 14-gate foundation remains historical-only, and the current 102-chain remains NO_GO pending exact seal and drain proof.",
 );

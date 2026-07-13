@@ -714,6 +714,18 @@ try {
     path.join(root, "src/lib/services/video-generation-job.ts"),
     "utf8",
   );
+  const paidCreativeDispatchSource = fs.readFileSync(
+    path.join(root, "src/lib/services/paid-creative-dispatch-service.ts"),
+    "utf8",
+  );
+  const paidCreativeDispatchMigrationSource = fs.readFileSync(
+    path.join(root, "supabase/migrations/20260713017000_make_paid_creative_dispatch_recoverable.sql"),
+    "utf8",
+  );
+  const generatedVideoStorageSource = fs.readFileSync(
+    path.join(root, "src/lib/services/generated-video-storage-service.ts"),
+    "utf8",
+  );
   const videoProviderSource = fs.readFileSync(
     path.join(root, "src/lib/ai/video-provider.ts"),
     "utf8",
@@ -748,7 +760,50 @@ try {
     videoProviderSource,
     /provider === "higgsfield"[\s\S]{0,160}getHiggsfieldProviderUsageOutcome\(error\)[\s\S]{0,160}getHeyGenProviderUsageOutcome\(error\)/,
   );
-  assert.match(videoJobSource, /status: "consumed"[\s\S]{0,300}providerAccepted: true/);
+  const videoStatusJobSource = videoJobSource.slice(
+    videoJobSource.indexOf("export async function pollVideoGenerationStatusJob"),
+  );
+  const canonicalImportOffset = videoStatusJobSource.indexOf(
+    "const storedVideo = await importGeneratedVideoToCanonicalStorage",
+  );
+  const paidProjectionOffset = videoStatusJobSource.indexOf(
+    "await finalizePaidCreativeProjection",
+  );
+  assert.ok(canonicalImportOffset >= 0, "Completed paid video does not enter canonical storage");
+  assert.ok(
+    paidProjectionOffset > canonicalImportOffset,
+    "Paid video usage can settle before canonical storage and customer projection succeed",
+  );
+  assert.doesNotMatch(
+    videoStatusJobSource,
+    /consumeSessionCostBudget\(/,
+    "Video status/import recovery must not reserve or debit credits again",
+  );
+  assert.match(
+    paidCreativeDispatchSource,
+    /"finalize_paid_creative_projection_v1"[\s\S]{0,1400}row\.dispatch_state !== "projected" \|\| row\.usage_status !== "consumed"/,
+    "The runtime does not require the atomic paid-dispatch settlement receipt",
+  );
+  assert.match(
+    paidCreativeDispatchMigrationSource,
+    /dispatch_record\.state <> 'accepted'[\s\S]{0,120}dispatch_record\.provider_output is null[\s\S]{0,900}usage_record\.status = 'reserved'[\s\S]{0,300}status = 'consumed'[\s\S]{0,500}'providerOutputPersistedBeforeConsumption', true/,
+    "Provider usage can be consumed without a durable provider-accepted output",
+  );
+  assert.match(
+    paidCreativeDispatchMigrationSource,
+    /dispatch_record\.state = 'projected'[\s\S]{0,260}usage_record\.status <> 'consumed'[\s\S]{0,260}return query select false, true/,
+    "Paid projection replay does not enforce the exact consumed receipt",
+  );
+  assert.match(
+    generatedVideoStorageSource,
+    /A concurrent\/replayed worker may have won the immutable create[\s\S]{0,420}findExistingObject/,
+    "Canonical video import cannot recover an exact object created by a prior attempt",
+  );
+  assert.match(
+    generatedVideoStorageSource,
+    /Never remove after the binding RPC was attempted[\s\S]{0,420}generated_video_storage_bind_ambiguous/,
+    "An ambiguous canonical bind can delete recoverable provider output",
+  );
   assert.match(imageProviderSource, /providerOutcome = response\.ok \? "ambiguous" : "rejected"/);
   const billingSync = billingSource.slice(
     billingSource.indexOf("export async function syncBillingSubscriptionFromStripe"),
