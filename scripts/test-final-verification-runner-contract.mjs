@@ -6,19 +6,22 @@ import { readFileSync } from "node:fs";
 const source = readFileSync("scripts/run-dealflow-final-verification.mjs", "utf8");
 
 for (const marker of [
-  "const EXACT_INTEGRATED_MIGRATION_COUNT = 99",
-  "20260713024000_add_durable_ghl_periodic_form_sweeps.sql",
+  "const EXACT_INTEGRATED_MIGRATION_COUNT = 102",
+  "20260713027000_add_ghl_location_display_name_finalization.sql",
   '["npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"]]',
   '["npm", ["ls", "--all"]]',
   '["git", ["diff", "--check"]]',
   '["npm", ["audit", "--omit=dev", "--audit-level=low"]]',
   '["npm", ["run", "security:scan-release"]]',
+  '["npm", ["run", "test:release-evidence-current"]]',
   '["npm", ["run", "test:zero-external-effects"]]',
   '["npm", ["run", "test:e2e:safe:reporter"]]',
   '["npm", ["run", "test:load:safe-local:contract"]]',
   '["npm", ["run", "load:safe-local"]]',
   '["npm", ["run", "schema:check"]]',
   '["npm", ["run", "test:white-label-host-binding"]]',
+  '["npm", ["run", "test:white-label-universal"]]',
+  '["npm", ["run", "test:product-localization"]]',
   '["npm", ["run", "test:public-funnel-language"]]',
   '["npm", ["run", "test:single-plan-ui"]]',
   '["npm", ["run", "test:ghl-inbound-reconciliation"]]',
@@ -31,6 +34,8 @@ for (const marker of [
   '["npm", ["run", "test:atomic-public-lead-capture-db"]]',
   '["npm", ["run", "test:campaign-entitlement-disposable-db"]]',
   '["npm", ["run", "test:paid-creative-dispatch"]]',
+  '["npm", ["run", "test:generated-video-storage"]]',
+  '["npm", ["run", "test:account-deletion-offboarding"]]',
   '["npm", ["run", "test:campaign-dashboard-metric-truth"]]',
   'command: "npm run rls:cross-tenant"',
   'command: "npm run rls:fixture-smoke"',
@@ -60,5 +65,5 @@ assert.doesNotMatch(
 );
 
 console.log(
-  "final verification runner contract: PASS (migration 99, release hygiene, zero effects, safe load, product contracts, and fail-closed authenticated-proof gate)",
+  "final verification runner contract: PASS (migration 102, release hygiene/evidence, zero effects, safe load, multilingual product contracts, and fail-closed authenticated-proof gate)",
 );

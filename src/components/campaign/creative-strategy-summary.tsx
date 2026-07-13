@@ -1,5 +1,9 @@
+"use client";
+
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
+import type { ProductMessageKey } from "@/lib/i18n/messages";
 import type { CampaignCreativeStrategy } from "@/lib/services/campaign-plan-service";
 
 function titleCase(value: string) {
@@ -12,20 +16,10 @@ function joinList(values: string[]) {
   return values.filter(Boolean).join(" • ");
 }
 
-function buildWhyLine(strategy: CampaignCreativeStrategy) {
-  const category = titleCase(strategy.campaignCategory);
-  const trigger = strategy.triggerCondition || "the current market moment";
-  const tension = strategy.internalTension || "the main internal tension slowing action";
-  const mechanism = strategy.mechanism || "the system mechanism";
-  const proof = strategy.proofStyle || "a lower-risk proof angle";
-
-  return `${category} campaigns convert better when the copy opens on ${trigger.toLowerCase()}, names ${tension.toLowerCase()}, makes ${mechanism.toLowerCase()} feel like the proprietary mechanism, and uses ${proof.toLowerCase()} to reduce uncertainty before an explicit low-friction next step.`;
-}
-
 export function CreativeStrategySummary({
   strategy,
-  title = "Creative strategy",
-  description = "Why the system chose this campaign direction.",
+  title,
+  description,
   detailed = false,
   compact = false,
 }: {
@@ -35,71 +29,85 @@ export function CreativeStrategySummary({
   detailed?: boolean;
   compact?: boolean;
 }) {
+  const { t } = useProductI18n();
+  const categoryKey = `strategy.category.${strategy.campaignCategory}` as ProductMessageKey;
+  const category = t(categoryKey);
+  const resolvedTitle = title ?? t("strategy.title");
+  const resolvedDescription = description ?? t("strategy.description");
+  const notSet = t("strategy.notSet");
+  const whyLine = t("strategy.whyTemplate", {
+    category: category.toLocaleLowerCase(),
+    trigger: strategy.triggerCondition || notSet,
+    tension: strategy.internalTension || notSet,
+    mechanism: strategy.mechanism || notSet,
+    proof: strategy.proofStyle || notSet,
+  });
+
   return (
     <Card className={compact ? "p-5" : "p-6 sm:p-7"}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-            {title}
+            {resolvedTitle}
           </p>
-          <p className="mt-2 text-sm leading-7 text-muted-foreground">{description}</p>
+          <p className="mt-2 text-sm leading-7 text-muted-foreground">{resolvedDescription}</p>
         </div>
         <Badge className="border-primary/15 bg-primary/10 text-primary">
-          {titleCase(strategy.campaignCategory)}
+          {category}
         </Badge>
       </div>
 
       <div className="mt-5 flex flex-wrap gap-3 text-sm text-muted-foreground">
         <div className="rounded-full border border-white/8 bg-white/[0.03] px-3 py-2">
-          Trigger: {strategy.triggerCondition || "Not set yet"}
+          {t("strategy.trigger")}: {strategy.triggerCondition || notSet}
         </div>
         <div className="rounded-full border border-white/8 bg-white/[0.03] px-3 py-2">
-          Mechanism: {strategy.mechanism || "Not set yet"}
+          {t("strategy.mechanism")}: {strategy.mechanism || notSet}
         </div>
         <div className="rounded-full border border-white/8 bg-white/[0.03] px-3 py-2">
-          Proof: {strategy.proofStyle || "Not set yet"}
+          {t("strategy.proof")}: {strategy.proofStyle || notSet}
         </div>
       </div>
 
       <div className="mt-5 rounded-[20px] border border-white/8 bg-black/20 p-4">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          Why this direction
+          {t("strategy.why")}
         </p>
-        <p className="mt-2 text-sm leading-7 text-white/72">{buildWhyLine(strategy)}</p>
+        <p className="mt-2 text-sm leading-7 text-white/72">{whyLine}</p>
       </div>
 
       {detailed ? (
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
           <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Internal tension
+              {t("strategy.internalTension")}
             </p>
             <p className="mt-2 text-sm leading-7 text-white/72">
-              {strategy.internalTension || "Not set yet"}
+              {strategy.internalTension || notSet}
             </p>
           </div>
           <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Overlay style
+              {t("strategy.overlayStyle")}
             </p>
             <p className="mt-2 text-sm leading-7 text-white/72">
-              {joinList(strategy.overlayStyle) || "No overlay direction set yet"}
+              {joinList(strategy.overlayStyle) || t("strategy.noOverlay")}
             </p>
           </div>
           <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Visual logic
+              {t("strategy.visualLogic")}
             </p>
             <p className="mt-2 text-sm leading-7 text-white/72">
-              {joinList(strategy.visualLogic) || "No visual direction set yet"}
+              {joinList(strategy.visualLogic) || t("strategy.noVisual")}
             </p>
           </div>
           <div className="rounded-[20px] border border-white/8 bg-black/20 p-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              CTA style
+              {t("strategy.ctaStyle")}
             </p>
             <p className="mt-2 text-sm leading-7 text-white/72">
-              {titleCase(strategy.ctaStyle || "low_friction")}
+              {strategy.ctaStyle ? titleCase(strategy.ctaStyle) : t("strategy.lowFriction")}
             </p>
           </div>
         </div>

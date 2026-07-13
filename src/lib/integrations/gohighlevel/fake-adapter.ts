@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {
   GhlLocationCreateResult,
   GhlLocationReconcileResult,
@@ -7,6 +8,14 @@ import type {
   GhlSnapshotStatusResult,
 } from "./types";
 import { isExactGhlLocationCreateContract } from "./snapshot-create-contract";
+
+function fakeReconciliationFingerprint(input: {
+  requestFingerprint: string;
+  outcome: string;
+  providerLocationId: string | null;
+}) {
+  return createHash("sha256").update(JSON.stringify(input)).digest("hex");
+}
 
 export type FakeGhlCreateOutcome =
   | "success"
@@ -27,6 +36,7 @@ export type FakeGhlCall = {
   operation:
     | "location_create"
     | "location_reconcile"
+    | "location_display_name_finalize"
     | "snapshot_install"
     | "snapshot_status"
     | "required_objects_verify";
@@ -169,12 +179,23 @@ export class FakeGhlAdapter implements GhlProviderAdapter {
       operation: "location_reconcile",
       idempotencyKey: input.idempotencyKey,
       providerLocationId: null,
+      requestFingerprint: input.requestFingerprint,
     });
     const requestId = this.nextRequestId();
     const providerLocationId = this.locationsByIdempotencyKey.get(input.idempotencyKey);
 
     if (providerLocationId) {
-      return { outcome: "found", providerLocationId, providerRequestId: requestId };
+      return {
+        outcome: "found",
+        providerLocationId,
+        providerRequestId: requestId,
+        requestFingerprint: input.requestFingerprint,
+        responseFingerprint: fakeReconciliationFingerprint({
+          requestFingerprint: input.requestFingerprint,
+          outcome: "found",
+          providerLocationId,
+        }),
+      };
     }
 
     if (this.scenario.reconcileUnknown) {
@@ -183,10 +204,47 @@ export class FakeGhlAdapter implements GhlProviderAdapter {
         errorCode: "fake_reconciliation_inconclusive",
         safeMessage: "The fake provider could not conclusively reconcile the request.",
         providerRequestId: requestId,
+        requestFingerprint: input.requestFingerprint,
+        responseFingerprint: fakeReconciliationFingerprint({
+          requestFingerprint: input.requestFingerprint,
+          outcome: "uncertain",
+          providerLocationId: null,
+        }),
       };
     }
 
-    return { outcome: "not_found", providerRequestId: requestId };
+    return {
+      outcome: "not_found",
+      providerRequestId: requestId,
+      requestFingerprint: input.requestFingerprint,
+      responseFingerprint: fakeReconciliationFingerprint({
+        requestFingerprint: input.requestFingerprint,
+        outcome: "not_found",
+        providerLocationId: null,
+      }),
+    };
+  }
+
+  async finalizeLocationDisplayName(
+    input: Parameters<GhlProviderAdapter["finalizeLocationDisplayName"]>[0],
+  ) {
+    this.calls.push({
+      operation: "location_display_name_finalize",
+      idempotencyKey: input.idempotencyKey,
+      providerLocationId: input.providerLocationId,
+      requestFingerprint: input.requestFingerprint,
+    });
+    return {
+      outcome: "succeeded" as const,
+      providerRequestId: this.nextRequestId(),
+      requestFingerprint: input.requestFingerprint,
+      responseFingerprint: fakeReconciliationFingerprint({
+        requestFingerprint: input.requestFingerprint,
+        outcome: "display_name_verified",
+        providerLocationId: input.providerLocationId,
+      }),
+      httpStatus: 200,
+    };
   }
 
   async installSnapshot(

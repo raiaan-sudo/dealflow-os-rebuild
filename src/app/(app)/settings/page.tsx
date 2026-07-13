@@ -4,10 +4,13 @@ import { CreditTopUpButton } from "@/components/billing/credit-top-up-button";
 import { PortalButton } from "@/components/billing/portal-button";
 import { Card } from "@/components/ui/card";
 import { PageShell } from "@/components/ui/page-shell";
+import { AccountDeletionCard } from "@/components/settings/account-deletion-card";
 import { getBillingSummary } from "@/lib/services/billing-service";
 import { getCreditSummaryForCurrentUser } from "@/lib/services/credit-service";
+import { getRequestProductI18n } from "@/lib/i18n/server";
 
 export default async function SettingsPage() {
+  const { currency, t } = await getRequestProductI18n();
   const [billing, credits] = await Promise.all([
     getBillingSummary().catch(() => null),
     getCreditSummaryForCurrentUser().catch(() => null),
@@ -16,18 +19,17 @@ export default async function SettingsPage() {
   return (
     <PageShell>
       <PageHeader
-        eyebrow="Workspace"
-        title="Settings"
-        description="Workspace configuration is currently managed through onboarding, integrations, and billing flows."
-        guidance="This page exists so the workspace settings entry point never dead-ends during launch validation."
+        eyebrow={t("settings.workspace")}
+        title={t("settings.title")}
+        description={t("settings.description")}
+        guidance={t("settings.configurationBody")}
       />
 
       <Card className="p-5 sm:p-7">
         <div className="space-y-3">
-          <p className="text-sm font-medium text-foreground">No direct settings changes are required right now.</p>
+          <p className="text-sm font-medium text-foreground">{t("settings.noChanges")}</p>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            Use Build to update campaign inputs, Go Live to connect Meta assets, and the billing gate to manage
-            launch access. Operator-only launch visibility remains available in the internal monitor.
+            {t("settings.configurationBody")}
           </p>
         </div>
       </Card>
@@ -35,22 +37,22 @@ export default async function SettingsPage() {
       <Card className="p-5 sm:p-7">
         <div className="space-y-5">
           <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Credits</p>
-            <h2 className="mt-2 text-xl font-semibold">Generation credits</h2>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("billing.credits")}</p>
+            <h2 className="mt-2 text-xl font-semibold">{t("billing.generationCredits")}</h2>
             <div className="mt-3 space-y-1 text-sm text-muted-foreground">
-              <p>Balance: {credits?.formattedBalance ?? "$0.00"}</p>
-              <p>Image generation: {credits ? `$${(credits.imageGenerationCostCents / 100).toFixed(2)}` : "$1.00"} per asset</p>
-              <p>Video generation: {credits ? `$${(credits.videoGenerationCostCents / 100).toFixed(2)}` : "$5.00"} per asset</p>
+              <p>{t("settings.balance")}: {currency((credits?.balance ?? 0) / 100, "USD")}</p>
+              <p>{t("settings.imageCost")}: {currency((credits?.imageGenerationCostCents ?? 100) / 100, "USD")} {t("settings.perAsset")}</p>
+              <p>{t("settings.videoCost")}: {currency((credits?.videoGenerationCostCents ?? 500) / 100, "USD")} {t("settings.perAsset")}</p>
             </div>
           </div>
           <CreditTopUpButton
             amountCents={credits?.minimumTopUpCents ?? 2500}
-            label={`Add ${credits?.formattedMinimumTopUp ?? "$25.00"} credits`}
+            label={`${t("billing.addCredits")} · ${currency((credits?.minimumTopUpCents ?? 2500) / 100, "USD")}`}
             disabled={!billing?.commerciallyActivated || !billing.launchAllowed}
           />
           {!billing?.commerciallyActivated || !billing.launchAllowed ? (
             <p className="text-sm leading-6 text-muted-foreground">
-              Activate the $297 subscription before adding generation credits.
+              {t("settings.activateCredits")}
             </p>
           ) : null}
         </div>
@@ -59,12 +61,12 @@ export default async function SettingsPage() {
       <Card className="p-5 sm:p-7">
         <div className="space-y-5">
           <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Billing</p>
-            <h2 className="mt-2 text-xl font-semibold">Subscription management</h2>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("billing.billing")}</p>
+            <h2 className="mt-2 text-xl font-semibold">{t("billing.subscription")}</h2>
             <div className="mt-3 space-y-1 text-sm text-muted-foreground">
-              <p>Plan: {billing?.commerciallyActivated ? billing.planTier : "Not activated"}</p>
-              <p>Status: {billing?.subscriptionStatus ?? "inactive"}</p>
-              <p>Launch access: {billing?.launchAllowed ? "enabled" : "not enabled"}</p>
+              <p>{t("settings.plan")}: {billing?.commerciallyActivated ? billing.planTier : t("settings.notActivated")}</p>
+              <p>{t("common.status")}: {billing?.subscriptionStatus ?? t("settings.notActivated")}</p>
+              <p>{t("settings.launchAccess")}: {billing?.launchAllowed ? t("settings.enabled") : t("settings.notEnabled")}</p>
             </div>
           </div>
 
@@ -73,13 +75,15 @@ export default async function SettingsPage() {
           ) : (
             <div className="space-y-3">
               <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-                Activate a subscription before opening Stripe-hosted billing management for this workspace.
+                {t("settings.portalHelp")}
               </p>
-              <CheckoutButton label="Activate billing" />
+              <CheckoutButton label={t("settings.activateBilling")} />
             </div>
           )}
         </div>
       </Card>
+
+      <AccountDeletionCard />
     </PageShell>
   );
 }

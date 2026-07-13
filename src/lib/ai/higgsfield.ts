@@ -1,5 +1,8 @@
-import { getHiggsfieldGenerationEnv } from "@/lib/env";
+import { getHiggsfieldGenerationEnv, getPublicAppUrl } from "@/lib/env";
 import { resolveProviderEndpoint } from "@/lib/integrations/provider-endpoint-policy";
+import { isPublicNetworkAddress } from "@/lib/security/public-network-address";
+import { lookup as lookupDns } from "node:dns/promises";
+import { isIP } from "node:net";
 
 export type HiggsfieldProviderUsageOutcome =
   | "released"
@@ -59,8 +62,11 @@ function normalizeStatus(value: unknown): HiggsfieldStatusResult["status"] {
   return "unknown";
 }
 
-function getConfig() {
-  if (process.env.ALLOW_HIGGSFIELD_VIDEO_GENERATION !== "true") {
+function getConfig(options: { requireDispatchAuthorization: boolean }) {
+  if (
+    options.requireDispatchAuthorization &&
+    process.env.ALLOW_HIGGSFIELD_VIDEO_GENERATION !== "true"
+  ) {
     throw new HiggsfieldProviderUsageError(
       "Higgsfield video generation is disabled until its paid-provider guard is explicitly enabled.",
       "released",
@@ -106,25 +112,62 @@ function normalizeInputImageUrl(value: string | null | undefined) {
     );
   }
 
-  const loopback = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(
-    parsed.hostname.toLowerCase(),
+  const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
+  const testTransport =
+    process.env.NODE_ENV === "test" &&
+    process.env.ALLOW_PROVIDER_LOOPBACK_TEST_TRANSPORT === "true";
+  const trustedSuffixes = [
+    "blob.core.windows.net",
+    "openai.com",
+    "supabase.co",
+    "supabase.in",
+    "replicate.delivery",
+  ];
+  const trustedTestHost = testTransport && host.endsWith(".example.test");
+  const trustedProviderHost = trustedSuffixes.some(
+    (suffix) => host === suffix || host.endsWith(`.${suffix}`),
   );
+  let firstPartyHost = "";
+  try {
+    firstPartyHost = new URL(getPublicAppUrl()).hostname.toLowerCase().replace(/\.$/, "");
+  } catch {
+    firstPartyHost = "";
+  }
   if (
     parsed.username ||
     parsed.password ||
-    (parsed.protocol !== "https:" &&
-      !(
-        loopback &&
-        process.env.ALLOW_PROVIDER_LOOPBACK_TEST_TRANSPORT === "true"
-      ))
+    parsed.hash ||
+    parsed.port ||
+    parsed.protocol !== "https:" ||
+    !host ||
+    isIP(host) ||
+    (!trustedProviderHost && !trustedTestHost && host !== firstPartyHost)
   ) {
     throw new HiggsfieldProviderUsageError(
-      "Higgsfield source images must use credential-free HTTPS URLs.",
+      "Higgsfield source images must use a trusted canonical HTTPS asset host.",
       "released",
     );
   }
 
-  return parsed.toString();
+  return { url: parsed.toString(), host, skipDnsForTest: trustedTestHost };
+}
+
+async function verifyInputImageUrl(value: string | null | undefined) {
+  const normalized = normalizeInputImageUrl(value);
+  if (!normalized.skipDnsForTest) {
+    const addresses = await lookupDns(normalized.host, { all: true, verbatim: true })
+      .catch(() => []);
+    if (
+      addresses.length === 0 ||
+      addresses.some((entry) => !isPublicNetworkAddress(entry.address))
+    ) {
+      throw new HiggsfieldProviderUsageError(
+        "Higgsfield source image host could not be verified as public.",
+        "released",
+      );
+    }
+  }
+  return normalized.url;
 }
 
 export function getHiggsfieldProviderUsageOutcome(error: unknown) {
@@ -142,8 +185,8 @@ export async function createHiggsfieldVideo(request: {
     throw new HiggsfieldProviderUsageError("Video prompt is too short.", "released");
   }
 
-  const config = getConfig();
-  const inputImageUrl = normalizeInputImageUrl(request.inputImageUrl);
+  const config = getConfig({ requireDispatchAuthorization: true });
+  const inputImageUrl = await verifyInputImageUrl(request.inputImageUrl);
   let response: Response;
   let data: Record<string, unknown> | null;
 
@@ -171,9 +214,13 @@ export async function createHiggsfieldVideo(request: {
   }
 
   if (!response.ok) {
+    const definitivelyRejected =
+      response.status >= 400 &&
+      response.status < 500 &&
+      ![408, 409, 425, 429].includes(response.status);
     throw new HiggsfieldProviderUsageError(
       extractError(data) || `Higgsfield rejected the request with HTTP ${response.status}.`,
-      "rejected",
+      definitivelyRejected ? "rejected" : "operator_action_required",
     );
   }
 
@@ -198,19 +245,40 @@ export async function getHiggsfieldVideoStatus(requestId: string): Promise<Higgs
   if (!/^[A-Za-z0-9_-]{8,160}$/.test(normalizedId)) {
     throw new Error("Invalid Higgsfield request id.");
   }
-  const config = getConfig();
-  const response = await fetch(
-    `${config.baseUrl}/requests/${encodeURIComponent(normalizedId)}/status`,
-    {
-      method: "GET",
-      headers: { Authorization: config.authorization },
-      signal: AbortSignal.timeout(30_000),
-    },
-  );
-  const data = await parseJsonSafe(response);
+  // Reconciliation must stay available after dispatch even if the paid-create
+  // switch is subsequently disabled. Credentials and endpoint policy remain
+  // mandatory; this never authorizes a new generation.
+  const config = getConfig({ requireDispatchAuthorization: false });
+  let response: Response;
+  let data: Record<string, unknown> | null;
+  try {
+    response = await fetch(
+      `${config.baseUrl}/requests/${encodeURIComponent(normalizedId)}/status`,
+      {
+        method: "GET",
+        headers: { Authorization: config.authorization },
+        signal: AbortSignal.timeout(30_000),
+      },
+    );
+    data = await parseJsonSafe(response);
+  } catch (error) {
+    throw new HiggsfieldProviderUsageError(
+      error instanceof Error ? error.message : "Higgsfield status request failed.",
+      "operator_action_required",
+    );
+  }
   if (!response.ok) {
-    throw new Error(
+    throw new HiggsfieldProviderUsageError(
       extractError(data) || `Higgsfield status request failed with HTTP ${response.status}.`,
+      "operator_action_required",
+    );
+  }
+
+  const returnedRequestId = safeText(data?.request_id);
+  if (returnedRequestId && returnedRequestId !== normalizedId) {
+    throw new HiggsfieldProviderUsageError(
+      "Higgsfield status response did not match the requested generation identity.",
+      "operator_action_required",
     );
   }
 
@@ -220,10 +288,38 @@ export async function getHiggsfieldVideoStatus(requestId: string): Promise<Higgs
       ? (data.video as Record<string, unknown>)
       : null;
 
+  const rawVideoUrl = safeText(video?.url);
+  let videoUrl: string | null = null;
+  if (rawVideoUrl) {
+    try {
+      const parsed = new URL(rawVideoUrl);
+      const loopback = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(
+        parsed.hostname.toLowerCase(),
+      );
+      if (
+        !parsed.username &&
+        !parsed.password &&
+        (parsed.protocol === "https:" ||
+          (loopback && process.env.ALLOW_PROVIDER_LOOPBACK_TEST_TRANSPORT === "true"))
+      ) {
+        videoUrl = parsed.toString();
+      }
+    } catch {
+      videoUrl = null;
+    }
+  }
+
+  if (status === "completed" && !videoUrl) {
+    throw new HiggsfieldProviderUsageError(
+      "Higgsfield reported completion without a safe credential-free video URL.",
+      "operator_action_required",
+    );
+  }
+
   return {
     requestId: normalizedId,
     status,
-    videoUrl: safeText(video?.url) || null,
+    videoUrl,
     error: status === "failed" || status === "nsfw" ? extractError(data) || status : null,
     raw: data,
   };

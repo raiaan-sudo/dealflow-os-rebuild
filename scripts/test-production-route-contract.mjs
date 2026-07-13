@@ -186,10 +186,14 @@ async function runStaticContract() {
   assertIncludes("src/app/(app)/builder/page.tsx", "redirectUrl = new URL(\"/onboarding\"", "Builder route redirects to onboarding");
   assertExcludes("src/app/(app)/builder/page.tsx", "CampaignBuilderWorkspace", "Builder route cannot import legacy workspace");
   assertIncludes("src/app/(app)/layout.tsx", "pathname.startsWith(\"/onboarding\")", "Onboarding uses focused product layout");
-  assertIncludes("src/app/(app)/onboarding/page.tsx", "Confirm and build", "Verified onboarding review step is present");
-  assertIncludes("src/app/(app)/onboarding/page.tsx", "Ready to build campaign preview", "Verified onboarding build preview is present");
-  assertIncludes("src/app/(app)/onboarding/page.tsx", "Activate Pro", "Verified onboarding paywall CTA is present");
-  assertIncludes("src/components/onboarding/prepaywall-campaign-preview.tsx", "Campaign package preview", "Verified campaign package preview is present");
+  assertIncludes("src/app/(app)/onboarding/page.tsx", 't(`onboarding.title.${currentStep}`', "Verified onboarding review step uses the locale catalog");
+  assertIncludes("src/app/(app)/onboarding/page.tsx", 't("onboarding.ready")', "Verified onboarding build preview uses the locale catalog");
+  assertIncludes("src/app/(app)/onboarding/page.tsx", 't("onboarding.activatePro")', "Verified onboarding paywall CTA uses the locale catalog");
+  assertIncludes("src/components/onboarding/prepaywall-campaign-preview.tsx", "uiCopy.packageTitle", "Verified campaign package preview uses localized copy");
+  assertIncludes("src/lib/i18n/messages.ts", '"onboarding.title.review": "Confirm and build"', "English review-step catalog value is preserved");
+  assertIncludes("src/lib/i18n/messages.ts", '"onboarding.ready": "Ready to build campaign preview"', "English build-preview catalog value is preserved");
+  assertIncludes("src/lib/i18n/messages.ts", '"onboarding.activatePro": "Activate Pro"', "English activation catalog value is preserved");
+  assertIncludes("src/lib/i18n/prepaywall-preview-copy.ts", 'packageTitle: "Campaign package preview"', "English package-preview catalog value is preserved");
   assertIncludes("src/lib/billing/plan-presentation.ts", "Only launch plan", "Verified launch plan presentation is present");
   assertExcludes("src/app/(app)/onboarding/page.tsx", "STEP 1 OF 7: WORKSPACE", "Old linear onboarding shell is absent");
   assertExcludes("src/components/layout/sidebar.tsx", "href: \"/builder\"", "Sidebar does not link to builder");
@@ -199,8 +203,14 @@ async function runStaticContract() {
   assertExcludes("src/lib/navigation.ts", "href: \"/builder\"", "Shared navigation does not link to builder");
 
   assertIncludes("src/proxy.ts", "ROOT_APP_REDIRECT_HOSTS", "Root app redirect host contract is centralized");
-  assertIncludes("src/proxy.ts", "\"clicktoscale.io\"", "ClickToScale root is treated as app domain");
   assertIncludes("src/proxy.ts", "\"agentdealflow.io\"", "AgentDealFlow root is treated as app domain");
+  assertIncludes("src/proxy.ts", "loadVerifiedPartnerDomainContext(request.nextUrl.hostname)", "Partner root routing uses the verified domain resolver");
+  assertIncludes("src/proxy.ts", "verifiedPartnerDomain === host", "Every verified partner root is treated as an app domain");
+  assertExcludes("src/proxy.ts", "\"clicktoscale.io\"", "ClickToScale is not hardcoded into app routing");
+  assertIncludes("src/lib/white-label/verified-partner-domain.ts", 'readRows("partner_domains"', "Partner routing resolves from partner-domain records");
+  assertIncludes("src/lib/white-label/verified-partner-domain.ts", 'verification_status: "eq.verified"', "Partner routing requires verified domain status");
+  assertIncludes("src/lib/white-label/verified-partner-domain.ts", 'ssl_status: "eq.active"', "Partner routing requires active SSL status");
+  assertIncludes("src/lib/white-label/verified-partner-domain.ts", "domainRows.length !== 1", "Partner routing rejects missing or ambiguous domain records");
   assertIncludes("src/proxy.ts", "pathname.startsWith(\"/f/\")", "Public funnel route remains public");
   assertIncludes("src/proxy.ts", "pathname === \"/ui-direction\"", "UI direction preview is explicitly gated");
 

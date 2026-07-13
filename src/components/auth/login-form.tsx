@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
+import type { ProductMessageKey } from "@/lib/i18n/messages";
 
 type LoginFormProps = {
   redirectedFrom?: string;
@@ -27,18 +29,18 @@ type LoginFormProps = {
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
 const GOOGLE_AUTH_ENABLED = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_AUTH === "true";
 const TURNSTILE_SCRIPT_ID = "cloudflare-turnstile-script";
-const DEFAULT_AUTH_REDIRECT_PATH = "/onboarding?fresh=1";
-const AUTH_TEMPORARILY_UNAVAILABLE_COPY =
-  "Sign-in is temporarily unavailable. Please try again shortly or contact support if it continues.";
-
-function getSafeRedirectPath(value: string | undefined, origin: string) {
+function getSafeRedirectPath(
+  value: string | undefined,
+  origin: string,
+  defaultPath: string,
+) {
   if (
     !value ||
     !value.startsWith("/") ||
     value.startsWith("//") ||
     value.includes("\\")
   ) {
-    return DEFAULT_AUTH_REDIRECT_PATH;
+    return defaultPath;
   }
 
   try {
@@ -49,27 +51,30 @@ function getSafeRedirectPath(value: string | undefined, origin: string) {
       resolved.pathname === "/" ||
       resolved.pathname.startsWith("/login")
     ) {
-      return DEFAULT_AUTH_REDIRECT_PATH;
+      return defaultPath;
     }
 
     return `${resolved.pathname}${resolved.search}${resolved.hash}`;
   } catch {
-    return DEFAULT_AUTH_REDIRECT_PATH;
+    return defaultPath;
   }
 }
 
-function customerSafeAuthErrorMessage(error: unknown) {
+function customerSafeAuthErrorMessage(
+  error: unknown,
+  t: (key: ProductMessageKey) => string,
+) {
   const message = error instanceof Error ? error.message : "";
 
   if (/supabase|environment|configured|config|url|anon|service|provider|oauth/i.test(message)) {
-    return AUTH_TEMPORARILY_UNAVAILABLE_COPY;
+    return t("auth.error.unavailable");
   }
 
   if (/no session|session was established|auth session/i.test(message)) {
-    return "We could not finish signing you in. Please try again.";
+    return t("auth.error.generic");
   }
 
-  return message || "Authentication failed. Please try again.";
+  return t("auth.error.generic");
 }
 
 declare global {
@@ -97,6 +102,7 @@ export function LoginForm({
   branding,
   partnerAttribution,
 }: LoginFormProps) {
+  const { href, t } = useProductI18n();
   const [mode, setMode] = useState<"sign-in" | "sign-up" | "reset-password" | "update-password">(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -113,8 +119,12 @@ export function LoginForm({
   const requiresTurnstile = turnstileEnabled && mode !== "update-password";
 
   function getEmailConfirmationRedirectUrl(value?: string) {
-    const nextPath = getSafeRedirectPath(value, window.location.origin);
-    const redirectTo = new URL("/login", window.location.origin);
+    const nextPath = getSafeRedirectPath(
+      value,
+      window.location.origin,
+      href("/onboarding?fresh=1"),
+    );
+    const redirectTo = new URL(href("/login"), window.location.origin);
     redirectTo.searchParams.set("confirmed", "1");
     redirectTo.searchParams.set("redirectedFrom", nextPath);
     return redirectTo.toString();
@@ -158,14 +168,18 @@ export function LoginForm({
     const supabase = createClient();
 
     if (!supabase) {
-      setError(AUTH_TEMPORARILY_UNAVAILABLE_COPY);
+      setError(t("auth.error.unavailable"));
       return;
     }
 
     setIsPending(true);
 
     try {
-      const nextPath = getSafeRedirectPath(redirectedFrom, window.location.origin);
+      const nextPath = getSafeRedirectPath(
+        redirectedFrom,
+        window.location.origin,
+        href("/onboarding?fresh=1"),
+      );
       const redirectTo = new URL(nextPath, window.location.origin);
       redirectTo.searchParams.set("next", nextPath);
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
@@ -179,7 +193,7 @@ export function LoginForm({
         throw oauthError;
       }
     } catch (caughtError) {
-      setError(customerSafeAuthErrorMessage(caughtError));
+      setError(customerSafeAuthErrorMessage(caughtError, t));
       setIsPending(false);
     }
   }
@@ -192,7 +206,7 @@ export function LoginForm({
     const supabase = createClient();
 
     if (!supabase) {
-      setError(AUTH_TEMPORARILY_UNAVAILABLE_COPY);
+      setError(t("auth.error.unavailable"));
       return;
     }
 
@@ -200,13 +214,13 @@ export function LoginForm({
 
     try {
       if (requiresTurnstile && !turnstileToken) {
-        throw new Error("Please complete the verification challenge.");
+        throw new Error(t("auth.error.challenge"));
       }
 
       await requestEmbeddedAuthStorageAccess();
 
       if (mode === "reset-password") {
-        const redirectTo = new URL("/login", window.location.origin);
+        const redirectTo = new URL(href("/login"), window.location.origin);
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: redirectTo.toString(),
           captchaToken: turnstileEnabled ? turnstileToken : undefined,
@@ -216,7 +230,7 @@ export function LoginForm({
           throw resetError;
         }
 
-        setMessage("Password reset link sent. Check your inbox to continue.");
+        setMessage(t("auth.message.resetSent"));
         resetTurnstile();
         return;
       }
@@ -228,7 +242,7 @@ export function LoginForm({
           throw updateError;
         }
 
-        setMessage("Password updated. You can continue to your dashboard.");
+        setMessage(t("auth.message.updated"));
         setMode("sign-in");
         return;
       }
@@ -251,10 +265,14 @@ export function LoginForm({
           (await supabase.auth.getSession()).data.session;
 
         if (!session) {
-          throw new Error("Sign-in completed but no session was established.");
+          throw new Error(t("auth.error.session"));
         }
 
-        const nextPath = getSafeRedirectPath(redirectedFrom, window.location.origin);
+        const nextPath = getSafeRedirectPath(
+          redirectedFrom,
+          window.location.origin,
+          href("/onboarding?fresh=1"),
+        );
         window.location.assign(nextPath);
         return;
       }
@@ -282,7 +300,7 @@ export function LoginForm({
         } | null;
 
         if (!preclaimResponse.ok || !preclaimPayload?.claimToken) {
-          throw new Error(preclaimPayload?.error || "Access key could not be verified.");
+          throw new Error(preclaimPayload?.error || t("auth.error.accessKey"));
         }
 
         accessKeyClaimToken = preclaimPayload.claimToken;
@@ -311,17 +329,21 @@ export function LoginForm({
       }
 
       if (signUpData.session) {
-        window.location.assign(getSafeRedirectPath(redirectedFrom, window.location.origin));
+        window.location.assign(
+          getSafeRedirectPath(
+            redirectedFrom,
+            window.location.origin,
+            href("/onboarding?fresh=1"),
+          ),
+        );
         return;
       }
 
-      setMessage(
-        "Account created. Check your inbox for the DealFlow confirmation email, then confirm your email before signing in. If you do not see it, check spam or promotions.",
-      );
+      setMessage(t("auth.message.accountCreated"));
       setMode("sign-in");
       resetTurnstile();
     } catch (caughtError) {
-      setError(customerSafeAuthErrorMessage(caughtError));
+      setError(customerSafeAuthErrorMessage(caughtError, t));
       if (turnstileEnabled) {
         resetTurnstile();
       }
@@ -358,7 +380,7 @@ export function LoginForm({
 
     if (!supabase) {
       if (hasRecoveryTokenFragment) {
-        setError(AUTH_TEMPORARILY_UNAVAILABLE_COPY);
+        setError(t("auth.error.unavailable"));
       }
       return;
     }
@@ -371,7 +393,7 @@ export function LoginForm({
       }
 
       if (!recoveryTokens) {
-        setError("This password recovery link is incomplete or expired. Request a new link.");
+        setError(t("auth.error.recovery"));
         return;
       }
 
@@ -381,12 +403,12 @@ export function LoginForm({
       });
 
       if (sessionError) {
-        setError(customerSafeAuthErrorMessage(sessionError));
+        setError(customerSafeAuthErrorMessage(sessionError, t));
         return;
       }
 
       setError(null);
-      setMessage("Enter a new password to finish account recovery.");
+      setMessage(t("auth.message.newPassword"));
       setPassword("");
       setMode("update-password");
     }
@@ -398,14 +420,14 @@ export function LoginForm({
     } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {
         setError(null);
-        setMessage("Enter a new password to finish account recovery.");
+        setMessage(t("auth.message.newPassword"));
         setPassword("");
         setMode("update-password");
       }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!requiresTurnstile) {
@@ -464,14 +486,14 @@ export function LoginForm({
 
   const actionLabel =
     isPending
-      ? "Please wait..."
+      ? t("common.pleaseWait")
       : mode === "sign-in"
-        ? "Sign in"
+        ? t("auth.signIn")
         : mode === "sign-up"
-          ? "Create Account"
+          ? t("auth.signUp")
           : mode === "reset-password"
-            ? "Send Reset Link"
-            : "Update Password";
+            ? t("auth.sendReset")
+            : t("auth.updatePassword");
 
   const inputClassName =
     "h-12 w-full rounded-df-control border border-white/10 bg-white/[0.045] px-4 text-white outline-none transition duration-200 placeholder:text-white/35 focus:border-cyan-200/40 focus:bg-white/[0.07] focus:shadow-[0_0_0_3px_rgba(103,232,249,0.08)]";
@@ -493,17 +515,17 @@ export function LoginForm({
           </div>
         ) : null}
         <p className="df-eyebrow">
-          {branding?.loginEyebrow ?? "Replace your agency"}
+          {branding?.loginEyebrow ?? t("auth.defaultEyebrow")}
         </p>
         <h1 className="mt-2 text-2xl font-semibold text-white [overflow-wrap:anywhere] sm:tracking-[-0.04em]">
-          {branding?.loginHeadline ?? "Build, launch, and optimize your ads without paying an agency"}
+          {branding?.loginHeadline ?? t("auth.defaultHeadline")}
         </h1>
         <p className="mt-2 text-sm leading-6 text-white/70 [overflow-wrap:anywhere]">
-          {branding?.loginSubheadline ?? "Sign in to get your funnel, ads, campaign launch path, and optimization workflow in one place."}
+          {branding?.loginSubheadline ?? t("auth.defaultSubheadline")}
         </p>
         {branding?.poweredByDealFlow ? (
           <p className="mt-3 text-xs font-medium uppercase tracking-[0.2em] text-white/45">
-            Powered by DealFlow
+            {t("shell.poweredBy")}
           </p>
         ) : null}
       </div>
@@ -519,7 +541,7 @@ export function LoginForm({
           onClick={() => setMode("sign-in")}
           type="button"
         >
-          Sign in
+          {t("auth.signIn")}
         </button>
         <button
           aria-pressed={mode === "sign-up"}
@@ -531,7 +553,7 @@ export function LoginForm({
           onClick={() => setMode("sign-up")}
           type="button"
         >
-          Create account
+          {t("auth.signUp")}
         </button>
       </div>
 
@@ -539,7 +561,7 @@ export function LoginForm({
         {mode === "sign-up" ? (
           <>
             <label className="block space-y-2">
-              <span className="text-sm text-white/70">Full name</span>
+              <span className="text-sm text-white/70">{t("auth.fullName")}</span>
               <input
                 id="full-name"
                 value={fullName}
@@ -549,7 +571,7 @@ export function LoginForm({
               />
             </label>
             <label className="block space-y-2">
-              <span className="text-sm text-white/70">Access key optional</span>
+              <span className="text-sm text-white/70">{t("auth.accessKeyOptional")}</span>
               <input
                 id="access-key"
                 autoComplete="off"
@@ -564,7 +586,7 @@ export function LoginForm({
 
         {mode !== "update-password" ? (
           <label className="block space-y-2">
-            <span className="text-sm text-white/70">Email</span>
+            <span className="text-sm text-white/70">{t("common.email")}</span>
             <input
               id="email"
               type="email"
@@ -580,7 +602,7 @@ export function LoginForm({
         {mode !== "reset-password" ? (
           <label className="block space-y-2">
             <span className="text-sm text-white/70">
-              {mode === "update-password" ? "New password" : "Password"}
+              {mode === "update-password" ? t("auth.newPassword") : t("common.password")}
             </span>
             <input
               id="password"
@@ -599,7 +621,7 @@ export function LoginForm({
             <div ref={turnstileContainerRef} />
             {!turnstileToken ? (
               <p aria-live="polite" className="mt-2 text-xs text-white/60" role="status">
-                Complete the verification challenge before continuing.
+                {t("auth.message.challenge")}
               </p>
             ) : null}
           </div>
@@ -607,25 +629,25 @@ export function LoginForm({
 
         {reason === "setup" ? (
           <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100">
-            Sign-in is temporarily unavailable. Please try again shortly.
+            {t("auth.error.unavailable")}
           </div>
         ) : null}
 
         {reason === "expired" ? (
           <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-sm text-white/70">
-            Your session expired or could not be refreshed. Sign in again to continue.
+            {t("auth.message.sessionExpired")}
           </div>
         ) : null}
 
         {reason === "confirmed" ? (
           <div className="rounded-2xl border border-primary/20 bg-primary/10 p-3 text-sm text-primary">
-            Email confirmed. Sign in to continue your DealFlow workspace.
+            {t("auth.message.confirmed")}
           </div>
         ) : null}
 
         {!isConfigured ? (
           <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100">
-            Sign-in is temporarily unavailable. Please try again shortly.
+            {t("auth.error.unavailable")}
           </div>
         ) : null}
 
@@ -669,7 +691,7 @@ export function LoginForm({
             }}
             type="button"
           >
-            Forgot password?
+            {t("auth.forgotPassword")}
           </button>
         ) : null}
 
@@ -683,7 +705,7 @@ export function LoginForm({
             }}
             type="button"
           >
-            Back to sign in
+            {t("auth.backToSignIn")}
           </button>
         ) : null}
 
@@ -694,7 +716,7 @@ export function LoginForm({
             onClick={() => handleProviderLogin("google")}
             type="button"
           >
-            Continue with Google
+            {t("auth.google")}
           </button>
         ) : null}
       </form>

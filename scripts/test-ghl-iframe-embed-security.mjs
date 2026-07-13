@@ -13,6 +13,8 @@ const requestOriginSource = fs.readFileSync(
   "src/lib/white-label/ghl-embed-request-origin.ts",
   "utf8",
 );
+const i18nConfigSource = fs.readFileSync("src/lib/i18n/config.ts", "utf8");
+const i18nRoutingSource = fs.readFileSync("src/lib/i18n/routing.ts", "utf8");
 const exchangeSource = fs.readFileSync(
   "src/app/api/integrations/ghl/embed-context/route.ts",
   "utf8",
@@ -88,7 +90,34 @@ function loadCapabilityHelpers() {
   return cjsModule.exports;
 }
 
-function loadProxySecurityHelpers(capabilityHelpers) {
+function loadI18nRoutingHelpers() {
+  const configModule = { exports: {} };
+  new Function("module", "exports", transpile(i18nConfigSource))(
+    configModule,
+    configModule.exports,
+  );
+
+  const routingModule = { exports: {} };
+  const evaluate = new Function(
+    "require",
+    "module",
+    "exports",
+    transpile(i18nRoutingSource),
+  );
+  evaluate(
+    (specifier) => {
+      if (specifier.endsWith("i18n/config")) {
+        return configModule.exports;
+      }
+      throw new Error(`Unexpected i18n routing import: ${specifier}`);
+    },
+    routingModule,
+    routingModule.exports,
+  );
+  return routingModule.exports;
+}
+
+function loadProxySecurityHelpers(capabilityHelpers, i18nRoutingHelpers) {
   const testSource = proxySource
     .replace(
       "function getFrameAncestors(\n  request: NextRequest,",
@@ -112,9 +141,15 @@ function loadProxySecurityHelpers(capabilityHelpers) {
     transpile(testSource),
   );
   evaluate(
-    (specifier) => specifier.endsWith("ghl-embed-capability")
-      ? capabilityHelpers
-      : emptyModule,
+    (specifier) => {
+      if (specifier.endsWith("ghl-embed-capability")) {
+        return capabilityHelpers;
+      }
+      if (specifier.endsWith("i18n/routing")) {
+        return i18nRoutingHelpers;
+      }
+      return emptyModule;
+    },
     cjsModule,
     cjsModule.exports,
     runtimeProcess,
@@ -265,7 +300,8 @@ runtimeProcess.env = {
   }),
 };
 const capabilityHelpers = loadCapabilityHelpers();
-const proxyHelpers = loadProxySecurityHelpers(capabilityHelpers);
+const i18nRoutingHelpers = loadI18nRoutingHelpers();
+const proxyHelpers = loadProxySecurityHelpers(capabilityHelpers, i18nRoutingHelpers);
 const requestOriginHelpers = loadRequestOriginHelper();
 
 for (const source of [capabilitySource, fs.readFileSync("src/lib/supabase/cookie-options.ts", "utf8")]) {
@@ -386,6 +422,11 @@ assert.equal(
   "the inert bootstrap must resolve verified partner context before CSP and header injection",
 );
 assert.equal(
+  proxyHelpers.shouldResolvePartnerDomainContext(request("partner.example", "/fr/ghl/embed")),
+  true,
+  "locale-prefixed bootstrap routes must resolve the same verified partner context",
+);
+assert.equal(
   requestOriginHelpers.isExactVerifiedPartnerRequestOrigin({
     requestUrl: "https://partner.example/api/integrations/ghl/embed-context",
     origin: "https://partner.example",
@@ -424,6 +465,15 @@ assert.equal(
   proxyHelpers.getFrameAncestors(request("partner.example", "/ghl/embed"), "partner.example", null),
   "https://app.gohighlevel.com https://app.leadconnectorhq.com https://crm.partner.example",
   "only the inert bootstrap may be framed before signed context exchange",
+);
+assert.equal(
+  proxyHelpers.getFrameAncestors(
+    request("partner.example", "/fr/ghl/embed"),
+    "partner.example",
+    null,
+  ),
+  "https://app.gohighlevel.com https://app.leadconnectorhq.com https://crm.partner.example",
+  "locale-prefixed bootstrap routes must preserve the exact partner-bound frame policy",
 );
 assert.equal(
   proxyHelpers.getFrameAncestors(request("partner.example", "/dashboard"), "partner.example", null),

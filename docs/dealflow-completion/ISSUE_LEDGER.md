@@ -1,5 +1,12 @@
 # DealFlow issue and requirement-to-proof ledger
 
+Historical ledger notice (2026-07-13): this 864-row inventory is retained as
+audit history for the earlier sealed implementation. It is not the current
+release-status authority and must not be used to claim the 102-migration
+candidate is staged or released. Use `CURRENT_RELEASE_ISSUE_LEDGER.md` for the
+current candidate, staging, provider, and production disposition. The JSON and
+CSV companions are historical companions to this inventory.
+
 Overall verdict: `NO_GO`
 Canonical baseline: `d37c50945ff7004d700301fc89c15eb9273dac5b`
 Candidate implementation commit: `da419823c466093ed4d6c3351767a52ea76f713e`

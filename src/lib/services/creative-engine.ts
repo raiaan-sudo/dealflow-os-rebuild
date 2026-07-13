@@ -93,6 +93,7 @@ export type VideoCreativeAsset = {
   videoGenerationState?: "generated" | "generating" | "failed" | "unavailable";
   videoGenerationMessage?: string | null;
   providerAssetId?: string | null;
+  videoProvider?: "higgsfield" | "heygen";
   cta: string;
   creatorStyle: string;
   voiceStyle: string;

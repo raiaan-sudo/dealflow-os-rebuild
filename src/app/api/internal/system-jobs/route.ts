@@ -21,6 +21,7 @@ import {
 } from "@/lib/services/meta-reporting-worker-service";
 import { processMetaCampaignActivationFromEnvironment } from "@/lib/services/meta-campaign-activation-service";
 import { processMetaOptimizationExecutionBatch } from "@/lib/services/meta-optimization-execution-service";
+import { processScheduledAccountDeletionWork } from "@/lib/services/account-deletion-service";
 import {
   buildRateLimitResponse,
   consumeRateLimit,
@@ -129,6 +130,10 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
       run: () => processSupportNotificationOutbox(5),
     },
     {
+      name: "account_deletion",
+      run: () => processScheduledAccountDeletionWork({ maxTasks: 5 }),
+    },
+    {
       name: "reporting_enqueue",
       run: () => enqueueDueMetaReportingSyncJobs(50),
     },
@@ -187,6 +192,13 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
   const supportOutbox = value("support_outbox", {
     claimedCount: 0,
     deliveredIds: [] as string[],
+  });
+  const accountDeletion = value("account_deletion", {
+    enabled: false,
+    blockedReason: "stage_failed",
+    workerId: null as string | null,
+    claimed: 0,
+    results: [] as Array<{ taskId: string; kind: string; outcome: string; code: string }>,
   });
   const reportingEnqueue = value("reporting_enqueue", { enqueuedCount: 0 });
   const reportingWorker = value("reporting_worker", {
@@ -260,6 +272,10 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
     exhausted: result.exhausted,
     supportOutboxClaimed: supportOutbox.claimedCount,
     supportOutboxDelivered: supportOutbox.deliveredIds.length,
+    accountDeletionEnabled: accountDeletion.enabled,
+    accountDeletionBlockedReason: accountDeletion.blockedReason,
+    accountDeletionClaimed: accountDeletion.claimed,
+    accountDeletionSettled: accountDeletion.results.length,
     scheduledLaunchesEnabled: scheduledLaunches.enabled,
     scheduledLaunchesBlockedReason: scheduledLaunches.blockedReason,
     scheduledLaunchesClaimed: scheduledLaunches.claimedCount,
@@ -308,6 +324,7 @@ async function runInternalSystemJobs(request: Request, input: RunnerInput) {
       durationMs,
       ...result,
       supportOutbox,
+      accountDeletion,
       scheduledLaunches,
       reporting: {
         ...reportingEnqueue,

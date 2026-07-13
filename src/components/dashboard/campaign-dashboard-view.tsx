@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  getCampaignIntentLabel,
   isInvestorCampaignIntent,
   isSellerCampaignIntent,
 } from "@/lib/campaign-intent";
@@ -23,9 +22,11 @@ import type { DashboardMetrics } from "@/lib/services/dashboard-service";
 import type { FirstWeekSuccessState } from "@/lib/services/first-week-success-service";
 import { resolveCampaignDeliveryMetricTruth } from "@/lib/dashboard/campaign-delivery-metrics";
 import {
-  formatMetaCurrency,
   resolveSelectedMetaAccountCurrency,
 } from "@/lib/dashboard/meta-account-currency";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
+import { getProductIntlLocale, type ProductLocale } from "@/lib/i18n/config";
+import type { ProductMessageKey } from "@/lib/i18n/messages";
 
 type AppointmentSummary = Pick<
   Database["public"]["Tables"]["appointments"]["Row"],
@@ -81,16 +82,16 @@ type Props = {
   renderedAt?: string;
 };
 
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString("en-CA", {
+function formatDateTime(value: string, locale: ProductLocale) {
+  return new Date(value).toLocaleString(getProductIntlLocale(locale), {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: "UTC",
   });
 }
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString("en-CA", {
+function formatDate(value: string, locale: ProductLocale) {
+  return new Date(value).toLocaleDateString(getProductIntlLocale(locale), {
     timeZone: "UTC",
   });
 }
@@ -99,19 +100,23 @@ function normalizeText(value: string | null | undefined) {
   return (value ?? "").trim().toLowerCase();
 }
 
-function formatLastVerified(value: string | null | undefined, nowMs: number) {
+function formatLastVerified(
+  value: string | null | undefined,
+  nowMs: number,
+  locale: ProductLocale,
+) {
   if (!value) {
-    return "not verified yet";
+    return new Intl.RelativeTimeFormat(getProductIntlLocale(locale), { numeric: "auto" }).format(0, "minute");
   }
 
   const diffMs = nowMs - new Date(value).getTime();
   const diffMinutes = Math.max(0, Math.round(diffMs / 60_000));
 
   if (diffMinutes <= 1) {
-    return "just now";
+    return new Intl.RelativeTimeFormat(getProductIntlLocale(locale), { numeric: "auto" }).format(0, "minute");
   }
 
-  return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+  return new Intl.RelativeTimeFormat(getProductIntlLocale(locale), { numeric: "auto" }).format(-diffMinutes, "minute");
 }
 
 const META_SYNC_STALE_MS = 30 * 60 * 1000;
@@ -209,6 +214,37 @@ export function CampaignDashboardView({
   firstWeekSuccess = null,
   renderedAt,
 }: Props) {
+  const { currency: formatCurrency, locale, t } = useProductI18n();
+  const localizedStatus = (value: string | null | undefined) => {
+    const statusKeys: Record<string, ProductMessageKey> = {
+      active: "common.active",
+      complete: "common.complete",
+      connected: "common.active",
+      collecting: "common.collecting",
+      disconnected: "common.disconnected",
+      draft: "common.draft",
+      degraded: "dashboard.system.degraded",
+      idle: "common.idle",
+      launch_ready: "common.ready",
+      live: "common.live",
+      new: "common.new",
+      healthy: "dashboard.system.healthy",
+      offline: "dashboard.system.offline",
+      paused: "common.paused",
+      pending: "common.pending",
+      scheduled: "common.scheduled",
+    };
+    const normalized = (value ?? "").trim().toLowerCase();
+    return statusKeys[normalized] ? t(statusKeys[normalized]) : value || t("common.notSet");
+  };
+  const localizedAutonomyMode = (value: string) => {
+    const modeKeys: Record<string, ProductMessageKey> = {
+      manual: "dashboard.autonomyMode.manual",
+      assisted: "dashboard.autonomyMode.assisted",
+      auto: "dashboard.autonomyMode.auto",
+    };
+    return modeKeys[value] ? t(modeKeys[value]) : value;
+  };
   const renderedAtMs = new Date(renderedAt ?? "1970-01-01T00:00:00.000Z").getTime();
   const stableNowMs = Number.isFinite(renderedAtMs) ? renderedAtMs : 0;
   const launchState = getLaunchState(plan);
@@ -239,7 +275,11 @@ export function CampaignDashboardView({
   });
   const selectedMetaCurrency = resolveSelectedMetaAccountCurrency(metaConnection);
   const currency = (value: number) =>
-    formatMetaCurrency(value, selectedMetaCurrency);
+    selectedMetaCurrency
+      ? formatCurrency(value, selectedMetaCurrency, { maximumFractionDigits: 2 })
+      : t("common.unavailable");
+  const localizedDateTime = (value: string) => formatDateTime(value, locale);
+  const localizedDate = (value: string) => formatDate(value, locale);
   const displayedLeads = deliveryMetricTruth.leads;
   const displayedAppointments = Number(workspaceMetrics.appointmentsBooked ?? 0);
   const displayedSpend = deliveryMetricTruth.spend;
@@ -261,6 +301,27 @@ export function CampaignDashboardView({
   const strategySummary = optimizerResult.strategySummary ?? [];
   const testingRecommendations = optimizerResult.testingRecommendations ?? [];
   const regenerationSuggestions = optimizerResult.regenerationSuggestions ?? [];
+  // Optimizer prose is persisted generated output. Until that output carries a
+  // locale receipt, non-English product routes render reviewed localized truth
+  // instead of leaking English or pretending the generated prose was translated.
+  const displayedStrategySummary = locale === "en" || strategySummary.length === 0
+    ? strategySummary
+    : [t("dashboard.localizedStrategy")];
+  const displayedTestingRecommendations = locale === "en" || testingRecommendations.length === 0
+    ? testingRecommendations
+    : [t("dashboard.localizedTesting")];
+  const displayedRegenerationSuggestions = locale === "en" || regenerationSuggestions.length === 0
+    ? regenerationSuggestions
+    : [t("dashboard.localizedRegeneration")];
+  const displayedOptimizerReasons = locale === "en" || optimizerResult.reasons.length === 0
+    ? optimizerResult.reasons
+    : [t("dashboard.localizedStrategy")];
+  const displayedOptimizerActions = locale === "en" || optimizerResult.actions.length === 0
+    ? optimizerResult.actions
+    : [t("dashboard.localizedActions")];
+  const displayedNextActions = locale === "en" || nextActions.length === 0
+    ? nextActions
+    : [t("dashboard.localizedActions")];
   const optimizerCopy = [
     ...strategySummary,
     ...testingRecommendations,
@@ -270,52 +331,52 @@ export function CampaignDashboardView({
   ];
   const recommendationCards = [
     {
-      title: "CTR warning → change creative",
-      description: "Recommendation: refresh the lead ad before more budget is spent on a weak message.",
+      title: t("dashboard.rec.ctrTitle"),
+      description: t("dashboard.rec.ctrBody"),
       active:
         includesRecommendation(optimizerCopy, [/change creative/, /refresh creative/, /swap creative/]) ||
         (liveCtrPercent > 0 && liveCtrPercent < 1),
       priority: 1,
       sourceLabel:
         liveCtrPercent > 0 && liveCtrPercent < 1
-          ? `Live data: CTR ${liveCtrPercent.toFixed(2)}%`
-          : "Recommendation",
+          ? t("dashboard.rec.liveCtr", { value: liveCtrPercent.toFixed(2) })
+          : t("dashboard.rec.label"),
     },
     {
-      title: "CPL warning → adjust targeting",
-      description: "Recommendation: tighten audience and geo settings before scaling spend further.",
+      title: t("dashboard.rec.cplTitle"),
+      description: t("dashboard.rec.cplBody"),
       active:
         includesRecommendation(optimizerCopy, [/adjust targeting/, /tighten targeting/, /high cpl/]) ||
         (liveCplValue > 0 && liveCplValue > Number(plan.monthlyBudget / 100)),
       priority: 2,
       sourceLabel:
         liveCplValue > 0 && liveCplValue > Number(plan.monthlyBudget / 100)
-          ? `Live data: CPL ${currency(liveCplValue)}`
-          : "Recommendation",
+          ? t("dashboard.rec.liveCpl", { value: currency(liveCplValue) })
+          : t("dashboard.rec.label"),
     },
     {
-      title: "No-lead warning → pause or fix ad",
-      description: "Recommendation: if spend is accruing without leads, pause the ad and fix the offer or creative.",
+      title: t("dashboard.rec.noLeadTitle"),
+      description: t("dashboard.rec.noLeadBody"),
       active:
         includesRecommendation(optimizerCopy, [/pause ad/, /no leads/, /no lead/, /spend without leads/]) ||
         (Number(liveMetrics?.spend ?? 0) > 0 && Number(liveMetrics?.leads ?? 0) === 0),
       priority: 3,
       sourceLabel:
         Number(liveMetrics?.spend ?? 0) > 0 && Number(liveMetrics?.leads ?? 0) === 0
-          ? `Live data: ${currency(Number(liveMetrics?.spend ?? 0))} spent, 0 leads`
-          : "Recommendation",
+          ? t("dashboard.rec.liveSpend", { value: currency(Number(liveMetrics?.spend ?? 0)) })
+          : t("dashboard.rec.label"),
     },
     {
-      title: "Best ad suggestion → scale budget",
-      description: "Recommendation: shift more budget into the best current performer while results stay efficient.",
+      title: t("dashboard.rec.scaleTitle"),
+      description: t("dashboard.rec.scaleBody"),
       active:
         includesRecommendation(optimizerCopy, [/scale budget/, /increase budget/, /winner/, /winning ad/]) ||
         Boolean(rankedTopCreative && rankedTopCreative.ctr >= 0.015),
       priority: 4,
       sourceLabel:
         rankedTopCreative && rankedTopCreative.ctr >= 0.015
-          ? `Live data: top CTR ${(rankedTopCreative.ctr * 100).toFixed(2)}%`
-          : "Recommendation",
+          ? t("dashboard.rec.liveTopCtr", { value: (rankedTopCreative.ctr * 100).toFixed(2) })
+          : t("dashboard.rec.label"),
     },
   ];
   const highlightedRecommendations = recommendationCards
@@ -338,20 +399,20 @@ export function CampaignDashboardView({
     null;
   const statusText =
     dataSourceState === "disconnected"
-      ? "Disconnected"
+      ? t("common.disconnected")
       : launchState !== "live" || dataSourceState === "collecting"
-        ? "Collecting"
-        : "Active";
+        ? t("common.collecting")
+        : t("common.active");
   const smsPrompt = dataSourceState === "active"
     ? isSellerCampaignIntent(plan.intent)
-      ? "Saved seller follow-up logic is available for connected lead handling."
+      ? t("dashboard.smsSeller")
       : isInvestorCampaignIntent(plan.intent)
-        ? "Saved investor follow-up logic is available for connected lead handling."
-        : "Saved buyer follow-up logic is available for connected lead handling."
-    : "No live follow-up activity is being reported yet.";
+        ? t("dashboard.smsInvestor")
+        : t("dashboard.smsBuyer")
+    : t("dashboard.smsNone");
   const bookingText = bookingSummary?.scheduled_at
-    ? `Next booking: ${formatDateTime(bookingSummary.scheduled_at)}`
-    : "No booking record yet.";
+    ? `${t("dashboard.booking")}: ${localizedDateTime(bookingSummary.scheduled_at)}`
+    : t("dashboard.noBooking");
   const runtimeMetaCampaignId = plan.runtime.campaignId ?? null;
   const runtimeMetaAdSetIds = Array.isArray(plan.runtime.metaAdSetIds) ? plan.runtime.metaAdSetIds : [];
   const runtimeMetaAdIds = Array.isArray(plan.runtime.metaAdIds) ? plan.runtime.metaAdIds : [];
@@ -377,23 +438,23 @@ export function CampaignDashboardView({
     syncedAt && syncSnapshot?.syncResult !== "success",
   );
   const syncStateLabel = !syncedAt
-    ? "Estimated state only"
+    ? t("dashboard.sync.estimated")
     : latestAttemptFailed
-      ? "Showing last confirmed Meta data"
+      ? t("dashboard.sync.lastConfirmed")
     : confirmedSnapshotDegraded
-      ? "Meta delivery confirmed; status degraded"
+      ? t("dashboard.sync.degraded")
     : syncIsStale
-      ? "Confirmed state is stale"
-      : "Confirmed in Meta";
+      ? t("dashboard.sync.stale")
+      : t("dashboard.sync.confirmed");
   const syncStateDescription = !syncedAt
-    ? "Local launch records exist, but no fresh Meta sync has confirmed the live state yet."
+    ? t("dashboard.sync.estimatedBody")
     : latestAttemptFailed
-      ? "The latest Meta refresh failed safely. DealFlow kept the prior confirmed metrics instead of replacing them with false zeros."
+      ? t("dashboard.sync.lastConfirmedBody")
     : confirmedSnapshotDegraded
-      ? "Meta confirmed the delivery metrics, but one or more campaign-status checks were incomplete. Automated optimization remains fail-closed."
+      ? t("dashboard.sync.degradedBody")
     : syncIsStale
-      ? "A prior Meta sync exists, but it is stale. Treat current delivery and status as estimated until a fresh sync completes."
-      : "Recent Meta sync data is available. Campaign status and delivery details below are confirmed from Meta.";
+      ? t("dashboard.sync.staleBody")
+      : t("dashboard.sync.confirmedBody");
   const syncedMetaAdSetIds = Array.isArray(syncSnapshot?.metaAdSetIds) ? syncSnapshot.metaAdSetIds : [];
   const syncedMetaAdIds = Array.isArray(syncSnapshot?.metaAdIds) ? syncSnapshot.metaAdIds : [];
   const launchedMetaAdSetIds = Array.isArray(launchRecord?.metaAdSetIds) ? launchRecord.metaAdSetIds : [];
@@ -413,36 +474,36 @@ export function CampaignDashboardView({
         ? launchedMetaAdIds
         : runtimeMetaAdIds;
   const lineageItems = [
-    { label: "Saved campaign", value: plan.id || "Unavailable" },
-    { label: "Launch status", value: launchRecord?.resultStatus || plan.runtime.metaPushStatus || "Not launched" },
-    { label: "Meta campaign", value: resolvedMetaCampaignId || "Not assigned" },
+    { label: t("common.campaign"), value: plan.id || t("common.unavailable") },
+    { label: t("launch.campaignStatus"), value: launchRecord?.resultStatus || plan.runtime.metaPushStatus || t("common.notLaunched") },
+    { label: t("dashboard.metaCampaign"), value: resolvedMetaCampaignId || t("dashboard.notAssigned") },
     {
-      label: "Meta ad sets",
-      value: resolvedMetaAdSetIds.length > 0 ? resolvedMetaAdSetIds.join(", ") : "Not assigned",
+      label: t("dashboard.metaAdSets"),
+      value: resolvedMetaAdSetIds.length > 0 ? resolvedMetaAdSetIds.join(", ") : t("dashboard.notAssigned"),
     },
     {
-      label: "Meta ads",
-      value: resolvedMetaAdIds.length > 0 ? resolvedMetaAdIds.join(", ") : "Not assigned",
+      label: t("dashboard.metaAds"),
+      value: resolvedMetaAdIds.length > 0 ? resolvedMetaAdIds.join(", ") : t("dashboard.notAssigned"),
     },
     {
-      label: "Last live sync",
-      value: syncedAt ? formatDateTime(syncedAt) : "No live sync yet",
+      label: t("dashboard.lastLiveSync"),
+      value: syncedAt ? localizedDateTime(syncedAt) : t("common.notVerified"),
     },
   ];
   const campaignSummaryItems = [
-    { label: "Campaign", value: plan.businessName || "Untitled campaign" },
-    { label: "Intent", value: getCampaignIntentLabel(plan.intent) },
-    { label: "Market", value: plan.market || "Not set" },
-    { label: "Audience", value: plan.audience || "Not set" },
-    { label: "Stage", value: plan.runtime.status || "draft" },
-    { label: "Meta connection", value: metaConnection.accountName || "Not connected" },
+    { label: t("common.campaign"), value: plan.businessName || t("common.unavailable") },
+    { label: t("dashboard.intent"), value: t(`dashboard.intent.${plan.intent}` as ProductMessageKey) },
+    { label: t("common.market"), value: plan.market || t("common.notSet") },
+    { label: t("common.audience"), value: plan.audience || t("common.notSet") },
+    { label: t("dashboard.stage"), value: localizedStatus(plan.runtime.status || "draft") },
+    { label: "Meta", value: metaConnection.accountName || t("common.notConnected") },
   ];
   const metaStatusText = metaConnection.hasAccessToken
-    ? `Connected (last verified ${formatLastVerified(metaConnection.lastSyncAt ?? metaConnection.connectedAt, stableNowMs)})`
-    : "Not connected";
+    ? `Meta · ${formatLastVerified(metaConnection.lastSyncAt ?? metaConnection.connectedAt, stableNowMs, locale)}`
+    : t("common.notConnected");
   const metaSelectionMissingText = metaConnection.hasAccessToken
-    ? "Selection required before launch"
-    : "Not selected";
+    ? t("dashboard.selectionRequired")
+    : t("dashboard.notSelected");
   const metaAccountText = metaConnection.accountName || metaSelectionMissingText;
   const metaPageText = metaConnection.pageName || metaSelectionMissingText;
   const metaPixelText = metaConnection.tracking.pixelId || metaSelectionMissingText;
@@ -459,72 +520,72 @@ export function CampaignDashboardView({
   const adCreated = resolvedMetaAdIds.length > 0;
   const operationalStatusItems = [
     {
-      label: "Campaign status",
-      value: plan.runtime.status || "draft",
+      label: t("launch.campaignStatus"),
+      value: localizedStatus(plan.runtime.status || "draft"),
     },
     {
-      label: "Meta connected",
+      label: t("dashboard.metaConnected"),
       value: metaStatusText,
     },
     {
-      label: "Selected ad account",
+      label: t("dashboard.selectedAdAccount"),
       value: metaAccountText,
     },
     {
-      label: "Selected Page",
+      label: t("dashboard.selectedPage"),
       value: metaPageText,
     },
     {
-      label: "Selected pixel",
+      label: t("dashboard.selectedPixel"),
       value: metaPixelText,
     },
     {
-      label: "Campaign created",
-      value: campaignCreated ? "Campaign created locally" : "No local campaign created yet",
+      label: t("dashboard.campaignCreated"),
+      value: campaignCreated ? t("dashboard.campaignCreatedYes") : t("dashboard.campaignCreatedNo"),
     },
     {
-      label: "Ad set created",
-      value: adSetCreated ? "Ad set created locally" : "No local ad set record yet",
+      label: t("dashboard.adSetCreated"),
+      value: adSetCreated ? t("dashboard.adSetCreatedYes") : t("dashboard.adSetCreatedNo"),
     },
     {
-      label: "Ad created",
-      value: adCreated ? "Ad created locally" : "No local ad record yet",
+      label: t("dashboard.adCreated"),
+      value: adCreated ? t("dashboard.adCreatedYes") : t("dashboard.adCreatedNo"),
     },
     {
-      label: "Creatives generated",
+      label: t("dashboard.creativesGenerated"),
       value: String(creativesGeneratedCount),
     },
     {
-      label: "Funnel generated",
-      value: funnelGenerated ? "Yes" : "No",
+      label: t("dashboard.funnelGenerated"),
+      value: funnelGenerated ? t("common.yes") : t("common.no"),
     },
     {
-      label: "Selected ad",
-      value: selectedAdSummary?.headline || "No ad selected",
+      label: t("dashboard.selectedAd"),
+      value: selectedAdSummary?.headline || t("dashboard.noAdSelected"),
     },
     {
-      label: "Lead loop verified",
-      value: leadLoopVerified ? "✔ Lead loop verified" : "⚠ Not yet verified",
+      label: t("dashboard.leadLoopVerified"),
+      value: leadLoopVerified ? t("dashboard.leadLoopYes") : t("dashboard.leadLoopNo"),
     },
     {
-      label: "Launch status",
-      value: launchRecord?.resultStatus || plan.runtime.metaPushStatus || "not launched",
+      label: t("dashboard.launchStatus"),
+      value: localizedStatus(launchRecord?.resultStatus || plan.runtime.metaPushStatus || ""),
     },
   ];
   const creativeSummaryItems = creativePerformanceSummary
     ? [
-        { label: "Synced at", value: formatDateTime(creativePerformanceSummary.syncedAt) },
-        { label: "Winners", value: String(creativePerformanceSummary.winners.length) },
-        { label: "Underperformers", value: String(creativePerformanceSummary.underperformers.length) },
-        { label: "Ranked creatives", value: String(creativePerformanceSummary.rankedCreatives.length) },
+        { label: t("dashboard.lastSync"), value: localizedDateTime(creativePerformanceSummary.syncedAt) },
+        { label: t("dashboard.winners"), value: String(creativePerformanceSummary.winners.length) },
+        { label: t("dashboard.underperformers"), value: String(creativePerformanceSummary.underperformers.length) },
+        { label: t("dashboard.rankedCreatives"), value: String(creativePerformanceSummary.rankedCreatives.length) },
       ]
     : [];
 
   const metrics = [
-    { label: "Total leads", value: String(displayedLeads) },
-    { label: "Total appointments", value: String(displayedAppointments) },
-    { label: "Spend", value: currency(displayedSpend) },
-    { label: "Cost per lead", value: currency(displayedCpl) },
+    { label: t("dashboard.totalLeads"), value: String(displayedLeads) },
+    { label: t("dashboard.totalAppointments"), value: String(displayedAppointments) },
+    { label: t("dashboard.spend"), value: currency(displayedSpend) },
+    { label: t("dashboard.cpl"), value: currency(displayedCpl) },
   ];
   const hasMetricData =
     displayedLeads > 0 ||
@@ -532,16 +593,16 @@ export function CampaignDashboardView({
     Number(liveMetrics?.impressions ?? 0) > 0 ||
     Number(liveMetrics?.clicks ?? 0) > 0;
   const headlineMetrics = [
-    { label: "Leads", value: String(displayedLeads) },
-    { label: "Estimated CPL", value: displayedLeads > 0 ? currency(displayedCpl) : "Waiting for data" },
-    { label: "Spend", value: displayedSpend > 0 ? currency(displayedSpend) : "Waiting for data" },
+    { label: t("dashboard.leads"), value: String(displayedLeads) },
+    { label: t("dashboard.cpl"), value: displayedLeads > 0 ? currency(displayedCpl) : t("common.waitingForData") },
+    { label: t("dashboard.spend"), value: displayedSpend > 0 ? currency(displayedSpend) : t("common.waitingForData") },
   ];
   const firstWeekLastVerifiedText = firstWeekSuccess?.lastVerifiedAt
-    ? formatDateTime(firstWeekSuccess.lastVerifiedAt)
-    : "Not verified yet";
+    ? localizedDateTime(firstWeekSuccess.lastVerifiedAt)
+    : t("common.notVerified");
   const firstWeekLastSyncText = firstWeekSuccess?.lastSyncAt
-    ? formatDateTime(firstWeekSuccess.lastSyncAt)
-    : "No live sync yet";
+    ? localizedDateTime(firstWeekSuccess.lastSyncAt)
+    : t("common.notVerified");
   const lifecycleStatusTone =
     firstWeekSuccess?.firstLead
       ? "border-emerald-400/20 bg-emerald-400/10"
@@ -555,9 +616,9 @@ export function CampaignDashboardView({
 
       {metaConnection.hasAccessToken && !selectedMetaCurrency ? (
         <Card className="rounded-[24px] border-amber-400/30 bg-amber-400/10 p-5">
-          <p className="text-sm font-semibold text-amber-100">Meta account currency unavailable</p>
+          <p className="text-sm font-semibold text-amber-100">{t("dashboard.currencyUnavailable")}</p>
           <p className="mt-2 text-sm leading-6 text-amber-50/80">
-            Re-select or reconnect the Meta ad account before trusting spend, CPL, pipeline, or revenue amounts.
+            {t("dashboard.currencyHelp")}
           </p>
         </Card>
       ) : null}
@@ -565,7 +626,7 @@ export function CampaignDashboardView({
       <Card className="rounded-[24px] p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Meta sync</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.metaSync")}</p>
             <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{syncStateLabel}</h3>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
               {syncStateDescription}
@@ -575,38 +636,38 @@ export function CampaignDashboardView({
         </div>
         <div className="mt-6 grid gap-4 lg:grid-cols-3">
           <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Last sync time</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.lastSyncTime")}</p>
             <p className="mt-3 text-sm leading-6">
-              {syncedAt ? formatDateTime(syncedAt) : "No Meta sync yet"}
+              {syncedAt ? localizedDateTime(syncedAt) : t("common.notVerified")}
             </p>
           </div>
           <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Freshness</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.freshness")}</p>
             <p className="mt-3 text-sm leading-6">
-              {syncedAt ? `Last verified ${formatLastVerified(syncedAt, stableNowMs)}` : "Not verified yet"}
+              {syncedAt ? formatLastVerified(syncedAt, stableNowMs, locale) : t("common.notVerified")}
             </p>
           </div>
           <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">State type</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.stateType")}</p>
             <p className="mt-3 text-sm leading-6">
               {latestAttemptFailed
-                ? "Prior confirmed snapshot retained"
+                ? t("dashboard.sync.priorRetained")
                 : confirmedSnapshotDegraded
-                  ? "Confirmed delivery; partial state"
+                  ? t("dashboard.sync.partial")
                 : syncIsStale
-                  ? "Estimated until refreshed"
-                  : "Confirmed from live Meta sync"}
+                  ? t("dashboard.sync.estimatedUntil")
+                  : t("dashboard.sync.confirmedFrom")}
             </p>
           </div>
         </div>
         {syncIsStale ? (
           <p className="mt-4 rounded-[18px] border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-            Meta sync is stale. Launch status and delivery metrics may lag behind the actual account until you refresh.
+            {t("dashboard.sync.staleWarning")}
           </p>
         ) : null}
         {latestAttemptFailed ? (
           <p className="mt-4 rounded-[18px] border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-            The latest Meta reporting attempt did not confirm delivery data. No zero-value replacement was accepted; refresh again after the provider recovers.
+            {t("dashboard.sync.failedWarning")}
           </p>
         ) : null}
       </Card>
@@ -615,51 +676,71 @@ export function CampaignDashboardView({
         <Card className="rounded-[24px] p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">First-week success</p>
-              <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{firstWeekSuccess.currentStatus}</h3>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.firstWeek")}</p>
+              <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">
+                {locale === "en" ? firstWeekSuccess.currentStatus : t("dashboard.firstWeek.localizedStatus")}
+              </h3>
               <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
-                {firstWeekSuccess.explanation}
+                {locale === "en" ? firstWeekSuccess.explanation : t("dashboard.firstWeek.localizedExplanation")}
               </p>
             </div>
             <div className={`rounded-[20px] border px-4 py-3 text-sm ${lifecycleStatusTone}`}>
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Next expected milestone</p>
-              <p className="mt-2 font-medium text-foreground">{firstWeekSuccess.nextMilestone}</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.nextMilestone")}</p>
+              <p className="mt-2 font-medium text-foreground">
+                {locale === "en" ? firstWeekSuccess.nextMilestone : t("dashboard.firstWeek.localizedNext")}
+              </p>
             </div>
           </div>
 
           <div className="mt-6 grid gap-4 lg:grid-cols-4">
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Current status</p>
-              <p className="mt-3 text-sm leading-6">{firstWeekSuccess.currentStatus}</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.currentStatus")}</p>
+              <p className="mt-3 text-sm leading-6">
+                {locale === "en" ? firstWeekSuccess.currentStatus : t("dashboard.firstWeek.localizedStatus")}
+              </p>
             </div>
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Last verified action</p>
-              <p className="mt-3 text-sm leading-6">{firstWeekSuccess.lastVerifiedAction}</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.lastAction")}</p>
+              <p className="mt-3 text-sm leading-6">
+                {locale === "en" ? firstWeekSuccess.lastVerifiedAction : t("dashboard.firstWeek.localizedStatus")}
+              </p>
               <p className="mt-2 text-xs text-muted-foreground">{firstWeekLastVerifiedText}</p>
             </div>
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Last sync</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.lastSync")}</p>
               <p className="mt-3 text-sm leading-6">{firstWeekLastSyncText}</p>
             </div>
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Next action</p>
-              <p className="mt-3 text-sm leading-6">{firstWeekSuccess.nextAction}</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.nextAction")}</p>
+              <p className="mt-3 text-sm leading-6">
+                {locale === "en" ? firstWeekSuccess.nextAction : t("dashboard.firstWeek.localizedAction")}
+              </p>
             </div>
           </div>
 
           <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Launch timeline</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.launchTimeline")}</p>
               <div className="mt-4 space-y-3">
                 {firstWeekSuccess.milestones.map((item) => (
                   <div key={item.key} className="rounded-[18px] border border-white/8 bg-black/10 px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium text-foreground">{item.label}</p>
+                      <p className="text-sm font-medium text-foreground">
+                        {locale === "en"
+                          ? item.label
+                          : t(`dashboard.firstWeek.milestone.${item.key}` as ProductMessageKey)}
+                      </p>
                       <span className={item.status === "complete" ? "text-emerald-400" : "text-amber-300"}>
-                        {item.status === "complete" ? "Complete" : "Pending"}
+                        {item.status === "complete" ? t("common.complete") : t("common.pending")}
                       </span>
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.detail}</p>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      {locale === "en"
+                        ? item.detail
+                        : t(item.status === "complete"
+                          ? "dashboard.firstWeek.milestoneComplete"
+                          : "dashboard.firstWeek.milestonePending")}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -667,26 +748,36 @@ export function CampaignDashboardView({
 
             <div className="space-y-4">
               <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Automated checks</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.automatedChecks")}</p>
                 <div className="mt-4 space-y-3">
                   {firstWeekSuccess.lifecycleEvents.map((event) => (
                     <div key={event.key} className="rounded-[18px] border border-white/8 bg-black/10 px-4 py-3">
                       <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium text-foreground">{event.label}</p>
+                        <p className="text-sm font-medium text-foreground">
+                          {locale === "en"
+                            ? event.label
+                            : t(`dashboard.firstWeek.event.${event.key}` as ProductMessageKey)}
+                        </p>
                         <span className={event.status === "complete" ? "text-emerald-400" : "text-amber-300"}>
-                          {event.status === "complete" ? "Complete" : "Pending"}
+                          {event.status === "complete" ? t("common.complete") : t("common.pending")}
                         </span>
                       </div>
-                      <p className="mt-2 text-sm leading-6 text-muted-foreground">{event.detail}</p>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                        {locale === "en"
+                          ? event.detail
+                          : t(event.status === "complete"
+                            ? "dashboard.firstWeek.eventComplete"
+                            : "dashboard.firstWeek.eventPending")}
+                      </p>
                     </div>
                   ))}
                 </div>
               </div>
 
               <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">What we are monitoring</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.monitoring")}</p>
                 <div className="mt-3 space-y-2">
-                  {firstWeekSuccess.monitoring.map((item) => (
+                  {(locale === "en" ? firstWeekSuccess.monitoring : [t("dashboard.firstWeek.localizedMonitoring")]).map((item) => (
                     <p key={item} className="text-sm leading-7 text-muted-foreground">{item}</p>
                   ))}
                 </div>
@@ -694,21 +785,22 @@ export function CampaignDashboardView({
 
               {firstWeekSuccess.firstLead ? (
                 <div className="rounded-[20px] border border-emerald-400/20 bg-emerald-400/10 p-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">First lead</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.firstLead")}</p>
                   <p className="mt-3 text-lg font-semibold text-foreground">{firstWeekSuccess.firstLead.name}</p>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    {firstWeekSuccess.firstLead.contact} • received{" "}
-                    {formatDateTime(firstWeekSuccess.firstLead.receivedAt)}
+                    {firstWeekSuccess.firstLead.contact} • {t("dashboard.received", {
+                      value: localizedDateTime(firstWeekSuccess.firstLead.receivedAt),
+                    })}
                   </p>
                   <p className="mt-3 text-sm leading-7 text-muted-foreground">
-                    Recommended follow-up: {firstWeekSuccess.firstLead.recommendedFollowUp}
+                    {t("dashboard.recommendedFollowUp")}
                   </p>
                 </div>
               ) : (
                 <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">No lead yet</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.noLeadYet")}</p>
                   <p className="mt-3 text-sm leading-7 text-muted-foreground">
-                    No lead has been verified yet. The system is watching delivery, funnel availability, and form capture without inventing performance that does not exist.
+                    {t("dashboard.noLeadBody")}
                   </p>
                 </div>
               )}
@@ -719,22 +811,22 @@ export function CampaignDashboardView({
 
       {!hasLivePerformance ? (
         <Card className="rounded-[24px] p-6">
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Live reporting</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.liveReporting")}</p>
           <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">
             {dataSourceState === "disconnected"
-              ? "Not connected"
+              ? t("common.notConnected")
               : missingPerformanceData
-                ? "Waiting for delivery data"
-                : "Collecting"}
+                ? t("common.waitingForData")
+                : t("common.collecting")}
           </h3>
           <p className="mt-3 text-sm leading-7 text-muted-foreground">
             {dataSourceState === "disconnected"
-              ? "Launch and connect Meta to start collecting results."
+              ? t("dashboard.connectToCollect")
               : missingPerformanceData
-                ? "Campaign live, waiting for delivery data."
+                ? t("dashboard.liveWaiting")
               : launchState !== "live"
-                ? "Launch the campaign to begin collecting delivery data."
-                : "Meta is connected and delivery is underway, but there is not enough live data yet to report performance."}
+                ? t("dashboard.launchToCollect")
+                : t("dashboard.collectingBody")}
           </p>
         </Card>
       ) : null}
@@ -742,37 +834,37 @@ export function CampaignDashboardView({
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_repeat(3,minmax(0,0.9fr))]">
         <Card className="rounded-[24px] p-5">
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            Results status
+            {t("dashboard.resultsStatus")}
           </p>
           <p className="mt-3 text-3xl font-semibold tracking-[-0.05em]">
             {dataSourceState === "disconnected"
-              ? "Not connected"
+              ? t("common.notConnected")
               : dataSourceState === "collecting"
-                ? "Collecting"
-                : "Active"}
+                ? t("common.collecting")
+                : t("common.active")}
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
             {dataSourceState === "disconnected"
-              ? "Meta is not connected, so no live metrics can be reported."
+              ? t("dashboard.disconnectedBody")
               : dataSourceState === "collecting"
-                ? "Delivery is running, but results are still below the threshold for trustworthy reporting."
-                : "Live delivery data is available and results are grounded in synced metrics."}
+                ? t("dashboard.belowThreshold")
+                : t("dashboard.liveGrounded")}
           </p>
         </Card>
         <Card className="rounded-[24px] p-5">
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            Meta connection
+            {t("dashboard.metaConnection")}
           </p>
           <p className="mt-3 text-3xl font-semibold tracking-[-0.05em]">{metaStatusText}</p>
           <p className="mt-2 text-sm text-muted-foreground">
             {metaConnection.hasAccessToken
-              ? "Meta access is connected for this campaign."
-              : "Meta access has not been connected for this campaign yet."}
+              ? t("dashboard.metaAccessYes")
+              : t("dashboard.metaAccessNo")}
           </p>
           <div className="mt-4 space-y-2 text-sm text-muted-foreground">
-            <p>Account: {metaAccountText}</p>
-            <p>Page: {metaPageText}</p>
-            <p>Pixel: {metaPixelText}</p>
+            <p>{t("dashboard.account")}: {metaAccountText}</p>
+            <p>{t("dashboard.page")}: {metaPageText}</p>
+            <p>{t("dashboard.pixel")}: {metaPixelText}</p>
           </div>
         </Card>
         {headlineMetrics.map((metric) => (
@@ -782,7 +874,7 @@ export function CampaignDashboardView({
             </p>
             <p className="mt-3 text-3xl font-semibold tracking-[-0.05em]">{metric.value}</p>
             {!hasMetricData ? (
-              <p className="mt-2 text-sm text-muted-foreground">Waiting for data</p>
+              <p className="mt-2 text-sm text-muted-foreground">{t("common.waitingForData")}</p>
             ) : null}
           </Card>
         ))}
@@ -791,9 +883,9 @@ export function CampaignDashboardView({
       <Card className="rounded-[24px] p-6">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Status</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("common.status")}</p>
             <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">
-              Campaign overview
+              {t("dashboard.overview")}
             </h3>
           </div>
         </div>
@@ -816,8 +908,8 @@ export function CampaignDashboardView({
         <Card className="rounded-[24px] p-6">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Creative performance</p>
-              <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Ad results</h3>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.creativePerformance")}</p>
+              <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{t("dashboard.adResults")}</h3>
             </div>
           </div>
           <div className="mt-6 grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
@@ -830,8 +922,11 @@ export function CampaignDashboardView({
           </div>
           {creativePerformanceSummary.learned.length > 0 ? (
             <div className="mt-5 space-y-2 rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">What is working</p>
-              {creativePerformanceSummary.learned.slice(0, 3).map((item) => (
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.whatWorking")}</p>
+              {(locale === "en"
+                ? creativePerformanceSummary.learned.slice(0, 3)
+                : [t("dashboard.localizedStrategy")]
+              ).map((item) => (
                 <p key={item} className="text-sm leading-7 text-muted-foreground">{item}</p>
               ))}
             </div>
@@ -842,8 +937,8 @@ export function CampaignDashboardView({
       <Card className="rounded-[24px] p-6">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Campaign</p>
-            <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">What you launched</h3>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("common.campaign")}</p>
+            <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{t("dashboard.whatLaunched")}</h3>
           </div>
         </div>
         <div className="mt-6 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
@@ -859,8 +954,8 @@ export function CampaignDashboardView({
       <Card className="rounded-[24px] p-6">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Launch</p>
-            <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Launch results</h3>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("nav.goLive")}</p>
+            <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{t("dashboard.launchResults")}</h3>
           </div>
         </div>
         <div className="mt-6 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
@@ -876,11 +971,11 @@ export function CampaignDashboardView({
       <Card className="rounded-[24px] p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Review</p>
-            <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">What to do next</h3>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("common.review")}</p>
+            <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{t("dashboard.whatNext")}</h3>
           </div>
           <div className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-            {optimizerResult.status}
+            {t(`dashboard.optimizer.${optimizerResult.status}` as ProductMessageKey)}
           </div>
         </div>
         <div className="mt-5 grid gap-4 lg:grid-cols-3">
@@ -900,14 +995,14 @@ export function CampaignDashboardView({
                   <p className="text-sm font-semibold text-white/90">{card.title}</p>
                   {isHighlighted ? (
                     <span className="rounded-full border border-primary/30 bg-primary/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
-                      Top recommendation
+                      {t("dashboard.topRecommendation")}
                     </span>
                   ) : null}
                 </div>
                 <p className="mt-3 text-sm leading-7 text-muted-foreground">{card.description}</p>
                 <div className="mt-4 rounded-[16px] border border-white/8 bg-black/10 px-3 py-2">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    {hasRealDeliveryData ? "Live recommendation" : "Estimated recommendation"}
+                    {hasRealDeliveryData ? t("dashboard.liveRecommendation") : t("dashboard.estimatedRecommendation")}
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">{card.sourceLabel}</p>
                 </div>
@@ -918,28 +1013,28 @@ export function CampaignDashboardView({
         <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
           <div className="space-y-4">
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Plan</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("common.plan")}</p>
               <div className="mt-3 space-y-2">
-                {strategySummary.map((item) => (
+                {displayedStrategySummary.map((item) => (
                   <p key={item} className="text-sm leading-7 text-muted-foreground">{item}</p>
                 ))}
               </div>
             </div>
             <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Why</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("common.why")}</p>
                 <div className="mt-3 space-y-2">
-                  {optimizerResult.reasons.length > 0 ? optimizerResult.reasons.map((reason) => (
+                  {displayedOptimizerReasons.length > 0 ? displayedOptimizerReasons.map((reason) => (
                     <p key={reason} className="text-sm leading-7 text-muted-foreground">{reason}</p>
                   )) : (
-                    <p className="text-sm leading-7 text-muted-foreground">No critical warning is active. Keep monitoring live performance and protect the current mechanism.</p>
+                    <p className="text-sm leading-7 text-muted-foreground">{t("dashboard.noCritical")}</p>
                   )}
                 </div>
               </div>
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Actions</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("common.actions")}</p>
                 <div className="mt-3 space-y-2">
-                  {optimizerResult.actions.map((action) => (
+                  {displayedOptimizerActions.map((action) => (
                     <p key={action} className="text-sm leading-7 text-muted-foreground">{action}</p>
                   ))}
                 </div>
@@ -948,25 +1043,25 @@ export function CampaignDashboardView({
           </div>
           <div className="space-y-4">
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Review</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("common.review")}</p>
               <div className="mt-3 space-y-2">
-                {testingRecommendations.map((item) => (
+                {displayedTestingRecommendations.map((item) => (
                   <p key={item} className="text-sm leading-7 text-muted-foreground">{item}</p>
                 ))}
               </div>
             </div>
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Generate</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("common.generate")}</p>
               <div className="mt-3 space-y-2">
-                {regenerationSuggestions.map((item) => (
+                {displayedRegenerationSuggestions.map((item) => (
                   <p key={item} className="text-sm leading-7 text-muted-foreground">{item}</p>
                 ))}
               </div>
             </div>
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Next</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("common.next")}</p>
               <div className="mt-3 space-y-2">
-                {nextActions.map((action) => (
+                {displayedNextActions.map((action) => (
                   <p key={action} className="text-sm leading-7 text-muted-foreground">{action}</p>
                 ))}
               </div>
@@ -983,11 +1078,11 @@ export function CampaignDashboardView({
             </p>
             <p className="mt-3 text-3xl font-semibold tracking-[-0.05em]">{metric.value}</p>
             <p className="mt-2 text-sm text-muted-foreground">
-              {metric.label === "Spend"
+              {metric.label === t("dashboard.spend")
                 ? hasLivePerformance
-                  ? "Synced live campaign spend."
-                  : "Saved campaign spend from recent snapshots."
-                : `Lead-to-appointment rate: ${displayedAppointmentRate}.`}
+                  ? t("dashboard.spendLive")
+                  : t("dashboard.spendSaved")
+                : t("dashboard.appointmentRate", { value: displayedAppointmentRate })}
             </p>
           </Card>
         ))}
@@ -997,28 +1092,28 @@ export function CampaignDashboardView({
         <Card className="rounded-[24px] p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Results</p>
-              <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Recommendations and recent actions</h3>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("common.results")}</p>
+              <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{t("dashboard.recommendations")}</h3>
             </div>
             <div className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-              {autonomySnapshot.mode}
+              {localizedAutonomyMode(autonomySnapshot.mode)}
             </div>
           </div>
           <div className="mt-5 grid gap-4 lg:grid-cols-3">
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Recommendation status</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.recommendationStatus")}</p>
               <p className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
-                {autonomySnapshot.systemStatus ?? "idle"}
+                {localizedStatus(autonomySnapshot.systemStatus ?? "idle")}
               </p>
             </div>
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Recommendations</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.recommendations")}</p>
               <p className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
                 {autonomySnapshot.pendingActions?.length ?? 0}
               </p>
             </div>
             <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Recent updates</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.recentUpdates")}</p>
               <p className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
                 {autonomySnapshot.recentActions?.length ?? 0}
               </p>
@@ -1028,11 +1123,15 @@ export function CampaignDashboardView({
             <div className="mt-5 grid gap-4 xl:grid-cols-2">
               {autonomySnapshot.pendingActions!.slice(0, 4).map((action) => (
                 <div key={action.actionKey} className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-                  <p className="text-sm font-semibold">{action.title}</p>
-                  <p className="mt-2 text-sm leading-7 text-muted-foreground">{action.reason}</p>
+                  <p className="text-sm font-semibold">
+                    {locale === "en" ? action.title : t("dashboard.autonomyAction")}
+                  </p>
+                  <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                    {locale === "en" ? action.reason : t("dashboard.autonomyReason")}
+                  </p>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                    <span>{action.actionType.replaceAll("_", " ")}</span>
-                    <span>Confidence {(action.confidenceScore * 100).toFixed(0)}%</span>
+                    <span>{locale === "en" ? action.actionType.replaceAll("_", " ") : t("dashboard.autonomyAction")}</span>
+                    <span>{t("dashboard.confidence", { value: (action.confidenceScore * 100).toFixed(0) })}</span>
                     {action.targetMarket ? <span>{action.targetMarket}</span> : null}
                   </div>
                 </div>
@@ -1041,16 +1140,16 @@ export function CampaignDashboardView({
           ) : (
             <p className="mt-5 text-sm leading-7 text-muted-foreground">
               {missingPerformanceData
-                ? "Waiting for delivery data."
-                : "No autonomy recommendations are available yet."}
+                ? t("dashboard.autonomyWaiting")
+                : t("dashboard.autonomyNone")}
             </p>
           )}
         </Card>
       ) : null}
 
       <Card className="rounded-[24px] p-6">
-        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Automation safety</p>
-        <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Optimization authority</h3>
+        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.optimizationSafety")}</p>
+        <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{t("dashboard.optimizationAuthority")}</h3>
         <MetaOptimizationPolicyControl campaignId={plan.id} />
       </Card>
 
@@ -1058,12 +1157,12 @@ export function CampaignDashboardView({
         <Card className="rounded-[24px] p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Current top performer</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.topPerformer")}</p>
               <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{topPerformer.headline}</h3>
             </div>
             {dataSourceState === "active" && rankedTopCreative ? (
               <div className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                🔥 Best performer
+                {t("dashboard.bestPerformer")}
               </div>
             ) : null}
           </div>
@@ -1082,7 +1181,7 @@ export function CampaignDashboardView({
               {dataSourceState === "active" && rankedTopCreative ? (
                 <div className="flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
                   <span className="rounded-full border border-white/10 px-3 py-1">
-                    Combined {rankedTopCreative.combinedScore.toFixed(1)}
+                    {t("dashboard.combined")} {rankedTopCreative.combinedScore.toFixed(1)}
                   </span>
                   <span className="rounded-full border border-white/10 px-3 py-1">
                     CTR {(rankedTopCreative.ctr * 100).toFixed(2)}%
@@ -1103,17 +1202,17 @@ export function CampaignDashboardView({
       <Card className="rounded-[24px] p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Follow-up</p>
-            <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">Lead follow-up</h3>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.followUp")}</p>
+            <h3 className="mt-2 text-2xl font-semibold tracking-[-0.04em]">{t("dashboard.leadFollowUp")}</h3>
           </div>
         </div>
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">SMS</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.sms")}</p>
             <p className="mt-3 text-sm leading-7 text-muted-foreground">{smsPrompt}</p>
           </div>
           <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-5">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Booking</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.booking")}</p>
             <p className="mt-3 text-sm leading-7 text-muted-foreground">{bookingText}</p>
           </div>
         </div>
@@ -1121,73 +1220,73 @@ export function CampaignDashboardView({
 
       <div className="grid gap-4 xl:grid-cols-3">
         <Card className="rounded-[24px] p-6">
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Leads</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.leads")}</p>
           <div className="mt-5 space-y-3">
             {recentLeads.length > 0 ? recentLeads.map((lead) => {
-              const fullName = [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim() || "Unnamed lead";
+              const fullName = [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim() || t("dashboard.unnamedLead");
               const sourceCampaign =
                 lead.campaign_id === plan.id
                   ? plan.businessName || plan.clientName || plan.id
-                  : lead.campaign_id || "Unassigned";
+                  : lead.campaign_id || t("dashboard.unassigned");
               return (
                 <div key={lead.id} className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
                   <p className="text-sm font-semibold">{fullName}</p>
                   <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                    <p>Email: {lead.email || "No email"}</p>
-                    <p>Phone: {lead.phone || "No phone"}</p>
-                    <p>Source campaign: {sourceCampaign}</p>
-                    <p>Status: {lead.status || "new"}{lead.source ? ` • ${lead.source}` : ""}</p>
+                    <p>{t("common.email")}: {lead.email || t("dashboard.noEmail")}</p>
+                    <p>{t("dashboard.phone")}: {lead.phone || t("dashboard.noPhone")}</p>
+                    <p>{t("dashboard.sourceCampaign")}: {sourceCampaign}</p>
+                    <p>{t("common.status")}: {localizedStatus(lead.status || "new")}{lead.source ? ` • ${lead.source}` : ""}</p>
                     <p>
-                      {lead.estimated_value ? `Value ${currency(lead.estimated_value)} • ` : ""}
-                      {formatDateTime(lead.created_at)}
+                      {lead.estimated_value ? `${t("dashboard.value", { value: currency(lead.estimated_value) })} • ` : ""}
+                      {localizedDateTime(lead.created_at)}
                     </p>
                   </div>
                 </div>
               );
             }) : (
-              <p className="text-sm leading-7 text-muted-foreground">No leads have been captured for this workspace yet.</p>
+              <p className="text-sm leading-7 text-muted-foreground">{t("dashboard.noLeads")}</p>
             )}
           </div>
         </Card>
 
         <Card className="rounded-[24px] p-6">
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Recent appointments</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.appointments")}</p>
           <div className="mt-5 space-y-3">
             {recentAppointments.length > 0 ? recentAppointments.map((appointment) => (
               <div key={appointment.id} className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
-                <p className="text-sm font-semibold">{appointment.appointment_type || "Appointment"}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{appointment.status || "scheduled"}</p>
+                <p className="text-sm font-semibold">{appointment.appointment_type || t("dashboard.appointment")}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{localizedStatus(appointment.status || "scheduled")}</p>
                 <p className="mt-2 text-xs text-muted-foreground">
                   {appointment.scheduled_at
-                    ? formatDateTime(appointment.scheduled_at)
-                    : formatDate(appointment.created_at)}
+                    ? localizedDateTime(appointment.scheduled_at)
+                    : localizedDate(appointment.created_at)}
                 </p>
               </div>
             )) : (
-              <p className="text-sm leading-7 text-muted-foreground">No appointments have been booked for this workspace yet.</p>
+              <p className="text-sm leading-7 text-muted-foreground">{t("dashboard.noAppointments")}</p>
             )}
           </div>
         </Card>
 
         <Card className="rounded-[24px] p-6">
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Recent deals</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("dashboard.deals")}</p>
           <div className="mt-5 space-y-3">
             {recentDeals.length > 0 ? recentDeals.map((deal) => (
               <div key={deal.id} className="rounded-[20px] border border-white/8 bg-white/[0.03] p-4">
-                <p className="text-sm font-semibold">{deal.title || "Untitled deal"}</p>
+                <p className="text-sm font-semibold">{deal.title || t("dashboard.untitledDeal")}</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {deal.status || "active"}{deal.stage ? ` • ${deal.stage}` : ""}
+                  {localizedStatus(deal.status || "active")}{deal.stage ? ` • ${deal.stage}` : ""}
                 </p>
                 <p className="mt-2 text-xs text-muted-foreground">
                   {deal.closed_value
-                    ? `Closed ${currency(deal.closed_value)}`
+                    ? t("dashboard.closed", { value: currency(deal.closed_value) })
                     : deal.estimated_value
-                      ? `Pipeline ${currency(deal.estimated_value)}`
-                      : "No value recorded"} • {formatDate(deal.created_at)}
+                      ? t("dashboard.pipeline", { value: currency(deal.estimated_value) })
+                      : t("common.unavailable")} • {localizedDate(deal.created_at)}
                 </p>
               </div>
             )) : (
-              <p className="text-sm leading-7 text-muted-foreground">No deals have been created for this workspace yet.</p>
+              <p className="text-sm leading-7 text-muted-foreground">{t("dashboard.noDeals")}</p>
             )}
           </div>
         </Card>

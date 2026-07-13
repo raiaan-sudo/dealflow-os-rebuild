@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { LocaleLink as Link } from "@/components/i18n/locale-link";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { PageHeader } from "@/components/app/page-header";
 import { CampaignDashboardView } from "@/components/dashboard/campaign-dashboard-view";
@@ -39,6 +39,8 @@ import {
 } from "@/lib/services/first-week-success-service";
 import { createClient } from "@/lib/supabase/server";
 import { evaluateAutonomy } from "@/app/api/autonomy/_shared";
+import { getRequestProductI18n } from "@/lib/i18n/server";
+import { getProductIntlLocale, type ProductLocale } from "@/lib/i18n/config";
 
 const EMPTY_DASHBOARD_METRICS: DashboardMetrics = {
   totalLeads: 0,
@@ -77,20 +79,30 @@ function withTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs: number) {
   });
 }
 
-function formatLastUpdated(value: string) {
+function formatLastUpdated(
+  value: string,
+  locale: ProductLocale,
+  t: (key: "dashboard.lastUpdated", values: { relative: string }) => string,
+) {
   const diffMs = Date.now() - new Date(value).getTime();
   const diffSeconds = Math.max(0, Math.round(diffMs / 1000));
 
   if (diffSeconds <= 1) {
-    return "Last updated just now";
+    return t("dashboard.lastUpdated", {
+      relative: new Intl.RelativeTimeFormat(getProductIntlLocale(locale), { numeric: "auto" }).format(0, "second"),
+    });
   }
 
   if (diffSeconds < 60) {
-    return `Last updated ${diffSeconds} seconds ago`;
+    return t("dashboard.lastUpdated", {
+      relative: new Intl.RelativeTimeFormat(getProductIntlLocale(locale), { numeric: "auto" }).format(-diffSeconds, "second"),
+    });
   }
 
   const diffMinutes = Math.round(diffSeconds / 60);
-  return `Last updated ${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+  return t("dashboard.lastUpdated", {
+    relative: new Intl.RelativeTimeFormat(getProductIntlLocale(locale), { numeric: "auto" }).format(-diffMinutes, "minute"),
+  });
 }
 
 function parseCostPerLeadRange(value: string) {
@@ -237,37 +249,38 @@ async function loadLeadLoopVerified(campaignId: string | null) {
   return getLeadLoopVerifiedFromPlan(planRow?.plan);
 }
 
-function DashboardFallback({ campaignId = null }: { campaignId?: string | null }) {
+async function DashboardFallback({ campaignId = null }: { campaignId?: string | null }) {
+  const { t } = await getRequestProductI18n();
   return (
     <PageShell>
       <PageHeader
-        eyebrow="Dashboard"
-        title="Dashboard"
-        description="Some dashboard sources are still loading or unavailable. The states below explain what is missing and what to do next."
+        eyebrow={t("dashboard.eyebrow")}
+        title={t("dashboard.title")}
+        description={t("dashboard.description.degraded")}
       />
       <div className="grid gap-4 md:grid-cols-3">
         <EmptyState
-          title="Campaign data unavailable"
-          description="The saved campaign record could not be loaded for this dashboard view yet."
+          title={t("dashboard.campaignUnavailable")}
+          description={t("dashboard.campaignUnavailableBody")}
         />
         <EmptyState
-          title="Meta sync not yet complete"
-          description="Meta connection or sync data is not fully available, so launch and delivery status may still be catching up."
+          title={t("dashboard.metaIncomplete")}
+          description={t("dashboard.metaIncompleteBody")}
         />
         <EmptyState
-          title="No performance data yet"
-          description="Leads, spend, and recommendation quality will improve once delivery data and lead events arrive."
+          title={t("dashboard.noPerformance")}
+          description={t("dashboard.noPerformanceBody")}
         />
       </div>
       <div className="flex flex-wrap gap-3">
         <Button asChild>
           <Link href={campaignId ? `/launch?campaignId=${encodeURIComponent(campaignId)}` : "/launch"}>
-            Launch
+            {t("nav.goLive")}
           </Link>
         </Button>
         <Button asChild variant="secondary">
           <Link href={campaignId ? `/preview?campaignId=${encodeURIComponent(campaignId)}` : "/preview"}>
-            Review
+            {t("nav.review")}
           </Link>
         </Button>
       </div>
@@ -415,6 +428,7 @@ export default async function DashboardPage({
       ? params.campaignId
       : null;
   const state = await loadDashboardStateForCampaign(requestedCampaignId);
+  const { locale, t } = await getRequestProductI18n();
 
   if (state.routeError) {
     return <DashboardFallback campaignId={state.campaignId} />;
@@ -424,20 +438,20 @@ export default async function DashboardPage({
     return (
       <PageShell>
         <PageHeader
-          eyebrow="Dashboard"
-          title="Dashboard"
-          description="This dashboard is connected to live data and will populate as leads, appointments, and campaign delivery records arrive."
+          eyebrow={t("dashboard.eyebrow")}
+          title={t("dashboard.title")}
+          description={t("dashboard.description.live")}
         />
         <EmptyState
-          title="No campaign available yet"
-          description="Start onboarding to create a campaign before opening review, launch, or results."
+          title={t("dashboard.empty.title")}
+          description={t("dashboard.empty.body")}
         />
         <div className="flex flex-wrap gap-3">
           <Button asChild>
-            <Link href="/onboarding">Start onboarding</Link>
+            <Link href="/onboarding">{t("dashboard.empty.start")}</Link>
           </Button>
           <Button asChild variant="secondary">
-            <Link href="/onboarding">Continue onboarding</Link>
+            <Link href="/onboarding">{t("dashboard.empty.continue")}</Link>
           </Button>
         </div>
       </PageShell>
@@ -458,11 +472,11 @@ export default async function DashboardPage({
   return (
     <PageShell>
       <PageHeader
-        eyebrow="Dashboard"
-        title="Dashboard"
-        description="See campaign status, leads, spend, and the next best actions."
+        eyebrow={t("dashboard.eyebrow")}
+        title={t("dashboard.title")}
+        description={t("dashboard.description")}
       />
-      <p className="text-sm text-muted-foreground">{formatLastUpdated(state.lastUpdatedAt)}</p>
+      <p className="text-sm text-muted-foreground">{formatLastUpdated(state.lastUpdatedAt, locale, t)}</p>
       <CampaignDashboardView
         plan={state.plan}
         metaConnection={state.metaConnection}

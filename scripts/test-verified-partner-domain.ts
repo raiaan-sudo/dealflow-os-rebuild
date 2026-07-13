@@ -75,6 +75,7 @@ assert.deepEqual(getPartnerAttributionCookieOptions(true), {
   httpOnly: true,
   secure: true,
   sameSite: "none",
+  partitioned: true,
   path: "/",
   maxAge: 86_400,
 });

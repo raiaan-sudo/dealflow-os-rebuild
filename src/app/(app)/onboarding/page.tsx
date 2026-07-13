@@ -42,6 +42,13 @@ import { normalizePhone } from "@/lib/phone";
 import { resolveMetaInstantFormQualificationQuestions } from "@/lib/meta-instant-form-qualification";
 import { normalizeOfferForCampaign, type NormalizedOfferResult } from "@/lib/services/offer-normalization-service";
 import { cn } from "@/lib/utils";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
+import { getProductIntlLocale, type ProductLocale } from "@/lib/i18n/config";
+import type { ProductMessageKey } from "@/lib/i18n/messages";
+import {
+  getOnboardingOptionCatalog,
+  localizeKnownOnboardingValue,
+} from "@/lib/i18n/onboarding-options";
 
 type DraftState = OnboardingDraft;
 
@@ -62,115 +69,27 @@ type BillingStatus = {
 
 const LEGACY_PII_STORAGE_KEYS = ["dealflow-guided-onboarding-v3"] as const;
 
-const STEPS: { key: OnboardingStepKey; label: string; title: string }[] = [
-  { key: "intent", label: "Type", title: "Choose campaign type" },
-  { key: "market", label: "Market", title: "Pick the city or market" },
-  { key: "property", label: "Property", title: "Choose inventory focus" },
-  { key: "audience", label: "Audience", title: "Define audience and price" },
-  { key: "budget", label: "Budget", title: "Set budget and capture style" },
-  { key: "setup", label: "Setup", title: "Configure capture path" },
-  { key: "offer", label: "Offer", title: "Choose offer or lead magnet" },
-  { key: "agent", label: "Agent", title: "Identify the agent" },
-  { key: "plan", label: "Plan", title: "Confirm launch plan" },
-  { key: "review", label: "Review", title: "Confirm and build" },
+const STEPS: { key: OnboardingStepKey }[] = [
+  { key: "intent" },
+  { key: "market" },
+  { key: "property" },
+  { key: "audience" },
+  { key: "budget" },
+  { key: "setup" },
+  { key: "offer" },
+  { key: "agent" },
+  { key: "plan" },
+  { key: "review" },
 ];
 
-const MODE_DEFAULTS: Record<
-  CampaignMode,
-  {
-    title: string;
-    summary: string;
-    path: string;
-    audience: string;
-    propertyType: string;
-    priceRange: string;
-    offer: string;
-    icon: typeof Home;
-  }
-> = {
-  buyer: {
-    title: "Buyer leads",
-    summary: "Attract active buyers with sharper search intent, a focused funnel, and a fast path to a consultation.",
-    path: "Buyer leads in the selected market who are ready to compare listings and book a call.",
-    audience: "Move-ready buyers actively comparing homes",
-    propertyType: "Single Family Homes",
-    priceRange: "$600k-$900k",
-    offer: "Private listings and a fast buyer strategy call",
-    icon: Home,
-  },
-  seller: {
-    title: "Seller leads",
-    summary: "Turn homeowner curiosity into listing conversations with stronger positioning and clearer proof.",
-    path: "Seller leads in the selected market who want pricing, timing, and demand clarity.",
-    audience: "Homeowners considering a sale in the next 12 months",
-    propertyType: "Detached homes",
-    priceRange: "$600k-$900k",
-    offer: "Free home value and demand strategy call",
-    icon: Building2,
-  },
-  investor: {
-    title: "Investor leads",
-    summary: "Help real estate agents attract investors who want clearer deal flow, yield context, and stronger filtering.",
-    path: "Investor prospects who want deal flow and ROI context before they review properties.",
-    audience: "Real estate investors looking for stronger deal flow",
-    propertyType: "Cash-flow rentals",
-    priceRange: "$500k-$1.5M",
-    offer: "Investor deal flow and ROI brief",
-    icon: CircleDollarSign,
-  },
-  commercial: {
-    title: "Commercial leads",
-    summary: "Capture business owners, tenants, and owner-users who need a practical commercial shortlist.",
-    path: "Commercial clients evaluating lease, purchase, or expansion options in the selected market.",
-    audience: "Business owners, tenants, and owner-users evaluating space",
-    propertyType: "Office",
-    priceRange: "Lease-ready",
-    offer: "Commercial space-fit shortlist",
-    icon: Store,
-  },
+const MODE_ICONS: Record<CampaignMode, typeof Home> = {
+  buyer: Home,
+  seller: Building2,
+  investor: CircleDollarSign,
+  commercial: Store,
 };
 
-const PROPERTY_TYPE_OPTIONS: Record<CampaignMode, { label: string; description: string }[]> = {
-  buyer: [
-    { label: "Single Family Homes", description: "Detached homes, townhomes, freestanding homes, and homes on larger lots." },
-    { label: "First Time Buyer Homes", description: "Entry-point options for buyers who need a clearer first step." },
-    { label: "New Construction", description: "Builder inventory, pre-construction, and newly built homes." },
-    { label: "Luxury Homes", description: "Higher-intent buyers seeking premium private access." },
-    { label: "Condos", description: "Condo buyers looking for sharper building and neighborhood fit." },
-    { label: "Multi Unit Homes", description: "Duplexes, triplexes, and other multi-unit homes for buyers comparing income or flexible living options." },
-  ],
-  seller: [
-    { label: "Detached homes", description: "Listing conversations with detached homeowners." },
-    { label: "Townhomes", description: "Townhome owners comparing value, timing, and demand." },
-    { label: "Condos", description: "Condo sellers who need pricing and building-specific demand clarity." },
-    { label: "Luxury listings", description: "Premium homeowners who need a stronger launch plan." },
-    { label: "Downsizer homes", description: "Owners weighing whether now is the right move-down window." },
-    { label: "Probate/estate sale", description: "Estate-related sellers who need a practical next step." },
-    { label: "Investment property owners", description: "Landlords and owners considering a sale or portfolio shift." },
-  ],
-  investor: [
-    { label: "Cash-flow rentals", description: "Rental properties where investors care about yield and monthly spread." },
-    { label: "Value-add properties", description: "Properties with upside through renovation, repositioning, or better operations." },
-    { label: "Multifamily", description: "Apartment and small multifamily opportunities for investor buyers." },
-    { label: "Duplex/triplex/fourplex", description: "Small multi-unit assets for house hackers and cash-flow buyers." },
-    { label: "BRRRR opportunities", description: "Buy, rehab, rent, refinance, repeat opportunities." },
-    { label: "Off-market deals", description: "Private or early-access opportunities before broad market exposure." },
-    { label: "Pre-construction investment", description: "Pre-construction opportunities with investor-oriented context." },
-    { label: "Fix-and-flip properties", description: "Short-horizon renovation deals and resale opportunities." },
-  ],
-  commercial: [
-    { label: "Office", description: "Office space for tenants, owner-users, and professional teams." },
-    { label: "Retail", description: "Retail space for operators comparing visibility, access, and location fit." },
-    { label: "Industrial", description: "Industrial units for operators, investors, and users." },
-    { label: "Warehouse", description: "Warehouse and logistics space with capacity and access requirements." },
-    { label: "Mixed-use", description: "Mixed-use commercial properties with flexible use cases." },
-    { label: "Owner-user", description: "Businesses evaluating purchase options for their own operations." },
-    { label: "Lease opportunities", description: "Tenant-focused campaigns around lease-ready space." },
-    { label: "Purchase opportunities", description: "Commercial purchase campaigns for buyers and owner-users." },
-    { label: "Medical/professional space", description: "Clinics, medical offices, and professional-service spaces." },
-    { label: "Land/development sites", description: "Commercial land, redevelopment, or buildable site opportunities." },
-  ],
-};
+const DEFAULT_BUYER_COPY = getOnboardingOptionCatalog("en").modes.buyer;
 
 const DEFAULT_DRAFT: DraftState = {
   agentFirstName: "",
@@ -179,11 +98,11 @@ const DEFAULT_DRAFT: DraftState = {
   agentPhone: "",
   campaignMode: "buyer",
   market: "Toronto, ON",
-  audience: MODE_DEFAULTS.buyer.audience,
-  propertyType: MODE_DEFAULTS.buyer.propertyType,
-  priceRange: MODE_DEFAULTS.buyer.priceRange,
+  audience: DEFAULT_BUYER_COPY.audience,
+  propertyType: DEFAULT_BUYER_COPY.propertyType,
+  priceRange: DEFAULT_BUYER_COPY.priceRange,
   dailyBudget: "30",
-  offer: MODE_DEFAULTS.buyer.offer,
+  offer: DEFAULT_BUYER_COPY.offer,
   funnelLanguage: "en",
   adDestination: "website",
   leadCaptureMode: "quality_funnel",
@@ -197,130 +116,64 @@ const DEFAULT_DRAFT: DraftState = {
   idempotencySeed: "",
 };
 
+function createLocalizedDefaultDraft(locale: ProductLocale): DraftState {
+  const buyer = getOnboardingOptionCatalog(locale).modes.buyer;
+  return {
+    ...DEFAULT_DRAFT,
+    audience: buyer.audience,
+    propertyType: buyer.propertyType,
+    priceRange: buyer.priceRange,
+    offer: buyer.offer,
+    funnelLanguage: locale,
+  };
+}
+
+function localizeKnownDraftValues(draft: DraftState, locale: ProductLocale): DraftState {
+  return {
+    ...draft,
+    audience: localizeKnownOnboardingValue(draft.audience, draft.campaignMode, locale),
+    propertyType: localizeKnownOnboardingValue(draft.propertyType, draft.campaignMode, locale),
+    priceRange: localizeKnownOnboardingValue(draft.priceRange, draft.campaignMode, locale),
+    offer: localizeKnownOnboardingValue(draft.offer, draft.campaignMode, locale),
+    leadFormQuestions: draft.leadFormQuestions.map((question) =>
+      localizeKnownOnboardingValue(question, draft.campaignMode, locale)),
+  };
+}
+
 const PRICE_RANGES = ["$400k-$600k", "$600k-$900k", "$900k-$1.5M", "$1.5M+"] as const;
 const INVESTOR_PRICE_RANGES = ["<$500k", "$500k-$1.5M", "$1.5M-$3M", "$3M+"] as const;
 const COMMERCIAL_PRICE_RANGES = ["Lease-ready", "$750k-$1.5M", "$1.5M-$3M", "$3M+"] as const;
-const DAILY_BUDGETS = [
-  { label: "$10/day", value: "10" },
-  { label: "$20/day", value: "20" },
-  { label: "$30/day", value: "30" },
-  { label: "$50/day", value: "50" },
-  { label: "$75/day", value: "75" },
-  { label: "$100/day", value: "100" },
-] as const;
+const DAILY_BUDGETS = ["10", "20", "30", "50", "75", "100"] as const;
 const MIN_DAILY_BUDGET_CENTS = 500;
 const MAX_DAILY_BUDGET_CENTS: number | null = null;
 
 const LEAD_CAPTURE_MODE_ORDER: LeadCaptureMode[] = ["volume_lead_form", "quality_funnel", "deep_qualification"];
-
-const AD_DESTINATIONS: Record<
-  CampaignAdDestination,
-  { title: string; label: string; body: string }
-> = {
-  website: {
-    title: "Website funnel",
-    label: "DealFlow or verified GHL URL",
-    body: "Send the ad to the selected hosted funnel and capture the lead through the website form.",
-  },
-  meta_instant_form: {
-    title: "Meta Instant Form",
-    label: "On-Facebook lead form",
-    body: "Collect the lead inside Meta, then persist, deduplicate, route to GHL, and report it in DealFlow.",
-  },
-};
-
-const LEAD_CAPTURE_MODES: Record<LeadCaptureMode, { title: string; label: string; body: string }> = {
-  volume_lead_form: {
-    title: "Volume leads",
-    label: "Fastest conversion",
-    body: "Use name, email, and phone with minimal extra friction when consistent lead flow matters most.",
-  },
-  quality_funnel: {
-    title: "Quality leads",
-    label: "Balanced qualification",
-    body: "Add one high-signal qualification question for a warmer handoff without making the form feel heavy.",
-  },
-  deep_qualification: {
-    title: "Highest quality",
-    label: "Deeper qualification",
-    body: "Use more qualification before the contact step when budget gives the campaign room to filter harder.",
-  },
-};
-
-const LEAD_FORM_QUESTION_PRESETS = [
-  "What price range are you targeting?",
-  "When are you hoping to move?",
-  "Are you already pre-approved?",
-  "What city or neighbourhood are you focused on?",
-  "Do you have a property to sell first?",
-  "What is your ideal property type?",
-] as const;
-
-const FUNNEL_LANGUAGES: Record<FunnelLanguage, { label: string; body: string }> = {
-  en: { label: "English", body: "Generate funnel and ad copy in English." },
-  fr: { label: "French", body: "Generate funnel and ad copy in French." },
-  es: { label: "Spanish", body: "Generate funnel and ad copy in Spanish." },
-};
 
 function normalizeHexColor(value: string, fallback: string) {
   const normalized = value.trim();
   return /^#[0-9a-f]{6}$/i.test(normalized) ? normalized : fallback;
 }
 
-const OFFER_SUGGESTIONS: Record<CampaignMode, string[]> = {
-  buyer: [
-    "Curated Home List",
-    "Affordability Breakdown",
-    "Early Access Listings",
-    "First-Time Buyer Plan",
-    "Relocation Shortlist",
-    "Move-Up Strategy Plan",
-    "Under-Market Deals",
-    "Neighborhood Match Report",
-    "Private Inventory Preview",
-    "Monthly Payment Estimator",
-  ],
-  seller: [
-    "Home Equity Snapshot Report",
-    "Pre-Listing Buyer Demand Check",
-    "Neighbourhood Sale Comparison Report",
-    "Instant Home Value Range",
-    "Sell vs Renovate Decision Report",
-    "Downsizing Profit Calculator",
-    "Timing the Market Report",
-    "Private Buyer Match Preview",
-    "14-Day Sale Analysis",
-    "Listing Strategy Blueprint",
-  ],
-  investor: [
-    "Cash Flow Deal List",
-    "ROI Report",
-    "Off-Market List",
-    "Rent-to-Price Analysis",
-    "BRRRR Candidate List",
-    "Investor Pocket Map",
-    "Underwritten Deal Sheet",
-    "Multifamily Shortlist",
-    "Monthly Cash Flow Estimate Tool",
-    "Pre-Market Alert List",
-  ],
-  commercial: [
-    "Available spaces shortlist",
-    "Lease vs purchase strategy call",
-    "Owner-user opportunity list",
-    "Industrial/warehouse availability report",
-    "Tenant relocation options",
-    "Commercial market snapshot",
-    "Development site shortlist",
-  ],
-};
+function normalizeOfferForLocale(
+  offer: string,
+  mode: CampaignMode,
+  locale: ProductLocale,
+): NormalizedOfferResult {
+  if (locale === "en") {
+    return normalizeOfferForCampaign(offer, mode);
+  }
 
-const AUDIENCE_REASONS: Record<CampaignMode, string> = {
-  buyer: "We chose this because buyers respond fastest when the campaign filters inventory by budget, lifestyle, and timing instead of sending generic listing noise.",
-  seller: "We chose this because homeowners need a low-pressure way to understand equity, timing, and demand before they decide whether to list.",
-  investor: "We chose this because investors care about filtered deal flow, rent-to-price logic, and underwritten opportunities more than generic property ads.",
-  commercial: "We chose this because commercial prospects need space-fit criteria and use-case clarity before they are ready to talk.",
-};
+  const normalizedOffer = offer.trim().replace(/\s+/g, " ");
+  return {
+    rawOffer: offer,
+    normalizedOffer,
+    cta: normalizedOffer,
+    intent: "generic",
+    changed: normalizedOffer !== offer,
+    coachNote: "",
+    alternates: [],
+  };
+}
 
 function createIdempotencySeed() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -357,8 +210,8 @@ function monthlyCapDollarsFromDailyCents(cents: number) {
   return Math.round(cents * 30) / 100;
 }
 
-function formatAdSpend(value: number) {
-  return new Intl.NumberFormat("en-CA", {
+function formatAdSpend(value: number, locale: ProductLocale) {
+  return new Intl.NumberFormat(getProductIntlLocale(locale), {
     style: "currency",
     currency: "CAD",
     maximumFractionDigits: Number.isInteger(value) ? 0 : 2,
@@ -366,24 +219,35 @@ function formatAdSpend(value: number) {
   }).format(value);
 }
 
-function formatDailyBudgetFromDraft(draft: Pick<DraftState, "dailyBudget">) {
+function formatDailyBudgetFromDraft(
+  draft: Pick<DraftState, "dailyBudget">,
+  locale: ProductLocale,
+  t: (key: ProductMessageKey, values?: Record<string, string | number>) => string,
+) {
   const cents = dailyBudgetCentsFromDraft(draft);
 
   if (!cents || cents <= 0) {
-    return "Daily budget not set";
+    return t("onboarding.dailyNotSet");
   }
 
-  return `${formatAdSpend(dailyBudgetDollarsFromCents(cents))}/day`;
+  const dayLabel = locale === "fr" ? "jour" : locale === "es" ? "día" : "day";
+  return `${formatAdSpend(dailyBudgetDollarsFromCents(cents), locale)}/${dayLabel}`;
 }
 
-function formatMonthlyEstimateFromDraft(draft: Pick<DraftState, "dailyBudget">) {
+function formatMonthlyEstimateFromDraft(
+  draft: Pick<DraftState, "dailyBudget">,
+  locale: ProductLocale,
+  t: (key: ProductMessageKey, values?: Record<string, string | number>) => string,
+) {
   const cents = dailyBudgetCentsFromDraft(draft);
 
   if (!cents || cents <= 0) {
     return null;
   }
 
-  return `Estimated 30-day media spend: ${formatAdSpend(monthlyCapDollarsFromDailyCents(cents))}.`;
+  return t("onboarding.estimatedSpend", {
+    value: formatAdSpend(monthlyCapDollarsFromDailyCents(cents), locale),
+  });
 }
 
 function recommendLeadCaptureMode(dailyBudgetCents: number | null): LeadCaptureMode {
@@ -394,38 +258,9 @@ function recommendLeadCaptureMode(dailyBudgetCents: number | null): LeadCaptureM
 
 function getLeadCaptureRecommendation(
   dailyBudgetCents: number | null,
-  adDestination: CampaignAdDestination,
 ) {
   const mode = recommendLeadCaptureMode(dailyBudgetCents);
-  const option = LEAD_CAPTURE_MODES[mode];
-
-  if (mode === "volume_lead_form") {
-    return {
-      mode,
-      title: "Recommended: Volume leads",
-      label: option.label,
-      body:
-        adDestination === "meta_instant_form"
-          ? "Because this budget is under $30/day, keep the native Meta form to name, email, and phone so the campaign can learn with minimal friction."
-          : "Because this budget is under $30/day, keep the website form to name, email, and phone so the campaign can learn with minimal friction.",
-    };
-  }
-
-  if (mode === "deep_qualification") {
-    return {
-      mode,
-      title: "Recommended: Highest quality",
-      label: option.label,
-      body: "At $100/day or more, the campaign has enough budget to add deeper qualification before the contact step and filter for stronger intent.",
-    };
-  }
-
-  return {
-    mode,
-    title: "Recommended: Quality leads",
-    label: option.label,
-    body: "A $30-$75/day starting range works best with the funnel path because it balances conversion volume with better lead quality.",
-  };
+  return { mode };
 }
 
 async function recordActivationEvent(params: {
@@ -444,20 +279,6 @@ async function recordActivationEvent(params: {
   } catch {
     // Activation telemetry is useful for operators but must never block onboarding.
   }
-}
-
-function getSubmissionErrorMessage(error: unknown) {
-  if (
-    error &&
-    typeof error === "object" &&
-    "issues" in error &&
-    Array.isArray(error.issues) &&
-    typeof error.issues[0]?.message === "string"
-  ) {
-    return error.issues[0].message;
-  }
-
-  return error instanceof Error ? error.message : "Campaign could not be created.";
 }
 
 function IconTile({
@@ -481,47 +302,51 @@ function IconTile({
   );
 }
 
-function validateStep(step: OnboardingStepKey, draft: DraftState) {
+function validateStep(
+  step: OnboardingStepKey,
+  draft: DraftState,
+  t: (key: ProductMessageKey) => string,
+) {
   const errors: FieldErrors = {};
   const dailyBudgetCents = dailyBudgetCentsFromDraft(draft);
 
   if (step === "agent" || step === "review") {
-    if (!draft.agentFirstName.trim()) errors.agentFirstName = "Add the agent first name.";
-    if (!draft.agentLastName.trim()) errors.agentLastName = "Add the agent last name.";
-    if (!draft.agentCompanyName.trim()) errors.agentCompanyName = "Add the company or brokerage.";
-    if (!draft.agentPhone.trim()) errors.agentPhone = "Add the agent phone for lead alerts.";
-    else if (!normalizePhone(draft.agentPhone)) errors.agentPhone = "Use a valid US or Canada phone number.";
+    if (!draft.agentFirstName.trim()) errors.agentFirstName = t("onboarding.validation.firstName");
+    if (!draft.agentLastName.trim()) errors.agentLastName = t("onboarding.validation.lastName");
+    if (!draft.agentCompanyName.trim()) errors.agentCompanyName = t("onboarding.validation.company");
+    if (!draft.agentPhone.trim()) errors.agentPhone = t("onboarding.validation.phone");
+    else if (!normalizePhone(draft.agentPhone)) errors.agentPhone = t("onboarding.validation.phoneFormat");
   }
 
   if (step === "market" || step === "review") {
-    if (!draft.market.trim()) errors.market = "Add the city or market this campaign should target.";
+    if (!draft.market.trim()) errors.market = t("onboarding.validation.market");
   }
 
   if (step === "property" || step === "review") {
-    if (!draft.propertyType.trim()) errors.propertyType = "Add the property type or inventory focus.";
+    if (!draft.propertyType.trim()) errors.propertyType = t("onboarding.validation.property");
   }
 
   if (step === "audience" || step === "review") {
-    if (!draft.audience.trim()) errors.audience = "Describe who the campaign should attract.";
-    if (!draft.priceRange.trim()) errors.priceRange = "Choose a price range.";
+    if (!draft.audience.trim()) errors.audience = t("onboarding.validation.audience");
+    if (!draft.priceRange.trim()) errors.priceRange = t("onboarding.validation.price");
   }
 
   if (step === "budget" || step === "review") {
     if (!dailyBudgetCents || dailyBudgetCents < MIN_DAILY_BUDGET_CENTS) {
-      errors.dailyBudget = "Choose or enter a daily ad spend of at least $5/day.";
+      errors.dailyBudget = t("onboarding.validation.budgetMin");
     } else if (MAX_DAILY_BUDGET_CENTS !== null && dailyBudgetCents > MAX_DAILY_BUDGET_CENTS) {
-      errors.dailyBudget = "Daily ad spend must be $500/day or less for self-serve setup.";
+      errors.dailyBudget = t("onboarding.validation.budgetMax");
     }
   }
 
   if (step === "setup" || step === "review") {
     if (draft.leadFormQuestions.length > 3) {
-      errors.leadFormQuestionDraft = "Use at most 3 custom lead form questions.";
+      errors.leadFormQuestionDraft = t("onboarding.validation.questions");
     }
   }
 
   if (step === "offer" || step === "review") {
-    if (!draft.offer.trim()) errors.offer = "Add the offer or lead magnet for this campaign.";
+    if (!draft.offer.trim()) errors.offer = t("onboarding.validation.offer");
   }
 
   return errors;
@@ -538,13 +363,14 @@ function StepProgress({
   steps: typeof STEPS;
   onSelect: (step: OnboardingStepKey) => void;
 }) {
+  const { t } = useProductI18n();
   const currentIndex = Math.max(steps.findIndex((step) => step.key === currentStep), 0);
   const progress = Math.round(((currentIndex + 1) / steps.length) * 100);
 
   return (
     <Card className="p-3 sm:p-4">
       <div className="flex items-center justify-between gap-4">
-        <p className="df-eyebrow">Progress</p>
+        <p className="df-eyebrow">{t("onboarding.progress")}</p>
         <p className="text-sm font-semibold text-white/62">{progress}%</p>
       </div>
       <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
@@ -583,9 +409,11 @@ function StepProgress({
               </span>
               <span className="min-w-0">
                 <span className="block truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-white/62">
-                  {step.label}
+                  {t(`onboarding.step.${step.key}` as ProductMessageKey)}
                 </span>
-                <span className="mt-1 hidden text-xs leading-snug text-white/44 lg:line-clamp-2">{step.title}</span>
+                <span className="mt-1 hidden text-xs leading-snug text-white/44 lg:line-clamp-2">
+                  {t(`onboarding.title.${step.key}` as ProductMessageKey)}
+                </span>
               </span>
             </button>
           );
@@ -642,8 +470,18 @@ function PlanChoiceCard({
   active: boolean;
   onClick: () => void;
 }) {
+  const { t } = useProductI18n();
   const plan = getPlanPresentation(tier);
   const Icon = tier === "starter" ? Lightbulb : Rocket;
+  const featureKeys: ProductMessageKey[] = [
+    "onboarding.plan.feature.setup",
+    "onboarding.plan.feature.preview",
+    "onboarding.plan.feature.meta",
+    "onboarding.plan.feature.review",
+    "onboarding.plan.feature.workspace",
+    "onboarding.plan.feature.unlimited",
+    "onboarding.plan.feature.monitoring",
+  ];
 
   return (
     <button
@@ -661,27 +499,27 @@ function PlanChoiceCard({
         <IconTile icon={Icon} tone={active ? "cyan" : "violet"} />
         {active ? <BadgeCheck className="size-5 text-cyan-100" /> : null}
       </div>
-      <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100/72">{plan.eyebrow}</p>
+      <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100/72">{t("onboarding.plan.eyebrow")}</p>
       <h4 className="mt-2 text-xl font-semibold tracking-[-0.05em] text-white">
-        {plan.name} {plan.priceLabel}
+        {t("onboarding.plan.name")} {plan.priceLabel}
       </h4>
       <div className="mt-3 w-fit rounded-full border border-cyan-300/18 bg-cyan-300/[0.06] px-3 py-1 text-xs font-semibold text-cyan-100">
-        {plan.positioning}
+        {t("onboarding.plan.positioning")}
       </div>
-      <p className="mt-3 text-sm leading-6 text-white/64">{plan.summary}</p>
+      <p className="mt-3 text-sm leading-6 text-white/64">{t("onboarding.plan.summary")}</p>
       <div className="mt-4 grid gap-2">
-        {plan.features.map((feature) => (
-          <div key={feature} className="flex min-w-0 items-start gap-2 text-xs leading-5 text-white/70">
+        {featureKeys.map((featureKey) => (
+          <div key={featureKey} className="flex min-w-0 items-start gap-2 text-xs leading-5 text-white/70">
             <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-cyan-100" />
-            <span>{feature}</span>
+            <span>{t(featureKey)}</span>
           </div>
         ))}
       </div>
       <div className="mt-5 inline-flex w-fit rounded-full bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950">
-        {plan.checkoutCtaLabel}
+        {t("onboarding.plan.cta")}
       </div>
       <p className="mt-auto pt-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/42">
-        {plan.footer}
+        {t("onboarding.plan.footer")}
       </p>
     </button>
   );
@@ -694,26 +532,29 @@ function OfferCoach({
   insight: NormalizedOfferResult;
   onApply: (offer: string) => void;
 }) {
+  const { locale, t } = useProductI18n();
   return (
     <div className="rounded-[20px] border border-cyan-200/16 bg-cyan-300/[0.045] p-3">
       <div className="flex items-start gap-3">
         <IconTile icon={Sparkles} tone="cyan" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold text-white">Offer coach</p>
+            <p className="text-sm font-semibold text-white">{t("onboarding.offerCoach")}</p>
             {insight.changed ? (
-              <Badge className="border-cyan-200/20 bg-cyan-300/[0.06] text-cyan-100">Polished</Badge>
+              <Badge className="border-cyan-200/20 bg-cyan-300/[0.06] text-cyan-100">{t("onboarding.polished")}</Badge>
             ) : null}
           </div>
           <p className="mt-2 text-sm font-semibold leading-5 text-cyan-50">{insight.normalizedOffer}</p>
-          <p className="mt-1 text-xs leading-5 text-white/58">{insight.coachNote}</p>
+          <p className="mt-1 text-xs leading-5 text-white/58">
+            {locale === "en" ? insight.coachNote : t("onboarding.offerCoachBody")}
+          </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => onApply(insight.normalizedOffer)}
               className="rounded-full border border-cyan-200/18 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-300/[0.09]"
             >
-              Use polished offer
+              {t("onboarding.usePolished")}
             </button>
             {insight.alternates.slice(0, 2).map((alternate) => (
               <button
@@ -734,10 +575,12 @@ function OfferCoach({
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { href, locale, t } = useProductI18n();
+  const optionCatalog = getOnboardingOptionCatalog(locale);
   const [hydrated, setHydrated] = useState(false);
   const [currentStep, setCurrentStep] = useState<OnboardingStepKey>("intent");
   const [furthestStepIndex, setFurthestStepIndex] = useState(0);
-  const [draft, setDraft] = useState<DraftState>(DEFAULT_DRAFT);
+  const [draft, setDraft] = useState<DraftState>(() => createLocalizedDefaultDraft(locale));
   const [persistenceRevision, setPersistenceRevision] = useState(0);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
@@ -751,23 +594,20 @@ export default function OnboardingPage() {
     [canUseExistingLaunchAccess],
   );
   const currentStepIndex = Math.max(visibleSteps.findIndex((step) => step.key === currentStep), 0);
-  const modeCopy = MODE_DEFAULTS[draft.campaignMode];
-  const propertyTypeOptions = PROPERTY_TYPE_OPTIONS[draft.campaignMode];
+  const modeCopy = optionCatalog.modes[draft.campaignMode];
+  const propertyTypeOptions = optionCatalog.properties[draft.campaignMode];
   const priceRangeOptions =
     draft.campaignMode === "commercial"
-      ? COMMERCIAL_PRICE_RANGES
+      ? [optionCatalog.modes.commercial.priceRange, ...COMMERCIAL_PRICE_RANGES.slice(1)]
       : draft.campaignMode === "investor"
         ? INVESTOR_PRICE_RANGES
         : PRICE_RANGES;
   const offerInsight = useMemo(
-    () => normalizeOfferForCampaign(draft.offer, draft.campaignMode),
-    [draft.campaignMode, draft.offer],
+    () => normalizeOfferForLocale(draft.offer, draft.campaignMode, locale),
+    [draft.campaignMode, draft.offer, locale],
   );
   const dailyBudgetCents = dailyBudgetCentsFromDraft(draft);
-  const leadCaptureRecommendation = getLeadCaptureRecommendation(
-    dailyBudgetCents,
-    draft.adDestination,
-  );
+  const leadCaptureRecommendation = getLeadCaptureRecommendation(dailyBudgetCents);
   const shortLeadFormSelected = draft.leadCaptureMode === "volume_lead_form";
   const metaInstantFormSelected = draft.adDestination === "meta_instant_form";
   const effectiveMetaQuestions = useMemo(
@@ -785,10 +625,7 @@ export default function OnboardingPage() {
     [draft, offerInsight.normalizedOffer],
   );
 
-  const stepTitle = useMemo(
-    () => visibleSteps.find((step) => step.key === currentStep)?.title ?? "Build campaign",
-    [currentStep, visibleSteps],
-  );
+  const stepTitle = t(`onboarding.title.${currentStep}` as ProductMessageKey);
 
   useEffect(() => {
     let cancelled = false;
@@ -800,7 +637,7 @@ export default function OnboardingPage() {
     setIsNewCampaignFlow(shouldStartFresh);
 
     if (shouldStartFresh) {
-      setDraft({ ...DEFAULT_DRAFT, idempotencySeed: createIdempotencySeed() });
+      setDraft({ ...createLocalizedDefaultDraft(locale), idempotencySeed: createIdempotencySeed() });
       setCurrentStep("intent");
       setFurthestStepIndex(0);
       setHydrated(true);
@@ -808,7 +645,7 @@ export default function OnboardingPage() {
     }
 
     async function loadServerDraft() {
-      let nextDraft = { ...DEFAULT_DRAFT, idempotencySeed: createIdempotencySeed() };
+      let nextDraft = { ...createLocalizedDefaultDraft(locale), idempotencySeed: createIdempotencySeed() };
       let nextStep: OnboardingStepKey = "intent";
       let nextFurthestStepIndex = 0;
 
@@ -827,7 +664,7 @@ export default function OnboardingPage() {
         const parsedDraft = onboardingDraftSchema.safeParse(data?.draft);
 
         if (response.ok && data?.found && parsedDraft.success) {
-          nextDraft = parsedDraft.data;
+          nextDraft = localizeKnownDraftValues(parsedDraft.data, locale);
           if (
             typeof data.currentStep === "string" &&
             STEPS.some((step) => step.key === data.currentStep)
@@ -858,7 +695,7 @@ export default function OnboardingPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     let cancelled = false;
@@ -940,7 +777,7 @@ export default function OnboardingPage() {
   }
 
   function selectMode(campaignMode: CampaignMode) {
-    const defaults = MODE_DEFAULTS[campaignMode];
+    const defaults = optionCatalog.modes[campaignMode];
     updateDraft({
       campaignMode,
       audience: defaults.audience,
@@ -951,7 +788,7 @@ export default function OnboardingPage() {
   }
 
   function applyOffer(offer: string) {
-    updateDraft({ offer: normalizeOfferForCampaign(offer, draft.campaignMode).normalizedOffer });
+    updateDraft({ offer: normalizeOfferForLocale(offer, draft.campaignMode, locale).normalizedOffer });
   }
 
   function updateDailyBudget(value: string) {
@@ -1001,13 +838,15 @@ export default function OnboardingPage() {
   }
 
   async function submitOnboarding() {
-    const preparedDraft = { ...draft, offer: normalizeOfferForCampaign(draft.offer, draft.campaignMode).normalizedOffer };
-    const nextErrors = validateStep("review", preparedDraft);
+    const preparedDraft = { ...draft, offer: normalizeOfferForLocale(draft.offer, draft.campaignMode, locale).normalizedOffer };
+    const nextErrors = validateStep("review", preparedDraft, t);
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length > 0) return;
 
     setSubmitting(true);
+
+    let failureKey: ProductMessageKey = "onboarding.error.create";
 
     try {
       const submission = buildOnboardingSubmission(preparedDraft);
@@ -1024,14 +863,15 @@ export default function OnboardingPage() {
       const campaignId = data?.campaignId ?? data?.data?.campaignId ?? null;
 
       if (!response.ok || !data?.success || !campaignId) {
-        throw new Error(data?.error ?? "Campaign could not be created.");
+        throw new Error("campaign_create_failed");
       }
 
       if (canUseExistingLaunchAccess) {
-        router.push(`/build/creatives?campaignId=${encodeURIComponent(campaignId)}`);
+        router.push(href(`/build/creatives?campaignId=${encodeURIComponent(campaignId)}`));
         return;
       }
 
+      failureKey = "onboarding.error.checkout";
       const checkoutResponse = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: {
@@ -1044,15 +884,15 @@ export default function OnboardingPage() {
         | null;
 
       if (!checkoutResponse.ok || !checkoutData?.url) {
-        throw new Error(checkoutData?.error ?? "Checkout could not be started.");
+        throw new Error("checkout_start_failed");
       }
 
       window.location.assign(checkoutData.url);
-    } catch (error) {
+    } catch {
       setSubmitting(false);
       setErrors((current) => ({
         ...current,
-        submit: getSubmissionErrorMessage(error),
+        submit: t(failureKey),
       }));
     }
   }
@@ -1060,9 +900,9 @@ export default function OnboardingPage() {
   function continueFlow() {
     const preparedDraft =
       currentStep === "offer" || currentStep === "review"
-        ? { ...draft, offer: normalizeOfferForCampaign(draft.offer, draft.campaignMode).normalizedOffer }
+        ? { ...draft, offer: normalizeOfferForLocale(draft.offer, draft.campaignMode, locale).normalizedOffer }
         : draft;
-    const nextErrors = validateStep(currentStep, preparedDraft);
+    const nextErrors = validateStep(currentStep, preparedDraft, t);
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length > 0) return;
@@ -1091,7 +931,7 @@ export default function OnboardingPage() {
   }
 
   function resetDraft() {
-    const freshDraft = { ...DEFAULT_DRAFT, idempotencySeed: createIdempotencySeed() };
+    const freshDraft = { ...createLocalizedDefaultDraft(locale), idempotencySeed: createIdempotencySeed() };
     setIsNewCampaignFlow(true);
     setDraft(freshDraft);
     setCurrentStep("intent");
@@ -1113,10 +953,10 @@ export default function OnboardingPage() {
           <div className="flex items-start gap-4">
             <IconTile icon={Target} tone="cyan" />
             <div>
-              <p className="df-eyebrow">Current step</p>
+              <p className="df-eyebrow">{t("onboarding.currentStep")}</p>
               <h3 className="mt-2 text-2xl font-semibold tracking-[-0.05em]">{stepTitle}</h3>
               <p className="mt-2 text-sm leading-6 text-white/64">
-                Answer this step, watch the campaign preview update, then continue.
+                {t("onboarding.answerStep")}
               </p>
             </div>
           </div>
@@ -1128,7 +968,7 @@ export default function OnboardingPage() {
               aria-live="assertive"
               aria-atomic="true"
             >
-              <p className="font-semibold">Fix the highlighted field before continuing.</p>
+              <p className="font-semibold">{t("onboarding.fixField")}</p>
               <ul className="mt-2 list-disc space-y-1 pl-5">
                 {activeErrorMessages.map((message) => (
                   <li key={message}>{message}</li>
@@ -1139,19 +979,25 @@ export default function OnboardingPage() {
 
           {currentStep === "intent" ? (
             <>
-              <p className="mt-6 text-sm font-medium text-foreground">Who should this first campaign attract?</p>
+              <p className="mt-6 text-sm font-medium text-foreground">{t("onboarding.question.attract")}</p>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
-                {(Object.keys(MODE_DEFAULTS) as CampaignMode[]).map((mode) => {
-                  const item = MODE_DEFAULTS[mode];
+                {(Object.keys(optionCatalog.modes) as CampaignMode[]).map((mode) => {
+                  const item = optionCatalog.modes[mode];
                   return (
                     <ChoiceCard
                       active={draft.campaignMode === mode}
                       body={item.summary}
-                      detail={draft.campaignMode === mode ? "Selected" : `Choose ${item.title.toLowerCase()}`}
-                      icon={item.icon}
+                      detail={
+                        draft.campaignMode === mode
+                          ? t("onboarding.selected")
+                          : t("onboarding.choose", {
+                              value: t(`onboarding.campaignType.${mode}` as ProductMessageKey).toLowerCase(),
+                            })
+                      }
+                      icon={MODE_ICONS[mode]}
                       key={mode}
                       onClick={() => selectMode(mode)}
-                      title={item.title}
+                      title={t(`onboarding.campaignType.${mode}` as ProductMessageKey)}
                     />
                   );
                 })}
@@ -1162,7 +1008,7 @@ export default function OnboardingPage() {
           {currentStep === "market" ? (
             <div className="mt-6 grid gap-5">
               <label className="space-y-2 text-sm">
-                <span className="text-muted-foreground">City or market</span>
+                <span className="text-muted-foreground">{t("onboarding.city")}</span>
                 <Input
                   value={draft.market}
                   onChange={(event) => updateDraft({ market: event.target.value })}
@@ -1173,9 +1019,9 @@ export default function OnboardingPage() {
                 {errors.market ? <p id="onboarding-market-error" className="text-sm text-rose-400">{errors.market}</p> : null}
               </label>
               <div className="rounded-[20px] border border-white/10 bg-white/[0.025] p-5">
-                <p className="text-sm font-semibold text-white">Current campaign type</p>
+                <p className="text-sm font-semibold text-white">{t("onboarding.currentType")}</p>
                 <p className="mt-2 text-sm leading-7 text-white/64">
-                  {modeCopy.path.replace("the selected market", draft.market || "your selected market")}
+                  {modeCopy.path.replace("{{market}}", draft.market || modeCopy.marketFallback)}
                 </p>
               </div>
             </div>
@@ -1183,11 +1029,11 @@ export default function OnboardingPage() {
 
           {currentStep === "property" ? (
             <div className="mt-6">
-              <p className="text-sm font-medium text-foreground">What kind of property or inventory should this target?</p>
+              <p className="text-sm font-medium text-foreground">{t("onboarding.question.property")}</p>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 {propertyTypeOptions.map((option) => (
                   <button
-                    key={option.label}
+                    key={option.id}
                     type="button"
                     aria-pressed={draft.propertyType === option.label}
                     onClick={() => updateDraft({ propertyType: option.label })}
@@ -1199,7 +1045,7 @@ export default function OnboardingPage() {
                     )}
                   >
                     <div className="flex items-start gap-3">
-                      <IconTile icon={modeCopy.icon} tone={draft.propertyType === option.label ? "cyan" : "violet"} />
+                      <IconTile icon={MODE_ICONS[draft.campaignMode]} tone={draft.propertyType === option.label ? "cyan" : "violet"} />
                       <div>
                         <p className="text-base font-semibold text-white">{option.label}</p>
                         <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-white/62">{option.description}</p>
@@ -1215,7 +1061,7 @@ export default function OnboardingPage() {
           {currentStep === "audience" ? (
             <div className="mt-6 grid gap-6">
               <label className="space-y-2 text-sm">
-                <span className="text-muted-foreground">Recommended audience</span>
+                <span className="text-muted-foreground">{t("onboarding.recommendedAudience")}</span>
                 <Input
                   value={draft.audience}
                   onChange={(event) => updateDraft({ audience: event.target.value })}
@@ -1223,12 +1069,12 @@ export default function OnboardingPage() {
                   aria-invalid={Boolean(errors.audience)}
                   aria-describedby={errors.audience ? "onboarding-audience-error" : undefined}
                 />
-                <p className="text-xs leading-5 text-cyan-100/72">{AUDIENCE_REASONS[draft.campaignMode]}</p>
+                <p className="text-xs leading-5 text-cyan-100/72">{optionCatalog.audienceReasons[draft.campaignMode]}</p>
                 {errors.audience ? <p id="onboarding-audience-error" className="text-sm text-rose-400">{errors.audience}</p> : null}
               </label>
 
               <div>
-                <p className="text-sm font-medium text-foreground">Price range or deal size</p>
+                <p className="text-sm font-medium text-foreground">{t("onboarding.priceRange")}</p>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   {priceRangeOptions.map((range) => (
                     <button
@@ -1251,11 +1097,11 @@ export default function OnboardingPage() {
               </div>
 
               <label className="space-y-2 text-sm">
-                <span className="text-muted-foreground">Custom price range or deal size</span>
+                <span className="text-muted-foreground">{t("onboarding.customPrice")}</span>
                 <Input
                   value={draft.priceRange}
                   onChange={(event) => updateDraft({ priceRange: event.target.value })}
-                  placeholder="$600k-$900k, lease-ready, or custom deal size"
+                  placeholder={t("onboarding.customPricePlaceholder")}
                   aria-invalid={Boolean(errors.priceRange)}
                   aria-describedby={errors.priceRange ? "onboarding-price-range-error" : undefined}
                 />
@@ -1266,37 +1112,36 @@ export default function OnboardingPage() {
           {currentStep === "budget" ? (
             <div className="mt-6 grid gap-6">
               <div>
-                <p className="text-sm font-medium text-foreground">Daily ad spend budget</p>
+                <p className="text-sm font-medium text-foreground">{t("onboarding.dailyBudget")}</p>
                 <p className="mt-1 text-sm leading-6 text-white/58">
-                  This is the media budget that goes directly to Facebook. DealFlow uses it to recommend the right lead
-                  capture path before anything is launched.
+                  {t("onboarding.budgetMediaHelp")}
                 </p>
                 <div className="mt-3 rounded-[20px] border border-emerald-300/18 bg-emerald-300/[0.055] p-4">
-                  <p className="text-sm font-semibold text-emerald-100">Recommended starting budget: $30-$50/day</p>
+                  <p className="text-sm font-semibold text-emerald-100">{t("onboarding.recommendedBudget")}</p>
                   <p className="mt-1 text-xs leading-5 text-white/58">
-                    That range is usually enough to balance lead quality with enough daily signal for Meta to learn.
+                    {t("onboarding.budgetRangeHelp")}
                   </p>
                 </div>
                 <div className="mt-3 grid gap-3 sm:grid-cols-4">
                   {DAILY_BUDGETS.map((budget) => (
                     <button
-                      key={budget.value}
+                      key={budget}
                       type="button"
-                      aria-pressed={draft.dailyBudget === budget.value}
-                      onClick={() => updateDailyBudget(budget.value)}
+                      aria-pressed={draft.dailyBudget === budget}
+                      onClick={() => updateDailyBudget(budget)}
                       className={cn(
                         "rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition",
-                        draft.dailyBudget === budget.value
+                        draft.dailyBudget === budget
                           ? "border-cyan-200/28 bg-cyan-300/[0.07] text-cyan-100"
                           : "border-white/10 bg-white/[0.035] text-white/72 hover:border-cyan-200/18",
                       )}
                     >
-                      {budget.label}
+                      {formatDailyBudgetFromDraft({ dailyBudget: budget }, locale, t)}
                     </button>
                   ))}
                 </div>
                 <label className="mt-3 block space-y-2">
-                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-white/48">Custom daily amount</span>
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-white/48">{t("onboarding.customDaily")}</span>
                   <Input
                     type="number"
                     min={5}
@@ -1305,16 +1150,18 @@ export default function OnboardingPage() {
                     value={draft.dailyBudget}
                     onChange={(event) => updateDailyBudget(event.target.value)}
                     placeholder="30"
-                    aria-label="Custom daily ad spend amount"
+                    aria-label={t("onboarding.customDailyAria")}
                     aria-invalid={Boolean(errors.dailyBudget)}
                     aria-describedby={errors.dailyBudget ? "onboarding-daily-budget-error" : undefined}
                   />
                 </label>
                 <p className="mt-2 text-xs leading-5 text-white/52">
-                  You stay in control. This is a daily media budget input, not a monthly commitment.
+                  {t("onboarding.budgetControl")}
                 </p>
-                {formatMonthlyEstimateFromDraft(draft) ? (
-                  <p className="mt-1 text-xs leading-5 text-white/42">{formatMonthlyEstimateFromDraft(draft)}</p>
+                {formatMonthlyEstimateFromDraft(draft, locale, t) ? (
+                  <p className="mt-1 text-xs leading-5 text-white/42">
+                    {formatMonthlyEstimateFromDraft(draft, locale, t)}
+                  </p>
                 ) : null}
                 {errors.dailyBudget ? <p id="onboarding-daily-budget-error" className="mt-2 text-sm text-rose-400">{errors.dailyBudget}</p> : null}
               </div>
@@ -1322,22 +1169,25 @@ export default function OnboardingPage() {
               <div className="rounded-[22px] border border-white/10 bg-white/[0.025] p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-foreground">Lead capture style</p>
+                    <p className="text-sm font-medium text-foreground">{t("onboarding.captureStyle")}</p>
                     <p className="mt-1 text-xs leading-5 text-white/52">
-                      Choose how the funnel should capture the lead. This changes the funnel path without changing launch safety gates.
+                      {t("onboarding.captureHelp")}
                     </p>
                   </div>
                   <Badge className="border-cyan-200/20 bg-cyan-300/[0.06] text-cyan-100">
-                    {leadCaptureRecommendation.label}
+                    {t(`onboarding.capture.${leadCaptureRecommendation.mode === "volume_lead_form" ? "volumeLabel" : leadCaptureRecommendation.mode === "quality_funnel" ? "qualityLabel" : "highestLabel"}` as ProductMessageKey)}
                   </Badge>
                 </div>
                 <div className="mt-3 rounded-[18px] border border-cyan-200/16 bg-cyan-300/[0.045] p-4 transition">
-                  <p className="text-sm font-semibold text-cyan-100">{leadCaptureRecommendation.title}</p>
-                  <p className="mt-1 text-xs leading-5 text-white/60">{leadCaptureRecommendation.body}</p>
+                  <p className="text-sm font-semibold text-cyan-100">
+                    {t(`onboarding.capture.${leadCaptureRecommendation.mode === "volume_lead_form" ? "volume" : leadCaptureRecommendation.mode === "quality_funnel" ? "quality" : "highest"}` as ProductMessageKey)}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-white/60">
+                    {t(`onboarding.capture.${leadCaptureRecommendation.mode === "volume_lead_form" ? "volumeBody" : leadCaptureRecommendation.mode === "quality_funnel" ? "qualityBody" : "highestBody"}` as ProductMessageKey)}
+                  </p>
                 </div>
                 <div className="mt-3 grid gap-3 lg:grid-cols-3">
                   {LEAD_CAPTURE_MODE_ORDER.map((mode) => {
-                    const option = LEAD_CAPTURE_MODES[mode];
                     const selected = draft.leadCaptureMode === mode;
                     const recommended = leadCaptureRecommendation.mode === mode;
 
@@ -1354,14 +1204,18 @@ export default function OnboardingPage() {
                             : "border-white/10 bg-white/[0.035] text-white/72 hover:border-cyan-200/18",
                         )}
                       >
-                        <span className="block text-sm font-semibold text-white">{option.title}</span>
-                        <span className="mt-1 block text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100/72">
-                          {option.label}
+                        <span className="block text-sm font-semibold text-white">
+                          {t(`onboarding.capture.${mode === "volume_lead_form" ? "volume" : mode === "quality_funnel" ? "quality" : "highest"}` as ProductMessageKey)}
                         </span>
-                        <span className="mt-2 block text-xs leading-5 text-white/58">{option.body}</span>
+                        <span className="mt-1 block text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100/72">
+                          {t(`onboarding.capture.${mode === "volume_lead_form" ? "volumeLabel" : mode === "quality_funnel" ? "qualityLabel" : "highestLabel"}` as ProductMessageKey)}
+                        </span>
+                        <span className="mt-2 block text-xs leading-5 text-white/58">
+                          {t(`onboarding.capture.${mode === "volume_lead_form" ? "volumeBody" : mode === "quality_funnel" ? "qualityBody" : "highestBody"}` as ProductMessageKey)}
+                        </span>
                         {recommended ? (
                           <span className="mt-3 block w-fit rounded-full border border-emerald-300/18 bg-emerald-300/[0.06] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-100">
-                            Recommended
+                            {t("common.recommended")}
                           </span>
                         ) : null}
                       </button>
@@ -1369,13 +1223,13 @@ export default function OnboardingPage() {
                   })}
                 </div>
                 <div className="mt-5 border-t border-white/10 pt-5">
-                  <p className="text-sm font-medium text-foreground">Ad destination</p>
+                  <p className="text-sm font-medium text-foreground">{t("onboarding.destination")}</p>
                   <p className="mt-1 text-xs leading-5 text-white/52">
-                    Choose where the prospect completes the first lead form. This is separate from qualification depth.
+                    {t("onboarding.destinationHelp")}
                   </p>
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    {(Object.entries(AD_DESTINATIONS) as [CampaignAdDestination, (typeof AD_DESTINATIONS)[CampaignAdDestination]][]).map(
-                      ([destination, option]) => {
+                    {(["website", "meta_instant_form"] as CampaignAdDestination[]).map(
+                      (destination) => {
                         const selected = draft.adDestination === destination;
                         return (
                           <button
@@ -1390,11 +1244,15 @@ export default function OnboardingPage() {
                                 : "border-white/10 bg-white/[0.035] text-white/72 hover:border-cyan-200/18",
                             )}
                           >
-                            <span className="block text-sm font-semibold text-white">{option.title}</span>
-                            <span className="mt-1 block text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100/72">
-                              {option.label}
+                            <span className="block text-sm font-semibold text-white">
+                              {t(destination === "website" ? "onboarding.destination.website" : "onboarding.destination.meta")}
                             </span>
-                            <span className="mt-2 block text-xs leading-5 text-white/58">{option.body}</span>
+                            <span className="mt-1 block text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100/72">
+                              {t(destination === "website" ? "onboarding.destination.websiteLabel" : "onboarding.destination.metaLabel")}
+                            </span>
+                            <span className="mt-2 block text-xs leading-5 text-white/58">
+                              {t(destination === "website" ? "onboarding.destination.websiteBody" : "onboarding.destination.metaBody")}
+                            </span>
                           </button>
                         );
                       },
@@ -1409,13 +1267,12 @@ export default function OnboardingPage() {
             <div className="mt-6 grid gap-6">
               <div className="grid gap-4 rounded-[22px] border border-white/10 bg-white/[0.025] p-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
                 <div>
-                  <p className="text-sm font-medium text-foreground">Language</p>
+                  <p className="text-sm font-medium text-foreground">{t("onboarding.language")}</p>
                   <p className="mt-1 text-xs leading-5 text-white/52">
-                    Pick the language for the funnel, ad copy, and creative prompts.
+                    {t("onboarding.languageHelp")}
                   </p>
                   <div className="mt-3 grid gap-2">
-                    {(Object.keys(FUNNEL_LANGUAGES) as FunnelLanguage[]).map((language) => {
-                      const option = FUNNEL_LANGUAGES[language];
+                    {(["en", "fr", "es"] as FunnelLanguage[]).map((language) => {
                       const selected = draft.funnelLanguage === language;
 
                       return (
@@ -1431,8 +1288,8 @@ export default function OnboardingPage() {
                               : "border-white/10 bg-white/[0.035] hover:border-cyan-200/18",
                           )}
                         >
-                          <span className="block text-sm font-semibold text-white">{option.label}</span>
-                          <span className="mt-1 block text-xs leading-5 text-white/54">{option.body}</span>
+                          <span className="block text-sm font-semibold text-white">{t(`locale.name.${language}`)}</span>
+                          <span className="mt-1 block text-xs leading-5 text-white/54">{t(`onboarding.language.${language}`)}</span>
                         </button>
                       );
                     })}
@@ -1443,13 +1300,13 @@ export default function OnboardingPage() {
                   <div>
                     <p className="text-sm font-medium text-foreground">
                       {metaInstantFormSelected
-                        ? "Meta Instant Form questions"
-                        : "Fast website form questions"}
+                        ? t("onboarding.setup.metaQuestions")
+                        : t("onboarding.setup.websiteQuestions")}
                     </p>
                     <p className="mt-1 text-xs leading-5 text-white/52">
                       {metaInstantFormSelected
-                        ? "Meta collects full name, email, and phone number. DealFlow applies the qualification depth you selected and lets you replace its defaults with up to 3 focused questions."
-                        : "The website form already collects full name, email, and phone number. Add up to 3 questions only when the budget can support more friction."}
+                        ? t("onboarding.setup.metaQuestionsBody")
+                        : t("onboarding.setup.websiteQuestionsBody")}
                     </p>
                     <div
                       className={cn(
@@ -1462,18 +1319,18 @@ export default function OnboardingPage() {
                       <p className={cn("text-sm font-semibold", shortLeadFormSelected && lowBudgetLeadForm ? "text-amber-100" : "text-cyan-100")}>
                         {shortLeadFormSelected
                           ? lowBudgetLeadForm
-                            ? "Under $30/day: keep the form simple"
-                            : "Volume path selected"
+                            ? t("onboarding.setup.lowBudgetTitle")
+                            : t("onboarding.setup.volumeSelected")
                           : draft.leadCaptureMode === "deep_qualification"
-                            ? "Three qualification questions included"
-                            : "One qualification question included"}
+                            ? t("onboarding.setup.threeQuestions")
+                            : t("onboarding.setup.oneQuestion")}
                       </p>
                       <p className="mt-1 text-xs leading-5 text-white/60">
                         {shortLeadFormSelected
                           ? lowBudgetLeadForm
-                            ? "We recommend no extra questions beyond name, email, and phone so the campaign can produce enough leads to learn."
-                            : "You can add focused questions, but the volume path works best with as little friction as possible."
-                          : "DealFlow fills any missing questions with safe real-estate defaults and preserves up to 3 custom questions you choose."}
+                            ? t("onboarding.setup.lowBudgetBody")
+                            : t("onboarding.setup.volumeBody")
+                          : t("onboarding.setup.defaultsBody")}
                       </p>
                       {metaInstantFormSelected && effectiveMetaQuestions.length > 0 ? (
                         <div className="mt-3 grid gap-2">
@@ -1489,7 +1346,7 @@ export default function OnboardingPage() {
                       ) : null}
                     </div>
                     <div className="mt-3 grid gap-2">
-                      {LEAD_FORM_QUESTION_PRESETS.map((question) => {
+                      {optionCatalog.leadQuestions.map((question) => {
                         const selected = draft.leadFormQuestions.includes(question);
                         const disabled = !selected && draft.leadFormQuestions.length >= 3;
 
@@ -1516,8 +1373,8 @@ export default function OnboardingPage() {
                       <Input
                         value={draft.leadFormQuestionDraft}
                         onChange={(event) => updateDraft({ leadFormQuestionDraft: event.target.value })}
-                        placeholder="Add a custom qualification question"
-                        aria-label="Custom lead form question"
+                        placeholder={t("onboarding.customQuestion")}
+                        aria-label={t("onboarding.customQuestionAria")}
                         aria-invalid={Boolean(errors.leadFormQuestionDraft)}
                         aria-describedby={errors.leadFormQuestionDraft ? "onboarding-lead-question-error" : undefined}
                       />
@@ -1527,25 +1384,25 @@ export default function OnboardingPage() {
                         onClick={addCustomLeadFormQuestion}
                         disabled={draft.leadFormQuestions.length >= 3 || !draft.leadFormQuestionDraft.trim()}
                       >
-                        Add
+                        {t("onboarding.setup.add")}
                       </Button>
                     </div>
                     <p className="mt-2 text-xs leading-5 text-white/48">
-                      Selected {draft.leadFormQuestions.length}/3 custom questions. Standard fields are always included.
+                      {t("onboarding.selectedQuestions", { count: draft.leadFormQuestions.length })}
                     </p>
                     {errors.leadFormQuestionDraft ? <p id="onboarding-lead-question-error" className="mt-2 text-sm text-rose-400">{errors.leadFormQuestionDraft}</p> : null}
                   </div>
                 ) : (
                   <div>
-                    <p className="text-sm font-medium text-foreground">Funnel branding</p>
+                    <p className="text-sm font-medium text-foreground">{t("onboarding.funnelBranding")}</p>
                     <p className="mt-1 text-xs leading-5 text-white/52">
-                      Set the colors and optional logo used by the winning funnel preview and public page.
+                      {t("onboarding.setup.brandingBody")}
                     </p>
                     <div className="mt-3 grid gap-3 sm:grid-cols-3">
                       {[
-                        ["Primary", "themePrimaryColor"],
-                        ["Background", "themeSecondaryColor"],
-                        ["Accent", "themeAccentColor"],
+                        [t("onboarding.color.primary"), "themePrimaryColor"],
+                        [t("onboarding.color.background"), "themeSecondaryColor"],
+                        [t("onboarding.color.accent"), "themeAccentColor"],
                       ].map(([label, key]) => (
                         <label key={key} className="space-y-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/48">
                           <span>{label}</span>
@@ -1555,20 +1412,20 @@ export default function OnboardingPage() {
                               value={draft[key as "themePrimaryColor" | "themeSecondaryColor" | "themeAccentColor"]}
                               onChange={(event) => updateDraft({ [key]: event.target.value } as Partial<DraftState>)}
                               className="h-9 w-10 rounded-md border border-white/10 bg-transparent"
-                              aria-label={`${label} funnel color`}
+                              aria-label={t("onboarding.color.pickerAria", { label })}
                             />
                             <Input
                               value={draft[key as "themePrimaryColor" | "themeSecondaryColor" | "themeAccentColor"]}
                               onChange={(event) => updateDraft({ [key]: event.target.value } as Partial<DraftState>)}
                               className="h-9"
-                              aria-label={`${label} funnel hex color`}
+                              aria-label={t("onboarding.color.hexAria", { label })}
                             />
                           </div>
                         </label>
                       ))}
                     </div>
                     <label className="mt-3 block space-y-2 text-sm">
-                      <span className="text-muted-foreground">Logo URL optional</span>
+                      <span className="text-muted-foreground">{t("onboarding.logoOptional")}</span>
                       <Input
                         value={draft.logoUrl}
                         onChange={(event) => updateDraft({ logoUrl: event.target.value })}
@@ -1585,47 +1442,44 @@ export default function OnboardingPage() {
             <div className="mt-6 grid gap-6">
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-4">
-                  <p className="text-sm font-semibold text-white">Why this matters</p>
+                  <p className="text-sm font-semibold text-white">{t("onboarding.whyMatters")}</p>
                   <p className="mt-2 text-xs leading-5 text-white/58">
-                    The offer is the reason someone gives you their contact info. It should make the next step obvious
-                    and useful before they talk to the agent.
+                    {t("onboarding.offerWhyBody")}
                   </p>
                 </div>
                 <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-4">
-                  <p className="text-sm font-semibold text-white">What makes it good</p>
+                  <p className="text-sm font-semibold text-white">{t("onboarding.whatGood")}</p>
                   <p className="mt-2 text-xs leading-5 text-white/58">
-                    Strong offers are specific, low pressure, and tied to a clear benefit: a shortlist, valuation,
-                    plan, market check, or matched options.
+                    {t("onboarding.offerGoodBody")}
                   </p>
                 </div>
                 <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-4">
-                  <p className="text-sm font-semibold text-white">Improve quality</p>
+                  <p className="text-sm font-semibold text-white">{t("onboarding.improveQuality")}</p>
                   <p className="mt-2 text-xs leading-5 text-white/58">
-                    Risk reversals like free, no obligation, private review, and truthful timeframes help people
-                    respond while keeping expectations clear.
+                    {t("onboarding.offerQualityBody")}
                   </p>
                 </div>
               </div>
               <div className="space-y-3">
                 <div>
-                  <p className="text-sm font-medium text-foreground">Offer or lead magnet</p>
+                  <p className="text-sm font-medium text-foreground">{t("onboarding.offer")}</p>
                   <p className="mt-1 text-xs leading-5 text-white/52">
-                    This is the reason someone gives you their contact info. DealFlow can pick a starting offer, or you can customize it.
+                    {t("onboarding.offerHelp")}
                   </p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {OFFER_SUGGESTIONS[draft.campaignMode].map((offer) => (
+                  {optionCatalog.offers[draft.campaignMode].map((offer) => (
                     <button
                       type="button"
                       key={offer}
                       aria-pressed={
                         offerInsight.normalizedOffer ===
-                        normalizeOfferForCampaign(offer, draft.campaignMode).normalizedOffer
+                        normalizeOfferForLocale(offer, draft.campaignMode, locale).normalizedOffer
                       }
                       onClick={() => applyOffer(offer)}
                       className={cn(
                         "rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition",
-                        offerInsight.normalizedOffer === normalizeOfferForCampaign(offer, draft.campaignMode).normalizedOffer
+                        offerInsight.normalizedOffer === normalizeOfferForLocale(offer, draft.campaignMode, locale).normalizedOffer
                           ? "border-cyan-200/28 bg-cyan-300/[0.07] text-cyan-100"
                           : "border-white/10 bg-white/[0.035] text-white/72 hover:border-cyan-200/18",
                       )}
@@ -1635,7 +1489,7 @@ export default function OnboardingPage() {
                   ))}
                 </div>
                 <Input
-                  aria-label="Offer or lead magnet"
+                  aria-label={t("onboarding.offer")}
                   value={draft.offer}
                   onChange={(event) => updateDraft({ offer: event.target.value })}
                   onBlur={() => applyOffer(draft.offer)}
@@ -1651,25 +1505,25 @@ export default function OnboardingPage() {
           {currentStep === "agent" ? (
             <div className="mt-6 grid gap-5 sm:grid-cols-2">
               <label className="space-y-2 text-sm">
-                <span className="text-muted-foreground">Agent first name</span>
-                <Input value={draft.agentFirstName} onChange={(event) => updateDraft({ agentFirstName: event.target.value })} placeholder="Jane" aria-invalid={Boolean(errors.agentFirstName)} aria-describedby={errors.agentFirstName ? "onboarding-agent-first-name-error" : undefined} />
+                <span className="text-muted-foreground">{t("onboarding.agentFirst")}</span>
+                <Input value={draft.agentFirstName} onChange={(event) => updateDraft({ agentFirstName: event.target.value })} placeholder={t("onboarding.placeholder.firstName")} aria-invalid={Boolean(errors.agentFirstName)} aria-describedby={errors.agentFirstName ? "onboarding-agent-first-name-error" : undefined} />
                 {errors.agentFirstName ? <p id="onboarding-agent-first-name-error" className="text-sm text-rose-400">{errors.agentFirstName}</p> : null}
               </label>
               <label className="space-y-2 text-sm">
-                <span className="text-muted-foreground">Agent last name</span>
-                <Input value={draft.agentLastName} onChange={(event) => updateDraft({ agentLastName: event.target.value })} placeholder="Smith" aria-invalid={Boolean(errors.agentLastName)} aria-describedby={errors.agentLastName ? "onboarding-agent-last-name-error" : undefined} />
+                <span className="text-muted-foreground">{t("onboarding.agentLast")}</span>
+                <Input value={draft.agentLastName} onChange={(event) => updateDraft({ agentLastName: event.target.value })} placeholder={t("onboarding.placeholder.lastName")} aria-invalid={Boolean(errors.agentLastName)} aria-describedby={errors.agentLastName ? "onboarding-agent-last-name-error" : undefined} />
                 {errors.agentLastName ? <p id="onboarding-agent-last-name-error" className="text-sm text-rose-400">{errors.agentLastName}</p> : null}
               </label>
               <label className="space-y-2 text-sm">
-                <span className="text-muted-foreground">Company or brokerage</span>
-                <Input value={draft.agentCompanyName} onChange={(event) => updateDraft({ agentCompanyName: event.target.value })} placeholder="Smith Realty Group" aria-invalid={Boolean(errors.agentCompanyName)} aria-describedby={errors.agentCompanyName ? "onboarding-agent-company-error" : undefined} />
+                <span className="text-muted-foreground">{t("onboarding.company")}</span>
+                <Input value={draft.agentCompanyName} onChange={(event) => updateDraft({ agentCompanyName: event.target.value })} placeholder={t("onboarding.placeholder.company")} aria-invalid={Boolean(errors.agentCompanyName)} aria-describedby={errors.agentCompanyName ? "onboarding-agent-company-error" : undefined} />
                 {errors.agentCompanyName ? <p id="onboarding-agent-company-error" className="text-sm text-rose-400">{errors.agentCompanyName}</p> : null}
               </label>
               <label className="space-y-2 text-sm">
-                <span className="text-muted-foreground">SMS alert phone</span>
+                <span className="text-muted-foreground">{t("onboarding.smsPhone")}</span>
                 <Input value={draft.agentPhone} onChange={(event) => updateDraft({ agentPhone: event.target.value })} placeholder="(555) 555-5555" inputMode="tel" aria-invalid={Boolean(errors.agentPhone)} aria-describedby={errors.agentPhone ? "onboarding-agent-phone-help onboarding-agent-phone-error" : "onboarding-agent-phone-help"} />
                 <p id="onboarding-agent-phone-help" className="text-xs leading-5 text-muted-foreground">
-                  Use a US or Canada number so lead alerts can be routed correctly.
+                  {t("onboarding.phoneHelp")}
                 </p>
                 {errors.agentPhone ? <p id="onboarding-agent-phone-error" className="text-sm text-rose-400">{errors.agentPhone}</p> : null}
               </label>
@@ -1687,10 +1541,9 @@ export default function OnboardingPage() {
                 />
               ))}
               <div className="rounded-[22px] border border-cyan-300/16 bg-cyan-300/[0.045] p-4 text-sm leading-6 text-cyan-50/78">
-                <p className="font-semibold text-white">One plan only.</p>
+                <p className="font-semibold text-white">{t("onboarding.onePlan")}</p>
                 <p className="mt-1">
-                  Performance usage billing and guided-launch-only behavior are archived for new signups.
-                  Existing users keep their current access, but new campaigns activate through Operator Launch at $297/month.
+                  {t("onboarding.planArchived")}
                 </p>
               </div>
             </div>
@@ -1702,34 +1555,34 @@ export default function OnboardingPage() {
                 <div className="flex items-start gap-3">
                   <IconTile icon={ShieldCheck} tone="green" />
                   <div>
-                    <h3 className="text-xl font-semibold tracking-[-0.04em]">Ready to build campaign preview</h3>
+                    <h3 className="text-xl font-semibold tracking-[-0.04em]">{t("onboarding.ready")}</h3>
                     <p className="mt-2 text-sm leading-7 text-white/64">
                       {canUseExistingLaunchAccess
-                        ? "Continue saves the campaign, updates the agent profile for lead alerts, and opens creative selection. No live ad, payment, message, or media action runs here."
-                        : "Continue saves the campaign, updates the agent profile for lead alerts, and opens Pro activation. No live ad, message, or media action runs here."}
+                        ? t("onboarding.reviewExisting")
+                        : t("onboarding.reviewActivate")}
                     </p>
                   </div>
                 </div>
               </div>
               <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
                 {[
-                  ["Agent", [draft.agentFirstName, draft.agentLastName].filter(Boolean).join(" ")],
-                  ["Campaign mode", modeCopy.title],
-                  ["Market", draft.market],
-                  ["Property type", draft.propertyType],
-                  ["Price/deal size", draft.priceRange],
-                  ["Daily ad spend", formatDailyBudgetFromDraft(draft)],
-                  ["30-day estimate", formatMonthlyEstimateFromDraft(draft)?.replace("Estimated 30-day media spend: ", "").replace(/\.$/, "") ?? "Not set"],
-                  ["Offer", normalizedDraft.offer],
-                  ["Lead capture", LEAD_CAPTURE_MODES[draft.leadCaptureMode].title],
-                  ["Ad destination", AD_DESTINATIONS[draft.adDestination].title],
+                  [t("onboarding.review.agent"), [draft.agentFirstName, draft.agentLastName].filter(Boolean).join(" ")],
+                  [t("onboarding.step.type"), t(`onboarding.campaignType.${draft.campaignMode}` as ProductMessageKey)],
+                  [t("common.market"), draft.market],
+                  [t("onboarding.review.propertyType"), draft.propertyType],
+                  [t("onboarding.review.priceDeal"), draft.priceRange],
+                  [t("onboarding.dailyBudget"), formatDailyBudgetFromDraft(draft, locale, t)],
+                  [t("onboarding.review.monthlyEstimate"), formatMonthlyEstimateFromDraft(draft, locale, t) ?? t("common.notSet")],
+                  [t("onboarding.review.offer"), normalizedDraft.offer],
+                  [t("onboarding.captureStyle"), t(`onboarding.capture.${draft.leadCaptureMode === "volume_lead_form" ? "volume" : draft.leadCaptureMode === "quality_funnel" ? "quality" : "highest"}` as ProductMessageKey)],
+                  [t("onboarding.destination"), t(draft.adDestination === "website" ? "onboarding.destination.website" : "onboarding.destination.meta")],
                   [
-                    "Launch access",
+                    t("onboarding.review.launchAccess"),
                     canUseExistingLaunchAccess
                       ? billingStatus?.hasUnlimitedCampaigns
-                        ? "Pro access: unlimited campaign slots"
-                        : "Existing plan: campaign slot available"
-                      : getPlanPresentation(draft.planTier).positioning,
+                        ? t("onboarding.review.proUnlimited")
+                        : t("onboarding.review.existingSlot")
+                      : t("onboarding.plan.positioning"),
                   ],
                 ].map(([label, value]) => (
                   <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
@@ -1744,27 +1597,29 @@ export default function OnboardingPage() {
 
           <div className="mt-7 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5">
             <Button type="button" variant="secondary" onClick={resetDraft} disabled={submitting}>
-              Start over
+              {t("onboarding.startOver")}
             </Button>
             <div className="flex flex-wrap gap-3">
               <Button type="button" variant="secondary" onClick={goBack} disabled={currentStepIndex === 0 || submitting}>
                 <ArrowLeft className="size-4" />
-                Back
+                {t("common.back")}
               </Button>
               <Button type="button" onClick={continueFlow} disabled={submitting}>
                 {submitting ? (
                   <>
-                    Saving campaign
+                    {t("onboarding.savingCampaign")}
                     <Loader2 className="size-4 animate-spin" />
                   </>
                 ) : currentStep === "review" ? (
                   <>
-                    {canUseExistingLaunchAccess ? "Continue to creatives" : "Activate Pro"}
+                    {canUseExistingLaunchAccess ? t("onboarding.continueCreatives") : t("onboarding.activatePro")}
                     {canUseExistingLaunchAccess ? <ArrowRight className="size-4" /> : <BarChart3 className="size-4" />}
                   </>
                 ) : (
                   <>
-                    Continue to {visibleSteps[currentStepIndex + 1]?.label.toLowerCase()}
+                    {t("onboarding.continueTo", {
+                      step: t(`onboarding.step.${visibleSteps[currentStepIndex + 1]?.key ?? "review"}` as ProductMessageKey).toLowerCase(),
+                    })}
                     <ArrowRight className="size-4" />
                   </>
                 )}

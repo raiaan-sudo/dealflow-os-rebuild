@@ -5,17 +5,20 @@ import { TopBar } from "@/components/layout/top-bar";
 import { FeedbackWidget } from "@/components/layout/feedback-widget";
 import { LeadCaptureTrigger } from "@/components/layout/lead-capture-trigger";
 import { GhlEmbedCapabilityRefresher } from "@/components/ghl/ghl-embed-capability-refresher";
+import { LocaleLink } from "@/components/i18n/locale-link";
 import { isInternalAdminEmail } from "@/lib/env";
+import { translateProductMessage } from "@/lib/i18n/messages";
+import { parseProductLocalePathname } from "@/lib/i18n/routing";
 import { getAppContext } from "@/lib/services/app-context";
 import {
   DEFAULT_WORKSPACE_BRANDING,
   loadWorkspaceBranding,
 } from "@/lib/white-label/workspace-branding";
 
-function SkipToMainContent() {
+function SkipToMainContent({ label }: { label: string }) {
   return (
     <a className="df-skip-link" href="#main-content">
-      Skip to main content
+      {label}
     </a>
   );
 }
@@ -27,6 +30,9 @@ export default async function AppLayout({
 }>) {
   const headerStore = await headers();
   const pathname = headerStore.get("x-pathname") ?? "";
+  const locale = parseProductLocalePathname(pathname).locale;
+  const t = (key: Parameters<typeof translateProductMessage>[1]) =>
+    translateProductMessage(locale, key);
   const embedParentOrigin = headerStore.get("x-dealflow-ghl-embed-parent-origin");
   const isFocusedProductRoute =
     pathname.startsWith("/builder") ||
@@ -57,7 +63,7 @@ export default async function AppLayout({
       return (
         <>
           <GhlEmbedCapabilityRefresher parentOrigin={embedParentOrigin} />
-          <SkipToMainContent />
+          <SkipToMainContent label={t("common.skip.main")} />
           <div className="flex h-screen w-screen overflow-hidden bg-transparent">
             <main
               id="main-content"
@@ -66,28 +72,27 @@ export default async function AppLayout({
             >
               <div className="surface-guided w-full rounded-[28px] border border-white/10 p-8">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary/80">
-                  Workspace Recovery
+                  {t("workspace.recovery.eyebrow")}
                 </p>
                 <h1 className="mt-4 text-3xl font-semibold tracking-[-0.05em]">
-                  Your account is authenticated, but the workspace is still recovering.
+                  {t("workspace.recovery.title")}
                 </h1>
                 <p className="mt-4 text-sm leading-7 text-muted-foreground">
-                  We detected a valid session without a fully hydrated workspace context. Try the guided
-                  boot flow again to complete profile and workspace recovery.
+                  {t("workspace.recovery.body")}
                 </p>
                 <div className="mt-6 flex flex-wrap gap-3">
-                  <a
+                  <LocaleLink
                     href="/onboarding"
                     className="inline-flex h-11 items-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground"
                   >
-                    Retry Recovery
-                  </a>
-                  <a
+                    {t("workspace.recovery.retry")}
+                  </LocaleLink>
+                  <LocaleLink
                     href="/login?reason=expired"
                     className="inline-flex h-11 items-center rounded-full border border-white/10 px-5 text-sm font-semibold text-foreground"
                   >
-                    Return to Login
-                  </a>
+                    {t("workspace.recovery.login")}
+                  </LocaleLink>
                 </div>
               </div>
             </main>
@@ -99,7 +104,7 @@ export default async function AppLayout({
     return (
       <>
         <GhlEmbedCapabilityRefresher parentOrigin={embedParentOrigin} />
-        <SkipToMainContent />
+        <SkipToMainContent label={t("common.skip.main")} />
         <div className="relative min-h-screen w-screen overflow-hidden bg-transparent">
           {branding.isWhiteLabel ? (
             <div className="border-b border-white/8 px-5 py-3 text-sm sm:px-6 lg:px-8">
@@ -107,7 +112,7 @@ export default async function AppLayout({
                 {branding.productName}
               </span>
               {branding.poweredByDealFlow ? (
-                <span className="ml-2 text-xs text-muted-foreground">Powered by DealFlow</span>
+                <span className="ml-2 text-xs text-muted-foreground">{t("shell.poweredBy")}</span>
               ) : null}
             </div>
           ) : null}
@@ -126,7 +131,7 @@ export default async function AppLayout({
   return (
     <>
       <GhlEmbedCapabilityRefresher parentOrigin={embedParentOrigin} />
-      <SkipToMainContent />
+      <SkipToMainContent label={t("common.skip.main")} />
       <div className="app-shell relative flex h-screen w-screen overflow-hidden bg-transparent">
         <AppSidebar
           isAdmin={isAdmin}

@@ -86,8 +86,11 @@ assert.doesNotMatch(metaLaunchSource, /meta_instant_form_contract_unavailable/);
 assert.match(metaLaunchSource, /provisionCompletedMetaInstantFormRoute/);
 
 const onboardingSource = await readFile("src/app/(app)/onboarding/page.tsx", "utf8");
-assert.match(onboardingSource, /Fast website form/);
-assert.match(onboardingSource, /Meta Instant Form questions/);
+const productMessagesSource = await readFile("src/lib/i18n/messages.ts", "utf8");
+assert.match(onboardingSource, /t\("onboarding\.setup\.websiteQuestions"\)/);
+assert.match(onboardingSource, /t\("onboarding\.setup\.metaQuestions"\)/);
+assert.match(productMessagesSource, /"onboarding\.setup\.websiteQuestions": "Fast website form questions"/);
+assert.match(productMessagesSource, /"onboarding\.setup\.metaQuestions": "Meta Instant Form questions"/);
 assert.match(onboardingSource, /effectiveMetaQuestions/);
 assert.doesNotMatch(onboardingSource, /unimplemented provider form/i);
 
@@ -95,7 +98,9 @@ const previewSource = await readFile(
   "src/components/onboarding/prepaywall-campaign-preview.tsx",
   "utf8",
 );
-assert.match(previewSource, /Meta Instant Form setup/);
+const previewCopySource = await readFile("src/lib/i18n/prepaywall-preview-copy.ts", "utf8");
+assert.match(previewSource, /uiCopy\.instantSetup/);
+assert.match(previewCopySource, /instantSetup: "Meta Instant Form setup"/);
 assert.match(previewSource, /resolveMetaInstantFormQualificationQuestions/);
 assert.doesNotMatch(previewSource, /Operator-assisted Meta note|reviewed by operator/i);
 

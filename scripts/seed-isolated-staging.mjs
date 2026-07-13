@@ -11,6 +11,8 @@ const EXPECTED_STAGING_PROJECT_FINGERPRINT =
   "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
 const EXPECTED_STAGING_SAFE_SUFFIX = "qibh";
 const EXPECTED_STAGING_APP_HOST = "dealflow-os-rebuild-selfserve-clean.vercel.app";
+const SYNTHETIC_RETENTION_AUTHORITY_MARKER =
+  "DEALFLOW_ISOLATED_STAGING_QIBH_SYNTHETIC_RETENTION_AUTHORITY_V1";
 const SYNTHETIC_SCENARIOS = Object.freeze({
   newDirect: Object.freeze({
     key: "new_unpaid_direct_realtor",
@@ -37,6 +39,16 @@ const SYNTHETIC_SCENARIOS = Object.freeze({
     email: "dealflow-staging-partner-child-20260712@example.com",
     fullName: `${FIXTURE_LABEL} Partner Child Realtor`,
   }),
+  partnerAdminTwo: Object.freeze({
+    key: "active_white_label_partner_two_admin",
+    email: "dealflow-staging-partner-two-admin-20260712@example.com",
+    fullName: `${FIXTURE_LABEL} Partner Two Admin`,
+  }),
+  partnerChildTwo: Object.freeze({
+    key: "white_label_partner_two_child_realtor",
+    email: "dealflow-staging-partner-two-child-20260712@example.com",
+    fullName: `${FIXTURE_LABEL} Partner Two Child Realtor`,
+  }),
   operator: Object.freeze({
     key: "internal_admin_operator",
     email: "dealflow-staging-operator-20260712@example.com",
@@ -46,6 +58,11 @@ const SYNTHETIC_SCENARIOS = Object.freeze({
     key: "cross_tenant_attacker",
     email: "dealflow-staging-attacker-20260712@example.com",
     fullName: `${FIXTURE_LABEL} Cross Tenant Attacker`,
+  }),
+  deletion: Object.freeze({
+    key: "account_deletion_fail_closed_realtor",
+    email: "dealflow-staging-deletion-20260712@example.com",
+    fullName: `${FIXTURE_LABEL} Account Deletion Realtor`,
   }),
 });
 const EXPECTED_SYNTHETIC_AUTH_EMAILS = Object.freeze(
@@ -77,7 +94,17 @@ const IDS = Object.freeze({
   attackerMembership: "d1000000-0000-4000-8000-000000000012",
   partnerAdminOrganization: "d1000000-0000-4000-8000-000000000013",
   partnerAdminOrganizationMembership: "d1000000-0000-4000-8000-000000000014",
+  partnerChildTwoOrganization: "d1000000-0000-4000-8000-000000000015",
+  partnerChildTwoMembership: "d1000000-0000-4000-8000-000000000016",
+  partnerAdminTwoOrganization: "d1000000-0000-4000-8000-000000000017",
+  partnerAdminTwoOrganizationMembership: "d1000000-0000-4000-8000-000000000018",
+  deletionOrganization: "d1000000-0000-4000-8000-000000000019",
+  deletionMembership: "d1000000-0000-4000-8000-000000000020",
   campaign: "d2000000-0000-4000-8000-000000000001",
+  staleReportingCampaign: "d2000000-0000-4000-8000-000000000002",
+  failedReportingCampaign: "d2000000-0000-4000-8000-000000000003",
+  partnerChildCampaign: "d2000000-0000-4000-8000-000000000004",
+  partnerChildTwoCampaign: "d2000000-0000-4000-8000-000000000005",
   lead: "d3000000-0000-4000-8000-000000000001",
   leadMessage: "d3000000-0000-4000-8000-000000000002",
   marketingAccount: "d4000000-0000-4000-8000-000000000001",
@@ -88,8 +115,18 @@ const IDS = Object.freeze({
   partnerMembership: "d7000000-0000-4000-8000-000000000002",
   partnerBranding: "d7000000-0000-4000-8000-000000000003",
   partnerDomain: "d7000000-0000-4000-8000-000000000004",
+  partnerTwo: "d7000000-0000-4000-8000-000000000005",
+  partnerTwoMembership: "d7000000-0000-4000-8000-000000000006",
+  partnerTwoBranding: "d7000000-0000-4000-8000-000000000007",
+  partnerTwoDomain: "d7000000-0000-4000-8000-000000000008",
   retryJob: "d8000000-0000-4000-8000-000000000001",
   deadLetterJob: "d8000000-0000-4000-8000-000000000002",
+  workerPendingJob: "d8000000-0000-4000-8000-000000000003",
+  workerCrashJob: "d8000000-0000-4000-8000-000000000004",
+  freshReportingSnapshot: "d9000000-0000-4000-8000-000000000001",
+  staleReportingSnapshot: "d9000000-0000-4000-8000-000000000002",
+  failedReportingConfirmedSnapshot: "d9000000-0000-4000-8000-000000000003",
+  failedReportingAttemptSnapshot: "d9000000-0000-4000-8000-000000000004",
 });
 
 function requireEnvironment(name) {
@@ -141,6 +178,12 @@ function assertStagingPartnerAppUrl(rawUrl) {
     );
   }
   return url.origin;
+}
+
+function assertDistinctPartnerHosts(first, second) {
+  if (new URL(first).hostname === new URL(second).hostname) {
+    throw new Error("The two staging white-label partners require distinct deployment-bound hosts");
+  }
 }
 
 function getZonedParts(date, timeZone) {
@@ -340,7 +383,12 @@ async function main() {
   const partnerAppUrl = assertStagingPartnerAppUrl(
     requireEnvironment("STAGING_PARTNER_APP_URL"),
   );
+  const partnerTwoAppUrl = assertStagingPartnerAppUrl(
+    requireEnvironment("STAGING_SECOND_PARTNER_APP_URL"),
+  );
+  assertDistinctPartnerHosts(partnerAppUrl, partnerTwoAppUrl);
   const partnerAppHost = new URL(partnerAppUrl).hostname;
+  const partnerTwoAppHost = new URL(partnerTwoAppUrl).hostname;
   const publicSlug = "df-staging-20260712-funnel";
   const destinationUrl = `${publicAppUrl}/f/${publicSlug}`;
   const syntheticCreativeUrl = `${publicAppUrl}/logo.svg`;
@@ -441,6 +489,26 @@ async function main() {
     updated_by: scenarioUserIds.partnerAdmin,
     deleted_at: null,
   }, "id");
+  await upsert(admin, "partners", {
+    id: IDS.partnerTwo,
+    slug: "df-staging-white-label-two",
+    brand_name: `${FIXTURE_LABEL} Partner Two Realty OS`,
+    legal_name: `${FIXTURE_LABEL} Synthetic Partner Two Inc.`,
+    logo_url: `${publicAppUrl}/logo.svg`,
+    favicon_url: `${publicAppUrl}/favicon.ico`,
+    primary_color: "#7c3aed",
+    secondary_color: "#1e1b4b",
+    accent_color: "#f59e0b",
+    support_email: "dealflow-staging-partner-two-support@example.com",
+    support_phone: null,
+    commission_rate: 0,
+    default_timezone: "America/Toronto",
+    status: "active",
+    powered_by_dealflow: true,
+    created_by: scenarioUserIds.partnerAdminTwo,
+    updated_by: scenarioUserIds.partnerAdminTwo,
+    deleted_at: null,
+  }, "id");
 
   for (const [scenarioName, scenario] of Object.entries(SYNTHETIC_SCENARIOS)) {
     // The child user and workspace are deliberately left unbound here. The
@@ -453,7 +521,13 @@ async function main() {
       avatar_url: null,
     };
     if (scenarioName === "partnerAdmin") userRow.partner_id = IDS.partner;
-    if (scenarioName !== "partnerChild" && scenarioName !== "partnerAdmin") {
+    if (scenarioName === "partnerAdminTwo") userRow.partner_id = IDS.partnerTwo;
+    if (
+      scenarioName !== "partnerChild" &&
+      scenarioName !== "partnerAdmin" &&
+      scenarioName !== "partnerChildTwo" &&
+      scenarioName !== "partnerAdminTwo"
+    ) {
       userRow.partner_id = null;
     }
     await upsert(admin, "users", userRow, "id");
@@ -494,6 +568,23 @@ async function main() {
       role: "owner",
     },
     {
+      id: IDS.partnerAdminTwoOrganization,
+      membershipId: IDS.partnerAdminTwoOrganizationMembership,
+      userId: scenarioUserIds.partnerAdminTwo,
+      name: `${FIXTURE_LABEL} Partner Two Administration`,
+      slug: "df-staging-partner-two-administration",
+      role: "owner",
+      partnerId: IDS.partnerTwo,
+    },
+    {
+      id: IDS.partnerChildTwoOrganization,
+      membershipId: IDS.partnerChildTwoMembership,
+      userId: scenarioUserIds.partnerChildTwo,
+      name: `${FIXTURE_LABEL} White Label Partner Two Child Realty`,
+      slug: "df-staging-white-label-partner-two-child-realty",
+      role: "owner",
+    },
+    {
       id: IDS.operatorOrganization,
       membershipId: IDS.operatorMembership,
       userId: scenarioUserIds.operator,
@@ -507,6 +598,14 @@ async function main() {
       userId: scenarioUserIds.attacker,
       name: `${FIXTURE_LABEL} Adversarial Realty`,
       slug: "df-staging-adversarial-realty",
+      role: "owner",
+    },
+    {
+      id: IDS.deletionOrganization,
+      membershipId: IDS.deletionMembership,
+      userId: scenarioUserIds.deletion,
+      name: `${FIXTURE_LABEL} Deletion Lifecycle Realty`,
+      slug: "df-staging-deletion-lifecycle-realty",
       role: "owner",
     },
   ];
@@ -591,6 +690,133 @@ async function main() {
     throw new Error("Atomic verified staging partner attribution did not satisfy its postcondition");
   }
 
+  await upsert(admin, "partner_memberships", {
+    id: IDS.partnerTwoMembership,
+    partner_id: IDS.partnerTwo,
+    user_id: scenarioUserIds.partnerAdminTwo,
+    role: "partner_admin",
+    status: "active",
+  }, "id");
+  await upsert(admin, "partner_branding", {
+    id: IDS.partnerTwoBranding,
+    partner_id: IDS.partnerTwo,
+    theme_json: {
+      fixture: FIXTURE_LABEL,
+      synthetic: true,
+      primaryColor: "#7c3aed",
+      accentColor: "#f59e0b",
+      logoUrl: `${publicAppUrl}/logo.svg`,
+    },
+    copy_json: {
+      fixture: FIXTURE_LABEL,
+      appName: `${FIXTURE_LABEL} Partner Two Realty OS`,
+      loginEyebrow: "Synthetic second white-label staging proof",
+      loginHeadline: "Launch real estate campaigns in partner two",
+      loginSubheadline: "A separate synthetic isolated-staging branding fixture.",
+    },
+    email_branding_json: { fixture: FIXTURE_LABEL, synthetic: true },
+    pricing_json: { fixture: FIXTURE_LABEL, synthetic: true, plan: "pro" },
+    feature_flags_json: { fixture: FIXTURE_LABEL, synthetic: true },
+  }, "id");
+  await upsert(admin, "partner_domains", {
+    id: IDS.partnerTwoDomain,
+    partner_id: IDS.partnerTwo,
+    domain: partnerTwoAppHost,
+    type: "preview",
+    verification_status: "verified",
+    ssl_status: "active",
+    verification_token: "df-staging-qibh-synthetic-domain-two-proof",
+    dns_target: partnerTwoAppHost,
+    last_checked_at: FIXTURE_TIMESTAMP,
+    deleted_at: null,
+  }, "id");
+  const partnerTwoBindingRows = await assertNoError(
+    await admin.rpc("bind_verified_partner_attribution_v1", {
+      p_user_id: scenarioUserIds.partnerChildTwo,
+      p_organization_id: IDS.partnerChildTwoOrganization,
+      p_partner_id: IDS.partnerTwo,
+      p_verified_domain: partnerTwoAppHost,
+    }),
+    "atomically bind verified staging partner two attribution",
+  );
+  const partnerTwoBinding = Array.isArray(partnerTwoBindingRows)
+    ? partnerTwoBindingRows[0]
+    : partnerTwoBindingRows;
+  if (
+    !partnerTwoBinding ||
+    !["bound", "already_bound"].includes(partnerTwoBinding.binding_status) ||
+    partnerTwoBinding.resolved_partner_id !== IDS.partnerTwo ||
+    partnerTwoBinding.resolved_user_partner_id !== IDS.partnerTwo ||
+    partnerTwoBinding.resolved_organization_partner_id !== IDS.partnerTwo ||
+    partnerTwoBinding.attribution_active !== true
+  ) {
+    throw new Error("Atomic verified staging partner two attribution did not satisfy its postcondition");
+  }
+
+  const syntheticRetentionAuthorityHash = `sha256:${sha256(SYNTHETIC_RETENTION_AUTHORITY_MARKER)}`;
+  const retentionAuthorityBefore = await assertNoError(
+    await admin
+      .from("account_deletion_retention_configuration")
+      .select("policy_version,approved_authority_hash,approved_at")
+      .eq("singleton", true)
+      .single(),
+    "read staging account-deletion retention authority before approval",
+  );
+  const retentionAuthorityPendingBeforeApproval =
+    retentionAuthorityBefore.approved_authority_hash === null &&
+    retentionAuthorityBefore.approved_at === null;
+  const syntheticRetentionAuthorityReused =
+    retentionAuthorityBefore.approved_authority_hash === syntheticRetentionAuthorityHash &&
+    typeof retentionAuthorityBefore.approved_at === "string";
+  if (!retentionAuthorityPendingBeforeApproval && !syntheticRetentionAuthorityReused) {
+    throw new Error("The staging retention authority is neither pending nor the exact synthetic approval");
+  }
+  if (retentionAuthorityPendingBeforeApproval) {
+    const rejectedPendingRequest = await admin.rpc("create_account_deletion_request_v1", {
+      p_organization_id: IDS.deletionOrganization,
+      p_actor_user_id: scenarioUserIds.deletion,
+      p_idempotency_key: "df-staging-deletion-retention-authority-pending",
+      p_identity_method: "password",
+      p_identity_email_hash: `sha256:${sha256(SYNTHETIC_SCENARIOS.deletion.email)}`,
+    });
+    if (
+      !rejectedPendingRequest.error ||
+      !/account_deletion_retention_authority_pending/i.test(
+        rejectedPendingRequest.error.message ?? "",
+      )
+    ) {
+      throw new Error("Account deletion did not fail closed before synthetic staging authority approval");
+    }
+    await assertNoError(
+      await admin
+        .from("account_deletion_retention_configuration")
+        .update({
+          approved_authority_hash: syntheticRetentionAuthorityHash,
+          approved_at: FIXTURE_TIMESTAMP,
+        })
+        .eq("singleton", true)
+        .is("approved_authority_hash", null)
+        .is("approved_at", null)
+        .select("policy_version,approved_authority_hash,approved_at")
+        .single(),
+      "install exact synthetic staging retention authority",
+    );
+  }
+  const retentionAuthorityAfter = await assertNoError(
+    await admin
+      .from("account_deletion_retention_configuration")
+      .select("policy_version,approved_authority_hash,approved_at")
+      .eq("singleton", true)
+      .single(),
+    "read staging account-deletion retention authority after approval",
+  );
+  if (
+    retentionAuthorityAfter.approved_authority_hash !== syntheticRetentionAuthorityHash ||
+    !sameInstant(retentionAuthorityAfter.approved_at, FIXTURE_TIMESTAMP)
+  ) {
+    throw new Error("The exact synthetic staging retention authority was not preserved");
+  }
+
   await upsert(admin, "billing_subscriptions", {
     id: IDS.legacyBilling,
     organization_id: IDS.legacyOrganization,
@@ -640,6 +866,76 @@ async function main() {
     lease_token: null,
     lease_heartbeat_at: null,
   }, "id");
+  const inertLeadSideEffectPayload = {
+    fixture: FIXTURE_LABEL,
+    synthetic: true,
+    provider_actions_allowed: false,
+    contains_customer_data: false,
+    requestId: "df-staging-worker-recovery-20260712",
+    enabledEffects: [],
+    requiredEffects: [],
+    lead: {
+      id: IDS.lead,
+      organization_id: IDS.organization,
+      tenant_id: IDS.organization,
+      campaign_id: IDS.campaign,
+      campaign_name: `${FIXTURE_LABEL} Toronto Buyer Campaign`,
+      name: `${FIXTURE_LABEL} Lead`,
+      email: "dealflow-staging-lead@example.com",
+      source: "synthetic_staging",
+      created_at: FIXTURE_TIMESTAMP,
+    },
+  };
+  await upsert(admin, "system_jobs", {
+    id: IDS.workerPendingJob,
+    organization_id: IDS.organization,
+    user_id: userId,
+    campaign_id: IDS.campaign,
+    kind: "lead_side_effects",
+    status: "pending",
+    payload: { ...inertLeadSideEffectPayload, scenario: "worker_pending_completion" },
+    result: null,
+    retry_count: 0,
+    attempt_count: 0,
+    max_attempts: 3,
+    idempotency_key: "df-staging-20260712-worker-pending",
+    next_run_at: FIXTURE_TIMESTAMP,
+    error_message: null,
+    last_error_code: null,
+    dead_lettered_at: null,
+    dead_letter_reason: null,
+    completed_at: null,
+    started_at: null,
+    locked_by: null,
+    locked_until: null,
+    lease_token: null,
+    lease_heartbeat_at: null,
+  }, "id");
+  await upsert(admin, "system_jobs", {
+    id: IDS.workerCrashJob,
+    organization_id: IDS.organization,
+    user_id: userId,
+    campaign_id: IDS.campaign,
+    kind: "lead_side_effects",
+    status: "processing",
+    payload: { ...inertLeadSideEffectPayload, scenario: "expired_worker_crash_recovery" },
+    result: null,
+    retry_count: 0,
+    attempt_count: 1,
+    max_attempts: 3,
+    idempotency_key: "df-staging-20260712-worker-crash",
+    next_run_at: FIXTURE_TIMESTAMP,
+    error_message: "Synthetic expired worker lease for crash recovery proof.",
+    last_error_code: "synthetic_worker_crash",
+    dead_lettered_at: null,
+    dead_letter_reason: null,
+    completed_at: null,
+    started_at: FIXTURE_TIMESTAMP,
+    locked_by: "df-staging-expired-worker",
+    locked_until: FIXTURE_TIMESTAMP,
+    lease_token: "da000000-0000-4000-8000-000000000001",
+    lease_heartbeat_at: FIXTURE_TIMESTAMP,
+  }, "id");
   await upsert(admin, "system_jobs", {
     id: IDS.deadLetterJob,
     organization_id: IDS.organization,
@@ -665,6 +961,10 @@ async function main() {
     dead_lettered_at: FIXTURE_TIMESTAMP,
     dead_letter_reason: "Synthetic failure fixture; no provider action was attempted.",
     completed_at: FIXTURE_TIMESTAMP,
+    reviewed_at: FIXTURE_TIMESTAMP,
+    reviewed_by: `${FIXTURE_LABEL}:synthetic-acceptance`,
+    resolution_note:
+      "Reviewed synthetic dead-letter fixture retained only to prove terminal worker semantics.",
     locked_by: null,
     locked_until: null,
     lease_token: null,
@@ -879,6 +1179,199 @@ async function main() {
     },
     published_at: FIXTURE_TIMESTAMP,
   }).eq("id", IDS.campaign).select("id").single(), "complete staging campaign fixture");
+
+  const reportingCampaigns = [
+    {
+      id: IDS.staleReportingCampaign,
+      name: `${FIXTURE_LABEL} Stale Reporting Campaign`,
+      slug: "df-staging-20260712-stale-reporting",
+    },
+    {
+      id: IDS.failedReportingCampaign,
+      name: `${FIXTURE_LABEL} Failed Refresh Reporting Campaign`,
+      slug: "df-staging-20260712-failed-reporting",
+    },
+  ];
+  for (const reportingCampaign of reportingCampaigns) {
+    const reportingPlan = {
+      ...campaignPlan,
+      name: reportingCampaign.name,
+      campaign_name: reportingCampaign.name,
+      public_slug: reportingCampaign.slug,
+      campaign_payload: {
+        ...campaignPlan.campaign_payload,
+        destination_url: `${publicAppUrl}/f/${reportingCampaign.slug}`,
+      },
+    };
+    await assertNoError(
+      await admin.rpc("create_campaign_plan_with_entitlement_v1", {
+        p_campaign_id: reportingCampaign.id,
+        p_organization_id: IDS.organization,
+        p_user_id: userId,
+        p_plan: reportingPlan,
+        p_launch_status: "ready",
+        p_lead_loop_verified: true,
+        p_public_slug: reportingCampaign.slug,
+      }),
+      `create ${reportingCampaign.name} through entitlement RPC`,
+    );
+    await assertNoError(
+      await admin
+        .from("campaign_plans")
+        .update({
+          plan: reportingPlan,
+          ads: [],
+          business_name: reportingCampaign.name,
+          status: "draft",
+          client_name: `${FIXTURE_LABEL} Realtor`,
+          industry: "Real estate",
+          location: "Toronto, Ontario",
+          budget: "10",
+          public_slug: reportingCampaign.slug,
+          publish_state: "published",
+          launch_status: "ready",
+          lead_loop_verified: true,
+          published_snapshot: {
+            fixture: FIXTURE_LABEL,
+            name: reportingCampaign.name,
+            headline: "Synthetic reporting state proof",
+          },
+          published_at: FIXTURE_TIMESTAMP,
+        })
+        .eq("id", reportingCampaign.id)
+        .select("id")
+        .single(),
+      `complete ${reportingCampaign.name} fixture`,
+    );
+  }
+
+  const childCampaignFixtures = [
+    {
+      id: IDS.partnerChildCampaign,
+      organizationId: IDS.partnerChildOrganization,
+      userId: scenarioUserIds.partnerChild,
+      name: `${FIXTURE_LABEL} Partner One Child Campaign`,
+      slug: "df-staging-20260712-partner-one-child-campaign",
+      partnerId: IDS.partner,
+    },
+    {
+      id: IDS.partnerChildTwoCampaign,
+      organizationId: IDS.partnerChildTwoOrganization,
+      userId: scenarioUserIds.partnerChildTwo,
+      name: `${FIXTURE_LABEL} Partner Two Child Campaign`,
+      slug: "df-staging-20260712-partner-two-child-campaign",
+      partnerId: IDS.partnerTwo,
+    },
+  ];
+  for (const childCampaign of childCampaignFixtures) {
+    await upsert(admin, "campaign_plans", {
+      id: childCampaign.id,
+      owner_id: childCampaign.userId,
+      user_id: childCampaign.userId,
+      organization_id: childCampaign.organizationId,
+      partner_id: childCampaign.partnerId,
+      plan: {
+        fixture: FIXTURE_LABEL,
+        synthetic: true,
+        name: childCampaign.name,
+        campaign_name: childCampaign.name,
+        public_slug: childCampaign.slug,
+        objective: "Synthetic white-label isolation proof",
+        customer_type: "realtor",
+        market: "Toronto, Ontario",
+        location: "Toronto, Ontario",
+        intent: "buyer",
+      },
+      ads: [],
+      business_name: childCampaign.name,
+      status: "draft",
+      client_name: `${FIXTURE_LABEL} Child Realtor`,
+      industry: "Real estate",
+      location: "Toronto, Ontario",
+      budget: "10",
+      public_slug: childCampaign.slug,
+      publish_state: "draft",
+      launch_status: "draft",
+      lead_loop_verified: false,
+    }, "id");
+  }
+
+  const nowMs = Date.now();
+  const freshSyncAt = new Date(nowMs - 5 * 60_000).toISOString();
+  const failedConfirmedAt = new Date(nowMs - 10 * 60_000).toISOString();
+  const failedAttemptAt = new Date(nowMs - 2 * 60_000).toISOString();
+  const reportingMetrics = {
+    spend: 42,
+    impressions: 2_000,
+    clicks: 40,
+    leads: 4,
+    ctr: 0.02,
+    appointments: 1,
+  };
+  for (const snapshot of [
+    {
+      id: IDS.freshReportingSnapshot,
+      campaign_id: IDS.campaign,
+      campaign_name: campaignPlan.campaign_name,
+      meta_campaign_id: "df-staging-meta-fresh",
+      sync_result: "success",
+      delivery_metrics_confirmed: true,
+      delivery_metrics: reportingMetrics,
+      synced_at: freshSyncAt,
+      sync_errors: [],
+    },
+    {
+      id: IDS.staleReportingSnapshot,
+      campaign_id: IDS.staleReportingCampaign,
+      campaign_name: reportingCampaigns[0].name,
+      meta_campaign_id: "df-staging-meta-stale",
+      sync_result: "success",
+      delivery_metrics_confirmed: true,
+      delivery_metrics: reportingMetrics,
+      synced_at: "2026-07-12T08:00:00.000Z",
+      sync_errors: [],
+    },
+    {
+      id: IDS.failedReportingConfirmedSnapshot,
+      campaign_id: IDS.failedReportingCampaign,
+      campaign_name: reportingCampaigns[1].name,
+      meta_campaign_id: "df-staging-meta-failed-refresh",
+      sync_result: "success",
+      delivery_metrics_confirmed: true,
+      delivery_metrics: reportingMetrics,
+      synced_at: failedConfirmedAt,
+      sync_errors: [],
+    },
+    {
+      id: IDS.failedReportingAttemptSnapshot,
+      campaign_id: IDS.failedReportingCampaign,
+      campaign_name: reportingCampaigns[1].name,
+      meta_campaign_id: "df-staging-meta-failed-refresh",
+      sync_result: "failed",
+      delivery_metrics_confirmed: false,
+      delivery_metrics: {},
+      synced_at: failedAttemptAt,
+      sync_errors: [{ code: "synthetic_provider_unavailable", retryable: true }],
+    },
+  ]) {
+    await upsert(admin, "campaign_sync_snapshots", {
+      ...snapshot,
+      organization_id: IDS.organization,
+      user_id: userId,
+      account_name: `${FIXTURE_LABEL} Meta Reporting Fixture`,
+      launch_mode: "test",
+      meta_ad_set_ids: [],
+      meta_ad_ids: [],
+      campaign_status: snapshot.sync_result === "success" ? "ACTIVE" : null,
+      ad_set_statuses: [],
+      ad_statuses: [],
+      sync_metadata: {
+        fixture: FIXTURE_LABEL,
+        synthetic: true,
+        providerMutationPerformed: false,
+      },
+    }, "id");
+  }
 
   await upsert(admin, "leads", {
     id: IDS.lead,
@@ -1374,9 +1867,67 @@ async function main() {
     1,
     "verify exact white-label child workspace attribution",
   );
+  await assertExactCount(
+    admin
+      .from("partner_domains")
+      .select("id", { count: "exact", head: true })
+      .eq("id", IDS.partnerTwoDomain)
+      .eq("partner_id", IDS.partnerTwo)
+      .eq("domain", partnerTwoAppHost)
+      .eq("verification_status", "verified")
+      .eq("ssl_status", "active")
+      .is("deleted_at", null),
+    1,
+    "verify exact active verified staging partner two domain",
+  );
+  await assertExactCount(
+    admin
+      .from("workspace_partner_attribution")
+      .select("id", { count: "exact", head: true })
+      .eq("workspace_id", IDS.partnerChildTwoOrganization)
+      .eq("partner_id", IDS.partnerTwo)
+      .eq("active", true),
+    1,
+    "verify exact white-label partner two child workspace attribution",
+  );
+  for (const [campaignId, organizationId, userIdValue, label] of [
+    [IDS.staleReportingCampaign, IDS.organization, userId, "stale reporting campaign"],
+    [IDS.failedReportingCampaign, IDS.organization, userId, "failed reporting campaign"],
+    [IDS.partnerChildCampaign, IDS.partnerChildOrganization, scenarioUserIds.partnerChild, "partner one child campaign"],
+    [IDS.partnerChildTwoCampaign, IDS.partnerChildTwoOrganization, scenarioUserIds.partnerChildTwo, "partner two child campaign"],
+  ]) {
+    await assertExactCount(
+      admin
+        .from("campaign_plans")
+        .select("id", { count: "exact", head: true })
+        .eq("id", campaignId)
+        .eq("organization_id", organizationId)
+        .eq("user_id", userIdValue),
+      1,
+      `verify exact synthetic ${label}`,
+    );
+  }
+  for (const snapshotId of [
+    IDS.freshReportingSnapshot,
+    IDS.staleReportingSnapshot,
+    IDS.failedReportingConfirmedSnapshot,
+    IDS.failedReportingAttemptSnapshot,
+  ]) {
+    await assertExactCount(
+      admin
+        .from("campaign_sync_snapshots")
+        .select("id", { count: "exact", head: true })
+        .eq("id", snapshotId)
+        .eq("organization_id", IDS.organization),
+      1,
+      `verify exact synthetic reporting snapshot ${snapshotId}`,
+    );
+  }
   for (const [jobId, expectedStatus, label] of [
     [IDS.retryJob, "pending", "durable retry"],
     [IDS.deadLetterJob, "failed", "durable operator failure"],
+    [IDS.workerPendingJob, "pending", "pending worker completion"],
+    [IDS.workerCrashJob, "processing", "expired worker crash"],
   ]) {
     await assertExactCount(
       admin
@@ -1448,8 +1999,11 @@ async function main() {
       legacy: IDS.legacyOrganization,
       partnerAdmin: IDS.partnerAdminOrganization,
       partnerChild: IDS.partnerChildOrganization,
+      partnerAdminTwo: IDS.partnerAdminTwoOrganization,
+      partnerChildTwo: IDS.partnerChildTwoOrganization,
       operator: IDS.operatorOrganization,
       attacker: IDS.attackerOrganization,
+      deletion: IDS.deletionOrganization,
     },
     partner: {
       id: IDS.partner,
@@ -1461,12 +2015,43 @@ async function main() {
       attributionPresent: true,
       attributionBoundAtomically: true,
     },
+    partnerTwo: {
+      id: IDS.partnerTwo,
+      childOrganizationId: IDS.partnerChildTwoOrganization,
+      domainHost: partnerTwoAppHost,
+      domainVerified: true,
+      sslActive: true,
+      brandingPresent: true,
+      attributionPresent: true,
+      attributionBoundAtomically: true,
+    },
+    reportingFixtures: {
+      freshCampaignId: IDS.campaign,
+      staleCampaignId: IDS.staleReportingCampaign,
+      failedCampaignId: IDS.failedReportingCampaign,
+      freshConfirmed: true,
+      staleConfirmed: true,
+      failedRefreshPreservesConfirmed: true,
+    },
+    deletionRetentionAuthority: {
+      marker: SYNTHETIC_RETENTION_AUTHORITY_MARKER,
+      authorityHashFingerprint: sha256(syntheticRetentionAuthorityHash),
+      pendingBeforeApproval: retentionAuthorityPendingBeforeApproval,
+      rejectedWhilePending: retentionAuthorityPendingBeforeApproval,
+      approvedAfter: true,
+      reusedExistingSyntheticApproval: syntheticRetentionAuthorityReused,
+      productionDefaultChanged: false,
+    },
     failureFixtures: {
       retryJobId: IDS.retryJob,
       retryJobStatus: "pending",
       retryNotBefore: "2099-01-01T00:00:00.000Z",
       deadLetterJobId: IDS.deadLetterJob,
       deadLetterJobStatus: "failed",
+      pendingWorkerJobId: IDS.workerPendingJob,
+      pendingWorkerJobStatus: "pending",
+      crashedWorkerJobId: IDS.workerCrashJob,
+      crashedWorkerJobStatus: "processing",
       providerMutationPerformed: false,
     },
   })}\n`);

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { LocaleLink as Link } from "@/components/i18n/locale-link";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
   resolveLaunchProviderObjectIds,
   resolveLaunchTruth,
 } from "@/lib/launch-truth";
+import { getRequestProductI18n } from "@/lib/i18n/server";
 
 function buildMetaCampaignLink(metaCampaignId: string | null, adAccountId: string | null) {
   if (!metaCampaignId) {
@@ -118,6 +119,7 @@ export default async function LaunchSuccessPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const { currency, dateTime, t } = await getRequestProductI18n();
   const params = searchParams ? await searchParams : {};
   const campaignId =
     typeof params.campaignId === "string" && params.campaignId.length > 0
@@ -202,8 +204,8 @@ export default async function LaunchSuccessPage({
     Number.isSafeInteger(canonicalDailyBudgetMinor) &&
     Number(canonicalDailyBudgetMinor) > 0 &&
     supportedCurrency
-      ? `${currencyFromMinorUnits(Number(canonicalDailyBudgetMinor), supportedCurrency)} ${supportedCurrency}/day`
-      : "Exact budget unavailable";
+      ? `${currency(Number(canonicalDailyBudgetMinor) / 100, supportedCurrency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${supportedCurrency}`
+      : t("common.unavailable");
   const createdLocally =
     launchReceipt?.resultStatus === "success" &&
     launchReceipt.campaignId === resolvedSavedCampaignId &&
@@ -249,34 +251,27 @@ export default async function LaunchSuccessPage({
     ...(launchReceipt?.scheduledFor
       ? [
           {
-            label: "Scheduled for",
-            value: new Date(launchReceipt.scheduledFor).toLocaleString("en-CA", {
-              dateStyle: "medium" as const,
-              timeStyle: "short" as const,
-              timeZone: "America/New_York",
-            }) + " Eastern",
+            label: t("launch.scheduledFor"),
+            value: dateTime(launchReceipt.scheduledFor, { timeZone: "America/New_York" }),
             tone: "text-cyan-200",
           },
         ]
       : []),
     {
-      label: "Created locally",
-      value: createdLocally ? "Yes" : "Pending",
+      label: t("launch.createdLocally"),
+      value: createdLocally ? t("common.yes") : t("common.pending"),
       tone: createdLocally ? "text-emerald-300" : "text-amber-300",
     },
     {
-      label: "Confirmed in Meta",
-      value: confirmedInMeta ? "Yes" : "Meta confirmation pending",
+      label: t("launch.confirmedMeta"),
+      value: confirmedInMeta ? t("common.yes") : t("common.pending"),
       tone: confirmedInMeta ? "text-emerald-300" : partiallyConfirmed ? "text-amber-300" : "text-muted-foreground",
     },
     {
-      label: "Last confirmed in Meta",
+      label: t("launch.lastConfirmedMeta"),
       value: lastConfirmedAt
-        ? new Date(lastConfirmedAt).toLocaleString("en-CA", {
-            dateStyle: "medium",
-            timeStyle: "short",
-          })
-        : "No confirmation yet",
+        ? dateTime(lastConfirmedAt)
+        : t("common.notVerified"),
       tone: hasFreshMetaConfirmation ? "text-emerald-300" : "text-muted-foreground",
     },
   ];
@@ -286,28 +281,28 @@ export default async function LaunchSuccessPage({
   });
   const metaLink = buildMetaCampaignLink(resolvedMetaCampaignId, metaConnection.accountId);
   const summaryItems: SummaryItem[] = [
-    { label: "Campaign name", value: resolvedCampaignName },
-    { label: "Ad account", value: metaConnection.accountId ?? "No ad account selected" },
-    { label: "Budget", value: resolvedBudget },
-    { label: "Status", value: launchPresentation.badge },
+    { label: t("launch.campaignName"), value: resolvedCampaignName },
+    { label: t("launch.adAccount"), value: metaConnection.accountId ?? t("launch.noAdAccount") },
+    { label: t("common.budget"), value: resolvedBudget },
+    { label: t("common.status"), value: launchPresentation.badge },
   ];
   const idItems: SummaryItem[] = [
-    { label: "Saved campaign ID", value: resolvedSavedCampaignId ?? "Pending" },
-    { label: "Meta campaign ID", value: resolvedMetaCampaignId ?? "Pending" },
-    { label: "Meta ad set ID", value: resolvedMetaAdSetId ?? "Pending" },
-    { label: "Meta ad ID", value: resolvedMetaAdId ?? "Pending" },
+    { label: t("launch.savedId"), value: resolvedSavedCampaignId ?? t("common.pending") },
+    { label: t("launch.metaCampaignId"), value: resolvedMetaCampaignId ?? t("common.pending") },
+    { label: t("launch.metaAdSetId"), value: resolvedMetaAdSetId ?? t("common.pending") },
+    { label: t("launch.metaAdId"), value: resolvedMetaAdId ?? t("common.pending") },
   ];
   const verificationItems: SummaryItem[] = [
     {
-      label: "Campaign status",
+      label: t("launch.campaignStatus"),
       value: String(syncSnapshot?.campaignStatus ?? plan?.runtime.metaPushStatus ?? "Pending"),
     },
     {
-      label: "Ad set status",
+      label: t("launch.adSetStatus"),
       value: String(firstAdSetStatus || (resolvedMetaAdSetId ? "Saved locally" : "Pending")),
     },
     {
-      label: "Ad status",
+      label: t("launch.adStatus"),
       value: String(firstAdStatus || (resolvedMetaAdId ? "Saved locally" : "Pending")),
     },
   ];
@@ -315,9 +310,9 @@ export default async function LaunchSuccessPage({
   return (
     <div className="mx-auto w-full max-w-[900px] space-y-8">
       <PageHeader
-        eyebrow={launchPresentation.eyebrow}
-        title={launchPresentation.title}
-        description={launchPresentation.description}
+        eyebrow={t("nav.goLive")}
+        title={t("launch.campaignStatus")}
+        description={t("launch.refreshMeta")}
       />
 
       <Card className="rounded-[24px] p-6 sm:p-8">
@@ -394,8 +389,8 @@ export default async function LaunchSuccessPage({
                   {item.label}
                 </p>
                 <p className={`mt-3 text-sm font-medium leading-6 ${item.tone}`}>
-                  {item.label === "Created locally" && createdLocally ? "✔ " : ""}
-                  {item.label === "Confirmed in Meta" && confirmedInMeta ? "✔ " : ""}
+                  {item.label === t("launch.createdLocally") && createdLocally ? "✔ " : ""}
+                  {item.label === t("launch.confirmedMeta") && confirmedInMeta ? "✔ " : ""}
                   {item.value}
                 </p>
               </div>
@@ -464,13 +459,13 @@ export default async function LaunchSuccessPage({
             {metaLink && launchTruthState !== "missing" && launchTruthState !== "failed" ? (
               <Button asChild>
                 <Link href={metaLink} target="_blank" rel="noreferrer">
-                  View in Meta
+                  Meta
                 </Link>
               </Button>
             ) : null}
             <Button asChild variant="secondary">
               <Link href={resolvedSavedCampaignId ? `/dashboard?campaignId=${encodeURIComponent(resolvedSavedCampaignId)}` : "/dashboard"}>
-                Go to Dashboard
+                {t("dashboard.title")}
               </Link>
             </Button>
           </div>

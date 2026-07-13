@@ -10,6 +10,7 @@ import type {
   GhlPersonalizationProviderAdapter,
   GhlPersonalizationResult,
   GhlLocationCreateResult,
+  GhlLocationDisplayNameFinalizeResult,
   GhlLocationReconcileResult,
   GhlProviderAdapter,
   GhlRequiredObject,
@@ -24,7 +25,14 @@ import {
 import { GhlHttpClient, GhlHttpTransportError, type GhlHttpResponse } from "./http-client";
 import { assertGhlSandboxAllowed, type GhlSandboxGateInput } from "./sandbox-gate";
 import { assertGhlProductionAllowed, type GhlProductionGateInput } from "./production-gate";
-import { isExactGhlLocationCreateContract } from "./snapshot-create-contract";
+import {
+  buildGhlLocationReconciliationResponseFingerprint,
+  buildGhlProviderDisplayName,
+  buildGhlProviderLocationName,
+  GHL_LOCATION_SEARCH_MAX_PAGES,
+  GHL_LOCATION_SEARCH_PAGE_LIMIT,
+  isExactGhlLocationCreateContract,
+} from "./snapshot-create-contract";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -401,7 +409,10 @@ export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAda
         retryMode: "no-retry",
         body: {
           companyId: this.companyId,
-          name: input.profile.displayName,
+          name: buildGhlProviderLocationName(
+            input.profile.displayName,
+            input.requestFingerprint,
+          ),
           country: input.profile.country,
           timezone: input.profile.timezone,
           snapshotId: input.snapshotManifest.providerSnapshotId,
@@ -451,12 +462,435 @@ export class GhlSandboxAdapter implements GhlProviderAdapter, GhlLeadProviderAda
     }
   }
 
-  async reconcileLocationCreate(): Promise<GhlLocationReconcileResult> {
+  async reconcileLocationCreate(
+    input: Parameters<GhlProviderAdapter["reconcileLocationCreate"]>[0],
+  ): Promise<GhlLocationReconcileResult> {
+    const requestFingerprint = input.requestFingerprint;
+    const startedAt = Date.parse(input.visibilityStartedAt);
+    const deadlineAt = Date.parse(input.visibilityDeadlineAt);
+    const observedAt = Date.parse(input.observedAt);
+    if (
+      input.environment !== this.providerEnvironment
+      || !/^[a-f0-9]{64}$/.test(requestFingerprint)
+      || !Number.isFinite(startedAt)
+      || !Number.isFinite(deadlineAt)
+      || !Number.isFinite(observedAt)
+      || deadlineAt <= startedAt
+      || observedAt < startedAt
+      || !input.profile.displayName.trim()
+      || !input.profile.country.trim()
+      || !input.profile.timezone.trim()
+    ) {
+      return {
+        outcome: "operator_action_required",
+        errorCode: "ghl_location_reconciliation_contract_invalid",
+        safeMessage: "GHL location reconciliation requires one immutable request identity and bounded visibility window.",
+        providerRequestId: null,
+        requestFingerprint,
+        responseFingerprint: null,
+      };
+    }
+
+    const expectedName = buildGhlProviderLocationName(
+      input.profile.displayName,
+      requestFingerprint,
+    );
+    const expectedCountry = input.profile.country.trim().toUpperCase();
+    const expectedTimezone = input.profile.timezone.trim();
+    const pageFingerprints: string[] = [];
+    const seenProviderLocationIds = new Set<string>();
+    const matchedProviderLocationIds: string[] = [];
+    let latestProviderRequestId: string | null = null;
+
+    const resultFingerprint = () => buildGhlLocationReconciliationResponseFingerprint({
+      requestFingerprint,
+      pageFingerprints,
+      matchedProviderLocationIds,
+    });
+
+    try {
+      for (let page = 0; page < GHL_LOCATION_SEARCH_MAX_PAGES; page += 1) {
+        const search = new URLSearchParams({
+          companyId: this.companyId,
+          skip: String(page * GHL_LOCATION_SEARCH_PAGE_LIMIT),
+          limit: String(GHL_LOCATION_SEARCH_PAGE_LIMIT),
+          order: "asc",
+        });
+        const response = await this.withCredential((credential) => this.http.request<JsonRecord>({
+          method: "GET",
+          path: `/locations/search?${search.toString()}`,
+          credential,
+          version: "v3",
+          retryMode: "safe-read",
+        }));
+        latestProviderRequestId = response.providerRequestId ?? latestProviderRequestId;
+        pageFingerprints.push(response.responseFingerprint);
+
+        if (!response.ok) {
+          const retryable = response.status === 408 || response.status === 429 || response.status >= 500;
+          return {
+            outcome: retryable ? "uncertain" : "operator_action_required",
+            errorCode: `ghl_location_reconciliation_search_${response.status}`,
+            safeMessage: retryable
+              ? "The bounded GHL location search did not return a conclusive result."
+              : "GHL rejected the agency-scoped location reconciliation search.",
+            providerRequestId: latestProviderRequestId,
+            requestFingerprint,
+            responseFingerprint: resultFingerprint(),
+          };
+        }
+
+        const locations = asRecord(response.data).locations;
+        if (!Array.isArray(locations) || locations.length > GHL_LOCATION_SEARCH_PAGE_LIMIT) {
+          return {
+            outcome: "operator_action_required",
+            errorCode: "ghl_location_reconciliation_schema_invalid",
+            safeMessage: "GHL returned a malformed location-search page; absence cannot be proven safely.",
+            providerRequestId: latestProviderRequestId,
+            requestFingerprint,
+            responseFingerprint: resultFingerprint(),
+          };
+        }
+
+        for (const rawLocation of locations) {
+          const location = asRecord(rawLocation);
+          const providerLocationId = safeProviderId(location.id);
+          const locationName = typeof location.name === "string" ? location.name.trim() : null;
+          if (!providerLocationId || locationName === null) {
+            return {
+              outcome: "operator_action_required",
+              errorCode: "ghl_location_reconciliation_candidate_invalid",
+              safeMessage: "GHL returned a location without a durable id and name; absence cannot be proven safely.",
+              providerRequestId: latestProviderRequestId,
+              requestFingerprint,
+              responseFingerprint: resultFingerprint(),
+            };
+          }
+          if (seenProviderLocationIds.has(providerLocationId)) {
+            return {
+              outcome: "operator_action_required",
+              errorCode: "ghl_location_reconciliation_pagination_unstable",
+              safeMessage: "GHL location-search pagination repeated a provider identity; automatic reconciliation stopped.",
+              providerRequestId: latestProviderRequestId,
+              requestFingerprint,
+              responseFingerprint: resultFingerprint(),
+            };
+          }
+          seenProviderLocationIds.add(providerLocationId);
+
+          if (locationName !== expectedName) continue;
+          const country = typeof location.country === "string"
+            ? location.country.trim().toUpperCase()
+            : null;
+          const timezone = typeof location.timezone === "string"
+            ? location.timezone.trim()
+            : null;
+          if (country === null || timezone === null) {
+            return {
+              outcome: "operator_action_required",
+              errorCode: "ghl_location_reconciliation_match_fields_missing",
+              safeMessage: "A fingerprint-matched GHL location omitted deterministic match fields; automatic reconciliation stopped.",
+              providerRequestId: latestProviderRequestId,
+              requestFingerprint,
+              responseFingerprint: resultFingerprint(),
+            };
+          }
+          if (country === expectedCountry && timezone === expectedTimezone) {
+            matchedProviderLocationIds.push(providerLocationId);
+          }
+        }
+
+        if (matchedProviderLocationIds.length > 1) {
+          return {
+            outcome: "operator_action_required",
+            errorCode: "ghl_location_reconciliation_multiple_exact_matches",
+            safeMessage: "Multiple GHL locations matched the immutable create request; automatic selection is forbidden.",
+            providerRequestId: latestProviderRequestId,
+            requestFingerprint,
+            responseFingerprint: resultFingerprint(),
+          };
+        }
+        if (locations.length < GHL_LOCATION_SEARCH_PAGE_LIMIT) {
+          const responseFingerprint = resultFingerprint();
+          return matchedProviderLocationIds.length === 1
+            ? {
+              outcome: "found",
+              providerLocationId: matchedProviderLocationIds[0],
+              providerRequestId: latestProviderRequestId,
+              requestFingerprint,
+              responseFingerprint,
+            }
+            : {
+              outcome: "not_found",
+              providerRequestId: latestProviderRequestId,
+              requestFingerprint,
+              responseFingerprint,
+            };
+        }
+      }
+
+      return {
+        outcome: "operator_action_required",
+        errorCode: "ghl_location_reconciliation_search_bound_exhausted",
+        safeMessage: "The bounded GHL location search exhausted its pagination limit; absence cannot be proven safely.",
+        providerRequestId: latestProviderRequestId,
+        requestFingerprint,
+        responseFingerprint: resultFingerprint(),
+      };
+    } catch (error) {
+      if (error instanceof GhlCredentialResolutionError) {
+        return {
+          outcome: "operator_action_required",
+          errorCode: error.code,
+          safeMessage: error.message,
+          providerRequestId: null,
+          requestFingerprint,
+          responseFingerprint: pageFingerprints.length > 0 ? resultFingerprint() : null,
+        };
+      }
+      if (error instanceof GhlHttpTransportError) {
+        return {
+          outcome: "uncertain",
+          errorCode: `ghl_location_reconciliation_${error.code}`,
+          safeMessage: "The bounded GHL location search did not return a conclusive result.",
+          providerRequestId: latestProviderRequestId,
+          requestFingerprint,
+          responseFingerprint: pageFingerprints.length > 0 ? resultFingerprint() : null,
+        };
+      }
+      return {
+        outcome: "operator_action_required",
+        errorCode: "ghl_location_reconciliation_unexpected_response",
+        safeMessage: "GHL location reconciliation returned an unexpected result.",
+        providerRequestId: latestProviderRequestId,
+        requestFingerprint,
+        responseFingerprint: pageFingerprints.length > 0 ? resultFingerprint() : null,
+      };
+    }
+  }
+
+  async finalizeLocationDisplayName(
+    input: Parameters<GhlProviderAdapter["finalizeLocationDisplayName"]>[0],
+  ): Promise<GhlLocationDisplayNameFinalizeResult> {
+    const requestFingerprint = input.requestFingerprint;
+    if (
+      input.environment !== this.providerEnvironment
+      || !safeProviderId(input.providerLocationId)
+      || !/^[a-f0-9]{64}$/.test(requestFingerprint)
+    ) {
+      return {
+        outcome: "operator_action_required",
+        errorCode: "ghl_location_display_name_contract_invalid",
+        safeMessage: "GHL display-name finalization requires the exact provider location and immutable request identity.",
+        providerRequestId: null,
+        requestFingerprint,
+        responseFingerprint: null,
+        httpStatus: null,
+      };
+    }
+
+    const cleanName = buildGhlProviderDisplayName(input.profile.displayName);
+    const taggedName = buildGhlProviderLocationName(cleanName, requestFingerprint);
+    const expectedCountry = input.profile.country.trim().toUpperCase();
+    const expectedTimezone = input.profile.timezone.trim();
+    const responseFingerprints: string[] = [];
+    let latestProviderRequestId: string | null = null;
+    const responseFingerprint = () => buildGhlLocationReconciliationResponseFingerprint({
+      requestFingerprint,
+      pageFingerprints: responseFingerprints,
+      matchedProviderLocationIds: [input.providerLocationId],
+    });
+
+    const readIdentity = async () => {
+      const response = await this.withCredential((credential) => this.http.request<JsonRecord>({
+        method: "GET",
+        path: `/locations/${encodeURIComponent(input.providerLocationId)}`,
+        credential,
+        version: "v3",
+        retryMode: "safe-read",
+      }));
+      latestProviderRequestId = response.providerRequestId ?? latestProviderRequestId;
+      responseFingerprints.push(response.responseFingerprint);
+      if (!response.ok) {
+        return {
+          kind: "failure" as const,
+          retryable: response.status === 404
+            || response.status === 408
+            || response.status === 429
+            || response.status >= 500,
+          status: response.status,
+        };
+      }
+      const location = asRecord(asRecord(response.data).location);
+      const providerLocationId = safeProviderId(location.id);
+      const name = typeof location.name === "string" ? location.name.trim() : null;
+      const country = typeof location.country === "string"
+        ? location.country.trim().toUpperCase()
+        : null;
+      const timezone = typeof location.timezone === "string"
+        ? location.timezone.trim()
+        : null;
+      if (
+        providerLocationId !== input.providerLocationId
+        || name === null
+        || country !== expectedCountry
+        || timezone !== expectedTimezone
+      ) {
+        return { kind: "invalid" as const, status: response.status };
+      }
+      return { kind: "identity" as const, name, status: response.status };
+    };
+
+    const failureFromRead = (
+      read: Awaited<ReturnType<typeof readIdentity>>,
+      stage: "pre_update" | "post_update",
+    ): GhlLocationDisplayNameFinalizeResult => {
+      const retryable = read.kind === "failure" && read.retryable;
+      return {
+        outcome: retryable ? "retryable_failure" : "operator_action_required",
+        errorCode: read.kind === "invalid"
+          ? `ghl_location_display_name_${stage}_identity_invalid`
+          : `ghl_location_display_name_${stage}_read_${read.status}`,
+        safeMessage: retryable
+          ? "The exact GHL location could not yet be read back; display-name finalization remains gated."
+          : "The GHL location readback did not match the immutable location identity.",
+        providerRequestId: latestProviderRequestId,
+        requestFingerprint,
+        responseFingerprint: responseFingerprints.length > 0 ? responseFingerprint() : null,
+        httpStatus: read.status,
+      };
+    };
+
+    let initialRead: Awaited<ReturnType<typeof readIdentity>>;
+    try {
+      initialRead = await readIdentity();
+    } catch (error) {
+      const credentialFailure = error instanceof GhlCredentialResolutionError;
+      return {
+        outcome: credentialFailure ? "operator_action_required" : "retryable_failure",
+        errorCode: credentialFailure
+          ? error.code
+          : "ghl_location_display_name_pre_update_read_failed",
+        safeMessage: credentialFailure
+          ? error.message
+          : "The exact GHL location could not yet be read back; display-name finalization remains gated.",
+        providerRequestId: null,
+        requestFingerprint,
+        responseFingerprint: null,
+        httpStatus: null,
+      };
+    }
+    if (initialRead.kind !== "identity") return failureFromRead(initialRead, "pre_update");
+    if (initialRead.name === cleanName) {
+      return {
+        outcome: "succeeded",
+        providerRequestId: latestProviderRequestId,
+        requestFingerprint,
+        responseFingerprint: responseFingerprint(),
+        httpStatus: initialRead.status,
+      };
+    }
+    if (initialRead.name !== taggedName) {
+      return {
+        outcome: "operator_action_required",
+        errorCode: "ghl_location_display_name_changed_out_of_band",
+        safeMessage: "The GHL location name changed outside the immutable create/finalize contract; automatic overwrite is forbidden.",
+        providerRequestId: latestProviderRequestId,
+        requestFingerprint,
+        responseFingerprint: responseFingerprint(),
+        httpStatus: initialRead.status,
+      };
+    }
+
+    let updateStatus: number | null = null;
+    let ambiguousUpdate = false;
+    try {
+      const update = await this.withCredential((credential) => this.http.request<JsonRecord>({
+        method: "PUT",
+        path: `/locations/${encodeURIComponent(input.providerLocationId)}`,
+        credential,
+        version: "v3",
+        retryMode: "no-retry",
+        body: {
+          companyId: this.companyId,
+          name: cleanName,
+        },
+      }));
+      latestProviderRequestId = update.providerRequestId ?? latestProviderRequestId;
+      responseFingerprints.push(update.responseFingerprint);
+      updateStatus = update.status;
+      ambiguousUpdate = update.status === 408 || update.status === 429 || update.status >= 500;
+      if (!update.ok && !ambiguousUpdate) {
+        return {
+          outcome: "operator_action_required",
+          errorCode: `ghl_location_display_name_update_${update.status}`,
+          safeMessage: "GHL rejected the exact display-name cleanup request.",
+          providerRequestId: latestProviderRequestId,
+          requestFingerprint,
+          responseFingerprint: responseFingerprint(),
+          httpStatus: update.status,
+        };
+      }
+    } catch (error) {
+      if (error instanceof GhlCredentialResolutionError) {
+        return {
+          outcome: "operator_action_required",
+          errorCode: error.code,
+          safeMessage: error.message,
+          providerRequestId: latestProviderRequestId,
+          requestFingerprint,
+          responseFingerprint: responseFingerprints.length > 0 ? responseFingerprint() : null,
+          httpStatus: null,
+        };
+      }
+      ambiguousUpdate = true;
+    }
+
+    let finalRead: Awaited<ReturnType<typeof readIdentity>>;
+    try {
+      finalRead = await readIdentity();
+    } catch {
+      return {
+        outcome: "retryable_failure",
+        errorCode: "ghl_location_display_name_post_update_read_failed",
+        safeMessage: "The idempotent GHL name cleanup was dispatched, but exact readback is not yet conclusive.",
+        providerRequestId: latestProviderRequestId,
+        requestFingerprint,
+        responseFingerprint: responseFingerprints.length > 0 ? responseFingerprint() : null,
+        httpStatus: updateStatus,
+      };
+    }
+    if (finalRead.kind !== "identity") return failureFromRead(finalRead, "post_update");
+    if (finalRead.name === cleanName) {
+      return {
+        outcome: "succeeded",
+        providerRequestId: latestProviderRequestId,
+        requestFingerprint,
+        responseFingerprint: responseFingerprint(),
+        httpStatus: finalRead.status,
+      };
+    }
+    if (finalRead.name === taggedName) {
+      return {
+        outcome: "retryable_failure",
+        errorCode: ambiguousUpdate
+          ? "ghl_location_display_name_update_ambiguous"
+          : "ghl_location_display_name_readback_pending",
+        safeMessage: "The idempotent GHL name cleanup is not yet visible; bounded retry remains safe and required.",
+        providerRequestId: latestProviderRequestId,
+        requestFingerprint,
+        responseFingerprint: responseFingerprint(),
+        httpStatus: updateStatus,
+      };
+    }
     return {
       outcome: "operator_action_required",
-      errorCode: "ghl_location_create_reconciliation_required",
-      safeMessage: "An uncertain GHL location creation must be reconciled by exact provider receipt before retry.",
-      providerRequestId: null,
+      errorCode: "ghl_location_display_name_post_update_conflict",
+      safeMessage: "The GHL location name changed unexpectedly after cleanup; automatic overwrite is forbidden.",
+      providerRequestId: latestProviderRequestId,
+      requestFingerprint,
+      responseFingerprint: responseFingerprint(),
+      httpStatus: finalRead.status,
     };
   }
 

@@ -19,7 +19,17 @@ import { CanonicalFunnelRenderer } from "@/components/funnels/canonical-funnel-r
 import { isInstantFormCampaign } from "@/lib/campaign-destination";
 import { buildWinningFunnel } from "@/lib/funnels/winning-template/build-winning-funnel";
 import { resolveMetaInstantFormQualificationQuestions } from "@/lib/meta-instant-form-qualification";
-import { normalizeOfferForCampaign } from "@/lib/services/offer-normalization-service";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
+import {
+  getProductIntlLocale,
+  normalizeProductLocale,
+  type ProductLocale,
+} from "@/lib/i18n/config";
+import {
+  formatPreviewCopy,
+  PREPAYWALL_PREVIEW_COPY,
+  type PrepaywallPreviewCopy,
+} from "@/lib/i18n/prepaywall-preview-copy";
 import { cn } from "@/lib/utils";
 
 export type PrepaywallCampaignMode = "buyer" | "seller" | "investor" | "commercial";
@@ -81,36 +91,41 @@ const STORAGE_KEY = "dealflow-guided-onboarding-v3";
 
 const defaultPreviewDraft: PrepaywallCampaignPreviewDraft = {
   campaignMode: "buyer",
-  market: "your market",
-  audience: "qualified prospects",
-  propertyType: "selected inventory",
-  priceRange: "target range",
   dailyBudget: "30",
-  offer: "strategy call",
   planTier: "pro",
 };
 
-function getModeLabel(mode: PrepaywallCampaignMode) {
-  if (mode === "buyer") return "Buyer campaign";
-  if (mode === "seller") return "Seller campaign";
-  if (mode === "investor") return "Investor campaign";
-  return "Commercial campaign";
+function getModeLabel(mode: PrepaywallCampaignMode, copy: PrepaywallPreviewCopy) {
+  return copy.modes[mode].label;
 }
 
-function formatDailyBudget(value?: string, legacyMonthlyValue?: string) {
+function formatDailyBudget(
+  value: string | undefined,
+  legacyMonthlyValue: string | undefined,
+  locale: "en" | "fr" | "es",
+  copy: PrepaywallPreviewCopy,
+) {
   const numeric = Number.parseFloat(String(value ?? "").replace(/[^0-9.]/g, ""));
 
   if (Number.isFinite(numeric) && numeric > 0) {
-    return `$${numeric.toLocaleString("en-US", { maximumFractionDigits: 2 })}/day`;
+    return `${new Intl.NumberFormat(getProductIntlLocale(locale), {
+      style: "currency",
+      currency: "CAD",
+      maximumFractionDigits: 2,
+    }).format(numeric)}/${copy.day}`;
   }
 
   const legacyMonthly = Number.parseFloat(String(legacyMonthlyValue ?? "").replace(/[^0-9.]/g, ""));
 
   if (!Number.isFinite(legacyMonthly) || legacyMonthly <= 0) {
-    return "Budget not set";
+    return copy.budgetNotSet;
   }
 
-  return `$${Math.round(legacyMonthly / 30).toLocaleString("en-US", { maximumFractionDigits: 0 })}/day`;
+  return `${new Intl.NumberFormat(getProductIntlLocale(locale), {
+    style: "currency",
+    currency: "CAD",
+    maximumFractionDigits: 0,
+  }).format(Math.round(legacyMonthly / 30))}/${copy.day}`;
 }
 
 function clean(value: string | undefined, fallback: string) {
@@ -125,153 +140,29 @@ function normalizeSentence(value: string) {
     .trim();
 }
 
-function lowerClean(value: string) {
-  return normalizeSentence(value).toLowerCase();
-}
-
-function compactOffer(offer: string) {
-  return normalizeSentence(normalizeOfferForCampaign(offer).normalizedOffer)
-    .replace(/^free\s+/i, "")
-    .replace(/\s+(strategy call|consultation|brief|report)$/i, " $1")
-    .trim();
-}
-
-function sentenceCase(value: string) {
-  const cleanValue = normalizeSentence(value);
-  return cleanValue ? `${cleanValue.charAt(0).toUpperCase()}${cleanValue.slice(1)}` : cleanValue;
-}
-
-function offerLedHeadline(mode: PrepaywallCampaignMode, offer: string, market: string, propertyType: string, audience: string) {
-  const cleanOffer = compactOffer(offer);
-
-  if (/approval|credit|mortgage|pre[-\s]?approved/i.test(cleanOffer)) {
-    return normalizeSentence(`${cleanOffer} in ${market}`);
-  }
-
-  if (/guarantee|guaranteed|90\s*days?|sale|sell/i.test(cleanOffer)) {
-    return normalizeSentence(`${cleanOffer} for ${market} homeowners`);
-  }
-
-  if (mode === "buyer") {
-    return normalizeSentence(`${sentenceCase(cleanOffer)} for ${lowerClean(audience)}`);
-  }
-
-  if (mode === "seller") {
-    return normalizeSentence(`${sentenceCase(cleanOffer)} for ${market} sellers`);
-  }
-
-  if (mode === "investor") {
-    return normalizeSentence(`${sentenceCase(cleanOffer)} for ${market} investor opportunities`);
-  }
-
-  if (mode === "commercial") {
-    return normalizeSentence(`${sentenceCase(cleanOffer)} for ${lowerClean(propertyType)} in ${market}`);
-  }
-
-  return normalizeSentence(`${sentenceCase(cleanOffer)} in ${market}`);
-}
-
-function offerCta(mode: PrepaywallCampaignMode, offer: string) {
-  const normalizedOffer = normalizeOfferForCampaign(offer, mode);
-  if (normalizedOffer.normalizedOffer) {
-    return normalizedOffer.cta;
-  }
-
-  const normalized = offer.toLowerCase();
-  const cleanOffer = compactOffer(offer);
-
-  if (/approval|credit|mortgage|pre[-\s]?approved/i.test(normalized)) {
-    const scoreMatch = cleanOffer.match(/\b\d{3}\+?\b/);
-    return scoreMatch ? `See ${scoreMatch[0].replace(/\+?$/, "+")} Credit Home Options` : "See Homes I May Qualify For";
-  }
-
-  if (/guarantee|guaranteed|90\s*days?|sale|sell/i.test(normalized)) {
-    return /90/.test(normalized) ? "Check My 90-Day Sale Plan" : "Check My Sale Plan";
-  }
-
-  if (mode === "seller") {
-    return /value|worth/.test(normalized) ? "Get My Value Plan" : "Get My Sale Plan";
-  }
-
-  if (mode === "investor") {
-    return /cash|deal|off-market|brrrr|multifamily/.test(normalized) ? "View Investor Deals" : "Get Deal Brief";
-  }
-
-  if (mode === "commercial") {
-    return /lease|space|industrial|warehouse|office|retail/.test(normalized) ? "Find Available Space" : "Get Space Shortlist";
-  }
-
-  if (/listing|private|off-market/.test(normalized)) {
-    return "See Matching Homes";
-  }
-
-  return cleanOffer && !/strategy call/i.test(cleanOffer)
-    ? `Get ${cleanOffer}`
-    : "Get Buyer Shortlist";
-}
-
-function buildPreviewContent(draft: PrepaywallCampaignPreviewDraft): PreviewContent {
-  const market = clean(draft.market, "your market");
-  const propertyType = clean(draft.propertyType, "selected inventory");
-  const audience = clean(draft.audience, "qualified prospects");
-  const offer = normalizeOfferForCampaign(clean(draft.offer, "strategy call"), draft.campaignMode).normalizedOffer;
-  const priceRange = clean(draft.priceRange, "target range");
-  const cta = offerCta(draft.campaignMode, offer);
-  const offerHeadline = offerLedHeadline(draft.campaignMode, offer, market, propertyType, audience);
-  const offerPhrase = compactOffer(offer);
-
-  if (draft.campaignMode === "seller") {
-    return {
-      eyebrow: `Seller demand preview • ${market}`,
-      headline: offerHeadline,
-      primaryText: normalizeSentence(`${offerPhrase} stays front and center while DealFlow frames local demand, timing, and the next seller conversation.`),
-      cta,
-      funnelHero: offerHeadline,
-      funnelSubtitle: normalizeSentence(`${market} demand, ${priceRange}, and ${lowerClean(offerPhrase)} become one clear seller lead path.`),
-      visualLabel: "Home value concept",
-      proofChips: ["Homeowner timing", "Demand angle", priceRange],
-      readiness: ["Seller offer mapped", "Lead form framed", "Launch checklist started"],
-    };
-  }
-
-  if (draft.campaignMode === "investor") {
-    return {
-      eyebrow: `Investor deal-flow preview • ${market}`,
-      headline: offerHeadline,
-      primaryText: normalizeSentence(`${offerPhrase} becomes a filtered investor angle with asset type, risk, and next-step criteria built into the lead path.`),
-      cta,
-      funnelHero: offerHeadline,
-      funnelSubtitle: normalizeSentence(`${propertyType}, ${priceRange}, and ${lowerClean(offerPhrase)} are organized into a focused deal-flow request.`),
-      visualLabel: "ROI brief concept",
-      proofChips: ["ROI context", propertyType, priceRange],
-      readiness: ["Investor angle mapped", "Qualification path drafted", "Credit-gated assets locked"],
-    };
-  }
-
-  if (draft.campaignMode === "commercial") {
-    return {
-      eyebrow: `Commercial shortlist preview • ${market}`,
-      headline: offerHeadline,
-      primaryText: normalizeSentence(`${offerPhrase} stays visible while DealFlow shapes the use case, location fit, and practical commercial intake path.`),
-      cta,
-      funnelHero: offerHeadline,
-      funnelSubtitle: normalizeSentence(`${audience} see ${lowerClean(offerPhrase)} before requesting the shortlist.`),
-      visualLabel: "Space-fit concept",
-      proofChips: ["Use-case fit", propertyType, priceRange],
-      readiness: ["Commercial criteria mapped", "Funnel shell assembled", "Meta preflight waiting"],
-    };
-  }
+function buildPreviewContent(
+  draft: PrepaywallCampaignPreviewDraft,
+  copy: PrepaywallPreviewCopy,
+): PreviewContent {
+  const market = clean(draft.market, copy.fallback.market);
+  const propertyType = clean(draft.propertyType, copy.fallback.inventory);
+  const audience = clean(draft.audience, copy.fallback.audience);
+  const offer = clean(draft.offer, copy.fallback.offer);
+  const priceRange = clean(draft.priceRange, copy.fallback.range);
+  const mode = copy.modes[draft.campaignMode];
+  const values = { market, property: propertyType, audience, offer, range: priceRange };
+  const headline = normalizeSentence(formatPreviewCopy(copy.campaignHeadline, values));
 
   return {
-    eyebrow: `Buyer access preview • ${market}`,
-    headline: offerHeadline,
-    primaryText: normalizeSentence(`${offerPhrase} stays visible while DealFlow turns the market, budget, and inventory fit into a focused buyer path for ${lowerClean(audience)}.`),
-    cta,
-    funnelHero: offerHeadline,
-    funnelSubtitle: normalizeSentence(`${priceRange}, ${lowerClean(propertyType)}, and ${lowerClean(offerPhrase)} become one simple lead form promise.`),
-    visualLabel: "Listing access concept",
-    proofChips: ["Buyer intent", propertyType, priceRange],
-    readiness: ["Buyer offer mapped", "Audience path drafted", "Preview ready for checkout"],
+    eyebrow: formatPreviewCopy(mode.eyebrow, values),
+    headline,
+    primaryText: normalizeSentence(formatPreviewCopy(mode.primary, values)),
+    cta: formatPreviewCopy(copy.campaignCta, values),
+    funnelHero: headline,
+    funnelSubtitle: normalizeSentence(formatPreviewCopy(mode.subtitle, values)),
+    visualLabel: mode.visual,
+    proofChips: [mode.proof[0], mode.proof[1], priceRange],
+    readiness: [...mode.readiness],
   };
 }
 
@@ -340,10 +231,14 @@ function CompactLockedPill({
 function MockAdPreview({
   content,
   draft,
+  uiCopy,
+  campaignLocale,
   compact = false,
 }: {
   content: PreviewContent;
   draft: PrepaywallCampaignPreviewDraft;
+  uiCopy: PrepaywallPreviewCopy;
+  campaignLocale: ProductLocale;
   compact?: boolean;
 }) {
   const tones = toneClasses(draft.campaignMode);
@@ -365,7 +260,7 @@ function MockAdPreview({
           ? "left-3 top-3 px-2 py-0.5 text-[8px] tracking-[0.12em]"
           : "right-3 top-3 px-2.5 py-1 text-[9px] tracking-[0.16em]",
       )}>
-        {compact ? "Ad preview" : "DealFlow Preview"}
+        {compact ? uiCopy.adPreview : uiCopy.dealflowPreview}
       </div>
 
       <div className={cn(
@@ -378,7 +273,7 @@ function MockAdPreview({
             {content.visualLabel}
           </span>
           <span className="rounded-full border border-white/12 bg-black/38 px-2.5 py-1 text-[9px] font-semibold text-white/64">
-            {formatDailyBudget(draft.dailyBudget, draft.monthlyBudget)}
+            {formatDailyBudget(draft.dailyBudget, draft.monthlyBudget, campaignLocale, uiCopy)}
           </span>
         </div>
         <div className={cn(
@@ -397,7 +292,7 @@ function MockAdPreview({
       </div>
 
       <div className="pointer-events-none absolute -bottom-5 left-1/2 -translate-x-1/2 rotate-[-8deg] select-none text-5xl font-black uppercase tracking-[0.12em] text-white/[0.035]">
-        Preview
+        {uiCopy.previewWatermark}
       </div>
     </div>
   );
@@ -406,31 +301,36 @@ function MockAdPreview({
 function FunnelPreviewMock({
   content,
   draft,
+  campaignCopy,
+  campaignLocale,
   compact = false,
 }: {
   content: PreviewContent;
   draft: PrepaywallCampaignPreviewDraft;
+  campaignCopy: PrepaywallPreviewCopy;
+  campaignLocale: ProductLocale;
   compact?: boolean;
 }) {
   const agentName = [draft.agentFirstName, draft.agentLastName].filter(Boolean).join(" ");
   const funnel = buildWinningFunnel({
-    location: draft.market || "your market",
-    market: draft.market || "your market",
-    audience: draft.audience || "qualified local prospects",
-    offer: draft.offer || content.funnelHero || "a personalized real estate plan",
-    key_offer: draft.offer || content.funnelHero || "a personalized real estate plan",
+    location: draft.market || campaignCopy.fallback.market,
+    market: draft.market || campaignCopy.fallback.market,
+    audience: draft.audience || campaignCopy.fallback.audience,
+    offer: draft.offer || content.funnelHero || campaignCopy.fallback.offer,
+    key_offer: draft.offer || content.funnelHero || campaignCopy.fallback.offer,
     market_type: draft.campaignMode,
     funnel_goal: "survey",
     leadCaptureMode: draft.leadCaptureMode ?? draft.lead_capture_mode,
-    agentName,
-    brokerageName: draft.agentCompanyName || "Local real estate team",
+    language: campaignLocale,
+    agentName: agentName || campaignCopy.fallback.advisor,
+    brokerageName: draft.agentCompanyName || campaignCopy.fallback.team,
   });
 
   return (
     <div onContextMenu={(event) => event.preventDefault()}>
       <CanonicalFunnelRenderer
-        brandLabel={draft.agentCompanyName || "Local real estate team"}
-        campaignName={getModeLabel(draft.campaignMode)}
+        brandLabel={draft.agentCompanyName || campaignCopy.fallback.team}
+        campaignName={getModeLabel(draft.campaignMode, campaignCopy)}
         compact={compact}
         funnel={funnel}
         market={draft.market}
@@ -443,10 +343,16 @@ function FunnelPreviewMock({
 function InstantFormSetupPreview({
   content,
   draft,
+  uiCopy,
+  campaignCopy,
+  campaignLocale,
   compact = false,
 }: {
   content: PreviewContent;
   draft: PrepaywallCampaignPreviewDraft;
+  uiCopy: PrepaywallPreviewCopy;
+  campaignCopy: PrepaywallPreviewCopy;
+  campaignLocale: ProductLocale;
   compact?: boolean;
 }) {
   const leadCaptureMode =
@@ -457,16 +363,11 @@ function InstantFormSetupPreview({
       : "quality_funnel";
   const qualificationQuestions = resolveMetaInstantFormQualificationQuestions({
     leadCaptureMode,
-    language: draft.funnelLanguage ?? "en",
+    language: draft.funnelLanguage ?? campaignLocale,
     customQuestions: draft.leadFormQuestions,
   });
-  const fields = ["Full name", "Email", "Phone number", ...qualificationQuestions];
-  const readiness = [
-    "Meta ad account and Page selected",
-    "Exact Instant Form definition prepared",
-    "Privacy policy URL ready",
-    "Lead persistence and GHL routing prepared",
-  ];
+  const fields = [campaignCopy.fullName, campaignCopy.email, campaignCopy.phone, ...qualificationQuestions];
+  const readiness = uiCopy.instantReadiness;
 
   return (
     <div
@@ -480,23 +381,23 @@ function InstantFormSetupPreview({
       <div className="flex items-start gap-3">
         <MiniIconTile icon={FileText} className="text-cyan-100" />
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100/70">Meta Instant Form setup</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100/70">{uiCopy.instantSetup}</p>
           <h4 className={cn("mt-2 font-semibold tracking-[-0.04em] text-white", compact ? "text-base" : "text-xl")}>
-            Leads stay inside Facebook and Instagram
+            {uiCopy.instantTitle}
           </h4>
           <p className={cn("mt-2 text-white/62", compact ? "text-xs leading-5" : "text-sm leading-6")}>
-            {content.headline} uses a native Meta lead form instead of a public funnel preview.
+            {formatPreviewCopy(uiCopy.instantBody, { headline: content.headline })}
           </p>
         </div>
       </div>
 
       <div className={cn("mt-4 rounded-[18px] border border-white/10 bg-black/20", compact ? "p-3" : "p-4")}>
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/44">Lead form fields</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/44">{uiCopy.leadFields}</p>
         <div className="mt-3 grid gap-2">
           {fields.map((field) => (
             <div key={field} className={cn("flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-3", compact ? "py-1.5 text-xs" : "py-2 text-sm")}>
               <span className="font-medium text-white/84">{field}</span>
-              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-200">Required</span>
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-200">{uiCopy.required}</span>
             </div>
           ))}
         </div>
@@ -512,16 +413,16 @@ function InstantFormSetupPreview({
       </div>
 
       <div className={cn("mt-4 rounded-[18px] border border-amber-300/16 bg-amber-300/[0.055] px-3 text-xs text-amber-100/82", compact ? "py-2 leading-4" : "py-2.5 leading-5")}>
-        Preview only: no Meta form, campaign, ad set, ad, GHL record, SMS, or email is created here. At an authorized launch, DealFlow creates or reuses the exact form only after its provider and delivery preflight passes.
+        {uiCopy.instantSafety}
       </div>
 
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         <div className="rounded-2xl border border-white/10 bg-black/16 px-3 py-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">Campaign</p>
-          <p className="mt-1 truncate text-xs font-semibold text-white/82">{getModeLabel(draft.campaignMode)}</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">{uiCopy.campaign}</p>
+          <p className="mt-1 truncate text-xs font-semibold text-white/82">{getModeLabel(draft.campaignMode, campaignCopy)}</p>
         </div>
         <div className="rounded-2xl border border-white/10 bg-black/16 px-3 py-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">CTA</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">{uiCopy.cta}</p>
           <p className="mt-1 truncate text-xs font-semibold text-white/82">{content.cta}</p>
         </div>
       </div>
@@ -535,17 +436,19 @@ export function PrepaywallCampaignPreview({
   density = "standard",
   className,
 }: PrepaywallCampaignPreviewProps) {
+  const { locale } = useProductI18n();
   const safeDraft = { ...defaultPreviewDraft, ...draft };
-  safeDraft.offer = normalizeOfferForCampaign(safeDraft.offer, safeDraft.campaignMode).normalizedOffer;
-  const content = buildPreviewContent(safeDraft);
-  const agentName = [safeDraft.agentFirstName, safeDraft.agentLastName].filter(Boolean).join(" ") || "Agent not set";
+  const uiCopy = PREPAYWALL_PREVIEW_COPY[locale];
+  const campaignLocale = normalizeProductLocale(safeDraft.funnelLanguage ?? locale);
+  const campaignCopy = PREPAYWALL_PREVIEW_COPY[campaignLocale];
+  safeDraft.offer = clean(safeDraft.offer, campaignCopy.fallback.offer);
+  const content = buildPreviewContent(safeDraft, campaignCopy);
+  const agentName = [safeDraft.agentFirstName, safeDraft.agentLastName].filter(Boolean).join(" ") || uiCopy.fallback.advisor;
   const packageMode = variant === "package";
   const compactMode = !packageMode;
   const sidecarMode = packageMode && density === "sidecar";
   const instantFormCampaign = isInstantFormCampaign(safeDraft);
-  const previewSafetyCopy = instantFormCampaign
-    ? "Nothing is sent, charged, or generated from this preview. No Meta instant form, Meta campaign, SMS, lead, Stripe charge, AI image, AI video, GHL record, or public landing page is created here."
-    : "Nothing is sent, charged, or generated from this preview. No Meta campaign, SMS, lead, Stripe charge, AI image, or AI video is created here.";
+  const previewSafetyCopy = instantFormCampaign ? uiCopy.safetyInstant : uiCopy.safetyFunnel;
 
   if (compactMode) {
     return (
@@ -556,33 +459,33 @@ export function PrepaywallCampaignPreview({
         <div className="grid gap-3">
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="df-eyebrow text-cyan-100/76">Campaign preview</p>
+              <p className="df-eyebrow text-cyan-100/76">{uiCopy.previewTitle}</p>
               <h3 className="mt-1 line-clamp-2 text-lg font-semibold leading-tight tracking-[-0.045em] text-white">
                 {content.headline}
               </h3>
               <p className="mt-1 line-clamp-1 text-sm text-white/56">
-                Sample CTA: {content.cta}. Full generation unlocks after checkout and credits.
+                {formatPreviewCopy(uiCopy.sampleCta, { cta: content.cta })}
               </p>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-2">
-              <Badge className="border-cyan-200/20 bg-cyan-300/[0.055] text-cyan-100">Watermarked</Badge>
-              <Badge className="border-violet-200/20 bg-violet-300/[0.055] text-violet-100">Locked</Badge>
+              <Badge className="border-cyan-200/20 bg-cyan-300/[0.055] text-cyan-100">{uiCopy.watermarked}</Badge>
+              <Badge className="border-violet-200/20 bg-violet-300/[0.055] text-violet-100">{uiCopy.locked}</Badge>
             </div>
           </div>
 
           <div className="grid min-w-0 items-start gap-3 lg:grid-cols-2">
             <div className="flex min-w-0 justify-center">
               <div className="w-full max-w-[320px]">
-                <MockAdPreview content={content} draft={safeDraft} compact />
+                <MockAdPreview content={content} draft={safeDraft} uiCopy={uiCopy} campaignLocale={campaignLocale} compact />
               </div>
             </div>
 
             <div className="flex min-w-0 justify-center">
               <div className="w-full max-w-[320px]">
               {instantFormCampaign ? (
-                <InstantFormSetupPreview content={content} draft={safeDraft} compact />
+                <InstantFormSetupPreview content={content} draft={safeDraft} uiCopy={uiCopy} campaignCopy={campaignCopy} campaignLocale={campaignLocale} compact />
               ) : (
-                <FunnelPreviewMock content={content} draft={safeDraft} compact />
+                <FunnelPreviewMock content={content} draft={safeDraft} campaignCopy={campaignCopy} campaignLocale={campaignLocale} compact />
               )}
               </div>
             </div>
@@ -592,7 +495,7 @@ export function PrepaywallCampaignPreview({
                 <div className="flex min-w-0 items-start gap-3">
                   <MiniIconTile icon={FileText} className="size-8 rounded-xl" />
                   <div className="min-w-0">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/44">Copy angle</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/44">{uiCopy.copyAngle}</p>
                     <h4 className="mt-1 line-clamp-1 text-sm font-semibold leading-tight text-white">{content.headline}</h4>
                     <p className="mt-1 line-clamp-1 text-xs leading-5 text-white/56">{content.primaryText}</p>
                   </div>
@@ -604,10 +507,10 @@ export function PrepaywallCampaignPreview({
           <div className="grid gap-2">
             <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-4">
               {[
-                ["Agent", agentName],
-                ["Market", safeDraft.market || "Not set"],
-                ["Audience", safeDraft.audience || "Not set"],
-                ["Offer", safeDraft.offer || "Not set"],
+                [uiCopy.agent, agentName],
+                [uiCopy.market, safeDraft.market || uiCopy.notSet],
+                [uiCopy.audience, safeDraft.audience || uiCopy.notSet],
+                [uiCopy.offer, safeDraft.offer || uiCopy.notSet],
               ].map(([label, value]) => (
                 <div key={label} className="min-w-0 rounded-full border border-white/10 bg-white/[0.035] px-3 py-2">
                   <p className="truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-white/40">{label}</p>
@@ -617,10 +520,10 @@ export function PrepaywallCampaignPreview({
             </div>
 
             <div className="grid gap-2 sm:grid-cols-4">
-              <CompactLockedPill icon={ImageIcon} label="Static locked" />
-              <CompactLockedPill icon={Sparkles} label="AI image generation locked" />
-              <CompactLockedPill icon={PlayCircle} label="AI video generation locked" />
-              <CompactLockedPill icon={MonitorSmartphone} label="Full-resolution locked" />
+              <CompactLockedPill icon={ImageIcon} label={uiCopy.lockedStatic} />
+              <CompactLockedPill icon={Sparkles} label={uiCopy.lockedAiImage} />
+              <CompactLockedPill icon={PlayCircle} label={uiCopy.lockedAiVideo} />
+              <CompactLockedPill icon={MonitorSmartphone} label={uiCopy.lockedResolution} />
             </div>
 
             <div className="flex min-w-0 items-start gap-2 rounded-[18px] border border-white/10 bg-black/18 px-3 py-2 text-[11px] leading-4 text-white/52">
@@ -644,15 +547,15 @@ export function PrepaywallCampaignPreview({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="df-eyebrow text-cyan-100/76">Campaign package preview</p>
+          <p className="df-eyebrow text-cyan-100/76">{uiCopy.packageTitle}</p>
           <h3 className={cn("mt-2 line-clamp-2 font-semibold tracking-[-0.05em]", sidecarMode ? "text-lg" : "text-2xl")}>
             {content.headline}
           </h3>
           <p className={cn("mt-2 text-sm text-white/58", sidecarMode ? "line-clamp-2 leading-5" : "leading-6")}>
-            Sample CTA: {content.cta}. Full generation unlocks after checkout and credits.
+            {formatPreviewCopy(uiCopy.sampleCta, { cta: content.cta })}
           </p>
         </div>
-        <Badge className="border-cyan-200/20 bg-cyan-300/[0.055] text-cyan-100">Watermarked</Badge>
+        <Badge className="border-cyan-200/20 bg-cyan-300/[0.055] text-cyan-100">{uiCopy.watermarked}</Badge>
       </div>
 
       <div className={cn(
@@ -661,16 +564,16 @@ export function PrepaywallCampaignPreview({
       )}>
         <div className="flex min-w-0 justify-center">
           <div className={cn("w-full", sidecarMode ? "max-w-[320px]" : "max-w-[420px]")}>
-            <MockAdPreview content={content} draft={safeDraft} compact={sidecarMode} />
+            <MockAdPreview content={content} draft={safeDraft} uiCopy={uiCopy} campaignLocale={campaignLocale} compact={sidecarMode} />
           </div>
         </div>
 
         <div className="flex min-w-0 justify-center">
           <div className={cn("w-full", sidecarMode ? "max-w-[320px]" : "max-w-[420px]")}>
           {instantFormCampaign ? (
-            <InstantFormSetupPreview content={content} draft={safeDraft} compact={sidecarMode} />
+            <InstantFormSetupPreview content={content} draft={safeDraft} uiCopy={uiCopy} campaignCopy={campaignCopy} campaignLocale={campaignLocale} compact={sidecarMode} />
           ) : (
-            <FunnelPreviewMock content={content} draft={safeDraft} compact={sidecarMode} />
+            <FunnelPreviewMock content={content} draft={safeDraft} campaignCopy={campaignCopy} campaignLocale={campaignLocale} compact={sidecarMode} />
           )}
           </div>
         </div>
@@ -681,7 +584,7 @@ export function PrepaywallCampaignPreview({
               <div className="flex items-start gap-3">
                 <MiniIconTile icon={FileText} />
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/44">Copy preview</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/44">{uiCopy.copyPreview}</p>
                   <h4 className="mt-2 text-lg font-semibold leading-tight text-white">{content.headline}</h4>
                   <p className="mt-2 text-sm leading-6 text-white/58">{content.primaryText}</p>
                 </div>
@@ -693,10 +596,10 @@ export function PrepaywallCampaignPreview({
 
       <div className={cn("mt-3 grid gap-2", sidecarMode ? "sm:grid-cols-4" : "sm:grid-cols-2")}>
         {[
-          ["Agent", agentName],
-          ["Market", safeDraft.market || "Not set"],
-          ["Audience", safeDraft.audience || "Not set"],
-          ["Offer", safeDraft.offer || "Not set"],
+          [uiCopy.agent, agentName],
+          [uiCopy.market, safeDraft.market || uiCopy.notSet],
+          [uiCopy.audience, safeDraft.audience || uiCopy.notSet],
+          [uiCopy.offer, safeDraft.offer || uiCopy.notSet],
         ].map(([label, value]) => (
           <div key={label} className={cn("min-w-0 border border-white/10 bg-white/[0.035]", sidecarMode ? "rounded-full px-3 py-2" : "rounded-2xl px-3 py-2.5")}>
             <p className="text-xs text-white/46">{label}</p>
@@ -709,7 +612,7 @@ export function PrepaywallCampaignPreview({
         <div className="flex items-start gap-3">
           <MiniIconTile icon={ShieldCheck} className={cn("text-emerald-100", sidecarMode ? "size-8 rounded-xl" : "")} />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-white">Launch readiness summary</p>
+            <p className="text-sm font-semibold text-white">{uiCopy.readinessTitle}</p>
             <div className={cn("mt-3 grid gap-2", sidecarMode ? "sm:grid-cols-3" : "sm:grid-cols-3")}>
               {content.readiness.map((item) => (
                 <div key={item} className="flex min-w-0 items-center gap-2 rounded-2xl border border-white/10 bg-black/14 px-3 py-2 text-xs text-white/64">
@@ -723,10 +626,10 @@ export function PrepaywallCampaignPreview({
       </div>
 
       <div className={cn("mt-3 grid gap-2", sidecarMode ? "grid-cols-2" : "sm:grid-cols-2")}>
-        <CompactLockedPill icon={ImageIcon} label="Static creative locked" />
-        <CompactLockedPill icon={Sparkles} label="AI image locked" />
-        <CompactLockedPill icon={PlayCircle} label="AI video locked" />
-        <CompactLockedPill icon={MonitorSmartphone} label="Full-resolution files locked" />
+        <CompactLockedPill icon={ImageIcon} label={uiCopy.lockedStatic} />
+        <CompactLockedPill icon={Sparkles} label={uiCopy.lockedAiImage} />
+        <CompactLockedPill icon={PlayCircle} label={uiCopy.lockedAiVideo} />
+        <CompactLockedPill icon={MonitorSmartphone} label={uiCopy.lockedResolution} />
       </div>
 
       <div className="mt-3 flex items-center gap-2 rounded-[18px] border border-white/10 bg-black/18 px-3 py-2.5 text-xs leading-5 text-white/54">

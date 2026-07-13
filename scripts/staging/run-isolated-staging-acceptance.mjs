@@ -19,6 +19,9 @@ const EXPECTED_REPO = "/private/tmp/dealflow-overnight-release-20260712";
 const EXPECTED_BRANCH = "codex/dealflow-overnight-release-20260712";
 const EXPECTED_STAGING_HOST = "dealflow-os-rebuild-selfserve-clean.vercel.app";
 const EXPECTED_STAGING_BASE_URL = `https://${EXPECTED_STAGING_HOST}`;
+const EXPECTED_SECOND_PARTNER_HOST =
+  "dealflow-os-rebuild-selfserve-clean-partner-two-qibh.vercel.app";
+const EXPECTED_SECOND_PARTNER_BASE_URL = `https://${EXPECTED_SECOND_PARTNER_HOST}`;
 const EXPECTED_SUPABASE_FINGERPRINT =
   "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
 const EXPECTED_SUPABASE_SAFE_SUFFIX = "qibh";
@@ -29,9 +32,9 @@ const EXPECTED_VERCEL_ORG_ID_FINGERPRINT =
 const EXPECTED_VERCEL_PROJECT_NAME = "dealflow-os-rebuild-selfserve-clean";
 const EXPECTED_QA_EMAIL = "dealflow-staging-20260712@example.com";
 const EXPECTED_OPERATOR_EMAIL = "dealflow-staging-operator-20260712@example.com";
-const EXPECTED_MIGRATION_COUNT = 99;
+const EXPECTED_MIGRATION_COUNT = 102;
 const EXPECTED_FINAL_MIGRATION =
-  "20260713024000_add_durable_ghl_periodic_form_sweeps.sql";
+  "20260713027000_add_ghl_location_display_name_finalization.sql";
 const EXECUTION_AUTHORIZATION = "AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1";
 const EXPECTED_LOCAL_GATE_STATUS = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
 const EXPECTED_HOSTED_DEFERRALS = Object.freeze([
@@ -41,11 +44,13 @@ const EXPECTED_HOSTED_DEFERRALS = Object.freeze([
 ]);
 const ZERO_EXTERNAL_EFFECTS_ATTESTATION =
   "DEALFLOW_ISOLATED_STAGING_QIBH_ZERO_EXTERNAL_EFFECTS_V1";
-const EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 56;
+const EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 60;
 const PAID_CAMPAIGN_ID = "d2000000-0000-4000-8000-000000000001";
 const PAID_ORGANIZATION_ID = "d1000000-0000-4000-8000-000000000001";
 const ATTACKER_ORGANIZATION_ID = "d1000000-0000-4000-8000-000000000011";
 const ATTACKER_EMAIL = "dealflow-staging-attacker-20260712@example.com";
+const DELETION_ORGANIZATION_ID = "d1000000-0000-4000-8000-000000000019";
+const DELETION_EMAIL = "dealflow-staging-deletion-20260712@example.com";
 const PUBLIC_FUNNEL_SLUG = "df-staging-20260712-funnel";
 const EXECUTABLE = process.execPath;
 const PROVIDER_SENSITIVE_ENV_NAMES = [
@@ -80,6 +85,7 @@ const REQUIRED_FALSE_CONTROLS = [
   "ALLOW_AI_TEXT_GENERATION",
   "ALLOW_OPENAI_IMAGE_GENERATION",
   "ALLOW_HEYGEN_VIDEO_GENERATION",
+  "ALLOW_HEYGEN_LEGACY_FALLBACK",
   "ALLOW_HIGGSFIELD_VIDEO_GENERATION",
   "ALLOW_ELEVENLABS_VOICE_GENERATION",
   "ALLOW_PROVIDER_LOOPBACK_TEST_TRANSPORT",
@@ -123,6 +129,9 @@ const REQUIRED_FALSE_CONTROLS = [
   "STRIPE_FORCE_TEST_MODE",
   "LEAD_CAPTURE_LOAD_TEST_BYPASS_ENABLED",
   "LOAD_TEST_ALLOW_SYNTHETIC_LEAD_CAPTURE",
+  "ACCOUNT_DELETION_EXECUTION_ENABLED",
+  "ACCOUNT_DELETION_PROVIDER_WRITES_ENABLED",
+  "GHL_ACCOUNT_DELETION_PROVIDER_WRITES_ENABLED",
 ];
 const REQUIRED_EQUAL_CONTROLS = Object.freeze({
   NEXT_TELEMETRY_DISABLED: "1",
@@ -593,13 +602,14 @@ function runCapturedProofCommand(command, args, label, extraEnvironment = {}) {
   };
 }
 
-function seedEnvironment(partnerBaseUrl) {
+function seedEnvironment(partnerBaseUrl, secondPartnerBaseUrl) {
   return {
     ...childBaseEnvironment(),
     DEALFLOW_DEPLOYMENT_TARGET: "staging",
     VERCEL_ENV: "preview",
     NEXT_PUBLIC_APP_URL: EXPECTED_STAGING_BASE_URL,
     STAGING_PARTNER_APP_URL: partnerBaseUrl,
+    STAGING_SECOND_PARTNER_APP_URL: secondPartnerBaseUrl,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -618,11 +628,11 @@ function parseSingleJsonOutput(output, label) {
   }
 }
 
-function runSeed(partnerBaseUrl) {
+function runSeed(partnerBaseUrl, secondPartnerBaseUrl) {
   const secrets = protectedRuntimeValues();
   const result = run(EXECUTABLE, [join(EXPECTED_REPO, "scripts", "seed-isolated-staging.mjs")], {
     label: "isolated synthetic staging seed",
-    env: seedEnvironment(partnerBaseUrl),
+    env: seedEnvironment(partnerBaseUrl, secondPartnerBaseUrl),
     timeoutMs: 5 * 60_000,
     secrets,
   });
@@ -633,12 +643,21 @@ function runSeed(partnerBaseUrl) {
     parsed.safeSuffix !== EXPECTED_SUPABASE_SAFE_SUFFIX ||
     parsed.providerCredentialPresent !== false ||
     parsed.providerMutationPerformed !== false ||
-    parsed.exactSyntheticAuthUserCount !== 7 ||
+    parsed.exactSyntheticAuthUserCount !== 10 ||
     parsed.exactFixtureCountsVerified !== true ||
     parsed.partner?.domainHost !== new URL(partnerBaseUrl).hostname ||
     parsed.partner?.domainVerified !== true ||
     parsed.partner?.sslActive !== true ||
     parsed.partner?.attributionBoundAtomically !== true ||
+    parsed.partnerTwo?.domainHost !== new URL(secondPartnerBaseUrl).hostname ||
+    parsed.partnerTwo?.domainVerified !== true ||
+    parsed.partnerTwo?.sslActive !== true ||
+    parsed.partnerTwo?.attributionBoundAtomically !== true ||
+    parsed.reportingFixtures?.freshConfirmed !== true ||
+    parsed.reportingFixtures?.staleConfirmed !== true ||
+    parsed.reportingFixtures?.failedRefreshPreservesConfirmed !== true ||
+    parsed.deletionRetentionAuthority?.approvedAfter !== true ||
+    parsed.deletionRetentionAuthority?.productionDefaultChanged !== false ||
     parsed.failureFixtures?.providerMutationPerformed !== false
   ) {
     throw new Error("The isolated staging seed did not return the exact sanitized fixture attestation");
@@ -663,12 +682,98 @@ function assertSeedReplayIsIdempotent(first, second) {
     JSON.stringify(first.scenarios) !== JSON.stringify(second.scenarios) ||
     JSON.stringify(first.organizations) !== JSON.stringify(second.organizations) ||
     JSON.stringify(first.partner) !== JSON.stringify(second.partner) ||
+    JSON.stringify(first.partnerTwo) !== JSON.stringify(second.partnerTwo) ||
+    JSON.stringify(first.reportingFixtures) !== JSON.stringify(second.reportingFixtures) ||
     JSON.stringify(first.failureFixtures) !== JSON.stringify(second.failureFixtures) ||
+    first.deletionRetentionAuthority?.pendingBeforeApproval !== true ||
+    first.deletionRetentionAuthority?.rejectedWhilePending !== true ||
+    second.deletionRetentionAuthority?.reusedExistingSyntheticApproval !== true ||
     second.activationReplayIdempotent !== true ||
     second.metaActivationReplayIdempotent !== true
   ) {
     throw new Error("Staging fixture replay was not exactly idempotent");
   }
+}
+
+function runProviderIndependentStagingProof(baseUrl) {
+  const environment = {
+    ...childBaseEnvironment(),
+    DEALFLOW_DEPLOYMENT_TARGET: "staging",
+    STAGING_ACCEPTANCE_BASE_URL: baseUrl,
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    STAGING_QA_PASSWORD: process.env.STAGING_QA_PASSWORD,
+    INTERNAL_SYSTEM_JOBS_SECRET: process.env.INTERNAL_SYSTEM_JOBS_SECRET,
+    ALLOW_META_LIVE_LAUNCH: "false",
+    ALLOW_META_CAPI_EVENTS: "false",
+    GHL_SANDBOX_WRITES_ENABLED: "false",
+    INTERNAL_LEAD_SMS_ENABLED: "false",
+    SUPPORT_EXTERNAL_DELIVERY_ENABLED: "false",
+    SUPPORT_NOTIFICATION_DELIVERY_MODE: "internal_operator_inbox",
+    ACCOUNT_DELETION_EXECUTION_ENABLED: "false",
+    ACCOUNT_DELETION_PROVIDER_WRITES_ENABLED: "false",
+    GHL_ACCOUNT_DELETION_PROVIDER_WRITES_ENABLED: "false",
+  };
+  const result = run(
+    EXECUTABLE,
+    [join(EXPECTED_REPO, "scripts", "staging", "run-provider-independent-staging-proof.mjs")],
+    {
+      label: "provider-independent isolated staging journey proof",
+      env: environment,
+      timeoutMs: 10 * 60_000,
+      secrets: protectedRuntimeValues(),
+    },
+  );
+  const parsed = parseSingleJsonOutput(
+    result.stdout,
+    "provider-independent isolated staging journey proof",
+  );
+  if (
+    parsed.status !== "PASS" ||
+    parsed.projectFingerprint !== EXPECTED_SUPABASE_FINGERPRINT ||
+    parsed.safeSuffix !== EXPECTED_SUPABASE_SAFE_SUFFIX ||
+    parsed.billingLifecycle?.cancellationApplied !== true ||
+    parsed.billingLifecycle?.staleReactivationRejected !== true ||
+    parsed.billingLifecycle?.reactivationApplied !== true ||
+    parsed.billingLifecycle?.exactReplayIdempotent !== true ||
+    parsed.leadCapture?.durableRowCount !== 1 ||
+    parsed.leadCapture?.duplicateReplaySameIdentity !== true ||
+    parsed.leadCapture?.providerEffectsEnabled !== 0 ||
+    parsed.support?.deliveryMode !== "internal_operator_inbox" ||
+    parsed.support?.externalCommunicationPerformed !== false ||
+    parsed.worker?.crashedLeaseRecovered !== true ||
+    parsed.worker?.futureRetryPreserved !== true ||
+    parsed.worker?.deadLetterPreserved !== true ||
+    parsed.worker?.deadLetterReviewed !== true ||
+    parsed.worker?.completedReplayNoOp !== true ||
+    parsed.worker?.providerTableStateUnchanged !== true ||
+    parsed.reporting?.freshConfirmed !== true ||
+    parsed.reporting?.staleDetected !== true ||
+    parsed.reporting?.failedRefreshPreservedLastConfirmed !== true ||
+    parsed.partnerIsolation?.configuredPartnerCount !== 2 ||
+    parsed.partnerIsolation?.separateChildTenantCount !== 2 ||
+    parsed.partnerIsolation?.crossPartnerCampaignDenied !== true ||
+    parsed.accountDeletion?.taskCount !== 16 ||
+    parsed.accountDeletion?.suspended !== true ||
+    parsed.accountDeletion?.executionEnabled !== false ||
+    parsed.accountDeletion?.providerWritesEnabled !== false ||
+    parsed.accountDeletion?.providerReceiptCount !== 0 ||
+    parsed.accountDeletion?.hostedWorkerFailClosed !== true ||
+    parsed.accountDeletion?.fullProviderOffboardingPerformed !== false ||
+    parsed.externalProviderAcceptance?.meta !== "BLOCKED_CREDENTIAL_AND_PROVIDER_AUTHORITY" ||
+    parsed.externalProviderAcceptance?.ghl !== "BLOCKED_CREDENTIAL_AND_PROVIDER_AUTHORITY" ||
+    parsed.externalProviderAcceptance?.higgsfield !==
+      "BLOCKED_CREDENTIAL_AND_PAID_PROVIDER_AUTHORITY" ||
+    parsed.externalProviderAcceptance?.twilio !==
+      "BLOCKED_CREDENTIAL_AND_COMMUNICATION_AUTHORITY" ||
+    parsed.productionMutationPerformed !== false ||
+    parsed.providerMutationPerformed !== false ||
+    parsed.realCustomerDataAccessed !== false
+  ) {
+    throw new Error("Provider-independent staging proof returned an incomplete attestation");
+  }
+  return parsed;
 }
 
 function locateInstalledVercelCli() {
@@ -790,6 +895,36 @@ function configureHostedStagingEnvironment(vercel, environment) {
   };
 }
 
+function fetchAuthoritativeVercelDeployment(vercel, deploymentId, label) {
+  if (!/^dpl_[A-Za-z0-9]+$/.test(deploymentId)) {
+    throw new Error(`${label} returned an invalid Vercel deployment id`);
+  }
+  const response = run(
+    EXECUTABLE,
+    [
+      vercel.path,
+      "api",
+      `/v13/deployments/${deploymentId}`,
+      "--raw",
+      "--no-color",
+    ],
+    {
+      label: `${label} authoritative Vercel deployment API read`,
+      env: vercelEnvironment(),
+      timeoutMs: 3 * 60_000,
+      secrets: protectedRuntimeValues(),
+    },
+  );
+  const deployment = parseSingleJsonOutput(
+    response.stdout,
+    `${label} authoritative Vercel deployment API read`,
+  );
+  if (deployment.id !== deploymentId) {
+    throw new Error(`${label} authoritative Vercel deployment id does not match`);
+  }
+  return deployment;
+}
+
 function deployExactCommit(identity, vercel) {
   const args = [
     vercel.path,
@@ -830,11 +965,17 @@ function deployExactCommit(identity, vercel) {
   );
   const inspected = parseSingleJsonOutput(inspect.stdout, "Vercel deployment inspection");
   const deploymentId = inspected.id ?? inspected.uid ?? null;
-  const projectId = inspected.projectId ?? inspected.project?.id;
-  const metadata = inspected.meta ?? inspected.metadata ?? {};
+  const authoritative = fetchAuthoritativeVercelDeployment(
+    vercel,
+    deploymentId,
+    "isolated staging deployment",
+  );
+  const projectId = authoritative.projectId ?? authoritative.project?.id;
+  const metadata = authoritative.meta ?? authoritative.metadata ?? {};
   if (
     typeof deploymentId !== "string" ||
     deploymentId.length === 0 ||
+    authoritative.url !== uniqueDeploymentUrl.hostname ||
     sha256(String(projectId)) !== EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT ||
     metadata.dealflowCommit !== identity.commit ||
     metadata.dealflowTree !== identity.tree ||
@@ -868,11 +1009,17 @@ function proveStableAliasTargetsExactDeployment(identity, deployment, vercel) {
     },
   );
   const inspected = parseSingleJsonOutput(inspect.stdout, "stable Vercel alias inspection");
-  const metadata = inspected.meta ?? inspected.metadata ?? {};
-  const projectId = inspected.projectId ?? inspected.project?.id;
   const deploymentId = inspected.id ?? inspected.uid ?? null;
+  const authoritative = fetchAuthoritativeVercelDeployment(
+    vercel,
+    deploymentId,
+    "stable isolated-staging alias",
+  );
+  const metadata = authoritative.meta ?? authoritative.metadata ?? {};
+  const projectId = authoritative.projectId ?? authoritative.project?.id;
   if (
     deploymentId !== deployment.deploymentId ||
+    authoritative.url !== deployment.deploymentHost ||
     sha256(String(projectId)) !== EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT ||
     metadata.dealflowCommit !== identity.commit ||
     metadata.dealflowTree !== identity.tree ||
@@ -883,6 +1030,72 @@ function proveStableAliasTargetsExactDeployment(identity, deployment, vercel) {
   return {
     deploymentId,
     stableHost: EXPECTED_STAGING_HOST,
+    exactCommit: identity.commit,
+    exactTree: identity.tree,
+    projectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT,
+  };
+}
+
+function configureAndProveSecondPartnerAlias(identity, deployment, vercel) {
+  if (
+    PRODUCTION_OR_SHARED_HOSTS.has(EXPECTED_SECOND_PARTNER_HOST) ||
+    EXPECTED_SECOND_PARTNER_HOST === EXPECTED_STAGING_HOST
+  ) {
+    throw new Error("The second white-label staging alias is not isolated");
+  }
+  run(
+    EXECUTABLE,
+    [
+      vercel.path,
+      "alias",
+      "set",
+      deployment.deploymentHost,
+      EXPECTED_SECOND_PARTNER_HOST,
+      "--no-color",
+    ],
+    {
+      label: "configure second isolated white-label staging alias",
+      env: vercelEnvironment(),
+      timeoutMs: 3 * 60_000,
+      secrets: protectedRuntimeValues(),
+    },
+  );
+  const inspect = run(
+    EXECUTABLE,
+    [vercel.path, "inspect", EXPECTED_SECOND_PARTNER_BASE_URL, "--format=json", "--no-color"],
+    {
+      label: "inspect second isolated white-label staging alias",
+      env: vercelEnvironment(),
+      timeoutMs: 3 * 60_000,
+      secrets: protectedRuntimeValues(),
+    },
+  );
+  const inspected = parseSingleJsonOutput(
+    inspect.stdout,
+    "second isolated white-label Vercel alias inspection",
+  );
+  const deploymentId = inspected.id ?? inspected.uid ?? null;
+  const authoritative = fetchAuthoritativeVercelDeployment(
+    vercel,
+    deploymentId,
+    "second isolated white-label staging alias",
+  );
+  const metadata = authoritative.meta ?? authoritative.metadata ?? {};
+  const projectId = authoritative.projectId ?? authoritative.project?.id;
+  if (
+    deploymentId !== deployment.deploymentId ||
+    authoritative.url !== deployment.deploymentHost ||
+    sha256(String(projectId)) !== EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT ||
+    metadata.dealflowCommit !== identity.commit ||
+    metadata.dealflowTree !== identity.tree ||
+    metadata.dealflowEnvironment !== "isolated-staging-qibh"
+  ) {
+    throw new Error("The second white-label staging alias does not target the exact candidate deployment");
+  }
+  return {
+    deploymentId,
+    aliasUrl: EXPECTED_SECOND_PARTNER_BASE_URL,
+    aliasHost: EXPECTED_SECOND_PARTNER_HOST,
     exactCommit: identity.commit,
     exactTree: identity.tree,
     projectIdFingerprint: EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT,
@@ -1082,7 +1295,7 @@ function runPlaywrightSuite({ name, config, environment, evidenceDir }) {
   return counts;
 }
 
-function browserEnvironment(deploymentUrl, evidenceDir) {
+function browserEnvironment(deploymentUrl, secondPartnerUrl, evidenceDir) {
   return {
     CI: "1",
     DEALFLOW_DEPLOYMENT_TARGET: "staging",
@@ -1100,6 +1313,7 @@ function browserEnvironment(deploymentUrl, evidenceDir) {
     STAGING_ACCEPTANCE_EXECUTION: "true",
     STAGING_ACCEPTANCE_BASE_URL: EXPECTED_STAGING_BASE_URL,
     STAGING_ACCEPTANCE_PARTNER_BASE_URL: deploymentUrl,
+    STAGING_ACCEPTANCE_SECOND_PARTNER_BASE_URL: secondPartnerUrl,
     STAGING_ACCEPTANCE_INTERNAL_SECRET: process.env.INTERNAL_SYSTEM_JOBS_SECRET,
     STAGING_ACCEPTANCE_ZERO_EXTERNAL_EFFECTS_ATTESTATION: ZERO_EXTERNAL_EFFECTS_ATTESTATION,
     STAGING_ACCEPTANCE_PLAYWRIGHT_OUTPUT_DIR: join(evidenceDir, "multi-role-browser-artifacts"),
@@ -1394,7 +1608,11 @@ async function main() {
     ],
     {
       label: "atomic fresh isolated-staging migration broker",
-      env: { ...childBaseEnvironment(), PATH: process.env.PATH },
+      env: {
+        ...childBaseEnvironment(),
+        PATH: process.env.PATH,
+        DEALFLOW_NATIVE_PGBIN: process.env.DEALFLOW_NATIVE_PGBIN,
+      },
       timeoutMs: 30 * 60_000,
       secrets: protectedRuntimeValues(),
     },
@@ -1427,17 +1645,21 @@ async function main() {
   const uniqueReady = await waitForDeployment(deployment.deploymentUrl);
   const stableReady = await waitForDeployment(EXPECTED_STAGING_BASE_URL);
   const stableAlias = proveStableAliasTargetsExactDeployment(identity, deployment, vercel);
+  const secondPartnerAlias = configureAndProveSecondPartnerAlias(identity, deployment, vercel);
+  const secondPartnerReady = await waitForDeployment(secondPartnerAlias.aliasUrl);
   writeJson(join(options.evidenceDir, "deployment.json"), {
     ...deployment,
     uniqueReady,
     stableReady,
     stableAlias,
+    secondPartnerAlias,
+    secondPartnerReady,
     productionCustomerHost: false,
     isolatedStagingProject: true,
   });
 
-  const seedOne = runSeed(deployment.deploymentUrl);
-  const seedTwo = runSeed(deployment.deploymentUrl);
+  const seedOne = runSeed(deployment.deploymentUrl, secondPartnerAlias.aliasUrl);
+  const seedTwo = runSeed(deployment.deploymentUrl, secondPartnerAlias.aliasUrl);
   assertSeedReplayIsIdempotent(seedOne, seedTwo);
   writeJson(join(options.evidenceDir, "synthetic-seed.json"), {
     status: "PASS",
@@ -1485,14 +1707,30 @@ async function main() {
 
   const zeroEffectsStable = await assertHostedZeroEffects(EXPECTED_STAGING_BASE_URL);
   const zeroEffectsPartner = await assertHostedZeroEffects(deployment.deploymentUrl);
+  const zeroEffectsPartnerTwo = await assertHostedZeroEffects(secondPartnerAlias.aliasUrl);
   writeJson(join(options.evidenceDir, "hosted-zero-external-effects.json"), {
     status: "PASS",
     stableDirectHost: zeroEffectsStable,
     uniquePartnerHost: zeroEffectsPartner,
+    secondPartnerHost: zeroEffectsPartnerTwo,
+  });
+
+  const providerIndependentProof = runProviderIndependentStagingProof(
+    EXPECTED_STAGING_BASE_URL,
+  );
+  writeJson(join(options.evidenceDir, "provider-independent-journeys.json"), {
+    ...providerIndependentProof,
+    containsRealCustomerData: false,
+    productionMutationPerformed: false,
+    providerMutationPerformed: false,
   });
 
   const countsBefore = await captureNoEffectCounts(admin);
-  const browserEnv = browserEnvironment(deployment.deploymentUrl, options.evidenceDir);
+  const browserEnv = browserEnvironment(
+    deployment.deploymentUrl,
+    secondPartnerAlias.aliasUrl,
+    options.evidenceDir,
+  );
   const safeProductBrowser = runPlaywrightSuite({
     name: "safe-product-browser",
     config: "playwright.safe.config.ts",
@@ -1516,9 +1754,18 @@ async function main() {
       "desktop-firefox",
       "desktop-webkit",
     ],
+    localeMatrix: ["en", "fr", "es"],
+    localizedPublicAndAuthenticatedJourneys: true,
+    reducedMotionKeyboardZoomAndAxe: true,
     directHost: EXPECTED_STAGING_BASE_URL,
     partnerHost: deployment.deploymentUrl,
-    hostIsolationProven: deployment.deploymentUrl !== EXPECTED_STAGING_BASE_URL,
+    partnerTwoHost: secondPartnerAlias.aliasUrl,
+    hostIsolationProven:
+      new Set([
+        EXPECTED_STAGING_BASE_URL,
+        deployment.deploymentUrl,
+        secondPartnerAlias.aliasUrl,
+      ]).size === 3,
   });
 
   const load = await runHostedLoadProof(EXPECTED_STAGING_BASE_URL);
@@ -1556,24 +1803,34 @@ async function main() {
   const productionGateMatrix = {
     exactCandidateAndSchema: "PASS",
     isolatedHostedDeployment: "PASS",
-    sevenSyntheticRoleFixtures: "PASS",
+    tenSyntheticRoleFixtures: "PASS",
     authenticatedDirectEntitlementBoundaries: "PASS",
-    whiteLabelHostAndBranding: "PASS",
+    twoWhiteLabelHostsBrandingAndChildTenantIsolation: "PASS",
     crossTenantBrowserBoundary: "PASS",
     authenticatedRlsFixtureAndCleanup: rlsDeferralsClosed ? "PASS" : "FAIL",
     zeroExternalEffects: "PASS",
     readOnlyHostedLoad: "PASS",
-    workerExecutionRetryAndDeadLetterRecovery: "NOT_PROVEN",
+    workerExecutionRetryReplayDeadLetterAndCrashRecovery: "PASS",
     operatorDebtAndRecoveryJourneys:
       operatorDebtProof.status === "PASS" ? "PASS" : "FAIL",
-    realSyntheticLeadCapturePersistenceAndDelivery: "NOT_PROVEN",
-    ghlSandboxProvisioningFunnelsAndLeadDelivery: "NOT_PROVEN",
-    metaSandboxLaunchLeadgenReportingAndOptimization: "NOT_PROVEN",
-    stripeTestCheckoutWebhookAndLifecycle: "NOT_PROVEN",
-    creativeProviderGenerationAndPersistence: "NOT_PROVEN",
-    twilioTestTransportAndConsentLifecycle: "NOT_PROVEN",
-    supportDeliverySinkAndOperatorLifecycle: "NOT_PROVEN",
-    liveReportingReconciliation: "NOT_PROVEN",
+    realSyntheticLeadCapturePersistenceAndDuplicateReplay: "PASS",
+    supportInternalNonDeliveringInboxLifecycle: "PASS",
+    reportingFreshStaleAndFailedRefreshStateHandling: "PASS",
+    billingCancellationStaleEventReactivationAndReplayProjection: "PASS",
+    accountDeletionRequestSuspensionAndDisabledWorkerBoundary: "PASS",
+    ghlSandboxProvisioningFunnelsAndLeadDelivery:
+      "BLOCKED_EXTERNAL_PROVIDER_AUTHORITY",
+    metaSandboxLaunchLeadgenReportingAndOptimization:
+      "BLOCKED_EXTERNAL_PROVIDER_AUTHORITY",
+    stripeTestCheckoutAndSignedWebhook:
+      "BLOCKED_EXTERNAL_PROVIDER_AUTHORITY",
+    creativeProviderGenerationAndPersistence:
+      "BLOCKED_EXTERNAL_PROVIDER_AND_PAID_ACTION_AUTHORITY",
+    twilioTestTransportAndConsentLifecycle:
+      "BLOCKED_EXTERNAL_PROVIDER_AND_COMMUNICATION_AUTHORITY",
+    accountDeletionProviderOffboardingCompletion:
+      "BLOCKED_EXTERNAL_PROVIDER_AUTHORITY",
+    liveMetaReportingReconciliation: "BLOCKED_EXTERNAL_PROVIDER_AUTHORITY",
   };
   const productionGateBlockers = Object.entries(productionGateMatrix)
     .filter(([, status]) => status !== "PASS")
@@ -1597,12 +1854,13 @@ async function main() {
     identity,
     migrations,
     deployment,
-    syntheticScenarioCount: 7,
+    syntheticScenarioCount: 10,
     seedReplayIdempotent: true,
     hostedZeroExternalEffectsPassed: true,
     crossBrowserZeroSkipPassed: true,
     hostedLoadPassed: true,
     noEffectCountsUnchanged: true,
+    providerIndependentJourneyProofPassed: true,
     productionGate: "CLOSED",
     productionGateBlockerCount: productionGateBlockers.length,
     hostedDeferralsClosed,

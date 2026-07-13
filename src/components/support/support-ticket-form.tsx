@@ -4,8 +4,10 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchWithRetry } from "@/lib/http/fetch-with-retry";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
 
 export function SupportTicketForm() {
+  const { t } = useProductI18n();
   const [issue, setIssue] = useState("");
   const [blocker, setBlocker] = useState("");
   const [pending, setPending] = useState(false);
@@ -37,19 +39,19 @@ export function SupportTicketForm() {
         correlationId?: string;
       } | null;
       if (!response.ok) {
-        throw new Error(payload?.error ?? "Your support request could not be recorded.");
+        throw new Error(t("support.recordError"));
       }
 
       const reference = payload?.correlationId?.slice(0, 8);
       setMessage(
         reference
-          ? `Your request was recorded. Reference ${reference}.`
-          : "Your request was recorded.",
+          ? t("support.recordedReference", { reference })
+          : t("support.recorded"),
       );
       setIssue("");
       setBlocker("");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Your support request could not be recorded.");
+    } catch {
+      setError(t("support.recordError"));
     } finally {
       setPending(false);
     }
@@ -58,7 +60,7 @@ export function SupportTicketForm() {
   return (
     <form className="space-y-5" onSubmit={submit}>
       <label className="block space-y-2">
-        <span className="text-sm font-medium text-foreground">What do you need help with?</span>
+        <span className="text-sm font-medium text-foreground">{t("support.needHelp")}</span>
         <textarea
           className="min-h-32 w-full rounded-df-control border border-white/10 bg-white/[0.045] px-4 py-3 text-sm text-white outline-none focus:border-cyan-200/40 focus:ring-2 focus:ring-cyan-200/10"
           value={issue}
@@ -68,7 +70,7 @@ export function SupportTicketForm() {
         />
       </label>
       <label className="block space-y-2">
-        <span className="text-sm font-medium text-foreground">What is blocked?</span>
+        <span className="text-sm font-medium text-foreground">{t("support.blocked")}</span>
         <textarea
           className="min-h-28 w-full rounded-df-control border border-white/10 bg-white/[0.045] px-4 py-3 text-sm text-white outline-none focus:border-cyan-200/40 focus:ring-2 focus:ring-cyan-200/10"
           value={blocker}
@@ -78,8 +80,7 @@ export function SupportTicketForm() {
         />
       </label>
       <p className="text-sm leading-6 text-muted-foreground">
-        Replies use the verified email on your signed-in DealFlow account. We do not store a second
-        email address on the support ticket.
+        {t("support.replyPolicy")}
       </p>
 
       {message ? <p className="text-sm text-emerald-300" role="status">{message}</p> : null}
@@ -87,7 +88,7 @@ export function SupportTicketForm() {
 
       <Button type="submit" disabled={pending}>
         {pending ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-        {pending ? "Recording request..." : "Submit support request"}
+        {pending ? t("support.sending") : t("support.submit")}
       </Button>
     </form>
   );

@@ -24,6 +24,7 @@ const settingsPage = read("src/app/(app)/settings/page.tsx");
 const dashboardPage = read("src/app/(app)/dashboard/page.tsx");
 const resultsPage = read("src/app/results/page.tsx");
 const workspaceBranding = read("src/lib/white-label/workspace-branding.ts");
+const workspaceBrandingCore = read("src/lib/white-label/workspace-branding-core.ts");
 const appLayout = read("src/app/(app)/layout.tsx");
 const sidebar = read("src/components/layout/sidebar.tsx");
 
@@ -69,17 +70,24 @@ assert.match(financialMigration, /set status = normalized_outcome/);
 assert.doesNotMatch(creditService, /expires?_at|expiration/i);
 assert.match(creditService, /openai_image_generation: 100/);
 assert.match(creditService, /heygen_video_generation: 500/);
-assert.match(settingsPage, /commerciallyActivated \? billing\.planTier : "Not activated"/);
+assert.match(
+  settingsPage,
+  /commerciallyActivated \? billing\.planTier : t\("settings\.notActivated"\)/,
+);
 assert.match(settingsPage, /disabled=\{!billing\?\.commerciallyActivated \|\| !billing\.launchAllowed\}/);
 assert.doesNotMatch(dashboardPage, /PlanAwareResultsPreview|requestedPlanTier/);
 assert.doesNotMatch(resultsPage, /normalizeBillingPlanTier|params\.plan/);
 
 assert.match(workspaceBranding, /\.eq\("workspace_id", organizationId\)/);
 assert.match(workspaceBranding, /\.eq\("active", true\)/);
+assert.match(workspaceBranding, /\.from\("organizations"\)/);
+assert.match(workspaceBranding, /\.eq\("partner_id", partnerId\)/);
 assert.match(workspaceBranding, /\.eq\("id", partnerId\)/);
 assert.match(workspaceBranding, /\.eq\("status", "active"\)/);
-assert.match(workspaceBranding, /safeColor/);
-assert.match(workspaceBranding, /safeLogoUrl/);
+assert.match(workspaceBrandingCore, /organization\.partner_id !== partnerId/);
+assert.match(workspaceBrandingCore, /attribution\.workspace_id !== organizationId/);
+assert.match(workspaceBrandingCore, /safeColor/);
+assert.match(workspaceBrandingCore, /safeLogoUrl/);
 assert.match(appLayout, /loadWorkspaceBranding\(appContext\.organization\.id\)/);
 assert.match(sidebar, /poweredByDealFlow/);
 assert.match(sidebar, /\{productName\}/);

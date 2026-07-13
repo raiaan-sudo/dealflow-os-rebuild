@@ -2,8 +2,8 @@
 
 Current verdict: `NO_GO`
 Final implementation commit/tree: `PENDING_FINAL_SEAL / PENDING_FINAL_SEAL`
-Migration inventory: `99`, ending at
-`20260713024000_add_durable_ghl_periodic_form_sweeps.sql`
+Migration inventory: `102`, ending at
+`20260713027000_add_ghl_location_display_name_finalization.sql`
 Migration digest: `PENDING_FINAL_SEAL`
 Staging deployment: `NOT_YET_RUN`
 Production deployment: `NOT_YET_RUN`
@@ -30,8 +30,9 @@ test or browser digests until all source/document changes are committed and the
 worktree is clean. Any later tracked change invalidates the identity and both
 verification rounds.
 
-The 80-migration foundation and earlier candidate counts are historical
-evidence. The current candidate inventory is 99, but its exact final digest and
+The 80-migration foundation and earlier candidate counts, including the
+99-migration checkpoint, are historical evidence. The current candidate
+inventory is 102, but its exact final digest and
 integrated proof are still pending.
 
 ## Release trust
@@ -50,7 +51,7 @@ six current manifests are `NOT_YET_RUN`.
 ## Mandatory `NO_GO` conditions currently present
 
 - final clean seal and two exact-seal verification rounds are absent;
-- exact 99-chain hosted staging migration and deployment are absent;
+- exact 102-chain hosted staging migration and deployment are absent;
 - zero-skip authenticated multi-role/white-label/EN-FR-ES acceptance is absent;
 - provider sandbox/test acceptance is absent;
 - production schema, backup/PITR and restore authority are absent;

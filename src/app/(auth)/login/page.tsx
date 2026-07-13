@@ -2,14 +2,21 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { hasSupabaseEnv } from "@/lib/env";
 import { LoginForm } from "@/components/auth/login-form";
+import { LocaleSwitcher } from "@/components/i18n/locale-switcher";
+import { translateProductMessage } from "@/lib/i18n/messages";
+import { parseProductLocalePathname } from "@/lib/i18n/routing";
 import {
   loadVerifiedPartnerDomainContext,
   verifyPartnerAttributionToken,
 } from "@/lib/white-label/verified-partner-domain";
 
-export const metadata: Metadata = {
-  title: "Sign in",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const requestHeaders = await headers();
+  const locale = parseProductLocalePathname(
+    requestHeaders.get("x-pathname") ?? "/login",
+  ).locale;
+  return { title: translateProductMessage(locale, "auth.signIn") };
+}
 
 export default async function LoginPage({
   searchParams,
@@ -30,6 +37,11 @@ export default async function LoginPage({
       ? "sign-up"
       : "sign-in";
   const requestHeaders = await headers();
+  const locale = parseProductLocalePathname(
+    requestHeaders.get("x-pathname") ?? "/login",
+  ).locale;
+  const t = (key: Parameters<typeof translateProductMessage>[1]) =>
+    translateProductMessage(locale, key);
   const verifiedPartnerDomain = requestHeaders.get("x-dealflow-verified-partner-domain");
   const partnerContext = verifiedPartnerDomain
     ? await loadVerifiedPartnerDomainContext(verifiedPartnerDomain)
@@ -50,25 +62,30 @@ export default async function LoginPage({
   return (
     <>
       <a className="df-skip-link" href="#auth-content">
-        Skip to sign in
+        {t("common.skip.signIn")}
       </a>
       <main
         id="auth-content"
         tabIndex={-1}
         className="mx-auto flex min-h-screen w-full max-w-[560px] items-center px-5 py-10 sm:px-6"
       >
-        <LoginForm
-          redirectedFrom={redirectedFrom}
-          reason={reason}
-          isConfigured={hasSupabaseEnv()}
-          initialMode={initialMode}
-          branding={partnerContext?.branding}
-          partnerAttribution={hasBoundPartnerAttribution ? {
-            partnerSlug: partnerContext?.partnerSlug ?? null,
-            bindingToken: partnerAttributionToken,
-            source: "domain",
-          } : undefined}
-        />
+        <div className="w-full space-y-4">
+          <div className="flex justify-end">
+            <LocaleSwitcher compact />
+          </div>
+          <LoginForm
+            redirectedFrom={redirectedFrom}
+            reason={reason}
+            isConfigured={hasSupabaseEnv()}
+            initialMode={initialMode}
+            branding={partnerContext?.branding}
+            partnerAttribution={hasBoundPartnerAttribution ? {
+              partnerSlug: partnerContext?.partnerSlug ?? null,
+              bindingToken: partnerAttributionToken,
+              source: "domain",
+            } : undefined}
+          />
+        </div>
       </main>
     </>
   );

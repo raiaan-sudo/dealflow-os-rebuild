@@ -48,8 +48,18 @@ function installRemoteDefaults(session) {
     create extension if not exists pg_stat_statements with schema extensions;
     create extension if not exists "uuid-ossp" with schema extensions;
     create publication supabase_realtime;
+    create schema if not exists storage;
+    create table if not exists storage.objects (
+      id uuid primary key default gen_random_uuid(),
+      bucket_id text not null,
+      name text not null,
+      unique (bucket_id, name)
+    );
+    grant usage on schema storage to anon, authenticated, service_role;
+    grant select, insert, update, delete on storage.objects
+      to anon, authenticated, service_role;
     reset role;
-  `, { label: "Install remote-equivalent defaults" });
+  `, { label: "Install remote-equivalent defaults and isolated Storage table" });
 }
 
 function applyAllMigrations(session) {

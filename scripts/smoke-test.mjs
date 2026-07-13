@@ -91,6 +91,8 @@ function runOfflineChecks() {
   const onboardingPage = "src/app/(app)/onboarding/page.tsx";
   const onboardingPreview = "src/components/onboarding/prepaywall-campaign-preview.tsx";
   const onboardingRoute = "src/app/api/onboarding/plan/route.ts";
+  const productMessages = "src/lib/i18n/messages.ts";
+  const prepaywallPreviewCopy = "src/lib/i18n/prepaywall-preview-copy.ts";
   const planPresentation = "src/lib/billing/plan-presentation.ts";
   const leadRoute = "src/app/api/lead-capture/route.ts";
   const leadForm = "src/app/f/[slug]/lead-capture-form.tsx";
@@ -173,10 +175,14 @@ function runOfflineChecks() {
   assertExcludes(guidedFlowBanner, "pathname.startsWith(\"/builder\")", "Guided banner builder route removed", "guided banner no longer treats /builder as a primary route");
   assertExcludes(navigationConfig, "href: \"/builder\"", "Global navigation builder link removed", "shared app navigation points to onboarding");
   assertIncludes(onboardingRoute, "onboarding_idempotency_key", "Onboarding idempotency persistence", "campaign plans store onboarding idempotency key");
-  assertIncludes(onboardingPage, "Confirm and build", "Verified onboarding review step", "10-step onboarding review remains the canonical build screen");
-  assertIncludes(onboardingPage, "Ready to build campaign preview", "Verified onboarding build preview", "prepaywall build confirmation remains visible");
-  assertIncludes(onboardingPage, "Activate Pro", "Verified onboarding paywall CTA", "launch-plan CTA remains visible before activation");
-  assertIncludes(onboardingPreview, "Campaign package preview", "Verified onboarding package preview", "right-side campaign package preview remains mounted");
+  assertIncludes(onboardingPage, 't(`onboarding.title.${currentStep}`', "Verified onboarding review-step i18n wiring", "10-step onboarding review resolves its current step from the locale catalog");
+  assertIncludes(productMessages, '"onboarding.title.review": "Confirm and build"', "Verified onboarding review-step English value", "English catalog preserves the canonical review label");
+  assertIncludes(onboardingPage, 't("onboarding.ready")', "Verified onboarding build-preview i18n wiring", "prepaywall build confirmation reads from the locale catalog");
+  assertIncludes(productMessages, '"onboarding.ready": "Ready to build campaign preview"', "Verified onboarding build-preview English value", "English catalog preserves the canonical build confirmation");
+  assertIncludes(onboardingPage, 't("onboarding.activatePro")', "Verified onboarding paywall i18n wiring", "launch-plan CTA reads from the locale catalog");
+  assertIncludes(productMessages, '"onboarding.activatePro": "Activate Pro"', "Verified onboarding paywall English value", "English catalog preserves the canonical activation CTA");
+  assertIncludes(onboardingPreview, "uiCopy.packageTitle", "Verified onboarding package-preview i18n wiring", "right-side package title reads from locale-specific preview copy");
+  assertIncludes(prepaywallPreviewCopy, 'packageTitle: "Campaign package preview"', "Verified onboarding package-preview English value", "English preview catalog preserves the canonical package title");
   assertIncludes(planPresentation, "Only launch plan", "Verified onboarding launch plan label", "plan presentation matches the verified UI");
   assertExcludes(onboardingPage, "STEP 1 OF 7: WORKSPACE", "Old linear onboarding shell removed", "later linear shell cannot replace the verified screen");
   assertIncludes(appContextService, "isDemoWorkspaceSeedingEnabled", "Production demo seeding guard", "workspace demo data seeding is environment-gated");
@@ -311,7 +317,8 @@ function runOfflineChecks() {
   assertIncludes(systemJobService, "maxAttempts", "System job max attempts", "jobs persist an attempt ceiling for DB claim/dead-letter enforcement");
   assertIncludes(internalLaunchMonitor, "provider_usage_events", "Provider issue visibility", "operator issues include failed/stale provider usage events");
 
-  assertIncludes(dashboardPage, "Last updated", "Dashboard last-updated state", "dashboard shows last updated timestamp");
+  assertIncludes(dashboardPage, 't("dashboard.lastUpdated"', "Dashboard last-updated i18n wiring", "dashboard formats its last-updated timestamp through the locale catalog");
+  assertIncludes(productMessages, '"dashboard.lastUpdated": "Last updated {{relative}}"', "Dashboard last-updated English value", "English catalog preserves the last-updated label and interpolation token");
   assertIncludes(dashboardPage, "leadLoopVerified", "Dashboard lead-loop state", "dashboard loads lead loop verification");
 
   assertIncludes("scripts/meta-launch-idempotency-test.md", "Interrupt after campaign creation", "Meta idempotency test doc", "forced interruption test documentation exists");

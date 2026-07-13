@@ -195,6 +195,8 @@ assert.doesNotMatch(uploadSource, /storageBucket:\s*MANUAL_CREATIVE_STORAGE_BUCK
 assert.doesNotMatch(uploadSource, /storagePath,\s*\n\s*originalFileName/);
 assert.match(deleteSource, /creative_asset_storage_identity_untrusted/);
 assert.match(deleteSource, /\.from\(MANUAL_CREATIVE_STORAGE_BUCKET\)/);
+assert.match(deleteSource, /isCanonicalGeneratedVideoStorageIdentity/);
+assert.match(deleteSource, /campaign\.organization_id/);
 assert.doesNotMatch(deleteSource, /asset\.metadata|metadata\?\.storage|\.from\(storageBucket\)/);
 
 const leadSource = read("src/lib/services/lead-handler-service.ts");

@@ -29,9 +29,16 @@ import {
   recordPaidCreativeProviderOutcome,
   type PaidCreativeDispatchExecution,
 } from "@/lib/services/paid-creative-dispatch-service";
+import { importGeneratedVideoToCanonicalStorage } from "@/lib/services/generated-video-storage-service";
+import { createHiggsfieldSourceProxyUrl } from "@/lib/services/higgsfield-source-proxy";
 
 type VideoPersistenceClient = SupabaseClient<Database>;
 type CampaignPlanRow = Database["public"]["Tables"]["campaign_plans"]["Row"];
+
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
 
 export type VideoGenerationJobPayload = {
   creativeIndex: number;
@@ -49,7 +56,9 @@ export type VideoGenerationJobPayload = {
   voiceProfile: string | null;
   audience: string | null;
   location: string | null;
-  inputImageUrl: string | null;
+  inputImageAssetId: string | null;
+  inputImagePaidCreativeDispatchId: string | null;
+  providerName?: DurableVideoProviderName;
   force: boolean;
 };
 
@@ -57,6 +66,7 @@ export type VideoGenerationStatusJobPayload = {
   assetId: string;
   providerAssetId: string;
   providerName?: DurableVideoProviderName;
+  paidCreativeDispatchId?: string;
   providerUsageEventId: string | null;
   providerUsageSettlementToken: string | null;
   providerUsageSettlementGeneration: number | null;
@@ -175,6 +185,7 @@ async function persistVideoStateToCampaignPlan(params: {
   userId: string;
   campaignId: string;
   providerAssetId: string;
+  providerName: DurableVideoProviderName;
   status: "generated" | "failed";
   videoUrl: string | null;
   message: string | null;
@@ -189,10 +200,23 @@ async function persistVideoStateToCampaignPlan(params: {
   const existingVideoAds = Array.isArray(savedDocument.videoAds)
     ? (savedDocument.videoAds as VideoCreativeAsset[])
     : [];
+  const matchingVideos = existingVideoAds.filter(
+    (video) =>
+      video.providerAssetId === params.providerAssetId &&
+      (!video.videoProvider || video.videoProvider === params.providerName),
+  );
+  if (matchingVideos.length !== 1) {
+    throw new ApiError(
+      409,
+      "Video customer state did not resolve to one exact provider asset.",
+      "campaign_video_provider_identity_mismatch",
+    );
+  }
   const nextVideoAds = existingVideoAds.map((video) =>
-    video.providerAssetId === params.providerAssetId
+    video === matchingVideos[0]
       ? {
           ...video,
+          videoProvider: params.providerName,
           videoUrl: params.videoUrl ?? undefined,
           videoGenerationState: params.status,
           videoGenerationMessage: params.message,
@@ -229,6 +253,7 @@ async function persistVideoFailure(params: {
   campaignId: string;
   assetId: string;
   providerAssetId: string;
+  providerName: DurableVideoProviderName;
   insertedAssetMetadata: CreativeAsset["metadata"];
   code: string;
   message: string;
@@ -238,13 +263,14 @@ async function persistVideoFailure(params: {
     ...(typeof params.insertedAssetMetadata === "object" && params.insertedAssetMetadata
       ? (params.insertedAssetMetadata as Record<string, unknown>)
       : {}),
+    videoProvider: params.providerName,
     videoProviderStatus: "failed",
     videoProviderError: params.message,
     videoProviderErrorCode: params.code,
-    videoProviderRaw: params.raw ?? null,
+    videoProviderResponseRecorded: Boolean(params.raw),
   } satisfies Record<string, unknown>;
 
-  await params.supabase
+  const { error: assetUpdateError } = await params.supabase
     .from("creative_assets")
     .update({
       status: "failed",
@@ -254,6 +280,13 @@ async function persistVideoFailure(params: {
     .eq("id", params.assetId)
     .eq("campaign_id", params.campaignId)
     .eq("user_id", params.userId);
+  if (assetUpdateError) {
+    throw new ApiError(
+      500,
+      assetUpdateError.message ?? "Failed video state could not be persisted.",
+      "creative_asset_update_failed",
+    );
+  }
 
   await persistVideoStateToCampaignPlan({
     supabase: params.supabase,
@@ -261,6 +294,7 @@ async function persistVideoFailure(params: {
     userId: params.userId,
     campaignId: params.campaignId,
     providerAssetId: params.providerAssetId,
+    providerName: params.providerName,
     status: "failed",
     videoUrl: null,
     message: params.message,
@@ -278,8 +312,10 @@ async function queueVideoStatusPollJob(params: {
   providerUsageEventId: string | null | undefined;
   providerUsageSettlementToken: string | null | undefined;
   providerUsageSettlementGeneration: number | null | undefined;
+  paidCreativeDispatchId: string;
 }) {
-  const idempotencyKey = `video_generation_status:${params.providerName}:${params.providerAssetId}`;
+  const idempotencyKey =
+    `video_generation_status:${params.organizationId ?? params.userId}:${params.campaignId}:${params.providerName}:${params.providerAssetId}`;
   const { error } = await params.supabase.from("system_jobs").insert({
     organization_id: params.organizationId ?? params.userId,
     user_id: params.userId,
@@ -294,10 +330,13 @@ async function queueVideoStatusPollJob(params: {
       providerUsageSettlementToken: params.providerUsageSettlementToken ?? null,
       providerUsageSettlementGeneration:
         params.providerUsageSettlementGeneration ?? null,
+      paidCreativeDispatchId: params.paidCreativeDispatchId,
       pollAttempt: 0,
     } satisfies VideoGenerationStatusJobPayload,
     idempotency_key: idempotencyKey,
-    max_attempts: 1,
+    // Each non-terminal provider poll is a fresh claim attempt. This covers
+    // the bounded 120-poll window plus lease-reclaim/projection headroom.
+    max_attempts: 128,
     next_run_at: new Date(Date.now() + 60_000).toISOString(),
   } as never);
 
@@ -334,8 +373,90 @@ async function loadCreativeAssetForVideoStatus(params: {
   if (!data) {
     throw new ApiError(404, "Video asset was not found.", "creative_asset_not_found");
   }
-
   return data as CreativeAsset;
+}
+
+async function verifyBoundHiggsfieldSourceAsset(params: {
+  supabase: VideoPersistenceClient;
+  organizationId: string;
+  userId: string;
+  campaignId: string;
+  payload: VideoGenerationJobPayload;
+}) {
+  if (
+    !isUuid(params.payload.inputImageAssetId) ||
+    !isUuid(params.payload.inputImagePaidCreativeDispatchId)
+  ) {
+    throw new ApiError(
+      409,
+      "Higgsfield requires an exact paid static creative bound to this campaign.",
+      "video_source_asset_identity_missing",
+    );
+  }
+
+  const { data, error } = await (params.supabase as any)
+    .from("creative_assets")
+    .select("id,user_id,campaign_id,provider_name,status,file_url,paid_creative_dispatch_id")
+    .eq("id", params.payload.inputImageAssetId)
+    .eq("user_id", params.userId)
+    .eq("campaign_id", params.campaignId)
+    .eq("provider_name", "openai")
+    .eq("status", "ready")
+    .eq("paid_creative_dispatch_id", params.payload.inputImagePaidCreativeDispatchId)
+    .maybeSingle();
+  if (error) {
+    throw new ApiError(
+      503,
+      error.message ?? "Higgsfield source creative could not be verified.",
+      "video_source_asset_lookup_failed",
+    );
+  }
+  if (!data) {
+    throw new ApiError(
+      409,
+      "Higgsfield source creative is not bound to this tenant and campaign.",
+      "video_source_asset_scope_mismatch",
+    );
+  }
+  const dispatchLookup = await (params.supabase as any)
+    .from("paid_creative_dispatches")
+    .select("id")
+    .eq("id", params.payload.inputImagePaidCreativeDispatchId)
+    .eq("organization_id", params.organizationId)
+    .eq("user_id", params.userId)
+    .eq("campaign_id", params.campaignId)
+    .eq("provider", "openai")
+    .eq("operation", "openai_image_generation")
+    .eq("state", "projected")
+    .maybeSingle();
+  if (dispatchLookup.error) {
+    throw new ApiError(
+      503,
+      dispatchLookup.error.message ?? "Higgsfield source dispatch could not be verified.",
+      "video_source_dispatch_lookup_failed",
+    );
+  }
+  if (!dispatchLookup.data) {
+    throw new ApiError(
+      409,
+      "Higgsfield source dispatch is not finalized for this tenant and campaign.",
+      "video_source_dispatch_scope_mismatch",
+    );
+  }
+  if (typeof data.file_url !== "string" || !data.file_url.trim()) {
+    throw new ApiError(
+      409,
+      "Higgsfield source creative has no canonical provider asset URL.",
+      "video_source_asset_url_missing",
+    );
+  }
+  return createHiggsfieldSourceProxyUrl({
+    assetId: params.payload.inputImageAssetId,
+    dispatchId: params.payload.inputImagePaidCreativeDispatchId,
+    organizationId: params.organizationId,
+    userId: params.userId,
+    campaignId: params.campaignId,
+  });
 }
 
 export async function runVideoGenerationJob(params: {
@@ -395,25 +516,25 @@ export async function runVideoGenerationJob(params: {
       );
     }
     if (!matchingDispatch.data) {
-      return {
-        assetId: null,
-        providerAssetId: existingVideo.providerAssetId ?? null,
-        status: "processing",
-        video: {
-          url: existingVideo.videoUrl || "",
-          hook: existingVideo.hook,
-          script: existingVideo.script,
-          scenes: existingVideo.shotList,
-        },
-      };
+      throw new ApiError(
+        409,
+        "Video state says generation started, but no durable dispatch identity exists.",
+        "video_generation_dispatch_identity_missing",
+      );
     }
   }
 
-  const videoProvider = getDurableVideoProvider();
-  const unavailableReason = getDurableVideoProviderUnavailableReason({
-    provider: videoProvider,
-    inputImageUrl: params.payload.inputImageUrl,
-  });
+  const configuredProvider = getDurableVideoProvider();
+  const videoProvider = params.payload.providerName ?? configuredProvider;
+  // New jobs pin the provider selected by the API. Preserve that identity on
+  // crash recovery even if configuration changes after the provider accepted
+  // the request; the dispatch ledger decides whether a POST is permitted.
+  const unavailableReason = params.payload.providerName
+    ? null
+    : getDurableVideoProviderUnavailableReason({
+        provider: videoProvider,
+        inputImageUrl: params.payload.inputImageAssetId ? "bound-source-asset" : null,
+      });
   const defaultState = createDefaultVideoState(params.payload);
 
   if (!videoProvider || unavailableReason) {
@@ -426,6 +547,7 @@ export async function runVideoGenerationJob(params: {
       videoGenerationState: "unavailable",
       videoGenerationMessage: unavailableReason,
       providerAssetId: null,
+      videoProvider: videoProvider ?? undefined,
     };
 
     await persistVideoAdsToCampaignPlan({
@@ -501,6 +623,16 @@ export async function runVideoGenerationJob(params: {
     };
   }
 
+  const verifiedInputImageUrl = videoProvider === "higgsfield"
+    ? await verifyBoundHiggsfieldSourceAsset({
+        supabase: params.supabase,
+        organizationId: params.organizationId,
+        userId: params.userId,
+        campaignId: params.campaignId,
+        payload: params.payload,
+      })
+    : null;
+
   const budgetReservation = await consumeSessionCostBudget({
     bucket: `${videoProvider}_video_generation`,
     userId: params.userId,
@@ -521,7 +653,8 @@ export async function runVideoGenerationJob(params: {
   const providerRequest = {
     provider: videoProvider,
     script: params.payload.scriptText,
-    inputImageUrl: params.payload.inputImageUrl,
+    inputImageAssetId: params.payload.inputImageAssetId,
+    inputImagePaidCreativeDispatchId: params.payload.inputImagePaidCreativeDispatchId,
     avatarId: params.payload.avatarProfileId ?? null,
     voiceId: params.payload.voiceProfile ?? null,
     title: params.payload.title,
@@ -548,7 +681,7 @@ export async function runVideoGenerationJob(params: {
       createDurableVideoRender({
         provider: videoProvider,
         script: params.payload.scriptText,
-        inputImageUrl: params.payload.inputImageUrl,
+        inputImageUrl: verifiedInputImageUrl,
         avatarId: params.payload.avatarProfileId ?? undefined,
         voiceId: params.payload.voiceProfile ?? undefined,
         title: params.payload.title,
@@ -682,7 +815,8 @@ export async function runVideoGenerationJob(params: {
         cta: params.payload.cta,
         scriptText: params.payload.scriptText,
         scenes: params.payload.scenes,
-        inputImageUrl: params.payload.inputImageUrl,
+        inputImageAssetId: params.payload.inputImageAssetId,
+        inputImagePaidCreativeDispatchId: params.payload.inputImagePaidCreativeDispatchId,
         videoProvider,
         providerStatus: providerVideo.status,
         providerMetadata: providerVideo.metadata,
@@ -732,6 +866,7 @@ export async function runVideoGenerationJob(params: {
     videoGenerationMessage:
       `Generating video with ${videoProvider === "higgsfield" ? "Higgsfield" : "HeyGen"}. The durable status job will reconcile completion.`,
     providerAssetId: providerVideo.providerAssetId,
+    videoProvider,
   };
 
   await persistVideoAdsToCampaignPlan({
@@ -753,26 +888,13 @@ export async function runVideoGenerationJob(params: {
     providerUsageEventId: budgetReservation.eventId,
     providerUsageSettlementToken: budgetReservation.settlementToken,
     providerUsageSettlementGeneration: budgetReservation.settlementGeneration,
-  });
-
-  await finalizePaidCreativeProjection({
-    supabase: params.supabase as any,
-    dispatchId: dispatchExecution.dispatchId,
-    organizationId: row.organization_id,
-    userId: params.userId,
-    projectionReceipt: {
-      kind: "video_generation",
-      campaignId: params.campaignId,
-      creativeIndex: params.payload.creativeIndex,
-      creativeAssetId: insertedAsset.id,
-      providerAssetId: providerVideo.providerAssetId,
-      statusJobKey: `video_generation_status:${videoProvider}:${providerVideo.providerAssetId}`,
-    },
+    paidCreativeDispatchId: dispatchExecution.dispatchId,
   });
 
   return {
     assetId: insertedAsset.id,
     providerAssetId: providerVideo.providerAssetId,
+    providerName: videoProvider,
     status: "processing",
     asset: insertedAsset,
     video: {
@@ -805,13 +927,40 @@ export async function pollVideoGenerationStatusJob(params: {
     assetId: params.payload.assetId,
   });
 
+  const persistedProvider =
+    asset.provider_name === "higgsfield" || asset.provider_name === "heygen"
+      ? asset.provider_name
+      : null;
+  const providerName = params.payload.providerName ?? persistedProvider;
+  const assetMetadata =
+    asset.metadata && typeof asset.metadata === "object"
+      ? asset.metadata as Record<string, unknown>
+      : {};
+  const paidCreativeDispatchId =
+    params.payload.paidCreativeDispatchId ??
+    (typeof assetMetadata.paidCreativeDispatchId === "string"
+      ? assetMetadata.paidCreativeDispatchId
+      : null);
+  if (
+    !providerName ||
+    (persistedProvider && persistedProvider !== providerName) ||
+    asset.provider_asset_id !== params.payload.providerAssetId ||
+    !isUuid(paidCreativeDispatchId)
+  ) {
+    throw new ApiError(
+      409,
+      "Video status reconciliation could not prove one exact provider identity.",
+      "video_generation_provider_identity_mismatch",
+    );
+  }
+
   let finalStatus;
 
   try {
     finalStatus = await retryRouteStep(
       () =>
         getDurableVideoRenderStatus({
-          provider: params.payload.providerName ?? "heygen",
+          provider: providerName,
           providerAssetId: params.payload.providerAssetId,
         }),
       {
@@ -820,7 +969,15 @@ export async function pollVideoGenerationStatusJob(params: {
       },
     );
   } catch (error) {
-    throw toVideoProviderApiError(error, "check");
+    finalStatus = {
+      provider: providerName,
+      providerAssetId: params.payload.providerAssetId,
+      status: "unknown" as const,
+      videoUrl: null,
+      thumbnailUrl: null,
+      error: error instanceof Error ? error.message : "Provider status is temporarily unavailable.",
+      raw: null,
+    };
   }
 
   if (
@@ -839,25 +996,29 @@ export async function pollVideoGenerationStatusJob(params: {
         campaignId: params.campaignId,
         assetId: asset.id,
         providerAssetId: params.payload.providerAssetId,
+        providerName,
         insertedAssetMetadata: asset.metadata,
         code: "video_generation_reconciliation_exhausted",
         message: failureMessage,
         raw: finalStatus.raw,
       });
-      await markSessionCostBudgetEvent({
-        eventId: params.payload.providerUsageEventId,
-        organizationId: params.organizationId,
-        userId: params.userId,
-        settlementToken: params.payload.providerUsageSettlementToken,
-        settlementGeneration: params.payload.providerUsageSettlementGeneration,
-        status: "consumed",
-        metadata: {
-          operation: `${params.payload.providerName ?? "heygen"}_video_generation`,
-          providerAssetId: params.payload.providerAssetId,
-          providerAccepted: true,
-          reconciliationExhausted: true,
-        },
-      }).catch(() => null);
+      await retryRouteStep(
+        () => markSessionCostBudgetEvent({
+          eventId: params.payload.providerUsageEventId,
+          organizationId: params.organizationId,
+          userId: params.userId,
+          settlementToken: params.payload.providerUsageSettlementToken,
+          settlementGeneration: params.payload.providerUsageSettlementGeneration,
+          status: "operator_action_required",
+          metadata: {
+            operation: `${providerName}_video_generation`,
+            providerAssetId: params.payload.providerAssetId,
+            providerAccepted: true,
+            reconciliationExhausted: true,
+          },
+        }),
+        { retries: 2, delayMs: 250 },
+      );
       throw new ApiError(
         409,
         failureMessage,
@@ -867,6 +1028,7 @@ export async function pollVideoGenerationStatusJob(params: {
     return {
       assetId: asset.id,
       providerAssetId: params.payload.providerAssetId,
+      providerName,
       status: "processing",
       providerStatus: finalStatus.status,
       videoUrl: null,
@@ -883,27 +1045,32 @@ export async function pollVideoGenerationStatusJob(params: {
       campaignId: params.campaignId,
       assetId: asset.id,
       providerAssetId: params.payload.providerAssetId,
+      providerName,
       insertedAssetMetadata: asset.metadata,
       code: "video_generation_failed",
       message: failureMessage,
       raw: finalStatus.raw,
     });
 
-    await markSessionCostBudgetEvent({
-      eventId: params.payload.providerUsageEventId,
-      organizationId: params.organizationId,
-      userId: params.userId,
-      settlementToken: params.payload.providerUsageSettlementToken,
-      settlementGeneration: params.payload.providerUsageSettlementGeneration,
-      status: "consumed",
-      metadata: {
-        operation: `${params.payload.providerName ?? "heygen"}_video_generation`,
-        providerAssetId: params.payload.providerAssetId,
-        reason: failureMessage,
-        providerAccepted: true,
-        providerRenderFailed: true,
-      },
-    }).catch(() => null);
+    await retryRouteStep(
+      () => markSessionCostBudgetEvent({
+        eventId: params.payload.providerUsageEventId,
+        organizationId: params.organizationId,
+        userId: params.userId,
+        settlementToken: params.payload.providerUsageSettlementToken,
+        settlementGeneration: params.payload.providerUsageSettlementGeneration,
+        status: "released",
+        metadata: {
+          operation: `${providerName}_video_generation`,
+          providerAssetId: params.payload.providerAssetId,
+          reason: failureMessage,
+          providerAccepted: true,
+          providerRenderFailed: true,
+          customerCreditsReleased: true,
+        },
+      }),
+      { retries: 2, delayMs: 250 },
+    );
 
     throw new ApiError(502, failureMessage, "video_generation_failed");
   }
@@ -916,25 +1083,42 @@ export async function pollVideoGenerationStatusJob(params: {
     );
   }
 
+  const storedVideo = await importGeneratedVideoToCanonicalStorage({
+    client: params.supabase,
+    organizationId: params.organizationId,
+    userId: params.userId,
+    campaignId: params.campaignId,
+    providerName,
+    providerAssetId: params.payload.providerAssetId,
+    assetId: asset.id,
+    sourceUrl: finalStatus.videoUrl,
+  });
+
   const nextMetadata = {
     ...(typeof asset.metadata === "object" && asset.metadata
       ? (asset.metadata as Record<string, unknown>)
       : {}),
-    videoProvider: params.payload.providerName ?? "heygen",
+    videoProvider: providerName,
     videoProviderStatus: finalStatus.status,
-    videoProviderRaw: finalStatus.raw,
+    generatedVideoStorageSha256: storedVideo.contentSha256,
+    generatedVideoStorageBytes: storedVideo.contentLength,
+    generatedVideoStorageMimeType: storedVideo.mimeType,
+    generatedVideoStorageReused: storedVideo.reusedExistingObject,
   } satisfies Record<string, unknown>;
 
   const { data: updatedAssetRaw, error: updateError } = await params.supabase
     .from("creative_assets")
     .update({
       status: "ready",
-      file_url: finalStatus.videoUrl,
-      thumbnail_url: finalStatus.thumbnailUrl,
+      file_url: storedVideo.publicUrl,
+      thumbnail_url: null,
       metadata: nextMetadata as Json,
     } as never)
     .eq("id", asset.id)
+    .eq("campaign_id", params.campaignId)
     .eq("user_id", params.userId)
+    .eq("storage_bucket", storedVideo.storageBucket)
+    .eq("storage_path", storedVideo.storagePath)
     .select("*")
     .single();
 
@@ -952,29 +1136,36 @@ export async function pollVideoGenerationStatusJob(params: {
     userId: params.userId,
     campaignId: params.campaignId,
     providerAssetId: params.payload.providerAssetId,
+    providerName,
     status: "generated",
-    videoUrl: finalStatus.videoUrl,
+    videoUrl: storedVideo.publicUrl,
     message: null,
   });
 
-  await markSessionCostBudgetEvent({
-    eventId: params.payload.providerUsageEventId,
+  await finalizePaidCreativeProjection({
+    supabase: params.supabase as any,
+    dispatchId: paidCreativeDispatchId,
     organizationId: params.organizationId,
     userId: params.userId,
-    settlementToken: params.payload.providerUsageSettlementToken,
-    settlementGeneration: params.payload.providerUsageSettlementGeneration,
-    status: "consumed",
-    metadata: {
-      operation: `${params.payload.providerName ?? "heygen"}_video_generation`,
+    projectionReceipt: {
+      kind: "video_generation",
+      campaignId: params.campaignId,
+      creativeAssetId: asset.id,
       providerAssetId: params.payload.providerAssetId,
+      providerName,
+      outputStatus: "completed",
+      storageBucket: storedVideo.storageBucket,
+      storagePath: storedVideo.storagePath,
+      contentSha256: storedVideo.contentSha256,
     },
   });
 
   return {
     assetId: asset.id,
     providerAssetId: params.payload.providerAssetId,
+    providerName,
     status: "completed",
     asset: updatedAssetRaw as CreativeAsset,
-    videoUrl: finalStatus.videoUrl,
+    videoUrl: storedVideo.publicUrl,
   };
 }

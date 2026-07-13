@@ -11,9 +11,9 @@ import { requireFinalVerificationNativeEnvironment } from "./lib/final-verificat
 const root = process.cwd();
 const outputArg = process.argv[2];
 const round = process.argv[3] ?? "1";
-const EXACT_INTEGRATED_MIGRATION_COUNT = 99;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 102;
 const REQUIRED_FINAL_MIGRATION =
-  "20260713024000_add_durable_ghl_periodic_form_sweeps.sql";
+  "20260713027000_add_ghl_location_display_name_finalization.sql";
 const FORBIDDEN_LOCAL_ENV_FILES = [
   ".env",
   ".env.local",
@@ -63,6 +63,7 @@ const commands = [
   ["npm", ["run", "test:security:scan-release"]],
   ["npm", ["run", "security:scan-release"]],
   ["node", ["scripts/test-final-verification-runner-contract.mjs"]],
+  ["npm", ["run", "test:release-evidence-current"]],
   ["npm", ["run", "lint"]],
   ["npm", ["run", "typecheck"]],
   ["npm", ["run", "build"]],
@@ -87,6 +88,8 @@ const commands = [
   ["npm", ["run", "test:white-label-host-binding"]],
   ["npm", ["run", "test:ghl-signed-user-context"]],
   ["npm", ["run", "test:white-label-attribution-db"]],
+  ["npm", ["run", "test:white-label-universal"]],
+  ["npm", ["run", "test:product-localization"]],
   ["npm", ["run", "test:production-route-contract"]],
   ["npm", ["run", "smoke:offline"]],
   ["npm", ["run", "plan:validate"]],
@@ -127,6 +130,8 @@ const commands = [
   ["npm", ["run", "test:dashboard-lineage-db"]],
   ["npm", ["run", "test:atomic-public-lead-capture-db"]],
   ["npm", ["run", "test:paid-creative-dispatch"]],
+  ["npm", ["run", "test:generated-video-storage"]],
+  ["npm", ["run", "test:account-deletion-offboarding"]],
   ["node", ["scripts/test-meta-budget-safety.mjs"]],
   ["node", ["scripts/generate-forward-migration-portfolio.mjs", "--check"]],
   ["node", ["scripts/schema/check-forward-reconstruction.mjs"]],

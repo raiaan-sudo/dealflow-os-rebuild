@@ -10,6 +10,7 @@ import {
   GHL_DESTINATION_POLL_INTERVAL_MS,
   shouldRetryPendingGhlDestination,
 } from "@/lib/ghl-destination-polling";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
 
 type ScheduleApiResponse = {
   campaignId?: string;
@@ -71,6 +72,7 @@ function compactIdentity(value: string) {
 
 export default function LaunchingPage() {
   const router = useRouter();
+  const { currency, dateTime, href, t } = useProductI18n();
   const searchParams = useSearchParams();
   const campaignId = searchParams.get("campaignId");
   const [review, setReview] = useState<LaunchAuthorizationReview | null>(null);
@@ -88,7 +90,7 @@ export default function LaunchingPage() {
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     if (!campaignId) {
       setStatus("error");
-      setError("Return to final review and select a campaign.");
+      setError(t("launch.noCampaign"));
       return () => { cancelled = true; };
     }
     setStatus("loading");
@@ -115,7 +117,7 @@ export default function LaunchingPage() {
           attempt,
         })) {
           if (!cancelled) {
-            setError(data?.error || "Preparing the verified GHL funnel for this campaign…");
+            setError(t("common.pleaseWait"));
             retryTimer = setTimeout(() => {
               void loadReview(attempt + 1);
             }, GHL_DESTINATION_POLL_INTERVAL_MS);
@@ -124,13 +126,13 @@ export default function LaunchingPage() {
         }
         throw new Error(
           data?.code === "ghl_destination_pending"
-            ? "GHL funnel preparation is still running. Retry this check in a moment."
-            : data?.error || "The exact launch authorization review is unavailable.",
+            ? t("common.pleaseWait")
+            : t("launch.unavailable"),
         );
-      } catch (caughtError) {
+      } catch {
         if (!cancelled) {
           setStatus("error");
-          setError(caughtError instanceof Error ? caughtError.message : "Launch review failed.");
+          setError(t("launch.unavailable"));
         }
       }
     };
@@ -139,7 +141,7 @@ export default function LaunchingPage() {
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [campaignId, reviewRetryGeneration]);
+  }, [campaignId, reviewRetryGeneration, t]);
 
   async function scheduleLaunch() {
     if (!campaignId || !review || !approvalReady || status === "submitting") {
@@ -183,36 +185,32 @@ export default function LaunchingPage() {
       if (data.scheduleId) {
         params.set("scheduleId", data.scheduleId);
       }
-      router.replace(`/launch-success?${params.toString()}`);
-    } catch (caughtError) {
+      router.replace(href(`/launch-success?${params.toString()}`));
+    } catch {
       setStatus("error");
-      setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : "The launch schedule could not be saved.",
-      );
+      setError(t("launch.unavailable"));
     }
   }
 
   return (
     <div className="mx-auto w-full max-w-[900px] space-y-8">
       <PageHeader
-        eyebrow="Launch schedule"
-        title="Schedule campaign launch"
-        description="New campaigns are queued for the next 9:00 a.m. Eastern window using America/New_York daylight-saving rules. Scheduling does not create or activate Meta objects."
+        eyebrow={t("launch.scheduleEyebrow")}
+        title={t("launch.schedule")}
+        description={t("launch.scheduleDescription")}
       />
 
       <Card className="p-6 sm:p-8">
         {!campaignId || status === "loading" ? (
           <div className="flex items-center gap-3 text-sm text-muted-foreground" role="status">
             <Spinner className="size-4" />
-            {error || "Loading the exact server-verified authorization contract…"}
+            {error || t("launch.loadingReview")}
           </div>
         ) : !review || !approvalReady ? (
           <div className="space-y-3" role="alert">
-            <p className="text-lg font-semibold text-foreground">Campaign unavailable</p>
+            <p className="text-lg font-semibold text-foreground">{t("launch.unavailable")}</p>
             <p className="text-sm text-rose-300">
-              {error || "Return to final review so the exact daily budget and Meta account currency can be confirmed."}
+              {error || t("launch.unavailable")}
             </p>
             <Button
               onClick={() => {
@@ -224,45 +222,40 @@ export default function LaunchingPage() {
               type="button"
               variant="secondary"
             >
-              Retry preparation
+              {t("launch.retryPreparation")}
             </Button>
           </div>
         ) : (
           <div className="space-y-5">
             <div className="inline-flex rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100">
-              Confirmation required
+              {t("launch.confirmationRequired")}
             </div>
             <div className="space-y-3">
               <p className="text-lg font-semibold text-foreground">
-                Queue the next eligible launch window
+                {t("launch.queueWindow")}
               </p>
               <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
-                If today&apos;s 9:00 a.m. Eastern window has passed, the campaign is queued for
-                9:00 a.m. Eastern tomorrow. No weekend or holiday restriction is invented.
+                {t("launch.windowBody")}
               </p>
               <p className="max-w-2xl rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-sm leading-6 text-cyan-50">
-                You are authorizing an exact daily budget of {new Intl.NumberFormat("en-CA", {
-                  style: "currency",
-                  currency: review.approvedCurrency,
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                }).format(review.approvedDailyBudgetMinor / 100)} {review.approvedCurrency}. DealFlow will first
-                verify every Meta object in PAUSED state, then may activate only that exact receipted
-                campaign at the scheduled window under the configured safety gates.
+                {t("launch.authorizationBody")} {currency(
+                  review.approvedDailyBudgetMinor / 100,
+                  review.approvedCurrency,
+                  { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+                )} {review.approvedCurrency}.
               </p>
               <dl className="grid gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm sm:grid-cols-2">
-                <div><dt className="text-muted-foreground">Campaign</dt><dd className="mt-1 font-medium">{review.campaignName}</dd></div>
-                <div><dt className="text-muted-foreground">Launch window</dt><dd className="mt-1 font-medium">{new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeStyle: "short", timeZone: review.timeZone }).format(new Date(review.scheduledFor))} ET</dd></div>
-                <div><dt className="text-muted-foreground">Meta account</dt><dd className="mt-1 font-mono text-xs">{compactIdentity(review.provider.ad_account_id)}</dd></div>
-                <div><dt className="text-muted-foreground">Page / pixel</dt><dd className="mt-1 font-mono text-xs">{compactIdentity(review.provider.page_id)} / {compactIdentity(review.provider.pixel_id)}</dd></div>
-                <div><dt className="text-muted-foreground">Creative</dt><dd className="mt-1 font-medium">{review.creative.headline}</dd><dd className="font-mono text-xs text-muted-foreground">{compactIdentity(review.creative.selectedAdId)} · bytes {compactIdentity(review.creative.imageContentSha256)}</dd></div>
-                <div><dt className="text-muted-foreground">Destination</dt><dd className="mt-1 font-medium">{review.destination.type === "meta_instant_form" ? "Meta Instant Form" : "GHL website funnel"}</dd><dd className="break-all text-xs text-muted-foreground">{review.destination.url}</dd></div>
-                <div><dt className="text-muted-foreground">Audience</dt><dd className="mt-1 font-medium">{review.delivery.location} ({review.delivery.country_code})</dd></div>
-                <div><dt className="text-muted-foreground">Delivery contract</dt><dd className="mt-1 font-medium">{review.delivery.objective} · HOUSING</dd></div>
+                <div><dt className="text-muted-foreground">{t("common.campaign")}</dt><dd className="mt-1 font-medium">{review.campaignName}</dd></div>
+                <div><dt className="text-muted-foreground">{t("launch.window")}</dt><dd className="mt-1 font-medium">{dateTime(review.scheduledFor, { timeZone: review.timeZone })} ET</dd></div>
+                <div><dt className="text-muted-foreground">{t("launch.metaAccount")}</dt><dd className="mt-1 font-mono text-xs">{compactIdentity(review.provider.ad_account_id)}</dd></div>
+                <div><dt className="text-muted-foreground">{t("launch.pagePixel")}</dt><dd className="mt-1 font-mono text-xs">{compactIdentity(review.provider.page_id)} / {compactIdentity(review.provider.pixel_id)}</dd></div>
+                <div><dt className="text-muted-foreground">{t("launch.creative")}</dt><dd className="mt-1 font-medium">{review.creative.headline}</dd><dd className="font-mono text-xs text-muted-foreground">{compactIdentity(review.creative.selectedAdId)} · bytes {compactIdentity(review.creative.imageContentSha256)}</dd></div>
+                <div><dt className="text-muted-foreground">{t("launch.destination")}</dt><dd className="mt-1 font-medium">{review.destination.type === "meta_instant_form" ? "Meta Instant Form" : "GHL"}</dd><dd className="break-all text-xs text-muted-foreground">{review.destination.url}</dd></div>
+                <div><dt className="text-muted-foreground">{t("common.audience")}</dt><dd className="mt-1 font-medium">{review.delivery.location} ({review.delivery.country_code})</dd></div>
+                <div><dt className="text-muted-foreground">{t("launch.deliveryContract")}</dt><dd className="mt-1 font-medium">{review.delivery.objective} · HOUSING</dd></div>
               </dl>
               <p className="max-w-2xl rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm leading-6 text-amber-100">
-                This click records the schedule and your activation authorization. It does not call
-                Meta now and does not mean the campaign is already live, active, or spending.
+                {t("launch.clickRecords")}
               </p>
             </div>
 
@@ -280,12 +273,12 @@ export default function LaunchingPage() {
               {status === "submitting" ? (
                 <>
                   <Spinner className="mr-2 size-4" />
-                  Saving schedule...
+                  {t("launch.saving")}
                 </>
               ) : status === "error" ? (
-                "Retry schedule"
+                t("launch.retrySchedule")
               ) : (
-                "Schedule and authorize launch"
+                t("launch.scheduleAuthorize")
               )}
             </Button>
           </div>

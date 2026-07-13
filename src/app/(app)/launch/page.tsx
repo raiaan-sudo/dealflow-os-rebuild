@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { LocaleLink as Link } from "@/components/i18n/locale-link";
 import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { LaunchMetaSelectionPanel } from "@/components/campaign/launch/launch-meta-selection-panel";
@@ -22,6 +22,8 @@ import {
   validateMetaLaunchSelections,
 } from "@/lib/integrations/meta/service";
 import { getLaunchBlockingReasons, getLaunchRequirements } from "@/lib/services/launch-readiness";
+import { getRequestProductI18n } from "@/lib/i18n/server";
+import { getProductIntlLocale, type ProductLocale } from "@/lib/i18n/config";
 
 function withTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs: number) {
   return new Promise<T>((resolve) => {
@@ -40,19 +42,19 @@ function withTimeout<T>(promise: Promise<T>, fallback: T, timeoutMs: number) {
   });
 }
 
-function formatLastVerified(value: string | null | undefined) {
+function formatLastVerified(value: string | null | undefined, locale: ProductLocale) {
   if (!value) {
-    return "not verified yet";
+    return new Intl.RelativeTimeFormat(getProductIntlLocale(locale), { numeric: "auto" }).format(0, "minute");
   }
 
   const diffMs = Date.now() - new Date(value).getTime();
   const diffMinutes = Math.max(0, Math.round(diffMs / 60_000));
 
   if (diffMinutes <= 1) {
-    return "just now";
+    return new Intl.RelativeTimeFormat(getProductIntlLocale(locale), { numeric: "auto" }).format(0, "minute");
   }
 
-  return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+  return new Intl.RelativeTimeFormat(getProductIntlLocale(locale), { numeric: "auto" }).format(-diffMinutes, "minute");
 }
 
 function formatVerifiedTimestamp(value: string | null | undefined) {
@@ -92,6 +94,7 @@ export default async function LaunchAliasPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const { currency, dateTime, locale, t } = await getRequestProductI18n();
   const params = searchParams ? await searchParams : {};
   const requestedCampaignId =
     typeof params.campaignId === "string" && params.campaignId.length > 0
@@ -158,17 +161,17 @@ export default async function LaunchAliasPage({
       <PageShell>
         <WizardSteps current="launch" />
         <PageHeader
-          eyebrow="Launch"
-          title="Campaign plan not found"
-          description="Build a campaign before moving into launch."
+          eyebrow={t("nav.goLive")}
+          title={t("launch.planMissing")}
+          description={t("dashboard.empty.body")}
         />
         <EmptyState
-          title="No campaign is available for launch"
-          description="Complete onboarding first, then return here to connect and launch."
+          title={t("launch.noCampaign")}
+          description={t("dashboard.empty.body")}
         />
         <div>
           <Button asChild>
-            <Link href="/dashboard">Open dashboard</Link>
+            <Link href="/dashboard">{t("launch.openDashboard")}</Link>
           </Button>
         </div>
       </PageShell>
@@ -218,7 +221,7 @@ export default async function LaunchAliasPage({
     approvedDailyBudgetMinor >= 100 &&
     (approvedCurrency === "USD" || approvedCurrency === "CAD");
   const metaStatusText = metaLaunchReady
-    ? `Connected (last verified ${formatLastVerified(metaPreflight?.checkedAt)})`
+    ? `Meta · ${formatLastVerified(metaPreflight?.checkedAt, locale)}`
     : metaVerificationTimedOut
       ? "Meta unavailable, try again"
       : metaSelectionInvalid
@@ -226,20 +229,22 @@ export default async function LaunchAliasPage({
         : metaConnected
           ? "Selection required before launch"
           : "Meta connection required";
-  const metaVerifiedAtText = formatVerifiedTimestamp(metaPreflight?.checkedAt);
+  const metaVerifiedAtText = metaPreflight?.checkedAt
+    ? dateTime(metaPreflight.checkedAt)
+    : t("common.notVerified");
 
   if (selectedCreatives.length === 0) {
     return (
       <PageShell>
         <WizardSteps current="launch" />
         <PageHeader
-          eyebrow="Launch"
-          title="Selected creative required"
-          description="Choose an ad in creatives before launch can continue."
+          eyebrow={t("nav.goLive")}
+          title={t("launch.creativeRequired")}
+          description={t("launch.noCreative")}
         />
         <EmptyState
-          title="No selected creative is saved for this campaign"
-          description="Launch is blocked until one persisted primary creative exists. Go back to creatives and choose the exact ad to launch."
+          title={t("launch.noCreative")}
+          description={t("launch.creativeRequired")}
         />
         <div>
           <Button asChild>
@@ -250,7 +255,7 @@ export default async function LaunchAliasPage({
                   : "/build/creatives"
               }
             >
-              Back to Creatives
+              {t("common.back")}
             </Link>
           </Button>
         </div>
@@ -262,9 +267,9 @@ export default async function LaunchAliasPage({
     <PageShell>
       <WizardSteps current="launch" />
       <PageHeader
-        eyebrow="Launch"
-        title="Final review before launch"
-        description="Confirm the campaign, check the selected ad, and launch when everything looks right."
+        eyebrow={t("nav.goLive")}
+        title={t("launch.finalReview")}
+        description={t("launch.check")}
       />
       {metaConnectedFlag ? (
         <div className="rounded-[22px] border border-emerald-400/15 bg-emerald-400/10 px-5 py-4 text-sm font-medium text-emerald-100">
@@ -301,25 +306,27 @@ export default async function LaunchAliasPage({
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
           <div className="space-y-4">
             <div className="surface-subtle rounded-[22px] border border-white/10 p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Campaign</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("common.campaign")}</p>
               <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
                 {plan.businessName || `${plan.market} ${intentLabel} Campaign`}
               </h2>
               <div className="mt-5 grid gap-4 sm:grid-cols-3">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Audience</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("common.audience")}</p>
                   <p className="mt-2 text-sm leading-6 text-foreground">
                     {plan.audience || `${plan.market} ${intentLabel}`}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Budget</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("common.budget")}</p>
                   <p className="mt-2 text-sm leading-6 text-foreground">
-                    ${plan.monthlyBudget.toLocaleString()}/month
+                    {approvedCurrency === "USD" || approvedCurrency === "CAD"
+                      ? currency(plan.monthlyBudget, approvedCurrency)
+                      : t("common.unavailable")}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Meta status</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("launch.metaStatus")}</p>
                   <div className="mt-2 flex items-center gap-2">
                 <StatusPill tone={getStatusTone(metaProviderState?.status.status ?? "disconnected")}>
                       {metaStatusText}
@@ -338,7 +345,7 @@ export default async function LaunchAliasPage({
               </p>
               {metaSelectionReady ? (
                 <div className="mt-4 rounded-[18px] border border-white/8 bg-black/20 p-4 text-sm text-muted-foreground">
-                  <p className="font-medium text-foreground">Pre-launch check</p>
+                  <p className="font-medium text-foreground">{t("launch.precheck")}</p>
                   <p className="mt-2 leading-6">
                     Token: {metaPreflight?.tokenValid ? "valid" : "not verified"} · Account:{" "}
                     {metaPreflight?.accountValid ? "valid" : "invalid"} · Page:{" "}
@@ -346,12 +353,12 @@ export default async function LaunchAliasPage({
                     {metaPreflight?.pixelValid ? "valid" : "invalid"}
                   </p>
                   <p className="mt-2 leading-6">Last verified at: {metaVerifiedAtText}</p>
-                  <p className="mt-2 leading-6">Meta state may change before launch.</p>
+                  <p className="mt-2 leading-6">{t("launch.metaMayChange")}</p>
                 </div>
               ) : null}
             </div>
             <div className="surface-subtle rounded-[22px] border border-white/10 p-5">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Meta setup</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("launch.metaSetup")}</p>
               <p className="mt-3 text-sm font-semibold">
                 {metaConnected
                   ? metaConnection.accountName || "Workspace linked"
@@ -364,7 +371,7 @@ export default async function LaunchAliasPage({
             </div>
           </div>
           <div className="surface-subtle rounded-[22px] border border-white/10 p-5">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Primary launch creative</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("launch.primaryCreative")}</p>
             <div className="mt-4 grid gap-4">
               {selectedCreatives.map((selectedCreative) => (
                 <StaticCreativePreviewCard
@@ -394,9 +401,9 @@ export default async function LaunchAliasPage({
       <Card className="p-5 sm:p-7">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-2xl">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Launch check</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("launch.check")}</p>
             <p className="mt-2 text-lg font-semibold">
-              {billingLaunchAllowed ? "Ready to attempt launch" : "Activate to launch"}
+              {billingLaunchAllowed ? t("launch.finalReview") : t("billing.activate")}
             </p>
             <p className="mt-2 max-w-[720px] text-sm leading-7 text-muted-foreground">
               {billingLaunchAllowed
@@ -407,7 +414,7 @@ export default async function LaunchAliasPage({
           <div className="flex w-full flex-col gap-3 lg:w-auto lg:flex-row">
             <Button asChild variant="secondary" className="w-full lg:w-auto">
               <Link href={savedRecord?.campaign.id ? `/preview?campaignId=${savedRecord.campaign.id}` : "/preview"}>
-                Back
+                {t("common.back")}
               </Link>
             </Button>
             {billingLaunchAllowed && metaLaunchReady && activationApprovalReady ? (
@@ -415,13 +422,13 @@ export default async function LaunchAliasPage({
                 <Link href={`/launching?${new URLSearchParams({
                   campaignId: savedRecord.campaign.id,
                 }).toString()}`}>
-                  Ready to attempt launch
+                  {t("nav.goLive")}
                 </Link>
               </Button>
             ) : !billingLaunchAllowed ? (
               <Button asChild className="w-full lg:w-auto">
                 <Link href={savedRecord?.campaign.id ? `/paywall?campaignId=${encodeURIComponent(savedRecord.campaign.id)}` : "/paywall"}>
-                  Activate to launch
+                  {t("billing.activate")}
                 </Link>
               </Button>
             ) : (

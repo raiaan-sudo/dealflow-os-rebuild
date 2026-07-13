@@ -2,8 +2,8 @@
 
 Overall verdict: `NO_GO`
 Frozen foundation: `80 MIGRATIONS / HISTORICAL_PASS`
-Integrated candidate: `99 MIGRATIONS / PENDING_FINAL_SEAL`
-Exact clean-seal 99-chain proof: `NOT_YET_RUN`
+Integrated candidate: `102 MIGRATIONS / PENDING_FINAL_SEAL`
+Exact clean-seal 102-chain proof: `NOT_YET_RUN`
 Isolated hosted staging application: `NOT_YET_RUN`
 Production migration: `NOT_YET_RUN`
 
@@ -20,7 +20,7 @@ produced a frozen 80-migration foundation and retained PostgreSQL 17.6 evidence
 for 14 foundation/adoption/collision/RLS/recovery gates. That evidence is a
 `HISTORICAL_PASS` for migrations 1-80; it is not proof of the current extensions.
 
-The current source tree contains exactly 99 ordered SQL migrations. The nineteen
+The current source tree contains exactly 102 ordered SQL migrations. The twenty-two
 additive extensions after the frozen foundation are:
 
 81. `20260712213000_create_ghl_sandbox_provider_path.sql`
@@ -42,8 +42,11 @@ additive extensions after the frozen foundation are:
 97. `20260713021000_require_paid_activation_for_campaign_creation.sql`
 98. `20260713022000_reconcile_native_ghl_form_submissions.sql`
 99. `20260713024000_add_durable_ghl_periodic_form_sweeps.sql`
+100. `20260713025000_add_generated_video_canonical_storage.sql`
+101. `20260713026000_add_account_deletion_and_provider_offboarding.sql`
+102. `20260713027000_add_ghl_location_display_name_finalization.sql`
 
-Migrations 90-99 are not cosmetic. They prevent location-global GHL personalization
+Migrations 90-102 are not cosmetic. They prevent location-global GHL personalization
 from allowing one website campaign to overwrite another. Readiness becomes an
 exact organization + campaign + environment + manifest-slot + source-plan
 fingerprint fact. Legacy root-only personalization can serve one campaign only;
@@ -67,16 +70,27 @@ provider read, fences credential rotation and retirement, isolates
 retry/operator outcomes, and preserves immutable generation-scoped replay
 audits while resetting each proven generation's bounded retry/replay budget.
 Both reconciliation and sweep execution remain independently default-off.
+Migration 100 adds the private immutable binding ledger and service-only atomic
+binding path for canonical generated-video objects, plus exact tenant-path,
+no-overwrite, identity/URL immutability, and reserved-prefix storage guards.
+Migration 101 adds the always-on account-suspension fence, owner-verified and
+idempotent deletion request lifecycle, leased ordered tasks, append-only
+receipts and legal holds, bounded retention/pseudonymization, and proof-bound
+provider offboarding. Execution and provider-write controls remain default-off.
+Migration 102 adds the fenced GHL location display-name finalization operation.
+It keeps the full immutable request tag only until exact location identity is
+durable, then requires official PUT cleanup and GET readback of the clean name
+before snapshot provisioning can advance.
 
 The final manifest must derive count, order, per-file digest, and aggregate
 digest from the exact clean commit. Those values are `PENDING_FINAL_SEAL` and
 must not be copied from a working tree.
 
-## Required local 99-chain proof
+## Required local 102-chain proof
 
 Using PostgreSQL 17.6 and the exact clean candidate, both final rounds must prove:
 
-1. all 99 migrations apply in order to a fresh disposable database;
+1. all 102 migrations apply in order to a fresh disposable database;
 2. frozen foundation followed by extensions converges to the same semantic
    public/private schema as the direct fresh chain;
 3. exact migration history replay performs zero structural mutation;
@@ -92,14 +106,14 @@ Using PostgreSQL 17.6 and the exact clean candidate, both final rounds must prov
 9. two independent final databases produce the same normalized digest; and
 10. all disposable roles/databases/processes are removed after proof.
 
-Current result for the exact final 99-migration seal: `NOT_YET_RUN`.
+Current result for the exact final 102-migration seal: `NOT_YET_RUN`.
 
 ## Isolated staging application contract
 
 The staging broker may run only after two passing final summaries bind the same
 clean seal. It must independently verify:
 
-- exact 99-file inventory and final filename;
+- exact 102-file inventory and final filename;
 - exact repository commit/tree/content/lock/migration digests;
 - exact isolated Supabase fingerprint and safe suffix;
 - exact staging Vercel project and host with no production alias;
@@ -159,5 +173,5 @@ deletion, consent, GHL, Meta, and provider record. Never:
 - deploy an older checkout merely because it predates the failure.
 
 The retained 80-migration foundation includes a historical local
-forward-recovery drill. A final-seal 99-chain local drill, hosted staging drill,
+forward-recovery drill. A final-seal 102-chain local drill, hosted staging drill,
 and production-bound recovery exercise are all `NOT_YET_RUN`.

@@ -1,4 +1,7 @@
+"use client";
+
 import Image from "next/image";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
 import { cn } from "@/lib/utils";
 import {
   buildComposedStaticAdPreview,
@@ -12,24 +15,32 @@ type StaticAdComposedPreviewProps = StaticAdTemplateInput & {
   showRawAssetState?: boolean;
 };
 
-function statusLabel(status: ReturnType<typeof buildComposedStaticAdPreview>["status"]) {
-  if (status === "final_composed") return "Final composed ad";
-  if (status === "background_generating") return "Template ready, image generating";
-  if (status === "background_failed") return "Template ready, image failed";
-  return "Template-ready preview";
+type ProductTranslator = ReturnType<typeof useProductI18n>["t"];
+
+function statusLabel(
+  status: ReturnType<typeof buildComposedStaticAdPreview>["status"],
+  t: ProductTranslator,
+) {
+  if (status === "final_composed") return t("creativePreview.status.final");
+  if (status === "background_generating") return t("creativePreview.status.generating");
+  if (status === "background_failed") return t("creativePreview.status.failed");
+  return t("creativePreview.status.template");
 }
 
-function qualityLabel(preview: ReturnType<typeof buildComposedStaticAdPreview>) {
+function qualityLabel(
+  preview: ReturnType<typeof buildComposedStaticAdPreview>,
+  t: ProductTranslator,
+) {
   if (typeof preview.qualityScore !== "number") {
-    return "Quality pending";
+    return t("creativePreview.qualityPending");
   }
 
   const score = preview.qualityScore.toFixed(1);
   if (preview.qualityAccepted === false) {
-    return `Needs work ${score}/10`;
+    return t("creativePreview.needsWork", { score });
   }
 
-  return `Quality ${score}/10`;
+  return t("creativePreview.quality", { score });
 }
 
 function backgroundClass(category: ReturnType<typeof buildComposedStaticAdPreview>["category"]) {
@@ -66,7 +77,11 @@ function ctaClass(category: ReturnType<typeof buildComposedStaticAdPreview>["cat
   return "border-[#111111]/15 bg-white text-[#111111]";
 }
 
-function renderTemplateDetails(preview: ReturnType<typeof buildComposedStaticAdPreview>, compact: boolean) {
+function renderTemplateDetails(
+  preview: ReturnType<typeof buildComposedStaticAdPreview>,
+  compact: boolean,
+  t: ProductTranslator,
+) {
   if (preview.category === "luxury") {
     return (
       <div className="absolute inset-x-0 bottom-0 p-5">
@@ -94,19 +109,19 @@ function renderTemplateDetails(preview: ReturnType<typeof buildComposedStaticAdP
               {preview.eyebrow}
             </div>
             <div className="rounded-sm border border-white/20 bg-black/60 px-2 py-1 text-[10px] font-bold text-white">
-              ROI brief
+              {t("creativePreview.roiBrief")}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
             {preview.proofChips.slice(0, 4).map((chip, index) => (
               <div key={`${chip}-${index}`} className="rounded-md border border-white/14 bg-black/58 p-2 text-white shadow-sm">
-                <p className="text-[9px] uppercase tracking-[0.16em] text-white/58">Metric</p>
+                <p className="text-[9px] uppercase tracking-[0.16em] text-white/58">{t("creativePreview.metric")}</p>
                 <p className="mt-1 break-words text-sm font-black leading-tight">{chip}</p>
               </div>
             ))}
           </div>
           <div className="rounded-md bg-white px-3 py-2 text-slate-950">
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">Opportunity</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">{t("creativePreview.opportunity")}</p>
             <p className={cn("font-black leading-tight", compact ? "text-lg" : "text-2xl")}>{preview.overlayText}</p>
           </div>
         </div>
@@ -119,7 +134,7 @@ function renderTemplateDetails(preview: ReturnType<typeof buildComposedStaticAdP
       <div className="absolute inset-0 flex flex-col p-4">
         <div className="flex items-center justify-between gap-2">
           <div className={cn("rounded-sm border px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.12em]", accentClass(preview.category))}>
-            Breaking news
+            {t("creativePreview.breakingNews")}
           </div>
           <div className="rounded-sm bg-white px-2 py-1 text-[10px] font-bold text-black">2026 - 2028</div>
         </div>
@@ -180,9 +195,10 @@ export function StaticAdComposedPreview({
   showRawAssetState = true,
   ...input
 }: StaticAdComposedPreviewProps) {
+  const { t } = useProductI18n();
   const preview = buildComposedStaticAdPreview(input);
-  const label = statusLabel(preview.status);
-  const quality = qualityLabel(preview);
+  const label = statusLabel(preview.status, t);
+  const quality = qualityLabel(preview, t);
 
   return (
     <div className={cn("overflow-hidden rounded-[20px] border border-white/10 bg-black/20", className)}>
@@ -205,7 +221,7 @@ export function StaticAdComposedPreview({
           <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.12)_1px,transparent_1px)] bg-[size:36px_36px] opacity-20" />
         )}
         <div className="absolute inset-0 bg-black/18" />
-        {renderTemplateDetails(preview, compact)}
+        {renderTemplateDetails(preview, compact, t)}
       </div>
 
       <div className={cn("space-y-3", compact ? "p-3" : "p-4")}>
@@ -218,7 +234,7 @@ export function StaticAdComposedPreview({
           </span>
           {typeof selectedCount === "number" ? (
             <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              {selectedCount} selected
+              {t("creativePreview.selectedCount", { count: selectedCount })}
             </span>
           ) : null}
         </div>
@@ -229,7 +245,7 @@ export function StaticAdComposedPreview({
           <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Primary text
+                {t("creativePreview.primaryText")}
               </p>
               <p className="mt-1 break-words text-sm leading-6 text-foreground">{preview.primaryText}</p>
             </div>
@@ -240,7 +256,7 @@ export function StaticAdComposedPreview({
         ) : null}
         {preview.overflowRisk ? (
           <p className="text-xs leading-5 text-amber-300">
-            Long copy was fitted into the template to prevent visual overflow.
+            {t("creativePreview.overflow")}
           </p>
         ) : null}
       </div>

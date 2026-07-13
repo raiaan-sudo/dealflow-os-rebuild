@@ -3,7 +3,12 @@ import { buildRateLimitResponse, consumeRateLimit, getRateLimitKey } from "@/lib
 import { getAuthenticatedContext } from "@/lib/services/authenticated-context";
 import { getCampaignById } from "@/lib/services/campaign-persistence";
 import { createSystemJob } from "@/lib/services/system-job-service";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { VideoGenerationJobPayload } from "@/lib/services/video-generation-job";
+import {
+  getDurableVideoProvider,
+  getDurableVideoProviderUnavailableReason,
+} from "@/lib/ai/video-provider";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -48,9 +53,90 @@ export async function POST(
       campaign.creatives.staticAds[body.creativeIndex] ??
       campaign.creatives.staticAds.find((asset) => asset.imageGenerationState === "generated") ??
       null;
+    const selectedSourceImageIndex = selectedSourceImage
+      ? campaign.creatives.staticAds.findIndex((asset) => asset.id === selectedSourceImage.id)
+      : -1;
 
     if (!selectedVideo) {
       return Response.json({ error: "Video creative was not found for this campaign." }, { status: 404 });
+    }
+
+    let inputImageUrl: string | null = null;
+    let inputImageAssetId: string | null = null;
+    let inputImagePaidCreativeDispatchId: string | null = null;
+    if (
+      selectedSourceImage?.imageGenerationState === "generated" &&
+      selectedSourceImageIndex >= 0 &&
+      /^https:\/\//i.test(selectedSourceImage.imageUrl)
+    ) {
+      const admin = createAdminClient();
+      if (!admin) {
+        return Response.json(
+          { error: "The source image identity service is unavailable.", code: "video_source_asset_authority_unavailable" },
+          { status: 503 },
+        );
+      }
+      const { data: sourceAsset, error: sourceAssetError } = await (admin as any)
+        .from("creative_assets")
+        .select("id,file_url,paid_creative_dispatch_id")
+        .eq("campaign_id", campaignId)
+        .eq("user_id", auth.userId)
+        .eq("creative_id", `${campaignId}-creative-${selectedSourceImageIndex}`)
+        .eq("asset_type", "image_frame")
+        .eq("provider_name", "openai")
+        .eq("status", "ready")
+        .eq("file_url", selectedSourceImage.imageUrl)
+        .not("paid_creative_dispatch_id", "is", null)
+        .maybeSingle();
+      if (sourceAssetError) {
+        return Response.json(
+          { error: "The source image identity could not be verified.", code: "video_source_asset_lookup_failed" },
+          { status: 503 },
+        );
+      }
+      const { data: sourceDispatch, error: sourceDispatchError } = sourceAsset?.paid_creative_dispatch_id
+        ? await (admin as any)
+            .from("paid_creative_dispatches")
+            .select("id")
+            .eq("id", sourceAsset.paid_creative_dispatch_id)
+            .eq("organization_id", auth.organizationId)
+            .eq("user_id", auth.userId)
+            .eq("campaign_id", campaignId)
+            .eq("provider", "openai")
+            .eq("operation", "openai_image_generation")
+            .eq("state", "projected")
+            .maybeSingle()
+        : { data: null, error: null };
+      if (sourceDispatchError) {
+        return Response.json(
+          { error: "The source image dispatch could not be verified.", code: "video_source_dispatch_lookup_failed" },
+          { status: 503 },
+        );
+      }
+      if (
+        sourceAsset?.id &&
+        sourceAsset.file_url &&
+        sourceAsset.paid_creative_dispatch_id &&
+        sourceDispatch?.id === sourceAsset.paid_creative_dispatch_id
+      ) {
+        inputImageUrl = sourceAsset.file_url;
+        inputImageAssetId = sourceAsset.id;
+        inputImagePaidCreativeDispatchId = sourceAsset.paid_creative_dispatch_id;
+      }
+    }
+    const videoProvider = getDurableVideoProvider();
+    const unavailableReason = getDurableVideoProviderUnavailableReason({
+      provider: videoProvider,
+      inputImageUrl,
+    });
+    if (!videoProvider || unavailableReason) {
+      return Response.json(
+        {
+          error: unavailableReason ?? "Higgsfield video generation is unavailable.",
+          code: "video_generation_unavailable",
+        },
+        { status: 409 },
+      );
     }
 
     const scriptLines = (selectedCopy?.script || selectedVideo.script.join("\n"))
@@ -81,11 +167,9 @@ export async function POST(
       voiceProfile: null,
       audience: campaign.strategy.audience ?? campaign.campaign.audience ?? null,
       location: campaign.strategy.location ?? campaign.campaign.location ?? null,
-      inputImageUrl:
-        selectedSourceImage?.imageGenerationState === "generated" &&
-        /^https:\/\//i.test(selectedSourceImage.imageUrl)
-          ? selectedSourceImage.imageUrl
-          : null,
+      inputImageAssetId,
+      inputImagePaidCreativeDispatchId,
+      providerName: videoProvider,
       force: body.force === true,
     };
 
@@ -99,7 +183,9 @@ export async function POST(
           ? `video_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${body.creativeIndex}:${crypto.randomUUID()}`
           : `video_generation:${auth.organizationId}:${auth.userId}:${campaignId}:${body.creativeIndex}`,
       payload,
-      maxAttempts: 1,
+      // At least one lease-reclaim attempt is required to project an accepted
+      // provider receipt after a worker crash without issuing another POST.
+      maxAttempts: 3,
     });
 
     return Response.json({
@@ -107,6 +193,7 @@ export async function POST(
       campaignId,
       job,
       status: job.status,
+      provider: videoProvider,
       video: {
         hook: payload.hook,
         script: payload.scriptLines,

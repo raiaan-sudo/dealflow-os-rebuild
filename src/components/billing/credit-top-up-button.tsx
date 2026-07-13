@@ -2,16 +2,18 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
 
 export function CreditTopUpButton({
   amountCents = 2500,
-  label = "Add credits",
+  label,
   disabled = false,
 }: {
   amountCents?: number;
   label?: string;
   disabled?: boolean;
 }) {
+  const { t } = useProductI18n();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,12 +35,12 @@ export function CreditTopUpButton({
         | null;
 
       if (!response.ok || !data?.url) {
-        throw new Error(data?.error ?? "Credit checkout could not be started.");
+        throw new Error(t("billing.creditCheckoutError"));
       }
 
       window.location.assign(data.url);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Credit checkout could not be started.");
+    } catch {
+      setError(t("billing.creditCheckoutError"));
       setLoading(false);
     }
   }
@@ -46,7 +48,7 @@ export function CreditTopUpButton({
   return (
     <div className="space-y-3">
       <Button type="button" onClick={handleCheckout} disabled={disabled || loading}>
-        {loading ? "Opening checkout..." : label}
+        {loading ? t("billing.openingCheckout") : (label ?? t("billing.addCredits"))}
       </Button>
       {error ? <p className="text-sm text-rose-300" role="alert">{error}</p> : null}
     </div>

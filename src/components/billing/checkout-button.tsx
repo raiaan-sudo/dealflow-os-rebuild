@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
 
 export function CheckoutButton({
-  label = "Activate to launch",
+  label,
 }: {
   label?: string;
 }) {
+  const { t } = useProductI18n();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,12 +31,12 @@ export function CheckoutButton({
         | null;
 
       if (!response.ok || !data?.url) {
-        throw new Error(data?.error ?? "Checkout could not be started.");
+        throw new Error(t("billing.checkoutError"));
       }
 
       window.location.assign(data.url);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Checkout could not be started.");
+    } catch {
+      setError(t("billing.checkoutError"));
       setLoading(false);
     }
   }
@@ -42,7 +44,7 @@ export function CheckoutButton({
   return (
     <div className="space-y-3">
       <Button type="button" onClick={handleCheckout} disabled={loading}>
-        {loading ? "Opening checkout..." : label}
+        {loading ? t("billing.openingCheckout") : (label ?? t("billing.activate"))}
       </Button>
       {error ? <p className="text-sm text-rose-300">{error}</p> : null}
     </div>

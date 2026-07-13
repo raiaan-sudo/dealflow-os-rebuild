@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import Script from "next/script";
 import { normalizePublicFunnelLanguage } from "@/lib/public-funnel-language";
 
@@ -519,13 +520,13 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
       </button>
       <p className="text-xs leading-relaxed text-[#74685b]">
         {copy.disclaimerPrefix}{" "}
-        <a className="rounded-sm font-medium text-[var(--funnel-accent)] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--funnel-accent)]" href="/privacy">
+        <Link className="rounded-sm font-medium text-[var(--funnel-accent)] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--funnel-accent)]" href="/privacy">
           {copy.privacy}
-        </a>{" "}
+        </Link>{" "}
         {copy.and}{" "}
-        <a className="rounded-sm font-medium text-[var(--funnel-accent)] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--funnel-accent)]" href="/terms">
+        <Link className="rounded-sm font-medium text-[var(--funnel-accent)] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--funnel-accent)]" href="/terms">
           {copy.terms}
-        </a>
+        </Link>
         .
       </p>
       </form>

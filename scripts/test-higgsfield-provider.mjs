@@ -10,11 +10,18 @@ const executable = path.join(
   ".bin",
   process.platform === "win32" ? "tsx.cmd" : "tsx",
 );
-const result = spawnSync(executable, ["scripts/test-higgsfield-provider.ts"], {
-  cwd: process.cwd(),
-  env: process.env,
-  stdio: "inherit",
-});
-
-if (result.error) throw result.error;
-process.exitCode = result.status ?? 1;
+for (const test of [
+  "scripts/test-higgsfield-provider.ts",
+  "scripts/test-higgsfield-source-proxy.ts",
+]) {
+  const result = spawnSync(executable, [test], {
+    cwd: process.cwd(),
+    env: process.env,
+    stdio: "inherit",
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    process.exitCode = result.status ?? 1;
+    break;
+  }
+}

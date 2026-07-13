@@ -4,7 +4,14 @@ import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { resolveActiveCampaignRecord } from "@/lib/paywall-access";
 import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
+import { getRequestProductI18n } from "@/lib/i18n/server";
 import { CreativeWizard } from "./creative-wizard";
+
+type MissingCreativeArtifact =
+  | "campaignRecord"
+  | "campaignPayload"
+  | "creatives"
+  | "ugcPreviews";
 
 async function loadStoredCampaignPayload(campaignId: string) {
   const supabase = await createRouteHandlerClient();
@@ -35,6 +42,7 @@ export default async function BuildCreativesPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const { href, t } = await getRequestProductI18n();
   const params = searchParams ? await searchParams : {};
   const campaignId =
     typeof params.campaignId === "string" && params.campaignId.length > 0
@@ -42,7 +50,7 @@ export default async function BuildCreativesPage({
       : null;
 
   if (!campaignId) {
-    redirect("/onboarding");
+    redirect(href("/onboarding"));
   }
 
   const activeCampaign = await resolveActiveCampaignRecord(campaignId).catch(() => null);
@@ -54,14 +62,14 @@ export default async function BuildCreativesPage({
     !Array.isArray(storedPlan.campaign_payload)
       ? (storedPlan.campaign_payload as Record<string, unknown>)
       : null;
-  const missingArtifacts: string[] = [];
+  const missingArtifacts: MissingCreativeArtifact[] = [];
 
   if (!record) {
-    missingArtifacts.push("campaign record");
+    missingArtifacts.push("campaignRecord");
   }
 
   if (!campaignPayload) {
-    missingArtifacts.push("campaign payload");
+    missingArtifacts.push("campaignPayload");
   }
 
   if (!record?.creatives?.staticAds?.length) {
@@ -69,7 +77,7 @@ export default async function BuildCreativesPage({
   }
 
   if ((record?.creatives?.videoAds?.length ?? 0) < 2) {
-    missingArtifacts.push("UGC previews");
+    missingArtifacts.push("ugcPreviews");
   }
 
   if (missingArtifacts.length > 0) {
@@ -77,18 +85,20 @@ export default async function BuildCreativesPage({
       <div className="mx-auto w-full max-w-[900px] space-y-8 p-6 sm:p-8">
         <WizardSteps current="creatives" />
         <PageHeader
-          eyebrow="Build"
-          title="Creative artifacts are missing"
-          description="This step needs saved creative options and a campaign payload before ad selection can continue."
+          eyebrow={t("build.eyebrow")}
+          title={t("build.creatives.missingTitle")}
+          description={t("build.creatives.missingDescription")}
         />
         <ArtifactRecoveryPanel
           campaignId={campaignId}
-          title="Recover the creatives step"
-          description="The required creative data is missing or incomplete. Regenerate the missing artifacts below, or go back to onboarding."
-          missingArtifacts={missingArtifacts}
+          title={t("build.creatives.recoverTitle")}
+          description={t("build.creatives.recoverDescription")}
+          missingArtifacts={missingArtifacts.map((artifact) =>
+            t(`build.artifact.${artifact}`),
+          )}
           recoverySteps={[
-            ...(missingArtifacts.includes("creatives") || missingArtifacts.includes("UGC previews") ? (["generate-creatives"] as const) : []),
-            ...(missingArtifacts.includes("campaign payload") ? (["build-campaign"] as const) : []),
+            ...(missingArtifacts.includes("creatives") || missingArtifacts.includes("ugcPreviews") ? (["generate-creatives"] as const) : []),
+            ...(missingArtifacts.includes("campaignPayload") ? (["build-campaign"] as const) : []),
           ]}
         />
       </div>
@@ -96,7 +106,7 @@ export default async function BuildCreativesPage({
   }
 
   if (!record) {
-    redirect("/onboarding");
+    redirect(href("/onboarding"));
   }
 
   const ensuredRecord = record;
@@ -112,9 +122,9 @@ export default async function BuildCreativesPage({
 
       return {
         id: ad.id,
-        headline: ad.headline || "Untitled ad",
+        headline: ad.headline || t("build.creatives.untitledAd"),
         primaryText: ad.primaryText || matchingCopy?.primary_text || "",
-        cta: ad.cta || matchingCopy?.cta || "Learn More",
+        cta: ad.cta || matchingCopy?.cta || t("build.creatives.learnMore"),
         score: ad.score ?? 0,
         recommended: ad.recommended ?? false,
         imageUrl: ad.imageUrl ?? null,
@@ -134,23 +144,23 @@ export default async function BuildCreativesPage({
     });
   const ugcOptions = ensuredRecord.creatives.videoAds.slice(0, 2).map((video, index) => ({
     id: video.id || `ugc-${index + 1}`,
-    title: video.title || `UGC concept ${index + 1}`,
+    title: video.title || t("build.creatives.ugcConcept", { number: index + 1 }),
     hook: video.hook || "",
     script: Array.isArray(video.script) ? video.script : [],
     shotList: Array.isArray(video.shotList) ? video.shotList : [],
     onScreenText: Array.isArray(video.onScreenText) ? video.onScreenText : [],
-    cta: video.cta || "See If You Qualify",
-    creatorStyle: video.creatorStyle || "UGC creator",
-    format: video.conceptType === "customer_ugc" ? "Customer POV" : "Expert POV",
+    cta: video.cta || t("build.creatives.seeIfQualify"),
+    creatorStyle: video.creatorStyle || t("build.creatives.ugcCreator"),
+    format: video.conceptType === "customer_ugc" ? t("build.creatives.customerPov") : t("build.creatives.expertPov"),
   }));
 
   return (
     <div className="mx-auto w-full max-w-[900px] space-y-8 p-6 sm:p-8">
       <WizardSteps current="creatives" />
       <PageHeader
-        eyebrow="Build"
-        title="Choose your creative test set"
-        description="Select 2-6 recommended creatives. DealFlow will preserve the full test set so your launch can compare multiple angles instead of betting on one ad."
+        eyebrow={t("build.eyebrow")}
+        title={t("build.creatives.chooseTitle")}
+        description={t("build.creatives.chooseDescription")}
       />
 
       <CreativeWizard campaignId={ensuredRecord.campaign.id} creatives={creativeOptions} ugcConcepts={ugcOptions} />

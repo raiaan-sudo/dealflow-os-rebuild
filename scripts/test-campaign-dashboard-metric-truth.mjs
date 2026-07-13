@@ -16,6 +16,10 @@ const currencyHelperSource = fs.readFileSync(
   "src/lib/dashboard/meta-account-currency.ts",
   "utf8",
 );
+const productMessagesSource = fs.readFileSync(
+  "src/lib/i18n/messages.ts",
+  "utf8",
+);
 const compiled = ts.transpileModule(helperSource, {
   compilerOptions: {
     module: ts.ModuleKind.ES2022,
@@ -91,7 +95,8 @@ assert.equal(resolveSelectedMetaAccountCurrency(connection("EUR")), null);
 assert.equal(formatMetaCurrency(100, "CAD"), "$100");
 assert.equal(formatMetaCurrency(100, "USD"), "US$100");
 assert.equal(formatMetaCurrency(100, null), "Currency unavailable");
-assert.match(componentSource, /Meta account currency unavailable/);
+assert.match(componentSource, /t\("dashboard\.currencyUnavailable"\)/);
+assert.match(productMessagesSource, /"dashboard\.currencyUnavailable": "Meta account currency unavailable"/);
 assert.match(componentSource, /latestAttemptDeliveryMetricsConfirmed === false/);
 assert.doesNotMatch(componentSource, /currency:\s*["']CAD["']/);
 

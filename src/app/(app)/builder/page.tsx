@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getRequestProductI18n } from "@/lib/i18n/server";
 
 type BuilderSearchParams = Promise<
   Record<string, string | string[] | undefined>
@@ -9,6 +10,7 @@ export default async function BuilderPage({
 }: {
   searchParams?: BuilderSearchParams;
 }) {
+  const { href } = await getRequestProductI18n();
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const redirectUrl = new URL("/onboarding", "https://app.local");
 
@@ -24,5 +26,5 @@ export default async function BuilderPage({
     }
   }
 
-  redirect(`${redirectUrl.pathname}${redirectUrl.search}`);
+  redirect(href(`${redirectUrl.pathname}${redirectUrl.search}`));
 }

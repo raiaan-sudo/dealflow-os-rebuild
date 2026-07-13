@@ -16,14 +16,14 @@ function requireMarker(pattern, label) {
   assert.match(source, pattern, `Tracked staging broker is missing ${label}`);
 }
 
-requireMarker(/const exactMigrationCount = 99/, "the exact 99-migration gate");
+requireMarker(/const exactMigrationCount = 102/, "the exact 102-migration gate");
 requireMarker(
   /c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c/,
   "the isolated staging project fingerprint",
 );
 requireMarker(/const expectedProjectSafeSuffix = "qibh"/, "the qibh safe suffix");
 requireMarker(/migrations\.length !== exactMigrationCount/, "exact migration-count rejection");
-requireMarker(/requiredFinalMigration[\s\S]+20260713024000_add_durable_ghl_periodic_form_sweeps\.sql/, "the final migration pin");
+requireMarker(/requiredFinalMigration[\s\S]+20260713027000_add_ghl_location_display_name_finalization\.sql/, "the final migration pin");
 requireMarker(/Two distinct final-verification summaries are required/, "two distinct verification rounds");
 requireMarker(/summary\.schemaVersion !== "dealflow\.final-verification\.v3"/, "verification summary schema binding");
 requireMarker(/NO_GO_AUTHENTICATED_PROOF_DEFERRED/, "hosted-only local-gate status binding");
@@ -65,7 +65,13 @@ requireMarker(/state\.authUserCount === 0/, "zero-auth-user baseline");
 requireMarker(/state\.storageObjectCount === 0/, "zero-storage-object baseline");
 requireMarker(/Evidence directory must be a real absent-or-empty directory/, "external evidence fencing");
 requireMarker(/staging project attestation must be a real owner-only file/, "owner-only project attestation");
-requireMarker(/PGPASSFILE=<\(/, "memory-only Keychain password transport");
+requireMarker(/function readKeychainPasswordBuffer\(\)/, "memory-only Keychain password retrieval");
+requireMarker(/encoding: null/, "binary secret capture without string conversion");
+requireMarker(/function spawnPostgresCommand\(command, args, options = \{\}\)/, "memory-only PostgreSQL transport");
+requireMarker(/Buffer\.concat\(\[password, Buffer\.from\("\\n"\), sqlInput\]\)/, "password prompt input assembly");
+requireMarker(/spawnSync\(command, \["--password", \.\.\.args\]/, "forced PostgreSQL password prompt");
+requireMarker(/password\.fill\(0\)/, "password-buffer zeroing");
+requireMarker(/inputBuffer\.fill\(0\)/, "combined-input-buffer zeroing");
 
 requireMarker(/function captureBrokerSourceIdentity\(\)/, "broker self-identity capture");
 requireMarker(/fileURLToPath\(import\.meta\.url\)/, "invoked-source identity");
@@ -172,7 +178,8 @@ requireMarker(/manifestRecord\.sha256/, "stdout manifest digest");
 requireMarker(/brokerSourceIdentity\.sha256/, "stdout broker digest");
 
 assert.doesNotMatch(source, /PGPASSWORD/, "Broker must not place the database password in environment variables");
-assert.doesNotMatch(source, /migrations\.length < 99/, "Broker must not accept a partial migration portfolio");
+assert.doesNotMatch(source, /PGPASSFILE=<\(/, "Broker must not use libpq-incompatible process substitution");
+assert.doesNotMatch(source, /migrations\.length < 102/, "Broker must not accept a partial migration portfolio");
 assert.doesNotMatch(source, /dealflow-staging-tools-20260713/, "Tracked broker must not depend on the scratch source directory");
 
 let forcedFailureProof = "static atomicity contract";
@@ -234,5 +241,5 @@ if (nativeConfigNames.every((name) => process.env[name])) {
 }
 
 console.log(
-  `tracked staging migration broker contract: PASS (single outer transaction, terminal failure/rollback evidence, ${forcedFailureProof}, self-bound SHA-256, pre-mutation evidence/summary/manifest, pinned project, clean two-round seal, exact 99 migrations, Node 20, PostgreSQL 17.6, and external evidence fencing)`,
+  `tracked staging migration broker contract: PASS (single outer transaction, terminal failure/rollback evidence, ${forcedFailureProof}, self-bound SHA-256, pre-mutation evidence/summary/manifest, pinned project, clean two-round seal, exact 102 migrations, Node 20, PostgreSQL 17.6, and external evidence fencing)`,
 );

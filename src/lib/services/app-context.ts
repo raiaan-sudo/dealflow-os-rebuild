@@ -34,6 +34,60 @@ type SupabaseClient = NonNullable<Awaited<ReturnType<typeof createRouteHandlerCl
 type Row<T extends keyof Database["public"]["Tables"]> =
   Database["public"]["Tables"][T]["Row"];
 
+export class AccountDeletionWorkspaceSuspendedError extends Error {
+  readonly code = "account_deletion_workspace_suspended";
+
+  constructor() {
+    super("This workspace is suspended for verified account deletion.");
+    this.name = "AccountDeletionWorkspaceSuspendedError";
+  }
+}
+
+async function assertAccountDeletionWorkspaceAccess(
+  admin: SupabaseClient | null,
+  userId: string,
+) {
+  if (!admin) {
+    throw new Error("Account deletion access fence requires server-side authority.");
+  }
+
+  const [membershipResult, ownershipResult] = await Promise.all([
+    (admin as any)
+      .from("organization_memberships")
+      .select("organization_id")
+      .eq("user_id", userId),
+    (admin as any)
+      .from("organizations")
+      .select("id")
+      .eq("owner_user_id", userId),
+  ]);
+  if (membershipResult.error || ownershipResult.error) {
+    throw new Error("Account deletion access fence could not resolve workspace authority.");
+  }
+  const organizationIds = new Set<string>();
+  for (const candidate of membershipResult.data ?? []) {
+    if (typeof candidate.organization_id === "string") {
+      organizationIds.add(candidate.organization_id);
+    }
+  }
+  for (const candidate of ownershipResult.data ?? []) {
+    if (typeof candidate.id === "string") organizationIds.add(candidate.id);
+  }
+  if (organizationIds.size === 0) return;
+
+  const suspensionResult = await (admin as any)
+    .from("account_deletion_suspensions")
+    .select("organization_id")
+    .in("organization_id", [...organizationIds])
+    .limit(1);
+  if (suspensionResult.error) {
+    throw new Error("Account deletion access fence is unavailable.");
+  }
+  if ((suspensionResult.data ?? []).length > 0) {
+    throw new AccountDeletionWorkspaceSuspendedError();
+  }
+}
+
 function isDuplicateKeyError(error: unknown) {
   if (!error || typeof error !== "object") {
     return false;
@@ -657,6 +711,7 @@ export async function ensureAppContext() {
 
   try {
     const adminClient = createAdminClient() as SupabaseClient | null;
+    await assertAccountDeletionWorkspaceAccess(adminClient, user.id);
     const bootstrapSupabase = adminClient ?? supabase;
     let profile = await ensureUserProfile(bootstrapSupabase, user);
     const embeddedWorkspace = adminClient
@@ -727,6 +782,13 @@ export async function ensureAppContext() {
 
     return context;
   } catch (error) {
+    if (error instanceof AccountDeletionWorkspaceSuspendedError) {
+      logWarn("Suspended account deletion workspace access denied", {
+        userId: user.id,
+        code: error.code,
+      });
+      throw error;
+    }
     logError("App context bootstrap failed", {
       userId: user.id,
       email: user.email ?? null,

@@ -8,10 +8,20 @@ const EXPECTED_SUPABASE_FINGERPRINT =
   "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
 const ZERO_EXTERNAL_EFFECTS_ATTESTATION =
   "DEALFLOW_ISOLATED_STAGING_QIBH_ZERO_EXTERNAL_EFFECTS_V1";
-const EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 56;
+const EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 60;
 const PAID_CAMPAIGN_ID = "d2000000-0000-4000-8000-000000000001";
+const STALE_REPORTING_CAMPAIGN_ID = "d2000000-0000-4000-8000-000000000002";
+const FAILED_REPORTING_CAMPAIGN_ID = "d2000000-0000-4000-8000-000000000003";
+const PARTNER_ONE_CAMPAIGN_ID = "d2000000-0000-4000-8000-000000000004";
+const PARTNER_TWO_CAMPAIGN_ID = "d2000000-0000-4000-8000-000000000005";
 const PARTNER_BRAND_NAME = "DF-STAGING-20260712 Partner Realty OS";
+const PARTNER_TWO_BRAND_NAME = "DF-STAGING-20260712 Partner Two Realty OS";
 const OPERATOR_EMAIL = "dealflow-staging-operator-20260712@example.com";
+const LOCALIZED_PRODUCT_COPY = Object.freeze({
+  en: Object.freeze({ signIn: "Sign in", dashboard: "Dashboard" }),
+  fr: Object.freeze({ signIn: "Se connecter", dashboard: "Tableau de bord" }),
+  es: Object.freeze({ signIn: "Iniciar sesión", dashboard: "Panel" }),
+});
 
 const ROLE_EMAILS = Object.freeze({
   newDirect: "dealflow-staging-new-direct-20260712@example.com",
@@ -19,6 +29,8 @@ const ROLE_EMAILS = Object.freeze({
   legacy: "dealflow-staging-legacy-20260712@example.com",
   partnerAdmin: "dealflow-staging-partner-admin-20260712@example.com",
   partnerChild: "dealflow-staging-partner-child-20260712@example.com",
+  partnerAdminTwo: "dealflow-staging-partner-two-admin-20260712@example.com",
+  partnerChildTwo: "dealflow-staging-partner-two-child-20260712@example.com",
   operator: OPERATOR_EMAIL,
   attacker: "dealflow-staging-attacker-20260712@example.com",
 });
@@ -46,6 +58,9 @@ function sha256(value: string) {
 function assertGlobalPreconditions() {
   const baseUrl = new URL(requiredEnvironment("STAGING_ACCEPTANCE_BASE_URL"));
   const partnerBaseUrl = new URL(requiredEnvironment("STAGING_ACCEPTANCE_PARTNER_BASE_URL"));
+  const partnerTwoBaseUrl = new URL(
+    requiredEnvironment("STAGING_ACCEPTANCE_SECOND_PARTNER_BASE_URL"),
+  );
   expect(baseUrl.protocol).toBe("https:");
   expect(baseUrl.hostname).toBe(EXPECTED_STAGING_HOST);
   expect(partnerBaseUrl.protocol).toBe("https:");
@@ -53,6 +68,10 @@ function assertGlobalPreconditions() {
   expect(partnerBaseUrl.hostname).toMatch(
     /^dealflow-os-rebuild-selfserve-clean-.+\.vercel\.app$/,
   );
+  expect(partnerTwoBaseUrl.protocol).toBe("https:");
+  expect(partnerTwoBaseUrl.hostname)
+    .toBe("dealflow-os-rebuild-selfserve-clean-partner-two-qibh.vercel.app");
+  expect(partnerTwoBaseUrl.hostname).not.toBe(partnerBaseUrl.hostname);
   expect(process.env.DEALFLOW_DEPLOYMENT_TARGET).toBe("staging");
   expect(process.env.STAGING_ACCEPTANCE_EXECUTION).toBe("true");
   expect(process.env.STAGING_ACCEPTANCE_ZERO_EXTERNAL_EFFECTS_ATTESTATION)
@@ -86,6 +105,7 @@ async function installFailClosedNetworkBoundary(page: Page) {
     const allowedStagingHosts = new Set([
       EXPECTED_STAGING_HOST,
       new URL(requiredEnvironment("STAGING_ACCEPTANCE_PARTNER_BASE_URL")).hostname,
+      new URL(requiredEnvironment("STAGING_ACCEPTANCE_SECOND_PARTNER_BASE_URL")).hostname,
     ]);
     const sameOrigin = allowedStagingHosts.has(url.hostname);
     const exactProjectRef = requiredEnvironment("QA_ISOLATED_SUPABASE_PROJECT_REF");
@@ -245,6 +265,84 @@ test("paid direct realtor sees exact Pro activation and seeded campaign truth", 
   await assertNoSeriousAccessibilityViolations(page);
 });
 
+test("hosted reporting renders fresh stale and failed-refresh truth without false zeros", async ({ page }) => {
+  await signIn(page, ROLE_EMAILS.paidDirect, "/dashboard");
+  for (const [campaignId, expectedLabel] of [
+    [PAID_CAMPAIGN_ID, "Confirmed in Meta"],
+    [STALE_REPORTING_CAMPAIGN_ID, "Confirmed state is stale"],
+    [FAILED_REPORTING_CAMPAIGN_ID, "Showing last confirmed Meta data"],
+  ] as const) {
+    const response = await page.goto(`/dashboard?campaignId=${campaignId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    expect(response?.status()).toBeLessThan(500);
+    await expect(page.getByText(expectedLabel, { exact: true })).toBeVisible();
+  }
+  const failedDashboard = await page.request.get(
+    `/api/dashboard?campaignId=${FAILED_REPORTING_CAMPAIGN_ID}`,
+  );
+  expect(failedDashboard.status()).toBe(200);
+  const failedBody = await failedDashboard.json() as {
+    metrics?: { totalSpend?: number };
+    chartSeries?: Array<{ leads?: number }>;
+  };
+  expect(failedBody.metrics?.totalSpend).toBe(42);
+  expect(failedBody.chartSeries?.at(-1)?.leads).toBe(4);
+});
+
+test("EN FR ES public product routes preserve language accessibility keyboard reduced-motion and 200-percent zoom", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  for (const [locale, copy] of Object.entries(LOCALIZED_PRODUCT_COPY)) {
+    await page.goto(`/${locale}/login`, { waitUntil: "domcontentloaded" });
+    await expect(page.locator("html")).toHaveAttribute("lang", locale);
+    await expect(page.getByRole("button", { name: copy.signIn, exact: true })).toBeVisible();
+    expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
+
+    await page.keyboard.press("Tab");
+    const focused = await page.evaluate(() => {
+      const element = document.activeElement as HTMLElement | null;
+      if (!element || element === document.body) return null;
+      const style = getComputedStyle(element);
+      return {
+        tag: element.tagName,
+        text: element.textContent?.trim().slice(0, 120) ?? "",
+        outlineStyle: style.outlineStyle,
+        outlineWidth: style.outlineWidth,
+      };
+    });
+    expect(focused, `${locale} login must expose a keyboard target`).not.toBeNull();
+    expect(
+      focused?.outlineStyle !== "none" && focused?.outlineWidth !== "0px",
+      `${locale} first keyboard target must retain a visible focus outline: ${JSON.stringify(focused)}`,
+    ).toBe(true);
+
+    await page.evaluate(() => {
+      document.documentElement.style.zoom = "2";
+    });
+    await expect(page.getByRole("button", { name: copy.signIn, exact: true })).toBeVisible();
+    await assertNoSeriousAccessibilityViolations(page);
+    await page.evaluate(() => {
+      document.documentElement.style.zoom = "";
+    });
+  }
+});
+
+test("paid realtor can use authenticated EN FR ES dashboards without mixed-language headings", async ({ page }) => {
+  await signIn(page, ROLE_EMAILS.paidDirect, "/dashboard");
+  for (const [locale, copy] of Object.entries(LOCALIZED_PRODUCT_COPY)) {
+    const response = await page.goto(`/${locale}/dashboard`, { waitUntil: "domcontentloaded" });
+    expect(response?.status()).toBeLessThan(500);
+    await expect(page.locator("html")).toHaveAttribute("lang", locale);
+    await expect(page.getByRole("heading", { level: 1, name: copy.dashboard, exact: true })).toBeVisible();
+    for (const [otherLocale, otherCopy] of Object.entries(LOCALIZED_PRODUCT_COPY)) {
+      if (otherLocale !== locale && otherCopy.dashboard !== copy.dashboard) {
+        await expect(page.getByRole("heading", { level: 1, name: otherCopy.dashboard, exact: true })).toHaveCount(0);
+      }
+    }
+    await assertNoSeriousAccessibilityViolations(page);
+  }
+});
+
 test("grandfathered legacy realtor retains reconciled active entitlement", async ({ page }) => {
   await signIn(page, ROLE_EMAILS.legacy, "/dashboard");
   const billingResponse = await page.request.get("/api/billing/status");
@@ -272,7 +370,35 @@ test("white-label child receives attributed branding across core product routes"
     expect(response, `${path} returned no document response`).not.toBeNull();
     expect(response!.status(), `${path} returned a server failure`).toBeLessThan(500);
     await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false }).first()).toBeVisible();
+    await expect(page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false })).toHaveCount(0);
   }
+  const campaigns = await page.request.get(new URL("/api/campaigns", partnerOrigin).toString());
+  expect(campaigns.status()).toBe(200);
+  const campaignBody = await campaigns.text();
+  expect(campaignBody).toContain(PARTNER_ONE_CAMPAIGN_ID);
+  expect(campaignBody).not.toContain(PARTNER_TWO_CAMPAIGN_ID);
+});
+
+test("second white-label child receives only partner-two branding and tenant data", async ({ page }) => {
+  const partnerOrigin = requiredEnvironment("STAGING_ACCEPTANCE_SECOND_PARTNER_BASE_URL");
+  await page.goto(new URL("/login", partnerOrigin).toString(), { waitUntil: "domcontentloaded" });
+  await expect(page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false }).first()).toBeVisible();
+  await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false })).toHaveCount(0);
+  await signIn(page, ROLE_EMAILS.partnerChildTwo, "/dashboard", partnerOrigin);
+  for (const path of ["/dashboard", "/builder", "/launch", "/results", "/support"]) {
+    const response = await page.goto(new URL(path, partnerOrigin).toString(), {
+      waitUntil: "domcontentloaded",
+    });
+    expect(response, `${path} returned no document response`).not.toBeNull();
+    expect(response!.status(), `${path} returned a server failure`).toBeLessThan(500);
+    await expect(page.getByText(PARTNER_TWO_BRAND_NAME, { exact: false }).first()).toBeVisible();
+    await expect(page.getByText(PARTNER_BRAND_NAME, { exact: false })).toHaveCount(0);
+  }
+  const campaigns = await page.request.get(new URL("/api/campaigns", partnerOrigin).toString());
+  expect(campaigns.status()).toBe(200);
+  const campaignBody = await campaigns.text();
+  expect(campaignBody).toContain(PARTNER_TWO_CAMPAIGN_ID);
+  expect(campaignBody).not.toContain(PARTNER_ONE_CAMPAIGN_ID);
 });
 
 test("partner admin authenticates without gaining an unassigned customer workspace", async ({ page }) => {
@@ -291,6 +417,26 @@ test("partner admin authenticates without gaining an unassigned customer workspa
   );
   expect([200, 401, 403, 404]).toContain(campaigns.status());
   expect(await campaigns.text()).not.toContain("DF-STAGING-20260712 Toronto Buyer Campaign");
+});
+
+test("second partner admin authenticates without gaining a child customer workspace", async ({ page }) => {
+  await signIn(
+    page,
+    ROLE_EMAILS.partnerAdminTwo,
+    "/dashboard",
+    requiredEnvironment("STAGING_ACCEPTANCE_SECOND_PARTNER_BASE_URL"),
+  );
+  const campaigns = await page.request.get(
+    new URL(
+      "/api/campaigns",
+      requiredEnvironment("STAGING_ACCEPTANCE_SECOND_PARTNER_BASE_URL"),
+    ).toString(),
+    { failOnStatusCode: false },
+  );
+  expect([200, 401, 403, 404]).toContain(campaigns.status());
+  const body = await campaigns.text();
+  expect(body).not.toContain(PARTNER_ONE_CAMPAIGN_ID);
+  expect(body).not.toContain(PARTNER_TWO_CAMPAIGN_ID);
 });
 
 test("internal operator reaches the command center without provider execution", async ({ page }) => {

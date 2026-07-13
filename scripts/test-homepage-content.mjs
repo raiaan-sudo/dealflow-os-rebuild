@@ -4,6 +4,7 @@ const homepage = readFileSync("src/components/marketing/home-command-center.tsx"
 const page = readFileSync("src/app/page.tsx", "utf8");
 const loginPage = readFileSync("src/app/(auth)/login/page.tsx", "utf8");
 const loginForm = readFileSync("src/components/auth/login-form.tsx", "utf8");
+const productMessages = readFileSync("src/lib/i18n/messages.ts", "utf8");
 
 const requiredHomepageSnippets = [
   "DealFlow OS",
@@ -77,8 +78,12 @@ if (!loginPage.includes("initialMode")) {
   throw new Error("Login page must support homepage sign-up CTA mode.");
 }
 
-if (!/mode === "sign-in"[\s\S]{0,80}\?\s*"Sign in"/i.test(loginForm)) {
-  throw new Error("Login form sign-in action must be clearly labeled Sign in.");
+if (!/mode === "sign-in"[\s\S]{0,120}\?\s*t\("auth\.signIn"\)/.test(loginForm)) {
+  throw new Error("Login form sign-in action must resolve the localized auth.signIn label.");
+}
+
+if (!productMessages.includes('"auth.signIn": "Sign in"')) {
+  throw new Error("English message catalog must preserve the canonical Sign in label.");
 }
 
 if (loginForm.includes("Launch My Campaign")) {

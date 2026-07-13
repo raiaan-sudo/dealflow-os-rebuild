@@ -16,7 +16,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 const FOUNDATION_LAST =
   "20260710235994_create_execution_and_creative_app_contracts.sql";
-const EXACT_INTEGRATED_MIGRATION_COUNT = 99;
+const EXACT_INTEGRATED_MIGRATION_COUNT = 102;
 const TRANSACTION_OWNING_MIGRATION =
   "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const REQUIRED_EXTENSIONS = [
@@ -39,6 +39,9 @@ const REQUIRED_EXTENSIONS = [
   "20260713021000_require_paid_activation_for_campaign_creation.sql",
   "20260713022000_reconcile_native_ghl_form_submissions.sql",
   "20260713024000_add_durable_ghl_periodic_form_sweeps.sql",
+  "20260713025000_add_generated_video_canonical_storage.sql",
+  "20260713026000_add_account_deletion_and_provider_offboarding.sql",
+  "20260713027000_add_ghl_location_display_name_finalization.sql",
 ];
 const config = Object.freeze({
   pgbin: process.env.DEALFLOW_NATIVE_PGBIN,
@@ -132,8 +135,18 @@ function installRemoteEquivalentDefaults(session) {
     create extension if not exists pg_stat_statements with schema extensions;
     create extension if not exists "uuid-ossp" with schema extensions;
     create publication supabase_realtime;
+    create schema if not exists storage;
+    create table if not exists storage.objects (
+      id uuid primary key default gen_random_uuid(),
+      bucket_id text not null,
+      name text not null,
+      unique (bucket_id, name)
+    );
+    grant usage on schema storage to anon, authenticated, service_role;
+    grant select, insert, update, delete on storage.objects
+      to anon, authenticated, service_role;
     reset role;
-  `, { label: "Install remote-equivalent migration-owner defaults" });
+  `, { label: "Install remote-equivalent migration-owner and Storage defaults" });
 }
 
 function applyMigrations(session, files) {

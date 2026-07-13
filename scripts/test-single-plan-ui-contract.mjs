@@ -11,6 +11,7 @@ const loginPage = read("src/app/(auth)/login/page.tsx");
 const uiDirection = read("src/app/ui-direction/page.tsx");
 const plans = read("src/lib/billing/plans.ts");
 const planPresentation = read("src/lib/billing/plan-presentation.ts");
+const productMessages = read("src/lib/i18n/messages.ts");
 const commercialContract = read("scripts/test-commercial-contracts.mjs");
 
 const newWorkspacePlanAssignments = appContext.match(/plan_tier:\s*"pro"/g) ?? [];
@@ -44,8 +45,13 @@ assert.doesNotMatch(
 );
 assert.match(
   onboarding,
-  /Operator Launch at \$297\/month/,
-  "new onboarding must state the single Pro price",
+  /t\("onboarding\.planArchived"\)/,
+  "new onboarding must resolve the single-plan explanation through i18n",
+);
+assert.match(
+  productMessages,
+  /"onboarding\.planArchived": "[^"]*Operator Launch at \$297\/month\."/,
+  "the canonical English catalog must state the single Pro price",
 );
 
 assert.doesNotMatch(

@@ -55,6 +55,7 @@ const {
   GhlHttpClient,
   GhlSandboxAdapter,
   buildGhlLocationCreateRequestFingerprint,
+  buildGhlProviderLocationName,
   buildGhlSnapshotManifestFingerprint,
   createEnvironmentGhlCredentialResolver,
   createGhlProductionAdapter,
@@ -323,11 +324,15 @@ const locationCreateResult = await adapter.createLocation(locationCreateInput);
 assert.equal(locationCreateResult.outcome, "succeeded");
 assert.equal(locationCreateResult.providerLocationId, "sandbox-location-created");
 const locationCreateRequest = capturedRequests.find(({ url }) => url.endsWith("/locations/"));
+const expectedProviderLocationName = buildGhlProviderLocationName(
+  locationCreateInput.profile.displayName,
+  locationCreateInput.requestFingerprint,
+);
 assert.equal(locationCreateRequest.init.method, "POST");
 assert.equal(locationCreateRequest.init.headers.Version, "v3");
 assert.deepEqual(JSON.parse(locationCreateRequest.init.body), {
   companyId: "sandbox-company",
-  name: "Synthetic Realty",
+  name: expectedProviderLocationName,
   country: "CA",
   timezone: "America/Toronto",
   snapshotId: "sandbox-snapshot",
@@ -343,6 +348,189 @@ const fingerprintMismatch = await adapter.createLocation({
 assert.equal(fingerprintMismatch.outcome, "operator_action_required");
 assert.equal(fingerprintMismatch.errorCode, "ghl_location_snapshot_contract_mismatch");
 assert.equal(capturedRequests.length, requestsBeforeFingerprintMismatch, "fingerprint mismatch must make zero provider requests");
+
+const reconciliationInput = {
+  idempotencyKey: locationCreateInput.idempotencyKey,
+  installationId: locationCreateInput.installationId,
+  environment: locationCreateInput.environment,
+  profile: locationCreateInput.profile,
+  requestFingerprint: locationCreateInput.requestFingerprint,
+  visibilityStartedAt: "2026-07-13T12:00:00.000Z",
+  visibilityDeadlineAt: "2026-07-13T12:15:00.000Z",
+  observedAt: "2026-07-13T12:01:00.000Z",
+};
+const reconciliationRequests = [];
+const reconciliationAdapter = new GhlSandboxAdapter({
+  credentialRef: "env:GHL_SANDBOX_AGENCY_TOKEN",
+  credentialResolver: resolver,
+  gate: allowedGate,
+  companyId: "sandbox-company",
+  httpClient: new GhlHttpClient({
+    fetcher: async (url, init) => {
+      reconciliationRequests.push({ url: String(url), init });
+      const parsed = new URL(String(url));
+      assert.equal(parsed.pathname, "/locations/search");
+      assert.equal(parsed.searchParams.get("companyId"), "sandbox-company");
+      assert.equal(parsed.searchParams.get("skip"), "0");
+      assert.equal(parsed.searchParams.get("limit"), "100");
+      assert.equal(parsed.searchParams.get("order"), "asc");
+      return new Response(JSON.stringify({
+        locations: [
+          {
+            id: "wrong-location",
+            name: expectedProviderLocationName,
+            country: "CA",
+            timezone: "America/Vancouver",
+          },
+          {
+            id: "sandbox-location-created",
+            name: expectedProviderLocationName,
+            country: "CA",
+            timezone: "America/Toronto",
+          },
+        ],
+      }), {
+        status: 200,
+        headers: { "x-request-id": "request-location-search-1" },
+      });
+    },
+    sleep: async () => {},
+  }),
+});
+const reconciledLocation = await reconciliationAdapter.reconcileLocationCreate(reconciliationInput);
+assert.equal(reconciledLocation.outcome, "found");
+assert.equal(reconciledLocation.providerLocationId, "sandbox-location-created");
+assert.equal(reconciledLocation.requestFingerprint, locationCreateInput.requestFingerprint);
+assert.match(reconciledLocation.responseFingerprint, /^[a-f0-9]{64}$/);
+assert.equal(reconciliationRequests.length, 1);
+assert.equal(reconciliationRequests[0].init.method, "GET");
+assert.equal(reconciliationRequests[0].init.headers.Version, "v3");
+
+const ambiguousReconciliationAdapter = new GhlSandboxAdapter({
+  credentialRef: "env:GHL_SANDBOX_AGENCY_TOKEN",
+  credentialResolver: resolver,
+  gate: allowedGate,
+  companyId: "sandbox-company",
+  httpClient: new GhlHttpClient({
+    fetcher: async () => new Response(JSON.stringify({
+      locations: ["ambiguous-location-a", "ambiguous-location-b"].map((id) => ({
+        id,
+        name: expectedProviderLocationName,
+        country: "CA",
+        timezone: "America/Toronto",
+      })),
+    }), { status: 200 }),
+    sleep: async () => {},
+  }),
+});
+const ambiguousReconciliation = await ambiguousReconciliationAdapter
+  .reconcileLocationCreate(reconciliationInput);
+assert.equal(ambiguousReconciliation.outcome, "operator_action_required");
+assert.equal(
+  ambiguousReconciliation.errorCode,
+  "ghl_location_reconciliation_multiple_exact_matches",
+  "multiple exact matches must never be selected or authorize a create replay",
+);
+
+const absentReconciliationAdapter = new GhlSandboxAdapter({
+  credentialRef: "env:GHL_SANDBOX_AGENCY_TOKEN",
+  credentialResolver: resolver,
+  gate: allowedGate,
+  companyId: "sandbox-company",
+  httpClient: new GhlHttpClient({
+    fetcher: async () => new Response('{"locations":[]}', { status: 200 }),
+    sleep: async () => {},
+  }),
+});
+const absentReconciliation = await absentReconciliationAdapter
+  .reconcileLocationCreate(reconciliationInput);
+assert.equal(absentReconciliation.outcome, "not_found");
+assert.equal(absentReconciliation.requestFingerprint, locationCreateInput.requestFingerprint);
+
+const displayNameRequests = [];
+let displayNameReadCount = 0;
+const displayNameAdapter = new GhlSandboxAdapter({
+  credentialRef: "env:GHL_SANDBOX_AGENCY_TOKEN",
+  credentialResolver: resolver,
+  gate: allowedGate,
+  companyId: "sandbox-company",
+  httpClient: new GhlHttpClient({
+    fetcher: async (url, init) => {
+      displayNameRequests.push({ url: String(url), init });
+      if (init.method === "GET") {
+        displayNameReadCount += 1;
+        return new Response(JSON.stringify({
+          location: {
+            id: "sandbox-location-created",
+            name: displayNameReadCount === 1
+              ? expectedProviderLocationName
+              : "Synthetic Realty",
+            country: "CA",
+            timezone: "America/Toronto",
+          },
+        }), { status: 200 });
+      }
+      assert.equal(init.method, "PUT");
+      assert.deepEqual(JSON.parse(init.body), {
+        companyId: "sandbox-company",
+        name: "Synthetic Realty",
+      });
+      return new Response('{"message":"ambiguous"}', { status: 500 });
+    },
+    maxReadAttempts: 1,
+    sleep: async () => {},
+  }),
+});
+const finalizedDisplayName = await displayNameAdapter.finalizeLocationDisplayName({
+  idempotencyKey: `${locationCreateInput.idempotencyKey}:location_display_name_finalize`,
+  providerLocationId: "sandbox-location-created",
+  environment: "sandbox",
+  profile: locationCreateInput.profile,
+  requestFingerprint: locationCreateInput.requestFingerprint,
+});
+assert.equal(finalizedDisplayName.outcome, "succeeded");
+assert.deepEqual(
+  displayNameRequests.map(({ init }) => init.method),
+  ["GET", "PUT", "GET"],
+  "an ambiguous idempotent cleanup must be resolved by exact readback before provisioning advances",
+);
+assert.equal(
+  displayNameRequests.filter(({ init }) => init.method === "PUT").length,
+  1,
+  "the official PUT cleanup is never transport-retried blindly",
+);
+
+let alreadyCleanCalls = 0;
+const alreadyCleanAdapter = new GhlSandboxAdapter({
+  credentialRef: "env:GHL_SANDBOX_AGENCY_TOKEN",
+  credentialResolver: resolver,
+  gate: allowedGate,
+  companyId: "sandbox-company",
+  httpClient: new GhlHttpClient({
+    fetcher: async (_url, init) => {
+      alreadyCleanCalls += 1;
+      assert.equal(init.method, "GET", "a verified clean display name must not be rewritten");
+      return new Response(JSON.stringify({
+        location: {
+          id: "sandbox-location-created",
+          name: "Synthetic Realty",
+          country: "CA",
+          timezone: "America/Toronto",
+        },
+      }), { status: 200 });
+    },
+    sleep: async () => {},
+  }),
+});
+const alreadyClean = await alreadyCleanAdapter.finalizeLocationDisplayName({
+  idempotencyKey: `${locationCreateInput.idempotencyKey}:location_display_name_finalize`,
+  providerLocationId: "sandbox-location-created",
+  environment: "sandbox",
+  profile: locationCreateInput.profile,
+  requestFingerprint: locationCreateInput.requestFingerprint,
+});
+assert.equal(alreadyClean.outcome, "succeeded");
+assert.equal(alreadyCleanCalls, 1);
 
 for (const ambiguousStatus of [429, 500]) {
   let failedCreateCalls = 0;

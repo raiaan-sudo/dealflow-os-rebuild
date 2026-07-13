@@ -7,6 +7,7 @@ import type { IncomingMessage } from "node:http";
 import { isIP } from "node:net";
 import { ApiError } from "@/lib/api/route";
 import { getPublicAppUrl } from "@/lib/env";
+import { isPublicNetworkAddress } from "@/lib/security/public-network-address";
 
 const MAX_CREATIVE_BYTES = 12 * 1024 * 1024;
 const MAX_REDIRECTS = 3;
@@ -34,34 +35,7 @@ function isTrustedAssetHost(host: string) {
 }
 
 export function isPublicCreativeAddress(address: string) {
-  const normalized = address.toLowerCase();
-  const version = isIP(normalized);
-  if (version === 4) {
-    const [a, b, c] = normalized.split(".").map(Number);
-    return !(
-      a === 0 || a === 10 || a === 127 ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && ((b === 0 && (c === 0 || c === 2)) || b === 168)) ||
-      (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) ||
-      (a === 203 && b === 0 && c === 113) ||
-      a >= 224
-    );
-  }
-  if (normalized.startsWith("::ffff:")) return isPublicCreativeAddress(normalized.slice(7));
-  if (normalized.includes(".")) {
-    const embeddedV4 = normalized.slice(normalized.lastIndexOf(":") + 1);
-    if (isIP(embeddedV4) === 4) return isPublicCreativeAddress(embeddedV4);
-  }
-  if (version !== 6) return false;
-  return !(
-    normalized === "::" || normalized === "::1" ||
-    normalized.startsWith("64:ff9b:1:") || normalized.startsWith("100:") ||
-    normalized.startsWith("fc") || normalized.startsWith("fd") ||
-    /^fe[89ab]/.test(normalized) || normalized.startsWith("ff") ||
-    normalized.startsWith("2001:db8:") || normalized.startsWith("2002:")
-  );
+  return isPublicNetworkAddress(address);
 }
 
 async function resolvePinnedCreativeUrl(value: string, lookup: Lookup) {
@@ -85,13 +59,35 @@ async function resolvePinnedCreativeUrl(value: string, lookup: Lookup) {
   return { url, address: addresses[0]!.address, family: addresses[0]!.family };
 }
 
+type VerifiedCreativeImage = {
+  bytes: Uint8Array;
+  contentType: "image/png" | "image/jpeg" | "image/webp";
+  sha256: string;
+};
+
+function hasSupportedImageSignature(bytes: Uint8Array, contentType: string) {
+  if (contentType === "image/png") {
+    return bytes.length >= 8 &&
+      bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 &&
+      bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a;
+  }
+  if (contentType === "image/jpeg") {
+    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  return contentType === "image/webp" &&
+    bytes.length >= 12 &&
+    String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
+    String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+}
+
 function consumePinnedImage(response: IncomingMessage) {
-  return new Promise<string>((resolve, reject) => {
+  return new Promise<VerifiedCreativeImage>((resolve, reject) => {
     const contentType = String(response.headers["content-type"] ?? "").toLowerCase();
+    const normalizedContentType = contentType.split(";", 1)[0]?.trim() ?? "";
     const contentLength = Number(response.headers["content-length"] ?? "0");
     if (
       (response.statusCode ?? 0) < 200 || (response.statusCode ?? 0) >= 300 ||
-      !contentType.startsWith("image/") ||
+      !["image/png", "image/jpeg", "image/webp"].includes(normalizedContentType) ||
       (contentLength > 0 && contentLength > MAX_CREATIVE_BYTES)
     ) {
       response.resume();
@@ -99,6 +95,7 @@ function consumePinnedImage(response: IncomingMessage) {
       return;
     }
     const hash = createHash("sha256");
+    const chunks: Buffer[] = [];
     let total = 0;
     response.on("data", (chunk: Buffer) => {
       total += chunk.byteLength;
@@ -107,6 +104,7 @@ function consumePinnedImage(response: IncomingMessage) {
         return;
       }
       hash.update(chunk);
+      chunks.push(Buffer.from(chunk));
     });
     response.once("error", (error: Error) => reject(
       new ApiError(
@@ -124,7 +122,20 @@ function consumePinnedImage(response: IncomingMessage) {
         reject(new ApiError(409, "The selected creative is empty.", "meta_creative_asset_bytes_unavailable"));
         return;
       }
-      resolve(hash.digest("hex"));
+      const bytes = Buffer.concat(chunks);
+      if (!hasSupportedImageSignature(bytes, normalizedContentType)) {
+        reject(new ApiError(
+          409,
+          "The selected creative content does not match its declared image type.",
+          "meta_creative_asset_signature_invalid",
+        ));
+        return;
+      }
+      resolve({
+        bytes,
+        contentType: normalizedContentType as VerifiedCreativeImage["contentType"],
+        sha256: hash.digest("hex"),
+      });
     });
   });
 }
@@ -132,7 +143,7 @@ function consumePinnedImage(response: IncomingMessage) {
 async function requestPinnedImage(
   resolved: Awaited<ReturnType<typeof resolvePinnedCreativeUrl>>,
 ) {
-  return new Promise<{ digest?: string; redirect?: string }>((resolve, reject) => {
+  return new Promise<{ image?: VerifiedCreativeImage; redirect?: string }>((resolve, reject) => {
     const request = httpsRequest(resolved.url, {
       method: "GET",
       headers: { Accept: "image/*", "User-Agent": "DealFlow-Creative-Integrity/1" },
@@ -147,7 +158,7 @@ async function requestPinnedImage(
         return;
       }
       try {
-        resolve({ digest: await consumePinnedImage(response) });
+        resolve({ image: await consumePinnedImage(response) });
       } catch (error) {
         reject(error);
       }
@@ -171,11 +182,34 @@ export async function resolveCreativeContentSha256(imageUrl: string | null): Pro
   let resolved = await resolvePinnedCreativeUrl(imageUrl, lookupDns);
   for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect += 1) {
     const result = await requestPinnedImage(resolved);
-    if (result.digest) return result.digest;
+    if (result.image) return result.image.sha256;
     if (!result.redirect || redirect === MAX_REDIRECTS) {
       throw new ApiError(409, "The selected creative redirect could not be verified.", "meta_creative_asset_redirect_invalid");
     }
     resolved = await resolvePinnedCreativeUrl(result.redirect, lookupDns);
   }
   throw new ApiError(409, "The selected creative could not be verified.", "meta_creative_asset_bytes_unavailable");
+}
+
+export async function downloadVerifiedCreativeImage(
+  imageUrl: string,
+): Promise<VerifiedCreativeImage> {
+  let resolved = await resolvePinnedCreativeUrl(imageUrl, lookupDns);
+  for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect += 1) {
+    const result = await requestPinnedImage(resolved);
+    if (result.image) return result.image;
+    if (!result.redirect || redirect === MAX_REDIRECTS) {
+      throw new ApiError(
+        409,
+        "The selected creative redirect could not be verified.",
+        "meta_creative_asset_redirect_invalid",
+      );
+    }
+    resolved = await resolvePinnedCreativeUrl(result.redirect, lookupDns);
+  }
+  throw new ApiError(
+    409,
+    "The selected creative could not be verified.",
+    "meta_creative_asset_bytes_unavailable",
+  );
 }

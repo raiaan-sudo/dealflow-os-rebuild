@@ -1,3 +1,6 @@
+"use client";
+
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
 import { cn } from "@/lib/utils";
 import { StaticAdComposedPreview } from "@/components/campaign/static-ad-composed-preview";
 import type { CampaignCategory } from "@/lib/services/campaign-creative-strategy";
@@ -50,8 +53,9 @@ export function StaticCreativePreviewCard({
   className,
   compact = false,
 }: StaticCreativePreviewCardProps) {
-  const safeHeadline = headline || offer || "Campaign creative";
-  const safeCta = cta || "Learn More";
+  const { t } = useProductI18n();
+  const safeHeadline = headline || offer || t("creativePreview.campaignCreative");
+  const safeCta = cta || t("creativePreview.learnMore");
   const safeOffer = offer || safeHeadline;
   const displayHeadline = buildOfferFirstHeadline({
     headline: safeHeadline,
@@ -85,15 +89,15 @@ export function StaticCreativePreviewCard({
       />
       <div className={cn("space-y-4", compact ? "p-4" : "p-6")}>
         <div>
-          <p className="text-sm font-medium text-muted-foreground">Headline</p>
+          <p className="text-sm font-medium text-muted-foreground">{t("creativePreview.headline")}</p>
           <p className="mt-1 line-clamp-3 text-base font-semibold leading-6 text-foreground">{displayHeadline}</p>
         </div>
         <div>
-          <p className="text-sm font-medium text-muted-foreground">Primary Text</p>
+          <p className="text-sm font-medium text-muted-foreground">{t("creativePreview.primaryText")}</p>
           <p className="mt-1 line-clamp-4 text-sm leading-6 text-foreground">{displayPrimaryText}</p>
         </div>
         <div>
-          <p className="text-sm font-medium text-muted-foreground">CTA</p>
+          <p className="text-sm font-medium text-muted-foreground">{t("creativePreview.cta")}</p>
           <p className="mt-1 text-sm font-semibold text-foreground">{safeCta}</p>
         </div>
       </div>

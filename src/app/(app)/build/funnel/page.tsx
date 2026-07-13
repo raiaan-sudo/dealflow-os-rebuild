@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { LocaleLink as Link } from "@/components/i18n/locale-link";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/app/page-header";
 import { ArtifactRecoveryPanel } from "@/components/app/artifact-recovery-panel";
@@ -9,6 +9,9 @@ import { createRouteHandlerClient } from "@/lib/supabase/route-handler";
 import { FunnelPreview } from "@/components/funnel/funnel-preview";
 import { canonicalCampaignToPlan } from "@/lib/services/canonical-campaign";
 import { getExpectedOutcomes, getStrategyWhy } from "@/lib/services/campaign-plan-service";
+import { getRequestProductI18n } from "@/lib/i18n/server";
+
+type MissingFunnelArtifact = "campaignRecord" | "funnel" | "campaignPayload";
 
 async function loadStoredCampaignPayload(campaignId: string) {
   const supabase = await createRouteHandlerClient();
@@ -39,6 +42,7 @@ export default async function BuildFunnelPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const { href, t } = await getRequestProductI18n();
   const params = searchParams ? await searchParams : {};
   const campaignId =
     typeof params.campaignId === "string" && params.campaignId.length > 0
@@ -46,7 +50,7 @@ export default async function BuildFunnelPage({
       : null;
 
   if (!campaignId) {
-    redirect("/onboarding");
+    redirect(href("/onboarding"));
   }
 
   const activeCampaign = await resolveActiveCampaignRecord(campaignId).catch(() => null);
@@ -59,10 +63,10 @@ export default async function BuildFunnelPage({
       ? (storedPlan.campaign_payload as Record<string, unknown>)
       : null;
   const funnel = record?.funnel ?? null;
-  const missingArtifacts: string[] = [];
+  const missingArtifacts: MissingFunnelArtifact[] = [];
 
   if (!record) {
-    missingArtifacts.push("campaign record");
+    missingArtifacts.push("campaignRecord");
   }
 
   if (!funnel) {
@@ -70,7 +74,7 @@ export default async function BuildFunnelPage({
   }
 
   if (!campaignPayload) {
-    missingArtifacts.push("campaign payload");
+    missingArtifacts.push("campaignPayload");
   }
 
   if (missingArtifacts.length > 0) {
@@ -78,18 +82,20 @@ export default async function BuildFunnelPage({
       <div className="mx-auto w-full max-w-[900px] space-y-8 p-6 sm:p-8">
         <WizardSteps current="funnel" />
         <PageHeader
-          eyebrow="Build"
-          title="Funnel artifacts are missing"
-          description="This step needs a saved funnel and campaign payload before review can continue."
+          eyebrow={t("build.eyebrow")}
+          title={t("build.funnel.missingTitle")}
+          description={t("build.funnel.missingDescription")}
         />
         <ArtifactRecoveryPanel
           campaignId={campaignId}
-          title="Recover the funnel step"
-          description="The required funnel data is missing or incomplete. Regenerate the missing artifacts below, or go back to onboarding."
-          missingArtifacts={missingArtifacts}
+          title={t("build.funnel.recoverTitle")}
+          description={t("build.funnel.recoverDescription")}
+          missingArtifacts={missingArtifacts.map((artifact) =>
+            t(`build.artifact.${artifact}`),
+          )}
           recoverySteps={[
             ...(missingArtifacts.includes("funnel") ? (["generate-funnel"] as const) : []),
-            ...(missingArtifacts.includes("campaign payload") ? (["build-campaign"] as const) : []),
+            ...(missingArtifacts.includes("campaignPayload") ? (["build-campaign"] as const) : []),
           ]}
         />
       </div>
@@ -97,11 +103,11 @@ export default async function BuildFunnelPage({
   }
 
   if (!record) {
-    redirect("/onboarding");
+    redirect(href("/onboarding"));
   }
 
   if (!funnel) {
-    redirect("/onboarding");
+    redirect(href("/onboarding"));
   }
 
   const plan = canonicalCampaignToPlan(record);
@@ -111,28 +117,28 @@ export default async function BuildFunnelPage({
     <div className="mx-auto w-full max-w-[900px] space-y-8 p-6 sm:p-8">
       <WizardSteps current="funnel" />
       <PageHeader
-        eyebrow="Build"
-        title="Review your funnel"
-        description="Check the core message and preview before moving to ad selection."
+        eyebrow={t("build.eyebrow")}
+        title={t("build.funnel.reviewTitle")}
+        description={t("build.funnel.reviewDescription")}
       />
 
       <section className="space-y-4 rounded-2xl border border-border bg-card p-6">
         <div>
-          <h2 className="text-sm font-medium text-muted-foreground">Headline</h2>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{ensuredFunnel.headline ?? "No headline saved."}</p>
+          <h2 className="text-sm font-medium text-muted-foreground">{t("build.funnel.headline")}</h2>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{ensuredFunnel.headline ?? t("build.funnel.noHeadline")}</p>
         </div>
         <div>
-          <h2 className="text-sm font-medium text-muted-foreground">Subheadline</h2>
-          <p className="mt-1 text-base leading-7 text-foreground">{ensuredFunnel.subheadline ?? "No subheadline saved."}</p>
+          <h2 className="text-sm font-medium text-muted-foreground">{t("build.funnel.subheadline")}</h2>
+          <p className="mt-1 text-base leading-7 text-foreground">{ensuredFunnel.subheadline ?? t("build.funnel.noSubheadline")}</p>
         </div>
         <div>
-          <h2 className="text-sm font-medium text-muted-foreground">CTA</h2>
-          <p className="mt-1 text-base font-semibold text-foreground">{ensuredFunnel.cta ?? "No CTA saved."}</p>
+          <h2 className="text-sm font-medium text-muted-foreground">{t("build.funnel.cta")}</h2>
+          <p className="mt-1 text-base font-semibold text-foreground">{ensuredFunnel.cta ?? t("build.funnel.noCta")}</p>
         </div>
       </section>
 
       <section className="space-y-4 rounded-2xl border border-border bg-card p-6">
-        <h2 className="text-lg font-semibold text-foreground">Live preview</h2>
+        <h2 className="text-lg font-semibold text-foreground">{t("build.funnel.livePreview")}</h2>
         <FunnelPreview
           plan={plan}
           expectedOutcomes={getExpectedOutcomes(plan)}
@@ -141,18 +147,18 @@ export default async function BuildFunnelPage({
       </section>
 
       <details className="rounded-2xl border border-border bg-card p-6">
-        <summary className="cursor-pointer text-sm font-medium text-foreground">Advanced</summary>
+        <summary className="cursor-pointer text-sm font-medium text-foreground">{t("build.funnel.advanced")}</summary>
         <div className="mt-4 space-y-4">
           {Array.isArray(ensuredFunnel.sections) && ensuredFunnel.sections.length > 0 ? (
             ensuredFunnel.sections.map((section) => (
               <div key={section.id} className="rounded-lg border border-border p-4">
-                <p><strong>ID:</strong> {section.id}</p>
-                <p><strong>Type:</strong> {section.type}</p>
-                <p><strong>Variant:</strong> {section.variant}</p>
-                <p><strong>Title:</strong> {section.title}</p>
-                <p><strong>Visible:</strong> {section.visible ? "yes" : "no"}</p>
+                <p><strong>{t("build.funnel.field.id")}:</strong> {section.id}</p>
+                <p><strong>{t("build.funnel.field.type")}:</strong> {section.type}</p>
+                <p><strong>{t("build.funnel.field.variant")}:</strong> {section.variant}</p>
+                <p><strong>{t("build.funnel.field.title")}:</strong> {section.title}</p>
+                <p><strong>{t("build.funnel.field.visible")}:</strong> {section.visible ? t("common.yes") : t("common.no")}</p>
                 <div className="mt-3">
-                  <p className="font-medium">Content</p>
+                  <p className="font-medium">{t("build.funnel.field.content")}</p>
                   {section.content.length > 0 ? (
                     <ul className="list-disc pl-6">
                       {section.content.map((item, index) => (
@@ -160,20 +166,20 @@ export default async function BuildFunnelPage({
                       ))}
                     </ul>
                   ) : (
-                    <p>No content</p>
+                    <p>{t("build.funnel.noContent")}</p>
                   )}
                 </div>
               </div>
             ))
           ) : (
-            <p className="text-sm text-muted-foreground">No funnel sections generated.</p>
+            <p className="text-sm text-muted-foreground">{t("build.funnel.noSections")}</p>
           )}
         </div>
       </details>
 
       <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-between">
         <Button asChild size="lg" variant="secondary">
-          <Link href="/onboarding">Back</Link>
+          <Link href="/onboarding">{t("common.back")}</Link>
         </Button>
         <Button asChild size="lg">
           <Link
@@ -183,7 +189,7 @@ export default async function BuildFunnelPage({
                 : "/build/creatives"
             }
           >
-            Looks good → Next
+            {t("build.funnel.next")}
           </Link>
         </Button>
       </div>

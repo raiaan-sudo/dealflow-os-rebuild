@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
 
-export function PortalButton({ label = "Manage billing" }: { label?: string }) {
+export function PortalButton({ label }: { label?: string }) {
+  const { t } = useProductI18n();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,12 +23,12 @@ export function PortalButton({ label = "Manage billing" }: { label?: string }) {
         | null;
 
       if (!response.ok || !data?.url) {
-        throw new Error(data?.error ?? "Billing portal could not be opened.");
+        throw new Error(t("billing.portalError"));
       }
 
       window.location.assign(data.url);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Billing portal could not be opened.");
+    } catch {
+      setError(t("billing.portalError"));
       setLoading(false);
     }
   }
@@ -34,7 +36,7 @@ export function PortalButton({ label = "Manage billing" }: { label?: string }) {
   return (
     <div className="space-y-3">
       <Button type="button" variant="secondary" onClick={handlePortal} disabled={loading}>
-        {loading ? "Opening portal..." : label}
+        {loading ? t("billing.openingPortal") : (label ?? t("billing.manage"))}
       </Button>
       {error ? <p className="text-sm text-rose-300">{error}</p> : null}
     </div>

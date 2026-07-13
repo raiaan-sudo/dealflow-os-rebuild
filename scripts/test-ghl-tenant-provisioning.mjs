@@ -498,7 +498,13 @@ try {
     assert.equal(locationCreateReceipt.metadata.requestFingerprint, firstOutbox.requestPayload.requestFingerprint);
     assert.deepEqual(
       provider.calls.map((call) => call.operation),
-      ["location_create", "snapshot_install", "snapshot_status", "required_objects_verify"],
+      [
+        "location_create",
+        "location_display_name_finalize",
+        "snapshot_install",
+        "snapshot_status",
+        "required_objects_verify",
+      ],
       "snapshotId at sub-account creation never replaces status and required-object verification",
     );
     await assert.rejects(
@@ -518,6 +524,75 @@ try {
     assert.equal(stillReady.state, "ready");
     assert.equal(provider.calls.length, providerCallsAtReady, "READY replay must not call the provider");
     readyFixture = { clock, repository, provider, dependencies, ready };
+  }
+
+  {
+    const clock = makeClock();
+    const repository = new MemoryGhlProvisioningRepository([directTenant]);
+    const provider = new FakeGhlAdapter({ snapshotStatuses: ["ready"] });
+    const originalFinalize = provider.finalizeLocationDisplayName.bind(provider);
+    let finalizationAttempts = 0;
+    provider.finalizeLocationDisplayName = async (input) => {
+      finalizationAttempts += 1;
+      if (finalizationAttempts === 1) {
+        provider.calls.push({
+          operation: "location_display_name_finalize",
+          idempotencyKey: input.idempotencyKey,
+          providerLocationId: input.providerLocationId,
+          requestFingerprint: input.requestFingerprint,
+        });
+        return {
+          outcome: "retryable_failure",
+          errorCode: "fake_display_name_readback_pending",
+          safeMessage: "Synthetic clean-name readback is pending.",
+          providerRequestId: "fake-display-name-pending-1",
+          requestFingerprint: input.requestFingerprint,
+          responseFingerprint: input.requestFingerprint,
+          httpStatus: 200,
+        };
+      }
+      return originalFinalize(input);
+    };
+    const dependencies = {
+      repository,
+      provider,
+      writeGate: { enabled: true, adapterKind: "fake" },
+      isolatedDatabase: true,
+      databaseUrl: "http://127.0.0.1:54321",
+      now: clock.now,
+    };
+    let run = await requestGhlProvisioning(
+      fixtureRequest("workspace-a", "payment-display-name-finalization"),
+      dependencies,
+    );
+    run = await executeNextGhlProvisioningStep(run.id, dependencies);
+    run = await executeNextGhlProvisioningStep(run.id, dependencies);
+    assert.equal(run.state, "location_assigned");
+    run = await executeNextGhlProvisioningStep(run.id, dependencies);
+    assert.equal(run.state, "location_assigned");
+    assert.equal(run.lastErrorCode, "fake_display_name_readback_pending");
+    assert.ok(run.nextRetryAt);
+    assert.equal(
+      provider.calls.some((call) => call.operation === "snapshot_install"),
+      false,
+      "snapshot work must remain blocked until the clean customer-facing name is read back",
+    );
+    const callsBeforeDue = provider.calls.length;
+    run = await executeNextGhlProvisioningStep(run.id, dependencies);
+    assert.equal(provider.calls.length, callsBeforeDue, "clean-name finalization must respect durable backoff");
+    clock.advance(Date.parse(run.nextRetryAt) - Date.parse(clock.now()) + 1);
+    run = await executeNextGhlProvisioningStep(run.id, dependencies);
+    assert.equal(run.state, "snapshot_install_requested");
+    assert.equal(finalizationAttempts, 2);
+    const finalizeOutbox = repository.listOutbox().find((item) =>
+      item.operation === "location_display_name_finalize"
+    );
+    const finalizeReceipts = repository.listReceipts().filter((receipt) =>
+      receipt.outboxId === finalizeOutbox.id
+    );
+    assert.equal(finalizeReceipts.length, 2);
+    assert.equal(finalizeReceipts[0].metadata.cleanDisplayNameVerified, false);
+    assert.equal(finalizeReceipts[1].metadata.cleanDisplayNameVerified, true);
   }
 
   {
@@ -709,22 +784,49 @@ try {
     run = await executeNextGhlProvisioningStep(run.id, dependencies);
     run = await executeNextGhlProvisioningStep(run.id, dependencies);
     run = await executeNextGhlProvisioningStep(run.id, dependencies);
+    assert.equal(run.state, "location_uncertain");
+    assert.equal(run.lastErrorCode, "ghl_location_reconciliation_visibility_pending");
+    assert.ok(run.nextRetryAt, "an initial not-found must remain backoff-gated inside the visibility window");
+    const callsBeforeEarlyPoll = provider.calls.length;
+    run = await executeNextGhlProvisioningStep(run.id, dependencies);
+    assert.equal(provider.calls.length, callsBeforeEarlyPoll, "a visibility poll must not run before its durable due time");
+    for (let poll = 0; poll < 10 && run.state === "location_uncertain"; poll += 1) {
+      clock.advance(Math.max(Date.parse(run.nextRetryAt) - Date.parse(clock.now()) + 1, 1));
+      run = await executeNextGhlProvisioningStep(run.id, dependencies);
+    }
     assert.equal(run.state, "retryable_failure");
     assert.ok(run.lastReconciledAt, "conclusive not-found reconciliation must be recorded");
+    const reconciliationReceipts = repository.listReceipts()
+      .filter((receipt) => receipt.metadata.requestFingerprint);
+    assert.ok(
+      reconciliationReceipts.some((receipt) => receipt.metadata.reconciliationVisibilityPending === true),
+      "pre-deadline absence must be durably non-conclusive",
+    );
+    assert.ok(
+      reconciliationReceipts.some((receipt) => receipt.metadata.absenceConclusive === true),
+      "only a post-window search may prove provider absence",
+    );
     await assert.rejects(
       () => requestGhlProvisioningReplay(run.id, dependencies),
       (error) => error.code === "retry_not_due",
     );
-    clock.advance(61_000);
+    clock.advance(Date.parse(run.nextRetryAt) - Date.parse(clock.now()) + 1);
     provider.setCreateOutcome("success");
     run = await requestGhlProvisioningReplay(run.id, dependencies);
     assert.equal(run.state, "location_create_requested");
     run = await executeNextGhlProvisioningStep(run.id, dependencies);
     assert.equal(run.state, "location_assigned");
-    assert.deepEqual(
-      provider.calls.map((call) => call.operation),
-      ["location_create", "location_reconcile", "location_create"],
-      "safe create replay must happen only after reconciliation and due-time approval",
+    const operations = provider.calls.map((call) => call.operation);
+    assert.equal(operations[0], "location_create");
+    assert.equal(operations.at(-1), "location_create");
+    assert.ok(
+      operations.slice(1, -1).every((operation) => operation === "location_reconcile"),
+      "safe create replay must happen only after bounded reconciliation and due-time approval",
+    );
+    assert.equal(
+      operations.filter((operation) => operation === "location_create").length,
+      2,
+      "the original create may be replayed exactly once only after conclusive absence",
     );
   }
 

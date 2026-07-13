@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { LocaleLink as Link } from "@/components/i18n/locale-link";
 import { PageHeader } from "@/components/app/page-header";
 import { WizardSteps } from "@/components/app/wizard-steps";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -23,6 +23,7 @@ import {
   buildOfferFirstHeadline,
   textPreservesOfferConcept,
 } from "@/lib/copy/offer-consistency";
+import { getRequestProductI18n } from "@/lib/i18n/server";
 
 async function loadPersistedSelectedAdIds(campaignId: string | null) {
   if (!campaignId) {
@@ -50,6 +51,7 @@ export default async function PreviewPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const { t } = await getRequestProductI18n();
   const params = searchParams ? await searchParams : {};
   const campaignId =
     typeof params.campaignId === "string" && params.campaignId.length > 0
@@ -66,20 +68,20 @@ export default async function PreviewPage({
       <PageShell className="max-w-[900px]">
         <WizardSteps current="review" />
         <PageHeader
-          eyebrow="Preview"
-          title="Campaign preview unavailable"
-          description="Complete onboarding first, then unlock review to see the campaign package."
+          eyebrow={t("preview.eyebrow")}
+          title={t("preview.unavailableTitle")}
+          description={t("preview.unavailableDescription")}
         />
         <EmptyState
-          title="No campaign available yet"
-          description="Finish onboarding to create a campaign before opening review."
+          title={t("preview.noCampaignTitle")}
+          description={t("preview.noCampaignDescription")}
         />
         <div className="flex flex-col gap-3 sm:flex-row">
           <Button asChild>
-            <Link href="/onboarding">Start onboarding</Link>
+            <Link href="/onboarding">{t("preview.startOnboarding")}</Link>
           </Button>
           <Button asChild variant="secondary">
-            <Link href="/onboarding">Continue onboarding</Link>
+            <Link href="/onboarding">{t("preview.continueOnboarding")}</Link>
           </Button>
         </div>
       </PageShell>
@@ -93,13 +95,13 @@ export default async function PreviewPage({
       <PageShell className="max-w-[900px]">
         <WizardSteps current="review" />
         <PageHeader
-          eyebrow="Preview"
-          title="Campaign preview unavailable"
-          description="Some campaign details are still missing, so this review page could not load correctly."
+          eyebrow={t("preview.eyebrow")}
+          title={t("preview.unavailableTitle")}
+          description={t("preview.invalidDescription")}
         />
         <EmptyState
-          title="Preview data incomplete"
-          description="Some campaign details are missing. Update or regenerate the campaign, then return to review."
+          title={t("preview.incompleteTitle")}
+          description={t("preview.incompleteDescription")}
         />
         <div className="flex flex-col gap-3 sm:flex-row">
           <Button asChild>
@@ -110,11 +112,11 @@ export default async function PreviewPage({
                   : "/onboarding"
               }
             >
-              Continue onboarding
+              {t("preview.continueOnboarding")}
             </Link>
           </Button>
           <Button asChild variant="secondary">
-            <Link href="/onboarding">Restart onboarding</Link>
+            <Link href="/onboarding">{t("preview.restartOnboarding")}</Link>
           </Button>
         </div>
       </PageShell>
@@ -154,21 +156,21 @@ export default async function PreviewPage({
     <PageShell className="max-w-[1280px]">
       <WizardSteps current="review" />
       <PageHeader
-        eyebrow="Preview"
-        title="Final preview"
-        description="Review the exact primary creative and funnel promise before launch."
+        eyebrow={t("preview.eyebrow")}
+        title={t("preview.finalTitle")}
+        description={t("preview.finalDescription")}
       />
 
       <section className="surface-strong space-y-4 rounded-df-card border border-white/10 p-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Creative preview</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{t("preview.creativePreview")}</p>
             <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-foreground">
-              Primary launch creative
+              {t("preview.primaryCreative")}
             </h2>
           </div>
           <p className="text-sm text-muted-foreground">
-            {visibleStaticAds.length + visibleUgcAds.length} previews ready
+            {t("preview.readyCount", { count: visibleStaticAds.length + visibleUgcAds.length })}
           </p>
         </div>
         {visibleStaticAds.length > 0 ? (
@@ -196,22 +198,22 @@ export default async function PreviewPage({
           </div>
         ) : (
           <div className="rounded-df-card border border-white/10 bg-white/[0.035] p-6 text-sm text-muted-foreground">
-            No primary launch creative is saved yet. Go back to creatives and choose one exact ad first.
+            {t("preview.noPrimary")}
           </div>
         )}
         {visibleUgcAds.length > 0 ? (
           <>
           <div className="pt-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">AI UGC previews</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{t("preview.aiUgcPreviews")}</p>
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
             {visibleUgcAds.map((video, index) => (
               <div key={video.id || index} className="rounded-df-card border border-cyan-200/15 bg-cyan-300/[0.04] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/70">AI UGC concept {index + 1}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/70">{t("preview.aiUgcConcept", { number: index + 1 })}</p>
                 <h3 className="mt-2 line-clamp-2 text-base font-semibold leading-6">{video.title}</h3>
                 <p className="mt-3 line-clamp-3 text-sm leading-6 text-muted-foreground">{video.hook}</p>
                 <div className="mt-4 rounded-xl border border-white/8 bg-black/20 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Script preview</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t("preview.scriptPreview")}</p>
                   <p className="mt-2 line-clamp-4 text-sm leading-6">{video.script.slice(0, 4).join(" ")}</p>
                 </div>
                 <p className="mt-3 text-sm font-semibold text-foreground">{video.cta}</p>
@@ -221,13 +223,13 @@ export default async function PreviewPage({
           </>
         ) : (
           <div className="rounded-df-card border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
-            UGC concepts are missing. Return to creative recovery so DealFlow can regenerate the two required UGC previews.
+            {t("preview.ugcMissing")}
           </div>
         )}
       </section>
 
       <section className="surface-strong space-y-4 rounded-df-card border border-white/10 p-6">
-        <h2 className="text-lg font-semibold text-foreground">Selected funnel</h2>
+        <h2 className="text-lg font-semibold text-foreground">{t("preview.selectedFunnel")}</h2>
         <FunnelPreview
           plan={offerFirstPlan}
           expectedOutcomes={expectedOutcomes}
@@ -238,12 +240,12 @@ export default async function PreviewPage({
       <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-between">
         <Button asChild size="lg" variant="secondary">
           <Link href={campaignIdForFlow ? `/build/creatives?campaignId=${encodeURIComponent(campaignIdForFlow)}` : "/build/creatives"}>
-            Back
+            {t("common.back")}
           </Link>
         </Button>
         <Button asChild size="lg">
           <Link href={campaignIdForFlow ? `/launch?campaignId=${encodeURIComponent(campaignIdForFlow)}` : "/launch"}>
-            Next → Launch
+            {t("preview.nextLaunch")}
           </Link>
         </Button>
       </div>

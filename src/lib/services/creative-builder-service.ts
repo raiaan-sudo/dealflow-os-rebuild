@@ -37,6 +37,7 @@ import { getVoiceProvider } from "@/lib/integrations/creative/voice-provider";
 import { getDurableVideoProvider } from "@/lib/ai/video-provider";
 import {
   buildManualCreativeStoragePath,
+  isCanonicalGeneratedVideoStorageIdentity,
   isCanonicalManualCreativeStorageIdentity,
   MANUAL_CREATIVE_STORAGE_BUCKET,
 } from "@/lib/services/creative-asset-storage-identity";
@@ -1238,11 +1239,10 @@ export async function deleteCreativeAssetById(
     CreativeAsset,
     "id" | "user_id" | "campaign_id" | "provider_name" | "storage_bucket" | "storage_path"
   >;
-  if (
-    !asset.user_id ||
-    !asset.campaign_id ||
-    !(await getCampaignById(asset.campaign_id).catch(() => null))
-  ) {
+  const campaign = asset.campaign_id
+    ? await getCampaignById(asset.campaign_id).catch(() => null)
+    : null;
+  if (!asset.user_id || !asset.campaign_id || !campaign) {
     throw new ApiError(404, "Creative asset not found.", "not_found");
   }
 
@@ -1255,16 +1255,35 @@ export async function deleteCreativeAssetById(
     storageBucket: asset.storage_bucket,
     storagePath: asset.storage_path,
   });
+  const hasCanonicalGeneratedVideoIdentity = Boolean(
+    campaign.campaign.organization_id &&
+    isCanonicalGeneratedVideoStorageIdentity({
+      organizationId: campaign.campaign.organization_id,
+      userId: asset.user_id,
+      campaignId: asset.campaign_id,
+      providerName: asset.provider_name,
+      assetId: asset.id,
+      storageBucket: asset.storage_bucket,
+      storagePath: asset.storage_path,
+    }),
+  );
 
-  if ((isManualUpload || hasProtectedStorageIdentity) && !hasCanonicalManualIdentity) {
+  if (
+    (isManualUpload || hasProtectedStorageIdentity) &&
+    !hasCanonicalManualIdentity &&
+    !hasCanonicalGeneratedVideoIdentity
+  ) {
     throw new ApiError(
       409,
-      "This manual creative has no trusted canonical storage identity and requires operator reconciliation before deletion.",
+      "This creative has no trusted canonical storage identity and requires operator reconciliation before deletion.",
       "creative_asset_storage_identity_untrusted",
     );
   }
 
-  if (hasCanonicalManualIdentity && asset.storage_path) {
+  if (
+    (hasCanonicalManualIdentity || hasCanonicalGeneratedVideoIdentity) &&
+    asset.storage_path
+  ) {
     const { error: storageDeleteError } = await admin.storage
       .from(MANUAL_CREATIVE_STORAGE_BUCKET)
       .remove([asset.storage_path]);

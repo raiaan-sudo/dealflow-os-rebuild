@@ -5,16 +5,18 @@ import { LogOut } from "lucide-react";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
 
 export function SignOutButton() {
   const router = useRouter();
   const [isPending, setIsPending] = useState(false);
+  const { href, t } = useProductI18n();
 
   async function handleClick() {
     const supabase = createClient();
 
     if (!supabase) {
-      router.replace("/login");
+      router.replace(href("/login"));
       router.refresh();
       return;
     }
@@ -25,7 +27,7 @@ export function SignOutButton() {
       await supabase.auth.signOut();
     } finally {
       window.localStorage.removeItem("dealflow-onboarding-progress-v2");
-      router.replace("/login");
+      router.replace(href("/login"));
       router.refresh();
       setIsPending(false);
     }
@@ -34,7 +36,7 @@ export function SignOutButton() {
   return (
     <Button disabled={isPending} onClick={handleClick} size="sm" variant="secondary">
       <LogOut className="size-4" />
-      {isPending ? "Signing out..." : "Sign out"}
+      {isPending ? t("common.pleaseWait") : t("auth.signOut")}
     </Button>
   );
 }

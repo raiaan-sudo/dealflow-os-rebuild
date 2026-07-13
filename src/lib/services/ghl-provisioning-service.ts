@@ -6,6 +6,7 @@ import {
   buildGhlLocationCreateRequestFingerprint,
   buildGhlSnapshotManifestFingerprint,
   GHL_CAPABILITY_MATRIX,
+  GHL_LOCATION_CREATE_VISIBILITY_WINDOW_MS,
   GhlProvisioningInvariantError,
   transitionGhlProvisioning,
 } from "../integrations/gohighlevel";
@@ -181,6 +182,18 @@ export function assertGhlProvisioningRequest(request: GhlProvisioningRequest) {
       "Provisioning requires an explicit non-empty required-object manifest.",
     );
   }
+  if (
+    !request.locationProfile.displayName.trim()
+    || request.locationProfile.displayName.length > 180
+    || !/^[A-Za-z]{2}$/.test(request.locationProfile.country.trim())
+    || !request.locationProfile.timezone.trim()
+    || request.locationProfile.timezone.length > 180
+  ) {
+    throw new GhlProvisioningInvariantError(
+      "location_profile_invalid",
+      "Provisioning requires a bounded location name, ISO country code, and timezone.",
+    );
+  }
   const requiredObjectKeys = new Set<string>();
   for (const requiredObject of request.snapshotManifest.requiredObjects) {
     const identity = `${requiredObject.kind}:${requiredObject.key.trim()}`;
@@ -259,12 +272,25 @@ async function beginProviderAttempt(
     && run.state === "location_create_requested"
     && run.lastReconciledAt !== null
     && run.lastErrorCode === "location_absent_after_reconciliation";
+  const dueLocationVisibilityRetry = existing.status === "retryable_failure"
+    && operation === "location_reconcile"
+    && run.state === "location_uncertain"
+    && latestReceipt?.outcome === "not_found"
+    && latestReceipt.metadata.reconciliationVisibilityPending === true
+    && Date.parse(existing.availableAt) <= Date.parse(now);
+  const dueDisplayNameFinalizationRetry = existing.status === "retryable_failure"
+    && operation === "location_display_name_finalize"
+    && run.state === "location_assigned"
+    && latestReceipt?.metadata.displayNameFinalizationPending === true
+    && Date.parse(existing.availableAt) <= Date.parse(now);
   const unreconciledPendingPoll = existing.status === "pending"
     && latestReceipt?.outcome === "accepted"
     && latestReceipt.metadata.providerStatus === "pending"
     && run.lastErrorCode !== "snapshot_poll_pending";
   if (
     !reconciledUncertainCreate
+    && !dueLocationVisibilityRetry
+    && !dueDisplayNameFinalizationRetry
     && (
       ["succeeded", "uncertain", "retryable_failure", "operator_action_required"].includes(existing.status)
       || unreconciledPendingPoll
@@ -340,6 +366,105 @@ async function recordProviderOutcome(
 function retryAt(now: string, attemptCount: number) {
   const delaySeconds = Math.min(60 * 2 ** Math.max(attemptCount - 1, 0), 15 * 60);
   return new Date(Date.parse(now) + delaySeconds * 1_000).toISOString();
+}
+
+function locationReconciliationRetryAt(
+  now: string,
+  attemptCount: number,
+  visibilityDeadlineAt: string,
+) {
+  const retryTimestamp = Math.min(
+    Date.parse(retryAt(now, attemptCount)),
+    Date.parse(visibilityDeadlineAt),
+  );
+  return new Date(retryTimestamp).toISOString();
+}
+
+async function savePendingLocationReconciliation(
+  run: GhlProvisioningRun,
+  input: {
+    reconciledAt: string;
+    nextRetryAt: string;
+  },
+  dependencies: GhlProvisioningDependencies,
+) {
+  if (run.state !== "location_uncertain") {
+    throw new GhlProvisioningInvariantError(
+      "location_reconciliation_state_invalid",
+      "A pending location reconciliation requires the location_uncertain state.",
+    );
+  }
+  return dependencies.repository.saveRun({
+    ...run,
+    revision: run.revision + 1,
+    lastReconciledAt: input.reconciledAt,
+    nextRetryAt: input.nextRetryAt,
+    lastErrorCode: "ghl_location_reconciliation_visibility_pending",
+    lastErrorMessage: "The agency-scoped search found no exact location yet; reconciliation remains gated until the bounded visibility window expires.",
+    updatedAt: input.reconciledAt,
+  }, run.revision);
+}
+
+async function buildLocationReconciliationContext(
+  run: GhlProvisioningRun,
+  dependencies: GhlProvisioningDependencies,
+) {
+  const createInput = buildLocationCreateInput(run);
+  const createOutbox = await dependencies.repository.ensureOutbox({
+    run,
+    operation: "location_create",
+    idempotencyKey: buildOperationIdempotencyKey(run, "location_create"),
+    requestPayload: locationCreateOutboxPayload(run),
+    now: nowFrom(dependencies),
+  });
+  const createReceipt = await dependencies.repository.getLatestReceipt(createOutbox.id);
+  if (!createReceipt || createOutbox.status !== "uncertain") {
+    throw new GhlProvisioningInvariantError(
+      "ghl_location_create_uncertainty_receipt_missing",
+      "Location reconciliation requires the original durable uncertain create receipt.",
+    );
+  }
+  assertLocationCreateReceiptIdentity(run, createReceipt);
+  const visibilityStartedAtMs = Date.parse(createReceipt.receivedAt);
+  if (!Number.isFinite(visibilityStartedAtMs)) {
+    throw new GhlProvisioningInvariantError(
+      "ghl_location_create_receipt_time_invalid",
+      "The original location-create receipt has no valid visibility start time.",
+    );
+  }
+  return {
+    requestFingerprint: createInput.requestFingerprint,
+    visibilityStartedAt: new Date(visibilityStartedAtMs).toISOString(),
+    visibilityDeadlineAt: new Date(
+      visibilityStartedAtMs + GHL_LOCATION_CREATE_VISIBILITY_WINDOW_MS,
+    ).toISOString(),
+  };
+}
+
+async function savePendingLocationDisplayNameFinalization(
+  run: GhlProvisioningRun,
+  input: {
+    observedAt: string;
+    nextRetryAt: string;
+    errorCode: string;
+    safeMessage: string;
+  },
+  dependencies: GhlProvisioningDependencies,
+) {
+  if (run.state !== "location_assigned") {
+    throw new GhlProvisioningInvariantError(
+      "location_display_name_state_invalid",
+      "GHL display-name finalization requires an assigned provider location.",
+    );
+  }
+  return dependencies.repository.saveRun({
+    ...run,
+    revision: run.revision + 1,
+    nextRetryAt: input.nextRetryAt,
+    lastErrorCode: input.errorCode,
+    lastErrorMessage: input.safeMessage,
+    updatedAt: input.observedAt,
+  }, run.revision);
 }
 
 async function transitionToOperatorRequired(
@@ -645,6 +770,11 @@ async function reconcileUncertainLocation(
   run: GhlProvisioningRun,
   dependencies: GhlProvisioningDependencies,
 ) {
+  const observedAt = nowFrom(dependencies);
+  if (run.nextRetryAt && Date.parse(run.nextRetryAt) > Date.parse(observedAt)) {
+    return run;
+  }
+  const reconciliation = await buildLocationReconciliationContext(run, dependencies);
   const attempt = await beginProviderAttempt(
     run,
     "location_reconcile",
@@ -653,12 +783,30 @@ async function reconcileUncertainLocation(
       originalRequestKey: buildOperationIdempotencyKey(run, "location_create"),
       providerSnapshotId: run.snapshotManifest.providerSnapshotId,
       snapshotManifestFingerprint: buildGhlSnapshotManifestFingerprint(run.snapshotManifest),
-      requestFingerprint: buildLocationCreateInput(run).requestFingerprint,
+      requestFingerprint: reconciliation.requestFingerprint,
+      visibilityStartedAt: reconciliation.visibilityStartedAt,
+      visibilityDeadlineAt: reconciliation.visibilityDeadlineAt,
     },
     dependencies,
   );
   if (attempt.kind === "settled") {
     const reconciledAt = attempt.receipt.receivedAt;
+    if (attempt.receipt.metadata.requestFingerprint !== reconciliation.requestFingerprint) {
+      throw new GhlProvisioningInvariantError(
+        "ghl_location_reconciliation_receipt_identity_mismatch",
+        "The durable GHL location-reconciliation receipt crossed an immutable request boundary.",
+      );
+    }
+    if (
+      attempt.outbox.status === "retryable_failure"
+      && attempt.receipt.outcome === "not_found"
+      && attempt.receipt.metadata.reconciliationVisibilityPending === true
+    ) {
+      return savePendingLocationReconciliation(run, {
+        reconciledAt,
+        nextRetryAt: attempt.outbox.availableAt,
+      }, dependencies);
+    }
     if (attempt.outbox.status === "succeeded" && attempt.receipt.outcome === "succeeded") {
       if (!attempt.receipt.providerReference) {
         throw new GhlProvisioningInvariantError(
@@ -680,7 +828,12 @@ async function reconcileUncertainLocation(
       }, reconciledAt);
       return saveTransition(dependencies.repository, run, next);
     }
-    if (attempt.outbox.status === "succeeded" && attempt.receipt.outcome === "not_found") {
+    if (
+      attempt.outbox.status === "succeeded"
+      && attempt.receipt.outcome === "not_found"
+      && attempt.receipt.metadata.absenceConclusive === true
+      && attempt.receipt.metadata.visibilityDeadlineAt === reconciliation.visibilityDeadlineAt
+    ) {
       return transitionToRetryable(run, {
         resumeState: "location_create_requested",
         errorCode: "location_absent_after_reconciliation",
@@ -698,8 +851,42 @@ async function reconcileUncertainLocation(
     idempotencyKey: buildOperationIdempotencyKey(run, "location_create"),
     installationId: run.installationId,
     environment: run.environment,
+    profile: run.locationProfile,
+    requestFingerprint: reconciliation.requestFingerprint,
+    visibilityStartedAt: reconciliation.visibilityStartedAt,
+    visibilityDeadlineAt: reconciliation.visibilityDeadlineAt,
+    observedAt,
   });
   const reconciledAt = nowFrom(dependencies);
+  if (
+    result.requestFingerprint !== reconciliation.requestFingerprint
+    || (
+      result.responseFingerprint !== null
+      && !/^[a-f0-9]{64}$/.test(result.responseFingerprint)
+    )
+  ) {
+    const errorCode = "ghl_location_reconciliation_response_identity_mismatch";
+    const safeMessage = "The GHL reconciliation response did not match the immutable location-create request.";
+    await recordProviderOutcome(outbox, {
+      outcome: "operator_action_required",
+      outboxStatus: "operator_action_required",
+      providerRequestId: result.providerRequestId,
+      providerReference: run.idempotencyKey,
+      httpStatus: null,
+      responseFingerprint: result.responseFingerprint,
+      metadata: {
+        errorCode,
+        requestFingerprint: reconciliation.requestFingerprint,
+        visibilityStartedAt: reconciliation.visibilityStartedAt,
+        visibilityDeadlineAt: reconciliation.visibilityDeadlineAt,
+      },
+    }, dependencies);
+    return transitionToOperatorRequired(run, {
+      requestKind: "location_reconciliation",
+      blockerCode: errorCode,
+      safeMessage,
+    }, dependencies);
+  }
 
   if (result.outcome === "found") {
     await recordProviderOutcome(outbox, {
@@ -708,8 +895,13 @@ async function reconcileUncertainLocation(
       providerRequestId: result.providerRequestId,
       providerReference: result.providerLocationId,
       httpStatus: 200,
-      responseFingerprint: null,
-      metadata: { providerLocationIdRecorded: true },
+      responseFingerprint: result.responseFingerprint,
+      metadata: {
+        providerLocationIdRecorded: true,
+        requestFingerprint: reconciliation.requestFingerprint,
+        visibilityStartedAt: reconciliation.visibilityStartedAt,
+        visibilityDeadlineAt: reconciliation.visibilityDeadlineAt,
+      },
     }, dependencies);
     const mapping = await dependencies.repository.assignLocation({
       run,
@@ -727,14 +919,50 @@ async function reconcileUncertainLocation(
   }
 
   if (result.outcome === "not_found") {
+    const visibilityExpired = Date.parse(reconciledAt)
+      >= Date.parse(reconciliation.visibilityDeadlineAt);
+    if (!visibilityExpired) {
+      const nextRetryAt = locationReconciliationRetryAt(
+        reconciledAt,
+        outbox.attemptCount,
+        reconciliation.visibilityDeadlineAt,
+      );
+      await recordProviderOutcome(outbox, {
+        outcome: "not_found",
+        outboxStatus: "retryable_failure",
+        providerRequestId: result.providerRequestId,
+        providerReference: run.idempotencyKey,
+        httpStatus: 200,
+        responseFingerprint: result.responseFingerprint,
+        availableAt: nextRetryAt,
+        metadata: {
+          errorCode: "ghl_location_reconciliation_visibility_pending",
+          absenceConclusive: false,
+          reconciliationVisibilityPending: true,
+          requestFingerprint: reconciliation.requestFingerprint,
+          visibilityStartedAt: reconciliation.visibilityStartedAt,
+          visibilityDeadlineAt: reconciliation.visibilityDeadlineAt,
+        },
+      }, dependencies);
+      return savePendingLocationReconciliation(run, {
+        reconciledAt,
+        nextRetryAt,
+      }, dependencies);
+    }
     await recordProviderOutcome(outbox, {
       outcome: "not_found",
       outboxStatus: "succeeded",
       providerRequestId: result.providerRequestId,
       providerReference: run.idempotencyKey,
-      httpStatus: 404,
-      responseFingerprint: null,
-      metadata: { absenceConclusive: true },
+      httpStatus: 200,
+      responseFingerprint: result.responseFingerprint,
+      metadata: {
+        absenceConclusive: true,
+        reconciliationVisibilityPending: false,
+        requestFingerprint: reconciliation.requestFingerprint,
+        visibilityStartedAt: reconciliation.visibilityStartedAt,
+        visibilityDeadlineAt: reconciliation.visibilityDeadlineAt,
+      },
     }, dependencies);
     return transitionToRetryable(run, {
       resumeState: "location_create_requested",
@@ -750,14 +978,186 @@ async function reconcileUncertainLocation(
     providerRequestId: result.providerRequestId,
     providerReference: run.idempotencyKey,
     httpStatus: null,
-    responseFingerprint: null,
-    metadata: { errorCode: result.errorCode },
+    responseFingerprint: result.responseFingerprint,
+    metadata: {
+      errorCode: result.errorCode,
+      requestFingerprint: reconciliation.requestFingerprint,
+      visibilityStartedAt: reconciliation.visibilityStartedAt,
+      visibilityDeadlineAt: reconciliation.visibilityDeadlineAt,
+    },
   }, dependencies);
   return transitionToOperatorRequired(run, {
     requestKind: "location_reconciliation",
     blockerCode: result.errorCode,
     safeMessage: result.safeMessage,
   }, dependencies);
+}
+
+async function finalizeAssignedLocationDisplayName(
+  run: GhlProvisioningRun,
+  dependencies: GhlProvisioningDependencies,
+) {
+  if (!run.providerLocationId || !run.locationMappingId) {
+    throw new GhlProvisioningInvariantError(
+      "provider_location_missing",
+      "GHL display-name finalization requires the exact assigned provider location.",
+    );
+  }
+  const observedAt = nowFrom(dependencies);
+  if (run.nextRetryAt && Date.parse(run.nextRetryAt) > Date.parse(observedAt)) {
+    return run;
+  }
+  const createInput = buildLocationCreateInput(run);
+  const attempt = await beginProviderAttempt(
+    run,
+    "location_display_name_finalize",
+    {
+      contractVersion: 1,
+      providerLocationId: run.providerLocationId,
+      environment: run.environment,
+      requestFingerprint: createInput.requestFingerprint,
+    },
+    dependencies,
+  );
+  if (attempt.kind === "settled") {
+    if (attempt.receipt.metadata.requestFingerprint !== createInput.requestFingerprint) {
+      throw new GhlProvisioningInvariantError(
+        "ghl_location_display_name_receipt_identity_mismatch",
+        "The durable GHL display-name receipt crossed an immutable request boundary.",
+      );
+    }
+    if (
+      attempt.outbox.status === "succeeded"
+      && attempt.receipt.outcome === "succeeded"
+      && attempt.receipt.metadata.cleanDisplayNameVerified === true
+    ) {
+      const next = transitionGhlProvisioning(run, "snapshot_install_requested", {
+        nextRetryAt: null,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+      }, observedAt);
+      return saveTransition(dependencies.repository, run, next);
+    }
+    if (
+      attempt.outbox.status === "retryable_failure"
+      && attempt.receipt.metadata.displayNameFinalizationPending === true
+    ) {
+      return savePendingLocationDisplayNameFinalization(run, {
+        observedAt,
+        nextRetryAt: attempt.outbox.availableAt,
+        errorCode: receiptErrorCode(
+          attempt.receipt,
+          "ghl_location_display_name_finalization_pending",
+        ),
+        safeMessage: "The exact GHL clean display name is not yet verified; provisioning remains gated.",
+      }, dependencies);
+    }
+    return transitionToOperatorRequired(run, {
+      requestKind: "location_reconciliation",
+      blockerCode: receiptErrorCode(
+        attempt.receipt,
+        "ghl_location_display_name_finalization_failed",
+      ),
+      safeMessage: "The durable GHL display-name finalization outcome requires operator review.",
+    }, dependencies);
+  }
+
+  const outbox = attempt.outbox;
+  const result = await dependencies.provider.finalizeLocationDisplayName({
+    idempotencyKey: buildOperationIdempotencyKey(run, "location_display_name_finalize"),
+    providerLocationId: run.providerLocationId,
+    environment: run.environment,
+    profile: run.locationProfile,
+    requestFingerprint: createInput.requestFingerprint,
+  });
+  const resultIdentityValid = result.requestFingerprint === createInput.requestFingerprint
+    && (
+      result.responseFingerprint === null
+      || /^[a-f0-9]{64}$/.test(result.responseFingerprint)
+    );
+  if (!resultIdentityValid) {
+    const errorCode = "ghl_location_display_name_response_identity_mismatch";
+    await recordProviderOutcome(outbox, {
+      outcome: "operator_action_required",
+      outboxStatus: "operator_action_required",
+      providerRequestId: result.providerRequestId,
+      providerReference: run.providerLocationId,
+      httpStatus: result.httpStatus,
+      responseFingerprint: result.responseFingerprint,
+      metadata: {
+        errorCode,
+        requestFingerprint: createInput.requestFingerprint,
+        cleanDisplayNameVerified: false,
+      },
+    }, dependencies);
+    return transitionToOperatorRequired(run, {
+      requestKind: "location_reconciliation",
+      blockerCode: errorCode,
+      safeMessage: "The GHL display-name response did not match the immutable location-create request.",
+    }, dependencies);
+  }
+
+  if (result.outcome === "succeeded") {
+    await recordProviderOutcome(outbox, {
+      outcome: "succeeded",
+      outboxStatus: "succeeded",
+      providerRequestId: result.providerRequestId,
+      providerReference: run.providerLocationId,
+      httpStatus: result.httpStatus,
+      responseFingerprint: result.responseFingerprint,
+      metadata: {
+        requestFingerprint: createInput.requestFingerprint,
+        cleanDisplayNameVerified: true,
+        displayNameFinalizationPending: false,
+      },
+    }, dependencies);
+    const next = transitionGhlProvisioning(run, "snapshot_install_requested", {
+      nextRetryAt: null,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+    }, nowFrom(dependencies));
+    return saveTransition(dependencies.repository, run, next);
+  }
+
+  const attemptLimitReached = result.outcome === "retryable_failure"
+    && outbox.attemptCount >= 6;
+  const outboxStatus = result.outcome === "operator_action_required" || attemptLimitReached
+    ? "operator_action_required"
+    : "retryable_failure";
+  const errorCode = attemptLimitReached
+    ? "ghl_location_display_name_attempt_limit_reached"
+    : result.errorCode;
+  const safeMessage = attemptLimitReached
+    ? "The bounded GHL display-name verification retry limit was reached."
+    : result.safeMessage;
+  const nextRetryAt = retryAt(nowFrom(dependencies), outbox.attemptCount);
+  await recordProviderOutcome(outbox, {
+    outcome: outboxStatus,
+    outboxStatus,
+    providerRequestId: result.providerRequestId,
+    providerReference: run.providerLocationId,
+    httpStatus: result.httpStatus,
+    responseFingerprint: result.responseFingerprint,
+    ...(outboxStatus === "retryable_failure" ? { availableAt: nextRetryAt } : {}),
+    metadata: {
+      errorCode,
+      requestFingerprint: createInput.requestFingerprint,
+      cleanDisplayNameVerified: false,
+      displayNameFinalizationPending: outboxStatus === "retryable_failure",
+    },
+  }, dependencies);
+  return outboxStatus === "operator_action_required"
+    ? transitionToOperatorRequired(run, {
+      requestKind: "location_reconciliation",
+      blockerCode: errorCode,
+      safeMessage,
+    }, dependencies)
+    : savePendingLocationDisplayNameFinalization(run, {
+      observedAt: nowFrom(dependencies),
+      nextRetryAt,
+      errorCode,
+      safeMessage,
+    }, dependencies);
 }
 
 async function executeSnapshotInstall(
@@ -1117,15 +1517,8 @@ async function executeProvisioningState(
       return executeLocationCreate(run, dependencies);
     case "location_uncertain":
       return reconcileUncertainLocation(run, dependencies);
-    case "location_assigned": {
-      const next = transitionGhlProvisioning(
-        run,
-        "snapshot_install_requested",
-        {},
-        nowFrom(dependencies),
-      );
-      return saveTransition(dependencies.repository, run, next);
-    }
+    case "location_assigned":
+      return finalizeAssignedLocationDisplayName(run, dependencies);
     case "snapshot_install_requested":
       return executeSnapshotInstall(run, dependencies);
     case "snapshot_installing":

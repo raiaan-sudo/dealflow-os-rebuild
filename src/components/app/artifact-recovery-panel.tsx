@@ -1,6 +1,7 @@
 "use client";
 
-import Link from "next/link";
+import { LocaleLink as Link } from "@/components/i18n/locale-link";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,7 @@ export function ArtifactRecoveryPanel({
   recoverySteps,
 }: ArtifactRecoveryPanelProps) {
   const router = useRouter();
+  const { t } = useProductI18n();
   const [isRecovering, setIsRecovering] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,7 +70,7 @@ export function ArtifactRecoveryPanel({
       setError(
         recoveryError instanceof Error
           ? recoveryError.message
-          : "Artifact recovery failed.",
+          : t("recovery.failed"),
       );
     } finally {
       setIsRecovering(false);
@@ -78,13 +80,13 @@ export function ArtifactRecoveryPanel({
   return (
     <section className="rounded-2xl border border-border bg-card p-6">
       <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-        Recovery
+        {t("recovery.eyebrow")}
       </p>
       <h2 className="mt-2 text-2xl font-semibold text-foreground">{title}</h2>
       <p className="mt-3 text-sm leading-7 text-muted-foreground">{description}</p>
 
       <div className="mt-5 rounded-xl border border-border bg-background/50 p-4">
-        <p className="text-sm font-medium text-foreground">Missing artifacts</p>
+        <p className="text-sm font-medium text-foreground">{t("recovery.missingArtifacts")}</p>
         <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
           {missingArtifacts.map((artifact) => (
             <li key={artifact}>{artifact}</li>
@@ -102,10 +104,10 @@ export function ArtifactRecoveryPanel({
           disabled={!campaignId || recoverySteps.length === 0 || isRecovering}
           onClick={handleRecover}
         >
-          {isRecovering ? "Regenerating..." : "Regenerate missing artifacts"}
+          {isRecovering ? t("recovery.regenerating") : t("recovery.regenerate")}
         </Button>
         <Button asChild size="lg" variant="secondary">
-          <Link href="/onboarding">Back to onboarding</Link>
+          <Link href="/onboarding">{t("recovery.backOnboarding")}</Link>
         </Button>
       </div>
     </section>

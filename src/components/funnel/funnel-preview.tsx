@@ -1,6 +1,8 @@
 "use client";
 
 import Image from "next/image";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
+import type { ProductMessageKey } from "@/lib/i18n/messages";
 import type { CampaignPlan, ExpectedOutcomes } from "@/lib/services/campaign-plan-service";
 
 type FunnelPreviewProps = {
@@ -12,15 +14,43 @@ type FunnelPreviewProps = {
 export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strategyWhy: _strategyWhy }: FunnelPreviewProps) {
   void _expectedOutcomes;
   void _strategyWhy;
+  const { t } = useProductI18n();
 
-  const headline = plan.funnel.headline || "Campaign headline unavailable";
-  const subheadline = plan.funnel.subheadline || "Campaign subheadline unavailable";
-  const cta = plan.funnel.cta || "Campaign CTA unavailable";
-  const formFields = (plan.funnel.formFields ?? ["name", "phone", "email"]).map((field) =>
-    field.charAt(0).toUpperCase() + field.slice(1),
-  );
+  const headline = plan.funnel.headline || t("funnelPreview.headlineUnavailable");
+  const subheadline = plan.funnel.subheadline || t("funnelPreview.subheadlineUnavailable");
+  const cta = plan.funnel.cta || t("funnelPreview.ctaUnavailable");
+  const formFields = (plan.funnel.formFields ?? ["name", "phone", "email"]).map((field) => {
+    const normalized = field.trim().toLowerCase();
+    const knownFieldKey = {
+      name: "funnelPreview.field.name",
+      phone: "funnelPreview.field.phone",
+      email: "funnelPreview.field.email",
+    }[normalized] as ProductMessageKey | undefined;
+
+    return knownFieldKey ? t(knownFieldKey) : field;
+  });
   const sections = Array.isArray(plan.funnel.sections) ? plan.funnel.sections : [];
   type FunnelPreviewSection = (typeof sections)[number];
+
+  function sectionLabel(type: FunnelPreviewSection["type"]) {
+    const sectionKey = {
+      hero: "funnelPreview.section.hero",
+      trust_bar: "funnelPreview.section.trust_bar",
+      benefits: "funnelPreview.section.benefits",
+      proof_metrics: "funnelPreview.section.proof_metrics",
+      social_proof: "funnelPreview.section.social_proof",
+      market_snapshot: "funnelPreview.section.market_snapshot",
+      objections: "funnelPreview.section.objections",
+      process: "funnelPreview.section.process",
+      faq: "funnelPreview.section.faq",
+      vsl: "funnelPreview.section.vsl",
+      image: "funnelPreview.section.image",
+      form: "funnelPreview.section.form",
+      closing_cta: "funnelPreview.section.closing_cta",
+    }[type] as ProductMessageKey | undefined;
+
+    return sectionKey ? t(sectionKey) : type.replaceAll("_", " ");
+  }
 
   function getSectionMedia(section: FunnelPreviewSection) {
     return section.media ?? null;
@@ -72,7 +102,7 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
     if (section.type === "proof_metrics" || section.type === "market_snapshot") {
       return (
         <section key={section.id || `${section.type}-${index}`} className={getSectionShell(section)}>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-60">{section.type.replaceAll("_", " ")}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-60">{sectionLabel(section.type)}</p>
           <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">{section.title}</h3>
           <div className="mt-5 grid gap-4 sm:grid-cols-3">
           {section.content.map((item) => (
@@ -88,7 +118,7 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
     if (section.type === "vsl") {
       return (
         <section key={section.id || `${section.type}-${index}`} className={getSectionShell(section)}>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-60">video block</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-60">{t("funnelPreview.videoBlock")}</p>
           <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">{section.title}</h3>
           <div className="mt-5 overflow-hidden rounded-[24px] border border-white/10 bg-black/50">
             {media?.url ? (
@@ -112,7 +142,7 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
               <div className="aspect-video bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.12),transparent_28%),linear-gradient(135deg,#112338,#05080d)]" />
             )}
             <div className="px-5 py-4 text-sm text-white/72">
-              {media?.caption || section.content[0] || "Add a short hosted video here."}
+              {media?.caption || section.content[0] || t("funnelPreview.videoPlaceholder")}
             </div>
           </div>
         </section>
@@ -122,7 +152,7 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
     if (section.type === "image") {
       return (
         <section key={section.id || `${section.type}-${index}`} className={getSectionShell(section)}>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-60">image block</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-60">{t("funnelPreview.imageBlock")}</p>
           <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">{section.title}</h3>
           <div className="mt-5 overflow-hidden rounded-[24px] border border-black/8 bg-white">
             {media?.url ? (
@@ -149,7 +179,7 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
               <div className="aspect-[16/9] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),transparent_30%),linear-gradient(135deg,#77c7ff,#0c1829)]" />
             )}
             <div className="px-5 py-4 text-sm text-[#4b5563]">
-              {media?.caption || section.content[0] || "Add branded or listing imagery here."}
+              {media?.caption || section.content[0] || t("funnelPreview.imagePlaceholder")}
             </div>
           </div>
         </section>
@@ -160,7 +190,7 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
       return (
         <section key={section.id || `${section.type}-${index}`} className={getSectionShell(section)}>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8fc4ff]">
-            {section.type === "form" ? "Conversion step" : "Final CTA"}
+            {section.type === "form" ? t("funnelPreview.conversionStep") : t("funnelPreview.finalCta")}
           </p>
           <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">{section.title}</h3>
           <div className="mt-4 space-y-3">
@@ -190,7 +220,7 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
     return (
       <section key={section.id || `${section.type}-${index}`} className={getSectionShell(section)}>
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6b7280]">
-          {section.type.replaceAll("_", " ")}
+          {sectionLabel(section.type)}
         </p>
         <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-[#111827]">{section.title}</h3>
         <div className="mt-5 space-y-3">
@@ -217,7 +247,7 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
       <div className="border-b border-black/6 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.22),transparent_30%),linear-gradient(180deg,#08111e,#132338)] px-6 py-10 text-white sm:px-8 lg:py-14">
         <div className="mx-auto max-w-5xl">
           <div className="inline-flex rounded-full border border-[#ff8f3a]/30 bg-[#ff8f3a]/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#ffb67d]">
-            {plan.market} landing page
+            {t("funnelPreview.landingPage", { market: plan.market })}
           </div>
           <div className="mt-6 grid gap-10 2xl:grid-cols-[1.15fr_0.85fr] 2xl:items-start">
             <div>
@@ -228,7 +258,7 @@ export function FunnelPreview({ plan, expectedOutcomes: _expectedOutcomes, strat
               </div>
             </div>
             <div className="rounded-[26px] border border-white/10 bg-white/[0.08] p-5 backdrop-blur-sm">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/55">Quick capture</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-white/55">{t("funnelPreview.quickCapture")}</p>
               <div className="mt-4 space-y-3">
                 {formFields.map((field) => (
                   <div

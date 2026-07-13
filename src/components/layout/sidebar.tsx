@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronRight, BarChart3, Eye, Headphones, PanelLeft, Rocket, Wand2 } from "lucide-react";
 import { adminNavigation } from "@/lib/navigation";
@@ -8,6 +7,9 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Logo } from "@/components/ui/logo";
 import type { CampaignExperienceStage } from "@/lib/services/campaign-plan-service";
+import { LocaleLink as Link } from "@/components/i18n/locale-link";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
+import { parseProductLocalePathname } from "@/lib/i18n/routing";
 
 type AppSidebarProps = {
   organizationName: string;
@@ -30,21 +32,22 @@ export function AppSidebar({
   isWhiteLabel = false,
   poweredByDealFlow = false,
 }: AppSidebarProps) {
-  const pathname = usePathname();
+  const pathname = parseProductLocalePathname(usePathname()).pathname;
+  const { t } = useProductI18n();
   const stageLabel =
     stage === "draft" || stage === "built" || stage === "paywall"
-      ? "Build"
+      ? t("stage.build")
       : stage === "preview"
-        ? "Review"
+        ? t("stage.review")
         : stage === "launch_ready" || stage === "launching"
-          ? "Go Live"
-          : "Results";
+          ? t("stage.goLive")
+          : t("stage.results");
   const productNavigation = [
-    { href: "/onboarding", label: "Build", icon: Wand2 },
-    { href: "/preview", label: "Review", icon: Eye },
-    { href: "/launch", label: "Go Live", icon: Rocket },
-    { href: "/dashboard", label: "Results", icon: BarChart3 },
-    { href: "/support", label: "Support", icon: Headphones },
+    { href: "/onboarding", label: t("nav.build"), icon: Wand2 },
+    { href: "/preview", label: t("nav.review"), icon: Eye },
+    { href: "/launch", label: t("nav.goLive"), icon: Rocket },
+    { href: "/dashboard", label: t("nav.results"), icon: BarChart3 },
+    { href: "/support", label: t("nav.support"), icon: Headphones },
   ];
 
   return (
@@ -72,23 +75,23 @@ export function AppSidebar({
           </div>
           {isWhiteLabel && poweredByDealFlow ? (
             <p className="mt-2 px-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-              Powered by DealFlow
+              {t("shell.poweredBy")}
             </p>
           ) : null}
           <div className="mt-3 rounded-2xl border border-white/8 bg-black/20 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(188,236,255,0.08)]">
             <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-              Workspace
+              {t("shell.workspace")}
             </p>
             <div className="mt-2 space-y-2">
               <p className="min-w-0 text-sm font-medium leading-6">{organizationName}</p>
-              <Badge className="w-fit shrink-0 border-primary/20 bg-primary/10 text-primary">AI live</Badge>
+              <Badge className="w-fit shrink-0 border-primary/20 bg-primary/10 text-primary">{t("shell.aiLive")}</Badge>
             </div>
           </div>
         </div>
 
         <div className="mt-6">
           <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-            Product
+            {t("shell.product")}
           </p>
           <nav className="mt-3 space-y-1.5">
             {productNavigation.map((item) => {
@@ -139,7 +142,7 @@ export function AppSidebar({
         {isAdmin ? (
           <div className="mt-6">
             <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-              Internal
+              {t("shell.internal")}
             </p>
             <nav className="mt-3 space-y-1.5">
               {adminNavigation.map((item) => {
@@ -181,12 +184,12 @@ export function AppSidebar({
               <PanelLeft className="size-4 text-primary" />
             </div>
             <div>
-              <p className="text-sm font-semibold">Next step</p>
+              <p className="text-sm font-semibold">{t("shell.nextStep")}</p>
               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{stageLabel}</p>
             </div>
           </div>
           <p className="mt-3 text-sm leading-6 text-white/66">
-            Stay on one path. Build the campaign, review it, launch it, then watch the results.
+            {t("shell.pathHelp")}
           </p>
         </div>
       </div>

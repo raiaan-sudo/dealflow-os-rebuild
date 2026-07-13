@@ -364,6 +364,16 @@ assert.equal(applyCalls[1].p_submission_fingerprint, "d".repeat(64));
 
 const workerSource = fs.readFileSync("src/lib/services/ghl-provider-worker-service.ts", "utf8");
 const adapterSource = fs.readFileSync("src/lib/integrations/gohighlevel/sandbox-adapter.ts", "utf8");
+const periodicWorkerStart = workerSource.indexOf(
+  "export async function processGhlPeriodicFormSweepFromEnvironment",
+);
+const providerWorkerStart = workerSource.indexOf(
+  "export async function processGhlProviderWorkerFromEnvironment",
+);
+assert.ok(periodicWorkerStart >= 0 && providerWorkerStart > periodicWorkerStart,
+  "the dedicated periodic sweep and mixed provider worker entrypoints must both exist");
+const periodicWorkerSource = workerSource.slice(periodicWorkerStart, providerWorkerStart);
+const providerWorkerSource = workerSource.slice(providerWorkerStart);
 assert.match(
   adapterSource,
   /async readFormSubmissions\([\s\S]*?retryMode: "no-retry"/,
@@ -373,9 +383,11 @@ assert.match(workerSource, /const GHL_INBOUND_HTTP_TIMEOUT_MS = 3_000;/,
   "inbound provider reads must have a three-second per-request ceiling");
 assert.match(workerSource, /timeoutMs: GHL_INBOUND_HTTP_TIMEOUT_MS,[\s\S]*?maxReadAttempts: 1/,
   "inbound worker factory must construct a single-attempt bounded HTTP client");
-assert.equal((workerSource.match(/httpClient: createGhlInboundReadHttpClient\(/g) ?? []).length, 2,
-  "sandbox and production reconciliation must both use the bounded inbound HTTP client");
-assert.equal((workerSource.match(/maxItems: Math\.min\(input\.maxReconciliationItems \?\? 1, 1\)/g) ?? []).length, 2,
+assert.equal((providerWorkerSource.match(/httpClient: createGhlInboundReadHttpClient\(/g) ?? []).length, 2,
+  "sandbox and production webhook reconciliation must both use the bounded inbound HTTP client");
+assert.equal((periodicWorkerSource.match(/httpClient: createGhlInboundReadHttpClient\(/g) ?? []).length, 2,
+  "sandbox and production periodic sweeps must both use the bounded inbound HTTP client");
+assert.equal((providerWorkerSource.match(/maxItems: Math\.min\(input\.maxReconciliationItems \?\? 1, 1\)/g) ?? []).length, 2,
   "sandbox and production reconciliation must both clamp the stage to one receipt");
 for (const component of ["reconciliation", "delivery", "provisioning", "personalization"]) {
   assert.match(workerSource, new RegExp(`isolateGhlProviderWorkerComponent\\(\\"${component}\\"`));

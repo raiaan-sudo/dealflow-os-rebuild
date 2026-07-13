@@ -44,8 +44,11 @@ for (const scenario of [
   "grandfathered_legacy_realtor",
   "active_white_label_partner_admin",
   "white_label_child_realtor",
+  "active_white_label_partner_two_admin",
+  "white_label_partner_two_child_realtor",
   "internal_admin_operator",
   "cross_tenant_attacker",
+  "account_deletion_fail_closed_realtor",
 ]) {
   assert.match(source, new RegExp(`key: "${scenario}"`), `missing ${scenario} fixture`);
 }
@@ -184,13 +187,21 @@ assert.match(source, /upsert\(admin, "partner_branding"/);
 assert.match(source, /upsert\(admin, "partner_domains"/);
 assert.doesNotMatch(source, /upsert\(admin, "workspace_partner_attribution"/);
 assert.match(source, /admin\.rpc\("bind_verified_partner_attribution_v1"/);
-assert.match(source, /scenarioName !== "partnerChild" && scenarioName !== "partnerAdmin"/);
+assert.match(source, /scenarioName !== "partnerChild"/);
+assert.match(source, /scenarioName !== "partnerAdmin"/);
+assert.match(source, /scenarioName !== "partnerChildTwo"/);
+assert.match(source, /scenarioName !== "partnerAdminTwo"/);
 assert.doesNotMatch(source, /const partnerId = \["partnerAdmin", "partnerChild"\]/);
 assert.match(source, /p_user_id: scenarioUserIds\.partnerChild/);
 assert.match(source, /p_organization_id: IDS\.partnerChildOrganization/);
 assert.match(source, /p_verified_domain: partnerAppHost/);
 assert.match(source, /\["bound", "already_bound"\]/);
 assert.match(source, /attributionBoundAtomically: true/);
+assert.match(source, /p_user_id: scenarioUserIds\.partnerChildTwo/);
+assert.match(source, /p_organization_id: IDS\.partnerChildTwoOrganization/);
+assert.match(source, /p_verified_domain: partnerTwoAppHost/);
+assert.match(source, /partnerTwo:/);
+assert.match(source, /configuredPartnerCount|Partner Two Child Campaign/);
 assert.match(partnerBindingMigration, /create or replace function public\.bind_verified_partner_attribution_v1/);
 assert.match(partnerBindingMigration, /auth\.role\(\) is distinct from 'service_role'/);
 assert.match(partnerBindingMigration, /for update/);
@@ -200,19 +211,32 @@ assert.match(source, /verification_status: "verified"/);
 assert.match(source, /ssl_status: "active"/);
 assert.match(source, /verify exact active verified staging partner domain/);
 assert.match(source, /verify exact white-label child workspace attribution/);
+assert.match(source, /verify exact white-label partner two child workspace attribution/);
+assert.match(source, /SYNTHETIC_RETENTION_AUTHORITY_MARKER/);
+assert.match(source, /account_deletion_retention_authority_pending/);
+assert.match(source, /pendingBeforeApproval: retentionAuthorityPendingBeforeApproval/);
+assert.match(source, /reusedExistingSyntheticApproval: syntheticRetentionAuthorityReused/);
+assert.match(source, /freshReportingSnapshot/);
+assert.match(source, /staleReportingSnapshot/);
+assert.match(source, /failedReportingAttemptSnapshot/);
 assert.match(source, /scenario: "durable_retry_pending"/);
 assert.match(source, /scenario: "durable_operator_failure"/);
+assert.match(source, /reviewed_by: `\$\{FIXTURE_LABEL\}:synthetic-acceptance`/);
+assert.match(source, /Reviewed synthetic dead-letter fixture retained only to prove terminal worker semantics/);
 assert.match(source, /next_run_at: "2099-01-01T00:00:00\.000Z"/);
 assert.match(source, /provider_actions_allowed: false/);
 assert.match(source, /contains_customer_data: false/);
 assert.match(source, /\[IDS\.retryJob, "pending", "durable retry"\]/);
 assert.match(source, /\[IDS\.deadLetterJob, "failed", "durable operator failure"\]/);
+assert.match(source, /\[IDS\.workerPendingJob, "pending", "pending worker completion"\]/);
+assert.match(source, /\[IDS\.workerCrashJob, "processing", "expired worker crash"\]/);
 assert.match(source, /`verify exact synthetic \$\{label\} fixture`/);
 assert.match(source, /failureFixtures:/);
 assert.match(envExample, /^QA_EMAIL=dealflow-staging-20260712@example\.com$/m);
 assert.match(envExample, /^STAGING_QA_PASSWORD=$/m);
 assert.match(envExample, /^PARTNER_ATTRIBUTION_SIGNING_SECRET=$/m);
+assert.match(envExample, /^STAGING_SECOND_PARTNER_APP_URL=$/m);
 
 console.log(
-  "isolated staging seed contract: PASS (pinned project/app/auth identity, seven deterministic synthetic roles, paid/unpaid/legacy truth, verified white-label domain/branding/attribution, durable retry/failure fixtures, canonical Meta launch truth, zero provider credentials/writes, exact $297 activation, exact-once $10 credit, and exact counts)",
+  "isolated staging seed contract: PASS (pinned project/app/auth identity, ten deterministic synthetic roles, two isolated white-label partners and child tenants, fresh/stale/failed reporting truth, pending-before-approved synthetic deletion authority, durable retry/crash/dead-letter fixtures, canonical Meta launch truth, zero provider credentials/writes, exact $297 activation, exact-once $10 credit, and exact counts)",
 );

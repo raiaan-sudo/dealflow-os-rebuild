@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { fetchWithRetry } from "@/lib/http/fetch-with-retry";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
+import type { ProductMessageKey } from "@/lib/i18n/messages";
 import { slugify } from "@/lib/utils";
 import type { CampaignPublishState, FullCampaignRecord } from "@/lib/types/campaign-records";
 
@@ -19,35 +21,24 @@ type Props = {
   compact?: boolean;
 };
 
-function formatPublishState(state: CampaignPublishState) {
+function publishStateKey(state: CampaignPublishState): ProductMessageKey {
   if (state === "published") {
-    return "Published";
+    return "publish.published";
   }
 
   if (state === "staged") {
-    return "Staged";
+    return "publish.staged";
   }
 
-  return "Draft";
+  return "publish.draft";
 }
 
-function formatTimestamp(value: string | null) {
-  if (!value) {
-    return "—";
-  }
-
-  return new Date(value).toLocaleString("en-CA", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
-
-function formatPublishErrorMessage(message: string) {
+function publishErrorKey(message: string): ProductMessageKey {
   if (/032_public_funnel_publishing\.sql|publishing migration is missing/i.test(message)) {
-    return "Publishing is not available in this environment yet. Apply 032_public_funnel_publishing.sql in Supabase to enable staging and live public funnels.";
+    return "publish.migrationError";
   }
 
-  return message;
+  return "publish.updateError";
 }
 
 export function CampaignPublishPanel({
@@ -56,6 +47,7 @@ export function CampaignPublishPanel({
   campaignName = null,
   compact = false,
 }: Props) {
+  const { t, dateTime } = useProductI18n();
   const [publish, setPublish] = useState<CampaignPublishView | null>(initialPublish);
   const [slug, setSlug] = useState(initialPublish?.slug ?? "");
   const [loadingState, setLoadingState] = useState<CampaignPublishState | null>(null);
@@ -93,7 +85,7 @@ export function CampaignPublishPanel({
           throw new Error(
             (data && "error" in data && typeof data.error === "string"
               ? data.error
-              : null) ?? "Publish state could not be loaded.",
+              : null) ?? t("publish.loadError"),
           );
         }
 
@@ -103,16 +95,12 @@ export function CampaignPublishPanel({
 
         setPublish(data.publish);
         setSlug(data.publish.slug ?? "");
-      } catch (loadError) {
+      } catch {
         if (!active) {
           return;
         }
 
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : "Publish state could not be loaded.",
-        );
+        setError(t("publish.loadError"));
       } finally {
         if (active) {
           setLoadingRecord(false);
@@ -125,7 +113,7 @@ export function CampaignPublishPanel({
     return () => {
       active = false;
     };
-  }, [campaignId, initialPublish]);
+  }, [campaignId, initialPublish, t]);
 
   const normalizedSlug = useMemo(() => {
     const direct = slugify(slug);
@@ -167,8 +155,8 @@ export function CampaignPublishPanel({
       if (!response.ok || !data || "error" in data || !("publish" in data)) {
         throw new Error(
           (data && "error" in data && typeof data.error === "string"
-            ? data.error
-            : null) ?? "Publish state could not be updated.",
+              ? data.error
+              : null) ?? t("publish.updateError"),
         );
       }
 
@@ -177,8 +165,8 @@ export function CampaignPublishPanel({
     } catch (publishError) {
       setError(
         publishError instanceof Error
-          ? formatPublishErrorMessage(publishError.message)
-          : "Publish state could not be updated.",
+          ? t(publishErrorKey(publishError.message))
+          : t("publish.updateError"),
       );
     } finally {
       setLoadingState(null);
@@ -189,11 +177,11 @@ export function CampaignPublishPanel({
     return (
       <Card className={compact ? "p-5" : "p-6 sm:p-7"}>
         <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-          Publishing
+          {t("publish.eyebrow")}
         </p>
-        <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">Save before staging or publishing</h3>
+        <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">{t("publish.saveTitle")}</h3>
         <p className="mt-3 text-sm leading-7 text-muted-foreground">
-          This workflow becomes available after the campaign is saved.
+          {t("publish.saveBody")}
         </p>
       </Card>
     );
@@ -204,40 +192,40 @@ export function CampaignPublishPanel({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-            Publishing
+            {t("publish.eyebrow")}
           </p>
-          <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">Stage or publish the public funnel</h3>
+          <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">{t("publish.title")}</h3>
           <p className="mt-3 max-w-[760px] text-sm leading-7 text-muted-foreground">
-            Draft edits stay private. Staging captures a snapshot, and publishing updates the live public funnel from that immutable snapshot.
+            {t("publish.description")}
           </p>
         </div>
         <Badge className="border-primary/15 bg-primary/10 text-primary">
-          {formatPublishState(publish?.state ?? "draft")}
+          {t(publishStateKey(publish?.state ?? "draft"))}
         </Badge>
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
         <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">State</p>
-          <p className="mt-3 text-sm font-semibold">{formatPublishState(publish?.state ?? "draft")}</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("publish.state")}</p>
+          <p className="mt-3 text-sm font-semibold">{t(publishStateKey(publish?.state ?? "draft"))}</p>
         </div>
         <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Slug</p>
-          <p className="mt-3 break-words text-sm font-semibold">{publish?.slug ?? (normalizedSlug || "Not set")}</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("publish.slug")}</p>
+          <p className="mt-3 break-words text-sm font-semibold">{publish?.slug ?? (normalizedSlug || t("common.notSet"))}</p>
         </div>
         <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Staged</p>
-          <p className="mt-3 text-sm font-semibold">{formatTimestamp(publish?.stagedAt ?? null)}</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("publish.staged")}</p>
+          <p className="mt-3 text-sm font-semibold">{publish?.stagedAt ? dateTime(publish.stagedAt) : "—"}</p>
         </div>
         <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Published</p>
-          <p className="mt-3 text-sm font-semibold">{formatTimestamp(publish?.publishedAt ?? null)}</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("publish.published")}</p>
+          <p className="mt-3 text-sm font-semibold">{publish?.publishedAt ? dateTime(publish.publishedAt) : "—"}</p>
         </div>
       </div>
 
       <div className="mt-5 grid gap-4 2xl:grid-cols-[minmax(260px,340px)_1fr]">
         <label className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Public slug</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("publish.publicSlug")}</p>
           <Input
             value={slug}
             onChange={(event) => setSlug(event.target.value)}
@@ -245,7 +233,7 @@ export function CampaignPublishPanel({
           />
         </label>
         <div className="rounded-[22px] border border-white/8 bg-white/[0.03] p-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Live URL</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t("publish.liveUrl")}</p>
           {livePath ? (
             <div className="mt-3 flex flex-wrap items-center gap-3">
               {publish?.state === "published" ? (
@@ -254,25 +242,25 @@ export function CampaignPublishPanel({
                     {livePath}
                   </Link>
                   <Badge className="border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
-                    Public
+                    {t("publish.public")}
                   </Badge>
                 </>
               ) : (
                 <>
                   <span className="text-sm font-semibold text-muted-foreground">{livePath}</span>
                   <Badge className="border-white/10 bg-white/[0.06] text-muted-foreground">
-                    Not live yet
+                    {t("publish.notLive")}
                   </Badge>
                 </>
               )}
             </div>
           ) : (
             <p className="mt-3 text-sm leading-7 text-muted-foreground">
-              Add or accept a slug to prepare the public URL.
+              {t("publish.addSlug")}
             </p>
           )}
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            The public funnel route renders only from the published snapshot. Draft edits remain private until you publish again.
+            {t("publish.snapshotBody")}
           </p>
         </div>
       </div>
@@ -283,30 +271,30 @@ export function CampaignPublishPanel({
           onClick={() => void updatePublishState("draft")}
           disabled={loadingRecord || loadingState !== null}
         >
-          {loadingState === "draft" ? "Saving Draft..." : "Keep as Draft"}
+          {loadingState === "draft" ? t("publish.savingDraft") : t("publish.keepDraft")}
         </Button>
         <Button
           variant="secondary"
           onClick={() => void updatePublishState("staged")}
           disabled={loadingRecord || loadingState !== null || !normalizedSlug}
         >
-          {loadingState === "staged" ? "Staging..." : "Stage Snapshot"}
+          {loadingState === "staged" ? t("publish.staging") : t("publish.stageSnapshot")}
         </Button>
         <Button
           onClick={() => void updatePublishState("published")}
           disabled={loadingRecord || loadingState !== null || !normalizedSlug}
         >
-          {loadingState === "published" ? "Publishing..." : "Publish Live"}
+          {loadingState === "published" ? t("publish.publishing") : t("publish.publishLive")}
         </Button>
       </div>
 
       {loadingRecord ? (
-        <p className="mt-4 text-sm text-muted-foreground">Loading publish state...</p>
+        <p className="mt-4 text-sm text-muted-foreground">{t("publish.loading")}</p>
       ) : null}
       {error ? <p className="mt-4 text-sm text-rose-300">{error}</p> : null}
       {publish?.state === "published" ? (
         <p className="mt-4 text-sm text-emerald-300">
-          The public funnel is serving from the published snapshot only. Draft edits will not change the live page until you publish again.
+          {t("publish.liveBody")}
         </p>
       ) : null}
     </Card>

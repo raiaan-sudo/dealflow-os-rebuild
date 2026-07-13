@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { isExplicitNonProductionDeployment } from "@/lib/deployment-target";
 import { getInternalSystemJobSecrets, getSupabaseEnv } from "@/lib/env";
 import { getSupabaseAuthCookieOptions } from "@/lib/supabase/cookie-options";
+import { parseProductLocalePathname } from "@/lib/i18n/routing";
 import {
   createPartnerAttributionToken,
   getPartnerAttributionCookieOptions,
@@ -76,11 +77,25 @@ function isPublicRequest(pathname: string) {
     return true;
   }
 
+  if (pathname.startsWith("/api/provider-media/higgsfield-source/")) {
+    return true;
+  }
+
   if (/^\/p\/[^/]+\/checkout$/.test(pathname)) {
     return true;
   }
 
   return PUBLIC_API_PATHS.has(pathname);
+}
+
+function getEffectiveProductPathname(request: NextRequest) {
+  return parseProductLocalePathname(request.nextUrl.pathname).pathname;
+}
+
+function buildLocalePreservingPath(request: NextRequest, pathname: string) {
+  const parsed = parseProductLocalePathname(request.nextUrl.pathname);
+  if (!parsed.hadLocalePrefix) return pathname;
+  return pathname === "/" ? `/${parsed.locale}` : `/${parsed.locale}${pathname}`;
 }
 
 function timingSafeTokenEquals(candidate: string | null, expected: string) {
@@ -144,7 +159,7 @@ const GHL_EMBEDDABLE_PATHS = new Set([
 ]);
 function hasEmbeddedAppReturn(request: NextRequest) {
   if (
-    request.nextUrl.pathname !== "/login" ||
+    getEffectiveProductPathname(request) !== "/login" ||
     request.nextUrl.searchParams.get("embed") !== "1"
   ) {
     return false;
@@ -162,7 +177,7 @@ function hasEmbeddedAppReturn(request: NextRequest) {
 
   try {
     return GHL_EMBEDDABLE_PATHS.has(
-      new URL(redirectedFrom, request.url).pathname,
+      parseProductLocalePathname(new URL(redirectedFrom, request.url).pathname).pathname,
     );
   } catch {
     return false;
@@ -171,7 +186,7 @@ function hasEmbeddedAppReturn(request: NextRequest) {
 
 function getGhlEmbedReturnPath(request: NextRequest) {
   if (
-    request.nextUrl.pathname !== "/login" ||
+    getEffectiveProductPathname(request) !== "/login" ||
     request.nextUrl.searchParams.get("embed") !== "ghl"
   ) {
     return null;
@@ -181,7 +196,9 @@ function getGhlEmbedReturnPath(request: NextRequest) {
     return null;
   }
   try {
-    return new URL(redirectedFrom, request.url).pathname;
+    return parseProductLocalePathname(
+      new URL(redirectedFrom, request.url).pathname,
+    ).pathname;
   } catch {
     return null;
   }
@@ -189,16 +206,17 @@ function getGhlEmbedReturnPath(request: NextRequest) {
 
 function isGhlEmbeddableSurface(request: NextRequest) {
   return (
-    GHL_EMBEDDABLE_PATHS.has(request.nextUrl.pathname) ||
+    GHL_EMBEDDABLE_PATHS.has(getEffectiveProductPathname(request)) ||
     hasEmbeddedAppReturn(request)
   );
 }
 
 function shouldResolvePartnerDomainContext(request: NextRequest) {
+  const pathname = getEffectiveProductPathname(request);
   return (
-    request.nextUrl.pathname === "/" ||
-    request.nextUrl.pathname === "/login" ||
-    request.nextUrl.pathname === GHL_EMBED_BOOTSTRAP_PATH ||
+    pathname === "/" ||
+    pathname === "/login" ||
+    pathname === GHL_EMBED_BOOTSTRAP_PATH ||
     isGhlEmbeddableSurface(request)
   );
 }
@@ -218,7 +236,7 @@ function getFrameAncestors(
     return "'none'";
   }
 
-  if (request.nextUrl.pathname === GHL_EMBED_BOOTSTRAP_PATH) {
+  if (getEffectiveProductPathname(request) === GHL_EMBED_BOOTSTRAP_PATH) {
     const bootstrapParents = getAllowedGhlParentOrigins(host);
     return bootstrapParents.length > 0 ? bootstrapParents.join(" ") : "'none'";
   }
@@ -258,13 +276,16 @@ function shouldRedirectRootToApp(
 ) {
   const host = request.nextUrl.hostname.toLowerCase();
   return (
-    request.nextUrl.pathname === "/" &&
+    getEffectiveProductPathname(request) === "/" &&
     (ROOT_APP_REDIRECT_HOSTS.has(host) || verifiedPartnerDomain === host)
   );
 }
 
 function buildRootAppRedirect(request: NextRequest) {
-  const redirectUrl = new URL("/onboarding", request.url);
+  const redirectUrl = new URL(
+    buildLocalePreservingPath(request, "/onboarding"),
+    request.url,
+  );
   redirectUrl.search = request.nextUrl.search;
   return redirectUrl;
 }
@@ -313,7 +334,7 @@ function buildContentSecurityPolicy(
   const useProductionTransportSecurity =
     isProductionBuild && !isExplicitNonProductionDeployment();
   const frameAncestors = getFrameAncestors(request, verifiedPartnerDomain, embedCapability);
-  const surface = getSecuritySurface(request.nextUrl.pathname);
+  const surface = getSecuritySurface(getEffectiveProductPathname(request));
   const isolatedLoopbackSupabaseOrigin = getIsolatedLoopbackSupabaseOrigin();
   const scriptSrc = [
     "'self'",
@@ -424,7 +445,8 @@ function applySecurityHeaders(
 export async function proxy(request: NextRequest) {
   const startedAt = Date.now();
   const nonce = crypto.randomUUID().replace(/-/g, "");
-  const pathname = request.nextUrl.pathname;
+  const rawPathname = request.nextUrl.pathname;
+  const pathname = getEffectiveProductPathname(request);
   const shouldResolvePartnerDomain = shouldResolvePartnerDomainContext(request);
   const verifiedPartnerContext = shouldResolvePartnerDomain
     ? await loadVerifiedPartnerDomainContext(request.nextUrl.hostname)
@@ -490,7 +512,7 @@ export async function proxy(request: NextRequest) {
       embedCapability.parentOrigin,
     );
   }
-  requestHeaders.set("x-pathname", request.nextUrl.pathname);
+  requestHeaders.set("x-pathname", rawPathname);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set(
     "Content-Security-Policy",
@@ -565,10 +587,13 @@ export async function proxy(request: NextRequest) {
 
   const supabaseEnv = getSupabaseEnv();
   if (!supabaseEnv) {
-    const loginUrl = new URL("/login", request.url);
+    const loginUrl = new URL(
+      buildLocalePreservingPath(request, "/login"),
+      request.url,
+    );
     loginUrl.searchParams.set("reason", "setup");
     if (!pathname.startsWith("/api/")) {
-      loginUrl.searchParams.set("redirectedFrom", `${pathname}${request.nextUrl.search}`);
+      loginUrl.searchParams.set("redirectedFrom", `${rawPathname}${request.nextUrl.search}`);
       addEmbeddedAuthRedirectState(
         request,
         loginUrl,
@@ -601,6 +626,44 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (user) {
+    const { data: suspended, error: suspensionError } = await (supabase as any).rpc(
+      "is_current_account_deletion_suspended_v1",
+    );
+    if (suspensionError || typeof suspended !== "boolean") {
+      if (pathname.startsWith("/api/")) {
+        return finalize(NextResponse.json(
+          {
+            error: "Account deletion access status is temporarily unavailable.",
+            code: "account_deletion_access_fence_unavailable",
+          },
+          { status: 503 },
+        ));
+      }
+      const unavailableUrl = new URL(
+        buildLocalePreservingPath(request, "/data-deletion"),
+        request.url,
+      );
+      unavailableUrl.searchParams.set("reason", "access_check_unavailable");
+      return finalize(NextResponse.redirect(unavailableUrl));
+    }
+    if (suspended) {
+      if (pathname.startsWith("/api/")) {
+        return finalize(NextResponse.json(
+          {
+            error: "This workspace is suspended for verified account deletion.",
+            code: "account_deletion_workspace_suspended",
+            nextPath: "/data-deletion",
+          },
+          { status: 423 },
+        ));
+      }
+      const suspendedUrl = new URL(
+        buildLocalePreservingPath(request, "/data-deletion"),
+        request.url,
+      );
+      suspendedUrl.searchParams.set("reason", "account_suspended");
+      return finalize(NextResponse.redirect(suspendedUrl));
+    }
     if (
       embedCapability?.stage === "authenticated" &&
       embedCapability.dealflowUserId !== user.id &&
@@ -624,9 +687,12 @@ export async function proxy(request: NextRequest) {
     ));
   }
 
-  const loginUrl = new URL("/login", request.url);
+  const loginUrl = new URL(
+    buildLocalePreservingPath(request, "/login"),
+    request.url,
+  );
   loginUrl.searchParams.set("reason", "expired");
-  loginUrl.searchParams.set("redirectedFrom", `${pathname}${request.nextUrl.search}`);
+  loginUrl.searchParams.set("redirectedFrom", `${rawPathname}${request.nextUrl.search}`);
   addEmbeddedAuthRedirectState(
     request,
     loginUrl,

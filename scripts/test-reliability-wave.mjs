@@ -651,6 +651,14 @@ const deletionPageSource = fs.readFileSync(
   path.join(root, "src/app/data-deletion/page.tsx"),
   "utf8",
 );
+const localizedDeletionPageSource = fs.readFileSync(
+  path.join(root, "src/components/legal/localized-data-deletion-page.tsx"),
+  "utf8",
+);
+const legalCopySource = fs.readFileSync(
+  path.join(root, "src/lib/i18n/legal-copy.ts"),
+  "utf8",
+);
 const migrationSource = fs.readFileSync(
   path.join(
     root,
@@ -721,9 +729,15 @@ assert.match(migrationSource, /provider_effect_outcome_uncertain/);
 assert.match(migrationSource, /create table if not exists public\.meta_data_deletion_requests/);
 assert.match(migrationSource, /execution_enabled boolean not null default false/);
 assert.match(migrationSource, /responsibility_status.*operator_required/s);
-assert.match(deletionPageSource, /getMetaDeletionPublicStatus/);
-assert.match(deletionPageSource, /No deletion or anonymization is represented as complete/);
-assert.doesNotMatch(deletionPageSource, /user_id_hash|user_id_encrypted|resolution_note/);
+assert.match(deletionPageSource, /LocalizedDataDeletionPage/);
+assert.match(deletionPageSource, /locale="en"/);
+assert.match(localizedDeletionPageSource, /getMetaDeletionPublicStatus/);
+assert.match(localizedDeletionPageSource, /LEGAL_COPY\[locale\]\.deletion/);
+assert.match(legalCopySource, /No deletion or anonymization is represented as complete/);
+assert.doesNotMatch(
+  `${deletionPageSource}\n${localizedDeletionPageSource}`,
+  /user_id_hash|user_id_encrypted|resolution_note/,
+);
 const deletionPostSource = deletionRouteSource.slice(
   deletionRouteSource.indexOf("export async function POST"),
 );

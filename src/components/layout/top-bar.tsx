@@ -1,11 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Settings } from "lucide-react";
 import { getInitials } from "@/lib/utils";
 import { SignOutButton } from "@/components/layout/sign-out-button";
 import { SystemStatus } from "@/components/layout/system-status";
+import { LocaleLink as Link } from "@/components/i18n/locale-link";
+import { LocaleSwitcher } from "@/components/i18n/locale-switcher";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
+import { parseProductLocalePathname } from "@/lib/i18n/routing";
 
 type TopBarProps = {
   userName: string;
@@ -15,7 +18,8 @@ type TopBarProps = {
 };
 
 export function TopBar({ userName, userEmail, organizationName, productName = "DealFlow AI" }: TopBarProps) {
-  const pathname = usePathname();
+  const pathname = parseProductLocalePathname(usePathname()).pathname;
+  const { t } = useProductI18n();
 
   if (pathname.startsWith("/preview")) {
     return null;
@@ -30,7 +34,7 @@ export function TopBar({ userName, userEmail, organizationName, productName = "D
               {organizationName}
             </p>
             <p className="mt-1 truncate text-sm text-white/72">
-              {productName} workspace
+              {productName} {t("shell.workspaceSuffix")}
             </p>
           </div>
         </div>
@@ -42,6 +46,9 @@ export function TopBar({ userName, userEmail, organizationName, productName = "D
         </div>
 
         <div className="flex items-center gap-3">
+          <div className="hidden 2xl:block">
+            <LocaleSwitcher compact />
+          </div>
           <div className="hidden items-center gap-3 rounded-[20px] border border-white/8 bg-white/[0.04] px-3 py-1.5 lg:flex">
             <div className="flex size-9 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-sm font-semibold text-primary shadow-[0_0_22px_rgba(116,199,255,0.18)]">
               {getInitials(userName)}
@@ -62,15 +69,15 @@ export function TopBar({ userName, userEmail, organizationName, productName = "D
         </div>
       </div>
       <nav
-        aria-label="Primary mobile navigation"
+        aria-label={t("nav.mobileAria")}
         className="flex gap-2 overflow-x-auto border-t border-white/6 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground lg:hidden"
       >
         {[
-          { href: "/onboarding", label: "Build" },
-          { href: "/preview", label: "Review" },
-          { href: "/launch", label: "Go Live" },
-          { href: "/dashboard", label: "Results" },
-          { href: "/support", label: "Support" },
+          { href: "/onboarding", label: t("nav.build") },
+          { href: "/preview", label: t("nav.review") },
+          { href: "/launch", label: t("nav.goLive") },
+          { href: "/dashboard", label: t("nav.results") },
+          { href: "/support", label: t("nav.support") },
         ].map((item) => {
           const active =
             item.href === "/onboarding"

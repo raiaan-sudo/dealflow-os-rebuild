@@ -2,7 +2,7 @@
 
 Current verdict: `NO_GO`
 Final candidate commit/tree: `PENDING_FINAL_SEAL`
-Integrated migration inventory: `99`
+Integrated migration inventory: `102`
 Two exact-seal rounds: `NOT_YET_RUN`
 Isolated staging: `NOT_YET_RUN`
 Production deployment/mutation: `NOT_YET_RUN / NONE CLAIMED`
@@ -27,8 +27,10 @@ The integrated candidate preserves the realtor-focused UI and adds or hardens:
 - recoverable exactly-once paid creative projection, atomic lead/outbox capture,
   exact Meta reporting/attribution windows, GHL ambiguous-dispatch terminality,
   stage-isolated job orchestration and fair reporting claims; and
-- an exact 99-migration inventory ending at
-  `20260713024000_add_durable_ghl_periodic_form_sweeps.sql`.
+- canonical DealFlow-owned generated-video storage and a durable, always-fenced
+  account-deletion/provider-offboarding lifecycle; and
+- an exact 102-migration inventory ending at
+  `20260713027000_add_ghl_location_display_name_finalization.sql`.
 
 This is source-contract truth only. The final clean seal and its complete proof
 are pending.
@@ -36,22 +38,24 @@ are pending.
 ## Historical evidence boundary
 
 The recovered 80-migration PostgreSQL 17.6 foundation remains a retained
-`HISTORICAL_PASS`. Earlier 82/87/89 counts and tranche commits are intermediate
-historical evidence. They are not the current candidate seal and do not prove
-extensions 81-99, hosted staging, a provider, or production.
+`HISTORICAL_PASS`. Earlier 82/87/89 counts, tranche commits, and the
+99-migration checkpoint are intermediate historical evidence. They are not the
+current candidate seal and do not prove extensions 81-102, hosted staging, a
+provider, or production.
 
 ## Remaining release gates
 
 1. Create the final clean commit/tree and complete two identical exact-seal
-   local rounds, including the exact 99-chain, security, dependency, secret,
+   local rounds, including the exact 102-chain, security, dependency, secret,
    browser and load portfolios.
 2. Apply/deploy that exact seal only to isolated staging and complete zero-skip
    authenticated multi-role, white-label, EN/FR/ES, golden-journey,
    provider-boundary, load and recovery acceptance.
 3. Obtain authoritative production schema, backup/PITR, source/domain ancestry,
    protected release trust, signed drain/environment and owner policy evidence.
-4. Only under separate production authorization, run the controlled canary,
-   post-release proof and monitoring/forward-recovery plan.
+4. Only after every conditional production gate in the controlling completion
+   authorization passes, run the controlled canary, post-release proof and
+   monitoring/forward-recovery plan.
 
 Provider acceptance remains absent for Meta, GHL, Stripe, Twilio, creative
 providers and external support delivery. No production database write,
@@ -61,3 +65,7 @@ paid generation or spend is claimed.
 Use `FINAL_RELEASE_DOCUMENTATION_CHECKLIST.md` to record exact identities,
 evidence paths, digests and results. Until every mandatory field is complete,
 the only valid verdict is `NO_GO`.
+
+Use `CURRENT_RELEASE_ISSUE_LEDGER.md` as the current concise release-status
+authority. The older 864-row issue/requirement ledgers are historical audit
+inventories, not proof that this candidate is staged or released.

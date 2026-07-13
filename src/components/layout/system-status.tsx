@@ -2,66 +2,73 @@
 
 import { useMemo } from "react";
 import { usePathname } from "next/navigation";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
+import type { ProductMessageKey } from "@/lib/i18n/messages";
+import { parseProductLocalePathname } from "@/lib/i18n/routing";
 
 type StatusTone = "calm" | "active";
 
-function getStatusForPath(pathname: string) {
+function getStatusForPath(
+  pathname: string,
+  t: (key: ProductMessageKey) => string,
+) {
   if (pathname.startsWith("/launching")) {
     return {
-      label: "Launch status",
-      title: "Launch workflow in progress",
-      description: "The system is waiting on confirmed runtime state before moving forward.",
+      label: t("launch.campaignStatus"),
+      title: t("launch.schedule"),
+      description: t("launch.metaMayChange"),
       tone: "active" as StatusTone,
     };
   }
 
   if (pathname.startsWith("/launch")) {
     return {
-      label: "Launch status",
-      title: "Launch setup in progress",
-      description: "Complete the remaining checks, then continue into launch.",
+      label: t("launch.campaignStatus"),
+      title: t("launch.finalReview"),
+      description: t("launch.metaMayChange"),
       tone: "active" as StatusTone,
     };
   }
 
   if (pathname.startsWith("/integrations")) {
     return {
-      label: "Connection status",
-      title: "Integration setup",
-      description: "Connect the required accounts here before launch can continue.",
+      label: t("common.status"),
+      title: t("launch.metaSetup"),
+      description: t("launch.precheck"),
       tone: "active" as StatusTone,
     };
   }
 
   if (pathname.startsWith("/onboarding")) {
     return {
-      label: "Build status",
-      title: "Guided build active",
-      description: "Complete the guided onboarding path to build the campaign package.",
+      label: t("common.status"),
+      title: t("onboarding.currentStep"),
+      description: t("onboarding.ready"),
       tone: "calm" as StatusTone,
     };
   }
 
   if (pathname.startsWith("/dashboard")) {
     return {
-      label: "Campaign status",
-      title: "Results overview",
-      description: "Review the current campaign state and next actions here.",
+      label: t("launch.campaignStatus"),
+      title: t("dashboard.title"),
+      description: t("dashboard.description"),
       tone: "calm" as StatusTone,
     };
   }
 
   return {
-    label: "Workspace status",
-    title: "Campaign workspace active",
-    description: "Use the current step to keep moving through build, review, and launch.",
+    label: t("common.status"),
+    title: t("shell.workspace"),
+    description: t("shell.pathHelp"),
     tone: "calm" as StatusTone,
   };
 }
 
 export function SystemStatus() {
-  const pathname = usePathname();
-  const status = useMemo(() => getStatusForPath(pathname), [pathname]);
+  const pathname = parseProductLocalePathname(usePathname()).pathname;
+  const { t } = useProductI18n();
+  const status = useMemo(() => getStatusForPath(pathname, t), [pathname, t]);
 
   return (
     <div

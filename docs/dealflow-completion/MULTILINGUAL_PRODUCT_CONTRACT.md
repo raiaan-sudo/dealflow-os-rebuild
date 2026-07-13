@@ -55,5 +55,15 @@ Final exact-seal result: `NOT_YET_RUN`.
 Hosted multilingual result: `NOT_YET_RUN`.
 Production multilingual canary: `NOT_YET_RUN`.
 
+Focused source proof (July 13, 2026): `PASS`. The standalone
+`scripts/test-product-localization.ts` proof verified exactly EN/FR/ES, 814
+message keys with interpolation parity, 20 localized route classes, five typed
+copy catalogs, locale-safe routing, and server-rendered document-language
+wiring. The contract now explicitly covers build/funnel, build/creatives,
+creative selection, preview, unlock, builder, campaign-built, results, and their
+shared recovery, wizard, funnel-preview, and creative-preview chrome. Targeted
+ESLint and the full TypeScript check also passed. This source proof does not
+replace the hosted or production proofs above.
+
 No live lead, provider action, customer communication or production mutation is
 claimed by this contract.

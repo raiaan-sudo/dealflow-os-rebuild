@@ -15,7 +15,7 @@ const PRODUCTION_HOSTS = new Set([
   "onboarding.agentdealflow.io",
 ]);
 const EXPECTED_STAGING_SAFE_SUFFIX = "qibh";
-const EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 56;
+const EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 60;
 
 function requireValue(name: string) {
   const value = process.env[name]?.trim() ?? "";

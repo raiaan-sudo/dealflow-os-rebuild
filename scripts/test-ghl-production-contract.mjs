@@ -4,6 +4,9 @@ import ts from "typescript";
 
 const read = (path) => fs.readFileSync(path, "utf8");
 const migration = read("supabase/migrations/20260712223000_complete_ghl_activation_and_lifecycle_foundation.sql");
+const displayNameFinalizationMigration = read(
+  "supabase/migrations/20260713027000_add_ghl_location_display_name_finalization.sql",
+);
 const campaignPersonalizationMigration = read(
   process.env.DEALFLOW_GHL_CAMPAIGN_PERSONALIZATION_MIGRATION
     ?? "supabase/migrations/20260713014000_scope_ghl_personalization_to_campaign.sql",
@@ -173,6 +176,13 @@ assert.match(productionGate, /GHL_PRODUCTION_LIFECYCLE_WEBHOOK_ENABLED/);
 assert.match(productionGate, /GHL_PRODUCTION_FORM_SUBMISSIONS_READ_ENABLED/);
 assert.match(productionGate, /input\.deploymentTarget !== "production" \|\| input\.vercelEnv !== "production"/);
 assert.match(adapter, /retryMode: "no-retry"/);
+assert.match(adapter, /\/locations\/search\?\$\{search\.toString\(\)\}/);
+assert.match(adapter, /companyId: this\.companyId/);
+assert.match(adapter, /finalizeLocationDisplayName/);
+assert.match(adapter, /method: "PUT"/);
+assert.match(adapter, /cleanName/);
+assert.match(adapter, /post_update/);
+assert.match(displayNameFinalizationMigration, /'location_display_name_finalize'/);
 assert.match(adapter, /\/contacts\/upsert/);
 assert.match(adapter, /\/opportunities\/upsert/);
 assert.match(adapter, /customValues/);

@@ -32,6 +32,7 @@ const zeroEffectsRoute = read("src/app/api/internal/zero-external-effects/route.
 const globalPreflight = read("tests/e2e/global-safety-preflight.ts");
 const acceptanceReporter = read("tests/e2e/safe-acceptance-reporter.mjs");
 const proxy = read("src/proxy.ts");
+const productMessages = read("src/lib/i18n/messages.ts");
 
 requireAll(
   config,
@@ -67,10 +68,14 @@ requireAll(
     'GHL_PRODUCTION_INBOUND_FORM_RECONCILIATION_ENABLED: "false"',
     'SUPPORT_EXTERNAL_DELIVERY_ENABLED: "false"',
     'ALLOW_OPENAI_IMAGE_GENERATION: "false"',
+    'ALLOW_HEYGEN_LEGACY_FALLBACK: "false"',
     'ALLOW_HIGGSFIELD_VIDEO_GENERATION: "false"',
     'STRIPE_FORCE_TEST_MODE: "false"',
     'STRIPE_TEST_HARNESS_ENABLED: "false"',
     'LEAD_CAPTURE_LOAD_TEST_BYPASS_ENABLED: "false"',
+    'ACCOUNT_DELETION_EXECUTION_ENABLED: "false"',
+    'ACCOUNT_DELETION_PROVIDER_WRITES_ENABLED: "false"',
+    'GHL_ACCOUNT_DELETION_PROVIDER_WRITES_ENABLED: "false"',
     'TWILIO_EXECUTION_MODE: "disabled"',
   ],
   "Local safe browser server environment",
@@ -129,11 +134,15 @@ requireAll(
     "GHL_PRODUCTION_WRITES_ENABLED",
     "SUPPORT_PRODUCTION_EXTERNAL_DELIVERY_ENABLED",
     "ALLOW_HIGGSFIELD_VIDEO_GENERATION",
+    "ALLOW_HEYGEN_LEGACY_FALLBACK",
     "TWILIO_EXECUTION_MODE",
     "STRIPE_FORCE_TEST_MODE",
     "STRIPE_TEST_HARNESS_ENABLED",
     "LEAD_CAPTURE_LOAD_TEST_BYPASS_ENABLED",
     "LOAD_TEST_ALLOW_SYNTHETIC_LEAD_CAPTURE",
+    "ACCOUNT_DELETION_EXECUTION_ENABLED",
+    "ACCOUNT_DELETION_PROVIDER_WRITES_ENABLED",
+    "GHL_ACCOUNT_DELETION_PROVIDER_WRITES_ENABLED",
     "SUPPORT_NOTIFICATION_DELIVERY_MODE",
     "NEXT_PUBLIC_ENABLE_GOOGLE_AUTH",
     "ENABLE_STRUCTURED_INFO_LOGS",
@@ -184,28 +193,52 @@ requireAll(
 requireAll(
   onboarding,
   [
-    'title: "Website funnel"',
-    'title: "Meta Instant Form"',
+    "getOnboardingOptionCatalog(locale)",
     'method: "PUT"',
     "buildOnboardingDraftEnvelope",
     "currentStep",
     "furthestStepIndex",
-    '["Ad destination", AD_DESTINATIONS[draft.adDestination].title]',
-    "Operator Launch at $297/month",
-    'canUseExistingLaunchAccess ? "Continue to creatives" : "Activate Pro"',
+    '[t("onboarding.destination"), t(draft.adDestination === "website" ? "onboarding.destination.website" : "onboarding.destination.meta")]',
+    't("onboarding.planArchived")',
+    'canUseExistingLaunchAccess ? t("onboarding.continueCreatives") : t("onboarding.activatePro")',
   ],
   "Integrated onboarding UI",
 );
 
 requireAll(
+  productMessages,
+  [
+    '"onboarding.destination.website": "Website funnel"',
+    '"onboarding.destination.meta": "Meta Instant Form"',
+    '"onboarding.destination.website": "Entonnoir Web"',
+    '"onboarding.destination.meta": "Formulaire instantané Meta"',
+    '"onboarding.destination.website": "Embudo web"',
+    '"onboarding.destination.meta": "Formulario instantáneo de Meta"',
+    '"onboarding.planArchived": "Performance usage billing and guided-launch-only behavior are archived for new signups.',
+  ],
+  "Localized onboarding catalog",
+);
+
+requireAll(
   paywall,
   [
-    'title="Your campaign is ready"',
+    'title={t("billing.campaignReady")}',
+    'description={t("billing.paywallDescription")}',
+    't("billing.activate")',
     "proPlan.priceLabel",
     "CheckoutButton",
-    "active subscription is required",
   ],
   "Integrated paywall UI",
+);
+
+requireAll(
+  productMessages,
+  [
+    '"billing.paywallDescription": "Preview stays free. An active subscription is required before this campaign can launch to Meta."',
+    '"billing.paywallDescription": "L\'aperçu demeure gratuit. Un abonnement actif est requis avant le lancement de cette campagne dans Meta."',
+    '"billing.paywallDescription": "La vista previa sigue siendo gratuita. Se requiere una suscripción activa antes de lanzar esta campaña en Meta."',
+  ],
+  "Localized paywall catalog",
 );
 
 requireAll(
@@ -238,7 +271,7 @@ requireAll(
   [
     '"/dashboard"',
     '"/launch"',
-    'new URL("/login", request.url)',
+    'buildLocalePreservingPath(request, "/login")',
     'loginUrl.searchParams.set("redirectedFrom"',
   ],
   "Route protection proxy",

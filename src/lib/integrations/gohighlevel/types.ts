@@ -29,6 +29,7 @@ export type GhlRetryResumeState = Extract<
 export const GHL_PROVIDER_OPERATIONS = [
   "location_create",
   "location_reconcile",
+  "location_display_name_finalize",
   "snapshot_install",
   "snapshot_status",
   "required_objects_verify",
@@ -270,17 +271,41 @@ export type GhlLocationReconcileResult =
   | {
       outcome: "found";
       providerLocationId: string;
-      providerRequestId: string;
+      providerRequestId: string | null;
+      requestFingerprint: string;
+      responseFingerprint: string;
     }
   | {
       outcome: "not_found";
-      providerRequestId: string;
+      providerRequestId: string | null;
+      requestFingerprint: string;
+      responseFingerprint: string;
     }
   | {
       outcome: "uncertain" | "operator_action_required";
       errorCode: string;
       safeMessage: string;
       providerRequestId: string | null;
+      requestFingerprint: string;
+      responseFingerprint: string | null;
+    };
+
+export type GhlLocationDisplayNameFinalizeResult =
+  | {
+      outcome: "succeeded";
+      providerRequestId: string | null;
+      requestFingerprint: string;
+      responseFingerprint: string;
+      httpStatus: number;
+    }
+  | {
+      outcome: "retryable_failure" | "operator_action_required";
+      errorCode: string;
+      safeMessage: string;
+      providerRequestId: string | null;
+      requestFingerprint: string;
+      responseFingerprint: string | null;
+      httpStatus: number | null;
     };
 
 export type GhlSnapshotInstallResult =
@@ -354,7 +379,19 @@ export interface GhlProviderAdapter {
     idempotencyKey: string;
     installationId: string;
     environment: GhlEnvironment;
+    profile: GhlProvisioningRequest["locationProfile"];
+    requestFingerprint: string;
+    visibilityStartedAt: string;
+    visibilityDeadlineAt: string;
+    observedAt: string;
   }): Promise<GhlLocationReconcileResult>;
+  finalizeLocationDisplayName(input: {
+    idempotencyKey: string;
+    providerLocationId: string;
+    environment: GhlEnvironment;
+    profile: GhlProvisioningRequest["locationProfile"];
+    requestFingerprint: string;
+  }): Promise<GhlLocationDisplayNameFinalizeResult>;
   installSnapshot(input: {
     idempotencyKey: string;
     providerLocationId: string;

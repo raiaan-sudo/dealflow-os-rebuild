@@ -409,6 +409,10 @@ const pageSource = fs.readFileSync(path.join(root, "src/app/(app)/onboarding/pag
 const onboardingContractSource = fs.readFileSync(path.join(root, "src/lib/onboarding-contract.ts"), "utf8");
 const routeSource = fs.readFileSync(path.join(root, "src/app/api/onboarding/plan/route.ts"), "utf8");
 const billingSource = fs.readFileSync(path.join(root, "src/lib/services/billing-service.ts"), "utf8");
+const productMessagesSource = fs.readFileSync(
+  path.join(root, "src/lib/i18n/messages.ts"),
+  "utf8",
+);
 const migrationSource = fs.readFileSync(
   path.join(root, "supabase/migrations/20260710180000_activation_onboarding_contract.sql"),
   "utf8",
@@ -461,9 +465,12 @@ check("campaign persistence materializes the complete onboarding contract", () =
 });
 
 check("onboarding review and copy reflect the selected destination", () => {
-  assert.match(pageSource, /\["Lead capture", LEAD_CAPTURE_MODES\[draft\.leadCaptureMode\]\.title\]/);
-  assert.match(pageSource, /\["Ad destination", AD_DESTINATIONS\[draft\.adDestination\]\.title\]/);
-  assert.match(pageSource, /Meta Instant Form questions/);
+  assert.match(pageSource, /\[t\("onboarding\.captureStyle"\), t\(`/);
+  assert.match(pageSource, /\[t\("onboarding\.destination"\), t\(draft\.adDestination === "website"/);
+  assert.match(pageSource, /t\("onboarding\.setup\.metaQuestions"\)/);
+  assert.match(productMessagesSource, /"onboarding\.captureStyle": "Lead capture style"/);
+  assert.match(productMessagesSource, /"onboarding\.destination": "Ad destination"/);
+  assert.match(productMessagesSource, /"onboarding\.setup\.metaQuestions": "Meta Instant Form questions"/);
   assert.doesNotMatch(pageSource, /unimplemented provider form/i);
 });
 

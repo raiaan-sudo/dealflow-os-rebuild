@@ -11,6 +11,10 @@ const runnerPath = join(root, "scripts", "staging", "run-isolated-staging-accept
 const runner = readFileSync(runnerPath, "utf8");
 const seed = readFileSync(join(root, "scripts", "seed-isolated-staging.mjs"), "utf8");
 const seedContract = readFileSync(join(root, "scripts", "test-isolated-staging-seed-contract.mjs"), "utf8");
+const providerIndependentProof = readFileSync(
+  join(root, "scripts", "staging", "run-provider-independent-staging-proof.mjs"),
+  "utf8",
+);
 const browserConfig = readFileSync(join(root, "playwright.staging.config.ts"), "utf8");
 const browserSpec = readFileSync(
   join(root, "tests", "e2e", "dealflow-staging-acceptance.spec.ts"),
@@ -49,8 +53,8 @@ assert.match(runner, /EXPECTED_SUPABASE_SAFE_SUFFIX = "qibh"/);
 assert.match(runner, /EXPECTED_SUPABASE_FINGERPRINT/);
 assert.match(runner, /EXPECTED_VERCEL_PROJECT_ID_FINGERPRINT/);
 assert.match(runner, /EXPECTED_VERCEL_ORG_ID_FINGERPRINT/);
-assert.match(runner, /EXPECTED_MIGRATION_COUNT = 99/);
-assert.match(runner, /20260713024000_add_durable_ghl_periodic_form_sweeps\.sql/);
+assert.match(runner, /EXPECTED_MIGRATION_COUNT = 102/);
+assert.match(runner, /20260713027000_add_ghl_location_display_name_finalization\.sql/);
 assert.match(runner, /AUTHORIZE_ISOLATED_STAGING_ACCEPTANCE_V1/);
 
 const authoritativeFalseControls = extractStringArray(zeroEffectsSource, "MUST_BE_FALSE");
@@ -78,13 +82,13 @@ const authoritativeZeroEffectControlCount =
   authoritativeFalseControls.length +
   Object.keys(authoritativeEqualControls).length +
   authoritativeDisabledControls.length;
-assert.equal(authoritativeZeroEffectControlCount, 56);
-assert.match(runner, /EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 56/);
+assert.equal(authoritativeZeroEffectControlCount, 60);
+assert.match(runner, /EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 60/);
 assert.match(
   runner,
   /Number\(payload\.checkedControlCount\) !== EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT/,
 );
-assert.match(browserSpec, /EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 56/);
+assert.match(browserSpec, /EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT = 60/);
 assert.match(
   browserSpec,
   /Number\(body\?\.checkedControlCount\)\)\.toBe\(EXPECTED_ZERO_EXTERNAL_EFFECT_CONTROL_COUNT\)/,
@@ -121,6 +125,9 @@ for (const control of [
   "ENABLE_STRUCTURED_INFO_LOGS",
   "LEAD_CAPTURE_LOAD_TEST_BYPASS_ENABLED",
   "LOAD_TEST_ALLOW_SYNTHETIC_LEAD_CAPTURE",
+  "ALLOW_HEYGEN_LEGACY_FALLBACK",
+  "ACCOUNT_DELETION_EXECUTION_ENABLED",
+  "ACCOUNT_DELETION_PROVIDER_WRITES_ENABLED",
 ]) {
   assert.match(runner, new RegExp(`"${control}"`), `missing zero-effects control ${control}`);
 }
@@ -168,11 +175,16 @@ assert.match(
 const configureIndex = runner.indexOf("configureHostedStagingEnvironment(vercel, hostedEnvironment)");
 const migrationIndex = runner.indexOf('label: "atomic fresh isolated-staging migration broker"');
 const deployIndex = runner.indexOf("const deployment = deployExactCommit(identity, vercel)");
-const seedIndex = runner.indexOf("const seedOne = runSeed(deployment.deploymentUrl)");
+const seedIndex = runner.indexOf("const seedOne = runSeed(deployment.deploymentUrl, secondPartnerAlias.aliasUrl)");
 assert.ok(configureIndex > releaseCapture, "hosted config must follow complete local readiness");
 assert.ok(migrationIndex > configureIndex, "migration apply must follow exact hosted config provisioning");
 assert.ok(deployIndex > migrationIndex, "deployment must follow exact migration proof");
 assert.ok(seedIndex > deployIndex, "deployment-specific partner host must exist before seeding");
+assert.match(
+  runner,
+  /DEALFLOW_NATIVE_PGBIN: process\.env\.DEALFLOW_NATIVE_PGBIN/,
+  "the staging parent must forward the pinned PostgreSQL runtime to the migration broker",
+);
 assert.match(runner, /"env", "list", "production", "--format=json"/);
 assert.match(runner, /"env",\s*"add"/);
 assert.match(runner, /input: `\$\{value\}\\n`/);
@@ -181,13 +193,26 @@ assert.match(runner, /isolated Vercel staging environment inventory is not exact
 assert.match(runner, /"deploy",\s*"--prod"/);
 assert.match(runner, /dealflowEnvironment=isolated-staging-qibh/);
 assert.match(runner, /"inspect", uniqueDeploymentUrl\.origin, "--format=json"/);
+assert.match(runner, /function fetchAuthoritativeVercelDeployment/);
+assert.match(runner, /"api",\s*`\/v13\/deployments\/\$\{deploymentId\}`,\s*"--raw"/s);
+assert.match(runner, /authoritative\.url !== uniqueDeploymentUrl\.hostname/);
+assert.match(runner, /const projectId = authoritative\.projectId \?\? authoritative\.project\?\.id/);
+assert.match(runner, /const metadata = authoritative\.meta \?\? authoritative\.metadata \?\? \{\}/);
 assert.match(runner, /metadata\.dealflowCommit !== identity\.commit/);
 assert.match(runner, /metadata\.dealflowTree !== identity\.tree/);
 assert.match(runner, /function proveStableAliasTargetsExactDeployment/);
 assert.match(runner, /deploymentId !== deployment\.deploymentId/);
+assert.match(runner, /authoritative\.url !== deployment\.deploymentHost/);
 assert.match(runner, /stable isolated-staging alias does not target the exact candidate deployment/);
+assert.match(runner, /function configureAndProveSecondPartnerAlias/);
+assert.match(runner, /"alias",\s*"set"/);
+assert.match(runner, /dealflow-os-rebuild-selfserve-clean-partner-two-qibh\.vercel\.app/);
+assert.match(runner, /second white-label staging alias does not target the exact candidate deployment/);
 
-assert.equal((runner.match(/runSeed\(deployment\.deploymentUrl\)/g) ?? []).length, 2);
+assert.equal(
+  (runner.match(/runSeed\(deployment\.deploymentUrl, secondPartnerAlias\.aliasUrl\)/g) ?? []).length,
+  2,
+);
 assert.match(runner, /assertSeedReplayIsIdempotent\(seedOne, seedTwo\)/);
 assert.match(seed, /admin\.rpc\("bind_verified_partner_attribution_v1"/);
 assert.doesNotMatch(seed, /upsert\(admin, "workspace_partner_attribution"/);
@@ -212,13 +237,15 @@ for (const project of ["desktop-chromium", "mobile-chromium", "desktop-firefox",
   assert.match(browserConfig, new RegExp(`name: "${project}"`));
 }
 assert.doesNotMatch(browserSpec, /test\.(?:skip|fixme)\s*\(/);
-assert.equal((browserSpec.match(/^test\("/gm) ?? []).length, 7);
+assert.equal((browserSpec.match(/^test\("/gm) ?? []).length, 12);
 for (const role of [
   "newDirect",
   "paidDirect",
   "legacy",
   "partnerAdmin",
   "partnerChild",
+  "partnerAdminTwo",
+  "partnerChildTwo",
   "operator",
   "attacker",
 ]) {
@@ -228,14 +255,60 @@ assert.match(browserSpec, /sha256\(projectRef\).*EXPECTED_SUPABASE_FINGERPRINT/s
 assert.match(browserSpec, /url\.hostname === `\$\{exactProjectRef\}\.supabase\.co`/);
 assert.match(browserSpec, /blockedMutations/);
 assert.match(browserSpec, /forbiddenHosts/);
+assert.match(browserSpec, /LOCALIZED_PRODUCT_COPY/);
+assert.match(browserSpec, /EN FR ES public product routes/);
+assert.match(browserSpec, /paid realtor can use authenticated EN FR ES dashboards/);
+assert.match(browserSpec, /emulateMedia\(\{ reducedMotion: "reduce" \}\)/);
+assert.match(browserSpec, /document\.documentElement\.style\.zoom = "2"/);
+assert.match(browserSpec, /first keyboard target must retain a visible focus outline/);
+assert.match(browserSpec, /Confirmed state is stale/);
+assert.match(browserSpec, /Showing last confirmed Meta data/);
+assert.match(browserSpec, /PARTNER_TWO_CAMPAIGN_ID/);
+assert.match(browserSpec, /STAGING_ACCEPTANCE_SECOND_PARTNER_BASE_URL/);
+
+assert.match(runner, /runProviderIndependentStagingProof/);
+assert.match(runner, /provider-independent-journeys\.json/);
+assert.match(runner, /parsed\.worker\?\.deadLetterReviewed !== true/);
+assert.match(runner, /parsed\.worker\?\.providerTableStateUnchanged !== true/);
+assert.match(runner, /parsed\.accountDeletion\?\.fullProviderOffboardingPerformed !== false/);
+assert.match(runner, /parsed\.externalProviderAcceptance\?\.meta !== "BLOCKED_CREDENTIAL_AND_PROVIDER_AUTHORITY"/);
+assert.match(providerIndependentProof, /apply_billing_subscription_webhook/);
+assert.match(providerIndependentProof, /evt_test_df_staging_lifecycle_cancel/);
+assert.match(providerIndependentProof, /stale_event/);
+assert.match(providerIndependentProof, /replay_projection_repaired/);
+assert.match(providerIndependentProof, /\/api\/lead-capture/);
+assert.match(providerIndependentProof, /duplicateReplaySameIdentity: true/);
+assert.match(providerIndependentProof, /create_support_ticket_with_outbox/);
+assert.match(providerIndependentProof, /internal_operator_inbox/);
+assert.match(providerIndependentProof, /\/api\/internal\/system-jobs/);
+assert.match(providerIndependentProof, /crashedLeaseRecovered: true/);
+assert.match(providerIndependentProof, /deadLetterPreserved: true/);
+assert.match(providerIndependentProof, /deadLetterReviewed: true/);
+assert.match(providerIndependentProof, /captureTableState/);
+assert.match(providerIndependentProof, /providerTableStateUnchanged: true/);
+assert.match(providerIndependentProof, /failedRefreshPreservedLastConfirmed: true/);
+assert.match(providerIndependentProof, /crossPartnerCampaignDenied: true/);
+assert.match(providerIndependentProof, /create_account_deletion_request_v1/);
+assert.match(providerIndependentProof, /account_deletion_execution_disabled/);
+assert.match(providerIndependentProof, /providerReceiptCount: 0/);
+assert.match(providerIndependentProof, /fullProviderOffboardingPerformed: false/);
+for (const providerName of ["meta", "ghl", "higgsfield", "twilio"]) {
+  assert.match(providerIndependentProof, new RegExp(`${providerName}: "BLOCKED_`));
+}
 
 assert.match(runner, /status: "NO_GO"/);
 assert.match(runner, /verdict: "NO_GO_PRODUCTION_ACCEPTANCE_NOT_PROVEN"/);
 assert.match(runner, /providerAbsenceTreatedAsSuccess: false/);
 assert.match(runner, /seededEndStatesTreatedAsJourneyProof: false/);
-assert.match(runner, /ghlSandboxProvisioningFunnelsAndLeadDelivery: "NOT_PROVEN"/);
-assert.match(runner, /metaSandboxLaunchLeadgenReportingAndOptimization: "NOT_PROVEN"/);
-assert.match(runner, /stripeTestCheckoutWebhookAndLifecycle: "NOT_PROVEN"/);
+assert.match(runner, /workerExecutionRetryReplayDeadLetterAndCrashRecovery: "PASS"/);
+assert.match(runner, /realSyntheticLeadCapturePersistenceAndDuplicateReplay: "PASS"/);
+assert.match(runner, /supportInternalNonDeliveringInboxLifecycle: "PASS"/);
+assert.match(runner, /reportingFreshStaleAndFailedRefreshStateHandling: "PASS"/);
+assert.match(runner, /billingCancellationStaleEventReactivationAndReplayProjection: "PASS"/);
+assert.match(runner, /accountDeletionRequestSuspensionAndDisabledWorkerBoundary: "PASS"/);
+assert.match(runner, /ghlSandboxProvisioningFunnelsAndLeadDelivery:[\s\S]{0,100}"BLOCKED_EXTERNAL_PROVIDER_AUTHORITY"/);
+assert.match(runner, /metaSandboxLaunchLeadgenReportingAndOptimization:[\s\S]{0,100}"BLOCKED_EXTERNAL_PROVIDER_AUTHORITY"/);
+assert.match(runner, /stripeTestCheckoutAndSignedWebhook:[\s\S]{0,100}"BLOCKED_EXTERNAL_PROVIDER_AUTHORITY"/);
 assert.match(runner, /productionReleaseAuthorized: false/);
 
 assert.match(runner, /function assertEvidenceSanitized/);
@@ -259,6 +332,7 @@ assert.equal(
 );
 assert.match(completionSuite, /"staging\/test-isolated-staging-acceptance-contract\.mjs"/);
 assert.match(envExample, /^STAGING_PARTNER_APP_URL=$/m);
+assert.match(envExample, /^STAGING_SECOND_PARTNER_APP_URL=$/m);
 assert.match(envExample, /^DEALFLOW_STAGING_ACCEPTANCE_AUTHORIZATION=$/m);
 
 const help = spawnSync(process.execPath, [runnerPath, "--help"], {
@@ -280,5 +354,5 @@ assert.notEqual(refused.status, 0);
 assert.match(refused.stderr, /No remote work was authorized/);
 
 console.log(
-  "isolated staging acceptance contract: PASS (triple authorization gate; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; approved stdin-only staging config; 99-migration atomic broker; deployment-bound white-label seed; authenticated RLS cleanup; seven-role four-browser zero-skip proof; read-only load; explicit provider NOT_PROVEN; production NO_GO; sanitized sealed evidence)",
+  "isolated staging acceptance contract: PASS (triple authorization gate; exact clean seal and hosted-only deferral allowlist; isolated qibh/Vercel identities; approved stdin-only staging config; 102-migration atomic broker; two deployment-bound white-label partners and child tenants; authenticated RLS cleanup; ten-role plus fresh/stale/failed reporting and EN/FR/ES accessibility across four browsers with zero skips; real synthetic lead duplicate proof; support internal inbox; worker recovery; billing lifecycle; deletion fail-closed boundary; explicit external-provider blockers; production NO_GO; sanitized sealed evidence)",
 );

@@ -10,9 +10,9 @@ import { createNativePostgresTestAdapter } from "./lib/native-postgres-test-adap
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
-const EXPECTED_MIGRATION_COUNT = 99;
+const EXPECTED_MIGRATION_COUNT = 102;
 const TARGET_MIGRATION = "20260713022000_reconcile_native_ghl_form_submissions.sql";
-const REQUIRED_FINAL_MIGRATION = "20260713024000_add_durable_ghl_periodic_form_sweeps.sql";
+const REQUIRED_FINAL_MIGRATION = "20260713027000_add_ghl_location_display_name_finalization.sql";
 const TRANSACTION_OWNING_MIGRATION = "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const migrations = readdirSync(MIGRATIONS)
   .filter((name) => /^\d{14}_.+\.sql$/.test(name))
@@ -59,8 +59,18 @@ function installRemoteEquivalentDefaults(session) {
     create extension if not exists pg_stat_statements with schema extensions;
     create extension if not exists "uuid-ossp" with schema extensions;
     create publication supabase_realtime;
+    create schema if not exists storage;
+    create table if not exists storage.objects (
+      id uuid primary key default gen_random_uuid(),
+      bucket_id text not null,
+      name text not null,
+      unique (bucket_id, name)
+    );
+    grant usage on schema storage to anon, authenticated, service_role;
+    grant select, insert, update, delete on storage.objects
+      to anon, authenticated, service_role;
     reset role;
-  `, { label: "Install remote-equivalent defaults" });
+  `, { label: "Install remote-equivalent defaults and isolated Storage table" });
 }
 
 function applyCompleteMigrationChain(session) {

@@ -1,11 +1,14 @@
+"use client";
+
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
 import { cn } from "@/lib/utils";
 
 const STEPS = [
-  { key: "onboarding", label: "Step 1", title: "Onboarding" },
-  { key: "funnel", label: "Step 2", title: "Funnel" },
-  { key: "creatives", label: "Step 3", title: "Creatives" },
-  { key: "review", label: "Step 4", title: "Review" },
-  { key: "launch", label: "Step 5", title: "Launch" },
+  { key: "onboarding", titleKey: "wizard.onboarding" },
+  { key: "funnel", titleKey: "wizard.funnel" },
+  { key: "creatives", titleKey: "wizard.creatives" },
+  { key: "review", titleKey: "wizard.review" },
+  { key: "launch", titleKey: "wizard.launch" },
 ] as const;
 
 type WizardStepKey = (typeof STEPS)[number]["key"];
@@ -15,6 +18,7 @@ type WizardStepsProps = {
 };
 
 export function WizardSteps({ current }: WizardStepsProps) {
+  const { t } = useProductI18n();
   const currentIndex = STEPS.findIndex((step) => step.key === current);
 
   return (
@@ -37,7 +41,7 @@ export function WizardSteps({ current }: WizardStepsProps) {
               )}
             >
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                {step.label}
+                {t("wizard.step", { number: index + 1 })}
               </p>
               <p
                 className={cn(
@@ -45,7 +49,7 @@ export function WizardSteps({ current }: WizardStepsProps) {
                   isCurrent ? "text-primary" : "text-foreground",
                 )}
               >
-                {step.title}
+                {t(step.titleKey)}
               </p>
             </div>
           );

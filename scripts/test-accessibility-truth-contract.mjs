@@ -18,6 +18,7 @@ const paths = {
   onboarding: "src/app/(app)/onboarding/page.tsx",
   results: "src/app/results/page.tsx",
   commandCenter: "src/app/(app)/admin/command-center/command-center-console.tsx",
+  productMessages: "src/lib/i18n/messages.ts",
   globalStyles: "src/app/globals.css",
 };
 
@@ -92,8 +93,18 @@ const redirectCases = [
 ];
 
 for (const [name, value, expected] of redirectCases) {
-  assert.equal(validateRedirect(value, origin), expected, `redirect case failed: ${name}`);
+  assert.equal(
+    validateRedirect(value, origin, defaultPath),
+    expected,
+    `redirect case failed: ${name}`,
+  );
 }
+
+assertIncludes(
+  "loginForm",
+  'href("/onboarding?fresh=1")',
+  "login redirect fallback must use the locale-aware href helper",
+);
 
 assertIncludes(
   "results",
@@ -130,7 +141,8 @@ assert.equal(
 );
 
 assertIncludes("rootLayout", 'default: "DealFlow OS — Build, launch, and optimize campaigns"', "root title fallback");
-assertIncludes("loginPage", 'title: "Sign in"', "login title");
+assertIncludes("loginPage", 'translateProductMessage(locale, "auth.signIn")', "localized login title wiring");
+assertIncludes("productMessages", '"auth.signIn": "Sign in"', "canonical English login title");
 
 assertIncludes("appLayout", 'className="df-skip-link"', "app skip link");
 assertIncludes("appLayout", 'id="main-content"', "app skip target");

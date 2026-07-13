@@ -20,30 +20,33 @@ The supported provider sequence is:
 1. Create the sub-account using the documented Agency Pro v3 location API and
    the exact owner-approved `snapshotId` bound to the immutable provisioning
    request and receipt.
-2. Verify the copied snapshot status and exact required-object IDs. This does
+2. Reconcile the exact temporary request tag through agency-scoped location
+   search when create is ambiguous, then restore and read back the clean
+   customer-facing location name through the official location PUT/GET routes.
+3. Verify the copied snapshot status and exact required-object IDs. This does
    not prove copied funnels/pages/forms are published; provider draft state is
    still fail-closed at the destination/publication boundary.
-3. Allocate each website campaign to one manifest-declared campaign slot. A
+4. Allocate each website campaign to one manifest-declared campaign slot. A
    slot binds one exact destination URL, exact preinstalled form IDs, and a
    non-overlapping map of DealFlow fields to documented GHL custom-value names.
-4. Derive the slot values from the exact organization-fenced campaign plan and
+5. Derive the slot values from the exact organization-fenced campaign plan and
    its persisted realtor onboarding contract: offer, market, audience,
    property/price context, the exact selected primary creative's ID,
    headline/copy/CTA, agent and brokerage identity, phone, language, theme
    colors, and logo.
-5. Apply only those documented custom values, then verify the exact
+6. Apply only those documented custom values, then verify the exact
    preinstalled form IDs using the forms read API.
-6. Store append-only campaign/revision/lease-bound receipts. Expose the exact
+7. Store append-only campaign/revision/lease-bound receipts. Expose the exact
    HTTPS GHL-hosted URL only through
    `resolve_ghl_ready_campaign_destination_v2(organization,campaign,environment)`
    after both steps succeed and the source-plan fingerprint remains current.
-7. Permit website lead routing only through that exact ready campaign record.
+8. Permit website lead routing only through that exact ready campaign record.
    Meta Instant Form leads still route through their exact campaign and
    canonical GHL location mapping without pretending that a GHL website funnel
    was their capture surface.
-8. Deliver contact, opportunity, tag, and workflow effects through fenced,
+9. Deliver contact, opportunity, tag, and workflow effects through fenced,
    idempotent outbox records and append-only sanitized receipts.
-9. Reconcile signed appointment, contact, opportunity-status, and outbound
+10. Reconcile signed appointment, contact, opportunity-status, and outbound
    follow-up receipt webhooks back to the exact canonical location mapping.
    Message bodies and recipient addresses are not persisted in this receipt.
 
@@ -60,6 +63,8 @@ labels or a documented, sandbox-proven writable form/publication mechanism.
 Official capability references:
 
 - Sub-account creation (Agency Pro): https://marketplace.gohighlevel.com/docs/ghl/locations/create-location
+- Agency-scoped sub-account search: https://marketplace.gohighlevel.com/docs/ghl/locations/search-locations/
+- Sub-account update/readback: https://marketplace.gohighlevel.com/docs/ghl/locations/put-location and https://marketplace.gohighlevel.com/docs/ghl/locations/get-location/
 - Custom values: https://marketplace.gohighlevel.com/docs/ghl/locations/custom-value/index.html
 - Forms read surface: https://marketplace.gohighlevel.com/docs/ghl/forms/forms/
 - Contact upsert: https://marketplace.gohighlevel.com/docs/2021-04-15/ghl/contacts/upsert-contact/
@@ -80,6 +85,8 @@ Production provider effects require all of the following at the moment of use:
   form-submissions-read flag;
 - the matching database-side `ghl_runtime_controls` switch;
 - an active installation with an `env:GHL_PRODUCTION_*_TOKEN` credential reference;
+- agency authority carrying `locations.write` and `locations.readonly` for
+  create, reconciliation, clean-name update, and readback;
 - a tenant-consistent canonical mapping and approved preinstalled manifest.
 
 Every flag and database switch defaults to false. Credential values remain in
@@ -221,6 +228,21 @@ Official references:
   exhausted discovery reads remain explicitly non-mutating.
 - Location creation ambiguity requires exact provider reconciliation before a
   retry.
+- Create Sub-Account has no official external-id or metadata field. DealFlow
+  therefore creates with one temporary `DFR1` SHA-256 request tag in the name,
+  then reconciles an ambiguous create only through the official agency-scoped,
+  bounded `GET /locations/search` contract. A candidate must match the complete
+  tag, country, timezone, and agency scope. Zero matches remain non-conclusive
+  for a 15-minute visibility window; multiple matches, malformed pagination, or
+  a bounded-search overflow require operator action and never authorize a blind
+  create replay.
+- The temporary tag is not an accepted customer-facing terminal state. After
+  the provider location ID is durably recorded, both normal and recovered
+  creates must pass an idempotent official `PUT /locations/{locationId}` clean
+  name update plus exact `GET /locations/{locationId}` readback before snapshot
+  work can begin. A clean name is never rewritten; an out-of-band name is never
+  overwritten automatically; ambiguous cleanup is retried only behind exact
+  pre-read/readback and a six-attempt fence.
 - Provider receipts are append-only and outbox settlement is lease-fenced.
 - Expired campaign-personalization leases become `uncertain`; they are not
   reclaimed until the exact values fingerprint is supplied to the fenced

@@ -35,11 +35,11 @@ const keychainAccount = "dealflow-staging-20260712";
 const expectedProjectFingerprint =
   "c4d7f6ba9f2c678101b45b453998c4fa5755d8ec038f6cfd3ca8de957a0d1f4c";
 const expectedProjectSafeSuffix = "qibh";
-const exactMigrationCount = 99;
+const exactMigrationCount = 102;
 const transactionOwningMigration =
   "20260710160000_validate_and_normalize_pre_candidate_shape.sql";
 const requiredFinalMigration =
-  "20260713024000_add_durable_ghl_periodic_form_sweeps.sql";
+  "20260713027000_add_ghl_location_display_name_finalization.sql";
 const expectedVerificationLocalGate = "NO_GO_AUTHENTICATED_PROOF_DEFERRED";
 const expectedHostedVerificationDeferrals = Object.freeze([
   "npm run operator:debt",
@@ -504,35 +504,65 @@ const databaseEnv = {
   PGUSER: "postgres",
   PGDATABASE: "postgres",
   PGSSLMODE: "require",
-  DEALFLOW_KEYCHAIN_SERVICE: keychainService,
-  DEALFLOW_KEYCHAIN_ACCOUNT: keychainAccount,
+  PGPASSFILE: "/private/tmp/dealflow-staging-intentionally-absent-pgpass",
 };
-const keychainPgPassScript = [
-  "set -e",
-  "password=$(/usr/bin/security find-generic-password " +
-    "-s \"$DEALFLOW_KEYCHAIN_SERVICE\" " +
-    "-a \"$DEALFLOW_KEYCHAIN_ACCOUNT\" -w)",
-  "if [[ -z \"$password\" ]]; then exit 41; fi",
-  "if [[ \"$password\" == *$'\\n'* || \"$password\" == *$'\\r'* ]]; then exit 42; fi",
-  "escaped_password=${password//\\\\/\\\\\\\\}",
-  "escaped_password=${escaped_password//:/\\\\:}",
-  "umask 077",
-  "PGPASSFILE=<(printf '%s:%s:%s:%s:%s\\n' " +
-    "\"$PGHOST\" \"$PGPORT\" \"$PGDATABASE\" \"$PGUSER\" \"$escaped_password\") " +
-    "exec \"$@\"",
-].join("\n");
 
-function runPostgresCommand(command, args, options = {}) {
-  return run(
-    "/bin/zsh",
-    ["-c", keychainPgPassScript, "dealflow-keychain-pgpass", command, ...args],
+function readKeychainPasswordBuffer() {
+  const result = spawnSync(
+    "/usr/bin/security",
+    ["find-generic-password", "-s", keychainService, "-a", keychainAccount, "-w"],
     {
-      env: databaseEnv,
-      input: options.input,
-      timeoutMs: options.timeoutMs,
-      errorLabel: options.errorLabel,
+      encoding: null,
+      maxBuffer: 1024 * 1024,
+      timeout: 30_000,
+      env: { PATH: "/usr/bin:/bin" },
     },
   );
+  if (result.error || result.status !== 0 || !Buffer.isBuffer(result.stdout)) {
+    throw new Error("The staging database Keychain authority is unavailable");
+  }
+  const raw = result.stdout;
+  let end = raw.length;
+  while (end > 0 && (raw[end - 1] === 0x0a || raw[end - 1] === 0x0d)) end -= 1;
+  if (
+    end === 0 ||
+    raw.subarray(0, end).includes(0x00) ||
+    raw.subarray(0, end).includes(0x0a) ||
+    raw.subarray(0, end).includes(0x0d)
+  ) {
+    raw.fill(0);
+    throw new Error("The staging database Keychain authority is malformed");
+  }
+  const password = Buffer.from(raw.subarray(0, end));
+  raw.fill(0);
+  return password;
+}
+
+function spawnPostgresCommand(command, args, options = {}) {
+  const password = readKeychainPasswordBuffer();
+  const sqlInput = Buffer.from(String(options.input ?? ""), "utf8");
+  const inputBuffer = Buffer.concat([password, Buffer.from("\n"), sqlInput]);
+  password.fill(0);
+  sqlInput.fill(0);
+  try {
+    return spawnSync(command, ["--password", ...args], {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      timeout: options.timeoutMs ?? 180_000,
+      input: inputBuffer,
+      env: databaseEnv,
+    });
+  } finally {
+    inputBuffer.fill(0);
+  }
+}
+
+function runPostgresCommand(command, args, options = {}) {
+  const result = spawnPostgresCommand(command, args, options);
+  if (result.error || result.status !== 0) {
+    throw new Error(options.errorLabel ?? `${basename(command)} failed`);
+  }
+  return (result.stdout ?? "").trim();
 }
 
 function sql(query, label, timeoutMs = 180_000) {
@@ -548,17 +578,16 @@ function sql(query, label, timeoutMs = 180_000) {
 }
 
 function executeAtomicMigrationTransaction() {
-  const result = spawnSync(
-    "/bin/zsh",
-    ["-c", keychainPgPassScript, "dealflow-keychain-pgpass", psql,
+  const result = spawnPostgresCommand(
+    psql,
+    [
       "-X", "--no-psqlrc", "--set", "ON_ERROR_STOP=1", "--set", "VERBOSITY=verbose",
-      "--tuples-only", "--no-align", "--quiet"],
+      "--tuples-only", "--no-align", "--quiet",
+    ],
     {
-      encoding: "utf8",
-      maxBuffer: 64 * 1024 * 1024,
       timeout: 1_800_000,
       input: atomicMigrationTransaction,
-      env: databaseEnv,
+      timeoutMs: 1_800_000,
     },
   );
   const stdout = result.stdout ?? "";

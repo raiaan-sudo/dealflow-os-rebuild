@@ -1,6 +1,7 @@
 "use client";
 
-import Link from "next/link";
+import { LocaleLink as Link } from "@/components/i18n/locale-link";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StaticCreativePreviewCard } from "@/components/campaign/static-creative-preview-card";
@@ -62,12 +63,14 @@ function UgcConceptCard({
   concept: CreativeWizardProps["ugcConcepts"][number];
   index: number;
 }) {
+  const { t } = useProductI18n();
+
   return (
     <div className="h-full rounded-2xl border border-cyan-200/15 bg-[linear-gradient(145deg,rgba(14,165,233,0.09),rgba(2,6,23,0.34))] p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/70">
-            AI UGC {index + 1}
+            {t("creativeWizard.aiUgc", { number: index + 1 })}
           </p>
           <h3 className="mt-2 line-clamp-2 text-base font-semibold leading-6 text-foreground">{concept.title}</h3>
         </div>
@@ -78,18 +81,18 @@ function UgcConceptCard({
       <p className="mt-3 line-clamp-3 text-sm leading-6 text-muted-foreground">{concept.hook}</p>
       <div className="mt-4 grid gap-3">
         <div className="rounded-xl border border-white/8 bg-black/20 p-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Spoken script</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t("creativeWizard.spokenScript")}</p>
           <p className="mt-2 line-clamp-4 text-sm leading-6 text-foreground">{concept.script.slice(0, 4).join(" ")}</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-xl border border-white/8 bg-black/20 p-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Visual direction</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t("creativeWizard.visualDirection")}</p>
             <p className="mt-2 line-clamp-3 text-sm leading-6 text-muted-foreground">
               {concept.shotList.slice(0, 3).join(" / ") || concept.creatorStyle}
             </p>
           </div>
           <div className="rounded-xl border border-white/8 bg-black/20 p-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">CTA</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t("creativePreview.cta")}</p>
             <p className="mt-2 text-sm font-semibold leading-6 text-foreground">{concept.cta}</p>
           </div>
         </div>
@@ -100,6 +103,7 @@ function UgcConceptCard({
 
 export function CreativeWizard({ campaignId, creatives, ugcConcepts }: CreativeWizardProps) {
   const router = useRouter();
+  const { href, t } = useProductI18n();
   const rankedCreatives = useMemo(
     () => [...creatives].sort((left, right) => (right.score ?? 0) - (left.score ?? 0)),
     [creatives],
@@ -141,8 +145,8 @@ export function CreativeWizard({ campaignId, creatives, ugcConcepts }: CreativeW
     if (!canContinue || !primaryCreative) {
       setError(
         rankedCreatives.length >= 2
-          ? `Select ${minSelected}-${maxSelected} creatives to continue.`
-          : "Select at least one creative to continue.",
+          ? t("creativeWizard.selectRangeError", { min: minSelected, max: maxSelected })
+          : t("creativeWizard.selectOneError"),
       );
       return;
     }
@@ -168,7 +172,7 @@ export function CreativeWizard({ campaignId, creatives, ugcConcepts }: CreativeW
       const data = await response.json().catch(() => null);
 
       if (!response.ok) {
-        throw new Error(data?.error || "Failed to save selected ad.");
+        throw new Error(data?.error || t("creativeWizard.saveError"));
       }
 
       const persistedSelectedAdIds = Array.isArray(data?.selected_ad_ids)
@@ -186,9 +190,9 @@ export function CreativeWizard({ campaignId, creatives, ugcConcepts }: CreativeW
         params.set("selectedAdIds", persistedSelectedAdIds.join(","));
       }
 
-      router.push(`/preview?${params.toString()}`);
+      router.push(href(`/preview?${params.toString()}`));
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Failed to save selected ad.");
+      setError(saveError instanceof Error ? saveError.message : t("creativeWizard.saveError"));
     } finally {
       setSaving(false);
     }
@@ -197,7 +201,7 @@ export function CreativeWizard({ campaignId, creatives, ugcConcepts }: CreativeW
   if (!primaryCreative) {
     return (
       <div className="rounded-2xl border border-border p-6 text-sm text-muted-foreground">
-        No saved creative options are ready yet. Go back and generate creatives first.
+        {t("creativeWizard.noOptions")}
       </div>
     );
   }
@@ -207,22 +211,21 @@ export function CreativeWizard({ campaignId, creatives, ugcConcepts }: CreativeW
       <section className="space-y-4 rounded-2xl border border-border bg-card p-6">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-medium text-muted-foreground">Recommended test set</p>
+            <p className="text-sm font-medium text-muted-foreground">{t("creativeWizard.recommended")}</p>
             <h2
               id="creative-selection-status"
               aria-atomic="true"
               aria-live="polite"
               className="mt-1 text-2xl font-semibold text-foreground"
             >
-              {selectedCreatives.length} creatives selected
+              {t("creativeWizard.selectedCount", { count: selectedCreatives.length })}
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Launch starts with the strongest selected creative and keeps the full set saved for
-              testing, rotation, and optimization.
+              {t("creativeWizard.intro")}
             </p>
           </div>
           <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-            Test 2-6
+            {t("creativeWizard.testRange", { min: minSelected, max: maxSelected })}
           </span>
         </div>
 
@@ -258,11 +261,11 @@ export function CreativeWizard({ campaignId, creatives, ugcConcepts }: CreativeW
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
           <Button asChild type="button" variant="secondary">
             <Link href={`/build/funnel?campaignId=${encodeURIComponent(campaignId)}`}>
-              Back
+              {t("common.back")}
             </Link>
           </Button>
           <Button onClick={() => void handleNext()} type="button" disabled={saving}>
-            {saving ? "Saving..." : "Save Test Set → Next"}
+            {saving ? t("creativeWizard.saving") : t("creativeWizard.saveNext")}
           </Button>
         </div>
         {error ? (
@@ -273,11 +276,11 @@ export function CreativeWizard({ campaignId, creatives, ugcConcepts }: CreativeW
 
         <details className="rounded-2xl border border-border p-4">
           <summary className="cursor-pointer text-sm font-medium text-foreground">
-            View breakdown
+            {t("creativeWizard.breakdown")}
           </summary>
           <div className="mt-4 space-y-3 text-sm text-muted-foreground">
-            <p><strong className="text-foreground">Hook:</strong> {primaryCreative.breakdown?.hook || "Not available"}</p>
-            <p><strong className="text-foreground">Concept:</strong> {primaryCreative.breakdown?.concept || "Not available"}</p>
+            <p><strong className="text-foreground">{t("creativeWizard.hook")}:</strong> {primaryCreative.breakdown?.hook || t("creativeWizard.notAvailable")}</p>
+            <p><strong className="text-foreground">{t("creativeWizard.concept")}:</strong> {primaryCreative.breakdown?.concept || t("creativeWizard.notAvailable")}</p>
           </div>
         </details>
       </section>
@@ -285,17 +288,17 @@ export function CreativeWizard({ campaignId, creatives, ugcConcepts }: CreativeW
       <section className="rounded-2xl border border-border bg-card p-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-sm font-medium text-muted-foreground">Creative test queue</p>
+            <p className="text-sm font-medium text-muted-foreground">{t("creativeWizard.queue")}</p>
             <h3 className="mt-1 text-xl font-semibold text-foreground">
-              Select {minSelected}-{maxSelected} creatives
+              {t("creativeWizard.selectCreatives", { min: minSelected, max: maxSelected })}
             </h3>
           </div>
           <p className="text-sm text-muted-foreground">
-            {selectedCreatives.length}/{maxSelected} selected
+            {t("creativeWizard.ratioSelected", { count: selectedCreatives.length, max: maxSelected })}
           </p>
         </div>
         <div
-          aria-label="Creative test set"
+          aria-label={t("creativeWizard.testSetAria")}
           className="mt-5 grid gap-4 lg:grid-cols-2"
           role="group"
         >
@@ -316,12 +319,12 @@ export function CreativeWizard({ campaignId, creatives, ugcConcepts }: CreativeW
               >
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                    Creative {index + 1}
+                    {t("creativeWizard.creativeNumber", { number: index + 1 })}
                   </span>
                   <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
                     selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
                   }`}>
-                    {selected ? "Selected" : "Add"}
+                    {selected ? t("creativeWizard.selected") : t("creativeWizard.add")}
                   </span>
                 </div>
                 <StaticCreativePreviewCard

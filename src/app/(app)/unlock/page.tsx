@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { LocaleLink as Link } from "@/components/i18n/locale-link";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,12 +7,14 @@ import {
   getBillingSummary,
   reconcileBillingCheckoutSuccess,
 } from "@/lib/services/billing-service";
+import { getRequestProductI18n } from "@/lib/i18n/server";
 
 export default async function UnlockPage({
   searchParams,
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const { t } = await getRequestProductI18n();
   const params = searchParams ? await searchParams : {};
   const checkoutState =
     typeof params.checkout === "string" && params.checkout.length > 0 ? params.checkout : null;
@@ -30,16 +32,16 @@ export default async function UnlockPage({
   return (
     <PageShell>
       <PageHeader
-        eyebrow="Billing"
-        title={launchAllowed ? "Launch access active" : "Checkout updated"}
+        eyebrow={t("unlock.eyebrow")}
+        title={launchAllowed ? t("unlock.accessActive") : t("unlock.checkoutUpdated")}
         description={
           launchAllowed
-            ? "This workspace can now launch campaigns to Meta."
+            ? t("unlock.activeDescription")
             : checkoutState === "cancelled"
-              ? "Checkout was cancelled before activation completed."
+              ? t("unlock.cancelledDescription")
               : reconciliationError
-                ? "Checkout returned successfully, but we could not verify the subscription yet. Refresh after Stripe finishes syncing."
-              : "Billing is still processing. Refresh after Stripe finishes syncing the subscription."
+                ? t("unlock.unverifiedDescription")
+              : t("unlock.processingDescription")
         }
       />
 
@@ -47,22 +49,22 @@ export default async function UnlockPage({
         <div className="space-y-4 text-sm text-muted-foreground">
           {reconciliationError ? (
             <p>
-              Verification status: Stripe has not confirmed this subscription for the workspace yet.
+              {t("unlock.verificationPending")}
             </p>
           ) : null}
-          <p>Plan: {billing?.commerciallyActivated ? billing.planTier : "Not activated"}</p>
-          <p>Subscription status: {billing?.subscriptionStatus ?? "inactive"}</p>
+          <p>{t("unlock.plan")}: {billing?.commerciallyActivated ? billing.planTier : t("unlock.notActivated")}</p>
+          <p>{t("unlock.subscriptionStatus")}: {billing?.subscriptionStatus ?? t("unlock.inactive")}</p>
           <p>
-            Launch access: {launchAllowed ? "enabled" : "not enabled yet"}
-            {billing?.launchOverride ? " (admin override)" : ""}
+            {t("unlock.launchAccess")}: {launchAllowed ? t("unlock.enabled") : t("unlock.notEnabled")}
+            {billing?.launchOverride ? ` (${t("unlock.adminOverride")})` : ""}
           </p>
         </div>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           <Button asChild>
-            <Link href="/launch">Go to launch</Link>
+            <Link href="/launch">{t("unlock.goLaunch")}</Link>
           </Button>
           <Button asChild variant="secondary">
-            <Link href="/paywall">View billing options</Link>
+            <Link href="/paywall">{t("unlock.billingOptions")}</Link>
           </Button>
         </div>
       </Card>

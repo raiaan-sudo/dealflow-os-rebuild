@@ -3,25 +3,25 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { createDisposablePostgresHarness } from "./lib/disposable-postgres-harness.mjs";
 
 const image =
   process.env.DEALFLOW_POSTGRES_TEST_IMAGE ??
   "public.ecr.aws/supabase/postgres:17.6.1.106";
 const container = `dealflow-meta-form-${process.pid}-${Date.now()}`;
 const password = randomUUID();
+const database = createDisposablePostgresHarness({
+  containerName: container,
+  image,
+  maxBuffer: 16 * 1024 * 1024,
+});
 const migration = readFileSync(
   "supabase/migrations/20260712235991_create_meta_instant_form_provisioning.sql",
   "utf8",
 );
 
 function docker(args, options = {}) {
-  return spawnSync("docker", args, {
-    cwd: process.cwd(),
-    encoding: "utf8",
-    maxBuffer: 16 * 1024 * 1024,
-    ...options,
-  });
+  return database.run(args, options);
 }
 
 function requireSuccess(result, label) {

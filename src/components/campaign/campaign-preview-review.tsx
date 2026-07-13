@@ -162,6 +162,7 @@ export function CampaignPreviewReview({
   const [activeTab, setActiveTab] = useState<PreviewTab>("Ads");
   const [adsState, setAdsState] = useState(previewAds);
   const [isGeneratingAds, setIsGeneratingAds] = useState(false);
+  const [generatingVideoIndex, setGeneratingVideoIndex] = useState<number | null>(null);
   const [generationMessage, setGenerationMessage] = useState<string | null>(null);
   const jobStreamsRef = useRef<Map<string, EventSource>>(new Map());
 
@@ -259,6 +260,10 @@ export function CampaignPreviewReview({
         if (job.status === "completed") {
           if (job.kind === "static_creative_generation") {
             setGenerationMessage("Static creative job completed.");
+          } else if (job.kind === "video_generation") {
+            setGenerationMessage("Higgsfield accepted the video render. DealFlow is reconciling the finished asset now.");
+          } else if (job.kind === "video_generation_status") {
+            setGenerationMessage("Video render completed and was saved to the campaign.");
           }
           source.close();
           jobStreamsRef.current.delete(jobId);
@@ -319,6 +324,45 @@ export function CampaignPreviewReview({
       );
     } finally {
       setIsGeneratingAds(false);
+    }
+  }
+
+  async function generateVideo(creativeIndex: number, force: boolean) {
+    if (!campaignId || generatingVideoIndex !== null) return;
+
+    setGeneratingVideoIndex(creativeIndex);
+    setGenerationMessage("Reserving one $5 video credit and queuing the Higgsfield render.");
+    try {
+      const response = await fetchWithRetry(
+        `/api/campaigns/${encodeURIComponent(campaignId)}/generate-video`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ creativeIndex, force }),
+          retries: 0,
+          timeoutMs: 30_000,
+        },
+      );
+      const data = (await response.json()) as {
+        job?: SystemJob;
+        provider?: "higgsfield" | "heygen";
+        error?: string;
+      };
+      if (!response.ok || !data.job?.id) {
+        throw new Error(data.error || "Video generation could not be queued.");
+      }
+      setGenerationMessage(
+        data.provider === "heygen"
+          ? "The explicitly enabled HeyGen legacy fallback was queued."
+          : "Higgsfield video render queued.",
+      );
+      subscribeToJob(data.job.id);
+    } catch (error) {
+      setGenerationMessage(
+        error instanceof Error ? error.message : "Video generation could not be queued.",
+      );
+    } finally {
+      setGeneratingVideoIndex(null);
     }
   }
 
@@ -663,6 +707,11 @@ export function CampaignPreviewReview({
                 <p className="mt-2 max-w-[720px] text-sm leading-7 text-muted-foreground">
                   This section shows the real saved asset state for this campaign, including what is ready, what is still being prepared, and what needs attention.
                 </p>
+                {generationMessage ? (
+                  <div className="mt-4 rounded-[16px] border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-muted-foreground">
+                    {generationMessage}
+                  </div>
+                ) : null}
               </div>
             <div className={assetsGridClass}>
               {assetItems.map((asset) => (
@@ -717,7 +766,7 @@ export function CampaignPreviewReview({
             ) : null}
             {previewVideos.length > 0 ? (
               <div className={videoAssetsGridClass}>
-                {previewVideos.slice(0, 2).map((video) => (
+                {previewVideos.slice(0, 2).map((video, videoIndex) => (
                   <Card key={video.id} className="rounded-[20px] border border-white/8 bg-black/20 p-4">
                     {video.videoGenerationState === "generated" && video.videoUrl ? (
                       <div className="mb-4 overflow-hidden rounded-[16px] border border-white/8 bg-black">
@@ -743,6 +792,31 @@ export function CampaignPreviewReview({
                                 ? "Not ready yet"
                                 : "Concept ready"}
                       </Badge>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <Badge className="border-primary/15 bg-primary/10 text-primary">
+                        {video.videoProvider === "heygen"
+                          ? "HeyGen legacy fallback"
+                          : "Higgsfield video"}
+                      </Badge>
+                      {campaignId ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="h-9"
+                          disabled={generatingVideoIndex !== null || video.videoGenerationState === "generating"}
+                          onClick={() => void generateVideo(
+                            videoIndex,
+                            video.videoGenerationState === "generated" || video.videoGenerationState === "failed",
+                          )}
+                        >
+                          {generatingVideoIndex === videoIndex
+                            ? "Queuing..."
+                            : video.videoGenerationState === "generated"
+                              ? "Regenerate video • $5 credit"
+                              : "Generate video • $5 credit"}
+                        </Button>
+                      ) : null}
                     </div>
                     <p className="mt-3 line-clamp-3 text-sm leading-6 text-muted-foreground">{video.hook}</p>
                     {video.videoGenerationMessage ? (

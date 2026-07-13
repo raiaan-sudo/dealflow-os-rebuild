@@ -1,9 +1,14 @@
+"use client";
+
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useProductI18n } from "@/components/i18n/product-locale-provider";
 
 export default function AppLoading() {
+  const { t } = useProductI18n();
   return (
-    <div className="space-y-8">
+    <div aria-busy="true" aria-label={t("loading.title")} className="space-y-8" role="status">
+      <span className="sr-only">{t("loading.body")}</span>
       <div className="space-y-3">
         <Skeleton className="h-3 w-28" />
         <Skeleton className="h-11 w-72" />
